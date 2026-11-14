@@ -1,0 +1,332 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI DOCUMENTO DICHIARANO DA DOVE VIENE IL LORO PREZZO
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2, R-1, D-1 e D-3
+#   di Tid 2026-11-13)
+#
+# ── COSA ────────────────────────────────────────────────────────────
+#   Righe principali (preventivi_righe, ordini_righe, contratti_righe,
+#   ddt_righe, offerte_commerciali_eccezioni):
+#     origine_prezzo varchar(32), listino_versione_id (FK), listino_riga_id
+#     (FK), prezzo_resolver_context jsonb.
+#   Componenti (i quattro *_righe_componenti e
+#   offerte_commerciali_eccezioni_componenti), che origine e contesto li hanno
+#   gia':
+#     listino_versione_id (FK), listino_riga_id (FK).
+#   Su tutte e dieci, CHECK chk_<tabella>_provenienza_prezzo, che chiama
+#   vendite.fn_provenienza_prezzo_coerente (20261113-02): la regola e' una.
+#
+# ── PERCHE' QUESTA FORMA (D-3) ──────────────────────────────────────
+#   In colonna cio' che un guard deve giudicare: l'origine (dominio unico) e la
+#   riga di listino con la sua versione (BB di coerenza, 20261113-05/-09). Nel
+#   jsonb il resto del risultato del resolver (base, variazione, promo,
+#   contratto, categoria, classe), come i componenti fanno gia': righe
+#   principali e componenti portano la provenienza nella stessa forma (R-1).
+#   I tipi sono quelli di vendite.commesse_attivita, dove la provenienza arriva
+#   col push. La riga di listino esce da prezzo_resolver_context dei componenti
+#   nel giro 3, quando le funzioni che lo scrivono scriveranno le colonne.
+#
+# ── LE RIGHE CHE CI SONO (§5 del brief) ─────────────────────────────
+#   Nessuno ha dichiarato la provenienza: una riga principale che ha
+#   componenti attivi e' COMPONENTI (il suo prezzo lo scrive
+#   script.fn_ricalcola_prezzo_padre_da_componenti), una con un prezzo e'
+#   MANUALE, una senza prezzo non ha origine. Un componente senza prezzo (DDT)
+#   perde l'origine; uno con un prezzo e senza origine (possibile solo sui DDT,
+#   dove la colonna ammette NULL) e' MANUALE. Riga e versione di listino
+#   restano NULL.
+#   ⛔ L'allineamento passa senza i trigger della tabella: e' una colonna
+#   nuova, non un fatto di dominio (niente audit, storico, guard), e i guard
+#   «documento fuori bozza» e «padre attivo» lo fermerebbero su documenti
+#   confermati. Si spengono e si riaccendono i soli trigger accesi, ciascuno
+#   nel suo modo (la forma di 20261011-69). Su un database da zero non ci sono
+#   righe: i seed di 80_data passano dal trigger di derivazione (20261113-08),
+#   che vive in 20_code e gira prima di tutti i dati.
+#
+# ── FK ──────────────────────────────────────────────────────────────
+#   Verso vendite.listini_versioni e vendite.listini_righe, NO ACTION come su
+#   commesse_attivita. Indici e esenzione dal guard ATTIVO generato nei CSV di
+#   dbops (fk_index_policy, automazione_attivo_eccezioni): una riga cita la
+#   riga di listino da cui il prezzo E' venuto, anche se poi la si spegne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261113-04-alter-righe-documento-add-provenienza-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20261113-04-alter-righe-documento-add-provenienza-prezzo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Righe principali e componenti di preventivi, ordini, contratti, DDT e offerte: la
+        provenienza del prezzo (origine, versione e riga di listino; sulle righe principali anche il
+        contesto del resolver), le FK, l'allineamento delle righe che ci sono e il CHECK di coerenza.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_provenienza_prezzo_coerente'
+                     AND pronamespace = 'vendite'::regnamespace
+            - not:
+                - columnExists: { schemaName: vendite, tableName: ordini_righe, columnName: listino_riga_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              -- ── Le righe principali ─────────────────────────────────
+              ALTER TABLE vendite.preventivi_righe
+                  ADD COLUMN origine_prezzo varchar(32),
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_preventivi_righe_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_preventivi_righe_listino_riga REFERENCES vendite.listini_righe(id),
+                  ADD COLUMN prezzo_resolver_context jsonb;
+
+              ALTER TABLE vendite.ordini_righe
+                  ADD COLUMN origine_prezzo varchar(32),
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_ordini_righe_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_ordini_righe_listino_riga REFERENCES vendite.listini_righe(id),
+                  ADD COLUMN prezzo_resolver_context jsonb;
+
+              ALTER TABLE vendite.contratti_righe
+                  ADD COLUMN origine_prezzo varchar(32),
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_contratti_righe_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_contratti_righe_listino_riga REFERENCES vendite.listini_righe(id),
+                  ADD COLUMN prezzo_resolver_context jsonb;
+
+              ALTER TABLE vendite.ddt_righe
+                  ADD COLUMN origine_prezzo varchar(32),
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_ddt_righe_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_ddt_righe_listino_riga REFERENCES vendite.listini_righe(id),
+                  ADD COLUMN prezzo_resolver_context jsonb;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD COLUMN origine_prezzo varchar(32),
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_offerte_commerciali_eccezioni_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_offerte_commerciali_eccezioni_listino_riga REFERENCES vendite.listini_righe(id),
+                  ADD COLUMN prezzo_resolver_context jsonb;
+
+              -- ── I componenti ────────────────────────────────────────
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_prevrighe_comp_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_prevrighe_comp_listino_riga REFERENCES vendite.listini_righe(id);
+
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_ordrighe_comp_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_ordrighe_comp_listino_riga REFERENCES vendite.listini_righe(id);
+
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_contrighe_comp_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_contrighe_comp_listino_riga REFERENCES vendite.listini_righe(id);
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_ddtrighe_comp_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_ddtrighe_comp_listino_riga REFERENCES vendite.listini_righe(id);
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ADD COLUMN listino_versione_id bigint
+                      CONSTRAINT fk_oce_comp_listino_versione REFERENCES vendite.listini_versioni(id),
+                  ADD COLUMN listino_riga_id bigint
+                      CONSTRAINT fk_oce_comp_listino_riga REFERENCES vendite.listini_righe(id);
+
+              -- ── L'allineamento, senza i trigger della tabella ───────
+              DO $do$
+              DECLARE
+                  -- tabella, tabella dei componenti, FK del componente verso la riga
+                  -- (NULL per un componente: non ha figli)
+                  v_tab   text[][] := ARRAY[
+                      ['preventivi_righe',              'preventivi_righe_componenti',              'riga_preventivo_id'],
+                      ['ordini_righe',                  'ordini_righe_componenti',                  'riga_ordine_id'],
+                      ['contratti_righe',               'contratti_righe_componenti',               'riga_contratto_id'],
+                      ['ddt_righe',                     'ddt_righe_componenti',                     'riga_ddt_id'],
+                      ['offerte_commerciali_eccezioni', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id'],
+                      ['preventivi_righe_componenti',              NULL, NULL],
+                      ['ordini_righe_componenti',                  NULL, NULL],
+                      ['contratti_righe_componenti',               NULL, NULL],
+                      ['ddt_righe_componenti',                     NULL, NULL],
+                      ['offerte_commerciali_eccezioni_componenti', NULL, NULL]];
+                  v_rel   regclass;
+                  v_nomi  text[];
+                  v_modi  "char"[];
+                  i       integer;
+                  k       integer;
+              BEGIN
+                  FOR k IN 1 .. array_length(v_tab, 1) LOOP
+                      v_rel := format('vendite.%I', v_tab[k][1])::regclass;
+
+                      -- L'elenco si legge UNA volta, prima di spegnere.
+                      SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                             array_agg(t.tgenabled    ORDER BY t.tgname)
+                        INTO v_nomi, v_modi
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = v_rel
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D';
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_rel, v_nomi[i]);
+                      END LOOP;
+
+                      IF v_tab[k][2] IS NOT NULL THEN
+                          -- Riga principale: COMPONENTI se ha componenti attivi,
+                          -- MANUALE se ha un prezzo, nessuna origine senza prezzo.
+                          EXECUTE format(
+                              'UPDATE %s r
+                                  SET origine_prezzo = CASE
+                                          WHEN EXISTS (SELECT 1 FROM vendite.%I c
+                                                        WHERE c.%I = r.id AND c.attivo)
+                                          THEN ''COMPONENTI''
+                                          ELSE ''MANUALE'' END
+                                WHERE r.prezzo_unitario IS NOT NULL',
+                              v_rel, v_tab[k][2], v_tab[k][3]);
+                      ELSE
+                          -- Componente: l'origine c'e' gia' (NOT NULL tranne sui DDT);
+                          -- senza prezzo non ne ha, con un prezzo e senza origine e' MANUALE.
+                          EXECUTE format(
+                              'UPDATE %s
+                                  SET origine_prezzo = CASE WHEN prezzo_unitario IS NULL THEN NULL
+                                                            ELSE ''MANUALE'' END
+                                WHERE (prezzo_unitario IS NULL     AND origine_prezzo IS NOT NULL)
+                                   OR (prezzo_unitario IS NOT NULL AND origine_prezzo IS NULL)',
+                              v_rel);
+                      END IF;
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I',
+                                         v_rel,
+                                         CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                        WHEN 'R' THEN 'REPLICA'
+                                                        ELSE '' END,
+                                         v_nomi[i]);
+                      END LOOP;
+                  END LOOP;
+              END;
+              $do$;
+
+              -- ── La coerenza: una regola, dieci CHECK ────────────────
+              ALTER TABLE vendite.preventivi_righe
+                  ADD CONSTRAINT chk_preventivi_righe_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.ordini_righe
+                  ADD CONSTRAINT chk_ordini_righe_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contratti_righe_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.ddt_righe
+                  ADD CONSTRAINT chk_ddt_righe_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_commerciali_eccezioni_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  ADD CONSTRAINT chk_prevrighe_comp_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.ordini_righe_componenti
+                  ADD CONSTRAINT chk_ordrighe_comp_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.contratti_righe_componenti
+                  ADD CONSTRAINT chk_contrighe_comp_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.ddt_righe_componenti
+                  ADD CONSTRAINT chk_ddtrighe_comp_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  ADD CONSTRAINT chk_oce_comp_provenienza_prezzo CHECK (
+                      vendite.fn_provenienza_prezzo_coerente(origine_prezzo, prezzo_unitario, listino_versione_id, listino_riga_id));
+
+              -- ── Le schede ───────────────────────────────────────────
+              DO $do$
+              DECLARE
+                  v_t text;
+              BEGIN
+                  FOREACH v_t IN ARRAY ARRAY['preventivi_righe', 'ordini_righe', 'contratti_righe',
+                                             'ddt_righe', 'offerte_commerciali_eccezioni'] LOOP
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.origine_prezzo IS %L$c$, v_t,
+                          'Da dove viene il prezzo della riga, nell''elenco di vendite.fn_origine_prezzo_ammessa: un''origine del resolver se il prezzo e'' stato preso dal listino (con riga e versione), MANUALE se l''ha scritto una persona o nessuno ne ha dichiarato la provenienza, COMPONENTI se e'' la somma dei componenti. NULL solo senza prezzo. Un prezzo senza origine diventa MANUALE, e un prezzo da listino cambiato senza dichiarare la provenienza nuova torna MANUALE (vendite.trgfn_riga_documento_provenienza_prezzo).');
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.prezzo_resolver_context IS %L$c$, v_t,
+                          'La fotografia del resolver da cui e'' venuto il prezzo, quando e'' venuto dal listino: prezzo base, variazione applicata, promo, contratto, categoria del cliente, classe di utenza. Non e'' un riferimento giudicato: riga e versione di listino stanno nelle loro colonne. NULL per un prezzo MANUALE o COMPONENTI.');
+                  END LOOP;
+
+                  FOREACH v_t IN ARRAY ARRAY['preventivi_righe', 'ordini_righe', 'contratti_righe',
+                                             'ddt_righe', 'offerte_commerciali_eccezioni',
+                                             'preventivi_righe_componenti', 'ordini_righe_componenti',
+                                             'contratti_righe_componenti', 'ddt_righe_componenti',
+                                             'offerte_commerciali_eccezioni_componenti'] LOOP
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.listino_riga_id IS %L$c$, v_t,
+                          'La riga di listino da cui e'' venuto il prezzo, solo se e'' venuto davvero da li''. Porta la sua versione; e'' dell''articolo, dell''unita'' di misura operativa e dell''emittente del documento, e mai di una versione in bozza (vendite.trgfn_riga_documento_guard_listino_provenienza).');
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.listino_versione_id IS %L$c$, v_t,
+                          'La versione di listino da cui e'' venuto il prezzo; con la riga, quella della riga. NULL per un prezzo MANUALE o COMPONENTI.');
+                  END LOOP;
+              END;
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  DROP CONSTRAINT IF EXISTS chk_oce_comp_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS listino_riga_id, DROP COLUMN IF EXISTS listino_versione_id;
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_ddtrighe_comp_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS listino_riga_id, DROP COLUMN IF EXISTS listino_versione_id;
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_comp_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS listino_riga_id, DROP COLUMN IF EXISTS listino_versione_id;
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_ordrighe_comp_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS listino_riga_id, DROP COLUMN IF EXISTS listino_versione_id;
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT IF EXISTS chk_prevrighe_comp_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS listino_riga_id, DROP COLUMN IF EXISTS listino_versione_id;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_eccezioni_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS prezzo_resolver_context, DROP COLUMN IF EXISTS listino_riga_id,
+                  DROP COLUMN IF EXISTS listino_versione_id, DROP COLUMN IF EXISTS origine_prezzo;
+              ALTER TABLE vendite.ddt_righe
+                  DROP CONSTRAINT IF EXISTS chk_ddt_righe_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS prezzo_resolver_context, DROP COLUMN IF EXISTS listino_riga_id,
+                  DROP COLUMN IF EXISTS listino_versione_id, DROP COLUMN IF EXISTS origine_prezzo;
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contratti_righe_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS prezzo_resolver_context, DROP COLUMN IF EXISTS listino_riga_id,
+                  DROP COLUMN IF EXISTS listino_versione_id, DROP COLUMN IF EXISTS origine_prezzo;
+              ALTER TABLE vendite.ordini_righe
+                  DROP CONSTRAINT IF EXISTS chk_ordini_righe_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS prezzo_resolver_context, DROP COLUMN IF EXISTS listino_riga_id,
+                  DROP COLUMN IF EXISTS listino_versione_id, DROP COLUMN IF EXISTS origine_prezzo;
+              ALTER TABLE vendite.preventivi_righe
+                  DROP CONSTRAINT IF EXISTS chk_preventivi_righe_provenienza_prezzo,
+                  DROP COLUMN IF EXISTS prezzo_resolver_context, DROP COLUMN IF EXISTS listino_riga_id,
+                  DROP COLUMN IF EXISTS listino_versione_id, DROP COLUMN IF EXISTS origine_prezzo;

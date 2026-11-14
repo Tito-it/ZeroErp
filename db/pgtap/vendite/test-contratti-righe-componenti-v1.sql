@@ -18,7 +18,7 @@
 --   10) CHECK chk_contrighe_comp_origine esiste
 --   11) FK fk_contrighe_comp_riga coperta da un indice
 --   12) Colonna quantita presente su contratti_righe (rename da quantita_fissa)
---   13) Tutti i 14 trigger registrati sulla tabella
+--   13) Tutti i 16 trigger registrati sulla tabella
 --       (+2 da modello unificato: prezzo_obbligatorio + guard_obbligatorio)
 --   14) Trigger propaga_qta registrato su contratti_righe
 --   15) Trigger qta_from_operativa usa 'quantita' (non 'quantita_fissa')
@@ -180,19 +180,21 @@ SELECT has_column(
 );
 
 -- =========================================================
--- 13) Trigger registrati sulla tabella (14 attesi)
+-- 13) Trigger registrati sulla tabella (16 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio, guard_obbligatorio
 --     +1 dal 2026-10-05 (20261005-17): il lock «solo in bozza» a livello RIGA,
 --        trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
 --        (brief-db-righe-esclusione-solo-non-si-vende §8.2 B3)
+--     +2 dal 2026-11-13 (20261113-10, brief-db-provenienza-prezzo-segue-il-prezzo §8): la derivazione
+--        della provenienza del prezzo (a20) e il guard sulla riga di listino (a10, AFTER).
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'contratti_righe_componenti'),
-    14,
-    '13) 14 trigger registrati su contratti_righe_componenti'
+    16,
+    '13) 16 trigger registrati su contratti_righe_componenti'
 );
 
 -- =========================================================

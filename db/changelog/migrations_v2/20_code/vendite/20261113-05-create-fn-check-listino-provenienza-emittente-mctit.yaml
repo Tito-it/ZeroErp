@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_check_listino_provenienza_emittente(emittente, articolo,
+#   uom, versione, riga) -> il codice del primo motivo, NULL = ammessa
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.4, F-8, D-1)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   La regola «che cosa una riga di listino citata per il prezzo puo' essere»
+#   stava in vendite.fn_check_listino_provenienza, che prende la COMMESSA e ne
+#   ricava l'emittente. Le righe di documento (20261113-04) citano la stessa
+#   riga di listino e la regola e' la stessa: va scritta una volta (D-1). Il
+#   corpo e' quello vivo di fn_check_listino_provenienza (ultima revisione
+#   20261028-18), con l'emittente come parametro al posto della commessa.
+#   La versione per commessa diventa l'adattatore (20261113-06): ricava
+#   l'emittente e chiama questa.
+#
+# ── LE REGOLE, NELL'ORDINE (invariate) ──────────────────────────────
+#   1. E_ATTIVITA_LISTINO_RIGA_INCOERENTE: la riga di listino c'e', ed e'
+#      dell'articolo, dell'unita' di misura e (se data) della versione.
+#   2. E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO: il listino della versione (data,
+#      o quella della riga) e' dell'emittente dato. Emittente NULL: diverso.
+#   3. E_ATTIVITA_LISTINO_VERSIONE_BOZZA: la versione non e' in BOZZA.
+#   Ne' riga ne' versione: NULL.
+#   I codici restano quelli di prima: il BE li conosce gia' (policy
+#   generate), e la frase del secondo diventa generica nel CSV dei messaggi.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   SECURITY DEFINER, search_path bloccato, nomi qualificati: listini e
+#   versioni sono sotto RLS per emittente, e letti con la RLS di chi scrive un
+#   listino di un'altra azienda tornerebbe a vuoto (la regola 2 giudicherebbe
+#   un'assenza). Ritorna solo un codice. Non solleva (linee-guida-sql §5).
+#   EXECUTE revocato a PUBLIC, concesso a zeroerp_app, come la gemella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-05-create-fn-check-listino-provenienza-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261113-05-create-fn-check-listino-provenienza-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_check_listino_provenienza_emittente: la regola sulla riga e sulla versione di
+        listino citate per un prezzo (riga coerente, listino dell'emittente, versione non in bozza),
+        con l'emittente come parametro. Sede unica per commessa e righe di documento.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_check_listino_provenienza_emittente(
+                  p_emittente_soggetto_ruolo_id vendite.listini.emittente_soggetto_ruolo_id%TYPE,
+                  p_articolo_id                 vendite.listini_righe.articolo_id%TYPE,
+                  p_uom_id                      vendite.listini_righe.uom_id%TYPE,
+                  p_listino_versione_id         vendite.listini_righe.listino_versione_id%TYPE,
+                  p_listino_riga_id             vendite.listini_righe.id%TYPE)
+              RETURNS config.codici_errore.codice%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_riga_articolo     vendite.listini_righe.articolo_id%TYPE;
+                  v_riga_uom          vendite.listini_righe.uom_id%TYPE;
+                  v_riga_versione     vendite.listini_righe.listino_versione_id%TYPE;
+                  v_versione          vendite.listini_versioni.id%TYPE := p_listino_versione_id;
+                  v_stato             config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_emittente_listino vendite.listini.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   il codice del primo motivo per cui la riga e la versione
+                  --   di listino citate per un prezzo non sono ammesse per
+                  --   l'emittente dato; NULL = ammesse.
+                  --   1. riga di listino incoerente con articolo, UoM, versione
+                  --   2. listino di un altro emittente
+                  --   3. versione in BOZZA
+                  -- =========================================================
+
+                  -- 1. La riga di listino: articolo, unita' di misura, versione.
+                  IF p_listino_riga_id IS NOT NULL THEN
+                      SELECT lr.articolo_id, lr.uom_id, lr.listino_versione_id
+                        INTO v_riga_articolo, v_riga_uom, v_riga_versione
+                        FROM vendite.listini_righe lr
+                       WHERE lr.id = p_listino_riga_id;
+
+                      IF NOT FOUND
+                         OR v_riga_articolo IS DISTINCT FROM p_articolo_id
+                         OR v_riga_uom      IS DISTINCT FROM p_uom_id
+                         OR (v_versione IS NOT NULL AND v_riga_versione <> v_versione) THEN
+                          RETURN 'E_ATTIVITA_LISTINO_RIGA_INCOERENTE';
+                      END IF;
+
+                      v_versione := v_riga_versione;
+                  END IF;
+
+                  -- Ne' riga ne' versione: niente da giudicare.
+                  IF v_versione IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT s.codice_interno, l.emittente_soggetto_ruolo_id
+                    INTO v_stato, v_emittente_listino
+                    FROM vendite.listini_versioni lv
+                    JOIN vendite.listini l ON l.id = lv.listino_id
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = v_versione;
+
+                  -- 2. Il listino e' dell'emittente dato.
+                  IF v_emittente_listino IS DISTINCT FROM p_emittente_soggetto_ruolo_id THEN
+                      RETURN 'E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO';
+                  END IF;
+
+                  -- 3. Mai un prezzo da una versione in bozza.
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN 'E_ATTIVITA_LISTINO_VERSIONE_BOZZA';
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_listino_provenienza_emittente(vendite.listini.emittente_soggetto_ruolo_id%TYPE, vendite.listini_righe.articolo_id%TYPE, vendite.listini_righe.uom_id%TYPE, vendite.listini_righe.listino_versione_id%TYPE, vendite.listini_righe.id%TYPE) IS
+                  'Check: il codice del primo motivo per cui la riga e la versione di listino citate come provenienza di un prezzo non sono ammesse per l''emittente dato (soggetto_ruolo dell''azienda che emette il documento o la commessa); NULL = ammesse. Motivi in ordine: 1) E_ATTIVITA_LISTINO_RIGA_INCOERENTE: la riga di listino non c''e'', o non e'' dell''articolo e dell''unita'' di misura dati, o (se la versione e'' data) non e'' di quella versione; 2) E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO: il listino della versione (data, o quella della riga) e'' di un altro emittente, o l''emittente non e'' dato; 3) E_ATTIVITA_LISTINO_VERSIONE_BOZZA: quella versione e'' in BOZZA. Ne'' riga ne'' versione: NULL. SECURITY DEFINER: listini e versioni hanno la RLS per emittente, e letti con la RLS di chi scrive un listino di un''altra azienda tornerebbero a vuoto. Ritorna solo un codice e non solleva: lo fanno vendite.trgfn_attivita_guard_listino_riga (righe di commessa e attivita'' fatturabili, attraverso vendite.fn_check_listino_provenienza) e vendite.trgfn_riga_documento_guard_listino_provenienza (righe e componenti dei documenti).';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_check_listino_provenienza_emittente(bigint, uuid, bigint, bigint, bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_check_listino_provenienza_emittente(bigint, uuid, bigint, bigint, bigint) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_check_listino_provenienza_emittente(bigint, uuid, bigint, bigint, bigint);

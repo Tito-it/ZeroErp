@@ -142,6 +142,7 @@ search:
 - [fn_check_fondo_cancellabile](funzioni/fn_check_fondo_cancellabile.md) — (latest review 31-08-2026)
 - [fn_check_fondo_fattura_capiente](funzioni/fn_check_fondo_fattura_capiente.md) — (latest review 15-08-2026)
 - [fn_check_listino_provenienza](funzioni/fn_check_listino_provenienza.md) — (rev 2026-10-16, brief `brief-db-coerenza-listino-della-riga-di-commessa`, decisioni di Tid)
+- [fn_check_listino_provenienza_emittente](funzioni/fn_check_listino_provenienza_emittente.md)
 - [fn_chiudi_contratto_per_successione](funzioni/fn_chiudi_contratto_per_successione.md) — `vendite.fn_chiudi_contratto_per_successione(...)` è la **seconda metà** del meccanismo di successione: dopo che [`fn_contratto_sovrapposto`](/dbzero/vendite/funzioni/fn_contratto_sovrapposto) ha individuato un contratto in conflitto, questa funzione lo **accorcia** per fare spazio al nuovo, impostando:
 - [fn_chiudi_preventivi_scaduti](funzioni/fn_chiudi_preventivi_scaduti.md)
 - [fn_chiudi_riconsegna_reso](funzioni/fn_chiudi_riconsegna_reso.md) — (rev 2026-07-26)
@@ -155,9 +156,11 @@ search:
 - [fn_commessa_proietta_stato_emittibile](funzioni/fn_commessa_proietta_stato_emittibile.md)
 - [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md) — Risponde a una domanda sola: **in quale commessa aperta sta questo documento?** Restituisce l'id della commessa, o `NULL`.
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
+- [fn_componente_override](funzioni/fn_componente_override.md)
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratti_addebiti_maturati](funzioni/fn_contratti_addebiti_maturati.md) — Gli **addebiti maturati** dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, **con gli scartati** e il motivo (`scarto`). È la **sede unica** della regola del push dei contratti (dal 2026-10-31, `20261031-02`), letta da due posti:
+- [fn_contratti_addebiti_maturati_con_provenienza](funzioni/fn_contratti_addebiti_maturati_con_provenienza.md)
 - [fn_contratto_kit_componenti](funzioni/fn_contratto_kit_componenti.md)
 - [fn_contratto_riga_componenti_init](funzioni/fn_contratto_riga_componenti_init.md)
 - [fn_contratto_riga_componenti_preview](funzioni/fn_contratto_riga_componenti_preview.md)
@@ -289,6 +292,7 @@ search:
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
 - [fn_ordine_riga_spedita](funzioni/fn_ordine_riga_spedita.md)
+- [fn_origine_prezzo_ammessa](funzioni/fn_origine_prezzo_ammessa.md)
 - [fn_parametri_importo_riga](funzioni/fn_parametri_importo_riga.md)
 - [fn_partite_merce](funzioni/fn_partite_merce.md) — `vendite.fn_partite_merce` è **il conto della merce** — lo stesso di [`vw_partite_merce`](/dbzero/vendite/views/vw_partite_merce), che ne è la proiezione senza filtro — calcolato **per i documenti che si chiedono**, non per tutti.
 - [fn_popola_fatture_rettifiche](funzioni/fn_popola_fatture_rettifiche.md) — (rev 2026-08-18)
@@ -301,7 +305,10 @@ search:
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
 - [fn_prezzi_legame_oltre_la_fine](funzioni/fn_prezzi_legame_oltre_la_fine.md) — Dice **quali prezzi bundle di un legame di distinta vanno oltre una data di fine**, cioè quelli che una chiusura del legame a quella data tocca, e che cosa ne fa la chiusura. Lo leggono la check e il guard della distinta, il verbo di chiusura e la finestra di conferma.
+- [fn_prezzo_resolver_contesto](funzioni/fn_prezzo_resolver_contesto.md)
 - [fn_programma_chiusura_versione_listino](funzioni/fn_programma_chiusura_versione_listino.md)
+- [fn_provenienza_prezzo_coerente](funzioni/fn_provenienza_prezzo_coerente.md)
+- [fn_provenienza_prezzo_esplosa](funzioni/fn_provenienza_prezzo_esplosa.md)
 - [fn_provision_registri](funzioni/fn_provision_registri.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
 - [fn_provision_registri_emittente](funzioni/fn_provision_registri_emittente.md) — (latest review 31-08-2026)
 - [fn_provision_registri_famiglia](funzioni/fn_provision_registri_famiglia.md) — *(rev 2026-09-01 — funzione nata il 2026-09-01)*
@@ -336,6 +343,7 @@ search:
 - [fn_ricalcola_totali_ordine](funzioni/fn_ricalcola_totali_ordine.md) — (latest review 05-06-2026)
 - [fn_ricalcola_totali_preventivo](funzioni/fn_ricalcola_totali_preventivo.md) — (latest review 02-05-2026)
 - [fn_riferimento_gruppo_fatturabile](funzioni/fn_riferimento_gruppo_fatturabile.md) — (latest review 2026-09-08)
+- [fn_riga_documento_emittente](funzioni/fn_riga_documento_emittente.md)
 - [fn_riporta_attivita_da_emettere](funzioni/fn_riporta_attivita_da_emettere.md) — (latest review 26-08-2026)
 - [fn_riporta_lotto_a_draft](funzioni/fn_riporta_lotto_a_draft.md) — (latest review 31-08-2026)  
 - [fn_ritira_commessa_attivita_da_sorgente](funzioni/fn_ritira_commessa_attivita_da_sorgente.md) — **Il ritiro: il documento riprende ciò che aveva spinto.** Porta ad `ANNULLATA` le sole righe di commessa in **`NON_EMESSA`** della sorgente indicata, e lascia una riga di registro **per ciascuna**. Restituisce **quante** ne ha ritirate.
@@ -488,6 +496,8 @@ search:
 - [trgfn_resi_righe_guard_quantita](funzioni/trgfn_resi_righe_guard_quantita.md) — (rev 2026-07-13)
 - [trgfn_resi_righe_rientri_guard](funzioni/trgfn_resi_righe_rientri_guard.md)
 - [trgfn_resi_rinunce_guard](funzioni/trgfn_resi_rinunce_guard.md) — (rev 2026-07-26)
+- [trgfn_riga_documento_guard_listino_provenienza](funzioni/trgfn_riga_documento_guard_listino_provenienza.md)
+- [trgfn_riga_documento_provenienza_prezzo](funzioni/trgfn_riga_documento_provenienza_prezzo.md)
 - [trgfn_tipi_doc_fiscale_registri_guard_coppia_unica](funzioni/trgfn_tipi_doc_fiscale_registri_guard_coppia_unica.md)
 - [trgfn_tipi_indirizzi_only_allowed](funzioni/trgfn_tipi_indirizzi_only_allowed.md) — (rev 2026-07-11)
 - [trgfn_v_ddt_protect_num](funzioni/trgfn_v_ddt_protect_num.md) — (rev 2026-07-09)

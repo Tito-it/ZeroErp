@@ -13,7 +13,7 @@ CREATE FUNCTION fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_ddt_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(ddt_id bigint, ddt_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint)
+ RETURNS TABLE(ddt_id bigint, ddt_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, causale_onere_id bigint, origine_prezzo character varying, listino_versione_id bigint, listino_riga_id bigint, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, promo_id bigint, prezzo_contratto_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer)
  LANGUAGE plpgsql
  SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
@@ -98,6 +98,12 @@ BEGIN
       dr.uom_operativa_id AS dr_uom_op,
       dr.factor_to_base   AS dr_factor,
       dr.prezzo_unitario  AS dr_prezzo,
+      -- La provenienza del prezzo che esce (F-4): della riga del DDT se ha
+      -- il prezzo, altrimenti della riga d'ordine, come il COALESCE sotto.
+      CASE WHEN dr.prezzo_unitario IS NOT NULL THEN dr.origine_prezzo ELSE or_r.origine_prezzo END AS pv_origine,
+      CASE WHEN dr.prezzo_unitario IS NOT NULL THEN dr.listino_versione_id ELSE or_r.listino_versione_id END AS pv_versione,
+      CASE WHEN dr.prezzo_unitario IS NOT NULL THEN dr.listino_riga_id ELSE or_r.listino_riga_id END AS pv_riga,
+      CASE WHEN dr.prezzo_unitario IS NOT NULL THEN dr.prezzo_resolver_context ELSE or_r.prezzo_resolver_context END AS pv_contesto,
       a.uom_id        AS a_uom,
       -- rev 2026-11-03: proiezione, non eleggibilita' (quella e' della
       -- diagnosi). IS FALSE: una natura sconosciuta resta merce.
@@ -173,15 +179,28 @@ BEGIN
     -- di Tid). ONERE <=> causale: lo pretende la madre
     -- vendite.fn_upsert_commessa_attivita; un articolo-onere rimasto senza
     -- causale esce ONERE senza causale e la madre lo rifiuta (rumoroso).
-    CASE WHEN x.dr_e_onere THEN x.a_causale_onere END
+    CASE WHEN x.dr_e_onere THEN x.a_causale_onere END,
+    pv.origine_prezzo,
+    pv.listino_versione_id,
+    pv.listino_riga_id,
+    pv.prezzo_base_snapshot,
+    pv.tipo_variazione_applicata,
+    pv.valore_variazione_applicata,
+    pv.promo_id,
+    pv.prezzo_contratto_id,
+    pv.categoria_cliente_id_snapshot,
+    pv.classe_utenza_id_snapshot
   FROM cand x
+  -- La provenienza del prezzo della riga, nelle colonne della commessa (R-3).
+  CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(
+    x.pv_origine, x.pv_versione, x.pv_riga, x.pv_contesto) pv
   ORDER BY x.d_id, x.dr_id
   LIMIT p_limit;
 END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_ddt_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_ddt_id bigint)
-IS 'Le righe delle bolle di vendita da mandare in commessa. L''eleggibilita'' e la dose stanno in un posto solo, vendite.fn_ddt_push_diagnosi: il lister ne prende le righe senza motivo e aggiunge i filtri di chiamata (competenza, billing account, limite) e la proiezione. Dalla diagnosi vengono il billing account, la riga d''ordine sorgente e la quantita'' da mandare (la differenza della partita di merce di vendite.fn_partite_merce; per un onere, la quantita'' della riga); una partita non misurabile non parte. Un predicato nuovo si aggiunge alla diagnosi, non qui. p_ddt_id: una bolla sola, letta come seme della partita (NULL = tutte; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente DDT_VENDITA assente dal catalogo solleva E_CODICE. Ordine per bolla e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid della bolla in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push DDT_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. Prezzo e valuta sono quelli della riga o, se mancano, della riga d''ordine sorgente; prezzo_bloccato e'' vero quando un prezzo c''e''. fatturazione_immediata e'' quella della bolla. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. termine_pagamento_id e modalita_pagamento_id sono NULL. Gira col piano generico (plan_cache_mode). Il backend legge le colonne per nome.';
+IS 'Le righe delle bolle di vendita da mandare in commessa. L''eleggibilita'' e la dose stanno in un posto solo, vendite.fn_ddt_push_diagnosi: il lister ne prende le righe senza motivo e aggiunge i filtri di chiamata (competenza, billing account, limite) e la proiezione. Dalla diagnosi vengono il billing account, la riga d''ordine sorgente e la quantita'' da mandare (la differenza della partita di merce di vendite.fn_partite_merce; per un onere, la quantita'' della riga); una partita non misurabile non parte. Un predicato nuovo si aggiunge alla diagnosi, non qui. p_ddt_id: una bolla sola, letta come seme della partita (NULL = tutte; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente DDT_VENDITA assente dal catalogo solleva E_CODICE. Ordine per bolla e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid della bolla in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push DDT_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. Prezzo e valuta sono quelli della riga o, se mancano, della riga d''ordine sorgente; prezzo_bloccato e'' vero quando un prezzo c''e''. fatturazione_immediata e'' quella della bolla. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. termine_pagamento_id e modalita_pagamento_id sono NULL. Gira col piano generico (plan_cache_mode). Il backend legge le colonne per nome. Restituisce anche la provenienza del prezzo, nelle colonne della riga di commessa (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, prezzo_contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot): quella della riga del DDT se ha il prezzo, altrimenti quella della riga d''ordine da cui il prezzo viene (vendite.fn_provenienza_prezzo_esplosa).';
 ```
 
 </div>

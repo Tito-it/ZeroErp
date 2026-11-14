@@ -217,7 +217,7 @@ BEGIN
        WHERE r.enabled
          AND r.rule_type = 'CLEANUP_PURGE'
          AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-         AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+         AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
        ORDER BY r.priority, r.id
     LOOP
       IF NOT dbops.fn_col_exists(rtab.schema_name, rtab.table_name, 'cleanup_at') THEN

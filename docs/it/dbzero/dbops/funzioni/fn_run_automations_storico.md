@@ -21,14 +21,17 @@ DECLARE
   -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
   --   dalle due chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
   v_schemas text[];
   rtab record;
   rrule record;
+  -- la tabella del giro come OID: nessuna colonna la porta
   rel  regclass;
+  -- esito calcolato qui: nessuna colonna ne e' il riflesso
   has_sto boolean;
-  fk_col   text;
-  tmpl     text;
-  trg_name text;
+  fk_col   dbops.automation_overrides_cols.col_name%TYPE;
+  tmpl     dbops.automation_rules_tbl.name_template%TYPE;
+  trg_name pg_catalog.pg_trigger.tgname%TYPE;
 BEGIN
 
       /*
@@ -45,7 +48,7 @@ BEGIN
           - enabled = true
           - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
           - match su schema (dbops.fn_schema_match)
-          - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
+          - match su tabella: '*all' oppure il nome esatto (r.target_table = tabella)
         4) se esiste la tabella storico corrispondente (storico.<table_name>),
           assicura la presenza del trigger UPDATE+DELETE sulla tabella base usando:
           - nome trigger derivato da template (rrule.name_template, obbligatorio per STORICO)
@@ -102,7 +105,7 @@ LOOP
       AND upper(btrim(r.rule_type))='STORICO'
       AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
       AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-      AND (UPPER (r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+      AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
 
       ORDER BY r.priority, r.id
     LOOP

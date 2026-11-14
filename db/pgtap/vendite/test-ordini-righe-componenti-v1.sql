@@ -16,7 +16,7 @@
 --   9)  CHECK chk_ordrighe_comp_prezzo_nonneg esiste
 --   10) CHECK chk_ordrighe_comp_origine esiste
 --   11) FK fk_ordrighe_comp_riga coperta da un indice
---   12) Tutti i 7 trigger registrati sulla tabella
+--   12) Tutti i 16 trigger registrati sulla tabella
 --   13) Trigger propaga_qta registrato su ordini_righe
 --   14) fn_ordine_riga_componenti_init: p_riga_id NULL -> raise
 --   15) fn_ordine_riga_componenti_init: p_emittente_sr_id NULL -> raise
@@ -160,18 +160,20 @@ SELECT ok(
 );
 
 -- =========================================================
--- 12) Trigger registrati sulla tabella (14 attesi)
+-- 12) Trigger registrati sulla tabella (16 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 --     +1 dal 2026-10-08 (20261008-34): trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt,
 --        il lock «solo in bozza» (building block a livello RIGA).
+--     +2 dal 2026-11-13 (20261113-10, brief-db-provenienza-prezzo-segue-il-prezzo §8): la derivazione
+--        della provenienza del prezzo (a20) e il guard sulla riga di listino (a10, AFTER).
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'ordini_righe_componenti'),
-    14,
-    '12) 14 trigger registrati su ordini_righe_componenti'
+    16,
+    '12) 16 trigger registrati su ordini_righe_componenti'
 );
 
 -- =========================================================

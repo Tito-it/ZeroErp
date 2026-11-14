@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_rules_tbl`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,8 +50,10 @@ qui, non scrivendo trigger a mano.
 
 * `target_schema` — uno schema, o `*all` per tutti. Il confronto non distingue maiuscole e
   minuscole.
-* `target_table` — una tabella, un modello con `%` (confrontato senza distinguere maiuscole), o
-  `*all` per tutte. Non è mai vuoto: il default è `*all`.
+* `target_table` — il nome esatto di una tabella, o `*all` per tutte. Non è un modello di nomi:
+  i runner confrontano con `=`, e il `CHECK` `chk_automation_rules_tbl_target_table_nome_esatto`
+  rifiuta un `%`, una maiuscola o `*ALL` in un'altra grafia. Un insieme di tabelle lo dice
+  l'ambito, qui sotto. Non è mai vuoto: il default è `*all`.
 
 In ogni caso la regola agisce solo sulle tabelle dell'**ambito** (`dbops.automation_scope`):
 una regola su uno schema fuori ambito non ha effetto, e niente lo segnala.
@@ -221,6 +223,10 @@ scriva.
   CHECK della forma ricontrolla le righe (`20261109-92`, `20261109-93`). La regola `CLEANUP_AT`
   che vale su una tabella è una sola, letta da `dbops.fn_cleanup_at_regola` (brief-db-revisione-dbops,
   giro 10b).
+* 2026-11-13 — `target_table` è `*all` o il nome esatto di una tabella, mai un modello: con
+  `ILIKE` il `_` di un nome valeva come jolly. Il CHECK `chk_automation_rules_tbl_target_table_nome_esatto`
+  (`90_end/20261112-66`) e i dieci lettori che confrontano con `=` (`20261112-67` … `-76`); nessuna
+  riga era fuori forma (residuo di brief-db-revisione-dbops §27.8).
 
 ---
 

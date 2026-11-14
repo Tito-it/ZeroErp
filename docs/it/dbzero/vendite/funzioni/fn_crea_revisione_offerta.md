@@ -227,6 +227,10 @@ BEGIN
             meta,
             stato_approvazione_prezzo,
             pratica_approvazione_prezzo_id,
+            origine_prezzo,
+            listino_versione_id,
+            listino_riga_id,
+            prezzo_resolver_context,
             user_insert,
             user_update
         )
@@ -248,6 +252,10 @@ BEGIN
             v_ecc.meta,
             v_ecc.stato_approvazione_prezzo,
             v_ecc.pratica_approvazione_prezzo_id,
+            v_ecc.origine_prezzo,
+            v_ecc.listino_versione_id,
+            v_ecc.listino_riga_id,
+            v_ecc.prezzo_resolver_context,
             COALESCE(p_user, CURRENT_USER),
             COALESCE(p_user, CURRENT_USER)
         )
@@ -271,6 +279,8 @@ BEGIN
             prezzo_unitario,
             iva_id,
             origine_prezzo,
+            listino_versione_id,
+            listino_riga_id,
             prezzo_resolver_context,
             stato_approvazione_prezzo,
             pratica_approvazione_prezzo_id,
@@ -292,6 +302,8 @@ BEGIN
             occ.prezzo_unitario,
             occ.iva_id,
             occ.origine_prezzo,
+            occ.listino_versione_id,
+            occ.listino_riga_id,
             occ.prezzo_resolver_context,
             CASE WHEN occ.attivo IS NOT TRUE AND occ.stato_approvazione_prezzo = 'PENDING'
                  THEN NULL ELSE occ.stato_approvazione_prezzo END,

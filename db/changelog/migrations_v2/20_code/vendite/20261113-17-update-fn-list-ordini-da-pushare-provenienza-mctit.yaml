@@ -1,0 +1,433 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_list_ordini_da_pushare: la provenienza del prezzo accanto al prezzo
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7, giro 2, R-3)
+#
+#   La provenienza e' quella della riga d'ordine (giro 1), anche per la
+#   riga-onere (F-6).
+#
+#   Il RETURNS TABLE guadagna in coda le dieci colonne della provenienza del
+#   prezzo, con i nomi e i tipi della riga di commessa (contratto_id esce come
+#   prezzo_contratto_id: contratto_id e' gia' il documento in alcuni lister).
+#   Nome o tipo di una colonna di RETURNS TABLE non cambiano con CREATE OR
+#   REPLACE: DROP + CREATE, come nella revisione di partenza; COMMENT e GRANT
+#   tornano (EXECUTE a PUBLIC lo da' la CREATE). Il corpo e' quello della
+#   revisione di partenza, verificato identico al vivo il 2026-11-13.
+#   Il BE legge le colonne per nome da un elenco chiuso (commesse_repository,
+#   _PUSHABLE_SHARED_COLS): le nuove non lo rompono, le legge quando le aggiunge.
+#   Rollback: la revisione di partenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-17-update-fn-list-ordini-da-pushare-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261113-17-update-fn-list-ordini-da-pushare-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_ordini_da_pushare: la provenienza del prezzo accanto al prezzo. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La colonna della chiave cambia nome nel RETURNS TABLE: CREATE OR REPLACE non lo ammette.
+              -- ⛔ MAI con CASCADE: i chiamanti DB sono plpgsql (nessuna riga in pg_depend), e un
+              --    CASCADE farebbe sparire in silenzio chi un giorno ne dipendera'.
+              DROP FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_list_ordini_da_pushare(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_limit              integer DEFAULT NULL::integer,
+                  p_ordine_id          vendite.ordini.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, termine_pagamento_id, modalita_pagamento_id): valori calcolati o polimorfi: nessuna colonna di cui siano il riflesso
+                  ordine_id                   vendite.ordini.id%TYPE,
+                  ordine_uid                  vendite.ordini.uid%TYPE,
+                  riga_id                     vendite.ordini_righe.id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  vendite.commesse.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  -- text esplicito, non %TYPE: e' la chiave del documento come la riceve la madre
+                  -- (vendite.fn_upsert_commessa_attivita, p_sorgente_chiave), l'uid in testo. Non e' il
+                  -- riflesso di una colonna: commesse_attivita.sorgente_uid e' uuid e tiene solo la
+                  -- chiave dei tipi a uid.
+                  sorgente_chiave             text,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  pricing_mode                vendite.commesse_attivita.pricing_mode%TYPE,
+                  tipo_movimento              vendite.commesse_attivita.tipo_movimento%TYPE,
+                  valuta_id                   vendite.commesse_attivita.valuta_id%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        vendite.commesse.termine_pagamento_id%TYPE,
+                  modalita_pagamento_id       vendite.commesse.modalita_pagamento_id%TYPE,
+                  -- rev 2026-11-03: la causale della riga-onere (NULL sulla merce)
+                  causale_onere_id            vendite.commesse_attivita.causale_onere_id%TYPE,
+                  -- La provenienza del prezzo, le colonne della riga di commessa (R-3)
+                  origine_prezzo                vendite.commesse_attivita.origine_prezzo%TYPE,
+                  listino_versione_id           vendite.commesse_attivita.listino_versione_id%TYPE,
+                  listino_riga_id               vendite.commesse_attivita.listino_riga_id%TYPE,
+                  prezzo_base_snapshot          vendite.commesse_attivita.prezzo_base_snapshot%TYPE,
+                  tipo_variazione_applicata     vendite.commesse_attivita.tipo_variazione_applicata%TYPE,
+                  valore_variazione_applicata   vendite.commesse_attivita.valore_variazione_applicata%TYPE,
+                  promo_id                      vendite.commesse_attivita.promo_id%TYPE,
+                  prezzo_contratto_id           vendite.commesse_attivita.contratto_id%TYPE,
+                  categoria_cliente_id_snapshot vendite.commesse_attivita.categoria_cliente_id_snapshot%TYPE,
+                  classe_utenza_id_snapshot     vendite.commesse_attivita.classe_utenza_id_snapshot%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-11-03 (20261103-38, brief-db-addebito-trasporto-ordine §8.1, K-1):
+              --   la riga-onere (script.fn_natura_e_merce = false sulla natura congelata)
+              --   esce tipo_movimento ONERE con la causale dell'articolo, nella colonna
+              --   nuova causale_onere_id (DROP + CREATE). Sorgente: l'ordine, come le altre.
+              -- rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti, 2e G-8):
+              --   la chiave e' ORDINE_VENDITA:<uid>:R:<riga>, composta da
+              --   script.fn_segment_key (era ORD:...). Firma e RETURNS ancorati.
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
+                -- risolti per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-10 (fix orfano, piano-db-fix-orfano-push-ordine-confermato §4.1):
+                -- l'eleggibilita' push NON dipende piu' dallo stato di spedizione
+                -- (CONFERMATO/PARZIALMENTE_EVASO/EVASO/...): per trigger CONFERMATO
+                -- si fattura l'ordine confermato, la spedizione e' ortogonale.
+                -- Esclusi solo DRAFT/ANNULLATO (doc commercialmente inesistente)
+                -- e FATTURATO (cintura). L'anti doppia fatturazione resta il
+                -- NOT EXISTS su commesse_attivita EMESSA (verita' di billing).
+                -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+                -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
+                -- la corsia via chiave di dedup di fn_get_or_create_commessa.
+                -- rev 2026-10-10 (brief-db-istanza-nasce-col-ba-residui D-1): via il
+                -- filtro billing_account_id IS NOT NULL: la colonna e' NOT NULL.
+                IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_ordine_id', 'valore', p_ordine_id),
+                    NULL::uuid,
+                    'p_ordine_id', p_ordine_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ORDINE_VENDITA'),
+                    NULL::uuid, 'ORDINE_VENDITA', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  o.id, o.uid, or_r.id,
+                  o.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(o.billing_account_id),
+                  o.data, o.data,
+                  -- Corsia di instradamento: valore reale del documento.
+                  o.fatturazione_immediata,
+                  v_sorgente_tipo_id,
+                  o.uid::text,
+                  script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id),
+                  or_r.articolo_id,
+                  ba.istanza_utility_id,
+                  o.data,
+                  -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
+                  a.uom_id,
+                  or_r.quantita,
+                  or_r.qta_operativa,
+                  or_r.uom_operativa_id,
+                  COALESCE(or_r.factor_to_base, 1::numeric),
+                  date_trunc('month', o.data)::date,
+                  or_r.prezzo_unitario,
+                  -- prezzo_bloccato: costante TRUE per gli ordini, INDIPENDENTE dal
+                  -- flag di corsia (l'accoppiamento esiste solo sui preventivi).
+                  TRUE,
+                  'FIXED'::varchar,
+                  -- rev 2026-11-03 (K-1): la riga-onere va in commessa come ONERE, con la
+                  -- causale dell'articolo e la sorgente dell'ordine (il CHECK
+                  -- chk_commesse_attivita_senza_sorgente_onere_rettifica lo ammette).
+                  -- IS FALSE: una natura sconosciuta resta NORMALE.
+                  CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+                       THEN 'ONERE' ELSE 'NORMALE' END::varchar,
+                  o.valuta_id,
+                  jsonb_build_object(
+                    'ordine_numero',       o.numero,
+                    'ordine_anno',         o.anno,
+                    'ordine_serie',        o.serie,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id,
+                  o.termine_pagamento_id,
+                  o.modalita_pagamento_id,
+                  -- La causale si legge dall'articolo solo qui, dove serve il valore
+                  -- (decisione 2 di Tid). ONERE <=> causale: lo pretende la madre
+                  -- vendite.fn_upsert_commessa_attivita. ⚠️ Un articolo-onere a cui fosse
+                  -- stata tolta la causale dopo la vendita esce ONERE senza causale, e la
+                  -- madre lo rifiuta (E_PARAMETRO_INVALIDO): rumoroso, non NORMALE in silenzio.
+                  CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+                       THEN a.causale_onere_id END,
+                  pv.origine_prezzo,
+                  pv.listino_versione_id,
+                  pv.listino_riga_id,
+                  pv.prezzo_base_snapshot,
+                  pv.tipo_variazione_applicata,
+                  pv.valore_variazione_applicata,
+                  pv.promo_id,
+                  pv.prezzo_contratto_id,
+                  pv.categoria_cliente_id_snapshot,
+                  pv.classe_utenza_id_snapshot
+                FROM vendite.ordini o
+                JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
+                -- (state-agnostic sull'asse spedizione, no whitelist fragile).
+                JOIN config.stati_doc_ordini sdo
+                  ON sdo.id = o.stato_doc_ordine_id
+                 AND sdo.codice_interno NOT IN ('DRAFT', 'ANNULLATO', 'FATTURATO')
+                JOIN vendite.ordini_righe or_r
+                  ON or_r.ordine_id = o.id
+                 AND or_r.attivo IS TRUE
+                 AND or_r.quantita > 0
+                 AND or_r.prezzo_unitario >= 0
+                JOIN catalogo.articoli a ON a.id = or_r.articolo_id
+                -- La provenienza del prezzo della riga, nelle colonne della commessa (R-3).
+                CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(
+                  or_r.origine_prezzo, or_r.listino_versione_id, or_r.listino_riga_id, or_r.prezzo_resolver_context) pv
+                WHERE o.fatturazione_trigger = 'CONFERMATO'
+                  AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
+                  AND (p_ordine_id IS NULL OR o.id = p_ordine_id)
+                  -- Esclusione "gia' inviato": eleggibile solo se MAI
+                  -- instradata (LIBERA) — classificatore condiviso coi rami
+                  -- reason della capability: vede anche i componenti #CMP e
+                  -- non dipende piu' da stato_emissione (ALLOCATA basta).
+                  AND script.fn_get_stato_push_segment(
+                        script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id)) = 'LIBERA'
+                ORDER BY o.id, or_r.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE) IS
+                'Le righe degli ordini di vendita da mandare in commessa: ordini con fatturazione_trigger CONFERMATO, in qualunque stato di spedizione tranne DRAFT, ANNULLATO e FATTURATO; righe attive con quantita'' > 0 e prezzo >= 0. Una riga gia'' instradata resta fuori: e'' eleggibile solo se script.fn_get_stato_push_segment dice LIBERA, lo stesso classificatore della capability dell''ordine, che vede anche i componenti #CMP. p_ordine_id: un ordine solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ORDINE_VENDITA assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per ordine e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid dell''ordine in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ORDINE_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. uom_id viene dall''articolo (catalogo.articoli). fatturazione_immediata e'' quella dell''ordine; prezzo_bloccato e'' sempre TRUE, perche'' l''accoppiamento col flag di corsia esiste solo sui preventivi. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine. Il backend legge le colonne per nome. Restituisce anche la provenienza del prezzo, nelle colonne della riga di commessa (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, prezzo_contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot): quella della riga d''ordine (vendite.fn_provenienza_prezzo_esplosa).';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La colonna della chiave cambia nome nel RETURNS TABLE: CREATE OR REPLACE non lo ammette.
+              -- ⛔ MAI con CASCADE: i chiamanti DB sono plpgsql (nessuna riga in pg_depend), e un
+              --    CASCADE farebbe sparire in silenzio chi un giorno ne dipendera'.
+              DROP FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_list_ordini_da_pushare(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_limit              integer DEFAULT NULL::integer,
+                  p_ordine_id          vendite.ordini.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, termine_pagamento_id, modalita_pagamento_id): valori calcolati o polimorfi: nessuna colonna di cui siano il riflesso
+                  ordine_id                   vendite.ordini.id%TYPE,
+                  ordine_uid                  vendite.ordini.uid%TYPE,
+                  riga_id                     vendite.ordini_righe.id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  integer,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  -- text esplicito, non %TYPE: e' la chiave del documento come la riceve la madre
+                  -- (vendite.fn_upsert_commessa_attivita, p_sorgente_chiave), l'uid in testo. Non e' il
+                  -- riflesso di una colonna: commesse_attivita.sorgente_uid e' uuid e tiene solo la
+                  -- chiave dei tipi a uid.
+                  sorgente_chiave             text,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  pricing_mode                vendite.commesse_attivita.pricing_mode%TYPE,
+                  tipo_movimento              vendite.commesse_attivita.tipo_movimento%TYPE,
+                  valuta_id                   vendite.commesse_attivita.valuta_id%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        bigint,
+                  modalita_pagamento_id       integer,
+                  -- rev 2026-11-03: la causale della riga-onere (NULL sulla merce)
+                  causale_onere_id            vendite.commesse_attivita.causale_onere_id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- rev 2026-11-03 (20261103-38, brief-db-addebito-trasporto-ordine §8.1, K-1):
+              --   la riga-onere (script.fn_natura_e_merce = false sulla natura congelata)
+              --   esce tipo_movimento ONERE con la causale dell'articolo, nella colonna
+              --   nuova causale_onere_id (DROP + CREATE). Sorgente: l'ordine, come le altre.
+              -- rev 2026-10-20 (20261020-92, brief-db-grammatica-unica-documenti, 2e G-8):
+              --   la chiave e' ORDINE_VENDITA:<uid>:R:<riga>, composta da
+              --   script.fn_segment_key (era ORD:...). Firma e RETURNS ancorati.
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente/stato
+                -- risolti per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-10 (fix orfano, piano-db-fix-orfano-push-ordine-confermato §4.1):
+                -- l'eleggibilita' push NON dipende piu' dallo stato di spedizione
+                -- (CONFERMATO/PARZIALMENTE_EVASO/EVASO/...): per trigger CONFERMATO
+                -- si fattura l'ordine confermato, la spedizione e' ortogonale.
+                -- Esclusi solo DRAFT/ANNULLATO (doc commercialmente inesistente)
+                -- e FATTURATO (cintura). L'anti doppia fatturazione resta il
+                -- NOT EXISTS su commesse_attivita EMESSA (verita' di billing).
+                -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
+                -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
+                -- la corsia via chiave di dedup di fn_get_or_create_commessa.
+                -- rev 2026-10-10 (brief-db-istanza-nasce-col-ba-residui D-1): via il
+                -- filtro billing_account_id IS NOT NULL: la colonna e' NOT NULL.
+                IF p_ordine_id IS NOT NULL AND p_ordine_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_ordine_id', 'valore', p_ordine_id),
+                    NULL::uuid,
+                    'p_ordine_id', p_ordine_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_ordini_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ORDINE_VENDITA'),
+                    NULL::uuid, 'ORDINE_VENDITA', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  o.id, o.uid, or_r.id,
+                  o.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(o.billing_account_id),
+                  o.data, o.data,
+                  -- Corsia di instradamento: valore reale del documento.
+                  o.fatturazione_immediata,
+                  v_sorgente_tipo_id,
+                  o.uid::text,
+                  script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id),
+                  or_r.articolo_id,
+                  ba.istanza_utility_id,
+                  o.data,
+                  -- uom_id canonica da catalogo.articoli (fix bug proiezione NULL)
+                  a.uom_id,
+                  or_r.quantita,
+                  or_r.qta_operativa,
+                  or_r.uom_operativa_id,
+                  COALESCE(or_r.factor_to_base, 1::numeric),
+                  date_trunc('month', o.data)::date,
+                  or_r.prezzo_unitario,
+                  -- prezzo_bloccato: costante TRUE per gli ordini, INDIPENDENTE dal
+                  -- flag di corsia (l'accoppiamento esiste solo sui preventivi).
+                  TRUE,
+                  'FIXED'::varchar,
+                  -- rev 2026-11-03 (K-1): la riga-onere va in commessa come ONERE, con la
+                  -- causale dell'articolo e la sorgente dell'ordine (il CHECK
+                  -- chk_commesse_attivita_senza_sorgente_onere_rettifica lo ammette).
+                  -- IS FALSE: una natura sconosciuta resta NORMALE.
+                  CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+                       THEN 'ONERE' ELSE 'NORMALE' END::varchar,
+                  o.valuta_id,
+                  jsonb_build_object(
+                    'ordine_numero',       o.numero,
+                    'ordine_anno',         o.anno,
+                    'ordine_serie',        o.serie,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id,
+                  o.termine_pagamento_id,
+                  o.modalita_pagamento_id,
+                  -- La causale si legge dall'articolo solo qui, dove serve il valore
+                  -- (decisione 2 di Tid). ONERE <=> causale: lo pretende la madre
+                  -- vendite.fn_upsert_commessa_attivita. ⚠️ Un articolo-onere a cui fosse
+                  -- stata tolta la causale dopo la vendita esce ONERE senza causale, e la
+                  -- madre lo rifiuta (E_PARAMETRO_INVALIDO): rumoroso, non NORMALE in silenzio.
+                  CASE WHEN script.fn_natura_e_merce(or_r.natura_vendita_id) IS FALSE
+                       THEN a.causale_onere_id END
+                FROM vendite.ordini o
+                JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                -- rev 2026-07-10: join stato solo per ESCLUDERE i non eleggibili
+                -- (state-agnostic sull'asse spedizione, no whitelist fragile).
+                JOIN config.stati_doc_ordini sdo
+                  ON sdo.id = o.stato_doc_ordine_id
+                 AND sdo.codice_interno NOT IN ('DRAFT', 'ANNULLATO', 'FATTURATO')
+                JOIN vendite.ordini_righe or_r
+                  ON or_r.ordine_id = o.id
+                 AND or_r.attivo IS TRUE
+                 AND or_r.quantita > 0
+                 AND or_r.prezzo_unitario >= 0
+                JOIN catalogo.articoli a ON a.id = or_r.articolo_id
+                WHERE o.fatturazione_trigger = 'CONFERMATO'
+                  AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
+                  AND (p_ordine_id IS NULL OR o.id = p_ordine_id)
+                  -- Esclusione "gia' inviato": eleggibile solo se MAI
+                  -- instradata (LIBERA) — classificatore condiviso coi rami
+                  -- reason della capability: vede anche i componenti #CMP e
+                  -- non dipende piu' da stato_emissione (ALLOCATA basta).
+                  AND script.fn_get_stato_push_segment(
+                        script.fn_segment_key('ORDINE_VENDITA', o.uid::text, or_r.id)) = 'LIBERA'
+                ORDER BY o.id, or_r.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE) IS
+                'Le righe degli ordini di vendita da mandare in commessa: ordini con fatturazione_trigger CONFERMATO, in qualunque stato di spedizione tranne DRAFT, ANNULLATO e FATTURATO; righe attive con quantita'' > 0 e prezzo >= 0. Una riga gia'' instradata resta fuori: e'' eleggibile solo se script.fn_get_stato_push_segment dice LIBERA, lo stesso classificatore della capability dell''ordine, che vede anche i componenti #CMP. p_ordine_id: un ordine solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ORDINE_VENDITA assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per ordine e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid dell''ordine in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ORDINE_VENDITA:<uid>:R:<riga> la compone script.fn_segment_key. uom_id viene dall''articolo (catalogo.articoli). fatturazione_immediata e'' quella dell''ordine; prezzo_bloccato e'' sempre TRUE, perche'' l''accoppiamento col flag di corsia esiste solo sui preventivi. Una riga-onere (script.fn_natura_e_merce falso sulla natura della riga) esce con tipo_movimento ONERE e la causale dell''articolo in causale_onere_id; la merce esce NORMALE, con causale_onere_id NULL. Espone termine_pagamento_id e modalita_pagamento_id dell''ordine. Il backend legge le colonne per nome.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_list_ordini_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.ordini.id%TYPE) TO zeroerp_app;

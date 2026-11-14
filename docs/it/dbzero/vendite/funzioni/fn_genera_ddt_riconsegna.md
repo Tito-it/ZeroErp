@@ -253,6 +253,11 @@ BEGIN
                dr_src.natura_vendita_id   AS src_natura_vendita_id,
                dr_src.prezzo_unitario     AS src_prezzo_unitario,
                dr_src.sconto_percentuale  AS src_sconto_percentuale,
+               -- La provenienza del prezzo della bolla d'origine (R-4).
+               dr_src.origine_prezzo          AS src_origine_prezzo,
+               dr_src.listino_versione_id     AS src_listino_versione_id,
+               dr_src.listino_riga_id         AS src_listino_riga_id,
+               dr_src.prezzo_resolver_context AS src_prezzo_resolver_context,
                iva_src.id                 AS src_iva_id,
                vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo_ric,
                (SELECT (e->>'qta')::numeric
@@ -321,6 +326,7 @@ BEGIN
             prezzo_unitario, sconto_percentuale, iva_id,
             qta_operativa, uom_operativa_id, factor_to_base,
             natura_vendita_id,
+            origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
             sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_new_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
@@ -334,6 +340,11 @@ BEGIN
             -- La natura della riga di bolla d'origine (A-4, A-6): si
             -- restituisce cio' che e' uscito.
             v_riga.src_natura_vendita_id,
+            -- La provenienza, come il prezzo: solo senza ordine (R-4).
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_origine_prezzo END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_listino_versione_id END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_listino_riga_id END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_prezzo_resolver_context END,
             -- La provenienza (D-4): il reso e la riga del reso. Il legame con
             -- l'ordine, se c'e', resta nel fulfillment.
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.resi_riga_id)

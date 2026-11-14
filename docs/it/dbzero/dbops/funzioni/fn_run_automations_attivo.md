@@ -20,23 +20,27 @@ DECLARE
   -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
   --   dalle due chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
   v_schemas text[];
   rrule record;
   rfk   record;
 
 
   -- template nome trigger BLOCK/REQUIRE
+  -- estratti dal JSON di name_template: nessuna colonna li porta
   nm_block text;
   nm_require text;
 
   -- colonna attivo sul PADRE (con override)
-  col_attivo_parent text;
+  col_attivo_parent dbops.automation_overrides_cols.col_name%TYPE;
 
   -- colonna attivo sul FIGLIO (con override)
-  col_attivo_child text;
+  col_attivo_child dbops.automation_overrides_cols.col_name%TYPE;
 
+  -- esiti calcolati qui: nessuna colonna ne e' il riflesso
   parent_has_attivo boolean;
   child_has_attivo  boolean;
+  -- un nome di colonna letto dal catalogo: text, non name, come lo scrivono i chiamanti
   fk_col            text;
 
   -- colonna del padre realmente referenziata dalla FK del figlio
@@ -44,14 +48,16 @@ DECLARE
   v_parent_ref_col  text;
 
   -- nome trigger calcolato
-  tname_parent_block  text;
-  tname_child_require text;
+  tname_parent_block  pg_catalog.pg_trigger.tgname%TYPE;
+  tname_child_require pg_catalog.pg_trigger.tgname%TYPE;
 
   -- verifiche esistenza trigger
+  -- esiti calcolati qui: nessuna colonna ne e' il riflesso
   exists_by_name boolean;
   exists_by_args boolean;
 
   -- helper
+  -- interruttore e lista di colonne calcolati qui: nessuna colonna li porta
   v_reconcile      boolean;
   v_child_upd_cols text;
 BEGIN
@@ -154,9 +160,9 @@ BEGIN
           OR dbops.fn_schema_match(rrule.target_schema, nc.nspname)
         )
         AND (
-          UPPER(btrim(rrule.target_table)) = '*ALL'
-          OR cc.relname ILIKE rrule.target_table
-          OR cp.relname ILIKE rrule.target_table
+          rrule.target_table = '*all'
+          OR cc.relname = rrule.target_table
+          OR cp.relname = rrule.target_table
         )
     LOOP
       -- 1) serve attivo sul PADRE

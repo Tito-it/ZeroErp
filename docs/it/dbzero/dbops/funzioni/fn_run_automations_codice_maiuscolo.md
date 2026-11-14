@@ -64,7 +64,7 @@ BEGIN
              WHERE rr.enabled
                AND upper(btrim(rr.rule_type)) = 'CODICE_MAIUSCOLO'
                AND dbops.fn_schema_match(rr.target_schema, r.schema_name)
-               AND (upper(rr.target_table) = '*ALL' OR r.table_name ILIKE rr.target_table)
+               AND (rr.target_table = '*all' OR r.table_name = rr.target_table)
                AND (upper(btrim(rr.exec_mode)) = 'AUTO' OR rr.exec_mode = p_exec_mode)
              ORDER BY rr.priority, rr.id
              LIMIT 1;

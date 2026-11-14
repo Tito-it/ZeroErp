@@ -37,6 +37,10 @@ DECLARE
     v_resolve          record;
     v_prezzo           vendite.listini_righe.prezzo%TYPE;
     v_origine          vendite.contratti_righe_componenti.origine_prezzo%TYPE;
+    -- La provenienza dichiarata da un override (vendite.fn_componente_override).
+    v_ov_versione      vendite.listini_righe.listino_versione_id%TYPE;
+    v_ov_riga          vendite.listini_righe.id%TYPE;
+    v_ov_contesto      vendite.preventivi_righe.prezzo_resolver_context%TYPE;
     v_inserted         integer := 0;
 BEGIN
     IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
@@ -104,8 +108,11 @@ BEGIN
     LOOP
         IF p_componenti_overrides IS NOT NULL
            AND p_componenti_overrides ? v_comp.componente_id::text THEN
-            v_prezzo  := (p_componenti_overrides ->> v_comp.componente_id::text)::numeric;
-            v_origine := 'MANUALE';
+            -- L'override: un prezzo (MANUALE) o un prezzo con la sua provenienza, quando
+            -- lo passa chi copia i componenti da un documento a monte.
+            SELECT o.prezzo, o.origine_prezzo, o.listino_versione_id, o.listino_riga_id, o.prezzo_resolver_context
+              INTO v_prezzo, v_origine, v_ov_versione, v_ov_riga, v_ov_contesto
+              FROM vendite.fn_componente_override(p_componenti_overrides -> v_comp.componente_id::text) o;
             IF v_prezzo = 0 AND v_comp.obbligatorio THEN
                 PERFORM script.fn_log_and_raise_error(
                     'vendite', 'fn_contratto_riga_componenti_init',
@@ -123,18 +130,19 @@ BEGIN
             INSERT INTO vendite.contratti_righe_componenti (
                 riga_contratto_id, articolo_componente_id, componente_id,
                 coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                prezzo_unitario, iva_id, origine_prezzo, attivo, listino_versione_id, listino_riga_id, prezzo_resolver_context
             ) VALUES (
                 p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                 v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
                 v_comp.componente_uom_id, 1,
                 v_prezzo, v_comp.componente_iva_id, v_origine,
                 TRUE,
+                v_ov_versione, v_ov_riga,
                 jsonb_build_object('override', true,
                     'emittente_sr_id', p_emittente_sr_id,
                     'data_riferimento', p_data_riferimento,
                     'ba_id', v_ba_id, 'utility_id', v_utility_id,
-                    'istanza_utility_id', v_istanza_id)
+                    'istanza_utility_id', v_istanza_id) || COALESCE(v_ov_contesto, '{}'::jsonb)
             );
         ELSE
             BEGIN
@@ -148,7 +156,7 @@ BEGIN
                 INSERT INTO vendite.contratti_righe_componenti (
                     riga_contratto_id, articolo_componente_id, componente_id,
                     coeff_qta_snapshot, quantita, uom_operativa_id, factor_to_base,
-                    prezzo_unitario, iva_id, origine_prezzo, attivo, prezzo_resolver_context
+                    prezzo_unitario, iva_id, origine_prezzo, attivo, listino_versione_id, listino_riga_id, prezzo_resolver_context
                 ) VALUES (
                     p_riga_id, v_comp.bom_entry_id, v_comp.componente_id,
                     v_comp.coeff_qta, v_comp.coeff_qta * v_qta_padre,
@@ -156,15 +164,11 @@ BEGIN
                     v_resolve.prezzo_finale, v_comp.componente_iva_id,
                     v_resolve.origine,
                     TRUE,
+                    v_resolve.listino_versione_id, v_resolve.listino_riga_id,
                     jsonb_build_object('emittente_sr_id', p_emittente_sr_id,
                         'data_riferimento', p_data_riferimento,
                         'ba_id', v_ba_id, 'utility_id', v_utility_id,
-                        'istanza_utility_id', v_istanza_id,
-                        'listino_id', v_resolve.listino_id,
-                        'listino_versione_id', v_resolve.listino_versione_id,
-                        'listino_riga_id', v_resolve.listino_riga_id,
-                        'contratto_id', v_resolve.contratto_id,
-                        'origine', v_resolve.origine)
+                        'istanza_utility_id', v_istanza_id) || vendite.fn_prezzo_resolver_contesto(to_jsonb(v_resolve))
                 );
             -- ⚠️ rev 2026-08-07: qui c'era `EXCEPTION WHEN SQLSTATE 'P0001'`,
             --   che catturava QUALUNQUE errore di dominio del resolver e lo

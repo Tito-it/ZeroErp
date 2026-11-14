@@ -288,7 +288,7 @@ preso `20261109-40` … `-57`. L'altro cantiere aperto
 > ([brief-db-revisione-maintenance](../work-done/brief-db-revisione-maintenance.md), chiuso il 2026-11-03),
 > di cui qui non si ri-segnala nessun punto chiuso.
 > **Brief vicini verificati:**
-> [framework-automazione-db-migliorie](../work-in-progress/framework-automazione-db-migliorie.md) (2026-03) tocca gli stessi
+> [framework-automazione-db-migliorie](framework-automazione-db-migliorie.md) (2026-03) tocca gli stessi
 > runner delle automazioni, ma come elenco di migliorie: recupero da esecuzione parziale, naming del
 > populate, trigger manuali contro generati, validazione dell'ambito. Si sovrappone solo a D41 (la parte
 > fuori ambito) e a D17-bis (vocabolari chiusi, §2.4 di quel brief): lì vanno annotati, non rifatti. Se i

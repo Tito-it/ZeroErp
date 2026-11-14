@@ -194,6 +194,8 @@ SELECT ok(
 --     protetta), stabile a prescindere da come l'automazione battezza il trigger.
 
 -- 12a) presidi bespoke: uno per funzione
+--     +2 funzioni dal 2026-11-13 (20261113-10, brief-db-provenienza-prezzo-segue-il-prezzo §8): la derivazione
+--        della provenienza del prezzo (a20) e il guard sulla riga di listino (a10, AFTER).
 SELECT is(
     ARRAY(
         SELECT DISTINCT p.proname::text
@@ -216,6 +218,8 @@ SELECT is(
         'trgfn_componenti_ricalcola_padre',
         'trgfn_doc_righe_lock_fuori_bozza',
         'trgfn_preventivi_righe_componenti_guard_pending',
+        'trgfn_riga_documento_guard_listino_provenienza',
+        'trgfn_riga_documento_provenienza_prezzo',
         'trgfn_tx_id_managed'
     ],
     '12a) presidi bespoke armati su preventivi_righe_componenti (per funzione)'

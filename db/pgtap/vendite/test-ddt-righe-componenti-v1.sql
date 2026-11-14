@@ -16,7 +16,7 @@
 --   9)  CHECK chk_ddtrighe_comp_prezzo_nonneg esiste
 --   10) CHECK chk_ddtrighe_comp_origine esiste
 --   11) FK fk_ddtrighe_comp_riga coperta da un indice
---   12) Tutti i 7 trigger registrati sulla tabella
+--   12) Tutti i 17 trigger registrati sulla tabella
 --   13) Trigger propaga_qta registrato su ddt_righe
 --   14) fn_ddt_riga_componenti_init: p_riga_id NULL -> raise
 --   15) fn_ddt_riga_componenti_init: p_emittente_sr_id NULL -> raise
@@ -160,7 +160,7 @@ SELECT ok(
 );
 
 -- =========================================================
--- 12) Trigger registrati sulla tabella (15 attesi)
+-- 12) Trigger registrati sulla tabella (17 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 --     +1 dal 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt): il block_deact
 --        che ci_apply genera per vendite.ddt_righe_prelievi, figlia via
@@ -169,14 +169,16 @@ SELECT ok(
 --        e va aggiornato guardando QUALE trigger e' arrivato.
 --     +1 dal 2026-10-08 (20261008-34): trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt,
 --        il lock «solo in bozza» (building block a livello RIGA).
+--     +2 dal 2026-11-13 (20261113-10, brief-db-provenienza-prezzo-segue-il-prezzo §8): la derivazione
+--        della provenienza del prezzo (a20) e il guard sulla riga di listino (a10, AFTER).
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'ddt_righe_componenti'),
-    15,
-    '12) 15 trigger registrati su ddt_righe_componenti'
+    17,
+    '12) 17 trigger registrati su ddt_righe_componenti'
 );
 
 -- =========================================================

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -162,6 +162,11 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
   quando due FK darebbero lo stesso nome sulla stessa tabella l'hash della FK entra sempre, e il
   trigger vivo col nome di prima si rigenera; i template vengono solo dal registro (`20261109-72`,
   brief-db-revisione-dbops D17, D10, D20).
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-76`).
 
 ---
 

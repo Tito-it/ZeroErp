@@ -20,14 +20,17 @@ AS $function$
   -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
   --   dalle due chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+      -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
       v_schemas text[];
       rtab record;
       rrule record;
+      -- la tabella del giro come OID: nessuna colonna la porta
       rel  regclass;
+      -- esiti calcolati qui: nessuna colonna ne e' il riflesso
       has_du boolean;
       has_uu boolean;
-      tmpl     text;
-      trg_name text;
+      tmpl     dbops.automation_rules_tbl.name_template%TYPE;
+      trg_name pg_catalog.pg_trigger.tgname%TYPE;
     BEGIN
 
       /*
@@ -66,7 +69,7 @@ AS $function$
           WHERE r.enabled
             AND upper(btrim(r.rule_type))='AUDIT_UPDATE'
             AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-            AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+            AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
             AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
           ORDER BY r.priority, r.id
         LOOP

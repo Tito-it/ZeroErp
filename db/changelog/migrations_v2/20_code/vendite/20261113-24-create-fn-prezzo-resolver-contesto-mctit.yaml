@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_prezzo_resolver_contesto(risultato) -> il contesto da
+#   salvare in prezzo_resolver_context
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8, giro 3, D-3)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il contesto di una riga o di un componente ha le chiavi del risultato del
+#   resolver (giro 2, vendite.fn_provenienza_prezzo_esplosa). Da quel
+#   risultato escono le chiavi che hanno una sede loro: il prezzo
+#   (prezzo_unitario), l'origine (origine_prezzo), versione e riga di listino
+#   (le colonne, D-3) e l'esito. Le cinque init dei componenti lo scrivono:
+#   la regola sta qui, una volta.
+#   LANGUAGE sql IMMUTABLE, eseguibile da PUBLIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-24-create-fn-prezzo-resolver-contesto-mctit.yaml
+
+  - changeSet:
+      id: 20261113-24-create-fn-prezzo-resolver-contesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_prezzo_resolver_contesto: dal risultato del resolver il contesto da salvare,
+        senza le chiavi che hanno una colonna. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_prezzo_resolver_contesto(
+                  -- jsonb nudo: una riga del resolver passata con to_jsonb, non una colonna.
+                  p_risultato jsonb)
+              RETURNS jsonb
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  SELECT p_risultato - ARRAY['prezzo_finale', 'origine', 'listino_versione_id',
+                                             'listino_riga_id', 'esito_codice', 'esito_context',
+                                             'esito_valori'];
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_prezzo_resolver_contesto(jsonb) IS
+                  'Dal risultato del resolver dei prezzi (to_jsonb di una riga di vendite.fn_resolve_prezzo_listino_v2 o _esito) il contesto da salvare in prezzo_resolver_context: le stesse chiavi, tranne quelle che hanno una sede loro (prezzo_finale, origine, listino_versione_id, listino_riga_id) e l''esito. Le chiavi restanti sono quelle che vendite.fn_provenienza_prezzo_esplosa legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_prezzo_resolver_contesto(jsonb);

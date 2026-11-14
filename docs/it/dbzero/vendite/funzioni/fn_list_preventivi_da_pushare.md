@@ -13,7 +13,7 @@ CREATE FUNCTION fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_preventivo_id bigint DEFAULT NULL::bigint, p_righe_ids bigint[] DEFAULT NULL::bigint[])
- RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
+ RETURNS TABLE(preventivo_id bigint, preventivo_uid uuid, riga_id bigint, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, origine_prezzo character varying, listino_versione_id bigint, listino_riga_id bigint, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, promo_id bigint, prezzo_contratto_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer)
  LANGUAGE plpgsql
 AS $function$
 -- rev 2026-10-31 (20261031-15, brief-modello-documento-vendita §17):
@@ -165,7 +165,17 @@ BEGIN
     )                                                             AS meta,
     v_tipo_doc_fiscale_id                                         AS tipo_doc_fiscale_id,
     p.termine_pagamento_id,
-    NULL::integer
+    NULL::integer,
+    pv.origine_prezzo,
+    pv.listino_versione_id,
+    pv.listino_riga_id,
+    pv.prezzo_base_snapshot,
+    pv.tipo_variazione_applicata,
+    pv.valore_variazione_applicata,
+    pv.promo_id,
+    pv.prezzo_contratto_id,
+    pv.categoria_cliente_id_snapshot,
+    pv.classe_utenza_id_snapshot
   FROM vendite.preventivi p
   -- Predicato di riga dalla vista unica (eleggibilita' condivisa
   -- con capability e pannello smistamento).
@@ -173,6 +183,9 @@ BEGIN
     ON v.preventivo_id = p.id
   JOIN vendite.preventivi_righe pr ON pr.id = v.id
   JOIN catalogo.articoli a ON a.id = pr.articolo_id
+  -- La provenienza del prezzo della riga, nelle colonne della commessa (R-3).
+  CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(
+    pr.origine_prezzo, pr.listino_versione_id, pr.listino_riga_id, pr.prezzo_resolver_context) pv
   WHERE p.stato_doc_preventivo_id = v_stato_accettato_id
     -- Filtro allineato alla stessa espressione del SELECT competenza_mese.
     AND (p_competenza_mese IS NULL
@@ -191,7 +204,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
-IS 'Le righe dei preventivi da mandare in commessa: preventivi nello stato di accettazione (script.fn_stato_accettazione_id), righe dalla vista unica vendite.vw_preventivi_righe_smistabili_commessa, che decide quali righe si smistano. p_preventivo_id: un preventivo solo (NULL = tutti); p_righe_ids: un sottoinsieme delle sue righe, che richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), e le righe non eleggibili restano fuori in silenzio. Un id <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO, la sorgente PREVENTIVO assente dal catalogo E_CODICE, lo stato di accettazione non configurato E_CONFIG_MANCANTE. Filtri in AND, ordine per preventivo e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid del preventivo in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push PREVENTIVO:<uid>:R:<riga> la compone script.fn_segment_key. prezzo_bloccato segue fatturazione_immediata: sui preventivi il flag di corsia e il prezzo vanno insieme. Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL, perche'' i preventivi non la portano. Il backend legge le colonne per nome.';
+IS 'Le righe dei preventivi da mandare in commessa: preventivi nello stato di accettazione (script.fn_stato_accettazione_id), righe dalla vista unica vendite.vw_preventivi_righe_smistabili_commessa, che decide quali righe si smistano. p_preventivo_id: un preventivo solo (NULL = tutti); p_righe_ids: un sottoinsieme delle sue righe, che richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), e le righe non eleggibili restano fuori in silenzio. Un id <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO, la sorgente PREVENTIVO assente dal catalogo E_CODICE, lo stato di accettazione non configurato E_CONFIG_MANCANTE. Filtri in AND, ordine per preventivo e riga, p_limit come tetto. La chiave del documento esce in sorgente_chiave, l''uid del preventivo in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push PREVENTIVO:<uid>:R:<riga> la compone script.fn_segment_key. prezzo_bloccato segue fatturazione_immediata: sui preventivi il flag di corsia e il prezzo vanno insieme. Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL, perche'' i preventivi non la portano. Il backend legge le colonne per nome. Restituisce anche la provenienza del prezzo, nelle colonne della riga di commessa (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, prezzo_contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot): quella della riga del preventivo (vendite.fn_provenienza_prezzo_esplosa).';
 ```
 
 </div>

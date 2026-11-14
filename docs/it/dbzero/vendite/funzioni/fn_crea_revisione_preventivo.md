@@ -279,6 +279,7 @@ BEGIN
       qta_operativa, uom_operativa_id, factor_to_base,
       data_consegna_richiesta_cliente,
       stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+      origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
       meta,
       sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga,
       user_insert, user_update
@@ -295,6 +296,8 @@ BEGIN
       CASE WHEN script.fn_data_consegna_ammessa(v_riga.data_consegna_richiesta_cliente, v_new_data)
            THEN v_riga.data_consegna_richiesta_cliente END,
       v_riga.stato_approvazione_prezzo, v_riga.pratica_approvazione_prezzo_id,
+      v_riga.origine_prezzo, v_riga.listino_versione_id, v_riga.listino_riga_id,
+      v_riga.prezzo_resolver_context,
       v_riga.meta,
       -- La provenienza: la rev N e la riga copiata. Non quella della rev N,
       -- che dice da dove veniva lei.
@@ -316,7 +319,7 @@ BEGIN
     INSERT INTO vendite.preventivi_righe_componenti (
         riga_preventivo_id, articolo_componente_id, componente_id,
         coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
-        origine_prezzo, prezzo_resolver_context,
+        origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
         stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
         uom_operativa_id, factor_to_base, qta_operativa,
         ordine, attivo, meta,
@@ -326,7 +329,7 @@ BEGIN
         v_new_riga_id,
         prc.articolo_componente_id, prc.componente_id,
         prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
-        prc.origine_prezzo, prc.prezzo_resolver_context,
+        prc.origine_prezzo, prc.listino_versione_id, prc.listino_riga_id, prc.prezzo_resolver_context,
         CASE WHEN prc.attivo IS NOT TRUE AND prc.stato_approvazione_prezzo = 'PENDING'
              THEN NULL ELSE prc.stato_approvazione_prezzo END,
         CASE WHEN prc.attivo IS NOT TRUE AND prc.stato_approvazione_prezzo = 'PENDING'
