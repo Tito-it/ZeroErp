@@ -78,7 +78,7 @@
 --   21) partecipa_overlap_snapshot e' una colonna GENERATED STORED
 --   22) l'EXCLUDE ex_contratti_no_overlap la usa come predicato
 --   23) fn_contratto_sovrapposto la usa (fuori dai commenti)
---   24) nel catalogo degli stati solo DRAFT e' bozza (is_bozza)
+--   24) nel catalogo degli stati solo DRAFT e' bozza (lo stato iniziale)
 --
 -- rev 2026-10-24 (brief-modello-documento-vendita N-1): i contratti nascono in
 --   bozza e si portano avanti con dbops.fn_pgtap_porta_a_stato (prima nascevano
@@ -370,11 +370,14 @@ SELECT ok(
 -- ⛔ Il difetto del 2026-10-19: su un database ricostruito da zero DRAFT aveva
 --   is_bozza = false (l'UPDATE di 20260602-17 girava prima del seed), e una
 --   bozza partecipava all'EXCLUDE. La sede e' il CSV stati_doc_contratti.
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c, D-BOZZA):
+--   is_bozza e' ritirata (20261114-33); la bozza e' lo stato iniziale, e lo
+--   snapshot la legge da li' (20261114-32).
 SELECT is(
     (SELECT string_agg(codice_interno::text, ',' ORDER BY codice_interno)
-       FROM config.stati_doc_contratti WHERE is_bozza),
+       FROM config.stati_doc_contratti WHERE iniziale),
     'DRAFT',
-    '24) nel catalogo degli stati del contratto e'' bozza DRAFT, e solo DRAFT');
+    '24) nel catalogo degli stati del contratto e'' bozza (lo stato iniziale) DRAFT, e solo DRAFT');
 
 SELECT * FROM finish();
 ROLLBACK;

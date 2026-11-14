@@ -184,7 +184,7 @@ search:
 - [fn_fattura_proietta_stato](manual/fn_fattura_proietta_stato.md)
 - [fn_fondo_fattura_proponibile](manual/fn_fondo_fattura_proponibile.md) — (latest review 15-08-2026)
 - [fn_genera_ddt_da_ordine](manual/fn_genera_ddt_da_ordine.md) — **`vendite.fn_genera_ddt_da_ordine`** è la **funzione madre** dell'evasione: da un ordine di vendita crea un **DDT** (testata `DRAFT` + righe + componenti) e il **fulfillment** riga↔riga. È DB-first e **atomica** (una `SELECT`, `SECURITY INVOKER`), sullo stile di `fn_push_preventivo_a_ordine`.
-- [fn_genera_ddt_riconsegna](manual/fn_genera_ddt_riconsegna.md) — **Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso CONFERMATO e chiude l'aggancio duro con la coda di ri-consegna.
+- [fn_genera_ddt_riconsegna](manual/fn_genera_ddt_riconsegna.md) — **Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso emesso (confermato) e chiude l'aggancio duro con la coda di ri-consegna.
 - [fn_genera_fondi_fattura_lotto](manual/fn_genera_fondi_fattura_lotto.md) — (latest review 15-08-2026)
 - [fn_genera_fondi_fattura_source](manual/fn_genera_fondi_fattura_source.md) — (latest review 15-08-2026)   La funzione **`vendite.fn_genera_fondi_fattura_source()`** crea in `fatture_fondi_fattura_source` i fondi delle fatture **«di minimo»**, cioè quelle il cui importo cade dentro la banda configurata per emittente × utility: sono i documenti che **non si incassano da soli** e il cui valore viene riportato sulla fattura successiva.
 - [fn_genera_pratica_da_preventivo](manual/fn_genera_pratica_da_preventivo.md) — La funzione **`vendite.fn_genera_pratica_da_preventivo`** è la **funzione madre atomica** che genera una pratica a partire da un preventivo e la collega come `ROOT` in `pratiche.pratiche_sorgenti`.
@@ -336,9 +336,9 @@ search:
 - [trgfn_contratti_default_valuta](manual/trgfn_contratti_default_valuta.md) — (rev 2026-08-21)
 - [trgfn_contratti_freeze_listino_versione](manual/trgfn_contratti_freeze_listino_versione.md) — Il modello unificato prevede che un contratto ATTIVO abbia una versione listino **fissa e immutabile**: dal momento dell'attivazione il resolver prezzi legge sempre quella versione, anche se il listino ha versioni successive. Questo garantisce stabilità del pricing per tutta la durata del contratto.
 - [trgfn_contratti_gen_codice](manual/trgfn_contratti_gen_codice.md) — La trigger function `vendite.trgfn_contratti_gen_codice()` genera automaticamente `numero` contratto quando il valore non viene fornito.
-- [trgfn_contratti_guard_transizione_stato](manual/trgfn_contratti_guard_transizione_stato.md) — (latest review 26-10-2026 — i passaggi dalla matrice, la GUC della cessazione automatica ritirata; 24-09-2026 — il prezzo non autorizzato dal building block; 12-05-2026 — aggiunto check PENDING componenti BoM CASO A)
+- [trgfn_contratti_guard_transizione_stato](manual/trgfn_contratti_guard_transizione_stato.md) — La trigger function **`vendite.trgfn_contratti_guard_transizione_stato()`** giudica ogni cambio di stato del contratto. La monta `trg_contratti_a10_guard_transizione_stato_upd` (`BEFORE UPDATE` dello stato), dopo la porta: lo stato lo scrivono solo i verbi del contratto, e qui si decide se il passaggio si può fare.
 - [trgfn_contratti_normalize](manual/trgfn_contratti_normalize.md) — La trigger function `vendite.trgfn_contratti_normalize()` completa i dati minimi del contratto in insert quando il numero documento e` presente.
-- [trgfn_contratti_set_categoria_cliente_snapshot](manual/trgfn_contratti_set_categoria_cliente_snapshot.md) — (rev 2026-08-21)
+- [trgfn_contratti_set_categoria_cliente_snapshot](manual/trgfn_contratti_set_categoria_cliente_snapshot.md) — Alla **nascita** del contratto riempie `categoria_cliente_id_snapshot`, copiandola dal billing account, se chi crea non l'ha passata. Un valore passato esplicitamente non viene toccato.
 - [trgfn_contratti_snapshot_precontrattuali](manual/trgfn_contratti_snapshot_precontrattuali.md) — (latest review 12/10/26)
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
@@ -354,7 +354,7 @@ search:
 - [trgfn_doc_guard_chiusura_sorgente](manual/trgfn_doc_guard_chiusura_sorgente.md) — **Il freno.** Rifiuta la **chiusura** di un documento che ha spinto in commessa righe già `EMESSA`. Trigger **generico**, fase `_a10_`, `BEFORE UPDATE OF` sulla colonna di stato della testata.
 - [trgfn_doc_guard_delete_solo_bozza](manual/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo se è una bozza vuota**: nello stato in cui nasce, e senza contenuto.
 - [trgfn_doc_righe_lock_fuori_bozza](manual/trgfn_doc_righe_lock_fuori_bozza.md) — **Le righe di un documento si aggiungono, modificano e tolgono solo finché il documento è in bozza.**
-- [trgfn_doc_snapshot_da_stato](manual/trgfn_doc_snapshot_da_stato.md) — Copia sulla riga di un documento **le bandiere booleane del suo stato** (`is_abortito`, `is_bozza`…), perché indici e colonne generate non possono leggere un'altra tabella.
+- [trgfn_doc_snapshot_da_stato](manual/trgfn_doc_snapshot_da_stato.md) — Copia sulla riga di un documento **le bandiere booleane del suo stato** (`is_abortito`, `iniziale`…), perché indici e colonne generate non possono leggere un'altra tabella.
 - [trgfn_doc_testata_lock_fuori_bozza](manual/trgfn_doc_testata_lock_fuori_bozza.md) — **Alcune colonne della testata di un documento si scelgono solo finché il documento è in bozza.**
 - [trgfn_event_log_append_only](manual/trgfn_event_log_append_only.md) — (rev 2026-08-21)
 - [trgfn_famiglie_documento_guard_disattivazione](manual/trgfn_famiglie_documento_guard_disattivazione.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*
@@ -410,7 +410,7 @@ search:
 - [trgfn_resi_accrediti_guard](manual/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_gen_numero](manual/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
 - [trgfn_resi_guard_cliente_ddt](manual/trgfn_resi_guard_cliente_ddt.md) — Il guard che tiene il reso legato alla sua bolla: il reso nasce solo da una bolla di vendita, e ha il cliente di quella bolla, anche quando la bolla non ne ha uno.
-- [trgfn_resi_guard_ddt_consegnato](manual/trgfn_resi_guard_ddt_consegnato.md) — **«Non si rende ciò che non è stato consegnato»**: `BEFORE INSERT` su `vendite.resi`, ammette il reso solo se la bolla d'origine è in stato **`CONSEGNATO`** (`E_RESO_DDT_NON_CONSEGNATO`).
+- [trgfn_resi_guard_ddt_consegnato](manual/trgfn_resi_guard_ddt_consegnato.md) — **«Non si rende ciò che non è stato consegnato»**: `BEFORE INSERT` su `vendite.resi`, ammette il reso solo se dalla bolla d'origine nasce un reso. La regola non è scritta qui: sta in [`script.fn_check_ddt_rendibile`](/dbzero/script/funzioni/fn_check_ddt_rendibile), e il trigger solleva il primo motivo. La stessa check dà `can_genera_reso` nella capability della bolla: il pulsante «Genera reso» e il rifiuto dicono la stessa cosa.
 - [trgfn_resi_guard_transizione](manual/trgfn_resi_guard_transizione.md) — (rev 2026-07-13)
 - [trgfn_resi_normalize](manual/trgfn_resi_normalize.md) — Normalizza la testata del reso, `BEFORE INSERT` e `BEFORE UPDATE` su `vendite.resi`: completa anno e data, eredita dalla bolla d'origine i dati del cliente e dell'emittente, e come ultimo ripiego risolve l'emittente dal cliente.
 - [trgfn_resi_riconsegne_guard](manual/trgfn_resi_riconsegne_guard.md) — (rev 2026-07-26)

@@ -73,9 +73,19 @@ tutti i lettori seguono.
   [`script.fn_doc_azione_passaggio`](/dbzero/script/funzioni/fn_doc_azione_passaggio) se il passaggio
   porta in emissione e, se sì, lo rifiuta sul cambio di stato generico; il verbo
   [`vendite.fn_cambia_stato_ddt`](/dbzero/vendite/funzioni/fn_cambia_stato_ddt) lo legge per sapere
-  quando il passaggio è un'emissione.
+  quando il passaggio è un'emissione. La leggono anche la capability (i motivi di
+  `script.fn_check_ddt_emittibile`), il guard di transizione (la riga attiva dallo stato iniziale
+  allo stato di emissione), la numerazione (`vendite.trgfn_ddt_gen_numero_emesso`: il numero si
+  assegna qui) e i tre guard dell'emissione (valore delle righe, indirizzi, prezzi).
 * **`is_abortito`** — lo stato di annullo, letto dal verbo di stato attraverso
-  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
+  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id), e dal verbo
+  d'annullo [`vendite.fn_annulla_ddt`](/dbzero/vendite/funzioni/fn_annulla_ddt), che porta la bolla lì.
+
+`iniziale` è anche la **bozza**: il lock delle righe, la capability (`can_edit_righe`), la correzione
+della quantità evasa (`script.fn_check_ddt_riga_correggi_qta_evasa`, dal lock delle righe), il guard
+del legame di evasione (il ritiro con la bolla in bozza) e il cruscotto (`DOC_BOZZA`) la leggono da qui.
+`SPEDITO`, `CONSEGNATO` e `RESO` non hanno una colonna: sono destinazioni del processo, e chi le usa
+le nomina col codice, come la matrice.
 
 Il vocabolario del DDT **non ha** le colonne `accettazione`, `cessazione` e `scadenza`: chiesti ai
 loro lettori, quegli stati sono vuoti.

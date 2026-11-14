@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_ddt_guard_transizione_approvazione`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -17,7 +19,7 @@
 
 **Gate emissione** del DDT (BoM CASO A). Trigger function agganciata a `vendite.ddt` come
 `trg_ddt_a10_guard_approvazione_upd` (`BEFORE UPDATE OF stato_doc_ddt_id`). Si auto-gatta a
-**EMESSO** (`RETURN NEW` se lo stato non è EMESSO).
+nello stato di emissione, la colonna `emissione` del vocabolario (`RETURN NEW` se lo stato non lo è; oggi EMESSO).
 
 Alla transizione a EMESSO blocca se, sulle righe del DDT, esistono componenti CASO A:
 

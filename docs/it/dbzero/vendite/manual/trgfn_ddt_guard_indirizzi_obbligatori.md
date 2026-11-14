@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_ddt_guard_indirizzi_obbligatori()`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -19,7 +21,7 @@
 
 (rev 2026-07-11)
 
-Blocca l'**emissione** di un DDT (transizione a stato `EMESSO`) se manca un tipo
+Blocca l'**emissione** di un DDT (l'ingresso nello stato di emissione, la colonna `emissione` del vocabolario: oggi `EMESSO`) se manca un tipo
 di indirizzo marcato `obbligatorio` per l'ambito `DDT` in
 `config.tipi_indirizzi_allowed` — oggi la **destinazione merce `CON`**.
 
@@ -44,7 +46,7 @@ Una bozza legittimamente non ha ancora indirizzi. L'obbligo va verificato al
 
 ### Logica
 
-1. Risolve il `codice_interno` dello stato target. Se ≠ `EMESSO` → RETURN NEW.
+1. Legge la colonna `emissione` dello stato target. Se non è lo stato di emissione → RETURN NEW.
 2. Raccoglie i `tipo_indirizzo_id` già presenti su `vendite.ddt_indirizzi` per
    il DDT.
 3. `v_mancanti := script.fn_indirizzi_obbligatori_mancanti('DDT', v_presenti)`.

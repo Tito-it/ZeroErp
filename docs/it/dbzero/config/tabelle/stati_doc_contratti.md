@@ -20,7 +20,6 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | is_abortito | boolean | NO | false |
-| is_bozza | boolean | NO | false |
 | fase | character varying(20) | NO |  |
 | esito | character varying(50) | YES |  |
 | terminale | boolean | NO | false |

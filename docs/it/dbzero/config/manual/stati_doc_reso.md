@@ -19,7 +19,7 @@
 > * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — fa nascere il reso nello stato iniziale
 > * [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — la conferma, che fa da emissione
 > * [vendite.fn_annulla_reso](/dbzero/vendite/funzioni/fn_annulla_reso) — l'annullo, che storna gli effetti
-> * [script.fn_available_actions_reso](/dbzero/script/funzioni/fn_available_actions_reso) — la capability, che legge `meta`
+> * [script.fn_available_actions_reso](/dbzero/script/funzioni/fn_available_actions_reso) — la capability, che legge `meta` e le colonne del significato
 >
 > Guide:
 >
@@ -41,11 +41,13 @@ annullo e a che punto è del suo ciclo; i passaggi stanno nella matrice
 | `codice_interno` | Che cosa vuol dire | Marcato da |
 | --- | --- | --- |
 | `DRAFT` | bozza: le righe si cambiano, nessun numero | `iniziale` |
-| `CONFERMATO` | gli effetti del reso sono applicati e il numero è assegnato | — |
+| `CONFERMATO` | gli effetti del reso sono applicati e il numero è assegnato | `emissione` |
 | `ANNULLATO` | il reso è annullato, e gli effetti di una conferma sono stornati | `is_abortito` |
 
-La logica usa sempre `codice_interno`, che non si modifica (`E_CODICE_NON_MODIFICABILE`), mai
-`codice`. Uno stato già usato da un reso o dalla matrice non si disattiva.
+Il significato di uno stato si legge dalle sue colonne, non dal codice: chi legge che cosa è nella
+sezione qui sotto. Dove serve un codice (un parametro, la matrice, un errore) si usa
+`codice_interno`, che non si modifica (`E_CODICE_NON_MODIFICABILE`), mai `codice`. Uno stato già
+usato da un reso o dalla matrice non si disattiva.
 
 ---
 
@@ -85,6 +87,20 @@ motore di stampa.
 
 ---
 
+### Chi legge ogni colonna
+
+| Colonna | Chi la legge, e per che cosa |
+| --- | --- |
+| `iniziale` | la nascita (`script.trgfn_doc_stato_iniziale`); il lock delle righe e della testata, e quindi `can_edit_righe` della capability |
+| `emissione` | la conferma, che va verso questo stato ([`vendite.fn_conferma_reso`](/dbzero/vendite/funzioni/fn_conferma_reso)); il numero (`vendite.trgfn_resi_gen_numero`); lo storno dell'annullo, che c'è solo se il reso era emesso; la porta della riconsegna ([`vendite.fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna), la chiusura e la riapertura) e `can_riconsegna`; i motivi della merce sull'azione di conferma |
+| `is_abortito` | l'annullo, che va verso questo stato ([`vendite.fn_annulla_reso`](/dbzero/vendite/funzioni/fn_annulla_reso)); i resi che non contano nei tetti della quantità resa (`vendite.trgfn_resi_righe_guard_quantita`, `script.fn_check_reso_merce`); il motivo degli accrediti sull'azione di annullo |
+
+Da quali stati si conferma e si annulla lo dice la matrice, non una lista di codici: la conferma e
+l'annullo rifiutano (`E_RESO_STATO_NON_CONFERMABILE`, `E_RESO_STATO_NON_ANNULLABILE`) dove la riga
+del passaggio non c'è.
+
+---
+
 ### `meta`
 
 **`meta.nessuna_azione_key`** — sugli stati chiusi, la chiave del testo che spiega all'operatore
@@ -106,6 +122,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_reso.
 * `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita.
 * `db/pgtap/script/test-doc-verbo-comune-e-porta-v1.sql` — conferma e annullo sul verbo comune, con la porta.
 * `db/pgtap/script/test-capability-motivi-e-nessuna-azione-v1.sql` — la spiegazione sugli stati senza azioni.
+* `db/pgtap/vendite/test-reso-stati-dal-vocabolario-v1.sql` — i lettori di ogni colonna, con le marche `iniziale`, `emissione` e `is_abortito` spostate.
 
 ---
 
@@ -115,6 +132,8 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_reso.
   DDT senza le colonne della stampa; la fase stava allora in `meta.fase`, poi è diventata una
   colonna.
 * 2026-10-24 — arriva `iniziale` (brief `brief-modello-documento-vendita`).
+* 2026-11-14 — conferma, annullo, riconsegna, capability e tetti delle quantità leggono le colonne,
+  non i codici (brief `brief-db-stati-documento-dal-vocabolario`, giro 6e).
 
 ---
 

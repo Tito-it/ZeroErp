@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_doc_snapshot_da_stato()`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,12 +16,12 @@
 ### 🎯 Scopo Principale
 
 Copia sulla riga di un documento **le bandiere booleane del suo stato**
-(`is_abortito`, `is_bozza`…), perché indici e colonne generate non possono
+(`is_abortito`, `iniziale`…), perché indici e colonne generate non possono
 leggere un'altra tabella.
 
 | Tabella | Snapshot | Dal vocabolario | A che cosa serve |
 | --- | --- | --- | --- |
-| `vendite.contratti` | `is_abortito_snapshot`, `is_draft_snapshot` | `config.stati_doc_contratti.is_abortito`, `is_bozza` | la colonna `GENERATED` `partecipa_overlap_snapshot` (anti-sovrapposizione) e `uq_contratti_sorgente_offerta` |
+| `vendite.contratti` | `is_abortito_snapshot`, `is_draft_snapshot` | `config.stati_doc_contratti.is_abortito`, `iniziale` (la bozza è lo stato iniziale) | la colonna `GENERATED` `partecipa_overlap_snapshot` (anti-sovrapposizione) e `uq_contratti_sorgente_offerta` |
 | `vendite.ordini` | `is_abortito_snapshot` | `config.stati_doc_ordini.is_abortito` | `uq_ordini_v_sorgente_offerta` |
 
 ⭐ È un building block per la **regola del 2**: la prima copia era
@@ -81,7 +81,7 @@ stato_doc_contratto_id` e lasciava quella porta aperta.
 
 Sul contratto, per esempio, la colonna di stato è `stato_doc_contratto_id`, il
 vocabolario `config.stati_doc_contratti`, e le coppie sono `is_abortito_snapshot` con
-`is_abortito` e `is_draft_snapshot` con `is_bozza`.
+`is_abortito` e `is_draft_snapshot` con `iniziale`.
 
 ---
 

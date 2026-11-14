@@ -27,9 +27,15 @@ AS $function$
 --   la Regola 3 (porta del registro) si ritira; ogni cambio di stato
 --   della bolla passa dalla porta comune
 --   script.trgfn_doc_stato_solo_dal_verbo (trg_ddt_a05_stato_solo_dal_verbo_upd).
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6d): la Regola 2 dallo stato
+--   iniziale allo stato di emissione, dal vocabolario. Dove sopra si legge
+--   DRAFT o EMESSO, vale lo stato che il vocabolario marca.
 DECLARE
     v_codice_da config.stati_doc_ddt.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ddt.codice_interno%TYPE;
+    -- Il significato della partenza e della destinazione, dal vocabolario.
+    v_iniziale_da config.stati_doc_ddt.iniziale%TYPE;
+    v_emissione_a config.stati_doc_ddt.emissione%TYPE;
     v_ammessa   boolean := false;
 BEGIN
     -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
@@ -39,8 +45,10 @@ BEGIN
 
     SELECT
         max(CASE WHEN id = OLD.stato_doc_ddt_id THEN codice_interno END),
-        max(CASE WHEN id = NEW.stato_doc_ddt_id THEN codice_interno END)
-      INTO v_codice_da, v_codice_a
+        max(CASE WHEN id = NEW.stato_doc_ddt_id THEN codice_interno END),
+        bool_or(iniziale)  FILTER (WHERE id = OLD.stato_doc_ddt_id),
+        bool_or(emissione) FILTER (WHERE id = NEW.stato_doc_ddt_id)
+      INTO v_codice_da, v_codice_a, v_iniziale_da, v_emissione_a
       FROM config.stati_doc_ddt
      WHERE id IN (OLD.stato_doc_ddt_id, NEW.stato_doc_ddt_id);
 
@@ -77,7 +85,7 @@ BEGIN
     -- Zero righe = niente da trasportare. Il "DDT solo trasporto"
     -- resta possibile: e' righe senza prezzo, non zero righe.
     -- Verdetto dalla single source (fn_check_ddt_emittibile).
-    IF v_codice_da = 'DRAFT' AND v_codice_a = 'EMESSO'
+    IF v_iniziale_da AND v_emissione_a
        AND script.fn_check_ddt_emittibile(NEW)
            @> '[{"codice": "E_DDT_EMISSIONE_SENZA_RIGHE"}]'::jsonb THEN
         PERFORM script.fn_log_and_raise_error(
@@ -113,7 +121,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
-IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-10-11 (20261011-83, brief-db-annullo-documento-con-legami D-4): la Regola 4 (annullo con legami) si ritira nel BB vendite.trgfn_doc_guard_annullo_con_legami. rev 2026-10-25 (20261025-14, brief-modello-documento-vendita §7): la Regola 3 (porta del registro, E_DDT_STATO_SOLO_DA_VERBO, GUC zeroerp.ddt_cambio_stato) si ritira: ogni cambio di stato della bolla passa dalla porta comune script.trgfn_doc_stato_solo_dal_verbo (trg_ddt_a05_stato_solo_dal_verbo_upd, E_DOC_STATO_SOLO_DAL_VERBO). rev 2026-10-25 (20261025-22): la frase del rifiuto di matrice riceve i due valori che ha (stato da, stato a); prima riceveva anche l''id del documento e a video usciva «da <id> a <stato da>».';
+IS 'Trigger function (BEFORE UPDATE dello stato di vendite.ddt): giudica il passaggio. Regola 1: il passaggio esiste attivo in config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA; nella frase lo stato da e lo stato a). Regola 2: dallo stato iniziale allo stato di emissione (le colonne iniziale ed emissione di config.stati_doc_ddt) la bolla ha almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE), col verdetto di script.fn_check_ddt_emittibile, la stessa check della capability. Gli altri motivi dell''emissione li sollevano i guard del valore delle righe, degli indirizzi e dei prezzi; l''annullo con legami lo giudica il BB vendite.trgfn_doc_guard_annullo_con_legami, e chi puo'' scrivere lo stato la porta comune script.trgfn_doc_stato_solo_dal_verbo. I codici degli stati vanno nel contesto degli errori. Gemello di vendite.trgfn_ordini_guard_transizione.';
 ```
 
 </div>

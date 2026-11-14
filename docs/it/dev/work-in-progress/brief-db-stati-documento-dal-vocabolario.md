@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team DB** col giro 6c (il contratto). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+**Riparte: il team BE/FE**, con BE-R1 e FE-R1 … FE-R4 del giro 6e (§6.22; FE-R1, le due chiavi i18n, per primo: senza, `check-i18n-keys` resta rosso); poi il team DB col giro 6f (il listino). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
 (Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
@@ -56,7 +56,20 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i-decies-quater | **FE** ⏭️ | FE-O3 («Genera bolla» da `can_genera_ddt`), FE-P2 e FE-V3 (il PDF delle liste da `pdf_mode`) | §6.18 | — |
 | 9i-undecies | **BE** ⏭️ | BE-O1: il ritiro di `_STATI_PUSHABILI` | §6.17 | — |
 | 9i-duodecies | **FE** ⏭️ | FE-O1: il lucchetto del drawer dell'ordine dalle chiavi `can_edit_*`; FE-O2: l'avviso dopo l'annullo dall'azione | §6.17 | — |
-| 9i-terdecies | **DB** ⏭️ | giri 6c … 6f, un documento per volta: contratto, bolla, reso, listino; ognuno con la sua vista lista (D-PDF) | §6.15 | — |
+| 9i-terdecies | ✅ DB | giro 6c, il contratto: `20261114-27 … -34`, D-BOZZA (a) (via `is_bozza`), un pgTAP nuovo (plan 12), prova con 334 file (2026-11-14) | §6.19 | — |
+| 9i-quattuordecies | ✅ Tid | apply di `20261114-27 … -34` e pgTAP del §6.19: verdi (2026-11-14) | §6.19 | — |
+| 9i-quattuordecies-bis | ✅ DB | giro 6c-bis: il guard della categoria ritirato (`20261114-35`), il codice obsoleto (decisione di Tid del 2026-11-14) | §6.20 | — |
+| 9i-quattuordecies-ter | ✅ Tid | apply di `20261114-35` e pgTAP del §6.20: verdi (2026-11-14) | §6.20 | — |
+| 9i-quattuordecies-quater | **BE** ⏭️ | BE-C1: rigenerare `error_policies_generated.py` (il codice obsoleto) | §6.20 | — |
+| 9i-quindecies | **FE** ⏭️ | FE-C1 … FE-C4 (drawer, azioni, avviso, PDF della lista del contratto) | §6.19 | — |
+| 9i-sedecies | ✅ DB | giro 6d, la bolla: `20261114-36 … -46`, un pgTAP nuovo (plan 14), sette pagine `manual/` e il vocabolario (2026-11-14) | §6.21 | — |
+| 9i-septendecies | ✅ Tid | apply di `20261114-36 … -46` e pgTAP del §6.21: verdi (2026-11-14) | §6.21 | — |
+| 9i-duodevicies | **FE** ⏭️ | FE-D1 … FE-D3 (drawer, PDF della lista, avviso dopo l'annullo della bolla) | §6.21 | — |
+| 9i-undevicies | ✅ DB | giro 6e, il reso: `20261114-47 … -57`, D-RESO (a) (`script.fn_check_ddt_rendibile`, `can_genera_reso`, `can_riconsegna`), un pgTAP nuovo (plan 14), uno adeguato, undici pagine (2026-11-14) | §6.22 | — |
+| 9i-vicies | ✅ Tid | apply di `20261114-47 … -58` e pgTAP del §6.22: verdi (2026-11-14) | §6.22 | — |
+| 9i-vicies-bis | **FE** ⏭️ | FE-R1 (le due chiavi i18n: `check-i18n-keys` rosso fino ad allora), FE-R2 … FE-R4 («Genera reso», ri-spedizione e lucchetto del reso dalla capability; il ritiro di `STATO_RESO`) | §6.22 | — |
+| 9i-vicies-ter | **BE** ⏭️ | BE-R1: il ritiro del guard gemello in `crea_reso` | §6.22 | — |
+| 9i-unvicies | **DB** ⏭️ | giro 6f: il listino | §6.15 | — |
 | 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
 | 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
 | 9i-quater | **DB** ⏭️ | giri 6a … 6f, un documento per volta: preventivo, ordine, contratto, bolla, reso, listino | §6.15 | — |
@@ -65,10 +78,10 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna. D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna. D-RESO (§6.22) decisa il 2026-11-14 (a). D-BOZZA (§6.19) decisa il 2026-11-14 (a). D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** i giri 6a (§6.16), 6b (§6.17), 6b-bis, 6a-bis e 2-ter (§6.18), tutti applicati e verdi: diciotto changeSet (`20261114-08 … -20`, `-22 … -26`), una riga del CSV dei messaggi, tre pgTAP nuovi, le pagine `manual/` e questo brief. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** nessuno. I giri 6c, 6c-bis, 6d, 6e e 6e-bis, applicati e verdi, sono nel commit «Stati del documento dal vocabolario: contratto, bolla e reso» (2026-11-14), con la doc rigenerata: il 6c (§6.19: otto changeSet, il CSV dei contratti, un pgTAP nuovo, due adeguati, sette pagine `manual/`), il 6c-bis (§6.20: un changeSet, una riga del catalogo dei codici, due pagine), il 6d (§6.21: undici changeSet, un pgTAP nuovo, nove pagine), il 6e e il 6e-bis (§6.22: dodici changeSet, un pgTAP nuovo, uno adeguato, undici pagine, una nuova). I giri 6a, 6b, 6b-bis, 6a-bis e 2-ter sono nel commit `f49e5233ca`. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -1435,3 +1448,295 @@ colonna non ci sono).
 
 Il BE non ha niente da fare: la capability la trasporta, e le liste escono con `SELECT v.*`. Nessun codice d'errore
 nuovo.
+
+### 6.19 Giro 6c — il contratto, con D-BOZZA (team DB, 2026-11-14)
+
+Col via di Tid al giro 6c (2026-11-14). Numeri `20261114-27 … -33`, assegnati da Tid; il `-34` (D-PDF, trovato a metà
+giro) dal primo libero. Corpi da `pg_get_functiondef` e `pg_get_viewdef` su dbdev; firme dal changeSet che le ha
+scritte per ultime; rollback con la definizione e il COMMENT di prima. I COMMENT sono al presente (§5d).
+
+**Il vocabolario del contratto** ha `iniziale` (DRAFT), `emissione` (ATTIVO, l'attivazione: il contratto in vigore),
+`cessazione` (CESSATO) e `is_abortito` (ANNULLATO). Aveva anche `is_bozza`, sullo stesso DRAFT di `iniziale`.
+
+**D-BOZZA — `is_bozza`: decisa (a) da Tid il 2026-11-14.** `is_bozza` (dal `20260602-17`) la leggeva solo lo snapshot
+`is_draft_snapshot` del contratto, che entra in `partecipa_overlap_snapshot` e quindi nel vincolo
+`ex_contratti_no_overlap`. Il 2026-10-24 (`20261024-07`) era stata tenuta di proposito accanto a `iniziale` («dice
+"è la bozza", non "si nasce qui"»); il 2026-11-14 D-LOCK ha fatto coincidere bozza e stato iniziale per lock e
+capability. ⚠️ È una **revoca** della riga del 24 ottobre: due marche per lo stesso significato potevano divergere, e
+l'esclusività avrebbe liberato uno stato diverso da quello che il lock lascia scrivere. La nota del §6.14, che le dava
+già per uguali, era giusta nell'esito e sbagliata nella storia. Lettori di `is_bozza` sul catalogo di dbdev: solo il
+montaggio del trigger; nessuna funzione, vista, vincolo o indice; niente in `backend/` né in `frontend/`.
+
+**Il censimento.** Il corpo vivo (`pg_get_functiondef`, commenti tolti) contro i quattro codici: i cinque oggetti del
+§6.15, nessuno in più. Restano fuori: i builder `dbops` (destinazioni del test), `trgfn_doc_guard_delete_solo_bozza`
+(il DRAFT della mail) e, nel BE, le sottostringhe con cui `contratti_service.py` riconosce il testo di un errore
+(`("ANNULLATO", "fatture")`), che non sono una regola di stato.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `00_schema/config/20261114-33` | `DROP COLUMN config.stati_doc_contratti.is_bozza`; il COMMENT di `vendite.contratti.is_draft_snapshot` dice da dove viene oggi. Da zero e su ogni database gira prima del `-32` (ordine per fase); fra i due nessuno scrive i contratti. Il CSV perde la colonna (5 righe toccate: intestazione e 4 stati); i due caricatori vivi (`20260520-08`, `20260806-14`) mappano dall'intestazione e non la elencano |
+| `20_code/script/20261114-27` | `script.fn_available_actions_contratto`: i motivi delle righe ammesse dallo stato iniziale, `can_edit_righe` dal lock delle righe |
+| `20_code/vendite/20261114-28` | `vendite.fn_get_contratto_attivo`: il contratto in vigore è quello nello stato di emissione (`AND s.emissione`) |
+| `20_code/vendite/20261114-29` | `vendite.trgfn_contratti_freeze_listino_versione`: scatta dallo stato iniziale allo stato di emissione |
+| `20_code/vendite/20261114-30` | `vendite.trgfn_contratti_guard_transizione_stato`: la data arrivata verso lo stato di cessazione, i quattro motivi dell'attivazione verso lo stato di emissione |
+| `20_code/vendite/20261114-31` | `vendite.trgfn_contratti_set_categoria_cliente_snapshot`: la categoria si cambia nello stato iniziale (`IS FALSE`: uno stato che non si legge non rifiuta, come prima) |
+| `20_code/vendite/20261114-32` | rimonta `vendite.trgfn_doc_snapshot_da_stato` su `vendite.contratti` con `('is_draft_snapshot', 'iniziale')`; tolti per funzione tutti i nomi, lo storico `…_sync_is_abortito_snapshot_ins_upd` compreso. Valori invariati col seed: nessun backfill |
+| `20_code/vendite/20261114-34` | `vendite.vw_contratti_lista`: + `pdf_mode` in coda (D-PDF (a)): `ContrattiSearchTable.vue` spegne il PDF con `'DRAFT'` |
+
+**Trovato: il guard della categoria non parla mai** (ritirato col giro 6c-bis, §6.20, decisione di Tid del 2026-11-14). Fuori bozza il cambio di `categoria_cliente_id_snapshot` lo
+rifiuta prima il lock della testata (`trg_contratti_a05_lock_fuori_bozza_upd`, `E_DOC_CONDIZIONI_FUORI_BOZZA`): il
+guard `a10` (`E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE`) è una seconda sede della stessa regola. Tutti e due leggono lo
+stato iniziale, quindi oggi non divergono.
+
+**I pgTAP.** Nuovo `vendite/test-contratto-stati-dal-vocabolario-v1` (plan 12), sulle strade dell'applicazione (il
+builder, il verbo `vendite.fn_cambia_stato_contratto` con l'azione concessa): cinque contrasti, due presidi sulla
+forma (i cinque lettori non nominano i codici; `is_bozza` non c'è più) e cinque marche spostate: `iniziale` su ATTIVO
+(capability, categoria, lo snapshot che segue lo stato iniziale), `emissione` su DRAFT (il contratto in vigore),
+`cessazione` su ANNULLATO (la data di fine segue la marca). Senza l'estratto 5/12 (i contrasti), con 12/12.
+`vendite/test-contratto-attiva-spento-se-sovrapposto-v1`: il test 24 passa da `is_bozza` a `iniziale`.
+`vendite/test-liste-pdf-mode-dal-vocabolario-v1`: plan 6, + la lista dei contratti.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi tranne `check-i18n-keys`, rosso per la chiave del
+§6.18 che il FE non ha ancora (`vendite.ordini.genera_ddt_reason.stato_non_evadibile`, FE-O3): non è di questo giro,
+ma bloccava ogni commit finché non è arrivata (BE `ba8426e865`, 2026-11-14). Estratto nell'ordine d'applicazione (`-33`, poi `-27 … -32`), per intero in
+`ROLLBACK`, catalogo identico dopo. Regressione con `--pgtap` sui **334** file transazionali che nominano il contratto:
+tutti con lo stesso esito o meglio. Il `-34` provato a parte, col test delle liste (6/6).
+
+**Pagine.** `config/stati_doc_contratti` (la bozza è lo stato iniziale, i lettori di ogni colonna, la nota di
+migrazione), `vendite/trgfn_contratti_guard_transizione_stato` (riallineata al corpo vivo: descriveva un grafo con
+SOSPESO, senza l'annullo dalla bozza, con la cessazione su `CURRENT_DATE`), `vendite/trgfn_doc_snapshot_da_stato`,
+`vendite/trgfn_contratti_freeze_listino_versione`, `vendite/fn_get_contratto_attivo`,
+`vendite/trgfn_contratti_set_categoria_cliente_snapshot`, `script/fn_available_actions_contratto` (la riga di
+`can_edit_righe`; il resto resta una cronaca, debito della famiglia).
+
+**Richieste al team FE (elenco chiuso).** Il BE non ha niente da fare.
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-C1 | `frontend/src/vendite/components/ContrattoDrawer.vue` | `isContractLocked` e `isDraft` (il payload del salvataggio) dalle chiavi `can_edit_*` e da `non_editable_fields` della capability, non da `stato_codice_interno !== STATO_CONTRATTO.DRAFT`: il gemello di FE-P1, FE-O1, FE-V2 |
+| FE-C2 | `frontend/src/vendite/components/ContrattoDrawer.vue` | il dialog d'emissione e l'annullo con dichiarazione si legano all'azione (`key` `attiva`, `annulla`), non a `target_state === STATO_CONTRATTO.ATTIVO` / `ANNULLATO` |
+| FE-C3 | `frontend/src/vendite/stores/contratti.js` | l'avviso ai documenti collegati dopo l'annullo dall'azione, non da `STATO_CONTRATTO.ANNULLATO` (gemello di FE-O2) |
+| FE-C4 | `frontend/src/vendite/components/ContrattiSearchTable.vue` | il PDF della riga da `pdf_mode !== 'ARCHIVE'` (`-34`), non da `stato_codice_interno === 'DRAFT'` (tre righe) |
+
+### 6.20 Giro 6c-bis — il guard della categoria del contratto, ritirato (team DB, 2026-11-14)
+
+Decisione di Tid del 2026-11-14 («ritiriamolo»), sul rilievo del §6.19. Numero `20261114-35`, dal primo libero.
+
+**Il perché.** `vendite.trgfn_contratti_set_categoria_cliente_snapshot` faceva due cose: in `INSERT` riempie
+`categoria_cliente_id_snapshot` dal billing account; in `UPDATE` rifiutava il cambio fuori bozza
+(`E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE`). Il secondo ramo è una seconda sede della regola del lock della testata
+(`trg_contratti_a05_lock_fuori_bozza_upd`), che blocca la stessa colonna in tutti gli stati fuori bozza, senza
+eccezioni, e parla per primo (`a05` prima di `a10`): il guard non parlava mai.
+
+**Verificato prima (dbdev, 2026-11-14).** Il lock non ha porte di override (nessun `current_setting` nel corpo);
+la colonna del contratto la scrivono in `INSERT` `vendite.fn_create_contratto` e in `UPDATE` la PATCH del backend, che
+passa dal lock (le altre funzioni che nominano `categoria_cliente_id_snapshot` scrivono la colonna omonima delle
+attività di commessa); nessun pgTAP solleva il codice.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261114-35` | la funzione tiene il solo ramo `INSERT`; il trigger si rimonta `BEFORE INSERT` come `trg_contratti_a10_set_categoria_cliente_snapshot_ins` (tolto per funzione l'unico nome dei changelog, `…_ins_upd`); stessa fase `a10` |
+| CSV `80_data/sql/config/codici_errore.csv` | `E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE` con `obsoleto_dal` = 2026-11-14 e la ragione nella nota: resta a catalogo e smette di essere sollevato (la forma di `E_ORD_ANNULLA_IN_COMMESSA`) |
+
+**Il pgTAP.** `vendite/test-contratto-stati-dal-vocabolario-v1` passa a plan 14: il 13 (forma: il trigger è solo
+`BEFORE INSERT`, e la funzione non nomina più il codice) e il 14 (alla nascita, senza categoria, il contratto la prende
+dal billing account). I test 3 e 9 (il rifiuto fuori bozza lo dà il lock) restano.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi, `check-i18n-keys` compreso: la chiave del §6.18
+è arrivata col commit del BE `ba8426e865`. Il `-35` gira per intero in `ROLLBACK`, catalogo identico dopo. Regressione
+sui **334** file transazionali che nominano il contratto: tutti con lo stesso esito. Il test del contratto: con
+l'estratto 14/14, senza 13/14 (il rosso è il 13, la forma del trigger).
+
+**Pagine.** `vendite/trgfn_contratti_set_categoria_cliente_snapshot` (riscritta: la nascita, e chi congela la
+categoria), `config/stati_doc_contratti` (la bozza congela la categoria attraverso il lock).
+
+**Richieste al team BE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-C1 | `backend/apps/core/services/error_policies_generated.py`, `error_messages_fallback.py` | rigenerarli dopo l'apply (`manage.py genera_error_policies`): `E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE` è obsoleto. Nessuna logica del BE lo legge |
+
+Nessuna ricaduta FE.
+
+**Apply (Tid, 2026-11-14).** `20261114-35` applicato su dbdev; il pgTAP del §6.19 (plan 14, coi test 13 e 14 del
+ritiro) è verde.
+
+### 6.21 Giro 6d — la bolla (team DB, 2026-11-14)
+
+Numeri `20261114-36 … -46`, dal primo libero (Tid, 2026-11-14: «prendi il primo libero»). Corpi da
+`pg_get_functiondef` e `pg_get_viewdef` su dbdev; firme dal changeSet che le ha scritte per ultime; rollback con la
+definizione e il COMMENT di prima. I COMMENT che erano cronache sono riscritti al presente (§5d).
+
+**Il vocabolario della bolla** ha `iniziale` (DRAFT), `emissione` (EMESSO) e `is_abortito` (ANNULLATO). SPEDITO,
+CONSEGNATO e RESO sono destinazioni del processo (S-3) e restano col codice.
+
+**Il censimento.** Il corpo vivo (`pg_get_functiondef`, commenti tolti) contro i sei codici: i 14 oggetti del §6.15,
+nessuno in più. Restano col codice, per ragione: `vendite.fn_cambia_stato_ddt` (CONSEGNATO di un trasferimento),
+`vendite.fn_ddt_push_diagnosi` (RESO), `dbops.vw_ddt_trasferimenti_consegnati_senza_arrivo` (CONSEGNATO) e la soglia
+SPEDITO del cruscotto: destinazioni del processo. `script.fn_check_ddt_emittibile` legge `fatturazione_trigger`, un
+altro asse. Gli oggetti del reso che nominano gli stati della bolla (`vendite.fn_conferma_reso`, `vendite.fn_annulla_reso`,
+`vendite.trgfn_resi_guard_ddt_consegnato`, `script.fn_check_reso_merce`, `vendite.trgfn_resi_righe_guard_quantita`)
+sono del giro 6e.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261114-36` | `script.fn_available_actions_ddt`: i quattro rami dei motivi dell'emissione su `sa.emissione`; `can_edit_righe` dal lock delle righe. `SET plan_cache_mode` ripetuto (§13.7) |
+| `20_code/script/20261114-37` | `script.fn_check_ddt_riga_correggi_qta_evasa`: DDT_NON_IN_BOZZA dove il lock delle righe non lascia scrivere (`script.fn_doc_riga_modificabile` `IS NOT TRUE`), la stessa frase |
+| `20_code/vendite/20261114-38` | `vendite.fn_annulla_ddt`: la destinazione è lo stato di annullo del vocabolario (`script.fn_doc_stato_codice` di `script.fn_stato_abortito_id`), come `vendite.fn_annulla_ordine` |
+| `20_code/vendite/20261114-39` | `vendite.trgfn_ddt_gen_numero_emesso`: il numero nello stato di emissione |
+| `20_code/vendite/20261114-40` | `vendite.trgfn_ddt_guard_causale_emissione`: il gate del valore delle righe nello stato di emissione |
+| `20_code/vendite/20261114-41` | `vendite.trgfn_ddt_guard_indirizzi_obbligatori`: gli indirizzi nello stato di emissione |
+| `20_code/vendite/20261114-42` | `vendite.trgfn_ddt_guard_transizione`: la riga attiva dallo stato iniziale allo stato di emissione |
+| `20_code/vendite/20261114-43` | `vendite.trgfn_ddt_guard_transizione_approvazione`: i prezzi nello stato di emissione |
+| `20_code/vendite/20261114-44` | `vendite.trgfn_ddt_riga_legame_guard`: il ritiro con la bolla nello stato iniziale (il codice dell'iniziale, perché il lettore della testata rende il codice: la forma di `vendite.trgfn_doc_guard_delete_solo_bozza`) |
+| `20_code/vendite/20261114-45` | `vendite.vw_dash_fatturazione_ddt`: `DOC_BOZZA` da `iniziale`; la colonna nel `GROUP BY` |
+| `20_code/vendite/20261114-46` | `vendite.vw_ddt_lista`: + `pdf_mode` in coda (D-PDF (a)): `DdtSearchTable.vue` spegne il PDF con `STATO_DDT.DRAFT` |
+
+**Il pgTAP nuovo.** `vendite/test-ddt-stati-dal-vocabolario-v1` (plan 14), sulle strade dell'applicazione (i builder,
+il verbo `vendite.fn_cambia_stato_ddt` con l'azione concessa, `vendite.fn_annulla_ddt`): sette contrasti, un presidio
+sulla forma e sei marche spostate: `iniziale` su EMESSO (capability, riga che si scrive, cruscotto, correzione della
+quantità), `emissione` su SPEDITO (la bolla portata in EMESSO non prende il numero; il contrasto sì), `is_abortito` su
+CONSEGNATO (l'annullo va verso CONSEGNATO, che la matrice non ha dalla bozza). Con l'estratto 14/14; senza si
+interrompe al 6 (`pdf_mode` della lista arriva col `-46`). ⚠️ Una lettura dello stato dopo un verbo va in
+un'istruzione sua: un attrezzo `STABLE` nella stessa istruzione vede la riga com'era all'inizio (corretto nel test 7).
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi (forme, COMMENT al presente, letterali,
+`runOnChange`, timestamp, DDL sui trigger d'automazione, preambolo pgTAP). Estratto `-36 … -46` per intero in
+`ROLLBACK`, catalogo identico dopo. Regressione con `--pgtap` sui **204** file transazionali che nominano la bolla:
+tutti con lo stesso esito; il test nuovo si interrompe senza l'estratto (5 ok) e va 14/14 con. Fuori dalla prova i
+due file non transazionali (`vendite/test-documenti-numerazione-trasloco-v1`, `vendite/test-fn-list-ordini-da-pushare-v1`):
+li copre il giro dei pgTAP su dbdev.
+
+**Apply (Tid, 2026-11-14).** `20261114-36 … -46` applicati su dbdev; i pgTAP verdi, il nuovo compreso.
+
+**Pagine.** `config/stati_doc_ddt` (i lettori di ogni colonna, la bozza, le destinazioni del processo),
+`script/fn_available_actions_ddt`, `vendite/trgfn_ddt_gen_numero_emesso`, `vendite/trgfn_ddt_guard_causale_emissione`,
+`vendite/trgfn_ddt_guard_indirizzi_obbligatori`, `vendite/trgfn_ddt_guard_transizione_approvazione`,
+`vendite/vw_dash_fatturazione_ddt`, `vendite/vw_ddt_lista`. Correzione della quantità, annullo e guard del legame non
+hanno una pagina `manual/`.
+
+**Trovato per il giro 6e.** Il drawer della bolla accende «Genera reso» con `stato_codice_interno ===
+STATO_DDT.CONSEGNATO` (`DdtDrawer.vue`): una copia della regola di `vendite.trgfn_resi_guard_ddt_consegnato`. La
+capability della bolla non ha una chiave per il reso: la forma è quella di D-EVAD (una check, la chiave nella
+capability), da proporre col giro del reso.
+
+**Richieste al team FE (elenco chiuso).** Il BE non ha niente da fare.
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-D1 | `frontend/src/vendite/ddt/components/DdtDrawer.vue` | il lucchetto del drawer dalle chiavi `can_edit_*` della capability, non da `stato_codice_interno !== STATO_DDT.DRAFT` (gemello di FE-P1, FE-O1, FE-C1, FE-V2) |
+| FE-D2 | `frontend/src/vendite/ddt/components/DdtSearchTable.vue` | il PDF della riga da `pdf_mode !== 'ARCHIVE'` (`-46`), non da `STATO_DDT.DRAFT` (due righe) |
+| FE-D3 | `frontend/src/vendite/ddt/stores/ddt.js` | l'avviso ai documenti collegati dopo l'annullo dall'azione, non da `STATO_DDT.ANNULLATO` (gemello di FE-O2, FE-C3) |
+
+### 6.22 Giro 6e — il reso (team DB, 2026-11-14)
+
+Col via di Tid (2026-11-14, «procedi 6e»). Numeri `20261114-47 … -57`, dal primo libero. Corpi da
+`pg_get_functiondef` su dbdev; firme dal changeSet che le ha scritte per ultime (quella della capability del reso,
+che era `bigint` nudo, ancorata con `%TYPE`); rollback con la definizione e il COMMENT di prima. I COMMENT che erano
+cronache sono riscritti al presente (§5d).
+
+**Il vocabolario del reso** ha `iniziale` (DRAFT), `emissione` (CONFERMATO: la conferma è l'emissione, lì nasce il
+numero e la merce rientra) e `is_abortito` (ANNULLATO). Nessuna destinazione di processo sua; CONSEGNATO e RESO della
+bolla, che conferma e annullo scrivono, sono destinazioni del processo della bolla (S-3) e restano col codice.
+
+**Il censimento.** Il corpo vivo (commenti tolti) contro i tre codici, sulle funzioni e viste che nominano il reso:
+12 oggetti. Dei 9 del §6.15 ne entrano 8; `vendite.trgfn_resi_guard_ddt_consegnato` nomina CONSEGNATO, una destinazione
+della bolla, ed entra per D-RESO. In più `vendite.trgfn_resi_righe_guard_quantita`, che il §6.15 elencava, e
+`vendite.fn_chiudi_riconsegna_reso`, `vendite.fn_riapri_riconsegna_reso` e `vendite.fn_genera_ddt_riconsegna` con la
+stessa porta. Restano fuori, per ragione: `vendite.fn_ddt_push_diagnosi` (CONFERMATO è il `fatturazione_trigger`
+dell'ordine, un altro asse), `vendite.trgfn_doc_guard_delete_solo_bozza` (DRAFT è di `config.email_outbox`, che non
+ha un vocabolario), i builder `dbops.fn_pgtap_crea_reso` e `dbops.fn_pgtap_porta_a_stato` (ricevono lo stato a cui il
+test vuole arrivare). Le viste che leggono lo stato del reso (`vw_resi_righe_effettive`, `vw_stato_sorgente_reso`,
+`vw_resi_lista`, …) non nominano codici. Il reso non ha le colonne della stampa: D-PDF non lo tocca.
+
+**D-RESO — «Genera reso» e la ri-spedizione dalla capability: decisa (a) da Tid il 2026-11-14.** Due copie nel
+frontend di regole del DB, trovate col giro 6d (§6.21) e con questo:
+
+* il drawer della bolla accende «Genera reso» con `stato === CONSEGNATO`, una copia di
+  `vendite.trgfn_resi_guard_ddt_consegnato` senza la bolla di trasferimento; e il service `crea_reso` ne ha una terza,
+  con lo stesso limite. (a): la regola esce in `script.fn_check_ddt_rendibile`, letta dal trigger e dalla capability
+  della bolla (`can_genera_reso`), la forma di D-EVAD;
+* il drawer del reso accende la ri-spedizione con `stato === CONFERMATO`, la porta dei tre verbi della riconsegna.
+  (a): la capability del reso emette `can_riconsegna`, dalla stessa colonna `emissione` che i verbi leggono.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261114-47` | NUOVO `script.fn_check_ddt_rendibile`: i motivi per cui da una bolla non nasce un reso, E_RESO_DA_DDT_TRASFERIMENTO prima di E_RESO_DDT_NON_CONSEGNATO (l'ordine del trigger); la bolla assente dà il secondo, come prima. Due `reason_key` nuove |
+| `20_code/vendite/20261114-48` | `vendite.trgfn_resi_guard_ddt_consegnato`: il primo motivo della check (`script.fn_raise_primo_motivo_se_presente`), stessi codici; `sorgente_id` nullo lo lascia al vincolo `chk_resi_sorgente_forma` |
+| `20_code/script/20261114-49` | `script.fn_available_actions_ddt`: + `can_genera_reso` · `_reason` · `_reason_key` dalla check |
+| `20_code/script/20261114-50` | `script.fn_available_actions_reso`: il motivo degli accrediti su `sa.is_abortito`, quelli della merce su `sa.emissione` (calcolati in ogni stato: da dove si conferma lo dice la matrice); `can_edit_righe` dal lock delle righe; + `can_riconsegna` dalla colonna `emissione` |
+| `20_code/script/20261114-51` | `script.fn_check_reso_merce`: i resi non annullati del tetto per prelievo da `is_abortito` |
+| `20_code/vendite/20261114-52` | `vendite.fn_conferma_reso`: la destinazione da `script.fn_stato_emissione_id`; E_RESO_STATO_NON_CONFERMABILE dove la matrice non ha il passaggio (`script.fn_doc_passaggio`), non fuori da DRAFT |
+| `20_code/vendite/20261114-53` | `vendite.fn_annulla_reso`: la destinazione da `script.fn_stato_abortito_id`; E_RESO_STATO_NON_ANNULLABILE dove la matrice non ha il passaggio, non fuori da `('DRAFT','CONFERMATO')`; lo storno se lo stato di partenza è di emissione |
+| `20_code/vendite/20261114-54` | `vendite.fn_genera_ddt_riconsegna`: E_RESO_NON_CONFERMATO fuori dallo stato di emissione |
+| `20_code/vendite/20261114-55` | `vendite.fn_chiudi_riconsegna_reso`: idem |
+| `20_code/vendite/20261114-56` | `vendite.fn_riapri_riconsegna_reso`: idem |
+| `20_code/vendite/20261114-57` | `vendite.trgfn_resi_righe_guard_quantita`: i resi non annullati da `is_abortito` |
+
+⚠️ **Conferma e annullo: perché la matrice e non una colonna.** «Da DRAFT si conferma», «da DRAFT e CONFERMATO si
+annulla» non sono significati di uno stato: sono le righe di `config.transizioni_stati_reso`. Il guard del permesso
+(`script.fn_guard_passaggio`), che parla una riga prima, su una riga assente fra due stati diversi tace: il rifiuto
+del verbo resta, e legge lo stesso lettore (`script.fn_doc_passaggio`). Con il seed le risposte sono quelle di prima;
+dallo stato di destinazione parla il guard (`E_DOC_GIA_NELLO_STATO`).
+
+**Il pgTAP nuovo.** `vendite/test-reso-stati-dal-vocabolario-v1` (plan 14), sulle strade dell'applicazione (i
+builder di bolla e reso, la conferma dal verbo, l'annullo da `vendite.fn_annulla_reso`, i tre verbi della
+riconsegna): sette contrasti (fra cui `can_genera_reso` e il trigger, che rispondono uguale), due presidi sulla forma
+(i lettori non nominano DRAFT, CONFERMATO e ANNULLATO; il trigger del reso dalla bolla non nomina CONSEGNATO e
+TRASF_OUT) e quattro marche spostate, in cinque test: `iniziale` su CONFERMATO (`can_edit_righe`), `emissione` su DRAFT
+(`can_riconsegna` e la ri-spedizione, che rispondono uguale), `is_abortito` su DRAFT (l'annullo del confermato va
+verso DRAFT, che la matrice non ha) e su CONFERMATO (il reso confermato esce dal tetto della quantità). Con
+l'estratto 14/14; senza 5/14 (le chiavi e le risposte nuove).
+
+**Un pgTAP adeguato.** `config/test-costanti-catalogo-citate-dal-codice-v1`, test 4 (anti-marciume): la riga
+(stati_doc_reso ANNULLATO, `script.fn_available_actions_reso`) esce. Il presidio guardava che un codice rinominato
+non riaccendesse il bottone dell'annullo; con `is_abortito` il codice non c'è più, e il test 4 lo diceva, come la
+sua testata prevede. Esce anche la lettura di `config.stati_doc_reso` fra i presenti, che nessuna riga chiedeva; il
+conteggio del test 1 passa da 7 a 6.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi (forme, COMMENT al presente, letterali,
+`runOnChange`, timestamp, DDL sui trigger d'automazione, preambolo pgTAP). Estratto `-47 … -57` per intero in
+`ROLLBACK`, catalogo identico dopo. Regressione con `--pgtap` sui **392** file transazionali che nominano il reso, la
+riconsegna o la capability della bolla, più i presidi che leggono il catalogo delle funzioni: con l'estratto tutti
+verdi tranne uno, `script/test-catalogo-messaggi-errore-completo` test 7 (i valori del motivo DDT_NON_CONSEGNATO non
+erano i segnaposti della sua frase: corretto nel giro 6e-bis, sotto). ⚠️ Il giro è stato applicato (dbdev e scratch,
+22:11) a regressione in corso: dopo quell'ora le corse «senza» avevano già l'estratto, e il confronto senza/con vale
+solo per i file passati prima. Il lato «con» vale per tutti. Fuori dalla prova i tre file non transazionali
+(`config/test-toponomastica-stradario-generale`, `vendite/test-documenti-numerazione-trasloco-v1`,
+`vendite/test-fn-list-ordini-da-pushare-v1`): li copre il giro dei pgTAP su dbdev.
+
+**Apply (Tid, 2026-11-14).** `20261114-47 … -57` applicati su dbdev e sullo scratch (databasechangelog, 22:11);
+il `-58` dopo. I pgTAP verdi su dbdev (Tid).
+
+**Giro 6e-bis — i valori del motivo (`20_code/script/20261114-58`).** `script.fn_check_ddt_rendibile` dava al motivo
+E_RESO_DDT_NON_CONSEGNATO due valori (numero e stato della bolla), ma la frase del codice non ha segnaposti:
+`format()` li ignora, e il test 7 del catalogo dei messaggi pretende l'uguaglianza. Ora `valori` =
+`jsonb_build_array()`; l'id e lo stato restano nel dettaglio. Il `-47` è applicato e non si tocca: CREATE OR
+REPLACE, rollback al corpo del `-47`. Provato in `ROLLBACK` sullo scratch, col giro applicato: il test 7 da rosso a
+verde (senza 6/7, con 7/7), il test del reso 14/14.
+
+**Pagine.** `config/stati_doc_reso` (chi legge ogni colonna, la matrice per conferma e annullo),
+`script/fn_available_actions_reso`, `script/fn_available_actions_ddt` (`can_genera_reso`), NUOVA
+`script/fn_check_ddt_rendibile`, `vendite/fn_conferma_reso`, `vendite/fn_annulla_reso`,
+`vendite/fn_genera_ddt_riconsegna`, `vendite/fn_chiudi_riconsegna_reso`, `vendite/fn_riapri_riconsegna_reso`,
+`vendite/trgfn_resi_guard_ddt_consegnato`, `vendite/trgfn_resi_righe_guard_quantita`. `script.fn_check_reso_merce`
+non ha una pagina `manual/`. ⚠️ La pagina autogenerata della check nuova (`script/funzioni/`) e gli indici dello
+schema nascono con la rigenerazione della doc.
+
+**Richieste al team FE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-R1 | `frontend/src/locales/it.json`, `en.json` | le chiavi `vendite.ddt.genera_reso_reason.trasferimento` (un valore: il numero della bolla) e `vendite.ddt.genera_reso_reason.non_consegnato` (nessun valore, `-58`). ⚠️ Fino ad allora `check-i18n-keys` è rosso e blocca ogni commit, come per FE-O3 |
+| FE-R2 | `frontend/src/vendite/ddt/components/DdtDrawer.vue` | «Genera reso» (`showResoAction`) da `can_genera_reso`, spento col motivo (`can_genera_reso_reason_key`), non da `stato_codice_interno === STATO_DDT.CONSEGNATO` (gemello di FE-O3) |
+| FE-R3 | `frontend/src/vendite/resi/components/ResoDrawer.vue` | la ri-spedizione e la sua dialog (`isConfermato`) da `can_riconsegna`, non da `STATO_RESO.CONFERMATO`; il lucchetto (`isReadonly`) dalle chiavi `can_edit_*` della capability, non da `!== STATO_RESO.DRAFT` (gemello di FE-D1) |
+| FE-R4 | `frontend/src/vendite/resi/constants.js`, `frontend/src/vendite/_shared/situazioneMerce/situazioneMerceCostanti.js` | dopo FE-R3, `STATO_RESO` non ha più lettori: si ritira, col commento che lo cita. La mappa dei colori (`STATO_RESO_MAP` in `core/utils/severity.js`) è presentazione e resta |
+
+**Richieste al team BE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-R1 | `backend/apps/vendite/services/resi_service.py`, `backend/apps/vendite/tests/services/test_resi_service.py` | `crea_reso`: ritirare il guard gemello (`ErrorManager.require` su `_STATO_DDT_SORGENTE`) e la costante. È una terza copia della regola, senza la bolla di trasferimento: risponde il trigger, con lo stesso codice (409) e in più E_RESO_DA_DDT_TRASFERIMENTO. Il test 9 del service esce o passa a un test d'integrazione. `get_ddt_sorgente` resta (lo usa `list_righe_ddt_per_reso`) |
+
+Chi cambia per primo: il DB. Con il giro applicato FE e BE di oggi funzionano: le chiavi nuove si aggiungono, nessuna
+cambia, e il guard del service risponde come il trigger.

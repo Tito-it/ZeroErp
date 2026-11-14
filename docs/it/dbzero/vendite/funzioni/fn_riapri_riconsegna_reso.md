@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_riapri_riconsegna_reso(p_reso_id bigint, p
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): il reso si riapre dallo stato
+--   di emissione (la colonna emissione), non dal codice CONFERMATO.
 -- Scopo: annulla una CHIUSURA di ri-consegna. Cancella le rinunce e
 --   ri-proietta lo stato ordine (torna PARZIALMENTE_EVASO): la quota
 --   torna ri-spedibile e l'accredito torna FACOLTATIVA.
@@ -33,6 +35,7 @@ AS $function$
 --   divieto si aggiungera' LA' e questa madre lo sollevera' da se'.
 DECLARE
     v_stato          config.stati_doc_reso.codice_interno%TYPE;
+    v_emissione      config.stati_doc_reso.emissione%TYPE;
     v_riga           RECORD;
     v_rin            RECORD;
     v_ord            RECORD;
@@ -49,9 +52,10 @@ BEGIN
             NULL::uuid, 'reso_id obbligatorio (>0)');
     END IF;
 
-    -- 2) Reso esistente e CONFERMATO (stesso gate delle sorelle).
-    SELECT sdr.codice_interno
-      INTO v_stato
+    -- 2) Reso esistente ed emesso (la colonna emissione del suo stato: la
+    --    conferma). Stesso gate delle sorelle.
+    SELECT sdr.codice_interno, sdr.emissione
+      INTO v_stato, v_emissione
       FROM vendite.resi r
       JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
      WHERE r.id = p_reso_id;
@@ -63,7 +67,7 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    IF v_stato IS DISTINCT FROM 'CONFERMATO' THEN
+    IF v_emissione IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_riapri_riconsegna_reso','E_RESO_NON_CONFERMATO',
             jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
@@ -178,7 +182,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_riapri_riconsegna_reso(p_reso_id bigint, p_righe jsonb)
-IS 'Madre RIAPERTURA rinuncia (brief-db-chiusura-riconsegna-reso-definitivo S5.1): annulla una chiusura di ri-consegna cancellando le rinunce e ri-proiettando lo stato ordine (torna PARZIALMENTE_EVASO). La quota torna ri-spedibile e l''accredito torna FACOLTATIVA: round-trip chiudi->riapri = stato iniziale. p_righe NULL = tutte le rinunce del reso; [{resi_riga_id, qta}] scala dalle rinunce piu'' RECENTI (LIFO, si annulla l''ultimo errore) e riduce la qta invece di cancellare quando l''annullo e'' parziale. Ritorna il numero di RIGHE RESO riaperte. GATE NC: consuma script.fn_check_rinuncia_reversibile, oggi senza motivi ostativi - quando la slice NC arrivera'', il divieto si aggiunge LA'' e questa madre lo solleva da se''. rev 2026-07-26. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
+IS 'Madre della riapertura di una rinuncia: annulla una chiusura di ri-consegna cancellando le rinunce e ri-proiettando lo stato dell''ordine con vendite.fn_ordine_proietta_stato_evasione. La quota torna ri-spedibile e l''accredito torna FACOLTATIVA: chiudi e riapri tornano allo stato di partenza. La porta e'' quella delle sorelle: il reso emesso (la colonna emissione di config.stati_doc_reso; altrimenti E_RESO_NON_CONFERMATO). p_righe NULL = tutte le rinunce del reso; [{resi_riga_id, qta}] scala dalle rinunce piu'' recenti (LIFO: si annulla l''ultimo errore) e riduce la qta invece di cancellare quando l''annullo e'' parziale. Ritorna il numero di righe del reso riaperte. Il divieto della nota di credito lo da'' script.fn_check_rinuncia_reversibile, che questa madre solleva.';
 ```
 
 </div>

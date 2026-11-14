@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_conferma_reso`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -21,9 +21,14 @@ cui il reso «diventa reale».
 
 ### Effetti (in ordine)
 
-1. **Transizione** `DRAFT → CONFERMATO` (attraversa `trgfn_resi_guard_transizione`; assegna il
-   `numero` via `trgfn_resi_gen_numero`). Guard: reso esistente, in DRAFT, con almeno una riga
-   (`E_RESO_NOT_FOUND` / `E_RESO_STATO_NON_CONFERMABILE` / `E_RESO_SENZA_RIGHE`).
+1. **Transizione** verso lo stato di **emissione** del vocabolario (la colonna `emissione` di
+   [config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso), CONFERMATO nel seed): la
+   conferma è l'emissione del reso. Attraversa `trgfn_resi_guard_transizione` e assegna il
+   `numero` via `trgfn_resi_gen_numero`. Guard: reso esistente, in uno stato da cui la matrice
+   ha il passaggio (con il seed, la bozza), con almeno una riga (`E_RESO_NOT_FOUND` /
+   `E_RESO_STATO_NON_CONFERMABILE` / `E_RESO_SENZA_RIGHE`). Il rifiuto dello stato legge la
+   stessa riga della matrice del guard del permesso (`script.fn_doc_passaggio`); da uno stato già
+   di emissione parla prima il guard (`E_DOC_GIA_NELLO_STATO`).
 2. **Proiezione stato ordine** per ogni ordine coinvolto dalle righe *per ri-consegna*: il residuo
    ora reso-aware si riapre → `PARZIALMENTE_EVASO` (o `EVASO` se ancora chiuso). Le transizioni di
    rientro sono già seedate.

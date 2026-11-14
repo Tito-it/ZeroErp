@@ -18,6 +18,11 @@ CREATE OR REPLACE FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): la destinazione e' lo stato
+--   di emissione (script.fn_stato_emissione_id); E_RESO_STATO_NON_CONFERMABILE
+--   dove la matrice non ha il passaggio (script.fn_doc_passaggio), non fuori da
+--   DRAFT. Dove sotto si legge DRAFT o CONFERMATO, vale lo stato che il
+--   vocabolario e la matrice dicono.
 -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
 --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
 --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
@@ -45,7 +50,8 @@ DECLARE
     v_ord               RECORD;
 BEGIN
     v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
-    -- 1) Guard input + reso in DRAFT + almeno una riga.
+    -- 1) Guard input + reso in uno stato da cui la matrice conferma + almeno
+    --    una riga.
     IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_conferma_reso','E_VALIDAZIONE',
@@ -74,12 +80,16 @@ BEGIN
     -- Il permesso del passaggio, prima di scrivere qualunque cosa: dalla
     -- riga DRAFT -> CONFERMATO della matrice (M-3), su OGNI conferma,
     -- anche di un reso che non muove merce (D-3b-f).
-    SELECT id INTO v_stato_conf_id FROM config.stati_doc_reso
-     WHERE codice_interno = 'CONFERMATO' AND attivo IS TRUE;
+    -- La conferma e' l'emissione del reso: lo stato marcato emissione.
+    v_stato_conf_id := script.fn_stato_emissione_id('vendite.resi'::regclass);
     PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
                                       v_reso.stato_doc_reso_id, v_stato_conf_id);
 
-    IF v_stato IS DISTINCT FROM 'DRAFT' THEN
+    -- Da dove si conferma lo dice la matrice: il passaggio che il guard ha
+    -- appena letto. Senza, lo stato non e' confermabile.
+    IF NOT EXISTS (SELECT 1
+                     FROM script.fn_doc_passaggio('vendite.resi'::regclass,
+                                                  v_reso.stato_doc_reso_id, v_stato_conf_id)) THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_conferma_reso','E_RESO_STATO_NON_CONFERMABILE',
             jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
@@ -177,7 +187,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_conferma_reso(p_reso_id bigint)
-IS 'Il verbo della conferma di un reso: DRAFT -> CONFERMATO. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); fuori bozza E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
+IS 'Il verbo della conferma di un reso: verso lo stato di emissione (la colonna emissione di config.stati_doc_reso, CONFERMATO nel seed), dove nasce il numero e la merce rientra. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_reso; fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio della matrice (script.fn_guard_passaggio, conferma_reso); da uno stato senza il passaggio nella matrice E_RESO_STATO_NON_CONFERMABILE. Su un reso che fa rientrare merce (vendite.fn_reso_muove_merce): lock della bolla d''origine, primo motivo di script.fn_check_reso_merce, rientri automatici, carichi in coda (vendite.fn_posta_reso, CARICO_RESO_VEN al costo dell''uscita). Lo stato del reso e il passaggio della bolla CONSEGNATO -> RESO, se il reso copre tutta la merce (le sole righe di merce, script.fn_natura_e_merce; contano i resi confermati, vw_resi_righe_effettive), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Una transazione; RETURNS void.';
 ```
 
 </div>

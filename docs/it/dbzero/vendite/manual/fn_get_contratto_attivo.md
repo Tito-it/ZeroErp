@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_get_contratto_attivo`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -47,7 +49,7 @@ le due risposte smettono di coincidere senza che nulla protesti.
 
 * **Tutti e tre i parametri sono obbligatori.** Con uno mancante non c'è una
   domanda da porre, e la funzione ritorna `NULL` invece di indovinare.
-* Il contratto deve avere lo stato con `codice_interno = 'ATTIVO'`.
+* Il contratto deve essere nello stato di emissione, che il vocabolario marca (`config.stati_doc_contratti.emissione`, oggi `ATTIVO`): è il contratto in vigore.
 * La validità si legge dal periodo del contratto: **deve contenere la data**
   passata.
 * ⚠️ **La data è un parametro, mai `CURRENT_DATE`.** Su un documento di sei mesi

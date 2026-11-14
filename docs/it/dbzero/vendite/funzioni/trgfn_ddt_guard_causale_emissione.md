@@ -45,14 +45,17 @@ AS $function$
 --   catch-all qui farebbe sollevare a QUESTO trigger anche gli
 --   indirizzi mancanti, con l'area e il nome sbagliati nel log.
 DECLARE
-    v_stato_codice  config.stati_doc_ddt.codice_interno%TYPE;
+    -- La bolla e' nello stato di emissione? Dal vocabolario.
+    v_emissione    config.stati_doc_ddt.emissione%TYPE;
     v_motivo        jsonb;
 BEGIN
-    SELECT sdd.codice_interno INTO v_stato_codice
+    SELECT sdd.emissione INTO v_emissione
       FROM config.stati_doc_ddt sdd
      WHERE sdd.id = NEW.stato_doc_ddt_id;
 
-    IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+    -- rev 2026-11-14 (giro 6d): lo stato di emissione, la colonna del
+    -- vocabolario. Uno stato che non si legge non e' l'emissione.
+    IF v_emissione IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -170,7 +173,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_causale_emissione()
-IS 'Gate all''emissione DDT sul VALORE DELLA RIGA (brief-db-fatturazione-ddt-resi §4a, DL-28), in tre facce: (1) causale di trasporto obbligatoria — in DRAFT il NULL resta legittimo; (2) se la causale e'' fatturabile, ogni riga attiva deve avere un prezzo risolvibile (proprio o ereditato dalla riga ordine via fulfillment); (3) ogni riga attiva CHE PORTA UN PREZZO deve avere anche l''aliquota. rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore e argomenti invariati (544/545). ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase C / R4-ter): + E_DDT_RIGA_IVA_MANCANTE. Si e'' esteso questo guard invece di crearne uno nuovo perche'' e'' gia'' il gate del valore della riga e il LOOP con ELSIF per codice e'' fatto per crescere cosi''. ⚠️ Nel VARIADIC del codice nuovo va il NUMERO di riga e non l''id: quel valore compone la frase che legge una persona, e un id tecnico non si cerca a mano; l''id resta nel context. ⚠️ Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno: non si rinomina (costerebbe trigger, doc auto-gen e pgTAP per sola leggibilita''), ma lo Scopo nel corpo lo dichiara. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2/D-2-bis): + E_DDT_CLIENTE_OBBLIGATORIO, la causale manda merce a un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account; VARIADIC: documento e codice della causale. ⭐ Rev 2026-11-03 (20261103-42, brief-db-addebito-trasporto-ordine §8.3, K-2/K-7/K-8): solleva i due motivi nuovi di script.fn_check_ddt_emittibile sugli oneri di bolla — E_DDT_EMISSIONE_SOLO_ONERI (righe attive, nessuna di merce; VARIADIC: documento) e E_DDT_ONERE_NON_FATTURABILE (un onere che non verrebbe mai fatturato: causale non fatturabile, anche se copiato, o onere senza legame su una bolla il cui ordine sorgente di testata fattura alla conferma; VARIADIC: documento e numero di riga). Qui e non in trgfn_ddt_guard_transizione: e'' il gate del valore della riga, e il LOOP per codice e'' fatto per crescere cosi''. CONFLITTO_STATO come i fratelli. Rev 2026-11-03 (20261103-48, brief-db-addebito-trasporto-ordine §10.2, T-3 bis): + E_DDT_TRASPORTO_NON_DOVUTO, l''onere di causale TRASPORTO su una bolla in porto ASSEGNATO o con addebito a TERZI; VARIADIC: documento, numero di riga, modalita'' leggibile.';
+IS 'Il gate all''emissione della bolla sul valore delle righe: scatta quando la bolla e'' nello stato di emissione (la colonna emissione di config.stati_doc_ddt) e solleva, uno per codice, i motivi di script.fn_check_ddt_emittibile, la stessa check della capability. La causale di trasporto e'' obbligatoria (in bozza il NULL resta legittimo); con una causale fatturabile ogni riga attiva ha un prezzo risolvibile (proprio o ereditato dalla riga d''ordine attraverso il legame di evasione); ogni riga attiva che porta un prezzo ha anche l''aliquota (E_DDT_RIGA_IVA_MANCANTE; nella frase il numero di riga, l''id nel contesto); se la causale manda merce a un cliente (config.causali_trasporto.richiede_cliente) la bolla ha il billing account (E_DDT_CLIENTE_OBBLIGATORIO); una bolla di soli oneri non si emette (E_DDT_EMISSIONE_SOLO_ONERI); un onere che non verrebbe mai fatturato si ferma (E_DDT_ONERE_NON_FATTURABILE: causale non fatturabile, o onere senza legame su una bolla il cui ordine di testata fattura alla conferma); l''onere di trasporto su una bolla in porto ASSEGNATO o con addebito a TERZI si ferma (E_DDT_TRASPORTO_NON_DOVUTO). Tutti CONFLITTO_STATO. Il nome nomina la sola causale ed e'' rimasto quello di quando il motivo era uno.';
 ```
 
 </div>

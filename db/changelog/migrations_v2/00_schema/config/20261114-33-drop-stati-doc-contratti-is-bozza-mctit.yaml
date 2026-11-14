@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VIA config.stati_doc_contratti.is_bozza: LA BOZZA E' LO STATO INIZIALE
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.19, giro 6c (D-BOZZA (a),
+#   Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il vocabolario del contratto marcava DRAFT due volte: iniziale (dove il
+#   documento nasce, e dal 2026-11-14 la bozza per lock e capability, D-LOCK)
+#   e is_bozza (dal 20260602-17), letta solo dallo snapshot is_draft_snapshot.
+#   Due marche per lo stesso significato possono divergere.
+#   ⚠️ Revoca la riga del 2026-10-24 (20261024-07), che teneva is_bozza perche'
+#   «dice "e' la bozza", non "si nasce qui"»: D-BOZZA (a) di Tid, 2026-11-14.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   DROP COLUMN is_bozza (col suo NOT NULL e il suo default). Lo snapshot la
+#   legge dallo stato iniziale dal 20_code/vendite/20261114-32. La colonna esce
+#   anche dal CSV del mirror (80_data/sql/config/stati_doc_contratti.csv):
+#   i caricatori vivi (20260520-08, 20260806-14) mappano le colonne
+#   dall'intestazione e non la elencano. Il COMMENT di
+#   vendite.contratti.is_draft_snapshot dice da dove viene oggi.
+#   Lettori di is_bozza sul catalogo di dbdev (2026-11-14): il solo montaggio
+#   del trigger; nessuna funzione, vista, vincolo o indice; niente in backend/
+#   e frontend/. Un pgTAP (vendite/test-contratto-attiva-spento-se-sovrapposto-v1,
+#   test 24) passa a iniziale nello stesso giro.
+#
+# ── ORDINE ──────────────────────────────────────────────────────────
+#   00_schema gira prima di 20_code, da zero e su ogni database (§11.14): qui
+#   la colonna esce, poi il -32 rimonta il trigger. Fra i due nessun changeSet
+#   scrive vendite.contratti; il montaggio vecchio, che nomina la colonna, non
+#   la legge finche' nessuno scrive.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   DROP COLUMN senza IF EXISTS: una colonna che non c'e' dove ci si aspetta e'
+#   un errore da vedere. Nessuna preCondition. Il rollback la ricrea come il
+#   20260602-17 e la valorizza da iniziale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261114-33-drop-stati-doc-contratti-is-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261114-33-drop-stati-doc-contratti-is-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira config.stati_doc_contratti.is_bozza: la bozza del contratto e' lo stato iniziale del
+        vocabolario (D-BOZZA (a)); lo snapshot is_draft_snapshot la legge da iniziale (20261114-32).
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6c.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                  DROP COLUMN is_bozza;
+
+              COMMENT ON COLUMN vendite.contratti.is_draft_snapshot IS
+                  'Il contratto e'' in bozza: lo stato iniziale del vocabolario (config.stati_doc_contratti.iniziale), copiato a ogni scrittura dal trigger trg_contratti_z90_snapshot_da_stato_ins_upd (vendite.trgfn_doc_snapshot_da_stato). Entra in partecipa_overlap_snapshot: un contratto in bozza non occupa il periodo (vincolo ex_contratti_no_overlap). Non si scrive direttamente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.stati_doc_contratti
+                  ADD COLUMN is_bozza BOOLEAN NOT NULL DEFAULT false;
+
+              UPDATE config.stati_doc_contratti SET is_bozza = iniziale;
+
+              COMMENT ON COLUMN config.stati_doc_contratti.is_bozza IS
+                  'TRUE per gli stati non vincolanti (bozza) che NON partecipano all''esclusivita'' anti-overlap dei contratti. Letto dal trigger snapshot (NEW.is_draft_snapshot). Simmetrico a is_abortito. rev 2026-06-02.';
+
+              COMMENT ON COLUMN vendite.contratti.is_draft_snapshot IS
+                  'Snapshot denormalizzato di config.stati_doc_contratti.is_bozza. Mantenuto dal trigger BEFORE sync snapshots. Un contratto in bozza NON partecipa al vincolo anti-overlap. Non modificare direttamente. rev 2026-06-02.';

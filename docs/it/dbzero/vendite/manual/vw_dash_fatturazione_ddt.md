@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_fatturazione_ddt`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Aggregata e rami gemelli:
@@ -61,7 +63,7 @@ che il motore considera sua. Fonte unica anche qui.
 | Situazione | `motivo_fermo` | Classe |
 |---|---|---|
 | tutto già fatturato / documento annullato | *(nessuno)* | — |
-| DDT in bozza | `DOC_BOZZA` | 🟢 FISIOLOGICO |
+| DDT in bozza (lo stato iniziale del vocabolario, colonna `iniziale`) | `DOC_BOZZA` | 🟢 FISIOLOGICO |
 | **non ha ancora raggiunto lo stato che fattura** | `IN_TRANSITO` | 🟢 FISIOLOGICO |
 | dallo stato-trigger in poi, mai pushato | `PUSH_NON_ESEGUITO` | 🟠 RECUPERABILE |
 | idem, pushato solo in parte | `PUSH_PARZIALE` | 🟠 RECUPERABILE |

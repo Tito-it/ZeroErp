@@ -1,0 +1,196 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ANNULLO DELLA BOLLA: LO STATO DI ANNULLO DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.21, giro 6d (S-2,
+#   Tid 2026-11-08; via di Tid del 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.fn_annulla_ddt chiedeva al verbo di stato 'ANNULLATO', col codice.
+#   Lo stato di annullo lo marca il vocabolario (is_abortito), e il verbo
+#   d'annullo dell'ordine lo legge da li' dal 20261025-76.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   La destinazione e' script.fn_doc_stato_codice('vendite.ddt',
+#   script.fn_stato_abortito_id('vendite.ddt')), come vendite.fn_annulla_ordine.
+#   Stato di annullo assente: il verbo di stato rifiuta
+#   (E_STATO_WORKFLOW_NON_TROVATO). Con il seed la risposta e' quella di prima.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma, SECURITY DEFINER e search_path bloccato
+#   (pg_proc su dbdev, 2026-11-14). Il COMMENT, che era una cronaca, e'
+#   riscritto al presente.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-14; la firma, coi suoi %TYPE, dal
+#   changeSet che l'ha scritta per ultimo (il catalogo li scioglie). Il
+#   rollback porta il corpo e il COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-38-update-fn-annulla-ddt-stato-di-annullo-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261114-38-update-fn-annulla-ddt-stato-di-annullo-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_annulla_ddt: lo stato di annullo dalla colonna is_abortito del vocabolario, non dal
+        codice ANNULLATO. Brief: brief-db-stati-documento-dal-vocabolario, giro 6d.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_ddt(
+                  p_ddt_id            vendite.ddt.id%TYPE,
+                  p_legami_confermati integer DEFAULT NULL)
+              RETURNS TABLE(
+                  movimento_id magazzino.movimenti.id%TYPE,
+                  prelievo_id  vendite.ddt_righe_prelievi.id%TYPE,
+                  qta          magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+
+              #variable_conflict use_column
+              -- =========================================================
+              -- Scopo: annullare una bolla. Con legami: conferma e ritiro dal
+              --   BB vendite.fn_documento_ritira_legami, poi lo stato dal verbo
+              --   di stato. p_legami_confermati e' un CONTEGGIO: tipo nudo.
+              --   Vedi l'intestazione del changeSet.
+              -- Ritorna: i movimenti di storno del verbo di stato (nessuno se
+              --   la bolla non muove merce).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_ddt_id IS NULL OR p_ddt_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_ddt_id', p_ddt_id),
+                          NULL::uuid, 'vendite.fn_annulla_ddt',
+                          'p_ddt_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.ddt d
+                   WHERE d.id = p_ddt_id
+                     AND script.fn_scope_ef_whitelist_via_ddt(v_utente, d.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
+                  PERFORM vendite.fn_documento_ritira_legami('DDT_VENDITA', p_ddt_id, p_legami_confermati);
+
+                  -- 4. Lo stato, dal verbo di stato: matrice, permesso, storno. Lo stato
+                  --    di annullo e' quello che il vocabolario marca (is_abortito; rev
+                  --    2026-11-14, giro 6d), come in vendite.fn_annulla_ordine.
+                  RETURN QUERY
+                      SELECT c.movimento_id, c.prelievo_id, c.qta
+                        FROM vendite.fn_cambia_stato_ddt(
+                                 p_ddt_id,
+                                 script.fn_doc_stato_codice('vendite.ddt'::regclass,
+                                                            script.fn_stato_abortito_id('vendite.ddt'::regclass))) AS c;
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_ddt(p_ddt_id vendite.ddt.id%TYPE, p_legami_confermati integer)
+              IS 'VERBO: annulla una bolla. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt; fuori perimetro E_DDT_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma dichiara quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''DDT_VENDITA'', id): legami con ordini e resi, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso emetti_ddt sull''annullo di una emessa, storno del magazzino), verso lo stato di annullo che il vocabolario marca (is_abortito, script.fn_stato_abortito_id); ne restituisce i movimenti, e la porta del ritiro si chiude. Una transazione. Una bolla senza legami non ha niente da confermare. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_annulla_ddt(
+                  p_ddt_id            vendite.ddt.id%TYPE,
+                  p_legami_confermati integer DEFAULT NULL)
+              RETURNS TABLE(
+                  movimento_id magazzino.movimenti.id%TYPE,
+                  prelievo_id  vendite.ddt_righe_prelievi.id%TYPE,
+                  qta          magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+
+              #variable_conflict use_column
+              -- =========================================================
+              -- Scopo: annullare una bolla. Con legami: conferma e ritiro dal
+              --   BB vendite.fn_documento_ritira_legami, poi lo stato dal verbo
+              --   di stato. p_legami_confermati e' un CONTEGGIO: tipo nudo.
+              --   Vedi l'intestazione del changeSet.
+              -- Ritorna: i movimenti di storno del verbo di stato (nessuno se
+              --   la bolla non muove merce).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_ddt_id IS NULL OR p_ddt_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_ddt_id', p_ddt_id),
+                          NULL::uuid, 'vendite.fn_annulla_ddt',
+                          'p_ddt_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.ddt d
+                   WHERE d.id = p_ddt_id
+                     AND script.fn_scope_ef_whitelist_via_ddt(v_utente, d.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_ddt',
+                          'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
+                  PERFORM vendite.fn_documento_ritira_legami('DDT_VENDITA', p_ddt_id, p_legami_confermati);
+
+                  -- 4. Lo stato, dal verbo di stato: matrice, permesso, storno.
+                  RETURN QUERY
+                      SELECT c.movimento_id, c.prelievo_id, c.qta
+                        FROM vendite.fn_cambia_stato_ddt(p_ddt_id, 'ANNULLATO') AS c;
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_ddt(p_ddt_id vendite.ddt.id%TYPE, p_legami_confermati integer)
+              IS 'VERBO (2026-10-11; brief-db-ddt-righe-evase-dall-ordine D-8, riallineato da brief-db-annullo-documento-con-legami D-4): annulla una bolla. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt; fuori perimetro E_DDT_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''DDT'', id): legami con ordini e resi, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso emetti_ddt sull''annullo di una emessa, storno del magazzino), di cui restituisce i movimenti, e la porta del ritiro si chiude. UNA transazione. Una bolla senza legami non ha niente da confermare. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app. ⭐ rev 2026-10-19 (20261019-60, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
