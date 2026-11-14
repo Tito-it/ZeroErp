@@ -3,7 +3,7 @@
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
 **Riparte: il team DB**, col giro 6a (il preventivo, §6.15). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
-(Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1) e il team FE
+(Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
 Il giro 1 è applicato, verde e mergiato (2026-11-13); il BE ha fatto R-2 (`e174a302e2`), quindi nel giro 5 la
@@ -1042,11 +1042,14 @@ e il token `NULL` è già misurato (§11.2). Esito con l'estratto, sui **129** p
 `doc_esito` e `doc_terminale` come prima. Cambia un valore: il reso confermato non è più terminale nel percorso della
 pratica (`PraticaPercorso.vue` mostra il Tag dello stato finché il documento non è terminale: è il comportamento voluto
 da S-5). Il codice d'errore nuovo lo solleva solo chi scrive la configurazione: niente nella tassonomia di `api.md`.
-Una sola richiesta di documentazione:
+⚠️ *Corretto il 2026-11-14 (segnalazione del BE):* la frase sopra bastava per la tassonomia, non per l'elenco.
+`backend/apps/core/services/error_policies_generated.py` ricopia **tutto** il catalogo, quindi ogni codice nuovo in
+`codici_errore.csv` vuole la rigenerazione, chiunque lo sollevi. Le richieste sono due:
 
 | # | File | Che cosa |
 | --- | --- | --- |
 | BE-T1 | `docs/it/backend/pratiche/manual/api_percorso.md:121` | `doc_terminale` non vuol dire «il documento non evolverà più»: vuol dire «da questo stato non esce nessun passaggio a mano; il sistema può ancora spostarlo» (S-1, A) |
+| BE-T2 | `backend/apps/core/services/error_policies_generated.py` | rigenerare (`manage.py genera_error_policies`): entra `E_DOC_TERMINALE_CON_USCITA_MANUALE` (`DATO_ERRATO`, id 1483). Va bene nello stesso giro della rigenerazione chiesta dal cantiere dei template (`20261114-01 … -04`) |
 
 #### ⑩ Trovato dal giro 4: ANNULLATA della fattura — ✅ deciso da Tid il 2026-11-14 (a), fatto nel §6.13
 
