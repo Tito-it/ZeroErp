@@ -14,9 +14,9 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -78,6 +78,18 @@ class EsitoPermesso:
 _CONSENTITO = EsitoPermesso(consentito=True)
 
 
+# I ruoli del modello che `PassaggioDocumento` sa leggere dal vocabolario, col
+# metodo di `DocumentoModelloRepository` che legge lo stato di quel ruolo.
+RuoloDelModello = Literal["emissione", "annullo", "iniziale", "accettazione", "rifiuto"]
+_LETTORI_DEL_RUOLO: dict[str, str] = {
+    "emissione": "stato_di_emissione",
+    "annullo": "stato_di_annullo",
+    "iniziale": "stato_iniziale",
+    "accettazione": "stato_di_accettazione",
+    "rifiuto": "stato_di_rifiuto",
+}
+
+
 # Scopo: BB — il permesso di un CAMBIO DI STATO di un documento portato al
 #        modello (guida `modello-documento-di-vendita.md` §6, M-3): l'azione
 #        di processo non si dichiara sulla view, si legge dalla riga del
@@ -98,6 +110,13 @@ _CONSENTITO = EsitoPermesso(consentito=True)
 #        documento nasce: «riporta in bozza» del lotto, §15.13). Un codice
 #        fissato alla definizione della view sarebbe un letterale spostato. ⛔ Esclusivo con
 #        `stato_chiesto`; un vocabolario che non lo dichiara -> None;
+#        stato_del_campo — il valore del campo `campo_stato` e' una PAROLA
+#        dell'API che nomina un ruolo del modello (l'esito dell'offerta:
+#        `ACCETTATA` -> "accettazione", `RIFIUTATA` -> "rifiuto"): lo stato
+#        chiesto e' lo stato di quel ruolo, letto dal vocabolario a ogni
+#        richiesta, non la parola. Una parola fuori mappa -> None (la
+#        rifiuta il service). ⛔ Esclusivo con `stato_chiesto` e
+#        `stato_del_modello` (brief-db-stati-documento-dal-vocabolario §6.9);
 #        campo_stato — il campo del corpo con lo stato chiesto (`stato_codice`;
 #        il preventivo usa `nuovo_stato`);
 #        risolvi_documento — per una rotta il cui parametro non e' l'id del
@@ -111,15 +130,27 @@ class PassaggioDocumento:
     stato_chiesto: str | None = None
     campo_stato: str = "stato_codice"
     risolvi_documento: Callable[[int], int | None] | None = None
-    stato_del_modello: Literal["emissione", "annullo", "iniziale"] | None = None
+    stato_del_modello: RuoloDelModello | None = None
+    # ⚠️ Fuori dall'hash: una mappa non e' hashable, e il passaggio resta un
+    #    valore confrontabile come gli altri campi.
+    stato_del_campo: Mapping[str, RuoloDelModello] | None = field(default=None, hash=False)
 
     # Errore di cablaggio, quindi alla definizione della view e non a una
-    # richiesta: due fonti dello stato chiesto non si sa quale valga.
+    # richiesta: due fonti dello stato chiesto non si sa quale valga, e un
+    # ruolo che il BB non sa leggere sarebbe un KeyError a ogni richiesta.
     def __post_init__(self) -> None:
-        if self.stato_del_modello is not None and self.stato_chiesto is not None:
+        fonti = [self.stato_chiesto, self.stato_del_modello, self.stato_del_campo]
+        if sum(f is not None for f in fonti) > 1:
             raise ValueError(
-                "PassaggioDocumento: `stato_del_modello` e `stato_chiesto` sono esclusivi"
+                "PassaggioDocumento: `stato_chiesto`, `stato_del_modello` e "
+                "`stato_del_campo` sono esclusivi"
             )
+        ruoli = set(self.stato_del_campo.values()) if self.stato_del_campo else set()
+        if self.stato_del_modello is not None:
+            ruoli.add(self.stato_del_modello)
+        ignoti = ruoli - set(_LETTORI_DEL_RUOLO)
+        if ignoti:
+            raise ValueError(f"PassaggioDocumento: ruoli del modello ignoti {sorted(ignoti)}")
 
     # Scopo: L'azione che il passaggio chiede in questa richiesta, o None (riga
     #        senza azione, o nessuna riga: decide il livello sul documento, e il
@@ -129,11 +160,16 @@ class PassaggioDocumento:
     def azione(self, view: Any) -> str | None:
         parametro = view.kwargs.get(self.documento_kwarg)
         stato = self.stato_chiesto
-        if stato is None and self.stato_del_modello is None:
+        ruolo = self.stato_del_modello
+        if stato is None and ruolo is None:
             valore = corpo_oggetto(view.request).get(self.campo_stato)
             stato = valore.strip() if isinstance(valore, str) else None
             if not stato:
                 return None
+            if self.stato_del_campo is not None:
+                ruolo = self.stato_del_campo.get(stato)
+                if ruolo is None:
+                    return None
         if parametro is None:
             return None
         documento_id: int | None = int(parametro)
@@ -142,13 +178,8 @@ class PassaggioDocumento:
         if documento_id is None:
             return None
         repo = DocumentoModelloRepository()
-        if self.stato_del_modello is not None:
-            lettori = {
-                "emissione": repo.stato_di_emissione,
-                "annullo": repo.stato_di_annullo,
-                "iniziale": repo.stato_iniziale,
-            }
-            letto = lettori[self.stato_del_modello](self.testata)
+        if ruolo is not None:
+            letto = getattr(repo, _LETTORI_DEL_RUOLO[ruolo])(self.testata)
             if letto is None:
                 return None
             stato = letto.codice

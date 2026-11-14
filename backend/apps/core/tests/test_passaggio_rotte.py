@@ -20,6 +20,7 @@ Indice test eseguiti:
 5) PassaggioTestataDbTests.test_la_testata_e_sul_modello — mappa + matrice con l'azione
 6) PassaggioTestataDbTests.test_emetti_ha_lo_stato_di_emissione — ogni «Emetti» sul modello si emette
 7) PassaggioTestataDbTests.test_iniziale_ha_lo_stato_iniziale — ogni rotta verso lo stato iniziale lo trova
+8) PassaggioTestataDbTests.test_ogni_ruolo_dichiarato_ha_il_suo_stato — ogni ruolo letto dal vocabolario (`stato_del_modello`, `stato_del_campo`) c'e' nella testata
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ import unittest
 from django.db import connection
 from django.test import SimpleTestCase
 
-from apps.core.api.permissions import PassaggioDocumento, ZeroERPPermission
+from apps.core.api.permissions import _LETTORI_DEL_RUOLO, PassaggioDocumento, ZeroERPPermission
 from apps.core.api.rotte import Rotta, rotte_servite
 from apps.core.db.documento_modello_repository import DocumentoModelloRepository
 from apps.core.tests.db_e2e import richiedi_db_provvisto
@@ -142,3 +143,24 @@ class PassaggioTestataDbTests(unittest.TestCase):
         for testata in testate:
             with self.subTest(testata=testata):
                 self.assertIsNotNone(repo.stato_iniziale(testata))
+
+    # ⭐ Ogni ruolo che una rotta legge dal vocabolario, fisso
+    #    (`stato_del_modello`) o scelto dalla parola del corpo
+    #    (`stato_del_campo`: l'esito dell'offerta, brief-db-stati-documento-dal-
+    #    vocabolario §6.9), ha il suo stato nella testata. Senza,
+    #    `PassaggioDocumento` risponderebbe None e il passaggio passerebbe col
+    #    solo livello sul documento, in silenzio.
+    def test_ogni_ruolo_dichiarato_ha_il_suo_stato(self) -> None:
+        coppie: set[tuple[str, str]] = set()
+        for _, _, p in _dichiarazioni():
+            if p.stato_del_modello is not None:
+                coppie.add((p.testata, p.stato_del_modello))
+            for ruolo in (p.stato_del_campo or {}).values():
+                coppie.add((p.testata, ruolo))
+        self.assertIn(("vendite.offerte_commerciali", "rifiuto"), coppie)
+        self.assertIn(("vendite.offerte_commerciali", "accettazione"), coppie)
+        repo = DocumentoModelloRepository()
+        for testata, ruolo_dichiarato in sorted(coppie):
+            with self.subTest(testata=testata, ruolo=ruolo_dichiarato):
+                lettore = getattr(repo, _LETTORI_DEL_RUOLO[ruolo_dichiarato])
+                self.assertIsNotNone(lettore(testata))

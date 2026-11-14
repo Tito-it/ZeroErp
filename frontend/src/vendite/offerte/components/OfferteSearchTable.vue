@@ -34,7 +34,6 @@ import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { useStoreFilterBindings } from '../../../core/composables/useStoreFilterBindings'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
-import { STATI_OFFERTA_SEGNALA_SCADENZA } from '../constants'
 import { exportOfferte } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
 import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
@@ -203,11 +202,12 @@ onMounted(() => store.fetchList())
           </span>
         </template>
 
-        <!-- Stato: Tag severity + badge "scaduta" condizionale. -->
+        <!-- Stato: Tag severity + badge «scaduta» dal solo flag della vista
+             (validita' passata e nessun esito del cliente: D-SCAD). -->
         <template #cell-stato="{ data }">
           <Tag :value="data.stato_descrizione" :severity="statoOffertaSeverity(data.stato_codice_interno)" />
           <Tag
-            v-if="data.is_scaduta && STATI_OFFERTA_SEGNALA_SCADENZA.includes(data.stato_codice_interno)"
+            v-if="data.is_scaduta"
             :value="t('vendite.offerte.badge_scaduta')"
             severity="warn"
             style="margin-left: 0.25rem;"

@@ -21,11 +21,12 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 1) OffertaCambiaStatoDbTests.test_emetti_dal_verbo
 2) OffertaCambiaStatoDbTests.test_emetti_senza_azione — E_PERMESSO_NEGATO dalla riga del passaggio
 3) OffertaCambiaStatoDbTests.test_il_secondo_emetti_e_rifiutato — E_DOC_GIA_NELLO_STATO
-4) OffertaCambiaStatoDbTests.test_rifiuto_senza_motivazione_e_con — E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA (campo `motivazione`), poi RIFIUTATA
+4) OffertaCambiaStatoDbTests.test_rifiuto_senza_motivazione_e_con — E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA (campo `motivazione`), poi RIFIUTATA dal vocabolario
 5) OffertaCambiaStatoDbTests.test_annullo_della_bozza_senza_azione_vuole_la_motivazione — M-4, O-3
 6) OffertaCambiaStatoDbTests.test_annullo_di_una_revisione_chiede_la_conferma — O-4: legami, rifiuto, conferma
 7) OffertaCambiaStatoDbTests.test_accettazione_con_motivazione_e_rifiutata — E_OFFERTA_MOTIVAZIONE_NON_AMMESSA (campo `motivazione`), poi ACCETTATA dal vocabolario
 8) OffertaCambiaStatoDbTests.test_revisione_di_un_offerta_che_non_ce — E_OFFERTA_NON_TROVATA dal verbo (R-1)
+9) OffertaCambiaStatoDbTests.test_dettaglio_scaduta_dalla_vista — `is_scaduta` del dettaglio = quella della lista (D-SCAD)
 """
 from __future__ import annotations
 
@@ -130,7 +131,10 @@ class OffertaCambiaStatoDbTests(unittest.TestCase):
         self.assertEqual(self._stato()["stato"], "EMESSA")
 
     # L'obbligo della motivazione lo dice la riga del passaggio, al verbo (O-3):
-    # il service non la controlla piu'. Vuota o di soli spazi = assente.
+    # il service non la controlla piu'. Vuota o di soli spazi = assente. Lo
+    # stato di arrivo lo legge `registra_rifiuto` dal vocabolario (colonna
+    # `rifiuto`, `script.fn_stato_rifiuto_id`: brief-db-stati-documento-dal-
+    # vocabolario §6.7): qui la chiamata e' reale, e prova il binding.
     def test_rifiuto_senza_motivazione_e_con(self) -> None:
         self._concedi_emetti_offerta()
         self.servizio.emetti(self.offerta_id)
@@ -214,3 +218,35 @@ class OffertaCambiaStatoDbTests(unittest.TestCase):
         self.servizio.annulla(revisione_id, motivazione="sbagliata", legami_confermati=legami["legami"])
         self.assertEqual(self._stato(revisione_id)["stato"], "ANNULLATA")
         self.assertEqual(self._stato()["stato"], "EMESSA")
+
+    # D-SCAD (brief-db-stati-documento-dal-vocabolario §6.8): il dettaglio porta
+    # `is_scaduta` letto dalla vista della lista, la sede della regola. La
+    # bozza con la validita' passata e' scaduta (il cliente non ha risposto);
+    # annullata non lo e' piu' (lo stato ha un esito). In tutti e due i casi il
+    # dettaglio dice cio' che dice la vista: niente ricalcolo nel backend.
+    def test_dettaglio_scaduta_dalla_vista(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "UPDATE vendite.offerte_commerciali"
+                "   SET validita_dal = script.fn_data_operativa() - 10,"
+                "       validita_al  = script.fn_data_operativa() - 1"
+                " WHERE id = %s",
+                [self.offerta_id],
+            )
+
+        self.assertIs(self.servizio.get_offerta(self.offerta_id)["is_scaduta"], True)
+        self.assertIs(self._scaduta_in_lista(), True)
+
+        self.servizio.annulla(self.offerta_id, motivazione="validita' passata")
+        self.assertIs(self.servizio.get_offerta(self.offerta_id)["is_scaduta"], False)
+        self.assertIs(self._scaduta_in_lista(), False)
+
+    def _scaduta_in_lista(self) -> bool:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT is_scaduta FROM vendite.vw_offerte_commerciali_lista WHERE id = %s",
+                [self.offerta_id],
+            )
+            riga = cur.fetchone()
+        assert riga is not None
+        return bool(riga[0])

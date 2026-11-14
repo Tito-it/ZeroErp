@@ -27,11 +27,12 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Literal
 
 from django.db import transaction
 
@@ -41,6 +42,7 @@ from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.documento_modello import (
     stato_di_accettazione,
     stato_di_emissione,
+    stato_di_rifiuto,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
@@ -134,14 +136,15 @@ _CAMPO_MOTIVAZIONE = "motivazione"
 
 # Codici stato documento (chiavi naturali `codice_interno` in
 # config.stati_doc_offerte) che il service nomina: la bozza dell'eliminazione e
-# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione ne' l'annullo, che
-# li dice il vocabolario (`stato_di_emissione`, `stato_di_accettazione`; lo
-# stato d'annullo lo sceglie `vendite.fn_annulla_offerta`), e non gli stati di
-# partenza dei passaggi.
-# ⚠️ `ACCETTATA` resta come PAROLA dell'API: il valore di `esito` che la rotta
-#    dell'esito accetta (`_ESITI`, il ChoiceField della view). Lo stato che
-#    l'accettazione scrive lo legge `registra_accettazione` dal vocabolario
-#    (brief-modello-documento-vendita §17.6 BE-T2).
+# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione, il rifiuto ne'
+# l'annullo, che li dice il vocabolario (`stato_di_emissione`,
+# `stato_di_accettazione`, `stato_di_rifiuto`; lo stato d'annullo lo sceglie
+# `vendite.fn_annulla_offerta`), e non gli stati di partenza dei passaggi.
+# ⚠️ `ACCETTATA` e `RIFIUTATA` restano come PAROLE dell'API: i valori di
+#    `esito` che la rotta dell'esito accetta (`ESITI`, che legge anche il
+#    ChoiceField della view). Lo stato che l'esito scrive lo leggono `registra_accettazione` e
+#    `registra_rifiuto` dal vocabolario (brief-modello-documento-vendita §17.6
+#    BE-T2; brief-db-stati-documento-dal-vocabolario §6.7).
 class StatoOfferta:
     BOZZA = "BOZZA"
     ACCETTATA = "ACCETTATA"
@@ -154,9 +157,17 @@ class StatoOfferta:
 # chiamava `_ESITI_AMMESSI_DA_EMESSA` e insieme a `_STATI_DA_EMESSA`,
 # `_STATI_PUSHABILI` e `_STATI_TERMINALI` ripeteva la matrice e i guard delle
 # madri (revisione, push): ritirati (§13.6 punto 4).
-_ESITI: frozenset[str] = frozenset(
-    {StatoOfferta.ACCETTATA, StatoOfferta.RIFIUTATA}
-)
+# ⭐ Ogni parola nomina il ruolo del modello che lo stato scritto ha nel
+#    vocabolario (colonne `accettazione` e `rifiuto`): la stessa mappa la legge
+#    il permesso della rotta (`PassaggioDocumento(stato_del_campo=...)`), cosi'
+#    la riga della matrice che si guarda e' quella dello stato che il verbo
+#    scrive, non quella della parola (brief-db-stati-documento-dal-vocabolario
+#    §6.9).
+RUOLO_DEGLI_ESITI: Mapping[str, Literal["accettazione", "rifiuto"]] = MappingProxyType({
+    StatoOfferta.ACCETTATA: "accettazione",
+    StatoOfferta.RIFIUTATA: "rifiuto",
+})
+ESITI: frozenset[str] = frozenset(RUOLO_DEGLI_ESITI)
 
 
 # Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
@@ -846,7 +857,9 @@ class OfferteService:
 
     # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Il trigger DB
     #        valorizza `data_rifiuto`; la motivazione la scrive il verbo in
-    #        `motivazione_rifiuto`.
+    #        `motivazione_rifiuto`. Lo stato di arrivo dal vocabolario (colonna
+    #        `rifiuto`, brief-db-stati-documento-dal-vocabolario §6.7), non
+    #        `StatoOfferta.RIFIUTATA`.
     #        ⭐ Che la motivazione sia obbligatoria lo dice la riga del passaggio
     #        (`requires_motivazione`), al verbo:
     #        E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, al client col campo
@@ -855,8 +868,11 @@ class OfferteService:
     def registra_rifiuto(
         self, offerta_id: int, *, motivazione: Any
     ) -> dict[str, Any]:
+        stato = stato_di_rifiuto(
+            TESTATA_OFFERTE, function_name="offerte_service.registra_rifiuto",
+        )
         return self._cambia_stato(
-            offerta_id, stato_codice=StatoOfferta.RIFIUTATA,
+            offerta_id, stato_codice=stato.codice,
             motivazione=self._motivazione(motivazione),
         )
 
@@ -872,10 +888,10 @@ class OfferteService:
         self, offerta_id: int, *, esito: str, motivazione: Any = None
     ) -> dict[str, Any]:
         ErrorManager.require(
-            esito in _ESITI,
+            esito in ESITI,
             code=E_VENDITE_VALIDATION,
             message="Esito non valido.",
-            detail=f"Atteso uno tra {sorted(_ESITI)}, ricevuto {esito!r}.",
+            detail=f"Atteso uno tra {sorted(ESITI)}, ricevuto {esito!r}.",
             context={"offerta_id": offerta_id, "esito": esito, "field": "esito"},
         )
         if esito == StatoOfferta.ACCETTATA:
