@@ -26,6 +26,7 @@
 | CHECK | chk_automation_rules_tbl_name_template_non_vuoto |  |
 | CHECK | chk_automation_rules_tbl_regola_valida |  |
 | CHECK | chk_automation_rules_tbl_rule_type |  |
+| CHECK | chk_automation_rules_tbl_target_table_nome_esatto |  |
 | PRIMARY KEY | automation_rules_tbl_pkey | id |
 
 ## 📑 Indici

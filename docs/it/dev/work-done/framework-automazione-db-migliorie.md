@@ -2,19 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-13
 
-**Riparte: nessuno.** Il brief è archiviato: le voci sono chiuse, superate dal modello della convergenza, o scartate da Tid
-(2026-11-13). L'ultimo residuo (§2.4, la riga di `automation_delete_block` fuori ambito) è stato chiuso nello stesso giro
-dell'archiviazione.
+**Riparte: Tid, per apply, pgTAP e commit (passo 6); poi nessuno.** Il brief è archiviato: le voci sono chiuse, superate
+dal modello della convergenza, o scartate da Tid (2026-11-13). I due residui di §2.4 (la riga di `automation_delete_block`
+fuori ambito, `ILIKE r.target_table`) sono stati chiusi nello stesso giro dell'archiviazione.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Riverifica voce per voce contro lo stato del 2026-11-13 | §5 | — |
 | 2 | ✅ Tid | Scartati i punti facoltativi (§1.3, §3.1, §3.2, il WARNING su `target_schema` di §2.4); unico residuo da chiudere: §2.4 delete_block | §5 | 1 |
 | 3 | ✅ sessione DB | Presidio della riga attiva fuori ambito (test 3 e 18 di `test-delete-block-convergenza-v1`), guida §4.4 e pagine `manual/` | §2.4 | 2 |
-| 4 | Tid | Esecuzione del pgTAP modificato e commit | `db/pgtap/dbops/test-delete-block-convergenza-v1.sql` | 3 |
+| 4 | ✅ Tid | `ILIKE r.target_table` (§2.4): strada (b), nome esatto, chiuso subito (2026-11-13) | §2.4 | 1 |
+| 5 | ✅ sessione DB | CHECK `20261112-66` e dieci funzioni `20261112-67` … `-76`, pgTAP, doc; provati su dbdev in `ROLLBACK` | §2.4 | 4 |
+| 6 | Tid | Apply, pgTAP modificati (`test-delete-block-convergenza-v1`, `test-registro-regole-vincoli-v1`) e commit | `db/pgtap/dbops/` | 3, 5 |
 
-**Decisioni aperte di Tid:** il residuo `ILIKE r.target_table` (§2.4): brief nuovo o chiuso subito.
-**Da committare:** il giro del 2026-11-13 (test, guida, due pagine `manual/`, questo spostamento e i link).
+**Decisioni aperte di Tid:** nessuna.
+**Da committare:** il giro del 2026-11-13 (changeSet, test, guida, pagine `manual/`, questo spostamento e i link).
 
 > (creato 02-03-26)
 >
@@ -92,10 +94,30 @@ ferma il runner (SCONOSCIUTO), e i presidi lo vedono: `test-delete-block-converg
   dei lock, fuori ambito non c'è il trigger montato da una migrazione: la tabella entra nell'ambito, o la riga resta
   spenta (guida `automazione-db.md` §4.4, pagina `manual/` di `automation_delete_block`). Fatto datato: su scratch e
   dbdev, il 2026-11-13, le otto righe accese erano tutte in ambito.
-- ⏳ **`ILIKE r.target_table`** (residuo di `brief-db-revisione-dbops` §27.8, indirizzato qui): `target_table` è un modello
-  LIKE, e `_` vi fa da jolly, quindi una regola su `event_log` copre anche una `eventXlog`. Sta in
-  `dbops.fn_cleanup_at_regola` e nel ciclo del purge di `fn_run_automations_cleanup`. Non toccato perché cambia il
-  significato di ogni regola del registro. **Decide Tid**: brief nuovo o chiuso subito.
+- ✅ **`ILIKE r.target_table`** (residuo di `brief-db-revisione-dbops` §27.8, indirizzato qui): `target_table` era letto
+  come modello LIKE, e `_` vi faceva da jolly, quindi una regola su `event_log` copriva anche una `eventXlog`.
+  **Deciso (Tid, 2026-11-13): strada (b)**, `target_table` è `'*all'` o il nome esatto di una tabella. Il «dove» lo dice
+  già l'ambito (`automation_scope.table_like`, un modello per costruzione); una regola mirata è l'eccezione di una
+  tabella. Scartata la strada (a), il `_` letterale con il modello conservato: un secondo «dove», doppione dell'ambito.
+  Chiuso lo stesso giorno:
+    - `90_end/20261112-66`: CHECK `chk_automation_rules_tbl_target_table_nome_esatto` (`'*all'`, o minuscolo, lettere,
+      cifre e `_`, al più 63 caratteri). Nessuna riga fuori forma su dbdev e scratch: nessuna bonifica;
+    - `20_code/dbops/20261112-67` … `-76`: i **dieci** lettori passano a `=` e a `'*all'` canonico. Il censimento sul
+      catalogo ne ha trovati dieci, non i due scritti qui sopra: `fn_run_automations_tx_id`, `_audit_update`,
+      `_storico`, `_storico_provision`, `_date_validita`, `_codice_maiuscolo`, `_cleanup`, `_attivo`,
+      `fn_lock_columns_divergenze`, `fn_cleanup_at_regola`. Testate ri-ancorate con `%TYPE` (linee-guida-sql §5g), firme
+      e risultati identici al vivo;
+    - `test-registro-regole-vincoli-v1`, test 20-24: il CHECK rifiuta `pgtap_%` e `*ALL`; ⭐ presidio: nessuna funzione
+      confronta `target_table` con `LIKE`/`ILIKE`; una regola su `pgtap_a_b` non vale per `pgtap_axb`;
+    - prove su dbdev (`prova_changeset.py`, `ROLLBACK`; lo scratch era occupato da un altro pgTAP): il test 20 → 24 ok
+      su 24, e senza l'estratto rossi solo i quattro nuovi (20, 21, 22, 24); verdi e invariati con l'estratto
+      `test-lock-columns-convergenza`, `test-cleanup-framework`, `test-cleanup-at-regola-unica-v1`,
+      `test-automazione-attivo-eccezioni-v1`, `test-storico-salto-trigger-presente-v1`,
+      `test-tx-id-coerenza-non-registrato`, `test-delete-block-convergenza-v1`;
+    - doc: guida `automazione-db.md` (la riga di `target_table`, che diceva anche «NULL per tutte», falso), pagine
+      `manual/` del registro e delle dieci funzioni.
+  Fuori da questo giro, per scelta: `fn_table_in_scope` usa `LIKE` su `automation_scope.table_like`, dove il modello
+  è voluto (lì il `_` resta un jolly).
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_storico`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -44,7 +44,7 @@ runner che crea le shadow.
 
 Le tabelle ordinarie degli schemi dell'ambito, tolto `storico`, che passano il filtro per tabella. Per
 ciascuna valgono le regole `STORICO` attive del registro il cui bersaglio di schema e di tabella la
-comprende (`*all`, o un pattern sul nome) e il cui modo di esecuzione è `AUTO` o quello della corsa.
+comprende (`*all`, o il nome esatto della tabella) e il cui modo di esecuzione è `AUTO` o quello della corsa.
 
 Il trigger si monta solo se esiste `storico.<tabella>`: la shadow la crea un altro runner. Due madri
 omonime in schemi diversi hanno la stessa shadow, e ricevono entrambe il trigger.
@@ -139,6 +139,11 @@ nome.
 * 2026-11-08 — il trigger si riconosce dalla funzione: la strategia d'esistenza della regola esce; il
   nome viene solo dal template della regola, senza il ripiego `trg_z90_<tabella>_storico_upd_dlt`,
   diverso dal seed (`20261109-70`, brief-db-revisione-dbops D17, D20).
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-69`).
 
 ---
 

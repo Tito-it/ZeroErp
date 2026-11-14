@@ -20,13 +20,16 @@ DECLARE
   -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
   --   dalle due chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
   v_schemas text[];
   rtab record;
   rrule record;
+  -- la tabella del giro come OID: nessuna colonna la porta
   rel  regclass;
+  -- esito calcolato qui: nessuna colonna ne e' il riflesso
   has_txid boolean;
-  tmpl     text;
-  trg_name text;
+  tmpl     dbops.automation_rules_tbl.name_template%TYPE;
+  trg_name pg_catalog.pg_trigger.tgname%TYPE;
 BEGIN
 
 
@@ -45,7 +48,7 @@ BEGIN
     - rule_type = 'TX_ID'
     - exec_mode = 'AUTO' oppure exec_mode = p_exec_mode
     - match su schema (dbops.fn_schema_match)
-    - match su tabella: '*ALL' oppure pattern ILIKE su r.target_table
+    - match su tabella: '*all' oppure il nome esatto (r.target_table = tabella)
   4) verifica la pre-condizione tecnica: la tabella deve avere una colonna tx_id di tipo uuid
     (information_schema.columns).
     Se la colonna non esiste, la tabella viene ignorata (non crea colonne, crea solo trigger).
@@ -95,7 +98,7 @@ BEGIN
       WHERE r.enabled
         AND upper(btrim(r.rule_type))='TX_ID'
         AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-        AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+        AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
         --AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
         AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
       ORDER BY r.priority, r.id

@@ -115,7 +115,7 @@ Le **regole** (`dbops.automation_rules_tbl`, seminata dal CSV `80_data/sql/dbops
 | -------------------- | -------------------------------------------------------------------------- |
 | `rule_type`          | Tipo di automazione (TX_ID, AUDIT_UPDATE, STORICO, ecc.)                   |
 | `target_schema`      | Schema target — `'*all'` per tutti gli schemi nell'ambito                  |
-| `target_table`       | Pattern LIKE per le tabelle (es. `foo_%`) oppure NULL per tutte            |
+| `target_table`       | `'*all'` per tutte le tabelle dell'ambito, o il nome esatto di una tabella |
 | `name_template`      | Template per il nome del trigger/oggetto generato                          |
 | `params`             | Parametri JSON specifici per la regola                                     |
 | `exec_mode`          | Quando eseguire: `AUTO`, `CI`, `SCHEDULED`                                 |

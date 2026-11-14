@@ -8,7 +8,11 @@
 -- lasciare ai runner il compito di difendersi; e l'ambito non ha doppi.
 -- Brief: brief-db-revisione-dbops, giro 10b (D2, D13, D17, D17-bis, D20, D27, R1)
 --
--- Elenco test (plan 19):
+--   Test 20-24 (2026-11-13): target_table e' '*all' o il nome esatto di una tabella
+--   (90_end/20261112-66, 20_code/dbops/20261112-67 … -76; residuo di §27.8, chiuso in
+--   framework-automazione-db-migliorie §2.4).
+--
+-- Elenco test (plan 24):
 --  1)    la strategia d'esistenza non c'e' piu' (N1)
 --  2-10) ⭐ il CHECK rifiuta: tipo sconosciuto, modo non canonico, ttl_days
 --        testuale, ttl_days zero, scadenza in un modo diverso da AUTO,
@@ -23,6 +27,9 @@
 --  18-19) le chiavi del cleanup sono un elenco chiuso: cleanup_column e'
 --        rifiutata nella scadenza e nel purge (la colonna e' cleanup_at,
 --        nome fisso; blocco 10b-3)
+--  20-21) ⭐ il CHECK rifiuta un modello di nomi (pgtap_%) e *ALL in un'altra grafia
+--  22)   ⭐ PRESIDIO: nessuna funzione confronta target_table con LIKE o ILIKE
+--  23-24) una regola mirata vale per pgtap_a_b e non per pgtap_axb: il _ non e' un jolly
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -31,7 +38,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(19);
+SELECT plan(24);
 
 SELECT hasnt_column('dbops', 'automation_rules_tbl', 'existence_strategy',
     '1) la regola non ha una strategia d''esistenza: il trigger si riconosce dalla funzione');
@@ -119,6 +126,41 @@ SELECT throws_ok($$ SELECT pg_temp.regola('CLEANUP_AT', 'AUTO', NULL,
 SELECT throws_ok($$ SELECT pg_temp.regola('CLEANUP_PURGE', 'AUTO', NULL,
                     '{"batch_limit": 100, "cleanup_column": "scade_il"}') $$,
     '23514', NULL, '19) un purge con cleanup_column e'' rifiutato: una chiave che nessuno legge non entra');
+
+-- ============================================================
+-- target_table: '*all' o il nome esatto di una tabella (20261112-66 … -76)
+-- ============================================================
+SELECT throws_ok($$ INSERT INTO dbops.automation_rules_tbl
+                        (enabled, rule_type, target_schema, target_table, exec_mode, name_template, params, priority, note)
+                    VALUES (true, 'CLEANUP_AT', 'pgtap_regole', 'pgtap_%', 'AUTO', NULL, '{"ttl_days": 30}', 999, 'pgTAP') $$,
+    '23514', NULL, '20) un modello di nomi in target_table e'' rifiutato: l''insieme di tabelle lo dice l''ambito');
+SELECT throws_ok($$ INSERT INTO dbops.automation_rules_tbl
+                        (enabled, rule_type, target_schema, target_table, exec_mode, name_template, params, priority, note)
+                    VALUES (true, 'CLEANUP_AT', 'pgtap_regole', '*ALL', 'AUTO', NULL, '{"ttl_days": 30}', 999, 'pgTAP') $$,
+    '23514', NULL, '21) *ALL in un''altra grafia e'' rifiutato: la forma canonica e'' *all');
+
+SELECT is(
+    (SELECT COALESCE(array_agg(p.oid::regprocedure::text ORDER BY 1), ARRAY[]::text[])
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname IN ('dbops', 'script', 'maintenance')
+        AND p.prokind = 'f'
+        AND pg_get_functiondef(p.oid) ~* 'like\s+\w+\.target_table'),
+    ARRAY[]::text[],
+    '22) nessuna funzione confronta target_table con LIKE o ILIKE: il _ di un nome farebbe da jolly');
+
+-- Una regola mirata, piu' prioritaria della *all: vale per la sua tabella e per nessun'altra.
+INSERT INTO dbops.automation_rules_tbl
+       (enabled, rule_type, target_schema, target_table, exec_mode, name_template, params, priority, note)
+VALUES (true, 'CLEANUP_AT', 'pgtap_regole', 'pgtap_a_b', 'AUTO', NULL, '{"ttl_days": 7}', 1, 'pgTAP nome esatto');
+
+SELECT is(
+    (SELECT r.regola_id FROM dbops.fn_cleanup_at_regola('pgtap_regole', 'pgtap_a_b') r),
+    (SELECT id FROM dbops.automation_rules_tbl WHERE note = 'pgTAP nome esatto'),
+    '23) la regola mirata vale per la tabella che nomina');
+SELECT ok(
+    (SELECT r.regola_id FROM dbops.fn_cleanup_at_regola('pgtap_regole', 'pgtap_axb') r)
+        IS DISTINCT FROM (SELECT id FROM dbops.automation_rules_tbl WHERE note = 'pgTAP nome esatto'),
+    '24) ...e non per pgtap_axb: il _ del nome non e'' un jolly');
 
 SELECT * FROM finish();
 ROLLBACK;
