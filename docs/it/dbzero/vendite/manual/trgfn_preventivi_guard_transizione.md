@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_preventivi_guard_transizione()`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -16,8 +18,6 @@ Pattern correlato (domini gemelli):
 
 ---
 ### 🎯 Scopo Principale
-
-(rev 2026-08-21 — creata 2026-08-05, brief vie-uscita-operatore §6.2, §7.4 p.3)
 
 **Enforcement DB-first del grafo transizioni del preventivo.** Una transizione
 `OLD.stato → NEW.stato` è ammessa solo se presente e **attiva** in
@@ -44,23 +44,32 @@ applicativi, un `UPDATE` diretto: nessuna strada può forzare una transizione il
 
 ### Regole applicate
 
+Ogni regola legge il **significato** della destinazione dal vocabolario
+`config.stati_doc_preventivi` (le colonne `emissione` e `accettazione`), mai il codice: i
+`codice_interno` dei due stati servono solo al contesto dell'errore.
+
 1. **No-op** se `stato_doc_preventivo_id` non è distinto dal precedente (`UPDATE` su altre
    colonne dello stesso set).
-2. Risolve i `codice_interno` dei due stati, per un messaggio leggibile.
-3. **Regola 1** — la coppia `(stato_da, stato_a)` deve esistere in
+2. **Regola 1** — la coppia `(stato_da, stato_a)` deve esistere in
    `config.transizioni_stati_preventivi` con `attivo IS TRUE`.
-4. **Regola 2** (rev 2026-08-29) — entrando in `EMESSO` solleva il primo motivo di
+3. **Regola 2** — verso lo **stato di emissione** (`script.fn_stato_emissione_id`): almeno una
+   riga attiva (conta la presenza: un totale zero si emette), poi il primo motivo di
    [script.fn_check_preventivo_emettibile](/dbzero/script/funzioni/fn_check_preventivo_emettibile):
-   una riga con un prezzo senza aliquota e, dal 2026-09-24, i **prezzi non autorizzati**.
-5. **Regola 3** (rev 2026-09-24) — entrando in `ACCETTATO` solleva il primo motivo di
-   [script.fn_check_prezzi_autorizzati](/dbzero/script/funzioni/fn_check_prezzi_autorizzati):
-   un preventivo con un prezzo in attesa di approvazione o rifiutato non diventa un impegno.
+   la validità finita, una riga con un prezzo senza aliquota, gli indirizzi, i **prezzi non
+   autorizzati**.
+4. **Regola 3** — verso lo **stato di accettazione** (`script.fn_stato_accettazione_id`): il
+   primo motivo di
+   [script.fn_check_preventivo_accettabile](/dbzero/script/funzioni/fn_check_preventivo_accettabile)
+   con `NEW.validita_al`: la validità finita (senza aspettare il job delle scadenze), poi i
+   prezzi non autorizzati. Un preventivo con un prezzo che nessuno ha autorizzato non diventa
+   un impegno. La data entra da `NEW` perché il trigger è `BEFORE ROW`.
 
 ⭐ Le regole 2 e 3 stanno sulla **destinazione**, non su una coppia cablata: una strada nuova
-verso `EMESSO` o `ACCETTATO` nasce già coperta. E la capability
-`fn_available_actions_preventivo` legge le **stesse** funzioni per spegnere «Emetti» e
-«Accetta»: il pulsante e il guard non possono dissentire. «Annulla» non le legge: resta
-sempre acceso.
+verso lo stato di emissione o di accettazione nasce già coperta, e spostare la marca nel
+vocabolario sposta la regola con lei. La capability
+`fn_available_actions_preventivo` legge le **stesse** funzioni, sulla **stessa** marca, per
+spegnere «Emetti» e «Accetta»: il pulsante e il guard non possono dissentire. «Annulla» non
+le legge: resta sempre acceso.
 
 ---
 
@@ -90,10 +99,6 @@ anche per il rifiuto, e che la stessa regola vale per tutti i documenti di vendi
 * **Non valuta l'ammissibilità dell'annullamento.** Quella ha il suo guard dedicato,
   `trgfn_preventivi_guard_annullamento`. Qui si verifica che la strada *esista*, non che sia
   *percorribile*.
-* **Non impone la regola «documento senza righe»**, che vive ancora dentro la porta
-  `vendite.fn_cambia_stato_preventivo`. Un `UPDATE` diretto la aggira. È
-  un'**asimmetria dichiarata**, non una dimenticanza: finché resta lì, il DB-first sulle
-  transizioni del preventivo è completo sul grafo e incompleto sulle precondizioni.
 
 ---
 
@@ -109,7 +114,7 @@ Su `vendite.preventivi` convivono due guard `BEFORE UPDATE` legati allo stato, e
 ritirato: sopra.)
 
 Conseguenza pratica: se si tenta di annullare un preventivo che ha già figli a valle **e** la
-transizione verso `ANNULLATO` non fosse in matrice, l'errore che arriva all'utente è quello
+transizione verso lo stato di annullo non fosse in matrice, l'errore che arriva all'utente è quello
 dell'**annullabilità**, non `E_PREV_TRANSIZIONE_NON_AMMESSA`. Questo guard non viene neppure
 raggiunto.
 
@@ -123,9 +128,15 @@ costruito su un caso che l'altro guard lascia passare.
 | Codice | Quando |
 |--------|--------|
 | `E_PREV_TRANSIZIONE_NON_AMMESSA` | Coppia `(stato_da, stato_a)` assente o non attiva in `config.transizioni_stati_preventivi` |
-| `E_PREV_RIGA_IVA_MANCANTE` | Regola 2: verso `EMESSO`, una riga con un prezzo senza aliquota |
-| `E_DOC_PREZZO_PENDENTE` | Regole 2 e 3: verso `EMESSO` o `ACCETTATO`, prezzi in attesa di approvazione |
-| `E_DOC_PREZZO_RIFIUTATO` | Regole 2 e 3: verso `EMESSO` o `ACCETTATO`, prezzi rifiutati dal responsabile |
+| `E_PREV_NESSUNA_RIGA_ATTIVA` | Regola 2: verso lo stato di emissione, nessuna riga attiva |
+| `E_PREV_EMISSIONE_VALIDITA_SCADUTA` | Regola 2: verso lo stato di emissione, la validità è finita |
+| `E_PREV_RIGA_IVA_MANCANTE` | Regola 2: una riga con un prezzo senza aliquota |
+| `E_PREV_VALIDITA_SCADUTA` | Regola 3: verso lo stato di accettazione, la validità è finita |
+| `E_DOC_PREZZO_PENDENTE` | Regole 2 e 3: prezzi in attesa di approvazione |
+| `E_DOC_PREZZO_RIFIUTATO` | Regole 2 e 3: prezzi rifiutati dal responsabile |
+
+I motivi della Regola 2 arrivano da `fn_check_preventivo_emettibile`, che compone anche
+`script.fn_check_indirizzi_documento_cliente`: l'elenco completo è nella sua pagina.
 
 Sollevato via `script.fn_log_and_raise_error` con `NEW.tx_id` propagato; il context riporta
 `preventivo_id`, `numero`, `stato_da` e `stato_a` in codici interni leggibili.

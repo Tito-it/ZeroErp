@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_list_ordini_da_pushare`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -31,9 +31,9 @@ delegati a `fn_list_ddt_da_pushare`.
 
 ### Regole principali
 
-* **stato documento libero sull'asse spedizione**: esclusi solo
-  `DRAFT`, `ANNULLATO` (documento commercialmente inesistente) e `FATTURATO`
-  (cintura). Un ordine `PARZIALMENTE_EVASO`/`EVASO` resta eleggibile: per il
+* **stato documento libero sull'asse spedizione**: esclusi solo lo stato
+  iniziale e quello di annullo, che il vocabolario marca (`iniziale` e
+  `is_abortito` di `config.stati_doc_ordini`; oggi `DRAFT` e `ANNULLATO`). Un ordine `PARZIALMENTE_EVASO`/`EVASO` resta eleggibile: per il
   trigger CONFERMATO la fatturazione è ortogonale alla spedizione (fix «orfano
   da push», piano `piano-db-fix-orfano-push-ordine-confermato.md`);
 * **`fatturazione_trigger = ‘CONFERMATO’`** (esclusione reciproca con DDT);

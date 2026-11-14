@@ -256,7 +256,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 🔵 **Gli stati del documento dal vocabolario** (`work-in-progress/brief-db-stati-documento-dal-vocabolario.md`):
   in sviluppo, un giro per vocabolario; il giro 1 (fiscale) è applicato e verde il 2026-11-13, R-1 … R-3 decise lo stesso giorno;
   il giro 2 (l'offerta: colonna `rifiuto`, guard, capability con `stato_terminale`) è applicato e verde il 2026-11-13,
-  ora due richieste BE/FE; D-SCAD (la scadenza dell'offerta, `esito IS NULL`) applicata e verde, con due richieste BE/FE; chi riparte è in testa al brief.
+  ora due richieste BE/FE; D-SCAD (la scadenza dell'offerta, `esito IS NULL`) applicata e verde, con due richieste BE/FE.
+  Giri 2-bis … 5 applicati e verdi il 2026-11-14; il giro 6a (il preventivo, `20261114-08 … -13`, D-PROI (a)) è applicato
+  e verde il 2026-11-14; il giro 6b (l'ordine, `20261114-14 … -20`) è applicato fino al `-18`, col `-19`
+  corretto e il `-20` da applicare; D-EVAD e D-PDF decise (a), giri 6b-bis, 6a-bis e 2-ter (`-22 … -26`)
+  scritti e provati; chi riparte è in testa al brief.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al

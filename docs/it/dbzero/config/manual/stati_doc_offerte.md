@@ -163,7 +163,9 @@ uno stato ma una relazione fra revisioni (`numero`, `rev`), e la deriva `vendite
   perché non ci sono azioni. La capability la espone come `stato_info_key`.
 * **`pdf_mode`** e **`pdf_allow_allegati`** — che cosa offre il bottone PDF in quello stato:
   l'anteprima in bozza, l'archivio negli altri; gli allegati solo sull'offerta emessa. Non hanno un
-  default: uno stato nuovo li dichiara.
+  default: uno stato nuovo li dichiara. `pdf_mode` lo leggono la capability (`pdf.mode`, nel
+  dettaglio) e la lista (`vendite.vw_offerte_commerciali_lista.pdf_mode`, dove il PDF si accende su
+  `ARCHIVE`).
 
 Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_offerte.csv`.
 

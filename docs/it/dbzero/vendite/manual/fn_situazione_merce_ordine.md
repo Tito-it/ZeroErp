@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_situazione_merce_ordine(p_ddt_ids, p_ordine_ids)`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -100,6 +100,14 @@ che si voleva togliere, restituito in silenzio. Vuoto semina zero righe, ed è l
 risposta giusta: quel DDT non ha toccato nessuna riga d'ordine.
 
 ---
+
+### La riga impegnata
+
+`da_spedire` c'è solo sulla riga **impegnata**: l'ordine è in uno stato dallo stato di
+emissione in poi, nell'ordine del vocabolario (la colonna `emissione` di
+`config.stati_doc_ordini`, oggi `CONFERMATO`), e non nello stato di annullo
+(`is_abortito`). Una riga dell'ordine in bozza esce `NON_IMPEGNATA`, con `da_spedire`
+NULL.
 
 ### Chi la chiama
 

@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LISTA DEI PREVENTIVI: pdf_mode DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.16, giro 6a-bis
+#   (D-PDF (a), Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La lista dei preventivi (frontend PreventiviList.vue) spegne il PDF con
+#   stato_codice_interno === 'DRAFT': il codice della bozza scritto nel
+#   frontend, una copia della regola di stampa (S-10). Il dettaglio la legge
+#   dalla capability (pdf.mode, da pdf_mode del vocabolario), la lista no,
+#   perche' la vista non porta pdf_mode.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   + pdf_mode in coda (config.stati_doc_preventivi.pdf_mode), con lo stesso
+#   nome di vendite.vw_ordini_lista, dove la lista ordini spegne gia' il PDF
+#   dove non e' ARCHIVE. Il backend legge la vista con SELECT v.*: la colonna
+#   arriva al frontend senza altro.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW, la colonna in ULTIMA posizione (si puo' solo
+#   appendere), WITH (security_invoker = on) ripetuto (reloptions su dbdev,
+#   2026-11-14); nessuna vista dipendente. Il COMMENT, che era una cronaca, e'
+#   riscritto al presente.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_viewdef su dbdev, 2026-11-14. Il rollback porta la definizione e
+#   il COMMENT di prima, letti dal catalogo; ⚠️ una vista non perde colonne con
+#   CREATE OR REPLACE: il rollback fa DROP e ricrea.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-25-update-vw-preventivi-lista-pdf-mode-mctit.yaml
+
+  - changeSet:
+      id: 20261114-25-update-vw-preventivi-lista-pdf-mode
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_preventivi_lista: + pdf_mode dal vocabolario, per il PDF della lista. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 6a-bis (D-PDF).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_preventivi_lista WITH (security_invoker = on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione,
+                  sdp.pdf_mode
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'PREVENTIVO'::text AND so_pr.attivo IS TRUE), p.id, p.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_preventivi_lista
+              IS 'Vista flat canonica dei preventivi per la lista configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, emittente_fiscale_codice, utility_codice, istanza_utility_codice, valuta_codice). Gli stati: is_attiva (da vendite.vw_preventivi) e le sue due componenti come colonne proprie, is_superata (rimpiazzata da una revisione superiore viva; il complemento e'' «e'' l''ultima revisione») e is_abortito (annullato), piu'' has_next_revisione. Il toggle «Mostra storico revisioni» si scrive is_superata IS FALSE: is_attiva nasconde anche gli annullati, e renderebbe vuoto il filtro di stato «Annullato». fase dal vocabolario. pdf_mode: la modalita'' del PDF nello stato (config.stati_doc_preventivi.pdf_mode); la lista accende il PDF dove e'' ARCHIVE, la stessa colonna da cui la capability del dettaglio dice pdf.mode. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina. Soggetto via istanze_utilities (valorizzato anche per i prospect). Pura denormalizzazione: nessuno scope, filtro o paginazione (restano nel repository). security_invoker=on: la RLS resta di chi legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_preventivi_lista;
+
+              CREATE VIEW vendite.vw_preventivi_lista WITH (security_invoker = on) AS
+               SELECT p.id,
+                  p.uid,
+                  p.numero,
+                  p.rev,
+                  p.is_attiva,
+                  p.data,
+                  p.stato_doc_preventivo_id,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.descrizione AS stato_descrizione,
+                  p.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  p.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  p.totale_imponibile,
+                  p.totale_iva,
+                  p.totale_documento,
+                  p.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  p.validita_dal,
+                  p.validita_al,
+                  p.competenza_mese,
+                  p.data_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdp.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  p.is_superata,
+                  p.is_abortito,
+                  p.has_next_revisione
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = p.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN config.valute v_val ON v_val.id = p.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'PREVENTIVO'::text AND so_pr.attivo IS TRUE), p.id, p.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_preventivi_lista
+              IS '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista flat canonica preventivi per la lista UI configurabile (vendite.preventivi). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice, is_attiva). Dal 2026-08-28 espone anche le DUE componenti di is_attiva come colonne proprie: is_superata (rimpiazzata da una rev superiore viva — il complemento e'' «e'' l''ultima revisione») e is_abortito (annullato), piu'' has_next_revisione. Il toggle «Mostra storico revisioni» si scrive is_superata IS FALSE: is_attiva nasconde anche gli annullati e rende vuoto per costruzione il filtro di stato «Annullato». Pura denormalizzazione: nessuno scope/filtro/paginazione (restano nel repository consumer). security_invoker=on (RLS-ready). Soggetto via istanze_utilities (1 join, valorizzato anche per prospect). ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_preventivi_lista TO zeroerp_app;

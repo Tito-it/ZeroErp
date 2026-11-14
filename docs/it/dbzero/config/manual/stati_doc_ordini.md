@@ -73,14 +73,33 @@ tutti i lettori seguono.
   [`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale), montato su
   `vendite.ordini` e su `acquisti.ordini`, mette questo stato quando chi crea non ne dice uno, e
   rifiuta ogni altro con `E_DOC_STATO_INIZIALE_NON_VALIDO`. Anche la generazione di un ordine da un
-  preventivo lo fa nascere qui, e lo porta avanti coi passaggi.
+  preventivo lo fa nascere qui, e lo porta avanti coi passaggi. Lo leggono anche: il lock delle
+  righe (`vendite.trgfn_doc_righe_lock_fuori_bozza`) e la capability
+  ([`script.fn_available_actions_ordine`](/dbzero/script/funzioni/fn_available_actions_ordine):
+  `can_edit_righe`, i prezzi non autorizzati, le reason del push e della data di consegna), il
+  guard di transizione (Regole 2 e 5, dallo stato iniziale), la push-list
+  (`vendite.fn_list_ordini_da_pushare`, che lo esclude) e il cruscotto
+  (`vendite.vw_dash_fatturazione_ordini`, `DOC_BOZZA`).
 * **`emissione`** — lo stato in cui l'ordine è emesso, cioè **confermato**. Ci si arriva solo da
   «Emetti», che genera il PDF; il backend lo rifiuta sul cambio di stato generico. ⚠️ Il numero
   dell'ordine si assegna alla nascita, non all'emissione: è una divergenza dichiarata dalla guida del
-  modello.
+  modello. Lo leggono: la capability e il guard di transizione (i motivi della conferma, Regole 2,
+  4 e 5), la proiezione dell'evasione
+  ([`vendite.fn_ordine_proietta_stato_evasione`](/dbzero/vendite/funzioni/fn_ordine_proietta_stato_evasione):
+  senza legami di evasione l'ordine torna qui), la bolla dall'ordine
+  ([`vendite.fn_genera_ddt_da_ordine`](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine): si evade
+  da qui e da `PARZIALMENTE_EVASO`) e la situazione merce
+  ([`vendite.fn_situazione_merce_ordine`](/dbzero/vendite/funzioni/fn_situazione_merce_ordine): la
+  riga è impegnata da questo stato in poi).
 * **`is_abortito`** — lo stato di annullo, letto dal verbo d'annullo
   ([`vendite.fn_annulla_ordine`](/dbzero/vendite/funzioni/fn_annulla_ordine)) attraverso
-  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
+  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id). Lo leggono anche:
+  la capability (i motivi dell'annullo, la reason `ORDINE_ANNULLATO` del push), il guard di
+  transizione (Regola 3), la push-list (che lo esclude) e la situazione merce (la riga annullata
+  non è impegnata).
+
+`EVASO` e `PARZIALMENTE_EVASO` non hanno una colonna: sono le destinazioni dell'evasione, e la
+proiezione e la bolla le nominano col codice, come le nomina la matrice.
 
 Il vocabolario dell'ordine **non ha** le colonne `accettazione`, `cessazione` e `scadenza`: chiesti
 ai loro lettori, quegli stati sono vuoti.
@@ -134,6 +153,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_ordin
 * `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita su vendite e acquisti.
 * `db/pgtap/script/test-doc-lettori-stato-e-preventivo-al-modello-v1.sql` — lo stato di emissione dichiarato nei documenti che si emettono.
 * `db/pgtap/script/test-capability-motivi-e-nessuna-azione-v1.sql` — ogni stato chiuso dichiara `nessuna_azione_key`.
+* `db/pgtap/vendite/test-ordine-stati-dal-vocabolario-v1.sql` — i lettori seguono le marche spostate di `iniziale`, `emissione` e `is_abortito`.
 
 ---
 
