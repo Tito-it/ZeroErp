@@ -2,9 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team BE/FE** con la richiesta K-1 … K-7 (§8.7); poi il team DB col giro 4 (la chiusura),
-al via di Tid. I giri 1, 2 e 3 sono applicati e verdi (§8.6, §8.7, §8.8; il 3 il 2026-11-14). Nessuno dei
-tre è committato.
+**Riparte: il team BE/FE** con K-5 … K-7 (§8.7: pricing gate, form, test dal push in su). K-1 … K-4, il
+lato push, sono fatti il 2026-11-14 (§8.9): il team DB può fare la parte del giro 4 che li aspettava, e
+nello stesso giro **R-7** (§8.10), trovata dalla revisione BE: il kit dal listino del contratto arriva in
+commessa con la sola origine. I
+giri 1, 2 e 3 sono applicati, verdi e committati (`33f85e641`, `11273227f`).
 Riverificato il 2026-11-13 sul catalogo di dbdev e su `backend/` (§7): R-3, R-4 e il §4 avevano
 definizioni superate, marcate ⚠️ e corrette al §7.1. ⚠️ Il commit `a85b76d58` «Chiusura brief
 brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
@@ -23,10 +25,12 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 3d-bis | ✅ Tid | D-4: sì, la riga di listino citata da un documento si blocca (2026-11-13) | §8.5 | — |
 | 3e | ✅ team DB | Giro 2: il push porta la provenienza (R-3, R-5), D-4; prova in transazione (2026-11-13) | §8.7 | 3d |
 | 3f | ✅ Tid | Apply del giro 2 e pgTAP del §8.7: verdi (2026-11-13) | §8.7 | 3e |
-| 4 | **team BE/FE** ⏭️ | La richiesta K-1 … K-7: push, componenti, pricing gate, form, test | §8.7 «Richiesta BE» | 3f |
+| 4 | ✅ team BE | K-1 … K-4: il push copia la provenienza della riga, i componenti la loro (2026-11-14) | §8.7, §8.9 | 3f |
+| 4b | **team BE/FE** ⏭️ | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE» | 4 |
 | 5 | ✅ team DB | Giro 3: le copie a valle (R-4), override con provenienza, contesto dei componenti (D-3); prova in transazione (2026-11-13) | §8.8 | 3f |
 | 5b | ✅ Tid | Apply del giro 3 e pgTAP del §8.8: verdi (2026-11-14) | §8.8 | 5 |
-| 6 | team DB | Giro 4: R-6 dal push in su (dopo K-1 … K-4), doc `manual/`, chiusura | §8.5 | 5b, 4 |
+| 6 | team DB | Giro 4: R-6 dal push in su (dopo K-1 … K-4), **R-7** (il kit dal listino del contratto porta la sua provenienza), doc `manual/`, chiusura | §8.5, §8.10 | 5b, 4 (✅) |
+| 6b | team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` | §8.10 | 6 (R-7) |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
@@ -546,3 +550,79 @@ sette copie e dei componenti.
 **La richiesta BE non cambia.** K-4 (il loader dei componenti) trova ora riga e versione nelle colonne e il
 contesto con le chiavi del resolver; K-5 può passare il risultato del resolver così com'è: il DB lo filtra
 nelle init, e al pricing gate lo legge `vendite.fn_provenienza_prezzo_esplosa`.
+
+### 8.9 K-1 … K-4 consegnati (team BE, 2026-11-14)
+
+* **Una forma sola per la provenienza**, `backend/apps/vendite/db/_provenienza_prezzo.py`:
+  `ProvenienzaPrezzo` (i dieci campi coi nomi della riga di commessa), `COLONNE_PROVENIENZA_PREZZO` (spostata
+  qui dal repository, che la riesporta), `COLONNA_DEL_LISTER` (l'unica traduzione:
+  `contratto_id` ← `prezzo_contratto_id`) e il frammento SQL del `LATERAL` su
+  `vendite.fn_provenienza_prezzo_esplosa`.
+* **K-1**: le dieci colonne sono **obbligatorie** in `_PUSHABLE_SHARED_COLS` (le restituiscono tutti e cinque i
+  lister, i consumi vuote); `PushableRow.provenienza`. Il presidio sul catalogo
+  (`test_commesse_porta_nomi_db`, test 3) le pretende da ogni lister.
+* **K-2**: `_build_attivita_input` copia la provenienza così com'è. Ritirati `_resolve_pricing_audit`, la sua
+  cache, il `pricing_service` dell'handler e la lettura di `meta.origine_prezzo`.
+* **K-3**: ritirate `origine_ammessa` e `ORIGINI_PREZZO_AMMESSE`; `provenienza_da_resolver` (riallinea,
+  sblocca) passa l'origine com'è. Visto sul DB vero: riallineare un componente di kit scrive ora
+  `LISTINO_BUNDLE` sulla riga di commessa, e il CHECK lo accetta (`test_prezzo_riga_commessa_db`, test 3).
+* **K-4**: `list_componenti_riga(con_provenienza=True)` aggiunge le colonne `prov_*` dal BB del DB; la usa solo il
+  loader del push, e la forma delle API dei componenti non cambia. Il componente porta la sua provenienza, non
+  quella del padre; il kit dal listino del contratto (`fn_contratto_kit_componenti`) dice la sola origine.
+  `meta.origine_prezzo` dei componenti non si scrive più. Provata sul DB vero sulle cinque tabelle
+  (`test_commesse_porta_nomi_db`, test 5).
+* **Per il giro 4**: il push di oggi cita `listino_riga_id` solo se la riga del documento lo porta. Le righe
+  scritte dal BE lo porteranno con K-5 (oggi il gate scrive la provenienza nel `meta`); le copie a valle lo
+  portano già dal giro 3.
+* ⚠️ **La revisione del 2026-11-14 ha trovato un buco sul kit dal listino del contratto**: è una richiesta al
+  team DB, al §8.10 (R-7).
+
+### 8.10 Richiesta al team DB — R-7, il kit dal listino del contratto porta la sua provenienza (revisione BE, 2026-11-14)
+
+> **Chi scrive:** sessione di revisione BE (`dev/backend-tid`), 2026-11-14. **A chi:** team DB
+> (`dev/db-tid`), nel giro 4. **Chi cambia per primo:** il DB. Il BE legge il risultato della funzione per
+> nome (`SELECT k.*` in `ContrattiRepository.list_componenti_kit_dal_listino`), quindi le colonne in più non
+> lo rompono; la sua metà arriva dopo il DB.
+
+**Il difetto.** `vendite.fn_contratto_kit_componenti` dà i componenti del kit che il contratto non negozia
+(la quota fissa del listino, l'ADESIONE). Il prezzo di ogni componente lo prende da
+`fn_resolve_prezzo_listino_v2_esito`, sulla versione di listino del contratto
+(`fn_documento_listino_operativo`). Il resolver restituisce la provenienza intera: base, variazione,
+`listino_versione_id`, `listino_riga_id`, promo, contratto, categoria, classe. La funzione però ne tiene solo
+`prezzo_finale` e `origine` (`RETURNS TABLE(…, prezzo_unitario, esposizione_in_fattura, origine_prezzo)`).
+
+Il push porta quel componente in commessa come una riga a sé (`BoMComponentExpander`, ramo
+`componenti_listino_loader`). La riga nasce con `origine_prezzo = 'LISTINO_BUNDLE'` e senza
+`listino_versione_id`, `listino_riga_id` né contesto. Ne seguono due cose:
+
+* la riga di listino che **ha dato il prezzo** non viene citata, e quindi non diventa «propagata» (D-4):
+  resta rettificabile, mentre il suo prezzo è già in commessa;
+* `fn_riallinea_prezzo` confronta la versione con NULL, cioè il difetto che il 2026-10-08 si era chiuso per
+  le righe del push (`prezzo_riga_commessa`, intestazione).
+
+È il difetto di R-3, quello trovato al §7.1 F-3 («la funzione che ha in mano il risultato del resolver lo
+restituisce intero, invece del solo `prezzo_finale`»), su una funzione che il giro 2 non ha toccato.
+
+**La richiesta.**
+
+| # | Che cosa |
+| --- | --- |
+| R-7.1 | `fn_contratto_kit_componenti` restituisce anche `listino_versione_id`, `listino_riga_id` e `prezzo_resolver_context` (`to_jsonb` della riga del resolver: è un contesto valido per `fn_provenienza_prezzo_esplosa`, dal suo `COMMENT`). Così la forma è quella delle `*_righe_componenti`, che è ciò che il suo `COMMENT` promette («nella forma che l'espansore del backend legge dalle *_righe_componenti»). Versione e riga si prendono dal risultato del resolver (`r.listino_versione_id`, `r.listino_riga_id`), non da `lo.listino_versione_id`: la provenienza la dice chi ha dato il prezzo. In alternativa, le dieci colonne di `fn_provenienza_prezzo_esplosa` già esplose: la scelta è del team DB, ma il BE preferisce la prima (un `LATERAL` solo, lo stesso delle tabelle) |
+| R-7.2 | ⚠️ Cambiare la `RETURNS TABLE` vuole `DROP` + `CREATE`. Due lettori a DB, `fn_contratti_addebiti_maturati` e `fn_contratti_addebiti_maturati_con_provenienza` (la somma `prezzo_unitario × coeff_qta_snapshot` del kit), da riverificare: con `BEGIN ATOMIC` le dipendenze stanno in `pg_depend` |
+| R-7.3 | pgTAP sul caso costruito: un contratto con una quota fissa a kit dal listino, componente con prezzo da una riga R della versione del contratto → la funzione restituisce versione e riga R; dopo il push la riga di commessa del componente cita R (`listino_riga_id`) e la versione, e R è «propagata» |
+| R-7.4 | `COMMENT` della funzione aggiornato, e la sua pagina `manual/` se c'è |
+
+**La metà BE (`dev/backend-tid`), dopo il DB.** È un elenco, non un lavoro DB:
+
+* `backend/apps/vendite/db/contratti_repository.py` (`list_componenti_kit_dal_listino`): la proiezione legge
+  la provenienza con lo stesso frammento delle tabelle (`_provenienza_prezzo.sql_provenienza_esplosa("k")`),
+  e restituisce le colonne `prov_*`;
+* `backend/apps/vendite/services/commesse_source_handlers.py`
+  (`BoMComponentExpander._provenienza_componente`): perde il ramo «la sola origine». Oggi quel metodo sceglie
+  la forma guardando se c'è la chiave `prov_origine_prezzo`, ed è fragile: un loader nuovo senza le colonne
+  passerebbe in silenzio con la sola origine. Quando i due loader avranno la stessa forma, le colonne `prov_*`
+  diventano obbligatorie (`KeyError` se mancano), come i campi obbligatori del lister in `_map_pushable_row`;
+* test: quelli dell'espansore sul kit dal listino (`test_commesse_source_handlers`), e un caso sul DB vero
+  accanto a `test_commesse_porta_nomi_db`, test 5.
+
+**Nel frattempo** il BE non ripiega: il componente porta l'origine e basta, com'è scritto al §8.9.

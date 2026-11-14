@@ -1,21 +1,21 @@
 # Brief BE — Ogni azione di processo ha chi la legge, e ogni azione dichiarata esiste
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-12
+## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: team BE**, coi tre presidi di §3. Il lato DB non ha niente da fare: il catalogo e le
-matrici esistono già.
+✅ **Chiuso il 2026-11-14** e archiviato (via di Tid). I tre presidi di §3 sono scritti e verdi (§5); nello
+stesso giro, `AZIONE_OVERRIDE_PREZZO` ha una sede sola (§5). Il lato DB non ha avuto niente da fare.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura; la guida dei permessi corretta | §2, §4 | — |
-| 2 | **team BE** ⏭️ | I presidi P-1, P-2, P-3 | §3 | 1 |
-| 3 | Tid | Esito dei test, archiviazione | — | 2 |
+| 2 | ✅ team BE | I presidi P-1, P-2, P-3 (2026-11-14) | §3, §5 | 1 |
+| 3 | ✅ Tid | Esito dei test, archiviazione (2026-11-14) | §5 | 2 |
 
-**Decisioni aperte di Tid**: nessuna. **Da committare**: questo brief e la guida (§4).
+**Decisioni aperte di Tid**: nessuna. **Da committare**: questo brief, la guida (§4), i presidi e la costante (§5).
 
 **Brief vicini verificati**: `permessi-e-autorizzazioni-v3.md` (dormiente, tratta i sotto-oggetti: un
 altro tema). Il gemello chiuso è
-[brief-db-be-fe-catalogo-oggetti-permessi](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md):
+[brief-db-be-fe-catalogo-oggetti-permessi](brief-db-be-fe-catalogo-oggetti-permessi.md):
 fa per gli **oggetti** quello che qui si chiede per le **azioni**.
 
 ## 1. Il problema
@@ -83,3 +83,55 @@ inventata, una riga del registro senza motivo.
 «tutte delegate allo stesso resolver», senza `IsAdminZeroERP`. Corretta in questo giro: la quarta
 classe, e la regola che un `<metodo>_permission` su una view di amministrazione non lo valuta
 nessuno. Quando i presidi esistono, la guida li nomina.
+
+## 5. Consegnato (team BE, 2026-11-14)
+
+Un file, accanto al gemello delle aree:
+`backend/apps/core/tests/db/test_azioni_processo_dichiarate_e_lette.py`.
+
+* **P-1 e P-2 senza DB** (`AzioniDichiarateTests`): le view dal percorso reale
+  (`classi_view(anche_condizionali=True)`), le dichiarazioni lette con `getattr` come la catena
+  (`<chiave>_permission`, escluso `model_permission`, e `<chiave>_passaggio`); il catalogo dal seed
+  col BB `seed_csv`.
+* **Le chiamate a `check_azione` dal sorgente (AST)**: l'argomento si risolve come lo risolve Python,
+  un letterale o una costante di modulo (le `AZIONE_*`). Un argomento che non si risolve così è un
+  rosso, salvo che la funzione che lo contiene stia nel registro `_INOLTRI`, che dice da dove
+  arrivano i valori: la catena dei permessi (`ZeroERPPermission.valuta`, valori presi dalle view) e
+  `_require_any_action` di `ui/api/views_admin.py` (valori dalle liste dei suoi chiamanti). Un
+  registro senza righe morte ha il suo test.
+* **P-3 sul DB vero** (`AzioniLetteTests`, opt-in `ZEROERP_TEST_DB_E2E=1`): le matrici per nome di
+  colonna in `information_schema.columns`; i corpi con `pg_get_functiondef`, cercando il codename
+  come letterale (`quote_literal`). Fuori dalla ricerca: le funzioni delle estensioni e gli helper
+  `fn_pgtap_*`, che costruiscono fixture. Il registro `_SEDE_PER_DOPO` porta solo `processo_avvia`,
+  col motivo; un test pretende che la riga esca quando l'azione trova un lettore.
+* **Ognuno visto rosso**: una view finta (`AdminAPIView` con `post_permission`, e con
+  `post_passaggio`), un'azione inventata e una spenta, una riga del registro senza motivo. Sul DB:
+  tolto `processo_avvia` dal registro, P-3 la segnala.
+* **Ritirato** (regola del 2): l'asserzione puntuale di `test_processi_esegui_ora_api.py`, test 3.
+* **Una costante, una sede** (regola del 2, ok Tid 2026-11-14): `AZIONE_OVERRIDE_PREZZO` era definita
+  due volte, in `_pricing_gate_helpers.py` (la copia, «per evitare cicli di import») e in
+  `_approvazioni_prezzo_constants.py`. Il modulo delle costanti non importa niente, quindi il ciclo non
+  c'era: resta lì, accanto a `AZIONE_APPROVA_PREZZO`, e il gate L1 la importa. L'ha trovata la scansione
+  di P-2, che leggeva tutte e due le copie.
+
+Fatto datato, 2026-11-14, su dbdev: 38 azioni attive; 29 nominate dal backend, 8 solo dalle matrici,
+`blocca_merce` e `registra_magazzino` anche dai corpi delle funzioni; senza lettore solo
+`processo_avvia`.
+
+## 6. Revisione (2026-11-14)
+
+* 🔴 **Trovato e corretto un cancello decorativo sulla catena**, che P-1 come era scritto non vedeva:
+  `ApiFondoFatturaDelete` (`vendite/api/views_fondi_fattura.py`) serve solo `DELETE` e dichiarava
+  `post_permission = "governa_fondo_fattura"`. La catena legge `<chiave>_permission` con la chiave della
+  richiesta (`delete`): l'azione `pericolosa` non la chiedeva nessuno, e cancellare un fondo passava col
+  solo livello sull'area vendite. Ora `delete_permission`. Il test della view pinnava il **nome**
+  dell'attributo, ed era per questo verde: sostituito con uno sul comportamento di
+  `ZeroERPPermission.valuta` per un `DELETE` (livello d'area pieno, azione negata → 403), visto rosso col
+  codice di prima.
+* **P-1 allargato**: su una view della catena una dichiarazione sta solo su una chiave che la view serve
+  (il metodo HTTP che implementa, o l'action del viewset). Test 2b sul percorso reale e 2c su due view
+  finte; il 2b era rosso su `ApiFondoFatturaDelete` prima della correzione.
+* **P-3**: le matrici sono le sole **tabelle** con la colonna `azione_processo_codename`. Una vista che
+  la proiettasse dal catalogo avrebbe dato un lettore a ogni azione.
+* Allineati `api.md` (§ fondi fattura), `backend/vendite/manual/api_fondi_fattura.md`, il commento di
+  `FondiFatturaDaDecidereTab.vue` e la guida dei permessi (§ presidi).

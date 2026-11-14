@@ -597,6 +597,29 @@ e il `<metodo>_permission`; finché resta di amministrazione, l'azione a catalog
 è solo la sede per quel giorno, e la view lo dichiara (es. `processo_avvia`, su
 «Esegui ora» dei processi).
 
+**I presidi.** Tre test tengono allineate le azioni dichiarate, il catalogo e chi
+le legge (`backend/apps/core/tests/db/test_azioni_processo_dichiarate_e_lette.py`):
+
+* **P-1** — una view che `ZeroERPPermission` non valuta non dichiara né un
+  `<metodo>_permission` né un `<metodo>_passaggio`; e una view che la catena
+  valuta li dichiara solo sulle chiavi che serve (il metodo HTTP che implementa,
+  o l'action del viewset). ⛔ La catena legge la dichiarazione con la chiave
+  della richiesta: un `post_permission` su una view che serve solo `DELETE` non
+  lo chiede nessuno, e il gesto ricade sul livello d'area (il caso di
+  `ApiFondoFatturaDelete`, corretto il 2026-11-14);
+* **P-2** — ogni azione dichiarata da una view, e ogni azione passata a
+  `PermissionResolver.check_azione`, è un `permission_codename` attivo del seed
+  di `config.azioni_processo`. Un argomento di `check_azione` che non è un
+  letterale né una costante di modulo è un rosso, salvo che la funzione che lo
+  inoltra sia dichiarata nel test con la provenienza dei suoi valori;
+* **P-3** (sul DB vero) — ogni azione attiva ha almeno un lettore: il backend,
+  una riga di una matrice di transizioni (ogni colonna
+  `azione_processo_codename` di una tabella, trovata per nome; una vista non è
+  una matrice), il corpo di una funzione del
+  database, oppure una riga del registro delle azioni seminate prima del loro
+  verbo, col motivo. Oggi in quel registro c'è solo `processo_avvia`; la riga
+  esce il giorno in cui l'azione trova un lettore.
+
 **Determinazione dell'area di un model.** Per default, l'area coincide
 con lo schema DB (uguale a `app_label` Django). Se per quel model
 esiste un override in `area_model_overrides`, si usa l'area dichiarata

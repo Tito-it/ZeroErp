@@ -30,6 +30,7 @@ Indice test eseguiti:
 13c) CommesseRepositoryUnitTests.test_fetch_pushable_rows_righe_ids_sorgente_non_supportata
 14) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_shared_columns
 14b) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_causale_onere
+14c) CommesseRepositoryUnitTests.test_fetch_pushable_rows_maps_provenienza
 15) CommesseRepositoryUnitTests.test_get_or_create_commessa_uses_defaults
 16) CommesseRepositoryUnitTests.test_validate_sorgente_map_ok
 17) CommesseRepositoryUnitTests.test_validate_sorgente_map_missing_in_map
@@ -54,6 +55,7 @@ from inspect import signature
 from unittest import TestCase
 from unittest.mock import patch
 
+from apps.vendite.db._provenienza_prezzo import ProvenienzaPrezzo
 from apps.vendite.db.commesse_repository import (
     BatchUpsertResult,
     ErroreBatchAttivita,
@@ -89,6 +91,12 @@ _ORDINI_COLS = [
     ("termine_pagamento_id",), ("modalita_pagamento_id",),
     # La causale della riga ONERE, in coda (20261103-38).
     ("causale_onere_id",),
+    # La provenienza del prezzo, in coda (20261113-17, K-1 di
+    # brief-db-provenienza-prezzo-segue-il-prezzo).
+    ("origine_prezzo",), ("listino_versione_id",), ("listino_riga_id",),
+    ("prezzo_base_snapshot",), ("tipo_variazione_applicata",),
+    ("valore_variazione_applicata",), ("promo_id",), ("prezzo_contratto_id",),
+    ("categoria_cliente_id_snapshot",), ("classe_utenza_id_snapshot",),
 ]
 
 # Tupla di test che simula una riga ordine.
@@ -109,6 +117,11 @@ _ORDINI_ROW = (
     3,   # termine_pagamento_id (le condizioni del DOCUMENTO)
     5,   # modalita_pagamento_id
     None,  # causale_onere_id (riga di merce)
+    # provenienza: dal listino, riga 505 della versione 404, contratto 77
+    "CONTRATTO_LISTINO", 404, 505,
+    Decimal("30.00"), "PERCENTUALE",
+    Decimal("-10.00"), None, 77,
+    5, None,
 )
 
 
@@ -527,13 +540,39 @@ class CommesseRepositoryUnitTests(TestCase):
     #        (brief-db-addebito-trasporto-ordine §9.3).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
     def test_fetch_pushable_rows_maps_causale_onere(self, mock_cursor_factory):
-        riga_onere = _ORDINI_ROW[:24] + ("ONERE",) + _ORDINI_ROW[25:-1] + (6,)
+        nomi = [c[0] for c in _ORDINI_COLS]
+        riga = list(_ORDINI_ROW)
+        riga[nomi.index("tipo_movimento")] = "ONERE"
+        riga[nomi.index("causale_onere_id")] = 6
+        riga_onere = tuple(riga)
         mock_cursor_factory.return_value = _mock_cursor(
             fetchall=[riga_onere], description=_ORDINI_COLS,
         )
         row = CommesseRepository().fetch_pushable_rows("ORDINE_VENDITA")[0]
         self.assertEqual(row.tipo_movimento, "ONERE")
         self.assertEqual(row.causale_onere_id, 6)
+
+    # Scopo: K-1 — la provenienza del prezzo del lister arriva sulla riga, coi
+    #        nomi della riga di commessa: il contratto del prezzo esce dal
+    #        lister come `prezzo_contratto_id` e atterra su `contratto_id`.
+    @patch("apps.vendite.db.commesse_repository.connection.cursor")
+    def test_fetch_pushable_rows_maps_provenienza(self, mock_cursor_factory):
+        mock_cursor_factory.return_value = _mock_cursor(
+            fetchall=[_ORDINI_ROW], description=_ORDINI_COLS,
+        )
+        row = CommesseRepository().fetch_pushable_rows("ORDINE_VENDITA")[0]
+        self.assertEqual(row.provenienza, ProvenienzaPrezzo(
+            prezzo_base_snapshot=Decimal("30.00"),
+            origine_prezzo="CONTRATTO_LISTINO",
+            tipo_variazione_applicata="PERCENTUALE",
+            valore_variazione_applicata=Decimal("-10.00"),
+            promo_id=None,
+            contratto_id=77,
+            categoria_cliente_id_snapshot=5,
+            classe_utenza_id_snapshot=None,
+            listino_riga_id=505,
+            listino_versione_id=404,
+        ))
 
     # Scopo: Verifica validate_sorgente_map senza warning quando DB e map allineati.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")

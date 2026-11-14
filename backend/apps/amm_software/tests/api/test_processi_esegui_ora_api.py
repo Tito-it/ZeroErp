@@ -7,8 +7,9 @@
 #        accodamento. Repository
 #        MOCKATI, nessun database (piano-be-fe-avvio-manuale §5.5, «view»).
 # Note: ⚠️ La sede della fiducia e' `AdminAPIView` (v1 solo SUPER_ADMIN,
-#        brief §8.5): il test 3 lo pinna sulla CLASSE, non sul comportamento —
-#        un `post_permission` decorativo non lo vedrebbe nessuno.
+#        brief §8.5): il test 3 lo pinna sulla CLASSE, non sul comportamento.
+#        Che un `post_permission` decorativo non ci sia lo presidia P-1, per
+#        ogni view (brief-be-azioni-di-processo-chi-le-legge §3).
 #        ⭐ Dal 2026-11-07 (BE10) il lavoro e' SISTEMA: nessuno scope si
 #        cattura, chi preme viaggia nel payload come attore (`richiesto_da`).
 #
@@ -77,8 +78,8 @@ class ProcessiEseguiOraApiTests(JwtMockedApiTest):
     def test_porta_admin_e_rotta(self) -> None:
         self.assertTrue(issubclass(ProcessiEseguiOraView, AdminAPIView))
         self.assertIs(resolve(_URL).func.view_class, ProcessiEseguiOraView)
-        # Nessun `post_permission` decorativo: la fiducia sta nella classe base.
-        self.assertFalse(hasattr(ProcessiEseguiOraView, "post_permission"))
+        # Nessun `post_permission` decorativo: lo presidia P-1 su ogni view
+        # (`core/tests/db/test_azioni_processo_dichiarate_e_lette`).
 
     # 5. Il caso buono: 200 con l'handle, e `accoda` con tutto quello che il
     #    drenatore e la UI code si aspettano.

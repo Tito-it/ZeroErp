@@ -325,8 +325,8 @@ class IvaResolverService:
     #        * payload CON `iva_id` -> la risoluzione e' di AUDIT, best-effort,
     #          dentro un savepoint. Un titolo ambiguo o un paese non
     #          implementato non devono bloccare un salvataggio che l'operatore
-    #          ha gia' determinato. Stesso idioma di
-    #          `BaseSourceHandler._resolve_pricing_audit`.
+    #          ha gia' determinato (era lo stesso idioma dell'audit del
+    #          prezzo al push, ritirato il 2026-11-14).
     #
     #        Risultato: `(iva_id, meta_patch)` — il secondo da fondere nel
     #        `meta` della riga.

@@ -38,17 +38,16 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services._approvazioni_prezzo_constants import AZIONE_OVERRIDE_PREZZO
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
 )
 
-# Codice azione di processo per il gate L1 (override manuale prezzo).
-# Storicamente importato come `AZIONE_OVERRIDE_PREZZO` da
-# _approvazioni_prezzo_constants. Mantenuto qui come constante locale per
-# evitare cicli di import (questo modulo e' importato sia da preventivi che
-# da contratti, mentre il modulo originale dipendeva da `apps.vendite.services`).
-AZIONE_OVERRIDE_PREZZO = "prezzo_override_manuale"
+# Il codice azione del gate L1 (override manuale prezzo) sta nel modulo delle
+# costanti delle approvazioni, accanto a `AZIONE_APPROVA_PREZZO` (regola del 2,
+# ok Tid 2026-11-14: qui ce n'era una copia). Quel modulo non importa niente,
+# quindi non chiude cicli: la ragione della copia non c'e' piu'.
 
 # L'origine di un prezzo scritto a mano: la scrivono il gate prezzi di riga
 # (qui) e la PATCH dei componenti (`_componenti_service_helpers`), una sede.

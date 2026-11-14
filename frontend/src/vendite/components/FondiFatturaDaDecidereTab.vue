@@ -165,7 +165,7 @@ function apriFattura(event) {
 const cancellazioneInCorso = ref(null)
 
 // Scopo: costruisce le voci del kebab per una riga.
-// ⚠️ Il cancello VERO è il backend (`post_permission = governa_fondo_fattura`,
+// ⚠️ Il cancello VERO è il backend (`delete_permission = governa_fondo_fattura`,
 //    azione `pericolosa`): qui si evita solo di PROPORRE ciò che verrebbe
 //    rifiutato. `RowActionsMenu` nasconde da sé la voce se il permesso manca —
 //    è `auth.isActionAllowed` a deciderlo, non questa funzione.
