@@ -2,7 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team BE/FE** con K-5 … K-7 (§8.7: pricing gate, form, test dal push in su). K-1 … K-4, il
+**Riparte: il team DB** con **R-8** (§8.11): il codice d'errore del 409 «la provenienza dichiarata non vale
+più», senza il quale K-5 non può uscire. Il BE/FE riprende K-5 … K-7 alla consegna; la PATCH dei componenti
+(il rosso di `smoke-test-preventivi-componenti`) è già corretta (§8.11, 2026-11-14). K-1 … K-4, il
 lato push, sono fatti il 2026-11-14 (§8.9): il team DB può fare la parte del giro 4 che li aspettava, e
 nello stesso giro **R-7** (§8.10), trovata dalla revisione BE: il kit dal listino del contratto arriva in
 commessa con la sola origine. I
@@ -26,16 +28,19 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 3e | ✅ team DB | Giro 2: il push porta la provenienza (R-3, R-5), D-4; prova in transazione (2026-11-13) | §8.7 | 3d |
 | 3f | ✅ Tid | Apply del giro 2 e pgTAP del §8.7: verdi (2026-11-13) | §8.7 | 3e |
 | 4 | ✅ team BE | K-1 … K-4: il push copia la provenienza della riga, i componenti la loro (2026-11-14) | §8.7, §8.9 | 3f |
-| 4b | **team BE/FE** ⏭️ | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE» | 4 |
+| 4a | ✅ team BE | La PATCH dei componenti scrive il solo prezzo: la provenienza la fa decadere il trigger (decisione di Tid, strada «a», 2026-11-14) | §8.11 | — |
+| 4a-bis | ✅ Tid | D-5: la provenienza dichiarata dal form si verifica sul resolver; se non torna, 409 (2026-11-14) | §8.11 | — |
+| 4a-ter | **team DB** ⏭️ | **R-8**: il codice `E_PRICING_PROVENIENZA_SUPERATA` (classe `CONFLITTO_STATO`) nel catalogo dei messaggi | §8.11 | — |
+| 4b | team BE/FE | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE», §8.11 | 4a-ter |
 | 5 | ✅ team DB | Giro 3: le copie a valle (R-4), override con provenienza, contesto dei componenti (D-3); prova in transazione (2026-11-13) | §8.8 | 3f |
 | 5b | ✅ Tid | Apply del giro 3 e pgTAP del §8.8: verdi (2026-11-14) | §8.8 | 5 |
 | 6 | team DB | Giro 4: R-6 dal push in su (dopo K-1 … K-4), **R-7** (il kit dal listino del contratto porta la sua provenienza), doc `manual/`, chiusura | §8.5, §8.10 | 5b, 4 (✅) |
 | 6b | team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` | §8.10 | 6 (R-7) |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
+**Decisioni aperte di Tid:** nessuna. Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
 corpo vivo. **Lavoro da committare:** i giri 1, 2 e 3 (trentasette changeSet, tre CSV, tre pgTAP nuovi,
-quattro adeguati), il brief, la riga di PROJECT_CONTEXT.
+quattro adeguati), il brief, la riga di PROJECT_CONTEXT; su `dev/backend-tid` la PATCH dei componenti (§8.11).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
@@ -626,3 +631,61 @@ restituisce intero, invece del solo `prezzo_finale`»), su una funzione che il g
   accanto a `test_commesse_porta_nomi_db`, test 5.
 
 **Nel frattempo** il BE non ripiega: il componente porta l'origine e basta, com'è scritto al §8.9.
+
+### 8.11 La PATCH dei componenti, D-5 e la richiesta R-8 (sessione BE, 2026-11-14)
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-14. **A chi:** team DB (`dev/db-tid`) per R-8;
+> poi BE/FE per K-5 … K-7. **Chi cambia per primo:** il DB (R-8). Il BE oggi non emette il codice.
+
+**Il rosso dello smoke, chiuso.** `smoke-test-preventivi-componenti`, passo 8: la PATCH di un componente
+con un prezzo scritto a mano rispondeva `E_DATABASE` (400), per il CHECK `chk_prevrighe_comp_provenienza_prezzo`.
+La init del giro 3 scrive versione e riga di listino nelle colonne del componente; il BE
+(`dati_patch_componente`) cambiava la **sola** origine in `MANUALE`. Per il trigger
+`trgfn_riga_documento_provenienza_prezzo` era una provenienza nuova, quindi niente decadenza, e il CHECK
+rifiutava un `MANUALE` che cita il listino. Valeva per i cinque documenti.
+
+* **Decisione di Tid (strada «a», 2026-11-14):** il BE scrive il solo prezzo, e la provenienza la decide il
+  trigger: il prezzo cambiato fa decadere a `MANUALE` (versione, riga e contesto a NULL), il prezzo tolto
+  svuota origine, versione e riga. Scartata la strada «b» (il BE scrive la provenienza intera): sarebbe la
+  seconda copia di una regola che ha la sua sede nel DB.
+* Fatto: `backend/apps/vendite/services/_componenti_service_helpers.py` (`dati_patch_componente`) e i test
+  (`test_componenti_patch_operatore`, `test_preventivi_service`). 504 test dei service di vendita verdi; lo
+  smoke rilanciato: 23 PASS, 0 FAIL.
+* ⚠️ **Da sapere, non è un difetto:** quando il prezzo si toglie, il trigger svuota origine, versione e riga,
+  ma non `prezzo_resolver_context`. La coerenza (`fn_provenienza_prezzo_coerente`) non giudica il contesto,
+  e `fn_provenienza_prezzo_esplosa` non lo legge senza un'origine da listino: non si vede. Se il team DB
+  vuole la simmetria, è una riga nel trigger.
+
+**D-5 — la provenienza dichiarata dal form (decisione di Tid, 2026-11-14).** Con K-6 il form manda il prezzo
+**con** la provenienza ricevuta dall'endpoint di pricing (origine, versione, riga). Il guard del DB giudica la
+coerenza della riga di listino (articolo, UoM, versione, emittente), non il prezzo. Il BE la **verifica**:
+rilancia il resolver e, se provenienza dichiarata e prezzo coincidono con quello che il listino dà adesso,
+la riga è da listino, con le colonne scritte dal risultato del resolver. Se non coincidono — il listino è
+cambiato fra la precompilazione e il salvataggio, o la dichiarazione è falsa — risponde **409** e non salva.
+Scartate: «se non torna, `MANUALE`» (un operatore senza il permesso di override riceverebbe un 403 su un
+prezzo che non ha toccato) e «ci si fida della dichiarazione» (un prezzo da listino che il listino non dà).
+
+⚠️ **Perché K-5 aspetta R-8, e non esce a metà.** Il form di oggi rimanda il prezzo precompilato anche se
+l'operatore non lo tocca. Un K-5 senza il ramo della dichiarazione farebbe `MANUALE` ogni riga precompilata,
+passandola dai gate L1/L2: 403 per chi non ha il permesso di override. Il ramo della dichiarazione vuole il
+codice del 409, e un codice nuovo nasce nel catalogo del DB.
+
+#### Richiesta R-8 al team DB
+
+| # | Che cosa |
+| --- | --- |
+| R-8.1 | Codice `E_PRICING_PROVENIENZA_SUPERATA`, classe `CONFLITTO_STATO` (409), in `config/messaggi_errore.csv` e nella classificazione. Messaggio senza `%s`, per esempio: «Il prezzo del listino è cambiato dopo che la riga è stata compilata.» Causa: «La riga dichiara un prezzo preso dal listino, ma il listino oggi dà un'altra riga o un altro prezzo per questo articolo, unità di misura e data.» Soluzione: «Ricaricare il prezzo dal listino, oppure scriverlo a mano.» Il nome e il testo li sceglie il team DB |
+| R-8.2 | Lo solleva il **BE** (pricing gate di preventivo, offerta e contratto), non una funzione del DB: va dichiarato come tale nella colonna del catalogo che lo dice, se c'è |
+| R-8.3 | Alla consegna, il BE rigenera la policy (`genera_error_policies`) col DB allineato a git e scrive il ripiego senza `%s` |
+
+**La metà BE/FE, dopo R-8** (è K-5 … K-7 del §8.7, con D-5 dentro):
+
+* `_pricing_gate_helpers.resolve_or_check_override_prezzo`: la provenienza nelle colonne (`origine_prezzo`,
+  `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`), non nel `meta`. Tre casi: payload
+  senza prezzo → il risultato del resolver; prezzo **con** provenienza dichiarata → verifica D-5 (o 409);
+  prezzo senza dichiarazione → `MANUALE`, gate L1/L2/L3. Sparisce il confronto «prezzo uguale a quello del
+  resolver, a 4 decimali». Le chiavi d'audit dell'override restano nel `meta`;
+* le tre chiamate (preventivi, offerte, contratti) e i repository che scrivono le righe;
+* FE (K-6): i cinque form di riga conservano la provenienza dell'endpoint di pricing e la rimandano col prezzo
+  finché l'operatore non lo cambia; il 409 si legge come «ricarica il prezzo»;
+* K-7, sul DB vero.

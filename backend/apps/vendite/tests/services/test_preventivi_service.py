@@ -1589,10 +1589,10 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         gate.assert_called_once()
         self.assertEqual(gate.call_args.args[0], 42)
         self.assertEqual(result["componente_id"], 50)
-        # `origine_prezzo` la scrive il server: un prezzo dell'operatore e'
-        # MANUALE per definizione (contratto PATCH, 2026-09-26).
+        # Il server scrive il SOLO prezzo: la provenienza la fa decadere a
+        # MANUALE il trigger del DB (2026-11-14).
         self.mock_repo.update_componente.assert_called_once_with(
-            50, prezzo_unitario="150.00", origine_prezzo="MANUALE",
+            50, prezzo_unitario="150.00",
         )
 
     # Scopo: ⛔ l'operatore NON puo' approvarsi un prezzo L3. Fino al 2026-09-26
