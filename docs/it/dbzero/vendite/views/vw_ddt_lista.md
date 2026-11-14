@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista flat della lista delle bolle di vendita, per l'interfaccia: testata, destinatario (dal soggetto_ruolo), mittente e vettore (opzionali), billing account, emittente fiscale, utility, valuta, causale, aspetto dei beni, addebito del trasporto, i campi del trasporto per il PDF, la fase dello stato, la pratica (pratiche.fn_pratica_del_documento) e il registro (codice e descrizione). La provenienza: sorgente_tipo_id e sorgente_codice_interno, la chiave del documento in sorgente_id o sorgente_uid (una sola, secondo il key_selector del tipo); ordine_origine_id e ordine_origine_numero quando la bolla viene da un ordine (la regola d'incontro sulle due colonne), NULL per la bolla di riconsegna, che viene da un reso. Le colonne del grafo dei legami le legge il backend da vendite.fn_documento_lineage_sintesi. security_invoker=on.
+> Vista flat della lista delle bolle di vendita, per l'interfaccia: testata, destinatario (dal soggetto_ruolo), mittente e vettore (opzionali), billing account, emittente fiscale, utility, valuta, causale, aspetto dei beni, addebito del trasporto, i campi del trasporto per il PDF, la fase dello stato, la pratica (pratiche.fn_pratica_del_documento) e il registro (codice e descrizione). La provenienza: sorgente_tipo_id e sorgente_codice_interno, la chiave del documento in sorgente_id o sorgente_uid (una sola, secondo il key_selector del tipo); ordine_origine_id e ordine_origine_numero quando la bolla viene da un ordine (la regola d'incontro sulle due colonne), NULL per la bolla di riconsegna, che viene da un reso. Le colonne del grafo dei legami le legge il backend da vendite.fn_documento_lineage_sintesi. security_invoker=on. pdf_mode: la modalita' del PDF nello stato (config.stati_doc_ddt.pdf_mode); la lista accende il PDF dove e' ARCHIVE, la stessa colonna da cui la capability del dettaglio dice pdf.mode.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -73,7 +73,8 @@ SELECT d.id,
     pr.n_pratiche,
     reg.codice AS registro_codice,
     reg.descrizione AS registro_descrizione,
-    d.sorgente_id
+    d.sorgente_id,
+    sd.pdf_mode
    FROM ((((((((((((((((((((vendite.ddt d
      JOIN config.stati_doc_ddt sd ON ((sd.id = d.stato_doc_ddt_id)))
      JOIN anagrafiche.soggetti_ruoli sr_dest ON ((sr_dest.id = d.destinatario_soggetto_ruolo_id)))

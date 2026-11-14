@@ -18,6 +18,12 @@ CREATE OR REPLACE FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
  SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): la destinazione e' lo stato
+--   di annullo (script.fn_stato_abortito_id); E_RESO_STATO_NON_ANNULLABILE dove
+--   la matrice non ha il passaggio (script.fn_doc_passaggio); lo storno se lo
+--   stato di partenza e' quello di emissione. Dove sotto si legge DRAFT,
+--   CONFERMATO o ANNULLATO, vale lo stato che il vocabolario e la matrice
+--   dicono.
 -- ⭐ rev 2026-09-28 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
 --   VERBO del modello «una scrittura = un verbo». SECURITY DEFINER con
 --   search_path bloccato (ogni nome qui dentro e' qualificato), testata presa
@@ -38,6 +44,7 @@ DECLARE
     v_reso              vendite.resi%ROWTYPE;
     v_muove             boolean;   -- calcolato, nessuna colonna
     v_stato            config.stati_doc_reso.codice_interno%TYPE;
+    v_emissione        config.stati_doc_reso.emissione%TYPE;
     v_stato_ann_id     config.stati_doc_reso.id%TYPE;
     v_ddt_id           vendite.ddt.id%TYPE;
     v_ddt_stato        config.stati_doc_ddt.codice_interno%TYPE;
@@ -68,7 +75,7 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    SELECT sdr.codice_interno INTO v_stato
+    SELECT sdr.codice_interno, sdr.emissione INTO v_stato, v_emissione
       FROM config.stati_doc_reso sdr
      WHERE sdr.id = v_reso.stato_doc_reso_id;
 
@@ -76,12 +83,16 @@ BEGIN
     -- riga della matrice (M-3). Chi fa disfa: l'annullo di un reso CONFERMATO
     -- chiede conferma_reso; quello di una bozza solo il permesso sul documento,
     -- che controlla il backend (M-4).
-    SELECT id INTO v_stato_ann_id FROM config.stati_doc_reso
-     WHERE codice_interno = 'ANNULLATO' AND attivo IS TRUE;
+    -- La destinazione: lo stato di annullo del vocabolario.
+    v_stato_ann_id := script.fn_stato_abortito_id('vendite.resi'::regclass);
     PERFORM script.fn_guard_passaggio(v_utente, 'vendite.resi'::regclass,
                                       v_reso.stato_doc_reso_id, v_stato_ann_id);
 
-    IF v_stato NOT IN ('DRAFT','CONFERMATO') THEN
+    -- Da dove si annulla lo dice la matrice: il passaggio che il guard ha
+    -- appena letto. Senza, lo stato non e' annullabile.
+    IF NOT EXISTS (SELECT 1
+                     FROM script.fn_doc_passaggio('vendite.resi'::regclass,
+                                                  v_reso.stato_doc_reso_id, v_stato_ann_id)) THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_annulla_reso','E_RESO_STATO_NON_ANNULLABILE',
             jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
@@ -161,8 +172,10 @@ BEGIN
     -- QUESTO reso.
     PERFORM script.fn_doc_scrivi_stato('vendite.resi'::regclass, p_reso_id, v_stato_ann_id);
 
-    -- Storno effetti solo se era CONFERMATO.
-    IF v_stato = 'CONFERMATO' THEN
+    -- Storno effetti solo se il reso era emesso: gli effetti (ordine, bolla,
+    -- carichi) nascono alla conferma, che e' l'emissione (la colonna
+    -- emissione dello stato di partenza).
+    IF v_emissione THEN
         FOR v_ord IN
             SELECT DISTINCT orr.ordine_id
               FROM vendite.resi_righe rr
@@ -234,7 +247,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_reso(p_reso_id bigint)
-IS 'Il verbo dell''annullo di un reso, con storno: -> ANNULLATO, gemello di vendite.fn_conferma_reso. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano per documento (magazzino.fn_storna_movimenti_sorgente sul reso; un tipo RESO_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';
+IS 'Il verbo dell''annullo di un reso, con storno: verso lo stato di annullo (la colonna is_abortito di config.stati_doc_reso, ANNULLATO nel seed), gemello di vendite.fn_conferma_reso; da uno stato senza il passaggio nella matrice E_RESO_STATO_NON_ANNULLABILE. SECURITY DEFINER con search_path bloccato; testata FOR UPDATE nel perimetro (fuori perimetro E_RESO_NOT_FOUND); il permesso dalla riga del passaggio (script.fn_guard_passaggio): CONFERMATO -> ANNULLATO chiede conferma_reso, DRAFT -> ANNULLATO il solo permesso sul documento. Due rifiuti prima di qualunque scrittura: E_RESO_ANNULLO_CON_RICONSEGNE (la merce e'' gia'' ripartita) ed E_RESO_ANNULLO_CON_ACCREDITO (esiste una riga in vendite.resi_righe_accrediti: senza, le rettifiche negative resterebbero vive e la fatturazione emetterebbe una nota di credito per un reso annullato). Si rifiuta e non si cascata: l''annullo dell''accredito (vendite.fn_annulla_accredito_riga_reso) chiede un motivo, e un accredito non piu'' disfacibile lo dice lui (E_ACCREDITO_ANNULLO_NON_AMMESSO). Vincolo reciproco con script.fn_check_rinuncia_reversibile e vendite.fn_annulla_accredito_riga_reso: l''annullo dell''accredito cancella le righe di ponte, e i tre posti cambiano insieme. Lo storno solo se il reso era emesso (la colonna emissione dello stato di partenza): annullando un reso confermato che aveva fatto rientrare merce, i carichi si stornano per documento (magazzino.fn_storna_movimenti_sorgente sul reso; un tipo RESO_VENDITA assente e'' E_CONFIG_MANCANTE, non uno storno saltato) al costo del carico; se la merce e'' gia'' uscita di nuovo, la primitiva rifiuta. Lo stato del reso e il ritorno della bolla RESO -> CONSEGNATO, se il reso non copre piu'' tutta la merce (le sole righe di merce; contano i resi confermati), dalla scrittura comune script.fn_doc_scrivi_stato. La bolla si cerca per sorgente_id (la bolla ha chiave id). Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. RETURNS void.';
 ```
 
 </div>

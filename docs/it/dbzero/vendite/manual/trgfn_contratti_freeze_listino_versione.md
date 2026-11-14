@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Trigger Function `vendite.trgfn_contratti_freeze_listino_versione()`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle correlate:
@@ -32,7 +34,7 @@ Il modello unificato prevede che un contratto ATTIVO abbia una versione listino 
 
 ### Logica
 
-Attiva solo sulla transizione DRAFT→ATTIVO (verifica via `codice_interno` dei due stati). Su qualsiasi altra transizione ritorna senza effetti.
+Attiva solo sul passaggio dallo stato iniziale allo stato di emissione, che il vocabolario marca (`iniziale` della partenza, `emissione` della destinazione, in `config.stati_doc_contratti`; oggi DRAFT→ATTIVO). Su qualsiasi altro passaggio ritorna senza effetti.
 
 | Scenario | Condizione | Comportamento |
 | --- | --- | --- |

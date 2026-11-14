@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Resolver DDT per la dashboard fatturazione (brief-db-fatturazione-ddt-resi §4a, step 6), sesta area di vw_dash_fatturazione_documenti: stesse 19 colonne dei gemelli. POPOLAZIONE = solo DDT con ruolo di fatturazione — fuori quelli di ordini con trigger CONFERMATO (fattura l'ordine: XOR; evita falso positivo PUSH_NON_ESEGUITO perpetuo e doppio conteggio del valore) e fuori le causali non fatturabili (solo trasporto, DL-28). Stesso discriminatore del lister, letto per la stessa strada (fulfillment). motivo_fermo TRIGGER-AWARE: DOC_BOZZA in DRAFT, IN_TRANSITO prima dello stato-trigger (viaggio in corso, non ritardo), PUSH_NON_ESEGUITO / PUSH_PARZIALE dal trigger in poi; soglia = rank del trigger, SPEDITO per lo standalone. Valore per riga con COALESCE(ddt_righe.prezzo_unitario, ordini_righe via fulfillment) — vw_ddt_righe_iva_base NON riusabile (filtra prezzo NOT NULL). data_riferimento = ddt.data (DL-17). fase/is_abortito dal catalogo. security_invoker=on + RLS. rev 2026-07-18. Rev 2026-10-20 (20261020-68, brief-db-grammatica-unica-documenti 2d e 2e): l'area DDT diventa DDT_VENDITA, il codice della sorgente; la chiave della riga la compone script.fn_segment_key.
+> Dashboard della fatturazione, area DDT_VENDITA: una riga per bolla, la sesta area di vendite.vw_dash_fatturazione_documenti, con le stesse colonne dei gemelli. Popolazione: solo le bolle con un ruolo di fatturazione; fuori quelle di ordini con fatturazione_trigger CONFERMATO (fattura l'ordine: niente falso PUSH_NON_ESEGUITO e niente doppio conteggio del valore) e fuori le causali non fatturabili (solo trasporto); lo stesso discriminatore della push-list, letto per la stessa strada (il legame di evasione). motivo_fermo: NULL se abortito; DOC_BOZZA nello stato iniziale del vocabolario (la colonna iniziale); IN_TRANSITO prima dello stato del trigger (viaggio in corso, non ritardo; per la bolla senza ordine la soglia e' SPEDITO, una destinazione del processo); dal trigger in poi PUSH_NON_ESEGUITO o PUSH_PARZIALE. Il valore per riga e' COALESCE(prezzo della riga di bolla, prezzo della riga d'ordine attraverso il legame); vendite.vw_ddt_righe_iva_base non serve, perche' filtra il prezzo valorizzato. La chiave della riga la compone script.fn_segment_key. data_riferimento: la data della bolla. fase e is_abortito dal vocabolario. security_invoker=on: la RLS resta di chi legge.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -48,7 +48,7 @@ WITH righe AS (
         CASE
             WHEN sdd.is_abortito THEN NULL::text
             WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
-            WHEN ((sdd.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+            WHEN sdd.iniziale THEN 'DOC_BOZZA'::text
             WHEN (sdd.ordine < COALESCE(trg.ordine, sped.ordine)) THEN 'IN_TRANSITO'::text
             WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
             ELSE 'PUSH_PARZIALE'::text
@@ -75,7 +75,7 @@ WITH righe AS (
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      LEFT JOIN righe r ON ((r.ddt_id = d.id)))
   WHERE ((COALESCE(ord.fatturazione_trigger, 'SPEDITO'::character varying))::text <> 'CONFERMATO'::text)
-  GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id, sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.ordine, trg.ordine, sped.ordine, s.ragione_sociale_completa;
+  GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id, sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.iniziale, sdd.ordine, trg.ordine, sped.ordine, s.ragione_sociale_completa;
 ```
 
 </div>

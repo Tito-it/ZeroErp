@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_ddt_lista`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,6 +50,8 @@ La vista sorgente della lista configurabile delle bolle di vendita (`<ListaConfi
 `security_invoker = on`: la vista gira col contesto del chiamante, e le policy RLS di `vendite.ddt`
 si applicano. Nomi canonici: `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `ba_codice`,
 `stato_codice_interno`. `numero` è vuoto in bozza, valorizzato all'emissione.
+
+* **PDF**: **`pdf_mode`**, in ultima posizione, da `config.stati_doc_ddt.pdf_mode`: la lista accende il PDF dove è `ARCHIVE`, come le liste di ordini, preventivi, offerte e contratti, senza confrontare il codice della bozza.
 
 ---
 

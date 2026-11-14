@@ -26,14 +26,17 @@ AS $function$
 --   script.fn_check_prezzi_autorizzati), non piu' E_COMPONENTE_PREZZO_PENDENTE
 --   (brief-db-preventivi-congelamento-pricing, D-6).
 DECLARE
-    v_stato_codice config.stati_doc_ddt.codice_interno%TYPE;
+    -- La bolla e' nello stato di emissione? Dal vocabolario.
+    v_emissione    config.stati_doc_ddt.emissione%TYPE;
     v_motivo       jsonb;
 BEGIN
-    SELECT sdd.codice_interno INTO v_stato_codice
+    SELECT sdd.emissione INTO v_emissione
       FROM config.stati_doc_ddt sdd
      WHERE sdd.id = NEW.stato_doc_ddt_id;
 
-    IF v_stato_codice IS DISTINCT FROM 'EMESSO' THEN
+    -- rev 2026-11-14 (giro 6d): lo stato di emissione, la colonna del
+    -- vocabolario. Uno stato che non si legge non e' l'emissione.
+    IF v_emissione IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -73,7 +76,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione_approvazione()
-IS 'Blocca la transizione a EMESSO di un DDT con componenti BoM CASO A in approvazione prezzo PENDING (E_COMPONENTE_PREZZO_PENDENTE) o con prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE). rev 2026-07-19: valutazione delegata a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt); codici errore invariati. rev 2026-09-24: il prezzo non autorizzato dei componenti solleva E_DOC_PREZZO_PENDENTE o E_DOC_PREZZO_RIFIUTATO — i motivi del building block script.fn_check_prezzi_autorizzati, che fn_check_ddt_emittibile chiede quando la causale vende — con il conteggio nella frase e riga/componente nel contesto. Prima E_COMPONENTE_PREZZO_PENDENTE, solo sul PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-6).';
+IS 'Il guard dei prezzi all''emissione della bolla: quando la bolla e'' nello stato di emissione (la colonna emissione di config.stati_doc_ddt) solleva i motivi del prezzo di script.fn_check_ddt_emittibile, la stessa check della capability: il prezzo non autorizzato di righe e componenti BoM (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO, dal building block script.fn_check_prezzi_autorizzati, chiesto quando la causale vende; nella frase il conteggio, riga e componente nel contesto) e il componente col prezzo non valorizzato (E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE).';
 ```
 
 </div>

@@ -61,10 +61,15 @@ BEGIN
     -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
     PERFORM vendite.fn_documento_ritira_legami('DDT_VENDITA', p_ddt_id, p_legami_confermati);
 
-    -- 4. Lo stato, dal verbo di stato: matrice, permesso, storno.
+    -- 4. Lo stato, dal verbo di stato: matrice, permesso, storno. Lo stato
+    --    di annullo e' quello che il vocabolario marca (is_abortito; rev
+    --    2026-11-14, giro 6d), come in vendite.fn_annulla_ordine.
     RETURN QUERY
         SELECT c.movimento_id, c.prelievo_id, c.qta
-          FROM vendite.fn_cambia_stato_ddt(p_ddt_id, 'ANNULLATO') AS c;
+          FROM vendite.fn_cambia_stato_ddt(
+                   p_ddt_id,
+                   script.fn_doc_stato_codice('vendite.ddt'::regclass,
+                                              script.fn_stato_abortito_id('vendite.ddt'::regclass))) AS c;
 
     -- 5. Porta chiusa.
     PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
@@ -72,7 +77,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_annulla_ddt(p_ddt_id bigint, p_legami_confermati integer)
-IS 'VERBO (2026-10-11; brief-db-ddt-righe-evase-dall-ordine D-8, riallineato da brief-db-annullo-documento-con-legami D-4): annulla una bolla. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt; fuori perimetro E_DDT_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''DDT'', id): legami con ordini e resi, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso emetti_ddt sull''annullo di una emessa, storno del magazzino), di cui restituisce i movimenti, e la porta del ritiro si chiude. UNA transazione. Una bolla senza legami non ha niente da confermare. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app. ⭐ rev 2026-10-19 (20261019-60, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente.';
+IS 'VERBO: annulla una bolla. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_ddt; fuori perimetro E_DDT_NOT_FOUND). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma dichiara quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''DDT_VENDITA'', id): legami con ordini e resi, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato da vendite.fn_cambia_stato_ddt (matrice, permesso emetti_ddt sull''annullo di una emessa, storno del magazzino), verso lo stato di annullo che il vocabolario marca (is_abortito, script.fn_stato_abortito_id); ne restituisce i movimenti, e la porta del ritiro si chiude. Una transazione. Una bolla senza legami non ha niente da confermare. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''app.';
 ```
 
 </div>

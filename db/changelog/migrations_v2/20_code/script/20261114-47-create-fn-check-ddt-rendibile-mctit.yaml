@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_ddt_rendibile(p_ddt_id)
+#   «Da questa bolla nasce un reso? E se no, perche'?»
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.22, giro 6e
+#   (D-RESO (a), Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La regola «un reso nasce da una bolla consegnata, mai da un trasferimento
+#   fra depositi» stava nel trigger vendite.trgfn_resi_guard_ddt_consegnato, e
+#   due copie fuori dal DB: il drawer della bolla accende «Genera reso» con
+#   stato = CONSEGNATO, e vendite.services.resi_service.crea_reso ripete il
+#   guard dello stato (senza il trasferimento). La capability della bolla non
+#   aveva una chiave da leggere al loro posto.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   La regola esce in una funzione pura, nella forma delle altre fn_check_*
+#   (un array di motivi, [] = lecito), come script.fn_check_ordine_evadibile
+#   (D-EVAD). La leggono il trigger (-48), che solleva il primo motivo, e la
+#   capability della bolla (-49), che espone can_genera_reso con reason e
+#   reason_key: una regola, due superfici.
+#   Due motivi, nell'ordine del trigger (il trasferimento prima: e' la risposta
+#   vera anche su una bolla consegnata):
+#     * E_RESO_DA_DDT_TRASFERIMENTO, reason DDT_TRASFERIMENTO, reason_key
+#       vendite.ddt.genera_reso_reason.trasferimento, valori il numero della
+#       bolla (il %s della frase);
+#     * E_RESO_DDT_NON_CONSEGNATO, reason DDT_NON_CONSEGNATO, reason_key
+#       vendite.ddt.genera_reso_reason.non_consegnato, valori il numero e il
+#       codice dello stato (la frase del DB non ha segnaposti).
+#   Le due chiavi i18n sono nuove: un debito verso il frontend (FE-R1).
+#   CONSEGNATO e' la destinazione del processo di consegna, e resta col codice
+#   (S-3), come la nomina la matrice.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, STABLE, INVOKER, nessun SET, come le sorelle
+#   (pg_proc su dbdev, 2026-11-14). EXECUTE: il default a PUBLIC, zeroerp_app
+#   esplicito, come script.fn_check_ordine_evadibile.
+#   Bolla assente: il motivo DDT_NON_CONSEGNATO con lo stato 'NULL', la
+#   risposta che il trigger dava prima (scatta prima del guard della sorgente,
+#   a10 in ordine di nome).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261114-47-create-fn-check-ddt-rendibile-mctit.yaml
+
+  - changeSet:
+      id: 20261114-47-create-fn-check-ddt-rendibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO script.fn_check_ddt_rendibile: i motivi per cui da una bolla non nasce un reso (una bolla di
+        trasferimento, una bolla non consegnata). Brief: brief-db-stati-documento-dal-vocabolario, giro 6e
+        (D-RESO).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ddt_rendibile(
+                  p_ddt_id vendite.ddt.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi per cui da una bolla non nasce un reso.
+              --   Funzione PURA (fn_check_*): [] = lecito.
+              --   Consumatori: vendite.trgfn_resi_guard_ddt_consegnato (solleva il
+              --   primo) e script.fn_available_actions_ddt (can_genera_reso).
+              --   Brief: brief-db-stati-documento-dal-vocabolario §6.22 (D-RESO).
+              DECLARE
+                -- L'elenco dei motivi: nessuna colonna di cui sia il riflesso.
+                v_motivi jsonb := '[]'::jsonb;
+                v_ddt    vendite.ddt%ROWTYPE;
+                v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+              BEGIN
+                IF p_ddt_id IS NULL OR p_ddt_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script', 'fn_check_ddt_rendibile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'ddt_id', 'valore', p_ddt_id),
+                    NULL::uuid, 'ddt_id obbligatorio (>0)');
+                END IF;
+
+                SELECT d.* INTO v_ddt
+                  FROM vendite.ddt d
+                 WHERE d.id = p_ddt_id;
+
+                -- 1. Una bolla di TRASFERIMENTO fra depositi non genera un reso: la
+                --    merce e' rimasta nostra (e' entrata nel magazzino di arrivo alla
+                --    consegna), un reso la farebbe rientrare una seconda volta, con un
+                --    accredito verso chi non l'ha comprata. Si riconosce dalla causale
+                --    di magazzino della sua causale di trasporto (TRASF_OUT). Prima
+                --    dello stato: e' la risposta vera anche su una bolla consegnata.
+                IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
+                  RETURN jsonb_build_array(jsonb_build_object(
+                    'codice',     'E_RESO_DA_DDT_TRASFERIMENTO',
+                    'reason',     'DDT_TRASFERIMENTO',
+                    'reason_key', 'vendite.ddt.genera_reso_reason.trasferimento',
+                    'dettaglio',  jsonb_build_object('ddt_id', v_ddt.id),
+                    'valori',     jsonb_build_array(COALESCE(v_ddt.numero, v_ddt.id::text))));
+                END IF;
+
+                -- 2. Si rende cio' che e' stato consegnato: CONSEGNATO e' la
+                --    destinazione del processo di consegna, e si nomina col codice
+                --    (S-3). Una bolla assente non e' consegnata (stato 'NULL').
+                SELECT sdd.codice_interno INTO v_stato
+                  FROM config.stati_doc_ddt sdd
+                 WHERE sdd.id = v_ddt.stato_doc_ddt_id;
+
+                IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_RESO_DDT_NON_CONSEGNATO',
+                    'reason',     'DDT_NON_CONSEGNATO',
+                    'reason_key', 'vendite.ddt.genera_reso_reason.non_consegnato',
+                    'dettaglio',  jsonb_build_object('ddt_id', p_ddt_id,
+                                                     'stato_ddt', COALESCE(v_stato, 'NULL')),
+                    'valori',     jsonb_build_array(COALESCE(v_ddt.numero, p_ddt_id::text),
+                                                    COALESCE(v_stato, 'NULL')));
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ddt_rendibile(vendite.ddt.id%TYPE)
+              IS 'Pure check: i motivi per cui da una bolla non nasce un reso; [] = lecito. Nell''ordine (si esce al primo): E_RESO_DA_DDT_TRASFERIMENTO (reason DDT_TRASFERIMENTO, reason_key vendite.ddt.genera_reso_reason.trasferimento, valori il numero della bolla) per una bolla di trasferimento fra depositi, riconosciuta dalla causale di magazzino TRASF_OUT (vendite.fn_ddt_causale_magazzino); E_RESO_DDT_NON_CONSEGNATO (reason DDT_NON_CONSEGNATO, reason_key vendite.ddt.genera_reso_reason.non_consegnato, valori il numero e il codice dello stato) per una bolla che non e'' in CONSEGNATO, la destinazione del processo di consegna, o che non c''e'' (stato NULL). dettaglio {ddt_id} e {ddt_id, stato_ddt}. Sede unica della regola: la leggono vendite.trgfn_resi_guard_ddt_consegnato, che solleva il primo motivo, e script.fn_available_actions_ddt, che ne fa can_genera_reso. Parametro non valido: E_PARAMETRO_INVALIDO.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_check_ddt_rendibile(vendite.ddt.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ddt_rendibile(bigint);

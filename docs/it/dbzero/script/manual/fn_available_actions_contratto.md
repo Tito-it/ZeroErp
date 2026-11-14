@@ -1,5 +1,7 @@
 # fn_available_actions_contratto
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 ### Scopo
 
 Restituisce in un **unico JSONB** tutte le capability del contratto
@@ -62,7 +64,7 @@ script.fn_available_actions_contratto(
     ],
     "can_change_state":   true,    // true se available_actions non è vuota
     "can_edit_testata":   true,    // true in DRAFT e ATTIVO; false in terminali (CESSATO, ANNULLATO)
-    "can_edit_righe":     true,    // true solo in DRAFT
+    "can_edit_righe":     true,    // dal lock delle righe (script.fn_doc_riga_modificabile): oggi solo nello stato iniziale
     "non_editable_fields": [...],  // vedi dettaglio sotto
     "stato_codice":       "DRAFT"
 }

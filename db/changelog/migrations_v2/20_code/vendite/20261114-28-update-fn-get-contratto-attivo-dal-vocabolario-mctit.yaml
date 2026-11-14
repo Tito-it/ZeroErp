@@ -1,0 +1,165 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTRATTO IN VIGORE: LO STATO DI EMISSIONE DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.19, giro 6c (S-2,
+#   Tid 2026-11-08; via di Tid del 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.fn_get_contratto_attivo cercava il contratto in vigore con
+#   codice_interno = 'ATTIVO'. Il contratto in vigore e' quello nello stato di
+#   emissione (l'attivazione e' l'emissione del contratto), che il vocabolario
+#   marca con la colonna emissione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   AND s.emissione al posto del codice. Con il seed la risposta e' quella di
+#   prima.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma, STABLE, INVOKER (pg_proc su dbdev,
+#   2026-11-14). Il COMMENT cambia la frase sullo stato.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-14; la firma, coi suoi %TYPE, dal
+#   changeSet che l'ha scritta per ultimo (il catalogo li scioglie). Il
+#   rollback porta il corpo e il COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-28-update-fn-get-contratto-attivo-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261114-28-update-fn-get-contratto-attivo-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_get_contratto_attivo: il contratto in vigore e' quello nello stato di emissione del
+        vocabolario, non il codice ATTIVO. Brief: brief-db-stati-documento-dal-vocabolario, giro 6c.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_contratto_attivo(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE,
+                  p_data_riferimento   date
+              )
+              RETURNS vendite.contratti.id%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: dato (billing account, utility, data) dire QUALE contratto
+              --   e' attivo, cioe' di quale FORNITURA parla un documento. Nessuna
+              --   testata di documento porta un contratto_id — ddt, ordini,
+              --   preventivi e fatture portano tutte quella terna — quindi da li'
+              --   ci si deve arrivare, e la regola va scritta in un posto solo.
+              --   Consumatori: il nucleo del pricing e il risolutore IVA, che da
+              --   quel contratto ricava il tipo d'uso della fornitura.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.
+              -- Ritorna: l'id del contratto, oppure NULL se a quella data non ce
+              --   n'e' nessuno attivo. NON solleva: e' un caso legittimo.
+              DECLARE
+                  v_contratto_id vendite.contratti.id%TYPE;
+              BEGIN
+                  IF p_billing_account_id IS NULL
+                     OR p_utility_id       IS NULL
+                     OR p_data_riferimento IS NULL THEN
+                      RETURN NULL;   -- contesto incompleto: niente da cercare
+                  END IF;
+
+                  -- ⚠️ ORDER BY c.id DESC: le finestre di due contratti si
+                  --    sovrappongono ogni volta che un rinnovo parte prima che il
+                  --    vecchio scada, quindi piu' di uno ci puo' restare davvero.
+                  --    «L'id piu' alto» e' arbitrario ma SCRITTO: senza, il
+                  --    database ne sceglierebbe uno a caso e il prezzo cambierebbe
+                  --    da una corsa all'altra.
+                  -- ⭐ rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c):
+                  --    in vigore e' lo stato di emissione, la colonna del vocabolario, non
+                  --    un codice.
+                  SELECT c.id
+                    INTO v_contratto_id
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti s
+                      ON s.id = c.stato_doc_contratto_id
+                   WHERE c.billing_account_id = p_billing_account_id
+                     AND c.utility_id         = p_utility_id
+                     AND c.validita          @> p_data_riferimento
+                     AND s.emissione
+                   ORDER BY c.id DESC
+                   LIMIT 1;
+
+                  RETURN v_contratto_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_contratto_attivo(p_billing_account_id anagrafiche.billing_account.id%TYPE, p_utility_id config.utilities.id%TYPE, p_data_riferimento date)
+              IS 'Il predicato «contratto in vigore per (billing account, utility, data)», in un posto solo: dato cio'' che un documento porta, dice di quale fornitura si parla, perche'' nessuna testata di documento (bolle, ordini, preventivi, fatture) porta un contratto_id, tutte portano quella terna. La regola: i contratti di quel billing account, per quella utility, con la validita'' che contiene la data, nello stato di emissione (la colonna emissione di config.stati_doc_contratti); se ne resta piu'' di uno, quello con l''id piu'' alto. Piu'' di uno ci puo'' restare davvero, perche'' le finestre di due contratti si sovrappongono quando un rinnovo parte prima che il vecchio scada; «l''id piu'' alto» e'' arbitrario ma scritto, cosi'' il prezzo non cambia da una corsa all''altra. La leggono il risolutore dei prezzi (vendite.fn_resolve_prezzo_listino_v2_esito) e quello IVA (vendite.fn_get_tipo_utenza_fornitura), che da quel contratto arriva al tipo d''uso della fornitura: sceglierne due diversi darebbe prezzo e aliquota della stessa riga da forniture diverse. Ritorna solo l''id; NULL, senza sollevare, quando nessun contratto e'' in vigore, che e'' un caso legittimo (un cliente nuovo). STABLE, sola lettura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_contratto_attivo(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE,
+                  p_data_riferimento   date
+              )
+              RETURNS vendite.contratti.id%TYPE
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: dato (billing account, utility, data) dire QUALE contratto
+              --   e' attivo, cioe' di quale FORNITURA parla un documento. Nessuna
+              --   testata di documento porta un contratto_id — ddt, ordini,
+              --   preventivi e fatture portano tutte quella terna — quindi da li'
+              --   ci si deve arrivare, e la regola va scritta in un posto solo.
+              --   Consumatori: il nucleo del pricing e il risolutore IVA, che da
+              --   quel contratto ricava il tipo d'uso della fornitura.
+              --   Brief: brief-db-be-iva-risolutore-e-regime-cliente, Fase 3.
+              -- Ritorna: l'id del contratto, oppure NULL se a quella data non ce
+              --   n'e' nessuno attivo. NON solleva: e' un caso legittimo.
+              DECLARE
+                  v_contratto_id vendite.contratti.id%TYPE;
+              BEGIN
+                  IF p_billing_account_id IS NULL
+                     OR p_utility_id       IS NULL
+                     OR p_data_riferimento IS NULL THEN
+                      RETURN NULL;   -- contesto incompleto: niente da cercare
+                  END IF;
+
+                  -- ⚠️ ORDER BY c.id DESC: le finestre di due contratti si
+                  --    sovrappongono ogni volta che un rinnovo parte prima che il
+                  --    vecchio scada, quindi piu' di uno ci puo' restare davvero.
+                  --    «L'id piu' alto» e' arbitrario ma SCRITTO: senza, il
+                  --    database ne sceglierebbe uno a caso e il prezzo cambierebbe
+                  --    da una corsa all'altra.
+                  -- ⚠️ `codice_interno` e non `codice`: il secondo e' modificabile
+                  --    dall'utente e smetterebbe di agganciarsi in silenzio al
+                  --    primo rename.
+                  SELECT c.id
+                    INTO v_contratto_id
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti s
+                      ON s.id = c.stato_doc_contratto_id
+                   WHERE c.billing_account_id = p_billing_account_id
+                     AND c.utility_id         = p_utility_id
+                     AND c.validita          @> p_data_riferimento
+                     AND s.codice_interno     = 'ATTIVO'
+                   ORDER BY c.id DESC
+                   LIMIT 1;
+
+                  RETURN v_contratto_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_contratto_attivo(p_billing_account_id anagrafiche.billing_account.id%TYPE, p_utility_id config.utilities.id%TYPE, p_data_riferimento date)
+              IS 'LA SEDE UNICA del predicato «contratto attivo per (billing account, utility, data)»: dato quel che un documento porta, dice di quale FORNITURA si sta parlando. ⭐ Serve perche'' NESSUNA testata di documento porta un contratto_id — verificato su ddt, ordini, preventivi e fatture, tutte portano invece quella terna. La regola completa e'': i contratti di quel billing account, per quella utility, con la validita'' che contiene la data, in stato ATTIVO; se ne resta piu'' di uno, quello con l''id piu'' alto. ⚠️ L''ultima riga e'' la parte che conta: piu'' di uno ci puo'' restare davvero, perche'' le finestre di due contratti si sovrappongono ogni volta che un rinnovo parte prima che il vecchio scada. «L''id piu'' alto» e'' arbitrario ma SCRITTO — senza, PostgreSQL ne sceglierebbe uno a caso e il prezzo cambierebbe da una corsa all''altra senza che nessuno capisse perche''. 🔴 Estratta il 2026-08-29 da vendite.fn_resolve_prezzo_listino_v2_esito, dove viveva dentro: serve IDENTICA al risolutore IVA, che da quel contratto arriva al tipo d''uso della fornitura (config.tipi_utenze) — se le due funzioni scegliessero contratti diversi sullo stesso overlap, prezzo e aliquota della STESSA riga verrebbero da forniture diverse, e non lo direbbe nessun errore: si vedrebbe solo il giorno che non quadra un totale. ⭐ Decisione di Tid: si estrae invece di ricopiare, e l''argomento che avevo usato per difendere la copia («il nucleo ha molti chiamanti») era sbagliato — estrarre una porzione interna non ne cambia la firma, quindi i chiamanti non vedono nulla. ℹ️ Ritorna SOLO l''id: listino, versione, variazione globale e snapshot categoria sono snapshot del contratto e restano affare del pricing, non del predicato che lo sceglie. ⚠️ Ritorna NULL e non solleva: nessun contratto attivo e'' legittimo — un preventivo a un cliente nuovo non ha ancora nessuna fornitura. STABLE, sola lettura.';

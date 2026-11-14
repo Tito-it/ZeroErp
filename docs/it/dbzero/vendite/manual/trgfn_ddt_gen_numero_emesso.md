@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_ddt_gen_numero_emesso`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -16,7 +18,7 @@
 
 (rev 2026-08-31, sera)
 
-Assegna il **`numero` del DDT alla transizione a EMESSO** — non in bozza, per non
+Assegna il **`numero` del DDT quando entra nello stato di emissione** (la colonna `emissione` di `config.stati_doc_ddt`, oggi EMESSO) — non in bozza, per non
 lasciare buchi di numerazione da bozze scartate. È agganciata a `vendite.ddt` come
 `trg_ddt_z10_gen_numero_emesso_ins_upd` (`BEFORE INSERT OR UPDATE OF stato_doc_ddt_id`).
 Fascia `_z10_` dal 2026-10-13 (`20261013-53`): il registro si sceglie con l'emittente e la

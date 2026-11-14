@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_ddt`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Tabelle:
@@ -28,8 +30,9 @@ guard `vendite.trgfn_ddt_guard_transizione` (stessa matrice `config.transizioni_
 |---|---|
 | `available_actions` | transizioni manuali disponibili per lo stato corrente (da `meta.ui`: `key`/`label_key`/`requires_confirm`/`outlined`) → il FE non hardcoda i pulsanti; icona e colore li sceglie dal `key` |
 | `can_change_state` | esiste almeno una transizione disponibile |
-| `can_edit_testata` / `can_edit_righe` | `true` solo in `DRAFT` |
+| `can_edit_testata` / `can_edit_righe` | `can_edit_testata` dal montaggio del lock di testata (`script.fn_doc_testata_in_stato`), `can_edit_righe` dal lock delle righe (`script.fn_doc_riga_modificabile`): oggi solo nello stato iniziale (`DRAFT`) |
 | `can_push_commessa` (+ `_reason`/`_reason_key`) | **una** lettura di `fn_ddt_push_diagnosi(p_ddt_id)`, aggregata: il flag è «esiste una riga con `motivo NULL`» — vero per **costruzione**, perché il lister che alimenta il push è quella stessa query; se `false`, prima la precedenza sul `segment` (`ALLOCATA` → `DDT_GIA_INVIATO`, `EMESSA` → `DDT_GIA_FATTURATO`), poi il motivo a rank minimo mappato per stringa (rami propri: `DDT_FATTURA_DA_ORDINE`, `DDT_SOLO_TRASPORTO`, `DDT_MERCE_IN_VIAGGIO`; il resto in `DDT_NON_PUSHABILE`). Nessuna logica di eleggibilità qui, e nessuna seconda lettura |
+| `can_genera_reso` (+ `_reason`/`_reason_key`) | il primo motivo di [`script.fn_check_ddt_rendibile`](/dbzero/script/funzioni/fn_check_ddt_rendibile), la stessa check da cui il trigger del reso rifiuta (`vendite.trgfn_resi_guard_ddt_consegnato`): vero su una bolla consegnata che non è un trasferimento. Il drawer accende «Genera reso» da qui, non dallo stato |
 | `non_editable_fields` | campi bloccati (in DRAFT: sorgente/billing/numero; fuori DRAFT: tutta la testata) |
 | `stato_codice` | `codice_interno` dello stato corrente |
 

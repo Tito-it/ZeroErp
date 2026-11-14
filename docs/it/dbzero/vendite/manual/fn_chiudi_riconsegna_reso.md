@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_chiudi_riconsegna_reso(...)`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Gemella (l'altra uscita):
@@ -52,8 +54,9 @@ il contatore merce).
 
 ### Regole chiave
 
-- **Gate**: reso `CONFERMATO`, lo stesso della generazione — si chiude ciò che si potrebbe
-  ri-spedire (`E_RESO_NON_CONFERMATO`).
+- **Gate**: reso nel lo stato di **emissione** del vocabolario (la colonna `emissione` di [config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso): la conferma, CONFERMATO nel seed), lo stesso della
+  generazione: si chiude ciò che si potrebbe ri-spedire (`E_RESO_NON_CONFERMATO`). La capability
+  lo espone come `can_riconsegna`.
 - **`p_righe = NULL`** → chiude **tutta** la copertura residua del reso. Altrimenti
   `[{resi_riga_id, qta}]`, con la quantità **troncata al residuo** (`LEAST`): stessa
   disciplina race-proof della gemella.

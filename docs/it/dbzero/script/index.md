@@ -52,6 +52,7 @@ search:
 - [fn_check_credenziale_eliminabile](funzioni/fn_check_credenziale_eliminabile.md) — (scritta il 06-10-2026)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_ddt_merce](funzioni/fn_check_ddt_merce.md)
+- [fn_check_ddt_rendibile](funzioni/fn_check_ddt_rendibile.md) — **Da questa bolla nasce un reso? E se no, perché?**
 - [fn_check_ddt_riga_correggi_qta_evasa](funzioni/fn_check_ddt_riga_correggi_qta_evasa.md)
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)

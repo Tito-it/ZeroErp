@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_ddt_guard_causale_emissione()`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -25,7 +25,7 @@
 
 (rev 2026-08-28)
 
-Blocca l'**emissione** di un DDT (transizione a stato `EMESSO`) quando il documento non
+Blocca l'**emissione** di un DDT (l'ingresso nello stato di emissione, la colonna `emissione` del vocabolario: oggi `EMESSO`) quando il documento non
 dichiara **perché la merce viaggia**, quando dichiara una vendita ma non ha prezzi con cui
 fatturarla, o quando una riga porta un **prezzo senza aliquota**.
 

@@ -48,6 +48,7 @@ search:
 - [fn_check_credenziale_bloccabile](manual/fn_check_credenziale_bloccabile.md) — (scritta il 03-10-2026)
 - [fn_check_credenziale_eliminabile](manual/fn_check_credenziale_eliminabile.md) — (scritta il 06-10-2026)
 - [fn_check_ddt_emittibile](manual/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
+- [fn_check_ddt_rendibile](manual/fn_check_ddt_rendibile.md) — **Da questa bolla nasce un reso? E se no, perché?**
 - [fn_check_disponibilita_uscita](manual/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](manual/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](manual/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
