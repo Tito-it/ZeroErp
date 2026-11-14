@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.dati_societari entra nel registro dello storico: storicizzazione
+#   PERMANENTE. Senza la riga il trigger generico spegne il flag dopo il primo
+#   UPDATE, e la cancellazione successiva non lascerebbe traccia: proprio quella
+#   che l'eliminazione manuale dei dati societari deve lasciare (Q-10 = A).
+#   Il flag acceso sulle righe e il DEFAULT true li mette 00_schema/anagrafiche/20261114-70.
+#   Stessa forma di 20261017-04 (dbops.processi_accensione): il registro non ha
+#   un mirror CSV (80_data/sql/config/storico_set_storicizza.csv non e' caricato
+#   da nessun changeSet), e insert_manuale = true perche' e' una decisione, che
+#   maintenance.proc_sync_storico_set_storicizza non tocca.
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, D-7 e Q-10
+#   (Tid, 2026-11-14), giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261114-71-register-dati-societari-storicizza-mctit.yaml
+
+  - changeSet:
+      id: 20261114-71-register-dati-societari-storicizza
+      author: mctit
+      comment: >
+        Registra anagrafiche.dati_societari in config.storico_set_storicizza: ogni modifica e
+        cancellazione dei dati societari lascia una versione.
+      failOnError: true
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: dati_societari
+                columnName: storicizza
+            - tableExists:
+                schemaName: config
+                tableName: storico_set_storicizza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              INSERT INTO config.storico_set_storicizza (table_name, insert_manuale)
+              VALUES ('anagrafiche.dati_societari', true)
+              ON CONFLICT (table_name) DO NOTHING;
+
+      rollback:
+        - sql:
+            sql: |
+              DELETE FROM config.storico_set_storicizza
+               WHERE table_name = 'anagrafiche.dati_societari';

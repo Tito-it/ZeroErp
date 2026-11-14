@@ -1,56 +1,69 @@
-# trgfn_template_asset_protect_file
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_asset_protect_file`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.template_asset](/dbzero/documenti/tabelle/template_asset) — la tabella protetta
+>
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — gli asset nella stampa
 
-Trigger function `BEFORE UPDATE` su `documenti.template_asset` che blocca la modifica delle colonne **file-specifiche** (guard **A4** del piano Fase A documenti).
+---
 
-Un asset è l'identità persistente di un file binario caricato per un emittente: cambiare in-place `storage_key`, `sha256`, `file_size_bytes`, `mime_type` o `file_name` significherebbe falsare l'identità del file. Tutti i `documenti_generati` che hanno renderizzato un PDF usando quell'asset perderebbero la possibilità di riprodurre lo stesso byte-stream a partire dallo stesso asset.
+### 🎯 Scopo Principale
 
-Pattern alternativo: per cambiare il file si crea un **nuovo asset** (con `codice_interno` distinto o nuova versione), si chiude il vecchio via `valido_al`, e si aggiornano eventualmente i template che lo referenzieranno per i prossimi render.
+Impedisce di cambiare il **file** di un asset documentale: chiave nello storage, impronta SHA-256,
+peso, tipo MIME e nome del file restano quelli del caricamento. È montata `BEFORE UPDATE` su
+`documenti.template_asset`.
 
-## Schema
+---
 
-`documenti`
+### Il file è l'identità dell'asset
 
-## Trigger associato
+Un asset è il file caricato per un'azienda. Cambiare sul posto il file, o anche solo la sua impronta,
+vorrebbe dire che lo stesso asset indica byte diversi da quelli con cui un documento è stato
+stampato, e la ristampa fedele non ritroverebbe il file di allora. Per un file diverso si carica un
+asset nuovo.
 
-```sql
-CREATE TRIGGER trg_template_asset_a10_protect_file_upd
-BEFORE UPDATE ON documenti.template_asset
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_template_asset_protect_file();
-```
+La regola vale da subito, anche per un asset che nessun template ha ancora usato.
 
-* **Fase**: `a10` (guard fail-fast).
-* **Trigger non `UPDATE OF`**: il check è esplicito sui campi nel corpo della funzione. Questo è scelto per chiarezza nei log di errore (il `jsonb_build_object` espone l'asset coinvolto) e per evitare la doppia manutenzione tra clausola `UPDATE OF` e check interno.
+Restano liberi descrizione, codice, meta, attivo e le date: spegnere l'asset o chiuderne la validità
+è il modo di ritirarlo. Il codice interno non cambia per un'altra ragione (il lock di colonna).
 
-## Logica
+Il trigger scatta su ogni UPDATE e confronta le cinque colonne nel corpo: tutte e cinque sono
+obbligatorie, quindi il confronto non incontra valori vuoti.
 
-1. Calcola la condizione `<colonna> NEW != OLD` per: `storage_key`, `sha256`, `file_size_bytes`, `mime_type`, `file_name`.
-2. Se almeno una di queste è cambiata, solleva `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` con dettaglio `template_asset_id`, `emittente_fiscale_id`, `codice_interno`.
-3. Altrimenti l'`UPDATE` passa: rimangono modificabili `descrizione`, `attivo`, `meta`, `valido_dal`, `valido_al` (la `validita` daterange è una colonna generata e si ricalcola da sola), audit fields.
+---
 
-## Codice errore
+### Codici errore
 
-| Codice                              | HTTP | Messaggio                                                                                                |
-| ----------------------------------- | ---- | -------------------------------------------------------------------------------------------------------- |
-| `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` | 409  | Asset documentale: i campi file (storage_key, sha256, file_size_bytes, mime_type, file_name) sono immutabili. |
+* `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` — almeno una delle cinque colonne del file è cambiata. Il
+  contesto porta id, azienda e codice interno dell'asset.
 
-Messaggio in `config.messaggi_errore` (id 413).
+---
 
-## Caratteristiche
+### Test
 
-* **Sempre attivo, anche prima del primo uso**: la policy è "il file non si modifica mai", indipendentemente da quanti `documenti_generati` lo hanno utilizzato. Questo semplifica la regola e rispecchia la decisione 48 del WIP DB.
-* **Complemento di A3**: insieme al delete block (A3), garantisce che ogni `template_asset` sia effettivamente un'**istantanea binaria stabile** — sia il record che il file sottostante.
-* **Lascia liberi i campi semantici**: `descrizione`, `attivo`, `meta`, `valido_*` cambiano normalmente. Modificare `attivo = false` o impostare `valido_al` è il modo corretto di "ritirare" un asset.
+* `db/pgtap/documenti/test-documenti-template-asset.sql` — cambiare la chiave nello storage o
+  l'impronta è rifiutato; cambiare `meta` passa.
 
-## Dipendenze
+---
 
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+### Note di migrazione
 
-## Vedi anche
+* 2026-05-01 — nasce il guard.
+* 2026-08-05 — il guard solleva il suo codice: fino ad allora chiamava la registrazione dell'errore
+  con una firma che non esisteva, e moriva con un errore tecnico.
 
-* [`documenti.template_asset`](/dbzero/documenti/tabelle/template_asset)
-* [`trgfn_template_asset_block_delete`](trgfn_template_asset_block_delete.md) — guard A3 (delete block)
-* [Sviluppo Documenti — Piano DB §6.4, §13.3 A4, decisione 48](/dev/work-done/sviluppo-documenti-db)
+---
+
+{% include-markdown "signature-core.md" %}

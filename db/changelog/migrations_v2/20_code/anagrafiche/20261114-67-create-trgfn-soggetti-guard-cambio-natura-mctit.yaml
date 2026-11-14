@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL CAMBIO DI NATURA, E IL RITIRO DEL GUARD DEI TITOLI CHE ASSORBE
+#   anagrafiche.trgfn_soggetti_guard_cambio_natura + trg_soggetti_a10_guard_cambio_natura_upd
+#   ⛔ ritirati: anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi (+ il suo trigger),
+#               anagrafiche.fn_titolo_iva_non_ammesso_del_soggetto
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, D-5 (Tid,
+#   2026-11-14), giro 2.
+#
+# ── IL GUARD ────────────────────────────────────────────────────
+#   BEFORE UPDATE di anagrafiche.soggetti, solo quando la natura cambia
+#   (WHEN OLD.tipo_soggetto_dettaglio_id IS DISTINCT FROM NEW...: reagisce a un
+#   CAMBIO di valore, linee-guida-trigger «UPDATE o UPDATE OF»). Chiama
+#   anagrafiche.fn_check_cambio_natura_soggetto (-66) coi valori PROPOSTI della
+#   riga (P.IVA, flag) e solleva il primo motivo con
+#   script.fn_raise_primo_motivo_se_presente; il campo viaggia nel dettaglio
+#   del motivo. Vale per ogni strada che scrive la natura: il PATCH del
+#   backend e' un UPDATE diretto.
+#   ⭐ Fase e nome: a10, «guard_cambio_natura» viene prima in ordine alfabetico
+#   degli altri guard a10 di soggetti (guard_cf_piva…, guard_id_fiscale…,
+#   guard_regime_pa…, guard_sesso…): sul cambio di natura parla per primo, con
+#   la ragione piu' forte (l'ordine dei motivi della check).
+#
+# ── IL RITIRO (regola del 2) ────────────────────────────────────
+#   trgfn_soggetti_guard_titoli_iva_ammessi giudicava una sola delle regole del
+#   cambio (i titoli vigenti non ammessi, codice
+#   E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI): la check la contiene, con lo
+#   stesso codice e la stessa frase, e in piu' distingue i titoli che chi agisce
+#   non vede. Due guard sullo stesso cambio sarebbero due sedi della stessa
+#   regola: il vecchio si toglie qui. Il suo unico montaggio nei changelog e'
+#   trg_soggetti_a10_guard_titoli_iva_ammessi_upd (20261010-93).
+#   fn_titolo_iva_non_ammesso_del_soggetto lo leggeva solo quel guard: il suo
+#   predicato vive ora in anagrafiche.fn_titoli_iva_non_ammessi (-60).
+#   Nessun changeSet di 80_data o 90_end li pretende (§11.14).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-67-create-trgfn-soggetti-guard-cambio-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261114-67-create-trgfn-soggetti-guard-cambio-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard del cambio di natura del soggetto (primo motivo di
+        fn_check_cambio_natura_soggetto); ritirati il guard dei titoli IVA al cambio e il suo
+        lettore fn_titolo_iva_non_ammesso_del_soggetto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_cambio_natura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- =========================================================
+              -- Scopo: un soggetto cambia natura solo se nessun motivo lo
+              --   impedisce. I motivi li elenca, tutti e in ordine,
+              --   anagrafiche.fn_check_cambio_natura_soggetto; qui si solleva
+              --   il primo. Il cambio non pulisce niente.
+              -- Aggancio: BEFORE UPDATE, WHEN la natura cambia. I valori della
+              --   riga entrano come NEW: chi corregge un flag o la P.IVA nello
+              --   stesso salvataggio passa.
+              -- =========================================================
+              BEGIN
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database',
+                      'anagrafiche.trgfn_soggetti_guard_cambio_natura',
+                      anagrafiche.fn_check_cambio_natura_soggetto(
+                          NEW.id, NEW.tipo_soggetto_dettaglio_id,
+                          NEW.partita_iva, NEW.cliente_pa, NEW.split_payment),
+                      NULL,
+                      NEW.tx_id);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_cambio_natura()
+              IS 'Guard BEFORE UPDATE su anagrafiche.soggetti, quando la natura di dettaglio cambia: solleva il primo motivo di anagrafiche.fn_check_cambio_natura_soggetto, calcolato coi valori proposti della riga (partita_iva, cliente_pa, split_payment), con script.fn_raise_primo_motivo_se_presente; il campo e tutti i motivi viaggiano nel contesto. Il cambio non pulisce niente: chi agisce toglie i motivi e riprova.';
+
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_cambio_natura_upd ON anagrafiche.soggetti;
+              CREATE TRIGGER trg_soggetti_a10_guard_cambio_natura_upd
+                  BEFORE UPDATE ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  WHEN (OLD.tipo_soggetto_dettaglio_id IS DISTINCT FROM NEW.tipo_soggetto_dettaglio_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_cambio_natura();
+
+              -- ⛔ Il ritiro: la regola dei titoli al cambio vive nella check.
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_titoli_iva_ammessi_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi();
+              DROP FUNCTION IF EXISTS anagrafiche.fn_titolo_iva_non_ammesso_del_soggetto(uuid, bigint);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il guard dei titoli e il suo lettore si rimettono dal loro changeSet
+              -- (20261010-91, -93): qui si toglie solo cio' che questo crea.
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_cambio_natura_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_cambio_natura();

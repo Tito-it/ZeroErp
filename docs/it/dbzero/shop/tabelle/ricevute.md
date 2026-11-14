@@ -8,7 +8,7 @@
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
-| id | uuid | NO | uuidv7() |
+| uid | uuid | NO | uuidv7() |
 | numero | character varying(40) | NO |  |
 | data_emissione | date | NO | script.fn_data_operativa() |
 | soggetto_ruolo_id | bigint | NO |  |
@@ -26,6 +26,7 @@
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -35,29 +36,33 @@
 | CHECK | chk_shop_ricevute_canale_shop |  |
 | CHECK | chk_shop_ricevute_pagamento_esito |  |
 | CHECK | chk_shop_ricevute_totali_non_neg |  |
+| CHECK | ricevute_id_not_null1 |  |
 | FOREIGN KEY | fk_shop_ricevute_billing_account | billing_account_id |
 | FOREIGN KEY | fk_shop_ricevute_ordini | ordine_shop_id |
 | FOREIGN KEY | fk_shop_ricevute_soggetti_ruoli | soggetto_ruolo_id |
 | PRIMARY KEY | pk_shop_ricevute | id |
 | UNIQUE | uq_shop_ricevute_numero | numero |
+| UNIQUE | uq_shop_ricevute_uid | uid |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | pk_shop_ricevute | `CREATE UNIQUE INDEX pk_shop_ricevute ON shop.ricevute USING btree (id)` |
 | uq_shop_ricevute_numero | `CREATE UNIQUE INDEX uq_shop_ricevute_numero ON shop.ricevute USING btree (numero)` |
+| uq_shop_ricevute_uid | `CREATE UNIQUE INDEX uq_shop_ricevute_uid ON shop.ricevute USING btree (uid)` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_ricevute_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ricevute_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ricevute_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ricevute_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_ricevute_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ricevute_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ricevute_id')` |
 | trg_ricevute_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ricevute_id')` |
-| trg_shop_ricevute_a10_guard_ba_canale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION shop.trgfn_ricevute_guard_ba_canale()` |
 | trg_shop_ricevute_a10_guard_ba_canale_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION shop.trgfn_ricevute_guard_ba_canale()` |
+| trg_shop_ricevute_a10_guard_ba_canale_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION shop.trgfn_ricevute_guard_ba_canale()` |
+| trg_shop_ricevute_a10_sorgente_in_uscita_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_sorgente_in_uscita()` |
 
 ---
 {% include-markdown "signature-core.md" %}

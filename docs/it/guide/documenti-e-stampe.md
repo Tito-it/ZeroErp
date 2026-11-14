@@ -12,7 +12,9 @@
 > * [documenti.template_asset](/dbzero/documenti/tabelle/template_asset) — loghi e allegati di un'azienda
 > * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — il registro dei PDF prodotti
 > * [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file) — i file dei PDF
+> * [documenti.documenti_generati_eventi](/dbzero/documenti/tabelle/documenti_generati_eventi) — la storia di ogni documento generato: emissione, download, allegati, ristampe
 > * [documenti.render_engine_documento](/dbzero/documenti/tabelle/render_engine_documento) — i motori di render
+> * [documenti.formati_pagina](/dbzero/documenti/tabelle/formati_pagina), [documenti.orientamenti_pagina](/dbzero/documenti/tabelle/orientamenti_pagina), [documenti.formati_template](/dbzero/documenti/tabelle/formati_template) — formato e orientamento della pagina, formato del contenuto di una versione
 > * [vendite.fatture_stampa_coda](/dbzero/vendite/tabelle/fatture_stampa_coda) — la coda della stampa massiva delle fatture
 >
 > **Vedi anche** — funzioni e viste DB:
@@ -106,8 +108,10 @@ versione li richiama per codice, e il motore li cerca **fra gli asset dell'azien
 documento**. Un asset che manca ferma la stampa, invece di produrre un PDF senza logo. Per questo i
 modelli standard non richiamano asset.
 
-Un asset non si sovrascrive: se il logo cambia si carica un asset nuovo, e i documenti già
-generati continuano a puntare al vecchio.
+Il file di un asset non si sostituisce e l'asset non si cancella: la ristampa di un documento già
+generato ritrova così, per codice, lo stesso file di allora. Il codice è unico per azienda e non ha
+una validità nel tempo: un logo nuovo è un asset nuovo con un codice nuovo, e le versioni che
+devono usarlo sono versioni nuove del modello.
 
 ---
 
@@ -121,7 +125,8 @@ fatture, l'anteprima) la chiama, e ne riceve il modello **e** la versione con cu
 Un modello entra nella scelta solo se **oggi può stampare**:
 
 * il modello è attivo;
-* ha una versione pubblicata, attiva e valida alla data di oggi dell'azienda.
+* ha una versione fuori bozza (pubblicata, oppure obsoleta ma non ancora chiusa), attiva e valida
+  alla data di oggi dell'azienda.
 
 Un modello con la sola bozza, una versione spenta, o una pubblicazione che vale da una data futura
 non contano. La regola sta in un posto solo, e la usano la stampa, «personalizza» e lo scarto.
@@ -308,8 +313,8 @@ configura o genera.
 | Un modello di un'azienda non stampa i documenti di un'altra | Lo verifica il database prima del render e alla scrittura del documento generato |
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
 | Uno standard non si modifica dall'interfaccia | Il database rifiuta la scrittura a chi non è il proprietario delle tabelle |
-| Un asset non sparisce se lo si aggiorna | Gli asset sono in sola aggiunta |
-| Un documento generato non si cancella | Il record è protetto; lo stato cambia ad archiviato o annullato |
+| Il file di un asset non cambia e l'asset non sparisce | Il database rifiuta la sostituzione del file e la cancellazione |
+| Un documento generato non si cancella | Il database rifiuta la cancellazione del record e dei suoi eventi |
 | Il PDF prodotto è verificabile | L'hash del file è conservato col record |
 
 ---
@@ -327,6 +332,10 @@ documenti/
 ├── template_asset                     — gli asset di un'azienda
 ├── documenti_generati                 — il registro delle generazioni
 ├── documenti_generati_file            — i file dei PDF
+├── documenti_generati_eventi          — la storia di ogni documento generato (sola aggiunta)
+├── formati_pagina                     — A4, A3, LETTER
+├── orientamenti_pagina                — PORTRAIT, LANDSCAPE
+├── formati_template                   — il formato del contenuto di una versione
 ├── vw_template_versioni_stampabili    — i modelli che possono stampare oggi
 ├── vw_template_risoluzione_emittente  — per ogni azienda e documento, con che cosa si stampa
 └── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard

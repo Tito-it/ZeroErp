@@ -17,8 +17,8 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
 AS $function$
 -- =========================================================
 -- Scopo: cliente_pa e split_payment a 'S' solo se la natura li ammette.
---   config.tipi_soggetto_dettaglio.cliente_pa_ammesso /
---   split_payment_ammesso: false -> il flag resta 'N'.
+--   Il predicato e' anagrafiche.fn_regime_pa_campo_non_ammesso, la
+--   stessa sede che legge la regola del cambio di natura.
 --   Il VALORE (S/N) lo presidiano i CHECK chk_soggetti_cliente_pa e
 --   chk_soggetti_split_payment; qui si decide solo PER CHI, cioe' la
 --   parte che sta in un'altra tabella e che un CHECK non puo' leggere.
@@ -26,15 +26,13 @@ AS $function$
 --   tipo_soggetto_dettaglio_id. Il ramo sulla natura copre il cambio di
 --   natura. Nessun altro trigger BEFORE di soggetti scrive queste tre
 --   colonne (linee-guida-trigger, «UPDATE OF»).
--- ⭐ Senza natura RIFIUTA un flag a 'S' (A-5): diverge apposta dai
+-- ⭐ Senza natura RIFIUTA un flag a 'S': diverge apposta dai
 --   guard del sesso e di CF/P.IVA, che li' tacciono.
--- Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-3, A-5).
 -- =========================================================
 DECLARE
-    v_cliente_pa_ammesso    config.tipi_soggetto_dettaglio.cliente_pa_ammesso%TYPE;
-    v_split_payment_ammesso config.tipi_soggetto_dettaglio.split_payment_ammesso%TYPE;
-    v_descrizione           config.tipi_soggetto_dettaglio.descrizione%TYPE;
-    v_codice                config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+    v_campo       text;  -- il nome del flag non ammesso, dal predicato
+    v_descrizione config.tipi_soggetto_dettaglio.descrizione%TYPE;
+    v_codice      config.tipi_soggetto_dettaglio.codice_interno%TYPE;
 BEGIN
     -- Due flag a 'N': nessuna natura ha niente da dire.
     IF NEW.cliente_pa IS DISTINCT FROM 'S' AND NEW.split_payment IS DISTINCT FROM 'S' THEN
@@ -55,10 +53,8 @@ BEGIN
             VARIADIC ARRAY[]::text[]);
     END IF;
 
-    SELECT tsd.cliente_pa_ammesso, tsd.split_payment_ammesso,
-           tsd.descrizione, tsd.codice_interno
-      INTO v_cliente_pa_ammesso, v_split_payment_ammesso,
-           v_descrizione, v_codice
+    SELECT tsd.descrizione, tsd.codice_interno
+      INTO v_descrizione, v_codice
       FROM config.tipi_soggetto_dettaglio tsd
      WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
 
@@ -66,7 +62,10 @@ BEGIN
         RETURN NEW;   -- la FK fk_soggetti_tipo_soggetto_dettaglio parla dopo
     END IF;
 
-    IF NEW.cliente_pa = 'S' AND NOT v_cliente_pa_ammesso THEN
+    v_campo := anagrafiche.fn_regime_pa_campo_non_ammesso(
+                   NEW.tipo_soggetto_dettaglio_id, NEW.cliente_pa, NEW.split_payment);
+
+    IF v_campo = 'cliente_pa' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.trgfn_soggetti_guard_regime_pa',
             'E_CLIENTE_PA_NON_AMMESSO',
@@ -78,7 +77,7 @@ BEGIN
             COALESCE(v_descrizione, v_codice));
     END IF;
 
-    IF NEW.split_payment = 'S' AND NOT v_split_payment_ammesso THEN
+    IF v_campo = 'split_payment' THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.trgfn_soggetti_guard_regime_pa',
             'E_SPLIT_PAYMENT_NON_AMMESSO',
@@ -95,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
-IS 'Guard BEFORE INSERT OR UPDATE OF cliente_pa, split_payment, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: un flag a S deve essere ammesso dalla natura (config.tipi_soggetto_dettaglio.cliente_pa_ammesso / split_payment_ammesso), altrimenti E_CLIENTE_PA_NON_AMMESSO o E_SPLIT_PAYMENT_NON_AMMESSO col flag nel campo. Senza natura un flag a S e'' rifiutato con E_DATO_FISCALE_SENZA_TIPO_SOGGETTO (A-5): diverge apposta dai guard del sesso e di CF/P.IVA, che li'' tacciono. Due flag a N passano sempre. Il cambio di natura e'' coperto: chi cambia natura porta il flag a N nella stessa scrittura, il DB non lo azzera. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+IS 'Guard BEFORE INSERT OR UPDATE OF cliente_pa, split_payment, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: un flag a S deve essere ammesso dalla natura, col predicato di anagrafiche.fn_regime_pa_campo_non_ammesso; altrimenti E_CLIENTE_PA_NON_AMMESSO o E_SPLIT_PAYMENT_NON_AMMESSO col flag nel campo (cliente_pa giudicato per primo). Senza natura un flag a S e'' rifiutato con E_DATO_FISCALE_SENZA_TIPO_SOGGETTO: diverge apposta dai guard del sesso e di CF/P.IVA, che li'' tacciono. Due flag a N passano sempre; una natura inesistente la rifiuta la FK. Chi cambia natura porta il flag a N nella stessa scrittura: il DB non lo azzera.';
 ```
 
 </div>

@@ -1,0 +1,162 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DATI SOCIETARI SI ELIMINANO A MANO, CON UN VERBO SUO
+#   anagrafiche.fn_check_elimina_dati_societari(soggetto) -> jsonb (i motivi)
+#   anagrafiche.fn_elimina_dati_societari(soggetto)       -> boolean (eliminata?)
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, D-7 (Tid,
+#   2026-11-14), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il cambio di natura non pulisce niente (D-5): una ditta individuale che
+#   diventa privato deve prima togliere la sua riga di dati societari, e il
+#   motivo E_CAMBIO_NATURA_CON_DATI_SOCIETARI lo dice. Ma l'applicazione non ha
+#   DELETE su anagrafiche.dati_societari (la tabella e' in sola lettura per
+#   l'app, la scrive solo il verbo DEFINER fn_scrivi_dati_societari) e un verbo
+#   che cancelli non c'era: il vicolo cieco del §1 del brief. D-7: un'azione
+#   MANUALE, separata dal cambio; il cambio di natura non la chiama.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   * La check (pura, linee-guida-sql §5) dice perche' non si puo': la natura
+#     ATTUALE pretende i dati societari (dati_societari_policy REQUIRED). E' la
+#     regola che spegne il pulsante e che il verbo solleva: una sede sola.
+#     Senza riga non c'e' motivo: non c'e' niente da spegnere, il pulsante non
+#     c'e'. Natura NULL: nessuna pretesa.
+#   * Il verbo, SECURITY DEFINER come fn_scrivi_dati_societari (la porta),
+#     blocca la riga del soggetto (FOR UPDATE: un cambio di natura concorrente
+#     aspetta), solleva il primo motivo, cancella. Senza riga risponde false:
+#     eliminare cio' che non c'e' non e' un errore. Lo storico conserva la riga
+#     (trg_dati_societari_z90_storico_upd_dlt), perche' la tabella ha storicizza
+#     sempre acceso: 00_schema/anagrafiche/20261114-70 e il registro dello storico,
+#     80_data/changelog/20261114-71 (Q-10 = A). ⛔ Non accendendo il flag qui con
+#     un UPDATE prima del DELETE: trgfn_dati_societari_guard_tipo_soggetto rifiuta
+#     ogni UPDATE di una riga incongrua, che e' proprio quella da togliere.
+#   * ⚠️ Perche' il motivo sta qui e non solo nel guard differito
+#     trgfn_soggetti_guard_dati_societari_required: quello scatta sugli UPDATE di
+#     anagrafiche.soggetti, non sulla cancellazione della riga. Un cambio di
+#     natura verso una REQUIRED nella stessa transazione lo giudica lui al COMMIT.
+#   * Permesso: nessun guard di livello, come fn_scrivi_dati_societari (resta al
+#     backend, come per anagrafiche.soggetti). EXECUTE solo all'applicazione,
+#     REVOKE da PUBLIC: e' una porta di scrittura.
+#   * Rifiuto: E_DATI_SOCIETARI_NON_ELIMINABILI (nuovo, catalogo di 80_data).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-69-create-fn-elimina-dati-societari-mctit.yaml
+
+  - changeSet:
+      id: 20261114-69-create-fn-elimina-dati-societari
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'eliminazione manuale dei dati societari di un soggetto: la check dei motivi (la natura
+        attuale li pretende) e il verbo DEFINER che la solleva e cancella.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_elimina_dati_societari(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_motivi jsonb := '[]'::jsonb;
+                  v_natura record;
+              BEGIN
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_check_elimina_dati_societari', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_soggetto_id', 'valore', NULL),
+                          NULL::uuid,
+                          'il soggetto e'' obbligatorio');
+                  END IF;
+
+                  SELECT tsd.dati_societari_policy,
+                         COALESCE(tsd.descrizione, tsd.codice_interno) AS nome
+                    INTO v_natura
+                    FROM anagrafiche.soggetti s
+                    JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
+                   WHERE s.id = p_soggetto_id;
+
+                  IF FOUND AND v_natura.dati_societari_policy = 'REQUIRED'
+                     AND EXISTS (SELECT 1 FROM anagrafiche.dati_societari d
+                                  WHERE d.soggetto_id = p_soggetto_id) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_DATI_SOCIETARI_NON_ELIMINABILI',
+                          'reason',     'NATURA_LI_RICHIEDE',
+                          'reason_key', 'anagrafiche.soggetti.dati_societari_elimina_blocco.natura_li_richiede',
+                          'dettaglio',  jsonb_build_object('campo', 'tipo_soggetto_dettaglio_id',
+                                                           'soggetto_id', p_soggetto_id),
+                          'valori',     jsonb_build_array(v_natura.nome));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_elimina_dati_societari(anagrafiche.soggetti.id%TYPE)
+              IS 'I motivi per cui i dati societari del soggetto non si possono eliminare: check pura, array di {codice, reason, reason_key, dettaglio, valori}, [] se si puo'' o se non c''e'' niente da eliminare. Un motivo solo: la natura attuale li pretende (dati_societari_policy REQUIRED), E_DATI_SOCIETARI_NON_ELIMINABILI. Natura NULL: nessuna pretesa. Soggetto NULL: E_PARAMETRO_INVALIDO. La legge anagrafiche.fn_elimina_dati_societari, che solleva il primo motivo, e chi spegne l''azione.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_elimina_dati_societari(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_eliminati integer;  -- righe cancellate: un conteggio, nessuna colonna dietro
+              BEGIN
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_elimina_dati_societari', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_soggetto_id', 'valore', NULL),
+                          NULL::uuid,
+                          'il soggetto e'' obbligatorio');
+                  END IF;
+
+                  -- La riga del soggetto si blocca: un cambio di natura concorrente aspetta,
+                  -- e la natura che la check giudica e' quella che resta.
+                  PERFORM 1 FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_elimina_dati_societari',
+                          'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
+                          jsonb_build_object('soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          p_soggetto_id::text);
+                  END IF;
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'database', 'anagrafiche.fn_elimina_dati_societari',
+                      anagrafiche.fn_check_elimina_dati_societari(p_soggetto_id));
+
+                  DELETE FROM anagrafiche.dati_societari d WHERE d.soggetto_id = p_soggetto_id;
+                  GET DIAGNOSTICS v_eliminati = ROW_COUNT;
+
+                  RETURN v_eliminati > 0;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_elimina_dati_societari(anagrafiche.soggetti.id%TYPE)
+              IS 'Il verbo che elimina a mano la riga di anagrafiche.dati_societari del soggetto: blocca la riga del soggetto, solleva il primo motivo di anagrafiche.fn_check_elimina_dati_societari (la natura attuale li pretende: E_DATI_SOCIETARI_NON_ELIMINABILI), cancella. Vero se ha cancellato, falso se non c''era niente da eliminare. Lo storico conserva la riga. E'' un''azione separata dal cambio di natura, che non la chiama: chi cambia una ditta in privato elimina prima i dati societari. SECURITY DEFINER: l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta della cancellazione, come anagrafiche.fn_scrivi_dati_societari lo e'' della scrittura; nessun guard di livello, il permesso resta al backend. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO.';
+
+              REVOKE EXECUTE ON FUNCTION anagrafiche.fn_elimina_dati_societari(anagrafiche.soggetti.id%TYPE) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION anagrafiche.fn_elimina_dati_societari(anagrafiche.soggetti.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_elimina_dati_societari(uuid);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_elimina_dati_societari(uuid);

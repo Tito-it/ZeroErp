@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DATI SOCIETARI HANNO MEMORIA CONTINUA: STORICIZZA SEMPRE ACCESO
+#   anagrafiche.dati_societari.storicizza: DEFAULT true, righe esistenti accese, NOT NULL
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, D-7 e Q-10 (A,
+#   Tid 2026-11-14), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   L'eliminazione manuale dei dati societari (fn_elimina_dati_societari, -69)
+#   deve lasciare traccia (Q-10 = A). script.trgfn_storico_generic scrive solo
+#   se la riga ha storicizza acceso, e su questa tabella era DEFAULT false: oggi
+#   una cancellazione si perde. Il verbo non puo' accendere il flag lui, con un
+#   UPDATE prima del DELETE: anagrafiche.trgfn_dati_societari_guard_tipo_soggetto
+#   scatta su ogni UPDATE e rifiuta proprio la riga incongrua (natura NONE o
+#   senza natura) che il verbo serve a togliere — si ricreerebbe il vicolo cieco.
+#   La forma e' quella di vendite.preventivi e vendite.fatture
+#   (20260805-13/-14): la tabella entra nel registro dello storico (riga in
+#   80_data/sql/config/storico_set_storicizza.csv, stesso giro), il flag nasce
+#   acceso e il trigger non lo spegne piu'. Come anagrafiche.soggetti, gia'
+#   registrata.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   1. DEFAULT true: le righe nuove nascono accese.
+#   2. Le righe esistenti si accendono una volta. ⚠️ Con lo storico e il guard
+#      del tipo soggetto SOSPESI, cercati per FUNZIONE e non per nome
+#      (linee-guida-trigger, «Colonne derivate», backfill): accendere il flag non
+#      e' un evento di dominio, e senza la sospensione lo storico scriverebbe una
+#      modifica che non c'e' stata e il guard rifiuterebbe le righe incongrue.
+#      L'audit resta acceso, come nel precedente: le righe sono state toccate
+#      oggi, ed e' vero. Su un database da zero i trigger generati non ci sono
+#      ancora (ci_apply viene dopo) e la tabella e' vuota: il blocco non fa niente.
+#      Si riaccende solo cio' che era acceso, nel suo modo.
+#   3. NOT NULL: con NULL lo storico si comporta come con true (`NOT NULL` e'
+#      NULL e l'IF di uscita non scatta), al contrario di cio' che la colonna
+#      dice. Dopo il passo 2 non ce ne sono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261114-70-alter-dati-societari-storicizza-sempre-mctit.yaml
+
+  - changeSet:
+      id: 20261114-70-alter-dati-societari-storicizza-sempre
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.dati_societari.storicizza a DEFAULT true e NOT NULL, righe esistenti
+        accese con storico e guard del tipo soggetto sospesi: ogni modifica e
+        cancellazione dei dati societari resta nello storico.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari ALTER COLUMN storicizza SET DEFAULT true;
+
+              DO $backfill$
+              DECLARE
+                  r          record;
+                  v_sospesi  text[] := '{}';
+                  v_modi     "char"[] := '{}';
+              BEGIN
+                  FOR r IN
+                      SELECT t.tgname, t.tgenabled
+                        FROM pg_trigger t
+                       WHERE t.tgrelid = 'anagrafiche.dati_societari'::regclass
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D'
+                         AND t.tgfoid IN ('script.trgfn_storico_generic'::regproc,
+                                          'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto'::regproc)
+                  LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.dati_societari DISABLE TRIGGER %I', r.tgname);
+                      v_sospesi := v_sospesi || r.tgname::text;
+                      v_modi    := v_modi || r.tgenabled;
+                  END LOOP;
+
+                  UPDATE anagrafiche.dati_societari
+                     SET storicizza = true
+                   WHERE storicizza IS DISTINCT FROM true;
+
+                  -- Si riaccende ogni trigger nel modo in cui era: O (origin), A (always), R (replica).
+                  FOR i IN 1 .. coalesce(array_length(v_sospesi, 1), 0) LOOP
+                      EXECUTE format('ALTER TABLE anagrafiche.dati_societari %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ENABLE ALWAYS'
+                                                    WHEN 'R' THEN 'ENABLE REPLICA'
+                                                    ELSE 'ENABLE' END,
+                                     v_sospesi[i]);
+                  END LOOP;
+              END
+              $backfill$;
+
+              ALTER TABLE anagrafiche.dati_societari ALTER COLUMN storicizza SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari ALTER COLUMN storicizza DROP NOT NULL;
+              ALTER TABLE anagrafiche.dati_societari ALTER COLUMN storicizza SET DEFAULT false;

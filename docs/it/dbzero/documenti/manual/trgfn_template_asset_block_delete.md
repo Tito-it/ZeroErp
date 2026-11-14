@@ -1,55 +1,65 @@
-# trgfn_template_asset_block_delete
+## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_asset_block_delete`
 
-### Scopo
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [documenti.template_asset](/dbzero/documenti/tabelle/template_asset) — la tabella protetta
+>
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_template_asset_protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file) — il file di un asset non cambia
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — gli asset nella stampa
 
-Trigger function `BEFORE DELETE` su `documenti.template_asset` che blocca **sempre** la cancellazione fisica di un asset (guard **A3** del piano Fase A documenti).
+---
 
-Gli asset (loghi, firme, immagini, PDF di rifermento, CSS) sono unità immutabili identificate dalla coppia `(emittente_fiscale_id, sha256)`: una volta caricati, partecipano a ogni `documenti_generati` che li ha usati nel render del PDF finale. Cancellarli romperebbe l'audit binario: il pdf storico non sarebbe più riproducibile partendo dagli stessi asset.
+### 🎯 Scopo Principale
 
-Per "ritirare" un asset si chiude la sua finestra temporale (`valido_al`); il record resta indefinitamente.
+Rifiuta **sempre** la cancellazione di un asset documentale. È montata `BEFORE DELETE` su
+`documenti.template_asset`.
 
-## Schema
+---
 
-`documenti`
+### ⛔ Un asset non si cancella, si ritira
 
-## Trigger associato
+La regola non ha eccezioni: non guarda se l'asset è attivo, scaduto o citato da un template. Un
+asset che non serve più si ritira chiudendone la validità o spegnendolo, e la riga resta.
 
-```sql
-CREATE TRIGGER trg_template_asset_a10_block_delete_dlt
-BEFORE DELETE ON documenti.template_asset
-FOR EACH ROW
-EXECUTE FUNCTION documenti.trgfn_template_asset_block_delete();
-```
+La ragione è la ristampa fedele: un documento già emesso si ristampa con l'asset di allora, cercato
+per codice fra gli asset della sua azienda. Se l'asset sparisse, la ristampa non ritroverebbe il
+file. Nessuna FK lo impedirebbe: fra un asset e i template o le stampe che lo usano non c'è un
+riferimento, ma solo il codice scritto nel corpo della versione.
 
-* **Fase**: `a10` (guard fail-fast).
-* **Comportamento**: incondizionato — non distingue tra asset attivi, scaduti, o referenziati. La policy è "zero delete fisico, sempre".
+Insieme a [protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file), che
+impedisce di cambiare il file, fa di ogni asset un'istantanea stabile.
 
-## Logica
+---
 
-1. Solleva sempre `E_DOCUMENTI_ASSET_DELETE_BLOCKED` con dettaglio `template_asset_id`, `emittente_fiscale_id`, `codice_interno`.
-2. Il `RETURN OLD` è puramente formale: il `RAISE EXCEPTION` di `script.fn_log_and_raise_error` interrompe la transazione prima.
+### Codici errore
 
-## Codice errore
+* `E_DOCUMENTI_ASSET_DELETE_BLOCKED` — ogni DELETE. Il contesto porta id, azienda e codice interno
+  dell'asset.
 
-| Codice                              | HTTP | Messaggio                                                                                |
-| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
-| `E_DOCUMENTI_ASSET_DELETE_BLOCKED`  | 409  | Asset documentale non cancellabile: usare `valido_al` per chiuderne la finestra di validità. |
+---
 
-Messaggio in `config.messaggi_errore` (id 412).
+### Test
 
-## Caratteristiche
+* `db/pgtap/documenti/test-documenti-template-asset.sql` — la cancellazione di un asset è rifiutata.
 
-* **Policy assoluta**: nessun parametro, nessun override. Se un asset deve davvero sparire (caso eccezionale di dato sensibile inserito per errore), serve un cleanup manuale fuori dal ciclo applicativo (es. patch SQL ad-hoc con disabling temporaneo del trigger).
-* **No FK figli da consultare**: `documenti_generati_file` non ha FK diretta verso `template_asset` (gli asset partecipano via render, non via riferimento esplicito). Il trigger è quindi cheap: niente count su altre tabelle.
-* **Coerenza con la decisione 48** del WIP: "il file non si sostituisce; si carica un nuovo asset". Questa decisione rende A4 (immutabilità file) condizione necessaria insieme a A3.
+---
 
-## Dipendenze
+### Note di migrazione
 
-* `script.fn_log_and_raise_error`
-* `config.messaggi_errore`
+* 2026-05-01 — nasce il guard.
+* 2026-08-05 — il guard solleva il suo codice: fino ad allora chiamava la registrazione dell'errore
+  con una firma che non esisteva, e moriva con un errore tecnico.
 
-## Vedi anche
+---
 
-* [`documenti.template_asset`](/dbzero/documenti/tabelle/template_asset)
-* [`trgfn_template_asset_protect_file`](trgfn_template_asset_protect_file.md) — guard A4 (immutabilità file su UPDATE)
-* [Sviluppo Documenti — Piano DB §6.4, §13.3 A3](/dev/work-done/sviluppo-documenti-db)
+{% include-markdown "signature-core.md" %}

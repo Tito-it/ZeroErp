@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL TIPO DI INDIRIZZO CHE UNA NATURA AMMETTE: IL PREDICATO IN UN POSTO SOLO
+#   anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(natura, tipo indirizzo, oggi) -> boolean
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, giro 2 (Q-3).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   La matrice config.tipi_soggetto_dettaglio_tipi_indirizzo la giudica oggi
+#   anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo, ma solo quando si
+#   scrive un indirizzo. Al cambio di natura nessuno rilegge gli indirizzi che
+#   il soggetto ha gia' (Q-3, buco confermato): la regola del cambio
+#   (fn_check_cambio_natura_soggetto, -66) deve fare la stessa domanda. Seconda
+#   occorrenza: si estrae, e il guard la legge nello stesso giro (-64).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Le tre risposte del guard, tali e quali:
+#   * natura NULL: ammesso (fallback permissivo);
+#   * natura senza nessuna riga di matrice: ammesso (indirizzi liberi);
+#   * altrimenti: ammesso solo se c'e' una riga per la coppia, attiva e valida
+#     il giorno passato.
+#   Sui VALORI: «oggi» lo passa il chiamante (il guard usa
+#   script.fn_data_operativa()), come anagrafiche.fn_titolo_iva_vigente.
+#   BEGIN ATOMIC (§5c).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-63-create-fn-tipo-indirizzo-ammesso-per-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261114-63-create-fn-tipo-indirizzo-ammesso-per-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La natura ammette il tipo di indirizzo (matrice tipi_soggetto_dettaglio_tipi_indirizzo,
+        col fallback permissivo): sede unica del predicato.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                  p_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_soggetto_dettaglio_id%TYPE,
+                  p_tipo_indirizzo_id          config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  p_oggi                       config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT p_tipo_soggetto_dettaglio_id IS NULL
+                      OR NOT EXISTS (
+                             SELECT 1
+                               FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                              WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id)
+                      OR EXISTS (
+                             SELECT 1
+                               FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                              WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                                AND m.tipo_indirizzo_id          = p_tipo_indirizzo_id
+                                AND m.attivo
+                                AND (m.valido_dal IS NULL OR m.valido_dal <= p_oggi)
+                                AND (m.valido_al  IS NULL OR m.valido_al  >= p_oggi));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              IS 'La natura di dettaglio ammette il tipo di indirizzo, secondo config.tipi_soggetto_dettaglio_tipi_indirizzo: vero se la natura e'' NULL o non ha nessuna riga di matrice (fallback permissivo: indirizzi liberi), altrimenti solo se c''e'' una riga per la coppia attiva e valida il giorno passato. Il giorno lo passa il chiamante. Sede unica del predicato: la leggono anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo (quando si scrive un indirizzo) e anagrafiche.fn_check_cambio_natura_soggetto (quando cambia la natura).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(bigint, integer, date);

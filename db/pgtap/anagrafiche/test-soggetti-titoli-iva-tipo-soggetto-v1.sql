@@ -31,7 +31,8 @@
 --   13) riscrivere la stessa riga attiva (il mirror del CSV) -> passa
 --   RLS (il contesto passa a un secondo operatore e resta quello)
 --   14) gemello: per l'operatore di un ALTRO emittente il titolo e' invisibile
---   15) ⭐ eppure il suo cambio di natura e' rifiutato: il lettore DEFINER lo vede
+--   15) ⭐ eppure il suo cambio di natura e' rifiutato: il contatore DEFINER lo vede
+--       (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI, dal 2026-11-14)
 --   persone fisiche
 --   16) INTENTO su un privato -> rifiutato
 --   17) AGEVOLATA_104 su un privato -> passa
@@ -115,10 +116,13 @@ SELECT is(
     (SELECT count(*)::int FROM pg_catalog.pg_proc p
        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'anagrafiche'
-        AND p.proname IN ('fn_titolo_iva_non_ammesso_del_soggetto', 'fn_titolo_iva_vigente_su_natura_esiste')
+        AND p.proname IN ('fn_titoli_iva_non_ammessi_conta', 'fn_titolo_iva_vigente_su_natura_esiste')
         AND p.prosecdef
         AND array_to_string(p.proconfig, ',') LIKE '%search_path=pg_catalog, public, pg_temp%'),
     2,
+    -- ⚠️ rev 2026-11-14 (brief-db-cambio-natura-soggetto-conferma-e-pulizia, giro 2): il lettore
+    --   del cambio di natura fn_titolo_iva_non_ammesso_del_soggetto e' ritirato (20261114-67); al suo
+    --   posto il contatore DEFINER fn_titoli_iva_non_ammessi_conta (20261114-60).
     '3. i due lettori sono SECURITY DEFINER, con pg_temp in coda al search_path');
 
 SELECT results_eq(
@@ -237,8 +241,12 @@ SELECT throws_like(
                 SET tipo_soggetto_dettaglio_id = %s, partita_iva = %L
               WHERE id = %L$$,
            (SELECT di FROM _ref), dbops.fn_pgtap_piva_libera(), (SELECT id FROM _pr2)),
-    '%ancora in vigore%',
-    '15. eppure il suo cambio di natura e'' rifiutato: il lettore DEFINER vede sopra la RLS');
+    -- ⚠️ rev 2026-11-14 (giro 2 del brief del cambio di natura, D-4): il titolo che chi agisce
+    --   non vede esce col suo codice, E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI («presentati ad altre
+    --   aziende»), non piu' con E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI: quella frase nominerebbe
+    --   un titolo che l'operatore non puo' trovare.
+    '%presentati ad altre aziende%',
+    '15. eppure il suo cambio di natura e'' rifiutato: il contatore DEFINER vede sopra la RLS');
 
 -- ============================================================
 -- Persone fisiche

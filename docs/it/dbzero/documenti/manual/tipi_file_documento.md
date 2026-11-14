@@ -1,45 +1,66 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.tipi_file_documento`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file)  
+> * [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file) — ogni file di una stampa dice di che tipo è
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — la stampa a cui i file appartengono
 >
+> Guide:
+>
+> * [Documenti e Stampe](/guide/documenti-e-stampe) — §6, che cosa succede quando si genera un documento
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 29-04-2026)
-`documenti.tipi_file_documento` definisce il catalogo dei **tipi di file
-persistiti** a valle della generazione di un documento.
+
+Il vocabolario dei tipi di file conservati per una stampa: il PDF prodotto dal motore e gli allegati
+che l'operatore aggiunge al documento generato. Appartiene alla conservazione della stampa, non al
+modello.
 
 ---
 
-### Ruolo nel modello
+### I due tipi e chi li usa
 
-* classifica ogni file fisico collegato a `documenti.documenti_generati`;
-* distingue il ruolo archivistico del file prodotto dal contenuto logico del
-  documento;
-* prepara il modello a gestire allegati derivati oltre al PDF finale.
+* `PDF_FINALE` — il file che il motore produce alla generazione;
+* `ALLEGATO` — un file aggiunto dopo, accanto al PDF.
 
----
-
-### Regole operative
-
-* il tipo file appartiene al livello di persistenza, non al livello di
-  template;
-* `codice_interno` deve essere stabile, perché usato per guard e logiche
-  applicative lato backend;
-* nella Fase A il set attivo è volutamente minimale.
+Il backend li cerca per `codice_interno` e si ferma se il tipo manca o è spento. Il `codice_interno` è
+bloccato dopo l'inserimento; `codice` e `descrizione` sono le etichette; `meta` non ha lettori.
 
 ---
 
-### Seed iniziale Fase A
+### Spegnere un tipo
 
-| codice_interno | Descrizione |
-|---|---|
-| `PDF_FINALE` | PDF finale |
+`attivo = false` impedisce che un file nuovo nasca con quel tipo. Un tipo non si spegne finché un file
+lo nomina. Le modifiche sono storicizzate in `storico.tipi_file_documento`. La tabella è nel lookup
+generico e non nel pannello di configurazione.
 
-La Fase A supporta un solo file persistito per documento generato: il PDF
-finale.
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Un tipo già usato non si spegne più.** Il file di una stampa non ha un proprio `attivo`, quindi per
+  il controllo ogni file conservato è un figlio vivo: basta un file perché il tipo resti acceso per
+  sempre.
+
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-lookup.sql` — la riga `PDF_FINALE`, l'unicità di `codice_interno`,
+  il blocco della chiave.
+* `db/pgtap/documenti/test-documenti-generati-file.sql` — i file di una stampa, col loro tipo.
+
+---
+
+### Note di migrazione
+
+* 2026-04-29 — nasce con `PDF_FINALE`.
+* 2026-05-27 — `ALLEGATO`, per i file aggiunti al documento generato.
 
 ---
 

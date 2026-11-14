@@ -4,7 +4,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.ricevute_id_seq'::regclass) |
-| ricevute_id | uuid | NO |  |
+| ricevute_id | bigint | NO |  |
 | change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |

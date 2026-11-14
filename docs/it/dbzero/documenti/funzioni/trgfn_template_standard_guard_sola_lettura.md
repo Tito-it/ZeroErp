@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/documenti/manual/trgfn_template_standard_guard_sola_lettura.md" %}
 # ⚙️ Funzione `trgfn_template_standard_guard_sola_lettura`
 
 ```sql
