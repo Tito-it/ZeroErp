@@ -34,6 +34,7 @@ import { MONTH_FORMAT, TIPO_RUOLO, MANAGE_ICONS, TAB_ENTITIES } from '../../core
 import { SORGENTE_CODES } from '../../documenti/constants'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import { azionePdfLista, pdfArchiviato } from '../../documenti/utils/azionePdfLista'
 
 const emit = defineEmits(['new', 'row-click', 'open-righe'])
 const { t } = useI18n()
@@ -124,7 +125,8 @@ const noteDrawerVisible = ref(false)
 const noteDrawerContratto = ref(null)
 
 function onPdfClick(row) {
-  if (!row || row.stato_codice_interno === 'DRAFT') return
+  // La voce e' spenta dove la riga non ha PDF archiviati (`azionePdfLista`).
+  if (!pdfArchiviato(row)) return
   pdfDialogContratto.value = row
   pdfDialogVisible.value = true
 }
@@ -137,17 +139,8 @@ function onNoteClick(row) {
 // Azioni contestuali di riga (kebab). La modifica e' il click riga.
 function buildRowActions(data) {
   return [
-    {
-      key: 'documenti-pdf',
-      label: t('vendite.contratti.pdf.label_scarica'),
-      icon: MANAGE_ICONS.PDF,
-      severity: 'primary',
-      disabled: data.stato_codice_interno === 'DRAFT',
-      tooltip: data.stato_codice_interno === 'DRAFT'
-        ? t('vendite.contratti.pdf.tooltip_lista_disabilitato')
-        : t('vendite.contratti.pdf.tooltip_lista'),
-      command: () => onPdfClick(data),
-    },
+    // Il PDF della riga: da `pdf_mode` della vista, non dallo stato (D-PDF).
+    azionePdfLista(t, data, { prefisso: 'vendite.contratti', apri: onPdfClick }),
     {
       key: 'gestisci-righe',
       label: t('vendite.contratti.gestisci_righe'),

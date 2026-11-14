@@ -21,15 +21,12 @@ import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPr
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { labelOrCode } from '../../../core/utils/i18nLabel'
-import {
-  CAMPI_FORM_TESTATA_ORDINE,
-  STATO_ORDINE,
-  STATI_ORDINE_EVADIBILI,
-} from '../constants'
+import { CAMPI_FORM_TESTATA_ORDINE } from '../constants'
 import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
@@ -102,6 +99,15 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 })
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
+// Capability (blob del dettaglio): letta prima del readonly, che ne dipende.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+// Il corpo del drawer dopo la bozza: dalla capability, non dallo stato.
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_righe'],
+  sezioni: ['can_edit_righe', 'can_edit_indirizzi'],
+  presente: () => isEdit.value || detail.value !== null,
+})
 const noteDrawerVisible = ref(false)
 // Il pulsante «Gestisci note» standard, col numero delle note del documento
 // (BB `useContatoreNote`: dal dettaglio, poi dal sotto-drawer dopo un salvataggio).
@@ -130,18 +136,20 @@ const hasDetail = computed(() => detail.value !== null)
 // azioni di stato (conferma/push) restano cliccabili in readonly grazie a
 // `app-escape` applicato da DrawerActionsBar. Provide ai sub-componenti (righe).
 const parentReadonly = useInjectReadonly()
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-O1) il corpo
+//    non confronta piu' il codice dello stato con DRAFT: lo chiude la chiave
+//    della capability (`can_edit_righe`, il lock delle righe del DB), col BB
+//    `useCorpoDocumento`. Righe, indirizzi e testata leggono gia' la loro.
 const isReadonly = computed(
   () => props.readonly
     || parentReadonly.value
-    || (detail.value !== null
-        && detail.value.stato_codice_interno !== STATO_ORDINE.DRAFT),
+    || corpo.corpoChiuso.value,
 )
 provide(READONLY_KEY, isReadonly)
 
 // Capability data-driven dal detail BE (script.fn_available_actions_ordine):
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
-const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
@@ -191,13 +199,12 @@ const nonEditableFields = computed(() => {
 // readonly puro.
 const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
 
-// Azione evasione (genera DDT) disponibile quando l'ordine ha residuo da
-// evadere (CONFERMATO o PARZIALMENTE_EVASO). Trigger fatturazione differita
-// (SPEDITO/CONSEGNATO) resta lato DB; qui la vista e' data-driven sullo stato.
-const showEvasione = computed(
-  () => hasDetail.value
-    && STATI_ORDINE_EVADIBILI.includes(detail.value?.stato_codice_interno),
-)
+// Azione evasione (genera DDT): la concede la capability (`can_genera_ddt`,
+// D-EVAD (a): la stessa check da cui il DB rifiuta la bolla), spenta col
+// motivo (`can_genera_ddt_reason_key`). Fino al 2026-11-14 la accendeva un
+// elenco di codici di stato, `STATI_ORDINE_EVADIBILI` (FE-O3,
+// brief-db-stati-documento-dal-vocabolario §6.18).
+const showEvasione = computed(() => caps.flag('can_genera_ddt'))
 // Dialog "Genera DDT": aperta dal pulsante in barra azioni (2026-07-25). Era un
 // pannello in coda al contenuto del drawer — le azioni di processo stanno in
 // alto, come per il «Genera reso» del DDT.
@@ -607,7 +614,7 @@ function onAction(action) {
 // tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
   const result = await cambioStato.esegui(
-    (dichiarazione) => store.cambiaStato(effectiveOrdineId.value, action.target_state, dichiarazione),
+    (dichiarazione) => store.cambiaStato(effectiveOrdineId.value, action, dichiarazione),
     { successMessage: t('vendite.ordini.stato_cambiato') },
   )
   await dopoCambioStato(result)
@@ -652,16 +659,15 @@ const drawerActions = computed(() => {
     ...stateActions,
     // Genera DDT: apre la dialog di evasione (righe con residuo + quantita').
     // Resta visibile anche in readonly puro — la dialog si apre in sola
-    // consultazione (footer di sola chiusura).
-    ...(showEvasione.value
-      ? [{
-          key: 'genera-ddt',
-          kind: 'manage',
-          label: t('vendite.ordini.evasione_titolo'),
-          icon: NAV_ICONS.DDT,
-          command: () => { evasioneDialogVisible.value = true },
-        }]
-      : []),
+    // consultazione (footer di sola chiusura). Spenta col motivo dove la
+    // capability lo dice (BB `azioneDaFlag`).
+    ...caps.azioneDaFlag('can_genera_ddt', {
+      key: 'genera-ddt',
+      kind: 'manage',
+      label: t('vendite.ordini.evasione_titolo'),
+      icon: NAV_ICONS.DDT,
+      command: () => { evasioneDialogVisible.value = true },
+    }, { t, te }),
     ...dateConsegnaAzione.value,
     contatoreNote.azione({
       label: t('vendite.ordini.gestisci_note'),

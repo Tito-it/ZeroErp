@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Unit test resi_service (mock repository, no DB). Clone strutturale di
-#        test_ddt_service: valida i guard di creazione (DDT sorgente esistente e
-#        CONSEGNATO, sorgente per codice), lo snapshot riga dalla riga DDT
+#        test_ddt_service: valida i guard di creazione (DDT sorgente esistente,
+#        sorgente per codice; da quale bolla nasce un reso lo dice il DB), lo snapshot riga dalla riga DDT
 #        (appartenenza al DDT sorgente, tipo/qta obbligatori, ordine_riga_id dal
 #        fulfillment), i guard di stato DRAFT su update/righe/delete, le azioni
 #        di dominio (conferma/annullo/ri-consegna: delega alle fn madri DB,
@@ -27,7 +27,7 @@ ResiCreaTests
  6) test_crea_reso_ddt_mancante          — E_RESO_VALIDAZIONE senza ddt_id
  7) test_crea_reso_ddt_id_non_numerico   — E_RESO_VALIDAZIONE (no 500)
  8) test_crea_reso_ddt_not_found         — E_DDT_NOT_FOUND
- 9) test_crea_reso_ddt_non_consegnato    — E_RESO_DDT_NON_CONSEGNATO (stesso codice del trigger)
+ 9) (ritirato il 2026-11-14, BE-R1: la bolla non rendibile la rifiuta il DB, tests/db/test_resi_create_db.py)
 10) test_crea_reso_con_righe_atomic      — testata + N righe, righe_ids, riga_nr batch senza next_riga_nr
 10b) test_crea_reso_data_non_iso         — E_RESO_VALIDAZIONE (data non ISO)
 
@@ -230,7 +230,7 @@ class ResiServiceGuardsTests(SimpleTestCase):
 
 
 class ResiCreaTests(SimpleTestCase):
-    """crea_reso: sorgente data-driven + guard DDT CONSEGNATO (applicativo)."""
+    """crea_reso: sorgente data-driven; da quale bolla nasce un reso lo dice il DB."""
 
     def setUp(self) -> None:
         # transaction.atomic() a no-op (SimpleTestCase senza DB); nullcontext
@@ -288,19 +288,11 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
         repo.create_reso.assert_not_called()
 
-    @patch(_REPO, autospec=True)
-    def test_crea_reso_ddt_non_consegnato(self, repo_cls) -> None:
-        # Guard applicativo parlante col medesimo codice del trigger DB
-        # (trgfn_resi_guard_ddt_consegnato): un solo errore per lo stesso
-        # caso a prescindere dal percorso.
-        repo = repo_cls.return_value
-        repo.get_ddt_sorgente.return_value = {
-            "id": 30, "uid": "u", "stato_codice_interno": "SPEDITO",
-        }
-        with self.assertRaises(ServiceError) as cm:
-            resi_service.crea_reso({"ddt_id": 30})
-        self.assertEqual(cm.exception.code, "E_RESO_DDT_NON_CONSEGNATO")
-        repo.create_reso.assert_not_called()
+    # ⚠️ Il rifiuto della bolla non consegnata (o di trasferimento) non e'
+    #    del service: lo da' il trigger del DB dalla check
+    #    `script.fn_check_ddt_rendibile` (BE-R1, brief-db-stati-documento-dal-
+    #    vocabolario §6.22). Lo prova il test sul database provvisto,
+    #    `tests/db/test_resi_create_db.py`.
 
     @patch(_REPO, autospec=True)
     def test_crea_reso_con_righe_atomic(self, repo_cls) -> None:

@@ -2941,6 +2941,10 @@
       "filtro_utility": "Utility",
       "gestisci_note": "Gestisci note",
       "genera_reso": "Genera reso",
+      "genera_reso_reason": {
+        "trasferimento": "Questa bolla è un trasferimento fra depositi: la merce è rimasta nostra, non c'è un cliente da cui farla rendere.",
+        "non_consegnato": "Il reso nasce solo da una bolla consegnata al cliente."
+      },
       "note_titolo": "Note DDT",
       "field_destinatario": "Destinatario",
       "field_destinatario_placeholder": "Cerca destinatario (terzista, deposito)...",

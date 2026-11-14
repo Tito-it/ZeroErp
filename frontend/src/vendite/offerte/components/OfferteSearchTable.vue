@@ -38,6 +38,7 @@ import { exportOfferte } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
 import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../../core/components/FiltriLista.vue'
+import { azionePdfLista, pdfArchiviato } from '../../../documenti/utils/azionePdfLista'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -92,9 +93,8 @@ const noteDrawerVisible = ref(false)
 const noteDrawerOfferta = ref(null)
 
 function onPdfClick(row) {
-  // Documenti PDF disponibili solo dopo l'emissione (la fn DB genera_documento
-  // richiede l'offerta EMESSA). In BOZZA l'azione e' disabled.
-  if (!row || row.stato_codice_interno === 'BOZZA') return
+  // La voce e' spenta dove la riga non ha PDF archiviati (`azionePdfLista`).
+  if (!pdfArchiviato(row)) return
   pdfDialogOfferta.value = row
   pdfDialogVisible.value = true
 }
@@ -107,17 +107,8 @@ function onNoteClick(row) {
 // Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
 function buildRowActions(data) {
   return [
-    {
-      key: 'documenti-pdf',
-      label: t('vendite.offerte.pdf.label_scarica'),
-      icon: MANAGE_ICONS.PDF,
-      severity: 'primary',
-      disabled: data.stato_codice_interno === 'BOZZA',
-      tooltip: data.stato_codice_interno === 'BOZZA'
-        ? t('vendite.offerte.pdf.tooltip_lista_disabilitato')
-        : t('vendite.offerte.pdf.tooltip_lista'),
-      command: () => onPdfClick(data),
-    },
+    // Il PDF della riga: da `pdf_mode` della vista, non dallo stato (D-PDF).
+    azionePdfLista(t, data, { prefisso: 'vendite.offerte', apri: onPdfClick }),
     {
       key: 'gestisci-note',
       label: t('vendite.offerte.gestisci_note'),

@@ -28,6 +28,9 @@
 //   6) `capabilities` espone il blob per motivi e chiavi i18n
 //   7) `azioneNegata`: flag spento + motivo -> entry disabled con il motivo
 //   8) `azioneNegata`: flag acceso, o spento SENZA motivo -> nessuna entry
+//   9) `azioneDaFlag`: acceso -> pulsante attivo; spento col motivo ->
+//      disabilitato col motivo tradotto; chiave mancante -> la frase del DB
+//  10) `azioneDaFlag`: spento SENZA motivo, o capability vuota -> niente
 // ------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest'
@@ -117,5 +120,38 @@ describe('useEntityCapabilities', () => {
     const muto = useEntityCapabilities(ref({ capabilities: { can_push_commessa: false } }))
     expect(muto.azioneNegata('can_push_commessa', { key: 'push_commessa' })).toEqual([])
     expect(useEntityCapabilities(ref(null)).azioneNegata('can_push_commessa', {})).toEqual([])
+  })
+
+  // t/te finti: una sola chiave conosciuta.
+  const NOTE = { 'vendite.ddt.genera_reso_reason.non_consegnato': 'Solo da una bolla consegnata.' }
+  const i18n = { t: (k) => NOTE[k] ?? k, te: (k) => k in NOTE }
+  const AZIONE = { key: 'genera-reso', kind: 'manage', label: 'Genera reso', command: () => {} }
+
+  it('9) azioneDaFlag: acceso attivo, spento col motivo disabilitato', () => {
+    const acceso = useEntityCapabilities(ref({ capabilities: { can_genera_reso: true } }))
+    expect(acceso.azioneDaFlag('can_genera_reso', AZIONE, i18n)).toEqual([{ ...AZIONE, disabled: false }])
+
+    const spento = useEntityCapabilities(ref({ capabilities: {
+      can_genera_reso: false,
+      can_genera_reso_reason: 'DDT_NON_CONSEGNATO',
+      can_genera_reso_reason_key: 'vendite.ddt.genera_reso_reason.non_consegnato',
+    } }))
+    const [azione, ...resto] = spento.azioneDaFlag('can_genera_reso', AZIONE, i18n)
+    expect(resto).toEqual([])
+    expect(azione).toMatchObject({ key: 'genera-reso', disabled: true, tooltip: 'Solo da una bolla consegnata.' })
+    // Il chiamante non puo' riaccenderlo passando `disabled` nella forma.
+    const [forzata] = spento.azioneDaFlag('can_genera_reso', { ...AZIONE, disabled: false }, i18n)
+    expect(forzata.disabled).toBe(true)
+
+    const ignota = useEntityCapabilities(ref({ capabilities: {
+      can_genera_reso: false, can_genera_reso_reason: 'Frase del DB', can_genera_reso_reason_key: 'chiave.assente',
+    } }))
+    expect(ignota.azioneDaFlag('can_genera_reso', AZIONE, i18n)[0].tooltip).toBe('Frase del DB')
+  })
+
+  it('10) azioneDaFlag: spento senza motivo, o capability vuota -> niente', () => {
+    const muto = useEntityCapabilities(ref({ capabilities: { can_genera_reso: false } }))
+    expect(muto.azioneDaFlag('can_genera_reso', AZIONE, i18n)).toEqual([])
+    expect(useEntityCapabilities(ref(null)).azioneDaFlag('can_genera_reso', AZIONE, i18n)).toEqual([])
   })
 })

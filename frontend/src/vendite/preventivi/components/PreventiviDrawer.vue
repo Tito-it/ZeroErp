@@ -13,6 +13,7 @@ import { useForzaturaConfermata } from '../../../core/composables/useForzaturaCo
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
@@ -51,6 +52,7 @@ import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
+import { AZIONE_ANNULLA } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import DateConsegnaRigheDialog from '../../_shared/dateConsegna/DateConsegnaRigheDialog.vue'
 import { useDateConsegnaRighe } from '../../_shared/dateConsegna/useDateConsegnaRighe'
 import Tag from 'primevue/tag'
@@ -130,13 +132,15 @@ const isSuperseded = computed(
 // Allineato al pattern ContrattoDrawer: stesso modello "drawer parent calcola
 // readonly + provide(READONLY_KEY) ai figli, sub-drawer usano solo
 // useInjectReadonly() senza logica locale".
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-P1) il corpo
+//    non confronta piu' il codice dello stato con DRAFT: lo chiude la chiave
+//    della capability (`can_edit_righe`, il lock delle righe del DB), col BB
+//    `useCorpoDocumento`. Righe, indirizzi e testata leggono gia' la loro.
 const isReadonly = computed(
   () => props.readonly
     || parentReadonly.value
     || isSuperseded.value
-    || (props.mode === 'edit'
-        && detail.value
-        && detail.value.stato_codice_interno !== 'DRAFT'),
+    || corpo.corpoChiuso.value,
 )
 provide(READONLY_KEY, isReadonly)
 // Readonly PURO: permesso LETTURA / readonly forzato / revisione superseded —
@@ -179,6 +183,15 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 })
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
+// Capability (blob del dettaglio): letta prima del readonly, che ne dipende.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+// Il corpo del drawer dopo la bozza: dalla capability, non dallo stato.
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_righe'],
+  sezioni: ['can_edit_righe', 'can_edit_indirizzi'],
+  presente: () => isEdit.value || detail.value !== null,
+})
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
 // DPR 633/72 art. 21: il calcolo IVA aggregato e' la single source of truth
@@ -223,7 +236,6 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
 // Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
 // nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
-const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
@@ -766,13 +778,18 @@ async function onDocumentoCollegatoChiuso() {
 // Dialog accettazione estratto in PreventivoAccettazioneDialog (componente
 // condiviso col percorso pratica): qui resta solo apertura + conferma. Il
 // payload {fatturazione_immediata, competenza_mese} arriva gia' BE-ready.
-function openAcceptDialog() {
+// L'azione d'accettazione che ha aperto il dialog: alla conferma la
+// destinazione e' il suo `target_state`, mai un codice scritto qui.
+const azioneAccettazione = ref(null)
+function openAcceptDialog(action) {
+  azioneAccettazione.value = action
   acceptDialogVisible.value = true
 }
 
 async function confirmAcceptDialog(payload) {
   acceptDialogVisible.value = false
-  await eseguiCambioStato(STATO_PREVENTIVO.ACCETTATO, payload)
+  if (!azioneAccettazione.value) return
+  await eseguiCambioStato(azioneAccettazione.value, payload)
 }
 
 
@@ -806,24 +823,26 @@ function onCambiaStato(action) {
   // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
   // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /stato/ con
   // E_PREV_VALIDAZIONE — questa intercettazione e' la sola via supportata.
-  if (action.target_state === STATO_PREVENTIVO.EMESSO) {
+  // ⭐ Emissione e accettazione si riconoscono dal verbo (`key`), non dalla
+  //    destinazione (brief-db-stati-documento-dal-vocabolario, simmetria).
+  if (action.key === 'emetti') {
     emissioneDialogVisible.value = true
     return
   }
   // Transizione → ACCETTATO: richiede dialog dedicato per scegliere modalita'
   // di fatturazione. Tutte le altre transizioni usano la conferma generica.
-  if (action.target_state === STATO_PREVENTIVO.ACCETTATO) {
-    openAcceptDialog()
+  if (action.key === 'accetta') {
+    openAcceptDialog(action)
     return
   }
   if (action.requires_confirm) {
     confirmAction({
       header: t('confirm.cambio_stato_title'),
       message: t('vendite.preventivi.conferma_cambio_stato', { stato: statoDestinazione(action) }),
-      onAccept: () => eseguiCambioStato(action.target_state),
+      onAccept: () => eseguiCambioStato(action),
     })
   } else {
-    eseguiCambioStato(action.target_state)
+    eseguiCambioStato(action)
   }
 }
 
@@ -844,15 +863,16 @@ async function handleEmissioneConferma({ files }) {
   }
 }
 
-async function eseguiCambioStato(nuovoStato, extras = {}) {
+async function eseguiCambioStato(action, extras = {}) {
   const opts = { successMessage: t('vendite.preventivi.stato_cambiato') }
-  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
-  const result = nuovoStato === STATO_PREVENTIVO.ANNULLATO
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione. Lo si riconosce
+  // dall'azione, non dalla destinazione.
+  const result = action.key === AZIONE_ANNULLA
     ? await cambioStato.esegui(
-      (dichiarazione) => store.cambiaStato(effectivePreventivoId.value, nuovoStato, { ...extras, ...dichiarazione }),
+      (dichiarazione) => store.cambiaStato(effectivePreventivoId.value, action, { ...extras, ...dichiarazione }),
       opts,
     )
-    : await execute(() => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras), opts)
+    : await execute(() => store.cambiaStato(effectivePreventivoId.value, action, extras), opts)
   await dopoCambioStato(result)
 }
 
@@ -948,7 +968,7 @@ const drawerActions = computed(() => {
   // per non creare un secondo percorso con politica fatturazione divergente.
   const availableActionsHeader = (availableActions.value || [])
     .filter(a => a.key !== 'push_commessa' && a.key !== 'genera_ordine')
-    .filter(a => !(props.praticaId && a.target_state === STATO_PREVENTIVO.ACCETTATO))
+    .filter(a => !(props.praticaId && a.key === 'accetta'))
   const list = mapAvailableActionsToDrawerActions({
     availableActions: availableActionsHeader,
     t,

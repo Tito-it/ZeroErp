@@ -118,14 +118,12 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
-# Stati che ammettono il push a commessa (fix orfano 2026-07-10, brief DB §16:
-# decoupling fatturazione/spedizione). Per trigger CONFERMATO l'eleggibilita'
-# sopravvive all'evasione in DDT (PARZIALMENTE_EVASO/EVASO): la FONTE UNICA e'
-# `fn_list_ordini_da_pushare` (trigger + righe + anti-doppione EMESSA), questo
-# guard e' solo il fail-fast parlante per gli stati mai pushabili (DRAFT/ANNULLATO).
-_STATI_PUSHABILI: frozenset[str] = frozenset(
-    {"CONFERMATO", "PARZIALMENTE_EVASO", "EVASO"},
-)
+# ⛔ `_STATI_PUSHABILI` RITIRATA il 2026-11-14 (brief-db-stati-documento-dal-
+#    vocabolario §6.17, BE-O1): era la regola di `vendite.fn_list_ordini_da_pushare`
+#    scritta col codice degli stati. Quali righe vanno in commessa lo dice solo
+#    la push-list (trigger, righe, anti-doppione; esclude lo stato iniziale e
+#    quello di annullo): `push_a_commessa` le conta e, se non ce n'e', risponde
+#    E_ORD_NESSUNA_RIGA. Il perche' in chiaro sta in `can_push_commessa_reason`.
 
 # Whitelist campi testata accettati in create/update (null_vs_empty → None).
 # `fatturazione_immediata` (simmetria del flag, Fase B del brief emissione
@@ -1022,22 +1020,15 @@ def delete_componente(
 # Scopo: Push singolo dell'ordine a commessa (chiusura giro). Riusa
 #        l'orchestratore commesse esistente con sorgente ORDINE_VENDITA →
 #        attivita_fatturabili → pipeline lotto → fattura. Pattern push singolo
-#        gemello preventivi/offerte (decisione §8.3). Ammesso da CONFERMATO e
-#        — fix orfano 2026-07-10 — anche da PARZIALMENTE_EVASO/EVASO (per
-#        trigger CONFERMATO l'evasione in DDT non consuma la fatturazione).
+#        gemello preventivi/offerte (decisione §8.3). Da quali stati si manda
+#        lo dice la push-list del DB (`vendite.fn_list_ordini_da_pushare`):
+#        per trigger CONFERMATO anche da evaso, l'evasione in DDT non consuma
+#        la fatturazione.
 def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="push_a_commessa")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_PUSHABILI,
-        code="E_ORD_STATO_TRANSIZIONE",
-        message=(
-            "Ordine non inviabile a commessa in questo stato (ammessi: "
-            "confermato o evaso in attesa di fatturazione)."
-        ),
-        detail=f"stato={testata['stato_codice_interno']}",
-        function_name=f"{_FN}.push_a_commessa",
-    )
+    # Lo stato non si legge qui: le righe da mandare le da' la push-list del
+    # DB, che ne e' la fonte unica (BE-O1). Nessuna riga = niente da mandare.
     righe_count = repo.count_righe_pushable(ordine_id)
     ErrorManager.require(
         righe_count > 0,

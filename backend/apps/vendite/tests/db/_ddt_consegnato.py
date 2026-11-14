@@ -75,7 +75,9 @@ _PASSI: tuple[str, ...] = (
     #    E_DOC_STATO_SOLO_DAL_VERBO, dal 2026-10-25): il builder passa dal verbo
     #    per la matrice, EMESSO -> SPEDITO -> CONSEGNATO, e concede all'utente
     #    del contesto l'azione del passaggio.
-    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM _ddt), 'CONSEGNATO')",
+    #    Lo stato d'arrivo e' un parametro (`fino_a`): CONSEGNATO di norma; un
+    #    passo prima (SPEDITO) per provare la bolla da cui il reso non nasce.
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', (SELECT ddt_id FROM _ddt), %(fino_a)s)",
 )
 
 
@@ -83,8 +85,9 @@ _PASSI: tuple[str, ...] = (
 #        e lo stato riletto (il chiamante verifica che il caso si sia
 #        formato davvero: senza, un reso sarebbe rifiutato dal guard e il test
 #        proverebbe il guard).
-def crea_ddt_consegnato(cur: Any, *, etichetta: str) -> dict[str, Any]:
-    parametri = {"etichetta": etichetta, "sfx": uuid4().hex[:8].upper()}
+#        `fino_a` (default CONSEGNATO): lo stato a cui il verbo porta la bolla.
+def crea_ddt_consegnato(cur: Any, *, etichetta: str, fino_a: str = "CONSEGNATO") -> dict[str, Any]:
+    parametri = {"etichetta": etichetta, "sfx": uuid4().hex[:8].upper(), "fino_a": fino_a}
     for passo in _PASSI:
         cur.execute(passo, parametri)
     cur.execute(

@@ -61,6 +61,6 @@ META_SORGENTE_CONTRATTO = "contratto"
 META_KEY_RIGA_OFFERTA_ID = "riga_offerta_id"
 META_SORGENTE_OFFERTA = "offerta"
 
-# Stato preventivo "bozza" (codice_interno in `config.stati_doc_preventivi`).
-# La descrizione mostrata all'utente e' "Bozza" ma il codice tecnico e' DRAFT.
-STATO_PREVENTIVO_DRAFT = "DRAFT"
+# ⛔ `STATO_PREVENTIVO_DRAFT` RITIRATA il 2026-11-14 (brief-db-stati-documento-
+#    dal-vocabolario §6.16, BE-P1): era il codice della bozza e nessuno la
+#    leggeva. La bozza la riconosce il DB dal vocabolario (colonna `iniziale`).

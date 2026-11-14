@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1219, di cui 129 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1219, di cui 130 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -434,6 +434,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # RITIRATO il 2026-10-10 (brief-db-testata-dopo-emissione, fase 2): il lock vendite.trgfn_contratti_lock_post_attivazione (le quattro colonne di pricing, solo in ATTIVO) e' assorbito dal BB di testata vendite.trgfn_doc_testata_lock_fuori_bozza, che le blocca fuori bozza in ogni stato con E_DOC_CONDIZIONI_FUORI_BOZZA e parla prima del guard del listino. Nessuna funzione viva lo solleva; il messaggio resta per il diario.
     # ⚠️ RITIRATO il 2026-10-10
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "CONFLITTO_STATO",
+    # ⛔ RITIRATO il 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c-bis). Lo sollevava il ramo UPDATE di vendite.trgfn_contratti_set_categoria_cliente_snapshot, che non parlava mai: fuori bozza il cambio della categoria lo rifiuta prima il lock della testata (trg_contratti_a05_lock_fuori_bozza_upd, E_DOC_CONDIZIONI_FUORI_BOZZA), sulla stessa colonna e negli stessi stati. ⚠️ Il codice NON si cancella: resta a catalogo e smette di essere sollevato.
+    # ⚠️ RITIRATO il 2026-11-14
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
     # Verbo della cessazione vendite.fn_cessa_contratto (2026-10-26, 20261026-06, brief-modello-documento-vendita §11, Y-3): la cessazione e' chiesta senza la data di fine. Prende il posto del controllo Python di contratti_service.cambia_stato («Data cessazione obbligatoria», E_VENDITE_VALIDATION). DATO_ERRATO col campo valido_al: e' un campo della richiesta da compilare. Nessun valore: la frase e' chiusa.
     "E_CONTRATTO_CESSAZIONE_SENZA_DATA": "DATO_ERRATO",
@@ -2182,6 +2184,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI",
         "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
         "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
+        "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE",
         "E_CONTRATTO_EMITTENTE_BA_INCOERENTE",
         "E_CONTRATTO_EMITTENTE_NON_RISOLTO",
         "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",

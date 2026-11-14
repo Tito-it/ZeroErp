@@ -36,6 +36,7 @@ import VenditeNoteDrawer from '../../_shared/note/VenditeNoteDrawer.vue'
 import { useInjectBlocked } from '../../../core/composables/useReadonlyMode'
 import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../../core/components/FiltriLista.vue'
+import { azionePdfLista, pdfArchiviato } from '../../../documenti/utils/azionePdfLista'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -89,7 +90,8 @@ const noteDrawerVisible = ref(false)
 const noteDrawerPreventivo = ref(null)
 
 function onPdfClick(row) {
-  if (!row || row.stato_codice_interno === 'DRAFT') return
+  // La voce e' spenta dove la riga non ha PDF archiviati (`azionePdfLista`).
+  if (!pdfArchiviato(row)) return
   pdfDialogPreventivo.value = row
   pdfDialogVisible.value = true
 }
@@ -102,17 +104,8 @@ function onNoteClick(row) {
 // Scopo: costruisce le azioni contestuali di riga. Modifica = click riga.
 function buildRowActions(data) {
   return [
-    {
-      key: 'documenti-pdf',
-      label: t('vendite.preventivi.pdf.label_scarica'),
-      icon: MANAGE_ICONS.PDF,
-      severity: 'primary',
-      disabled: data.stato_codice_interno === 'DRAFT',
-      tooltip: data.stato_codice_interno === 'DRAFT'
-        ? t('vendite.preventivi.pdf.tooltip_lista_disabilitato')
-        : t('vendite.preventivi.pdf.tooltip_lista'),
-      command: () => onPdfClick(data),
-    },
+    // Il PDF della riga: da `pdf_mode` della vista, non dallo stato (D-PDF).
+    azionePdfLista(t, data, { prefisso: 'vendite.preventivi', apri: onPdfClick }),
     {
       key: 'gestisci-note',
       label: t('vendite.preventivi.gestisci_note'),

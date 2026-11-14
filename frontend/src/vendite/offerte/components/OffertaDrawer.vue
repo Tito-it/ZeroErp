@@ -44,6 +44,7 @@ import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPr
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -188,14 +189,18 @@ const pushReasons = computed(() => {
 //    permessi e si chiude da `can_edit_eccezioni`. Fino al 2026-11-14 stava
 //    dentro, e `RigheEccezioniDrawer` (catena OR `bloccato`) chiudeva le righe
 //    anche col solo `can_edit_utility` falso: la divergenza V-2 rifatta nel FE.
-const SEZIONI_CORPO = ['can_edit_eccezioni', 'can_edit_utility', 'can_edit_indirizzi']
-const corpoChiuso = computed(() => isEdit.value && !caps.flag('can_edit_utility'))
+// ⭐ Dal 2026-11-14 la regola sta nel BB `useCorpoDocumento`, condiviso coi
+//    cinque drawer gemelli (lì il corpo lo chiude `can_edit_righe`).
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_utility'],
+  sezioni: ['can_edit_eccezioni', 'can_edit_utility', 'can_edit_indirizzi'],
+  presente: () => isEdit.value,
+})
 // Il banner «fuori bozza»: si accende quando almeno una sezione e' chiusa.
-const isWorkflowLocked = computed(
-  () => isEdit.value && detail.value !== null && SEZIONI_CORPO.some((k) => !caps.flag(k)),
-)
+const isWorkflowLocked = computed(() => detail.value !== null && corpo.sezioneChiusa.value)
 const isReadonly = computed(
-  () => parentReadonly.value || corpoChiuso.value,
+  () => parentReadonly.value || corpo.corpoChiuso.value,
 )
 // La testata dopo la bozza: quali campi del form si cambiano, dalla capability
 // (brief-db-testata-dopo-emissione, R-FE-3).
@@ -926,7 +931,7 @@ const footerDrawer = useFooterDocumento({
     :footer="footerDrawer"
     :loading="loading"
     :save-disabled="!canSave"
-    :readonly="corpoChiuso"
+    :readonly="corpo.corpoChiuso.value"
     v-bind="$attrs"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"

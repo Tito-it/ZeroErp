@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team BE/FE**, con BE-R1 e FE-R1 … FE-R4 del giro 6e (§6.22; FE-R1, le due chiavi i18n, per primo: senza, `check-i18n-keys` resta rosso); poi il team DB col giro 6f (il listino). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+**Riparte: il team DB**, con R-V1 … R-V3 del §6.23 (i valori del motivo, le marche dello stato del contratto, lo smistamento del preventivo) e il giro 6f (il listino). Il BE/FE ha fatto le richieste dei giri 6a … 6e (§6.16 … §6.22), da committare su `dev/backend-tid` (2026-11-14). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
 (Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
@@ -47,28 +47,29 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i-quater | ✅ DB | giro 6a, il preventivo: `20261114-08 … -13`, un pgTAP nuovo (plan 18), sei pagine `manual/` e il vocabolario; prova in transazione con 128 pgTAP (2026-11-14) | §6.16 | 9h |
 | 9i-quinquies | ✅ Tid | ✅ **D-PROI** (a), 2026-11-14: la proiezione dello smistamento parte dallo stato di accettazione (`-13`, revoca in parte una riga del 2026-10-31). ✅ **D-PDF** (a), 2026-11-14: il PDF delle liste dalla vista (`pdf_mode`), non dal codice della bozza; ogni giro la sua vista lista, per offerta e preventivo i giri 2-ter e 6a-bis | §6.16 | — |
 | 9i-sexies | ✅ Tid | apply di `20261114-08 … -13` e pgTAP del §6.16 verde (2026-11-14) | §6.16 | — |
-| 9i-septies | **BE** ⏭️ | BE-P1: il ritiro di `STATO_PREVENTIVO_DRAFT`, che nessuno legge | §6.16 | — |
-| 9i-octies | **FE** ⏭️ | FE-P1: il lucchetto del drawer del preventivo dalle chiavi `can_edit_*`, non dal codice DRAFT (gemello di FE-V2) | §6.16 | — |
+| 9i-septies | ✅ BE | BE-P1: il ritiro di `STATO_PREVENTIVO_DRAFT`, che nessuno legge (da committare, `dev/backend-tid`, 2026-11-14) | §6.16 | — |
+| 9i-octies | ✅ FE | FE-P1: il lucchetto del drawer del preventivo dalle chiavi `can_edit_*`, non dal codice DRAFT (gemello di FE-V2), col BB `useCorpoDocumento` (da committare, `dev/backend-tid`, 2026-11-14) | §6.16 | — |
 | 9i-nonies | ✅ DB | giro 6b, l'ordine: `20261114-14 … -20`, un pgTAP nuovo (plan 22), sette pagine `manual/`; prova in transazione (2026-11-14) | §6.17 | — |
 | 9i-decies | ✅ Tid | apply di `20261114-14 … -20` (il `-19` al secondo tentativo, col COMMENT fuori dal `BEGIN ATOMIC`) e pgTAP del §6.17: verdi (2026-11-14). ✅ **D-EVAD** (a), 2026-11-14 | §6.17 | 9i-nonies |
 | 9i-decies-bis | ✅ DB | giro 6b-bis (D-EVAD): `script.fn_check_ordine_evadibile`, letto da `vendite.fn_genera_ddt_da_ordine` e dalla capability (`can_genera_ddt`); giri 2-ter e 6a-bis (D-PDF): `pdf_mode` nelle viste lista di offerta e preventivo; `20261114-22 … -26`, due pgTAP, prova con 160 file (2026-11-14) | §6.18 | — |
 | 9i-decies-ter | ✅ Tid | apply di `20261114-22 … -26` e pgTAP del §6.18: verdi (2026-11-14) | §6.18 | — |
-| 9i-decies-quater | **FE** ⏭️ | FE-O3 («Genera bolla» da `can_genera_ddt`), FE-P2 e FE-V3 (il PDF delle liste da `pdf_mode`) | §6.18 | — |
-| 9i-undecies | **BE** ⏭️ | BE-O1: il ritiro di `_STATI_PUSHABILI` | §6.17 | — |
-| 9i-duodecies | **FE** ⏭️ | FE-O1: il lucchetto del drawer dell'ordine dalle chiavi `can_edit_*`; FE-O2: l'avviso dopo l'annullo dall'azione | §6.17 | — |
+| 9i-decies-quater | ✅ FE | FE-O3 («Genera bolla» da `can_genera_ddt`, BB `azioneDaFlag`), FE-P2 e FE-V3 (il PDF delle liste da `pdf_mode`, BB `azionePdfLista`) (da committare, `dev/backend-tid`, 2026-11-14) | §6.18 | — |
+| 9i-undecies | ✅ BE | BE-O1: il ritiro di `_STATI_PUSHABILI` (da committare, `dev/backend-tid`, 2026-11-14) | §6.17 | — |
+| 9i-duodecies | ✅ FE | FE-O1: il lucchetto del drawer dell'ordine dalle chiavi `can_edit_*`; FE-O2: l'avviso dopo l'annullo dall'azione (da committare, `dev/backend-tid`, 2026-11-14) | §6.17 | — |
 | 9i-terdecies | ✅ DB | giro 6c, il contratto: `20261114-27 … -34`, D-BOZZA (a) (via `is_bozza`), un pgTAP nuovo (plan 12), prova con 334 file (2026-11-14) | §6.19 | — |
 | 9i-quattuordecies | ✅ Tid | apply di `20261114-27 … -34` e pgTAP del §6.19: verdi (2026-11-14) | §6.19 | — |
 | 9i-quattuordecies-bis | ✅ DB | giro 6c-bis: il guard della categoria ritirato (`20261114-35`), il codice obsoleto (decisione di Tid del 2026-11-14) | §6.20 | — |
 | 9i-quattuordecies-ter | ✅ Tid | apply di `20261114-35` e pgTAP del §6.20: verdi (2026-11-14) | §6.20 | — |
-| 9i-quattuordecies-quater | **BE** ⏭️ | BE-C1: rigenerare `error_policies_generated.py` (il codice obsoleto) | §6.20 | — |
-| 9i-quindecies | **FE** ⏭️ | FE-C1 … FE-C4 (drawer, azioni, avviso, PDF della lista del contratto) | §6.19 | — |
+| 9i-quattuordecies-quater | ✅ BE | BE-C1: rigenerare `error_policies_generated.py` (il codice obsoleto) (da committare, `dev/backend-tid`, 2026-11-14) | §6.20 | — |
+| 9i-quindecies | ✅ FE | FE-C1 … FE-C4 (drawer, azioni, avviso, PDF della lista del contratto) (da committare, `dev/backend-tid`, 2026-11-14); i residui del drawer sono il §6.23 | §6.19 | — |
 | 9i-sedecies | ✅ DB | giro 6d, la bolla: `20261114-36 … -46`, un pgTAP nuovo (plan 14), sette pagine `manual/` e il vocabolario (2026-11-14) | §6.21 | — |
 | 9i-septendecies | ✅ Tid | apply di `20261114-36 … -46` e pgTAP del §6.21: verdi (2026-11-14) | §6.21 | — |
-| 9i-duodevicies | **FE** ⏭️ | FE-D1 … FE-D3 (drawer, PDF della lista, avviso dopo l'annullo della bolla) | §6.21 | — |
+| 9i-duodevicies | ✅ FE | FE-D1 … FE-D3 (drawer, PDF della lista, avviso dopo l'annullo della bolla) (da committare, `dev/backend-tid`, 2026-11-14) | §6.21 | — |
 | 9i-undevicies | ✅ DB | giro 6e, il reso: `20261114-47 … -57`, D-RESO (a) (`script.fn_check_ddt_rendibile`, `can_genera_reso`, `can_riconsegna`), un pgTAP nuovo (plan 14), uno adeguato, undici pagine (2026-11-14) | §6.22 | — |
 | 9i-vicies | ✅ Tid | apply di `20261114-47 … -58` e pgTAP del §6.22: verdi (2026-11-14) | §6.22 | — |
-| 9i-vicies-bis | **FE** ⏭️ | FE-R1 (le due chiavi i18n: `check-i18n-keys` rosso fino ad allora), FE-R2 … FE-R4 («Genera reso», ri-spedizione e lucchetto del reso dalla capability; il ritiro di `STATO_RESO`) | §6.22 | — |
-| 9i-vicies-ter | **BE** ⏭️ | BE-R1: il ritiro del guard gemello in `crea_reso` | §6.22 | — |
+| 9i-vicies-bis | ✅ FE | FE-R1 (le due chiavi i18n: `check-i18n-keys` rosso fino ad allora), FE-R2 … FE-R4 («Genera reso», ri-spedizione e lucchetto del reso dalla capability; il ritiro di `STATO_RESO`) (da committare, `dev/backend-tid`, 2026-11-14) | §6.22 | — |
+| 9i-vicies-ter | ✅ BE | BE-R1: il ritiro del guard gemello in `crea_reso`, col test sul DB vero (da committare, `dev/backend-tid`, 2026-11-14) | §6.22 | — |
+| 9i-vicies-quater | **DB** ⏭️ | R-V1 … R-V3: i valori del motivo nella capability, le marche dello stato del contratto, lo smistamento del preventivo; poi le richieste FE che ne seguono | §6.23 | — |
 | 9i-unvicies | **DB** ⏭️ | giro 6f: il listino | §6.15 | — |
 | 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
 | 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
@@ -1740,3 +1741,48 @@ schema nascono con la rigenerazione della doc.
 
 Chi cambia per primo: il DB. Con il giro applicato FE e BE di oggi funzionano: le chiavi nuove si aggiungono, nessuna
 cambia, e il guard del service risponde come il trigger.
+
+### 6.23 Dal BE/FE dei giri 6a … 6e — richieste al team DB (2026-11-14)
+
+> **Chi scrive:** team BE/FE (`dev/backend-tid`), 2026-11-14. **A chi:** il team DB. Decisione di Tid del 2026-11-14:
+> le tre si chiedono al DB; il FE non mette un ripiego nell'attesa.
+
+Le richieste BE/FE dei §6.16 … §6.22 sono fatte (da committare, `dev/backend-tid`), e quelle di simmetria che Tid ha
+chiesto in più: anche lo store e il drawer del preventivo riconoscono emissione, accettazione e annullo dal verbo
+(`key`), non dalla destinazione. Tre building block nuovi, approvati da Tid: `useCorpoDocumento` (il lucchetto dei
+sei drawer documento), `useEntityCapabilities.azioneDaFlag` («Genera bolla», «Genera reso»), `azionePdfLista` (il
+PDF delle cinque liste); in più `avvisaDopoAzione` nel BB dell'avviso dopo l'annullo. Lo usa anche la commessa (store e `CommessaGestioneDrawer`, 2026-11-14): la sua matrice
+(`transizioni_stati_commessa`) dà `action_key = annulla` a tutti i passaggi verso ANNULLATA, e solo a quelli. Restano tre punti che il FE
+non chiude da solo, perché il dato non è nella capability.
+
+* **R-V1. I valori del motivo non arrivano.** `script.fn_check_ddt_rendibile` dà al motivo `DDT_TRASFERIMENTO` un
+  valore (il numero della bolla), ma `script.fn_available_actions_ddt` ne porta solo `can_genera_reso_reason` e
+  `_reason_key`: i `valori` si perdono. La frase i18n del trasferimento (FE-R1) l'abbiamo scritta **senza**
+  segnaposto: con `{0}` il tooltip mostrerebbe `{0}`. Nessuna capability oggi porta i valori di un motivo.
+  **Richiesta:** una forma di casa per i valori del motivo di un flag, per esempio `<flag>_reason_valori` (array,
+  vuoto se la frase non ne ha), a cominciare da `can_genera_reso`. Il FE poi li passa alla frase in
+  `azioneDaFlag` e `azioneNegata` (il mapper delle azioni di stato li legge già, `useDrawerActions`), e la frase
+  del trasferimento riprende il numero.
+* **R-V2. Il drawer del contratto legge ancora tre codici di stato** (`ContrattoDrawer.vue`), fuori dall'elenco
+  chiuso del §6.19:
+  * il banner «fuori bozza» sceglie fra `banner_locked_attivo` (info) e `banner_locked_cessato` (warn) con
+    `stato === CESSATO`. È la domanda «lo stato è terminale?»: l'offerta la chiede a `stato_terminale` della sua
+    capability, quella del contratto non la emette;
+  * il campo `valido_al` si vede in creazione, in bozza, in CESSATO e in ATTIVO con la data valorizzata, e
+    l'etichetta dice «Data cessazione» in CESSATO, «Cessazione programmata» in ATTIVO con la data, «Valido al»
+    altrimenti. Sono le marche `iniziale`, `emissione` e `cessazione` del vocabolario.
+
+  **Richiesta:** nella capability del contratto le marche dello stato corrente che il drawer legge,
+  `stato_terminale` (colonna `terminale`, come l'offerta) e `stato_cessazione` (colonna `cessazione`); per
+  «bozza» il FE usa già il lock (`useCorpoDocumento`), per l'emissione basta «non iniziale e non cessazione»
+  se il DB conferma che il contratto non ha altri stati vivi. Se il DB preferisce un'altra forma (per esempio
+  un'unica chiave `stato_marca`), la scelga lui: il FE si adegua. Poi una richiesta FE: banner ed etichetta dalle
+  chiavi, e i tre confronti con `STATO_CONTRATTO` escono.
+* **R-V3. Lo smistamento del preventivo si mostra da due codici.** `PreventiviDrawer.vue` (`showSmistamento`)
+  apre il pannello dello smistamento con `stato === ACCETTATO || stato === EVASO`: «dall'accettazione in poi»,
+  EVASO in consultazione. La capability ha `can_push_commessa` e `can_genera_ordine` (eseguibili adesso), non
+  «il preventivo è uno che si smista». **Richiesta:** la chiave che lo dice, dalla colonna del vocabolario che il DB
+  ritiene giusta (l'esito positivo dell'accettazione, o una marca sua). Poi una richiesta FE: `showSmistamento` dalla
+  chiave, e `STATO_PREVENTIVO.ACCETTATO`/`EVASO` escono dal drawer.
+
+Chi cambia per primo: il DB. Le chiavi nuove si aggiungono e nessuna cambia: il FE di oggi continua a funzionare.

@@ -2941,6 +2941,10 @@
       "filtro_utility": "Utility",
       "gestisci_note": "Manage notes",
       "genera_reso": "Create return",
+      "genera_reso_reason": {
+        "trasferimento": "This delivery note is a transfer between warehouses: the goods stayed ours, there is no customer to return them.",
+        "non_consegnato": "A return can only be created from a delivery note delivered to the customer."
+      },
       "note_titolo": "DDT notes",
       "field_destinatario": "Recipient",
       "field_destinatario_placeholder": "Search recipient (subcontractor, warehouse)...",

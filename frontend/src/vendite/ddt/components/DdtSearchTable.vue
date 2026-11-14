@@ -40,10 +40,10 @@ import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoDdtSeverity } from '../../../core/utils/severity'
 import { SORGENTE_CODES } from '../../../documenti/constants'
 import { exportDdt } from '../api/ddtApi'
-import { STATO_DDT } from '../constants'
 import { useDdtStore } from '../stores/ddt'
 import FiltroPeriodo from '../../../core/components/FiltroPeriodo.vue'
 import FiltriLista from '../../../core/components/FiltriLista.vue'
+import { azionePdfLista, pdfArchiviato } from '../../../documenti/utils/azionePdfLista'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -89,9 +89,8 @@ const noteDrawerVisible = ref(false)
 const noteDrawerDdt = ref(null)
 
 function onPdfClick(row) {
-  // Documenti PDF disponibili solo dopo l'emissione (il documento definitivo si
-  // genera alla transizione DRAFT→EMESSO). In DRAFT l'azione e' disabled.
-  if (!row || row.stato_codice_interno === STATO_DDT.DRAFT) return
+  // La voce e' spenta dove la riga non ha PDF archiviati (`azionePdfLista`).
+  if (!pdfArchiviato(row)) return
   pdfDialogDdt.value = row
   pdfDialogVisible.value = true
 }
@@ -106,19 +105,9 @@ function onNoteClick(row) {
 // la lista resta consultazione + gestione documenti generati + note (gemelli
 // offerte/contratti/ordini).
 function buildRowActions(data) {
-  const isBozza = data.stato_codice_interno === STATO_DDT.DRAFT
   return [
-    {
-      key: 'documenti-pdf',
-      label: t('vendite.ddt.pdf.label_scarica'),
-      icon: MANAGE_ICONS.PDF,
-      severity: 'primary',
-      disabled: isBozza,
-      tooltip: isBozza
-        ? t('vendite.ddt.pdf.tooltip_lista_disabilitato')
-        : t('vendite.ddt.pdf.tooltip_lista'),
-      command: () => onPdfClick(data),
-    },
+    // Il PDF della riga: da `pdf_mode` della vista, non dallo stato (D-PDF).
+    azionePdfLista(t, data, { prefisso: 'vendite.ddt', apri: onPdfClick }),
     {
       key: 'gestisci-note',
       label: t('vendite.ddt.gestisci_note'),
