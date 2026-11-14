@@ -10,7 +10,7 @@
 > • [vendite.listini_versioni](/dbzero/vendite/manual/listini_versioni)  
 >
 ### 🎯 Scopo Principale
-(latest review 30-09-2026)
+(latest review 14-11-2026)
 `documenti.template_documenti_versioni` contiene le **versioni
 renderizzabili** del template documentale, con stato di pubblicazione e
 finestra temporale di validità.
@@ -44,8 +44,12 @@ finestra temporale di validità.
 * `validita` è un `daterange` **generato** da `valido_dal`/`valido_al`
   (linee-guida-sql §7b), e l'ordine delle due date lo verifica il guard
   comune `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`);
-* non possono esistere due versioni `attivo = true` e `stato = 'PUBBLICATA'`
-  con intervalli temporali sovrapposti per lo stesso template.
+* non possono esistere due versioni `attivo = true` fuori bozza
+  (`stato IN ('PUBBLICATA', 'OBSOLETA')`) con intervalli temporali sovrapposti
+  per lo stesso template (`ex_template_documenti_versioni_no_overlap_pubblicata`,
+  esteso alle `OBSOLETA` il 14-11-2026): per ogni data, al più una versione
+  stampabile. Il predicato è dichiarato anche nel registro
+  `dbops.automazione_overlap`, da cui il framework ricreerebbe il vincolo.
 * la pubblicazione operativa usa
   `documenti.fn_pubblica_template_documento_versione(...)`: la funzione chiude
   a `nuovo.valido_dal - 1` le versioni `PUBBLICATA` precedenti sovrapposte,
@@ -90,12 +94,18 @@ il contesto congelato e la versione usata allora.
 * `BOZZA`: versione in preparazione, non applicabile nel motore;
 * `PUBBLICATA`: versione selezionabile se la `validita` contiene la data di
   riferimento;
-* `OBSOLETA`: versione non più da usare per nuove generazioni, ma mantenuta
-  per storico e audit.
+* `OBSOLETA`: versione superata da una pubblicazione successiva, chiusa al
+  giorno prima della nuova. Come una `PUBBLICATA` non si modifica e non torna
+  in `BOZZA` (guard A1, `trgfn_template_documenti_versioni_protect_pubblicata`,
+  dal 14-11-2026). Resta selezionabile finché la sua `validita`
+  contiene la data di riferimento: se la nuova parte da una data futura, fino
+  alla vigilia stampa ancora lei. Dopo resta per storico, audit e ristampa.
 
-Il principio operativo resta data-driven: la scelta della versione corretta è
-guidata prima dalla finestra `validita`, poi dai filtri applicativi sullo
-stato.
+Il principio operativo è data-driven (linee-guida-sql §7c): la finestra
+`validita` decide, lo stato separa le versioni operative (`PUBBLICATA`,
+`OBSOLETA`) dalla preparazione (`BOZZA`). La sede unica del predicato è
+[documenti.vw_template_versioni_stampabili](/dbzero/documenti/views/vw_template_versioni_stampabili)
+(dal 14-11-2026 legge anche le `OBSOLETA`).
 
 ---
 

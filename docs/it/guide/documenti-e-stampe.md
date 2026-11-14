@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -84,11 +84,16 @@ Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS ve
 |---|---|
 | `BOZZA` | In preparazione: si modifica liberamente, non stampa |
 | `PUBBLICATA` | Usabile per generare documenti, dalla sua data di validità |
-| `OBSOLETA` | Superata da una pubblicazione successiva |
+| `OBSOLETA` | Superata da una pubblicazione successiva: stampa ancora fino all'ultimo giorno della sua validità |
 
-Una versione pubblicata **non cambia più**: per cambiare il layout si crea una versione nuova. Per
-lo stesso modello le versioni pubblicate attive non si sovrappongono nel tempo. Pubblicando una
+Una versione pubblicata **non cambia più**, nemmeno quando diventa obsoleta, e non torna in bozza:
+per cambiare il layout si crea una versione nuova. Per
+lo stesso modello le versioni attive fuori bozza non si sovrappongono nel tempo. Pubblicando una
 versione nuova, la precedente si chiude il giorno prima e diventa obsoleta.
+
+**Che cosa stampa lo decidono le date, non lo stato.** Se la versione nuova parte da una data
+futura, fino al giorno prima si stampa ancora con la precedente, e dal giorno di partenza con la
+nuova: pubblicare in anticipo non lascia mai il modello senza una versione che stampa.
 
 Ogni versione dichiara anche la **forma dei dati** che legge (`versione_contesto`): se la stampa
 prepara dati di una forma diversa, il database la ferma prima del render, invece di produrre un

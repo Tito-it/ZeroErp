@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: QUATTRO STATI D'ORDINE CHE NESSUN PASSAGGIO RAGGIUNGE
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 4 (⑤, S-8; Tid
+#   2026-11-08: il ritiro, non attivo = false).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   ALLOCATO, SPEDITO, CONSEGNATO e FATTURATO stavano in
+#   config.stati_doc_ordini senza una riga della matrice che vi entrasse o
+#   ne uscisse: tenuti «finche' privi di driver» (D-2, 2026-06-05). Nel
+#   modello di oggi l'avanzamento dell'ordine lo proietta il DB dalle bolle
+#   (EVASO, PARZIALMENTE_EVASO), spedizione e consegna sono stati della
+#   bolla, la fatturazione e' di commessa e fattura: quattro stati d'ordine
+#   che le ripetono sarebbero una seconda verita'. Il vocabolario e'
+#   condiviso con l'ordine d'acquisto, che non ha guard di transizione:
+#   finche' c'erano, un ordine d'acquisto li poteva prendere senza regola.
+#
+# ── COME ────────────────────────────────────────────────────────────
+#   Le quattro righe escono dal CSV del vocabolario, e loadUpdateData non
+#   cancella: il DELETE e' l'unica eccezione al «dal CSV» (linee-guida-sql
+#   §11.2), forward-only. Nessuna riga della matrice li nomina, e nessun
+#   documento (ordini e righe di vendita e d'acquisto) li porta (dbdev,
+#   2026-11-14); se un database ne avesse, la FK ferma il DELETE e lo dice.
+#   Restano fuori, e non c'entrano: vendite.ordini.fatturazione_trigger (un
+#   altro asse, che riusa i nomi) e la «cintura» FATTURATO di
+#   vendite.fn_list_ordini_da_pushare, che si riapre nel giro dell'ordine.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261114-03-delete-stati-doc-ordini-senza-passaggi-mctit.yaml
+
+  - changeSet:
+      id: 20261114-03-delete-stati-doc-ordini-senza-passaggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di ALLOCATO, SPEDITO, CONSEGNATO e FATTURATO da config.stati_doc_ordini: nessun
+        passaggio li raggiunge. Le righe escono anche dal CSV. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 4 (S-8).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: stati_doc_ordini
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.stati_doc_ordini
+               WHERE codice_interno IN ('ALLOCATO', 'SPEDITO', 'CONSEGNATO', 'FATTURATO');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Forward-only: gli stati tornano col mirror di stati_doc_ordini.csv, se le righe si
+              -- rimettono nel CSV.
+              SELECT 1;

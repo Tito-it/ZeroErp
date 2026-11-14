@@ -121,7 +121,7 @@ CREATE TEMP TABLE tmp_refs_mnf AS
 SELECT
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-  -- Lo stato che spegne un lotto: congela_fiscale, quindi vw_lotti_fase.in_gioco = false.
+  -- Lo stato che spegne un lotto: congela_fiscale, quindi vw_lotti_fase.pre_fiscale = false.
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'ANNULLATA' ORDER BY id LIMIT 1) AS stato_annullata_id,
   (SELECT billing_account_id FROM tmp_cmm_mnf) AS billing_account_id,
@@ -265,7 +265,7 @@ SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
 --   nascita del lotto, 20261112-45) e si annulla dai verbi del lotto, lungo la
 --   matrice; il suo lock_batch_id e' il marchio che la LIBERA_MORTA porta in
 --   emit_batch_id.
---   Su vw_lotti_fase.in_gioco vale false: e' cio' che separa 5-bis da 5-ter.
+--   Su vw_lotti_fase.pre_fiscale vale false: e' cio' che separa 5-bis da 5-ter.
 CREATE TEMP TABLE tmp_lotto_morto_mnf AS
 WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
@@ -396,11 +396,11 @@ SELECT ok(
          FROM vendite.attivita_fatturabili a
         WHERE a.id = (SELECT attivita_id FROM tmp_af_mnf WHERE slot = 'VIVA_NULL'))
   AND (SELECT l.lotto_id IS NOT NULL FROM tmp_lotto_mnf l)
-  -- ⭐ I due lotti stanno ai due lati di `in_gioco`: senza questo, 5-bis e
+  -- ⭐ I due lotti stanno ai due lati di `pre_fiscale`: senza questo, 5-bis e
   --   5-ter proverebbero la stessa cosa due volte.
-  AND (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+  AND (SELECT f.pre_fiscale FROM vendite.vw_lotti_fase f
         WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_mnf))
-  AND NOT (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+  AND NOT (SELECT f.pre_fiscale FROM vendite.vw_lotti_fase f
             WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_morto_mnf)),
   '3) fixture: otto righe di commessa EMESSA, sette attivita, un lotto in gioco e uno morto; l ottava senza attivita fatturabile'
 );

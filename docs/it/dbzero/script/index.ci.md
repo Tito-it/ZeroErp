@@ -114,6 +114,7 @@ search:
 - [fn_doc_stato_id](manual/fn_doc_stato_id.md)
 - [fn_doc_stato_iniziale_id](manual/fn_doc_stato_iniziale_id.md)
 - [fn_doc_stato_modello](manual/fn_doc_stato_modello.md)
+- [fn_doc_terminali_con_uscita_manuale](manual/fn_doc_terminali_con_uscita_manuale.md)
 - [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — Apre la connessione `dblink` persistente di nome **`logconn`** verso il canale di log, se il canale è acceso e la connessione non è già aperta. Su quella connessione i registri fuori transazione scrivono righe che sopravvivono all'annullamento della transazione di chi le scrive.
@@ -327,7 +328,7 @@ search:
 - [vw_lotto_documento_righe](manual/vw_lotto_documento_righe.md) — (latest review 2026-09-08)
 - [vw_override_operatore_area](manual/vw_override_operatore_area.md) — (scritta il 06-10-2026)
 - [vw_pratica_doc_sorgente](manual/vw_pratica_doc_sorgente.md) — Per ogni pratica, il documento che ne rappresenta lo stato vivo, con il suo descrittore normalizzato: una riga per pratica, il documento **più vivo** fra tutti i suoi collegamenti (`ROOT` e `COLLEGATO`) in `pratiche.pratiche_sorgenti`, con fase, esito e flag terminale letti da `script.vw_stato_sorgente`.
-- [vw_stati_doc_ddt_merce_partita](manual/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-10-12)
+- [vw_stati_doc_ddt_merce_partita](manual/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-11-14)
 - [vw_stati_estesi](manual/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 - [vw_stato_sorgente](manual/vw_stato_sorgente.md) — Lo stato di un documento nel vocabolario comune: la union dei resolver di dominio, una riga per documento con fase, esito e flag terminale. È l'**unica superficie** da cui il motore delle pratiche legge lo stato di un documento: nessun selettore di resolver, nessun ramo scritto nel motore.
 - [vw_stradario_esteso](manual/vw_stradario_esteso.md) — * **Aggregazione logica**: unire in un’unica sorgente i dati di via, toponomastica e stato, evitando join ripetuti nei client e nelle applicazioni. * **Pulizia dati**: fornire alias chiari (`id_via`, `id_toponomastica`, `tipo_toponimo`, `sigla_stato`, `nome_strada`) per facilitare l’interpretazione dei risultati. * **Performance**: ridurre il carico di join runtime raggruppando più tabelle in un’unica view materializzata (se necessario).

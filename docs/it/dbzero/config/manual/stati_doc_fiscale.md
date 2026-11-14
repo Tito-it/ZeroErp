@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_fiscale`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -48,8 +48,8 @@ i passaggi solo del lotto e solo della fattura.
 | `EMESSA` | il documento è generato, con tutti i suoi importi ma senza numero; si torna ancora in bozza | — |
 | `DEFINITIVA` | il documento è numerato: non si torna indietro | `chiude_lotto`, `congela_fiscale` |
 | `INVIATA` | il documento è preparato o inviato sul canale esterno | `congela_fiscale` |
-| `REGISTRATA` | la fattura ha concluso il suo giro dopo l'invio (solo fattura) | `congela_fiscale` |
-| `ANNULLATA` | il lotto è annullato mentre era in bozza | `is_abortito`, `congela_fiscale` |
+| `REGISTRATA` | la fattura ha concluso il suo giro dopo l'invio (solo fattura: la registrazione è un fatto della singola fattura) | `congela_fiscale` |
+| `ANNULLATA` | il lotto è annullato mentre era in bozza (solo lotto: una fattura non si annulla, in bozza si cancella e numerata si storna con una nota di credito) | `is_abortito`, `congela_fiscale` |
 
 `codice_interno` è la chiave stabile e non si modifica (`E_CODICE_NON_MODIFICABILE`). Uno stato
 già usato da una fattura, da un lotto, dalla pipeline di fatturazione o da una riga della matrice
@@ -71,9 +71,11 @@ iniziale si applica a tutti e due per vincolo (`chk_stati_doc_fiscale_iniziale_a
 
 ⚠️ **I flag hanno una seconda sede che deve dire la stessa cosa**: la matrice. Un passaggio del
 lotto verso uno stato senza `applica_lotto` esiste nella matrice ma il guard lo rifiuta: il
-vocabolario e la matrice dissentono. Lo presidia un pgTAP, in un verso solo (raggiungibile ⇒
-flag): uno stato può avere il flag senza che nessun passaggio del lotto lo raggiunga, come oggi
-`REGISTRATA`.
+vocabolario e la matrice dissentono. I presidi sono due, uno per verso: ogni stato che la matrice fa
+raggiungere al lotto ha `applica_lotto` (`config/test-stati-doc-fiscale-applica-lotto-vs-matrice-v1`),
+e ogni stato che vale per un documento la matrice glielo fa raggiungere
+(`config/test-stati-raggiungibili-v1`). Per questo `REGISTRATA` vale solo per la fattura e
+`ANNULLATA` solo per il lotto.
 
 ---
 

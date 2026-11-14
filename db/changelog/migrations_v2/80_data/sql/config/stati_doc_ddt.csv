@@ -1,7 +1,7 @@
-id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,pdf_mode,pdf_allow_allegati,fase,is_abortito,iniziale,emissione
-1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,PREVIEW,f,APERTO,f,t,f
-2,EMESSO,EMESSO,Emesso,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f,f,t
-4,SPEDITO,SPEDITO,Spedito,t,40,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f,f,f
-5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,"{""nessuna_azione_key"":""vendite.ddt.stato_info.consegnato_usa_reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f,f,f
-7,RESO,RESO,Reso,t,60,"{""nessuna_azione_key"":""vendite.ddt.stato_info.reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f,f,f
-6,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.ddt.stato_info.annullato""}",2025-09-15 16:46:46.709947+02,titodb,2026-07-16 00:00:00+02,mctit,ARCHIVE,f,CHIUSO,t,f,f
+id,codice_interno,codice,descrizione,attivo,ordine,meta,data_insert,user_insert,data_update,user_update,pdf_mode,pdf_allow_allegati,fase,is_abortito,iniziale,emissione,esito,terminale
+1,DRAFT,DRAFT,Bozza,t,10,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,PREVIEW,f,APERTO,f,t,f,NULL,f
+2,EMESSO,EMESSO,Emesso,t,20,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f,f,t,NULL,f
+4,SPEDITO,SPEDITO,Spedito,t,40,{},2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,IN_CORSO,f,f,f,NULL,f
+5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,"{""nessuna_azione_key"":""vendite.ddt.stato_info.consegnato_usa_reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f,f,f,POSITIVO,t
+7,RESO,RESO,Reso,t,60,"{""nessuna_azione_key"":""vendite.ddt.stato_info.reso""}",2025-09-15 16:46:46.709947+02,titodb,2026-01-16 17:38:32.328734+01,titodb,ARCHIVE,f,CHIUSO,f,f,f,POSITIVO,t
+6,ANNULLATO,ANNULLATO,Annullato,t,70,"{""nessuna_azione_key"":""vendite.ddt.stato_info.annullato""}",2025-09-15 16:46:46.709947+02,titodb,2026-07-16 00:00:00+02,mctit,ARCHIVE,f,CHIUSO,t,f,f,NEGATIVO,t

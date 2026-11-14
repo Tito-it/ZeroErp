@@ -113,6 +113,7 @@ END
 $f$;
 
 -- La regola di un montaggio di prova, con gli argomenti contati da 0 come TG_ARGV.
+-- Il tipo documento e' uno vero: la regola ne legge la bozza dal vocabolario.
 CREATE FUNCTION pg_temp.righe(VARIADIC p text[]) RETURNS jsonb
 LANGUAGE sql IMMUTABLE AS $f$
     SELECT script.fn_doc_lock_regola('RIGHE', ('[0:' || (cardinality(p) - 1) || ']=' || p::text)::text[])
@@ -122,10 +123,10 @@ $f$;
 -- 1-4) La grammatica e i montaggi
 -- =========================================================
 SELECT is(
-    ARRAY[pg_temp.righe('DDT', 'ddt_id') ->> 'codice',
-          pg_temp.righe('DDT', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X') ->> 'codice',
-          coalesce(pg_temp.righe('DDT', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X') ->> 'errore', 'ok'),
-          (pg_temp.righe('DDT', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X', 'troppo') ->> 'errore') IS NOT NULL || ''],
+    ARRAY[pg_temp.righe('DDT_VENDITA', 'ddt_id') ->> 'codice',
+          pg_temp.righe('DDT_VENDITA', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X') ->> 'codice',
+          coalesce(pg_temp.righe('DDT_VENDITA', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X') ->> 'errore', 'ok'),
+          (pg_temp.righe('DDT_VENDITA', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_X', 'troppo') ->> 'errore') IS NOT NULL || ''],
     ARRAY['E_RIGA_DOC_NON_BOZZA', 'E_X', 'ok', 'true'],
     '1) RIGHE: il codice e'' il settimo argomento (default E_RIGA_DOC_NON_BOZZA); [4] e [5] vuoti insieme non sono un montaggio a meta''; oltre sette argomenti e'' un errore'
 );

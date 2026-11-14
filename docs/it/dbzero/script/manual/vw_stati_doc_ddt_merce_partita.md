@@ -15,7 +15,7 @@
 ---
 
 ### 🎯 Scopo Principale
-(latest review 2026-10-12)
+(latest review 2026-11-14)
 
 Risponde a una sola domanda: **un DDT in questo stato ha fatto partire la
 merce?** Una riga per ogni stato del DDT, con il booleano `merce_partita`.
@@ -30,12 +30,14 @@ abortito**:
 | Reso | sì | la merce è tornata, ma il documento è vissuto: era partita |
 | Annullato | no | un documento annullato non ha fatto partire niente |
 
-La regola è letta dal catalogo degli stati (la posizione `ordine` rispetto a
-quella di Emesso, e il flag `is_abortito`), non da un elenco di codici: uno
-stato nuovo fra Emesso e Consegnato entra da solo.
+La regola è letta dal vocabolario degli stati (la posizione `ordine` rispetto a
+quella dello stato di **emissione**, la colonna `emissione`, e il flag
+`is_abortito`), non da un elenco di codici: uno stato nuovo fra l'emissione e la
+consegna entra da solo. La gemella del reso è
+`script.vw_stati_doc_reso_merce_rientrata`, con la stessa forma.
 
 ⛔ **Non risponde mai NULL.** Uno stato senza posizione (`ordine` vuoto), o un
-catalogo senza Emesso, dice «non partita».
+vocabolario senza stato di emissione, dice «non partita».
 
 ---
 

@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ex_template_documenti_versioni_no_overlap_pubblicata vale per PUBBLICATA E
+# OBSOLETA: per ogni data, una sola versione fuori bozza per modello.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La stampabilita' si decide dalla validita', non dallo stato (linee guida
+#   SQL §7c: le date comandano, lo stato separa l'operativo dalla
+#   preparazione). Una versione OBSOLETA e' «superata da una pubblicazione
+#   successiva», e stampa fino all'ultimo giorno della sua validita': la
+#   decisione 51 del 2026-04-29 (work-done/sviluppo-documenti.md) voleva che
+#   la vecchia restasse in uso fino alla partenza della nuova, e
+#   fn_pubblica_template_documento_versione la rende OBSOLETA subito, anche
+#   quando la nuova parte domani. Il predicato di «puo' stampare» si allarga
+#   nella vista (20261114-02); qui si allarga la garanzia che lo regge: con
+#   OBSOLETA fra le stampabili, «una riga per modello» in
+#   vw_template_versioni_stampabili vale solo se nemmeno una OBSOLETA si
+#   sovrappone a un'altra versione fuori bozza.
+#   Il controesempio (2026-11-14, CI): il seed 20261029-06 pubblica lo
+#   standard «da oggi» col fuso di Roma; il passo T-5 sposta il fuso aziendale
+#   e «oggi» torna al giorno prima, quando la versione precedente, gia'
+#   OBSOLETA, era ancora valida: nessuna versione stampabile, NON_RISOLTO.
+#
+# -- FORMA ---------------------------------------------------------------
+#   Stesso nome: il BE lo traduce per nome in E_DOCUMENTI_VERSIONE_OVERLAP
+#   (template_versioni_admin_service) e il registro dbops.automazione_overlap
+#   lo cerca per nome. Il predicato del registro si allinea nel CSV
+#   (80_data/sql/dbops/automazione_overlap.csv, ricaricato a ogni migrate):
+#   il framework non fa ALTER, e senza il CSV una ricreazione futura
+#   ripartirebbe dal predicato vecchio. Precedente identico: i listini,
+#   20260928-33.
+#   Da zero gira dopo 20260602-05 (stessa fase, numero maggiore), prima di
+#   tutto 80_data. Gli scrittori della tabella che arrivano dopo: i seed
+#   80_data pubblicano solo da fn_pubblica_template_documento_versione, che
+#   chiude la versione precedente al giorno prima della nuova, quindi due
+#   versioni fuori bozza non si toccano mai; le fixture pgTAP con versioni
+#   OBSOLETA (test-documenti-template-standard-v1) hanno finestre disgiunte
+#   dalla PUBBLICATA che segue.
+#   La preCondition ferma l'apply se sul database ci sono gia' versioni fuori
+#   bozza sovrapposte: vanno sistemate a mano prima.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261114-01-alter-template-documenti-versioni-no-overlap-pubblicata-e-obsoleta-mctit.yaml
+
+  - changeSet:
+      id: 20261114-01-alter-template-documenti-versioni-no-overlap-pubblicata-e-obsoleta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ex_template_documenti_versioni_no_overlap_pubblicata esteso alle versioni OBSOLETE:
+        per ogni data un modello ha al piu' una versione fuori bozza, cosi' resta una sola
+        versione stampabile anche quando la stampabilita' si decide dalla validita'.
+        Stesso nome (BE e registro lo cercano per nome).
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            Ci sono versioni di template PUBBLICATE o OBSOLETE, attive, gia' sovrapposte
+            sullo stesso modello: il vincolo esteso non si puo' creare. Vanno sistemate a
+            mano prima.
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >-
+              SELECT count(*)
+                FROM documenti.template_documenti_versioni a
+                JOIN documenti.template_documenti_versioni b
+                  ON b.template_documento_id = a.template_documento_id
+                 AND b.id > a.id
+                 AND b.validita && a.validita
+               WHERE a.attivo IS TRUE AND b.attivo IS TRUE
+                 AND a.stato IN ('PUBBLICATA', 'OBSOLETA')
+                 AND b.stato IN ('PUBBLICATA', 'OBSOLETA')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT ex_template_documenti_versioni_no_overlap_pubblicata;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT ex_template_documenti_versioni_no_overlap_pubblicata
+                  EXCLUDE USING gist (
+                      template_documento_id WITH =,
+                      validita              WITH &&
+                  )
+                  WHERE (attivo IS TRUE AND (stato)::text IN ('PUBBLICATA', 'OBSOLETA'));
+
+              COMMENT ON CONSTRAINT ex_template_documenti_versioni_no_overlap_pubblicata
+                  ON documenti.template_documenti_versioni IS
+                  'Due versioni attive fuori bozza (PUBBLICATA o OBSOLETA) dello stesso modello non si '
+                  'sovrappongono: per ogni data il modello ha al piu'' una versione stampabile '
+                  '(documenti.vw_template_versioni_stampabili). Le BOZZE e le versioni disattivate '
+                  'restano fuori. Il BE lo traduce per nome in E_DOCUMENTI_VERSIONE_OVERLAP.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS ex_template_documenti_versioni_no_overlap_pubblicata;
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT ex_template_documenti_versioni_no_overlap_pubblicata
+                  EXCLUDE USING gist (template_documento_id WITH =, validita WITH &&)
+                  WHERE (attivo IS TRUE AND (stato)::text = 'PUBBLICATA'::text);

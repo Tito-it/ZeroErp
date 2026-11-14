@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_ordini`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,18 +49,14 @@ a una colonna di questa tabella. I passaggi fra gli stati stanno nella matrice
 | `CONFERMATO` | l'ordine è confermato al cliente: è la sua emissione | `emissione` |
 | `PARZIALMENTE_EVASO` | le bolle ne hanno evaso una parte | — |
 | `EVASO` | le bolle lo hanno evaso del tutto | `terminale` |
-| `ALLOCATO` | la merce è allocata a magazzino | — |
-| `SPEDITO` | la merce è spedita | — |
-| `CONSEGNATO` | la merce è consegnata | — |
 | `ANNULLATO` | l'ordine è annullato | `is_abortito`, `terminale` |
-| `FATTURATO` | l'ordine è fatturato | `terminale` |
 
 L'evasione si muove nei due versi: `CONFERMATO`, `PARZIALMENTE_EVASO` ed `EVASO` si inseguono secondo
 le bolle emesse e annullate, coi passaggi automatici che scrive la proiezione delle bolle.
 
-⚠️ `ALLOCATO`, `SPEDITO`, `CONSEGNATO` e `FATTURATO` sono nel vocabolario ma nessun passaggio della
-matrice li raggiunge: un ordine non ci arriva per nessuna strada. Restano attivi, e un passaggio che
-li usi si aggiunge nella matrice.
+Ogni stato si raggiunge dallo stato iniziale lungo la matrice. Spedizione e consegna sono stati della
+bolla, la fatturazione è della commessa e della fattura: l'ordine non li ripete, e il vocabolario
+non ha stati che nessun passaggio raggiunge. Lo presidia `config/test-stati-raggiungibili-v1`.
 
 `codice_interno` è la chiave stabile e non si modifica (`E_CODICE_NON_MODIFICABILE`). Uno stato
 già usato da un ordine o da una riga, di vendita o d'acquisto, o dalla matrice non si disattiva.
@@ -98,11 +94,7 @@ ai loro lettori, quegli stati sono vuoti.
 | `DRAFT` | `APERTO` | — | no |
 | `CONFERMATO` | `IN_CORSO` | — | no |
 | `PARZIALMENTE_EVASO` | `IN_CORSO` | — | no |
-| `ALLOCATO` | `IN_CORSO` | — | no |
-| `SPEDITO` | `IN_CORSO` | — | no |
-| `CONSEGNATO` | `IN_CORSO` | — | no |
 | `EVASO` | `CHIUSO` | `POSITIVO` | sì |
-| `FATTURATO` | `CHIUSO` | `POSITIVO` | sì |
 | `ANNULLATO` | `CHIUSO` | `NEGATIVO` | sì |
 
 * `fase` è obbligatoria e sta nei quattro valori della scala: ogni stato nuovo dichiara la sua.
@@ -114,8 +106,7 @@ ai loro lettori, quegli stati sono vuoti.
 
 ⚠️ **La mappa è centrata sul ciclo di vendita.** Il vocabolario è condiviso con `acquisti.ordini`,
 ma la proiezione legge solo `vendite.ordini`. Un resolver per l'ordine d'acquisto dovrà verificare
-che la mappa calzi la sua semantica (per esempio `FATTURATO` come chiusura positiva), o valutare un
-vocabolario suo.
+che la mappa calzi la sua semantica, o valutare un vocabolario suo.
 
 ---
 

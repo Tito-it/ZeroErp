@@ -12,8 +12,9 @@
 
 (rev 2026-08-31, sera)
 
-`BEFORE INSERT/UPDATE` su `vendite.resi`. Assegna il `numero` **alla transizione a
-`CONFERMATO`**: in bozza resta vuoto, così una bozza scartata non consuma un numero.
+`BEFORE INSERT/UPDATE` su `vendite.resi`. Assegna il `numero` **quando il reso entra nello stato di
+emissione** del suo vocabolario (`config.stati_doc_reso.emissione`, oggi `CONFERMATO`): in bozza resta
+vuoto, così una bozza scartata non consuma un numero.
 
 ---
 

@@ -133,6 +133,7 @@ search:
 - [fn_doc_stato_id](funzioni/fn_doc_stato_id.md)
 - [fn_doc_stato_iniziale_id](funzioni/fn_doc_stato_iniziale_id.md)
 - [fn_doc_stato_modello](funzioni/fn_doc_stato_modello.md)
+- [fn_doc_terminali_con_uscita_manuale](funzioni/fn_doc_terminali_con_uscita_manuale.md)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_e_obsoleto](funzioni/fn_e_obsoleto.md)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
@@ -370,6 +371,7 @@ search:
 - [trgfn_doc_righe_guard_data_consegna](funzioni/trgfn_doc_righe_guard_data_consegna.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_doc_stato_iniziale](funzioni/trgfn_doc_stato_iniziale.md)
 - [trgfn_doc_stato_solo_dal_verbo](funzioni/trgfn_doc_stato_solo_dal_verbo.md)
+- [trgfn_doc_terminale_senza_uscita_manuale](funzioni/trgfn_doc_terminale_senza_uscita_manuale.md)
 - [trgfn_doc_testata_guard_data_consegna_righe](funzioni/trgfn_doc_testata_guard_data_consegna_righe.md) — (nato il 2026-10-13, dal collaudo)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.
@@ -407,7 +409,7 @@ search:
 - [vw_lotto_documento_righe](views/vw_lotto_documento_righe.md) — (latest review 2026-09-08)
 - [vw_override_operatore_area](views/vw_override_operatore_area.md) — (scritta il 06-10-2026)
 - [vw_pratica_doc_sorgente](views/vw_pratica_doc_sorgente.md) — Per ogni pratica, il documento che ne rappresenta lo stato vivo, con il suo descrittore normalizzato: una riga per pratica, il documento **più vivo** fra tutti i suoi collegamenti (`ROOT` e `COLLEGATO`) in `pratiche.pratiche_sorgenti`, con fase, esito e flag terminale letti da `script.vw_stato_sorgente`.
-- [vw_stati_doc_ddt_merce_partita](views/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-10-12)
+- [vw_stati_doc_ddt_merce_partita](views/vw_stati_doc_ddt_merce_partita.md) — (latest review 2026-11-14)
 - [vw_stati_doc_reso_merce_rientrata](views/vw_stati_doc_reso_merce_rientrata.md)
 - [vw_stati_estesi](views/vw_stati_estesi.md) — La vista `script.vw_stati_estesi` fornisce un accesso **arricchito** ai dati della tabella `config.stati`, estraendo e presentando in colonne dedicate alcune informazioni aggiuntive memorizzate nel campo JSON `extra_country`.
 - [vw_stato_sorgente](views/vw_stato_sorgente.md) — Lo stato di un documento nel vocabolario comune: la union dei resolver di dominio, una riga per documento con fase, esito e flag terminale. È l'**unica superficie** da cui il motore delle pratiche legge lo stato di un documento: nessun selettore di resolver, nessun ramo scritto nel motore.

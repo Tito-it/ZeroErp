@@ -69,6 +69,8 @@
 | trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_preventivi_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_preventivi_a10_preventivi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi', 'stato_doc_preventivo_id', 'id', 'attivo')` |
+| trg_stati_doc_preventivi_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi')` |
+| trg_stati_doc_preventivi_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi')` |
 | trg_stati_doc_preventivi_a10_transizioni_stati_preventiv_24c434 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_preventivi', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_doc_preventivi_a10_transizioni_stati_preventiv_4353e6 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_preventivi', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_preventivi_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |

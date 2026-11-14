@@ -1,0 +1,139 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DI BOLLA E RESO PER LE PRATICHE: ESITO E TERMINALE DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (⑦, S-5).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.vw_stato_sorgente_ddt e vendite.vw_stato_sorgente_reso
+#   calcolavano esito (is_abortito -> NEGATIVO, fase CHIUSO -> POSITIVO) e
+#   terminale (fase CHIUSO): una regola scritta nella vista, mentre gli altri
+#   documenti passano le colonne del loro vocabolario. Sul reso confermato
+#   contraddiceva terminale (S-1, A): l'annullo a mano e' attivo.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Le due viste passano esito e terminale di config.stati_doc_ddt e
+#   config.stati_doc_reso (20261113-42), come quelle degli altri documenti.
+#   Il seed dichiara i valori che la vista calcolava, tranne il reso
+#   CONFERMATO: terminale = false (S-5), esito POSITIVO.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine, stesso tipo (esito
+#   resta character varying senza lunghezza: il cast lo tiene). La vista che
+#   le unisce, script.vw_stato_sorgente, non cambia. security_invoker
+#   ripetuto. I due COMMENT, che descrivevano la derivazione, sono riscritti
+#   al presente.
+#
+# ── DA DOVE VIENE LA DEFINIZIONE ────────────────────────────────────
+#   pg_get_viewdef su dbdev, 2026-11-14, con search_path = pg_catalog. Il
+#   rollback porta definizioni e COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-47-update-vw-stato-sorgente-ddt-reso-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261113-47-update-vw-stato-sorgente-ddt-reso-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_stato_sorgente_ddt e vendite.vw_stato_sorgente_reso: esito e terminale dalle
+        colonne del vocabolario, non calcolati da fase. Stesse colonne. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ddt WITH (security_invoker = on) AS
+               SELECT s.id AS sorgente_tipo_id,
+                  (d.id)::text AS sorgente_uid,
+                  sdd.codice_interno AS stato_codice_interno,
+                  sdd.codice AS stato_codice,
+                  sdd.descrizione AS stato_descrizione,
+                  sdd.fase,
+                  (sdd.esito)::character varying AS esito,
+                  sdd.terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  d.id AS sorgente_chiave_id
+                 FROM ((vendite.ddt d
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'DDT_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso WITH (security_invoker = on) AS
+               SELECT s.id AS sorgente_tipo_id,
+                  (r.id)::text AS sorgente_uid,
+                  sdr.codice_interno AS stato_codice_interno,
+                  sdr.codice AS stato_codice,
+                  sdr.descrizione AS stato_descrizione,
+                  sdr.fase,
+                  (sdr.esito)::character varying AS esito,
+                  sdr.terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  r.id AS sorgente_chiave_id
+                 FROM ((vendite.resi r
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'RESO_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_reso sdr ON ((sdr.id = r.stato_doc_reso_id)));
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ddt IS
+                  'Resolver dello stato della bolla di vendita per la proiezione di stato della sorgente polimorfa: lo stato nativo del DDT (config.stati_doc_ddt) nel vocabolario comune fase / esito / terminale, letti dalle colonne del vocabolario come per gli altri documenti. Una riga per bolla, read-time. Il tipo DDT_VENDITA e'' a chiave id (config.sorgenti.key_selector), agganciato per codice_interno e solo se attivo. La chiave esce in due forme: sorgente_chiave_id = id (bigint), con sorgente_chiave_uuid NULL, e'' la chiave nel suo tipo, quella che pratiche.fn_stato_sorgente confronta con la chiave tipizzata di pratiche.pratiche_sorgenti e quella da usare per cercare una bolla (sotto RLS il confronto sul testo non arriva all''indice, int8out non e'' leakproof); sorgente_uid e'' lo stesso id in testo, la chiave dei nodi della lineage e delle join. Ogni documento che nasce da una bolla, il reso compreso, la dichiara con l''id in sorgente_id: cercarla per uid non trova. security_invoker: vale la RLS di chi legge. I consumatori la leggono da script.vw_stato_sorgente.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                  'Resolver dello stato del reso di vendita per la proiezione di stato della sorgente polimorfa: lo stato nativo del reso (config.stati_doc_reso) nel vocabolario comune fase / esito / terminale, letti dalle colonne del vocabolario come per gli altri documenti. Il reso confermato ha esito POSITIVO e non e'' terminale: resta annullabile a mano (lo storno, vendite.fn_annulla_reso). Una riga per reso, read-time. Il tipo RESO_VENDITA e'' a chiave id (config.sorgenti.key_selector), agganciato per codice_interno e solo se attivo. La chiave esce in due forme: sorgente_chiave_id = id (bigint), con sorgente_chiave_uuid NULL, e'' la chiave nel suo tipo, quella che pratiche.fn_stato_sorgente confronta con la chiave tipizzata di pratiche.pratiche_sorgenti e quella da usare per cercare un reso (sotto RLS il confronto sul testo non arriva all''indice, int8out non e'' leakproof); sorgente_uid e'' lo stesso id in testo, la chiave dei nodi della lineage e delle join. Le colonne sorgente_* del reso sono un''altra cosa: dicono da quale bolla nasce il reso, con l''id della bolla in sorgente_id, e non c''entrano con la chiave del reso. security_invoker: vale la RLS di chi legge. I consumatori la leggono da script.vw_stato_sorgente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_ddt WITH (security_invoker = on) AS
+               SELECT s.id AS sorgente_tipo_id,
+                  (d.id)::text AS sorgente_uid,
+                  sdd.codice_interno AS stato_codice_interno,
+                  sdd.codice AS stato_codice,
+                  sdd.descrizione AS stato_descrizione,
+                  sdd.fase,
+                  (
+                      CASE
+                          WHEN sdd.is_abortito THEN 'NEGATIVO'::text
+                          WHEN ((sdd.fase)::text = 'CHIUSO'::text) THEN 'POSITIVO'::text
+                          ELSE NULL::text
+                      END)::character varying AS esito,
+                  ((sdd.fase)::text = 'CHIUSO'::text) AS terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  d.id AS sorgente_chiave_id
+                 FROM ((vendite.ddt d
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'DDT_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_ddt sdd ON ((sdd.id = d.stato_doc_ddt_id)));
+
+              CREATE OR REPLACE VIEW vendite.vw_stato_sorgente_reso WITH (security_invoker = on) AS
+               SELECT s.id AS sorgente_tipo_id,
+                  (r.id)::text AS sorgente_uid,
+                  sdr.codice_interno AS stato_codice_interno,
+                  sdr.codice AS stato_codice,
+                  sdr.descrizione AS stato_descrizione,
+                  sdr.fase,
+                  (
+                      CASE
+                          WHEN sdr.is_abortito THEN 'NEGATIVO'::text
+                          WHEN ((sdr.fase)::text = 'CHIUSO'::text) THEN 'POSITIVO'::text
+                          ELSE NULL::text
+                      END)::character varying AS esito,
+                  ((sdr.fase)::text = 'CHIUSO'::text) AS terminale,
+                  NULL::uuid AS sorgente_chiave_uuid,
+                  r.id AS sorgente_chiave_id
+                 FROM ((vendite.resi r
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'RESO_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   JOIN config.stati_doc_reso sdr ON ((sdr.id = r.stato_doc_reso_id)));
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_ddt IS
+                  'Resolver dello stato della bolla di vendita per la proiezione di stato della sorgente polimorfa: traduce lo stato nativo del DDT (config.stati_doc_ddt) nel vocabolario comune fase / esito / terminale. Una riga per bolla, read-time. Il tipo DDT_VENDITA e'' a chiave id (config.sorgenti.key_selector), agganciato per codice_interno e solo se attivo. La chiave esce in due forme: sorgente_chiave_id = id (bigint), con sorgente_chiave_uuid NULL, e'' la chiave nel suo tipo, quella che pratiche.fn_stato_sorgente confronta con la chiave tipizzata di pratiche.pratiche_sorgenti e quella da usare per cercare una bolla (sotto RLS il confronto sul testo non arriva all''indice, int8out non e'' leakproof); sorgente_uid e'' lo stesso id in testo, la chiave dei nodi della lineage e delle join. Ogni documento che nasce da una bolla, il reso compreso, la dichiara con l''id in sorgente_id: cercarla per uid non trova. esito e terminale sono derivati, perche'' config.stati_doc_ddt non li espone: is_abortito -> NEGATIVO, fase CHIUSO non abortito -> POSITIVO, altrimenti NULL; terminale = fase CHIUSO. Lo stato RESO risulta POSITIVO e terminale, perche'' il catalogo lo dichiara non abortito (merce tornata non e'' documento annullato): cambiare quella semantica e'' materia del catalogo, non della vista. security_invoker: vale la RLS di chi legge. I consumatori la leggono da script.vw_stato_sorgente.';
+
+              COMMENT ON VIEW vendite.vw_stato_sorgente_reso IS
+                  'Resolver dello stato del reso di vendita per la proiezione di stato della sorgente polimorfa: traduce lo stato nativo del reso (config.stati_doc_reso) nel vocabolario comune fase / esito / terminale. Una riga per reso, read-time. Il tipo RESO_VENDITA e'' a chiave id (config.sorgenti.key_selector), agganciato per codice_interno e solo se attivo. La chiave esce in due forme: sorgente_chiave_id = id (bigint), con sorgente_chiave_uuid NULL, e'' la chiave nel suo tipo, quella che pratiche.fn_stato_sorgente confronta con la chiave tipizzata di pratiche.pratiche_sorgenti e quella da usare per cercare un reso (sotto RLS il confronto sul testo non arriva all''indice, int8out non e'' leakproof); sorgente_uid e'' lo stesso id in testo, la chiave dei nodi della lineage e delle join. Le colonne sorgente_* del reso sono un''altra cosa: dicono da quale bolla nasce il reso, con l''id della bolla in sorgente_id, e non c''entrano con la chiave del reso. esito e terminale sono derivati, come nel ramo vendite.vw_stato_sorgente_ddt, perche'' config.stati_doc_reso non li espone: is_abortito -> NEGATIVO (ANNULLATO), fase CHIUSO non abortito -> POSITIVO (CONFERMATO), altrimenti NULL (DRAFT); terminale = fase CHIUSO. Un reso confermato e'' concluso: la riconsegna e'' un altro documento. terminale e'' la conclusione commerciale, non un lucchetto: la matrice ammette ancora CONFERMATO -> ANNULLATO, lo storno del reso confermato (vendite.fn_annulla_reso). security_invoker: vale la RLS di chi legge. I consumatori la leggono da script.vw_stato_sorgente.';

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Matrice transizioni ammesse tra stati offerta commerciale. Consultata da vendite.trgfn_offerte_commerciali_guard_transizione. 5 transizioni (addendum A2): BOZZA-&gt;EMESSA|ANNULLATA, EMESSA-&gt;ACCETTATA|RIFIUTATA|SUPERATA. Nessuna transizione uscente da stati terminali. rev 2026-05-24.
+> Matrice dei passaggi ammessi fra gli stati dell'offerta commerciale, letta da vendite.trgfn_offerte_commerciali_guard_transizione e dalla capability. A mano: BOZZA -&gt; EMESSA, BOZZA -&gt; ANNULLATA, EMESSA -&gt; ACCETTATA, EMESSA -&gt; RIFIUTATA, ACCETTATA -&gt; ANNULLATA. Di processo (meta.manuale = false): EMESSA -&gt; SUPERATA (una revisione rimpiazza l'offerta) e SUPERATA -&gt; EMESSA (la revisione si annulla). Da uno stato terminale non esce nessun passaggio a mano (script.trgfn_doc_terminale_senza_uscita_manuale).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -41,10 +41,12 @@
 |------|--------|--------|--------|
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_54aa7f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_54aa7f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_da_id', 'id')` |
-| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
 | trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
-| trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_offerte_transizioni_a10_stati_doc_offerte_9f88b6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_a_id', 'id')` |
+| trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
+| trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
 | trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_offerte_transizioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

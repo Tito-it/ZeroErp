@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -399,7 +399,6 @@ processi di oggi sono cinque. Gli altri sono predisposti per il futuro
 | `PARZIALMENTE_EVASO` | Una parte della merce è partita con le bolle | No (solo la data di consegna promessa) | ✅ |
 | `EVASO` | Tutta la merce è partita con le bolle | No | ✅ |
 | `ANNULLATO` | Ordine annullato, in bozza o confermato | No | ✅ |
-| `ALLOCATO` / `SPEDITO` / `CONSEGNATO` / `FATTURATO` | Fasi logistiche/finanziarie future | — | ⏳ non ancora raggiunti |
 
 ⭐ **«Evaso» vuol dire «la merce è partita», e lo dicono solo le bolle.** Lo stato
 lo proietta il database dalle bolle generate dall'ordine

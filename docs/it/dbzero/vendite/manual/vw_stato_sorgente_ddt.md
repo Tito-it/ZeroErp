@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_stato_sorgente_ddt`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -51,24 +51,12 @@ trova**: nessun errore, solo una proiezione vuota. Il pgTAP lo asserisce apposta
 
 ---
 
-### `esito` e `terminale` sono DERIVATI
+### `esito` e `terminale` vengono dal vocabolario
 
-`config.stati_doc_ddt` non espone quelle due colonne (a differenza di `stati_doc_ordini`): dichiara
-`fase` e `is_abortito`, e da lì la vista deriva meccanicamente —
-
-| Condizione | `esito` | `terminale` |
-| --- | --- | --- |
-| `is_abortito` (ANNULLATO) | `NEGATIVO` | ✅ |
-| `fase = CHIUSO` e non abortito (CONSEGNATO, RESO) | `POSITIVO` | ✅ |
-| altrimenti (DRAFT, EMESSO, SPEDITO) | *(nessuno)* | ❌ |
-
-**Nessun caso speciale**: la regola vale anche per stati futuri.
-
-> ⚠️ **Conseguenza dichiarata**: la bolla in stato `RESO` risulta **POSITIVO**. È voluto — il
-> catalogo dichiara `is_abortito = false` su quello stato, perché il progetto distingue
-> *«merce tornata»* da *«documento annullato»*, e la vista non introduce una terza
-> interpretazione. Se un domani il reso totale dovesse valere `NEGATIVO`, la sede giusta è il
-> **catalogo** (una colonna che lo dichiari), non un `CASE` qui.
+La vista passa `esito` e `terminale` di
+[`config.stati_doc_ddt`](/dbzero/config/manual/stati_doc_ddt), come le viste degli altri documenti: non
+li calcola. I valori, e il perché la bolla resa è `POSITIVO`, li dice la pagina del vocabolario. Uno
+stato nuovo dichiara i suoi nel seed, e la vista non cambia.
 
 ---
 

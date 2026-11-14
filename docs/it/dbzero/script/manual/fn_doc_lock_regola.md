@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_doc_lock_regola()`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > • [script.fn_doc_lock_montaggi](/dbzero/script/funzioni/fn_doc_lock_montaggi) — il lettore del montaggio, dove sta il quadro intero
@@ -16,8 +18,16 @@ regola che dicono. La chiamano i due lock (da `TG_ARGV`) e il lettore del montag
 
 | Lock | Che cosa esce |
 | --- | --- |
-| righe (`RIGHE`) | documento, colonna verso il padre, stato bozza (`DRAFT` se manca), livello (`TESTATA` se manca), colonne che si cambiano fuori bozza e stati in cui si cambiano, colonne tecniche |
-| testata (`TESTATA`) | documento, stato bozza, le colonne nominate nell'ordine del montaggio, ciascuna col suo codice d'errore e gli stati in cui resta aperta fuori bozza. Dal 2026-10-10 gli argomenti sono **terne** *(colonna, codice, stati)*: stati vuoti = bloccata fuori bozza |
+| righe (`RIGHE`) | documento, colonna verso il padre, stato bozza (dal vocabolario, vedi sotto), livello (`TESTATA` se manca), colonne che si cambiano fuori bozza e stati in cui si cambiano, colonne tecniche |
+| testata (`TESTATA`) | documento, stato bozza (dal vocabolario, vedi sotto), le colonne nominate nell'ordine del montaggio, ciascuna col suo codice d'errore e gli stati in cui resta aperta fuori bozza. Dal 2026-10-10 gli argomenti sono **terne** *(colonna, codice, stati)*: stati vuoti = bloccata fuori bozza |
+
+⭐ **La bozza la dice il vocabolario del documento.** `stato_bozza` è il codice dello stato
+in cui il documento nasce (colonna `iniziale`): dal tipo documento alla testata
+(`config.sorgenti.target_table`), al vocabolario (`script.fn_doc_stato_modello`), allo stato
+iniziale (`script.fn_stato_iniziale_id`). L'argomento dello stato bozza resta nella grammatica,
+nella sua posizione, e **non si legge**: se il vocabolario sposta lo stato iniziale, il lock lo
+segue, e con lui la capability, che legge la stessa regola. Un tipo documento che non porta a
+uno stato iniziale è un montaggio sbagliato.
 
 Un montaggio sbagliato non solleva qui: la regola porta la frase in `errore`, e la solleva
 chi la usa (`E_DOC_RIGHE_LOCK_MONTAGGIO`).

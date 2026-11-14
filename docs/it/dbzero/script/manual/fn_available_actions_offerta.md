@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_offerta`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -111,7 +111,9 @@ vivi, e negli indici unici che ammettono al più un contratto vivo e un ordine v
   una colonna si cambia: fuori bozza restano aperte, per esempio, le note di un documento vivo e la
   motivazione del rifiuto.
 * **Fornitura e indirizzi**: dal lock montato sui satelliti, con `script.fn_doc_riga_modificabile`.
-* **Le eccezioni di prezzo**: solo nello stato iniziale (la bozza), letto dal vocabolario.
+* **Le eccezioni di prezzo**: dal lock delle righe (`script.fn_doc_riga_modificabile`), come la
+  fornitura e gli indirizzi. Il lock riconosce la bozza dallo stato iniziale del vocabolario: la
+  capability propone ciò che il trigger lascia fare.
 
 ---
 
@@ -138,7 +140,8 @@ suo elenco degli stati terminali.
   dall'offerta, l'emissione col listino in vigore, gli spazi delle chiavi di traduzione.
 * `db/pgtap/script/test-fn-check-prezzi-autorizzati-v1.sql` — i motivi dei prezzi non autorizzati.
 * `db/pgtap/vendite/test-offerta-guard-dal-vocabolario-v1.sql` — `stato_terminale`, e «in bozza»
-  dallo stato iniziale: spostata la marca in transazione, `can_edit_eccezioni` la segue.
+  dallo stato iniziale: spostata la marca in transazione, `can_edit_eccezioni` e il trigger la
+  seguono insieme.
 * `db/pgtap/vendite/test-annullo-documento-con-legami-v1.sql` — un documento annullato non consuma
   l'offerta.
 

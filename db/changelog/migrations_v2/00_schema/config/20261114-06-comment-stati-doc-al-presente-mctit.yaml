@@ -1,0 +1,123 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT STANTII DEI VOCABOLARI DEGLI STATI, AL PRESENTE
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 5 (§2, §4.8).
+#
+#   Solo COMMENT (linee-guida-sql §5d): ognuno diceva una cosa che non e'
+#   piu' vera, o una cronaca. Che cosa cambia:
+#     - config.stati_doc_offerte: mancavano accettazione e rifiuto, e citava
+#       un brief;
+#     - config.stati_doc_offerte_transizioni: «5 transizioni», sono sette,
+#       due di processo;
+#     - config.stati_doc_reso e la sua meta: «fase in meta.fase», ma fase e'
+#       una colonna; il vocabolario dichiara anche esito, terminale ed
+#       emissione (giro 3);
+#     - config.stati_doc_offerte.ordine (mancava 60, ANNULLATA) e
+#       is_superato (lo riporta indietro anche
+#       vendite.fn_offerta_proietta_stato_revisione);
+#     - codice di contratti (SOSPESO, che non c'e'), bolla e ordini
+#       (CONFERMATA, ALLOCATA);
+#     - config.stati_doc_fiscale.fase;
+#     - vendite.contratti.is_abortito_snapshot: nominava un trigger, una
+#       colonna e un vincolo che non ci sono piu';
+#     - emissione dei cinque vocabolari: «Emetti produce numero e PDF», vero
+#       solo per la bolla; preventivo, offerta, contratto e ordine hanno il
+#       numero dalla nascita (trigger di generazione all'INSERT, dbdev
+#       2026-11-14).
+#   I fatti sono letti dal catalogo di dbdev il 2026-11-14. Il rollback porta
+#   i COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261114-06-comment-stati-doc-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261114-06-comment-stati-doc-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT stantii dei vocabolari degli stati e di vendite.contratti.is_abortito_snapshot, al
+        presente. Solo COMMENT. Brief: brief-db-stati-documento-dal-vocabolario, giro 5.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.stati_doc_offerte IS
+                  'Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA (accettazione), RIFIUTATA (rifiuto, terminale), SUPERATA (is_superato, terminale: una revisione l''ha rimpiazzata) e ANNULLATA (is_abortito, terminale). I verbi, il guard e la capability leggono il significato dalle colonne (iniziale, emissione, accettazione, rifiuto, is_abortito, is_superato, terminale), non i codici. codice_interno e'' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni.';
+              COMMENT ON TABLE config.stati_doc_offerte_transizioni IS
+                  'Matrice dei passaggi ammessi fra gli stati dell''offerta commerciale, letta da vendite.trgfn_offerte_commerciali_guard_transizione e dalla capability. A mano: BOZZA -> EMESSA, BOZZA -> ANNULLATA, EMESSA -> ACCETTATA, EMESSA -> RIFIUTATA, ACCETTATA -> ANNULLATA. Di processo (meta.manuale = false): EMESSA -> SUPERATA (una revisione rimpiazza l''offerta) e SUPERATA -> EMESSA (la revisione si annulla). Da uno stato terminale non esce nessun passaggio a mano (script.trgfn_doc_terminale_senza_uscita_manuale).';
+              COMMENT ON TABLE config.stati_doc_reso IS
+                  'Vocabolario degli stati di vendite.resi: DRAFT (iniziale), CONFERMATO (emissione: li'' nasce il numero e la merce e'' rientrata) e ANNULLATO (is_abortito, terminale). Dichiara fase, esito e terminale come gli altri vocabolari dei documenti di vendita; non ha le colonne della stampa, perche'' il reso e'' fuori dal motore di stampa. I passaggi ammessi sono la matrice config.transizioni_stati_reso.';
+              COMMENT ON COLUMN config.stati_doc_reso.meta IS
+                  'Metadati dello stato: nessuna_azione_key, la nota mostrata quando lo stato non ha azioni. fase, esito e terminale sono colonne, non chiavi di meta.';
+              COMMENT ON COLUMN config.stati_doc_offerte.ordine IS
+                  'Ordinamento per l''interfaccia: 10 BOZZA, 20 EMESSA, 30 ACCETTATA, 40 RIFIUTATA, 50 SUPERATA, 60 ANNULLATA.';
+              COMMENT ON COLUMN config.stati_doc_offerte.is_superato IS
+                  'true = lo stato di superamento per revisione (SUPERATA). Ci porta l''offerta il trigger della revisione (vendite.trgfn_offerte_commerciali_revisione), che sul padre cerca lo stato con is_superato; ne la riporta vendite.fn_offerta_proietta_stato_revisione quando la revisione si annulla. Asse distinto da is_abortito: superata = rimpiazzata da una revisione successiva, abortita = annullata. Un''offerta e'' attiva quando nessuno dei due e'' vero; tenerli distinti serve a chiedere «solo l''ultima revisione» senza chiedere anche «e non annullata».';
+              COMMENT ON COLUMN config.stati_doc_contratti.codice IS
+                  'Codice dello stato, modificabile (es. DRAFT, ATTIVO, CESSATO, ANNULLATO). La chiave stabile e'' codice_interno.';
+              COMMENT ON COLUMN config.stati_doc_ddt.codice IS
+                  'Codice dello stato, modificabile (es. DRAFT, EMESSO, SPEDITO, CONSEGNATO, RESO, ANNULLATO). La chiave stabile e'' codice_interno.';
+              COMMENT ON COLUMN config.stati_doc_ordini.codice IS
+                  'Codice dello stato, modificabile (es. DRAFT, CONFERMATO, PARZIALMENTE_EVASO, EVASO, ANNULLATO). La chiave stabile e'' codice_interno.';
+              COMMENT ON COLUMN config.stati_doc_fiscale.fase IS
+                  'La posizione dello stato sulla scala comune a tutti i documenti (APERTO, IN_ATTESA, IN_CORSO, CHIUSO), per la genealogia dei documenti e per vendite.vw_lotti_fase. Obbligatoria per ogni stato.';
+              COMMENT ON COLUMN vendite.contratti.is_abortito_snapshot IS
+                  'Copia di config.stati_doc_contratti.is_abortito dello stato corrente, scritta dal trigger trg_contratti_z90_snapshot_da_stato_ins_upd (vendite.trgfn_doc_snapshot_da_stato) a ogni INSERT e UPDATE. La legge la colonna generata partecipa_overlap_snapshot, da cui il vincolo ex_contratti_no_overlap: un contratto annullato non occupa il suo periodo. Non si scrive a mano.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti» (guida del modello di documento), e il cambio stato generico lo rifiuta. Il numero il documento lo ha gia'' dalla nascita: «Emetti» non lo assegna. Al massimo uno per vocabolario (uq_stati_doc_preventivi_emissione) ed e'' attivo (chk_stati_doc_preventivi_emissione_attivo). Lo legge script.fn_stato_emissione_id, non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_offerte.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti» (guida del modello di documento), e il cambio stato generico lo rifiuta. Il numero il documento lo ha gia'' dalla nascita: «Emetti» non lo assegna. Al massimo uno per vocabolario (uq_stati_doc_offerte_emissione) ed e'' attivo (chk_stati_doc_offerte_emissione_attivo). Lo legge script.fn_stato_emissione_id, non un letterale ''EMESSA''. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_contratti.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti» (guida del modello di documento), e il cambio stato generico lo rifiuta. Il numero il documento lo ha gia'' dalla nascita: «Emetti» non lo assegna. Al massimo uno per vocabolario (uq_stati_doc_contratti_emissione) ed e'' attivo (chk_stati_doc_contratti_emissione_attivo). Lo legge script.fn_stato_emissione_id, non un letterale ''ATTIVO''. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_ordini.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti» (guida del modello di documento), e il cambio stato generico lo rifiuta. Il numero il documento lo ha gia'' dalla nascita: «Emetti» non lo assegna. Al massimo uno per vocabolario (uq_stati_doc_ordini_emissione) ed e'' attivo (chk_stati_doc_ordini_emissione_attivo). Lo legge script.fn_stato_emissione_id, non un letterale ''CONFERMATO''. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_ddt.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti» (guida del modello di documento), e il cambio stato generico lo rifiuta. «Emetti» assegna il numero alla bolla (trg_ddt_z10_gen_numero_emesso_ins_upd). Al massimo uno per vocabolario (uq_stati_doc_ddt_emissione) ed e'' attivo (chk_stati_doc_ddt_emissione_attivo). Lo legge script.fn_stato_emissione_id, non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE config.stati_doc_offerte IS
+                  'Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA, RIFIUTATA (terminale), SUPERATA (terminale, is_superato: una revisione l''ha rimpiazzata) e ANNULLATA (terminale, is_abortito). I verbi leggono dal vocabolario lo stato iniziale, quello d''emissione, quello d''annullo e quello di superamento (iniziale, emissione, is_abortito, is_superato), non i codici. codice_interno e'' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni. Brief: brief-modello-documento-vendita §13 (rev 2026-10-26; prima del giro il commento diceva cinque stati e nessun is_abortito).';
+              COMMENT ON TABLE config.stati_doc_offerte_transizioni IS
+                  'Matrice transizioni ammesse tra stati offerta commerciale. Consultata da vendite.trgfn_offerte_commerciali_guard_transizione. 5 transizioni (addendum A2): BOZZA->EMESSA|ANNULLATA, EMESSA->ACCETTATA|RIFIUTATA|SUPERATA. Nessuna transizione uscente da stati terminali. rev 2026-05-24.';
+              COMMENT ON TABLE config.stati_doc_reso IS
+                  'Stati documento reso di vendita (brief-db-resi-vendita §2.1). Mirror di config.stati_doc_ddt senza colonne pdf. fase in meta.fase. Seed in 20260713-37. rev 2026-07-13.';
+              COMMENT ON COLUMN config.stati_doc_reso.meta IS
+                  'Metadati (es. fase: APERTO/CHIUSO per le dashboard).';
+              COMMENT ON COLUMN config.stati_doc_offerte.ordine IS
+                  'Ordinamento per UI (10=BOZZA, 20=EMESSA, 30=ACCETTATA, 40=RIFIUTATA, 50=SUPERATA).';
+              COMMENT ON COLUMN config.stati_doc_offerte.is_superato IS
+                  'true = stato di superamento per revisione (SUPERATA), scritto dal trigger vendite.trgfn_offerte_commerciali_revisione sul padre. Asse ORTOGONALE a is_abortito: superata = rimpiazzata da una revisione successiva, abortita = annullata. Un''offerta e'' attiva quando nessuno dei due e'' vero; tenerli distinti serve a poter chiedere «solo l''ultima revisione» senza chiedere anche «e non annullata».';
+              COMMENT ON COLUMN config.stati_doc_contratti.codice IS
+                  'Codice stabile (es. DRAFT, ATTIVO, SOSPESO, CESSATO).';
+              COMMENT ON COLUMN config.stati_doc_ddt.codice IS
+                  'Codice stabile (es. DRAFT, CONFERMATA, ALLOCATA, ...).';
+              COMMENT ON COLUMN config.stati_doc_ordini.codice IS
+                  'Codice stabile (es. DRAFT, CONFERMATA, ALLOCATA, ...).';
+              COMMENT ON COLUMN config.stati_doc_fiscale.fase IS
+                  'Fase normalizzata del ciclo fattura (lineage/genealogia documenti): APERTO | IN_ATTESA | IN_CORSO | CHIUSO. Nodo terminale del grafo.';
+              COMMENT ON COLUMN vendite.contratti.is_abortito_snapshot IS
+                  'Snapshot denormalizzato di config.stati_doc_contratti.is_abortito. Mantenuto da trg_contratti_z90_sync_is_abortito_snapshot_ins_upd (BEFORE). Usato dalla colonna GENERATED validita_attiva per produrre ''empty''::daterange sulle righe abortite, escludendole dal constraint UNIQUE WITHOUT OVERLAPS. Non modificare direttamente. rev 2026-05-21.';
+              COMMENT ON COLUMN config.stati_doc_preventivi.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_preventivi_emissione) ed e'' attivo (chk_stati_doc_preventivi_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_offerte.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_offerte_emissione) ed e'' attivo (chk_stati_doc_offerte_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSA''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_contratti.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_contratti_emissione) ed e'' attivo (chk_stati_doc_contratti_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''ATTIVO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_ordini.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_ordini_emissione) ed e'' attivo (chk_stati_doc_ordini_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''CONFERMATO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';
+              COMMENT ON COLUMN config.stati_doc_ddt.emissione IS
+                  'true = lo stato in cui il documento e'' EMESSO: ci si arriva solo da «Emetti», che produce numero e PDF insieme (guida del modello di documento §7, M-2); il cambio stato generico lo rifiuta. Al massimo uno per vocabolario (uq_stati_doc_ddt_emissione) ed e'' attivo (chk_stati_doc_ddt_emissione_attivo). Lo legge script.fn_stato_emissione_id (backend e verbi), non un letterale ''EMESSO''. Il valore sta nel CSV del vocabolario in 80_data. Brief: brief-modello-documento-vendita §8 (Tid, 2026-10-25).';

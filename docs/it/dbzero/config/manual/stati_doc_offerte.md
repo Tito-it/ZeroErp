@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_offerte`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -146,7 +146,8 @@ uno stato ma una relazione fra revisioni (`numero`, `rev`), e la deriva `vendite
   vuoto vuol dire nessun verdetto. ⚠️ Ha un secondo lettore, per la stessa domanda («il cliente ha
   già risposto?»): la lista delle offerte
   ([`vendite.vw_offerte_commerciali_lista`](/dbzero/vendite/views/vw_offerte_commerciali_lista))
-  dice `is_scaduta` solo negli stati senza esito.
+  dice `is_scaduta` solo negli stati senza esito, con la regola di
+  [`vendite.fn_offerta_scaduta`](/dbzero/vendite/manual/fn_offerta_scaduta).
 * `terminale` implica `fase = CHIUSO`. La capability lo espone come `stato_terminale`, perché chi
   mostra l'offerta non ricopi l'elenco degli stati terminali.
 

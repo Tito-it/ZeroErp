@@ -20,15 +20,17 @@
 --  3) ⭐ DEFINITIVA, INVIATA, ANNULLATA -> pre_fiscale FALSE
 --  4) ⭐ il catalogo ammette DEFINITIVA -> INVIATA per il LOTTO: il caso del
 --        test 3 e' RAGGIUNGIBILE, non ipotetico
---  5) ⭐ `in_gioco` sugli stati del lotto: coincide con `pre_fiscale`
+--  5) forma: nessuna vista e nessuna funzione legge piu' `in_gioco`
 --
 -- ⛔ RITIRATI il 2026-11-12 i test dello stato IGNOTO (erano 4, 5 e 8): il
 --   lotto senza stato non e' piu' costruibile (stato_doc_fiscale_id NOT NULL,
 --   20261112-46; il trigger della nascita mette lo stato iniziale, -45). Il
 --   test 8 era «tutta la ragione per cui sono due flag»: senza lo stato ignoto
---   pre_fiscale e in_gioco coincidono su ogni lotto, e se `in_gioco` debba
---   restare e' un residuo aperto. Brief: brief-db-stati-documento-dal-vocabolario
---   §4.1, S-6.
+--   pre_fiscale e in_gioco coincidevano su ogni lotto. Brief:
+--   brief-db-stati-documento-dal-vocabolario §4.1, S-6.
+-- ⛔ RITIRATO il 2026-11-14 `in_gioco` (R-2, 20261114-07): era una copia di
+--   pre_fiscale. Il test 1 lo toglie dal contratto, il test 5 presidia che
+--   nessuno lo legga piu'.
 -- ⚠️ REGISTRATA non e' fra i testimoni: nessuna riga della matrice porta un
 --   LOTTO in REGISTRATA (INVIATA -> REGISTRATA e' solo della fattura), e con la
 --   nascita dal vocabolario un lotto si costruisce solo lungo la matrice.
@@ -158,7 +160,7 @@ SELECT columns_are(
     'vendite', 'vw_lotti_fase',
     ARRAY['lotto_id', 'lotto_codice', 'lotto_competenza_mese',
           'stato_codice_interno', 'is_abortito', 'congela_fiscale',
-          'chiude_lotto', 'pre_fiscale', 'in_gioco'],
+          'chiude_lotto', 'pre_fiscale'],
     '1. il contratto: la vista espone esattamente le colonne dichiarate'
 );
 
@@ -214,17 +216,25 @@ SELECT ok(
 );
 
 -- ============================================================
--- 5) ⭐ `in_gioco` sugli stati del lotto: dice le stesse cose di `pre_fiscale`
+-- 5) La copia ritirata non ha lettori
 -- ============================================================
--- ⚠️ Sui casi VERI i due flag coincidono, ed e' giusto: sono lo stesso asse.
---   Se qui divergessero, uno dei due avrebbe una formula sbagliata.
-SELECT results_eq(
-    $$ SELECT t.stato, f.in_gioco
-         FROM tmp_fase t JOIN vendite.vw_lotti_fase f ON f.lotto_id = t.lotto_id
-        ORDER BY t.stato $$,
-    $$ VALUES ('ANNULLATA', false), ('DEFINITIVA', false), ('DRAFT', true),
-              ('EMESSA', true), ('INVIATA', false) $$,
-    '5. in_gioco sugli stati del lotto: coincide con pre_fiscale'
+-- ⚠️ Presidio sulla FORMA: nessuna vista e nessuna funzione degli schemi
+--   applicativi nomina `in_gioco` (testo delle funzioni da
+--   pg_get_functiondef, che copre anche le BEGIN ATOMIC).
+SELECT is(
+    ARRAY(SELECT x FROM (
+            SELECT c.oid::regclass::text AS x
+              FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relkind IN ('v', 'm') AND n.nspname IN ('vendite', 'script', 'dbops', 'config', 'pratiche')
+               AND pg_get_viewdef(c.oid) ~ '\min_gioco\M'
+            UNION ALL
+            SELECT p.oid::regprocedure::text
+              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE p.prokind IN ('f', 'p') AND n.nspname IN ('vendite', 'script', 'dbops', 'config', 'pratiche')
+               AND pg_get_functiondef(p.oid) ~ '\min_gioco\M') z
+          ORDER BY 1),
+    ARRAY[]::text[],
+    '5. forma: nessuna vista e nessuna funzione legge piu'' in_gioco, la copia ritirata di pre_fiscale'
 );
 
 SELECT * FROM finish();
