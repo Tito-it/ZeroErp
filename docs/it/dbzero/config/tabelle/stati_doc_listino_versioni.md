@@ -33,7 +33,7 @@
 |------|-------------|
 | pk_stati_doc_listino_versioni | `CREATE UNIQUE INDEX pk_stati_doc_listino_versioni ON config.stati_doc_listino_versioni USING btree (id)` |
 | uq_stati_doc_listino_versioni_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_listino_versioni_codice_interno ON config.stati_doc_listino_versioni USING btree (codice_interno)` |
-| ux_stati_doc_listino_versioni_iniziale | `CREATE UNIQUE INDEX ux_stati_doc_listino_versioni_iniziale ON config.stati_doc_listino_versioni USING btree (iniziale) WHERE iniziale` |
+| uq_stati_doc_listino_versioni_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_listino_versioni_iniziale ON config.stati_doc_listino_versioni USING btree (iniziale) WHERE iniziale` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

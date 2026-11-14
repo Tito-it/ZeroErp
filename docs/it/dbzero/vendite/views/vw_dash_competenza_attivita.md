@@ -76,7 +76,7 @@ SELECT ca.competenza_mese,
             CASE
                 WHEN (EXISTS ( SELECT 1
                    FROM vendite.vw_lotti_fase lfase
-                  WHERE ((lfase.lotto_id = fl.id) AND lfase.in_gioco))) THEN 'GIRO_IN_CORSO'::text
+                  WHERE ((lfase.lotto_id = fl.id) AND lfase.pre_fiscale))) THEN 'GIRO_IN_CORSO'::text
                 ELSE 'RESIDUO'::text
             END
             WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text

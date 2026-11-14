@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Matrice transizioni ammesse tra stati offerta commerciale. Consultata da vendite.trgfn_offerte_commerciali_guard_transizione. 5 transizioni (addendum A2): BOZZA-&gt;EMESSA|ANNULLATA, EMESSA-&gt;ACCETTATA|RIFIUTATA|SUPERATA. Nessuna transizione uscente da stati terminali. rev 2026-05-24.
+> Matrice dei passaggi ammessi fra gli stati dell'offerta commerciale, letta da vendite.trgfn_offerte_commerciali_guard_transizione e dalla capability. A mano: BOZZA -&gt; EMESSA, BOZZA -&gt; ANNULLATA, EMESSA -&gt; ACCETTATA, EMESSA -&gt; RIFIUTATA, ACCETTATA -&gt; ANNULLATA. Di processo (meta.manuale = false): EMESSA -&gt; SUPERATA (una revisione rimpiazza l'offerta) e SUPERATA -&gt; EMESSA (la revisione si annulla). Da uno stato terminale non esce nessun passaggio a mano (script.trgfn_doc_terminale_senza_uscita_manuale).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

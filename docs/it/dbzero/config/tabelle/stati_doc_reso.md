@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Stati documento reso di vendita (brief-db-resi-vendita §2.1). Mirror di config.stati_doc_ddt senza colonne pdf. fase in meta.fase. Seed in 20260713-37. rev 2026-07-13.
+> Vocabolario degli stati di vendite.resi: DRAFT (iniziale), CONFERMATO (emissione: li' nasce il numero e la merce e' rientrata) e ANNULLATO (is_abortito, terminale). Dichiara fase, esito e terminale come gli altri vocabolari dei documenti di vendita; non ha le colonne della stampa, perche' il reso e' fuori dal motore di stampa. I passaggi ammessi sono la matrice config.transizioni_stati_reso.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
