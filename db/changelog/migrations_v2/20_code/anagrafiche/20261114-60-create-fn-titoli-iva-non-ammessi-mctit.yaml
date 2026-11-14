@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TITOLI IVA CHE UNA NATURA NON AMMETTE: IL PREDICATO IN UN POSTO SOLO
+#   anagrafiche.fn_titoli_iva_non_ammessi(soggetto, natura)        -> i titoli
+#   anagrafiche.fn_titoli_iva_non_ammessi_conta(soggetto, natura)  -> quanti, sopra la RLS
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, giro 2.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   La regola del cambio di natura (fn_check_cambio_natura_soggetto, -66)
+#   deve dire due cose dei titoli IVA vigenti che la natura nuova non ammette:
+#   quali vede chi agisce (il primo si nomina nella frase), e se ce ne sono che
+#   non vede, perche' presentati a un altro emittente (D-4: l'intervento e' di
+#   chi li vede). Il predicato «vigente e non ammesso» e' UNO: lo tiene la
+#   prima funzione, INVOKER, e la seconda lo legge da DEFINER.
+#   * Chiamata da chi agisce, la prima vede sotto la sua RLS
+#     (rls_soggetti_titoli_iva_ef_whitelist): sono i titoli visibili.
+#   * Chiamata dentro la DEFINER, gira col proprietario, che la RLS non ha
+#     (nessun FORCE): sono tutti. La differenza e' «di altri emittenti», senza
+#     ricopiare il predicato della policy.
+#   ⭐ La DEFINER risponde il minimo: un numero. Nessun id, protocollo, plafond
+#     o emittente esce di li', come gli altri lettori dei titoli sopra la RLS.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   BEGIN ATOMIC (linee-guida-sql §5c): leggono una tabella sotto RLS, e le
+#   dipendenze devono stare in pg_depend. Il COMMENT in un sql: a parte.
+#   Vigente e ammesso sono anagrafiche.fn_titolo_iva_vigente e
+#   anagrafiche.fn_titolo_iva_ammesso; «oggi» e' script.fn_giorno_operativo(now()),
+#   come in fn_titolo_iva_non_ammesso_del_soggetto, che il giro ritira (-67).
+#   Natura NULL: ogni titolo vigente e' non ammesso (fn_titolo_iva_ammesso con
+#   natura NULL e' false).
+#   search_path della DEFINER: pg_catalog, public, pg_temp, nomi qualificati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-60-create-fn-titoli-iva-non-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261114-60-create-fn-titoli-iva-non-ammessi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I titoli IVA vigenti di un soggetto che una natura non ammette (INVOKER, sotto la RLS
+        di chi chiama) e quanti sono in tutto (DEFINER, sopra la RLS).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_titoli_iva_non_ammessi(
+                  p_soggetto_id                anagrafiche.soggetti.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE)
+              RETURNS TABLE (
+                  titolo_iva_id      anagrafiche.soggetti_titoli_iva.id%TYPE,
+                  tipo_titolo_iva_id anagrafiche.soggetti_titoli_iva.tipo_titolo_iva_id%TYPE,
+                  ordine             config.tipi_titolo_iva.ordine%TYPE)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT t.id, t.tipo_titolo_iva_id, tt.ordine
+                    FROM anagrafiche.soggetti_titoli_iva t
+                    JOIN config.tipi_titolo_iva tt ON tt.id = t.tipo_titolo_iva_id
+                   WHERE t.soggetto_id = p_soggetto_id
+                     AND anagrafiche.fn_titolo_iva_vigente(t.attivo, t.valido_al,
+                                                           script.fn_giorno_operativo(now()))
+                     AND NOT anagrafiche.fn_titolo_iva_ammesso(t.tipo_titolo_iva_id,
+                                                               p_tipo_soggetto_dettaglio_id)
+                   ORDER BY tt.ordine, tt.id, t.id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_titoli_iva_non_ammessi_conta(
+                  p_soggetto_id                anagrafiche.soggetti.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE)
+              RETURNS integer  -- un conteggio: nessuna colonna di cui sia il riflesso
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              BEGIN ATOMIC
+                  SELECT count(*)::integer
+                    FROM anagrafiche.fn_titoli_iva_non_ammessi(p_soggetto_id,
+                                                               p_tipo_soggetto_dettaglio_id);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_titoli_iva_non_ammessi(
+                  anagrafiche.soggetti.id%TYPE, config.tipi_soggetto_dettaglio.id%TYPE)
+              IS 'I titoli IVA VIGENTI del soggetto che la natura di dettaglio passata NON ammette, in ordine stabile (ordine del tipo, poi id). Vigente e ammesso sono anagrafiche.fn_titolo_iva_vigente (oggi = script.fn_giorno_operativo(now())) e anagrafiche.fn_titolo_iva_ammesso; natura NULL = ogni titolo vigente e'' non ammesso. SECURITY INVOKER: vede i titoli che la RLS di chi chiama gli mostra; chiamata da anagrafiche.fn_titoli_iva_non_ammessi_conta, che e'' DEFINER, li vede tutti. E'' la sede unica del predicato: la legge anagrafiche.fn_check_cambio_natura_soggetto.';
+              COMMENT ON FUNCTION anagrafiche.fn_titoli_iva_non_ammessi_conta(
+                  anagrafiche.soggetti.id%TYPE, config.tipi_soggetto_dettaglio.id%TYPE)
+              IS 'Quanti sono, in tutto, i titoli IVA vigenti del soggetto che la natura passata non ammette: anagrafiche.fn_titoli_iva_non_ammessi letta da SECURITY DEFINER, sopra la RLS per emittente di anagrafiche.soggetti_titoli_iva. Risponde solo il numero, mai id, protocollo, plafond o emittente: confrontato con quanti ne vede chi agisce dice se ce ne sono di altri emittenti. La legge anagrafiche.fn_check_cambio_natura_soggetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_titoli_iva_non_ammessi_conta(uuid, bigint);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_titoli_iva_non_ammessi(uuid, bigint);

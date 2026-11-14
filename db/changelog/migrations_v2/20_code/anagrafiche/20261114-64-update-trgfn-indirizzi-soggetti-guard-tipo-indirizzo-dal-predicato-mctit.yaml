@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL TIPO DI INDIRIZZO LEGGE IL PREDICATO, NON LO RICOPIA
+#   anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, giro 2.
+#   Corpo di partenza: docs/it/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md
+#   (rigenerata dopo l'ultimo changeSet sull'oggetto).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   I due EXISTS sulla matrice (c'e' una matrice? la coppia e' ammessa oggi?)
+#   diventano una chiamata a anagrafiche.fn_tipo_indirizzo_ammesso_per_natura
+#   (-63), la sede che legge anche la regola del cambio di natura. Stesse tre
+#   risposte, stesso codice E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, stesso
+#   contesto, stessa frase; «oggi» resta script.fn_data_operativa().
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il ramo DELETE, il ramo «riferimenti mancanti», il ramo «soggetto senza
+#   natura» (che il predicato copre comunque). Il trigger
+#   trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd resta com'e'.
+#   COMMENT riscritto al presente (linee-guida-sql §5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-64-update-trgfn-indirizzi-soggetti-guard-tipo-indirizzo-dal-predicato-mctit.yaml
+
+  - changeSet:
+      id: 20261114-64-update-trgfn-indirizzi-soggetti-guard-tipo-indirizzo-dal-predicato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_indirizzi_soggetti_guard_tipo_indirizzo legge il predicato da
+        anagrafiche.fn_tipo_indirizzo_ammesso_per_natura: stesso comportamento, una sede sola.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero tipo_soggetto_dettaglio dal soggetto
+                SELECT s.tipo_soggetto_dettaglio_id
+                  INTO v_tipo_soggetto_dettaglio_id
+                  FROM anagrafiche.soggetti s
+                 WHERE s.id = NEW.soggetto_id;
+
+                -- Il predicato e' quello che legge anche la regola del cambio di natura:
+                -- natura NULL o senza matrice = indirizzi liberi; altrimenti la coppia
+                -- deve essere in matrice, attiva e valida oggi.
+                IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                           v_tipo_soggetto_dettaglio_id, NEW.tipo_indirizzo_id,
+                           script.fn_data_operativa()) THEN
+                  -- Codice PROPRIO di questo layer, distinto da quello del guard sui
+                  -- RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo), che legge
+                  -- un'altra matrice: un messaggio plausibile e falso manda a cercare
+                  -- dove il problema non c'e'.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_soggetti_guard_tipo_indirizzo',
+                    'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_soggetto_dettaglio_id', v_tipo_soggetto_dettaglio_id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NEW.tx_id,
+                    NEW.tipo_indirizzo_id::text,
+                    v_tipo_soggetto_dettaglio_id::text,
+                    NEW.soggetto_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+              IS 'Guard sugli indirizzi di SOGGETTO, quando si scrive un indirizzo: il tipo di indirizzo deve essere ammesso dalla natura di dettaglio del soggetto, col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_natura (giorno: script.fn_data_operativa()); altrimenti E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO. Fallback permissivo quando il soggetto non ha una natura o quando per quella natura non esiste nessuna riga di matrice. Gli indirizzi gia'' scritti, al cambio di natura, li giudica anagrafiche.fn_check_cambio_natura_soggetto con lo stesso predicato. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo, che e'' il guard del layer RUOLO e legge un''altra matrice, con un codice d''errore suo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' nella doc auto-generata; si torna indietro con un changeSet nuovo.
+              SELECT 1;

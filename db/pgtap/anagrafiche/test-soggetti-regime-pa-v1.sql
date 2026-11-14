@@ -23,7 +23,7 @@
 --    5) SC cliente PA -> E_CLIENTE_PA_NON_AMMESSO (A-2: le societa' no)
 --    6) ... e il rifiuto porta il campo 'cliente_pa' (canale COLUMN, per il form)
 --    7) ENC cliente PA e in split -> passa
---    8) ENC cliente PA che diventa SC -> E_CLIENTE_PA_NON_AMMESSO (cambio di natura)
+--    8) ENC cliente PA che diventa un ente senza regime PA (natura fabbricata nel test) -> E_CLIENTE_PA_NON_AMMESSO
 --    9) ... ma con il flag riportato a N nella stessa scrittura -> passa
 --   persone fisiche
 --   10) PR cliente PA -> E_CLIENTE_PA_NON_AMMESSO
@@ -116,21 +116,39 @@ SELECT lives_ok(
     $$UPDATE anagrafiche.soggetti SET cliente_pa = 'S', split_payment = 'S' WHERE id = (SELECT id FROM _enc)$$,
     '7. un ente cliente PA e in split payment -> passa');
 
+-- ⚠️ rev 2026-11-14 (brief-db-cambio-natura-soggetto-conferma-e-pulizia, D-11): ENC -> SC
+--   attraversava due macro-tipologie, e dal 20261114-67 il guard del cambio di natura lo rifiuta
+--   prima (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA). «Il flag non si porta dietro» si prova dentro
+--   la stessa famiglia, e il seed non ha una seconda natura ENC: il test se la fabbrica, un ente
+--   che ammette lo split ma non il cliente PA (il modello lo ammette: il catalogo e' un CSV).
+CREATE TEMP TABLE _enc_no_pa AS
+SELECT (SELECT max(id) FROM config.tipi_soggetto_dettaglio) + 100000 AS id;
+
+INSERT INTO config.tipi_soggetto_dettaglio
+       (id, tipo_soggetto_id, stato_iso2, codice_interno, descrizione,
+        formato_cf, formato_piva, stato_id, dati_societari_policy,
+        piva_obbligatoria, cf_obbligatorio, sesso_policy,
+        cliente_pa_ammesso, split_payment_ammesso)
+SELECT n.id, e.tipo_soggetto_id, e.stato_iso2, 'PGTAPNOPA', 'Ente pgTAP senza regime PA',
+       e.formato_cf, e.formato_piva, e.stato_id, e.dati_societari_policy,
+       e.piva_obbligatoria, e.cf_obbligatorio, e.sesso_policy,
+       false, true
+  FROM config.tipi_soggetto_dettaglio e, _enc_no_pa n
+ WHERE e.codice_interno = 'ENC';
+
 SELECT throws_like(
     $$UPDATE anagrafiche.soggetti
-         SET tipo_soggetto_dettaglio_id = (SELECT id FROM config.tipi_soggetto_dettaglio
-                                            WHERE codice_interno = 'SC')
+         SET tipo_soggetto_dettaglio_id = (SELECT id FROM _enc_no_pa)
        WHERE id = (SELECT id FROM _enc)$$,
     '%non puo'' essere una Pubblica Amministrazione%',
-    '8. l''ente cliente PA che diventa societa'' -> E_CLIENTE_PA_NON_AMMESSO (il flag non si porta dietro)');
+    '8. l''ente cliente PA che diventa un ente senza regime PA -> E_CLIENTE_PA_NON_AMMESSO (il flag non si porta dietro)');
 
 SELECT lives_ok(
     $$UPDATE anagrafiche.soggetti
-         SET tipo_soggetto_dettaglio_id = (SELECT id FROM config.tipi_soggetto_dettaglio
-                                            WHERE codice_interno = 'SC'),
+         SET tipo_soggetto_dettaglio_id = (SELECT id FROM _enc_no_pa),
              cliente_pa = 'N'
        WHERE id = (SELECT id FROM _enc)$$,
-    '9. ... con il flag riportato a N nella stessa scrittura -> passa (lo split resta: SC lo ammette)');
+    '9. ... con il flag riportato a N nella stessa scrittura -> passa (lo split resta: la natura lo ammette)');
 
 -- ============================================================
 -- Persone fisiche

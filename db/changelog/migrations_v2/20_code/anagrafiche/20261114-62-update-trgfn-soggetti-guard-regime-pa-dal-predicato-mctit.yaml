@@ -1,0 +1,136 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL REGIME PA LEGGE IL PREDICATO, NON LO RICOPIA
+#   anagrafiche.trgfn_soggetti_guard_regime_pa
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, giro 2.
+#   Corpo di partenza: docs/it/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_regime_pa.md
+#   (rigenerata dopo l'unico changeSet sull'oggetto, 20261010-86).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   I due IF che confrontavano i flag con cliente_pa_ammesso /
+#   split_payment_ammesso diventano una chiamata a
+#   anagrafiche.fn_regime_pa_campo_non_ammesso (-61), la sede che legge anche la
+#   regola del cambio di natura. Stesso ordine (cliente_pa prima), stessi codici,
+#   stesso contesto, stessa frase.
+#   La natura si rilegge solo per la frase (descrizione, codice_interno).
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il ramo «due flag a N passano», il ramo «natura NULL con un flag a S»
+#   (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO), il ramo «natura inesistente: parla la
+#   FK». Il trigger trg_soggetti_a10_guard_regime_pa_ins_upd resta com'e'.
+#   COMMENT riscritto al presente (linee-guida-sql §5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-62-update-trgfn-soggetti-guard-regime-pa-dal-predicato-mctit.yaml
+
+  - changeSet:
+      id: 20261114-62-update-trgfn-soggetti-guard-regime-pa-dal-predicato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_soggetti_guard_regime_pa legge il predicato da
+        anagrafiche.fn_regime_pa_campo_non_ammesso: stesso comportamento, una sede sola.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- =========================================================
+              -- Scopo: cliente_pa e split_payment a 'S' solo se la natura li ammette.
+              --   Il predicato e' anagrafiche.fn_regime_pa_campo_non_ammesso, la
+              --   stessa sede che legge la regola del cambio di natura.
+              --   Il VALORE (S/N) lo presidiano i CHECK chk_soggetti_cliente_pa e
+              --   chk_soggetti_split_payment; qui si decide solo PER CHI, cioe' la
+              --   parte che sta in un'altra tabella e che un CHECK non puo' leggere.
+              -- Aggancio: BEFORE INSERT OR UPDATE OF cliente_pa, split_payment,
+              --   tipo_soggetto_dettaglio_id. Il ramo sulla natura copre il cambio di
+              --   natura. Nessun altro trigger BEFORE di soggetti scrive queste tre
+              --   colonne (linee-guida-trigger, «UPDATE OF»).
+              -- ⭐ Senza natura RIFIUTA un flag a 'S': diverge apposta dai
+              --   guard del sesso e di CF/P.IVA, che li' tacciono.
+              -- =========================================================
+              DECLARE
+                  v_campo       text;  -- il nome del flag non ammesso, dal predicato
+                  v_descrizione config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_codice      config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+              BEGIN
+                  -- Due flag a 'N': nessuna natura ha niente da dire.
+                  IF NEW.cliente_pa IS DISTINCT FROM 'S' AND NEW.split_payment IS DISTINCT FROM 'S' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_soggetti_guard_regime_pa',
+                          'E_DATO_FISCALE_SENZA_TIPO_SOGGETTO',
+                          jsonb_build_object('campo',         'tipo_soggetto_dettaglio_id',
+                                             'soggetto_id',   NEW.id,
+                                             'cliente_pa',    NEW.cliente_pa,
+                                             'split_payment', NEW.split_payment),
+                          NEW.tx_id,
+                          -- frase chiusa: il VARIADIC si passa vuoto ma ESPLICITO,
+                          -- o la firma variadica non si risolve
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  SELECT tsd.descrizione, tsd.codice_interno
+                    INTO v_descrizione, v_codice
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NEW;   -- la FK fk_soggetti_tipo_soggetto_dettaglio parla dopo
+                  END IF;
+
+                  v_campo := anagrafiche.fn_regime_pa_campo_non_ammesso(
+                                 NEW.tipo_soggetto_dettaglio_id, NEW.cliente_pa, NEW.split_payment);
+
+                  IF v_campo = 'cliente_pa' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_soggetti_guard_regime_pa',
+                          'E_CLIENTE_PA_NON_AMMESSO',
+                          jsonb_build_object('campo',                      'cliente_pa',
+                                             'soggetto_id',                NEW.id,
+                                             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                             'codice_interno',             v_codice),
+                          NEW.tx_id,
+                          COALESCE(v_descrizione, v_codice));
+                  END IF;
+
+                  IF v_campo = 'split_payment' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_soggetti_guard_regime_pa',
+                          'E_SPLIT_PAYMENT_NON_AMMESSO',
+                          jsonb_build_object('campo',                      'split_payment',
+                                             'soggetto_id',                NEW.id,
+                                             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                             'codice_interno',             v_codice),
+                          NEW.tx_id,
+                          COALESCE(v_descrizione, v_codice));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_regime_pa()
+              IS 'Guard BEFORE INSERT OR UPDATE OF cliente_pa, split_payment, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: un flag a S deve essere ammesso dalla natura, col predicato di anagrafiche.fn_regime_pa_campo_non_ammesso; altrimenti E_CLIENTE_PA_NON_AMMESSO o E_SPLIT_PAYMENT_NON_AMMESSO col flag nel campo (cliente_pa giudicato per primo). Senza natura un flag a S e'' rifiutato con E_DATO_FISCALE_SENZA_TIPO_SOGGETTO: diverge apposta dai guard del sesso e di CF/P.IVA, che li'' tacciono. Due flag a N passano sempre; una natura inesistente la rifiuta la FK. Chi cambia natura porta il flag a N nella stessa scrittura: il DB non lo azzera.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261010-86; si torna indietro con un changeSet nuovo.
+              SELECT 1;
