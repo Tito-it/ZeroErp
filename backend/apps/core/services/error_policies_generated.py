@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1218, di cui 129 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1219, di cui 129 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -706,6 +706,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_STATO_INIZIALE_NON_VALIDO": "TECNICO",
     # BB della porta script.trgfn_doc_stato_solo_dal_verbo (BEFORE UPDATE OF la colonna di stato, fascia _a05_, montato su vendite.ddt e vendite.resi: trg_<tabella>_a05_stato_solo_dal_verbo_upd), 2026-10-25, brief-modello-documento-vendita §7 (S-1 b di Tid): lo stato di un documento sul modello si cambia solo dalla scrittura del suo verbo, script.fn_doc_scrivi_stato (GUC transazionale zeroerp.doc_cambio_stato = '<oid>:<id>' E chi esegue e' il proprietario della tabella). TECNICO: nessuna maschera cambia lo stato con un UPDATE, lo fa solo un chiamante che scavalca il verbo. Valori: etichetta del documento (config.sorgenti.etichetta), numero (o id). Prende il posto di E_DDT_STATO_SOLO_DA_VERBO e E_RESO_STATO_SOLO_DA_VERBO, che chiudevano solo i passaggi di magazzino.
     "E_DOC_STATO_SOLO_DAL_VERBO": "TECNICO",
+    # script.trgfn_doc_terminale_senza_uscita_manuale (trigger differito sui vocabolari degli stati e sulle loro matrici): da uno stato terminale non esce nessun passaggio a mano. La configurazione ha uno stato con terminale = true e una riga attiva della matrice con meta.manuale = true che ne esce. La solleva solo chi scrive la configurazione (migrazioni, seed). I VALORI: codice dello stato terminale, codice della destinazione, testata del documento. Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (S-1 = A).
+    "E_DOC_TERMINALE_CON_USCITA_MANUALE": "DATO_ERRATO",
     # script.fn_get_stato_testata_documento, script.fn_get_testata_id_di_riga (dal 2026-10-05, il lettore riga -> testata), vendite.trgfn_doc_guard_delete_solo_bozza e (dal 2026-09-22, attraverso i lettori) vendite.trgfn_doc_righe_lock_fuori_bozza: · il guard ha ricevuto un tipo di documento che non gestisce, o e' stato montato · su una tabella che non conosce. Nasce il 2026-08-26. · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un · chiamante rotto o un trigger montato male, e chi ha fatto la richiesta non · puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una · sede (D11 di brief-db-be-classe-codici-errore). La famiglia giusta e' quella · di E_RUOLO_APPLICATIVO_NON_GESTITO e E_PROFILO_ACCESSO_TIPO_NON_GESTITO — un · valore di enum che il guard non riconosce, con il valore nel messaggio. · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' · nessun campo da accendere.
     "E_DOC_TIPO_NON_GESTITO": "TECNICO",
     # Sollevati dai trigger DB Fase A · (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
@@ -749,10 +751,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE": "TECNICO",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "NON_TROVATO",
-    # EXCLUDE GIST parziale WHERE attivo+stato=PUBBLICATA (ripristino · enforcement 2026-06-02, migration 20260602-05). Pattern simmetrico agli · altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP): · codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
+    # EXCLUDE GIST parziale WHERE attivo + stato PUBBLICATA o OBSOLETA (ripristino · enforcement 2026-06-02, migration 20260602-05; esteso a OBSOLETA il 2026-11-14, 20261114-01: una OBSOLETA stampa fino alla fine della sua validita'). Pattern simmetrico agli · altri overlap (E_VENDITE_PROMO_OVERLAP / E_VENDITE_LISTINO_VERSIONE_OVERLAP): · codice 409 dedicato invece del generico E_DOCUMENTI_VALIDATION (400).
     "E_DOCUMENTI_VERSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "CONFLITTO_STATO",
-    # Sollevati dai trigger DB Fase A · (trgfn_template_documenti_versioni_protect_pubblicata, · trgfn_template_documenti_versioni_block_delete).
+    # Sollevati dai trigger DB Fase A · (trgfn_template_documenti_versioni_protect_pubblicata, · trgfn_template_documenti_versioni_block_delete). Il Guard A1 copre PUBBLICATA e OBSOLETA, stato compreso, dal 2026-11-14 (20261114-04): l'unica scrittura ammessa e' la chiusura di fn_pubblica_template_documento_versione.
     "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "CONFLITTO_STATO",
     # vendite.fn_get_next_progressivo: gemello di E_FATTURA_DATA_ANTERIORE_ULTIMO_NUMERO per i documenti NON fiscali che dal 2026-08-31 si numerano sui registri (DDT, ordini, resi, commesse). Stessa regola — un numero non si consegna a un documento la cui data e' anteriore a quella dell'ultimo gia' numerato sullo stesso sezionale — ma detta senza nominare la fattura, perche' a leggerla e' chi sta emettendo un DDT. DATO_ERRATO come il gemello: la data la sceglie una PERSONA e puo' correggerla. ⛔ Non si e' riusato il codice della fattura, e non e' pignoleria: quel codice ha una frase che parla di fatture, e i consumatori di un messaggio si cercano dal NOME di chi lo solleva — un DDT che segnala E_FATTURA_* manderebbe a cercare nel posto sbagliato. ⛔ E NON esiste il gemello del limite di emissione: quel pavimento vale sulla sola famiglia FATTURA (20260831-05), quindi sui documenti non fiscali il ramo EMISSIONE e' irraggiungibile PER COSTRUZIONE — un codice che nessuno puo' sollevare sarebbe una voce dichiarata e non implementata.
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "DATO_ERRATO",

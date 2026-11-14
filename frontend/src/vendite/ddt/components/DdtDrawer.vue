@@ -645,7 +645,7 @@ function onPush() {
 
 // Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
 //   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
-//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   database (`DRAFT` -> «Bozza», `PARZIALMENTE_EVASO` -> «Parzialmente evaso»: non e'
 //   derivabile dal codice), quindi arriva dalla capability come
 //   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
 //   label dell'azione — comportamento invariato, nessun testo mancante.

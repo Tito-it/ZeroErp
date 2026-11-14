@@ -31,11 +31,11 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9c-sexies | ✅ BE/FE | la verifica dei giri 2 e D-SCAD: V-1 e V-2, richieste al team DB (2026-11-14) | §6.9 | — |
 | 9c-septies | ✅ DB | giro 2-bis, V-1: `20261113-38` (`vendite.fn_offerta_scaduta`), `-39` (la vista la compone), pgTAP esteso (plan 18), prova in transazione (2026-11-14) | §6.10 | via di Tid (2026-11-14) |
 | 9c-octies | ✅ Tid | apply di `20261113-38`, `-39`; pgTAP `test-offerta-guard-dal-vocabolario-v1` (plan 18): verde (2026-11-14) | §6.10 | 9c-septies |
-| 9c-nonies | **BE** ⏭️ | BE-V1: il dettaglio chiama `vendite.fn_offerta_scaduta` al posto della sottoquery sulla vista | §6.10 | 9c-octies |
+| 9c-nonies | ✅ BE | BE-V1 e BE-V1b: il dettaglio chiama `vendite.fn_offerta_scaduta` al posto della sottoquery sulla vista (da committare, 2026-11-14) | §6.10 | 9c-octies |
 | 9c-decies | ✅ Tid | **D-LOCK**: (a), il lock riconosce la bozza da `iniziale` (2026-11-14) | §6.10 | — |
 | 9c-undecies | ✅ DB | D-LOCK (a) e V-2: `20261113-40` (`script.fn_doc_lock_regola`), `-41` (`can_edit_eccezioni` dal lock); 48 pgTAP con l'estratto, tre riportati al modello, cinque test nuovi (2026-11-14) | §6.11 | 9c-decies |
 | 9c-terdecies | ✅ Tid | apply di `20261113-40`, `-41`; i pgTAP del §6.11: verdi (2026-11-14) | §6.11 | 9c-undecies |
-| 9c-duodecies | **FE** ⏭️ | FE-V2: il lucchetto del drawer dalle chiavi `can_edit_*` della capability, non dal codice BOZZA | §6.10 | — |
+| 9c-duodecies | ✅ FE | FE-V2 e FE-V2b: il lucchetto del drawer dalle chiavi `can_edit_*` della capability, non dal codice BOZZA (da committare, 2026-11-14). Il corpo si chiude da `can_edit_utility` (`readonly` dell'`AppDrawer`, nessun `provide` del drawer); il sotto-drawer delle righe sta **fuori** dall'`AppDrawer` ed eredita i soli permessi, più `can_edit_eccezioni`. Trovato dalla verifica del 2026-11-14: dentro, `RigheEccezioniDrawer` chiudeva le righe anche col solo `can_edit_utility` falso (la V-2 rifatta nel FE). Spec `OffertaDrawer.spec.js` | §6.10 | — |
 | 9d | ✅ DB | giro 3: `terminale`, bolla e reso (④, ⑦, S-4, S-5, S-3 del reso): `20261113-42 … -50`, 129 pgTAP con l'estratto, uno nuovo e tre adeguati (2026-11-14) | §6.12 | via di Tid (2026-11-14) |
 | 9e | ✅ DB | giro 4: gli stati che nessun passaggio raggiunge (⑤, S-8, R-3): `20261114-03`, due CSV, il presidio nuovo della raggiungibilità (2026-11-14) | §6.13 | via di Tid (2026-11-14) |
 | 9f | ✅ Tid | apply (verde, 2026-11-14) dei giri 3 e 4 (`20261113-42 … -50`, `20261114-03`); i pgTAP dei §6.12 e §6.13, e `vendite/test-documenti-numerazione-trasloco-v1` e `vendite/test-fn-list-ordini-da-pushare-v1`, che lo strumento non lancia | §6.12, §6.13 | 9d, 9e |
@@ -45,8 +45,8 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i-bis | ✅ Tid | apply di `20261114-05 … -07` (il `-05` al secondo tentativo, dopo la correzione della `preCondition`); i pgTAP del §6.14: verdi (2026-11-14) | §6.14 | 9i |
 | 9i-ter | ✅ DB | giro 6: il censimento, circa 55 oggetti in sei documenti, e l'ordine (2026-11-14) | §6.15 | — |
 | 9i-quater | **DB** ⏭️ | giri 6a … 6f, un documento per volta: preventivo, ordine, contratto, bolla, reso, listino | §6.15 | — |
-| 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
-| 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
+| 9j | ✅ BE | BE-T1 e BE-T2: la frase di `doc_terminale` in `api_percorso.md`; `error_policies_generated.py` rigenerato col codice nuovo, e il suo ripiego (da committare, 2026-11-14). In più, da S-3: la rotta della conferma del reso chiede lo stato di emissione al vocabolario (`stato_del_modello="emissione"`), via `resi_service.STATO_CONFERMATO` | §6.12 | — |
+| 9k | ✅ FE | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati, e la mappa di `severity.js` (da committare, 2026-11-14) | §6.13 | 9f |
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 

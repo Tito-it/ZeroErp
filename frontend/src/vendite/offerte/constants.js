@@ -18,8 +18,10 @@
 // intera: validita' passata e nessun esito del cliente). Erano
 // `STATI_OFFERTA_TERMINALI` e `STATI_OFFERTA_SEGNALA_SCADENZA`, ritirate.
 
+// BOZZA ritirata il 2026-11-14 (FE-V2, brief-db-stati-documento-dal-vocabolario
+// §6.10): il lucchetto del drawer legge le chiavi `can_edit_*` della
+// capability, e la bozza non ha piu' lettori.
 export const STATO_OFFERTA = Object.freeze({
-  BOZZA: 'BOZZA',
   EMESSA: 'EMESSA',
   ACCETTATA: 'ACCETTATA',
   RIFIUTATA: 'RIFIUTATA',

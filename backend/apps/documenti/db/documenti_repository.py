@@ -173,7 +173,8 @@ VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
 # Immutabili escluse: `template_documento_id`, `versione`, `stato`.
 # La transizione di stato passa solo dal comando dedicato pubblica_versione.
 # Il trigger DB A1 (protect_pubblicata) blocca comunque l'update di
-# html/css/render/layout/valido_* se OLD.stato='PUBBLICATA' — defense-in-depth.
+# html/css/render/layout/valido_* e di `stato` se OLD.stato e' PUBBLICATA o
+# OBSOLETA (dal 20261114-04) — defense-in-depth.
 # `versione_contesto` (la forma dei dati che la versione legge, NOT NULL senza
 # default) e' nel suo `UPDATE OF` dal 20260930-17: si cambia solo in BOZZA.
 VERSIONE_UPDATE_COLUMNS: tuple[str, ...] = (
