@@ -101,7 +101,7 @@ _LETTORI_DEL_RUOLO: dict[str, str] = {
 # Campi: testata — la testata nella mappa del modello (`vendite.ddt`);
 #        documento_kwarg — il parametro di percorso con l'id del documento;
 #        stato_chiesto — il codice dello stato di arrivo, fisso per le rotte
-#        di un verbo (la `CONFERMATO` del reso); None = dal corpo, campo
+#        di un verbo (la `DEFINITIVA` del lotto); None = dal corpo, campo
 #        `campo_stato` (il cambio stato generico), o dal modello;
 #        stato_del_modello — lo stato di arrivo e' uno stato che il modello
 #        dice, letto dal vocabolario A OGNI RICHIESTA: "emissione" («Emetti»,

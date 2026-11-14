@@ -118,7 +118,9 @@ terminale, il più recente — read-time, nessun mirror. Display fields puri:
 - `doc_fase` ∈ `APERTO · IN_CORSO · IN_ATTESA · CHIUSO` — vocabolario
   universale dichiarato dal dominio (colonne su `config.stati_doc_*`);
 - `doc_esito` — verdetto proiettato (`POSITIVO`/`NEGATIVO`/… o null);
-- `doc_terminale` (bool) — il documento non evolverà più;
+- `doc_terminale` (bool) — da questo stato non esce nessun passaggio a mano
+  (la colonna `terminale` del vocabolario); il sistema può ancora spostare il
+  documento con un passaggio di processo;
 - `doc_sorgente_descrizione` — etichetta del tipo sorgente (`config.sorgenti`).
 
 Stessi campi esposti da coda lavoro (ancora per flusso, la stessa vista) e

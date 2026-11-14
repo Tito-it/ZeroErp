@@ -220,10 +220,11 @@ class OffertaCambiaStatoDbTests(unittest.TestCase):
         self.assertEqual(self._stato()["stato"], "EMESSA")
 
     # D-SCAD (brief-db-stati-documento-dal-vocabolario §6.8): il dettaglio porta
-    # `is_scaduta` letto dalla vista della lista, la sede della regola. La
-    # bozza con la validita' passata e' scaduta (il cliente non ha risposto);
-    # annullata non lo e' piu' (lo stato ha un esito). In tutti e due i casi il
-    # dettaglio dice cio' che dice la vista: niente ricalcolo nel backend.
+    # `is_scaduta` chiesto a `vendite.fn_offerta_scaduta`, la sede della regola,
+    # che anche la vista della lista chiama (V-1, §6.10). La bozza con la
+    # validita' passata e' scaduta (il cliente non ha risposto); annullata non
+    # lo e' piu' (lo stato ha un esito). In tutti e due i casi il dettaglio dice
+    # cio' che dice la vista: niente ricalcolo nel backend.
     def test_dettaglio_scaduta_dalla_vista(self) -> None:
         with connection.cursor() as cur:
             cur.execute(

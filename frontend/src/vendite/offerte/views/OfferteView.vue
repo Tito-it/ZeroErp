@@ -5,7 +5,6 @@
 //        ContrattiListView con watcher su route.query.open).
 import { useRouter } from 'vue-router'
 import { useDrawerState } from '../../../core/composables/useDrawerState'
-import { useDrawerSavedListRefresh } from '../../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../../core/composables/useReadonlyMode'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../../core/constants'
 import OfferteSearchTable from '../components/OfferteSearchTable.vue'
@@ -20,10 +19,11 @@ const router = useRouter()
 // a catalogo dal 2026-09-28 e chiesto dal BE su tutte le rotte `vendite/offerte/…`.
 useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.OFFERTA_COMMERCIALE)
 
-// ⭐ Solo `onDrawerChanged` dal BB: `onDrawerSaved` qui NON e' quello standard
-// — ha la logica della revisione N+1 (apre la nuova offerta invece di chiudere)
-// e resta scritta a mano. Si prende dal BB la meta' che e' identica a tutte.
-const { onDrawerChanged } = useDrawerSavedListRefresh(store, drawer, { soloSeCercata: true })
+// `onDrawerSaved` e' scritto a mano: ha la logica della revisione N+1 (apre la
+// nuova offerta invece di chiudere). Niente `changed`: `OffertaDrawer` non lo
+// emette, perche' i verbi dello store avvisano gia' la lista
+// (`emitDataChanged`). Fino al 2026-11-14 qui c'era un `@changed` che nessuno
+// emetteva, con `onDrawerChanged` di `useDrawerSavedListRefresh`.
 
 async function onDrawerSaved(data) {
   // Se l'evento porta un id diverso (es. revisione N+1), apriamo direttamente
@@ -63,7 +63,6 @@ function onNavigateContratto({ contrattoId }) {
       :offerta-id="drawer.state.itemId"
       @update:visible="(v) => (drawer.state.visible = v)"
       @saved="onDrawerSaved"
-      @changed="onDrawerChanged"
       @cancelled="drawer.close"
       @navigate-contratto="onNavigateContratto"
     />

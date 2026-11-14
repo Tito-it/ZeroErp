@@ -579,9 +579,11 @@ class ApiResoConferma(DomainAPIView):
     # ⭐ L'azione dalla riga del passaggio, la stessa che legge il verbo (M-3):
     #    oggi `conferma_reso` per la conferma e per l'annullo di un confermato;
     #    l'annullo di una bozza chiede il solo livello sul documento (M-4).
+    # ⭐ Lo stato chiesto e' l'emissione del vocabolario (la conferma del reso
+    #    E' la sua emissione, S-3), letto a ogni richiesta come «Emetti».
     post_passaggio = PassaggioDocumento(
         testata=resi_service.TESTATA_RESO, documento_kwarg="reso_id",
-        stato_chiesto=resi_service.STATO_CONFERMATO,
+        stato_del_modello="emissione",
     )
 
     @extend_schema(

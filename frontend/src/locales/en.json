@@ -3925,8 +3925,7 @@
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
         "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT.",
-        "annullato": "The order is cancelled: this state is final.",
-        "fatturato": "The order is invoiced: follow-up happens on the invoice."
+        "annullato": "The order is cancelled: this state is final."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the order to status {stato}?",

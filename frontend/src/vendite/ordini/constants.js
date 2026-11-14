@@ -12,11 +12,10 @@ export const STATO_ORDINE = Object.freeze({
   // la slice evasione DDT: l'ordine resta evadibile finche' resta residuo.
   PARZIALMENTE_EVASO: 'PARZIALMENTE_EVASO',
   EVASO: 'EVASO',
-  ALLOCATO: 'ALLOCATO',
-  SPEDITO: 'SPEDITO',
-  CONSEGNATO: 'CONSEGNATO',
   ANNULLATO: 'ANNULLATO',
-  FATTURATO: 'FATTURATO',
+  // ALLOCATO, SPEDITO, CONSEGNATO e FATTURATO ritirati il 2026-11-14: nessun
+  // passaggio li raggiungeva, e il DB li ha tolti dal vocabolario
+  // (brief-db-stati-documento-dal-vocabolario §6.13, `20261114-03`).
 })
 
 // Stati dell'ordine dai quali e' possibile generare un DDT di evasione: c'e'
