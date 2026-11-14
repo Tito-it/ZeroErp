@@ -12,6 +12,7 @@
 //  1. annullo: la dichiarazione arriva all'api e si avvisano i documenti che si riaprono
 //  2. un'altra transizione non avvisa nessuno
 //  3. se l'api rifiuta (la domanda del DB) l'errore risale e non parte nessun avviso
+//  4. la destinazione non decide: un altro verbo verso ANNULLATA non avvisa (2026-11-14)
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,6 +22,9 @@ import { useCommesseStore } from './commesse'
 import { cambiaStatoCommessa } from '../api/commesse'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
+
+// L'azione d'annullo come la emette `script.fn_available_actions_commessa`.
+const ANNULLA = Object.freeze({ key: 'annulla', target_state: 'ANNULLATA' })
 
 // Il modulo vero caricherebbe il client HTTP, che in ambiente node non ha
 // `localStorage`.
@@ -44,7 +48,7 @@ describe('store commesse — cambiaStato', () => {
   it('annullo: la dichiarazione arriva all\'api e si avvisano i documenti che si riaprono', async () => {
     cambiaStatoCommessa.mockResolvedValue({ data: { data: { stato_a: 'ANNULLATA' } } })
     const { eventi, stop } = ascolta()
-    const esito = await useCommesseStore().cambiaStato(7, 'ANNULLATA', { legami_confermati: 3 })
+    const esito = await useCommesseStore().cambiaStato(7, ANNULLA, { legami_confermati: 3 })
     stop()
     expect(cambiaStatoCommessa).toHaveBeenCalledWith(7, 'ANNULLATA', { legami_confermati: 3 })
     expect(esito).toEqual({ stato_a: 'ANNULLATA' })
@@ -58,7 +62,7 @@ describe('store commesse — cambiaStato', () => {
   it('un\'altra transizione non avvisa nessuno', async () => {
     cambiaStatoCommessa.mockResolvedValue({ data: { data: { stato_a: 'CHIUSA' } } })
     const { eventi, stop } = ascolta()
-    await useCommesseStore().cambiaStato(7, 'CHIUSA')
+    await useCommesseStore().cambiaStato(7, { key: 'chiudi', target_state: 'CHIUSA' })
     stop()
     expect(cambiaStatoCommessa).toHaveBeenCalledWith(7, 'CHIUSA', {})
     expect(eventi).toEqual([])
@@ -67,7 +71,15 @@ describe('store commesse — cambiaStato', () => {
   it('se l\'api rifiuta (la domanda del DB) l\'errore risale e non parte nessun avviso', async () => {
     cambiaStatoCommessa.mockRejectedValue(new Error('409'))
     const { eventi, stop } = ascolta()
-    await expect(useCommesseStore().cambiaStato(7, 'ANNULLATA')).rejects.toThrow('409')
+    await expect(useCommesseStore().cambiaStato(7, ANNULLA)).rejects.toThrow('409')
+    stop()
+    expect(eventi).toEqual([])
+  })
+
+  it('la destinazione non decide: un altro verbo verso ANNULLATA non avvisa', async () => {
+    cambiaStatoCommessa.mockResolvedValue({ data: { data: { stato_a: 'ANNULLATA' } } })
+    const { eventi, stop } = ascolta()
+    await useCommesseStore().cambiaStato(7, { key: 'altro', target_state: 'ANNULLATA' })
     stop()
     expect(eventi).toEqual([])
   })

@@ -1,7 +1,7 @@
 // Costanti del pannello «situazione merce». Il vocabolario di `stato` vive a
 // DB (`vw_situazione_merce_ordine` / `vw_partite_merce`, brief partita §9.3):
-// qui il suo mirror FE, per la stessa ragione di `STATO_RESO` in
-// `resi/constants.js` e degli enum di frontend-standards — un typo in un
+// qui il suo mirror FE, per la stessa ragione degli enum di
+// frontend-standards — un typo in un
 // literal (`'DA_FATURARE'`) non rompe niente a runtime: filtra zero righe e il
 // riassunto mente in silenzio. L'enum lo rende un errore che si vede.
 //

@@ -50,9 +50,10 @@ from apps.vendite.services.pricing_service import (
 # quindi non chiude cicli: la ragione della copia non c'e' piu'.
 
 # L'origine di un prezzo scritto a mano: la scrivono il gate prezzi di riga
-# (qui) e la PATCH dei componenti (`_componenti_service_helpers`), una sede.
-# ⚠️ Sta QUI e non nel modulo dei componenti: quello importa il gate L1 da
-#    questo modulo, e la costante nell'altro verso faceva un ciclo.
+# (qui) e il prezzo di una riga di commessa (`prezzo_riga_commessa`), una sede.
+# ⚠️ La PATCH dei componenti NON la scrive piu' (2026-11-14): sul prezzo
+#    cambiato la provenienza la fa decadere il trigger del DB
+#    (`_componenti_service_helpers.dati_patch_componente`).
 ORIGINE_PREZZO_MANUALE = "MANUALE"
 
 

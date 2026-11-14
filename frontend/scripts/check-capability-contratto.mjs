@@ -215,11 +215,16 @@ const RICEVENTE_BLOB = /^\s*(?:[\w$.?]+\.)?capabilities(?:\s*\??\.\s*value)?\b/
 const NON_CAMPI = new Set(['value'])
 // Scopo: i nomi passati al BB — `flag('can_x')` e `editFlag: 'can_x'` — nei
 //        soli file che lo importano (`flag(` da solo e' un nome qualunque).
-const ARGOMENTO_BB = /(?:\b(?:flag|azioneNegata)\s*\(\s*|\beditFlag\s*:\s*)['"]([a-z][a-z0-9_]*)['"]/g
+const ARGOMENTO_BB = /(?:\b(?:flag|azioneNegata|azioneDaFlag)\s*\(\s*|\beditFlag\s*:\s*)['"]([a-z][a-z0-9_]*)['"]/g
+// Scopo: le chiavi passate a `useCorpoDocumento` (`corpo: [...]`,
+//        `sezioni: [...]`, 2026-11-14): nomi di flag del blob come quelli di
+//        `flag()`, e un nome sbagliato chiuderebbe il corpo per sempre.
+const ARGOMENTO_CORPO = /\b(?:corpo|sezioni)\s*:\s*\[([^\]]*)\]/g
+const NOME_IN_LISTA = /['"]([a-z][a-z0-9_]*)['"]/g
 // Scopo: `azioneNegata('can_x', …)` legge anche `can_x_reason` /
 //        `can_x_reason_key` con una chiave calcolata: almeno uno dei due deve
 //        stare nel contratto, o il pulsante negato non comparira' mai.
-const ARGOMENTO_NEGATA = /\bazioneNegata\s*\(\s*['"]([a-z][a-z0-9_]*)['"]/g
+const ARGOMENTO_NEGATA = /\b(?:azioneNegata|azioneDaFlag)\s*\(\s*['"]([a-z][a-z0-9_]*)['"]/g
 const IMPORTA_BB = /\buseEntityCapabilities\b/
 // Scopo: una chiave di i18n (`'vendite.ddt.pdf.dialog_title'`) contiene
 //        `.pdf` ma non e' una lettura: le chiavi puntate si tolgono prima di
@@ -272,8 +277,11 @@ function letturePiatte(src, primoLivello) {
     const punto = new RegExp(
       String.raw`(?<!\bcapabilities\s*(?:\??\.\s*value\s*)?)(?<!\?)\??\.\s*${k}\b`, 'g',
     )
+    // ⚠️ Serve un RICEVENTE (`x[`, `)[`, `][`): un array letterale con un
+    //    solo nome (`corpo: ['can_edit_righe']`, il BB `useCorpoDocumento`)
+    //    ha la stessa forma senza esserlo (2026-11-14).
     const parentesi = new RegExp(
-      String.raw`(?<!\bcapabilities\s*(?:\??\.\s*value\s*)?)(?<!\?)(?:\?\.)?\[\s*(['"\x60])${k}\1\s*\]`, 'g',
+      String.raw`(?<=[\w$)\]]\s*)(?<!\bcapabilities\s*(?:\??\.\s*value\s*)?)(?<!\?)(?:\?\.)?\[\s*(['"\x60])${k}\1\s*\]`, 'g',
     )
     const n = [...pulito.matchAll(punto)].length + [...pulito.matchAll(parentesi)].length
       + destrutturate.filter((d) => d.nome === k).length
@@ -311,6 +319,11 @@ for (const { rel, src } of sorgenti()) {
   for (const d of nomiDestrutturati(src)) if (d.blob) aggiungi(lette, d.nome, rel)
   if (IMPORTA_BB.test(src)) {
     for (const m of src.matchAll(ARGOMENTO_BB)) if (!chiavi.has(m[1])) aggiungi(argomentiFuori, m[1], rel)
+    if (/\buseCorpoDocumento\b/.test(src)) {
+      for (const lista of src.matchAll(ARGOMENTO_CORPO)) {
+        for (const m of lista[1].matchAll(NOME_IN_LISTA)) if (!chiavi.has(m[1])) aggiungi(argomentiFuori, m[1], rel)
+      }
+    }
     for (const m of src.matchAll(ARGOMENTO_NEGATA)) {
       if (!chiavi.has(`${m[1]}_reason`) && !chiavi.has(`${m[1]}_reason_key`)) {
         aggiungi(argomentiFuori, `${m[1]}_reason[_key]`, rel)

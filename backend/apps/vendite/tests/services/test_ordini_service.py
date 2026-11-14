@@ -714,9 +714,9 @@ class OrdiniPushCommessaTests(SimpleTestCase):
     @patch(_REPO, autospec=True)
     def test_push_ammesso_da_evaso_fix_orfano(self, ord_cls, mock_push_one, _mock_step) -> None:
         # Fix orfano (brief DB §16, 2026-07-10): per trigger CONFERMATO
-        # l'eleggibilita' al push sopravvive all'evasione in DDT — il guard
-        # ammette anche PARZIALMENTE_EVASO/EVASO. La fonte unica resta
-        # fn_list_ordini_da_pushare (count_righe_pushable).
+        # l'eleggibilita' al push sopravvive all'evasione in DDT. La fonte
+        # unica e' fn_list_ordini_da_pushare (count_righe_pushable): il
+        # service non legge lo stato (BE-O1).
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "EVASO"}
         repo.count_righe_pushable.return_value = 1
@@ -728,13 +728,17 @@ class OrdiniPushCommessaTests(SimpleTestCase):
 
     @patch(_PUSH_ONE)
     @patch(_REPO, autospec=True)
-    def test_push_rifiutato_da_draft(self, ord_cls, mock_push_one) -> None:
-        # DRAFT resta mai pushabile: fail-fast parlante E_ORD_STATO_TRANSIZIONE.
+    def test_push_senza_righe_da_mandare_rifiutato(self, ord_cls, mock_push_one) -> None:
+        # Il service non legge lo stato (BE-O1, 2026-11-14): da una bozza la
+        # push-list del DB non da' righe, e il rifiuto e' E_ORD_NESSUNA_RIGA.
+        # Che la push-list escluda bozza e annullato lo provano i pgTAP di
+        # `vendite.fn_list_ordini_da_pushare`.
         repo = ord_cls.return_value
         repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        repo.count_righe_pushable.return_value = 0
         with self.assertRaises(ServiceError) as cm:
             ordini_service.push_a_commessa(55)
-        self.assertEqual(cm.exception.code, "E_ORD_STATO_TRANSIZIONE")
+        self.assertEqual(cm.exception.code, "E_ORD_NESSUNA_RIGA")
         mock_push_one.assert_not_called()
 
     @patch(_PUSH_ONE)

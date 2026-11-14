@@ -17,8 +17,7 @@ import { defineStore } from 'pinia'
 
 import { cambiaStatoCommessa } from '../api/commesse'
 import { useTabEvents } from '../../core/composables/useTabEvents'
-import { STATO_COMMESSA } from '../constants'
-import { avvisaDocumentiCollegati } from '../_shared/annullo/avvisoDocumentiCollegati'
+import { avvisaDopoAzione } from '../_shared/annullo/avvisoDocumentiCollegati'
 
 export const useCommesseStore = defineStore('vendite-commesse', () => {
   const { emitDataChanged } = useTabEvents()
@@ -26,10 +25,13 @@ export const useCommesseStore = defineStore('vendite-commesse', () => {
   // Azione di stato utente (chiudi, riapri, annulla). `dichiarazione`: la
   // conferma dell'annullo con legami (`{ legami_confermati }`); vuota al primo
   // tentativo. L'annullo riapre i documenti dall'altra parte, e se ne
-  // avvisano i tab.
-  async function cambiaStato(id, nuovoStato, dichiarazione = {}) {
-    const res = await cambiaStatoCommessa(id, nuovoStato, dichiarazione)
-    if (nuovoStato === STATO_COMMESSA.ANNULLATA) avvisaDocumentiCollegati(emitDataChanged)
+  // avvisano i tab. `azione` = l'entry di `available_actions` scelta
+  // (destinazione = `target_state`): che sia l'annullo lo dice il verbo, non
+  // il codice della destinazione (2026-11-14, BB `avvisaDopoAzione`, gemello
+  // di ordine, bolla, preventivo e contratto).
+  async function cambiaStato(id, azione, dichiarazione = {}) {
+    const res = await cambiaStatoCommessa(id, azione.target_state, dichiarazione)
+    avvisaDopoAzione(azione, emitDataChanged)
     return res.data.data
   }
 

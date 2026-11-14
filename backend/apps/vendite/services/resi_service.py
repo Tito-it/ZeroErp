@@ -126,9 +126,12 @@ TESTATA_RESO = "vendite.resi"
 # (`trg_resi_a05_lock_fuori_bozza_upd`: in bozza tutto, dopo la conferma le
 # sole note); le RIGHE il lock delle righe (`E_RIGA_DOC_NON_BOZZA`, dal
 # `20260929-01`), con lo stesso codice del pre-check `richiedi_righe_in_bozza`.
-# Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
-# non e' stato consegnato — brief DB §3).
-_STATO_DDT_SORGENTE = "CONSEGNATO"
+# Da quale bolla nasce un reso (consegnata, e non un trasferimento fra
+# depositi) lo giudica il DB in una sede sola, `script.fn_check_ddt_rendibile`:
+# la legge il trigger del reso (`trgfn_resi_guard_ddt_consegnato`, che rifiuta
+# l'INSERT) e la capability della bolla (`can_genera_reso`). Fino al
+# 2026-11-14 qui c'era una terza copia della regola, col codice dello stato e
+# senza il trasferimento (brief-db-stati-documento-dal-vocabolario §6.22, BE-R1).
 
 # Tetto della selezione massiva di accrediti. Non e' una regola fiscale: e' il
 # confine oltre il quale «ho scelto queste righe» non vuol piu' dire niente, e
@@ -469,8 +472,9 @@ def resolve_filtri_coda_export_label(
 
 # Scopo: Crea un nuovo reso da DDT in stato DRAFT. Payload minimo:
 #        {ddt_id, data?, meta?, righe?}. La sorgente e' risolta per codice
-#        (DDT_VENDITA) e il DDT deve essere in CONSEGNATO (guard applicativo:
-#        non si rende cio' che non e' stato consegnato). BA/destinatario/
+#        (DDT_VENDITA). Se dalla bolla nasce un reso lo dice il trigger del DB
+#        (`script.fn_check_ddt_rendibile`: E_RESO_DDT_NON_CONSEGNATO,
+#        E_RESO_DA_DDT_TRASFERIMENTO, 409). BA/destinatario/
 #        utility/valuta/emittente li eredita il trigger normalize dal DDT.
 #        Se `righe` presenti (pannello FE): testata + N righe in UNA
 #        transazione (compone 2+ scritture — guardrail atomicita' api.md).
@@ -490,21 +494,6 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         code="E_DDT_NOT_FOUND", message="DDT sorgente non trovato.",
         id_name="ddt_id", function_name=f"{_FN}.crea_reso",
     )
-    # Guard gemello del trigger DB `trgfn_resi_guard_ddt_consegnato`: STESSO
-    # codice del trigger (E_RESO_DDT_NON_CONSEGNATO, 409) cosi' il FE vede un
-    # solo errore per questo caso a prescindere dal percorso (service o
-    # race col trigger); qui il messaggio arriva prima dell'INSERT.
-    ErrorManager.require(
-        ddt["stato_codice_interno"] == _STATO_DDT_SORGENTE,
-        code="E_RESO_DDT_NON_CONSEGNATO",
-        message=(
-            "Il reso e' ammesso solo su DDT in stato CONSEGNATO: non si rende "
-            "cio' che non e' stato consegnato."
-        ),
-        detail=f"ddt_id={ddt_id} stato={ddt['stato_codice_interno']}",
-        function_name=f"{_FN}.crea_reso",
-    )
-
     # Le righe sono FACOLTATIVE alla nascita (un reso puo' nascere vuoto): se
     # ci sono, una lista di voci, ogni voce un oggetto (BB), giudicate PRIMA di
     # scrivere la testata. I campi della riga li legge `_crea_riga`.

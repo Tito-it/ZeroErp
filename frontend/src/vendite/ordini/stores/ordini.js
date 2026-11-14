@@ -14,8 +14,7 @@ import { defineStore } from 'pinia'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
-import { STATO_ORDINE } from '../constants'
-import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
+import { avvisaDopoAzione } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import {
   aggiornaDateConsegna as postDateConsegna,
   cambiaDataConsegnaConfermata as postDataConsegnaConfermata,
@@ -112,14 +111,16 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     return res.data.data
   }
 
-  // Transizione di stato generica data-driven (es. annulla). `statoCodice` =
-  // target_state dell'azione; il trigger DB valida l'ammissibilita'.
-  // `dichiarazione`: la conferma dell'annullo con legami; l'annullo riapre i
-  // documenti dall'altra parte, e se ne avvisano i tab.
-  async function cambiaStato(id, statoCodice, dichiarazione = {}) {
-    const res = await cambiaStatoOrdine(id, statoCodice, dichiarazione)
+  // Transizione di stato generica data-driven (es. annulla). `azione` = l'entry
+  // di `available_actions` scelta (destinazione = `target_state`); il trigger
+  // DB valida l'ammissibilita'. `dichiarazione`: la conferma dell'annullo con
+  // legami; l'annullo riapre i documenti dall'altra parte, e se ne avvisano i
+  // tab. Che sia l'annullo lo dice l'azione, non il codice della destinazione
+  // (FE-O2, brief-db-stati-documento-dal-vocabolario §6.17).
+  async function cambiaStato(id, azione, dichiarazione = {}) {
+    const res = await cambiaStatoOrdine(id, azione.target_state, dichiarazione)
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
-    if (statoCodice === STATO_ORDINE.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
+    avvisaDopoAzione(azione, emitDataChanged)
     return res.data.data
   }
 

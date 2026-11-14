@@ -63,19 +63,22 @@ class DatiPatchComponenteTests(TestCase):
         self.gate = patcher.start()
         self.addCleanup(patcher.stop)
 
-    # 0.
-    def test_prezzo_scritto_e_manuale(self) -> None:
+    # 0. ⭐ Si scrive il SOLO prezzo: la provenienza la fa decadere il trigger
+    #    del DB (2026-11-14). Fino a quel giorno il BE scriveva `MANUALE` e
+    #    lasciava versione e riga di listino al loro posto: il CHECK rifiutava.
+    def test_prezzo_scritto_senza_origine(self) -> None:
         self.assertEqual(
             dati_patch_componente({"prezzo_unitario": "9.50"}, auth_user_id=1, function_name="t"),
-            {"prezzo_unitario": "9.50", "origine_prezzo": "MANUALE"},
+            {"prezzo_unitario": "9.50"},
         )
 
-    # 1. Solo i DDT lo ammettono a DB (prezzo e origine facoltativi insieme):
-    #    sugli altri documenti il NOT NULL rifiuta, ed e' giusto che rifiuti.
-    def test_prezzo_tolto_toglie_l_origine(self) -> None:
+    # 1. Solo i DDT lo ammettono a DB: sugli altri documenti il NOT NULL
+    #    rifiuta, ed e' giusto che rifiuti. Origine, versione e riga le svuota
+    #    il trigger.
+    def test_prezzo_tolto_senza_origine(self) -> None:
         self.assertEqual(
             dati_patch_componente({"prezzo_unitario": None}, auth_user_id=1, function_name="t"),
-            {"prezzo_unitario": None, "origine_prezzo": None},
+            {"prezzo_unitario": None},
         )
 
     # 2.
@@ -89,7 +92,7 @@ class DatiPatchComponenteTests(TestCase):
     def test_stringa_vuota_diventa_none(self) -> None:
         self.assertEqual(
             dati_patch_componente({"prezzo_unitario": ""}, auth_user_id=1, function_name="t"),
-            {"prezzo_unitario": None, "origine_prezzo": None},
+            {"prezzo_unitario": None},
         )
 
     # 4. Tutto cio' che il repository sa scrivere ma l'operatore non deve
@@ -106,9 +109,9 @@ class DatiPatchComponenteTests(TestCase):
                     )
                 self.assertEqual(ctx.exception.code, "E_DDT_VALIDAZIONE")
 
-    # 5. ⛔ Fino al 2026-09-26 ordini e DDT scartavano in silenzio l'origine
-    #    mandata dal pannello: il repository deve riceverla.
-    def test_ordini_e_ddt_scrivono_l_origine_manuale(self) -> None:
+    # 5. Ordini e DDT passano al repository il prezzo e basta: l'origine la
+    #    decide il trigger del DB, come negli altri tre documenti.
+    def test_ordini_e_ddt_scrivono_il_solo_prezzo(self) -> None:
         casi = (
             ("apps.vendite.services.ordini_service", "OrdiniRepository",
              {"ordine_id": 1, "riga_ordine_id": 10}),
@@ -125,7 +128,7 @@ class DatiPatchComponenteTests(TestCase):
                 servizio = __import__(modulo, fromlist=["update_componente"])
                 servizio.update_componente(1, 10, 50, {"prezzo_unitario": "3.00"}, auth_user_id=1)
                 repo.update_componente.assert_called_once_with(
-                    50, prezzo_unitario="3.00", origine_prezzo="MANUALE",
+                    50, prezzo_unitario="3.00",
                 )
 
 

@@ -22,6 +22,7 @@
 //        Consumer: i drawer di preventivi, offerte, contratti, ordini, DDT,
 //        resi (editFlag=can_edit_testata) e promo articoli (editFlag=can_update).
 import { computed } from 'vue'
+import { labelOrCode } from '../utils/i18nLabel'
 
 /**
  * Ritorna helper reattivi per consumare il blob capabilities di un detail BE.
@@ -36,6 +37,7 @@ import { computed } from 'vue'
  *   nonEditableFields: ComputedRef<Set<string>>,
  *   canEdit: ComputedRef<boolean>,
  *   azioneNegata: (flagKey: string, azione: Object) => Array,
+ *   azioneDaFlag: (flagKey: string, azione: Object, i18n: {t, te}) => Array,
  *   isLocked: (field: string) => boolean,
  *   flag: (key: string) => boolean,
  * }}
@@ -105,6 +107,25 @@ export function useEntityCapabilities(detailRef, opts = {}) {
     }]
   }
 
+  // Scopo: un pulsante di GESTIONE della barra del drawer (`kind: 'manage'`,
+  //        col suo `command`: «Genera bolla», «Genera reso») acceso da un flag
+  //        della capability. Flag acceso → il pulsante; spento CON motivo →
+  //        il pulsante disabilitato, col motivo tradotto a tooltip
+  //        (`labelOrCode`: chiave mancante → la frase del DB); spento SENZA
+  //        motivo → niente, come `azioneNegata`. Sempre array, da spargere
+  //        nella lista della `DrawerActionsBar`.
+  // Nato il 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-O3,
+  // FE-R2; regola del 2, ok Tid): ordine e bolla accendevano i due pulsanti
+  // da un elenco di codici di stato, copie delle regole del DB.
+  function azioneDaFlag(flagKey, azione, { t, te }) {
+    if (flag(flagKey)) return [{ ...azione, disabled: false }]
+    const reason = capabilities.value[`${flagKey}_reason`] ?? null
+    const reasonKey = capabilities.value[`${flagKey}_reason_key`] ?? null
+    if (!reason && !reasonKey) return []
+    const motivo = reasonKey ? labelOrCode(t, te, reasonKey, reason || reasonKey) : reason
+    return [{ ...azione, disabled: true, tooltip: motivo }]
+  }
+
   return {
     capabilities,
     availableActions,
@@ -113,5 +134,6 @@ export function useEntityCapabilities(detailRef, opts = {}) {
     isLocked,
     flag,
     azioneNegata,
+    azioneDaFlag,
   }
 }
