@@ -38,7 +38,6 @@
 | Nome | Definizione |
 |------|-------------|
 | dashboard_preset_pkey | `CREATE UNIQUE INDEX dashboard_preset_pkey ON ui.dashboard_preset USING btree (id)` |
-| ix_ui_dashboard_preset_dashboard_id | `CREATE INDEX ix_ui_dashboard_preset_dashboard_id ON ui.dashboard_preset USING btree (dashboard_id)` |
 | ix_ui_dashboard_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_dashboard_preset_profilo_accesso_id | `CREATE INDEX ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |

@@ -276,7 +276,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 > **stesso titolo**: si apre quando il lavoro tocca quel punto. Un residuo nuovo si scrive nel registro e si
 > aggiunge qui la sua riga; uno chiuso si toglie da tutti e due.
 
-- **Briciole lasciate aperte da brief chiusi**: D31 resta aperta per ORARIO e CONSUMO; collaudo a video dei form di DDT e ordine; il «perché» nel tooltip di `RIGA_NON_AMMESSA`; D24, il presidio C2 non vede i BB trigger col codice in `TG_ARGV`; la sorgente sugli acquisti; i residui del cliente manuale
+- **Briciole lasciate aperte da brief chiusi**: D31 resta aperta per ORARIO e CONSUMO; collaudo a video dei form di DDT e ordine; il «perché» nel tooltip di `RIGA_NON_AMMESSA`; la sorgente sugli acquisti; i residui del cliente manuale
 - **Residui di `work-done/brief-db-contratto-righe-periodiche-in-commessa.md`**: il collaudo a video; la colonna «Periodicità» della lista 37; gli smoke non lanciati nel giro BE
 - **Residui di `work-done/brief-db-scadenza-preventivi.md`**: `validita_al` dice due cose; il verbo di chiusura del listino
 - **Residui di `work-done/brief-modello-documento-vendita.md`**: i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili; due rami del preventivo senza strada dall'interfaccia; `DocumentoDrawerHost` tace sul drawer che non si carica

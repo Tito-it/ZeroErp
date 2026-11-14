@@ -16,9 +16,6 @@
   - **collaudo a video dei form di DDT e ordine** (`work-done/brief-db-esecutivi-ba-coppia.md`, D21). Di Tid;
   - **il «perché» nel tooltip di `RIGA_NON_AMMESSA`** (`work-done/brief-db-offerta-emissione-ed-erogazione.md` §J.4):
     proposta aperta, non bloccante;
-  - **D24, il presidio C2 non vede i BB trigger col codice in `TG_ARGV`** (registro DB
-    `migliorie-generali-da-test-valutazione.md`, seguito di `work-done/brief-db-guard-emittente-ba-unico.md`): il BE
-    tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finché la vista non li vede;
   - **la sorgente sugli acquisti** (`work-done/brief-db-sorgente-documento-e-riga.md`): le quattro tabelle restano
     nella grammatica precedente, elenco dichiarato del presidio; si allineano col cantiere `acquisti`;
   - **i residui del cliente manuale** (§7 di `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`, D33):

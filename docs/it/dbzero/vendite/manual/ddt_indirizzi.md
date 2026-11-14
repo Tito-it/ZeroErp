@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella vendite.ddt_indirizzi
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 >👀 Vedi anche
 >
 >Approfondimento tabelle:
@@ -61,7 +63,7 @@ FK origine_soggetto_ruolo_id → anagrafiche.soggetti_ruoli(id) (SET NULL)
 
 Indici
 
-ix_ddt_indirizzo_ordine (ddt_id)
+uq_ddt_indirizzi_uno_per_tipo (ddt_id, tipo_indirizzo_id), per prefisso su ddt_id: serve le ricerche per DDT e il controllo della FK (l'indice dedicato su ddt_id, ridondante, è tolto dal 2026-11-14, 20261114-21)
 
 ix_ddt_indirizzi_origine_indirizzo (origine_indirizzo_id)
 
