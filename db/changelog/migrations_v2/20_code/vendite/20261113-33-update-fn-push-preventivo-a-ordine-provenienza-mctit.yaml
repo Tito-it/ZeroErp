@@ -1,0 +1,643 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_push_preventivo_a_ordine: la provenienza del prezzo si copia col prezzo (R-4)
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8, giro 3, R-4, D-3)
+#
+#   La riga d'ordine copia dal preventivo il prezzo e ora la sua provenienza. Il
+#   kit nasce a 0 e il prezzo lo riscrivono i componenti: la riga e' COMPONENTI,
+#   e i componenti ricevono come override il prezzo del componente a monte CON
+#   la sua provenienza (l'oggetto di vendite.fn_componente_override).
+#   Il resto del corpo e il COMMENT sono quelli della revisione di partenza,
+#   verificata identica al vivo il 2026-11-13. Rollback: quella revisione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-33-update-fn-push-preventivo-a-ordine-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261113-33-update-fn-push-preventivo-a-ordine-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_push_preventivo_a_ordine: righe e componenti copiano la provenienza del prezzo. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(
+                   p_preventivo_id        vendite.preventivi.id%TYPE,
+                   -- bigint[] esplicito: %TYPE[] non e' sintassi valida (vendite.preventivi_righe.id).
+                   p_righe_ids            bigint[] DEFAULT NULL::bigint[],
+                   p_pratica_id           pratiche.pratiche.id%TYPE DEFAULT NULL::bigint,
+                   p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL::character varying,
+                   p_flusso_id            pratiche.flussi.id%TYPE DEFAULT NULL::bigint)
+                RETURNS bigint
+                LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+              --   la provenienza (sorgente_*), letta una volta per testata e righe.
+              -- rev 2026-10-31 (20261031-16, brief-modello-documento-vendita §17):
+              --   lo stato di accettazione dal vocabolario, non 'ACCETTATO'.
+              -- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              -- rev 2026-10-20 (20261020-58, brief-db-grammatica-unica-documenti, 2d G-6):
+              --   l'ambito degli indirizzi ORDINI diventa ORDINE_VENDITA, il codice
+              --   della sorgente; firma e RETURNS ancorati.
+              DECLARE
+                  v_stato_accettato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_stato_draft_ord_id   config.stati_doc_ordini.id%TYPE;
+                  v_ba_id                vendite.preventivi.billing_account_id%TYPE;
+                  v_utility_id           vendite.preventivi.utility_id%TYPE;
+                  v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
+                  v_valuta_id            vendite.preventivi.valuta_id%TYPE;
+                  v_termine_pag_id       vendite.preventivi.termine_pagamento_id%TYPE;
+                  -- Il BERSAGLIO del rifiuto. ⚠️ `jsonb` esplicito: e' un frammento del
+                  -- context, non il valore di una colonna.
+                  v_bersagli             jsonb;
+                  v_soggetto_ruolo_id    vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
+                  v_data                 vendite.ordini.data%TYPE := script.fn_data_operativa();
+                  -- CONTEGGIO delle righe con residuo: nessuna colonna dietro.
+                  v_n_residue            integer;
+                  v_ordine_id            vendite.ordini.id%TYPE;
+                  v_new_riga_id          vendite.ordini_righe.id%TYPE;
+                  v_overrides            jsonb;
+                  v_riga                 RECORD;
+                  v_prov_tipo_id         vendite.ordini_righe.sorgente_tipo_id%TYPE;
+                  v_prov_id              vendite.ordini_righe.sorgente_id%TYPE;
+                  v_prov_uid             vendite.ordini_righe.sorgente_uid%TYPE;
+              BEGIN
+                  -- 1) Guard input.
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_preventivo_id', p_preventivo_id),
+                          NULL::uuid, 'p_preventivo_id deve essere > 0');
+                  END IF;
+
+                  -- 2) Stato di accettazione obbligatorio (dal vocabolario) +
+                  --    lettura testata preventivo.
+                  v_stato_accettato_id := script.fn_stato_accettazione_id('vendite.preventivi'::regclass);
+
+                  SELECT p.billing_account_id, p.utility_id, p.emittente_fiscale_id,
+                         p.valuta_id, p.termine_pagamento_id
+                    INTO v_ba_id, v_utility_id, v_emittente_fiscale_id,
+                         v_valuta_id, v_termine_pag_id
+                    FROM vendite.preventivi p
+                   WHERE p.id = p_preventivo_id
+                     AND p.stato_doc_preventivo_id = v_stato_accettato_id;
+
+                  IF NOT FOUND THEN
+                      -- Preventivo inesistente o non ACCETTATO: stesso errore parlante.
+                      --
+                      -- ⭐ IL BERSAGLIO, e qui va SUL PREVENTIVO: a differenza dei guard di
+                      --    idempotenza dell'offerta, la cosa da raggiungere e' proprio il
+                      --    documento nominato — l'operatore deve andarci per accettarlo.
+                      --
+                      -- ⭐ E SI CITA PER UID, non per id. E' il primo uso reale di
+                      --    config.tipi_entita.key_selector: il preventivo, come l'offerta,
+                      --    il progetto lo indirizza da fuori con l'uid (la stessa scelta di
+                      --    config.sorgenti). Mandare l'id numerico avrebbe prodotto un
+                      --    pulsante che non apre niente.
+                      --
+                      -- ⛔ E SOLO SE ESISTE. Questo errore copre due casi — «non c'e'» e
+                      --    «c'e' ma non e' ACCETTATO» — e solo il secondo ha un posto dove
+                      --    mandare qualcuno. Se il preventivo non esiste (o non e' visibile,
+                      --    che per chi opera e' la stessa cosa) il messaggio si mostra lo
+                      --    stesso e il pulsante non compare: il bersaglio e' un'offerta, non
+                      --    una promessa.
+                      --
+                      -- ⚠️ La lettura e' SENZA il filtro di stato — quello di sopra ha appena
+                      --    fallito proprio per lo stato: rimetterlo qui darebbe sempre NULL.
+                      -- ⚠️ L'ID, non l'uid — correzione del 2026-08-24 su rilievo del backend.
+                      --    Al primo giro qui c'era `pv.uid::text`, ereditato da
+                      --    `config.sorgenti.key_selector`. Misurato: le rotte del preventivo
+                      --    sono `<int:preventivo_id>` e gli endpoint che accettano un uid
+                      --    sono ZERO — quel bersaglio avrebbe prodotto un pulsante che non
+                      --    apre niente.
+                      --    ⭐ Le due colonne si chiamano uguale e rispondono a domande
+                      --    diverse: `config.sorgenti` dice con quale chiave il LINEAGE
+                      --    collega il documento, `config.tipi_entita` con quale chiave lo si
+                      --    RAGGIUNGE. Il valore si misura sulle rotte, non si eredita.
+                      SELECT jsonb_build_array(jsonb_build_object('tipo', 'PREVENTIVO',
+                                                                  'id',   pv.id::text))
+                        INTO v_bersagli
+                        FROM vendite.preventivi pv
+                       WHERE pv.id = p_preventivo_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine',
+                          'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO',
+                          -- ⚠️ La chiave si aggiunge solo se c'e' qualcosa da dire: una
+                          --    chiave a NULL sarebbe letta come bersaglio malformato.
+                          jsonb_build_object('preventivo_id', p_preventivo_id)
+                          || CASE WHEN v_bersagli IS NULL THEN '{}'::jsonb
+                                  ELSE jsonb_build_object('bersaglio', v_bersagli) END,
+                          NULL::uuid, p_preventivo_id::text);
+                  END IF;
+
+                  -- Cliente (soggetto_ruolo) dal billing_account; emittente soggetto_ruolo
+                  -- per l'init componenti BoM.
+                  SELECT soggetto_ruolo_id INTO v_soggetto_ruolo_id
+                    FROM anagrafiche.billing_account WHERE id = v_ba_id;
+                  SELECT soggetto_ruolo_id INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali WHERE id = v_emittente_fiscale_id;
+
+                  -- Lo stato iniziale delle RIGHE dell'ordine, dal vocabolario (rev
+                  -- 2026-10-24): la testata lo riceve dal trigger della nascita.
+                  v_stato_draft_ord_id := script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass);
+
+                  v_fatt_trigger := p_fatturazione_trigger;   -- NULL = «non scelto» -> eredita dal BA (trgfn_ordini_normalize)
+
+                  -- 3) Conta le righe RESIDUE da smistare a ORDINE leggendo la
+                  --    vista-predicato unica (MERCE + ATTIVA + non gia' allocata),
+                  --    ristretta al sottoinsieme richiesto (D5 idempotenza di riga).
+                  SELECT count(*) INTO v_n_residue
+                    FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                   WHERE v.preventivo_id = p_preventivo_id
+                     AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids));
+
+                  IF v_n_residue = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine',
+                          'E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE',
+                          jsonb_build_object('preventivo_id', p_preventivo_id,
+                                             'righe_ids', to_jsonb(p_righe_ids)),
+                          NULL::uuid, p_preventivo_id::text);
+                  END IF;
+
+                  -- La provenienza: il tipo e la chiave del preventivo, per il key_selector
+                  -- del tipo (script.fn_sorgente_provenienza). Una volta sola, per la testata
+                  -- e per le righe.
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('PREVENTIVO', p_preventivo_id::text) p;
+
+                  -- 4) Testata ordine: DRAFT, con la provenienza (sorgente_*).
+                  --    numero/serie/anno li genera il trigger trgfn_ordini_gen_numero
+                  --    (motore dei registri, 20260831-*; fino al 2026-09-13 qui c'era il
+                  --    nome morto trgfn_ordini_gen_codice — brief prefisso-sul-registro 6.3).
+                  INSERT INTO vendite.ordini (
+                      soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
+                      termine_pagamento_id, emittente_fiscale_id, data,
+                      fatturazione_trigger,
+                      sorgente_tipo_id, sorgente_id, sorgente_uid)
+                  VALUES (
+                      v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
+                      v_termine_pag_id, v_emittente_fiscale_id, v_data,
+                      v_fatt_trigger,
+                      v_prov_tipo_id, v_prov_id, v_prov_uid)
+                  RETURNING id INTO v_ordine_id;
+
+                  -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot del
+                  --   preventivo filtrati sui tipi ammessi in ambito ORDINI.
+                  --   origine_* propagati; idempotente (uno-per-tipo).
+                  INSERT INTO vendite.ordini_indirizzi (
+                      ordine_id, tipo_indirizzo_id, snapshot,
+                      origine_indirizzo_id, origine_soggetto_ruolo_id)
+                  SELECT v_ordine_id, pi.tipo_indirizzo_id, pi.snapshot,
+                         pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id
+                    FROM vendite.preventivi_indirizzi pi
+                    JOIN config.tipi_indirizzi_allowed a
+                      ON a.tipo_indirizzo_id = pi.tipo_indirizzo_id
+                     AND a.ambito = 'ORDINE_VENDITA'
+                     AND a.attivo IS TRUE
+                   WHERE pi.preventivo_id = p_preventivo_id
+                  ON CONFLICT (ordine_id, tipo_indirizzo_id) DO NOTHING;
+
+                  -- 5) Copia le righe residue (snapshot prezzi) dalla vista-predicato.
+                  --    La INNER JOIN a catalogo.articoli e' PROIEZIONE: serve
+                  --    is_composito e, come oggi, scarta righe senza articolo.
+                  --    riga_nr progressivo; quantita derivata dal trigger
+                  --    qta_from_operativa; link di riga preventivo_riga_id (idempotenza).
+                  FOR v_riga IN
+                      SELECT v.id AS riga_id, v.articolo_id, v.descrizione,
+                             v.prezzo_unitario, v.sconto_percentuale, v.iva_id,
+                             v.qta_operativa, v.uom_operativa_id, v.factor_to_base,
+                             -- rev 2026-09-13 (P-5): la data chiesta dal cliente sulla riga di
+                             -- preventivo, esposta dalla vista in 20260913-16. Si porta avanti
+                             -- qui, nel punto in cui il documento cambia natura, o si perde.
+                             v.data_consegna_richiesta_cliente,
+                             v.natura_vendita_id,
+                             a.is_composito,
+                             -- La provenienza del prezzo, dalla riga (la vista non la espone).
+                             pr.origine_prezzo, pr.listino_versione_id, pr.listino_riga_id,
+                             pr.prezzo_resolver_context,
+                             row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
+                        FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                        JOIN catalogo.articoli a ON a.id = v.articolo_id
+                        JOIN vendite.preventivi_righe pr ON pr.id = v.id
+                       WHERE v.preventivo_id = p_preventivo_id
+                         AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids))
+                       ORDER BY rn
+                  LOOP
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          prezzo_unitario, sconto_percentuale, iva_id,
+                          qta_operativa, uom_operativa_id, factor_to_base,
+                          stato_doc_ordine_id, preventivo_riga_id,
+                          data_consegna_richiesta_cliente, natura_vendita_id,
+                          origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
+                          sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
+                      VALUES (
+                          v_ordine_id, v_riga.rn::integer, v_riga.articolo_id,
+                          COALESCE(v_riga.descrizione,
+                                   (SELECT descrizione FROM catalogo.articoli
+                                     WHERE id = v_riga.articolo_id)),
+                          -- Padre composito: 0 placeholder, il prezzo lo ricalcola
+                          -- il trigger dai componenti inizializzati sotto.
+                          CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+                          COALESCE(v_riga.sconto_percentuale, 0), v_riga.iva_id,
+                          v_riga.qta_operativa, v_riga.uom_operativa_id,
+                          COALESCE(v_riga.factor_to_base, 1),
+                          v_stato_draft_ord_id, v_riga.riga_id,
+                          -- La richiesta del cliente si copia; la conferma (nostra) resta
+                          -- NULL: su un preventivo non c'e' ancora niente da confermare.
+                          -- rev 2026-10-13 (collaudo date di consegna, decisione di Tid): una
+                          -- richiesta ANTERIORE alla data dell'ordine arriva NULL. La regola e'
+                          -- script.fn_data_consegna_ammessa, la stessa del guard di riga. Non si
+                          -- rifiuta (il preventivo e' fuori bozza: li' la data non si
+                          -- correggerebbe piu') e non si porta alla data dell'ordine (sarebbe una
+                          -- richiesta che il cliente non ha fatto): quella vera resta sulla riga
+                          -- di preventivo, raggiungibile da preventivo_riga_id.
+                          CASE WHEN script.fn_data_consegna_ammessa(v_riga.data_consegna_richiesta_cliente, v_data)
+                               THEN v_riga.data_consegna_richiesta_cliente END,
+                          -- La natura con cui il preventivo ha venduto la riga (A-4): la
+                          -- riga d'ordine la porta, anche se l'articolo nel frattempo e' cambiato.
+                          v_riga.natura_vendita_id,
+                          -- La provenienza del prezzo, col prezzo (R-4); il kit no: il suo
+                          -- prezzo lo riscrive la somma dei componenti (COMPONENTI).
+                          CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.origine_prezzo END,
+                          CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_versione_id END,
+                          CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_riga_id END,
+                          CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.prezzo_resolver_context END,
+                          -- La provenienza: il preventivo e la riga. Resta anche quando
+                          -- l'annullo dell'ordine azzera preventivo_riga_id (il consumo).
+                          v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.riga_id)
+                      RETURNING id INTO v_new_riga_id;
+
+                      -- 6) BoM CASO A: prezzi snapshot del preventivo come override
+                      --    (no ri-prezzatura). Stesso pattern del push offerta->ordine.
+                      IF v_riga.is_composito THEN
+                          -- Il prezzo del componente con la sua provenienza (R-4): l'oggetto
+                          -- che vendite.fn_componente_override legge.
+                          SELECT jsonb_object_agg(prc.componente_id::text, jsonb_build_object(
+                                     'prezzo',                  prc.prezzo_unitario,
+                                     'origine_prezzo',          prc.origine_prezzo,
+                                     'listino_versione_id',     prc.listino_versione_id,
+                                     'listino_riga_id',         prc.listino_riga_id,
+                                     'prezzo_resolver_context', prc.prezzo_resolver_context))
+                            INTO v_overrides
+                            FROM vendite.preventivi_righe_componenti prc
+                           WHERE prc.riga_preventivo_id = v_riga.riga_id
+                             AND prc.attivo
+                             AND prc.prezzo_unitario <> 0;
+
+                          PERFORM vendite.fn_ordine_riga_componenti_init(
+                              v_new_riga_id, v_emittente_sr_id, v_data, v_overrides);
+                      END IF;
+                  END LOOP;
+
+                  -- 7) Aggancio pratica (D4, solo se la pratica esiste):
+                  --    preventivo ROOT + ordine COLLEGATO. Idempotente.
+                  --    D-B: il link COLLEGATO valorizza flusso_id (p_flusso_id) =
+                  --    flusso dello step generatore; NULL retro-compatibile.
+                  IF p_pratica_id IS NOT NULL THEN
+                      -- Il preventivo: la stessa provenienza della testata e delle righe.
+                      INSERT INTO pratiche.pratiche_sorgenti (
+                          pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link)
+                      VALUES (p_pratica_id, v_prov_tipo_id, v_prov_id, v_prov_uid, 'ROOT')
+                      ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
+                      DO NOTHING;
+
+                      -- L'ordine appena nato, dal BB che scrive (tipo e chiave del key_selector).
+                      INSERT INTO pratiche.pratiche_sorgenti (
+                          pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link, flusso_id)
+                      SELECT p_pratica_id, o.sorgente_tipo_id, o.sorgente_id, o.sorgente_uid, 'COLLEGATO', p_flusso_id
+                        FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', v_ordine_id::text) o
+                      ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
+                      DO NOTHING;
+                  END IF;
+
+                  -- 8) Lo stato del preventivo dal suo smistamento (atomico con la
+                  --    creazione dell'ordine, finding #10): ACCETTATO senza residuo su
+                  --    nessuna strada -> EVASO. rev 2026-10-12 (20261012-13): la regola
+                  --    non e' piu' scritta qui ma nel BB
+                  --    vendite.fn_preventivo_proietta_stato_smistamento, la sede unica che
+                  --    leggono anche l'annullo dell'ordine e l'invio in commessa
+                  --    (brief-db-annullo-a-valle-riapre-a-monte, D-10).
+                  PERFORM vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id);
+
+                  RETURN v_ordine_id;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_push_preventivo_a_ordine(
+                   p_preventivo_id        vendite.preventivi.id%TYPE,
+                   -- bigint[] esplicito: %TYPE[] non e' sintassi valida (vendite.preventivi_righe.id).
+                   p_righe_ids            bigint[] DEFAULT NULL::bigint[],
+                   p_pratica_id           pratiche.pratiche.id%TYPE DEFAULT NULL::bigint,
+                   p_fatturazione_trigger vendite.ordini.fatturazione_trigger%TYPE DEFAULT NULL::character varying,
+                   p_flusso_id            pratiche.flussi.id%TYPE DEFAULT NULL::bigint)
+                RETURNS bigint
+                LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              -- rev 2026-11-06 (brief-db-sorgente-documento-e-riga giro T.3): la testata scrive
+              --   la provenienza (sorgente_*), letta una volta per testata e righe.
+              -- rev 2026-10-31 (20261031-16, brief-modello-documento-vendita §17):
+              --   lo stato di accettazione dal vocabolario, non 'ACCETTATO'.
+              -- rev 2026-10-24 (20261024-20, brief-modello-documento-vendita N-1/P-2):
+              --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
+              --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
+              -- rev 2026-10-20 (20261020-58, brief-db-grammatica-unica-documenti, 2d G-6):
+              --   l'ambito degli indirizzi ORDINI diventa ORDINE_VENDITA, il codice
+              --   della sorgente; firma e RETURNS ancorati.
+              DECLARE
+                  v_stato_accettato_id   config.stati_doc_preventivi.id%TYPE;
+                  v_stato_draft_ord_id   config.stati_doc_ordini.id%TYPE;
+                  v_ba_id                vendite.preventivi.billing_account_id%TYPE;
+                  v_utility_id           vendite.preventivi.utility_id%TYPE;
+                  v_emittente_fiscale_id vendite.preventivi.emittente_fiscale_id%TYPE;
+                  v_valuta_id            vendite.preventivi.valuta_id%TYPE;
+                  v_termine_pag_id       vendite.preventivi.termine_pagamento_id%TYPE;
+                  -- Il BERSAGLIO del rifiuto. ⚠️ `jsonb` esplicito: e' un frammento del
+                  -- context, non il valore di una colonna.
+                  v_bersagli             jsonb;
+                  v_soggetto_ruolo_id    vendite.ordini.soggetto_ruolo_id%TYPE;
+                  v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
+                  v_data                 vendite.ordini.data%TYPE := script.fn_data_operativa();
+                  -- CONTEGGIO delle righe con residuo: nessuna colonna dietro.
+                  v_n_residue            integer;
+                  v_ordine_id            vendite.ordini.id%TYPE;
+                  v_new_riga_id          vendite.ordini_righe.id%TYPE;
+                  v_overrides            jsonb;
+                  v_riga                 RECORD;
+                  v_prov_tipo_id         vendite.ordini_righe.sorgente_tipo_id%TYPE;
+                  v_prov_id              vendite.ordini_righe.sorgente_id%TYPE;
+                  v_prov_uid             vendite.ordini_righe.sorgente_uid%TYPE;
+              BEGIN
+                  -- 1) Guard input.
+                  IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine', 'E_VALIDAZIONE',
+                          jsonb_build_object('p_preventivo_id', p_preventivo_id),
+                          NULL::uuid, 'p_preventivo_id deve essere > 0');
+                  END IF;
+
+                  -- 2) Stato di accettazione obbligatorio (dal vocabolario) +
+                  --    lettura testata preventivo.
+                  v_stato_accettato_id := script.fn_stato_accettazione_id('vendite.preventivi'::regclass);
+
+                  SELECT p.billing_account_id, p.utility_id, p.emittente_fiscale_id,
+                         p.valuta_id, p.termine_pagamento_id
+                    INTO v_ba_id, v_utility_id, v_emittente_fiscale_id,
+                         v_valuta_id, v_termine_pag_id
+                    FROM vendite.preventivi p
+                   WHERE p.id = p_preventivo_id
+                     AND p.stato_doc_preventivo_id = v_stato_accettato_id;
+
+                  IF NOT FOUND THEN
+                      -- Preventivo inesistente o non ACCETTATO: stesso errore parlante.
+                      --
+                      -- ⭐ IL BERSAGLIO, e qui va SUL PREVENTIVO: a differenza dei guard di
+                      --    idempotenza dell'offerta, la cosa da raggiungere e' proprio il
+                      --    documento nominato — l'operatore deve andarci per accettarlo.
+                      --
+                      -- ⭐ E SI CITA PER UID, non per id. E' il primo uso reale di
+                      --    config.tipi_entita.key_selector: il preventivo, come l'offerta,
+                      --    il progetto lo indirizza da fuori con l'uid (la stessa scelta di
+                      --    config.sorgenti). Mandare l'id numerico avrebbe prodotto un
+                      --    pulsante che non apre niente.
+                      --
+                      -- ⛔ E SOLO SE ESISTE. Questo errore copre due casi — «non c'e'» e
+                      --    «c'e' ma non e' ACCETTATO» — e solo il secondo ha un posto dove
+                      --    mandare qualcuno. Se il preventivo non esiste (o non e' visibile,
+                      --    che per chi opera e' la stessa cosa) il messaggio si mostra lo
+                      --    stesso e il pulsante non compare: il bersaglio e' un'offerta, non
+                      --    una promessa.
+                      --
+                      -- ⚠️ La lettura e' SENZA il filtro di stato — quello di sopra ha appena
+                      --    fallito proprio per lo stato: rimetterlo qui darebbe sempre NULL.
+                      -- ⚠️ L'ID, non l'uid — correzione del 2026-08-24 su rilievo del backend.
+                      --    Al primo giro qui c'era `pv.uid::text`, ereditato da
+                      --    `config.sorgenti.key_selector`. Misurato: le rotte del preventivo
+                      --    sono `<int:preventivo_id>` e gli endpoint che accettano un uid
+                      --    sono ZERO — quel bersaglio avrebbe prodotto un pulsante che non
+                      --    apre niente.
+                      --    ⭐ Le due colonne si chiamano uguale e rispondono a domande
+                      --    diverse: `config.sorgenti` dice con quale chiave il LINEAGE
+                      --    collega il documento, `config.tipi_entita` con quale chiave lo si
+                      --    RAGGIUNGE. Il valore si misura sulle rotte, non si eredita.
+                      SELECT jsonb_build_array(jsonb_build_object('tipo', 'PREVENTIVO',
+                                                                  'id',   pv.id::text))
+                        INTO v_bersagli
+                        FROM vendite.preventivi pv
+                       WHERE pv.id = p_preventivo_id;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine',
+                          'E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO',
+                          -- ⚠️ La chiave si aggiunge solo se c'e' qualcosa da dire: una
+                          --    chiave a NULL sarebbe letta come bersaglio malformato.
+                          jsonb_build_object('preventivo_id', p_preventivo_id)
+                          || CASE WHEN v_bersagli IS NULL THEN '{}'::jsonb
+                                  ELSE jsonb_build_object('bersaglio', v_bersagli) END,
+                          NULL::uuid, p_preventivo_id::text);
+                  END IF;
+
+                  -- Cliente (soggetto_ruolo) dal billing_account; emittente soggetto_ruolo
+                  -- per l'init componenti BoM.
+                  SELECT soggetto_ruolo_id INTO v_soggetto_ruolo_id
+                    FROM anagrafiche.billing_account WHERE id = v_ba_id;
+                  SELECT soggetto_ruolo_id INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali WHERE id = v_emittente_fiscale_id;
+
+                  -- Lo stato iniziale delle RIGHE dell'ordine, dal vocabolario (rev
+                  -- 2026-10-24): la testata lo riceve dal trigger della nascita.
+                  v_stato_draft_ord_id := script.fn_stato_iniziale_id('config.stati_doc_ordini'::regclass);
+
+                  v_fatt_trigger := p_fatturazione_trigger;   -- NULL = «non scelto» -> eredita dal BA (trgfn_ordini_normalize)
+
+                  -- 3) Conta le righe RESIDUE da smistare a ORDINE leggendo la
+                  --    vista-predicato unica (MERCE + ATTIVA + non gia' allocata),
+                  --    ristretta al sottoinsieme richiesto (D5 idempotenza di riga).
+                  SELECT count(*) INTO v_n_residue
+                    FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                   WHERE v.preventivo_id = p_preventivo_id
+                     AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids));
+
+                  IF v_n_residue = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_push_preventivo_a_ordine',
+                          'E_VENDITA_PREVENTIVO_NESSUNA_RIGA_ORDINE',
+                          jsonb_build_object('preventivo_id', p_preventivo_id,
+                                             'righe_ids', to_jsonb(p_righe_ids)),
+                          NULL::uuid, p_preventivo_id::text);
+                  END IF;
+
+                  -- La provenienza: il tipo e la chiave del preventivo, per il key_selector
+                  -- del tipo (script.fn_sorgente_provenienza). Una volta sola, per la testata
+                  -- e per le righe.
+                  SELECT p.sorgente_tipo_id, p.sorgente_id, p.sorgente_uid
+                    INTO v_prov_tipo_id, v_prov_id, v_prov_uid
+                    FROM script.fn_sorgente_provenienza('PREVENTIVO', p_preventivo_id::text) p;
+
+                  -- 4) Testata ordine: DRAFT, con la provenienza (sorgente_*).
+                  --    numero/serie/anno li genera il trigger trgfn_ordini_gen_numero
+                  --    (motore dei registri, 20260831-*; fino al 2026-09-13 qui c'era il
+                  --    nome morto trgfn_ordini_gen_codice — brief prefisso-sul-registro 6.3).
+                  INSERT INTO vendite.ordini (
+                      soggetto_ruolo_id, billing_account_id, utility_id, valuta_id,
+                      termine_pagamento_id, emittente_fiscale_id, data,
+                      fatturazione_trigger,
+                      sorgente_tipo_id, sorgente_id, sorgente_uid)
+                  VALUES (
+                      v_soggetto_ruolo_id, v_ba_id, v_utility_id, v_valuta_id,
+                      v_termine_pag_id, v_emittente_fiscale_id, v_data,
+                      v_fatt_trigger,
+                      v_prov_tipo_id, v_prov_id, v_prov_uid)
+                  RETURNING id INTO v_ordine_id;
+
+                  -- 4-bis) Cascata indirizzi (D-1): copia 1:1 gli snapshot del
+                  --   preventivo filtrati sui tipi ammessi in ambito ORDINI.
+                  --   origine_* propagati; idempotente (uno-per-tipo).
+                  INSERT INTO vendite.ordini_indirizzi (
+                      ordine_id, tipo_indirizzo_id, snapshot,
+                      origine_indirizzo_id, origine_soggetto_ruolo_id)
+                  SELECT v_ordine_id, pi.tipo_indirizzo_id, pi.snapshot,
+                         pi.origine_indirizzo_id, pi.origine_soggetto_ruolo_id
+                    FROM vendite.preventivi_indirizzi pi
+                    JOIN config.tipi_indirizzi_allowed a
+                      ON a.tipo_indirizzo_id = pi.tipo_indirizzo_id
+                     AND a.ambito = 'ORDINE_VENDITA'
+                     AND a.attivo IS TRUE
+                   WHERE pi.preventivo_id = p_preventivo_id
+                  ON CONFLICT (ordine_id, tipo_indirizzo_id) DO NOTHING;
+
+                  -- 5) Copia le righe residue (snapshot prezzi) dalla vista-predicato.
+                  --    La INNER JOIN a catalogo.articoli e' PROIEZIONE: serve
+                  --    is_composito e, come oggi, scarta righe senza articolo.
+                  --    riga_nr progressivo; quantita derivata dal trigger
+                  --    qta_from_operativa; link di riga preventivo_riga_id (idempotenza).
+                  FOR v_riga IN
+                      SELECT v.id AS riga_id, v.articolo_id, v.descrizione,
+                             v.prezzo_unitario, v.sconto_percentuale, v.iva_id,
+                             v.qta_operativa, v.uom_operativa_id, v.factor_to_base,
+                             -- rev 2026-09-13 (P-5): la data chiesta dal cliente sulla riga di
+                             -- preventivo, esposta dalla vista in 20260913-16. Si porta avanti
+                             -- qui, nel punto in cui il documento cambia natura, o si perde.
+                             v.data_consegna_richiesta_cliente,
+                             v.natura_vendita_id,
+                             a.is_composito,
+                             row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
+                        FROM vendite.vw_preventivi_righe_smistabili_ordine v
+                        JOIN catalogo.articoli a ON a.id = v.articolo_id
+                       WHERE v.preventivo_id = p_preventivo_id
+                         AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids))
+                       ORDER BY rn
+                  LOOP
+                      INSERT INTO vendite.ordini_righe (
+                          ordine_id, riga_nr, articolo_id, descrizione,
+                          prezzo_unitario, sconto_percentuale, iva_id,
+                          qta_operativa, uom_operativa_id, factor_to_base,
+                          stato_doc_ordine_id, preventivo_riga_id,
+                          data_consegna_richiesta_cliente, natura_vendita_id,
+                          sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
+                      VALUES (
+                          v_ordine_id, v_riga.rn::integer, v_riga.articolo_id,
+                          COALESCE(v_riga.descrizione,
+                                   (SELECT descrizione FROM catalogo.articoli
+                                     WHERE id = v_riga.articolo_id)),
+                          -- Padre composito: 0 placeholder, il prezzo lo ricalcola
+                          -- il trigger dai componenti inizializzati sotto.
+                          CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
+                          COALESCE(v_riga.sconto_percentuale, 0), v_riga.iva_id,
+                          v_riga.qta_operativa, v_riga.uom_operativa_id,
+                          COALESCE(v_riga.factor_to_base, 1),
+                          v_stato_draft_ord_id, v_riga.riga_id,
+                          -- La richiesta del cliente si copia; la conferma (nostra) resta
+                          -- NULL: su un preventivo non c'e' ancora niente da confermare.
+                          -- rev 2026-10-13 (collaudo date di consegna, decisione di Tid): una
+                          -- richiesta ANTERIORE alla data dell'ordine arriva NULL. La regola e'
+                          -- script.fn_data_consegna_ammessa, la stessa del guard di riga. Non si
+                          -- rifiuta (il preventivo e' fuori bozza: li' la data non si
+                          -- correggerebbe piu') e non si porta alla data dell'ordine (sarebbe una
+                          -- richiesta che il cliente non ha fatto): quella vera resta sulla riga
+                          -- di preventivo, raggiungibile da preventivo_riga_id.
+                          CASE WHEN script.fn_data_consegna_ammessa(v_riga.data_consegna_richiesta_cliente, v_data)
+                               THEN v_riga.data_consegna_richiesta_cliente END,
+                          -- La natura con cui il preventivo ha venduto la riga (A-4): la
+                          -- riga d'ordine la porta, anche se l'articolo nel frattempo e' cambiato.
+                          v_riga.natura_vendita_id,
+                          -- La provenienza: il preventivo e la riga. Resta anche quando
+                          -- l'annullo dell'ordine azzera preventivo_riga_id (il consumo).
+                          v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.riga_id)
+                      RETURNING id INTO v_new_riga_id;
+
+                      -- 6) BoM CASO A: prezzi snapshot del preventivo come override
+                      --    (no ri-prezzatura). Stesso pattern del push offerta->ordine.
+                      IF v_riga.is_composito THEN
+                          SELECT jsonb_object_agg(prc.componente_id::text, prc.prezzo_unitario)
+                            INTO v_overrides
+                            FROM vendite.preventivi_righe_componenti prc
+                           WHERE prc.riga_preventivo_id = v_riga.riga_id
+                             AND prc.attivo
+                             AND prc.prezzo_unitario <> 0;
+
+                          PERFORM vendite.fn_ordine_riga_componenti_init(
+                              v_new_riga_id, v_emittente_sr_id, v_data, v_overrides);
+                      END IF;
+                  END LOOP;
+
+                  -- 7) Aggancio pratica (D4, solo se la pratica esiste):
+                  --    preventivo ROOT + ordine COLLEGATO. Idempotente.
+                  --    D-B: il link COLLEGATO valorizza flusso_id (p_flusso_id) =
+                  --    flusso dello step generatore; NULL retro-compatibile.
+                  IF p_pratica_id IS NOT NULL THEN
+                      -- Il preventivo: la stessa provenienza della testata e delle righe.
+                      INSERT INTO pratiche.pratiche_sorgenti (
+                          pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link)
+                      VALUES (p_pratica_id, v_prov_tipo_id, v_prov_id, v_prov_uid, 'ROOT')
+                      ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
+                      DO NOTHING;
+
+                      -- L'ordine appena nato, dal BB che scrive (tipo e chiave del key_selector).
+                      INSERT INTO pratiche.pratiche_sorgenti (
+                          pratica_id, sorgente_tipo_id, sorgente_id, sorgente_uid, ruolo_link, flusso_id)
+                      SELECT p_pratica_id, o.sorgente_tipo_id, o.sorgente_id, o.sorgente_uid, 'COLLEGATO', p_flusso_id
+                        FROM script.fn_sorgente_provenienza('ORDINE_VENDITA', v_ordine_id::text) o
+                      ON CONFLICT ON CONSTRAINT uq_pratiche_sorgenti_pratica_sorgente_ruolo
+                      DO NOTHING;
+                  END IF;
+
+                  -- 8) Lo stato del preventivo dal suo smistamento (atomico con la
+                  --    creazione dell'ordine, finding #10): ACCETTATO senza residuo su
+                  --    nessuna strada -> EVASO. rev 2026-10-12 (20261012-13): la regola
+                  --    non e' piu' scritta qui ma nel BB
+                  --    vendite.fn_preventivo_proietta_stato_smistamento, la sede unica che
+                  --    leggono anche l'annullo dell'ordine e l'invio in commessa
+                  --    (brief-db-annullo-a-valle-riapre-a-monte, D-10).
+                  PERFORM vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id);
+
+                  RETURN v_ordine_id;
+              END;
+              $function$;

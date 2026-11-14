@@ -132,6 +132,9 @@ BEGIN
     FOR v_riga IN
         SELECT orr.id AS ordine_riga_id, orr.articolo_id, orr.descrizione,
                orr.prezzo_unitario, orr.sconto_percentuale, orr.iva_id,
+               -- La provenienza del prezzo (R-4).
+               orr.origine_prezzo, orr.listino_versione_id, orr.listino_riga_id,
+               orr.prezzo_resolver_context,
                orr.uom_operativa_id, orr.factor_to_base,
                orr.natura_vendita_id,
                -- rev 2026-11-03: la riga e' un onere (natura congelata non merce:
@@ -198,6 +201,7 @@ BEGIN
             prezzo_unitario, sconto_percentuale, iva_id,
             qta_operativa, uom_operativa_id, factor_to_base,
             natura_vendita_id,
+            origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
             sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
@@ -206,6 +210,11 @@ BEGIN
             v_qta_op, v_riga.uom_operativa_id, v_riga.factor_to_base,
             -- La natura con cui l'ordine ha venduto la riga (A-4).
             v_riga.natura_vendita_id,
+            -- La provenienza del prezzo, col prezzo (R-4); il kit no (COMPONENTI).
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.origine_prezzo END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_versione_id END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_riga_id END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.prezzo_resolver_context END,
             -- La provenienza: l'ordine e la riga che si evade. La quantita'
             -- evasa e' del fulfillment, qui sotto.
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.ordine_riga_id)
@@ -219,12 +228,14 @@ BEGIN
                 riga_ddt_id, articolo_componente_id, componente_id,
                 coeff_qta_snapshot, uom_operativa_id, factor_to_base,
                 qta_operativa, prezzo_unitario, iva_id, origine_prezzo,
+                listino_versione_id, listino_riga_id,
                 prezzo_resolver_context, stato_approvazione_prezzo,
                 pratica_approvazione_prezzo_id, meta, ordine)
             SELECT
                 v_new_riga_id, orc.articolo_componente_id, orc.componente_id,
                 orc.coeff_qta_snapshot, orc.uom_operativa_id, orc.factor_to_base,
                 orc.qta_operativa, orc.prezzo_unitario, orc.iva_id, orc.origine_prezzo,
+                orc.listino_versione_id, orc.listino_riga_id,
                 orc.prezzo_resolver_context, orc.stato_approvazione_prezzo,
                 orc.pratica_approvazione_prezzo_id, orc.meta, orc.ordine
               FROM vendite.ordini_righe_componenti orc

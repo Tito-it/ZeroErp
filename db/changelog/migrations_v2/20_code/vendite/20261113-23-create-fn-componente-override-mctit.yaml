@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_componente_override(valore) -> prezzo e provenienza di un
+#   override di componente
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8, giro 3, R-4)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le cinque vendite.fn_*_riga_componenti_init ricevono gli override dei
+#   componenti come {componente_id: prezzo}, e un override nasceva sempre
+#   MANUALE. Ma chi copia un documento in un altro (preventivo -> ordine) passa
+#   come override il prezzo del componente a monte, che puo' venire dal
+#   listino: la provenienza si perdeva nella copia (R-4).
+#   Il valore di un override diventa: un prezzo (numero o testo numerico, come
+#   oggi: MANUALE), oppure un oggetto {prezzo, origine_prezzo,
+#   listino_versione_id, listino_riga_id, prezzo_resolver_context}, la
+#   provenienza dichiarata. Le cinque init lo leggono qui (regola del 2).
+#   Il BE passa numeri: per lui non cambia niente.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Oggetto senza origine: MANUALE. La coerenza (MANUALE senza listino, riga
+#   con versione) la giudicano il CHECK e il guard del componente: qui si legge
+#   e basta. LANGUAGE sql IMMUTABLE, una riga sempre, eseguibile da PUBLIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-23-create-fn-componente-override-mctit.yaml
+
+  - changeSet:
+      id: 20261113-23-create-fn-componente-override
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_componente_override: prezzo e provenienza di un override di componente (un
+        prezzo, o un oggetto con la provenienza). Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_componente_override(
+                  -- jsonb nudo: il valore di una chiave degli override, non una colonna.
+                  p_valore jsonb)
+              RETURNS TABLE(
+                  prezzo                  vendite.preventivi_righe_componenti.prezzo_unitario%TYPE,
+                  origine_prezzo          vendite.preventivi_righe_componenti.origine_prezzo%TYPE,
+                  listino_versione_id     vendite.preventivi_righe_componenti.listino_versione_id%TYPE,
+                  listino_riga_id         vendite.preventivi_righe_componenti.listino_riga_id%TYPE,
+                  prezzo_resolver_context vendite.preventivi_righe_componenti.prezzo_resolver_context%TYPE)
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  SELECT CASE WHEN jsonb_typeof(p_valore) = 'object'
+                              THEN (p_valore ->> 'prezzo')::numeric
+                              ELSE (p_valore #>> '{}')::numeric END,
+                         CASE WHEN jsonb_typeof(p_valore) = 'object'
+                              THEN COALESCE(p_valore ->> 'origine_prezzo', 'MANUALE')
+                              ELSE 'MANUALE' END::varchar,
+                         CASE WHEN jsonb_typeof(p_valore) = 'object'
+                              THEN (p_valore ->> 'listino_versione_id')::bigint END,
+                         CASE WHEN jsonb_typeof(p_valore) = 'object'
+                              THEN (p_valore ->> 'listino_riga_id')::bigint END,
+                         CASE WHEN jsonb_typeof(p_valore) = 'object'
+                              THEN p_valore -> 'prezzo_resolver_context' END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_componente_override(jsonb) IS
+                  'Prezzo e provenienza di un override di componente, come lo ricevono le vendite.fn_*_riga_componenti_init: un prezzo (numero o testo numerico) e'' MANUALE senza listino; un oggetto {prezzo, origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context} porta la provenienza che dichiara (MANUALE se non dichiara l''origine). Lo passa chi copia i componenti da un documento a monte. Non giudica la coerenza: lo fanno il CHECK e il guard del componente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_componente_override(jsonb);

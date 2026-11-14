@@ -71,39 +71,39 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'riga_ddt_id', 'DRAFT', 'RIGA')` |
 | trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'riga_ddt_id', 'DRAFT', 'RIGA')` |
+| trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'riga_ddt_id', 'DRAFT', 'RIGA')` |
 | trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'riga_ddt_id', 'DRAFT', 'RIGA')` |
 | trg_ddt_righe_componenti_a10_articoli_componenti_require_a1f768 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'articolo_componente_id', 'id')` |
 | trg_ddt_righe_componenti_a10_articoli_componenti_require_a1f768 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli_componenti', 'attivo', 'articolo_componente_id', 'id')` |
-| trg_ddt_righe_componenti_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id', 'id')` |
 | trg_ddt_righe_componenti_a10_articoli_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id', 'id')` |
+| trg_ddt_righe_componenti_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'componente_id', 'id')` |
 | trg_ddt_righe_componenti_a10_ddt_righe_prelievi_block_de_32c0fe | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe_prelievi', 'ddt_riga_componente_id', 'id', 'attivo')` |
-| trg_ddt_righe_componenti_a10_ddt_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'riga_ddt_id', 'id')` |
 | trg_ddt_righe_componenti_a10_ddt_righe_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'riga_ddt_id', 'id')` |
+| trg_ddt_righe_componenti_a10_ddt_righe_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'ddt_righe', 'attivo', 'riga_ddt_id', 'id')` |
 | trg_ddt_righe_componenti_a10_guard_bom_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_guard_coerenza_bom('vendite', 'ddt_righe', 'riga_ddt_id', 'ddt', 'ddt_id', 'data')` |
 | trg_ddt_righe_componenti_a10_guard_bom_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_guard_coerenza_bom('vendite', 'ddt_righe', 'riga_ddt_id', 'ddt', 'ddt_id', 'data')` |
 | trg_ddt_righe_componenti_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ddt_righe_componenti_guard_pending()` |
-| trg_ddt_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_ddt_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
-| trg_ddt_righe_componenti_a10_unita_misura_require_attivo_709cb0 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_ddt_righe_componenti_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_ddt_righe_componenti_a10_unita_misura_require_attivo_709cb0 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_ddt_righe_componenti_a10_unita_misura_require_attivo_709cb0 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_ddt_righe_componenti_audit_data_user_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ddt_righe_componenti_audit_data_user_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ddt_righe_componenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ddt_righe_componenti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_ddt_righe_componenti_m50_calcola_quantita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_calcola_quantita('vendite', 'ddt_righe', 'riga_ddt_id')` |
+| trg_ddt_righe_componenti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ddt_righe_componenti_m50_calcola_quantita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_calcola_quantita('vendite', 'ddt_righe', 'riga_ddt_id')` |
-| trg_ddt_righe_componenti_z90_ricalcola_padre_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_ricalcola_padre('vendite', 'ddt_righe', 'ddt_righe_componenti', 'riga_ddt_id')` |
+| trg_ddt_righe_componenti_m50_calcola_quantita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_calcola_quantita('vendite', 'ddt_righe', 'riga_ddt_id')` |
 | trg_ddt_righe_componenti_z90_ricalcola_padre_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_ricalcola_padre('vendite', 'ddt_righe', 'ddt_righe_componenti', 'riga_ddt_id')` |
 | trg_ddt_righe_componenti_z90_ricalcola_padre_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_componenti_ricalcola_padre('vendite', 'ddt_righe', 'ddt_righe_componenti', 'riga_ddt_id')` |
+| trg_ddt_righe_componenti_z90_ricalcola_padre_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_ricalcola_padre('vendite', 'ddt_righe', 'ddt_righe_componenti', 'riga_ddt_id')` |
 | trg_ddtrighe_comp_a10_guard_listino_provenienza_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza()` |
 | trg_ddtrighe_comp_a10_guard_listino_provenienza_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza()` |
 | trg_ddtrighe_comp_a10_guard_obbligatorio_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_guard_obbligatorio()` |
-| trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio()` |
 | trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio()` |
-| trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()` |
+| trg_ddtrighe_comp_a10_prezzo_obbligatorio_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_componenti_check_prezzo_obbligatorio()` |
 | trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()` |
+| trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()` |
 
 ---
 {% include-markdown "signature-core.md" %}

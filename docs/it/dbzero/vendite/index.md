@@ -156,6 +156,7 @@ search:
 - [fn_commessa_proietta_stato_emittibile](funzioni/fn_commessa_proietta_stato_emittibile.md)
 - [fn_commessa_viva_di_sorgente](funzioni/fn_commessa_viva_di_sorgente.md) — Risponde a una domanda sola: **in quale commessa aperta sta questo documento?** Restituisce l'id della commessa, o `NULL`.
 - [fn_complete_lotto_task_run](funzioni/fn_complete_lotto_task_run.md) — Chiude un task run impostando `task_stato = COMPLETATO` e `ended_at`.
+- [fn_componente_override](funzioni/fn_componente_override.md)
 - [fn_componi_numero_documento](funzioni/fn_componi_numero_documento.md) — (rev 2026-08-31, sera)
 - [fn_conferma_reso](funzioni/fn_conferma_reso.md) — (rev 2026-07-13)
 - [fn_contratti_addebiti_maturati](funzioni/fn_contratti_addebiti_maturati.md) — Gli **addebiti maturati** dei contratti ATTIVO e CESSATO a questo giro e non ancora in commessa, **con gli scartati** e il motivo (`scarto`). È la **sede unica** della regola del push dei contratti (dal 2026-10-31, `20261031-02`), letta da due posti:
@@ -304,6 +305,7 @@ search:
 - [fn_preventivo_riga_componenti_init](funzioni/fn_preventivo_riga_componenti_init.md)
 - [fn_preventivo_riga_componenti_preview](funzioni/fn_preventivo_riga_componenti_preview.md)
 - [fn_prezzi_legame_oltre_la_fine](funzioni/fn_prezzi_legame_oltre_la_fine.md) — Dice **quali prezzi bundle di un legame di distinta vanno oltre una data di fine**, cioè quelli che una chiusura del legame a quella data tocca, e che cosa ne fa la chiusura. Lo leggono la check e il guard della distinta, il verbo di chiusura e la finestra di conferma.
+- [fn_prezzo_resolver_contesto](funzioni/fn_prezzo_resolver_contesto.md)
 - [fn_programma_chiusura_versione_listino](funzioni/fn_programma_chiusura_versione_listino.md)
 - [fn_provenienza_prezzo_coerente](funzioni/fn_provenienza_prezzo_coerente.md)
 - [fn_provenienza_prezzo_esplosa](funzioni/fn_provenienza_prezzo_esplosa.md)

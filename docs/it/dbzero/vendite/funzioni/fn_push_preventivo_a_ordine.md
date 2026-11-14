@@ -204,9 +204,13 @@ BEGIN
                v.data_consegna_richiesta_cliente,
                v.natura_vendita_id,
                a.is_composito,
+               -- La provenienza del prezzo, dalla riga (la vista non la espone).
+               pr.origine_prezzo, pr.listino_versione_id, pr.listino_riga_id,
+               pr.prezzo_resolver_context,
                row_number() OVER (ORDER BY v.ordine NULLS LAST, v.id) AS rn
           FROM vendite.vw_preventivi_righe_smistabili_ordine v
           JOIN catalogo.articoli a ON a.id = v.articolo_id
+          JOIN vendite.preventivi_righe pr ON pr.id = v.id
          WHERE v.preventivo_id = p_preventivo_id
            AND (p_righe_ids IS NULL OR v.id = ANY(p_righe_ids))
          ORDER BY rn
@@ -217,6 +221,7 @@ BEGIN
             qta_operativa, uom_operativa_id, factor_to_base,
             stato_doc_ordine_id, preventivo_riga_id,
             data_consegna_richiesta_cliente, natura_vendita_id,
+            origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
             sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_ordine_id, v_riga.rn::integer, v_riga.articolo_id,
@@ -244,6 +249,12 @@ BEGIN
             -- La natura con cui il preventivo ha venduto la riga (A-4): la
             -- riga d'ordine la porta, anche se l'articolo nel frattempo e' cambiato.
             v_riga.natura_vendita_id,
+            -- La provenienza del prezzo, col prezzo (R-4); il kit no: il suo
+            -- prezzo lo riscrive la somma dei componenti (COMPONENTI).
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.origine_prezzo END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_versione_id END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.listino_riga_id END,
+            CASE WHEN v_riga.is_composito IS NOT TRUE THEN v_riga.prezzo_resolver_context END,
             -- La provenienza: il preventivo e la riga. Resta anche quando
             -- l'annullo dell'ordine azzera preventivo_riga_id (il consumo).
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.riga_id)
@@ -252,7 +263,14 @@ BEGIN
         -- 6) BoM CASO A: prezzi snapshot del preventivo come override
         --    (no ri-prezzatura). Stesso pattern del push offerta->ordine.
         IF v_riga.is_composito THEN
-            SELECT jsonb_object_agg(prc.componente_id::text, prc.prezzo_unitario)
+            -- Il prezzo del componente con la sua provenienza (R-4): l'oggetto
+            -- che vendite.fn_componente_override legge.
+            SELECT jsonb_object_agg(prc.componente_id::text, jsonb_build_object(
+                       'prezzo',                  prc.prezzo_unitario,
+                       'origine_prezzo',          prc.origine_prezzo,
+                       'listino_versione_id',     prc.listino_versione_id,
+                       'listino_riga_id',         prc.listino_riga_id,
+                       'prezzo_resolver_context', prc.prezzo_resolver_context))
               INTO v_overrides
               FROM vendite.preventivi_righe_componenti prc
              WHERE prc.riga_preventivo_id = v_riga.riga_id

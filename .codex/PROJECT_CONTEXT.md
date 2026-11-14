@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-13.
+> Ultima revisione: 2026-11-14.
 
 ## Identità del Progetto
 
@@ -261,7 +261,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al
   §8, quattro giri: giro 1 applicato e verde; giro 2 (il push, D-4: `20261113-13 … -22`) applicato e verde.
-  Ora la richiesta BE K-1 … K-7 (§8.7) e il giro 3 DB (le copie a valle), al via di Tid.
+  Giro 3 (le copie a valle, `20261113-23 … -37`) applicato e verde il 2026-11-14. Ora la richiesta
+  BE K-1 … K-7 (§8.7); poi il giro 4 DB (la chiusura).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

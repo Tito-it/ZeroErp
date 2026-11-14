@@ -1,10 +1,10 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-13
+## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: team BE/FE** con la richiesta K-1 … K-7 (§8.7), e in parallelo il **team DB** col giro 3 (le
-copie a valle, R-4, e il contesto dei componenti, D-3), al via di Tid. I giri 1 e 2 sono applicati e verdi
-(Tid, 2026-11-13, §8.6 e §8.7), non ancora committati.
+**Riparte: il team BE/FE** con la richiesta K-1 … K-7 (§8.7); poi il team DB col giro 4 (la chiusura),
+al via di Tid. I giri 1, 2 e 3 sono applicati e verdi (§8.6, §8.7, §8.8; il 3 il 2026-11-14). Nessuno dei
+tre è committato.
 Riverificato il 2026-11-13 sul catalogo di dbdev e su `backend/` (§7): R-3, R-4 e il §4 avevano
 definizioni superate, marcate ⚠️ e corrette al §7.1. ⚠️ Il commit `a85b76d58` «Chiusura brief
 brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
@@ -24,12 +24,14 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 3e | ✅ team DB | Giro 2: il push porta la provenienza (R-3, R-5), D-4; prova in transazione (2026-11-13) | §8.7 | 3d |
 | 3f | ✅ Tid | Apply del giro 2 e pgTAP del §8.7: verdi (2026-11-13) | §8.7 | 3e |
 | 4 | **team BE/FE** ⏭️ | La richiesta K-1 … K-7: push, componenti, pricing gate, form, test | §8.7 «Richiesta BE» | 3f |
-| 5 | **team DB** ⏭️ | Giro 3 (le copie a valle, R-4; il contesto dei componenti, D-3), poi giro 4 | §8.5 | 3f, via di Tid |
+| 5 | ✅ team DB | Giro 3: le copie a valle (R-4), override con provenienza, contesto dei componenti (D-3); prova in transazione (2026-11-13) | §8.8 | 3f |
+| 5b | ✅ Tid | Apply del giro 3 e pgTAP del §8.8: verdi (2026-11-14) | §8.8 | 5 |
+| 6 | team DB | Giro 4: R-6 dal push in su (dopo K-1 … K-4), doc `manual/`, chiusura | §8.5 | 5b, 4 |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** i giri 1 e 2 (ventidue changeSet, tre CSV, due pgTAP nuovi, quattro
-adeguati), il brief, la riga di PROJECT_CONTEXT.
+corpo vivo. **Lavoro da committare:** i giri 1, 2 e 3 (trentasette changeSet, tre CSV, tre pgTAP nuovi,
+quattro adeguati), il brief, la riga di PROJECT_CONTEXT.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
@@ -488,3 +490,59 @@ Il DB del giro 2 è il contratto. Il percorso intero, dalla riga del documento a
 Gli ordini e i DDT oggi non passano dal pricing gate (`ordini_repository`, `ddt_repository` scrivono la
 riga col prezzo del payload): le loro righe nascono `MANUALE` finché K-5/K-6 non li raggiungono, e quelle
 copiate da un documento a monte prenderanno la provenienza dalla copia (giro 3, DB).
+
+### 8.8 Giro 3 — le copie a valle (R-4) e il contesto dei componenti (D-3); applicato e verde il 2026-11-14
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261113-23` | `vendite.fn_componente_override(valore)`: un override di componente è un prezzo (`MANUALE`) o un oggetto `{prezzo, origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context}` che dichiara la provenienza |
+| `20261113-24` | `vendite.fn_prezzo_resolver_contesto(risultato)`: dal risultato del resolver il contesto da salvare, senza le chiavi che hanno una colonna (prezzo, origine, versione, riga) e senza l'esito |
+| `20261113-25 … -29` | le cinque `fn_*_riga_componenti_init`: il resolver scrive versione e riga nelle colonne (D-3) e il contesto dal BB `-24`; l'override passa dal BB `-23` |
+| `20261113-30 … -36` | le sette copie: revisione preventivo e offerta, offerta → contratto, preventivo → ordine, offerta → ordine, ordine → DDT, riconsegna. La provenienza viaggia col prezzo |
+| `20261113-37` | dal contesto dei componenti già scritti escono `listino_id`, `listino_versione_id`, `listino_riga_id`, `origine`; la scheda della colonna sui componenti dice le chiavi |
+
+**Le scelte del giro.**
+
+* **Le copie.** Righe e componenti copiano origine, versione, riga e contesto insieme al prezzo. Il padre di
+  un kit no: nasce a 0 (o col prezzo della sorgente) e la somma dei componenti lo riscrive `COMPONENTI`.
+  La riconsegna copia la provenienza solo quando copia il prezzo (riga senza ordine).
+* **Gli override con provenienza.** Preventivo → ordine passa ai componenti dell'ordine il prezzo del
+  componente a monte **con** la sua provenienza: prima l'override nasceva sempre `MANUALE`. Il BE passa
+  ancora numeri, e per lui non cambia niente.
+* **Le chiavi del contesto dei componenti si tolgono, non si spostano.** Riga e versione non le aveva mai
+  giudicate nessuno: portarle nelle colonne senza i trigger le farebbe entrare non giudicate, coi trigger
+  fermerebbe la migrazione su un dato vecchio. Le righe esistenti restano senza riga di listino (§5).
+* ⚠️ **Residuo: offerta → ordine, il prezzo dal listino dell'offerta.** La riga d'ordine prende il prezzo
+  dall'eccezione (OVERRIDE, AGGIUNTA: la provenienza si copia) o dall'espansione del listino dell'offerta con
+  la variazione globale (`DA_LISTINO`, `vendite.fn_offerta_righe_espanse`), che non porta la riga di
+  listino: quella riga nasce `MANUALE`, e così i componenti del kit (override numerici). Non mente, tace:
+  la decisione B è rispettata. Per chiuderlo l'espansione dovrebbe restituire versione e riga di listino
+  (e il risultato della variazione come contesto). Va al giro 4 o a un brief suo: lo decide Tid alla chiusura.
+
+**Un fatto trovato provando: un rosso del giro 1.** `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1`,
+test 1, presidia che ogni colonna di `preventivi_righe` sia nominata nella copia della revisione o
+dichiarata esclusa: dal giro 1 era rosso (le quattro colonne nuove), su dbdev fino all'apply del giro 3. Non
+era nell'elenco dei pgTAP del §8.6: il censimento del giro 1 aveva cercato i test che nominano le colonne,
+non quelli che leggono l'elenco delle colonne della tabella. Il giro 3 lo chiude (8/8). ⚠️ Lo stesso
+presidio legge l'elenco fino alla prima parentesi chiusa: un commento con una parentesi dentro l'elenco
+delle colonne lo rompe, e i commenti degli `INSERT` qui stanno fuori dall'elenco.
+
+**Prova** (`scripts/prova_changeset.py`, transazione ritirata, catalogo identico prima e dopo):
+
+* sullo scratch, l'estratto con 150 pgTAP (ogni file che nomina le dodici funzioni, i componenti o il loro
+  contesto, i test dei giri 1 e 2, i presidi trasversali): il nuovo `vendite/test-provenienza-prezzo-copie-v1`
+  8/8; il presidio della revisione da 7/8 a 8/8; nessun rosso nuovo. Rossi già presenti, uguali con e
+  senza l'estratto, letti uno per uno dove toccano le funzioni del giro (`test-ddt-righe-evase-dall-ordine-v1`
+  43 e `test-ordine-al-modello-v1` 17 sono rossi da owner per costruzione) e gli altri da `test-annullo-documento-con-legami-v1`,
+  `test-chiudi-legame-con-prezzi-v1`, `test-doc-verbo-comune-e-porta-v1`, `test-fn-available-actions-ddt-reason-catch-all-v1`,
+  e i quattro sulla chiusura della merce e dei resi;
+* su dbdev, il test nuovo e il presidio della revisione: verdi; la pulizia del contesto passa sui 20
+  componenti di preventivo che tenevano la riga di listino.
+
+**Apply e pgTAP (Tid, 2026-11-14): verdi.** `vendite/test-provenienza-prezzo-copie-v1`,
+`vendite/test-fn-crea-revisione-preventivo-riga-completa-v1` (il rosso del giro 1 chiuso), i test delle
+sette copie e dei componenti.
+
+**La richiesta BE non cambia.** K-4 (il loader dei componenti) trova ora riga e versione nelle colonne e il
+contesto con le chiavi del resolver; K-5 può passare il risultato del resolver così com'è: il DB lo filtra
+nelle init, e al pricing gate lo legge `vendite.fn_provenienza_prezzo_esplosa`.
