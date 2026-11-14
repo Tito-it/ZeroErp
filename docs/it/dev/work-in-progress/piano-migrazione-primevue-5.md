@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: nessuno in sviluppo. P1 è fatto (2026-11-14, da committare); resta l'osservazione
+**Riparte: nessuno in sviluppo. P1 è fatto e committato (2026-11-14); resta l'osservazione
 di Tid (righe 3-4).** La specifica e l'esito di P1 sono in §8-bis «Predisposizione». La licenza è
 decisa: **si resta sulla 4.5.5** e non si sale alla 5. **OpenVue è la strada preferita e
 resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 2026-11-14»).
@@ -10,7 +10,7 @@ resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 20
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | Tid | ✅ Decisione di licenza, 2026-11-14: opzione 1 (restare sulla 4.5.5), predisponendo l'uscita. OpenVue sotto osservazione, Vuetify come riserva | §8-bis «La decisione del 2026-11-14» | — |
-| 2 | BE/FE | ✅ **P1**, 2026-11-14 — `guard:classi-interne`: registro a **13** agganci in **9** file fuori dalle sedi, che può solo calare. Da committare | `frontend/scripts/check-classi-interne-baseline.mjs`, `classi-interne.baseline.json` | — |
+| 2 | BE/FE | ✅ **P1**, 2026-11-14 — `guard:classi-interne`: registro a **13** agganci in **9** file fuori dalle sedi, che può solo calare. Committato (`ba8426e865`, PR #118) | `frontend/scripts/check-classi-interne-baseline.mjs`, `classi-interne.baseline.json` | — |
 | 3 | BE/FE | P2 — prova di OpenVue su un branch usa-e-getta. **Non avviata**: per ora si osserva | §8-bis «Predisposizione» | via di Tid + ok alla dipendenza nuova |
 | 4 | Tid | Rilettura periodica dei segnali che fanno scattare l'uscita (S1-S4) e dello stato di OpenVue | §8-bis «I segnali che fanno scattare l'uscita» | — |
 | — | BE/FE | ✅ Binario delle liste (§8-bis): chiuso nei brief dedicati, non qui (registro 2026-11-14 in §9). Registro a **17** `DataTable` grezze, **0** senza motivo | `frontend/scripts/datatable.baseline.json` | — |
@@ -27,8 +27,9 @@ resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 20
   commento sopra l'import) va in un brief suo all'archiviazione, come chiede
   `.codex/AGENTS.md`.
 
-**Committato:** no. Il riallineamento del 2026-11-14 è committato; **P1** (script, registro,
-`package.json`, frontend-standards e questo piano) è ancora da committare.
+**Committato:** sì. Il riallineamento del 2026-11-14 con `661ecb7a0f`; **P1** (script, registro,
+`package.json`, frontend-standards e questo piano) con `ba8426e865`, mergiato in `Tito-dev`
+con la PR #118.
 
 ---
 

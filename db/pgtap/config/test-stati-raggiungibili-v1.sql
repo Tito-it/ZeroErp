@@ -38,6 +38,8 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+
 SELECT plan(5);
 
 -- Gli stati attivi della testata che nessun cammino di righe attive porta

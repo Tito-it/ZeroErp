@@ -1,4 +1,4 @@
-bracex==3.2.2
+bracex==3.2.3
 certifi==2026.10.23
 cfgv==3.5.0
 charset-normalizer==3.5.2
@@ -40,6 +40,6 @@ typing_extensions==4.16.0
 tzdata==2026.6
 urllib3==2.8.0
 virtualenv==21.15.6
-wcmatch==12.0.1
+wcmatch==12.0.2
 zensical==0.1.1
 zensical-ui==0.0.42
