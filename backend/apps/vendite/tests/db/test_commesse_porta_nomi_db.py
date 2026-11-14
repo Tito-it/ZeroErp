@@ -32,6 +32,10 @@
      gli argomenti che `fetch_pushable_rows` passa PER POSIZIONE sono, in
      ordine, competenza, billing account, limite, id del documento (e
      `p_righe_ids` dove il repository lo passa).
+5. test_proiezione_dei_componenti_per_il_push
+     la proiezione dei componenti con la provenienza (K-4 di
+     brief-db-provenienza-prezzo-segue-il-prezzo) gira sulle cinque tabelle e
+     restituisce ogni colonna `prov_*` che il push legge.
 """
 
 from __future__ import annotations
@@ -45,6 +49,12 @@ from unittest.mock import MagicMock, patch
 from django.db import connection
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.vendite.db._provenienza_prezzo import COLONNA_DEL_LISTER, PREFISSO_COMPONENTE
+from apps.vendite.db.contratti_repository import ContrattiRepository
+from apps.vendite.db.ddt_repository import DdtRepository
+from apps.vendite.db.offerte_repository import OfferteRepository
+from apps.vendite.db.ordini_repository import OrdiniRepository
+from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.db.commesse_repository import (
     _PUSHABLE_OPTIONAL_COLS,
     _PUSHABLE_SHARED_COLS,
@@ -177,3 +187,21 @@ class CommessePortaNomiDbTests(TestCase):
                 if codice in _SORGENTE_SUPPORTA_RIGHE_IDS:
                     self.assertGreaterEqual(len(argomenti), 5, f"{fn}: manca p_righe_ids")
                     self.assertEqual(argomenti[4], ("p_righe_ids", "bigint[]"))
+
+    # 5. La proiezione dei componenti per il push, eseguita davvero: il
+    #    `LATERAL` sul BB del DB e i nomi delle sue colonne li vede solo il DB.
+    #    Una riga che non c'e' basta: si guardano le colonne della risposta.
+    def test_proiezione_dei_componenti_per_il_push(self) -> None:
+        attese = {PREFISSO_COMPONENTE + c for c in COLONNA_DEL_LISTER.values()}
+        for repo_cls in (
+            PreventiviRepository, OrdiniRepository, ContrattiRepository,
+            DdtRepository, OfferteRepository,
+        ):
+            with self.subTest(repository=repo_cls.__name__):
+                with patch(
+                    "apps.vendite.db._componenti_repo_mixin.rows_to_list",
+                    side_effect=lambda cur: [{d[0] for d in cur.description}],
+                ):
+                    (colonne,) = repo_cls().list_componenti_riga(-1, con_provenienza=True)
+                self.assertEqual(attese - colonne, set(), "colonne prov_* mancanti")
+                self.assertIn("origine_prezzo", colonne)

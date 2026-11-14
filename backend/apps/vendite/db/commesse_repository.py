@@ -25,6 +25,13 @@ from apps.core.db._helpers import call_jsonb_fn, jsonb_out, row_to_dict, limiti_
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
+from apps.vendite.db._provenienza_prezzo import (
+    COLONNA_DEL_LISTER,
+    COLONNE_PROVENIENZA_PREZZO,
+    PROVENIENZA_VUOTA,
+    ProvenienzaPrezzo,
+    provenienza_da_colonne,
+)
 from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
 from apps.vendite.types import (
     CommessaEmitResult,
@@ -38,26 +45,16 @@ from apps.vendite.types import (
 )
 
 # Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
-# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica: il building
-# block `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
+# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica dal 2026-11-14:
+# la forma `ProvenienzaPrezzo` (`_provenienza_prezzo`), che il push riceve dai
+# lister e passa alla riga di commessa; il building block
+# `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
 # (`CAMPI_PROVENIENZA`). Le prime nove esistono anche su
 # `attivita_fatturabili`; `listino_versione_id` solo sulla riga di commessa.
 # ⭐ `listino_riga_id` (2026-10-09, brief-db-riga-listino-propagata-dalla-
 # commessa): la riga di listino che ha dato il prezzo. Scriverla la rende
 # «propagata», cioe' immutabile (`trgfn_listini_righe_guard_stato`), finche'
 # una riga la cita ADESSO (D-1 del brief).
-COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
-    "prezzo_base_snapshot",
-    "origine_prezzo",
-    "tipo_variazione_applicata",
-    "valore_variazione_applicata",
-    "promo_id",
-    "contratto_id",
-    "categoria_cliente_id_snapshot",
-    "classe_utenza_id_snapshot",
-    "listino_riga_id",
-    "listino_versione_id",
-)
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
 
@@ -169,6 +166,10 @@ _PUSHABLE_SHARED_COLS = (
     # ONERE <=> causale. Solo ordini e bolle la espongono; per gli altri lister
     # resta None, ed e' giusto: le loro righe non sono ONERE.
     "causale_onere_id",
+    # La provenienza del prezzo, in coda a ogni lister (giro 2 di brief-db-
+    # provenienza-prezzo-segue-il-prezzo, `20261113-16 … -20`): obbligatoria,
+    # anche per i consumi, che la restituiscono vuota (R-5).
+    *COLONNA_DEL_LISTER.values(),
 )
 
 # Le colonne della whitelist che non ogni lister espone: `_map_pushable_row`
@@ -413,6 +414,10 @@ class PushableRow:
     # La causale della riga ONERE (righe-onere di ordini e bolle). None per i
     # lister che non la espongono: preventivi, contratti e consumi.
     causale_onere_id: int | None = None
+    # ⭐ La provenienza del prezzo, come la dice la riga del documento (K-1):
+    #    il push la copia nella riga di commessa, non la ricostruisce. Un
+    #    componente di kit ha la sua (`BoMComponentExpander`).
+    provenienza: ProvenienzaPrezzo = PROVENIENZA_VUOTA
 
 
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
@@ -495,6 +500,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         termine_pagamento_id=_opt_int("termine_pagamento_id"),
         modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
         causale_onere_id=_opt_int("causale_onere_id"),
+        provenienza=provenienza_da_colonne(_col),
     )
 
 

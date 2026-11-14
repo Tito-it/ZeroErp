@@ -217,7 +217,10 @@ class PrezzoRigaCommessaDbTests(TestCase):
     # 3. La riga e' il componente del kit P (`componente_di` nel meta, come la
     #    scrive l'espansione del push): il prezzo e' quello del componente
     #    dentro P, non quello sciolto. L'origine dello stadio kit
-    #    (`LISTINO_BUNDLE`) non e' fra quelle del CHECK: resta NULL.
+    #    (`LISTINO_BUNDLE`) la scrive com'e': dal 2026-11-14 il DB la ammette
+    #    anche sulla riga di commessa (D-2 di brief-db-provenienza-prezzo-segue-
+    #    il-prezzo, `vendite.fn_origine_prezzo_ammessa`), e fino a quel giorno
+    #    una copia Python delle origini la scartava a NULL.
     def test_componente_di_kit_prende_il_prezzo_del_kit(self) -> None:
         with connection.cursor() as cur:
             cur.execute(
@@ -232,7 +235,7 @@ class PrezzoRigaCommessaDbTests(TestCase):
         prezzo, _, versione, origine, _ = self._riga()
         self.assertEqual(prezzo, _PREZZO_KIT)
         self.assertEqual(versione, self.v2)
-        self.assertIsNone(origine)
+        self.assertEqual(origine, "LISTINO_BUNDLE")
 
     # 4. Riallineata, la riga di commessa cita la riga di listino V2, che da li'
     #    e' «propagata»: la rettifica N6 la rifiuta con il codice del guard DB

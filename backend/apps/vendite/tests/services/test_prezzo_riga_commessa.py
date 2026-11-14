@@ -12,7 +12,7 @@ Indice test eseguiti:
 2) ArgomentiResolverTests.test_senza_data_attivita_ripiega_sulla_competenza
 3) ArgomentiResolverTests.test_un_dato_mancante_da_none
 4) ProvenienzaTests.test_da_resolver_ha_le_colonne_del_repository
-5) ProvenienzaTests.test_origine_fuori_check_diventa_none
+5) ProvenienzaTests.test_l_origine_passa_com_e
 6) ProvenienzaTests.test_manuale
 """
 from __future__ import annotations
@@ -90,9 +90,14 @@ class ProvenienzaTests(TestCase):
         # ⭐ 2026-10-09: anche la riga di listino, che la rende «propagata».
         self.assertEqual(provenienza["listino_riga_id"], 301)
 
-    # 5. L'origine dello stadio kit non e' fra quelle che il CHECK ammette.
-    def test_origine_fuori_check_diventa_none(self):
-        self.assertIsNone(provenienza_da_resolver({"origine": "LISTINO_BUNDLE"})["origine_prezzo"])
+    # 5. L'origine passa com'e', anche quella dello stadio kit: le origini
+    #    ammesse le dice il DB (D-2, K-3 di brief-db-provenienza-prezzo-segue-
+    #    il-prezzo). Fino al 2026-11-14 qui una copia la scartava a None.
+    def test_l_origine_passa_com_e(self):
+        self.assertEqual(
+            provenienza_da_resolver({"origine": "LISTINO_BUNDLE"})["origine_prezzo"],
+            "LISTINO_BUNDLE",
+        )
 
     # 6. Il prezzo a mano: origine MANUALE, nient'altro.
     def test_manuale(self):
