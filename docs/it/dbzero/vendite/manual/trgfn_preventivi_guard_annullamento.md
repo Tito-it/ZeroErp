@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_preventivi_guard_annullamento()`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -13,8 +15,6 @@ Approfondimento funzioni:
 
 ---
 ### 🎯 Scopo Principale
-
-(rev 2026-08-21 — creata 2026-08-04, brief vie-uscita-operatore §3.1)
 
 **Un preventivo che ha già prodotto qualcosa a valle non si annulla.** Se ne è nato un
 ordine, o se è entrato in una commessa, l'annullamento cancellerebbe il capostipite di una
@@ -40,9 +40,10 @@ Trigger `trg_preventivi_a10_guard_annullamento_upd` — fase `_a10_`,
 ### Regole applicate
 
 1. **No-op** se lo stato non cambia davvero.
-2. Risolve il `codice_interno` dello stato di destinazione; se **non** è `ANNULLATO`,
-   esce senza fare nulla. Il guard è mirato: costa una sola lettura su ogni altra
-   transizione.
+2. Legge dal vocabolario se la destinazione è lo **stato di annullo**, quello che
+   `config.stati_doc_preventivi` marca `is_abortito`; se non lo è, esce senza fare nulla.
+   Il codice dello stato serve solo al contesto dell'errore. Il guard è mirato: costa una
+   sola lettura su ogni altra transizione.
 3. Chiama `script.fn_check_preventivo_annullabile(NEW.id)` e, se l'array dei motivi non è
    vuoto, solleva.
 

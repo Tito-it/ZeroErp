@@ -1,0 +1,187 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DELL'ANNULLO DEL PREVENTIVO: LO STATO DI ANNULLO DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.15, giro 6a (S-2,
+#   Tid 2026-11-08; via ai giri di Tid del 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.trgfn_preventivi_guard_annullamento riconosceva l'annullo dal
+#   codice: codice_interno della destinazione IS DISTINCT FROM 'ANNULLATO'.
+#   Lo stato di annullo lo dichiara gia' il vocabolario (is_abortito), e la
+#   capability del preventivo lo legge da li' per accendere i motivi dello
+#   stesso annullo: con la marca spostata il pulsante si spegneva col
+#   motivo e il guard lasciava passare.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   La stessa SELECT legge is_abortito della destinazione; il codice resta
+#   per il contesto dell'errore (stato_a). Con il vocabolario del seed la
+#   risposta e' quella di prima: is_abortito e' su ANNULLATO.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma (trigger), INVOKER, nessun SET (pg_proc su
+#   dbdev, 2026-11-14). Il montaggio (trg_preventivi_a10_guard_annullamento_upd,
+#   BEFORE UPDATE OF stato_doc_preventivo_id) non si tocca. Il COMMENT, che
+#   era una cronaca, e' riscritto al presente.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-14. Il rollback porta il corpo e il
+#   COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-08-update-trgfn-preventivi-guard-annullamento-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261114-08-update-trgfn-preventivi-guard-annullamento-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_preventivi_guard_annullamento: lo stato di annullo dalla colonna is_abortito
+        del vocabolario, non dal codice. Brief: brief-db-stati-documento-dal-vocabolario, giro 6a.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedire l'annullamento di un preventivo che ha gia'
+              --   prodotto qualcosa a valle (un ordine generato, o l'ingresso
+              --   in una commessa). La regola vive in
+              --   script.fn_check_preventivo_annullabile, la stessa letta da
+              --   fn_available_actions_preventivo per accendere il bottone:
+              --   qui si solleva soltanto, col codice del PRIMO motivo.
+              --   Brief: brief-db-vie-uscita-operatore §3.1.
+              --
+              -- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6a):
+              --   l'annullo e' la destinazione che il vocabolario marca is_abortito,
+              --   non un codice. Il codice resta per il contesto dell'errore.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F5): `NEW.codice` non e' una
+              --   colonna di vendite.preventivi. L'identificativo leggibile e' `numero`
+              --   (varchar); ci sono anche `uid` (uuid, la chiave usata dalle catene
+              --   documentali) e `rev`. Il refuso e' nato con la funzione, tre changeSet
+              --   fa, ed e' arrivato al controllo lo stesso giorno.
+              DECLARE
+                  v_codice_a config.stati_doc_preventivi.codice_interno%TYPE;
+                  -- La destinazione e' lo stato di annullo? Dal vocabolario.
+                  v_abortito config.stati_doc_preventivi.is_abortito%TYPE;
+                  v_motivi   jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero.
+                  IF NEW.stato_doc_preventivo_id IS NOT DISTINCT FROM OLD.stato_doc_preventivo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdp.codice_interno, sdp.is_abortito
+                    INTO v_codice_a, v_abortito
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  -- Stato non trovato: v_abortito NULL, niente da giudicare (la FK lo
+                  -- esclude, come prima).
+                  IF v_abortito IS NOT TRUE THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_preventivo_annullabile(NEW.id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'numero',        NEW.numero,
+                              'stato_a',       v_codice_a,
+                              'motivi',        v_motivi
+                          ),
+                          NEW.tx_id,
+                          coalesce(NEW.numero, NEW.id::text),
+                          coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+              IS 'Guard dell''annullo del preventivo (BEFORE UPDATE OF stato_doc_preventivo_id). Quando lo stato cambia verso lo stato di annullo, quello che il vocabolario config.stati_doc_preventivi marca is_abortito, solleva il primo motivo di script.fn_check_preventivo_annullabile: E_PREV_ORDINE_GIA_GENERATO (un ordine non annullato nato dal preventivo) o E_PREV_ANNULLA_COMMESSA_EMESSA (righe del preventivo gia'' emesse dalla commessa). E'' la stessa funzione con cui script.fn_available_actions_preventivo spegne l''annullo, col motivo. Il codice dello stato serve solo al contesto dell''errore. Che il passaggio sia nella matrice lo giudica vendite.trgfn_preventivi_guard_transizione, che scatta dopo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: impedire l'annullamento di un preventivo che ha gia'
+              --   prodotto qualcosa a valle (un ordine generato, o l'ingresso
+              --   in una commessa). La regola vive in
+              --   script.fn_check_preventivo_annullabile, la stessa letta da
+              --   fn_available_actions_preventivo per accendere il bottone:
+              --   qui si solleva soltanto, col codice del PRIMO motivo.
+              --   Brief: brief-db-vie-uscita-operatore §3.1.
+              --
+              -- rev 2026-08-04 (bonifica riferimenti morti, F5): `NEW.codice` non e' una
+              --   colonna di vendite.preventivi. L'identificativo leggibile e' `numero`
+              --   (varchar); ci sono anche `uid` (uuid, la chiave usata dalle catene
+              --   documentali) e `rev`. Il refuso e' nato con la funzione, tre changeSet
+              --   fa, ed e' arrivato al controllo lo stesso giorno.
+              DECLARE
+                  v_codice_a config.stati_doc_preventivi.codice_interno%TYPE;
+                  v_motivi   jsonb;
+              BEGIN
+                  -- No-op se lo stato non cambia davvero.
+                  IF NEW.stato_doc_preventivo_id IS NOT DISTINCT FROM OLD.stato_doc_preventivo_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdp.codice_interno
+                    INTO v_codice_a
+                    FROM config.stati_doc_preventivi sdp
+                   WHERE sdp.id = NEW.stato_doc_preventivo_id;
+
+                  IF v_codice_a IS DISTINCT FROM 'ANNULLATO' THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_motivi := script.fn_check_preventivo_annullabile(NEW.id);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          TG_NAME::text,
+                          v_motivi -> 0 ->> 'codice',
+                          jsonb_build_object(
+                              'preventivo_id', NEW.id,
+                              'numero',        NEW.numero,
+                              'stato_a',       v_codice_a,
+                              'motivi',        v_motivi
+                          ),
+                          NEW.tx_id,
+                          coalesce(NEW.numero, NEW.id::text),
+                          coalesce(v_motivi -> 0 ->> 'dettaglio', '0')
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_annullamento()
+              IS 'Trigger function: blocca l''annullamento di un preventivo che ha gia'' un figlio a valle (ordine generato o riga in commesse_sorgenti), delegando il verdetto a script.fn_check_preventivo_annullabile — la stessa funzione letta da fn_available_actions_preventivo. Creata 2026-08-04 con la riattivazione delle transizioni verso ANNULLATO (brief-db-vie-uscita-operatore).';

@@ -16,6 +16,9 @@ CREATE OR REPLACE FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id 
  RETURNS TABLE(nuovo_preventivo_id bigint, numero character varying, nuova_rev integer)
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6a):
+--   la revisione gia' in bozza e' quella nello stato iniziale del
+--   vocabolario (colonna iniziale), non nel codice DRAFT.
 -- rev 2026-10-31 (20261031-65, brief-db-scadenza-preventivi E-3 (ii)):
 --   la revisione si crea dallo stato di emissione e da quello di
 --   scadenza, che il vocabolario dichiara (colonne emissione e
@@ -186,13 +189,15 @@ BEGIN
     );
   END IF;
 
-  -- Guard: non deve esistere gia' una revisione DRAFT
+  -- Guard: non deve esistere gia' una revisione in bozza, cioe' nello stato
+  -- iniziale del vocabolario: e' quello in cui la revisione nuova nasce
+  -- (script.trgfn_doc_stato_iniziale).
   SELECT EXISTS(
     SELECT 1
       FROM vendite.preventivi p2
       JOIN config.stati_doc_preventivi sdp2 ON sdp2.id = p2.stato_doc_preventivo_id
      WHERE p2.numero = v_numero
-       AND sdp2.codice_interno = 'DRAFT'
+       AND sdp2.iniziale
   ) INTO v_has_draft;
 
   IF v_has_draft THEN
@@ -362,7 +367,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea la revisione N+1, in DRAFT, di un preventivo nello stato di emissione o in quello di scadenza del vocabolario (altrimenti E_PREV_REVISIONE_STATO_NON_AMMESSO; E_PREV_STATO_CORRENTE_NON_TROVATO se lo stato non si legge), se non ne esiste gia'' una in bozza (E_PREV_REVISIONE_BOZZA_ESISTENTE) e se nessun prezzo e'' in attesa (il primo motivo di script.fn_check_prezzi_in_attesa, lo stesso della capability). Copia la testata, con l''emittente della rev N; le righe attive con quantita'' maggiore di zero, nel loro ordine; per ogni riga tutti i suoi componenti, anche gli opzionali spenti, rimappati sulla riga nuova; gli indirizzi. Ogni riga copiata porta la provenienza: PREVENTIVO con la chiave della rev N da script.fn_sorgente_provenienza, e in sorgente_riga la riga copiata. La data chiesta dal cliente si copia, NULL se anteriore alla data della revisione (script.fn_data_consegna_ammessa). Le marche di approvazione prezzo si copiano 1:1 su righe e componenti; il componente spento in attesa si copia senza marca. Lo stato della rev N non cambia; lo stato iniziale della N+1 lo mette script.trgfn_doc_stato_iniziale. L''elenco delle colonne copiate lo presidia vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.';
+IS 'Crea la revisione N+1, nello stato iniziale, di un preventivo nello stato di emissione o in quello di scadenza del vocabolario (altrimenti E_PREV_REVISIONE_STATO_NON_AMMESSO; E_PREV_STATO_CORRENTE_NON_TROVATO se lo stato non si legge), se non ne esiste gia'' una nello stato iniziale del vocabolario (E_PREV_REVISIONE_BOZZA_ESISTENTE) e se nessun prezzo e'' in attesa (il primo motivo di script.fn_check_prezzi_in_attesa, lo stesso della capability). Copia la testata, con l''emittente della revisione N; le righe attive con quantita'' maggiore di zero, nel loro ordine; per ogni riga tutti i suoi componenti, anche gli opzionali spenti, rimappati sulla riga nuova; gli indirizzi. Ogni riga copiata porta la provenienza: PREVENTIVO con la chiave della revisione N da script.fn_sorgente_provenienza, e in sorgente_riga la riga copiata. La data chiesta dal cliente si copia, NULL se anteriore alla data della revisione (script.fn_data_consegna_ammessa). Le marche di approvazione prezzo si copiano 1:1 su righe e componenti; il componente spento in attesa si copia senza marca. Lo stato della revisione N non cambia; lo stato iniziale della N+1 lo mette script.trgfn_doc_stato_iniziale. L''elenco delle colonne copiate lo presidia vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.';
 ```
 
 </div>

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Resolver ordini per la dashboard fatturazione. rev 2026-07-18 (step 8, DL-23 EMENDATO): per trigger SPEDITO/CONSEGNATO valore_totale = RESIDUO DA SPEDIRE (per riga: GREATEST(0, quantita − Σ fulfillment.qta_evasa + fn_ordine_riga_qta_riconsegna) × prezzo scontato — reso-aware, formula single-source) perche' il valore spedito lo porta il DDT: chiude il doppio conteggio ordine-pieno + DDT. Con trigger CONFERMATO valore PIENO invariato (fattura l'ordine: col netto un ordine spedito-ma-non-pushato mostrerebbe 0 senza compensazione — buco cieco sulla configurazione di default). L'area Ordini e' l'unica a misura netta (accettato, §4c). rev 2026-07-18 (step 7, DL-20): trigger-aware, motivo IN_ATTESA_DDT (FISIOLOGICO) per trigger SPEDITO/CONSEGNATO. security_invoker=on + RLS. Rev 2026-10-20 (20261020-83, brief-db-grammatica-unica-documenti 2d e 2e): l'area ORDINI diventa ORDINE_VENDITA, il codice della sorgente; la chiave della riga la compone script.fn_segment_key.
+> Dashboard della fatturazione, area ORDINE_VENDITA: una riga per ordine. valore_totale: con fatturazione_trigger SPEDITO o CONSEGNATO il residuo da spedire (per riga GREATEST(0, quantita - evaso + vendite.fn_ordine_riga_qta_riconsegna) per il prezzo scontato), perche' il valore spedito lo porta la bolla; con CONFERMATO il valore pieno, perche' si fattura l'ordine. valore_transitato, unita_totali, unita_transitate, is_transitato: dalle righe attive la cui attivita' di commessa (chiave di script.fn_segment_key) e' EMESSA. is_abortito: esito NEGATIVO dello stato (null-safe). motivo_fermo: NULL se abortito o transitato per intero; DOC_BOZZA nello stato iniziale del vocabolario (la colonna iniziale); IN_ATTESA_DDT con trigger SPEDITO o CONSEGNATO; PUSH_NON_ESEGUITO se nessuna riga e' transitata, altrimenti PUSH_PARZIALE. cliente_display: la ragione sociale del cliente. La consuma vendite.vw_dash_fatturazione_documenti. security_invoker=on: la RLS resta di chi legge.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -50,7 +50,7 @@ WITH righe AS (
         CASE
             WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
             WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
-            WHEN ((sdo.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
+            WHEN sdo.iniziale THEN 'DOC_BOZZA'::text
             WHEN ((o.fatturazione_trigger)::text = ANY (ARRAY['SPEDITO'::text, 'CONSEGNATO'::text])) THEN 'IN_ATTESA_DDT'::text
             WHEN (count(r.riga_id) FILTER (WHERE r.transitata) = 0) THEN 'PUSH_NON_ESEGUITO'::text
             ELSE 'PUSH_PARZIALE'::text
@@ -65,7 +65,7 @@ WITH righe AS (
      LEFT JOIN righe r ON ((r.ordine_id = o.id)))
      LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = o.soggetto_ruolo_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
-  GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, o.fatturazione_trigger, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, s.ragione_sociale_completa;
+  GROUP BY o.id, o.uid, o.numero, o.data, o.emittente_fiscale_id, o.fatturazione_trigger, sdo.codice_interno, sdo.codice, sdo.fase, sdo.esito, sdo.iniziale, s.ragione_sociale_completa;
 ```
 
 </div>

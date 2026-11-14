@@ -1,5 +1,8 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_fatturazione_ordini`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle e funzioni:
@@ -39,7 +42,7 @@ Read-time, nessun mirror.
 | **Valore totale (trigger-aware)** | **Trigger `CONFERMATO`** → valore **pieno** (fattura l'ordine: nessun doppio conteggio da evitare). **Trigger `SPEDITO`/`CONSEGNATO`** → **residuo da spedire**, per riga `GREATEST(0, quantita − Σ fulfillment.qta_evasa + fn_ordine_riga_qta_riconsegna(riga)) × prezzo scontato`: ciò che è già spedito lo porta il DDT, l'ordine porta il resto |
 | Competenza | Mese di `ordini.data` (l'ordine non ha competenza nativa; quella puntuale nasce sulla commessa) |
 | `is_abortito` | `esito = 'NEGATIVO'` da `config.stati_doc_ordini` |
-| `motivo_fermo` | `DOC_BOZZA` (DRAFT) · **`IN_ATTESA_DDT`** (trigger `SPEDITO`/`CONSEGNATO`: il push spetta al DDT) · `PUSH_NON_ESEGUITO` (confermato, 0 righe transitate) · `PUSH_PARZIALE` |
+| `motivo_fermo` | `DOC_BOZZA` (lo stato iniziale del vocabolario, colonna `iniziale`) · **`IN_ATTESA_DDT`** (trigger `SPEDITO`/`CONSEGNATO`: il push spetta al DDT) · `PUSH_NON_ESEGUITO` (confermato, 0 righe transitate) · `PUSH_PARZIALE` |
 | `cliente_display` | Ragione sociale del `soggetto_ruolo_id` (path `vw_ordini_lista`), nullable |
 
 ---

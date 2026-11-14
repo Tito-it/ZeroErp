@@ -52,7 +52,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ui_lista_colonna_lista_id | `CREATE INDEX ix_ui_lista_colonna_lista_id ON ui.lista_colonna USING btree (lista_id)` |
 | lista_colonna_pkey | `CREATE UNIQUE INDEX lista_colonna_pkey ON ui.lista_colonna USING btree (id)` |
 | uq_ui_lista_colonna_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_colonna_lista_codice ON ui.lista_colonna USING btree (lista_id, codice)` |
 

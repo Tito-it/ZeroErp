@@ -166,6 +166,9 @@ piu' nessuno stato** — il significato di `SUPERATA` sta ora dove stanno gia'
 * **Flag revisione**: **`is_attiva`**, **`is_superata`**, **`is_abortito`**, **`has_next_revisione`**
 * **Stato**: `stato_doc_offerta_id`, **`stato_codice_interno`** (severity Tag FE), `stato_descrizione`
 * **Scadenza**: **`is_scaduta`** (badge FE: validità passata e nessun esito, la regola intera)
+* **PDF**: **`pdf_mode`**, in ultima posizione, da `config.stati_doc_offerte.pdf_mode`: la lista
+  accende il PDF dove è `ARCHIVE`, come la lista degli ordini, senza confrontare il codice della
+  bozza
 * **Cliente (via istanza)**: `billing_account_id`, **`ba_codice`**, `soggetto_id`, **`ragione_sociale_completa`**, **`id_fiscale_univoco_cf_piva`**
 * **Permessi / emittente**: `emittente_fiscale_id` (scope), **`emittente_fiscale_codice`**
 * **Utility e istanza**: `utility_id`, **`utility_codice`**, `utility_descrizione`, `istanza_utility_id`, `istanza_utility_codice`

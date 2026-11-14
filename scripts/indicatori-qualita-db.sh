@@ -132,9 +132,14 @@ seed_rls = "db/changelog/migrations_v2/80_data/sql/dbops/rls_perimetro_debito.cs
 misura(RD, "rls_perimetro_debito (righe nel seed)", sum(1 for _ in csv.DictReader(open(seed_rls, encoding="utf-8"))))
 
 sp = testo("db/pgtap/dbops/test-security-definer-search-path-v1.sql")
+# Dal 2026-11-03 i test 4 e 5 non sono più soglie ma DIVIETI (D6-bis chiusa):
+# un `is(…, '', '4. ⛔ …')` vale 0. Una soglia `'<=', N::bigint` resta letta così.
 soglie = re.findall(r"'<=',\s*(\d+)::bigint,\s*'(\d)\.", sp)
 soglia = {n: v for v, n in soglie}
-misura(RD, "DEFINER senza pg_temp / con public prima di pg_catalog (soglie D6-bis)",
+for n in ("4", "5"):
+    if n not in soglia and re.search(rf"'{n}\. ⛔", sp):
+        soglia[n] = "0 (divieto)"
+misura(RD, "DEFINER senza pg_temp / con public prima di pg_catalog (D6-bis)",
        f"{soglia.get('4', '?')} / {soglia.get('5', '?')}")
 
 

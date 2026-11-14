@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_da_ordine`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,8 +37,11 @@ Restituisce l'id della bolla. `p_righe` dice, per riga d'ordine, la quantità da
 
 ### Logica
 
-1. **Guard**: `p_ordine_id > 0`; ordine esistente (`E_DDT_ORDINE_NOT_FOUND`) e in stato evadibile
-   `CONFERMATO`/`PARZIALMENTE_EVASO` (`E_DDT_ORDINE_STATO_NON_EVADIBILE`).
+1. **Guard**: `p_ordine_id > 0`; ordine esistente (`E_DDT_ORDINE_NOT_FOUND`) ed evadibile: il primo motivo di
+   [`script.fn_check_ordine_evadibile`](/dbzero/script/funzioni/fn_check_ordine_evadibile)
+   (`E_DDT_ORDINE_STATO_NON_EVADIBILE`), la stessa check da cui la capability dice
+   `can_genera_ddt`. Si evade dallo stato di emissione, che il vocabolario marca (colonna
+   `emissione` di `config.stati_doc_ordini`, oggi `CONFERMATO`), e da `PARZIALMENTE_EVASO`.
 2. **Testata DDT** `DRAFT`, con la provenienza dell'ordine: tipo `ORDINE_VENDITA` (**non**
    DDT_VENDITA: è la condizione perché `trgfn_ddt_normalize` erediti billing/utility/valuta) e la
    chiave dell'ordine nella colonna del suo `key_selector` (`sorgente_id`). La coppia la calcola
@@ -57,8 +60,9 @@ Restituisce l'id della bolla. `p_righe` dice, per riga d'ordine, la quantità da
    logica di residuo duplicata** nella madre.
 6. **Idempotenza**: via residuo (niente token). Se non resta nulla → `E_DDT_NIENTE_DA_EVADERE`
    (rollback della testata orfana).
-7. **Proiezione stato ordine**: residuo pieno → `CONFERMATO`, `0 < residuo < pieno` →
-   `PARZIALMENTE_EVASO`, residuo 0 → `EVASO` (predicato `fn_ordine_ha_residuo_evasione`, atomico).
+7. **Proiezione stato ordine**, da `vendite.fn_ordine_proietta_stato_evasione`: nessun
+   legame di evasione su una riga merce → lo stato di emissione, residuo su almeno una riga
+   merce → `PARZIALMENTE_EVASO`, altrimenti `EVASO` (predicato `fn_ordine_ha_residuo_evasione`).
 
 ---
 

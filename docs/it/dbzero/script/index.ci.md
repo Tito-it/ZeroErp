@@ -67,6 +67,7 @@ search:
 - [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con una bolla figlia viva, oppure righe di commessa già `EMESSA`. Un elenco vuoto vuol dire che l'annullamento è lecito.
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
 - [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_check_ordine_evadibile](manual/fn_check_ordine_evadibile.md) — **Da quest'ordine si genera una bolla di evasione? E se no, perché?**
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_accettabile](manual/fn_check_preventivo_accettabile.md)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — Elenca i motivi che impediscono di **annullare** un preventivo: un ordine vivo già nato da esso, oppure righe già **emesse** in commessa. È la sede unica della regola: la leggono il guard dell'annullo, la porta dei passaggi di stato e la capability del preventivo.

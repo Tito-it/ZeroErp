@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Via i 21 indici STORICI ridondanti per prefisso che un database
+# costruito da zero si porta dietro.
+#
+# Sono btree su una sola colonna FK, coperti per prefisso da una UNIQUE o dalla
+# PK della stessa tabella (linee-guida-sql §8.6, forma «ridondanti per
+# prefisso»: stesso opclass, collation, ordinamento e nessun predicato; nessuno
+# regge un vincolo). Venti nascono nella prima generazione congelata
+# (migrations/00_bootstrap, baseline: §11.11, non si toccano) coi nomi di
+# allora (ix_ordrig_testata, ix_fatture_ret_fattura, …); uno,
+# dbops.ix_processi_bersagli_processo_id, col CREATE TABLE di 20260904-08.
+#
+# PERCHE' SU DBDEV NON CI SONO (tranne l'ultimo). Li ha tolti 20260116-09, che
+# droppava il gemello storico SOLO se esisteva anche quello col nome canonico
+# della politica FK. Da zero il gemello canonico non nasce piu' — la politica
+# non crea un indice per una FK gia' coperta (guardia 1 di
+# apply_fk_index_policy) — e lo storico resta: la differenza fra dbdev e
+# un'installazione nuova e' di modello, non di dati. Visti il 2026-11-14 dalla
+# vista dbops.vw_indici_ridondanti_prefisso sullo scratch zeroerp_ruoli (21
+# righe, origine MANUALE), contro 4 su dbdev.
+#
+# Non sono indici della politica FK: nessuna riga di dbops.fk_index_policy li
+# nomina, e la FK resta coperta dal vincolo, quindi nessun apply li ricrea.
+# IF EXISTS: dove il 20260116-09 li ha gia' tolti (dbdev) il DROP non fa
+# niente. Nessun pgTAP, vista o funzione li nomina (grep del 2026-11-14).
+# Voce D11 di migliorie-generali-da-test-valutazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261114-21-drop-indici-storici-ridondanti-per-prefisso-mctit.yaml
+
+  - changeSet:
+      id: 20261114-21-drop-indici-storici-ridondanti-per-prefisso
+      author: mctit
+      comment: >
+        Via i 21 indici storici coperti per prefisso da una UNIQUE o dalla PK della loro tabella.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS acquisti.ix_ddt_indirizzo_ordine;  -- coperto da uq_ddt_indirizzi_uno_per_tipo
+              DROP INDEX IF EXISTS acquisti.ix_ao_r_testata;  -- coperto da uq_ao_r_riga_nr
+              DROP INDEX IF EXISTS anagrafiche.ix_bank_branches_soggetto_ruolo_id;  -- coperto da uq_bank_branches_soggetto_ruolo_bank_branch_code
+              DROP INDEX IF EXISTS anagrafiche.ix_billing_account_istanza;  -- coperto da uq_billing_instance_utility
+              DROP INDEX IF EXISTS anagrafiche.ix_indirizzi_soggetti_soggetto_id;  -- coperto da uq_indirizzi_soggetti_soggetto_tipo
+              DROP INDEX IF EXISTS anagrafiche.ix_idp_istanza_utility_id;  -- coperto da uq_istanze_dati_precontrattuali_id_utility_id
+              DROP INDEX IF EXISTS anagrafiche.ix_pdp_indirizzo_dettaglio_id;  -- coperto da uq_pdp_addr_utility
+              DROP INDEX IF EXISTS anagrafiche.ix_soggetti_conti_bancari_soggetto_id;  -- coperto da uq_soggetti_conti_bancari_soggetto_id_conto_id_uso
+              DROP INDEX IF EXISTS config.ix_fg_tsd_forma_giuridica_id;  -- coperto da pk_forme_giuridiche_tsd
+              DROP INDEX IF EXISTS config.ix_toponomastica_id;  -- coperto da uq_toponomastica_descr
+              DROP INDEX IF EXISTS config.ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo;  -- coperto da uq_tipi_ruolo_tipi_indirizzo_tipo_ruolo_tipo
+              DROP INDEX IF EXISTS config.ix_tsd_tipi_indirizzo_tipo_soggetto_dettaglio;  -- coperto da uq_tipi_soggetto_dettaglio_tipi_indirizzo_tipo_soggetto_tipo
+              DROP INDEX IF EXISTS dbops.ix_processi_bersagli_processo_id;  -- coperto da uq_processi_bersagli_target
+              DROP INDEX IF EXISTS magazzino.ix_mag_ubicazioni_magazzino;  -- coperto da uq_mag_ubicazioni_mag_codice
+              DROP INDEX IF EXISTS vendite.ix_ddt_indirizzi_ddt;  -- coperto da uq_ddt_indirizzi_uno_per_tipo
+              DROP INDEX IF EXISTS vendite.ix_fatture_indir_fattura;  -- coperto da uq_fatture_indirizzi_uno_per_tipo_
+              DROP INDEX IF EXISTS vendite.ix_fatture_ret_fattura;  -- coperto da uq_fatture_rettifiche_pair
+              DROP INDEX IF EXISTS vendite.ix_fatture_righe_fattura;  -- coperto da uq_fatture_righe_riga_nr
+              DROP INDEX IF EXISTS vendite.ix_ordini_indirizzi_ordine;  -- coperto da uq_ordini_indirizzi_uno_per_tipo
+              DROP INDEX IF EXISTS vendite.ix_ordrig_testata;  -- coperto da uq_ordrig_riga_nr
+              DROP INDEX IF EXISTS vendite.ix_preventivi_indir_preventivo;  -- coperto da uq_preventivi_indirizzi_uno_per_tipo_
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE INDEX IF NOT EXISTS ix_ddt_indirizzo_ordine ON acquisti.ddt_indirizzi USING btree (ddt_id);
+              CREATE INDEX IF NOT EXISTS ix_ao_r_testata ON acquisti.ordini_righe USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_bank_branches_soggetto_ruolo_id ON anagrafiche.bank_branches USING btree (soggetto_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_billing_account_istanza ON anagrafiche.billing_account USING btree (istanza_utility_id);
+              CREATE INDEX IF NOT EXISTS ix_indirizzi_soggetti_soggetto_id ON anagrafiche.indirizzi_soggetti USING btree (soggetto_id);
+              CREATE INDEX IF NOT EXISTS ix_idp_istanza_utility_id ON anagrafiche.istanze_dati_precontrattuali USING btree (istanza_utility_id);
+              CREATE INDEX IF NOT EXISTS ix_pdp_indirizzo_dettaglio_id ON anagrafiche.pdp USING btree (indirizzo_dettaglio_id);
+              CREATE INDEX IF NOT EXISTS ix_soggetti_conti_bancari_soggetto_id ON anagrafiche.soggetti_conti_bancari USING btree (soggetto_id);
+              CREATE INDEX IF NOT EXISTS ix_fg_tsd_forma_giuridica_id ON config.forme_giuridiche_tipi_soggetto_dettaglio USING btree (forma_giuridica_id);
+              CREATE INDEX IF NOT EXISTS ix_toponomastica_id ON config.stradario_generale USING btree (toponomastica_id);
+              CREATE INDEX IF NOT EXISTS ix_tipi_ruolo_tipi_indirizzo_tipo_ruolo ON config.tipi_ruolo_tipi_indirizzo USING btree (tipo_ruolo_id);
+              CREATE INDEX IF NOT EXISTS ix_tsd_tipi_indirizzo_tipo_soggetto_dettaglio ON config.tipi_soggetto_dettaglio_tipi_indirizzo USING btree (tipo_soggetto_dettaglio_id);
+              CREATE INDEX IF NOT EXISTS ix_processi_bersagli_processo_id ON dbops.processi_bersagli USING btree (processo_id);
+              CREATE INDEX IF NOT EXISTS ix_mag_ubicazioni_magazzino ON magazzino.ubicazioni USING btree (magazzino_id);
+              CREATE INDEX IF NOT EXISTS ix_ddt_indirizzi_ddt ON vendite.ddt_indirizzi USING btree (ddt_id);
+              CREATE INDEX IF NOT EXISTS ix_fatture_indir_fattura ON vendite.fatture_indirizzi USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_fatture_ret_fattura ON vendite.fatture_rettifiche USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_fatture_righe_fattura ON vendite.fatture_righe USING btree (fattura_id);
+              CREATE INDEX IF NOT EXISTS ix_ordini_indirizzi_ordine ON vendite.ordini_indirizzi USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_ordrig_testata ON vendite.ordini_righe USING btree (ordine_id);
+              CREATE INDEX IF NOT EXISTS ix_preventivi_indir_preventivo ON vendite.preventivi_indirizzi USING btree (preventivo_id);

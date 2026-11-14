@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-14
 
-**Riparte: il team DB**, col giro 6a (il preventivo, §6.15). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+**Riparte: il team DB** col giro 6c (il contratto). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
 (Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
@@ -44,16 +44,31 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i | ✅ DB | giro 5: il listino, i COMMENT stantii, `in_gioco` (⑧, S-9, §4.8, R-2): `20261114-05 … -07`, 31 pgTAP con l'estratto, tre adeguati (2026-11-14) | §6.14 | 9h |
 | 9i-bis | ✅ Tid | apply di `20261114-05 … -07` (il `-05` al secondo tentativo, dopo la correzione della `preCondition`); i pgTAP del §6.14: verdi (2026-11-14) | §6.14 | 9i |
 | 9i-ter | ✅ DB | giro 6: il censimento, circa 55 oggetti in sei documenti, e l'ordine (2026-11-14) | §6.15 | — |
+| 9i-quater | ✅ DB | giro 6a, il preventivo: `20261114-08 … -13`, un pgTAP nuovo (plan 18), sei pagine `manual/` e il vocabolario; prova in transazione con 128 pgTAP (2026-11-14) | §6.16 | 9h |
+| 9i-quinquies | ✅ Tid | ✅ **D-PROI** (a), 2026-11-14: la proiezione dello smistamento parte dallo stato di accettazione (`-13`, revoca in parte una riga del 2026-10-31). ✅ **D-PDF** (a), 2026-11-14: il PDF delle liste dalla vista (`pdf_mode`), non dal codice della bozza; ogni giro la sua vista lista, per offerta e preventivo i giri 2-ter e 6a-bis | §6.16 | — |
+| 9i-sexies | ✅ Tid | apply di `20261114-08 … -13` e pgTAP del §6.16 verde (2026-11-14) | §6.16 | — |
+| 9i-septies | **BE** ⏭️ | BE-P1: il ritiro di `STATO_PREVENTIVO_DRAFT`, che nessuno legge | §6.16 | — |
+| 9i-octies | **FE** ⏭️ | FE-P1: il lucchetto del drawer del preventivo dalle chiavi `can_edit_*`, non dal codice DRAFT (gemello di FE-V2) | §6.16 | — |
+| 9i-nonies | ✅ DB | giro 6b, l'ordine: `20261114-14 … -20`, un pgTAP nuovo (plan 22), sette pagine `manual/`; prova in transazione (2026-11-14) | §6.17 | — |
+| 9i-decies | ✅ Tid | apply di `20261114-14 … -20` (il `-19` al secondo tentativo, col COMMENT fuori dal `BEGIN ATOMIC`) e pgTAP del §6.17: verdi (2026-11-14). ✅ **D-EVAD** (a), 2026-11-14 | §6.17 | 9i-nonies |
+| 9i-decies-bis | ✅ DB | giro 6b-bis (D-EVAD): `script.fn_check_ordine_evadibile`, letto da `vendite.fn_genera_ddt_da_ordine` e dalla capability (`can_genera_ddt`); giri 2-ter e 6a-bis (D-PDF): `pdf_mode` nelle viste lista di offerta e preventivo; `20261114-22 … -26`, due pgTAP, prova con 160 file (2026-11-14) | §6.18 | — |
+| 9i-decies-ter | ✅ Tid | apply di `20261114-22 … -26` e pgTAP del §6.18: verdi (2026-11-14) | §6.18 | — |
+| 9i-decies-quater | **FE** ⏭️ | FE-O3 («Genera bolla» da `can_genera_ddt`), FE-P2 e FE-V3 (il PDF delle liste da `pdf_mode`) | §6.18 | — |
+| 9i-undecies | **BE** ⏭️ | BE-O1: il ritiro di `_STATI_PUSHABILI` | §6.17 | — |
+| 9i-duodecies | **FE** ⏭️ | FE-O1: il lucchetto del drawer dell'ordine dalle chiavi `can_edit_*`; FE-O2: l'avviso dopo l'annullo dall'azione | §6.17 | — |
+| 9i-terdecies | **DB** ⏭️ | giri 6c … 6f, un documento per volta: contratto, bolla, reso, listino; ognuno con la sua vista lista (D-PDF) | §6.15 | — |
+| 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
+| 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
 | 9i-quater | **DB** ⏭️ | giri 6a … 6f, un documento per volta: preventivo, ordine, contratto, bolla, reso, listino | §6.15 | — |
 | 9j | ✅ BE | BE-T1 e BE-T2: la frase di `doc_terminale` in `api_percorso.md`; `error_policies_generated.py` rigenerato col codice nuovo, e il suo ripiego (da committare, 2026-11-14). In più, da S-3: la rotta della conferma del reso chiede lo stato di emissione al vocabolario (`stato_del_modello="emissione"`), via `resi_service.STATO_CONFERMATO` | §6.12 | — |
 | 9k | ✅ FE | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati, e la mappa di `severity.js` (da committare, 2026-11-14) | §6.13 | 9f |
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna; D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna. D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** il giro 2-bis (§6.10: due changeSet, il pgTAP, tre pagine `manual/`) e D-LOCK (§6.11: due changeSet, quattro pgTAP, quattro pagine `manual/`), i giri 3 e 4 (§6.12, §6.13: undici changeSet, sei CSV e tre mirror, due pgTAP nuovi e cinque adeguati, dodici pagine), il giro 5 (§6.14: tre changeSet, tre pgTAP adeguati, due pagine), questo brief; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** i giri 6a (§6.16), 6b (§6.17), 6b-bis, 6a-bis e 2-ter (§6.18), tutti applicati e verdi: diciotto changeSet (`20261114-08 … -20`, `-22 … -26`), una riga del CSV dei messaggi, tre pgTAP nuovi, le pagine `manual/` e questo brief. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -1186,3 +1201,237 @@ mail; ATTIVO delle automazioni, delle vesti, dei dispositivi). Tolti quelli, res
 prova e il suo apply: preventivo, ordine, contratto, bolla, reso, listino. Ogni giro porta il presidio sulla forma
 del documento (nessun codice dei suoi stati nei corpi dei suoi lettori di significato), come il test 12 di
 `vendite/test-offerta-guard-dal-vocabolario-v1` per l'offerta, e una marca spostata dove il significato lo permette.
+
+### 6.16 Giro 6a — il preventivo (team DB, 2026-11-14)
+
+Col via di Tid ai giri (2026-11-14), numeri dal primo libero (`scripts/prossimo_changeset.py`). Corpi da
+`pg_get_functiondef` e `pg_get_viewdef` su dbdev il 2026-11-14, firme ri-ancorate con `%TYPE` come nell'ultima
+revisione di ciascuna; ogni rollback porta la definizione e il COMMENT di prima, letti dal catalogo. I COMMENT, che
+erano cronache, sono riscritti al presente (§5d).
+
+**Il censimento riaperto.** Il corpo vivo di ogni funzione e vista che legge gli stati del preventivo, commenti tolti,
+contro i sette codici: i sei oggetti del §6.15 e tre builder `dbops`. Nessuno mancava. I builder restano fuori:
+`fn_pgtap_crea_preventivo` e `fn_pgtap_crea_preventivo_con_righe` ricevono il codice dello stato a cui il test vuole
+arrivare (la destinazione la nomina il test), e il ramo `'ANNULLATO'` di `fn_pgtap_porta_a_stato` è del reso (giro 6e).
+Restano anche gli stati che i montaggi del lock di testata scrivono per la colonna (`competenza_mese`, `meta`:
+`'EMESSO,ACCETTATO'`): sono la configurazione del montaggio, gli stati in cui la colonna resta aperta, come le righe
+della matrice.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261114-08` | `vendite.trgfn_preventivi_guard_annullamento`: lo stato di annullo da `is_abortito` della destinazione, non da `'ANNULLATO'`. Il codice resta per il contesto dell'errore |
+| `20_code/vendite/20261114-09` | `vendite.trgfn_preventivi_guard_transizione`: la Regola 3 (validità finita, prezzi) scatta su `script.fn_stato_accettazione_id`, come la Regola 2 su `fn_stato_emissione_id`. ⚠️ Il 2026-10-31 (`brief-modello-documento-vendita` §17.2) i letterali dei guard «restavano» come condizione del passaggio; S-2 (2026-11-08) prende la famiglia intera, e il giro 2 l'aveva già fatto per l'offerta |
+| `20_code/script/20261114-10` | `script.fn_available_actions_preventivo`: `can_edit_righe` = `script.fn_doc_riga_modificabile('vendite.preventivi_righe', stato)`, come l'offerta dopo D-LOCK. Con il seed la risposta è quella di prima in tutti e sette gli stati (dbdev, 2026-11-14). Il contratto del blob non cambia |
+| `20_code/vendite/20261114-11` | `vendite.fn_crea_revisione_preventivo`: «esiste già una revisione in bozza» da `sdp2.iniziale`, non da `'DRAFT'`. È lo stato in cui la revisione nuova nasce (`script.trgfn_doc_stato_iniziale`): con la marca spostata il guard non la vedeva e se ne creava una seconda |
+| `20_code/vendite/20261114-12` | `vendite.vw_dash_fatturazione_preventivi`: `DOC_BOZZA` da `iniziale`, `IN_ATTESA_ACCETTAZIONE` da `emissione`, come l'offerta. Le due colonne entrano nel `GROUP BY`; stesse colonne, `security_invoker` ripetuto |
+| `20_code/vendite/20261114-13` | **D-PROI** (a). `vendite.fn_preventivo_proietta_stato_smistamento` parte dallo stato di accettazione (la colonna) e ci torna da EVASO; EVASO resta col codice, destinazione del processo |
+
+**D-PROI — la proiezione dello smistamento: decisa (a) da Tid il 2026-11-14, con l'apply di `-13`.** Il 2026-10-31 (§17.2 del brief del modello) la
+proiezione «resta: è la proiezione fra due stati nominati, ed EVASO non ha una colonna». La ragione vale per EVASO, non
+per ACCETTATO: lo smistamento si apre dallo stato di accettazione del vocabolario (la capability con
+`can_push_commessa` e `can_genera_ordine`, `vendite.fn_push_preventivo_a_ordine`, `vendite.fn_list_preventivi_da_pushare`,
+tutti dalla colonna dal 2026-10-31). Con la marca spostata il push lavora dal nuovo stato e la proiezione non scatta: il
+preventivo smistato per intero non diventa EVASO, e da EVASO torna a ACCETTATO invece che allo stato da cui lo
+smistamento si apre. È una revoca parziale di una decisione, quindi la decide Tid.
+* **(a) — proposta DB:** applicare `-13`. Partenza e ritorno dalla colonna `accettazione`, EVASO col codice.
+* **(b):** lasciare la proiezione com'è; `-13` si ritira dal repo e il test 18 del pgTAP con lui (il 10 cambia in
+  `ACCETTATO,EVASO`).
+
+**D-PDF — il PDF delle liste: trovato dal giro 6a, deciso (a) da Tid il 2026-11-14.** Le liste dei preventivi e delle offerte
+spengono il PDF con il codice della bozza: `frontend/src/vendite/preventivi/components/PreventiviList.vue`
+(`stato_codice_interno === 'DRAFT'`, due righe) e `frontend/src/vendite/offerte/components/OfferteSearchTable.vue`
+(`=== 'BOZZA'`; il giro 2 non l'aveva visto). Il drawer legge il PDF dalla capability (`pdf.mode`, da `pdf_mode` del
+vocabolario), la lista no, perché le viste lista (`vendite.vw_preventivi_lista`, `vendite.vw_offerte_commerciali_lista`)
+non portano `pdf_mode`. È una copia della regola di stampa fuori dal DB (S-10), e probabilmente la stessa forma sta nelle
+liste degli altri documenti: è un tema di famiglia, che il fermo allentato ammette perché poggia sul vocabolario.
+* **(a) — proposta DB:** ogni giro del suo documento aggiunge `pdf_mode` alla vista lista (colonna in coda, §5f),
+  e il FE spegne il PDF dove non è `ARCHIVE`; per l'offerta, un giro 2-ter. Ricadute FE: i file delle liste.
+* **(b):** un giro unico per tutte le liste, dopo il 6f.
+
+**Il pgTAP nuovo.** `vendite/test-preventivo-stati-dal-vocabolario-v1` (plan 18): otto contrasti col seed (la riga
+dell'emesso non si scrive, i motivi del cruscotto, la seconda revisione, lo smistato EVASO, la strada che manca, la
+validità finita che ferma l'accettazione e non il rifiuto, il ritorno da EVASO all'annullo dell'ordine), due presidi sulla forma (i cinque
+lettori non nominano i codici; la proiezione nomina il solo EVASO) e otto marche spostate, ognuna rimessa al suo posto
+prima della successiva. I casi si costruiscono dalle strade dell'applicazione: i passaggi manuali dal verbo
+`vendite.fn_cambia_stato_preventivo` (con l'azione del passaggio concessa all'operatore), EVASO dal push all'ordine, il
+ritorno da EVASO dall'annullo dell'ordine (`vendite.fn_annulla_ordine`). ⛔ Mai `script.fn_doc_scrivi_stato` dal test:
+la porta vuole il proprietario della tabella, e il runner è `zeroerp_app`. La prima stesura lo faceva, verde sullo
+scratch (la prova gira da owner) e rossa su dbdev alla fixture (`E_DOC_STATO_SOLO_DAL_VERBO`): corretta il 2026-11-14,
+senza il marcatore `pgtap-runner: owner`, perché quei passaggi l'applicazione li fa. Con `iniziale` su EMESSO la capability e il lock dicono insieme che la riga dell'emesso si
+scrive, il cruscotto dà DOC_BOZZA e la revisione dell'emesso trova la bozza in lui; con `emissione` su ACCETTATO il
+cruscotto dà IN_ATTESA_ACCETTAZIONE all'accettato; con `is_abortito` su RIFIUTATO il guard dell'annullo parla prima
+della matrice; con `accettazione` su RIFIUTATO la Regola 3 ferma il rifiuto dello scaduto; con `accettazione` su EMESSO
+(e la riga di processo EVASO → EMESSO, aggiunta dal test) l'annullo dell'ordine riporta il preventivo EVASO a EMESSO. Il caso scaduto usa il fuso
+come `vendite/test-preventivo-scadenza-v1`.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi: forme, COMMENT al presente, letterali,
+`runOnChange`, preambolo pgTAP. L'estratto dei sei changeSet gira per intero in `ROLLBACK`, catalogo identico dopo.
+Regressione con `--pgtap` sui **128** file che nominano gli oggetti toccati, il vocabolario, la tabella o i builder del
+preventivo: 127 uguali senza e con l'estratto; il nuovo passa da 9/18 a 18/18. Senza l'estratto è verde il 12, ed è
+giusto: è la metà del trigger, che legge lo stato iniziale dal `20261113-40`. Dieci file rossi uguali nelle due corse,
+quindi già presenti sullo scratch; per i due che toccano preventivo e capability
+(`test-doc-lettori-stato-e-preventivo-al-modello-v1`, il test 23 «rosso da owner»;
+`test-capability-annulla-aspetto-e-stato-leggibile-v1`, quattro test sulla popolazione delle matrici) i test rossi sono
+gli stessi, uno per uno. Gli altri: `test-ordine-al-modello-v1`, `test-refactor-qta-operativa-preventivi-v1`,
+`test-esecutivi-ba-coppia-v1` (già noti), `test-articolo-usato-struttura-v1`, `test-documenti-generati-eventi`,
+`test-doc-verbo-comune-e-porta-v1`, `test-lista-competenza-gruppi-colonna-emittente-v1`,
+`test-annullo-documento-con-legami-v1`. I pgTAP li lancia Tid.
+
+**Apply (Tid, 2026-11-14).** `20261114-08 … -13` applicati su dbdev e sullo scratch; il pgTAP nuovo, nella stesura
+corretta, è verde da `testpgtap.sh` (ruolo applicativo).
+
+**Pagine.** `vendite/trgfn_preventivi_guard_annullamento`, `vendite/trgfn_preventivi_guard_transizione` (riallineata
+al corpo vivo: mancavano la riga attiva all'emissione, che dal 2026-10-25 sta nel guard e non più nel verbo, e la
+validità finita), `script/fn_available_actions_preventivo` (le righe di `can_edit_*`; il resto della pagina resta una
+cronaca, debito della famiglia), `vendite/fn_crea_revisione_preventivo` (e il suo `E_CONFIG_MANCANTE`, che il corpo
+non solleva più), `vendite/vw_dash_fatturazione_preventivi`, `vendite/fn_preventivo_proietta_stato_smistamento` (diceva
+INVOKER: è DEFINER dal 2026-10-25), `config/stati_doc_preventivi` (i lettori di ogni colonna; e l'«Emetti produce numero
+e PDF» che il §6.14 aveva già tolto dal COMMENT). La doc auto-generata non è rigenerata.
+
+**Richieste al team BE/FE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-P1 | `backend/apps/vendite/services/_approvazioni_prezzo_constants.py` | ritirare `STATO_PREVENTIVO_DRAFT`: è il codice della bozza, e nessuno lo legge (`grep` su `backend/`, 2026-11-14) |
+| FE-P1 | `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue` | `isReadonly` dalle chiavi `can_edit_*` della capability, non da `stato_codice_interno !== 'DRAFT'`: il gemello di FE-V2 per l'offerta. Il contratto della capability non cambia |
+
+Le liste: D-PDF (a), giro 6a-bis. Nessun codice d'errore nuovo, nessuna chiave i18n nuova.
+
+### 6.17 Giro 6b — l'ordine (team DB, 2026-11-14)
+
+Col via di Tid al giro 6b (2026-11-14), numeri dal primo libero (`scripts/prossimo_changeset.py`). Corpi da
+`pg_get_functiondef` e `pg_get_viewdef` su dbdev il 2026-11-14; le firme, coi loro `%TYPE`, dal changeSet che le ha
+scritte per ultime (il catalogo li scioglie). Ogni rollback porta la definizione e il COMMENT di prima, letti dal
+catalogo. I COMMENT che erano cronache sono riscritti al presente (§5d).
+
+**Il vocabolario dell'ordine** ha `iniziale` (DRAFT), `emissione` (CONFERMATO), `is_abortito` (ANNULLATO) e
+`terminale`; non ha `accettazione`. EVASO e PARZIALMENTE_EVASO sono destinazioni dell'evasione (S-3).
+
+**Il censimento riaperto.** Il corpo vivo, commenti tolti, contro i cinque codici. ⚠️ Il primo passaggio cercava in
+`prosrc`, che per le funzioni `BEGIN ATOMIC` è vuoto: rifatto su `pg_get_functiondef`, ha trovato
+`vendite.fn_situazione_merce_ordine` (la soglia dell'impegno su `'CONFERMATO'`), che il §6.15 non elencava. Lo stesso
+passaggio sul preventivo non trova niente: il giro 6a non ha perso oggetti. Restano fuori, per ragione:
+
+* `vendite.trgfn_ordini_normalize`, `script.fn_check_ddt_emittibile`, `vendite.fn_ddt_push_diagnosi`: il
+  `'CONFERMATO'` è `fatturazione_trigger`, un altro asse; lo stesso confronto resta nella capability, nella push-list e
+  nel cruscotto;
+* `vendite.trgfn_doc_guard_delete_solo_bozza`: il `'DRAFT'` è della bozza email, che non ha un vocabolario;
+* i builder `dbops` (`fn_pgtap_crea_ordine*`, `fn_pgtap_crea_ddt_da_ordine`, `fn_pgtap_porta_a_stato`): ricevono la
+  destinazione che il test vuole.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/script/20261114-14` | `script.fn_available_actions_ordine`: la bozza e l'annullo da `iniziale` e `is_abortito` nei quattro rami che li nominavano (i prezzi non autorizzati, le reason del push, la data di consegna confermata); `can_edit_righe` dal lock delle righe (`script.fn_doc_riga_modificabile`), come preventivo e offerta. Con il seed la risposta è la stessa nei cinque stati |
+| `20_code/vendite/20261114-15` | `vendite.trgfn_ordini_guard_transizione`: Regole 2 e 5 dallo stato iniziale allo stato di emissione, Regola 3 verso lo stato di annullo, Regola 4 verso lo stato di emissione da qualunque partenza (come prima: il rientro dall'evasione compreso). La capability accendeva già gli stessi motivi dalle colonne (`20261025-81`) |
+| `20_code/vendite/20261114-16` | `vendite.fn_ordine_proietta_stato_evasione`: senza legami di evasione l'ordine torna allo stato di emissione (`script.fn_stato_emissione_id`), non a `'CONFERMATO'`; PARZIALMENTE_EVASO ed EVASO restano col codice. È la forma di D-PROI (a) del preventivo |
+| `20_code/vendite/20261114-17` | `vendite.fn_genera_ddt_da_ordine`: si evade dallo stato di emissione (la colonna) e da PARZIALMENTE_EVASO (il codice). Con la sola `-16`, una marca spostata riportava l'ordine in uno stato da cui la bolla non si generava più |
+| `20_code/vendite/20261114-18` | `vendite.fn_list_ordini_da_pushare`: `NOT sdo.iniziale AND NOT sdo.is_abortito` al posto di `NOT IN ('DRAFT', 'ANNULLATO', 'FATTURATO')`; la «cintura» FATTURATO esce, perché dal `20261114-03` non nomina uno stato (§6.13) |
+| `20_code/vendite/20261114-19` | `vendite.fn_situazione_merce_ordine` (`BEGIN ATOMIC`): la soglia dell'impegno è l'ordine dello stato con `emissione`, non di `'CONFERMATO'` |
+| `20_code/vendite/20261114-20` | `vendite.vw_dash_fatturazione_ordini`: `DOC_BOZZA` da `iniziale`; la colonna entra nel `GROUP BY`; stesse colonne, `security_invoker` ripetuto |
+
+**Il pgTAP nuovo.** `vendite/test-ordine-stati-dal-vocabolario-v1` (plan 22), sulle sole strade dell'applicazione
+(il verbo `vendite.fn_cambia_stato_ordine` con l'azione concessa, i builder, l'annullo della bolla con
+`vendite.fn_annulla_ddt`; mai `script.fn_doc_scrivi_stato`, lezione del §6.16). Dieci contrasti col seed, due presidi
+sulla forma (i lettori non nominano i codici, tolto il confronto con `fatturazione_trigger`; proiezione e bolla
+nominano solo PARZIALMENTE_EVASO ed EVASO) e dieci marche spostate: `iniziale` su CONFERMATO (capability, riga che
+si scrive, cruscotto, push-list), `emissione` su EVASO (la bolla non si genera dal confermato, la riga non è più
+impegnata, annullata la bolla l'ordine va a EVASO), `is_abortito` su EVASO (la reason del push, la push-list),
+`emissione` su ANNULLATO (l'ordine vuoto non ci va: la Regola 2 segue la marca). Senza l'estratto 11/22: i dieci
+contrasti e il 14, la metà del trigger, che legge lo stato iniziale da D-LOCK; con l'estratto 22/22.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi. L'estratto dei sette changeSet gira per intero
+in `ROLLBACK`, catalogo identico dopo. ⚠️ Al primo tentativo il `-18` falliva («non è possibile cambiare il tipo
+restituito»): la firma era stata presa da un changeSet vecchio (`20261020-92`) e non dall'ultimo (`20261113-17`, che
+la riscrive con `DROP` + `CREATE`); corretto. Regressione con `--pgtap` sui **148** file transazionali che nominano gli
+oggetti toccati, il vocabolario, la matrice o i builder dell'ordine: 148 con lo stesso esito senza e con l'estratto.
+Due file la prova non li lancia: `vendite/test-documenti-numerazione-trasloco-v1` (un `DO` prima del `BEGIN`) e
+`vendite/test-fn-list-ordini-da-pushare-v1` (nessun `ROLLBACK`); il secondo tocca il `-18`, e lo lancia Tid col
+runner.
+
+**L'apply (Tid, 2026-11-14) e il `-19`.** `20261114-14 … -18` sono applicati su dbdev e sullo scratch; l'update si è
+fermato sul `-19`. Il COMMENT stava nello stesso `sql:` del corpo `BEGIN ATOMIC`, e pgjdbc un `BEGIN ATOMIC` lo esegue
+solo da solo nel suo `sql:` (linee-guida-sql §5c; il `20261103-24` lo separava già). La prova passa da psql e non lo
+vede. Il `-19` non è mai entrato: corretto nel file (il COMMENT in un change suo, nei `changes` e nel `rollback`),
+riprovato in `ROLLBACK` con `-20` e il pgTAP nuovo (senza 19/22, con 22/22: i tre rossi senza sono cruscotto,
+situazione merce e presidio sulla forma, cioè i due oggetti non applicati). Riapplicati da Tid il `-19` e il `-20`, i
+pgTAP del giro sono verdi (2026-11-14). ⚠️ Col runner applicativo il presidio 12 era rosso: il nome della funzione
+veniva da `regprocedure::text`, che omette lo schema nel `search_path` (`script` lo è per il runner, non per l'owner
+della prova). Il nome ora si compone dal catalogo, schema compreso.
+
+**Pagine.** `vendite/trgfn_ordini_guard_transizione` (riallineata al corpo vivo: la matrice che riportava era quella
+del 2026-06, con CONFERMATO → ANNULLATO spento e gli stati ALLOCATO … FATTURATO; mancavano le regole 3-5 nei codici),
+`script/fn_available_actions_ordine` (le righe di `can_edit_*`, la riga di CONFERMATO, la catena delle reason del push
+con `ORDINE_ANNULLATO` e `ORDINE_GIA_INVIATO` che mancavano, le chiavi i18n nel namespace `vendite.ordini`; il resto
+della pagina resta una cronaca, debito della famiglia), `vendite/fn_list_ordini_da_pushare`,
+`vendite/vw_dash_fatturazione_ordini`, `vendite/fn_genera_ddt_da_ordine`, `vendite/fn_situazione_merce_ordine` (la
+riga impegnata), `config/stati_doc_ordini` (i lettori di ogni colonna). La proiezione dell'evasione non ha una pagina
+`manual/`. La doc auto-generata non è rigenerata.
+
+**D-PDF, un dato in più.** La lista degli ordini (`OrdiniSearchTable.vue`) spegne già il PDF da `pdf_mode` della riga:
+l'ordine segue già la forma (a) proposta nel §6.16, e non c'è niente da fare in questo giro.
+
+**D-EVAD — «Genera bolla» nel drawer dell'ordine: trovato dal giro 6b, deciso (a) da Tid il 2026-11-14 (giro 6b-bis).** Il drawer accende
+l'evasione con `STATI_ORDINE_EVADIBILI` (`frontend/src/vendite/ordini/constants.js`: CONFERMATO e
+PARZIALMENTE_EVASO), una copia della regola di `vendite.fn_genera_ddt_da_ordine` fuori dal DB (S-10). La capability
+non ha una chiave per l'evasione: senza, il FE non può leggerla.
+* **(a) — proposta DB:** un giro 6b-bis. La regola esce in un building block (`script.fn_check_ordine_evadibile`,
+  motivi nella forma delle `fn_check_*`), letto da `vendite.fn_genera_ddt_da_ordine` e dalla capability, che espone
+  `can_genera_ddt` con `_reason` e `_reason_key` (famiglia 1). Poi il FE legge la chiave e ritira la costante.
+  Ricadute: una chiave nuova nel contratto della capability, una `reason_key` nuova per il FE.
+* **(b):** lasciare la costante, e scriverla fra i debiti di S-10.
+
+**Richieste al team BE/FE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE-O1 | `backend/apps/vendite/services/ordini_service.py` (`_STATI_PUSHABILI`, `push_a_commessa`) | ritirare la whitelist degli stati pushabili: è la regola di `vendite.fn_list_ordini_da_pushare` scritta col codice. Subito dopo, `push_a_commessa` controlla già che ci siano righe da mandare (`count_righe_pushable`, `E_ORD_NESSUNA_RIGA`), e quelle righe le dà la push-list, che esclude lo stato iniziale e quello di annullo. Il perché in chiaro, se serve, sta in `can_push_commessa_reason` della capability |
+| FE-O1 | `frontend/src/vendite/ordini/components/OrdiniDrawer.vue` | `isReadonly` dalle chiavi `can_edit_*` della capability, non da `stato_codice_interno !== STATO_ORDINE.DRAFT`: il gemello di FE-P1 e FE-V2. Il contratto della capability non cambia |
+| FE-O2 | `frontend/src/vendite/ordini/stores/ordini.js` | l'avviso ai documenti collegati dopo l'annullo legge `statoCodice === STATO_ORDINE.ANNULLATO`: va legato all'azione (`key = 'annulla'` dell'azione scelta), non al codice della destinazione |
+
+`STATI_ORDINE_EVADIBILI` aspetta il giro 6b-bis. Nessun codice d'errore nuovo, nessuna chiave i18n nuova.
+
+### 6.18 Giri 6b-bis, 6a-bis e 2-ter — D-EVAD e D-PDF (team DB, 2026-11-14)
+
+Col sì di Tid a D-EVAD (a) e D-PDF (a) (2026-11-14). Numeri `20261114-22 … -26`, assegnati da Tid: il `-21` è
+dell'altra sessione DB.
+
+| ChangeSet | Giro | Che cosa |
+| --- | --- | --- |
+| `20_code/script/20261114-22` | 6b-bis | NUOVO `script.fn_check_ordine_evadibile`: la regola «si evade dallo stato di emissione e da PARZIALMENTE_EVASO» in una funzione pura (motivi nella forma delle `fn_check_*`). Motivo `E_DDT_ORDINE_STATO_NON_EVADIBILE`, reason `ORDINE_NON_EVADIBILE`, reason_key `vendite.ordini.genera_ddt_reason.stato_non_evadibile` |
+| `20_code/vendite/20261114-23` | 6b-bis | `vendite.fn_genera_ddt_da_ordine`: solleva il primo motivo della check (`script.fn_raise_primo_motivo_se_presente`), col bersaglio nel contesto come prima; escono `v_stato_ord` e `v_emissione` |
+| `20_code/script/20261114-24` | 6b-bis | `script.fn_available_actions_ordine`: + `can_genera_ddt` · `_reason` · `_reason_key` (famiglia 1) dalla stessa check. Il contratto si allarga, nessuna chiave cambia |
+| `20_code/vendite/20261114-25` | 6a-bis | `vendite.vw_preventivi_lista`: + `pdf_mode` in coda (`config.stati_doc_preventivi.pdf_mode`), lo stesso nome di `vendite.vw_ordini_lista`. COMMENT riscritto al presente |
+| `20_code/vendite/20261114-26` | 2-ter | `vendite.vw_offerte_commerciali_lista`: + `pdf_mode` in coda |
+| CSV `80_data/sql/config/messaggi_errore.csv` | 6b-bis | la frase di `E_DDT_ORDINE_STATO_NON_EVADIBILE` non nomina più i codici («attesi CONFERMATO o PARZIALMENTE_EVASO» → «la bolla si genera da un ordine confermato o evaso in parte»); mirror vivo (`runOnChange`), nessun changeSet |
+
+Le due viste si leggono dal backend con `SELECT v.*`: la colonna arriva al FE senza altro. Il rollback di una vista
+che ha preso una colonna fa `DROP` e ricrea, e rida il `GRANT` a `zeroerp_app` (`SELECT, INSERT, UPDATE, DELETE`,
+`relacl` su dbdev).
+
+**I pgTAP.** `vendite/test-ordine-stati-dal-vocabolario-v1` passa a plan 24: `8-bis` (contrasto: `can_genera_ddt`
+falso in bozza col motivo, vero al confermato) e `17-bis` (con `emissione` su EVASO, `can_genera_ddt` falso sul
+confermato); il presidio 11 aggiunge la bolla (nessun codice), il 12 guarda la check al posto della bolla (il solo
+PARZIALMENTE_EVASO). Nuovo `vendite/test-liste-pdf-mode-dal-vocabolario-v1` (plan 4): le due liste danno PREVIEW in
+bozza e ARCHIVE nell'emesso, e seguono `pdf_mode` della bozza spostato su ARCHIVE.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-14).** Guardrail verdi (changeSet e CSV). Un solo estratto, nell'ordine
+d'applicazione: `-19` e `-20` del giro 6b (ancora da applicare) e `-22 … -26`; gira per intero in `ROLLBACK`, catalogo
+identico dopo. Regressione con `--pgtap` sui **160** file transazionali che nominano la capability, la bolla, il
+builder della bolla, le due liste, la situazione merce, i cruscotti o il catalogo dei messaggi: tutti con lo stesso
+esito o meglio. I due nuovi: l'ordine 24/24 con l'estratto, la lista 4/4; senza, si interrompono (la check e la
+colonna non ci sono).
+
+**Pagine.** Nuova `script/fn_check_ordine_evadibile`; `script/fn_available_actions_ordine` (la terna),
+`vendite/fn_genera_ddt_da_ordine`, `vendite/vw_preventivi_lista`, `vendite/vw_offerte_commerciali_lista`,
+`config/stati_doc_preventivi` e `config/stati_doc_offerte` (i lettori di `pdf_mode`).
+
+**Richieste al team FE (elenco chiuso).**
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| FE-O3 | `frontend/src/vendite/ordini/components/OrdiniDrawer.vue`, `frontend/src/vendite/ordini/constants.js`, i locales | «Genera bolla» da `can_genera_ddt` della capability (spento col tooltip di `can_genera_ddt_reason_key`), non da `STATI_ORDINE_EVADIBILI.includes(stato_codice_interno)`; poi ritirare `STATI_ORDINE_EVADIBILI`. Chiave i18n nuova: `vendite.ordini.genera_ddt_reason.stato_non_evadibile` |
+| FE-P2 | `frontend/src/vendite/preventivi/components/PreventiviList.vue` | il PDF della riga da `pdf_mode !== 'ARCHIVE'`, non da `stato_codice_interno === 'DRAFT'` (due righe), come `OrdiniSearchTable.vue` |
+| FE-V3 | `frontend/src/vendite/offerte/components/OfferteSearchTable.vue` | il PDF della riga da `pdf_mode !== 'ARCHIVE'`, non da `stato_codice_interno === 'BOZZA'` |
+
+Il BE non ha niente da fare: la capability la trasporta, e le liste escono con `SELECT v.*`. Nessun codice d'errore
+nuovo.

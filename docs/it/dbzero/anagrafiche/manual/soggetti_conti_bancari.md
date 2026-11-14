@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_conti_bancari`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle**   
@@ -20,7 +22,6 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 10-01-26)
 `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 
 Questa tabella rappresenta il **fallback di default** per il soggetto: se per un dato **Ruolo** (es. Cliente/Fornitore/Gestore) non è definito un conto specifico, verrà usato il **predefinito** definito qui, grazie alla **VIEW** e alla **FUNCTION** di selezione.
@@ -65,7 +66,7 @@ Questa tabella rappresenta il **fallback di default** per il soggetto: se per un
 
 ### Indicizzazione
 
-* `ix_soggetti_conti_bancari_soggetto_id (soggetto_id)`
+* `uq_soggetti_conti_bancari_soggetto_id_conto_id_uso`, per prefisso su `soggetto_id`: serve le ricerche per soggetto e il controllo della FK (l'indice dedicato `ix_soggetti_conti_bancari_soggetto_id`, ridondante, è tolto dal 2026-11-14, `20261114-21`)
 * `ix_soggetti_conti_bancari_conto_bancario_id (conto_bancario_id)`
 * `ix_soggetti_conti_bancari_predef_per_uso (soggetto_id, uso) WHERE predefinito` *(unique)*
 

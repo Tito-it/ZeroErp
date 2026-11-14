@@ -1,5 +1,7 @@
 # 📘 Documentazione Concettuale – Tabella `vendite.fatture_rettifiche`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -44,7 +46,7 @@ Obiettivi:
 * **FK con CASCADE**: se un documento viene rimosso, i link collegati sono eliminati automaticamente.
 * **Indice operativi**:
 
-  * `ix_fatture_ret_fattura (fattura_id)` → “tutte le rettifiche fatte da questo documento”.
+  * `uq_fatture_rettifiche_pair (fattura_id, rettificata_id)`, per prefisso su `fattura_id` → “tutte le rettifiche fatte da questo documento” (l'indice dedicato `ix_fatture_ret_fattura`, ridondante, è tolto dal 2026-11-14, `20261114-21`).
   * `ix_fatret_rettificata (rettificata_id)` → “tutte le rettifiche ricevute da questa fattura”.
 * **(Consigliato)**: `CHECK (fattura_id <> rettificata_id)` per impedire auto‑riferimenti.
 * **(Opzionale)**: regola sul **tipo documento** del rettificante (es. consentire solo NC/ND) via trigger o policy.

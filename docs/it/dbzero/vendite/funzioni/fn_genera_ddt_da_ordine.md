@@ -30,7 +30,6 @@ AS $function$
 --   l'ambito degli indirizzi DDT diventa DDT_VENDITA, il codice della
 --   sorgente; firma e RETURNS ancorati.
 DECLARE
-    v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ddt_id          vendite.ddt.id%TYPE;
     v_new_riga_id     vendite.ddt_righe.id%TYPE;
@@ -58,10 +57,9 @@ BEGIN
     END IF;
 
     -- 2) Ordine esiste + stato evadibile.
-    SELECT o.soggetto_ruolo_id, sdo.codice_interno
-      INTO v_dest_ruolo_id, v_stato_ord
+    SELECT o.soggetto_ruolo_id
+      INTO v_dest_ruolo_id
       FROM vendite.ordini o
-      JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
      WHERE o.id = p_ordine_id;
 
     IF NOT FOUND THEN
@@ -87,13 +85,16 @@ BEGIN
     v_bersagli := jsonb_build_array(
         jsonb_build_object('tipo', 'ORDINE_VENDITA', 'id', p_ordine_id::text));
 
-    IF v_stato_ord NOT IN ('CONFERMATO','PARZIALMENTE_EVASO') THEN
-        PERFORM script.fn_log_and_raise_error(
-            'vendite','fn_genera_ddt_da_ordine','E_DDT_ORDINE_STATO_NON_EVADIBILE',
-            jsonb_build_object('ordine_id', p_ordine_id, 'stato', v_stato_ord,
-                               'bersaglio', v_bersagli),
-            NULL::uuid, p_ordine_id::text, v_stato_ord);
-    END IF;
+    -- ⭐ rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6b-bis):
+    --   l'evadibilita' e' di script.fn_check_ordine_evadibile, la stessa check
+    --   da cui la capability dice can_genera_ddt: qui si solleva il primo
+    --   motivo (lo stato va nel contesto dal suo dettaglio). L'helper tace su
+    --   un array vuoto, che e' la risposta «si evade».
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', 'fn_genera_ddt_da_ordine',
+        script.fn_check_ordine_evadibile(p_ordine_id),
+        NULL, NULL::uuid,
+        jsonb_build_object('ordine_id', p_ordine_id, 'bersaglio', v_bersagli));
 
     -- 3) La provenienza della bolla e delle sue righe: il tipo ORDINE_VENDITA e la
     --    chiave dell'ordine per il key_selector del tipo (script.fn_sorgente_provenienza).
@@ -291,7 +292,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre dell''evasione ordine -> bolla DRAFT. Piu'' bolle per lo stesso ordine; p_righe [{ordine_riga_id, qta_da_evadere (operativa)}], NULL = tutto il residuo. La provenienza si legge una volta con script.fn_sorgente_provenienza (ORDINE_VENDITA con la chiave dell''ordine): la testata dichiara l''ordine, ogni riga lo dichiara con in sorgente_riga la riga d''ordine. Per ogni riga copia lo snapshot di prezzi e componenti e la natura che l''ordine ha venduto, e scrive il fulfillment (vendite.ordini_righe_fulfillment, la quantita'' evasa; l''eccesso lo ferma il guard). La riga-onere (script.fn_natura_e_merce = false sulla natura congelata) passa intera nella prima bolla, anche se p_righe non la nomina; dopo, il suo residuo e'' 0. Rifiuti: E_DDT_ORDINE_NOT_FOUND, senza bersaglio (l''ordine non c''e'' o non e'' visibile); E_DDT_ORDINE_STATO_NON_EVADIBILE ed E_DDT_NIENTE_DA_EVADERE, col bersaglio sull''ordine; una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Indirizzi di ambito DDT_VENDITA.';
+IS 'Madre dell''evasione ordine -> bolla in bozza. Se dall''ordine non si evade, il primo motivo di script.fn_check_ordine_evadibile, la stessa check della capability (lo stato di emissione e PARZIALMENTE_EVASO lo ammettono; negli altri stati E_DDT_ORDINE_STATO_NON_EVADIBILE). Piu'' bolle per lo stesso ordine; p_righe [{ordine_riga_id, qta_da_evadere (operativa)}], NULL = tutto il residuo. La provenienza si legge una volta con script.fn_sorgente_provenienza (ORDINE_VENDITA con la chiave dell''ordine): la testata dichiara l''ordine, ogni riga lo dichiara con in sorgente_riga la riga d''ordine. Per ogni riga copia lo snapshot di prezzi e componenti e la natura che l''ordine ha venduto, e scrive il fulfillment (vendite.ordini_righe_fulfillment, la quantita'' evasa; l''eccesso lo ferma il guard). La riga-onere (script.fn_natura_e_merce = false sulla natura congelata) passa intera nella prima bolla, anche se p_righe non la nomina; dopo, il suo residuo e'' 0. Rifiuti: E_DDT_ORDINE_NOT_FOUND, senza bersaglio (l''ordine non c''e'' o non e'' visibile); E_DDT_ORDINE_STATO_NON_EVADIBILE ed E_DDT_NIENTE_DA_EVADERE, col bersaglio sull''ordine; una bolla che porterebbe solo oneri e'' E_DDT_NIENTE_DA_EVADERE. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione. Indirizzi di ambito DDT_VENDITA.';
 ```
 
 </div>

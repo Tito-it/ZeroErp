@@ -1,7 +1,38 @@
 # Piano operativo — Migrazione a PrimeVue 5 (+ @primeuix/themes 3, primeicons 8)
 
+## ⏭️ Chi riparte — aggiornato al 2026-11-14
+
+**Riparte: BE/FE (`dev/backend-tid`) con P1, il cricchetto sulle classi interne `.p-*`.**
+Tid ha dato il via il 2026-11-14; la specifica è in §8-bis «Predisposizione». La licenza è
+decisa: **si resta sulla 4.5.5** e non si sale alla 5. **OpenVue è la strada preferita e
+resta sotto osservazione**; Vuetify è la riserva (§8-bis «La decisione del 2026-11-14»).
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | Tid | ✅ Decisione di licenza, 2026-11-14: opzione 1 (restare sulla 4.5.5), predisponendo l'uscita. OpenVue sotto osservazione, Vuetify come riserva | §8-bis «La decisione del 2026-11-14» | — |
+| 2 | BE/FE | **P1** — cricchetto sulle classi interne `.p-*` del nostro CSS. ⛔ Non dalla sessione DB: tocca `frontend/` | `frontend/scripts/`, `frontend/package.json` | — (via di Tid del 2026-11-14) |
+| 3 | BE/FE | P2 — prova di OpenVue su un branch usa-e-getta. **Non avviata**: per ora si osserva | §8-bis «Predisposizione» | via di Tid + ok alla dipendenza nuova |
+| 4 | Tid | Rilettura periodica dei segnali che fanno scattare l'uscita (S1-S4) e dello stato di OpenVue | §8-bis «I segnali che fanno scattare l'uscita» | — |
+| — | BE/FE | ✅ Binario delle liste (§8-bis): chiuso nei brief dedicati, non qui (registro 2026-11-14 in §9). Registro a **17** `DataTable` grezze, **0** senza motivo | `frontend/scripts/datatable.baseline.json` | — |
+| — | — | ⛔ §6.4 (salire alla 5): **non si esegue**, per decisione di licenza | §6.4 | — |
+
+**Decisioni aperte di Tid:**
+
+- **il via a P2**, quando lo stato di OpenVue lo giustifica;
+- **OpenVue o Vuetify**, quando scatta un segnale (S1-S4);
+- **cosa fare di questo piano**: resta in `work-in-progress/` come sede della
+  predisposizione, oppure si archivia e la predisposizione va in un brief nuovo. In ogni
+  caso il debito residuo delle liste (il Gruppo C, cioè i due master-detail di
+  amministrazione `CollectionEditorPanel` e `DefinizioneEditorView`, già dichiarati nel
+  commento sopra l'import) va in un brief suo all'archiviazione, come chiede
+  `.codex/AGENTS.md`.
+
+**Committato:** no, l'aggiornamento del 2026-11-14 è ancora da committare.
+
+---
+
 > **Tipo**: piano operativo FE (`dev/backend-tid`) · **Data**: 2026-07-29 ·
-> **Owner**: Tid · **Stato**: 🔴 **UPGRADE FERMO** / ✅ **DISACCOPPIAMENTO
+> **Ultima revisione**: 2026-11-14 · **Owner**: Tid · **Stato**: 🔴 **UPGRADE FERMO** / ✅ **DISACCOPPIAMENTO
 > CHIUSO**. §6.1 (Pinia 4) è **chiuso e resta valido**. §6.2/6.3 (primeicons 8)
 > è stato eseguito e poi **annullato**. §6.4 (PrimeVue 5 + themes 3) **non è
 > più una questione tecnica**.
@@ -189,6 +220,12 @@ misura più quello per cui era stato scelto.
 
 ## 1. La raccomandazione: non ora — ma resta una ragione sola
 
+> ⚠️ **Superata il 2026-11-14 per la parte sulle patch**: vedi §9, «2026-11-14». La 5.0.x
+> c'è: `primevue` è a **5.0.5**, `@primeuix/themes` a **3.1.1**, `primeicons` a **8.0.2**,
+> tutte con licenza PrimeUI. Quindi il segnale qui sotto è scattato già il 2026-08-13
+> (5.0.1), ma §1-bis lo aveva già tolto di mezzo. Anche «l'unica ragione rimasta» (essere
+> fra i primi) si è indebolita. Resta solo la licenza.
+
 | Pacchetto | Da | A | Uscita | Patch dopo la major (al 2026-07-29) |
 | --- | --- | --- | --- | --- |
 | `primevue` | 4.5.5 | 5.0.0 | **2026-07-15** | **0** |
@@ -247,12 +284,18 @@ grep -rho "from 'primevue/[a-z]*'" src --include=*.vue --include=*.js \
   | sed "s/.*primevue\///;s/'//" | sort | uniq -c | sort -rn
 ```
 
-| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** | **Superficie 2026-10-03** |
-| --- | --- | --- | --- |
-| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti | **1027 import in 336 file** (su **441** `.vue`) — **47** moduli distinti |
-| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato | non ri-misurato |
-| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) | non ri-misurato |
-| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato | non ri-misurato |
+| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** | **Superficie 2026-10-03** | **Superficie 2026-11-14** |
+| --- | --- | --- | --- | --- |
+| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti | **1027 import in 336 file** (su **441** `.vue`) — **47** moduli distinti | **1055 import in 369 file** (su **465** `.vue`) — **43** moduli distinti (`sort -u` sulla riga d'import) |
+| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato | non ri-misurato | **53** file con `defineStore`; il reset è presidiato da `check-pinia-user-scoped-reset.mjs` |
+| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) | non ri-misurato | **1 file** (invariato) |
+| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato | non ri-misurato | codepoint presidiati da `guard:icone` (`primeicons-codepoints.baseline.json`) |
+
+**Al 2026-11-14**, i più usati: `tag` 150, `inputtext` 136, `button` 110, `select` 108,
+`message` 100, `inputnumber` 52, `toggleswitch` 48, `datepicker` 47, `column` 33, i cinque
+moduli di `tabs` 25 ciascuno. Le voci che hanno una sede restano basse: `datatable`
+**19** (le 2 sedi standard e le 17 grezze del registro), `drawer` 3, `dialog`,
+`confirmdialog` e `useconfirm` 1 ciascuno.
 
 I dieci componenti più usati, **al 2026-10-03**: `tag` 141, `inputtext` 128,
 `button` 113, `select` 104, `message` 94, `inputnumber` 50, `toggleswitch` 46,
@@ -305,10 +348,15 @@ grep -rhoE '\-\-p-[a-z0-9-]+' src --include=*.css --include=*.vue --include=*.js
 grep -rhoE '\.p-[a-z0-9-]+' src --include=*.css --include=*.vue | sort | uniq -c | sort -rn
 ```
 
-| Aggancio | Superficie 2026-07-29 | **Superficie 2026-09-02** | Se cede |
-| --- | --- | --- | --- |
-| Variabili `--p-*` | 364 usi, 63 distinte, 51 file | **374 usi, 65 distinte, 54 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
-| Classi interne `.p-*` | 187 usi, 48 distinte, 9 file | **194 usi, 49 distinte, 11 file** | Lo stile si stacca e il componente torna nudo |
+| Aggancio | Superficie 2026-07-29 | **Superficie 2026-09-02** | **Superficie 2026-11-14** | Se cede |
+| --- | --- | --- | --- | --- |
+| Variabili `--p-*` | 364 usi, 63 distinte, 51 file | **374 usi, 65 distinte, 54 file** | **239 usi, 68 distinte, 23 file** | Il colore ripiega sul nulla: testo invisibile, sfondi trasparenti |
+| Classi interne `.p-*` | 187 usi, 48 distinte, 9 file | **194 usi, 49 distinte, 11 file** | **261 usi, 67 distinte, 21 file** | Lo stile si stacca e il componente torna nudo |
+
+⚠️ **2026-11-14: i due agganci hanno preso versi opposti.** Le variabili `--p-*` dirette
+sono scese (i file da 54 a 23), mentre le classi interne `.p-*` sono salite (i file da 11 a
+21, le classi distinte da 49 a 67). In una major le classi interne sono la parte più fragile
+(R5): il residuo vero di §4 cresce. Il perché non è stato indagato.
 
 Le più agganciate **al 2026-09-02** sono `--p-primary-color` (63),
 `--p-text-muted-color` (61) e `--p-text-color` (24); sul fronte classi
@@ -928,6 +976,15 @@ invece di un salto nel vuoto — **ed è utile anche se PrimeVue non si lascia
 mai**.
 
 ### Inventario — le liste da migrare, una alla volta
+
+> ⚠️ **Superato il 2026-11-14 come stato corrente**: vedi §9, «2026-11-14». Le spunte dei
+> Gruppi A e B qui sotto si fermano a inizio ottobre. La conversione è andata avanti in
+> [brief-db-liste-datatable-grezze](../work-done/brief-db-liste-datatable-grezze.md),
+> [brief-db-liste-righe-documento](../work-done/brief-db-liste-righe-documento.md) e
+> [brief-db-liste-datatable-grezze-secondo-giro](../work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
+> **Lo stato corrente si legge da `frontend/scripts/datatable.baseline.json`** (il
+> cricchetto di `check-datatable-baseline.mjs`), non da queste tabelle. Le tabelle restano
+> perché spiegano il criterio e la storia.
 
 > Elenco generato il 2026-07-29, da ri-generare quando serve:
 >
@@ -2627,6 +2684,96 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ➡️ | ~~`ui/components/ListaColonnaPanel.vue`~~ — **al Gruppo A** il 2026-09-02 (`ui.lista_colonna`, non paginata) | 9 |
 | ➡️ | ~~`vendite/components/LottoDrawer.vue`~~ — **spostato al Gruppo A** il 2026-08-21 (3 liste su 3 tab) | 11 |
 
+### La decisione del 2026-11-14 — si resta sulla 4.5.5, e ci si prepara a uscire
+
+**Decisione di Tid, 2026-11-14:** opzione 1 dell'elenco qui sotto, cioè restare sulla
+4.5.5 (MIT), e **predisporre il passaggio ad altro**. Il motivo: *«non voglio rimanere senza
+aggiornamenti, prima o poi qualche cosa potrebbe non funzionare su browser più
+aggiornati»*. Per ora **si aspetta** che un fork maturi.
+
+**La strada d'uscita, nell'ordine (Tid, 2026-11-14):**
+
+1. **OpenVue**, tenuto sotto osservazione. È la preferita: la migrazione è meccanica e
+   **conserva Aura**. Il pacchetto `@openvue/themes` 1.1.1 contiene il preset `aura`
+   completo, componente per componente (verificato sul tarball il 2026-11-14). Tid tiene
+   all'aspetto di Aura: *«mi sembra minimale e mi andava bene»*.
+2. **Vuetify**, la riserva, se OpenVue non matura o si ferma. Il motivo è sul modello:
+   licenza MIT, un team (non una persona sola), una tabella lato server
+   (`VDataTableServer`) che corrisponde a `ListaConfigurabile`, drawer, dialog e
+   traduzione in italiano. Il prezzo è **la grafica**: Material Design, lontano da Aura.
+   In una prova si guarderà quanto il suo tema (`density="compact"`, colori, bordi) riesce
+   ad avvicinarsi a un aspetto minimale. Quasar è la seconda riserva. Element Plus (debole
+   su touch) e Naive UI (un solo maintainer) sono scartate.
+
+Le opzioni 2 e 3 sono scartate. La Community License e la licenza commerciale aggiungono
+condizioni (tetti, rinnovo annuale, chiave, OEM per chi sviluppa sopra il prodotto) che
+ZeroErp non può trasmettere a valle: né a chi riceve il codice AGPL, né ai clienti della
+licenza commerciale. §6.4 non si esegue.
+
+#### Il fork c'è: OpenVue (fatti al 2026-11-14)
+
+| Cosa | Fatto |
+| --- | --- |
+| Che cos'è | Fork con licenza MIT di PrimeVue **4.5.5**, della *OpenVI Foundation* (`github.com/openvi-foundation/openvue`) |
+| Versioni | repo creato il 2026-07-14, il giorno prima della 5.0.0. `1.0.0` il 2026-09-10, `1.1.0` il 2026-10-29, `1.1.1` il 2026-11-04. Ultimo push il 2026-11-12 |
+| Pacchetti | `openvue`, `@openvue/core` (peer `vue ^3.5.0`), `@openvue/themes`, `@openvue/icons`, `@openvue/migrate`, sopra uno strato `@openuxkit/*` che prende il posto di `@primeuix/*`. Tutti MIT |
+| Migrazione | `npx @openvue/migrate` rinomina `primevue` → `openvue` e `@primevue/*` → `@openvue/*` in `package.json`, import e configurazione Vite: sulla carta è meccanica |
+| Diffusione | ~11 mila download a settimana, contro ~1,05 milioni di `primevue` (7-13 novembre), cioè circa l'1%. 443 stelle su GitHub |
+| ⚠️ Fragilità | **2 maintainer** sul pacchetto npm; 567 issue aperte (in buona parte ereditate dal repository di PrimeVue). Altri progetti la dichiarano «da osservare», non ancora adottata |
+
+Fonti lette il 2026-11-14: registro npm e API GitHub del repository; issue di progetti terzi
+che ne discutono l'adozione. Sono numeri datati: dicono dov'era il fork quel giorno.
+
+#### Predisposizione
+
+**P1 — cricchetto sulle classi interne `.p-*`. ✅ Via di Tid, 2026-11-14; da eseguire su
+`dev/backend-tid`.** Le classi interne sono l'aggancio che cresce (da 11 a 21 file fra
+settembre e novembre, §2-bis), e quello che si rompe senza che il build lo dica. Una
+qualunque uscita da PrimeVue le paga tutte. Anche OpenVue rinominerà le classi o le
+lascerà intatte, e oggi non lo sappiamo.
+
+- **Modello:** `frontend/scripts/check-datatable-baseline.mjs` e il suo registro.
+  - Lo script nuovo si chiama `check-classi-interne-baseline.mjs`, con registro
+    `classi-interne.baseline.json` e voce `guard:classi-interne` in `package.json`.
+  - La CI lo prende da sé, perché `npm run guards` esegue `run-s guard:*`.
+  - Stessi due versi: **cresce** → rosso con i nomi; **cala** senza registro riscritto →
+    rosso anche questo (si riscrive con `--baseline`).
+- **Unità contata:** la coppia **file → classe**, non il solo file. Un file già in registro
+  che aggancia una classe nuova è una dipendenza nuova, e va visto.
+- **Cosa si cerca:** `\.p-[a-z0-9-]+` nei `.css` e `.vue` sotto `src/`, compresi i
+  `:deep(...)`. Il comando è quello di §2-bis. Al 2026-11-14: 67 classi in 21 file, tutte
+  classi vere di PrimeVue, nessun falso positivo.
+- **Le sedi, dichiarate a mano e verificate** (come la sezione `standard` dell'altro
+  registro): i file dove un aggancio al tema è il loro mestiere. La proposta è
+  `assets/theme.css`, `assets/main.css` e i gusci `AppDialog`, `ListaConfigurabile`,
+  `FiltriLista`. Fuori dalle sedi il registro può solo calare. Cosa sia sede lo decide la
+  sessione FE, col catalogo BB alla mano, e lo scrive nel registro con il motivo.
+  `.p-dark` è il selettore della modalità scura, non una classe di componente: va trattato
+  a parte.
+- **Fuori da P1:** riportare i 21 file sulle sedi. P1 ferma la crescita, non apre una
+  campagna. Le classi escono dal registro quando si tocca quel file per altri motivi.
+
+**P2 — prova di OpenVue, senza adottarla. Non avviata: per ora si osserva (Tid,
+2026-11-14).** Su un branch usa-e-getta: migrazione automatica, `vite build`, suite FE,
+collaudo a video delle pagine con `ListaConfigurabile`, `AppDrawer`, `AppDialog` e menu
+kebab. L'esito si scrive qui. ⛔ Serve l'ok di Tid alla dipendenza nuova (AGENTS.md), anche
+solo per la prova.
+
+**Non è una campagna sui primitivi.** Vale la regola già scritta qui sopra: un wrapper si
+estrae quando copre il caso reale, non per preparare una migrazione.
+
+#### I segnali che fanno scattare l'uscita
+
+Si rileggono periodicamente. Uno qualunque riapre la decisione:
+
+- **S1** — un difetto a video su un browser aggiornato, dentro un componente PrimeVue, che
+  sulla 4.5.5 non si corregge senza una patch nostra;
+- **S2** — un avviso di sicurezza su `primevue` 4.x o sulle sue dipendenze;
+- **S3** — Vue 4, o una 3.x che `@primevue/core` 4.5.5 non regge più;
+- **S4** — OpenVue diventa adottabile: rilasci regolari, più di due maintainer, prova P2
+  verde. Allora la strada preferita è OpenVue, perché la migrazione è meccanica. Se invece
+  OpenVue si ferma, resta l'opzione 4 (un'altra libreria con licenza permissiva).
+
 ### Le opzioni, per quando sarà il momento
 
 Elencate perché siano note, non per sceglierne una ora:
@@ -2650,6 +2797,59 @@ maturità.
 ---
 
 ## 9. Registro
+
+### 2026-11-14 · Riallineamento: le patch della 5 sono uscite, le liste si sono chiuse altrove
+
+Il piano era fermo al 2026-09-02, a parte ritocchi isolati (26-09, 03-10, 06-10, 02-11), e
+non aveva il blocco «Chi riparte». Nel frattempo sono cambiate tre cose.
+
+**1. Il fronte esterno** (registro npm, letto il 2026-11-14):
+
+| Pacchetto | Ultima | Patch uscite dopo la major | Licenza |
+| --- | --- | --- | --- |
+| `primevue` | **5.0.5** (2026-11-11) | 5.0.1 (08-13), 5.0.2 (09-29), 5.0.3 (10-20), 5.0.4 (10-22), 5.0.5 | PrimeUI |
+| `@primeuix/themes` | **3.1.1** (2026-11-11) | 3.0.1 (09-17), 3.0.2 (10-20), 3.1.0 (10-21), 3.1.1 | PrimeUI |
+| `primeicons` | **8.0.2** (2026-09-23) | 8.0.1 (09-08), 8.0.2 | PrimeUI |
+
+- Il `LICENSE.md` di `primevue` 5.0.5 è **identico** a quello della 5.0.0, salvo una riga
+  in più col rimando a `https://primeui.dev/licenses`. Fra le dipendenze c'è ancora
+  `@primeui/license-manager`: la licenza **non** è tornata indietro.
+- La 4.5.5 resta l'ultima 4.x (tag `v4-stable`) e **non è deprecata**.
+- ~~**Fork comunitario della 4.x (opzione 5 di §8-bis):** una ricerca web del 2026-11-14
+  trova solo fork personali del repository, nessuna continuazione mantenuta. Il segnale
+  esterno non è scattato.~~ ⚠️ **Smentito lo stesso giorno**: la prima ricerca era
+  superficiale. Il fork esiste, è **OpenVue** (vedi §8-bis «La decisione del 2026-11-14»).
+  Il segnale esterno **è scattato**.
+- Conseguenza: il segnale di §1 è scattato, ma §1-bis l'aveva già tolto di mezzo. Il rischio
+  «essere fra i primi» si è ridotto (cinque patch in quattro mesi sono uso reale). **La
+  decisione resta tutta sulla licenza.**
+
+**2. Il binario delle liste (§8-bis) si è chiuso fuori da qui.** Da fine settembre la
+conversione è passata per brief suoi, oggi tutti in `work-done/`:
+[liste-datatable-grezze](../work-done/brief-db-liste-datatable-grezze.md) (decisione di Tid
+del 2026-09-26, criterio in tre domande di questo piano),
+[liste-righe-documento](../work-done/brief-db-liste-righe-documento.md) (chiuso il
+2026-10-04: le righe dei documenti e la distinta base sono liste configurabili) e il
+[secondo giro](../work-done/brief-db-liste-datatable-grezze-secondo-giro.md) (chiuso il
+2026-11-03). Al 2026-11-14:
+
+- il registro `datatable.baseline.json` conta **17 grezze, 0 senza motivo**;
+- `<ListaConfigurabile>` è montata in **95** file (40 al 2026-08-03).
+
+Restano fuori, secondo il §6 del secondo giro: il **Gruppo C** (`CollectionEditorPanel`,
+`DefinizioneEditorView`, debito dichiarato nel commento sopra l'import) e le **eccezioni
+con motivo scritto**. Le spunte delle tabelle dei Gruppi A e B di §8-bis non sono state
+riportate riga per riga: la fonte unica è il registro.
+
+**3. La superficie (§2, §2-bis), ri-misurata.** In sintesi:
+
+- gli import crescono col repo (1055 in 369 file su 465 `.vue`);
+- le voci che hanno una sede restano basse (`datatable` 19, `drawer` 3);
+- le `--p-*` dirette calano;
+- 🔴 le classi interne `.p-*` raddoppiano i file (da 11 a 21). Sono l'aggancio che nessun
+  build segnala e il punto più fragile di una major (R5).
+
+Numeri e comandi in §2 e §2-bis. Sono una fotografia datata, non un argomento (regola zero).
 
 ### 2026-09-02 · Il drawer dei titoli IVA del soggetto torna sullo standard
 
