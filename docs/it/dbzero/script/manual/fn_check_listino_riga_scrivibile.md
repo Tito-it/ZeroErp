@@ -26,7 +26,10 @@ bozza**. Restituisce l'elenco dei motivi (`codice`, `reason`, `reason_key`, `det
 | 2 | `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` | `VERSIONE_NON_IN_BOZZA` | la versione non è in bozza: è il listino in uso, o lo sarà |
 
 Le `reason_key` sono `vendite.listini.azione_reason.versione_chiusa` e
-`vendite.listini.azione_reason.versione_non_in_bozza`.
+`vendite.listini.azione_reason.righe_non_in_bozza`. La seconda è solo di questa check:
+`versione_non_in_bozza` è dell'eliminazione della versione
+([`script.fn_check_versione_listino_eliminabile`](/dbzero/script/manual/fn_check_versione_listino_eliminabile)),
+e dice un'altra cosa.
 
 ### Regole
 

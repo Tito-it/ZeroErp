@@ -9,9 +9,9 @@
 --   e -68 (vendite.trgfn_listini_righe_guard_stato), -55 (il montaggio anche su
 --   INSERT), -69 (vendite.trgfn_listini_righe_comp_guard_immutabilita_v5), -70
 --   (vendite.trgfn_listini_kit_guard), -56 e -72 (vendite.vw_listini_versioni_azioni),
---   -57 (vendite.vw_listini_righe_azioni).
---   Brief: brief-db-stati-documento-dal-vocabolario, giri 6f-bis (D-LIST (a)) e
---   6f-ter (§6.28).
+--   -57 (vendite.vw_listini_righe_azioni), -78 (la reason_key della check).
+--   Brief: brief-db-stati-documento-dal-vocabolario, giri 6f-bis (D-LIST (a)),
+--   6f-ter (§6.28) e 6f-quater (§6.29).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - in bozza si scrive tutto; in una versione CHIUSA niente
@@ -22,7 +22,8 @@
 --     compreso), ne' la periodicita' di un kit. Il prezzo di una riga in uso si
 --     rettifica col verbo: lo prova vendite/test-listino-rettifica-riga-v1;
 --   - le superfici della versione (quattro azioni) e delle righe dicono il primo
---     motivo che i guard sollevano;
+--     motivo che i guard sollevano, con una reason_key sua (righe_non_in_bozza),
+--     non quella dell'eliminazione della versione (versione_non_in_bozza);
 --   - i tre guard non riscrivono la regola: chiamano la check (presidio sulla
 --     FORMA, dichiarato tale).
 --
@@ -37,7 +38,7 @@
 --   transazione non carica: le verifica config/test-azioni-riga-registro-v1 dopo
 --   l'apply.
 --
--- Elenco test (plan 11):
+-- Elenco test (plan 12):
 --   1) contrasto: le quattro azioni della versione (riga nuova, variazione,
 --      prezzi bundle, periodicita' del kit) accese in bozza, spente nell'attiva e
 --      nella chiusa, col motivo (superficie della versione)
@@ -55,6 +56,8 @@
 --   9) forma: la check non guarda i documenti (la propagazione e' della rettifica)
 --  10) ⭐ iniziale su CHIUSA: la chiusa si scrive (superficie e guard)
 --  11) ⭐ ... e la bozza, ora fuori dallo stato iniziale, non si scrive piu'
+--  12) contrasto: nell'attiva la reason_key delle scritture e' righe_non_in_bozza,
+--      quella dell'eliminazione versione_non_in_bozza (§6.29: erano la stessa)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -63,7 +66,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- Fixture
@@ -271,6 +274,24 @@ SELECT ok(
     regexp_replace(pg_get_functiondef('script.fn_check_listino_riga_scrivibile'::regproc), '--[^\n]*', '', 'g')
         !~ 'listino_riga_id\s*=',
     '9. forma: la check non guarda i documenti che citano la riga (e'' la domanda della rettifica)'
+);
+
+-- ============================================================
+-- 12) La reason_key: le scritture hanno la loro, non quella dell'eliminazione
+-- ============================================================
+-- ⚠️ Prima del -78 la scrivibile dava versione_non_in_bozza, la chiave
+--   dell'eliminabile: il FE avrebbe mostrato sul pulsante «Aggiungi riga» la
+--   frase dell'eliminazione. Si legge dalle superfici, come il FE.
+SELECT is(
+    (SELECT concat_ws(' ', a.aggiunta_riga_blocco_reason_key, a.variazione_blocco_reason_key,
+                           a.prezzi_bundle_blocco_reason_key, a.periodicita_kit_blocco_reason_key,
+                           (SELECT r.modifica_blocco_reason_key FROM vendite.vw_listini_righe_azioni r
+                             WHERE r.listino_riga_id = pg_temp.r('A')),
+                           a.eliminazione_blocco_reason_key)
+       FROM vendite.vw_listini_versioni_azioni a WHERE a.versione_id = pg_temp.v('attiva')),
+    concat_ws(' ', VARIADIC array_fill('vendite.listini.azione_reason.righe_non_in_bozza'::text, ARRAY[5])
+                   || 'vendite.listini.azione_reason.versione_non_in_bozza'::text),
+    '12. contrasto: nell''attiva le scritture dicono righe_non_in_bozza, l''eliminazione versione_non_in_bozza'
 );
 
 -- ============================================================
