@@ -6,9 +6,9 @@
 -- ruolo, sul ruolo. Propongono cio' che la madre singolare accetta, leggendo
 -- la stessa check (linee-guida-sql §12.6).
 --   Brief: brief-db-copia-indirizzo-soggetto §3.1, §4.3, §4.6, giro 2.
---   ChangeSet 20261114-96, -97.
+--   ChangeSet 20261114-96, -97; 20261115-60, -61 (§8, Q-2).
 --
--- Elenco test (plan 21):
+-- Elenco test (plan 25):
 --   presidi
 --    1) i picker del soggetto e della natura leggono la check della madre
 --    2) i picker del ruolo e del tipo di ruolo leggono la check della madre
@@ -35,6 +35,11 @@
 --   19) un ruolo che non c'e': nessuna riga
 --   20) tipo di ruolo senza matrice: tutti i tipi ammessi
 --   21) ... e la singolare del ruolo accetta CON
+--   la chiave che non c'e' (§8, Q-2): nessuna riga, come le gemelle sul salvato
+--   22) una natura che non c'e': nessuna riga
+--   23) natura NULL (nessuna natura scelta): tutti i tipi ammessi
+--   24) un tipo di ruolo che non c'e': nessuna riga
+--   25) tipo di ruolo NULL: tutti i tipi ammessi
 --
 -- Scopo:
 --  - i due casi del §3.1 (la riga attiva fuori finestra, la natura o il tipo di
@@ -50,7 +55,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- builder, che apre e richiude da se' la finestra dei differiti.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(25);
 
 -- ============================================================
 -- Fixture
@@ -334,6 +339,37 @@ SELECT is(
 
 SELECT is(pg_temp.scrivi_ruolo('CON'), NULL,
           '21) ... e la singolare del ruolo accetta CON');
+
+-- ============================================================
+-- 22-25) La chiave che non c'e', e la chiave NULL
+-- ============================================================
+-- Una natura (o un tipo di ruolo) inesistente non e' una natura senza
+-- matrice: la check, senza righe di matrice, ammetterebbe tutto. NULL e' il
+-- form senza natura scelta, e resta «tutti ammessi», come il guard.
+-- L'id che non c'e' si costruisce (max + 1), non si suppone.
+SELECT is(
+    (SELECT count(*)::integer FROM anagrafiche.fn_tipi_indirizzo_proponibili_natura(
+                (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_soggetto_dettaglio))),
+    0,
+    '22) una natura che non c''e'': nessuna riga');
+
+SELECT is(
+    (SELECT count(*) FILTER (WHERE ammesso)::integer
+       FROM anagrafiche.fn_tipi_indirizzo_proponibili_natura(NULL::bigint)),
+    (SELECT count(*)::integer FROM config.tipi_indirizzi),
+    '23) natura NULL: tutti i tipi ammessi');
+
+SELECT is(
+    (SELECT count(*)::integer FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_ruoli))),
+    0,
+    '24) un tipo di ruolo che non c''e'': nessuna riga');
+
+SELECT is(
+    (SELECT count(*) FILTER (WHERE ammesso)::integer
+       FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(NULL::integer)),
+    (SELECT count(*)::integer FROM config.tipi_indirizzi),
+    '25) tipo di ruolo NULL: tutti i tipi ammessi');
 
 SELECT * FROM finish();
 ROLLBACK;

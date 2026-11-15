@@ -1,0 +1,146 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ANAGRAFICHE.FN_TIPI_INDIRIZZO_PROPONIBILI_TIPO_RUOLO: UN TIPO DI RUOLO CHE NON C'E'
+#   Brief: brief-db-copia-indirizzo-soggetto §8 (Q-2).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   Gemello di 20261115-60 sulla natura. Il picker non distingueva un tipo
+#   di ruolo che NON ESISTE da uno SENZA MATRICE: per tutti e due ammetteva
+#   ogni tipo. Ora:
+#     * tipo di ruolo non NULL assente da config.tipi_ruoli: nessuna riga,
+#       come anagrafiche.fn_tipi_indirizzo_proponibili_ruolo per un ruolo
+#       che non c'e';
+#     * tipo di ruolo NULL: resta «nessuna matrice, tutti ammessi», come il
+#       guard della singolare.
+#   Il filtro sta nel picker, non nella check (stesso perche' di -60).
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   Da 20261114-97 (l'ultimo che scrive la funzione), verificato UGUALE al
+#   corpo vivo il 2026-11-15 sulla doc auto-generata; si aggiunge solo la
+#   WHERE. Firma, RETURNS e %TYPE immutati; nessun COST, ROWS o SET da
+#   ripetere (§13.7: procost 100, prorows 1000, proconfig vuoto, INVOKER,
+#   STABLE, letti dal vivo il 2026-11-15). config.tipi_ruoli non e' sotto
+#   RLS. Il COMMENT si riscrive col caso nuovo. Il rollback rimette il corpo
+#   e il COMMENT di 20261114-97.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261115-61-update-fn-tipi-indirizzo-proponibili-tipo-ruolo-inesistente-mctit.yaml
+
+  - changeSet:
+      id: 20261115-61-update-fn-tipi-indirizzo-proponibili-tipo-ruolo-inesistente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo: un tipo di ruolo non NULL che non
+        esiste non da' righe, come il gemello sul ruolo salvato; NULL resta «tutti ammessi».
+        Brief: brief-db-copia-indirizzo-soggetto §8 (Q-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  p_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_ruolo_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         EXISTS (SELECT 1
+                                   FROM config.tipi_ruolo_tipi_indirizzo mo
+                                  WHERE mo.tipo_ruolo_id = p_tipo_ruolo_id
+                                    AND mo.tipo_indirizzo_id = ti.id
+                                    AND mo.obbligatorio
+                                    AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                                            p_tipo_ruolo_id, ti.id, script.fn_data_operativa())),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                                    p_tipo_ruolo_id, '{}'::integer[], ti.id,
+                                    script.fn_data_operativa(), NULL::bigint) AS motivi) c
+                   WHERE p_tipo_ruolo_id IS NULL
+                      OR EXISTS (SELECT 1
+                                   FROM config.tipi_ruoli tr
+                                  WHERE tr.id = p_tipo_ruolo_id)
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per un ruolo che non esiste ancora, sul tipo di ruolo dell''assegnazione: una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice che anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO). Tipo di ruolo NULL o senza matrice: tutti ammessi, come per il guard. Tipo di ruolo che non esiste in config.tipi_ruoli: nessuna riga, come anagrafiche.fn_tipi_indirizzo_proponibili_ruolo per un ruolo che non c''e''. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa(). Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_natura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  p_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_ruolo_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,
+                  motivo_codice     text,
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         EXISTS (SELECT 1
+                                   FROM config.tipi_ruolo_tipi_indirizzo mo
+                                  WHERE mo.tipo_ruolo_id = p_tipo_ruolo_id
+                                    AND mo.tipo_indirizzo_id = ti.id
+                                    AND mo.obbligatorio
+                                    AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                                            p_tipo_ruolo_id, ti.id, script.fn_data_operativa())),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                                    p_tipo_ruolo_id, '{}'::integer[], ti.id,
+                                    script.fn_data_operativa(), NULL::bigint) AS motivi) c
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per un ruolo che non esiste ancora, sul tipo di ruolo dell''assegnazione: una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice che anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO). Tipo di ruolo NULL o senza matrice: tutti ammessi, come per il guard. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa(). Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_natura.';
