@@ -15,6 +15,8 @@ from typing import Any
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     coerce_jsonb_dict,
+    fetchone_scalar,
+    jsonb_out,
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
@@ -142,8 +144,7 @@ SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
     # I0/D8 (2026-08-29): regime fiscale della controparte.
     "split_payment", "cliente_pa",
     # La natura di dettaglio (2026-10-10, brief-db-dati-fiscali-e-societari-del-
-    # soggetto §8.3): il drawer la offriva in modifica (fra i
-    # `tipi_modificabili_ids`), ma fino a quel giorno la chiave non era nel
+    # soggetto §8.3): il drawer la offriva in modifica, ma fino a quel giorno la chiave non era nel
     # contratto e il cambio non arrivava mai al DB. Cosa la natura nuova
     # ammette (flag PA/split, forma giuridica, titoli IVA) lo giudicano i guard.
     "tipo_soggetto_dettaglio_id",
@@ -322,10 +323,12 @@ class SoggettiRepository:
             row = cursor.fetchone()
             return str(row[0]) if row and row[0] else None
 
-    # Scopo: Dettaglio completo soggetto con tipo, natura, comune nascita,
-    # e tipi_modificabili_ids = id dei dettagli ammessi in edit (Fase 6 B3:
-    # stessa natura del soggetto corrente). Il frontend filtra con quello
-    # invece di ricostruire la regola natura_soggetto.
+    # Scopo: Dettaglio completo soggetto con tipo, natura, comune nascita.
+    # ⛔ Le nature proponibili in modifica NON sono qui: le legge
+    #    `nature_proponibili` dalla regola del DB (2026-11-15, K-3 di
+    #    brief-db-cambio-natura-soggetto). Fino a quel giorno questa SELECT
+    #    portava `tipi_modificabili_ids` («stessa macro-tipologia»), una
+    #    seconda sede di una regola che il guard del cambio giudica da se'.
     def get_soggetto(self, soggetto_id: str) -> dict[str, Any] | None:
         sql = """
             SELECT s.id, s.ragione_sociale_completa, s.codice_fiscale,
@@ -343,14 +346,7 @@ class SoggettiRepository:
                    p.sigla AS comune_nascita_provincia_sigla,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    tsd.descrizione AS tipo_descrizione,
-                   ts.natura_soggetto,
-                   -- Tipi dettaglio ammessi in edit per questo soggetto:
-                   -- stessa natura del corrente. Sostituisce il filtro
-                   -- frontend (SoggettoForm.tipiSoggettoFiltrati).
-                   (SELECT COALESCE(array_agg(tsd2.id ORDER BY tsd2.codice_interno), '{}')
-                      FROM config.tipi_soggetto_dettaglio tsd2
-                     WHERE tsd2.tipo_soggetto_id = tsd.tipo_soggetto_id
-                   ) AS tipi_modificabili_ids
+                   ts.natura_soggetto
               FROM anagrafiche.soggetti s
               JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
@@ -361,6 +357,70 @@ class SoggettiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
             return row_to_dict(cursor)
+
+    # =================================================================
+    # Cambio di natura e dati societari: le regole del DB
+    # =================================================================
+
+    # Scopo: Le nature di dettaglio proponibili in modifica, una riga per
+    #        natura (l'attuale compresa): `tipo_soggetto_dettaglio_id`,
+    #        `ammessa`, `motivo_codice` (il primo), `motivi` (tutti).
+    # ⭐ E' la stessa check del guard del cambio
+    #    (`trgfn_soggetti_guard_cambio_natura`): il picker propone cio' che il
+    #    guard accetta, e le due cose non possono divergere.
+    # ⚠️ I motivi li calcola coi valori SALVATI di P.IVA e flag: una natura
+    #    spenta solo da quei campi si accende correggendoli nello stesso
+    #    salvataggio (lo dice `dettaglio.campo` di ciascun motivo).
+    def nature_proponibili(self, soggetto_id: str) -> list[dict[str, Any]]:
+        sql = """
+            SELECT np.tipo_soggetto_dettaglio_id, np.ammessa,
+                   np.motivo_codice, np.motivi
+              FROM anagrafiche.fn_nature_proponibili_soggetto(%s::uuid) np
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id])
+            return rows_to_list(cursor)
+
+    # Scopo: I motivi per cui il soggetto non passerebbe alla natura data coi
+    #        valori PROPOSTI di P.IVA e flag: array ordinato, `[]` = passa.
+    #        E' la check che il guard solleva al PATCH (il primo motivo).
+    def check_cambio_natura(
+        self,
+        soggetto_id: str,
+        *,
+        tipo_soggetto_dettaglio_id: int,
+        partita_iva: str | None,
+        cliente_pa: str | None,
+        split_payment: str | None,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT anagrafiche.fn_check_cambio_natura_soggetto(
+                       %s::uuid, %s::bigint, %s::text, %s::char(1), %s::char(1))
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                soggetto_id, tipo_soggetto_dettaglio_id,
+                partita_iva, cliente_pa, split_payment,
+            ])
+            return list(jsonb_out(fetchone_scalar(cursor)) or [])
+
+    # Scopo: I motivi per cui i dati societari non si possono eliminare
+    #        (`[]` = si puo', o non c'e' niente da eliminare). La stessa check
+    #        che il verbo `fn_elimina_dati_societari` solleva.
+    def check_elimina_dati_societari(self, soggetto_id: str) -> list[dict[str, Any]]:
+        sql = "SELECT anagrafiche.fn_check_elimina_dati_societari(%s::uuid)"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id])
+            return list(jsonb_out(fetchone_scalar(cursor)) or [])
+
+    # Scopo: Elimina la riga dei dati societari col verbo del DB. Vero =
+    #        eliminata, falso = non c'era niente da eliminare. La riga resta
+    #        nello storico (la tabella e' nel registro dello storico, D-12).
+    def elimina_dati_societari(self, soggetto_id: str) -> bool:
+        sql = "SELECT anagrafiche.fn_elimina_dati_societari(%s::uuid)"
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id])
+            return bool(fetchone_scalar(cursor))
 
     # =================================================================
     # Creazione soggetti

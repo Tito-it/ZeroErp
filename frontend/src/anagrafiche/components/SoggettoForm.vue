@@ -15,8 +15,9 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
+import { naturaSpenta, primoMotivoBloccante, fraseMotivo } from '../composables/cambioNatura'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 // Form reattivo del padre via defineModel: il figlio muta `form.value.xxx`
 // (oggetto condiviso per riferimento), senza violare no-mutating-props.
@@ -39,15 +40,15 @@ const props = defineProps({
   showPartitaIva: { type: Boolean, default: false },
   tipoForzato: { type: Number, default: null },
   tipiAmmessiIds: { type: Array, default: null },
-  // Fase 6 B3: ids dei tipi modificabili in edit (backend-driven, stessa
-  // natura del soggetto corrente). Sostituisce il filtro client-side
-  // basato su natura_soggetto.
-  tipiModificabiliIds: { type: Array, default: null },
+  // Le nature proponibili in modifica, dalla regola del DB (K-3 di
+  // brief-db-cambio-natura-soggetto): `[{tipo_soggetto_dettaglio_id, ammessa,
+  // motivo_codice, motivi}]`, tutte. `null` = creazione.
+  natureProponibili: { type: Array, default: null },
   // Fase 6 B4: lista dei campi non modificabili per questo soggetto
   // (es. ['codice_fiscale', 'partita_iva']). Backend-driven.
   // null = non popolato (create mode o legacy) → fallback alla regola
   // cablata. [] = popolato vuoto (edit con CF/PIVA mancanti) → niente
-  // bloccato. Coerente con tipiModificabiliIds.
+  // bloccato.
   nonEditableFields: { type: Array, default: null },
   isEdit: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false },
@@ -71,7 +72,8 @@ const sessoOptions = [
 const cfDisabled = computed(() => !!props.nonEditableFields?.includes('codice_fiscale'))
 const pivaDisabled = computed(() => !!props.nonEditableFields?.includes('partita_iva'))
 
-// Tipo soggetto filtrato: per ids ammessi (resolver) o tipi_modificabili_ids (edit, backend-driven).
+// Tipo soggetto filtrato: per ids ammessi (resolver, in creazione) o dalle
+// nature proponibili (modifica, dal DB).
 const tipiSoggettoFiltrati = computed(() => {
   if (!props.tipiSoggetto.items?.value) return props.tipiSoggetto
   // Filtro per ids ammessi dal config-resolver (creazione da resolver)
@@ -81,21 +83,31 @@ const tipiSoggettoFiltrati = computed(() => {
       items: { value: props.tipiSoggetto.items.value.filter(t => props.tipiAmmessiIds.includes(t.id)) },
     }
   }
-  if (!props.isEdit) return props.tipiSoggetto
-  // Edit: filtra con tipi_modificabili_ids dal backend (Fase 6 B3).
-  if (props.tipiModificabiliIds?.length) {
-    return {
-      ...props.tipiSoggetto,
-      items: { value: props.tipiSoggetto.items.value.filter(t => props.tipiModificabiliIds.includes(t.id)) },
-    }
-  }
-  // Fallback compat: filtro per natura compatibile (vecchia logica)
-  const current = props.tipiSoggetto.items.value.find(t => t.id === form.value.tipo_soggetto_dettaglio_id)
-  if (!current) return props.tipiSoggetto
-  const naturaCorrente = current.natura_soggetto
+  if (!props.isEdit || !props.natureProponibili) return props.tipiSoggetto
+  // ⭐ Modifica: le nature le dice il DB, con la stessa check del guard che
+  //    giudica il PATCH. Una natura non ammessa resta nell'elenco col motivo:
+  //    spenta se il motivo non si toglie dal form, accesa se basta correggere
+  //    un campo della riga nello stesso salvataggio (P.IVA, flag) — se chi
+  //    agisce lo puo' scrivere (`nonEditableFields`).
+  // ⛔ Fino al 2026-11-15 qui c'era la regola «stessa macro-tipologia»,
+  //    calcolata dal backend (`tipi_modificabili_ids`) e ripiegata sulla
+  //    natura nel form: due copie di una regola che oggi e' del DB.
+  const perId = new Map(props.natureProponibili.map(n => [n.tipo_soggetto_dettaglio_id, n]))
   return {
     ...props.tipiSoggetto,
-    items: { value: props.tipiSoggetto.items.value.filter(t => t.natura_soggetto === naturaCorrente) },
+    items: {
+      value: props.tipiSoggetto.items.value
+        .filter(tipo => perId.has(tipo.id))
+        .map(tipo => {
+          const motivi = perId.get(tipo.id).motivi ?? []
+          const bloccante = primoMotivoBloccante(motivi, props.nonEditableFields)
+          return {
+            ...tipo,
+            _spenta: naturaSpenta(motivi, props.nonEditableFields),
+            _motivo: bloccante ? fraseMotivo(t, te, bloccante) : null,
+          }
+        }),
+    },
   }
 })
 
@@ -195,9 +207,18 @@ async function onValidaPIVA() {
         :loading="tipiSoggetto.loading.value"
         option-label="descrizione"
         option-value="id"
+        option-disabled="_spenta"
         :placeholder="t('common.select_tipo_soggetto')"
         :disabled="disabled"
-      />
+        :invalid="campiErrati.includes('tipo_soggetto_dettaglio_id')"
+      >
+        <template #option="{ option }">
+          <div>
+            <div>{{ option.descrizione }}</div>
+            <small v-if="option._motivo" class="app-field-hint">{{ option._motivo }}</small>
+          </div>
+        </template>
+      </Select>
     </div>
 
     <!-- Sezione PF -->

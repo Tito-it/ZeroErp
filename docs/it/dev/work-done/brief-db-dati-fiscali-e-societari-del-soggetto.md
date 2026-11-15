@@ -21,7 +21,7 @@ Lato DB applicato e verde (§8.4), BE/FE scritti e verdi (§9), collaudo in-app 
   (D34 del registro DB). Rileggendo la creazione è emerso anche il caso più grave: la ditta individuale
   perde **tutta** la sezione;
 - cambio di natura con dati non congrui → già nel suo brief,
-  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](../work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
+  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
 - D-4 (`COOPERATIVA`), il censimento dei titoli IVA fuori regola (§8.2), `cliente_pa` di
   `SGT-0000121` (§8.1) e `fornitori.split_payment` (§7) → `.codex/PROJECT_CONTEXT.md`
   § «Aperto — Media priorità».
@@ -650,7 +650,7 @@ lo dicono i guard.
 - ⚠️ **Cambio di natura con dati non congrui** (dati societari su una natura `NONE`, titoli IVA
   non ammessi, flag PA/split): oggi o vicolo cieco o perdita silenziosa. Decisione di Tid
   (2026-10-11): conferma esplicita, poi pulizia → brief proprio,
-  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](../work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
+  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
 - ⛔ Trovato e corretto (solo BE): `get_config_resolver` leggeva il default di natura per ruolo con
   `get_parameter`, che su un parametro non dichiarato solleva; il seed lo dichiara per CL e FO, e
   per RIS_UMANA ed EF il risolutore andava in errore (il FE lo ingoiava: cercatore senza filtro di

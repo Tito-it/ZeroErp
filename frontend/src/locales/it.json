@@ -6043,7 +6043,8 @@
       "email": "Email",
       "articolo_componente": "Componente di distinta",
       "asset": "Asset",
-      "movimento": "Movimento di magazzino"
+      "movimento": "Movimento di magazzino",
+      "ricevuta": "Ricevuta"
     },
     "registri_giornale": {
       "event_log": "Eventi di dominio",
@@ -6297,7 +6298,28 @@
       "aggiungi_ruolo": "Aggiungi ruolo",
       "select_ruolo": "Seleziona ruolo...",
       "genera_cf": "Genera codice fiscale dai dati anagrafici",
-      "soggetto": "Soggetto"
+      "soggetto": "Soggetto",
+      "cambio_natura_blocco": {
+        "altra_macro_tipologia": "La natura scelta è di un'altra famiglia: una persona fisica non diventa una società, e viceversa. Si sceglie una natura della stessa famiglia, oppure si crea un soggetto nuovo.",
+        "con_documenti": "Il soggetto compare già in un documento, e questo cambio gli toglierebbe o gli darebbe la partita IVA: i documenti registrati portano l'identità fiscale che ha oggi. Il cambio non si può fare.",
+        "piva_non_applicabile": "La natura scelta non ha partita IVA, e il soggetto ne ha una scritta: va svuotata prima del cambio (lo può fare solo un amministratore).",
+        "cliente_pa": "La natura scelta non può essere una Pubblica Amministrazione: «Cliente PA» va riportato a No.",
+        "split_payment": "La natura scelta non ammette la scissione dei pagamenti: «Split payment» va riportato a No.",
+        "titoli_iva": "La natura scelta non ammette {titoli} titoli IVA ancora in vigore: vanno chiusi prima del cambio (data di fine validità).",
+        "titoli_iva_altri_emittenti": "La natura scelta non ammette {titoli} titoli IVA in vigore presentati ad altre aziende, che da qui non si vedono: deve chiuderli un amministratore, o l'azienda che li ha ricevuti.",
+        "dati_societari": "La natura scelta non ha dati societari: vanno eliminati prima del cambio.",
+        "indirizzi": "La natura scelta non ammette {indirizzi} indirizzi del soggetto: vanno eliminati prima del cambio.",
+        "senza_natura_con_titoli_iva": "Il soggetto ha titoli IVA in vigore, e senza una natura non li può avere: si sceglie la natura, oppure si chiudono prima i titoli."
+      },
+      "dati_societari_elimina_blocco": {
+        "natura_li_richiede": "La natura del soggetto richiede i dati societari: per eliminarli si cambia prima la natura in una che non li prevede."
+      },
+      "cambio_natura_motivi_titolo": "Il cambio di natura non si può fare finché restano questi motivi:",
+      "cambio_natura_motivi_non_verificati": "Non è stato possibile verificare se il cambio di natura si può fare: al salvataggio, se non si può, si vedrà il motivo.",
+      "elimina_dati_societari": "Elimina i dati societari",
+      "elimina_dati_societari_conferma": "Eliminare i dati societari del soggetto (forma giuridica, REA, capitale, fatturazione elettronica)? Restano nello storico, ma il soggetto non li avrà più.",
+      "dati_societari_eliminati": "Dati societari eliminati.",
+      "dati_societari_non_previsti": "La natura scelta non prevede i dati societari: vanno eliminati prima del cambio."
     },
     "titoli_iva": {
       "aggiungi_ambito": "Aggiungi una merce",
