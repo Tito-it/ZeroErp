@@ -123,6 +123,20 @@ export const AZIONE_RIGA_VERSIONE_LISTINO = Object.freeze({
   ATTIVA: 'ATTIVA_VERSIONE_LISTINO',
   ELIMINA: 'ELIMINA_VERSIONE_LISTINO',
   CHIUDI: 'CHIUDI_VERSIONE_LISTINO',
+  // Le scritture dentro la versione (brief-db-stati-documento-dal-vocabolario
+  // §6.27, §6.28): fuori dalla bozza nessuna, col motivo del DB.
+  AGGIUNGI_RIGA: 'AGGIUNGI_RIGA_LISTINO',
+  VARIA_PREZZI: 'VARIA_PREZZI_LISTINO',
+  PREZZI_BUNDLE: 'PREZZI_BUNDLE_LISTINO',
+  PERIODICITA_KIT: 'PERIODICITA_KIT_LISTINO',
+})
+
+// Le azioni di riga di una RIGA di listino (superficie
+// `vendite.vw_listini_righe_azioni`): la modifica (ed eliminazione) e la
+// rettifica, ognuna col suo motivo.
+export const AZIONE_RIGA_RIGA_LISTINO = Object.freeze({
+  MODIFICA: 'MODIFICA_RIGA_LISTINO',
+  RETTIFICA: 'RETTIFICA_RIGA_LISTINO',
 })
 
 // Codici azione di processo (`config.azioni_processo.permission_codename`).

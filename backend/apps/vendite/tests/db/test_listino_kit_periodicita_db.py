@@ -158,12 +158,14 @@ class ListinoKitPeriodicitaDbTests(unittest.TestCase):
         ))
         self.assertEqual(errore.context.get("field"), "periodicita")
 
-    # 6. Fuori dalla bozza il kit non si scrive: parla il guard del DB.
+    # 6. Fuori dalla bozza il kit non si scrive: parla il guard del DB. V1 e'
+    #    ATTIVA, e dal giro 6f-ter ha il suo codice (prima il guard del kit la
+    #    chiamava «chiusa», brief-db-stati-documento-dal-vocabolario §6.28).
     def test_fuori_bozza_e_rifiutato(self) -> None:
         errore = self._rifiuto(lambda: fn_save_kit_periodicita(
             self.listino_id, self.v1, self.kit, {"periodicita": "MENSILE"},
         ))
-        self.assertEqual(errore.code, "E_RIGA_LISTINO_VERSIONE_CHIUSA")
+        self.assertEqual(errore.code, "E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA")
 
     # 7. Il lettore dell'espansore dei kit (D-2 (c)) si lega alle due funzioni
     #    del DB con la loro firma: il contratto si risolve dalla CHIAVE del

@@ -256,18 +256,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
   cambio di licenza.
-- 🔵 **Gli stati del documento dal vocabolario** (`work-in-progress/brief-db-stati-documento-dal-vocabolario.md`):
-  in sviluppo, un giro per documento. Applicati e verdi i giri 1 … 5, 6a (preventivo), 6b (ordine), 6b-bis, 6a-bis e
-  2-ter (D-EVAD, D-PDF), 6c (contratto, `-27 … -34`, D-BOZZA (a): via `is_bozza`), 6c-bis (ritiro del guard della
-  categoria) e 6d (bolla), fino a `20261114-46`. Applicati e verdi anche 6e (reso, D-RESO (a)) e 6e-bis, fino a `20261114-58`; il BE/FE ha fatto le richieste dei giri 6a … 6e. Il giro 6g (R-V1 … R-V3 del BE/FE: valori del motivo, marche del contratto, smistamento del preventivo; `20261114-74 … -78`) è applicato e verde (2026-11-15); il 6g-bis (D-VAL-2: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`) è applicato e verde; FE-G1 … FE-G4 fatti. Applicati e verdi il 6f (listino: la bozza da `iniziale`, `20261115-42 … -52`) e il 6f-bis (D-LIST (a): `script.fn_check_listino_riga_scrivibile`, letta dal guard delle righe e da due superfici, `-53 … -58`; il guard anche sull'INSERT). Scritto il 6f-ter (R-L1 … R-L3 del BE/FE: la rettifica dal verbo `vendite.fn_rettifica_riga_listino`, le scritture della versione solo in bozza anche per componenti e kit, `-65 … -75`, col ritiro del guard della periodicità della quota fissa): applicato su dbdev il 2026-11-15; ora il BE, BE-L3 per primo. Chi riparte è in testa al brief.
-- 🔵 **Un indirizzo nuovo partendo da uno esistente** (`work-in-progress/brief-db-copia-indirizzo-soggetto.md`,
-  D-1 … D-4 di Tid del 2026-11-15, soggetto e ruolo insieme): giro 1 (la check
-  del tipo con «tipo già presente», chiamata dalle singolari; il predicato del ruolo estratto; gli obbligatori
-  delle plurali sulla finestra di validità, `20261114-84 … -91`) e Q-1 (le frasi del tipo non ammesso sulle
-  descrizioni, `-92 … -95`) applicati e verdi il 2026-11-15. Giro 2 (i quattro picker dei tipi, `-96`, `-97`)
-  applicato e verde; giro 3 (i verbi della copia, il motivo di riga, le viste e il registro, `20261115-34 … -40`)
-  applicato e verde: il DB è fatto. Ora il BE/FE: R-0 e R-0 bis (chiavi i18n, sbloccano il commit DB), R-6, R-2,
-  R-1, R-3, R-4, R-5.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al
@@ -306,6 +294,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** [BE]
 - **Le versioni pubblicate stampano coi margini delle colonne (15 mm), non coi 18/16 mm del loro CSS**
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** [FE]
+- **Residui di `work-done/brief-db-stati-documento-dal-vocabolario.md`**: i prezzi del kit di una versione non in bozza non si vedono; `VersioneDrawer.vue` senza uno spec sui motivi del registro [FE]
 - **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona** [DB, `dbops`]
 - 🟡 **IVA per cassa: i residui del cantiere** [DB]
 - 🟡 **Le variabili di una versione di template non si validano alla pubblicazione** [DB + BE]

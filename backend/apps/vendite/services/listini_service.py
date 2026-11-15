@@ -554,14 +554,16 @@ def _translate_integrity_error(exc: IntegrityError, *, function_name: str, entit
     )
 
 
-# Scopo: Un rifiuto del DB su una versione (verbo dell'attivazione, guard per
-#        stato) arriva al client col codice che il DB ha scelto e la sua frase
+# Scopo: Un rifiuto del DB su una versione o sulle sue righe (verbi
+#        dell'attivazione e della rettifica, guard per stato) arriva al client col codice che il DB ha scelto e la sua frase
 #        (BB `ErrorManager.raise_from_database_error`): le regole sono del DB
-#        dal giro 12 (L-4, L-5), qui si trasporta soltanto.
+#        dal giro 12 (L-4, L-5), quelle delle righe dal giro 6f-ter
+#        (brief-db-stati-documento-dal-vocabolario §6.28): qui si trasporta
+#        soltanto.
 #        ⛔ Nessun ripiego: un errore senza codice del catalogo (deadlock,
 #        timeout, RAISE nudo) torna al middleware com'e', e non diventa un 400
 #        «dato errato» sul form.
-def _rifiuto_del_db_su_versione(
+def _rifiuto_del_db(
     exc: DatabaseError, *, message: str, context: dict[str, Any], function_name: str,
 ) -> NoReturn:
     ErrorManager.raise_from_database_error(
@@ -895,28 +897,12 @@ def _extract_riga_payload(
 #    sarebbe una seconda sede, e gia' divergente.
 
 
-# Scopo: Guard fail-fast che impedisce CRUD righe su versioni non in stato BOZZA.
-#        Le righe di una versione ATTIVA sono immutabili (snapshot in commesse_attivita
-#        e attivita_fatturabili gia` propagati). Le righe di una versione CHIUSA sono
-#        congelate per audit storico. Solo BOZZA accetta create/update/delete righe.
-def _assert_versione_bozza_for_riga_op(
-    versione: dict[str, Any],
-    *,
-    function_name: str,
-) -> None:
-    stato = str(versione["stato"])
-    ErrorManager.require(
-        stato == "BOZZA",
-        code="E_VENDITE_VALIDATION",
-        message="Operazione su righe non consentita.",
-        detail=(
-            "Le righe sono modificabili solo su versioni in stato BOZZA. "
-            f"Stato corrente: {stato}."
-        ),
-        context={"versione_id": versione["id"], "stato": stato},
-        function_name=function_name,
-        log_to_db=True,
-    )
+# ⛔ `_assert_versione_bozza_for_riga_op` ritirato col giro 6f-ter (BE-L1,
+#    brief-db-stati-documento-dal-vocabolario §6.28): «fuori dalla bozza le
+#    righe, i prezzi del kit e la sua periodicita' non si scrivono» e' la regola
+#    di `script.fn_check_listino_riga_scrivibile`, che i guard delle tre tabelle
+#    sollevano (E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA, E_RIGA_LISTINO_VERSIONE_CHIUSA)
+#    e le superfici espongono. Il service trasporta il rifiuto (`_rifiuto_del_db`).
 
 
 # Scopo: Restituisce lista listini paginata con filtri e ordinamento validati.
@@ -1156,7 +1142,7 @@ def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
-        _rifiuto_del_db_su_versione(
+        _rifiuto_del_db(
             exc, message="Aggiornamento versione non consentito.",
             context={"listino_id": listino_id, "versione_id": versione_id},
             function_name=function_name,
@@ -1219,7 +1205,7 @@ def fn_clone_versione(
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
-        _rifiuto_del_db_su_versione(
+        _rifiuto_del_db(
             exc, message="Clonazione versione non consentita.",
             context={"listino_id": listino_id, "versione_id": src_versione_id},
             function_name=function_name,
@@ -1255,7 +1241,7 @@ def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
-        _rifiuto_del_db_su_versione(
+        _rifiuto_del_db(
             exc, message="Eliminazione versione non consentita.",
             context={"listino_id": listino_id, "versione_id": versione_id},
             function_name=function_name,
@@ -1309,7 +1295,7 @@ def fn_programma_chiusura_versione(
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
-        _rifiuto_del_db_su_versione(
+        _rifiuto_del_db(
             exc, message="Chiusura versione non consentita.",
             context={"listino_id": listino_id, "versione_id": versione_id},
             function_name=function_name,
@@ -1379,7 +1365,7 @@ def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[st
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="versione")
     except DatabaseError as exc:
-        _rifiuto_del_db_su_versione(
+        _rifiuto_del_db(
             exc, message="Attivazione versione non consentita.",
             context={"listino_id": listino_id, "versione_id": versione_id},
             function_name=function_name,
@@ -1435,23 +1421,28 @@ def fn_list_righe(
 #        giudica il DB (BE22).
 def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_create_riga"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=False, function_name=function_name)
 
     repository = ListiniRepository()
     try:
-        riga_id = repository.create_riga(versione_id, data)
+        with transaction.atomic():
+            riga_id = repository.create_riga(versione_id, data)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="riga")
+    except DatabaseError as exc:
+        _rifiuto_del_db(
+            exc, message="Riga listino non aggiunta.",
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
+        )
     return _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
 
 
 # Scopo: Aggiorna una riga prezzo. Articolo e unita' sono immutabili (lock del DB).
 def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_riga"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     data = _extract_riga_payload(payload, for_update=True, function_name=function_name)
     _V.require_campi_da_aggiornare(
@@ -1463,9 +1454,16 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
     )
     repository = ListiniRepository()
     try:
-        updated = repository.update_riga(listino_id, versione_id, riga_id, data)
+        with transaction.atomic():
+            updated = repository.update_riga(listino_id, versione_id, riga_id, data)
     except IntegrityError as exc:
         _translate_integrity_error(exc, function_name=function_name, entity="riga")
+    except DatabaseError as exc:
+        _rifiuto_del_db(
+            exc, message="Riga listino non modificata.",
+            context={"listino_id": listino_id, "versione_id": versione_id, "riga_id": riga_id},
+            function_name=function_name,
+        )
     ErrorManager.require(
         updated,
         code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
@@ -1481,11 +1479,18 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
 # Scopo: Elimina una riga prezzo esistente restituendo esito uniforme.
 def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_riga"
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     repository = ListiniRepository()
-    deleted = repository.delete_riga(listino_id, versione_id, riga_id)
+    try:
+        with transaction.atomic():
+            deleted = repository.delete_riga(listino_id, versione_id, riga_id)
+    except DatabaseError as exc:
+        _rifiuto_del_db(
+            exc, message="Riga listino non eliminata.",
+            context={"listino_id": listino_id, "versione_id": versione_id, "riga_id": riga_id},
+            function_name=function_name,
+        )
     ErrorManager.require(
         deleted,
         code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
@@ -1500,19 +1505,23 @@ def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str,
 
 # --- N6: Rettifica controllata su riga ATTIVA non propagata ---
 
-# I codici di `vendite.trgfn_listini_righe_guard_stato` che la rettifica N6
-# puo' incontrare. Dal campo strutturato il codice arriva comunque: i marker
-# servono solo al ripiego sul testo (stesso schema dei prezzi bundle, sotto).
-_KNOWN_RETTIFICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("E_RIGA_LISTINO_PROPAGATA", ("E_RIGA_LISTINO_PROPAGATA",)),
-    ("E_RIGA_LISTINO_VERSIONE_CHIUSA", ("E_RIGA_LISTINO_VERSIONE_CHIUSA",)),
-)
 
-
-# Scopo: Consente la modifica del prezzo di una riga in versione ATTIVA solo se
-#        nessuna riga di commessa o attivita` fatturabile la cita (riga non
-#        «propagata»): lo decide il guard DB sull'UPDATE, sotto lock FOR UPDATE.
-#        Motivo obbligatorio. Audit in meta.rettifiche_controllate[].
+# Scopo: La «Rettifica» di una riga di listino (sviluppo-listini-v3 N6): il
+#        prezzo di una riga del listino IN USO si corregge col motivo, e la
+#        correzione resta nella storia della riga. Lo fa il verbo DB
+#        `vendite.fn_rettifica_riga_listino` (giro 6f-ter del
+#        brief-db-stati-documento-dal-vocabolario §6.28, BE-L3): la riga nel
+#        perimetro sotto `FOR UPDATE`, il primo motivo di
+#        `script.fn_check_listino_riga_rettificabile` (in bozza, chiusa, non in
+#        vigore oggi, citata da un documento), il motivo obbligatorio, il
+#        prezzo e la traccia in `meta.rettifiche_controllate[]` con l'operatore,
+#        dalla porta che il guard delle righe onora. Fuori dalla porta una
+#        riga fuori dalla bozza non si scrive.
+# ⛔ Ritirate col giro 6f-ter le copie del service: le due guardie (non in
+#    bozza, in vigore oggi dalle date), il motivo e la sua lunghezza, il prezzo
+#    > 0 (lo zero e' un prezzo: decide il CHECK della tabella), il lock e la
+#    scrittura di `meta`. Restano la forma del corpo e il permesso d'area
+#    (della view).
 def fn_rettifica_controllata_riga(
     listino_id: int,
     versione_id: int,
@@ -1520,152 +1529,34 @@ def fn_rettifica_controllata_riga(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_rettifica_controllata_riga"
-
-    # --- Guard 1 (applicativa): versione esiste e non e` in BOZZA ---
-    # Lo stato BOZZA e` monotono in ingresso (una versione parte BOZZA e va ad
-    # ATTIVA, non torna indietro) quindi non soggetto a drift. E` safe usarlo
-    # come discriminante applicativo: su BOZZA si usa il PATCH ordinario, non la
-    # rettifica controllata.
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    ErrorManager.require(
-        str(versione["stato"]) != "BOZZA",
-        code="E_VENDITE_VALIDATION",
-        message="Rettifica controllata non ammessa su versioni BOZZA.",
-        detail="Per versioni BOZZA usare il PATCH ordinario sulla riga.",
-        context={"versione_id": versione_id, "stato": versione["stato"]},
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-    # --- Guard 2 (operativa): la versione deve essere attiva oggi ---
-    # Il check si basa su validita` (valido_dal <= today <= valido_al), non
-    # sullo `stato` persistito: lo stato e` solo flag informativo eventualmente
-    # stantio (principio fail-safe: data = fonte di verita` operativa).
-    today = oggi_aziendale()
-    valido_dal = versione.get("valido_dal")
-    valido_al = versione.get("valido_al")
-    is_operativa_oggi = (
-        isinstance(valido_dal, date)
-        and valido_dal <= today
-        and (valido_al is None or (isinstance(valido_al, date) and valido_al >= today))
-    )
-    ErrorManager.require(
-        is_operativa_oggi,
-        code="E_VENDITE_VALIDATION",
-        message="Rettifica controllata ammessa solo su versioni operativamente attive oggi.",
-        detail=(
-            f"La versione non e` operativa alla data odierna. "
-            f"valido_dal={valido_dal}, valido_al={valido_al}. "
-            f"Per versioni scadute, creare una nuova versione con prezzi corretti."
-        ),
-        context={
-            "versione_id": versione_id,
-            "valido_dal": valido_dal,
-            "valido_al": valido_al,
-            "today": today,
-        },
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-    # --- Guard: riga esiste ---
-    riga = _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
-
-    # --- Parsing payload ---
-    # Le frasi sono quelle del BB: «obbligatorio» se manca, «deve essere un
-    # numero» se non lo e' — due casi, due frasi, senza un titolo unico.
+    # La riga di QUESTA versione di QUESTO listino: la rotta li nomina, il
+    # verbo prende la sola riga.
+    _get_riga_or_raise(listino_id, versione_id, riga_id, function_name=function_name)
     nuovo_prezzo = _V.require_decimal(payload, "prezzo", function_name=function_name)
-
-    ErrorManager.require(
-        nuovo_prezzo > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Prezzo non valido.",
-        detail="Il prezzo deve essere maggiore di zero.",
-        context={"prezzo": str(nuovo_prezzo)},
-        function_name=function_name,
-        log_to_db=True,
+    # Assente o vuoto lo rifiuta il verbo (E_RIGA_LISTINO_RETTIFICA_MOTIVO_OBBLIGATORIO,
+    # sul campo): qui solo la forma, una stringa.
+    motivo = _V.extract_optional_string(
+        payload, "motivo", nullable=True, function_name=function_name,
     )
-
-    motivo = payload.get("motivo")
-    ErrorManager.require(
-        motivo and isinstance(motivo, str) and motivo.strip(),
-        code="E_VENDITE_VALIDATION",
-        message="Motivo obbligatorio.",
-        detail="Il campo motivo e` obbligatorio per la rettifica controllata.",
-        context={"field": "motivo"},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    assert isinstance(motivo, str)
-    motivo = motivo.strip()
-    ErrorManager.require(
-        len(motivo) <= 500,
-        code="E_VENDITE_VALIDATION",
-        message="Motivo troppo lungo.",
-        detail="Massimo 500 caratteri.",
-        context={"field": "motivo", "length": len(motivo)},
-        function_name=function_name,
-        log_to_db=False,
-    )
-
     repository = ListiniRepository()
-
-    # --- Lock pessimistico + scrittura; «propagata» la decide il guard DB ---
-    # ⛔ Niente controllo di propagazione qui (2026-10-09, ok Tid): la regola e'
-    #    di `vendite.trgfn_listini_righe_guard_stato`, che rifiuta l'UPDATE con
-    #    `E_RIGA_LISTINO_PROPAGATA` (o `E_RIGA_LISTINO_VERSIONE_CHIUSA`). Fino ad
-    #    allora il service ne teneva una copia in Python con un codice suo
-    #    (`E_VENDITE_RIGA_GIA_PROPAGATA`): due sedi, due codici per una regola.
     try:
         with transaction.atomic():
-            locked = repository.lock_riga_for_update(versione_id, riga_id)
-            ErrorManager.require(
-                locked,
-                code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
-                message="Riga non trovata.",
-                detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
-                context={"riga_id": riga_id, "versione_id": versione_id},
-                function_name=function_name,
-                log_to_db=False,
+            esito = repository.rettifica_riga(
+                riga_id, nuovo_prezzo, None if isinstance(motivo, _MissingType) else motivo,
             )
-            # ⚠️ Prezzo e meta si rileggono SOTTO il lock: letti prima, due
-            #    rettifiche concorrenti scrivevano ognuna il proprio `meta`, e
-            #    la seconda cancellava la voce di audit della prima (e diceva
-            #    un `prezzo_precedente` gia' superato).
-            riga = _get_riga_or_raise(
-                listino_id, versione_id, riga_id, function_name=function_name
-            )
-            meta_corrente = _V.optional_meta(
-                riga, "meta", function_name=function_name
-            ) or {}
-            rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
-            rettifiche.append({
-                "data": datetime.now(timezone.utc).isoformat(),
-                "prezzo_precedente": str(riga["prezzo"]),
-                "prezzo_nuovo": str(nuovo_prezzo),
-                "motivo": motivo,
-            })
-            meta_corrente["rettifiche_controllate"] = rettifiche
-            repository.update_riga_prezzo_rettifica(
-                riga_id=riga_id,
-                nuovo_prezzo=str(nuovo_prezzo),
-                meta_aggiornata=meta_corrente,
-            )
+    except IntegrityError as exc:
+        _translate_integrity_error(exc, function_name=function_name, entity="riga")
     except DatabaseError as exc:
-        ErrorManager.raise_from_database_error(
-            exc,
-            known_markers=_KNOWN_RETTIFICA_DB_ERROR_MARKERS,
-            fallback_code="E_VENDITE_VALIDATION",
-            message="Rettifica della riga di listino non ammessa.",
-            context={"riga_id": riga_id, "versione_id": versione_id},
+        _rifiuto_del_db(
+            exc, message="Rettifica della riga di listino non ammessa.",
+            context={"listino_id": listino_id, "versione_id": versione_id, "riga_id": riga_id},
             function_name=function_name,
         )
-
     return {
-        "riga_id": riga_id,
-        "prezzo_precedente": str(riga["prezzo"]),
-        "prezzo_nuovo": str(nuovo_prezzo),
-        "motivo": motivo,
+        "riga_id": esito["listino_riga_id"],
+        "prezzo_precedente": str(esito["prezzo_precedente"]),
+        "prezzo_nuovo": str(esito["prezzo_nuovo"]),
+        "motivo": esito["motivo"],
     }
 
 
@@ -1679,8 +1570,11 @@ _ARROT_DECIMALI_DEFAULT = 4
 
 
 # Scopo: Applica una variazione percentuale ai prezzi delle righe attive di una versione
-#        BOZZA. Con dry_run=True restituisce la preview senza applicare modifiche.
-#        Guard: solo BOZZA, range percentuale ammesso, arrotondamento 0-10.
+#        in bozza (sviluppo-listini-v3 N8a). Con dry_run=True restituisce la
+#        preview senza applicare modifiche. Qui la forma: range percentuale
+#        ammesso, arrotondamento 0-10. «Solo in bozza» lo dice il guard di stato
+#        delle righe (giro 6f-ter, BE-L1), sul gesto e sulla sua anteprima; la
+#        superficie e' `variazione_blocco_*` della versione.
 def fn_applica_variazione_percentuale(
     listino_id: int,
     versione_id: int,
@@ -1688,9 +1582,7 @@ def fn_applica_variazione_percentuale(
 ) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_applica_variazione_percentuale"
 
-    # --- Guard: versione esiste e stato BOZZA ---
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
-    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
 
     # --- Parsing e validazione payload ---
     variazione_pct = _V.require_decimal(
@@ -1770,14 +1662,21 @@ def fn_applica_variazione_percentuale(
     repository = ListiniRepository()
     filtro_str = [str(a) for a in filtro_articoli] if filtro_articoli else None
 
+    contesto_errore = {"listino_id": listino_id, "versione_id": versione_id}
     if dry_run:
-        count, preview = repository.applica_variazione_percentuale(
-            versione_id=versione_id,
-            variazione_pct=str(variazione_pct),
-            arrotondamento_decimali=arrotondamento_decimali,
-            filtro_articoli=filtro_str,
-            dry_run=True,
-        )
+        try:
+            count, preview = repository.applica_variazione_percentuale(
+                versione_id=versione_id,
+                variazione_pct=str(variazione_pct),
+                arrotondamento_decimali=arrotondamento_decimali,
+                filtro_articoli=filtro_str,
+                dry_run=True,
+            )
+        except DatabaseError as exc:
+            _rifiuto_del_db(
+                exc, message="Variazione dei prezzi non ammessa.",
+                context=contesto_errore, function_name=function_name,
+            )
         return {
             "dry_run": True,
             "righe_coinvolte": count,
@@ -1786,31 +1685,37 @@ def fn_applica_variazione_percentuale(
             "arrotondamento_decimali": arrotondamento_decimali,
         }
 
-    with transaction.atomic():
-        count, _ = repository.applica_variazione_percentuale(
-            versione_id=versione_id,
-            variazione_pct=str(variazione_pct),
-            arrotondamento_decimali=arrotondamento_decimali,
-            filtro_articoli=filtro_str,
-            dry_run=False,
-        )
-        # Audit sulla meta della versione
-        meta_versione = _V.optional_meta(
-            versione, "meta", function_name="listini_service.fn_applica_variazione_percentuale"
-        ) or {}
-        variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
-        variazioni_pct.append({
-            "data": datetime.now(timezone.utc).isoformat(),
-            "variazione_percentuale": str(variazione_pct),
-            "arrotondamento_decimali": arrotondamento_decimali,
-            "righe_aggiornate": count,
-            "filtro_articoli": filtro_str,
-        })
-        meta_versione["variazioni_percentuali"] = variazioni_pct
-        repository.update_versione(
-            listino_id=listino_id,
-            versione_id=versione_id,
-            data={"meta": meta_versione},
+    try:
+        with transaction.atomic():
+            count, _ = repository.applica_variazione_percentuale(
+                versione_id=versione_id,
+                variazione_pct=str(variazione_pct),
+                arrotondamento_decimali=arrotondamento_decimali,
+                filtro_articoli=filtro_str,
+                dry_run=False,
+            )
+            # Audit sulla meta della versione
+            meta_versione = _V.optional_meta(
+                versione, "meta", function_name="listini_service.fn_applica_variazione_percentuale"
+            ) or {}
+            variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
+            variazioni_pct.append({
+                "data": datetime.now(timezone.utc).isoformat(),
+                "variazione_percentuale": str(variazione_pct),
+                "arrotondamento_decimali": arrotondamento_decimali,
+                "righe_aggiornate": count,
+                "filtro_articoli": filtro_str,
+            })
+            meta_versione["variazioni_percentuali"] = variazioni_pct
+            repository.update_versione(
+                listino_id=listino_id,
+                versione_id=versione_id,
+                data={"meta": meta_versione},
+            )
+    except DatabaseError as exc:
+        _rifiuto_del_db(
+            exc, message="Variazione dei prezzi non ammessa.",
+            context=contesto_errore, function_name=function_name,
         )
 
     return {
@@ -1840,8 +1745,10 @@ def fn_applica_variazione_percentuale(
 # perche' il codice DB originale venga preservato nel ServiceError.
 #
 # Trigger noti:
-#   - 20260513-20 `trgfn_listini_righe_comp_guard_immutabilita_v5`:
-#     blocca INS/UPD/DLT su versioni ATTIVA/CHIUSA → `E_RIGA_LISTINO_VERSIONE_CHIUSA`
+#   - `trgfn_listini_righe_comp_guard_immutabilita_v5` e
+#     `trgfn_listini_kit_guard` (dal giro 6f-ter il primo motivo di
+#     `script.fn_check_listino_riga_scrivibile`): fuori dalla bozza
+#     `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`, CHIUSA `E_RIGA_LISTINO_VERSIONE_CHIUSA`
 #   - guard coerenza BoM (lato team DB): blocca prezzo su componente
 #     fuori dalla BoM corrente del padre composito.
 #
@@ -1849,6 +1756,10 @@ def fn_applica_variazione_percentuale(
 # aggiungiamo qui la sua tupla — il codice DB compare in `detail` anche
 # senza match (fallback `E_VENDITE_VALIDATION`).
 _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA",
+        ("E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA",),
+    ),
     (
         "E_RIGA_LISTINO_VERSIONE_CHIUSA",
         ("E_RIGA_LISTINO_VERSIONE_CHIUSA",),
@@ -1858,8 +1769,9 @@ _KNOWN_BUNDLE_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("E_LISTINO_RIGA_COMP_BOM_INCOERENTE",),
     ),
     # Guard `vendite.trgfn_listini_kit_guard` (D-2-bis (B)): la periodicita'
-    # a parte si scrive solo per un composito. Fuori bozza parla
-    # `E_RIGA_LISTINO_VERSIONE_CHIUSA`, la stessa dei componenti.
+    # a parte si scrive solo per un composito. Fuori dalla bozza parlano i
+    # due codici di `script.fn_check_listino_riga_scrivibile` (sopra), gli
+    # stessi dei componenti.
     (
         "E_LISTINO_KIT_NON_COMPOSITO",
         ("E_LISTINO_KIT_NON_COMPOSITO",),
@@ -1914,9 +1826,11 @@ def fn_preview_bundle(
 #        repo soft-disattiva le righe attive correnti per (versione, padre)
 #        e inserisce le nuove. Tutto in `transaction.atomic`.
 #
-#        Guard di stato: solo versione BOZZA modificabile (allinea al
-#        pattern righe standalone via `_assert_versione_bozza_for_riga_op`
-#        e al trigger DB di immutabilita' v5 `_immutabilita_v5`).
+#        Guard di stato: del DB (`trgfn_listini_righe_comp_guard_immutabilita_v5`,
+#        che dal giro 6f-ter solleva il primo motivo di
+#        `script.fn_check_listino_riga_scrivibile`: fuori dalla bozza i prezzi
+#        del kit non si scrivono, `attivo` compreso). Superficie:
+#        `prezzi_bundle_blocco_*` della versione.
 #
 #        `rows`: lista di dict `{articolo_componente_id, articolo_figlio_id,
 #        prezzo, iva_id?}`. Righe con `prezzo` None/null vengono ignorate
@@ -1934,7 +1848,6 @@ def fn_save_bundle(
     versione = _get_versione_or_raise(
         listino_id, versione_id, function_name=function_name,
     )
-    _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
     ErrorManager.require(
         bool(articolo_padre_id),
         code="E_VENDITE_VALIDATION",
@@ -2016,8 +1929,9 @@ def fn_save_bundle(
 #        dedicato per chiarezza REST + audit log.
 #
 #        Idempotente: 0 disattivati su composito senza prezzi bundle,
-#        nessun errore. Guard BOZZA via `_assert_versione_bozza_for_riga_op`
-#        ereditata da `fn_save_bundle`.
+#        nessun errore. «Solo in bozza» lo dice il guard dei componenti, come
+#        per `fn_save_bundle` (giro 6f-ter: prima la sola disattivazione
+#        passava anche su una ATTIVA).
 #        ⭐ Con i prezzi se ne va anche il kit (`vendite.listini_kit`, la sua
 #        periodicita'): restando, sarebbe un kit sul listino senza prezzo.
 def fn_delete_bundle(

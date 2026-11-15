@@ -146,6 +146,16 @@
   quindi cambiare riga o uscire butta cio' che si e' scritto. Il rimedio esiste ed e' provato sui
   documenti: fotografia nel form (`useDrawerFormPreserve`) + `confermaCambio` di `useFormInline`.
   Non fatto con il resto perche' non e' un drawer documento e ha form propri: un giro a se'.
+- **Residui di `work-done/brief-db-stati-documento-dal-vocabolario.md`** (FE, ereditati il 2026-11-15 dalla
+  chiusura, giro 6f-ter):
+  - ⏭️ **i prezzi del kit di una versione non in bozza non si vedono**: `VersioneDrawer.openBundleDialog` non
+    apre il dialog quando `prezzi_bundle_blocco_*` della versione dice un motivo, quindi su una versione attiva o
+    chiusa i prezzi dei componenti non si leggono. Strada: aprirlo in sola lettura (la scrittura resta del guard
+    `trgfn_listini_righe_comp_guard_immutabilita_v5`). Miglioria, non un difetto del modello;
+  - ⏭️ **`VersioneDrawer.vue` senza uno spec sui motivi del registro**: le sei azioni (`AGGIUNGI_RIGA_LISTINO`,
+    `VARIA_PREZZI_LISTINO`, `PREZZI_BUNDLE_LISTINO`, `PERIODICITA_KIT_LISTINO`, `MODIFICA_RIGA_LISTINO`,
+    `RETTIFICA_RIGA_LISTINO`) leggono il motivo con `useAzioneRiga`, che ha il suo spec; il cablaggio nel drawer
+    (quale riga, versione o riga di listino, dà il motivo a quale gesto) non ne ha uno.
 - **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona**
   (DB, `dbops`; residuo di `work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): il
   codice del require generato dal framework ATTIVO è candidato allo split, per **tutte** le coppie

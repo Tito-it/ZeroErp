@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team BE**, con R-BE-2 (§7): il filtro `scadenza_mese` della lista contratti passa a
-`script.fn_mese_di`. Poi il team DB chiude e archivia. Il lato DB è finito: i giri 5 (`-59`) e 6
+**Nessuno: brief chiuso e archiviato il 2026-11-15.** Nessun debito residuo: D-2 si è chiusa nel
+giro 6 (§6.6). R-BE-2 (§7) è fatto dal team BE il 2026-11-15, da committare: il filtro `scadenza_mese` della lista
+contratti passa a `script.fn_mese_di`, e il service rifiuta un mese fuori da 01-12. Il lato DB è finito: i giri 5 (`-59`) e 6
 (`-62 … -64`, `-76`, `-77`) sono applicati su dbdev e sullo scratch e i pgTAP sono verdi (Tid,
 2026-11-15). `script/test-mesi-dal-calendario-v1` ha 19 asserzioni e dura circa 2 s invece di 19. D-2 si chiude nel giro 6, non in un brief nuovo (Tid, 2026-11-15). R-BE-1 (§7) è fatto e committato
 (`83e1401b8f`, PR #129, 2026-11-15). I quattro giri sono applicati e i pgTAP sono verdi (Tid,
@@ -35,17 +36,18 @@ Tid e numeri `-82…-83` del 2026-11-15; D-1, D-2 e D-3 decise (a) lo stesso gio
 | 8b | ✅ team DB | Alla chiusura: una copia di fine mese rimasta in `fn_get_pavimento_emissione`, e il presidio 17 che guarda solo `date_trunc(` (2026-11-15) | §6.5 | 8 ✅ |
 | 8c | ✅ Tid | Il via al giro 5 («procedi», 2026-11-15) | §6.5 | 8b |
 | 8d | ✅ team DB | Giro 5: `20261115-59`, il test 19, la regola `fine-mese-intervallo`, §11.10; prova in transazione (2026-11-15) | §6.5 | 8c |
-| 8e | **Tid** ⏭️ | Apply di `20261115-59` e `script/test-mese-di-un-giorno-v1` | §6.5 | 8d |
+| 8e | ✅ Tid | Apply di `20261115-59` e `script/test-mese-di-un-giorno-v1` (insieme a 8h, 2026-11-15) | §6.5 | 8d |
 | 8f | ✅ Tid | D-2 riletta: giro 6 qui invece di un brief nuovo («falla qui giro 6»); forma: due BB in `script` (2026-11-15) | §6.5, §6.6 | — |
 | 8g | ✅ team DB | Giro 6: `20261115-62 … -64`, il pgTAP nuovo, la regola `mesi-intervallo`, §11.10, due `manual/`; prova in transazione (2026-11-15) | §6.6 | 8f |
 | 8h | ✅ Tid | Apply di `20261115-59` e `-62 … -64` (dbdev e scratch, 2026-11-15); il pgTAP nuovo è lento | §6.6 | 8g |
 | 8h-bis | ✅ team DB | `-76`, `-77`: i due BB senza `STRICT`, espansi dal planner; test con 7b, 8b e domini ristretti; prova (2026-11-15) | §6.6 | 8h |
 | 8h-ter | ✅ Tid | Apply di `20261115-76`, `-77`; pgTAP verdi (2026-11-15) | §6.6 | 8h-bis |
 | 8i | ✅ Tid | La riga del BE: R-BE-2 al team BE, come da proposta (2026-11-15) | §6.5, §7 | — |
-| 8j | **team BE** ⏭️ | R-BE-2: `scadenza_mese` da `script.fn_mese_di`; il commento (o il controllo) del service | §7 | 8i ✅ |
-| 9 | team DB | Chiusura e archiviazione | — | 8h-ter ✅, 8j, 4b ✅ |
+| 8j | ✅ team BE | R-BE-2 (2026-11-15): `scadenza_mese` da `script.fn_mese_di`, un parametro; il service controlla il mese 01-12; un test del service e un test sul DB provvisto (mutazione provata) | §7 | 8i ✅ |
+| 9 | ✅ team BE | Chiusura e archiviazione in `work-done/` (su richiesta di Tid, 2026-11-15) | — | 8h-ter ✅, 8j ✅, 4b ✅ |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: R-BE-2 (§7); D-2 riletta, giro 6 qui con due BB in `script` (§6.6); i due pgTAP col `DO` di pulizia (§6.4); i cinque pgTAP senza `ROLLBACK;` (§6.3); D-1 (a), D-2 (a), D-3 (a) (§5); il via al giro 5 (§6.5). **Da committare:** i giri 5 e 6 (§6.5, §6.6). **Committato** (`b8180da711`): i giri 1-4, cioè il giro 1
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: R-BE-2 (§7); D-2 riletta, giro 6 qui con due BB in `script` (§6.6); i due pgTAP col `DO` di pulizia (§6.4); i cinque pgTAP senza `ROLLBACK;` (§6.3); D-1 (a), D-2 (a), D-3 (a) (§5); il via al giro 5 (§6.5). **Da committare:** R-BE-2 (§7) e l'archiviazione di questo brief, sul branch del BE. **Committato:** i giri 5 e 6 (`dc8d1e133`,
+§6.5, §6.6); R-BE-1 (`83e1401b8f`); in `b8180da711` i giri 1-4, cioè il giro 1
 (`20261114-82`, `-83`, il pgTAP, `scripts/guardrail_forme_changeset.py`, `linee-guida-sql.md`
 §11.10, le due pagine `manual/`), il giro 2 (`20261115-01…-07`), il giro 3 (`20261115-08…-26`), il giro 4 (`20261115-27…-33`, il pgTAP del mese a 18), i due pgTAP senza il `DO` di pulizia, i cinque pgTAP con il `ROLLBACK;`,
 `scripts/guardrail_pgtap_preambolo.py`, la guida pgTAP e questo brief.
@@ -55,11 +57,11 @@ Tid e numeri `-82…-83` del 2026-11-15; D-1, D-2 e D-3 decise (a) lo stesso gio
 > **BE e FE:** il FE nulla; il BE ha sei copie del calcolo nel suo SQL (R-BE-1, §7), più il filtro
 > `scadenza_mese` della lista contratti (R-BE-2, §7).
 > **Brief vicini verificati:**
-> [valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) V-3 (chiusa il
+> [valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) V-3 (chiusa il
 > 2026-09-21): ha lasciato questi `date_trunc` «fuori perimetro» e dichiarati; questo brief la
 > completa, non la revoca.
-> [brief-db-stati-documento-dal-vocabolario](brief-db-stati-documento-dal-vocabolario.md) e
-> [brief-db-provenienza-prezzo-segue-il-prezzo](brief-db-provenienza-prezzo-segue-il-prezzo.md):
+> [brief-db-stati-documento-dal-vocabolario](../work-done/brief-db-stati-documento-dal-vocabolario.md) e
+> [brief-db-provenienza-prezzo-segue-il-prezzo](../work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md):
 > stesso perimetro di oggetti (viste `vw_dash_*`, `vw_lotti_fase`, lister `*_da_pushare`,
 > `fn_get_or_create_lotto`, `fn_create_fatturazione_lotto`, `fn_genera_scadenze_fattura`,
 > `fn_upsert_commessa_attivita`, `fn_contratti_addebiti_maturati_con_provenienza`), tema diverso.
@@ -728,3 +730,22 @@ contratto dell'endpoint non cambia, e nemmeno il parametro, il suo formato e il 
 FE (`ContrattiSearchTable.vue`, store `contratti.js`) e assistente (`ai_assistant/tools/vendite_tools.py`)
 non sono toccati. Chi cambia per primo: nessun vincolo, `script.fn_mese_di` esiste già. Il DB non
 ha nulla da fare: dopo R-BE-2 il team DB chiude e archivia.
+
+**✅ R-BE-2 fatto** (team BE, `dev/backend-tid`, 2026-11-15; da committare). Ricognizione rifatta
+sull'albero: `scadenza_mese` ha un solo punto che lo traduce in SQL, `list_contratti` del
+repository; la view, l'export e lo strumento dell'assistente passano dal service.
+
+* `contratti_repository.py`: `script.fn_mese_di(v.valido_al) = %s::date`, un parametro. Via
+  l'`IS NOT NULL`, come proposto.
+* `contratti_service.py`: scelto il **controllo** al posto del solo commento. Il formato diventa
+  `\d{4}-(0[1-9]|1[0-2])` con `re.fullmatch`: prima `re.match` con `$` accettava anche un `\n`
+  finale. Un mese passato **resta ammesso**, perché dice quali contratti sono scaduti in quel mese,
+  e il commento ora lo dice. Il «mese >= mese corrente» del commento vecchio non era una regola del
+  codice, e non lo diventa.
+* Test del service `test_list_contratti_scadenza_mese_fuori_calendario`: `2026-13`, `2026-00`,
+  `2026-7`, `2026-07-01` e `2026-07\n` danno `E_VENDITE_VALIDATION` senza arrivare al repository.
+* Test sul DB provvisto `vendite/tests/db/test_contratti_lista_scadenza_mese_db.py`: due contratti
+  costruiti, uno che scade l'ultimo giorno del mese M e uno il primo di M+1. Ciascuno esce solo
+  nel suo mese. Un `valido_al` aperto non esce. **Mutazione** (`valido_al <= primo + 31`): rosso il
+  test 1, poi ripristinato. ruff e mypy verdi; i 130 test del service contratti e del file nuovo
+  sono verdi (`ZEROERP_TEST_DB_E2E=1`).

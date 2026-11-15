@@ -10,6 +10,7 @@ Indice test eseguiti:
 1) list_contratti_does_not_apply_default_data_da
 2) list_contratti_invalid_order
 3) list_contratti_invalid_ambito
+3b) list_contratti_scadenza_mese_fuori_calendario — `2026-13`, `2026-00`: errore di validazione, non un 22008 dal DB
 4) get_contratto_not_found
 5) get_contratto_ok
 6) create_contratto_modalita_A_ok
@@ -131,6 +132,23 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().list_contratti(ambito="FANTASY")
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: scadenza_mese col mese fuori da 01-12 -> ServiceError, prima del
+    # repository (altrimenti il DB risponde 22008 sulla data non valida).
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
+    def test_list_contratti_scadenza_mese_fuori_calendario(self, repo_cls):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.list_contratti.return_value = ([], 0)
+        for valore in ("2026-13", "2026-00", "2026-7", "2026-07-01", "2026-07\n"):
+            with self.subTest(scadenza_mese=valore), self.assertRaises(ServiceError) as ctx:
+                ContrattiService().list_contratti(scadenza_mese=valore)
+            self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        repo.list_contratti.assert_not_called()
+
+        ContrattiService().list_contratti(scadenza_mese="2026-12")
+        self.assertEqual(repo.list_contratti.call_args.kwargs["scadenza_mese"], "2026-12")
 
     # --- dettaglio -----------------------------------------------------
 

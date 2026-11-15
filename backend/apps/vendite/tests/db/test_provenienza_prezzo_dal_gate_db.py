@@ -49,10 +49,9 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import DatabaseError, connection, transaction
+from django.db import connection, transaction
 
-from apps.core.db._helpers import row_to_dict
-from apps.core.services.db_error_fields import db_error_code
+from apps.core.db._helpers import jsonb_out, row_to_dict
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.services import ordini_service
@@ -73,8 +72,12 @@ _FIXTURE = (
     " RETURNING id) SELECT id FROM ins",
     "UPDATE anagrafiche.billing_account SET categoria_cliente_id = (SELECT id FROM _cat)"
     " WHERE id = (SELECT billing_account_id FROM _o)",
+    # ⛔ La versione nasce in BOZZA (`p_in_bozza`): le righe di una versione si
+    #    scrivono solo li' (giro 6f-ter, brief-db-stati-documento-dal-vocabolario
+    #    §6.28), e si attiva dal verbo dopo averle prese.
     "CREATE TEMP TABLE _l ON COMMIT DROP AS SELECT * FROM dbops.fn_pgtap_crea_listino("
-    " (SELECT utility_id FROM _o), 'K7 provenienza', '2020-01-01'::date, NULL::date)",
+    " (SELECT utility_id FROM _o), 'K7 provenienza', '2020-01-01'::date, NULL::date,"
+    " p_in_bozza => TRUE)",
     "CREATE TEMP TABLE _art ON COMMIT DROP AS"
     " SELECT v.k, dbops.fn_pgtap_crea_articolo(('PGT-K7-' || v.k || '-'"
     "   || substr(md5(clock_timestamp()::text || random()::text), 1, 10))::varchar,"
@@ -86,6 +89,8 @@ _FIXTURE = (
     f" SELECT (SELECT listino_versione_id FROM _l), ar.id, ar.uom_id, {_PREZZO}"
     " FROM catalogo.articoli ar JOIN _art a ON a.id = ar.id WHERE a.k <> 'A2'"
     " RETURNING id, articolo_id) SELECT a.k, i.id FROM ins i JOIN _art a ON a.id = i.articolo_id",
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,"
+    " (SELECT listino_versione_id FROM _l), 'ATTIVA')",
     "INSERT INTO anagrafiche.categorie_clienti_listini (categoria_cliente_id, utility_id,"
     " emittente_soggetto_ruolo_id, classe_utenza_id, listino_id, valido_dal)"
     " SELECT (SELECT id FROM _cat), o.utility_id, o.emittente_soggetto_ruolo_id, NULL,"
@@ -138,22 +143,22 @@ class ProvenienzaPrezzoDalGateDbTests(TestCase):
         assert letta is not None
         return letta
 
-    # Vero se la riga di listino si rettifica: il guard la rifiuta se e' propagata.
+    # Scopo: la riga di listino si rettifica ancora? Lo dice la check della
+    #        rettifica (`script.fn_check_listino_riga_rettificabile`, giro
+    #        6f-ter): fuori dalla bozza un UPDATE diretto non passa mai, quindi
+    #        non distingue piu' la riga citata da un documento. Vuota =
+    #        rettificabile; altrimenti il primo motivo e' la propagazione.
     def _rettificabile(self, chiave: str) -> bool:
-        try:
-            with transaction.atomic(), connection.cursor() as cur:
-                cur.execute(
-                    "UPDATE vendite.listini_righe SET prezzo = prezzo + 1 WHERE id = %s",
-                    [self.righe_listino[chiave]],
-                )
-                raise _Annulla
-        except _Annulla:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT script.fn_check_listino_riga_rettificabile(%s)",
+                [self.righe_listino[chiave]],
+            )
+            motivi = jsonb_out(cur.fetchone()[0])
+        if not motivi:
             return True
-        except DatabaseError as exc:
-            # ⚠️ Il codice viaggia nel campo strutturato (`constraint_name`), non
-            # nel testo del messaggio: si legge col BB, non con `str(exc)`.
-            self.assertEqual(db_error_code(exc), "E_RIGA_LISTINO_PROPAGATA")
-            return False
+        self.assertEqual(motivi[0]["codice"], "E_RIGA_LISTINO_PROPAGATA")
+        return False
 
     # 1. Senza prezzo: il resolver vero, e la riga cita la riga di listino.
     def test_senza_prezzo_la_riga_cita_il_listino_e_lo_propaga(self) -> None:
@@ -250,6 +255,3 @@ class ProvenienzaPrezzoDalGateDbTests(TestCase):
         self.assertNotEqual(uscite["A1"][0], "MANUALE")
         self.assertEqual(uscite["A2"], ("MANUALE", None, None))
 
-
-class _Annulla(Exception):
-    pass

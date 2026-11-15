@@ -4,7 +4,15 @@
 //        Lista paginata server-side sopra, form dettaglio sotto.
 //        Click riga = edit, pulsante Nuovo = create. Salva/Annulla sempre
 //        in basso sotto il form. Articolo immutabile in edit.
-//        Solo righe in versione BOZZA sono modificabili/eliminabili.
+// ⭐ Che cosa si scrive lo dice il DB, gesto per gesto, col motivo
+//    (brief-db-stati-documento-dal-vocabolario §6.27, §6.28, FE-L2): le
+//    azioni sono iscritte nel registro `config.azioni_riga` e il BB
+//    `useAzioneRiga` legge il motivo dalle colonne che il registro dichiara —
+//    della VERSIONE per «Nuovo», la variazione, i prezzi del kit e la sua
+//    periodicita'; della RIGA per modifica, eliminazione e rettifica. Fuori
+//    dalla bozza le righe non si scrivono: il prezzo di una riga del listino in
+//    uso si corregge con la «Rettifica», col motivo (N6). ⛔ Fino al 2026-11-15
+//    la regola era qui, ricopiata dal codice dello stato (`isBozza`).
 //
 //        Lista convertita a <ListaConfigurabile> (config DB
 //        `vendite.listini_righe`, ui.lista_definizione id 37 — 7° lotto,
@@ -20,6 +28,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
+import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
 import { displayDate } from '../../core/utils/date'
 import { formatIvaLabel, formatNumber } from '../../core/utils/format'
 import { statoVersioneListinoSeverity } from '../../core/utils/severity'
@@ -27,6 +36,7 @@ import {
   createRiga,
   updateRiga,
   deleteRiga,
+  rettificaRiga,
   previewBundleComponenti,
   saveBundleComponenti,
   deleteBundleComponenti,
@@ -36,9 +46,10 @@ import PeriodicitaSelect from '../_shared/canoni/PeriodicitaSelect.vue'
 import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
-import { STATO_VERSIONE_LISTINO } from '../constants'
+import { AZIONE_RIGA_RIGA_LISTINO, AZIONE_RIGA_VERSIONE_LISTINO } from '../constants'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
@@ -72,11 +83,21 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible'])
 
+// Le azioni registrate (vedi l'intestazione). Il motivo e' `undefined` sul
+// gesto ammesso; prima che il registro arrivi il BB tiene tutto spento.
+// ⚠️ Dichiarate prima dell'`extraActions` qui sotto, che le legge (TDZ).
+const aggiunta = useAzioneRiga(AZIONE_RIGA_VERSIONE_LISTINO.AGGIUNGI_RIGA)
+const variazione = useAzioneRiga(AZIONE_RIGA_VERSIONE_LISTINO.VARIA_PREZZI)
+const prezziBundle = useAzioneRiga(AZIONE_RIGA_VERSIONE_LISTINO.PREZZI_BUNDLE)
+const periodicitaKit = useAzioneRiga(AZIONE_RIGA_VERSIONE_LISTINO.PERIODICITA_KIT)
+const modifica = useAzioneRiga(AZIONE_RIGA_RIGA_LISTINO.MODIFICA)
+const rettifica = useAzioneRiga(AZIONE_RIGA_RIGA_LISTINO.RETTIFICA)
+
 // Scaffolding lista configurabile: search/sort/page + azioni pagina standard
 // (Ricarica + Personalizza) + le azioni di dominio via `extraActions` (lazy:
-// il closure legge isBozza/formMode definiti sotto solo alla valutazione del
-// computed pageActions). Niente exportFn/onNew standard: la "Nuovo" ha
-// visibilita'/disable di dominio e viaggia fra le extra.
+// il closure legge formMode definito sotto solo alla valutazione del computed
+// pageActions). Niente exportFn/onNew standard: la "Nuovo" ha il suo motivo e
+// viaggia fra le extra.
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
@@ -87,22 +108,26 @@ const {
       key: 'variazione',
       kind: 'utility',
       label: t('vendite.listini.variazione_short'),
-      tooltip: t('vendite.listini.variazione_pct_titolo'),
       icon: MANAGE_ICONS.VARIAZIONE_PREZZO,
       showLabel: true,
-      visible: isBozza.value,
+      hideWhenReadonly: true,
+      disabled: variazione.bloccata(props.versione),
+      tooltip: variazione.motivo(props.versione) ?? t('vendite.listini.variazione_pct_titolo'),
       command: () => { showVariazioneDialog.value = true },
     },
     // ⚠️ A form aperto «Nuovo» sparisce (regola del BB `useFormInline`):
     //    prima restava attivo durante la modifica di una riga, e un clic
     //    buttava via la modifica in corso.
-    azioneNuovaRiga({
-      key: 'new',
-      label: t('common.new'),
-      tooltip: t('vendite.listini.aggiungi_prezzo_hint'),
-      visible: () => isBozza.value,
-      command: onNew,
-    }),
+    // Il BB non porta lo spento: il motivo si aggiunge sopra la sua azione.
+    {
+      ...azioneNuovaRiga({
+        key: 'new',
+        label: t('common.new'),
+        tooltip: aggiunta.motivo(props.versione) ?? t('vendite.listini.aggiungi_prezzo_hint'),
+        command: onNew,
+      }),
+      disabled: aggiunta.bloccata(props.versione),
+    },
   ],
   searchTableOptions: {
     defaultSortField: 'articolo_descrizione',
@@ -113,12 +138,12 @@ const {
 // Stato master-detail inline
 // formMode: null (nessun form visibile), 'create', 'edit' — la macchina e' il
 // BB core `useFormInline` (sede unica, ok Tid 2026-09-28); qui restano i verbi
-// che ci aggiungono il form del prezzo. Il click apre la modifica solo in
-// BOZZA (getter letto al click: `isBozza` e' dichiarata piu' sotto).
+// che ci aggiungono il form del prezzo. Il click apre la modifica solo sulla
+// riga che il DB dice modificabile: la domanda e' per riga, e la fa
+// `onRowClick` prima di `apriRiga`.
 const {
   formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
-  puoModificare: () => isBozza.value,
   // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
   confermaCambio: (p) => inline.chiudiConConferma(p),
 })
@@ -180,8 +205,6 @@ watch(
   { immediate: true },
 )
 
-const isBozza = computed(() => props.versione?.stato === STATO_VERSIONE_LISTINO.BOZZA)
-
 // Scopo: ricarica la lista. Dal 2026-08-03 i compositi arrivano dallo STESSO
 // endpoint paginato delle righe standalone (UNION lato BE), quindi una fetch
 // sola basta: prima ne servivano due e il totale non teneva conto dei compositi.
@@ -199,8 +222,9 @@ function onNew() {
 
 // Scopo: click riga (pattern standard liste = interazione principale).
 //        Composito → ComponentiDialog (i prezzi vivono in
-//        `listini_righe_componenti`); standalone in BOZZA → form edit inline;
-//        versioni non BOZZA → sola lettura, nessun form.
+//        `listini_righe_componenti`); standalone modificabile → form edit
+//        inline; altrimenti sola lettura, nessun form (il prezzo di una riga
+//        del listino in uso si corregge dal kebab, «Rettifica»).
 // ⚠️ Il composito NON passa da `apriRiga` (non ha un form inline: i suoi
 //    prezzi si danno nel dialog), quindi la conferma di D-8 la chiede qui
 //    (2026-10-03, rilievo di Tid in collaudo): il dialog e' un'altra riga, e
@@ -225,6 +249,7 @@ function onRowClick(r) {
     })
     return
   }
+  if (isReadonly.value || modifica.bloccata(r)) return
   apriRiga(r, () => {
     form.value = {
       articolo_id: r.articolo_id,
@@ -294,13 +319,10 @@ async function bundleApiPreview(versioneId, params) {
 }
 
 function openBundleDialog(padre) {
-  if (!isBozza.value || isReadonly.value) {
-    // Versione non BOZZA: bundle in sola lettura (apertura Dialog ammessa
-    // per visualizzare i prezzi, ma il save FE/BE solleva guard BOZZA-only).
-    // Per ora limitiamo: avviso lieve via notify se l'admin tenta su
-    // versione attiva. Future: aprire Dialog in readonly.
-    return
-  }
+  // Fuori dalla bozza i prezzi del kit non si scrivono (il motivo lo dice
+  // `prezzi_bundle_blocco_*` della versione): il dialog non si apre. Future:
+  // aprirlo in sola lettura per vederli.
+  if (isReadonly.value || prezziBundle.bloccata(props.versione)) return
   bundlePadreCorrente.value = padre
   bundleDialogVisible.value = true
 }
@@ -431,13 +453,15 @@ function onDelete(row) {
   })
 }
 
-// Scopo: azioni di riga — solo elimina. La modifica avviene via click
-// riga (pattern standard liste, vedi frontend-standards): per righe
-// standalone apre form edit inline, per righe composito apre il Dialog.
-// Per i compositi, elimina = `saveBundleComponenti(rows=[])` (tabula
-// rasa idempotente lato BE), allineato al pattern delete delle righe
-// standalone.
+// Scopo: azioni di riga. La modifica avviene via click riga (pattern standard
+// liste, vedi frontend-standards): per righe standalone apre form edit inline,
+// per righe composito apre il Dialog. Nel kebab: la periodicita' del kit, la
+// rettifica e l'eliminazione, ognuna spenta col suo motivo. Per i compositi,
+// elimina = tabula rasa dei prezzi del kit, che ha la regola dei prezzi del
+// kit (`prezzi_bundle_blocco_*` della versione).
 function buildRigaActions(row) {
+  const composito = row.is_composito === true
+  const eliminazione = composito ? prezziBundle.motivo(props.versione) : modifica.motivo(row)
   return [
     // Il kit non ha una riga di listino: la sua periodicita' si da' qui
     // (`vendite.listini_kit`, D-2-bis (B)).
@@ -445,15 +469,28 @@ function buildRigaActions(row) {
       key: 'periodicita-kit',
       label: t('vendite.listini.kit_periodicita_azione'),
       icon: MANAGE_ICONS.EDIT,
-      visible: row.is_composito === true && isBozza.value && !isReadonly.value,
+      visible: composito && !isReadonly.value,
+      disabled: periodicitaKit.bloccata(props.versione),
+      tooltip: periodicitaKit.motivo(props.versione),
       command: () => apriKitPeriodicita(row),
+    },
+    {
+      key: 'rettifica-riga',
+      label: t('vendite.listini.rettifica_azione'),
+      icon: MANAGE_ICONS.EDIT,
+      visible: !composito && !isReadonly.value,
+      disabled: rettifica.bloccata(row),
+      tooltip: rettifica.motivo(row),
+      command: () => apriRettifica(row),
     },
     {
       key: 'elimina-riga',
       label: t('common.delete'),
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
-      visible: isBozza.value && !isReadonly.value,
+      visible: !isReadonly.value,
+      disabled: Boolean(eliminazione),
+      tooltip: eliminazione,
       command: () => onDelete(row),
     },
   ]
@@ -472,14 +509,48 @@ function buildRigaActions(row) {
 
 // Dialog variazione percentuale massa
 const showVariazioneDialog = ref(false)
-// Disabilita dismissable del drawer quando il dialog e' aperto.
-const hasChildOpen = computed(() => showVariazioneDialog.value)
+// Disabilita dismissable del drawer quando un dialog e' aperto.
+const hasChildOpen = computed(() => showVariazioneDialog.value || rettificaVisible.value)
 
 function onVariazioneApplied() {
   store.fetchList()
 }
 
 const annullaForm = () => inline.chiudiConConferma(closeForm)
+
+// ── La «Rettifica» di una riga del listino in uso (N6) ──
+// Prezzo e motivo: decide il verbo DB (in vigore oggi, non citata da un
+// documento, motivo obbligatorio). Il motivo e' del BB `MotivoDialog`; il
+// prezzo parte da quello di oggi. ⚠️ Un gestore suo, come il kit: un errore
+// della rettifica non accende i campi del form inline.
+const {
+  execute: executeRettifica, loading: loadingRettifica, campiErrati: campiErratiRettifica,
+} = useApiHandler()
+const rettificaVisible = ref(false)
+const rigaRettifica = ref(null)
+const rettificaPrezzo = ref(null)
+
+function apriRettifica(row) {
+  rigaRettifica.value = row
+  rettificaPrezzo.value = row.prezzo != null ? Number(row.prezzo) : null
+  rettificaVisible.value = true
+}
+
+async function onRettifica(motivo) {
+  if (!rigaRettifica.value) return
+  const result = await executeRettifica(
+    () => rettificaRiga(props.listinoId, props.versione.id, rigaRettifica.value.id, {
+      prezzo: rettificaPrezzo.value,
+      motivo,
+    }),
+    { successMessage: t('vendite.listini.rettifica_salvata') },
+  )
+  if (result !== null) {
+    rettificaVisible.value = false
+    rigaRettifica.value = null
+    await reloadAll()
+  }
+}
 
 // ── La periodicita' del kit (D-2-bis (B)) ──
 // Un dialog piccolo dal kebab della riga del composito: il ComponentiDialog
@@ -719,6 +790,26 @@ async function onKitPeriodicitaSave() {
       i18n-prefix="vendite.componenti.bundle"
       @confirm="onBundleConfirm"
     />
+
+    <MotivoDialog
+      v-model:visible="rettificaVisible"
+      :header="t('vendite.listini.rettifica_titolo', { articolo: rigaRettifica?.articolo_codice ?? '' })"
+      :label="t('vendite.listini.rettifica_motivo')"
+      obbligatorio
+      :loading="loadingRettifica"
+      :invalid="campiErratiRettifica.includes('motivo')"
+      :save-label="t('vendite.listini.rettifica_azione')"
+      :altri-campi="() => ({ prezzo: rettificaPrezzo })"
+      @conferma="onRettifica"
+    >
+      <p>{{ t('vendite.listini.rettifica_spiegazione') }}</p>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_prezzo') }} *</label>
+        <InputNumber v-model="rettificaPrezzo"
+          :minFractionDigits="2" :maxFractionDigits="10"
+          :invalid="campiErratiRettifica.includes('prezzo')" />
+      </div>
+    </MotivoDialog>
 
     <AppDialog
       v-model:visible="kitDialogVisible"

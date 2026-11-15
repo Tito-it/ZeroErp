@@ -211,7 +211,7 @@ build_ddt_consegnato() {
     local i
     for ((i=1; i<=nrighe; i++)); do
         do_curl POST "/api/v1/vendite/ordini/${oid}/righe/" \
-            "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga $i smoke reso\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
+            "{\"articolo_id\": \"$ARTICOLO_ID\", \"uom_operativa_id\": $ARTICOLO_UOM_ID, \"descrizione\": \"Riga $i smoke reso\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
         check "[$label] add riga $i" 200 || return 1
     done
     # L'ordine si conferma solo emettendolo (DRAFT -> CONFERMATO + documento):

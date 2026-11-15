@@ -105,11 +105,12 @@ class ListinoUomCompatibileDbTests(unittest.TestCase):
             "articolo_id": self.articolo, "uom_id": uom_id, "prezzo": "12.50",
         })
 
-    # ⭐ Il rifiuto del guard risale come errore del database e lo rende il
-    #    traduttore generale (`ErrorTranslator`, via middleware), con codice e
-    #    campo: e' la strada della richiesta vera, e la si percorre qui.
+    # ⭐ Il rifiuto del guard lo trasporta il service (`_rifiuto_del_db`, dal
+    #    giro 6f-ter: prima risaliva come errore del database fino al
+    #    middleware) e lo rende il traduttore generale (`ErrorTranslator`), con
+    #    codice e campo: e' la strada della richiesta vera, e la si percorre qui.
     def _rifiuto_riga(self, versione: int, uom_id: int):
-        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+        with self.assertRaises(ServiceError) as ctx, transaction.atomic():
             self._riga(versione, uom_id)
         errore = ErrorTranslator.to_api_error(ctx.exception)
         self.assertEqual(ErrorTranslator.get_http_status(errore), 400)
@@ -151,7 +152,7 @@ class ListinoUomCompatibileDbTests(unittest.TestCase):
         versione = self._versione(self._giorni(20))
         self._riga(versione, cartone)
         # ⚠️ Qui il service traduce lui il rifiuto del DB
-        #    (`_rifiuto_del_db_su_versione`): arriva un ServiceError, coi campi.
+        #    (`_rifiuto_del_db`): arriva un ServiceError, coi campi.
         with self.assertRaises(ServiceError) as ctx, transaction.atomic():
             listini_service.fn_update_versione(
                 self.listino, versione, {"valido_al": self._giorni(60).isoformat()},

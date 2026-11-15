@@ -2,8 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team BE/FE** col caso «natura inesistente → `[]`» nel test Django (§8, ricaduta
-BE); **poi chi chiude** (archiviazione). Q-2 è applicata, pgTAP verde (2026-11-15, §8.1). Fatte il 2026-11-15 tutte le richieste del §7: R-0, R-0 bis e R-5 (commit
+**Nessuno: brief chiuso e archiviato il 2026-11-15.** Q-2 è applicata, pgTAP verde (2026-11-15, §8.1); il caso «natura inesistente → `[]`» è nel test Django (§8.2). Fatte il 2026-11-15 tutte le richieste del §7: R-0, R-0 bis e R-5 (commit
 `940a4e6b6`); R-6, R-2, R-1, R-3, R-4 (commit `82fe126890`). Il DB dei giri 1, 2, 3 e Q-1 è
 applicato, verde e committato (`42a8fa7847`). Le decisioni D-1 … D-4 le ha prese Tid il 2026-11-15
 (§6): tutte come da proposta.
@@ -23,11 +22,11 @@ applicato, verde e committato (`42a8fa7847`). Le decisioni D-1 … D-4 le ha pre
 | 4 | BE/FE | ✅ R-1 (le due rotte `…/copia/`), R-3 (le liste dalle viste di azioni, BB `COLONNE_INDIRIZZO_RESOLVED`: la lista del soggetto legge la vista risolta e porta la forma estera), R-4 (kebab, «Copia come…» col motivo del registro, `CopiaIndirizzoDialog`), R-5 e R-0 bis (2026-11-15) | §7 | — |
 | 4-bis | team DB | ✅ Q-2 scritta e provata in `ROLLBACK` (2026-11-15): `20261115-60`, `-61`, asserzioni 22-25 del pgTAP del giro 2 | §8.1 | — |
 | 4-ter | Tid | ✅ Q-2 applicata (`20261115-60`, `-61`), pgTAP `anagrafiche/test-tipi-indirizzo-proponibili-v1` verde (2026-11-15) | §8.1 | — |
-| 4-quater | BE/FE | il caso «natura inesistente → `[]`» in `test_tipi_indirizzo_proponibili_db` (§8, ricaduta BE) | §8 | — |
-| 5 | chi chiude | archiviazione in `work-done/` | — | 4-quater |
+| 4-quater | BE/FE | ✅ il caso «natura inesistente → `[]`» in `test_tipi_indirizzo_proponibili_db`, col gemello sul tipo di ruolo per id (2026-11-15) | §8.2 | — |
+| 5 | chi chiude | ✅ archiviato in `work-done/` (2026-11-15) | — | — |
 
 Decisioni aperte di Tid: nessuna (Q-2: `NULL` resta «tutti ammessi», ok di Tid del
-2026-11-15). Lavoro fatto da committare: nessuno (Q-2 committata il 2026-11-15).
+2026-11-15). Lavoro fatto da committare: il test del §8.2 e l'archiviazione (sessione BE, 2026-11-15).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-15.
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE al §7.
@@ -35,7 +34,7 @@ Decisioni aperte di Tid: nessuna (Q-2: `NULL` resta «tutti ammessi», ok di Tid
 > modo di creare un indirizzo partendo da uno che il soggetto ha già, per esempio duplicare la
 > sede legale come indirizzo di spedizione cambiando solo il tipo.
 > **Brief vicini verificati:**
-> [brief-db-fornitore-privato-indirizzi](brief-db-fornitore-privato-indirizzi.md): tratta gli
+> [brief-db-fornitore-privato-indirizzi](../work-in-progress/brief-db-fornitore-privato-indirizzi.md): tratta gli
 > indirizzi del **ruolo** (`config.tipi_ruolo_tipi_indirizzo`) e la sede legale del privato;
 > oggetti diversi, nessuna sovrapposizione. `work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia`
 > (chiuso il 2026-11-14) ha dato a `fn_tipo_indirizzo_ammesso_per_natura` la forma di sede unica del
@@ -621,3 +620,11 @@ singolare: è il form senza natura (o senza tipo di ruolo) scelto.
   verde. Catalogo identico prima e dopo.
 * Guida *Gestione degli indirizzi*: invariata, rimanda alla doc auto-generata dei picker.
 * Applicata da Tid il 2026-11-15, pgTAP del giro verde.
+
+### 8.2 La ricaduta BE, fatta (sessione BE, 2026-11-15)
+
+`apps/anagrafiche/tests/db/test_tipi_indirizzo_proponibili_db.py` prende due casi, sulla porta
+del BE (`LookupRepository.list_tipi_indirizzo_proponibili`): `test_natura_inesistente` (`"natura"`)
+e `test_tipo_di_ruolo_inesistente` (`"tipo_ruolo"` per id, il gemello del `-61`). L'id si
+costruisce come `max(id) + 1`, come nel pgTAP. Nessuna modifica di codice. Con
+`ZEROERP_TEST_DB_E2E=1` sul DB di sviluppo: 9 test, verdi.

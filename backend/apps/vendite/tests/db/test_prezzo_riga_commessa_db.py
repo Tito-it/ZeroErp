@@ -243,11 +243,13 @@ class PrezzoRigaCommessaDbTests(TestCase):
         self.assertEqual(origine, "LISTINO_BUNDLE")
 
     # 4. Riallineata, la riga di commessa cita la riga di listino V2, che da li'
-    #    e' «propagata»: la rettifica N6 la rifiuta con il codice del guard DB
-    #    (l'unica sede della regola dal 2026-10-09), e cosi' il guard a chi la
-    #    scrivesse senza passare dal service (letto dal CONSTRAINT_NAME, non da
-    #    un errore qualunque). Un prezzo a mano non la cita piu', e la riga
-    #    torna rettificabile: «propagata» vuol dire citata ADESSO (D-1).
+    #    e' «propagata»: la rettifica N6 la rifiuta con il codice del DB (il
+    #    verbo `vendite.fn_rettifica_riga_listino`, dal giro 6f-ter). Chi la
+    #    scrivesse senza passare dal verbo lo ferma prima il guard di stato: una
+    #    riga di una ATTIVA non si scrive, propagata o no (letto dal
+    #    CONSTRAINT_NAME, non da un errore qualunque). Un prezzo a mano non la
+    #    cita piu', e la riga torna rettificabile: «propagata» vuol dire citata
+    #    ADESSO (D-1).
     def test_riallinea_rende_propagata_la_riga_di_listino(self) -> None:
         self._rettifica()  # nessuno la cita: passa
 
@@ -265,7 +267,9 @@ class PrezzoRigaCommessaDbTests(TestCase):
                 [self.riga_v2],
             )
         diag = getattr(db_ctx.exception.__cause__, "diag", None)
-        self.assertEqual(getattr(diag, "constraint_name", None), "E_RIGA_LISTINO_PROPAGATA")
+        self.assertEqual(
+            getattr(diag, "constraint_name", None), "E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA",
+        )
 
         fn_variazione_prezzo_eccezionale(
             self.commessa, self.attivita, {"prezzo": "33.00", "motivo": "accordo"},
@@ -331,16 +335,18 @@ class PrezzoRigaCommessaDbTests(TestCase):
             self._rettifica()
         self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")
 
-    # 6. Le due superfici della scrittura delle righe (D-LIST (a),
-    #    brief-db-stati-documento-dal-vocabolario §6.27) arrivano fino al
-    #    service col motivo del guard: la riga di V2 si modifica finche'
-    #    nessuno la cita, e dopo il riallineamento porta RIGA_PROPAGATA, lo
-    #    stesso codice con cui il guard rifiuta (test 4). Il kit non ha una
-    #    riga di listino: nessun motivo di riga. V2 ATTIVA accetta righe nuove
-    #    (la rettifica); V1, scaduta nel 2020 e chiusa dal job delle scadenze
-    #    (`dbops.fn_pgtap_porta_a_stato` lo chiama), no. ⚠️ E' la giuntura
-    #    col DB (nomi delle colonne e join sulla vista), non la regola: quella
-    #    la prova il pgTAP `vendite/test-listino-riga-scrivibile-v1`.
+    # 6. Le superfici della scrittura delle righe (D-LIST (a) e giro 6f-ter,
+    #    brief-db-stati-documento-dal-vocabolario §6.27, §6.28) arrivano fino
+    #    al service coi motivi del guard e del verbo. V2 e' ATTIVA: la riga non
+    #    si modifica, ne' se ne aggiungono, ne' si cambiano i prezzi del kit
+    #    (VERSIONE_NON_IN_BOZZA); si rettifica finche' nessuno la cita, e dopo
+    #    il riallineamento porta RIGA_PROPAGATA, lo stesso codice con cui il
+    #    verbo rifiuta (test 4). Il kit non ha una riga di listino: nessun
+    #    motivo di riga. V1, scaduta nel 2020 e chiusa dal job delle scadenze
+    #    (`dbops.fn_pgtap_porta_a_stato` lo chiama), dice VERSIONE_CHIUSA.
+    #    ⚠️ E' la giuntura col DB (nomi delle colonne e join sulle viste), non
+    #    la regola: quella la provano i pgTAP `vendite/test-listino-riga-
+    #    scrivibile-v1` e `vendite/test-listino-rettifica-riga-v1`.
     def test_la_superficie_delle_righe_dice_quello_del_guard(self) -> None:
         def righe() -> dict:
             return {r["row_key"]: r for r in fn_list_righe(self.listino, self.v2)[0]}
@@ -349,19 +355,38 @@ class PrezzoRigaCommessaDbTests(TestCase):
             return {v["id"]: v for v in fn_list_versioni(self.listino)[0]}[versione_id]
 
         prima = righe()
-        self.assertIsNone(prima[str(self.riga_v2)]["modifica_blocco_reason"])
+        riga = prima[str(self.riga_v2)]
+        self.assertEqual(riga["modifica_blocco_reason"], "VERSIONE_NON_IN_BOZZA")
+        self.assertEqual(
+            riga["modifica_blocco_reason_key"], "vendite.listini.azione_reason.righe_non_in_bozza",
+        )
+        self.assertIsNone(riga["rettifica_blocco_reason"])
         kit = [r for r in prima.values() if r["is_composito"]]
         self.assertEqual(len(kit), 1)
         self.assertIsNone(kit[0]["modifica_blocco_reason"])
+        self.assertIsNone(kit[0]["rettifica_blocco_reason"])
 
         fn_riallinea_prezzo(self.commessa, self.attivita, {"conferma_versione_diversa": True})
         dopo = righe()[str(self.riga_v2)]
-        self.assertEqual(dopo["modifica_blocco_reason"], "RIGA_PROPAGATA")
+        self.assertEqual(dopo["rettifica_blocco_reason"], "RIGA_PROPAGATA")
         self.assertEqual(
-            dopo["modifica_blocco_reason_key"], "vendite.listini.azione_reason.riga_propagata",
+            dopo["rettifica_blocco_reason_key"], "vendite.listini.azione_reason.riga_propagata",
         )
 
-        self.assertIsNone(versione(self.v2)["aggiunta_riga_blocco_reason"])
+        v2 = versione(self.v2)
+        for azione in ("aggiunta_riga", "variazione", "prezzi_bundle", "periodicita_kit"):
+            with self.subTest(azione=azione):
+                self.assertEqual(v2[f"{azione}_blocco_reason"], "VERSIONE_NON_IN_BOZZA")
+                self.assertEqual(
+                    v2[f"{azione}_blocco_reason_key"],
+                    "vendite.listini.azione_reason.righe_non_in_bozza",
+                )
+        # ⛔ Lo stesso motivo, un'altra frase: «Elimina» della versione dice la
+        #    sua (giro 6f-quater, §6.29: la chiave era condivisa, e sul pulsante
+        #    di una riga sarebbe comparsa la frase dell'eliminazione).
+        self.assertEqual(
+            v2["eliminazione_blocco_reason_key"], "vendite.listini.azione_reason.versione_non_in_bozza",
+        )
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, %s, 'CHIUSA')",
