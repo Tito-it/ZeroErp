@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    58,
+    59,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -369,7 +369,12 @@ SELECT is(
     --   anagrafiche.fn_copia_indirizzo_ruolo (20261115-38), che sollevano il primo
     --   motivo di anagrafiche.fn_check_copia_indirizzo_soggetto (-34) e
     --   anagrafiche.fn_check_copia_indirizzo_ruolo (-35).
-    'le cinquantotto funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-11-15: da 58 a 59. Un sito NUOVO sull'helper col giro 6f-bis di
+    --   brief-db-stati-documento-dal-vocabolario: il guard
+    --   vendite.trgfn_listini_righe_guard_stato (20261115-54), che solleva il
+    --   primo motivo di script.fn_check_listino_riga_scrivibile (-53); prima la
+    --   regola stava scritta nel suo corpo.
+    'le cinquantanove funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

@@ -3547,6 +3547,12 @@ la vista esiste ed è `security_invoker`, ha le due colonne, **dipende** dalla
 `fn_check` (`pg_depend` della regola), e il verbo la **chiama** (§12.5.2). Il
 frontend legge dal registro quali colonne mostrare.
 
+**Il verbo, quando l'azione è una scrittura diretta.** Se la tabella si scrive con `INSERT`,
+`UPDATE` o `DELETE` e nessuna funzione esegue l'azione, il `verbo` del registro è il **guard**
+che la rifiuta: chiama la `fn_check` e ne solleva il primo motivo, e il presidio lo verifica
+identico (le righe di listino, `vendite.trgfn_listini_righe_guard_stato`, decisione di Tid del
+2026-11-15).
+
 ⛔ **Una colonna di blocco composta dal backend non si iscrive**: il presidio non
 può verificarla. Il motivo per riga sta in una **vista DB**, e il backend la legge
 (decisione di Tid del 2026-10-27, Q-F5). La prima riga del registro è «togli dal

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_listini_versioni_guard_per_stato()`
 
-> **Ultimo aggiornamento**: 29 ottobre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -16,7 +16,7 @@ Montato da `trg_listini_versioni_a10_guard_per_stato_upd` (BEFORE UPDATE) e
 
 | Stato | Si cambia | Si elimina |
 | --- | --- | --- |
-| BOZZA | tutto | sì |
+| in bozza (lo stato `iniziale` del vocabolario) | tutto | sì |
 | ATTIVA | solo `valido_al`, e solo dai due verbi che la scrivono: «Chiudi» (la chiusura programmata) e l'attivazione di una nuova (chiude le precedenti) | no |
 | CHIUSA | niente | no |
 

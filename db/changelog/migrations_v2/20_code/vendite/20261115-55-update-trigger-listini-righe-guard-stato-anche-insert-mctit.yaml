@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DI STATO DELLE RIGHE DI LISTINO ANCHE SULL'INSERT
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.27, giro 6f-bis (D-LIST
+#   decisa (a) da Tid il 2026-11-15, solo DB; il trigger come verbo nel registro,
+#   Tid lo stesso giorno).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   trg_listini_righe_a10_guard_stato_upd_dlt era montato BEFORE UPDATE OR
+#   DELETE: nessun trigger rifiutava una riga NUOVA in una versione CHIUSA, la
+#   storia dei prezzi. Il modello la vieta («CHIUSA: blocca sempre»).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Lo stesso guard, BEFORE INSERT OR UPDATE OR DELETE, col nome che dice gli
+#   eventi (trg_listini_righe_a10_guard_stato_ins_upd_dlt). Fuori dalla bozza la
+#   riga nuova di una ATTIVA resta una rettifica e passa.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   DROP del montaggio vecchio e CREATE del nuovo, in un changeSet. Il trigger
+#   non nasce da ci_apply (lo monta un changeSet di 20_code dal 20260412-37):
+#   §11.5 non lo tocca. Nessun pgTAP ne' modulo del backend nomina il nome
+#   vecchio (grep, 2026-11-15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-55-update-trigger-listini-righe-guard-stato-anche-insert-mctit.yaml
+
+  - changeSet:
+      id: 20261115-55-update-trigger-listini-righe-guard-stato-anche-insert
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trg_listini_righe_a10_guard_stato_ins_upd_dlt: il guard di stato delle righe di listino anche
+        sull'INSERT. Brief: brief-db-stati-documento-dal-vocabolario, giro 6f-bis.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_stato_upd_dlt ON vendite.listini_righe;
+
+              CREATE TRIGGER trg_listini_righe_a10_guard_stato_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE
+                  ON vendite.listini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_stato();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_guard_stato_ins_upd_dlt ON vendite.listini_righe;
+
+              CREATE TRIGGER trg_listini_righe_a10_guard_stato_upd_dlt
+                  BEFORE UPDATE OR DELETE
+                  ON vendite.listini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_stato();

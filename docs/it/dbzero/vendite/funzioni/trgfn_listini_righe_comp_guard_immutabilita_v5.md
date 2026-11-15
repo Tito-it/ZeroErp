@@ -17,7 +17,8 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: BEFORE INS/UPD/DEL su listini_righe_componenti — immutabilita'.
---   INSERT e DELETE solo in versione BOZZA; fuori dalla bozza i campi
+--   INSERT e DELETE solo in una versione in bozza (lo stato iniziale del
+--   vocabolario); fuori dalla bozza i campi
 --   core (prezzo, iva_id, valido_dal, valido_al) non cambiano.
 --   Eccezione: la porta della chiusura del legame (GUC
 --   zeroerp.legame_distinta_chiudi = id del legame, col proprietario
@@ -26,6 +27,7 @@ AS $function$
 --   generated, non visibile nei BEFORE trigger.
 DECLARE
     v_stato   config.stati_doc_listino_versioni.codice_interno%TYPE;
+    v_iniziale config.stati_doc_listino_versioni.iniziale%TYPE;
     v_riga_id vendite.listini_righe_componenti.id%TYPE;
     v_versione_id vendite.listini_righe_componenti.listino_versione_id%TYPE;
     v_porta   text := COALESCE(current_setting('zeroerp.legame_distinta_chiudi', true), '');
@@ -35,7 +37,7 @@ BEGIN
                           ELSE NEW.listino_versione_id END;
 
     -- Legge stato versione
-    SELECT s.codice_interno INTO v_stato
+    SELECT s.codice_interno, s.iniziale INTO v_stato, v_iniziale
       FROM vendite.listini_versioni lv
       JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
      WHERE lv.id = v_versione_id;
@@ -43,7 +45,7 @@ BEGIN
     -- DELETE: solo in versione BOZZA, come le righe (fuori dalla bozza:
     -- attivo = FALSE). Una versione che non si legge non e' una bozza.
     IF TG_OP = 'DELETE' THEN
-        IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+        IF v_iniziale IS NOT TRUE THEN
             PERFORM script.fn_log_and_raise_error(
                 'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
                 jsonb_build_object(
@@ -61,7 +63,7 @@ BEGIN
     END IF;
 
     -- INSERT: solo in versione BOZZA
-    IF TG_OP = 'INSERT' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
+    IF TG_OP = 'INSERT' AND NOT COALESCE(v_iniziale, true) THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
             jsonb_build_object(
@@ -74,8 +76,8 @@ BEGIN
         );
     END IF;
 
-    -- UPDATE campi core: bloccato se versione non BOZZA.
-    IF TG_OP = 'UPDATE' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
+    -- UPDATE campi core: bloccato se la versione non e' in bozza.
+    IF TG_OP = 'UPDATE' AND NOT COALESCE(v_iniziale, true) THEN
         IF NEW.prezzo    IS DISTINCT FROM OLD.prezzo
            OR NEW.iva_id    IS DISTINCT FROM OLD.iva_id
            OR NEW.valido_dal IS DISTINCT FROM OLD.valido_dal
@@ -113,7 +115,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_righe_comp_guard_immutabilita_v5()
-IS 'Trigger BEFORE INS/UPD/DEL su vendite.listini_righe_componenti: l''immutabilita'' dei prezzi bundle fuori dalla bozza. INSERT e DELETE solo in versione BOZZA (fuori dalla bozza: attivo = FALSE; una bozza si elimina con le sue righe da vendite.fn_elimina_versione_listino). Fuori dalla bozza prezzo, iva_id, valido_dal e valido_al non cambiano. Una sola eccezione, la chiusura del legame di distinta: con la GUC transazionale zeroerp.legame_distinta_chiudi = id del legame della riga (articolo_componente_id) e il proprietario della tabella (script.fn_is_proprietario_tabella), la riga accorcia la sola valido_al (non NULL, prima della fine di adesso) e il resto resta fermo. La porta l''apre solo il verbo catalogo.fn_chiudi_legame_distinta (SECURITY DEFINER), che chiede il permesso e la conferma: il prezzo sta dentro il periodo del legame (FK temporale fk_listrighe_comp_articoli_comp_temporal) e chiudendo il legame si chiude anche lui. Lo stato della versione si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno). Raise E_RIGA_LISTINO_VERSIONE_CHIUSA.';
+IS 'Trigger BEFORE INS/UPD/DEL su vendite.listini_righe_componenti: l''immutabilita'' dei prezzi bundle fuori dalla bozza, lo stato iniziale del vocabolario config.stati_doc_listino_versioni. INSERT e DELETE solo in una versione in bozza (fuori dalla bozza: attivo = FALSE; una bozza si elimina con le sue righe da vendite.fn_elimina_versione_listino). Fuori dalla bozza prezzo, iva_id, valido_dal e valido_al non cambiano. Una sola eccezione, la chiusura del legame di distinta: con la GUC transazionale zeroerp.legame_distinta_chiudi = id del legame della riga (articolo_componente_id) e il proprietario della tabella (script.fn_is_proprietario_tabella), la riga accorcia la sola valido_al (non NULL, prima della fine di adesso) e il resto resta fermo. La porta l''apre solo il verbo catalogo.fn_chiudi_legame_distinta (SECURITY DEFINER), che chiede il permesso e la conferma: il prezzo sta dentro il periodo del legame (FK temporale fk_listrighe_comp_articoli_comp_temporal) e chiudendo il legame si chiude anche lui. Raise E_RIGA_LISTINO_VERSIONE_CHIUSA.';
 ```
 
 </div>

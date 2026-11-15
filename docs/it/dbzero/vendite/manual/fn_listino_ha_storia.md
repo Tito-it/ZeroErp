@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_listino_ha_storia`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > • [vendite.trgfn_listini_guard_spegnimento_storia](/dbzero/vendite/manual/trgfn_listini_guard_spegnimento_storia) — il guard che la legge
@@ -23,15 +25,17 @@ ATTIVA o CHIUSA, anche spenta.
 Una **bozza** non conta: nessuno ci ha mai potuto prendere un prezzo. Una versione **attivata**
 conta sempre: da lì può essere uscito un prezzo che sta su un documento.
 
-Il predicato è «la versione **non è più in bozza**» (`stato <> 'BOZZA'`): oggi vuol dire
-ATTIVA o CHIUSA, e uno stato nuovo dopo l'attivazione conterebbe da solo.
+Il predicato è «la versione **non è più in bozza**»: non è nello stato che il vocabolario
+[config.stati_doc_listino_versioni](/dbzero/config/manual/stati_doc_listino_versioni) marca
+`iniziale` (`NOT iniziale`). Col seed vuol dire ATTIVA o CHIUSA, e uno stato nuovo dopo
+l'attivazione conterebbe da solo.
 
 ⚠️ Non è la regola «quale versione vale a una data», che ha la sua sede in
 [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore):
 qui non c'è una data e conta anche una versione spenta.
 
-Gli stati di una versione non tornano indietro (da ATTIVA non si torna in bozza, CHIUSA è
-finale), quindi «ha oggi una versione ATTIVA o CHIUSA» e «ha avuto una versione attiva» sono la
+Gli stati di una versione non tornano indietro (nessun passaggio della matrice entra nello
+stato iniziale, CHIUSA è finale), quindi «ha oggi una versione ATTIVA o CHIUSA» e «ha avuto una versione attiva» sono la
 stessa cosa.
 
 ---

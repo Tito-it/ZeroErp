@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_resolve_prezzo_listino_v2_esito`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Il guscio che la solleva:**
@@ -104,7 +106,8 @@ La versione del listino in vigore alla data di riferimento (contratto senza vers
 Il **percorso rapido** (`p_listino_versione_id_preferito`: la versione la sceglie chi chiama)
 leggeva la versione senza guardarne lo stato, mentre gli altri rami escludevano già la
 `BOZZA` (`fn_listino_versione_in_vigore`). Una bozza si modifica ancora, quindi il prezzo
-preso da lì non sarebbe riproducibile. Ora la versione in `BOZZA` dà l'esito
+preso da lì non sarebbe riproducibile. Ora la versione in bozza (lo stato che il vocabolario
+marca `iniziale`) dà l'esito
 **`E_PREZZO_LISTINO_VERSIONE_BOZZA`** (valori: codice della versione, codice del listino),
 non un ripiego al passo successivo, che nasconderebbe il chiamante sbagliato.
 

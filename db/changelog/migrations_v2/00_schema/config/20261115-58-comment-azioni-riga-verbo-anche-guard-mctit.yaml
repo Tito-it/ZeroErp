@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DELLE AZIONI DI RIGA: IL VERBO PUO' ESSERE IL GUARD
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.27, giro 6f-bis (D-LIST
+#   decisa (a) da Tid il 2026-11-15, solo DB; il trigger come verbo nel registro,
+#   Tid lo stesso giorno).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La colonna verbo diceva «la funzione che esegue l'azione e la rifiuta». Le
+#   righe di listino non hanno un verbo DB (il backend le scrive direttamente):
+#   le rifiuta il guard di stato, che chiama la fn_check.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Il COMMENT della colonna: il verbo che la esegue, oppure il guard della
+#   tabella quando l'azione e' una scrittura diretta. Il presidio del registro
+#   (il verbo esiste con un nome solo, e chiama la fn_check) vale identico.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Solo un COMMENT ON COLUMN. Il rollback rimette quello di prima, letto dal
+#   catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261115-58-comment-azioni-riga-verbo-anche-guard-mctit.yaml
+
+  - changeSet:
+      id: 20261115-58-comment-azioni-riga-verbo-anche-guard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.azioni_riga.verbo: anche il guard della tabella, quando l'azione e' una scrittura diretta.
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6f-bis.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.azioni_riga.verbo IS 'La funzione (schema.nome) che rifiuta l''azione col primo motivo della fn_check: il verbo che la esegue, oppure il guard della tabella quando l''azione e'' una scrittura diretta (le righe di listino, vendite.trgfn_listini_righe_guard_stato). Il presidio config/test-azioni-riga-registro-v1 verifica che la chiami.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.azioni_riga.verbo IS 'La funzione (schema.nome) che esegue l''azione e la rifiuta col primo motivo della fn_check.';
