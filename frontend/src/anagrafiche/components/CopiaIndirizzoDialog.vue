@@ -17,6 +17,7 @@ import { useI18n } from 'vue-i18n'
 import Checkbox from 'primevue/checkbox'
 import AppDialog from '../../core/components/AppDialog.vue'
 import { testoMotivi } from '../../core/composables/useDrawerActions'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -33,6 +34,10 @@ const scelti = ref([])
 
 // All'apertura nessun tipo scelto: la copia e' un gesto esplicito.
 watch(() => props.visible, (v) => { if (v) scelti.value = [] })
+
+// D-14: uscire con dei tipi spuntati chiede (AppDialog `conferma-uscita`). La
+// fotografia si prende dopo il reset qui sopra (nextTick del BB).
+const fotografia = useFotografiaDialog(() => ({ scelti: [...scelti.value] }), { visibile: () => props.visible })
 
 // La frase dal BB `testoMotivi` (sede unica del perche' di un'azione negata):
 // il picker chiama `reason_valori` cio' che il BB legge come `valori`.
@@ -55,6 +60,7 @@ const header = computed(() => props.sorgente
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="header"
     width="sm"
