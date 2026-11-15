@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    59,
+    62,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -374,7 +374,14 @@ SELECT is(
     --   vendite.trgfn_listini_righe_guard_stato (20261115-54), che solleva il
     --   primo motivo di script.fn_check_listino_riga_scrivibile (-53); prima la
     --   regola stava scritta nel suo corpo.
-    'le cinquantanove funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-11-15: da 59 a 62. Tre siti NUOVI sull'helper col giro 6f-ter dello
+    --   stesso brief: il verbo della rettifica vendite.fn_rettifica_riga_listino
+    --   (20261115-67, primo motivo di script.fn_check_listino_riga_rettificabile),
+    --   e i guard dei componenti e del kit,
+    --   vendite.trgfn_listini_righe_comp_guard_immutabilita_v5 (-69) e
+    --   vendite.trgfn_listini_kit_guard (-70), che sollevano il primo motivo di
+    --   script.fn_check_listino_riga_scrivibile; prima la regola stava nei loro corpi.
+    'le sessantadue funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

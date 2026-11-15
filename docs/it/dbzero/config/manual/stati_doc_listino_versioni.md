@@ -60,7 +60,7 @@ codice. Uno stato già usato da una versione o dalla matrice non si disattiva.
   le sue righe, i componenti e i kit si scrivono liberamente
   ([`vendite.trgfn_listini_righe_guard_stato`](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato),
   [`vendite.trgfn_listini_righe_comp_guard_immutabilita_v5`](/dbzero/vendite/manual/trgfn_listini_righe_comp_guard_immutabilita_v5),
-  `vendite.trgfn_listini_kit_guard`, `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa`),
+  `vendite.trgfn_listini_kit_guard`, con la regola in `script.fn_check_listino_riga_scrivibile`),
   e un prezzo non ne proviene: non è in vigore
   ([`vendite.fn_listino_versione_in_vigore`](/dbzero/vendite/manual/fn_listino_versione_in_vigore)),
   il resolver non la usa come versione preferita

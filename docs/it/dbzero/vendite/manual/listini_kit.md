@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.listini_kit`
 
-> **Ultimo aggiornamento**: 6 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -34,8 +34,10 @@ condizione del listino, non del catalogo).
 
 * Una riga per kit e versione (`uq_listini_kit_versione_articolo`); `periodicita` è `NOT NULL`:
   togliere la periodicità di un kit è togliere la riga.
-* Si scrive **solo in bozza**, INSERT, UPDATE e DELETE (`E_RIGA_LISTINO_VERSIONE_CHIUSA`, come i
-  componenti), e **solo per un composito** (`E_LISTINO_KIT_NON_COMPOSITO`): la periodicità di un
+* Si scrive **solo in bozza**, INSERT, UPDATE e DELETE, con la regola delle righe e dei componenti
+  (`script.fn_check_listino_riga_scrivibile`: `E_RIGA_LISTINO_VERSIONE_CHIUSA` su una chiusa,
+  `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` su una attiva; il pulsante legge `periodicita_kit_blocco_*`
+  di `vendite.vw_listini_versioni_azioni`), e **solo per un composito** (`E_LISTINO_KIT_NON_COMPOSITO`): la periodicità di un
   articolo semplice sta sulla sua riga di listino. Lo tiene
   [vendite.trgfn_listini_kit_guard](/dbzero/vendite/funzioni/trgfn_listini_kit_guard).
 * Kit e versione sono l'identità della riga: dopo l'inserimento non cambiano

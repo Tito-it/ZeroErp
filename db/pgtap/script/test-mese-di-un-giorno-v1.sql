@@ -5,7 +5,7 @@
 --       script.fn_mese_di · script.fn_fine_mese_di
 --       brief-db-mese-di-un-giorno §4.4 (20261114-82, -83)
 -- ------------------------------------------------------------
--- Indice test (1..18)
+-- Indice test (1..19)
 --  1-2) le due funzioni esistono con la firma attesa
 --  3-4) restituiscono date
 --  5-6) sono IMMUTABLE: il calcolo non dipende dalla sessione
@@ -21,6 +21,9 @@
 --     (brief-db-mese-di-un-giorno §4.4, giro 4: 20261115-30..-33)
 -- 18) i CHECK «primo del mese» delle competenze poggiano su fn_mese_di
 --     (D-1, 20261115-27..-29)
+-- 19) nessuna vista e nessuna funzione scrive la fine del mese con
+--     l'intervallo «1 mese - 1 giorno»: e' fn_fine_mese_di anche senza
+--     date_trunc (giro 5, §6.5: 20261115-59)
 -- ------------------------------------------------------------
 -- Scopo:
 --  - il mese di un giorno e' aritmetica di calendario: niente istanti, niente
@@ -45,7 +48,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- Il piano di una query, come testo (forma di catalogo/test-distinta-alla-data-v1)
 CREATE FUNCTION pg_temp.piano(p_query text)
@@ -230,6 +233,47 @@ SELECT is(
         'vendite.commesse_attivita.chk_commesse_attivita_comp_mese_primo',
         'vendite.preventivi.chk_preventivi_competenza_mese_primo'],
   '18) i tre CHECK del primo del mese sono competenza_mese = fn_mese_di(competenza_mese)');
+
+-- ============================================================
+-- 19) La fine del mese senza date_trunc
+-- ============================================================
+-- ⚠️ Il 17 non basta: «<primo del mese> + 1 mese - 1 giorno» e' la stessa
+--   regola di fn_fine_mese_di quando il primo del mese arriva da una
+--   variabile, e non contiene date_trunc (vendite.fn_get_pavimento_emissione
+--   fino a 20261115-59, sfuggita al giro 3). La regola si riconosce
+--   dall'INTERVALLO. Le grafie sono quelle lette sul catalogo
+--   (2026-11-15): nel sorgente PL/pgSQL interval '1 month - 1 day' o
+--   interval '1 month' - interval '1 day'; nelle viste e nelle BEGIN ATOMIC
+--   '1 mon -1 days'::interval o ('1 mon'::interval - '1 day'::interval).
+-- ℹ️ Non e' la regola: make_interval(months => n) - 1 giorno (la fine di un
+--   periodo di n mesi, fn_canone_periodi) e + interval '1 month' (sommare
+--   mesi). Sono l'aritmetica dei mesi, debito D-2 del brief.
+SELECT is(
+  (WITH oggetti AS (
+     SELECT n.nspname || '.' || p.proname AS nome,
+            regexp_replace(pg_get_functiondef(p.oid), '--[^\n]*', '', 'g') AS testo
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'public', 'topology', 'pgagent')
+        AND n.nspname NOT LIKE 'pg\_%'
+        AND p.prokind IN ('f', 'p')
+        AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                         WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
+     UNION ALL
+     SELECT n.nspname || '.' || c.relname, pg_get_viewdef(c.oid)
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relkind IN ('v', 'm')
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'public', 'topology', 'pgagent')
+        AND n.nspname NOT LIKE 'pg\_%'
+        AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                         WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'))
+   SELECT coalesce(string_agg(nome, ', ' ORDER BY nome), '')
+     FROM oggetti
+    WHERE testo ~* '''\s*1\s*mon(th)?s?\s*-\s*1\s*days?\s*'''
+       OR testo ~* '''\s*1\s*mon(th)?s?\s*''(\s*::\s*interval)?\s*\)?\s*-\s*(interval\s*)?''\s*1\s*days?\s*'''),
+  '',
+  '19) nessuna vista e nessuna funzione scrive la fine del mese come 1 mese - 1 giorno: e'' script.fn_fine_mese_di');
 
 SELECT * FROM finish();
 ROLLBACK;

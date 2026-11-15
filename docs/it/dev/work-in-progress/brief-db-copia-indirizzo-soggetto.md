@@ -2,10 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB** con Q-2 (§8, dalla verifica BE del 2026-11-15), **poi chi chiude**
-(archiviazione), dopo il commit del BE/FE. Fatte il 2026-11-15 tutte le
-richieste del §7: R-0, R-0 bis e R-5 (commit `940a4e6b6`); R-6, R-2, R-1, R-3, R-4 (da committare). Il DB è fatto: giri 1, 2, 3 e Q-1 applicati e verdi
-(2026-11-15). Le decisioni D-1 … D-4 le ha prese Tid il 2026-11-15
+**Riparte: il team BE/FE** col caso «natura inesistente → `[]`» nel test Django (§8, ricaduta
+BE); **poi chi chiude** (archiviazione). Q-2 è applicata, pgTAP verde (2026-11-15, §8.1). Fatte il 2026-11-15 tutte le richieste del §7: R-0, R-0 bis e R-5 (commit
+`940a4e6b6`); R-6, R-2, R-1, R-3, R-4 (commit `82fe126890`). Il DB dei giri 1, 2, 3 e Q-1 è
+applicato, verde e committato (`42a8fa7847`). Le decisioni D-1 … D-4 le ha prese Tid il 2026-11-15
 (§6): tutte come da proposta.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -21,14 +21,13 @@ richieste del §7: R-0, R-0 bis e R-5 (commit `940a4e6b6`); R-6, R-2, R-1, R-3, 
 | 3 | team DB | ✅ giro 3 scritto e provato in `ROLLBACK` (2026-11-15): verbi, check di riga, viste, registro | §5.4 | — |
 | 3-bis | Tid | ✅ giro 3 applicato, pgTAP verdi (2026-11-15) | §5.4 | — |
 | 4 | BE/FE | ✅ R-1 (le due rotte `…/copia/`), R-3 (le liste dalle viste di azioni, BB `COLONNE_INDIRIZZO_RESOLVED`: la lista del soggetto legge la vista risolta e porta la forma estera), R-4 (kebab, «Copia come…» col motivo del registro, `CopiaIndirizzoDialog`), R-5 e R-0 bis (2026-11-15) | §7 | — |
-| 4-bis | team DB | Q-2: il picker della natura e quello del tipo di ruolo, con un id che non esiste, «tutti ammessi» invece di nessuna riga | §8 | — |
-| 5 | chi chiude | archiviazione in `work-done/` | — | 4, 4-bis |
+| 4-bis | team DB | ✅ Q-2 scritta e provata in `ROLLBACK` (2026-11-15): `20261115-60`, `-61`, asserzioni 22-25 del pgTAP del giro 2 | §8.1 | — |
+| 4-ter | Tid | ✅ Q-2 applicata (`20261115-60`, `-61`), pgTAP `anagrafiche/test-tipi-indirizzo-proponibili-v1` verde (2026-11-15) | §8.1 | — |
+| 4-quater | BE/FE | il caso «natura inesistente → `[]`» in `test_tipi_indirizzo_proponibili_db` (§8, ricaduta BE) | §8 | — |
+| 5 | chi chiude | archiviazione in `work-done/` | — | 4-quater |
 
-Decisioni aperte di Tid: nessuna. Lavoro fatto da committare: il giro 1 (otto changeSet, due CSV, un pgTAP nuovo e due
-riscritti, cinque pagine `manual/` e la guida degli indirizzi), Q-1 (quattro changeSet, due righe
-di CSV, quattro asserzioni nel pgTAP del giro), il giro 2 (due changeSet, un pgTAP, la guida), il giro 3 (sette changeSet, tre CSV, un pgTAP
-nuovo e la soglia del rubinetto, la guida) e questo file; il commit aspetta le
-chiavi i18n del FE (R-0).
+Decisioni aperte di Tid: nessuna (Q-2: `NULL` resta «tutti ammessi», ok di Tid del
+2026-11-15). Lavoro fatto da committare: nessuno (Q-2 committata il 2026-11-15).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-15.
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE al §7.
@@ -601,3 +600,24 @@ ammessi» se il team DB lo vuole tenere per il form senza natura scelta. Con il 
 Ricaduta BE: nessuna modifica di codice; il controllo di `list_tipi_indirizzo_proponibili_tipo_ruolo`
 resta (serve a risolvere il codice), e il test DB `test_tipi_indirizzo_proponibili_db` prende un
 caso «natura inesistente → `[]`» quando il DB è applicato.
+
+### 8.1 Q-2, fatta (team DB, 2026-11-15)
+
+Decisione di Tid (2026-11-15): `NULL` resta «nessuna matrice, tutti ammessi», come il guard della
+singolare: è il form senza natura (o senza tipo di ruolo) scelto.
+
+* `20261115-60` riscrive `anagrafiche.fn_tipi_indirizzo_proponibili_natura` e `20261115-61`
+  riscrive `anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo`: un id non `NULL` che non c'è in
+  `config.tipi_soggetto_dettaglio` (o in `config.tipi_ruoli`) non dà righe. Il corpo è quello di
+  `20261114-96` / `-97`, uguale al vivo, con in più la sola `WHERE`; i COMMENT dicono il caso
+  nuovo. Attributi invariati (default; nessun `COST`, `ROWS` o `SET` da ripetere).
+* Il filtro sta nel **picker**, non nella check: la check giudica un tipo su un contesto, e il
+  guard la chiama con una natura che esiste per FK. La regola «inesistente = nessuna riga» è del
+  picker, come per le gemelle sul salvato.
+* pgTAP `anagrafiche/test-tipi-indirizzo-proponibili-v1`, plan 25: 22 e 24 l'id inesistente
+  (costruito come `max(id) + 1`, non supposto), 23 e 25 il `NULL` che resta «tutti ammessi».
+* Prova (`scripts/prova_changeset.py`, scratch, 2026-11-15): con l'estratto 25 ok su 25. Senza,
+  un solo rosso, il 24: il `-60` era già applicato sullo scratch alle 16:21, quindi il 22 era già
+  verde. Catalogo identico prima e dopo.
+* Guida *Gestione degli indirizzi*: invariata, rimanda alla doc auto-generata dei picker.
+* Applicata da Tid il 2026-11-15, pgTAP del giro verde.

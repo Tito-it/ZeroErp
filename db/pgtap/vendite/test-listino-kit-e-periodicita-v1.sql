@@ -25,10 +25,11 @@
 --    5) ⛔ la quota senza periodicita': motivo QUOTA_FISSA_SENZA_PERIODICITA su Q
 --    6) ⛔ il kit senza la sua riga in listini_kit: lo stesso motivo, su K
 --    7) tutto a posto: nessun motivo
---    8) ⛔ fuori dalla bozza il kit non si tocca: E_RIGA_LISTINO_VERSIONE_CHIUSA
---  La quota fissa non perde la periodicita' fuori dalla bozza (20261031-51/-52)
---   9) ⛔ toglierla su una versione ATTIVA: E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA
---  10) cambiarla con un'altra resta una rettifica: passa
+--    8) ⛔ fuori dalla bozza il kit non si tocca: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA
+--  La periodicita' della quota fissa fuori dalla bozza (dal 20261115-65 le righe
+--  si scrivono solo in bozza)
+--   9) ⛔ toglierla su una versione ATTIVA: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA
+--  10) ⛔ cambiarla con un'altra non e' una rettifica: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA
 --  Clona ed elimina
 --  11) la versione clonata porta la periodicita' delle righe e il kit
 --  12) la clonata, in bozza, si elimina coi suoi kit (eliminabile non li conta)
@@ -193,26 +194,32 @@ DO $fx$ BEGIN
   PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, pg_temp.ver(), 'ATTIVA');
 END $fx$;
 
-SELECT throws_like(
-  format($$UPDATE vendite.listini_kit SET periodicita = 'MENSILE' WHERE listino_versione_id = %s$$,
-         pg_temp.ver()),
-  pg_temp.msg('E_RIGA_LISTINO_VERSIONE_CHIUSA'),
-  '8) fuori dalla bozza la periodicita'' del kit non si cambia: E_RIGA_LISTINO_VERSIONE_CHIUSA');
-
-SELECT throws_like(
-  format($$UPDATE vendite.listini_righe SET periodicita = NULL
-            WHERE listino_versione_id = %s AND articolo_id = %L$$, pg_temp.ver(), pg_temp.art('Q')),
-  pg_temp.msg('E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA'),
-  '9) su una versione ATTIVA la quota fissa non resta senza periodicita''');
-
-UPDATE vendite.listini_righe SET periodicita = 'TRIMESTRALE'
- WHERE listino_versione_id = pg_temp.ver() AND articolo_id = pg_temp.art('Q');
+-- Dal 20261115-70 la ATTIVA rifiuta col motivo suo (prima E_RIGA_LISTINO_VERSIONE_CHIUSA).
 SELECT is(
-  vendite.fn_listino_periodicita_articolo(pg_temp.ver(), pg_temp.art('Q')),
-  'TRIMESTRALE',
-  '10) cambiarla con un''altra resta una rettifica, come il prezzo');
-UPDATE vendite.listini_righe SET periodicita = 'MENSILE'
- WHERE listino_versione_id = pg_temp.ver() AND articolo_id = pg_temp.art('Q');
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE vendite.listini_kit SET periodicita = ''MENSILE'' WHERE listino_versione_id = %s',
+    pg_temp.ver())),
+  'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+  '8) fuori dalla bozza la periodicita'' del kit non si cambia: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA');
+
+-- Dal 20261115-65 le righe si scrivono solo in bozza, per ogni colonna, e cambiare la
+-- periodicita' non e' una rettifica: la quota fissa di una versione ATTIVA non resta
+-- senza periodicita' perche' la riga non si tocca. Il guard apposta della quota fissa
+-- (E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA) e' ritirato col 20261115-74: questo test
+-- e' la prova che la regola tiene senza di lui.
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE vendite.listini_righe SET periodicita = NULL WHERE listino_versione_id = %s AND articolo_id = %L',
+    pg_temp.ver(), pg_temp.art('Q'))),
+  'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+  '9) su una versione ATTIVA la periodicita'' della quota fissa non si toglie');
+
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE vendite.listini_righe SET periodicita = ''TRIMESTRALE'' WHERE listino_versione_id = %s AND articolo_id = %L',
+    pg_temp.ver(), pg_temp.art('Q'))),
+  'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+  '10) su una versione ATTIVA la periodicita'' non si cambia: non e'' una rettifica');
 
 -- ============================================================
 -- Clona ed elimina

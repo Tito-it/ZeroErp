@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_mesi_dopo — UN GIORNO, N MESI DOPO (O PRIMA)
+#   Brief: brief-db-mese-di-un-giorno, giro 6 (§6.6). Forma decisa da Tid
+#   il 2026-11-15 (due BB in script).
+#
+# ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────
+#   I mesi si sommavano con `(<date> + make_interval(months => n))::date`:
+#   una data piu' un interval e' un timestamp nudo, che torna data con un
+#   cast. Il risultato non dipende dal fuso, ma il calcolo di un giorno
+#   passa da un tipo che non e' un giorno, e la regola «sommare mesi» non
+#   aveva una sede.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Il giorno p_giorno spostato di p_mesi mesi di calendario (negativo =
+#   indietro). Se il giorno non esiste nel mese d'arrivo, e' l'ultimo del
+#   mese: il 31 gennaio piu' un mese e' il 28 (o 29) febbraio. E' la regola
+#   di PostgreSQL per date + interval, scritta una volta.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Il mese come numero progressivo (anno * 12 + mese - 1), piu' p_mesi; da
+#   li' il primo del mese d'arrivo con make_date, e il giorno tagliato su
+#   script.fn_fine_mese_di. Solo interi e date: niente interval, timestamp
+#   o fuso. IMMUTABLE STRICT PARALLEL SAFE, sql a stringa: il corpo a
+#   stringa non registra la dipendenza da fn_fine_mese_di in pg_depend, e
+#   la preCondition chiede che esista.
+#   Anni d.C.: un arrivo prima dell'anno 1 fa fallire make_date (nessun
+#   anno 0), e va bene cosi': nessun calendario del progetto ci arriva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261115-62-create-fn-mesi-dopo-mctit.yaml
+
+  - changeSet:
+      id: 20261115-62-create-fn-mesi-dopo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_mesi_dopo(date, integer): un giorno spostato di n mesi di calendario, col
+        giorno tagliato sulla fine del mese d'arrivo, con la sola aritmetica di date
+        (IMMUTABLE). Sostituisce (x + make_interval(months => n))::date. Brief:
+        brief-db-mese-di-un-giorno, giro 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT (count(*) FILTER (WHERE p.proname = 'fn_mesi_dopo') = 0
+                      AND count(*) FILTER (WHERE p.proname = 'fn_fine_mese_di') = 1)::int
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_mesi_dopo', 'fn_fine_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: un giorno qualunque del
+              -- calendario e un numero di mesi. Serve colonne e parametri
+              -- diversi, quindi non e' il riflesso di nessuna colonna.
+              CREATE OR REPLACE FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+               RETURNS date
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- Il giorno di partenza, tagliato sulla fine del mese
+                  -- d'arrivo: il 31 su un mese di 30 giorni e' il 30.
+                  SELECT least(a.primo + (extract(day FROM p_giorno)::integer - 1),
+                               script.fn_fine_mese_di(a.primo))
+                    FROM (SELECT make_date(m.n / 12, m.n % 12 + 1, 1) AS primo
+                            FROM (SELECT extract(year FROM p_giorno)::integer * 12
+                                         + extract(month FROM p_giorno)::integer - 1
+                                         + p_mesi AS n) m) a
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+                IS 'Il giorno p_giorno spostato di p_mesi mesi di calendario (negativo = indietro). Se il giorno non esiste nel mese d''arrivo e'' l''ultimo del mese: il 31 gennaio piu'' un mese e'' il 28 (o 29) febbraio, come date + interval in PostgreSQL. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di (x + make_interval(months => n))::date e di x + interval ''n month''. Lavora su un GIORNO: un istante (timestamptz) passa prima da script.fn_giorno_operativo. NULL -> NULL. I mesi toccati da un tratto di giorni sono script.fn_mesi_del_tratto.';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono: il ciclo che li ridistribuisce gira in ci_apply.
+              --    Il ruolo batch e' coperto dal provisioning (linee-guida-sql.md §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_mesi_dopo(date, integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_mesi_dopo(date, integer);

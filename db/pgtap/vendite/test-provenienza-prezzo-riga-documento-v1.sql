@@ -91,8 +91,10 @@ BEGIN
         (SELECT auth_user_id FROM t_mondi WHERE lato = 'MIA'));
 END $ctx$;
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza', p_in_bozza => true);
 
 -- Due articoli della tipologia del listino: a1 sulla riga d'ordine, a2 per la
 -- riga di listino «di un altro articolo».
@@ -104,7 +106,7 @@ SELECT dbops.fn_pgtap_crea_articolo(
            ('PGT-PPR-' || substr(md5(clock_timestamp()::text || 'b'), 1, 12))::varchar, false,
            p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a2;
 
--- R1 (a1) e R2 (a2) nella versione attiva, nell'unita' di misura dell'articolo.
+-- R1 (a1) e R2 (a2) nella versione (poi attiva), nell'unita' di misura dell'articolo.
 CREATE TEMP TABLE t_r AS
 WITH ins AS (
     INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
@@ -116,6 +118,7 @@ WITH ins AS (
 )
 SELECT (SELECT id FROM ins WHERE articolo_id = (SELECT a1 FROM t_art)) AS r1,
        (SELECT id FROM ins WHERE articolo_id = (SELECT a2 FROM t_art)) AS r2;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
 
 -- L'ordine, in bozza, con una riga di a1 a 40 (un prezzo trattato).
 CREATE TEMP TABLE t_o AS

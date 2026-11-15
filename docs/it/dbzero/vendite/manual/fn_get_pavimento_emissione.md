@@ -80,7 +80,9 @@ scadenza = LEAST(primo_del_mese_successivo + giorno − 1,
 Con `31` configurato su un febbraio la scadenza è il **28** (o il 29), non il 2
 marzo. Il `CHECK` di colonna ammette `1..31` apposta: a fare i conti col mese è
 **questa funzione**, perché un vincolo non conosce il mese su cui il valore
-cadrà.
+cadrà. I due confini vengono dai building block del calendario: il primo del
+mese successivo è `script.fn_fine_mese_di(competenza) + 1`, l'ultimo è
+`script.fn_fine_mese_di` di quel giorno. Nessuna aritmetica di mesi.
 
 ---
 

@@ -2,7 +2,7 @@
 # ⚙️ Funzione `fn_pgtap_crea_listino`
 
 ```sql
-CREATE FUNCTION fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date)
+CREATE FUNCTION fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date, p_in_bozza boolean)
 ```
 
 > 🔓 **Sicurezza**: `SECURITY INVOKER` (default) — gira con i privilegi di chi la chiama; owner `zeroerp_owner`.
@@ -12,7 +12,7 @@ CREATE FUNCTION fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_
 <div data-search-exclude markdown>
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text DEFAULT 'pgTAP'::text, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text DEFAULT 'pgTAP'::text, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_in_bozza boolean DEFAULT false)
  RETURNS TABLE(listino_id bigint, listino_versione_id bigint, tipologia_id smallint)
  LANGUAGE plpgsql
 AS $function$
@@ -102,15 +102,20 @@ BEGIN
         p_listino_tipologia_id => v_tipologia);
     PERFORM dbops.fn_pgtap_listino_aggiungi_articoli(v_versione, ARRAY[v_articolo]);
 
-    -- Attiva dal verbo.
-    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v_versione, 'ATTIVA');
+    -- Attiva dal verbo, salvo chi la vuole in bozza: le righe di una
+    -- versione si scrivono solo li' (script.fn_check_listino_riga_scrivibile),
+    -- quindi il test le aggiunge e poi la attiva lui
+    -- (dbops.fn_pgtap_porta_a_stato).
+    IF NOT p_in_bozza THEN
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, v_versione, 'ATTIVA');
+    END IF;
 
     RETURN QUERY SELECT v_listino, v_versione, v_tipologia;
 END;
 $function$
 
-COMMENT ON FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date)
-IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta. Tipologia: la prima ammessa per l''utility (config.listini_tipologie_utilities) che non e'' una quota fissa (config.listini_tipologie.e_quota_fissa): la quota fissa a canone vuole la periodicita'' sulle righe, e chi vuole quel listino lo costruisce e la da'' (dbops.fn_pgtap_listino_aggiungi_articoli, p_periodicita). Date della versione a scelta (default: dalla data operativa, aperta). La versione nasce in bozza, prende una riga d''appoggio (un articolo suo, codice PGTAP_LST_ART_<casuale>: chi conta le righe ne trova una in piu'') e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato, che chiama vendite.fn_attiva_versione_listino). Le altre righe restano al test. Senza contesto, o senza una tipologia ammessa che non sia di quota fissa: RAISE EXCEPTION.';
+COMMENT ON FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_valido_dal date, p_valido_al date, p_in_bozza boolean)
+IS 'Fixture pgTAP: un listino con una versione ATTIVA, dell''emittente di chi agisce (contesto aperto prima), per l''utility scelta. Tipologia: la prima ammessa per l''utility (config.listini_tipologie_utilities) che non e'' una quota fissa (config.listini_tipologie.e_quota_fissa): la quota fissa a canone vuole la periodicita'' sulle righe, e chi vuole quel listino lo costruisce e la da'' (dbops.fn_pgtap_listino_aggiungi_articoli, p_periodicita). Date della versione a scelta (default: dalla data operativa, aperta). La versione nasce in bozza, prende una riga d''appoggio (un articolo suo, codice PGTAP_LST_ART_<casuale>: chi conta le righe ne trova una in piu'') e si attiva dal verbo (dbops.fn_pgtap_porta_a_stato, che chiama vendite.fn_attiva_versione_listino); con p_in_bozza resta in bozza, perche'' le righe di una versione si scrivono solo li'': il test le aggiunge (dbops.fn_pgtap_listino_aggiungi_articoli) e poi la attiva lui. Le altre righe restano al test. Senza contesto, o senza una tipologia ammessa che non sia di quota fissa: RAISE EXCEPTION.';
 ```
 
 </div>

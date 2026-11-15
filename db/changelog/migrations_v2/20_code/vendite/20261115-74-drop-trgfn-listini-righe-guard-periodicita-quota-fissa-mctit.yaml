@@ -1,0 +1,110 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DEL GUARD DELLA PERIODICITA' DELLA QUOTA FISSA: LA REGOLA STA NEL GUARD DI STATO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.28, D-GUARD-MUTI decisa (a)
+#   da Tid il 2026-11-15.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il guard nacque il 2026-10-31 (brief-db-contratto-righe-periodiche-in-commessa
+#   §7.10, decisione di Tid) per chiudere una conseguenza del guard di stato largo:
+#   in una versione ATTIVA la riga di una quota fissa a canone poteva perdere la
+#   periodicita' con un UPDATE qualsiasi («rettifica»), e ogni contratto del
+#   listino restava in CANONE_NON_GENERABILE. Dal 20261115-65 / -68 fuori dalla
+#   bozza non si scrive niente, e la rettifica (vendite.fn_rettifica_riga_listino)
+#   cambia solo prezzo e meta: il caso non si produce piu', e in bozza il guard
+#   lasciava passare per costruzione. Era muto per intero.
+#
+# ── CHE COSA SI TOGLIE ──────────────────────────────────────────────
+#   Il montaggio trg_listini_righe_a10_periodicita_quota_fissa_upd (20261031-52)
+#   e la funzione (20261031-51, -50 del 2026-11-15). Il codice
+#   E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA si ritira nel catalogo (obsoleto_dal,
+#   CSV), non si cancella. vendite.fn_articolo_quota_fissa_a_canone resta: la
+#   leggono l'attivazione e la dashboard. La periodicita' di una quota fissa in
+#   bozza la giudica l'attivazione (script.fn_check_versione_listino_attivabile).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Prima il trigger, poi la funzione, con IF EXISTS. Il trigger e' scritto a
+#   mano (20_code), non generato da ci_apply (§11.5): un nome solo nella storia.
+#   Il rollback ricrea funzione, COMMENT e montaggio dal catalogo dello scratch
+#   il 2026-11-15.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-74-drop-trgfn-listini-righe-guard-periodicita-quota-fissa-mctit.yaml
+
+  - changeSet:
+      id: 20261115-74-drop-trgfn-listini-righe-guard-periodicita-quota-fissa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira vendite.trgfn_listini_righe_guard_periodicita_quota_fissa e il suo montaggio: fuori dalla bozza non si
+        scrive niente. Brief: brief-db-stati-documento-dal-vocabolario, D-GUARD-MUTI (a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_periodicita_quota_fissa_upd ON vendite.listini_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_righe_guard_periodicita_quota_fissa();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_periodicita_quota_fissa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: fuori dalla bozza la riga di una quota fissa a canone non resta
+              --   senza periodicita'. Regola completa nell'intestazione del changeSet
+              --   20261031-51.
+              DECLARE
+                  v_stato    config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_iniziale config.stati_doc_listino_versioni.iniziale%TYPE;
+                  v_versione vendite.listini_versioni.codice_versione%TYPE;
+                  v_codice   catalogo.articoli.codice%TYPE;
+              BEGIN
+                  IF NEW.periodicita IS NOT NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT s.codice_interno, s.iniziale, lv.codice_versione INTO v_stato, v_iniziale, v_versione
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = NEW.listino_versione_id;
+
+                  IF v_iniziale OR NOT vendite.fn_articolo_quota_fissa_a_canone(NEW.articolo_id) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT a.codice INTO v_codice FROM catalogo.articoli a WHERE a.id = NEW.articolo_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME, 'E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA',
+                      jsonb_build_object(
+                          'campo',               'periodicita',
+                          'listino_riga_id',     NEW.id,
+                          'listino_versione_id', NEW.listino_versione_id,
+                          'stato_versione',      v_stato),
+                      NEW.tx_id,
+                      COALESCE(v_codice, NEW.articolo_id::text),
+                      COALESCE(v_versione, NEW.listino_versione_id::text));
+                  RETURN NEW;
+              END;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_periodicita_quota_fissa()
+              IS 'Guard di vendite.listini_righe (BEFORE UPDATE OF periodicita, quando la periodicita'' va a NULL): fuori dalla bozza (lo stato iniziale del vocabolario config.stati_doc_listino_versioni) la riga di una quota fissa a canone (vendite.fn_articolo_quota_fissa_a_canone) non resta senza periodicita'' (E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA, campo periodicita). Cambiarla con un''altra resta una rettifica, come il prezzo (vendite.trgfn_listini_righe_guard_stato). Completa il controllo all''attivazione: senza, la riga perderebbe la periodicita'' dopo, e ogni contratto del listino resterebbe in CANONE_NON_GENERABILE.';
+
+              DROP TRIGGER IF EXISTS trg_listini_righe_a10_periodicita_quota_fissa_upd ON vendite.listini_righe;
+              CREATE TRIGGER trg_listini_righe_a10_periodicita_quota_fissa_upd BEFORE UPDATE OF periodicita ON vendite.listini_righe FOR EACH ROW WHEN (((old.periodicita IS NOT NULL) AND (new.periodicita IS NULL))) EXECUTE FUNCTION vendite.trgfn_listini_righe_guard_periodicita_quota_fissa();

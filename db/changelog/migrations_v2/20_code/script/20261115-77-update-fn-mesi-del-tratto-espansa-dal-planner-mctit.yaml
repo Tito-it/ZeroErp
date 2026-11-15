@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_mesi_del_tratto — SENZA STRICT, ESPANSA DAL PLANNER
+#   Brief: brief-db-mese-di-un-giorno, giro 6 (§6.6), correzione dopo
+#   l'apply (segnalazione di Tid, 2026-11-15: il pgTAP del giro e' lento).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il planner non espande mai una funzione sql che restituisce righe se e'
+#   STRICT: ogni chiamata di 20261115-63 passa dall'esecutore delle funzioni
+#   sql. Misurato sullo scratch (2026-11-15, 4.386 tratti, con
+#   fn_mesi_dopo gia' espansa da -76): 1,34 s.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Lo stesso corpo di -63, senza STRICT. Con un estremo NULL il limite
+#   della serie e' NULL, e generate_series(0, NULL) non da' righe: «un
+#   estremo NULL, nessuna riga» resta vero (pgTAP 13). Stessa misura con
+#   questa forma: 0,60 s, risultato identico su tutti i tratti, piano con
+#   la funzione espansa. IMMUTABLE e PARALLEL SAFE come prima; firma e
+#   GRANT restano, il COMMENT si riscrive per dire perche' non e' STRICT.
+#   Il rollback rimette -63.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261115-77-update-fn-mesi-del-tratto-espansa-dal-planner-mctit.yaml
+
+  - changeSet:
+      id: 20261115-77-update-fn-mesi-del-tratto-espansa-dal-planner
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_mesi_del_tratto: senza STRICT, perche' il planner la espanda nel punto
+        d'uso; un estremo NULL da' ancora nessuna riga. Brief: brief-db-mese-di-un-giorno,
+        giro 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_mesi_del_tratto', 'fn_mese_di', 'fn_fine_mese_di',
+                                   'fn_mesi_dopo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: due giorni qualunque del
+              -- calendario e i mesi fra loro. Serve colonne e parametri diversi,
+              -- quindi non e' il riflesso di nessuna colonna.
+              -- ⚠️ Niente STRICT: il planner non espande una funzione che
+              --    restituisce righe se e' STRICT. Con un estremo NULL la serie
+              --    e' vuota lo stesso.
+              CREATE OR REPLACE FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+               RETURNS TABLE(mese date, fine_mese date)
+               LANGUAGE sql
+               IMMUTABLE
+               CALLED ON NULL INPUT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- k = 0 e' il mese di p_dal; l'ultimo k e' il mese di p_al.
+                  -- Con p_al in un mese prima, o un estremo NULL, la serie e'
+                  -- vuota.
+                  SELECT s.primo, script.fn_fine_mese_di(s.primo)
+                    FROM (SELECT k, script.fn_mesi_dopo(script.fn_mese_di(p_dal), k) AS primo
+                            FROM generate_series(
+                                     0,
+                                     (extract(year FROM p_al)::integer * 12
+                                      + extract(month FROM p_al)::integer)
+                                     - (extract(year FROM p_dal)::integer * 12
+                                        + extract(month FROM p_dal)::integer)) AS k) s
+                   ORDER BY s.k
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+                IS 'I mesi di calendario che il tratto da p_dal a p_al tocca: una riga per mese, in ordine, col primo giorno (mese) e l''ultimo (fine_mese). p_al in un mese prima di quello di p_dal: nessuna riga; un estremo NULL: nessuna riga. Gli estremi del tratto non tagliano il mese: chi vuole i giorni coperti li taglia con greatest/least. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. Il planner la espande nel punto d''uso; per questo non e'' STRICT, e il NULL lo da'' la serie vuota. ⭐ Si usa al posto di generate_series(<date>, <date>, interval ''1 month''), che passa da timestamptz. Lavora su GIORNI: un istante passa prima da script.fn_giorno_operativo. Il mese di un giorno e'' script.fn_mese_di, n mesi dopo script.fn_mesi_dopo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+               RETURNS TABLE(mese date, fine_mese date)
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- k = 0 e' il mese di p_dal; l'ultimo k e' il mese di p_al.
+                  -- Con p_al in un mese prima, la serie e' vuota.
+                  SELECT s.primo, script.fn_fine_mese_di(s.primo)
+                    FROM (SELECT k, script.fn_mesi_dopo(script.fn_mese_di(p_dal), k) AS primo
+                            FROM generate_series(
+                                     0,
+                                     (extract(year FROM p_al)::integer * 12
+                                      + extract(month FROM p_al)::integer)
+                                     - (extract(year FROM p_dal)::integer * 12
+                                        + extract(month FROM p_dal)::integer)) AS k) s
+                   ORDER BY s.k
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+                IS 'I mesi di calendario che il tratto da p_dal a p_al tocca: una riga per mese, in ordine, col primo giorno (mese) e l''ultimo (fine_mese). p_al in un mese prima di quello di p_dal: nessuna riga; un estremo NULL: nessuna riga. Gli estremi del tratto non tagliano il mese: chi vuole i giorni coperti li taglia con greatest/least. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di generate_series(<date>, <date>, interval ''1 month''), che passa da timestamptz. Lavora su GIORNI: un istante passa prima da script.fn_giorno_operativo. Il mese di un giorno e'' script.fn_mese_di, n mesi dopo script.fn_mesi_dopo.';

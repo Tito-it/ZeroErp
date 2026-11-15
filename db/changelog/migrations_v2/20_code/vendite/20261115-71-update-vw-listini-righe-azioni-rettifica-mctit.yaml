@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SUPERFICIE DELLE RIGHE DI LISTINO: + LA RETTIFICA
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.28, giro 6f-ter (R-L1 del
+#   BE/FE; Tid, 2026-11-15).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il pulsante «Rettifica» della riga si accende dal DB, come «Modifica»: due
+#   colonne in coda, rettifica_blocco_reason e rettifica_blocco_reason_key, il
+#   primo motivo di script.fn_check_listino_riga_rettificabile (20261115-66),
+#   la stessa che il verbo vendite.fn_rettifica_riga_listino (-67) solleva. Un
+#   verbo, le sue colonne (§12.5.4). Iscritta nel registro come
+#   RETTIFICA_RIGA_LISTINO (CSV config/azioni_riga.csv). modifica_blocco_* non
+#   cambia forma: dal -65 dice «solo in bozza».
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: le colonne nuove in coda; security_invoker
+#   ripetuto. Nessuna vista ne dipende. Il rollback la toglie e la ricrea dalla
+#   definizione del 20261115-57: i privilegi li danno i default dello schema per
+#   zeroerp_owner.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-71-update-vw-listini-righe-azioni-rettifica-mctit.yaml
+
+  - changeSet:
+      id: 20261115-71-update-vw-listini-righe-azioni-rettifica
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_listini_righe_azioni: + rettifica_blocco_reason / _key, dalla check della rettifica.
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6f-ter.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_listini_righe_azioni
+              WITH (security_invoker = true) AS
+              SELECT lr.id                  AS listino_riga_id,
+                     lr.listino_versione_id,
+                     -- Il PRIMO motivo: il guard di stato solleva quello.
+                     mot.motivi -> 0 ->> 'reason'     AS modifica_blocco_reason,
+                     mot.motivi -> 0 ->> 'reason_key' AS modifica_blocco_reason_key,
+                     -- Il PRIMO motivo: il verbo della rettifica solleva quello.
+                     ret.motivi -> 0 ->> 'reason'     AS rettifica_blocco_reason,
+                     ret.motivi -> 0 ->> 'reason_key' AS rettifica_blocco_reason_key
+                FROM vendite.listini_righe lr
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_listino_riga_scrivibile(lr.listino_versione_id, lr.id) AS motivi
+                ) mot
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_listino_riga_rettificabile(lr.id) AS motivi
+                ) ret;
+
+              COMMENT ON VIEW vendite.vw_listini_righe_azioni IS 'Le azioni di riga delle righe di listino: una riga per riga (listino_riga_id, listino_versione_id). modifica_blocco_reason / modifica_blocco_reason_key: il primo motivo di script.fn_check_listino_riga_scrivibile per la riga, la stessa fn_check che il guard vendite.trgfn_listini_righe_guard_stato solleva su UPDATE e DELETE (VERSIONE_CHIUSA: la versione e'' la storia dei prezzi; VERSIONE_NON_IN_BOZZA: la versione e'' il listino in uso; NULL = la riga si modifica e si elimina, cioe'' la versione e'' in bozza). rettifica_blocco_reason / rettifica_blocco_reason_key: il primo motivo di script.fn_check_listino_riga_rettificabile, la stessa che il verbo vendite.fn_rettifica_riga_listino solleva (VERSIONE_IN_BOZZA: si modifica; VERSIONE_CHIUSA; NON_IN_VIGORE: la versione non e'' quella in vigore oggi; RIGA_PROPAGATA: il prezzo e'' stato usato da un documento; NULL = il prezzo si rettifica). E'' la superficie delle azioni MODIFICA_RIGA_LISTINO e RETTIFICA_RIGA_LISTINO nel registro config.azioni_riga. security_invoker: le sole righe dei listini del proprio perimetro, e i documenti che le citano col perimetro di chi guarda. Si filtra per listino_versione_id o listino_riga_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_listini_righe_azioni;
+
+              CREATE VIEW vendite.vw_listini_righe_azioni
+              WITH (security_invoker = true) AS
+              SELECT lr.id                  AS listino_riga_id,
+                     lr.listino_versione_id,
+                     -- Il PRIMO motivo: il guard di stato solleva quello.
+                     mot.motivi -> 0 ->> 'reason'     AS modifica_blocco_reason,
+                     mot.motivi -> 0 ->> 'reason_key' AS modifica_blocco_reason_key
+                FROM vendite.listini_righe lr
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_listino_riga_scrivibile(lr.listino_versione_id, lr.id) AS motivi
+                ) mot;
+
+              COMMENT ON VIEW vendite.vw_listini_righe_azioni IS 'Le azioni di riga delle righe di listino: una riga per riga (listino_riga_id, listino_versione_id). modifica_blocco_reason / modifica_blocco_reason_key: il primo motivo di script.fn_check_listino_riga_scrivibile per la riga, la stessa fn_check che il guard vendite.trgfn_listini_righe_guard_stato solleva su UPDATE e DELETE (VERSIONE_CHIUSA: la versione e'' la storia dei prezzi; RIGA_PROPAGATA: fuori dalla bozza, il prezzo e'' stato usato da un documento; NULL = la riga si modifica e si elimina). E'' la superficie dell''azione MODIFICA_RIGA_LISTINO nel registro config.azioni_riga. security_invoker: le sole righe dei listini del proprio perimetro, e i documenti che le citano col perimetro di chi guarda, come il guard. Si filtra per listino_versione_id o listino_riga_id.';

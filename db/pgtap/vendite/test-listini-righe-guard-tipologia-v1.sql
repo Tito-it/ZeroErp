@@ -54,11 +54,13 @@ SELECT id AS tipologia_id FROM config.listini_tipologie WHERE codice = 'SERVIZI'
 -- prima tipologia ammessa e' PRODOTTI (config.listini_tipologie_utilities).
 -- Articolo: dbops.fn_pgtap_crea_articolo con tipologia PRODOTTI e la UoM
 -- del builder (prima attiva del seed).
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione resta in bozza,
+-- e i guard dell'articolo si provano li' (lo stato non e' la loro domanda).
 CREATE TEMP TABLE tmp_ctx_listino_prod AS
 SELECT l.listino_id, l.listino_versione_id
   FROM dbops.fn_pgtap_crea_listino(
            (SELECT u.id FROM config.utilities u WHERE u.codice = 'BASE'),
-           'guard tipologia') l
+           'guard tipologia', p_in_bozza => true) l
  WHERE l.tipologia_id = (SELECT tipologia_id FROM tmp_tipologia_prodotti);
 
 -- Articolo con tipologia PRODOTTI

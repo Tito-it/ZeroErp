@@ -119,8 +119,10 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
       WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
       ORDER BY u.id LIMIT 1));
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE _lis AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _cli), 'sorgente testate');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _cli), 'sorgente testate', p_in_bozza => true);
 
 CREATE TEMP TABLE _ref AS
 SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id, c.soggetto_ruolo_id,
@@ -141,6 +143,7 @@ SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id, c.soggetto_ruol
 
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT listino_versione_id FROM _ref), ARRAY[(SELECT art_off FROM _ref)]);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM _ref), 'ATTIVA');
 
 CREATE TEMP TABLE _fix (chiave text PRIMARY KEY, id bigint);
 CREATE FUNCTION pg_temp.fix(p text) RETURNS bigint LANGUAGE sql AS $$ SELECT id FROM _fix WHERE chiave = p $$;

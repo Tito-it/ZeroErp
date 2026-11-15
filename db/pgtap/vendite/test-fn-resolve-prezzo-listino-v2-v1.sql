@@ -83,9 +83,11 @@ CREATE TEMP TABLE tmp_cli AS
 SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     'resolver v2', (SELECT utility_id FROM tmp_utility));
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_ctx_versione AS
 SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
-  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility), 'resolver v2') l;
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility), 'resolver v2', p_in_bozza => true) l;
 
 CREATE TEMP TABLE tmp_ctx_listino AS
 SELECT v.listino_id FROM tmp_ctx_versione v;
@@ -139,6 +141,7 @@ DO $riga$ BEGIN
         (SELECT versione_id FROM tmp_ctx_versione),
         ARRAY[(SELECT articolo_id FROM tmp_ctx)],
         100);
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT versione_id FROM tmp_ctx_versione), 'ATTIVA');
 END $riga$;
 
 -- Matrice categoria -> listino: classe specifica + variazione PERCENTUALE -10%

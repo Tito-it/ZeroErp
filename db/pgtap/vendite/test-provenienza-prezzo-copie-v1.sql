@@ -60,8 +60,10 @@ SELECT min(u.id) AS utility_id
  WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
                 WHERE ltu.utility_id = u.id AND ltu.attivo);
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza copie');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza copie', p_in_bozza => true);
 
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(('PGT-PCO-' || substr(md5(clock_timestamp()::text), 1, 10))::varchar, false,
@@ -75,6 +77,7 @@ WITH ins AS (
     RETURNING id
 )
 SELECT id AS r1 FROM ins;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
 
 CREATE OR REPLACE FUNCTION pg_temp.da_listino(p_tab regclass, p_fk text, p_doc bigint)
 RETURNS void LANGUAGE plpgsql AS $f$
