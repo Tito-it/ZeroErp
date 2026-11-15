@@ -69,6 +69,11 @@ STATO_VERSIONE_ATTIVA = "ATTIVA"
 #    la stessa cosa per «Elimina» (`ELIMINA_VERSIONE_LISTINO`, §16.11) e per
 #    «Chiudi» (`CHIUDI_VERSIONE_LISTINO`, §16.14), dalla stessa vista. Prima il
 #    frontend li decideva dal codice dello stato (R-L4 del §16.9).
+# ⭐ `aggiunta_riga_blocco_reason` / `_key`: perche' non si aggiunge una riga
+#    alla versione (`AGGIUNGI_RIGA_LISTINO`, D-LIST (a) del
+#    brief-db-stati-documento-dal-vocabolario §6.27): il primo motivo di
+#    `script.fn_check_listino_riga_scrivibile` senza riga, la stessa che il
+#    guard di stato delle righe solleva sull'INSERT. NULL = si aggiunge.
 # ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
 #    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
 #    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
@@ -108,6 +113,8 @@ _SELECT_VERSIONE = f"""
         az.eliminazione_blocco_reason_key,
         az.chiusura_blocco_reason,
         az.chiusura_blocco_reason_key,
+        az.aggiunta_riga_blocco_reason,
+        az.aggiunta_riga_blocco_reason_key,
         (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
             AS chiusura_programmata
       FROM vendite.listini_versioni v
@@ -841,7 +848,25 @@ class ListiniRepository:
                           adc.codice, adc.descrizione, adc.iva_id,
                           adc.iva_codice, adc.iva_aliquota_iva, lk.periodicita
             )
-            SELECT *, COUNT(*) OVER() AS total_count
+            SELECT unione.*,
+                   COUNT(*) OVER() AS total_count,
+                   -- ⭐ Perche' la riga non si modifica ne' si elimina
+                   --    (`MODIFICA_RIGA_LISTINO`, D-LIST (a) del
+                   --    brief-db-stati-documento-dal-vocabolario §6.27): la
+                   --    superficie delle righe, il primo motivo della stessa
+                   --    `fn_check` che il guard di stato solleva. NULL = si
+                   --    modifica. Il composito non ha una riga di listino
+                   --    (`id` NULL): i suoi prezzi hanno la regola del kit.
+                   -- ⚡ Nella lista di uscita, non in una JOIN: PostgreSQL
+                   --    valuta le sottoquery DOPO `ORDER BY … LIMIT`, quindi
+                   --    la `fn_check` gira per le sole righe della pagina e
+                   --    non per l'intera versione.
+                   (SELECT az.modifica_blocco_reason
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason,
+                   (SELECT az.modifica_blocco_reason_key
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason_key
               FROM unione
             {where_unione}
              ORDER BY {ordinamento}
