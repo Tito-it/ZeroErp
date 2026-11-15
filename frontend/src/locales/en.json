@@ -6276,6 +6276,16 @@
       "context_fornitore": "Supplier",
       "replace_non_trovato": "Address not found. To create a new one use \"Address not listed, create new\"."
     },
+    "indirizzi": {
+      "tipo_blocco": {
+        "gia_presente": "There is already a «{0}» address: edit that one, or choose another type.",
+        "non_ammesso_dalla_natura": "The party type {0} does not provide for the «{1}» address.",
+        "non_ammesso_dal_ruolo": "The role {0} does not provide for the «{1}» address."
+      },
+      "copia_blocco": {
+        "nessun_tipo_proponibile": "There is no other address type to copy it into: all the allowed types are already there."
+      }
+    },
     "soggetti": {
       "search_placeholder": "Search by name, tax ID, VAT...",
       "filtro_tipo": "Subject type",

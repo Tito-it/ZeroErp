@@ -6276,6 +6276,16 @@
       "context_fornitore": "Fornitore",
       "replace_non_trovato": "Indirizzo non presente. Per crearne uno nuovo usa \"Indirizzo non presente, crea nuovo\"."
     },
+    "indirizzi": {
+      "tipo_blocco": {
+        "gia_presente": "C'è già un indirizzo «{0}»: si modifica quello, oppure si sceglie un altro tipo.",
+        "non_ammesso_dalla_natura": "Il tipo soggetto {0} non prevede l'indirizzo «{1}».",
+        "non_ammesso_dal_ruolo": "Il ruolo {0} non prevede l'indirizzo «{1}»."
+      },
+      "copia_blocco": {
+        "nessun_tipo_proponibile": "Non c'è un altro tipo di indirizzo in cui copiarlo: i tipi ammessi ci sono già tutti."
+      }
+    },
     "soggetti": {
       "search_placeholder": "Cerca per nome, CF, P.IVA...",
       "filtro_tipo": "Tipo soggetto",
