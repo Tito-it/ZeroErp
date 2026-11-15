@@ -96,10 +96,10 @@ BEGIN
   -- aziendale. La competenza delle righe di canone e storno e' il suo mese.
   v_data_giro := CASE
     WHEN p_competenza_mese IS NOT NULL
-      THEN (date_trunc('month', p_competenza_mese) + interval '1 month' - interval '1 day')::date
+      THEN script.fn_fine_mese_di(p_competenza_mese)
     ELSE script.fn_data_operativa()
   END;
-  v_mese_giro := date_trunc('month', v_data_giro)::date;
+  v_mese_giro := script.fn_mese_di(v_data_giro);
 
   RETURN QUERY
   WITH ctr AS (
@@ -239,7 +239,7 @@ BEGIN
       a.uom_id,
       cr.quantita, cr.qta_operativa, cr.uom_operativa_id,
       COALESCE(cr.factor_to_base, 1::numeric) AS factor_to_base,
-      date_trunc('month', COALESCE(c.valido_dal, c.data))::date AS competenza_mese,
+      script.fn_mese_di(COALESCE(c.valido_dal, c.data)) AS competenza_mese,
       -- L'ADESIONE non ha un prezzo suo: quello del listino, alla data
       -- dell'attivazione (G-0-ter).
       -- rev 2026-10-31 (-35): il kit aderito, la somma dei componenti del listino.
@@ -307,7 +307,7 @@ BEGIN
     WHERE c.stato_doc_contratto_id = v_stato_attivo_id
       AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
       AND (p_competenza_mese IS NULL
-           OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
+           OR script.fn_mese_di(COALESCE(c.valido_dal, c.data)) = p_competenza_mese)
   ),
   canoni AS (
     SELECT

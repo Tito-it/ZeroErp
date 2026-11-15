@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_mese_di — IL MESE DI UN GIORNO, SUL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 1 (§4.1). Perimetro e decisioni:
+#   Tid, 2026-11-15.
+#
+# ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────
+#   Il mese di competenza di un giorno si scriveva
+#   `date_trunc('month', <date>)::date`. date_trunc non ha una variante per
+#   date: PostgreSQL sceglie quella su timestamptz, la data diventa la
+#   mezzanotte nel fuso della SESSIONE, si tronca li' e torna date. Il
+#   risultato e' giusto perche' il fuso entra ed esce dalla stessa sessione,
+#   ma il calcolo di un giorno passa da un istante: e' STABLE, non entra in
+#   un CHECK o in un indice, e dove il giorno viene da fn_giorno_operativo si
+#   scriveva `giorno::timestamp`, un timestamp nudo da dichiarare a ogni
+#   ricreazione della vista (linee-guida-sql.md §11.10).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Solo aritmetica di date: `date - integer` e' date. Il primo del mese e'
+#   il giorno meno (giorno del mese - 1). Niente interval, timestamp o fuso.
+#   IMMUTABLE STRICT PARALLEL SAFE, LANGUAGE sql a stringa: non legge
+#   tabelle (niente dipendenze da tenere in pg_depend, §5c) e il planner la
+#   espande nel punto di chiamata, quindi in una vista o in un filtro non
+#   costa una chiamata. Le condizioni dell'espansione: corpo SELECT di
+#   un'espressione sola, nessun SET, INVOKER, e con STRICT un'espressione
+#   tutta strict (sottrazione, extract e cast lo sono).
+#   Il gemello per l'ultimo giorno del mese e' fn_fine_mese_di (-83).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261114-82-create-fn-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261114-82-create-fn-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_mese_di(date): il primo giorno del mese di un giorno, con la sola aritmetica
+        di date (IMMUTABLE). Sostituisce date_trunc('month', <date>)::date, che passa dal fuso
+        della sessione. Brief: brief-db-mese-di-un-giorno, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_mese_di';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: un giorno qualunque del
+              -- calendario e il primo del suo mese. Serve colonne e parametri
+              -- diversi, quindi non e' il riflesso di nessuna colonna.
+              CREATE OR REPLACE FUNCTION script.fn_mese_di(p_giorno date)
+               RETURNS date
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- Il primo giorno del mese di p_giorno: p_giorno meno i
+                  -- giorni gia' passati del suo mese. date - integer e'
+                  -- date: nessun istante, nessun fuso.
+                  SELECT p_giorno - (EXTRACT(day FROM p_giorno)::integer - 1)
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mese_di(p_giorno date)
+                IS 'Il primo giorno del mese di p_giorno: il mese di competenza di un giorno. Solo aritmetica di date, quindi IMMUTABLE e indipendente dal fuso della sessione: si usa anche in un CHECK o in un indice. ⭐ Si usa al posto di date_trunc(''month'', <date>)::date, che passa da un timestamptz nel fuso della sessione. Lavora su un GIORNO: un istante (timestamptz) passa prima da script.fn_giorno_operativo, che da'' il giorno nel fuso dell''azienda. NULL -> NULL. L''ultimo giorno del mese e'' script.fn_fine_mese_di.';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono: il ciclo che li ridistribuisce gira in ci_apply.
+              --    Il ruolo batch e' coperto dal provisioning (linee-guida-sql.md §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_mese_di(date) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_mese_di(date);

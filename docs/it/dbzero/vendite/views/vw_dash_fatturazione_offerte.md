@@ -15,7 +15,7 @@
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte
 WITH (security_invoker=on) AS
 SELECT 'OFFERTA_COMMERCIALE'::character varying AS area,
-    (date_trunc('month'::text, (COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert)))::timestamp with time zone))::date AS competenza_mese,
+    script.fn_mese_di(COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert))) AS competenza_mese,
     o.id AS documento_id,
     (o.uid)::text AS documento_uid,
     o.codice,

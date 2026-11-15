@@ -106,7 +106,7 @@ BEGIN
         END IF;
 
         -- Guard coerenza dimensionale (pattern ripetuto)
-        IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+        IF p_competenza_mese IS NOT NULL AND script.fn_mese_di(p_competenza_mese) <> v_competenza THEN
             PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
                 jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
                 NULL::uuid, 'competenza_mese', p_lotto_id::text);
@@ -168,7 +168,7 @@ BEGIN
 
         IF v_lotto_id IS NOT NULL THEN
             -- Stessi guard coerenza del caso 1
-            IF p_competenza_mese IS NOT NULL AND date_trunc('month', p_competenza_mese)::DATE <> v_competenza THEN
+            IF p_competenza_mese IS NOT NULL AND script.fn_mese_di(p_competenza_mese) <> v_competenza THEN
                 PERFORM script.fn_log_and_raise_error('vendite', 'fn_get_or_create_lotto', 'E_LOTTO_PARAMETRO_NON_COERENTE',
                     jsonb_build_object('parametro', 'competenza_mese', 'atteso', v_competenza, 'ricevuto', p_competenza_mese),
                     NULL::uuid, 'competenza_mese', v_lotto_id::text);

@@ -73,7 +73,7 @@ BEGIN
   -- Normalizza al primo del mese
   v_competenza_mese := CASE
     WHEN p_competenza_mese IS NOT NULL
-    THEN date_trunc('month', p_competenza_mese)::date
+    THEN script.fn_mese_di(p_competenza_mese)
     ELSE NULL
   END;
 

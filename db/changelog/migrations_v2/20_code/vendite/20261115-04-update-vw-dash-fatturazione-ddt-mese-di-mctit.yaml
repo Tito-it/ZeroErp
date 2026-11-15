@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.VW_DASH_FATTURAZIONE_DDT: IL MESE DAL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 2 (§6.2).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   1 espressione `date_trunc('month', <date>)::date` → script.fn_mese_di(<date>):
+#   il mese della data del DDT.
+#   Il risultato e' lo stesso giorno su ogni data e in ogni fuso di sessione
+#   (script/test-mese-di-un-giorno-v1, 12-15), e la colonna resta date.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: nomi, ordine e tipi delle colonne non cambiano,
+#   quindi le viste che dipendono da questa restano in piedi, e COMMENT e
+#   GRANT (che stanno sull'oggetto) non si toccano. WITH (security_invoker)
+#   si RIPETE: il REPLACE sostituisce le opzioni con quelle scritte.
+#   Il corpo e' la definizione viva del 2026-11-15, letta con
+#   `SET search_path = pg_catalog` (nomi qualificati, linee-guida-sql §5c);
+#   il rollback la rimette identica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-04-update-vw-dash-fatturazione-ddt-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261115-04-update-vw-dash-fatturazione-ddt-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_ddt: il mese di competenza da script.fn_mese_di invece che da
+        date_trunc, stesso risultato. Brief: brief-db-mese-di-un-giorno, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT (SELECT count(*) FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'vendite' AND c.relname = 'vw_dash_fatturazione_ddt' AND c.relkind = 'v')
+                   + (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ddt WITH (security_invoker = on) AS
+               WITH righe AS (
+                       SELECT dr.ddt_id,
+                          dr.id AS riga_id,
+                          script.fn_imponibile_riga(dr.quantita, COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario), dr.sconto_percentuale) AS valore_riga,
+                          (EXISTS ( SELECT 1
+                                 FROM vendite.commesse_attivita ca
+                                WHERE ca.segment_key::text = script.fn_segment_key('DDT_VENDITA'::character varying, d2.uid::text, dr.id)::text AND ca.stato_emissione::text = 'EMESSA'::text)) AS transitata
+                         FROM vendite.ddt_righe dr
+                           JOIN vendite.ddt d2 ON d2.id = dr.ddt_id
+                           LEFT JOIN LATERAL ( SELECT or_r.prezzo_unitario AS src_prezzo_unitario
+                                 FROM vendite.ordini_righe_fulfillment ful
+                                   JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                                WHERE ful.ddt_riga_id = dr.id
+                                ORDER BY ful.id
+                               LIMIT 1) src ON true
+                        WHERE dr.attivo IS TRUE
+                      )
+               SELECT 'DDT_VENDITA'::character varying AS area,
+                  script.fn_mese_di(d.data) AS competenza_mese,
+                  d.id AS documento_id,
+                  d.uid::text AS documento_uid,
+                  d.numero::text AS codice,
+                  d.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                  count(r.riga_id)::integer AS unita_totali,
+                  count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                  count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                  sdd.is_abortito,
+                      CASE
+                          WHEN sdd.is_abortito THEN NULL::text
+                          WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                          WHEN sdd.iniziale THEN 'DOC_BOZZA'::text
+                          WHEN sdd.ordine < COALESCE(trg.ordine, sped.ordine) THEN 'IN_TRANSITO'::text
+                          WHEN count(r.riga_id) FILTER (WHERE r.transitata) = 0 THEN 'PUSH_NON_ESEGUITO'::text
+                          ELSE 'PUSH_PARZIALE'::text
+                      END::character varying AS motivo_fermo,
+                  sdd.codice_interno AS stato_codice_interno,
+                  sdd.codice AS stato_codice,
+                  sdd.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  d.data AS data_riferimento
+                 FROM vendite.ddt d
+                   JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id AND caus.fatturabile IS TRUE
+                   LEFT JOIN LATERAL ( SELECT o_src.fatturazione_trigger
+                         FROM vendite.ordini_righe_fulfillment ful
+                           JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                           JOIN vendite.ordini o_src ON o_src.id = or_r.ordine_id
+                           JOIN vendite.ddt_righe dr2 ON dr2.id = ful.ddt_riga_id
+                        WHERE dr2.ddt_id = d.id
+                        ORDER BY ful.id
+                       LIMIT 1) ord ON true
+                   LEFT JOIN config.stati_doc_ddt trg ON trg.codice_interno::text = ord.fatturazione_trigger::text
+                   LEFT JOIN config.stati_doc_ddt sped ON sped.codice_interno::text = 'SPEDITO'::text
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = d.destinatario_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN righe r ON r.ddt_id = d.id
+                WHERE COALESCE(ord.fatturazione_trigger, 'SPEDITO'::character varying)::text <> 'CONFERMATO'::text
+                GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id, sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.iniziale, sdd.ordine, trg.ordine, sped.ordine, s.ragione_sociale_completa;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_ddt WITH (security_invoker = on) AS
+               WITH righe AS (
+                       SELECT dr.ddt_id,
+                          dr.id AS riga_id,
+                          script.fn_imponibile_riga(dr.quantita, COALESCE(dr.prezzo_unitario, src.src_prezzo_unitario), dr.sconto_percentuale) AS valore_riga,
+                          (EXISTS ( SELECT 1
+                                 FROM vendite.commesse_attivita ca
+                                WHERE ca.segment_key::text = script.fn_segment_key('DDT_VENDITA'::character varying, d2.uid::text, dr.id)::text AND ca.stato_emissione::text = 'EMESSA'::text)) AS transitata
+                         FROM vendite.ddt_righe dr
+                           JOIN vendite.ddt d2 ON d2.id = dr.ddt_id
+                           LEFT JOIN LATERAL ( SELECT or_r.prezzo_unitario AS src_prezzo_unitario
+                                 FROM vendite.ordini_righe_fulfillment ful
+                                   JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                                WHERE ful.ddt_riga_id = dr.id
+                                ORDER BY ful.id
+                               LIMIT 1) src ON true
+                        WHERE dr.attivo IS TRUE
+                      )
+               SELECT 'DDT_VENDITA'::character varying AS area,
+                  date_trunc('month'::text, d.data::timestamp with time zone)::date AS competenza_mese,
+                  d.id AS documento_id,
+                  d.uid::text AS documento_uid,
+                  d.numero::text AS codice,
+                  d.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                  count(r.riga_id)::integer AS unita_totali,
+                  count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                  count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                  sdd.is_abortito,
+                      CASE
+                          WHEN sdd.is_abortito THEN NULL::text
+                          WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                          WHEN sdd.iniziale THEN 'DOC_BOZZA'::text
+                          WHEN sdd.ordine < COALESCE(trg.ordine, sped.ordine) THEN 'IN_TRANSITO'::text
+                          WHEN count(r.riga_id) FILTER (WHERE r.transitata) = 0 THEN 'PUSH_NON_ESEGUITO'::text
+                          ELSE 'PUSH_PARZIALE'::text
+                      END::character varying AS motivo_fermo,
+                  sdd.codice_interno AS stato_codice_interno,
+                  sdd.codice AS stato_codice,
+                  sdd.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  d.data AS data_riferimento
+                 FROM vendite.ddt d
+                   JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   JOIN config.causali_trasporto caus ON caus.id = d.causale_trasporto_id AND caus.fatturabile IS TRUE
+                   LEFT JOIN LATERAL ( SELECT o_src.fatturazione_trigger
+                         FROM vendite.ordini_righe_fulfillment ful
+                           JOIN vendite.ordini_righe or_r ON or_r.id = ful.ordine_riga_id
+                           JOIN vendite.ordini o_src ON o_src.id = or_r.ordine_id
+                           JOIN vendite.ddt_righe dr2 ON dr2.id = ful.ddt_riga_id
+                        WHERE dr2.ddt_id = d.id
+                        ORDER BY ful.id
+                       LIMIT 1) ord ON true
+                   LEFT JOIN config.stati_doc_ddt trg ON trg.codice_interno::text = ord.fatturazione_trigger::text
+                   LEFT JOIN config.stati_doc_ddt sped ON sped.codice_interno::text = 'SPEDITO'::text
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON sr.id = d.destinatario_soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   LEFT JOIN righe r ON r.ddt_id = d.id
+                WHERE COALESCE(ord.fatturazione_trigger, 'SPEDITO'::character varying)::text <> 'CONFERMATO'::text
+                GROUP BY d.id, d.uid, d.numero, d.data, d.emittente_fiscale_id, sdd.codice_interno, sdd.codice, sdd.fase, sdd.is_abortito, sdd.iniziale, sdd.ordine, trg.ordine, sped.ordine, s.ragione_sociale_completa;

@@ -123,6 +123,7 @@ search:
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
 - [fn_esigibilita_iva_documento](manual/fn_esigibilita_iva_documento.md)
 - [fn_fattore_uom_alla_data](manual/fn_fattore_uom_alla_data.md) — Dà il fattore di un'unità per un articolo a una data, o rifiuta: senza fattore la riga non passa (`E_UOM_MISSING`), perché una quantità base inventata è peggio di nessuna.
+- [fn_fine_mese_di](manual/fn_fine_mese_di.md) — L'ultimo giorno del mese di un giorno (il 28, il 29, il 30 o il 31), calcolato sul calendario.
 - [fn_generate_codice](manual/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_email](manual/fn_get_auth_user_id_for_email.md)
 - [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
@@ -205,6 +206,7 @@ search:
 - [fn_login_attesa_secondi](manual/fn_login_attesa_secondi.md) — (scritta il 25-09-2026)
 - [fn_login_freno_passo](manual/fn_login_freno_passo.md) — (scritta il 25-09-2026)
 - [fn_login_parametri](manual/fn_login_parametri.md) — (scritta il 25-09-2026)
+- [fn_mese_di](manual/fn_mese_di.md) — Il primo giorno del mese di un giorno: il **mese di competenza** di una data, calcolato sul calendario.
 - [fn_norm_testo](manual/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](manual/fn_norm_via.md) — (rev 2026-08-21)
 - [fn_notify_permessi_catalogo](manual/fn_notify_permessi_catalogo.md) — (scritta il 04-10-2026)

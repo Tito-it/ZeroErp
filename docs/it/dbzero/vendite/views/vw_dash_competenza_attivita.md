@@ -30,7 +30,7 @@ SELECT ca.competenza_mese,
     af.data_insert AS data_emissione,
         CASE
             WHEN (af.id IS NULL) THEN NULL::boolean
-            ELSE ((date_trunc('month'::text, (script.fn_giorno_operativo(af.data_insert))::timestamp without time zone))::date > ca.competenza_mese)
+            ELSE (script.fn_mese_di(script.fn_giorno_operativo(af.data_insert)) > ca.competenza_mese)
         END AS emessa_in_ritardo,
     af.sospesa,
     af.posticipa_al,

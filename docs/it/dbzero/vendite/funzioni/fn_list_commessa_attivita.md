@@ -124,7 +124,7 @@ BEGIN
     IF p_offset IS NULL OR p_offset < 0 THEN p_offset := 0; END IF;
 
     v_competenza_mese := CASE WHEN p_competenza_mese IS NOT NULL
-        THEN date_trunc('month', p_competenza_mese)::DATE ELSE NULL END;
+        THEN script.fn_mese_di(p_competenza_mese) ELSE NULL END;
 
     -- SQL dinamico solo per l'ORDER BY (non parametrizzabile).
     -- L'espressione viene dal CASE chiuso qui sopra, MAI dal

@@ -1,0 +1,356 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.FN_LIST_EMITTIBILI_LANE: IL MESE DAL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 3 (§6.3).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   Le espressioni del mese (1 mese), e nient'altro nel corpo:
+#   - date_trunc('month', <date>)::date → script.fn_mese_di(<date>)
+#   Stesso risultato su ogni data e in ogni fuso di sessione
+#   (script/test-mese-di-un-giorno-v1, 12-15).
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   Dal CREATE di 20_code/vendite/20260909-60-update-fn-list-emittibili-lane-legge-la-classe-mctit.yaml
+#   (l'ultimo che scrive la funzione), verificato UGUALE al corpo vivo
+#   il 2026-11-15. Non da pg_get_functiondef: scioglie i %TYPE di firma,
+#   RETURNS e DECLARE (linee-guida-sql §5g), che qui restano come erano.
+#   Firma e tipi immutati: CREATE OR REPLACE, COMMENT e GRANT restano
+#   quelli dell'oggetto. Il rollback rimette il CREATE d'origine.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-22-update-fn-list-emittibili-lane-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261115-22-update-fn-list-emittibili-lane-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_emittibili_lane: il mese e la fine del mese da script.fn_mese_di e
+        script.fn_fine_mese_di invece che da date_trunc, stesso risultato. Brief:
+        brief-db-mese-di-un-giorno, giro 3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'vendite' AND p.proname = 'fn_list_emittibili_lane')
+                   + (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname IN ('fn_mese_di', 'fn_fine_mese_di'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date, p_billing_account_id vendite.commesse.billing_account_id%TYPE DEFAULT NULL::bigint, p_utility_id vendite.commesse.utility_id%TYPE DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint, p_fatturazione_immediata vendite.commesse.fatturazione_immediata%TYPE DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[])
+               RETURNS TABLE(emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE, tipo_doc_fiscale_id vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE, utility_id vendite.commesse.utility_id%TYPE, competenza_mese vendite.commesse_attivita.competenza_mese%TYPE, total_candidate bigint, gruppi_coperti text[])
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+                v_corsia          record;
+                v_n               integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo: rispondere al driver batch "quali TERNE distinte
+                --   (emittente, tipo_doc, utility) hanno lavoro pronto da
+                --   fatturare, e fino a quale competenza creare il lotto".
+                -- Criteri:
+                --   1. commessa in stato emittibile (stati_commessa.emittibile=true)
+                --   2. righe commesse_attivita APPROVATA + NON_EMESSA (allineato pull)
+                --   3. tipo_doc_fiscale_id NOT NULL (il lotto lo richiede)
+                --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
+                --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
+                --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+                --   6. rev 2026-08-15: + gruppi_coperti text[] — QUALI gruppi
+                --      fatturabili sono finiti in questa terna. Senza, un'emissione
+                --      parziale (3 gruppi chiesti, 2 serviti) non sa dire quale sia
+                --      rimasto fuori. ⚠️ E' una PREVISIONE: per il consuntivo di
+                --      cio' che un giro ha davvero fatturato usare
+                --      vendite.fn_esito_gruppi_giro(lotti).
+                --   7. rev 2026-07-27: p_gruppi restringe ai GRUPPI FATTURABILI
+                --      richiesti, cosi' l'emissione mirata non fa nascere un lotto
+                --      per ogni altra terna del perimetro (lotti vuoti = rumore).
+                --      NULL = nessuna restrizione (comportamento storico).
+                --   8. rev 2026-08-15 (§9 F7): il TETTO non tronca piu' in
+                --      silenzio una richiesta MIRATA. Vedi il blocco qui sotto.
+                -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
+                --   (commesse.utility_id) -> in output mai NULL.
+                -- Output per terna: competenza_mese = max(...), total_candidate = count(*).
+                -- Regole: p_limit max 10000/default 1000; competenza normalizzata al mese;
+                --   STABLE (read-only); LIMIT sulle TERNE.
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN script.fn_mese_di(p_competenza_mese)
+                  ELSE NULL
+                END;
+
+                -- ⚠️ SI LEGGE UNA CORSIA IN PIU' DEL TETTO (LIMIT p_limit + 1).
+                -- Alla corsia numero p_limit + 1 si sa che ce n'era dell'altra,
+                -- e si puo' distinguere «erano esattamente p_limit» da «sono
+                -- state tagliate». Il conto si fa scorrendo il risultato UNA
+                -- volta: un secondo SELECT count(*) di controllo sarebbe stata
+                -- una seconda copia dei filtri di discovery dentro la stessa
+                -- funzione, cioe' l'errore che il §7.1 ha gia' corretto.
+                FOR v_corsia IN
+                  SELECT
+                    e.emittente_soggetto_ruolo_id  AS emittente_sr,
+                    e.tipo_doc_fiscale_id          AS tipo_doc,
+                    e.utility_id                   AS utility,
+                    max(e.competenza_mese)         AS competenza,
+                    count(e.commessa_attivita_id)::bigint AS candidate,
+                    -- I gruppi fatturabili coperti da questa terna.
+                    -- ⭐ rev 2026-09-09: la chiave arriva GIA' COSTRUITA dal classificatore,
+                    -- che la calcola una volta per riga dalla sola fonte di verita'
+                    -- (vendite.fn_build_gruppo_fatturabile_key). Prima era invocata qui, e
+                    -- l'intestazione spiegava perche' l'ORDER BY dentro l'aggregato non la
+                    -- valutasse due volte: quel paragrafo non serve piu'.
+                    -- ⚠️ ORDER BY dentro l'aggregato: l'ordine dev'essere DETERMINISTICO,
+                    -- altrimenti due chiamate identiche danno array diversi e chi li
+                    -- confronta (l'esito, un test) vede differenze che non esistono.
+                    array_agg(DISTINCT e.gruppo_key ORDER BY e.gruppo_key) AS gruppi
+                  -- ⭐ LA SEDE UNICA DEL CRITERIO (changeSet 20260909-59). Qui non si
+                  --   scrive PIU' nessuna condizione di ammissibilita': si LEGGE la classe.
+                  --   La gemella fn_diagnostica_gruppi_fatturabili conta le stesse classi,
+                  --   quindi le due non possono piu' divergere — ed e' successo davvero, il
+                  --   2026-09-09: un criterio aggiunto qui e non li'.
+                  FROM vendite.vw_commesse_attivita_emittibilita e
+                  -- ⭐ I DUE FATTORI, dichiarati. La lane li pretende ENTRAMBI: la RIGA
+                  --   dev'essere pronta e la TESTATA emittibile. La diagnostica li tiene
+                  --   separati apposta, per poter dire «le righe sarebbero pronte, e' la
+                  --   commessa a essere in BOZZA» — ed e' la differenza che prima era
+                  --   IMPLICITA, cioe' indistinguibile da una svista.
+                 WHERE e.classe_emittibilita = 'PRONTA'
+                   AND e.commessa_emittibile
+                   -- ⚠️ IL PERIMETRO DELLA DOMANDA resta qui, e non nella vista: dipende da
+                   --   chi chiede, non dalla riga. La competenza e' CUMULATIVA (<=), ed e'
+                   --   anche il motivo per cui «fuori competenza» non e' una classe: quella
+                   --   riga e' PRONTA, solo non per QUESTO mese.
+                   AND (v_competenza_mese IS NULL OR e.competenza_mese <= v_competenza_mese)
+                   AND (p_billing_account_id IS NULL OR e.billing_account_id = p_billing_account_id)
+                   AND (p_utility_id IS NULL OR e.utility_id = p_utility_id)
+                   AND (p_emittente_soggetto_ruolo_id IS NULL OR e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                   AND (p_fatturazione_immediata IS NULL OR e.fatturazione_immediata = p_fatturazione_immediata)
+                   -- EMISSIONE MIRATA (rev 2026-07-27): un gruppo con righe di tipo doc
+                   -- diverso resta su piu' terne, e vengono restituite tutte (G15).
+                   AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
+                  GROUP BY
+                    e.emittente_soggetto_ruolo_id,
+                    e.tipo_doc_fiscale_id,
+                    e.utility_id
+                  ORDER BY
+                    e.emittente_soggetto_ruolo_id,
+                    e.tipo_doc_fiscale_id,
+                    e.utility_id
+                  LIMIT p_limit + 1
+                LOOP
+                  v_n := v_n + 1;
+
+                  IF v_n > p_limit THEN
+                    -- Siamo oltre il tetto: c'era altro lavoro e non entra.
+                    IF p_gruppi IS NOT NULL THEN
+                      -- MIRATA: il perimetro e' NOMINALE. Troncare una richiesta
+                      -- nominale non e' un successo parziale, e' una richiesta
+                      -- senza risposta — e a valle diventerebbe una diagnosi
+                      -- FALSA («questi gruppi non sono fatturabili») su gruppi
+                      -- che erano solo oltre il taglio.
+                      -- ⚠️ Il RETURN NEXT accumula in un tuplestore: sollevando
+                      -- qui il chiamante non riceve NESSUNA riga, mai una mezza
+                      -- risposta accompagnata da un errore.
+                      PERFORM script.fn_log_and_raise_error(
+                        'vendite', 'fn_list_emittibili_lane',
+                        'E_FATTURAZIONE_MIRATA_TRONCATA',
+                        jsonb_build_object('p_limit', p_limit,
+                                           'gruppi_richiesti', cardinality(p_gruppi)),
+                        NULL::uuid, p_limit::text);
+                    END IF;
+                    -- MASSA: il tetto e' una valvola di sicurezza, e troncare
+                    -- e' il comportamento storico. Si esce senza rumore.
+                    EXIT;
+                  END IF;
+
+                  emittente_soggetto_ruolo_id := v_corsia.emittente_sr;
+                  tipo_doc_fiscale_id         := v_corsia.tipo_doc;
+                  utility_id                  := v_corsia.utility;
+                  competenza_mese             := v_corsia.competenza;
+                  total_candidate             := v_corsia.candidate;
+                  gruppi_coperti              := v_corsia.gruppi;
+                  RETURN NEXT;
+                END LOOP;
+
+                RETURN;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_emittibili_lane(p_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date, p_billing_account_id vendite.commesse.billing_account_id%TYPE DEFAULT NULL::bigint, p_utility_id vendite.commesse.utility_id%TYPE DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE DEFAULT NULL::bigint, p_fatturazione_immediata vendite.commesse.fatturazione_immediata%TYPE DEFAULT NULL::boolean, p_limit integer DEFAULT 1000, p_gruppi text[] DEFAULT NULL::text[])
+               RETURNS TABLE(emittente_soggetto_ruolo_id vendite.commesse.emittente_soggetto_ruolo_id%TYPE, tipo_doc_fiscale_id vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE, utility_id vendite.commesse.utility_id%TYPE, competenza_mese vendite.commesse_attivita.competenza_mese%TYPE, total_candidate bigint, gruppi_coperti text[])
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_competenza_mese vendite.commesse_attivita.competenza_mese%TYPE;
+                v_corsia          record;
+                v_n               integer := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo: rispondere al driver batch "quali TERNE distinte
+                --   (emittente, tipo_doc, utility) hanno lavoro pronto da
+                --   fatturare, e fino a quale competenza creare il lotto".
+                -- Criteri:
+                --   1. commessa in stato emittibile (stati_commessa.emittibile=true)
+                --   2. righe commesse_attivita APPROVATA + NON_EMESSA (allineato pull)
+                --   3. tipo_doc_fiscale_id NOT NULL (il lotto lo richiede)
+                --   4. competenza CUMULATIVA: competenza_mese <= p_competenza_mese
+                --      (coerente con fn_select_attivita_fatturabili); NULL = no limite
+                --   5. filtri perimetro BA/utility/emittente; corsia fatturazione_immediata
+                --   6. rev 2026-08-15: + gruppi_coperti text[] — QUALI gruppi
+                --      fatturabili sono finiti in questa terna. Senza, un'emissione
+                --      parziale (3 gruppi chiesti, 2 serviti) non sa dire quale sia
+                --      rimasto fuori. ⚠️ E' una PREVISIONE: per il consuntivo di
+                --      cio' che un giro ha davvero fatturato usare
+                --      vendite.fn_esito_gruppi_giro(lotti).
+                --   7. rev 2026-07-27: p_gruppi restringe ai GRUPPI FATTURABILI
+                --      richiesti, cosi' l'emissione mirata non fa nascere un lotto
+                --      per ogni altra terna del perimetro (lotti vuoti = rumore).
+                --      NULL = nessuna restrizione (comportamento storico).
+                --   8. rev 2026-08-15 (§9 F7): il TETTO non tronca piu' in
+                --      silenzio una richiesta MIRATA. Vedi il blocco qui sotto.
+                -- Grana: (emittente, tipo_doc, utility). utility_id e' NOT NULL a monte
+                --   (commesse.utility_id) -> in output mai NULL.
+                -- Output per terna: competenza_mese = max(...), total_candidate = count(*).
+                -- Regole: p_limit max 10000/default 1000; competenza normalizzata al mese;
+                --   STABLE (read-only); LIMIT sulle TERNE.
+                -- =========================================================
+                IF p_limit IS NULL OR p_limit <= 0 THEN
+                  p_limit := 1000;
+                END IF;
+                IF p_limit > 10000 THEN
+                  p_limit := 10000;
+                END IF;
+
+                v_competenza_mese := CASE
+                  WHEN p_competenza_mese IS NOT NULL
+                  THEN date_trunc('month', p_competenza_mese)::date
+                  ELSE NULL
+                END;
+
+                -- ⚠️ SI LEGGE UNA CORSIA IN PIU' DEL TETTO (LIMIT p_limit + 1).
+                -- Alla corsia numero p_limit + 1 si sa che ce n'era dell'altra,
+                -- e si puo' distinguere «erano esattamente p_limit» da «sono
+                -- state tagliate». Il conto si fa scorrendo il risultato UNA
+                -- volta: un secondo SELECT count(*) di controllo sarebbe stata
+                -- una seconda copia dei filtri di discovery dentro la stessa
+                -- funzione, cioe' l'errore che il §7.1 ha gia' corretto.
+                FOR v_corsia IN
+                  SELECT
+                    e.emittente_soggetto_ruolo_id  AS emittente_sr,
+                    e.tipo_doc_fiscale_id          AS tipo_doc,
+                    e.utility_id                   AS utility,
+                    max(e.competenza_mese)         AS competenza,
+                    count(e.commessa_attivita_id)::bigint AS candidate,
+                    -- I gruppi fatturabili coperti da questa terna.
+                    -- ⭐ rev 2026-09-09: la chiave arriva GIA' COSTRUITA dal classificatore,
+                    -- che la calcola una volta per riga dalla sola fonte di verita'
+                    -- (vendite.fn_build_gruppo_fatturabile_key). Prima era invocata qui, e
+                    -- l'intestazione spiegava perche' l'ORDER BY dentro l'aggregato non la
+                    -- valutasse due volte: quel paragrafo non serve piu'.
+                    -- ⚠️ ORDER BY dentro l'aggregato: l'ordine dev'essere DETERMINISTICO,
+                    -- altrimenti due chiamate identiche danno array diversi e chi li
+                    -- confronta (l'esito, un test) vede differenze che non esistono.
+                    array_agg(DISTINCT e.gruppo_key ORDER BY e.gruppo_key) AS gruppi
+                  -- ⭐ LA SEDE UNICA DEL CRITERIO (changeSet 20260909-59). Qui non si
+                  --   scrive PIU' nessuna condizione di ammissibilita': si LEGGE la classe.
+                  --   La gemella fn_diagnostica_gruppi_fatturabili conta le stesse classi,
+                  --   quindi le due non possono piu' divergere — ed e' successo davvero, il
+                  --   2026-09-09: un criterio aggiunto qui e non li'.
+                  FROM vendite.vw_commesse_attivita_emittibilita e
+                  -- ⭐ I DUE FATTORI, dichiarati. La lane li pretende ENTRAMBI: la RIGA
+                  --   dev'essere pronta e la TESTATA emittibile. La diagnostica li tiene
+                  --   separati apposta, per poter dire «le righe sarebbero pronte, e' la
+                  --   commessa a essere in BOZZA» — ed e' la differenza che prima era
+                  --   IMPLICITA, cioe' indistinguibile da una svista.
+                 WHERE e.classe_emittibilita = 'PRONTA'
+                   AND e.commessa_emittibile
+                   -- ⚠️ IL PERIMETRO DELLA DOMANDA resta qui, e non nella vista: dipende da
+                   --   chi chiede, non dalla riga. La competenza e' CUMULATIVA (<=), ed e'
+                   --   anche il motivo per cui «fuori competenza» non e' una classe: quella
+                   --   riga e' PRONTA, solo non per QUESTO mese.
+                   AND (v_competenza_mese IS NULL OR e.competenza_mese <= v_competenza_mese)
+                   AND (p_billing_account_id IS NULL OR e.billing_account_id = p_billing_account_id)
+                   AND (p_utility_id IS NULL OR e.utility_id = p_utility_id)
+                   AND (p_emittente_soggetto_ruolo_id IS NULL OR e.emittente_soggetto_ruolo_id = p_emittente_soggetto_ruolo_id)
+                   AND (p_fatturazione_immediata IS NULL OR e.fatturazione_immediata = p_fatturazione_immediata)
+                   -- EMISSIONE MIRATA (rev 2026-07-27): un gruppo con righe di tipo doc
+                   -- diverso resta su piu' terne, e vengono restituite tutte (G15).
+                   AND (p_gruppi IS NULL OR e.gruppo_key = ANY (p_gruppi))
+                  GROUP BY
+                    e.emittente_soggetto_ruolo_id,
+                    e.tipo_doc_fiscale_id,
+                    e.utility_id
+                  ORDER BY
+                    e.emittente_soggetto_ruolo_id,
+                    e.tipo_doc_fiscale_id,
+                    e.utility_id
+                  LIMIT p_limit + 1
+                LOOP
+                  v_n := v_n + 1;
+
+                  IF v_n > p_limit THEN
+                    -- Siamo oltre il tetto: c'era altro lavoro e non entra.
+                    IF p_gruppi IS NOT NULL THEN
+                      -- MIRATA: il perimetro e' NOMINALE. Troncare una richiesta
+                      -- nominale non e' un successo parziale, e' una richiesta
+                      -- senza risposta — e a valle diventerebbe una diagnosi
+                      -- FALSA («questi gruppi non sono fatturabili») su gruppi
+                      -- che erano solo oltre il taglio.
+                      -- ⚠️ Il RETURN NEXT accumula in un tuplestore: sollevando
+                      -- qui il chiamante non riceve NESSUNA riga, mai una mezza
+                      -- risposta accompagnata da un errore.
+                      PERFORM script.fn_log_and_raise_error(
+                        'vendite', 'fn_list_emittibili_lane',
+                        'E_FATTURAZIONE_MIRATA_TRONCATA',
+                        jsonb_build_object('p_limit', p_limit,
+                                           'gruppi_richiesti', cardinality(p_gruppi)),
+                        NULL::uuid, p_limit::text);
+                    END IF;
+                    -- MASSA: il tetto e' una valvola di sicurezza, e troncare
+                    -- e' il comportamento storico. Si esce senza rumore.
+                    EXIT;
+                  END IF;
+
+                  emittente_soggetto_ruolo_id := v_corsia.emittente_sr;
+                  tipo_doc_fiscale_id         := v_corsia.tipo_doc;
+                  utility_id                  := v_corsia.utility;
+                  competenza_mese             := v_corsia.competenza;
+                  total_candidate             := v_corsia.candidate;
+                  gruppi_coperti              := v_corsia.gruppi;
+                  RETURN NEXT;
+                END LOOP;
+
+                RETURN;
+              END;
+              $function$;

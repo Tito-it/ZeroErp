@@ -2989,6 +2989,23 @@ state scritte — `USING col AT TIME ZONE 'UTC'` dove scrive solo il backend,
 al changeSet (`# timestamp-senza-fuso: ammesso — <perché>`) e il cancello le
 stampa come debito; non si spiegano solo in prosa.
 
+⛔ **Il mese di un giorno è `script.fn_mese_di`, la fine del mese
+`script.fn_fine_mese_di`; `date_trunc` non si scrive.** `date_trunc` non ha una
+variante per `date`: PostgreSQL sceglie quella su `timestamptz`, e la data
+diventa la mezzanotte nel fuso della sessione, si tronca lì e torna data. Il
+risultato coincide, ma il calcolo di un giorno passa da un istante: è `STABLE`,
+non entra in un CHECK né in un indice, e dove il giorno viene da
+`fn_giorno_operativo` andava scritto `giorno::timestamp`, un timestamp nudo da
+dichiarare. La dichiarazione poi si ricopiava da sola: una vista ricreata dalla
+sua definizione viva ne riporta il cast (`vw_dash_competenza_attivita`, che
+dipende da `vw_lotti_fase`). Le due funzioni fanno solo aritmetica di date, sono
+`IMMUTABLE` e il planner le espande nel punto d'uso. Su un **istante**
+`date_trunc` tronca nel fuso della sessione: il giorno aziendale è
+`fn_giorno_operativo`, e da lì si passa al mese. Presidio:
+`scripts/guardrail_forme_changeset.py`, regola `date-trunc`, dai changeSet
+successivi ai due BB (`20261114-84`); pgTAP
+`db/pgtap/script/test-mese-di-un-giorno-v1.sql`.
+
 ### 11.11 ⛔ La prima generazione dei changelog (v1) non si tocca
 
 Presidiato da `scripts/guardrail_v1_congelato.py` in CI (decisione di Tid del

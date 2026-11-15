@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_fine_mese_di — L'ULTIMO GIORNO DEL MESE DI UN GIORNO
+#   Brief: brief-db-mese-di-un-giorno, giro 1 (§4.1). Perimetro e decisioni:
+#   Tid, 2026-11-15.
+#
+# ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────
+#   L'ultimo giorno del mese si scriveva
+#   `(date_trunc('month', x) + interval '1 month - 1 day')::date`: lo stesso
+#   passaggio dal fuso della sessione di fn_mese_di (-82), piu' un interval
+#   che sommato a una data restituisce un timestamp nudo.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Il giorno prima del primo del mese successivo. Al mese successivo si
+#   arriva con `fn_mese_di(p_giorno) + 31`: dal primo di un mese, 31 giorni
+#   dopo si e' sempre nel mese seguente (nessun mese ha piu' di 31 giorni) e
+#   mai in quello dopo ancora (nessun mese ne ha meno di 28). Solo date +/-
+#   integer: niente interval, timestamp o fuso.
+#   Stesse proprieta' di fn_mese_di (IMMUTABLE STRICT PARALLEL SAFE, sql a
+#   stringa, espansa dal planner). Il corpo a stringa non registra la
+#   dipendenza da fn_mese_di in pg_depend: la preCondition chiede che esista.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261114-83-create-fn-fine-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261114-83-create-fn-fine-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_fine_mese_di(date): l'ultimo giorno del mese di un giorno, con la sola
+        aritmetica di date (IMMUTABLE). Sostituisce (date_trunc('month', x) + interval
+        '1 month - 1 day')::date. Brief: brief-db-mese-di-un-giorno, giro 1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT (count(*) FILTER (WHERE p.proname = 'fn_fine_mese_di') = 0
+                      AND count(*) FILTER (WHERE p.proname = 'fn_mese_di') = 1)::int
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_fine_mese_di', 'fn_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: un giorno qualunque del
+              -- calendario e l'ultimo del suo mese. Serve colonne e parametri
+              -- diversi, quindi non e' il riflesso di nessuna colonna.
+              CREATE OR REPLACE FUNCTION script.fn_fine_mese_di(p_giorno date)
+               RETURNS date
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- Il giorno prima del primo del mese successivo. Dal primo
+                  -- del mese, + 31 cade sempre nel mese seguente (nessun mese
+                  -- ha piu' di 31 giorni, nessuno meno di 28).
+                  SELECT script.fn_mese_di(script.fn_mese_di(p_giorno) + 31) - 1
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_fine_mese_di(p_giorno date)
+                IS 'L''ultimo giorno del mese di p_giorno (28, 29, 30 o 31). Solo aritmetica di date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di (date_trunc(''month'', x) + interval ''1 month - 1 day'')::date. Lavora su un GIORNO: un istante (timestamptz) passa prima da script.fn_giorno_operativo. NULL -> NULL. Il primo giorno del mese e'' script.fn_mese_di.';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono: il ciclo che li ridistribuisce gira in ci_apply.
+              --    Il ruolo batch e' coperto dal provisioning (linee-guida-sql.md §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_fine_mese_di(date) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_fine_mese_di(date);

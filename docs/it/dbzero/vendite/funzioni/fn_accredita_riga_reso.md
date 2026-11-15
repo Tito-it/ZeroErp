@@ -386,7 +386,7 @@ BEGIN
                   --    un'etichetta che ogni consumatore
                   --    dovrebbe saper tradurre.
                   p_quantita                      => - v_qta_doc,
-                  p_competenza_mese               => date_trunc('month', v_data)::date,
+                  p_competenza_mese               => script.fn_mese_di(v_data),
                   p_competenza_dal                => v_data,
                   p_competenza_al                 => v_data,
                   -- ⭐ N-1: COPIATO dalla riga di fattura, mai

@@ -32,7 +32,7 @@ WITH righe AS (
           WHERE (dr.attivo IS TRUE)
         )
  SELECT 'DDT_VENDITA'::character varying AS area,
-    (date_trunc('month'::text, (d.data)::timestamp with time zone))::date AS competenza_mese,
+    script.fn_mese_di(d.data) AS competenza_mese,
     d.id AS documento_id,
     (d.uid)::text AS documento_uid,
     (d.numero)::text AS codice,
