@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BACKFILL: le righe base spente si riaccendono (Q34 a).
+#   catalogo.articoli_uom_operativa, is_base AND attivo = false -> attivo = true
+#
+#   Dal 20261111-01 (D7) la base nasceva spenta sotto un articolo creato spento, e
+#   restava spenta anche dopo la sua accensione: senza la base attiva l'unita' base
+#   perde le regole della quantita' (catalogo.fn_uom_operativa_alla_data legge solo
+#   le righe attive). Da -74 la base nasce sempre attiva, da -75 non si spegne; qui
+#   si riaccendono quelle di prima.
+#
+# -- PERCHE' IN 80_data, DOPO IL GUARD ---------------------------------
+#   Il guard della base (-75) rifiuta lo spegnimento, non la riaccensione: questo
+#   UPDATE passa. Il guard della storia non guarda la riga base. Il legame ATTIVO con
+#   l'articolo e' fra le eccezioni (Q31): una base attiva sotto un articolo spento e'
+#   il modello. Su un database ricostruito da zero gli articoli li carica il seed,
+#   dopo -74: questo UPDATE non trova righe. Idempotente.
+#
+# ⚠️ L'UPDATE attraversa i trigger della tabella (audit, tx_id, storico): ogni base
+#   riaccesa riceve una versione nello storico.
+#   Brief: brief-db-revisione-catalogo, §15.11.1, Q34.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261111-76-backfill-articoli-uom-operativa-base-attiva-mctit.yaml
+
+  - changeSet:
+      id: 20261111-76-backfill-articoli-uom-operativa-base-attiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Backfill catalogo.articoli_uom_operativa: le righe base spente si riaccendono
+        (la base e' sempre attiva). Solo DML, idempotente. Brief: brief-db-revisione-catalogo, Q34.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+               WHERE t.tgrelid = to_regclass('catalogo.articoli_uom_operativa')
+                 AND t.tgname = 'trg_articoli_uom_operativa_a10_guard_base_ins_upd_dlt'
+                 AND pg_get_triggerdef(t.oid) LIKE '%UPDATE OF articolo_id, uom_id, is_base, attivo%'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $BACKFILL$
+              DECLARE
+                  v_updated integer;
+              BEGIN
+                  UPDATE catalogo.articoli_uom_operativa
+                     SET attivo = TRUE
+                   WHERE is_base
+                     AND attivo IS NOT TRUE;
+
+                  GET DIAGNOSTICS v_updated = ROW_COUNT;
+                  RAISE NOTICE 'Backfill catalogo.articoli_uom_operativa: % righe base riaccese', v_updated;
+              END
+              $BACKFILL$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il backfill non e' reversibile per riga (non si sa quali erano spente),
+              -- e una base spenta e' fuori modello: il rollback non la rispegne.
+              SELECT 1;

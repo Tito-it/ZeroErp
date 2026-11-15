@@ -21,6 +21,8 @@
 #       §17.6): le colonne `cessazione` e `accettazione` del vocabolario, non
 #       `STATO_CESSATO` dei contratti ne' gli `"ACCETTATO"` / `ACCETTATA` di
 #       preventivo e offerta.
+#       ⭐ E per il rifiuto del cliente (brief-db-stati-documento-dal-vocabolario
+#       §6.7): la colonna `rifiuto`, non `StatoOfferta.RIFIUTATA`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -83,7 +85,18 @@ def stato_di_accettazione(testata: str, *, function_name: str) -> StatoDocumento
     )
 
 
-# Scopo: Lo stato di un ruolo (emissione, accettazione) gia' letto dal
+# Scopo: Lo stato che il rifiuto del cliente scrive, letto dal vocabolario
+#        della testata (colonna `rifiuto`). Gemello di `stato_di_accettazione`:
+#        un documento senza stato di rifiuto che arriva qui e' un errore di
+#        cablaggio.
+def stato_di_rifiuto(testata: str, *, function_name: str) -> StatoDocumento:
+    return _stato_del_vocabolario(
+        DocumentoModelloRepository().stato_di_rifiuto(testata),
+        testata=testata, ruolo="rifiuto", function_name=function_name,
+    )
+
+
+# Scopo: Lo stato di un ruolo (emissione, accettazione, rifiuto) gia' letto dal
 #        vocabolario, o l'errore di cablaggio `E_CONFIG_MANCANTE` se manca: la
 #        stessa regola dei due lettori qui sopra, scritta una volta.
 def _stato_del_vocabolario(

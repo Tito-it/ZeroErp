@@ -1359,11 +1359,11 @@ class DashCompetenzaGruppiRepositoryTests(TestCase):
         # Import locale: lega questo test al presidio trasversale invece di
         # riscrivere la lettura del CSV (che li' e' gia' scritta, con la
         # ricerca della root del repo che non conta i livelli a mano).
-        from apps.core.tests.test_liste_configurabili_seed import _colonne_attive
+        from apps.core.tests._seed_csv import seed_colonne_attive
 
         attese = sorted(
             r["campo_sorgente"]
-            for r in _colonne_attive("vendite.dash_competenza_gruppi")
+            for r in seed_colonne_attive("vendite.dash_competenza_gruppi")
             if r["tipo_colonna"] != "azione" and r["campo_sorgente"]
         )
         self.assertIn(

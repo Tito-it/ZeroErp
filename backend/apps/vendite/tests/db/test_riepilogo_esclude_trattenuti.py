@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: P-10 del brief `brief-db-il-trattenuto-passa-lo-stesso` §8.4 — il
-#        RIEPILOGO della lista gruppi ESCLUDE i gruppi trattenuti da un lotto in
-#        gioco e ne DICHIARA il numero, mentre il totale di PERIMETRO non cambia.
+#        RIEPILOGO della lista gruppi ESCLUDE i gruppi trattenuti da un lotto
+#        pre-fiscale e ne DICHIARA il numero, mentre il totale di PERIMETRO non cambia.
 #
 # ⭐ PERCHE' STA IN DJANGO E NON IN pgTAP: quel numero non viene da una vista, lo
 #    calcola una query del backend (`get_dash_competenza_gruppi_accessori`, che
@@ -23,7 +23,7 @@
 #    ricostruito da zero — cioe' in CI — un testimone «trovato» non esiste, e il
 #    test diventerebbe verde smettendo di verificare (AGENTS.md, regola zero).
 #    Qui si prende un gruppo LIBERO e lo si fa PRENDERE IN CARICO da un lotto
-#    in gioco: il verdetto nasce dalla mossa, e le due misure attorno a essa
+#    pre-fiscale: il verdetto nasce dalla mossa, e le due misure attorno a essa
 #    sono l'una il contrario dell'altra.
 #
 # ⚠️ IL LEGAME DI COMPETENZA E' CUMULATIVO e non un'uguaglianza: un lotto di
@@ -115,8 +115,8 @@ class RiepilogoEscludeTrattenuti(TestCase):
             )
         return str(riga[0]), riga[1], str(riga[2])
 
-    # Scopo: ⭐ IL LOTTO IN GIOCO SI FABBRICA, e qui sta la correzione che vale.
-    # 🔴 La prima stesura lo CERCAVA (`vw_lotti_fase WHERE in_gioco`), e il
+    # Scopo: ⭐ IL LOTTO PRE-FISCALE SI FABBRICA, e qui sta la correzione che vale.
+    # 🔴 La prima stesura lo CERCAVA (allora `vw_lotti_fase WHERE in_gioco`), e il
     #    2026-09-09 e' bastato mezz'ora per vedere il difetto: fra due
     #    esecuzioni i lotti vivi erano spariti — vengono chiusi e annullati di
     #    continuo. Con la ricerca il test avrebbe fatto `skipTest` e detto «ok»,
@@ -127,14 +127,17 @@ class RiepilogoEscludeTrattenuti(TestCase):
     # ⚠️ Tipo documento ed emittente si prendono da un lotto esistente: sono
     #    riferimenti obbligatori e sceglierli a mano significherebbe indovinare
     #    due FK: qui non sono il soggetto della prova, sono l'impalcatura.
-    def _crea_lotto_in_gioco(self, cur, competenza: date) -> int:
-        # ⛔ SI CHIEDE LA PROPRIETA', NON IL NOME. `vw_lotti_fase` deriva
-        #    `in_gioco` da `NOT congela_fiscale`: qualunque stato che non
-        #    congela va bene, e nominare `DRAFT` legherebbe il test a UNO dei
-        #    due stati che oggi soddisfano la regola invece che alla regola.
+    def _crea_lotto_pre_fiscale(self, cur, competenza: date) -> int:
+        # ⛔ SI CHIEDE LA PROPRIETA', NON IL NOME: lo stato in cui il lotto
+        #    NASCE, `iniziale` del vocabolario fiscale. Dal 2026-11-12
+        #    (brief-db-stati-documento-dal-vocabolario, giro 1) il trigger
+        #    della nascita rifiuta un lotto che nasce in un altro stato: un
+        #    generico «primo stato che non congela» passerebbe solo finche'
+        #    il suo id e' quello dell'iniziale. Che lo stato iniziale sia
+        #    anche pre-fiscale non si da' per fatto: lo verifica la vista
+        #    piu' sotto.
         cur.execute(
-            "SELECT id FROM config.stati_doc_fiscale "
-            "WHERE NOT congela_fiscale ORDER BY id LIMIT 1"
+            "SELECT id FROM config.stati_doc_fiscale WHERE iniziale"
         )
         stato = cur.fetchone()
         cur.execute(
@@ -144,7 +147,7 @@ class RiepilogoEscludeTrattenuti(TestCase):
         impalcatura = cur.fetchone()
         if stato is None or impalcatura is None:
             self.skipTest(
-                "manca uno stato non congelante a catalogo, o un lotto da cui "
+                "manca lo stato iniziale a catalogo, o un lotto da cui "
                 "prendere tipo documento ed emittente: non e' fabbricabile"
             )
         cur.execute(
@@ -168,12 +171,16 @@ class RiepilogoEscludeTrattenuti(TestCase):
         creato = cur.fetchone()
         assert creato is not None, "INSERT ... RETURNING senza riga"
         lotto_id = int(creato[0])
-        # ⛔ Si VERIFICA che sia davvero in gioco invece di darlo per fatto: se
-        #    un domani il default dello stato cambiasse, il test misurerebbe un
+        # ⛔ Si VERIFICA che sia davvero pre-fiscale invece di darlo per fatto:
+        #    se un domani lo stato iniziale congelasse, il test misurerebbe un
         #    lotto che non trattiene e tutte le differenze verrebbero zero —
         #    verde, e per la ragione sbagliata.
+        # ⭐ `pre_fiscale` e non `in_gioco`: le due colonne dissentivano solo
+        #    sul lotto senza stato, che dal 2026-11-12 non esiste piu'
+        #    (`stato_doc_fiscale_id NOT NULL`), e `in_gioco` si ritira
+        #    (brief-db-stati-documento-dal-vocabolario §6.4, R-2).
         cur.execute(
-            "SELECT in_gioco FROM vendite.vw_lotti_fase WHERE lotto_id = %s",
+            "SELECT pre_fiscale FROM vendite.vw_lotti_fase WHERE lotto_id = %s",
             [lotto_id],
         )
         fase = cur.fetchone()
@@ -183,7 +190,7 @@ class RiepilogoEscludeTrattenuti(TestCase):
         assert fase is not None
         self.assertTrue(
             fase[0],
-            "il lotto appena creato non risulta IN GIOCO: senza, non trattiene "
+            "il lotto appena creato non risulta PRE-FISCALE: senza, non trattiene "
             "niente e la prova non avrebbe soggetto",
         )
         return lotto_id
@@ -211,7 +218,7 @@ class RiepilogoEscludeTrattenuti(TestCase):
                 # ⭐ Il lotto nasce sulla STESSA competenza del gruppo: la
                 #    regola e' cumulativa (`lotto >= riga`), e l'uguaglianza e'
                 #    il caso piu' stretto che la soddisfa.
-                lotto_id = self._crea_lotto_in_gioco(cur, competenza)
+                lotto_id = self._crea_lotto_pre_fiscale(cur, competenza)
 
                 prima_n, prima_trat, prima_perim = self._misura(competenza, stadio)
 
@@ -222,7 +229,7 @@ class RiepilogoEscludeTrattenuti(TestCase):
                 #    lavorare. `vw_documenti_trattenuti_da_lotto` legge invece
                 #    `fatturazione_lotti_esiti` — cosa il lotto ha PRESO IN
                 #    CARICO — con `stato_esecuzione <> 'ESCLUSO'` e il lotto
-                #    `in_gioco`. Sono due domande diverse, e a trattenere e'
+                #    pre-fiscale. Sono due domande diverse, e a trattenere e'
                 #    la seconda: un documento dichiarato ma mai preso resta
                 #    disponibile per un altro giro.
                 # ⚠️ Si scrivono ENTRAMBE perche' e' la forma che un lotto vero

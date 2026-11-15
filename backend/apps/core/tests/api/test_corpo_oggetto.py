@@ -27,6 +27,7 @@ from rest_framework.test import APIRequestFactory
 
 from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests._repo import repo_root
 
 
 # Scopo: Una Request DRF col corpo dato (JSON grezzo o form).
@@ -97,9 +98,8 @@ class DialettoPatchPutTests(TestCase):
     #    dialetto funziona uguale, e la copia rientrerebbe senza errore.
     def test_patch_put_senza_modalita_forte_leggono_corpo_oggetto(self):
         import ast
-        from pathlib import Path
 
-        apps = Path(__file__).resolve().parents[3]
+        apps = repo_root() / "backend/apps"
         trovate = []
         for f in apps.rglob("*.py"):
             if "tests" in f.parts:
@@ -127,9 +127,8 @@ class DialettoPatchPutTests(TestCase):
     #    su un `QueryDict` serve a tenere le liste di valori.
     def test_nessuna_copia_del_corpo(self):
         import re
-        from pathlib import Path
 
-        apps = Path(__file__).resolve().parents[3]
+        apps = repo_root() / "backend/apps"
         copia = re.compile(r"dict\(corpo_oggetto\(")
         ammessi = {"documenti/api/views.py"}
         trovate = [

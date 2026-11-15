@@ -24,6 +24,7 @@ import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReado
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../core/composables/useTestataDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -47,10 +48,11 @@ import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.v
 import VenditeNoteDrawer from '../_shared/note/VenditeNoteDrawer.vue'
 import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
+import { AZIONE_ANNULLA } from '../_shared/annullo/avvisoDocumentiCollegati'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
-import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO, STATO_CONTRATTO } from '../constants'
+import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO } from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import CampiCanoneTestata from '../_shared/canoni/CampiCanoneTestata.vue'
 import {
@@ -117,17 +119,39 @@ const availableActions = caps.availableActions
 const isLocked = caps.isLocked
 const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.righe?.length ?? 0)
 
-// isContractLocked = stato post-DRAFT. La regola di dominio e' "modifiche
-// libere via form solo in DRAFT". In ATTIVO quali colonne si cambiano lo dice
-// il lock di testata del DB (`valido_al` passa dal dialog «Cessa contratto»),
-// non il form drawer. CESSATO/ANNULLATO interamente immutabili.
-// Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
-// considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
-// erroneamente editabile in stati terminali. Allineato al footer
-// Salva/Chiudi.
-const isContractLocked = computed(
-  () => isEdit.value && detail.value?.stato_codice_interno !== STATO_CONTRATTO.DRAFT,
-)
+// isContractLocked = il contratto e' fuori bozza: il corpo del drawer (righe,
+// sub-drawer) non si cambia piu', e il form solo dove la capability lo dice.
+// In ATTIVO quali colonne si cambiano lo dice il lock di testata del DB
+// (`valido_al` passa dal dialog «Cessa contratto»), non il form drawer.
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-C1) non si
+//    confronta piu' il codice dello stato con DRAFT: lo dice la capability
+//    (`can_edit_righe`, il lock delle righe del DB), col BB
+//    `useCorpoDocumento`. In EDIT, con la capability ancora vuota, resta
+//    chiuso (fail-closed), come prima.
+// ⚠️ Niente `sezioni`: il banner del contratto si accende da
+//    `isContractLocked` e sceglie il testo dallo stato (R-V2 del §6.23, in
+//    attesa del DB); `sezioneChiusa` qui non avrebbe lettori.
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_righe'],
+  presente: () => isEdit.value,
+})
+const isContractLocked = computed(() => corpo.corpoChiuso.value)
+
+// Le marche dello stato corrente, dal vocabolario attraverso la capability
+// (`stato_iniziale` / `stato_emissione` / `stato_cessazione` /
+// `stato_terminale`, giro 6g): il banner e il campo `valido_al` le leggono al
+// posto dei codici (FE-G2, D-MARCHE (a)). Capability vuota = nessuna marca.
+const statoTerminale = computed(() => caps.flag('stato_terminale'))
+const mostraValidoAl = computed(() => !isEdit.value
+  || caps.flag('stato_iniziale')
+  || caps.flag('stato_cessazione')
+  || (Boolean(form.value?.valido_al) && caps.flag('stato_emissione')))
+const etichettaValidoAl = computed(() => {
+  if (caps.flag('stato_cessazione')) return t('vendite.contratti.field_data_cessazione')
+  if (caps.flag('stato_emissione') && form.value?.valido_al) return t('vendite.contratti.field_cessazione_programmata')
+  return t('vendite.contratti.field_valido_al')
+})
 
 // isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
 // Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
@@ -508,8 +532,9 @@ function buildPayload() {
   //    l'intero payload se contiene una chiave che non ammette — non la ignora.
   //    Una chiave accettata in PATCH ma non in CREATE va quindi cancellata qui
   //    sotto, o rompe la creazione contratto.
-  const stato = isEdit.value ? (detail.value?.stato_codice_interno || null) : STATO_CONTRATTO.DRAFT
-  const isDraft = stato === STATO_CONTRATTO.DRAFT
+  // In bozza (o in creazione) il form e' pieno: lo dice il corpo aperto della
+  // capability, non il codice dello stato (FE-C1).
+  const isDraft = !isContractLocked.value
 
   if (!isDraft) {
     // Post-DRAFT il form e' bloccato tranne i tre riferimenti dell'atto: si
@@ -710,10 +735,13 @@ function openCessaDialog(action) {
 //    `programmata` risultava sempre assente e il toast diceva «immediata».
 async function onConfermaCessazione() {
   const validoAl = toDateString(cessaDialogData.value)
-  const targetState = cessaDialogAction.value?.target_state || STATO_CONTRATTO.CESSATO
+  // L'azione e' quella che ha aperto il dialog (`requires_date`): la
+  // destinazione e' il suo `target_state`, mai un codice scritto qui.
+  const action = cessaDialogAction.value
+  if (!action) return
   let esito = null
   await execute(async () => {
-    esito = await store.cambiaStato(props.contrattoId, targetState, { validoAl })
+    esito = await store.cambiaStato(props.contrattoId, action, { validoAl })
     return esito
   })
   if (esito) {
@@ -732,7 +760,7 @@ async function onConfermaCessazione() {
 
 // Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
 //   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
-//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   database (`DRAFT` -> «Bozza», `PARZIALMENTE_EVASO` -> «Parzialmente evaso»: non e'
 //   derivabile dal codice), quindi arriva dalla capability come
 //   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
 //   label dell'azione — comportamento invariato, nessun testo mancante.
@@ -741,11 +769,14 @@ function statoDestinazione(action) {
 }
 
 function onCambiaStato(action) {
-  // Transizione → ATTIVO: dialog dedicato con anteprima documento + allegati.
-  // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
-  // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /cambia-stato/
-  // con E_VENDITE_VALIDAZIONE — questa intercettazione e' la sola via supportata.
-  if (action.target_state === STATO_CONTRATTO.ATTIVO) {
+  // L'attivazione (l'emissione del contratto): dialog dedicato con anteprima
+  // documento + allegati. L'endpoint /emetti/ (multipart) orchestra atomic
+  // state + genera + allegati (refactor 2026-05-28). NB: il BE rifiuta la
+  // transizione via /cambia-stato/ con E_VENDITE_VALIDAZIONE — questa
+  // intercettazione e' la sola via supportata.
+  // ⭐ Si riconosce dal verbo (`key` = `attiva`), non dalla destinazione
+  //    (FE-C2, brief-db-stati-documento-dal-vocabolario §6.19).
+  if (action.key === 'attiva') {
     emissioneDialogVisible.value = true
     return
   }
@@ -757,7 +788,7 @@ function onCambiaStato(action) {
   // wording "operazione irreversibile") invece del confirm generico. Post
   // brief DB 2026-05-28 l'azione arriva data-driven da
   // `fn_available_actions_contratto` con `key='annulla'`.
-  if (action.key === 'annulla') {
+  if (action.key === AZIONE_ANNULLA) {
     onAnnullaContratto(action)
     return
   }
@@ -765,11 +796,11 @@ function onCambiaStato(action) {
     confirmAction({
       header: t('vendite.contratti.conferma_titolo'),
       message: t('vendite.contratti.conferma_cambio_stato', { stato: statoDestinazione(action) }),
-      onAccept: () => eseguiCambioStato(action.target_state),
+      onAccept: () => eseguiCambioStato(action),
     })
     return
   }
-  eseguiCambioStato(action.target_state)
+  eseguiCambioStato(action)
 }
 
 // ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
@@ -780,15 +811,16 @@ function onCambiaStato(action) {
 const cambioStato = useForzaturaConfermata()
 const { richiestaConferma: domandaAnnullo } = cambioStato
 
-async function eseguiCambioStato(targetState) {
+async function eseguiCambioStato(action) {
   const opts = { successMessage: t('vendite.contratti.stato_cambiato') }
-  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
-  const result = targetState === STATO_CONTRATTO.ANNULLATO
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione. Lo si riconosce
+  // dall'azione, non dalla destinazione (FE-C2).
+  const result = action.key === AZIONE_ANNULLA
     ? await cambioStato.esegui(
-      (dichiarazione) => store.cambiaStato(props.contrattoId, targetState, { dichiarazione }),
+      (dichiarazione) => store.cambiaStato(props.contrattoId, action, { dichiarazione }),
       opts,
     )
-    : await execute(() => store.cambiaStato(props.contrattoId, targetState), opts)
+    : await execute(() => store.cambiaStato(props.contrattoId, action), opts)
   if (result !== null) await refreshDetail()
 }
 
@@ -820,16 +852,14 @@ async function handleEmissioneConferma({ files }) {
 // l'azione lato BE. Solo DRAFT: ATTIVO → ANNULLATO non e' transizione
 // ammessa (per contratti attivi si usa CESSATO con data di fine validita').
 function onAnnullaContratto(action) {
-  // target_state arriva data-driven dall'azione BE (`available_actions[]` di
-  // `fn_available_actions_contratto`). Fallback 'ANNULLATO' difensivo per
-  // eventuali chiamate dirette senza action (oggi non esistono).
-  const targetState = action?.target_state || STATO_CONTRATTO.ANNULLATO
+  // La destinazione e' il `target_state` dell'azione BE (`available_actions[]`
+  // di `fn_available_actions_contratto`): nessun ripiego su un codice.
   confirmAction({
     header: t('vendite.contratti.annulla_dialog_titolo'),
     message: t('vendite.contratti.annulla_dialog_messaggio', { numero: detail.value?.numero }),
     acceptLabel: t('vendite.contratti.annulla_dialog_conferma'),
     danger: true,
-    onAccept: () => eseguiCambioStato(targetState),
+    onAccept: () => eseguiCambioStato(action),
   })
 }
 
@@ -962,13 +992,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
          modifica valido_al (programma cessazione) + cambio stato.
          Coerente con Profilo A whitelist BE. -->
-    <Message v-if="isContractLocked && detail.stato_codice_interno !== STATO_CONTRATTO.CESSATO"
+    <!-- ⭐ Avviso o informazione lo dice la marca dello stato
+         (`stato_terminale` della capability: cessato E annullato), non il
+         codice CESSATO (FE-G2, brief-db-stati-documento-dal-vocabolario
+         §6.24, D-MARCHE (a)). Fino al 2026-11-15 un annullato riceveva il
+         banner informativo dell'attivo. -->
+    <Message v-if="isContractLocked && !statoTerminale"
       severity="info" :closable="false" size="small">
       {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
     </Message>
-    <Message v-else-if="isContractLocked && detail.stato_codice_interno === STATO_CONTRATTO.CESSATO"
+    <Message v-else-if="isContractLocked && statoTerminale"
       severity="warn" :closable="false" size="small">
-      {{ t('vendite.contratti.banner_locked_cessato') }}
+      {{ t('vendite.contratti.banner_locked_cessato', { stato: detail.stato_descrizione }) }}
     </Message>
   </template>
 
@@ -1128,26 +1163,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
         :disabled="isEdit && isLocked('valido_dal')"
         :date-format="DATE_FORMAT" show-icon />
     </div>
-    <!-- Campo valido_al condizionale per stato:
-         - DRAFT: editabile come "Fine validita' (opz.)"
-         - ATTIVO con valido_al impostato: readonly come "Cessazione
-           programmata al {data}" (cessazione futura applicata via
-           dialog Cessa, in attesa di scadere)
-         - ATTIVO senza valido_al: nascosto (cessazione passa solo
-           dal dialog dedicato)
-         - CESSATO: readonly come "Data cessazione" -->
-    <div class="form-field"
-      v-if="!isEdit
-        || detail?.stato_codice_interno === STATO_CONTRATTO.DRAFT
-        || detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
-        || (form.valido_al && detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO)">
-      <label>
-        {{ detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
-          ? t('vendite.contratti.field_data_cessazione')
-          : detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO && form.valido_al
-            ? t('vendite.contratti.field_cessazione_programmata')
-            : t('vendite.contratti.field_valido_al') }}
-      </label>
+    <!-- Campo valido_al condizionale per MARCA dello stato (la capability,
+         FE-G2, D-MARCHE (a); fino al 2026-11-15 i codici DRAFT/ATTIVO/CESSATO):
+         - in creazione e nello stato iniziale: editabile come "Fine validita' (opz.)"
+         - stato di emissione con valido_al impostato: readonly come
+           "Cessazione programmata al {data}" (cessazione futura applicata
+           via dialog Cessa, in attesa di scadere)
+         - stato di emissione senza valido_al: nascosto (la cessazione passa
+           solo dal dialog dedicato)
+         - stato di cessazione: readonly come "Data cessazione"
+         - l'annullato non ha nessuna delle tre marche: nascosto, come prima -->
+    <div class="form-field" v-if="mostraValidoAl">
+      <label>{{ etichettaValidoAl }}</label>
       <DatePicker :model-value="parseIsoDate(form.valido_al)"
         @update:model-value="form.valido_al = toIsoDate($event)"
         :disabled="isEdit && isLocked('valido_al')"

@@ -11,7 +11,6 @@ import json
 import logging
 from datetime import date
 from typing import Any
-from uuid import UUID
 
 from django.db import connection, transaction
 
@@ -70,6 +69,11 @@ STATO_VERSIONE_ATTIVA = "ATTIVA"
 #    la stessa cosa per «Elimina» (`ELIMINA_VERSIONE_LISTINO`, §16.11) e per
 #    «Chiudi» (`CHIUDI_VERSIONE_LISTINO`, §16.14), dalla stessa vista. Prima il
 #    frontend li decideva dal codice dello stato (R-L4 del §16.9).
+# ⭐ `aggiunta_riga_blocco_reason` / `_key`: perche' non si aggiunge una riga
+#    alla versione (`AGGIUNGI_RIGA_LISTINO`, D-LIST (a) del
+#    brief-db-stati-documento-dal-vocabolario §6.27): il primo motivo di
+#    `script.fn_check_listino_riga_scrivibile` senza riga, la stessa che il
+#    guard di stato delle righe solleva sull'INSERT. NULL = si aggiunge.
 # ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
 #    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
 #    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
@@ -109,6 +113,8 @@ _SELECT_VERSIONE = f"""
         az.eliminazione_blocco_reason_key,
         az.chiusura_blocco_reason,
         az.chiusura_blocco_reason_key,
+        az.aggiunta_riga_blocco_reason,
+        az.aggiunta_riga_blocco_reason_key,
         (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
             AS chiusura_programmata
       FROM vendite.listini_versioni v
@@ -567,7 +573,8 @@ class ListiniRepository:
     #        (D2: la copia non comincia prima della sorgente).
     #        ⛔ Ritirate il 2026-10-29 (BE-C1) le tre INSERT che il backend
     #        faceva da se': la stessa copia, ora nel DB.
-    # Ritorna: {versione_id, righe_copiate, componenti_copiati, componenti_saltati}.
+    # Ritorna: {versione_id, righe_copiate, componenti_copiati,
+    #        componenti_saltati, righe_saltate}.
     #        ⭐ Parametri espliciti e non un dict: attivo, meta e stato non si
     #        clonano, e una chiave in piu' non ha dove andare.
     def clone_versione(
@@ -841,7 +848,25 @@ class ListiniRepository:
                           adc.codice, adc.descrizione, adc.iva_id,
                           adc.iva_codice, adc.iva_aliquota_iva, lk.periodicita
             )
-            SELECT *, COUNT(*) OVER() AS total_count
+            SELECT unione.*,
+                   COUNT(*) OVER() AS total_count,
+                   -- ⭐ Perche' la riga non si modifica ne' si elimina
+                   --    (`MODIFICA_RIGA_LISTINO`, D-LIST (a) del
+                   --    brief-db-stati-documento-dal-vocabolario §6.27): la
+                   --    superficie delle righe, il primo motivo della stessa
+                   --    `fn_check` che il guard di stato solleva. NULL = si
+                   --    modifica. Il composito non ha una riga di listino
+                   --    (`id` NULL): i suoi prezzi hanno la regola del kit.
+                   -- ⚡ Nella lista di uscita, non in una JOIN: PostgreSQL
+                   --    valuta le sottoquery DOPO `ORDER BY … LIMIT`, quindi
+                   --    la `fn_check` gira per le sole righe della pagina e
+                   --    non per l'intera versione.
+                   (SELECT az.modifica_blocco_reason
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason,
+                   (SELECT az.modifica_blocco_reason_key
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason_key
               FROM unione
             {where_unione}
              ORDER BY {ordinamento}
@@ -939,47 +964,9 @@ class ListiniRepository:
             )
             return cursor.rowcount > 0
 
-    # Scopo: Verifica in un solo round-trip articolo attivo, UoM attiva e coerenza
-    #        articolo/UoM ALLA DATA indicata (la decorrenza della versione).
-    # ⭐ «L'unita' vale per l'articolo» la dice il DB, `catalogo.fn_get_uom_factor`:
-    #    l'unita' base, la mappatura dell'articolo alla data, o una conversione
-    #    generale alla data (BE17 di brief-db-revisione-catalogo, 2026-11-09).
-    # ⛔ Fino al 2026-11-09 qui c'era una copia della regola, gia' DIVERGENTE:
-    #    base o mappatura attiva, senza le conversioni generali e senza la data
-    #    — una riga in chilogrammi su un articolo in grammi veniva rifiutata, e
-    #    una mappatura chiusa ammessa.
-    def get_articolo_uom_validation(
-        self, articolo_id: UUID | str, uom_id: int, alla_data: date,
-    ) -> dict[str, bool]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    EXISTS(
-                        SELECT 1
-                          FROM catalogo.articoli a
-                         WHERE a.id = %s
-                           AND a.attivo IS TRUE
-                    ) AS articolo_attivo,
-                    EXISTS(
-                        SELECT 1
-                          FROM catalogo.unita_misura u
-                         WHERE u.id = %s
-                           AND u.attivo IS TRUE
-                    ) AS uom_attiva,
-                    catalogo.fn_get_uom_factor(%s::uuid, %s::bigint, %s::date) IS NOT NULL
-                        AS uom_compatibile
-                """,
-                [articolo_id, uom_id, articolo_id, uom_id, alla_data],
-            )
-            row = cursor.fetchone()
-
-        assert row is not None
-        return {
-            "articolo_attivo": bool(row[0]),
-            "uom_attiva": bool(row[1]),
-            "uom_compatibile": bool(row[2]),
-        }
+    # ⛔ `get_articolo_uom_validation` ritirato il 2026-11-11 (BE22 di
+    #    brief-db-revisione-catalogo): la regola dell'unita' e' del DB, per tutto
+    #    il periodo della versione (vedi `listini_service`).
 
     # Scopo: Blocca la riga con FOR UPDATE per prevenire race condition durante
     #        la rettifica controllata N6. Restituisce True se la riga esiste.

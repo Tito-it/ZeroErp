@@ -50,16 +50,6 @@ SELECT plan(6);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE TEMP TABLE t_f AS
 SELECT * FROM dbops.fn_pgtap_crea_fattura('cancello iva');
@@ -110,7 +100,7 @@ SELECT is(
 -- 4) Il cancello all'emissione
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT vendite.fn_fattura_proietta_stato(%s, (SELECT s.id FROM config.stati_doc_fiscale s
                                                           WHERE s.codice_interno = 'EMESSA'))$$,
         (SELECT fattura_id FROM t_f))),

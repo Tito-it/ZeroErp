@@ -1,0 +1,178 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BUILDER PGTAP: UN'OFFERTA COMMERCIALE DEL MONDO IN UNA CHIAMATA
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 2 (§4.2: «non c'e'
+#   un builder dell'offerta»).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Ogni pgTAP che serve un'offerta la scrive a mano (INSERT della testata,
+#   listino, stato): la regola di come nasce un'offerta e' ricopiata in
+#   decine di file. I fratelli ci sono gia' (dbops.fn_pgtap_crea_preventivo,
+#   dbops.fn_pgtap_crea_contratto); qui l'offerta, sulla loro falsariga e
+#   componendo i loro pezzi:
+#   - il cliente: dbops.fn_pgtap_cliente_del_builder (il mondo, o il billing
+#     account di un'altra fixture);
+#   - il listino: quello del test, altrimenti dbops.fn_pgtap_crea_listino per
+#     l'utility del cliente;
+#   - la nascita come la fa il backend: la testata senza stato (la mette il
+#     trigger della nascita) e senza versione di listino (la congela
+#     l'emissione), poi l'indirizzo di default dal DB
+#     (vendite.fn_doc_indirizzo_default, la stessa chiamata del repository);
+#   - lo stato: dbops.fn_pgtap_porta_a_stato, per la matrice e dal verbo
+#     dell'offerta, sotto i guard veri.
+#
+# ── COSA NON FA ─────────────────────────────────────────────────────
+#   Eccezioni, righe e scheda di fornitura sono il caso del test: non le
+#   scrive. SUPERATA e' di processo (nasce creando una revisione,
+#   vendite.fn_crea_revisione_offerta): porta_a_stato non la raggiunge e
+#   solleva. Lo stato si giudica PRIMA di costruire: uno stato inesistente o
+#   spento non lascia un mondo a meta'.
+#
+# ── NESSUN CONSUMATORE IN QUESTO CHANGESET ──────────────────────────
+#   Lo usa per primo vendite/test-offerta-guard-dal-vocabolario-v1. I pgTAP che
+#   scrivono l'offerta a mano passano al builder quando un lavoro li riapre.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261112-64-create-fn-pgtap-crea-offerta-mctit.yaml
+
+  - changeSet:
+      id: 20261112-64-create-fn-pgtap-crea-offerta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Builder pgTAP dbops.fn_pgtap_crea_offerta: un offerta commerciale del mondo (cliente,
+        listino, testata nata come dal backend, indirizzo di default) portata allo stato chiesto
+        per la matrice, dal verbo. Brief: brief-db-stati-documento-dal-vocabolario, giro 2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_offerta(
+                  -- text: l'etichetta libera della fixture, non il riflesso di una colonna.
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_offerte.codice_interno%TYPE DEFAULT 'BOZZA',
+                  p_billing_account_id   anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                  p_listino_id           vendite.offerte_commerciali.listino_id%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                  offerta_id                  vendite.offerte_commerciali.id%TYPE,
+                  offerta_codice              vendite.offerte_commerciali.codice%TYPE,
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  listino_id                  vendite.offerte_commerciali.listino_id%TYPE,
+                  stato_doc_offerta_id        vendite.offerte_commerciali.stato_doc_offerta_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un'OFFERTA COMMERCIALE del mondo in
+              --   una chiamata: azienda, operatore, cliente, listino e testata nello
+              --   stato chiesto. Vedi l'intestazione del changeSet.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_o AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_offerta('guard offerta', 'EMESSA');
+              --   -- sul cliente di un'altra fixture:
+              --   SELECT * FROM dbops.fn_pgtap_crea_offerta(
+              --              'seconda', 'BOZZA', (SELECT billing_account_id FROM tmp_o));
+              -- ⛔ Eccezioni, righe e scheda di fornitura NON le scrive: sono il
+              --   caso del test. Un passaggio che le pretende fallisce qui: il test
+              --   le scrive e porta avanti da se' (dbops.fn_pgtap_porta_a_stato).
+              -- ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+                  v_listino   vendite.offerte_commerciali.listino_id%TYPE;
+                  v_stato_id  vendite.offerte_commerciali.stato_doc_offerta_id%TYPE;
+                  v_offerta   vendite.offerte_commerciali.id%TYPE;
+                  v_codice    vendite.offerte_commerciali.codice%TYPE;
+              BEGIN
+                  -- 0. Lo stato si giudica PRIMA di costruire, dalla sede della
+                  --    traduzione codice -> id (script.fn_doc_stato_id): solo uno
+                  --    stato attivo e' una destinazione.
+                  IF script.fn_doc_stato_id('vendite.offerte_commerciali'::regclass, p_stato_codice_interno) IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_offerta: nessuno stato offerta attivo con codice_interno = %',
+                          coalesce(p_stato_codice_interno::text, 'NULL');
+                  END IF;
+
+                  -- 1. Il cliente: senza billing account il mondo intero, con
+                  --    quello di un'altra fixture l'azienda di chi agisce.
+                  SELECT c.emittente_fiscale_id, c.emittente_soggetto_ruolo_id,
+                         c.auth_user_id, c.billing_account_id, c.istanza_utility_id,
+                         c.cliente_soggetto_ruolo_id, c.utility_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+                         v_cli_sr_id, v_utility
+                    FROM dbops.fn_pgtap_cliente_del_builder(
+                             p_etichetta, p_billing_account_id, 'fn_pgtap_crea_offerta') c;
+
+                  -- 2. Il listino: quello del test, altrimenti uno del mondo per
+                  --    l'utility del cliente, con una versione attiva (l'emissione
+                  --    la congela).
+                  v_listino := p_listino_id;
+                  IF v_listino IS NULL THEN
+                      SELECT l.listino_id INTO v_listino
+                        FROM dbops.fn_pgtap_crea_listino(v_utility, p_etichetta) l;
+                  END IF;
+
+                  -- 3. La nascita, come dal backend: niente stato (lo mette il
+                  --    trigger della nascita), niente versione di listino (la
+                  --    congela l'emissione), niente codice (lo genera il trigger).
+                  INSERT INTO vendite.offerte_commerciali (
+                      emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+                      listino_id, validita_dal, meta)
+                  VALUES (v_ef_id, v_ba_id, v_ist_id, v_utility,
+                          v_listino, (SELECT script.fn_data_operativa()),
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                  RETURNING id, codice INTO v_offerta, v_codice;
+
+                  -- L'indirizzo di default dall'anagrafica del cliente: la stessa
+                  -- chiamata del repository del backend alla creazione.
+                  PERFORM vendite.fn_doc_indirizzo_default('OFFERTA_COMMERCIALE', v_offerta);
+
+                  -- 4. Lo stato chiesto: il documento e' nato nello stato iniziale;
+                  --    se il test ne vuole un altro, ci arriva per la matrice, dal
+                  --    verbo, sotto i guard veri.
+                  IF script.fn_doc_stato_id('vendite.offerte_commerciali'::regclass, p_stato_codice_interno)
+                     IS DISTINCT FROM script.fn_doc_stato_iniziale_id('vendite.offerte_commerciali'::regclass) THEN
+                      PERFORM dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali'::regclass, v_offerta, p_stato_codice_interno);
+                  END IF;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  SELECT o.stato_doc_offerta_id INTO v_stato_id
+                    FROM vendite.offerte_commerciali o
+                   WHERE o.id = v_offerta;
+
+                  RETURN QUERY
+                  SELECT v_offerta, v_codice, v_ef_id, v_ef_sr_id, v_user_id,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_utility, v_listino, v_stato_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_offerta(text, config.stati_doc_offerte.codice_interno%TYPE, anagrafiche.billing_account.id%TYPE, vendite.offerte_commerciali.listino_id%TYPE)
+              IS 'Fixture pgTAP: un''OFFERTA COMMERCIALE del mondo in una chiamata. Il cliente da dbops.fn_pgtap_cliente_del_builder (il mondo intero, o il billing account di un''altra fixture verificato sull''azienda di chi agisce); il listino del test, altrimenti dbops.fn_pgtap_crea_listino per l''utility del cliente; la testata nasce come dal backend, senza stato (trigger della nascita), senza versione di listino (la congela l''emissione) e senza codice (trigger), poi l''indirizzo di default da vendite.fn_doc_indirizzo_default. Lo stato chiesto (codice_interno) si giudica prima di costruire con script.fn_doc_stato_id e si raggiunge con dbops.fn_pgtap_porta_a_stato, per la matrice e dal verbo vendite.fn_cambia_stato_offerta, sotto i guard veri. Eccezioni, righe e scheda di fornitura non le scrive; SUPERATA, che e'' di processo, non la raggiunge. Esce con i vincoli IMMEDIATE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_offerta(text, config.stati_doc_offerte.codice_interno%TYPE, anagrafiche.billing_account.id%TYPE, vendite.offerte_commerciali.listino_id%TYPE);

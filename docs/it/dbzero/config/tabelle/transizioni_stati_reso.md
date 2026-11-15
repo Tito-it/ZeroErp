@@ -44,6 +44,8 @@
 | trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_28f28d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_de454c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_reso_a10_stati_doc_reso_require_at_de454c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_reso', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_reso_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi')` |
+| trg_transizioni_stati_reso_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi')` |
 | trg_transizioni_stati_reso_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_transizioni_stati_reso_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

@@ -104,8 +104,9 @@ BEGIN
   v_padre  := v_g.padre_schema||'.'||v_g.padre_tabella;
   v_figlia := TG_TABLE_SCHEMA||'.'||TG_TABLE_NAME;
 
-  -- I due rifiuti consumano gli stessi valori, nello stesso ordine
-  -- dei messaggi del block: padre, colonna referenziata, valore, figlia.
+  -- Le due frasi non hanno valori: padre, figlia, colonna e valore
+  -- stanno nel contesto del diario. QUALE riga lo dice il bersaglio,
+  -- solo sul padre che esiste.
   IF NOT v_p.trovato THEN
     PERFORM script.fn_log_and_raise_error(
       'database',
@@ -119,7 +120,7 @@ BEGIN
         'campo',        v_g.fk_col
       ),
       NULL::uuid,
-      v_padre, v_g.ref_col, v_fk_val, v_figlia
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -134,9 +135,11 @@ BEGIN
         'ref_col',      v_g.ref_col,
         'ref_val',      v_fk_val,
         'campo',        v_g.fk_col
-      ),
+      ) || jsonb_strip_nulls(jsonb_build_object(
+        'bersaglio', script.fn_bersaglio_di_riga(v_g.padre_schema, v_g.padre_tabella,
+                                                 v_g.ref_col, v_fk_val))),
       NULL::uuid,
-      v_padre, v_g.ref_col, v_fk_val, v_figlia
+      VARIADIC ARRAY[]::text[]
     );
   END IF;
 
@@ -145,7 +148,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.trgfn_child_requires_active_parent()
-IS 'Trigger function ATTIVO/REQUIRE, sulla figlia (il generatore dbops.fn_run_automations_attivo la monta come CONSTRAINT TRIGGER differito; qualche montaggio a mano e'' immediato): una figlia attiva non si collega a un padre disattivato. Se la figlia non ha la colonna attivo (con l''override di dbops.automation_overrides_cols) il controllo vale per ogni riga; una FK NULL non controlla niente. Rifiuti per l''operatore: E_ATTIVO_PADRE_NON_ATTIVO (CONFLITTO_STATO) e E_PADRE_INESISTENTE (DATO_ERRATO: nessuna riga padre con quella chiave, possibile dove il collegamento non e'' una FK), con padre, colonna referenziata, valore e figlia nella frase e la colonna FK in campo. Un montaggio sbagliato (argomenti fuori grammatica, una colonna FK che la figlia non ha, una tabella o una colonna del padre che non esiste) solleva E_TRIGGER_ARGOMENTI_INVALIDI. TG_ARGV, tutti obbligatori, nella grammatica di dbops.fn_trigger_attivo_argomenti: padre_schema, padre_tabella, stato_col (la colonna attivo del padre), fk_col, ref_col (la colonna del padre referenziata dalla FK, anche una UNIQUE non primaria). Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row security: lo stato di un padre non dipende da chi guarda, e un trigger differito legge al commit, col contesto di chi chiude la transazione. Gemella sull''asse obsoleto_dal: dbops.trgfn_child_requires_non_obsolete_parent.';
+IS 'Trigger function ATTIVO/REQUIRE, sulla figlia (il generatore dbops.fn_run_automations_attivo la monta come CONSTRAINT TRIGGER differito; qualche montaggio a mano e'' immediato): una figlia attiva non si collega a un padre disattivato. Se la figlia non ha la colonna attivo (con l''override di dbops.automation_overrides_cols) il controllo vale per ogni riga; una FK NULL non controlla niente. Rifiuti per l''operatore: E_ATTIVO_PADRE_NON_ATTIVO (CONFLITTO_STATO) e E_PADRE_INESISTENTE (DATO_ERRATO: nessuna riga padre con quella chiave, possibile dove il collegamento non e'' una FK), con una frase che non nomina tabelle e la colonna FK in campo. E_ATTIVO_PADRE_NON_ATTIVO porta anche il bersaglio del padre (script.fn_bersaglio_di_riga) quando il catalogo dei tipi ne dichiara la tabella; E_PADRE_INESISTENTE no, perche'' la riga non c''e''. Padre, figlia, colonna referenziata e valore stanno nel contesto del diario. Un montaggio sbagliato (argomenti fuori grammatica, una colonna FK che la figlia non ha, una tabella o una colonna del padre che non esiste) solleva E_TRIGGER_ARGOMENTI_INVALIDI. TG_ARGV, tutti obbligatori, nella grammatica di dbops.fn_trigger_attivo_argomenti: padre_schema, padre_tabella, stato_col (la colonna attivo del padre), fk_col, ref_col (la colonna del padre referenziata dalla FK, anche una UNIQUE non primaria). Il padre lo legge dbops.fn_trigger_padre_stato, fuori dalla row security: lo stato di un padre non dipende da chi guarda, e un trigger differito legge al commit, col contesto di chi chiude la transazione. Gemella sull''asse obsoleto_dal: dbops.trgfn_child_requires_non_obsolete_parent.';
 ```
 
 </div>

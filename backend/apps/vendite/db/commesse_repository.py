@@ -25,6 +25,13 @@ from apps.core.db._helpers import call_jsonb_fn, jsonb_out, row_to_dict, limiti_
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db._event_log_repo_mixin import EventLogRepositoryMixin
+from apps.vendite.db._provenienza_prezzo import (
+    COLONNA_DEL_LISTER,
+    COLONNE_PROVENIENZA_PREZZO,
+    PROVENIENZA_VUOTA,
+    ProvenienzaPrezzo,
+    provenienza_da_colonne,
+)
 from apps.vendite.db.vendite_repository import DASH_STADIO_DA_APPROVARE
 from apps.vendite.types import (
     CommessaEmitResult,
@@ -38,26 +45,16 @@ from apps.vendite.types import (
 )
 
 # Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
-# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica: il building
-# block `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
+# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica dal 2026-11-14:
+# la forma `ProvenienzaPrezzo` (`_provenienza_prezzo`), che il push riceve dai
+# lister e passa alla riga di commessa; il building block
+# `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
 # (`CAMPI_PROVENIENZA`). Le prime nove esistono anche su
 # `attivita_fatturabili`; `listino_versione_id` solo sulla riga di commessa.
 # ⭐ `listino_riga_id` (2026-10-09, brief-db-riga-listino-propagata-dalla-
 # commessa): la riga di listino che ha dato il prezzo. Scriverla la rende
 # «propagata», cioe' immutabile (`trgfn_listini_righe_guard_stato`), finche'
 # una riga la cita ADESSO (D-1 del brief).
-COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
-    "prezzo_base_snapshot",
-    "origine_prezzo",
-    "tipo_variazione_applicata",
-    "valore_variazione_applicata",
-    "promo_id",
-    "contratto_id",
-    "categoria_cliente_id_snapshot",
-    "classe_utenza_id_snapshot",
-    "listino_riga_id",
-    "listino_versione_id",
-)
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
 
@@ -169,6 +166,10 @@ _PUSHABLE_SHARED_COLS = (
     # ONERE <=> causale. Solo ordini e bolle la espongono; per gli altri lister
     # resta None, ed e' giusto: le loro righe non sono ONERE.
     "causale_onere_id",
+    # La provenienza del prezzo, in coda a ogni lister (giro 2 di brief-db-
+    # provenienza-prezzo-segue-il-prezzo, `20261113-16 … -20`): obbligatoria,
+    # anche per i consumi, che la restituiscono vuota (R-5).
+    *COLONNA_DEL_LISTER.values(),
 )
 
 # Le colonne della whitelist che non ogni lister espone: `_map_pushable_row`
@@ -195,13 +196,48 @@ class UpsertAttivitaResult:
 
 
 @dataclass(frozen=True)
+class ErroreBatchAttivita:
+    """Il rifiuto di UNA riga di fn_batch_upsert_commessa_attivita.
+
+    Scopo: la forma dell'errore che il batch del DB consegna (20261112-26), letta
+           una volta qui e non a chiavi sparse nei consumatori. `index`,
+           `segment_key` ed `error` (la frase) ci sono sempre; `sqlstate` sempre
+           dal 2026-11-12; `codice` e `campo` solo per un errore di DOMINIO
+           (`script.fn_codice_dominio`: P0001 col CONSTRAINT). Un errore tecnico
+           (un cast, un vincolo) ha `codice` e `campo` a None: e' un caso del
+           modello, non un difetto.
+    """
+
+    index: int | None
+    segment_key: str | None
+    error: str
+    sqlstate: str | None = None
+    codice: str | None = None
+    campo: str | None = None
+
+    # Scopo: un elemento dell'array `errors` del DB → record. Le chiavi assenti
+    #        (il DB le toglie con jsonb_strip_nulls) diventano None.
+    @classmethod
+    def da_jsonb(cls, raw: dict) -> "ErroreBatchAttivita":
+        index = raw.get("index")
+        return cls(
+            index=int(index) if index is not None else None,
+            segment_key=raw.get("segment_key"),
+            error=str(raw.get("error") or ""),
+            sqlstate=raw.get("sqlstate"),
+            codice=raw.get("codice"),
+            campo=raw.get("campo"),
+        )
+
+
+@dataclass(frozen=True)
 class BatchUpsertResult:
     """Risultato batch di fn_batch_upsert_commessa_attivita."""
 
     total_rows: int
     inserted: int
     updated: int
-    errors: list[dict]
+    errors: list[ErroreBatchAttivita]
 
 
 # --- Costanti dominio commesse (valori allineati ai DEFAULT delle fn SQL) ---
@@ -348,7 +384,7 @@ class PushableRow:
     quantita: Decimal | None
     qta_operativa: Decimal | None
     uom_operativa_id: int | None
-    factor_to_base: Decimal
+    factor_to_base: Decimal | None
     competenza_mese: date
     prezzo_snapshot: Decimal | None
     prezzo_bloccato: bool
@@ -378,6 +414,10 @@ class PushableRow:
     # La causale della riga ONERE (righe-onere di ordini e bolle). None per i
     # lister che non la espongono: preventivi, contratti e consumi.
     causale_onere_id: int | None = None
+    # ⭐ La provenienza del prezzo, come la dice la riga del documento (K-1):
+    #    il push la copia nella riga di commessa, non la ricostruisce. Un
+    #    componente di kit ha la sua (`BoMComponentExpander`).
+    provenienza: ProvenienzaPrezzo = PROVENIENZA_VUOTA
 
 
 def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
@@ -396,9 +436,14 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
             f"sorgente_chiave={raw_sorgente_chiave!r}, segment_key={raw_segment_key!r}"
         )
 
-    # Guard: factor_to_base=None → default Decimal(1); Decimal(0) preservato.
-    raw_factor = _col("factor_to_base")
-    factor_to_base = raw_factor if raw_factor is not None else Decimal(1)
+    # ⛔ Il fattore passa COM'E', anche NULL (BE23 di brief-db-revisione-catalogo,
+    #    D26, 2026-11-11). Fino a quel giorno qui un NULL diventava 1: giusto
+    #    quando la quantita' e' gia' nella base, ma una riga senza fattore in
+    #    un'altra unita' passava come se lo fosse (3 cartoni -> 3 pezzi), senza
+    #    rifiuto. Lo decide il DB (`vendite.trgfn_attivita_fattore_alla_data`):
+    #    il fattore scritto si rispetta, senza si legge alla data dell'attivita',
+    #    e senza nemmeno quello e' `E_UOM_MISSING`.
+    factor_to_base = _col("factor_to_base")
 
     # riga_sorgente_id mappato dalla colonna `riga_id` se presente nella fn DB.
     # Le fn `fn_list_preventivi_da_pushare`/`fn_list_ordini_da_pushare`/etc.
@@ -455,6 +500,7 @@ def _map_pushable_row(col_map: dict[str, int], row: tuple) -> PushableRow:
         termine_pagamento_id=_opt_int("termine_pagamento_id"),
         modalita_pagamento_id=_opt_int("modalita_pagamento_id"),
         causale_onere_id=_opt_int("causale_onere_id"),
+        provenienza=provenienza_da_colonne(_col),
     )
 
 
@@ -772,7 +818,9 @@ class CommesseRepository(EventLogRepositoryMixin):
         in-vista (GUC app.current_user_id, security_invoker)."""
         where_clauses = [
             "stadio = %s",
-            "competenza_mese = date_trunc('month', %s::date)::date",
+            # Il mese di un giorno dal BB DB `script.fn_mese_di` (R-BE-1 di
+            # brief-db-mese-di-un-giorno): niente copie del calcolo nel BE.
+            "competenza_mese = script.fn_mese_di(%s::date)",
         ]
         params: list[Any] = [DASH_STADIO_DA_APPROVARE, competenza_mese]
         if commessa_ids:
@@ -1256,7 +1304,11 @@ class CommesseRepository(EventLogRepositoryMixin):
             total_rows=int(row[0]),
             inserted=int(row[1]),
             updated=int(row[2]),
-            errors=errors_raw if isinstance(errors_raw, list) else [],
+            errors=[
+                ErroreBatchAttivita.da_jsonb(e)
+                for e in (errors_raw if isinstance(errors_raw, list) else [])
+                if isinstance(e, dict)
+            ],
         )
 
     # --- Gruppo 3: Emit attività fatturabili (pull) ---
@@ -1804,7 +1856,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             where_clauses.append("ca.stato_approvazione = %s")
             where_params.append(stato_approvazione)
         if competenza_mese is not None:
-            where_clauses.append("ca.competenza_mese = date_trunc('month', %s::date)::date")
+            where_clauses.append("ca.competenza_mese = script.fn_mese_di(%s::date)")
             where_params.append(competenza_mese)
         # ⚠️ Il COUNT vive su una query SUA, sulla tabella: ogni filtro passato
         # alla fn va ripetuto QUI o il totale del paginatore conta righe che la

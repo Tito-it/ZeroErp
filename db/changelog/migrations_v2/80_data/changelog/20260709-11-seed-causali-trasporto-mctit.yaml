@@ -64,7 +64,6 @@ databaseChangeLog:
             # la stringa vuota su una colonna STRING (linee-guida-sql §11.7), e
             # causale_magazzino = '' viola la FK verso magazzino.causali: e' cosi'
             # che il primo apply del Lotto 3 si e' fermato qui.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

@@ -19,7 +19,8 @@
 --     dbops.fn_trigger_attivo_argomenti, con TG_ARGV (base 0) come con
 --     dbops.fn_trigger_argomenti (base 1), e sono tutti obbligatori (D18, D49);
 --   - «padre non attivo» e' E_ATTIVO_PADRE_NON_ATTIVO, un conflitto di stato
---     che nomina padre e figlia, non un 500 (D46);
+--     e non un 500 (D46), con la frase del catalogo, che non nomina tabelle
+--     (S-BE-1: padre e figlia stanno nel contesto del diario);
 --   - un padre assente (chiave polimorfa, senza FK) e' E_PADRE_INESISTENTE,
 --     per tutte e due le require (D5);
 --   - un trigger montato male e' E_TRIGGER_ARGOMENTI_INVALIDI per le require
@@ -35,7 +36,7 @@
 --   7)   i montaggi fuori grammatica sono rifiutati, ognuno col suo perche'
 --   8)   PRESIDIO: ogni trigger ATTIVO montato nel database rispetta la grammatica
 --   9)   D46: figlia attiva su padre spento -> E_ATTIVO_PADRE_NON_ATTIVO
---  10)   ... e la frase nomina padre, chiave e figlia, nell'ordine del catalogo
+--  10)   ... con la frase del catalogo, senza nomi di tabelle (S-BE-1)
 --  11)   una figlia spenta su un padre spento passa
 --  12)   D5: require attivo su chiave polimorfa, padre assente -> E_PADRE_INESISTENTE
 --  13)   D5: require non obsoleto, padre assente -> E_PADRE_INESISTENTE
@@ -46,7 +47,7 @@
 --  18)   D47: colonna di esenzione assente -> E_TRIGGER_ARGOMENTI_INVALIDI
 --  19)   colonna FK assente sulla figlia -> E_TRIGGER_ARGOMENTI_INVALIDI (prima passava)
 --  20)   D49: block con quattro argomenti -> E_ATTIVO_BLOCK_ARGS
---  21)   il block resta E_ATTIVO_BLOCK_CHILDREN_ACTIVE con una figlia attiva
+--  21)   il block con una figlia attiva, su un padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA
 --  22)   la lettura del padre rifiuta un trigger che non e' un require
 --  23)   PRESIDIO sul testo: nessuno dei sette (i tre trigger, gli orfani, il ritiro
 --        delle eccezioni e, dal giro 4, i due riconoscimenti per argomenti) legge
@@ -217,10 +218,12 @@ SELECT is(
     '9) D46: una figlia attiva su un padre spento -> E_ATTIVO_PADRE_NON_ATTIVO (conflitto di stato, non un 500)'
 );
 
-SELECT throws_like(
+SELECT throws_ok(
     $$INSERT INTO t_figlia (id, padre_id) VALUES (11, 2)$$,
-    '%.t_padre (id = 2) non è attivo%.t_figlia.',
-    '10) la frase nomina padre, chiave e figlia, nell''ordine dei segnaposti del catalogo'
+    'P0001',
+    (SELECT m.messaggio FROM config.messaggi_errore m
+      WHERE m.codice = 'E_ATTIVO_PADRE_NON_ATTIVO' AND m.lingua = 'it'),
+    '10) la frase e'' quella del catalogo, senza nomi di tabelle (S-BE-1)'
 );
 
 SELECT lives_ok(
@@ -292,10 +295,13 @@ SELECT is(
 -- ============================================================
 INSERT INTO t_figlia (id, padre_id) VALUES (20, 1);
 
+-- t_padre ha obsoleto_dal (serve al REQUIRE del ritiro, sopra): un padre col ritiro che una
+--   figlia nomina non si spegne, si ritira. I due codici delle tabelle senza ritiro li presidia
+--   db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql.
 SELECT is(
     pg_temp.codice_di($$UPDATE t_padre SET attivo = false WHERE id = 1$$),
-    'E_ATTIVO_BLOCK_CHILDREN_ACTIVE',
-    '21) il block resta E_ATTIVO_BLOCK_CHILDREN_ACTIVE con una figlia attiva'
+    'E_ATTIVO_BLOCK_SI_RITIRA',
+    '21) il block con una figlia attiva, su un padre col ritiro: E_ATTIVO_BLOCK_SI_RITIRA'
 );
 
 SELECT is(

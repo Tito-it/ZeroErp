@@ -3520,6 +3520,16 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 - Sempre `<style scoped>` — mai globale (eccetto `main.css`)
 - `:deep()` solo per override PrimeVue, mai per componenti custom
+- ⛔ **Una classe interna di PrimeVue (`.p-*`) o un attributo `data-pc-*` si aggancia
+  solo in una sede**: i fogli globali (`theme.css`, `main.css`, `auth-pages.css`) o il
+  building block che incarna il componente (`AppDialog`, `AppDrawer`,
+  `ListaConfigurabile`, …). Fuori da lì è una dipendenza dalla libreria che nessun
+  build segnala, e che un aggiornamento rompe in silenzio: il bisogno diventa una
+  classe `app-*` in `main.css`. Lo presidia `npm run guard:classi-interne`
+  (`scripts/check-classi-interne-baseline.mjs`): il registro
+  `scripts/classi-interne.baseline.json` elenca le coppie file → aggancio fuori dalle
+  sedi e **può solo calare**. Le sedi sono dichiarate nel registro, ognuna col motivo.
+  I commenti non contano; gli script sì (`querySelector('.p-…')`), esclusi i `.spec.js`
 - **Nessun CSS scoped per layout form** — usare classi `main.css`
 - Se serve un nuovo pattern layout, aggiungerlo a `main.css` come classe globale
 - Mai hardcodare colori — usare variabili `--app-*`

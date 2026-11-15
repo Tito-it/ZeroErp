@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PICKER DELLE NATURE: PROPONE CIO' CHE IL GUARD ACCETTA
+#   anagrafiche.fn_nature_proponibili_soggetto(soggetto)
+#     -> (tipo_soggetto_dettaglio_id, ammessa, motivo_codice, motivi)
+#   Brief: brief-db-cambio-natura-soggetto-conferma-e-pulizia §0, giro 2.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Oggi le nature proponibili in modifica le calcola il backend
+#   (soggetti_repository.get_soggetto, tipi_modificabili_ids: «stessa
+#   macro-tipologia»), una seconda sede della regola che il guard del cambio
+#   giudica. linee-guida-sql §12.6: il picker e' una funzione di lettura nel
+#   database che chiama la STESSA check del guard. Il backend la leggera' al
+#   posto della sua regola (richiesta del giro 4).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Una riga per natura di dettaglio, la natura attuale compresa (ammessa: non
+#   cambia niente). Contesto = la riga SALVATA del soggetto (P.IVA, flag): una
+#   natura spenta da un flag o dalla P.IVA si accende correggendo quel campo
+#   nello stesso salvataggio, e il motivo lo dice. Un valore escluso resta
+#   nell'elenco col suo primo motivo, dopo gli ammessi; come mostrarlo lo decide
+#   il frontend. BEGIN ATOMIC (§5c).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-68-create-fn-nature-proponibili-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261114-68-create-fn-nature-proponibili-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Le nature di dettaglio proponibili per un soggetto, ciascuna col suo esito e i suoi
+        motivi, dalla stessa check del guard del cambio di natura.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_nature_proponibili_soggetto(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE)
+              RETURNS TABLE (
+                  tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE,
+                  ammessa                    boolean,
+                  motivo_codice              text,   -- il codice del primo motivo, da un jsonb
+                  motivi                     jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT tsd.id,
+                         jsonb_array_length(m.motivi) = 0,
+                         m.motivi -> 0 ->> 'codice',
+                         m.motivi
+                    FROM anagrafiche.soggetti s
+                    CROSS JOIN config.tipi_soggetto_dettaglio tsd
+                    CROSS JOIN LATERAL (
+                        SELECT anagrafiche.fn_check_cambio_natura_soggetto(
+                                   s.id, tsd.id, s.partita_iva, s.cliente_pa, s.split_payment) AS motivi
+                    ) m
+                   WHERE s.id = p_soggetto_id
+                   ORDER BY jsonb_array_length(m.motivi) = 0 DESC, tsd.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_nature_proponibili_soggetto(anagrafiche.soggetti.id%TYPE)
+              IS 'Le nature di dettaglio che si possono proporre per il soggetto, una riga per natura (l''attuale compresa): ammessa se anagrafiche.fn_check_cambio_natura_soggetto non ha motivi, altrimenti il codice del primo motivo e tutti i motivi. Contesto: la riga salvata del soggetto (P.IVA, cliente_pa, split_payment); una natura spenta da quei campi si accende correggendoli nello stesso salvataggio. Prima le ammesse, poi le altre, per codice. E'' la stessa check del guard anagrafiche.trgfn_soggetti_guard_cambio_natura: il picker propone cio'' che il guard accetta. Soggetto inesistente: nessuna riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS anagrafiche.fn_nature_proponibili_soggetto(uuid);

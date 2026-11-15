@@ -35,16 +35,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(9);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.corpo(p regprocedure) RETURNS text
 LANGUAGE sql AS $$
@@ -94,13 +84,13 @@ SELECT ok((SELECT mg.attivo FROM t_g g JOIN magazzino.magazzini mg ON mg.id = g.
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-X', 'x',
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-X', 'x',
         (SELECT ind FROM t_m), '{"attivo": false}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '6. attivo fra i campi: E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-Y', 'y',
+    dbops.fn_pgtap_codice_errore($$SELECT magazzino.fn_crea_magazzino('PGT-FCM-Y', 'y',
         (SELECT ind FROM t_m), '[]'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '7. campi che non sono un oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA');

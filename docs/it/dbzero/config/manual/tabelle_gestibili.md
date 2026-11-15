@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.tabelle_gestibili`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **Chi la usa:** [config.fn_pannello_scrivi](/dbzero/config/funzioni/fn_pannello_scrivi) — il verbo del pannello · il lookup generico delle tendine
@@ -38,6 +40,21 @@ chiave diversa nel catalogo si usa quella: `vendite.listini` è l'oggetto
 
 L'**area** non è scritta qui: la ricava `script.fn_area_di_oggetto`. Se fosse una
 colonna, la regola «a quale area appartiene un oggetto» avrebbe due sedi.
+
+#### Un oggetto, più righe
+
+Due righe possono nominare lo **stesso oggetto**. Una riga dice da dove si leggono
+o si scrivono i valori. L'oggetto dice chi ne ha il permesso, e le due cose
+possono stare in sedi diverse. Le causali onere ne sono l'esempio (13-11-2026):
+
+| Riga | Serve a | Oggetto |
+| --- | --- | --- |
+| `catalogo.vw_causali_onere_assegnabili` | la tendina del drawer articolo, che offre solo le causali non ancora legate a un articolo | `('config', 'causali_onere')` |
+| `config.causali_onere` | il pannello, dove una causale nuova si crea e si modifica | `('config', 'causali_onere')` |
+
+Il permesso è uno solo: chi può modificare le causali dal pannello è chi le vede
+nella tendina. Ogni lettura della lista cerca la riga per `codice_interno`,
+quindi niente presuppone una riga sola per oggetto.
 
 ---
 

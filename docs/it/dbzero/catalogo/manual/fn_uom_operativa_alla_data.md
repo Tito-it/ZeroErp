@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `catalogo.fn_uom_operativa_alla_data`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — la chiama per il fattore
+> * [catalogo.fn_uom_fonti_conversione](/dbzero/catalogo/funzioni/fn_uom_fonti_conversione) — dice quale mappatura vale, sede unica del predicato
 > * [script.trgfn_qta_from_operativa](/dbzero/script/funzioni/trgfn_qta_from_operativa) — la chiama per le regole della quantità
 > * [catalogo.fn_distinta_alla_data](/dbzero/catalogo/funzioni/fn_distinta_alla_data) — la gemella della distinta, con la stessa forma
 
@@ -36,11 +36,12 @@ sovrappongono: la funzione restituisce una riga, o nessuna.
 
 ---
 
-### ⭐ Una sede per la lettura della mappatura
+### ⭐ Quale mappatura vale lo dicono le fonti
 
-La leggono il fattore (`fn_get_uom_factor`) e le regole della quantità sulle righe di vendita
-(`trgfn_qta_from_operativa`), tutti e due alla data del documento. Prima ognuno la leggeva per
-conto suo, alla data di oggi.
+Quale riga è la mappatura in vigore lo dice `fn_uom_fonti_conversione`, la fonte di priorità 1: la
+funzione ne legge le regole della quantità. Il fattore lo legge `fn_get_uom_factor` direttamente
+dalle fonti; le regole le chiede il trigger della quantità sulle righe di vendita
+(`trgfn_qta_from_operativa`), alla data del documento.
 
 ---
 
@@ -63,6 +64,8 @@ la tabella non ha row level security.
 
 * 2026-11-09 — nasce come sede unica della lettura della mappatura, alla data
   (brief-db-revisione-catalogo, giro 2).
+* 2026-11-10 — quale mappatura vale lo dice `fn_uom_fonti_conversione` (brief-db-revisione-catalogo,
+  giro 2-bis).
 
 ---
 

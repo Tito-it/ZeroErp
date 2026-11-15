@@ -1,0 +1,282 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_list_contratti_da_pushare: la provenienza del prezzo accanto al prezzo
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7, giro 2, R-3)
+#
+#   Legge vendite.fn_contratti_addebiti_maturati_con_provenienza (-14), che
+#   porta la provenienza per ogni ramo (riga, kit, resolver, storno), e la
+#   restituisce.
+#
+#   Il RETURNS TABLE guadagna in coda le dieci colonne della provenienza del
+#   prezzo, con i nomi e i tipi della riga di commessa (contratto_id esce come
+#   prezzo_contratto_id: contratto_id e' gia' il documento in alcuni lister).
+#   Nome o tipo di una colonna di RETURNS TABLE non cambiano con CREATE OR
+#   REPLACE: DROP + CREATE, come nella revisione di partenza; COMMENT e GRANT
+#   tornano (EXECUTE a PUBLIC lo da' la CREATE). Il corpo e' quello della
+#   revisione di partenza, verificato identico al vivo il 2026-11-13.
+#   Il BE legge le colonne per nome da un elenco chiuso (commesse_repository,
+#   _PUSHABLE_SHARED_COLS): le nuove non lo rompono, le legge quando le aggiunge.
+#   Rollback: la revisione di partenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-19-update-fn-list-contratti-da-pushare-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261113-19-update-fn-list-contratti-da-pushare-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_contratti_da_pushare: la provenienza del prezzo accanto al prezzo. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La colonna della chiave cambia nome nel RETURNS TABLE: CREATE OR REPLACE non lo ammette.
+              -- ⛔ MAI con CASCADE: i chiamanti DB sono plpgsql (nessuna riga in pg_depend), e un
+              --    CASCADE farebbe sparire in silenzio chi un giorno ne dipendera'.
+              DROP FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_list_contratti_da_pushare(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_limit              integer DEFAULT NULL::integer,
+                  p_contratto_id       vendite.contratti.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, termine_pagamento_id, modalita_pagamento_id): valori calcolati o polimorfi: nessuna colonna di cui siano il riflesso
+                  contratto_id                vendite.contratti.id%TYPE,
+                  contratto_uid               vendite.contratti.uid%TYPE,
+                  riga_id                     vendite.contratti_righe.id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  vendite.commesse.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  -- text esplicito, non %TYPE: e' la chiave del documento come la riceve la madre
+                  -- (vendite.fn_upsert_commessa_attivita, p_sorgente_chiave), l'uid in testo. Non e' il
+                  -- riflesso di una colonna: commesse_attivita.sorgente_uid e' uuid e tiene solo la
+                  -- chiave dei tipi a uid.
+                  sorgente_chiave             text,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  pricing_mode                vendite.commesse_attivita.pricing_mode%TYPE,
+                  tipo_movimento              vendite.commesse_attivita.tipo_movimento%TYPE,
+                  valuta_id                   vendite.commesse_attivita.valuta_id%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        vendite.commesse.termine_pagamento_id%TYPE,
+                  modalita_pagamento_id       vendite.commesse.modalita_pagamento_id%TYPE,
+                  -- La provenienza del prezzo, le colonne della riga di commessa (R-3)
+                  origine_prezzo                vendite.commesse_attivita.origine_prezzo%TYPE,
+                  listino_versione_id           vendite.commesse_attivita.listino_versione_id%TYPE,
+                  listino_riga_id               vendite.commesse_attivita.listino_riga_id%TYPE,
+                  prezzo_base_snapshot          vendite.commesse_attivita.prezzo_base_snapshot%TYPE,
+                  tipo_variazione_applicata     vendite.commesse_attivita.tipo_variazione_applicata%TYPE,
+                  valore_variazione_applicata   vendite.commesse_attivita.valore_variazione_applicata%TYPE,
+                  promo_id                      vendite.commesse_attivita.promo_id%TYPE,
+                  prezzo_contratto_id           vendite.commesse_attivita.contratto_id%TYPE,
+                  categoria_cliente_id_snapshot vendite.commesse_attivita.categoria_cliente_id_snapshot%TYPE,
+                  classe_utenza_id_snapshot     vendite.commesse_attivita.classe_utenza_id_snapshot%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: le righe di commessa che i contratti devono mandare a questo giro:
+              --   gli addebiti maturati di vendite.fn_contratti_addebiti_maturati (la sede
+              --   della regola: una tantum, canoni, storni) senza gli scartati, con le
+              --   colonne della commessa che non dipendono dalla riga.
+              -- rev 2026-10-30 (20261030-01): i tre rami; prima solo UNA_TANTUM.
+              -- rev 2026-10-31 (20261031-01): lo storno segue la fine anche quando si
+              --   sposta dopo il primo storno.
+              -- rev 2026-10-31 (20261031-03): il corpo passa a
+              --   vendite.fn_contratti_addebiti_maturati (20261031-02), che lo condivide
+              --   con la dashboard; qui resta il filtro.
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_contratti_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'CONTRATTO'),
+                    NULL::uuid, 'CONTRATTO', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  a.contratto_id, a.contratto_uid, a.riga_id,
+                  a.billing_account_id, a.utility_id, a.emittente_soggetto_ruolo_id,
+                  a.competenza_dal, a.competenza_al,
+                  -- Corsia di instradamento: valore reale del contratto.
+                  a.fatturazione_immediata,
+                  v_sorgente_tipo_id,
+                  a.contratto_uid::text,
+                  a.segment_key,
+                  a.articolo_id, a.istanza_utility_id, a.data_attivita, a.uom_id,
+                  a.quantita, a.qta_operativa, a.uom_operativa_id, a.factor_to_base,
+                  a.competenza_mese,
+                  a.prezzo_snapshot, a.prezzo_bloccato,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  NULL::integer,
+                  a.meta,
+                  v_tipo_doc_fiscale_id,
+                  NULL::bigint,
+                  NULL::integer,
+                  a.origine_prezzo, a.listino_versione_id, a.listino_riga_id, a.prezzo_base_snapshot,
+                  a.tipo_variazione_applicata, a.valore_variazione_applicata, a.promo_id,
+                  a.prezzo_contratto_id, a.categoria_cliente_id_snapshot, a.classe_utenza_id_snapshot
+                FROM vendite.fn_contratti_addebiti_maturati_con_provenienza(
+                       p_competenza_mese, p_billing_account_id, p_contratto_id) a
+                -- Gli scartati non partono: li segnala la dashboard.
+                WHERE a.scarto IS NULL
+                ORDER BY a.contratto_id, a.ramo, a.segment_key
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE) IS
+                'Le righe di commessa che i contratti ATTIVO e CESSATO devono mandare a questo giro, in tre rami. (1) UNA_TANTUM: le righe ADESIONE e AGGIUNTA dei contratti ATTIVO, una volta, con competenza il giorno di attivazione (valido_dal); l''OVERRIDE non si addebita (e'' il prezzo del cliente), l''ESCLUSIONE non si fattura. (2) CANONE: i pezzi di periodo maturati e non ancora addebitati, da vendite.fn_canone_periodi (sede unica della regola), per le righe a canone ADESIONE e AGGIUNTA, per l''OVERRIDE solo su una quota fissa (prende il posto della riga di listino), e per le quote fisse del listino (config.listini_tipologie.e_quota_fissa, erogazione di default CANONE) senza una riga del contratto sullo stesso articolo: quantita'' 1 a periodo, periodicita'' della riga di listino. Il «da» e'' il giorno dopo l''ultimo pezzo addebitato della fonte; la generazione e'' coalesce(riga, testata); quantita'' fissa = riga x frazione, durata = giorni del pezzo o mesi (frazione x mesi). Prezzo: della riga, o del listino del contratto all''inizio del pezzo (vendite.fn_resolve_prezzo_listino_v2_esito, con la variazione globale; senza prezzo la riga non parte). Chiave del push CONTRATTO:<uid>:R:<riga>:M:<AAAA-MM> (mese d''inizio del pezzo) o, per la quota fissa del listino, CONTRATTO:<uid>:A:<articolo>:M:<AAAA-MM>. (3) STORNO: un pezzo addebitato che va oltre valido_al si storna per la parte non goduta (addebitato meno dovuto con la fine nota, stessa regola dei mesi e dei giorni), una riga per riga addebitata, al prezzo addebitato. La fine si puo'' spostare finche'' il contratto e'' ATTIVO: lo storno e'' la differenza fra il dovuto con la fine di oggi e quanto e'' gia'' stornato per il pezzo (negativa se la fine arretra, positiva se avanza o sparisce), chiave <base del pezzo>#STO[:<n>][#CMP:...]: la prima #STO, le successive #STO:2, #STO:3, ... Canone e storno hanno competenza_mese = il mese del giro (fine del mese di p_competenza_mese, o l''oggi aziendale), competenza_dal/al = il pezzo. Esclusione gia'' inviato: script.fn_get_stato_push_segment = LIBERA. Righe senza periodicita'' o senza prezzo non partono: le segnala la dashboard (vendite.vw_dash_fatturazione_contratti, CANONE_NON_GENERABILE). Il corpo e'' in vendite.fn_contratti_addebiti_maturati, sede comune con la dashboard; qui il filtro (scarto NULL), le colonne costanti della commessa, l''ordine e il limite. La chiave del documento esce in sorgente_chiave, l''uid del contratto in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita. Il backend legge le colonne per nome. Restituisce anche la provenienza del prezzo, nelle colonne della riga di commessa (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, prezzo_contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot): quella che vendite.fn_contratti_addebiti_maturati_con_provenienza da'' per ogni addebito.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La colonna della chiave cambia nome nel RETURNS TABLE: CREATE OR REPLACE non lo ammette.
+              -- ⛔ MAI con CASCADE: i chiamanti DB sono plpgsql (nessuna riga in pg_depend), e un
+              --    CASCADE farebbe sparire in silenzio chi un giorno ne dipendera'.
+              DROP FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_list_contratti_da_pushare(
+                  p_competenza_mese    vendite.commesse_attivita.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE DEFAULT NULL::bigint,
+                  p_limit              integer DEFAULT NULL::integer,
+                  p_contratto_id       vendite.contratti.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  -- nudi (utility_id, fatturazione_immediata, termine_pagamento_id, modalita_pagamento_id): valori calcolati o polimorfi: nessuna colonna di cui siano il riflesso
+                  contratto_id                vendite.contratti.id%TYPE,
+                  contratto_uid               vendite.contratti.uid%TYPE,
+                  riga_id                     vendite.contratti_righe.id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  utility_id                  integer,
+                  emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  competenza_dal              vendite.commesse_attivita.competenza_dal%TYPE,
+                  competenza_al               vendite.commesse_attivita.competenza_al%TYPE,
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                  -- text esplicito, non %TYPE: e' la chiave del documento come la riceve la madre
+                  -- (vendite.fn_upsert_commessa_attivita, p_sorgente_chiave), l'uid in testo. Non e' il
+                  -- riflesso di una colonna: commesse_attivita.sorgente_uid e' uuid e tiene solo la
+                  -- chiave dei tipi a uid.
+                  sorgente_chiave             text,
+                  segment_key                 vendite.commesse_attivita.segment_key%TYPE,
+                  articolo_id                 vendite.commesse_attivita.articolo_id%TYPE,
+                  istanza_utility_id          vendite.commesse_attivita.istanza_utility_id%TYPE,
+                  data_attivita               vendite.commesse_attivita.data_attivita%TYPE,
+                  uom_id                      vendite.commesse_attivita.uom_id%TYPE,
+                  quantita                    vendite.commesse_attivita.quantita%TYPE,
+                  qta_operativa               vendite.commesse_attivita.qta_operativa%TYPE,
+                  uom_operativa_id            vendite.commesse_attivita.uom_operativa_id%TYPE,
+                  factor_to_base              vendite.commesse_attivita.factor_to_base%TYPE,
+                  competenza_mese             vendite.commesse_attivita.competenza_mese%TYPE,
+                  prezzo_snapshot             vendite.commesse_attivita.prezzo_snapshot%TYPE,
+                  prezzo_bloccato             vendite.commesse_attivita.prezzo_bloccato%TYPE,
+                  pricing_mode                vendite.commesse_attivita.pricing_mode%TYPE,
+                  tipo_movimento              vendite.commesse_attivita.tipo_movimento%TYPE,
+                  valuta_id                   vendite.commesse_attivita.valuta_id%TYPE,
+                  meta                        vendite.commesse_attivita.meta%TYPE,
+                  tipo_doc_fiscale_id         vendite.commesse_attivita.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        bigint,
+                  modalita_pagamento_id       integer)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: le righe di commessa che i contratti devono mandare a questo giro:
+              --   gli addebiti maturati di vendite.fn_contratti_addebiti_maturati (la sede
+              --   della regola: una tantum, canoni, storni) senza gli scartati, con le
+              --   colonne della commessa che non dipendono dalla riga.
+              -- rev 2026-10-30 (20261030-01): i tre rami; prima solo UNA_TANTUM.
+              -- rev 2026-10-31 (20261031-01): lo storno segue la fine anche quando si
+              --   sposta dopo il primo storno.
+              -- rev 2026-10-31 (20261031-03): il corpo passa a
+              --   vendite.fn_contratti_addebiti_maturati (20261031-02), che lo condivide
+              --   con la dashboard; qui resta il filtro.
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_contratti_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'CONTRATTO'),
+                    NULL::uuid, 'CONTRATTO', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  a.contratto_id, a.contratto_uid, a.riga_id,
+                  a.billing_account_id, a.utility_id, a.emittente_soggetto_ruolo_id,
+                  a.competenza_dal, a.competenza_al,
+                  -- Corsia di instradamento: valore reale del contratto.
+                  a.fatturazione_immediata,
+                  v_sorgente_tipo_id,
+                  a.contratto_uid::text,
+                  a.segment_key,
+                  a.articolo_id, a.istanza_utility_id, a.data_attivita, a.uom_id,
+                  a.quantita, a.qta_operativa, a.uom_operativa_id, a.factor_to_base,
+                  a.competenza_mese,
+                  a.prezzo_snapshot, a.prezzo_bloccato,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  NULL::integer,
+                  a.meta,
+                  v_tipo_doc_fiscale_id,
+                  NULL::bigint,
+                  NULL::integer
+                FROM vendite.fn_contratti_addebiti_maturati(
+                       p_competenza_mese, p_billing_account_id, p_contratto_id) a
+                -- Gli scartati non partono: li segnala la dashboard.
+                WHERE a.scarto IS NULL
+                ORDER BY a.contratto_id, a.ramo, a.segment_key
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE) IS
+                'Le righe di commessa che i contratti ATTIVO e CESSATO devono mandare a questo giro, in tre rami. (1) UNA_TANTUM: le righe ADESIONE e AGGIUNTA dei contratti ATTIVO, una volta, con competenza il giorno di attivazione (valido_dal); l''OVERRIDE non si addebita (e'' il prezzo del cliente), l''ESCLUSIONE non si fattura. (2) CANONE: i pezzi di periodo maturati e non ancora addebitati, da vendite.fn_canone_periodi (sede unica della regola), per le righe a canone ADESIONE e AGGIUNTA, per l''OVERRIDE solo su una quota fissa (prende il posto della riga di listino), e per le quote fisse del listino (config.listini_tipologie.e_quota_fissa, erogazione di default CANONE) senza una riga del contratto sullo stesso articolo: quantita'' 1 a periodo, periodicita'' della riga di listino. Il «da» e'' il giorno dopo l''ultimo pezzo addebitato della fonte; la generazione e'' coalesce(riga, testata); quantita'' fissa = riga x frazione, durata = giorni del pezzo o mesi (frazione x mesi). Prezzo: della riga, o del listino del contratto all''inizio del pezzo (vendite.fn_resolve_prezzo_listino_v2_esito, con la variazione globale; senza prezzo la riga non parte). Chiave del push CONTRATTO:<uid>:R:<riga>:M:<AAAA-MM> (mese d''inizio del pezzo) o, per la quota fissa del listino, CONTRATTO:<uid>:A:<articolo>:M:<AAAA-MM>. (3) STORNO: un pezzo addebitato che va oltre valido_al si storna per la parte non goduta (addebitato meno dovuto con la fine nota, stessa regola dei mesi e dei giorni), una riga per riga addebitata, al prezzo addebitato. La fine si puo'' spostare finche'' il contratto e'' ATTIVO: lo storno e'' la differenza fra il dovuto con la fine di oggi e quanto e'' gia'' stornato per il pezzo (negativa se la fine arretra, positiva se avanza o sparisce), chiave <base del pezzo>#STO[:<n>][#CMP:...]: la prima #STO, le successive #STO:2, #STO:3, ... Canone e storno hanno competenza_mese = il mese del giro (fine del mese di p_competenza_mese, o l''oggi aziendale), competenza_dal/al = il pezzo. Esclusione gia'' inviato: script.fn_get_stato_push_segment = LIBERA. Righe senza periodicita'' o senza prezzo non partono: le segnala la dashboard (vendite.vw_dash_fatturazione_contratti, CANONE_NON_GENERABILE). Il corpo e'' in vendite.fn_contratti_addebiti_maturati, sede comune con la dashboard; qui il filtro (scarto NULL), le colonne costanti della commessa, l''ordine e il limite. La chiave del documento esce in sorgente_chiave, l''uid del contratto in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita. Il backend legge le colonne per nome.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_list_contratti_da_pushare(vendite.commesse_attivita.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.contratti.id%TYPE) TO zeroerp_app;

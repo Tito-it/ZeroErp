@@ -70,16 +70,6 @@ SELECT plan(20);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Codice e frase dell'errore (la frase serve al 15).
 CREATE OR REPLACE FUNCTION pg_temp.errore(p_sql text) RETURNS text
@@ -190,7 +180,7 @@ SELECT is(
 -- 7-8) Il rifiuto (test 26)
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM pg_temp.crea_op(%L, %L)$$,
         upper((SELECT email FROM _cli)), '_pgtap_secondo_' || substring(md5(clock_timestamp()::text) from 1 for 8))),
     'E_CREDENZIALE_GIA_OPERATORE',
@@ -203,7 +193,7 @@ UPDATE anagrafiche.identita_digitali
    AND ruolo_applicativo = 'OPERATORE';
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT * FROM pg_temp.crea_op(%L, %L)$$,
         (SELECT email FROM _cli), '_pgtap_terzo_' || substring(md5(clock_timestamp()::text) from 1 for 8))),
     'E_CREDENZIALE_GIA_OPERATORE',
@@ -245,7 +235,7 @@ CREATE TEMP TABLE _cli2 AS SELECT pg_temp.mk_cred('atomico') AS id;
 -- Il riuso passa lo step 1 (credenziale trovata e bloccata) e muore allo
 -- step 2 (flusso A senza cognome): niente di quanto fatto prima deve restare.
 CREATE TEMP TABLE _err12 AS
-SELECT pg_temp.codice_errore(format(
+SELECT dbops.fn_pgtap_codice_errore(format(
            $$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', '')$$,
            (SELECT email FROM django.auth_user WHERE id = (SELECT id FROM _cli2)))) AS codice;
 
@@ -278,7 +268,7 @@ CREATE TEMP TABLE _err14 AS
 SELECT pg_temp.errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato')$$,
                              (SELECT email FROM _cli3))) AS e;
 CREATE TEMP TABLE _err16 AS
-SELECT pg_temp.codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s)$$,
+SELECT dbops.fn_pgtap_codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s)$$,
                                     (SELECT email FROM _cli3), (SELECT id FROM _cli))) AS c;
 SET CONSTRAINTS ALL IMMEDIATE;
 
@@ -319,25 +309,25 @@ UPDATE _pf p SET email = au.email FROM django.auth_user au WHERE au.id = p.auth_
 UPDATE _pf p SET cf = s.id_fiscale_univoco_cf_piva FROM anagrafiche.soggetti s WHERE s.id = p.soggetto_id;
 
 SELECT is(
-    pg_temp.codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s)$$,
                                  (SELECT email FROM _pf), (SELECT auth_user_id FROM _pf))),
     'E_CREDENZIALE_ALTRA_PERSONA',
     '17) veste su una persona fisica, flusso A con un altro CF: E_CREDENZIALE_ALTRA_PERSONA, anche col consenso');
 
 SELECT is(
-    pg_temp.codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s, p_soggetto := %L)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s, p_soggetto := %L)$$,
                                  (SELECT email FROM _pf), (SELECT auth_user_id FROM _pf), (SELECT soggetto_id FROM _altro))),
     'E_CREDENZIALE_ALTRA_PERSONA',
     '18) ...flusso B con un altro soggetto: E_CREDENZIALE_ALTRA_PERSONA');
 
 SELECT is(
-    pg_temp.codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s, p_cf := %L)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_riusa := %s, p_cf := %L)$$,
                                  (SELECT email FROM _pf), (SELECT auth_user_id FROM _pf), (SELECT cf FROM _pf))),
     'E_ADMIN_CF_DUPLICATO',
     '19) ...flusso A con lo STESSO CF: stessa persona, parla E_ADMIN_CF_DUPLICATO (si usa il soggetto esistente)');
 
 SELECT is(
-    pg_temp.codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_soggetto := %L)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT * FROM pg_temp.crea_op(%L, 'ignorato', p_soggetto := %L)$$,
                                  (SELECT email FROM _pf), (SELECT soggetto_id FROM _pf))),
     'E_CREDENZIALE_DA_CONFERMARE',
     '20) ...flusso B con lo STESSO soggetto: l''identita'' passa, serve il consenso');

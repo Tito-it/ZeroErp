@@ -184,6 +184,11 @@ SELECT is(
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
                 ~ '(fn_check_indirizzi_documento_cliente|fn_doc_indirizzo_default)\s*\('
         AND p.proname NOT IN ('fn_check_indirizzi_documento_cliente', 'fn_doc_indirizzo_default')),
+    -- ⭐ rev 2026-11-13: + dbops.fn_pgtap_crea_offerta (20261112-64,
+    --   brief-db-stati-documento-dal-vocabolario giro 2), il builder pgTAP
+    --   dell'offerta: la fa nascere come il backend, che dopo la testata chiama
+    --   il building block dell'indirizzo di default.
+    'dbops.fn_pgtap_crea_offerta, '
     'script.fn_available_actions_contratto, script.fn_available_actions_offerta, '
     'script.fn_check_ddt_emittibile, script.fn_check_preventivo_emettibile, '
     -- ⭐ rev 2026-10-21: + vendite.fn_genera_ordine_da_offerta (20261021-61,

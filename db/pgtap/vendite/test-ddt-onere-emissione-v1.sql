@@ -54,17 +54,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(13);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
-
 CREATE TEMP TABLE _caus AS
 WITH ins AS (
     INSERT INTO config.causali_onere (codice_interno, codice, descrizione)
@@ -95,7 +84,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.emetti(p_ddt bigint) RETURNS text
 LANGUAGE sql AS $$
-  SELECT pg_temp.codice(format(
+  SELECT dbops.fn_pgtap_codice_errore(format(
     'SELECT dbops.fn_pgtap_porta_a_stato(''vendite.ddt''::regclass, %s, ''EMESSO'')', p_ddt))
 $$;
 

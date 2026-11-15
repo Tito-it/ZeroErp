@@ -75,9 +75,13 @@ UOM_ORDER_COLUMNS: dict[str, str] = {  # alias: u = catalogo.unita_misura
 # default d'elezione). Il seed delle due colonne e' arrivato dal team DB lo
 # stesso giorno (lista_colonna 296/297, `ordinabile=t`): contratto allineato,
 # presidiato da test_liste_configurabili_seed.
+# ⭐ Dal 2026-11-11 (BE21-c di brief-db-revisione-catalogo) la lista legge la
+#    vista `catalogo.vw_unita_misura_conversioni_dettaglio` (la `vista_sql`
+#    della lista 22): codici e descrizioni delle due unita' sono colonne della
+#    vista, non piu' due JOIN scritte qui.
 UOM_CONVERSIONI_ORDER_COLUMNS: dict[str, str] = {
-    "uom_from_codice": "uf.codice",
-    "uom_to_codice": "ut.codice",
+    "uom_from_codice": "c.uom_from_codice",
+    "uom_to_codice": "c.uom_to_codice",
     "fattore": "c.fattore",
     "valido_dal": "c.valido_dal",
     "valido_al": "COALESCE(c.valido_al, 'infinity'::date)",
@@ -128,6 +132,17 @@ ARTICOLI_CREATE_COLUMNS: frozenset[str] = frozenset({
     "modo_approvvigionamento_id",
     "gestito_a_magazzino",
     "lead_time_giorni",
+    # Il ritiro dell'articolo (brief-db-articoli-obsoleto-dal): la data da cui
+    # non si sceglie piu' per una riga nuova. Nullable: NULL = si sceglie,
+    # una data futura = ritiro programmato; rimetterla a NULL lo riattiva per
+    # le scelte nuove. Nessun lock e nessun verbo: e' una colonna dell'articolo.
+    "obsoleto_dal",
+    # La causale dell'articolo-onere (brief-db-addebito-trasporto-ordine §9.10,
+    # D-1 di Tid 2026-11-12): si sceglie in inserimento e si cambia finche'
+    # l'articolo non e' usato. Il blocco lo dice il DB (A-10:
+    # `lock_columns_conditional` e il guard di struttura), il doppione lo
+    # rifiuta il guard dell'onere (`E_ARTICOLO_CAUSALE_ONERE_GIA_USATA`).
+    "causale_onere_id",
     "meta",
 })
 
@@ -222,6 +237,16 @@ ARTICOLI_DETAIL_COLUMNS: tuple[str, ...] = (
     # lotto e seriale, che il guard DB rifiuta su un onere.
     "a.e_onere",
     "a.causale_onere_id",
+    # La decodifica della causale (20261112-40, §9.10): `codice_interno` per
+    # la logica, `descrizione` a video, sulla forma di `natura_vendita_*`.
+    "a.causale_onere_codice_interno",
+    "a.causale_onere_descrizione",
+    # Il ritiro (20261106-03, brief-db-articoli-obsoleto-dal §8): `obsoleto_dal`
+    # e' la data che l'operatore scrive, `e_obsoleto` il predicato del DB
+    # (`script.fn_e_obsoleto`, alla data operativa: lo stesso del guard di riga
+    # e del picker). ⛔ Il FE legge `e_obsoleto` e non confronta date.
+    "a.obsoleto_dal",
+    "a.e_obsoleto",
 )
 
 
@@ -237,12 +262,26 @@ _RICERCA_ARTICOLI = RicercaFull("catalogo.articoli", ("codice", "descrizione"))
 #    il catalogo avrebbe acceso una colonna sconosciuta alla dichiarazione.
 _RICERCA_UOM_TIPI = RicercaFull("catalogo.uom_tipi", ("codice", "descrizione"))
 _RICERCA_UNITA_MISURA = RicercaFull("catalogo.unita_misura", ("codice", "descrizione"))
-_RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", {
-    "uom_from_codice": "uf.codice",
-    "uom_from_descrizione": "uf.descrizione",
-    "uom_to_codice": "ut.codice",
-    "uom_to_descrizione": "ut.descrizione",
-})
+_RICERCA_CONVERSIONI = RicercaFull("catalogo.conversioni_uom", (
+    "uom_from_codice", "uom_from_descrizione", "uom_to_codice", "uom_to_descrizione",
+))
+
+# La proiezione di una conversione, lista e dettaglio: le colonne della vista
+# e la capability di riga del BB del DB `catalogo.fn_uom_conversione_capability`
+# (G1-G2, 2026-11-11), la stessa regola con cui `trgfn_uom_guard_storia`
+# rifiuta. Il backend la TRASPORTA: `puo_eliminarsi` / `motivo_non_eliminabile`
+# per il cestino, `puo_cambiare_attivo` per l'interruttore, `puo_chiudersi` /
+# `data_min_chiusura` / `data_default_chiusura` / `motivo_non_chiudibile` per
+# la data di fine.
+_CONVERSIONE_COLONNE = """
+    c.id, c.uom_from_id, c.uom_to_id, c.fattore,
+    c.valido_dal, c.valido_al, c.attivo,
+    c.uom_from_codice, c.uom_from_descrizione,
+    c.uom_to_codice, c.uom_to_descrizione,
+    c.puo_eliminarsi, c.motivo_non_eliminabile,
+    c.puo_cambiare_attivo, c.puo_chiudersi,
+    c.data_min_chiusura, c.data_default_chiusura, c.motivo_non_chiudibile
+"""
 
 
 # Il tetto dei picker degli articoli (ricerca libera e righe di documento): una
@@ -260,6 +299,8 @@ LOOKUP_ARTICOLI_MAX = 50
 # scelta nel picker — mai ricalcolati (piano-be-fe-magazzino-lotto-2-motore §5.3).
 # L'ONERE (2026-11-03): sulla riga d'ordine nuova il form spegne le date di
 # consegna se l'articolo scelto e' un onere (brief-db-addebito-trasporto-ordine §9.9).
+# IL RITIRO (2026-11-11, brief-db-articoli-obsoleto-dal §8): `obsoleto_dal` ed
+# `e_obsoleto`, cosi' un picker puo' dire che l'articolo e' ritirato o lo sara'.
 _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.codice,
                 a.descrizione,
@@ -275,7 +316,11 @@ _LOOKUP_ARTICOLI_COLONNE = """a.id,
                 a.requires_lotto,
                 a.requires_serial,
                 a.e_onere,
-                a.causale_onere_id"""
+                a.causale_onere_id,
+                a.causale_onere_codice_interno,
+                a.causale_onere_descrizione,
+                a.obsoleto_dal,
+                a.e_obsoleto"""
 
 
 class CatalogoRepository:
@@ -474,7 +519,6 @@ class CatalogoRepository:
         safe_limit = max(1, min(int(limit), LOOKUP_ARTICOLI_MAX))
         conditions: list[str] = []
         params: list[Any] = []
-        join_clause = ""
 
         # ⚠️ La lookup NON e' una lista: non ha un catalogo da leggere e non passa
         #    dal BB `add_ricerca_full_condition` (brief-be-ricerca-full-liste-
@@ -516,18 +560,14 @@ class CatalogoRepository:
         #    check: attivi/inattivi, `is_composito`, `gestito_a_magazzino`, oneri.
         # Porta oneri: un articolo E' un onere se ha una causale collegata
         # (`causale_onere_id` NOT NULL, legame 1:1 — brief porta-oneri §4c.8).
-        # `e_onere` e `causale_onere_id` li espone la vista dal 20261103-53 (e
-        # sono gia' fra le colonne del picker): qui si aggiunge solo il
-        # vocabolario, per portare a video la causale accanto all'articolo
-        # (display fields lato BE, il FE non fa lookup client-side).
-        extra_cols = ""
+        # `e_onere`, `causale_onere_id` e la decodifica della causale li espone
+        # la vista (20261103-53 e 20261112-40) e sono fra le colonne del
+        # picker: qui resta solo il filtro.
+        # ⛔ Niente JOIN su `config.causali_onere`: fino al 2026-11-12 la
+        #    decodifica era scritta anche qui (con `codice` al posto di
+        #    `codice_interno`), una seconda sede della vista (§9.10, C-1).
         if solo_oneri:
-            join_clause += " JOIN config.causali_onere co ON co.id = a.causale_onere_id"
             conditions.append("a.e_onere")
-            extra_cols = (
-                ",\n                    co.codice AS causale_onere_codice,"
-                "\n                    co.descrizione AS causale_onere_descrizione"
-            )
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -536,16 +576,15 @@ class CatalogoRepository:
         #    due sedi che divergono al primo cambio. Il `+1`, il taglio e il
         #    flag stanno insieme dentro `fetch_con_sonda` — sono una cosa sola.
         #    Vedi migliorie-generali-BE-FE-da-test-valutazione.md §D6.
-        # ⚠️ La sonda regge perche' il JOIN qui sopra e' 1:1 (`co` su una
-        #    FK): un JOIN che moltiplicasse le righe le farebbe contare due
+        # ⚠️ La sonda regge perche' la query legge la sola vista, una riga per
+        #    articolo: un JOIN che moltiplicasse le righe le farebbe contare due
         #    volte, e l'elenco direbbe «troncato» quando e' intero. Chi
         #    aggiunge un JOIN a questa query deve guardare qui.
         return fetch_con_sonda(
             f"""
             SELECT
-                {_LOOKUP_ARTICOLI_COLONNE}{extra_cols}
+                {_LOOKUP_ARTICOLI_COLONNE}
             FROM catalogo.vw_articoli_dettaglio a
-            {join_clause}
             {where_clause}
             ORDER BY a.codice ASC
             LIMIT %s
@@ -789,7 +828,7 @@ class CatalogoRepository:
     # Conversioni UoM (catalogo.unita_misura_conversioni)
     # =================================================================
 
-    # Scopo: Lista paginata delle conversioni UoM con filtri e join UoM.
+    # Scopo: Lista paginata delle conversioni UoM (vista di dettaglio, con la capability di riga).
     def list_conversioni(
         self, *, search: str | None = None, attivo: bool | None = True,
         uom_id: int | None = None,
@@ -801,7 +840,7 @@ class CatalogoRepository:
         #    nelle sorelle con `.lower()`: ora la legge il BB per tutte.
         ordinamento = sql_order_clause(
             order_by, order_dir,
-            colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="uf.codice", tiebreak="c.id",
+            colonne=UOM_CONVERSIONI_ORDER_COLUMNS, default="c.uom_from_codice", tiebreak="c.id",
             colonne_desc=UOM_CONVERSIONI_SORT_COLONNE_DATA,
         )
 
@@ -813,21 +852,13 @@ class CatalogoRepository:
         if uom_id is not None:
             conditions.append("(c.uom_from_id = %s OR c.uom_to_id = %s)")
             params.extend([uom_id, uom_id])
-        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI)
+        add_ricerca_full_condition(conditions, params, search, _RICERCA_CONVERSIONI, alias="c")
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-        from_where = (
-            "FROM catalogo.unita_misura_conversioni c "
-            "JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id "
-            "JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id "
-            f"{where_clause}"
-        )
+        from_where = f"FROM catalogo.vw_unita_misura_conversioni_dettaglio c {where_clause}"
 
         return fetch_paged_with_total(
             f"""
-            SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
-                   c.valido_dal, c.valido_al, c.attivo,
-                   uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
-                   ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione,
+            SELECT {_CONVERSIONE_COLONNE},
                    COUNT(*) OVER () AS total_count
             {from_where}
             ORDER BY {ordinamento}
@@ -839,20 +870,12 @@ class CatalogoRepository:
             offset=safe_offset,
         )
 
-    # Scopo: Restituisce singola conversione UoM per id.
+    # Scopo: Restituisce singola conversione UoM per id, dalla stessa vista
+    #        della lista: il drawer legge la stessa capability (BE21-e).
     def get_conversione(self, conv_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT c.id, c.uom_from_id, c.uom_to_id, c.fattore,
-                       c.valido_dal, c.valido_al, c.attivo,
-                       uf.codice AS uom_from_codice, uf.descrizione AS uom_from_descrizione,
-                       ut.codice AS uom_to_codice, ut.descrizione AS uom_to_descrizione
-                FROM catalogo.unita_misura_conversioni c
-                JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
-                JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
-                WHERE c.id = %s
-                """,
+                f"SELECT {_CONVERSIONE_COLONNE} FROM catalogo.vw_unita_misura_conversioni_dettaglio c WHERE c.id = %s",  # noqa: S608 — proiezione dalla costante _CONVERSIONE_COLONNE, valore come parametro
                 [conv_id],
             )
             return row_to_dict(cursor)

@@ -52,21 +52,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(18);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -172,34 +157,34 @@ $f$;
 -- ============================================================
 -- LE STAMPE
 -- ============================================================
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 1)),
-  'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 1)),
+  NULL,
   '4) la stampa di un preventivo, chiave uid in sorgente_uid: passa');
 
-SELECT is(pg_temp.esito(pg_temp.stampa('ORDINE_VENDITA', (SELECT ordine_id FROM _or), NULL, 1)),
-  'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('ORDINE_VENDITA', (SELECT ordine_id FROM _or), NULL, 1)),
+  NULL,
   '5) la stampa di un ordine, chiave id in sorgente_id: passa');
 
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 1)),
-  '23505 uq_documenti_generati_sorgente_progressivo',
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 1)),
+  'uq_documenti_generati_sorgente_progressivo',
   '6) una seconda versione del preventivo col numero gia'' usato: una serie sola per documento (V-6)');
 
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 2)),
-  'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', NULL, (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 2)),
+  NULL,
   '7) ... e col numero dopo: passa');
 
 -- ============================================================
 -- IL GUARD UNICO
 -- ============================================================
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', (SELECT preventivo_id FROM _pv WHERE k = 'A'), NULL, 3)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', (SELECT preventivo_id FROM _pv WHERE k = 'A'), NULL, 3)),
   'E_SORG_CHIAVE_NON_CONFORME',
   '8) l''id in sorgente_id per il preventivo, che ha chiave uid: E_SORG_CHIAVE_NON_CONFORME');
 
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', NULL, gen_random_uuid(), 1)),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', NULL, gen_random_uuid(), 1)),
   'E_SORG_NOT_FOUND',
   '9) un preventivo che non c''e'': E_SORG_NOT_FOUND');
 
-SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', (SELECT preventivo_id FROM _pv WHERE k = 'A'),
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.stampa('PREVENTIVO', (SELECT preventivo_id FROM _pv WHERE k = 'A'),
                                        (SELECT preventivo_uid FROM _pv WHERE k = 'A'), 3)),
   'E_SORG_CHIAVE_NON_CONFORME',
   '10) tutte e due le chiavi: E_SORG_CHIAVE_NON_CONFORME, il guard parla prima del CHECK');
@@ -208,29 +193,29 @@ SELECT is(pg_temp.esito(pg_temp.stampa('PREVENTIVO', (SELECT preventivo_id FROM 
 -- LO SNAPSHOT
 -- ============================================================
 -- ⭐ Il preventivo B esiste: il guard unico passa, e a parlare e' lo snapshot.
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE documenti.documenti_generati SET sorgente_uid = %L::uuid
       WHERE sorgente_uid = %L::uuid AND progressivo_sorgente = 1',
     (SELECT preventivo_uid FROM _pv WHERE k = 'B'), (SELECT preventivo_uid FROM _pv WHERE k = 'A'))),
   'E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE',
   '11) la stampa spostata su un altro preventivo: lo snapshot non cambia');
 
-SELECT is(pg_temp.esito(format(
+SELECT is(dbops.fn_pgtap_codice_errore(format(
     'UPDATE documenti.documenti_generati SET stato = ''ARCHIVIATO''
       WHERE sorgente_uid = %L::uuid AND progressivo_sorgente = 2',
     (SELECT preventivo_uid FROM _pv WHERE k = 'A'))),
-  'PASSA',
+  NULL,
   '12) lo stato fuori dallo snapshot si cambia ancora');
 
 -- ============================================================
 -- LA CANCELLAZIONE (BLOCCA)
 -- ============================================================
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s',
                                (SELECT preventivo_id FROM _pv WHERE k = 'A'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '13) il preventivo stampato non si cancella: la stampa e'' append-only, quindi BLOCCA');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _or))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _or))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '14) ... e l''ordine stampato nemmeno');
 

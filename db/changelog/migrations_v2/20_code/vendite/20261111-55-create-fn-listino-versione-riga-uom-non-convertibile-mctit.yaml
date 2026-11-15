@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_listino_versione_riga_uom_non_convertibile: la prima riga di una versione di
+#   listino con un'unita' che non si converte per tutto il periodo (D25, Q24).
+#
+#   Il secondo lato di D25 (il periodo della versione cambia) e l'attivazione di una
+#   BOZZA (una riga scritta bene si e' rotta sotto, dal catalogo) chiedono la stessa
+#   cosa: la lettura e' qui (-57, -58). Funzione nuova, rollback: DROP.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-55-create-fn-listino-versione-riga-uom-non-convertibile-mctit.yaml
+
+  - changeSet:
+      id: 20261111-55-create-fn-listino-versione-riga-uom-non-convertibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_listino_versione_riga_uom_non_convertibile: la prima riga di una versione con un'unita' che non si converte per tutto il periodo; per il periodo e per l'attivazione (D25, Q24). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE (p.proname = 'fn_listino_versione_riga_uom_non_convertibile' AND p.pronamespace = 'vendite'::regnamespace)
+                  OR (p.proname = 'fn_uom_primo_giorno_non_convertibile' AND p.pronamespace = 'catalogo'::regnamespace)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_listino_versione_riga_uom_non_convertibile(
+                  p_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS TABLE(
+                  riga_id         vendite.listini_righe.id%TYPE,
+                  articolo_id     vendite.listini_righe.articolo_id%TYPE,
+                  articolo_codice catalogo.articoli.codice%TYPE,
+                  uom_codice      catalogo.unita_misura.codice%TYPE,
+                  primo_giorno    date)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT x.id, x.articolo_id, x.articolo_codice, x.uom_codice, x.primo
+                    FROM (SELECT lr.id,
+                                 lr.articolo_id,
+                                 a.codice AS articolo_codice,
+                                 u.codice AS uom_codice,
+                                 catalogo.fn_uom_primo_giorno_non_convertibile(lr.articolo_id, lr.uom_id, lv.validita) AS primo
+                            FROM vendite.listini_righe lr
+                            JOIN vendite.listini_versioni lv ON lv.id = lr.listino_versione_id
+                            JOIN catalogo.articoli a         ON a.id  = lr.articolo_id
+                            JOIN catalogo.unita_misura u     ON u.id  = lr.uom_id
+                           WHERE lr.listino_versione_id = p_versione_id
+                             AND lr.attivo IS TRUE) x
+                   WHERE x.primo IS NOT NULL
+                   ORDER BY x.primo, x.articolo_codice, x.id
+                   LIMIT 1;
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_listino_versione_riga_uom_non_convertibile(bigint) IS
+                  'La prima riga attiva della versione di listino p_versione_id con un''unita'' che, in un giorno del periodo della versione (validita), non si converte per l''articolo (catalogo.fn_uom_primo_giorno_non_convertibile): la riga, l''articolo e i codici di articolo e unita'', il primo giorno scoperto. Al piu'' una riga: la prima per giorno, poi per codice articolo. Nessuna se ogni riga si converte per tutto il periodo, o se la versione non c''e'' o e'' fuori perimetro. La leggono il guard del periodo vendite.trgfn_listini_versioni_guard_uom_periodo e l''attivazione script.fn_check_versione_listino_attivabile. SECURITY INVOKER: la versione e le sue righe sono dell''azienda di chi le guarda.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listino_versione_riga_uom_non_convertibile(bigint);

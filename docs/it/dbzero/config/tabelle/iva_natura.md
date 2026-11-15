@@ -13,7 +13,7 @@
 | descrizione | character varying(250) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
-| user_insert | text | YES |  |
+| user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | true |
 | is_reverse_charge | boolean | NO |  |

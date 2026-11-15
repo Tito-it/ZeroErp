@@ -52,4 +52,5 @@ La tabella **`ui.lista_definizione`** è il **catalogo delle liste configurabili
 ### Note operative
 
 * Ogni ambiente (dev, staging, prod) deve avere gli stessi `codice` per garantire che i preset seedati siano applicabili ovunque. L'`id` numerico non è stabile tra ambienti — usare sempre `codice` come riferimento nei seed.
+* Tre proprietà di una lista sono presidiate da un **elenco per nome** in un pgTAP: lista globale (`perimetro_emittente = false`, `test-lista-definizione-perimetro-emittente-v1`), `multi_emittente` (`test-lista-definizione-multi-emittente-v1`), ricerca da un carattere (`test-lista-ricerca-min-caratteri-v1`). Chi aggiunge o toglie una riga del seed con una di queste proprietà scrive il nome nell'elenco nello stesso giro, anche quando il lavoro parte dal backend. Sul lato Django la riga nuova accende i test di copertura del perimetro e della ricerca: è il primo passo del backend.
 * La colonna `vista_sql` accetta solo view, materialized view o tabelle (`relkind IN ('v','m','r')`). Non è necessario includere lo schema nel nome: il trigger usa il nome grezzo come `pg_catalog.pg_class.relname`.

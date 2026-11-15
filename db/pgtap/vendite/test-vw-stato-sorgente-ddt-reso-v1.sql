@@ -3,6 +3,10 @@
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito): il reso in bozza dal builder dbops.fn_pgtap_crea_reso; restano scritti a mano la conferma e l'annullo fn_annulla_reso, che sono i passi dei test 7 e 8 (per loro resta concessa conferma_reso).
 -- rev 2026-10-25 (brief-db-pgtap-bolla-e-reso-costruiti, giro 1): la bolla da ordine dal builder dbops.fn_pgtap_crea_ddt_da_ordine (CONSEGNATO, EMESSO; ANNULLATO = EMESSO + il verbo vendite.fn_annulla_ddt, che resta perche' l'annullo con legami passa da li'); il reso resta scritto a mano (giro 2).
 -- pgTAP test per Zero ERP
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 3, 20261113-42 e -47): esito e
+--   terminale di bolla e reso stanno nel vocabolario, e le viste li passano. Il reso confermato non
+--   e' terminale (S-5: l'annullo a mano e' attivo), test 7; il test 14 sposta le marche e prova che
+--   la vista le segue e non le ricalcola da fase.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2a, 20261019-40 … -79):
 --   il documento passato ai lettori delle testate, ai legami e ai montaggi del
 --   lock e' il codice della sorgente (DDT_VENDITA, ORDINE_VENDITA,
@@ -12,18 +16,17 @@
 --       — step 6b, brief-db-fatturazione-ddt-resi §4a.
 -- (changeset 20260718-09/-10)
 -- ------------------------------------------------------------
--- Indice test (1..8):
+-- Indice test (1..14):
 --   1) ramo DDT: il documento proietta, risolto=true, via union
 --   2) 🔑 LA CHIAVE E' `id`, NON l'uid: cercare per uid NON trova nulla.
 --      E' l'asserzione che protegge dalla "ripulitura" della convenzione
 --      polimorfa (key_selector), che romperebbe il ramo in silenzio
---   3) DDT CONSEGNATO -> esito POSITIVO, terminale true (fase CHIUSO)
---   4) DDT ANNULLATO  -> esito NEGATIVO, terminale true (is_abortito)
---   5) DDT EMESSO     -> esito NULL, terminale false (fase IN_CORSO)
---   6) ramo RESO: reso DRAFT -> esito NULL, terminale false (fase APERTO)
---   7) reso CONFERMATO -> esito POSITIVO, terminale true (correzione catalogo
---      2026-07-18: CONFERMATO ha fase CHIUSO — un reso confermato E' concluso,
---      la ri-consegna e' un altro documento; l'annullo resta come storno)
+--   3) DDT CONSEGNATO -> esito POSITIVO, terminale true (dal vocabolario)
+--   4) DDT ANNULLATO  -> esito NEGATIVO, terminale true
+--   5) DDT EMESSO     -> esito NULL, terminale false
+--   6) ramo RESO: reso DRAFT -> esito NULL, terminale false
+--   7) reso CONFERMATO -> esito POSITIVO, terminale FALSE (S-5: resta
+--      annullabile a mano, lo storno; fase resta CHIUSO)
 --   8) reso ANNULLATO -> esito NEGATIVO, terminale true
 --   10) ramo a chiave id ATTRAVERSO fn_stato_sorgente: il DDT CONSEGNATO si
 --       trova cercando la chiave numerica (rev 2026-10-05, 20261005-23)
@@ -36,6 +39,9 @@
 --       (rev 2026-10-05, 20261005-24: la LATERAL per chiave nativa, ramo bigint)
 --   9) unicita': al piu' una riga per (sorgente_tipo_id, sorgente_uid) su
 --      entrambi i rami nuovi
+--  14) ⭐ marca spostata: esito PARZIALE sullo stato EMESSO e terminale false
+--      su CONSEGNATO, in transazione: la vista li segue (da fase direbbe NULL
+--      e true)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -68,7 +74,7 @@ DO $az_ann$ BEGIN
       NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
 END $az_ann$;
 
-SELECT plan(13);
+SELECT plan(14);
 
 -- Dal 2026-09-28 conferma e annullo del reso sono verbi che applicano
 -- l'azione conferma_reso (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-f):
@@ -144,7 +150,7 @@ SELECT is(
       AND v.sorgente_uid=(SELECT ddt_uid FROM tmp_cons)::text),
   0, '2) la chiave del DDT e'' id::text, NON l''uid (convenzione polimorfa key_selector)');
 
--- 3-5) esito/terminale derivati da fase + is_abortito
+-- 3-5) esito/terminale dal vocabolario della bolla
 SELECT is(
   (SELECT (v.esito, v.terminale) FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id=(SELECT sorgente_ddt_id FROM tmp_refs)
@@ -170,14 +176,14 @@ SELECT is(
       AND v.sorgente_uid=(SELECT reso_id FROM tmp_reso)::text),
   (NULL::text, false), '6) ramo RESO: reso DRAFT (fase APERTO) -> esito NULL / non terminale');
 
--- 7) conferma -> CONFERMATO ha fase CHIUSO (correzione catalogo 2026-07-18):
---    il reso confermato E' concluso -> POSITIVO / terminale
+-- 7) conferma -> CONFERMATO: esito POSITIVO (il reso ha fatto il suo lavoro), ma
+--    NON terminale (S-5): l'annullo a mano, lo storno, resta attivo.
 SELECT vendite.fn_conferma_reso((SELECT reso_id FROM tmp_reso));
 SELECT is(
   (SELECT (v.esito, v.terminale) FROM script.vw_stato_sorgente v
     WHERE v.sorgente_tipo_id=(SELECT sorgente_reso_id FROM tmp_refs)
       AND v.sorgente_uid=(SELECT reso_id FROM tmp_reso)::text),
-  ('POSITIVO'::text, true), '7) reso CONFERMATO (fase CHIUSO da correzione catalogo) -> POSITIVO / terminale');
+  ('POSITIVO'::text, false), '7) reso CONFERMATO -> POSITIVO / non terminale: l''annullo a mano resta attivo (S-5)');
 
 -- 8) annullo (storno guardato, ammesso da CONFERMATO senza ri-consegne)
 SELECT vendite.fn_annulla_reso((SELECT reso_id FROM tmp_reso));
@@ -267,6 +273,21 @@ SELECT results_eq(
      WHERE pratica_id = (SELECT pratica_id FROM tmp_prat_ddt)$$,
   $$VALUES (true, 'POSITIVO'::text, true)$$,
   '13) vw_pratica_doc_sorgente risolve il DDT collegato per chiave id (ramo bigint della LATERAL)');
+
+-- 14) ⭐ La marca spostata: le viste leggono le colonne, non ricalcolano da fase.
+--     Su EMESSO (fase IN_CORSO) un esito; su CONSEGNATO (fase CHIUSO) terminale
+--     spento. Da fase la vista direbbe NULL e true.
+UPDATE config.stati_doc_ddt SET esito = 'PARZIALE' WHERE codice_interno = 'EMESSO';
+UPDATE config.stati_doc_ddt SET terminale = false WHERE codice_interno = 'CONSEGNATO';
+SELECT is(
+  (SELECT (e.esito, c.terminale)
+     FROM script.vw_stato_sorgente e, script.vw_stato_sorgente c
+    WHERE e.sorgente_tipo_id = (SELECT sorgente_ddt_id FROM tmp_refs)
+      AND e.sorgente_uid = (SELECT ddt_id FROM tmp_eme)::text
+      AND c.sorgente_tipo_id = (SELECT sorgente_ddt_id FROM tmp_refs)
+      AND c.sorgente_uid = (SELECT ddt_id FROM tmp_cons)::text),
+  ('PARZIALE'::text, false),
+  '14) marca spostata: la vista della bolla legge esito e terminale dal vocabolario, non da fase');
 
 SELECT * FROM finish();
 ROLLBACK;

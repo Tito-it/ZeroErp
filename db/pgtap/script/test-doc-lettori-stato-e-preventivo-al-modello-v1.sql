@@ -17,8 +17,11 @@
 --     della testata; NULL per un codice che non c'e' o uno stato spento (U-3);
 --     testata fuori mappa: chiamata non valida;
 --   - lo stato di emissione lo dichiara il vocabolario (al massimo uno, ed e'
---     attivo) nei cinque documenti che si emettono; reso, commessa e fattura
---     non si emettono (NULL);
+--     attivo) nei sei documenti che si emettono, il reso compreso; commessa e
+--     fattura non si emettono (NULL);
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 3, S-3, 20261113-42): il reso
+--   dichiara il suo stato di emissione (CONFERMATO). Prima si diceva che il reso «non si emette»:
+--   ora lo dice il vocabolario. Restano senza emissione commessa e fattura.
 --   - la matrice del preventivo chiede emetti_preventivo sull'emissione e
 --     sull'annullo dell'emesso e dell'accettato (U-1, U-2), e su nient'altro;
 --   - la domanda intera dice stati, emissione e riga del passaggio di un
@@ -39,9 +42,9 @@
 --   3) fn_doc_stato_id: un codice che non c'e' -> NULL
 --   4) fn_doc_stato_id: uno stato spento -> NULL (U-3)
 --   5) fn_doc_stato_id: testata fuori mappa -> chiamata non valida
---   6) la colonna emissione: cinque vocabolari, indice unico parziale e CHECK
+--   6) la colonna emissione: sei vocabolari, indice unico parziale e CHECK
 --   7) gli stati di emissione seminati, uno per vocabolario
---   8) fn_stato_emissione_id: preventivo -> EMESSO; reso, commessa e fattura -> NULL
+--   8) fn_stato_emissione_id: preventivo -> EMESSO, reso -> CONFERMATO; commessa e fattura -> NULL
 --   9) le azioni sulla matrice del preventivo: emetti_preventivo su tre righe
 --  10) l'azione nuova a catalogo
 --  11) domanda intera, bozza -> EMESSO: emissione, riga manuale, emetti_preventivo
@@ -109,21 +112,21 @@ SELECT throws_like(
     'fn_doc_stato_id: una tabella fuori dalla mappa -> chiamata non valida'
 );
 
--- 6) La colonna, l'indice unico parziale e il CHECK sui cinque vocabolari
+-- 6) La colonna, l'indice unico parziale e il CHECK sui sei vocabolari
 SELECT is(
     (SELECT count(*)::integer FROM pg_attribute a
       WHERE a.attname = 'emissione' AND NOT a.attisdropped AND a.attnotnull
         AND a.attrelid IN ('config.stati_doc_preventivi'::regclass, 'config.stati_doc_offerte'::regclass,
                            'config.stati_doc_contratti'::regclass, 'config.stati_doc_ordini'::regclass,
-                           'config.stati_doc_ddt'::regclass))
+                           'config.stati_doc_ddt'::regclass, 'config.stati_doc_reso'::regclass))
     + (SELECT count(*)::integer FROM pg_index i
         JOIN pg_class c ON c.oid = i.indexrelid
        WHERE i.indisunique AND i.indpred IS NOT NULL
          AND c.relname LIKE 'uq\_stati\_doc\_%\_emissione')
     + (SELECT count(*)::integer FROM pg_constraint k
         WHERE k.contype = 'c' AND k.conname LIKE 'chk\_stati\_doc\_%\_emissione\_attivo'),
-    15,
-    'la colonna emissione (NOT NULL) sui cinque vocabolari, con indice unico parziale e CHECK «attivo»'
+    18,
+    'la colonna emissione (NOT NULL) sui sei vocabolari, con indice unico parziale e CHECK «attivo»'
 );
 
 -- 7) Gli stati di emissione seminati
@@ -133,8 +136,9 @@ SELECT is(
         UNION ALL SELECT 'ddt:' || codice_interno FROM config.stati_doc_ddt WHERE emissione
         UNION ALL SELECT 'offerte:' || codice_interno FROM config.stati_doc_offerte WHERE emissione
         UNION ALL SELECT 'ordini:' || codice_interno FROM config.stati_doc_ordini WHERE emissione
-        UNION ALL SELECT 'preventivi:' || codice_interno FROM config.stati_doc_preventivi WHERE emissione) z),
-    'contratti:ATTIVO ddt:EMESSO offerte:EMESSA ordini:CONFERMATO preventivi:EMESSO',
+        UNION ALL SELECT 'preventivi:' || codice_interno FROM config.stati_doc_preventivi WHERE emissione
+        UNION ALL SELECT 'reso:' || codice_interno FROM config.stati_doc_reso WHERE emissione) z),
+    'contratti:ATTIVO ddt:EMESSO offerte:EMESSA ordini:CONFERMATO preventivi:EMESSO reso:CONFERMATO',
     'gli stati di emissione seminati: uno per vocabolario'
 );
 
@@ -144,8 +148,10 @@ SELECT is(
           script.fn_stato_emissione_id('vendite.resi'::regclass),
           script.fn_stato_emissione_id('vendite.commesse'::regclass),
           script.fn_stato_emissione_id('vendite.fatture'::regclass)],
-    ARRAY[(SELECT id FROM t_st WHERE cod = 'EMESSO'), NULL, NULL, NULL]::bigint[],
-    'fn_stato_emissione_id: il preventivo si emette in EMESSO; reso, commessa e fattura non si emettono'
+    ARRAY[(SELECT id FROM t_st WHERE cod = 'EMESSO'),
+          (SELECT s.id FROM config.stati_doc_reso s WHERE s.codice_interno = 'CONFERMATO'),
+          NULL, NULL]::bigint[],
+    'fn_stato_emissione_id: il preventivo si emette in EMESSO, il reso in CONFERMATO; commessa e fattura non si emettono'
 );
 
 -- 9) Le azioni sulla matrice del preventivo (U-1, U-2)

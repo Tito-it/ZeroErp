@@ -21,6 +21,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_automation_delete_block_trigger_name_non_vuoto |  |
 | PRIMARY KEY | pk_automation_delete_block | id |
 | UNIQUE | uq_automation_delete_block_table | schema_name, table_name |
 

@@ -118,7 +118,7 @@ path: la rotta è la risorsa e la cancellazione è il `DELETE`. Non esiste un
 
 | | |
 | --- | --- |
-| Permesso | `post_permission = governa_fondo_fattura` (azione di processo `pericolosa`, D-23). ⚠️ **Seminata non vuol dire concessa**: finché non è assegnata a un profilo resta chiusa per tutti tranne il super admin |
+| Permesso | `delete_permission = governa_fondo_fattura` (azione di processo `pericolosa`, D-23). ⛔ Fino al 2026-11-14 era `post_permission`: la catena legge `<metodo>_permission`, e per un DELETE non la chiedeva nessuno (la presidia P-1 in `core/tests/db/test_azioni_processo_dichiarate_e_lette`). ⚠️ **Seminata non vuol dire concessa**: finché non è assegnata a un profilo resta chiusa per tutti tranne il super admin |
 | Header | **`Idempotency-Key` obbligatoria**: il gesto è irreversibile, e un doppio invio riceverebbe altrimenti un errore per un'operazione riuscita |
 | Corpo | vuoto — quello che serve è nel path |
 | Risposta | `{status, fondo_source_id, deleted_righe, deleted_fondi, deleted_source}` |

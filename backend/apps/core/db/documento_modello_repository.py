@@ -48,6 +48,9 @@ _LETTORE_ANNULLO = "script.fn_stato_abortito_id"
 # non chiude il documento, la cessazione si'.
 _LETTORE_CESSAZIONE = "script.fn_stato_cessazione_id"
 _LETTORE_ACCETTAZIONE = "script.fn_stato_accettazione_id"
+# Il rifiuto del cliente (preventivi, offerte): colonna `rifiuto` del
+# vocabolario (S-3 di brief-db-stati-documento-dal-vocabolario §6.5).
+_LETTORE_RIFIUTO = "script.fn_stato_rifiuto_id"
 # Lo stato in cui il documento nasce, letto dalla TESTATA (`20261027-29`,
 # brief-modello-documento-vendita §15.13): mai `'DRAFT'` scritto qui.
 _LETTORE_INIZIALE = "script.fn_doc_stato_iniziale_id"
@@ -127,6 +130,12 @@ class DocumentoModelloRepository:
     #        `fn_stato_accettazione_id`.
     def stato_di_accettazione(self, testata: str) -> StatoDocumento | None:
         return self._stato_del_modello(_LETTORE_ACCETTAZIONE, testata)
+
+    # Scopo: Lo stato di rifiuto del cliente della testata (id e codice), o None
+    #        (il documento non si rifiuta). Gemello di `stato_di_accettazione`,
+    #        su `fn_stato_rifiuto_id`.
+    def stato_di_rifiuto(self, testata: str) -> StatoDocumento | None:
+        return self._stato_del_modello(_LETTORE_RIFIUTO, testata)
 
     # Scopo: Lo stato iniziale della testata (id e codice), o None (il
     #        vocabolario non ne dichiara uno). Gemello dei due sopra, su

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.sec_functions_owner`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -54,6 +54,10 @@ Il migratore non può sostituire una funzione di `postgres`. Un changeSet che de
 la prende **in prestito**: scrive se stesso come proprietario richiesto, lancia la sync, sostituisce
 la funzione, rimette `postgres` e rilancia la sync, verificando che il proprietario sia tornato. È
 l'unica scrittura ammessa fuori dal seed.
+
+⚠️ La sync non solleva: un prestito non riuscito si manifesterebbe più avanti come «bisogna essere
+proprietari», lontano dalla causa. Subito dopo il prestito, quindi, il changeSet confronta il
+proprietario della funzione con l'utente che sta migrando, e si ferma se differiscono.
 
 ---
 

@@ -52,21 +52,6 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
       FROM vendite.fn_canone_periodi(p_dal, p_al, p_per, p_mese::smallint, p_gen, p_giro, p_da) p;
 $fx$;
 
--- Scopo: il codice d'errore di uno statement che deve fallire (canale CONSTRAINT).
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), '-');
-    END;
-END;
-$fx$;
-
 -- ============================================================
 -- 1-3) Gli esempi di Tid
 -- ============================================================
@@ -131,15 +116,15 @@ SELECT is(pg_temp.pezzi('2026-03-01', NULL, 'MENSILE', 1, 'FINE_PERIODO', '2026-
 -- ============================================================
 -- 12-14) I parametri
 -- ============================================================
-SELECT is(pg_temp.codice($$SELECT * FROM vendite.fn_canone_periodi('2026-01-01', NULL, 'XX', 1::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT * FROM vendite.fn_canone_periodi('2026-01-01', NULL, 'XX', 1::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
     'E_PARAMETRO_INVALIDO',
     '12) periodicita'' fuori vocabolario: E_PARAMETRO_INVALIDO');
 
-SELECT is(pg_temp.codice($$SELECT * FROM vendite.fn_canone_periodi('2026-01-01', NULL, 'MENSILE', 13::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT * FROM vendite.fn_canone_periodi('2026-01-01', NULL, 'MENSILE', 13::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
     'E_PARAMETRO_INVALIDO',
     '13) mese di partenza 13: E_PARAMETRO_INVALIDO');
 
-SELECT is(pg_temp.codice($$SELECT * FROM vendite.fn_canone_periodi('2026-03-01', '2026-01-31', 'MENSILE', 1::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT * FROM vendite.fn_canone_periodi('2026-03-01', '2026-01-31', 'MENSILE', 1::smallint, 'INIZIO_PERIODO', '2026-03-10')$$),
     'E_PARAMETRO_INVALIDO',
     '14) fine prima dell''inizio: E_PARAMETRO_INVALIDO');
 

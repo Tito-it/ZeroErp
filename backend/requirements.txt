@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==2.6.0
+anthropic==2.8.0
     # via -r ../requirements.in
 anyio==4.16.0
     # via
@@ -56,7 +56,7 @@ et-xmlfile==2.0.0
     # via openpyxl
 fonttools[woff]==4.68.0
     # via weasyprint
-gunicorn==26.2.0
+gunicorn==27.0.0
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2

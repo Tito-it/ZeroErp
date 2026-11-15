@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_listino_versioni`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -52,7 +52,32 @@ codice. Uno stato già usato da una versione o dalla matrice non si disattiva.
   `vendite.listini_versioni` mette questo stato quando chi crea non ne dice uno, e rifiuta ogni
   altro con `E_DOC_STATO_INIZIALE_NON_VALIDO`. Lo legge anche il controllo dei listini in scadenza
   senza una versione successiva.
-* **`terminale`** — nessun passaggio esce da questo stato.
+
+  È anche **la bozza**: chi chiede «la versione è in bozza?» legge questa colonna, mai il codice
+  `BOZZA`. In bozza la versione si cambia tutta e si elimina
+  ([`vendite.trgfn_listini_versioni_guard_per_stato`](/dbzero/vendite/manual/trgfn_listini_versioni_guard_per_stato),
+  [`script.fn_check_versione_listino_eliminabile`](/dbzero/script/manual/fn_check_versione_listino_eliminabile)),
+  le sue righe, i componenti e i kit si scrivono liberamente
+  ([`vendite.trgfn_listini_righe_guard_stato`](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato),
+  [`vendite.trgfn_listini_righe_comp_guard_immutabilita_v5`](/dbzero/vendite/manual/trgfn_listini_righe_comp_guard_immutabilita_v5),
+  `vendite.trgfn_listini_kit_guard`, `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa`),
+  e un prezzo non ne proviene: non è in vigore
+  ([`vendite.fn_listino_versione_in_vigore`](/dbzero/vendite/manual/fn_listino_versione_in_vigore)),
+  il resolver non la usa come versione preferita
+  ([`vendite.fn_resolve_prezzo_listino_v2_esito`](/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2_esito)),
+  una riga di documento non la cita (`vendite.fn_check_listino_provenienza_emittente`), non dà
+  storia al listino ([`vendite.fn_listino_ha_storia`](/dbzero/vendite/manual/fn_listino_ha_storia)),
+  e un prezzo bundle che comincia oltre la fine del legame vi si cancella
+  ([`vendite.fn_prezzi_legame_oltre_la_fine`](/dbzero/vendite/manual/fn_prezzi_legame_oltre_la_fine)).
+  Lo presidia `vendite/test-listino-stati-dal-vocabolario-v1`, con la marca spostata su ATTIVA.
+* **`terminale`** — nessun passaggio **a mano** esce da questo stato (lo fa rispettare
+  [`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale)).
+  Non vale il contrario: `ATTIVA` non ha uscite a mano, la chiude il processo, e non è terminale.
+
+`ATTIVA` e `CHIUSA` non hanno una colonna, e i lettori li nominano col codice: sono le
+**destinazioni** dei due processi della versione, l'attivazione
+(`vendite.fn_attiva_versione_listino`) e la chiusura (`vendite.fn_chiudi_versioni_listino_scadute`),
+e chi li confronta vuole proprio quello stato, come la riga della matrice lo nomina.
 
 Rispetto ai vocabolari dei documenti di vendita, questo è ridotto: non ha `emissione` (una versione
 si **attiva**, col suo passaggio `BOZZA → ATTIVA`), non ha un annullo (`is_abortito`) e non ha la
@@ -82,6 +107,7 @@ Il contenuto della tabella sta nel CSV `80_data/sql/config/stati_doc_listino_ver
 ### Test
 
 * `db/pgtap/vendite/test-listino-versione-al-modello-v1.sql` — la versione di listino sul modello del documento, e gli id dei vincoli confrontati coi codici.
+* `db/pgtap/vendite/test-listino-stati-dal-vocabolario-v1.sql` — la bozza dalla colonna `iniziale`, nei lettori di significato, con la marca spostata.
 * `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita della versione.
 
 ---

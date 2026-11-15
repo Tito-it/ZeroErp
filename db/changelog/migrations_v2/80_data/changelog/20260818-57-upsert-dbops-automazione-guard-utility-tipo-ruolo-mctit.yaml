@@ -118,7 +118,6 @@ databaseChangeLog:
             encoding: UTF-8
             # Token letterale, non la cella vuota: `trigger_name` e' nullable e
             # una cella vuota genererebbe la stringa vuota, che non e' NULL.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id,                    type: NUMERIC }

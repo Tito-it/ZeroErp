@@ -421,29 +421,12 @@ END;
 -- ============================================================
 -- TEST 16) il kit non si vende a consumo (I-D6, rev 2026-10-21)
 -- ============================================================
--- La riga composita con una fonte a valle (la combinazione la ammette la
--- tipologia, non il kit) e' fuori dal perimetro dell'articolo. Fino al
--- 2026-10-21 nasceva, con quantita' NULL, senza componenti e con prezzo 0.
--- Il codice si legge dal canale CONSTRAINT dell'eccezione.
-CREATE OR REPLACE FUNCTION pg_temp.oce_codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), '-');
-    END;
-END;
-$fx$;
 
 SELECT is(
     (SELECT count(*)::int FROM vendite.fn_articolo_erogazioni(pg_temp.oce('P')) e
       WHERE e.fonte_quantita_attesa <> 'FISSA')
     || ' ' ||
-    pg_temp.oce_codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO vendite.offerte_commerciali_eccezioni (
               offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
               prezzo_unitario, tipo_erogazione)

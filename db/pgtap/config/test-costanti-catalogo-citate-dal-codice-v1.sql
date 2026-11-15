@@ -59,6 +59,13 @@
 --   sarebbe completa.
 --
 -- Origine: bonifica preCondition/seed del 2026-09-02 · linee-guida-sql §11.4
+--
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): esce la
+--   riga (stati_doc_reso ANNULLATO, fn_available_actions_reso). La capability
+--   del reso riconosce l'annullo dalla colonna is_abortito del vocabolario, non
+--   dal codice: il rischio della riga (un codice rinominato che riaccende il
+--   bottone) non c'e' piu', e il test 4 lo diceva. Con lei esce la lettura di
+--   config.stati_doc_reso fra i presenti, che nessuna riga chiedeva piu'.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE. Senza, un fallimento a meta' lascia i dati di prova nel
@@ -66,7 +73,7 @@
 BEGIN;
 
 -- ⚠️ 2. CONTESTO APPLICATIVO. I test girano come `zeroerp_app` con la RLS
---   ATTIVA. I cataloghi letti qui (config.sorgenti, config.stati_doc_reso,
+--   ATTIVA. I cataloghi letti qui (config.sorgenti,
 --   pagamenti.vendite_contabili_righe_stati) sono tabelle come le altre: senza
 --   una veste dichiarata una policy fail-closed farebbe leggere ZERO righe, e
 --   il test 2 conterebbe zero cattivi su zero candidati — verde per sottrazione.
@@ -97,12 +104,6 @@ CREATE TEMP TABLE _costanti (
 ) ON COMMIT DROP;
 
 INSERT INTO _costanti VALUES
-    -- Il CASE che disabilita col motivo la transizione ad ANNULLATO: se il
-    -- codice cambiasse, il bottone «annulla reso» tornerebbe ACCESO in silenzio
-    -- anche con un accredito registrato, e l'operatore prenderebbe un 409.
-    ('config',    'stati_doc_reso',                'ANNULLATO',
-     'script',    'fn_available_actions_reso',     'FUNZIONE', '20260820-12'),
-
     -- Lo stato su cui il trigger marca il fondo eseguito: senza la riga a
     -- catalogo il confronto e' sempre falso e il trigger un no-op MUTO.
     ('pagamenti', 'vendite_contabili_righe_stati', 'POSTATA',
@@ -133,8 +134,8 @@ INSERT INTO _costanti VALUES
      'vendite',   'fn_documento_lineage_archi',    'FUNZIONE', '20261011-64');
 
 -- Cosa il catalogo offre DAVVERO, con il predicato di attivita' proprio di
--- ciascuna tabella. ⚠️ Non e' lo stesso predicato ovunque: `sorgenti` e
--- `stati_doc_reso` hanno solo `attivo`, gli stati contabili hanno ANCHE
+-- ciascuna tabella. ⚠️ Non e' lo stesso predicato ovunque: `sorgenti` ha
+-- solo `attivo`, gli stati contabili hanno ANCHE
 -- `obsoleto_dal` — e una riga ritirata per data e' fuori servizio quanto una
 -- spenta col flag.
 CREATE TEMP TABLE _presenti (cat_schema text, cat_tabella text, valore text) ON COMMIT DROP;
@@ -143,11 +144,6 @@ INSERT INTO _presenti
 SELECT 'config', 'sorgenti', s.codice_interno
   FROM config.sorgenti s
  WHERE s.attivo IS TRUE;
-
-INSERT INTO _presenti
-SELECT 'config', 'stati_doc_reso', r.codice_interno
-  FROM config.stati_doc_reso r
- WHERE r.attivo IS TRUE;
 
 INSERT INTO _presenti
 SELECT 'pagamenti', 'vendite_contabili_righe_stati', v.codice_interno
@@ -163,7 +159,7 @@ SELECT 'pagamenti', 'vendite_contabili_righe_stati', v.codice_interno
 --   rinominata, il test 2 sarebbe verde senza aver verificato niente. Questa e'
 --   la riga che lo impedisce.
 SELECT ok(
-    (SELECT count(*) FROM _costanti) = 7
+    (SELECT count(*) FROM _costanti) = 6
     AND NOT EXISTS (
         SELECT 1 FROM _costanti c
          WHERE to_regclass(format('%I.%I', c.cat_schema, c.cat_tabella)) IS NULL

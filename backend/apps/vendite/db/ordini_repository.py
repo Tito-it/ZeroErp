@@ -486,6 +486,10 @@ class OrdiniRepository(
         "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
         "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
         "data_consegna_richiesta_cliente", "data_consegna_confermata",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Aggiorna campi modificabili della testata ordine. Accetta None per
@@ -584,16 +588,24 @@ class OrdiniRepository(
         meta: dict[str, Any] | None = None,
         data_consegna_richiesta_cliente: date | None = None,
         data_consegna_confermata: date | None = None,
+        origine_prezzo: str | None = None,
+        listino_versione_id: int | None = None,
+        listino_riga_id: int | None = None,
+        prezzo_resolver_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # La provenienza del prezzo (K-5) la dice il gate; assente, la decide
+        # il trigger del DB (MANUALE se c'e' un prezzo).
         sql = """
             INSERT INTO vendite.ordini_righe (
                 ordine_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id, meta,
-                data_consegna_richiesta_cliente, data_consegna_confermata
+                data_consegna_richiesta_cliente, data_consegna_confermata,
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                prezzo_resolver_context
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
-                %s, %s
+                %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -604,6 +616,8 @@ class OrdiniRepository(
                 prezzo_unitario, sconto_percentuale, iva_id,
                 json.dumps(meta or {}),
                 data_consegna_richiesta_cliente, data_consegna_confermata,
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                json.dumps(prezzo_resolver_context) if prezzo_resolver_context is not None else None,
             ])
             result = row_to_dict(cursor)
             assert result is not None

@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SNAPSHOT DELLA BOZZA DEL CONTRATTO DALLO STATO INIZIALE
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.19, giro 6c (D-BOZZA (a),
+#   Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il contratto copia is_draft_snapshot da config.stati_doc_contratti.is_bozza
+#   (montaggio di vendite.trgfn_doc_snapshot_da_stato, 20261011-72). La bozza e'
+#   lo stato iniziale del vocabolario (D-LOCK, 2026-11-14): lock, capability e
+#   guard la leggono da li'. Due marche per lo stesso significato possono
+#   divergere, e allora l'esclusivita' del periodo (partecipa_overlap_snapshot,
+#   vincolo ex_contratti_no_overlap) libererebbe uno stato diverso da quello che
+#   il lock lascia scrivere.
+#   ⚠️ Revoca la riga del 2026-10-24 (20261024-07: «is_bozza dice "e' la bozza",
+#   non "si nasce qui"»): D-BOZZA (a) di Tid, 2026-11-14.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Il trigger si rimonta con la coppia ('is_draft_snapshot', 'iniziale'). La
+#   colonna is_bozza esce nel 00_schema/config/20261114-33, che da zero e su
+#   ogni database gira prima di questo (l'ordine e' per fase); fra i due nessun
+#   changeSet scrive vendite.contratti. Con il seed i valori di
+#   is_draft_snapshot non cambiano (iniziale e is_bozza sono entrambe su DRAFT):
+#   nessun backfill.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Un trigger si rimonta per funzione, non per nome (linee-guida-trigger): i
+#   montaggi di vendite.trgfn_doc_snapshot_da_stato su vendite.contratti nei
+#   changelog sono trg_contratti_z90_snapshot_da_stato_ins_upd (20261011-72) e,
+#   prima, trg_contratti_z90_sync_is_abortito_snapshot_ins_upd (di un'altra
+#   funzione, gia' tolto dal 20261011-72): tutti e due con IF EXISTS. Stesso
+#   nome, stessa fase (z90), stessi eventi; non e' un trigger generato da
+#   ci_apply (§11.5). Il COMMENT del trigger descrive il montaggio al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-32-remount-trg-contratti-snapshot-da-stato-iniziale-mctit.yaml
+
+  - changeSet:
+      id: 20261114-32-remount-trg-contratti-snapshot-da-stato-iniziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta vendite.trgfn_doc_snapshot_da_stato su vendite.contratti: is_draft_snapshot dalla
+        colonna iniziale di config.stati_doc_contratti, non da is_bozza (D-BOZZA (a)). Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 6c.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_z90_sync_is_abortito_snapshot_ins_upd
+                  ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_contratti_z90_snapshot_da_stato_ins_upd
+                  ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_z90_snapshot_da_stato_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato(
+                      'stato_doc_contratto_id', 'config.stati_doc_contratti',
+                      'is_abortito_snapshot', 'is_abortito',
+                      'is_draft_snapshot',    'iniziale');
+
+              COMMENT ON TRIGGER trg_contratti_z90_snapshot_da_stato_ins_upd ON vendite.contratti IS
+                  'Snapshot di stato (BB vendite.trgfn_doc_snapshot_da_stato): is_abortito_snapshot e is_draft_snapshot da config.stati_doc_contratti (is_abortito, iniziale: lo stato di annullo e la bozza, cioe'' lo stato iniziale), per la colonna GENERATED partecipa_overlap_snapshot (vincolo ex_contratti_no_overlap: una bozza non occupa il periodo, un''annullata lo libera) e per uq_contratti_sorgente_offerta (un''offerta genera al piu'' un contratto vivo, sulla provenienza).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Il montaggio di prima legge is_bozza. Il rollback va in ordine
+              --   inverso: questo gira prima di quello del 20261114-33, che ricrea
+              --   la colonna subito dopo; fra i due nessuno scrive i contratti.
+              --   CREATE TRIGGER non legge gli argomenti: li legge la funzione.
+              DROP TRIGGER IF EXISTS trg_contratti_z90_snapshot_da_stato_ins_upd ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_z90_snapshot_da_stato_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato(
+                      'stato_doc_contratto_id', 'config.stati_doc_contratti',
+                      'is_abortito_snapshot', 'is_abortito',
+                      'is_draft_snapshot',    'is_bozza');
+
+              COMMENT ON TRIGGER trg_contratti_z90_snapshot_da_stato_ins_upd ON vendite.contratti IS
+                  'Snapshot di stato (BB vendite.trgfn_doc_snapshot_da_stato): is_abortito_snapshot e is_draft_snapshot da config.stati_doc_contratti (is_abortito, is_bozza), per la colonna GENERATED partecipa_overlap_snapshot e per uq_contratti_sorgente_offerta (un''offerta genera al piu'' un contratto vivo, sulla provenienza). Prende il posto di trg_contratti_z90_sync_is_abortito_snapshot_ins_upd (2026-10-11, brief-db-annullo-documento-con-legami D-6).';

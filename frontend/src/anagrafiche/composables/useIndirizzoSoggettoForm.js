@@ -8,7 +8,7 @@ import { useLookup } from '../../core/composables/useLookup'
 import { useIndirizzoBase, buildIndirizzoPayload } from './useIndirizzoBase'
 import { useIndirizzoMultiTipo } from './useIndirizzoMultiTipo'
 import { lookupStati } from '../api/anagrafiche'
-import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../../core/apiCore'
+import { lookupTipiIndirizzoNatura, lookupTipiIndirizzoTipoRuolo } from '../../core/apiCore'
 import {
   assegnaCampiLiberi, campiLiberi, payloadLibero, statoDi, validaLibero,
 } from './indirizzoLibero'
@@ -146,18 +146,19 @@ export function useIndirizzoSoggettoForm() {
     assegnaCampiLiberi(form, data)
   }
 
-  // Scopo: Carica matrice indirizzi per tipo soggetto dettaglio e setta nel multi-tipo.
+  // Scopo: Carica i tipi proponibili per la natura (soggetto da creare) e li setta nel multi-tipo.
   async function loadMatriceTipo(tipoSoggettoDettaglioId) {
     try {
-      const res = await lookupMatriceIndirizzi(tipoSoggettoDettaglioId)
+      const res = await lookupTipiIndirizzoNatura(tipoSoggettoDettaglioId)
       multiTipo.setMatrice(res.data?.data?.results || [])
     } catch { multiTipo.setMatrice([]) }
   }
 
-  // Scopo: Carica matrice indirizzi per codice ruolo (es. 'FO', 'CL') e setta nel multi-tipo.
+  // Scopo: Carica i tipi proponibili per il tipo di ruolo (es. 'FO', 'CL': ruolo da
+  //        assegnare) e li setta nel multi-tipo.
   async function loadMatriceRuolo(tipoRuoloCodice) {
     try {
-      const res = await lookupMatriceIndirizziRuolo(tipoRuoloCodice)
+      const res = await lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice)
       multiTipo.setMatrice(res.data?.data?.results || [])
     } catch { multiTipo.setMatrice([]) }
   }

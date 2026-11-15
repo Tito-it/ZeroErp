@@ -75,7 +75,7 @@ BEGIN
     END IF;
 
     v_mese := COALESCE(p_competenza_mese,
-                       date_trunc('month', (SELECT script.fn_data_operativa()))::date);
+                       script.fn_mese_di((SELECT script.fn_data_operativa())));
 
     -- 3. La madre: codice, lock_batch_id e stato DRAFT li decide lei.
     v_lotto := vendite.fn_create_fatturazione_lotto(

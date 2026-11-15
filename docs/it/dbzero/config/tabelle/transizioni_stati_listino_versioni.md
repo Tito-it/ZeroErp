@@ -43,6 +43,8 @@
 | trg_transizioni_stati_listino_versioni_a10_stati_doc_lis_2a7aad | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_listino_versioni', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_listino_versioni_a10_stati_doc_lis_cdf482 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_listino_versioni', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_listino_versioni_a10_stati_doc_lis_cdf482 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_listino_versioni', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_listino_versioni_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.listini_versioni')` |
+| trg_transizioni_stati_listino_versioni_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.listini_versioni')` |
 | trg_transizioni_stati_listino_versioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_transizioni_stati_listino_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

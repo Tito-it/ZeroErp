@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_listini_versioni_guard_uom_periodo: il periodo di una versione non si
+#   allunga su giorni in cui l'unita' di un suo prezzo non si converte (D25, Q24, il
+#   secondo lato).
+#
+#   AFTER UPDATE OF valido_dal, valido_al (il periodo generato e' gia' quello nuovo),
+#   quando il periodo nuovo non sta dentro il vecchio. Legge la prima riga scoperta
+#   (-55). Rollback: DROP del trigger e della funzione.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261111-57-create-trgfn-listini-versioni-guard-uom-periodo-mctit.yaml
+
+  - changeSet:
+      id: 20261111-57-create-trgfn-listini-versioni-guard-uom-periodo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_versioni_guard_uom_periodo: il periodo di una versione non si allunga su giorni in cui l'unita' di un suo prezzo non si converte (D25, Q24). Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE (p.proname = 'trgfn_listini_versioni_guard_uom_periodo' AND p.pronamespace = 'vendite'::regnamespace)
+                  OR (p.proname = 'fn_listino_versione_riga_uom_non_convertibile' AND p.pronamespace = 'vendite'::regnamespace)
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_listini_versioni_guard_uom_periodo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_riga record;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: il periodo nuovo di una versione copre solo giorni in
+                  --   cui le unita' dei suoi prezzi attivi si convertono.
+                  -- Eventi: AFTER UPDATE OF valido_dal, valido_al; WHEN il
+                  --   periodo nuovo non sta dentro il vecchio.
+                  -- =========================================================
+                  SELECT x.* INTO v_riga
+                    FROM vendite.fn_listino_versione_riga_uom_non_convertibile(NEW.id) x;
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'vendite.trgfn_listini_versioni_guard_uom_periodo', 'E_LISTINO_UOM_NON_CONVERTIBILE',
+                      jsonb_build_object(
+                          'campo',               CASE WHEN NEW.valido_dal IS DISTINCT FROM OLD.valido_dal
+                                                      THEN 'valido_dal' ELSE 'valido_al' END,
+                          'listino_versione_id', NEW.id,
+                          'riga_id',             v_riga.riga_id,
+                          'articolo_id',         v_riga.articolo_id,
+                          'primo_giorno',        v_riga.primo_giorno,
+                          'bersaglio',           jsonb_build_array(
+                                                     jsonb_build_object('tipo', 'LISTINO_VERSIONE', 'id', NEW.id::text))),
+                      NEW.tx_id,
+                      NEW.codice_versione::text,
+                      v_riga.uom_codice::text,
+                      v_riga.articolo_codice::text,
+                      to_char(v_riga.primo_giorno, 'DD/MM/YYYY'));
+                  RETURN NULL;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_listini_versioni_a10_guard_uom_periodo_upd
+                  AFTER UPDATE OF valido_dal, valido_al ON vendite.listini_versioni
+                  FOR EACH ROW
+                  WHEN (NOT (NEW.validita <@ OLD.validita))
+                  EXECUTE FUNCTION vendite.trgfn_listini_versioni_guard_uom_periodo();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_uom_periodo() IS
+                  'Guard del periodo di una versione di listino rispetto alle unita'' dei suoi prezzi (vendite.listini_versioni): allungare o spostare il periodo non lascia un prezzo attivo in un''unita'' che, in un giorno del periodo nuovo, non si converte per l''articolo. AFTER UPDATE OF valido_dal, valido_al, quando il periodo nuovo non sta dentro quello di prima (accorciare non scopre niente). Legge vendite.fn_listino_versione_riga_uom_non_convertibile. Scoperto -> E_LISTINO_UOM_NON_CONVERTIBILE (campo: la data cambiata, valido_al o valido_dal; valori: versione, unita'', articolo, primo giorno scoperto; bersaglio LISTINO_VERSIONE). In ATTIVA la fine la cambiano solo i verbi (vendite.trgfn_listini_versioni_guard_per_stato), e il giudizio vale anche per loro.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_listini_versioni_a10_guard_uom_periodo_upd ON vendite.listini_versioni;
+              DROP FUNCTION IF EXISTS vendite.trgfn_listini_versioni_guard_uom_periodo();

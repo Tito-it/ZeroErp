@@ -41,7 +41,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_ui_lista_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_lista_preset_emittente_fiscale_id ON ui.lista_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
-| ix_ui_lista_preset_lista_id | `CREATE INDEX ix_ui_lista_preset_lista_id ON ui.lista_preset USING btree (lista_id)` |
 | ix_ui_lista_preset_profilo_accesso_id | `CREATE INDEX ix_ui_lista_preset_profilo_accesso_id ON ui.lista_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | lista_preset_pkey | `CREATE UNIQUE INDEX lista_preset_pkey ON ui.lista_preset USING btree (id)` |
 | uq_ui_lista_preset_default | `CREATE UNIQUE INDEX uq_ui_lista_preset_default ON ui.lista_preset USING btree (lista_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, (0)::bigint)) WHERE (is_default = true)` |

@@ -62,16 +62,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(25);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -81,17 +71,6 @@ BEGIN
     RETURN NULL;
 EXCEPTION WHEN SQLSTATE 'P0001' THEN
     GET STACKED DIAGNOSTICS v_c = COLUMN_NAME;
-    RETURN v_c;
-END $$;
-
-CREATE OR REPLACE FUNCTION pg_temp.vincolo_violato(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN unique_violation THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
     RETURN v_c;
 END $$;
 
@@ -230,14 +209,14 @@ SELECT is(
     '7. un''istanza esistente: un secondo BA, per un''altra utility, sulla stessa');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
         (SELECT sr_id FROM t_sr), (SELECT u1 FROM t_m), '{}'::jsonb,
         (SELECT istanza_utility_id FROM t_ba1), '{"codice": "X"}'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '8. istanza esistente piu'' i campi di una nuova: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
         (SELECT sr_id FROM t_sr), (SELECT u1 FROM t_m), '{"utility_id": 1}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '9. chiave estranea fra i campi del BA: E_CAMPO_NON_AMMESSO');
@@ -250,7 +229,7 @@ SELECT is(
     '10. chiave estranea fra i campi dell''istanza, col campo sul canale COLUMN');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(-1, 1)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(-1, 1)$$),
     'E_SOGGETTO_RUOLO_NON_TROVATO',
     '11. ruolo inesistente: E_SOGGETTO_RUOLO_NON_TROVATO');
 
@@ -309,7 +288,7 @@ SELECT is(
     '16. uno stato indicato (PR) senza date: PR, nessuna attivazione');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente(
         p_soggetto_id        := (SELECT s_ba FROM t_m),
         p_billing_account    := '{"codice": "X"}'::jsonb,
         p_billing_account_id := (SELECT billing_account_id FROM t_ba1))$$),
@@ -317,12 +296,12 @@ SELECT is(
     '17. BA esistente piu'' i campi di uno nuovo: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente((SELECT s_ba FROM t_m))$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente((SELECT s_ba FROM t_m))$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '18. ne'' BA ne'' utility: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente(
         p_soggetto_id        := (SELECT s_ba FROM t_m),
         p_campi              := '{"billing_account_id": 1}'::jsonb,
         p_billing_account_id := (SELECT billing_account_id FROM t_ba1))$$),
@@ -330,7 +309,7 @@ SELECT is(
     '19. la fornitura fra i campi: E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    pg_temp.vincolo_violato($$SELECT * FROM anagrafiche.fn_crea_cliente(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_cliente(
         p_soggetto_id        := (SELECT s_ba FROM t_m),
         p_billing_account_id := (SELECT billing_account_id FROM t_ba2))$$),
     'uq_clienti_billing_account',
@@ -359,7 +338,7 @@ SELECT is(
     '21. il BB senza emittente chiesto: il legame lo scrive z90 verso l''emittente di chi agisce');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_billing_account(
         (SELECT sr_id FROM t_sr3), (SELECT u2 FROM t_m),
         jsonb_build_object('categoria_cliente_id', (SELECT cat FROM t_m)),
         p_emittente_soggetto_ruolo_id := (SELECT soggetto_ruolo_id FROM t_ef))$$),

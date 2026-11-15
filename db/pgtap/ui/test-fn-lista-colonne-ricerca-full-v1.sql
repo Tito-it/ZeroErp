@@ -14,7 +14,8 @@
 --   5) colonna con grant BLOCCATO: esclusa
 --   6) colonna non ricercabile: esclusa
 --   7) colonna disattiva: esclusa
---   8) colonna con campo_sorgente '' (la forma che scrive il loader): esclusa
+--   8) campo_sorgente '' non esiste piu': il vincolo lo rifiuta (90_end/20261112-30),
+--      quindi l'assenza ha una forma sola, NULL (test 9)
 --   9) colonna con campo_sorgente NULL: esclusa
 --  10) ⭐ due grant: TUTTO dal profilo AD_HOC (priorita' 1) e BLOCCATO dal
 --      PORTALE (priorita' 3, era 2 fino al 20260925-80) — vince il piu' SPECIFICO, non il piu'
@@ -148,7 +149,6 @@ INSERT INTO ui.lista_colonna (
     esportabile, attivo, larghezza_default, user_insert)
 SELECT v.id, c.lista_id, v.codice, 'Prova ricerca libera',
        CASE v.sorgente WHEN 'reale' THEN c.campo_reale
-                       WHEN 'vuota' THEN ''
                        ELSE NULL END,
        'informazione', 'string',
        9900 + (v.id - 900100), 'left', false, v.ricercabile, v.sensibile,
@@ -160,7 +160,6 @@ SELECT v.id, c.lista_id, v.codice, 'Prova ricerca libera',
    (900103, 'zz_rf_libera',          'reale', true,  false, true),
    (900104, 'zz_rf_non_ricercabile', 'reale', false, false, true),
    (900105, 'zz_rf_spenta',          'reale', true,  false, false),
-   (900106, 'zz_rf_sorgente_vuota',  'vuota', true,  false, true),
    (900107, 'zz_rf_sorgente_null',   'null',  true,  false, true),
    (900108, 'zz_rf_priorita',        'reale', true,  false, true)
  ) AS v(id, codice, sorgente, ricercabile, sensibile, attivo);
@@ -215,8 +214,10 @@ SELECT ok(NOT EXISTS (SELECT 1 FROM pg_temp.rf() c WHERE c = 'zz_rf_non_ricercab
 SELECT ok(NOT EXISTS (SELECT 1 FROM pg_temp.rf() c WHERE c = 'zz_rf_spenta'),
   '7) colonna disattiva: esclusa');
 
-SELECT ok(NOT EXISTS (SELECT 1 FROM pg_temp.rf() c WHERE c = 'zz_rf_sorgente_vuota'),
-  '8) campo_sorgente stringa vuota: esclusa');
+SELECT is(dbops.fn_pgtap_codice_errore(
+            $$UPDATE ui.lista_colonna SET campo_sorgente = '' WHERE id = 900107$$),
+          'chk_lista_colonna_campo_sorgente_non_vuoto',
+          '8) campo_sorgente stringa vuota: non entra, la rifiuta il vincolo');
 
 SELECT ok(NOT EXISTS (SELECT 1 FROM pg_temp.rf() c WHERE c = 'zz_rf_sorgente_null'),
   '9) campo_sorgente NULL: esclusa');

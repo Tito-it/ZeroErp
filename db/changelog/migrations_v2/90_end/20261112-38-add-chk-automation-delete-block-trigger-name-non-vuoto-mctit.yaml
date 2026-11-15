@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_delete_block: un blocco senza nome proprio ha trigger_name
+#   NULL, mai la stringa vuota. Brief: brief-db-nullvalue-vuoto-cinque-mirror
+#   (D1-b, Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. trigger_name e' l'override facoltativo del nome: senza, vale il
+#   template (dbops.fn_nome_oggetto_dichiarato). L'assenza aveva due forme: '' dal
+#   seed (il mirror scriveva la cella vuota come stringa vuota) e NULL da chi
+#   inserisce la riga senza la colonna, come i pgTAP. Il mirror
+#   80_data/20260123-11 ora scrive NULL; qui la seconda forma si chiude per
+#   costruzione. Una stringa di soli spazi vale come vuota.
+#
+# ℹ️ La conversione non cambia il nome di nessun trigger: fn_nome_oggetto_dichiarato
+#   legge gia' '' e NULL allo stesso modo (NULLIF(btrim(p_nome), '')), quindi il
+#   giro di convergenza non vede divergenze.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14).
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-12: il seed (il mirror,
+#   ora NULL); nessuna funzione del database, nessun endpoint; i pgTAP inseriscono
+#   senza la colonna (NULL) o con un nome vero.
+# Presidio: dbops/test-registri-automazioni-nomi-non-vuoti-v1.
+# Rollback: via il vincolo. Le stringhe vuote convertite non tornano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-38-add-chk-automation-delete-block-trigger-name-non-vuoto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-38-add-chk-automation-delete-block-trigger-name-non-vuoto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automation_delete_block: i trigger_name vuoti diventano NULL, poi un CHECK vieta la stringa
+        vuota. Brief: brief-db-nullvalue-vuoto-cinque-mirror.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.automation_delete_block'::regclass
+                 AND conname = 'chk_automation_delete_block_trigger_name_non_vuoto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.automation_delete_block b
+                 SET trigger_name = NULL
+               WHERE btrim(b.trigger_name) = '';
+
+              ALTER TABLE dbops.automation_delete_block
+                ADD CONSTRAINT chk_automation_delete_block_trigger_name_non_vuoto
+                    CHECK (trigger_name IS NULL OR btrim(trigger_name) <> '');
+
+              COMMENT ON CONSTRAINT chk_automation_delete_block_trigger_name_non_vuoto ON dbops.automation_delete_block IS
+                'Un blocco che usa il nome del template ha trigger_name NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automation_delete_block
+                DROP CONSTRAINT IF EXISTS chk_automation_delete_block_trigger_name_non_vuoto;

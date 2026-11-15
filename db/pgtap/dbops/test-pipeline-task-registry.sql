@@ -39,18 +39,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(10);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE TEMP TABLE tmp_registry_ctx AS
 SELECT 'pgtap_ptr_' || to_char(clock_timestamp(), 'YYMMDDHH24MISS') AS test_scope;
@@ -180,7 +168,7 @@ SELECT is(
 );
 
 SELECT is(
-  pg_temp.codice_errore(format(
+  dbops.fn_pgtap_codice_errore(format(
     $$SELECT dbops.fn_check_pipeline_task_registered(%s, 'task_inesistente')$$,
     (SELECT dominio_id FROM tmp_registry_ids))),
   'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
@@ -188,7 +176,7 @@ SELECT is(
 );
 
 SELECT is(
-  pg_temp.codice_errore(format(
+  dbops.fn_pgtap_codice_errore(format(
     $$SELECT * FROM dbops.fn_get_pipeline_task_implementation(%s, 'task_no_default', NULL)$$,
     (SELECT dominio_id FROM tmp_registry_ids))),
   'E_PIPELINE_TASK_HANDLER_NOT_FOUND',
@@ -209,7 +197,7 @@ SELECT is(
 );
 
 SELECT is(
-  pg_temp.codice_errore($$SELECT * FROM dbops.fn_get_pipeline_task_implementation(NULL, 'select_attivita', NULL)$$),
+  dbops.fn_pgtap_codice_errore($$SELECT * FROM dbops.fn_get_pipeline_task_implementation(NULL, 'select_attivita', NULL)$$),
   'E_DBOPS_CHIAMATA_NON_VALIDA',
   'dominio mancante: E_DBOPS_CHIAMATA_NON_VALIDA'
 );

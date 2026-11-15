@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI GIA' SCRITTI: VERSIONE E RIGA DI LISTINO ESCONO DAL CONTESTO
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.8, giro 3, D-3)
+#
+#   D-3: la riga di listino ha una sede sola, la colonna. Dal giro 3 le init
+#   dei componenti la scrivono li' (20261113-25 … -29); le righe scritte prima
+#   la tengono nel contesto, con versione, listino e origine (che ha la sua
+#   colonna). Qui quelle quattro chiavi escono dal contesto dei cinque
+#   componenti.
+#
+#   ⛔ Le chiavi si tolgono, non si spostano nelle colonne. Nel contesto non
+#   le ha mai giudicate nessuno (ne' la coerenza con articolo e unita' di
+#   misura, ne' l'azienda, ne' la bozza): portarle nella colonna senza i
+#   trigger le farebbe entrare non giudicate, e coi trigger fermerebbe la
+#   migrazione su un dato vecchio. Le righe esistenti restano senza riga di
+#   listino, come per il §5 del brief: il progetto non e' in produzione.
+#   Nessun lettore delle chiavi tolte (corpi delle funzioni, viste, backend,
+#   frontend: cercati il 2026-11-13).
+#
+#   Senza i trigger della tabella: e' un dato derivato, non un fatto di
+#   dominio, e i guard «documento fuori bozza» fermerebbero i documenti
+#   chiusi. Si spengono e si riaccendono i soli trigger accesi, ciascuno nel
+#   suo modo (la forma di 20261011-69 e 20261113-04). Su un database da zero
+#   non ci sono righe.
+#   Rollback: niente (le chiavi tolte non tornano).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261113-37-update-componenti-contesto-senza-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261113-37-update-componenti-contesto-senza-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dal contesto dei componenti gia' scritti escono listino_id, listino_versione_id,
+        listino_riga_id e origine (D-3: hanno una colonna). Brief:
+        brief-db-provenienza-prezzo-segue-il-prezzo (§8.8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              DO $do$
+              DECLARE
+                  v_tab   text;
+                  v_rel   regclass;
+                  v_nomi  text[];
+                  v_modi  "char"[];
+                  i       integer;
+              BEGIN
+                  FOREACH v_tab IN ARRAY ARRAY['preventivi_righe_componenti', 'ordini_righe_componenti',
+                                               'contratti_righe_componenti', 'ddt_righe_componenti',
+                                               'offerte_commerciali_eccezioni_componenti'] LOOP
+                      v_rel := format('vendite.%I', v_tab)::regclass;
+
+                      SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                             array_agg(t.tgenabled    ORDER BY t.tgname)
+                        INTO v_nomi, v_modi
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = v_rel
+                         AND NOT t.tgisinternal
+                         AND t.tgenabled <> 'D';
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_rel, v_nomi[i]);
+                      END LOOP;
+
+                      EXECUTE format(
+                          'UPDATE %s
+                              SET prezzo_resolver_context = prezzo_resolver_context
+                                  - ARRAY[''listino_id'', ''listino_versione_id'', ''listino_riga_id'', ''origine'']
+                            WHERE jsonb_exists_any(prezzo_resolver_context,
+                                  ARRAY[''listino_id'', ''listino_versione_id'', ''listino_riga_id'', ''origine''])',
+                          v_rel);
+
+                      FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                          EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I',
+                                         v_rel,
+                                         CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                        WHEN 'R' THEN 'REPLICA'
+                                                        ELSE '' END,
+                                         v_nomi[i]);
+                      END LOOP;
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.prezzo_resolver_context IS %L$c$, v_tab,
+                          'Le condizioni e la fotografia della risoluzione del prezzo del componente. Dal resolver: le chiavi del suo risultato (prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot: vendite.fn_prezzo_resolver_contesto) e le condizioni (emittente_sr_id, data_riferimento, ba_id, utility_id); per un override la chiave override, e la fotografia del componente a monte quando la copia la porta; sulla bolla esito_codice quando il prezzo manca. Riga e versione di listino non stanno qui: hanno le loro colonne. Le chiavi del resolver le legge vendite.fn_provenienza_prezzo_esplosa, e contano solo per un''origine da listino.');
+                  END LOOP;
+              END;
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

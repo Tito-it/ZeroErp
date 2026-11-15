@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_origine_prezzo_ammessa(origine) -> boolean
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2, D-2 di Tid 2026-11-13)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Le origini del prezzo erano scritte in sette CHECK, in due elenchi che
+#   dissentivano: i componenti ammettevano LISTINO_BUNDLE, commesse_attivita
+#   e attivita_fatturabili no, e il BE trasformava in silenzio quel valore in
+#   NULL al push (origine_ammessa). D-2: un solo elenco, dalla riga del
+#   documento alla commessa. Questa funzione e' quell'elenco; la leggono i
+#   CHECK di tutte le tabelle che portano origine_prezzo (20261113-03, -04) e
+#   vendite.fn_provenienza_prezzo_coerente (20261113-02).
+#
+# ── I VALORI ────────────────────────────────────────────────────────
+#   I cinque di prima, LISTINO_BUNDLE, e COMPONENTI (nuovo): il prezzo della
+#   riga e' la somma dei suoi componenti, e la provenienza sta su ciascuno di
+#   loro (la riga principale di un kit, il kit a somma del push contratti).
+#   NULL e' ammesso: se l'origine e' dovuta lo dice chi la pretende (NOT NULL
+#   della colonna, o la coerenza col prezzo).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   LANGUAGE sql IMMUTABLE, senza tabelle: e' letta dai CHECK, quindi deve
+#   essere immutabile, e un elenco di letterali lo e'. Eseguibile da PUBLIC
+#   come gli altri predicati dei CHECK: chiunque scriva la tabella la esegue.
+#   Nasce in 20_code col numero piu' basso del giro: i CHECK che la leggono
+#   (00_schema) vengono dopo per numero (linee-guida-sql §11.14).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-01-create-fn-origine-prezzo-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20261113-01-create-fn-origine-prezzo-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_origine_prezzo_ammessa: l'elenco unico delle origini del prezzo, letto dai
+        CHECK di righe di documento, componenti, righe di commessa e attivita' fatturabili.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_origine_prezzo_ammessa(
+                  p_origine vendite.commesse_attivita.origine_prezzo%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  SELECT p_origine IS NULL
+                      OR p_origine IN ('PROMO', 'CONTRATTO_OVERRIDE', 'CONTRATTO_LISTINO',
+                                       'CATEGORIA', 'MANUALE', 'LISTINO_BUNDLE', 'COMPONENTI');
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_origine_prezzo_ammessa(vendite.commesse_attivita.origine_prezzo%TYPE) IS
+                  'L''elenco unico delle origini del prezzo: vero se l''origine e'' ammessa o NULL. PROMO, CONTRATTO_OVERRIDE, CONTRATTO_LISTINO, CATEGORIA e LISTINO_BUNDLE vengono dal resolver dei prezzi; MANUALE e'' un prezzo scritto da una persona o di cui nessuno ha dichiarato la provenienza; COMPONENTI e'' un prezzo che e'' la somma dei componenti della riga, ciascuno con la sua provenienza. La leggono i CHECK di ogni tabella con origine_prezzo e vendite.fn_provenienza_prezzo_coerente. Se l''origine e'' dovuta lo dice chi la pretende, non questa funzione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_origine_prezzo_ammessa(varchar);

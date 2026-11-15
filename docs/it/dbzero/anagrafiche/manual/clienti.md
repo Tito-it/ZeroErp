@@ -100,6 +100,7 @@ Il significato funzionale e' identico (FK verso `config.utilities.id`) e ora anc
 
 * La tabella `clienti` è il **fulcro** della logica di fatturazione: garantisce il passaggio dalla fase precontrattuale (istanza) alla fase contrattuale.
 * Il cliente **assume lo stesso** `billing_account` generato in fase di istanza, mantenendo continuità nelle relazioni.
+* ⚠️ Un soggetto-ruolo cliente ha una riga di `clienti` **per ogni billing account**: `soggetto_ruolo_id` non è univoco. Chi vuole contare o elencare clienti distinti parte dai valori distinti di `soggetto_ruolo_id`, non da un collegamento diretto alla tabella, che moltiplica le righe.
 * La tabella `config.termini_pagamento` permette di impostare in maniera parametrica, sia la possibilità di calcolare una data scadenza che generare "n" pagamenti della fattura(esempio classico 30/60/90 o scadenza fine mese o calcalata in base al nr.giorni dalla data emissione) 
 
 ---

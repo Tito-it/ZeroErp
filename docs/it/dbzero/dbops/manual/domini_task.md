@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.domini_task`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -29,6 +29,12 @@ Lo stesso codice può esistere in due domini diversi, e dentro un dominio una vo
 
 Oggi i domini sono due: `FATTURAZIONE` (i task degli step del lotto di fatturazione) e
 `ATTIVITA_FATTURABILI` (i task che acquisiscono e normalizzano le attività da fatturare).
+
+⚠️ **`ATTIVITA_FATTURABILI` è un dominio a catalogo, non una pipeline.** La promozione da commessa
+ad attività fatturabili è un task idempotente dentro la pipeline di fatturazione: è una
+distribuzione senza ciclo di vita proprio, mentre il motore delle pipeline serve un processo con
+stati, numerazione e rollback. I task del dominio rimasti a registro non hanno un handler: non si
+mettono nei `processi` di una pipeline.
 
 ---
 

@@ -13,9 +13,12 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 02-08-2026)
+(latest review 12-11-2026)
 
-Impedisce a una fattura di **lasciare lo stato DRAFT** finché non è completa:
+Impedisce a una fattura di **lasciare la bozza** finché non è completa. La bozza
+è lo stato marcato `iniziale` nel vocabolario
+[`config.stati_doc_fiscale`](/dbzero/config/manual/stati_doc_fiscale) (oggi `DRAFT`):
+il guard legge la colonna, non il codice. Completa vuol dire:
 indirizzi obbligatori presenti **e** intestazione fiscale congelata, con dentro
 la **sede legale del cedente** (dal 21-10-2026, brief-db-modelli-documento-standard
 §10.7 R-5).
@@ -42,15 +45,15 @@ snapshot. Una sede a `{}` non vale, per lo stesso motivo dell'intestazione
 
 ### Quattro scelte da non ri-discutere
 
-**1. Presidia l'USCITA dalla bozza, non ogni avanzamento.** Oltre DRAFT il
+**1. Presidia l'USCITA dalla bozza, non ogni avanzamento.** Oltre la bozza il
 presidio è del guard di congelamento. Allargarlo darebbe una **seconda occasione
 di fallire** su un documento già emesso — cioè trasformerebbe un errore prevenuto
 in un errore subito.
 
 **2. Solo `UPDATE`.** L'unico creatore applicativo,
-`fn_get_or_create_fattura_header`, inserisce **sempre** in DRAFT: la porta è già
-chiusa a monte. Montarlo anche su `INSERT` romperebbe le fixture che creano
-fatture direttamente in DEFINITIVA, senza chiudere nulla di nuovo.
+`fn_get_or_create_fattura_header`, inserisce **sempre** in bozza, e una fattura
+nasce solo nello stato iniziale (trigger della nascita): la porta è già chiusa a
+monte.
 
 **3. Lo stato abortito è esente.** Una bozza incompleta deve restare
 **chiudibile**: non si può costringere qualcuno a completare un documento solo per

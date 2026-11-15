@@ -95,7 +95,6 @@ databaseChangeLog:
             #   integer: ""», e su una varchar sarebbe passato scrivendo ''
             #   dove c'era NULL — peggio, perche' non lo dice.
             #   Il CSV ora esce da scripts/export_csv.sh con `NULL 'NULL'`.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

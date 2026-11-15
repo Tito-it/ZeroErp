@@ -1,15 +1,11 @@
-// Costanti di dominio per i resi di vendita. Stati interni allineati a
-// `config.stati_doc_reso.codice_interno` (seed). Macchina a stati:
-// DRAFT -> CONFERMATO (+ ANNULLATO). Il `numero` e' NULL in DRAFT, assegnato
-// dal trigger DB alla CONFERMA. Conferma e annullo passano SEMPRE dagli
-// endpoint dedicati (fn madri DB con effetti: residuo/proiezioni/flip DDT),
-// mai da un cambio stato generico.
-
-export const STATO_RESO = Object.freeze({
-  DRAFT: 'DRAFT',
-  CONFERMATO: 'CONFERMATO',
-  ANNULLATO: 'ANNULLATO',
-})
+// Costanti di dominio per i resi di vendita. Conferma e annullo passano
+// SEMPRE dagli endpoint dedicati (fn madri DB con effetti: residuo/proiezioni/
+// flip DDT), mai da un cambio stato generico.
+// ⛔ `STATO_RESO` RITIRATA il 2026-11-14 (brief-db-stati-documento-dal-
+//    vocabolario FE-R4): lucchetto e ri-spedizione li dice la capability
+//    (`can_edit_righe`, `can_riconsegna`), e il codice dello stato non ha piu'
+//    lettori. I colori restano in `STATO_RESO_MAP` (`core/utils/severity.js`):
+//    sono presentazione.
 
 // Stato ri-consegna della riga reso: DERIVATO dalla copertura del ponte
 // `resi_righe_riconsegne` (nessuna colonna fisica, R1 brief DB).

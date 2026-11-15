@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `vendite.attivita_fatturabili`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [vendite.trgfn_attivita_fattore_alla_data](/dbzero/vendite/funzioni/trgfn_attivita_fattore_alla_data) — il fattore alla data dell'attività, quando la riga non lo porta
 > * [vendite.fn_emit_attivita_fatturabili_da_commessa](/dbzero/vendite/funzioni/fn_emit_attivita_fatturabili_da_commessa) — l'emissione dalle righe di commessa
 >
 > Guide:
@@ -104,6 +105,24 @@ Tipico filtro di eleggibilità per il motore:
   o viene riemessa dalla commessa riprende la natura `FATTURA` e la marca cade.
 * **Misure**:
   `uom_id` (u.m. base), `qta_operativa` (quantita operativa), `uom_operativa_id` (u.m. operativa), `factor_to_base` (fattore conversione verso base).
+
+---
+
+### Il fattore verso la base
+
+`factor_to_base` dice quante unità base vale un'unità della riga. Non ha più un default: un
+«1 quando non so» faceva passare 3 cartoni come 3 pezzi.
+
+* **Il fattore scritto si rispetta**: è la fotografia che l'emissione copia dall'attività di
+  commessa.
+* **Senza fattore** lo legge `vendite.trgfn_attivita_fattore_alla_data`, alla data
+  dell'attività (`data_attivita`), per l'unità operativa, o per l'unità della riga se
+  l'operativa non c'è, o per l'unità base se non c'è nessuna delle due: 1 per la base, la
+  mappatura dell'articolo o la conversione generale in vigore quel giorno per le altre.
+* **Senza neanche quello** la riga è rifiutata con `E_UOM_MISSING`, sul campo dell'unità.
+* Se un aggiornamento cambia l'unità e non il fattore, il fattore si rilegge per l'unità nuova.
+
+La quantità base (`quantita`) la porta chi scrive: la tabella non la ricalcola.
 
 ---
 
@@ -229,6 +248,9 @@ sezione "Registro della riga".
   suo default 0) e `sorgente_origine_tipo_id`, con le loro FK: erano una copia della riga di
   commessa e un'impronta d'idempotenza che nessuno leggeva più. La provenienza si legge dalla riga di
   commessa (brief-db-sorgente-documento-e-riga).
+* 2026-11-10 — `factor_to_base` perde il `DEFAULT 1`; il fattore lo copia l'emissione dalla
+  commessa, e se manca lo legge il trigger alla data dell'attività (brief-db-revisione-catalogo,
+  giro 2-bis).
 
 ---
 

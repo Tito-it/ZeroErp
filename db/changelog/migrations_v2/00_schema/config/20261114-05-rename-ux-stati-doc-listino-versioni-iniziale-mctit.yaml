@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'INDICE UNICO DELLO STATO INIZIALE DEL LISTINO PRENDE IL NOME DEGLI ALTRI
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 5 (⑧, S-9).
+#
+#   Su ogni vocabolario degli stati l'indice unico parziale di iniziale si
+#   chiama uq_stati_doc_<vocabolario>_iniziale; su quello della versione di
+#   listino si chiamava ux_..., e una ricerca per nome non lo trovava.
+#   Nessun corpo, vincolo o pgTAP lo nomina (dbdev, 2026-11-14): si rinomina.
+#   S-9: la versione di listino non prende fase. fase e' l'asse della
+#   proiezione nelle pratiche, e la versione non e' una sorgente: una colonna
+#   senza lettore e' una dichiarazione che nessuno verifica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261114-05-rename-ux-stati-doc-listino-versioni-iniziale-mctit.yaml
+
+  - changeSet:
+      id: 20261114-05-rename-ux-stati-doc-listino-versioni-iniziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rinomina l'indice ux_stati_doc_listino_versioni_iniziale in
+        uq_stati_doc_listino_versioni_iniziale, il nome degli altri vocabolari. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 5 (⑧).
+      # ⚠️ sqlCheck e non indexExists: indexExists con il solo schemaName non trova
+      #   l'indice su PostgreSQL (il primo apply, 2026-11-14, si e' fermato qui con
+      #   l'indice presente). Stessa scelta di 20260703-05. Legge il catalogo, non
+      #   il contenuto di 80_data (linee-guida-sql §11.4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*)
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'config'
+                 AND c.relname = 'ux_stati_doc_listino_versioni_iniziale'
+                 AND c.relkind = 'i'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER INDEX config.ux_stati_doc_listino_versioni_iniziale RENAME TO uq_stati_doc_listino_versioni_iniziale;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER INDEX config.uq_stati_doc_listino_versioni_iniziale RENAME TO ux_stati_doc_listino_versioni_iniziale;

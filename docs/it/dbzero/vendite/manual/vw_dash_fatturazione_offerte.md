@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_dash_fatturazione_offerte`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -45,7 +45,7 @@ la chiave dell'offerta, nella colonna che il tipo vuole).
 | `is_transitato` | esiste un figlio **vivo** |
 | Competenza | il mese della validità, o in mancanza dell'emissione o dell'inserimento (giorno operativo) |
 | `is_abortito` | l'esito dello stato dell'offerta è `NEGATIVO` (rifiutata, annullata, superata) |
-| `motivo_fermo` | `DOC_BOZZA` · `IN_ATTESA_ACCETTAZIONE` (emessa) · `SENZA_FIGLIO` (accettata, nessun figlio) · `FIGLIO_ABORTITO` (solo figli annullati); vuoto se transitata o abortita |
+| `motivo_fermo` | `DOC_BOZZA` (lo stato iniziale del vocabolario) · `IN_ATTESA_ACCETTAZIONE` (lo stato di emissione) · `SENZA_FIGLIO` (accettata, nessun figlio) · `FIGLIO_ABORTITO` (solo figli annullati); vuoto se transitata o abortita. Lo stato si legge dalle colonne `iniziale` ed `emissione`, non dal codice |
 | `cliente_display` | la ragione sociale dell'intestatario dell'istanza utility, se c'è |
 
 ⭐ **Un'offerta ha al più un figlio vivo, ma può averne più annullati.** I figli si riassumono
@@ -70,6 +70,8 @@ si sblocca **generando** un nuovo contratto o ordine.
 ### Test
 
 * `db/pgtap/vendite/test-vw-dash-fatturazione-v1.sql` — le aree della dashboard.
+* `db/pgtap/vendite/test-offerta-guard-dal-vocabolario-v1.sql` — il motivo del fermo dal vocabolario:
+  spostato lo stato iniziale in transazione, l'offerta emessa diventa `DOC_BOZZA`.
 
 ---
 
@@ -79,6 +81,8 @@ si sblocca **generando** un nuovo contratto o ordine.
 * 2026-11-06 — i figli si leggono dalla provenienza `sorgente_*` (tipo `OFFERTA_COMMERCIALE`),
   non più da `vendite.contratti.offerta_id` né da `vendite.ordini.documento_origine_*`, ritirate
   (brief-db-sorgente-documento-e-riga).
+* 2026-11-13 — `DOC_BOZZA` e `IN_ATTESA_ACCETTAZIONE` dalle colonne `iniziale` ed `emissione` del
+  vocabolario, non dai codici (brief-db-stati-documento-dal-vocabolario, giro 2).
 
 ---
 

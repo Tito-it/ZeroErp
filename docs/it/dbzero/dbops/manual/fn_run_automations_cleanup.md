@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_cleanup`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -188,6 +188,11 @@ l'annullamento.
 * 2026-11-09 — chiama `fn_apply_cleanup_at` e `fn_purge_cleanup_expired` con le firme nuove,
   senza la colonna della scadenza (`20261110-36`, brief-db-revisione-dbops, giro 10c). Il
   comportamento del giro non cambia.
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-73`).
 
 ---
 

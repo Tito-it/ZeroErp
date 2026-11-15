@@ -178,15 +178,12 @@ AS $function$
         v_vincolo    = CONSTRAINT_NAME;
 
       -- error_code e' «il codice piu' preciso che si ha», lo
-      -- SQLSTATE va nella sua colonna. Il codice di dominio vale
-      -- SOLO col contratto di fn_log_and_raise_error, «P0001 +
-      -- CONSTRAINT valorizzato»: per un 23505 il CONSTRAINT e' il
-      -- nome di un vincolo, non un codice d'errore.
-      v_codice := CASE
-                    WHEN v_sqlstate = 'P0001' AND NULLIF(v_vincolo, '') IS NOT NULL
-                      THEN v_vincolo
-                    ELSE v_sqlstate
-                  END;
+      -- SQLSTATE va nella sua colonna. Il codice di dominio lo
+      -- legge script.fn_codice_dominio (il contratto «P0001 +
+      -- CONSTRAINT valorizzato» di fn_log_and_raise_error); senza
+      -- codice, il ripiego di questa funzione e' lo SQLSTATE.
+      v_codice := COALESCE(script.fn_codice_dominio(v_sqlstate, v_vincolo),
+                           v_sqlstate);
 
       -- ⚠️ Questa UPDATE muore col RAISE qui sotto, e resta
       --   comunque: copre il caso in cui qualcuno chiami
@@ -240,7 +237,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
-IS 'Esegue il lavoro di un job (p_sql) e ne registra la corsa in maintenance.job_run_log: una riga aperta all''inizio, chiusa con l''esito alla fine. Il processo (processo_codice) e'' quello passato o, se manca, il jobname quando corrisponde a un codice di dbops.processi; una riga senza processo e'' respinta dal CHECK chk_job_run_log_processo_dichiarato. ruolo_sessione e'' session_user, il ruolo che si e'' collegato. Con p_lock_key prende un advisory lock di sessione: se e'' occupato registra una corsa SALTATA (chiusa, ok NULL) ed esce; il lock si rilascia su ogni uscita, anche quando fallisce l''apertura della corsa. Quando p_sql e'' una SELECT sola, il suo risultato si legge: la prima riga va in meta.esito (non quando e'' vuota, come per una funzione void), rows_affected e'' il numero di righe, e un esito con _falliti maggiore di zero rende la corsa rossa con E_JOB_ESITO_CON_SCARTI senza annullare il lavoro fatto (contratto «riuscita con scarti»). In errore: error_code e'' il codice di dominio se l''errore rispetta il contratto «P0001 + CONSTRAINT» di script.fn_log_and_raise_error, altrimenti lo SQLSTATE, che va comunque in sqlstate; il verbale del fallimento lo scrive maintenance.fn_job_run_log_failure su una connessione separata, perche'' il RAISE annulla la transazione, e l''errore si rilancia: smettere di propagarlo farebbe risultare riuscito un lavoro che non lo e''. Se il chiamante cattura l''eccezione restano due righe rosse con lo stesso run_uuid: chi conta i fallimenti conta i run_uuid distinti.';
+IS 'Esegue il lavoro di un job (p_sql) e ne registra la corsa in maintenance.job_run_log: una riga aperta all''inizio, chiusa con l''esito alla fine. Il processo (processo_codice) e'' quello passato o, se manca, il jobname quando corrisponde a un codice di dbops.processi; una riga senza processo e'' respinta dal CHECK chk_job_run_log_processo_dichiarato. ruolo_sessione e'' session_user, il ruolo che si e'' collegato. Con p_lock_key prende un advisory lock di sessione: se e'' occupato registra una corsa SALTATA (chiusa, ok NULL) ed esce; il lock si rilascia su ogni uscita, anche quando fallisce l''apertura della corsa. Quando p_sql e'' una SELECT sola, il suo risultato si legge: la prima riga va in meta.esito (non quando e'' vuota, come per una funzione void), rows_affected e'' il numero di righe, e un esito con _falliti maggiore di zero rende la corsa rossa con E_JOB_ESITO_CON_SCARTI senza annullare il lavoro fatto (contratto «riuscita con scarti»). In errore: error_code e'' il codice di dominio quando c''e'' (script.fn_codice_dominio, il contratto «P0001 + CONSTRAINT» di script.fn_log_and_raise_error), altrimenti lo SQLSTATE, che va comunque in sqlstate; il verbale del fallimento lo scrive maintenance.fn_job_run_log_failure su una connessione separata, perche'' il RAISE annulla la transazione, e l''errore si rilancia: smettere di propagarlo farebbe risultare riuscito un lavoro che non lo e''. Se il chiamante cattura l''eccezione restano due righe rosse con lo stesso run_uuid: chi conta i fallimenti conta i run_uuid distinti.';
 ```
 
 </div>

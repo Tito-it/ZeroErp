@@ -160,23 +160,9 @@ UPDATE config.profili_accesso_bindings pab
    AND pab.attivo = true
    AND pab.identita_digitale_id <> (SELECT identita_id FROM _sa);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error). Si pinna il codice, non la frase del
--- catalogo: la frase si riscrive (rev 2026-10-07, giro 2 di
--- brief-db-veste-utilizzabile, «attivo e senza data di fine»), il codice no.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 SELECT is(
-    pg_temp.codice_errore(
+    dbops.fn_pgtap_codice_errore(
         $$ SELECT script.fn_blocca_credenziale((SELECT auth_user_id FROM _sa), 'prova su me stesso') $$),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '13) bloccare l''ultimo SUPER_ADMIN raggiungibile (se stesso): E_PROFILO_ULTIMO_SUPER_ADMIN');

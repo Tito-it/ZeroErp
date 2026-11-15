@@ -1,6 +1,6 @@
 # Guida — Gestione Pratiche e Workflow
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -704,6 +704,7 @@ Ogni handler implementa il protocollo `BaseFlussoHandler` con un unico metodo,
 * L'handler solleva eccezioni standard Python (es. `ServiceError`)
 * Il middleware Django (`api_exception_middleware`) cattura e trasforma in risposta HTTP
 * Se l'handler non e' trovato nel registry, `dispatch_handler` restituisce `None` senza errore
+* ⚠️ Il dispatch degli **eventi** di un flusso, invece, è fail-fast: un binding attivo la cui `handler_key` non ha un handler registrato nel backend fa fallire il completamento del flusso con `E_HANDLER_NON_REGISTRATO`. Binding a catalogo e handler Python arrivano quindi insieme; un test del backend (`test_handler_registro_coerente_db`) confronta il registro del database con gli handler registrati
 
 ### Flusso di dispatch
 

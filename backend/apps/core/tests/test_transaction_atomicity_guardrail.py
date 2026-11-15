@@ -34,8 +34,9 @@ import re
 from pathlib import Path
 from unittest import TestCase
 
-# Radice backend: .../backend/apps/core/tests/<file> -> parents[3] = backend.
-_BACKEND = Path(__file__).resolve().parents[3]
+from apps.core.tests._repo import repo_root
+
+_BACKEND = repo_root() / "backend"
 _APPS = _BACKEND / "apps"
 
 # Sottocartelle scandite (layer che eseguono SQL diretto o orchestrano scritture).

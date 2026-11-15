@@ -85,7 +85,7 @@ BEGIN
                EXISTS (SELECT 1
                          FROM vendite.vw_lotti_fase f
                         WHERE f.lotto_id = vendite.fn_lotto_da_emit_batch(af.emit_batch_id)
-                          AND f.in_gioco)                  AS marchio_in_gioco,
+                          AND f.pre_fiscale)               AS marchio_pre_fiscale,
                fr.fattura_id,
                -- L'etichetta che l'operatore riconosce sulla
                -- card: commessa e competenza, mai un id tecnico.
@@ -193,7 +193,7 @@ BEGIN
          WHERE v.fattura_riga_id IS NULL
            AND NOT v.lucchettata
            AND v.stato_emissione_riga = 'EMESSA'
-           AND v.marchio_in_gioco
+           AND v.marchio_pre_fiscale
     ),
     -- ── MOTIVO 4 — e' dentro un giro VIVO ────────────────────
     -- ⛔ Lucchettata e non COMPLETED vuol dire che un lotto la sta

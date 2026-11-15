@@ -7,19 +7,19 @@ const BASE = '/catalogo'
 // --- Note (building block partizionato 2026-05-21) ---
 //
 // Wrapper di dominio sopra `makeNotesApi`: produce un set CRUD note bindato
-// al parent path (articolo o componente). Catalogo usa pattern URL "split":
-// LIST/POST sotto parent (`/catalogo/articoli/<id>/note/`), DETAIL su endpoint
-// generico (`/catalogo/note/<id>/`). Si esprime con `detailBase: '/catalogo'`.
-// Resto identico al pattern vendite (`makeNotesApi('/vendite/preventivi/<id>')`).
+// al parent path (articolo o componente). Dal 2026-11-11 le rotte sono quelle
+// del BB delle note, lista e dettaglio sotto il padre, come in vendita
+// (`makeNotesApi('/vendite/preventivi/<id>')`): la rotta a parte del
+// dettaglio (`/catalogo/note/<id>/`) e' ritirata.
 
 // Scopo: Set CRUD note articolo per il building block NoteDrawer.
 export function makeArticoloNotesApi(articoloId) {
-  return makeNotesApi(`${BASE}/articoli/${articoloId}`, { detailBase: BASE })
+  return makeNotesApi(`${BASE}/articoli/${articoloId}`)
 }
 
 // Scopo: Set CRUD note componente articolo per il building block NoteDrawer.
 export function makeComponenteNotesApi(articoloId, compId) {
-  return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`, { detailBase: BASE })
+  return makeNotesApi(`${BASE}/articoli/${articoloId}/componenti/${compId}`)
 }
 
 // --- Articoli ---
@@ -112,8 +112,28 @@ export function createArticoloComponente(articoloId, payload) {
   return api.post(`${BASE}/articoli/${articoloId}/componenti/`, payload)
 }
 
-export function updateArticoloComponente(articoloId, compId, payload) {
-  return api.patch(`${BASE}/articoli/${articoloId}/componenti/${compId}/`, payload)
+// ⚠️ Il PATCH del legame (`…/componenti/<id>/`) esiste ancora lato BE, ma il
+//    FE non lo usa piu' dal 2026-11-10: l'unica scrittura di un legame e' la
+//    sua fine, e passa dal verbo (`chiudiArticoloComponente`).
+
+// Scopo: La chiusura di un legame coi suoi prezzi bundle (BE19 di
+//        brief-db-revisione-catalogo, giro 3).
+// GET …/chiusura/?valido_al= -> { valido_al, prezzi, righe[] }: i prezzi che la
+//   chiusura tocca (listino_codice, codice_versione, stato_versione, valido_dal,
+//   valido_al, prezzo, importo_per_kit, nel_perimetro, esito CHIUDE/TOGLIE/
+//   BLOCCA). `prezzi` e' il numero da dichiarare nella conferma.
+export function getChiusuraArticoloComponente(articoloId, compId, validoAl) {
+  return api.get(`${BASE}/articoli/${articoloId}/componenti/${compId}/chiusura/`, {
+    params: { valido_al: validoAl },
+  })
+}
+
+// POST …/chiudi/ { valido_al, prezzi_confermati? } -> { componente,
+//   prezzi_chiusi, prezzi_tolti }. ⚠️ Al primo tentativo SENZA
+//   `prezzi_confermati`: con prezzi il DB chiede di confermare
+//   (E_BOM_CHIUSURA_CON_PREZZI, `confirm_and_retry`).
+export function chiudiArticoloComponente(articoloId, compId, payload) {
+  return api.post(`${BASE}/articoli/${articoloId}/componenti/${compId}/chiudi/`, payload)
 }
 
 // --- Unita' di misura (CRUD) ---

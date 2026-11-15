@@ -89,7 +89,7 @@ check la rifiutava come «già disponibile». Verificato il 12-09 sul lotto 1333
 riparato a mano con `fn_libera_attivita_fatturabili`.
 
 La `vis` legge ora **i due livelli**: `stato_emissione` della riga e, dal marchio,
-se il lotto è in gioco (`vendite.fn_lotto_da_emit_batch` + `vw_lotti_fase.in_gioco`
+se il lotto è in gioco (`vendite.fn_lotto_da_emit_batch` + `vw_lotti_fase.pre_fiscale`
 — le due sedi già esistenti):
 
 * libera + riga `NON_EMESSA` → motivo 3, com'era (davvero disponibile);

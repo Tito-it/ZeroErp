@@ -19,11 +19,9 @@ from rest_framework.request import Request
 from apps.catalogo.services.catalogo_service import (
     fn_create_articolo,
     fn_create_componente,
-    fn_create_nota_articolo,
     fn_create_uom_tipo,
     fn_create_uom_operativa,
     fn_create_unita_misura,
-    fn_delete_nota,
     fn_delete_uom_operativa,
     fn_disattiva_articolo,
     fn_disattiva_unita_misura,
@@ -35,15 +33,12 @@ from apps.catalogo.services.catalogo_service import (
     fn_list_componenti,
     fn_list_componenti_pagina,
     fn_list_articoli,
-    fn_list_note_articolo,
     fn_list_uom_operative,
     fn_list_uom_operative_pagina,
     fn_list_uom_tipi,
     fn_list_unita_misura,
     fn_lookup_articoli,
     fn_lookup_articoli_ammessi,
-    fn_update_componente,
-    fn_update_nota,
     fn_update_articolo,
     fn_update_uom_tipo,
     fn_update_uom_operativa,
@@ -52,8 +47,8 @@ from apps.catalogo.services.catalogo_service import (
     fn_get_conversione,
     fn_create_conversione,
     fn_update_conversione,
-    fn_list_note_componente,
-    fn_create_nota_componente,
+    fn_get_chiusura_componente,
+    fn_chiudi_componente,
 )
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
@@ -127,8 +122,11 @@ def _uom_write_fields(*, include_uom_id: bool) -> dict[str, serializers.Field]:
 
 
 # Scopo: Definisce i campi write componente BoM per schema API.
-def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serializers.Field]:
-    fields: dict[str, serializers.Field] = {
+# ⚠️ Solo la CREATE: dal 2026-11-10 un legame non si aggiorna (la PATCH e'
+#    ritirata, la fine passa dal verbo `…/chiudi/`).
+def _componente_write_fields() -> dict[str, serializers.Field]:
+    return {
+        "componente_id": serializers.UUIDField(required=True),
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
         "obbligatorio": serializers.BooleanField(required=False),
         "valido_dal": serializers.DateField(required=False),
@@ -136,26 +134,7 @@ def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serial
         "attivo": serializers.BooleanField(required=False),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
-    if include_componente_id:
-        fields = {"componente_id": serializers.UUIDField(required=True), **fields}
-    return fields
 
-
-# Scopo: Definisce i campi write nota catalogo per schema API.
-def _nota_write_fields() -> dict[str, serializers.Field]:
-    return {
-        "target_riga_id": serializers.UUIDField(required=False, allow_null=True),
-        "anchor_tipo": serializers.CharField(required=False),
-        "posizione": serializers.CharField(required=False),
-        "seq": serializers.IntegerField(required=False, allow_null=True),
-        "testo": serializers.CharField(required=False, allow_blank=True, allow_null=True),
-        "testo_md": serializers.CharField(required=False, allow_blank=True, allow_null=True),
-        "id_stile": serializers.IntegerField(required=False),
-        "id_lingua": serializers.IntegerField(required=False, allow_null=True),
-        "visibile": serializers.BooleanField(required=False),
-        "solo_stampa": serializers.BooleanField(required=False),
-        "meta": serializers.JSONField(required=False, allow_null=True),
-    }
 
 _ARTICOLO_CREATE_REQUEST = inline_serializer(
     name="CatalogoArticoloCreateRequest",
@@ -191,24 +170,8 @@ _UOM_PATCH_REQUEST = inline_serializer(
 
 _COMPONENTE_CREATE_REQUEST = inline_serializer(
     name="CatalogoComponenteCreateRequest",
-    fields=_componente_write_fields(include_componente_id=True),
+    fields=_componente_write_fields(),
 )
-
-_COMPONENTE_PATCH_REQUEST = inline_serializer(
-    name="CatalogoComponentePatchRequest",
-    fields=_componente_write_fields(include_componente_id=False),
-)
-
-_NOTA_CREATE_REQUEST = inline_serializer(
-    name="CatalogoNotaCreateRequest",
-    fields=_nota_write_fields(),
-)
-
-_NOTA_PATCH_REQUEST = inline_serializer(
-    name="CatalogoNotaPatchRequest",
-    fields=_nota_write_fields(),
-)
-
 
 class ApiArticoliList(DomainAPIView):
     area_funzionale = "catalogo"
@@ -561,131 +524,64 @@ class ApiArticoloComponentiListaExport(_ComponentiListaExport):  # type: ignore[
     lista_codice = "catalogo.articolo_componenti"
 
 
-class ApiArticoloComponenteDetail(DomainAPIView):
+# ⛔ Un legame NON si aggiorna e NON si cancella (2026-11-10): la rotta
+#    `…/componenti/<id>/` e' ritirata. La distinta e' una storia (trigger
+#    d'immutabilita', BE11 di brief-db-revisione-catalogo), e l'unica cosa che di
+#    un legame cambia, la fine, passa dal verbo qui sotto: la PATCH su
+#    `valido_al` era una seconda strada per la stessa scrittura, e su un legame
+#    con prezzi bundle riceveva un avviso che non sapeva confermare.
+
+
+# ⭐ La chiusura di un legame coi suoi prezzi bundle (BE19 di
+#    brief-db-revisione-catalogo, giro 3): il lettore della finestra di
+#    conferma e il verbo, l'UNICA strada per chiudere un legame: la conferma
+#    ripete la STESSA chiamata con la dichiarazione (`useForzaturaConfermata`).
+class ApiArticoloComponenteChiusura(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
 
     @extend_schema(
-        request=_COMPONENTE_PATCH_REQUEST,
+        parameters=[
+            OpenApiParameter(name="valido_al", type=str, location=OpenApiParameter.QUERY, required=True),
+        ],
         responses={
             200: inline_serializer(
-                name="CatalogoArticoloComponenteUpdateResponse",
+                name="CatalogoArticoloComponenteChiusuraResponse",
                 fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
             )
         },
     )
-    # Scopo: Aggiorna un componente BoM dell'articolo.
-    def patch(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        return success_response(fn_update_componente(articolo_id, comp_id, corpo_oggetto(request)))
-
-    # ⛔ Nessun DELETE: la distinta e' una storia e il DB rifiuta ogni
-    #    cancellazione di un legame (trigger d'immutabilita'). Un legame si
-    #    chiude con la PATCH su `valido_al` (brief-db-revisione-catalogo, BE11).
-
-
-# Endpoint atomico Fase 3: chiusura sorgente + apertura nuova versione in
-# singola TX DB con advisory lock. Idempotency-Key obbligatoria perche'
-# l'azione modifica stato (UPDATE + INSERT atomici).
-class ApiArticoloNoteList(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-    is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
-    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
-    #    motivata in `test_perimetro_emittente_copertura`.
-
-    @extend_schema(
-        parameters=_PARAMETRI_LISTA_FIGLIA,
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloNoteListResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: La pagina delle note dell'articolo (lista `catalogo.note`).
-    def get(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        p = parse_list_params(request.query_params, default_order="")
-        results, total = fn_list_note_articolo(articolo_id, **_lista_pagina_da(p))
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
-
-    @extend_schema(
-        request=_NOTA_CREATE_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="CatalogoArticoloNotaCreateResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Crea una nuova nota articolo.
-    def post(self, request: Request, articolo_id: UUID) -> JsonResponse:
-        return handle_post_json(request, handler=lambda payload: fn_create_nota_articolo(articolo_id, payload))
-
-
-class ApiNotaDetail(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-
-    @extend_schema(
-        request=_NOTA_PATCH_REQUEST,
-        responses={
-            200: inline_serializer(
-                name="CatalogoNotaUpdateResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Aggiorna una nota catalogo esistente.
-    def patch(self, request: Request, nota_id: int) -> JsonResponse:
-        return success_response(fn_update_nota(nota_id, corpo_oggetto(request)))
-
-    @extend_schema(
-        responses={
-            200: inline_serializer(
-                name="CatalogoNotaDeleteResponse",
-                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-            )
-        },
-    )
-    # Scopo: Elimina una nota catalogo esistente.
-    def delete(self, request: Request, nota_id: int) -> JsonResponse:
-        del request
-        return success_response(fn_delete_nota(nota_id))
-
-
-class ApiComponenteNoteList(DomainAPIView):
-    area_funzionale = "catalogo"
-    model_permission = ("catalogo", "articolo")
-    is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.note` e' globale (perimetro_emittente
-    #    = false), il cancello non avrebbe niente da chiedere. Esenzione
-    #    motivata in `test_perimetro_emittente_copertura`.
-
-    @extend_schema(
-        parameters=_PARAMETRI_LISTA_FIGLIA,
-        responses={200: inline_serializer(
-            name="CatalogoComponenteNoteListResponse",
-            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-        )},
-    )
-    # Scopo: La pagina delle note di un componente (lista `catalogo.note`).
+    # Scopo: I prezzi bundle che la chiusura alla data `valido_al` tocca, e il
+    #        loro numero da dichiarare nella conferma.
     def get(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
-        p = parse_list_params(request.query_params, default_order="")
-        results, total = fn_list_note_componente(articolo_id, comp_id, **_lista_pagina_da(p))
-        return success_response(paginated_envelope(results, total, p["page"], p["limit"]))
+        return success_response(
+            fn_get_chiusura_componente(articolo_id, comp_id, dict(request.query_params.items())),
+        )
+
+
+class ApiArticoloComponenteChiudi(DomainAPIView):
+    area_funzionale = "catalogo"
+    model_permission = ("catalogo", "articolo")
 
     @extend_schema(
-        request=_NOTA_CREATE_REQUEST,
-        responses={200: inline_serializer(
-            name="CatalogoComponenteNotaCreateResponse",
-            fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
-        )},
+        request=inline_serializer(
+            name="CatalogoArticoloComponenteChiudiRequest",
+            fields={
+                "valido_al": serializers.DateField(),
+                "prezzi_confermati": serializers.IntegerField(required=False, allow_null=True),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                name="CatalogoArticoloComponenteChiudiResponse",
+                fields={"data": serializers.DictField(), "meta": serializers.DictField(required=False)},
+            )
+        },
     )
-    # Scopo: Crea una nota per un componente articolo.
+    # Scopo: Chiude il legame alla data, coi suoi prezzi bundle, dal verbo del DB.
     def post(self, request: Request, articolo_id: UUID, comp_id: UUID) -> JsonResponse:
         return handle_post_json(
-            request, handler=lambda payload: fn_create_nota_componente(articolo_id, comp_id, payload),
+            request, handler=lambda payload: fn_chiudi_componente(articolo_id, comp_id, payload),
         )
 
 
@@ -770,7 +666,8 @@ class ApiArticoliLookup(DomainAPIView):
                 required=False,
                 description=(
                     "Solo articoli-onere (con causale_onere_id valorizzato). "
-                    "Aggiunge causale_onere_id/_codice/_descrizione ai risultati. "
+                    "I risultati portano gia' causale_onere_id, "
+                    "causale_onere_codice_interno e causale_onere_descrizione. "
                     "Alimenta la porta oneri della commessa."
                 ),
             ),

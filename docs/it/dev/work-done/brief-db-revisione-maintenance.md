@@ -28,7 +28,7 @@
 > codice sono emersi i difetti qui sotto. Tid, 2026-11-03: un brief per i difetti di codice e i
 > metadati, la doc fuori schema corretta subito.
 > **Brief vicini verificati:**
-> [framework-automazione-db-migliorie](../work-in-progress/framework-automazione-db-migliorie.md) tocca gli stessi runner
+> [framework-automazione-db-migliorie](framework-automazione-db-migliorie.md) tocca gli stessi runner
 > delle automazioni (D3, D4, D6), ma su temi diversi: recupero da esecuzione parziale, naming,
 > conflitto fra trigger manuali e generati. Nessuno dei punti di questo brief vi compare. Nessun altro
 > brief aperto tocca `fn_run_and_log`, le `proc_bump_*`, il giornale dei job o la storicizzazione.

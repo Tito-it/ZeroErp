@@ -23,6 +23,9 @@
 #       vendita §17.6): `CESSAZIONI_DI_PROVA`, `ACCETTAZIONI_DI_PROVA`. Lo stato
 #       che l'accettazione scrive ha il default dell'emissione (None): il test
 #       lo dichiara con `self.accettazione_del_documento("ACCETTATA")`.
+#       ⭐ Lo stesso per il rifiuto del cliente (brief-db-stati-documento-dal-
+#       vocabolario §6.7): default None, il test lo dichiara con
+#       `self.rifiuto_del_documento("RIFIUTATA")`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -56,6 +59,7 @@ class ModelloDocumentoMockatoMixin:
             lambda _testata, codice: codice in ACCETTAZIONI_DI_PROVA
         )
         self.modello_documento.stato_di_accettazione.return_value = None
+        self.modello_documento.stato_di_rifiuto.return_value = None
 
     # Scopo: lo stato chiesto e' lo stato di emissione del documento.
     def stato_chiesto_di_emissione(self) -> None:
@@ -78,5 +82,11 @@ class ModelloDocumentoMockatoMixin:
     # Scopo: il documento si accetta, e il suo stato di accettazione e' questo.
     def accettazione_del_documento(self, codice: str, *, stato_id: int = 3) -> None:
         self.modello_documento.stato_di_accettazione.return_value = StatoDocumento(
+            id=stato_id, codice=codice,
+        )
+
+    # Scopo: il documento si rifiuta, e il suo stato di rifiuto e' questo.
+    def rifiuto_del_documento(self, codice: str, *, stato_id: int = 4) -> None:
+        self.modello_documento.stato_di_rifiuto.return_value = StatoDocumento(
             id=stato_id, codice=codice,
         )

@@ -38,6 +38,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_lista_colonna_campo_sorgente_non_vuoto |  |
+| CHECK | chk_lista_colonna_etichetta_estesa_non_vuota |  |
+| CHECK | chk_lista_colonna_etichetta_i18n_key_non_vuota |  |
+| CHECK | chk_lista_colonna_formato_non_vuoto |  |
+| CHECK | chk_lista_colonna_gruppo_non_vuoto |  |
 | CHECK | chk_ui_lista_colonna_azione_non_esportabile |  |
 | CHECK | chk_ui_lista_colonna_priorita_non_negativa |  |
 | FOREIGN KEY | fk_lista_colonna_lista_definizione | lista_id |
@@ -47,7 +52,6 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_ui_lista_colonna_lista_id | `CREATE INDEX ix_ui_lista_colonna_lista_id ON ui.lista_colonna USING btree (lista_id)` |
 | lista_colonna_pkey | `CREATE UNIQUE INDEX lista_colonna_pkey ON ui.lista_colonna USING btree (id)` |
 | uq_ui_lista_colonna_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_colonna_lista_codice ON ui.lista_colonna USING btree (lista_id, codice)` |
 

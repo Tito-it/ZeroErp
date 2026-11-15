@@ -24,6 +24,8 @@ AS $function$
 --   proporre cio' che il database rifiuta, ne' viceversa.
 --   Mirror di vendite.trgfn_ordini_guard_transizione (Regola 1).
 --   Brief: brief-db-vie-uscita-operatore §6.2, §7.4 punto 3.
+--   rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6a): la
+--   Regola 3 riconosce l'accettazione dal vocabolario, non dal codice.
 --   rev 2026-08-29: Regola 2, l'aliquota sulle righe che entrano
 --   nel riepilogo IVA (brief-db-be-iva-risolutore-e-regime-cliente,
 --   I9).
@@ -168,7 +170,10 @@ BEGIN
     --   (trgfn_preventivi_guard_transizione_approvazione), che guardava il
     --   solo PENDING e anche le righe disattivate: ritirato nello stesso
     --   giro (20260924-24), era una seconda copia del predicato.
-    IF v_codice_a = 'ACCETTATO' THEN
+    -- ⭐ rev 2026-11-14 (giro 6a): l'accettazione e' lo stato che il
+    --   vocabolario dichiara (colonna accettazione), come l'emissione della
+    --   Regola 2. E' la stessa marca da cui la capability spegne «Accetta».
+    IF NEW.stato_doc_preventivo_id = script.fn_stato_accettazione_id('vendite.preventivi'::regclass) THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_preventivo_accettabile(NEW.id, NEW.validita_al),
@@ -186,7 +191,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_transizione()
-IS 'Trigger function: enforcement del grafo transizioni del preventivo (matrice config.transizioni_stati_preventivi) e, dal 2026-08-29, controlli sull''EMISSIONE delegati a script.fn_check_preventivo_emettibile — la stessa funzione letta da fn_available_actions_preventivo, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 2, una riga attiva con quantita e prezzo deve portare un''aliquota, altrimenti il preventivo non si emette. Chiude il difetto silenzioso gemello di DDT e ordine: fn_ricalcola_riepilogo_iva_preventivo aggrega le righe attive con quantita > 0 e calcola l''imposta con COALESCE(fn_get_aliquota_iva(iva_id, stato), 0), quindi la riga senza aliquota finisce in preventivi_riepiloghi_iva con imponibile pieno e imposta zero. ⭐ NEL TRIGGER e non nella porta: una regola sull''emissione vive sul passaggio, qualunque strada lo scriva. Una regola che protegge un numero fiscale non puo'' dipendere da quale porta ha usato il chiamante. ⚠️ Il predicato e'' sulla DESTINAZIONE (v_codice_a = ''EMESSO'') e non su una coppia cablata: oggi la matrice ha solo DRAFT->EMESSO, ma e'' una lettura del seed, e una strada nuova verso EMESSO nasce gia'' coperta. ⛔ Nel VARIADIC va la DESCRIZIONE della riga: preventivi_righe non ha riga_nr e la colonna `ordine` ha default 0. ⛔ Non e'' un NOT NULL di colonna: preventivi_righe.iva_id e'' nullable e la bozza deve restare libera. ℹ️ Il guard dell''annullamento resta trgfn_preventivi_guard_annullamento. ⭐ rev 2026-09-24: Regola 3 — entrando in ACCETTATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su righe e componenti BoM attivi), la stessa funzione con cui la capability spegne «Accetta». Verso EMESSO gli stessi motivi arrivano dalla Regola 2, dentro fn_check_preventivo_emettibile. Assorbe il trigger a10 trgfn_preventivi_guard_transizione_approvazione (ritirato in 20260924-24), che guardava il solo PENDING. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-2). ⭐ rev 2026-10-25 (20261025-49, brief-modello-documento-vendita §8): Regola 1-bis, all''emissione almeno una riga attiva (E_PREV_NESSUNA_RIGA_ATTIVA, solo la presenza: un totale zero si emette), spostata qui dal verbo vendite.fn_cambia_stato_preventivo, che non la ripete; l''emissione e'' lo stato che il vocabolario dichiara (script.fn_stato_emissione_id), non il letterale ''EMESSO''. ⭐ rev 2026-10-31 (20261031-63, brief-db-scadenza-preventivi §8.1, E-2 di Tid): la Regola 3 solleva il primo motivo di script.fn_check_preventivo_accettabile(NEW.id, NEW.validita_al) — motivo 1 la validita'' finita (E_PREV_VALIDITA_SCADUTA: validita_al < script.fn_data_operativa(), il confronto del job delle scadenze; NULL non scade), motivo 2 i prezzi non autorizzati — la stessa check con cui la capability spegne «Accetta». Non aspetta il job: un preventivo EMESSO con la validita'' finita non si accetta nemmeno prima che diventi SCADUTO. NEW.validita_al come parametro: il trigger e'' BEFORE ROW.';
+IS 'Guard del cambio di stato del preventivo (BEFORE UPDATE OF stato_doc_preventivo_id). Le regole leggono il significato della destinazione dal vocabolario config.stati_doc_preventivi, mai il codice, che serve solo al contesto dell''errore. (1) Il passaggio deve essere una riga attiva di config.transizioni_stati_preventivi, altrimenti E_PREV_TRANSIZIONE_NON_AMMESSA. (2) Verso lo stato di emissione (script.fn_stato_emissione_id): almeno una riga attiva (E_PREV_NESSUNA_RIGA_ATTIVA; conta la presenza, un totale zero si emette), poi il primo motivo di script.fn_check_preventivo_emettibile (la validita'' finita, una riga senza aliquota che entrerebbe nel riepilogo IVA, gli indirizzi, i prezzi non autorizzati). (3) Verso lo stato di accettazione (script.fn_stato_accettazione_id): il primo motivo di script.fn_check_preventivo_accettabile(NEW.id, NEW.validita_al), la validita'' finita (E_PREV_VALIDITA_SCADUTA, senza aspettare il job delle scadenze) e poi i prezzi non autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO); validita_al entra da NEW perche'' il trigger e'' BEFORE ROW. Le regole 2 e 3 sono sulla destinazione, non sulla coppia: una strada nuova verso quello stato nasce coperta. Le check sono le stesse con cui script.fn_available_actions_preventivo spegne i pulsanti. L''annullo ha il suo guard, vendite.trgfn_preventivi_guard_annullamento, che scatta prima.';
 ```
 
 </div>

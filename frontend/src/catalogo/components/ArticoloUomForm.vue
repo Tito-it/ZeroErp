@@ -17,6 +17,20 @@
 //    Fino a quel giorno un `watch` la ricavava dal fattore (`fattore 1 → base`):
 //    un'unita' con fattore 1 che base non e' finiva marcata base.
 // ⛔ `rounding_mode` e `require_lot` sono ritirate dal DB (Q4, BE16).
+// ⛔ Unita', fattore e inizio di una mappatura scritta non si cambiano
+//    (2026-11-11, BE21 di brief-db-revisione-catalogo: guard della storia,
+//    `E_UOM_STORIA_IMMUTABILE`). Si spengono da `nonEditableFields`, che il
+//    backend riempie: si cambia la FINE, e per valori nuovi si chiude e si
+//    inserisce una mappatura nuova. ⛔ In modifica i campi fermi NON si
+//    rimandano (BB `senzaCampiFermi`, regola del 2 col drawer delle
+//    conversioni): un valore riletto e convertito puo' non essere quello
+//    scritto, e il guard lo giudicherebbe un cambiamento.
+// ⭐ Interruttore «attivo» e data di fine seguono la capability della riga
+//    (2026-11-11, BE21-b/f: la vista `vw_articoli_uom_operativa_dettaglio`
+//    dal BB del DB `fn_uom_conversione_capability`), letta dall'helper
+//    `capabilityConversioneUom` (regola del 2 col drawer delle conversioni):
+//    spenti col motivo, la fine dalla prima data ammessa, e non rimandati.
+//    Sulla riga base tutti e due fermi (Q34: la base non si spegne).
 // ⭐ Espone la sua fotografia (`modificato`, `chiudiConConferma`): il BB la
 //    registra (D-13).
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -26,6 +40,10 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
+import {
+  capabilityConversioneUom, fermoDallaCapability, fraseMotivoUom,
+} from '../utils/capabilityConversioneUom'
 import { DATE_FORMAT } from '../../core/constants'
 import { createArticoloUom, updateArticoloUom } from '../api/catalogo'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -45,7 +63,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['saved', 'cancel'])
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const inModifica = computed(() => props.riga != null)
@@ -54,6 +72,13 @@ const inModifica = computed(() => props.riga != null)
 const isBase = computed(() => props.riga?.is_base === true)
 function isFieldLocked(name) {
   return inModifica.value && props.nonEditableFields.includes(name)
+}
+
+// Che cosa la riga ammette oggi (la capability della vista): in creazione tutto.
+const cap = computed(() => capabilityConversioneUom(props.riga))
+// Fermo per il PATCH: i campi del lock e quelli che la capability spegne.
+function fermoNelPatch(name) {
+  return isFieldLocked(name) || fermoDallaCapability(cap.value, name)
 }
 
 // Defaults UoM operativa via config.parameters (override per emittente). Il
@@ -136,7 +161,7 @@ async function onSave() {
   }
   const result = inModifica.value
     ? await execute(
-      () => updateArticoloUom(props.articoloId, props.riga.id, payload),
+      () => updateArticoloUom(props.articoloId, props.riga.id, senzaCampiFermi(payload, fermoNelPatch)),
       { successMessage: t('catalogo.uom_salvata') },
     )
     : await execute(
@@ -173,7 +198,7 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_fattore') }} *</label>
       <InputNumber v-model="form.factor_to_base" :min="0" :min-fraction-digits="2"
-        :max-fraction-digits="6" :disabled="isBase"
+        :max-fraction-digits="6" :disabled="isBase || isFieldLocked('factor_to_base')"
         :invalid="campiErrati.includes('factor_to_base')"
       />
     </div>
@@ -231,24 +256,28 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_dal') }}</label>
       <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-        :disabled="isBase"
+        :disabled="isBase || isFieldLocked('valido_dal')"
         :invalid="campiErrati.includes('valido_dal')"
       />
     </div>
     <div class="form-field">
       <label>{{ t('catalogo.field_valido_al') }}</label>
       <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-        :disabled="isBase"
+        :disabled="isBase || cap.fineFerma"
+        :min-date="cap.primaFine ?? undefined"
         :invalid="campiErrati.includes('valido_al')"
       />
+      <small v-if="cap.motivoFine && !isBase" data-testid="motivo-fine">{{ fraseMotivoUom(t, te, cap.motivoFine) }}</small>
     </div>
   </div>
   <div v-if="inModifica" class="form-grid">
     <div class="form-field">
       <label>{{ t('indirizzi.campo_attivo') }}</label>
       <ToggleSwitch v-model="form.attivo"
+        :disabled="cap.attivoFermo"
         :invalid="campiErrati.includes('attivo')"
       />
+      <small v-if="cap.motivoAttivo" data-testid="motivo-attivo">{{ fraseMotivoUom(t, te, cap.motivoAttivo) }}</small>
     </div>
   </div>
 

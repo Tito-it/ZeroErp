@@ -26,8 +26,8 @@ vi.mock('../api/anagrafiche', () => ({
 }))
 
 vi.mock('../../core/apiCore', () => ({
-  lookupMatriceIndirizzi: vi.fn(),
-  lookupMatriceIndirizziRuolo: vi.fn(),
+  lookupTipiIndirizzoNatura: vi.fn(),
+  lookupTipiIndirizzoTipoRuolo: vi.fn(),
 }))
 
 const { useIndirizzoSoggettoForm } = await import('./useIndirizzoSoggettoForm')
@@ -53,5 +53,28 @@ describe('useIndirizzoSoggettoForm — chiave d\'ingresso del tipo', () => {
 
     expect(payload.map((p) => p.tipo_indirizzo_codice_interno)).toEqual(['RES', 'FATT'])
     for (const p of payload) expect(p).not.toHaveProperty('tipo_indirizzo_codice')
+  })
+})
+
+// Scopo: Il picker dei tipi (R-2 di brief-db-copia-indirizzo-soggetto) porta
+//        anche i tipi NON ammessi, col motivo: nel form ne entrano solo gli
+//        ammessi, e il primo obbligatorio si sceglie fra quelli. La riga
+//        sintetica del «Cambia» non porta `ammesso` e vale ammessa.
+describe('useIndirizzoSoggettoForm — solo i tipi ammessi dal picker', () => {
+  it('un tipo spento non entra nella barra dei tipi e non si pre-seleziona', () => {
+    const s = useIndirizzoSoggettoForm()
+    s.setMatrice([
+      { codice_interno: 'SEDELEG', descrizione: 'Sede legale', obbligatorio: true, ammesso: false,
+        reason_key: 'anagrafiche.indirizzi.tipo_blocco.gia_presente', reason_valori: ['Sede legale'] },
+      { codice_interno: 'FATT', descrizione: 'Fatturazione', obbligatorio: false, ammesso: true },
+    ])
+    expect(s.tipiStato.value.map((t) => t.codice_interno)).toEqual(['FATT'])
+    expect(s.form.tipo_indirizzo_codice_interno).toBe('FATT')
+  })
+
+  it('la riga senza `ammesso` (il «Cambia») resta', () => {
+    const s = useIndirizzoSoggettoForm()
+    s.setMatrice([{ codice_interno: 'RES', descrizione: 'Residenza', obbligatorio: true }])
+    expect(s.form.tipo_indirizzo_codice_interno).toBe('RES')
   })
 })

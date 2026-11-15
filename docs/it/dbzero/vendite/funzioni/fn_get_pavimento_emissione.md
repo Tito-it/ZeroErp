@@ -117,11 +117,10 @@ BEGIN
                                  'VENDITE_LIMITE_EMISSIONE_DIFFERITA_GIORNO_MESE');
         END IF;
 
-        -- ℹ️ date_trunc anche se la competenza e' il primo del
+        -- ℹ️ Si tronca al mese anche se la competenza e' il primo del
         --    mese per abitudine: la funzione non deve dipendere
         --    da un'abitudine che nessun vincolo impone.
-        v_primo_succ := (date_trunc('month', p_competenza_mese)
-                         + interval '1 month')::date;
+        v_primo_succ := (script.fn_fine_mese_di(p_competenza_mese) + 1);
         v_fine_succ  := (v_primo_succ + interval '1 month - 1 day')::date;
 
         -- ⭐ IL GIORNO SI APPOGGIA AL MESE, NON LO SCAVALCA
@@ -135,8 +134,7 @@ BEGIN
             -- Il permesso e' ancora aperto: la data di fine
             -- competenza resta ammessa ANCHE se e' piu' vecchia
             -- del pavimento mobile.
-            v_fine_comp := (date_trunc('month', p_competenza_mese)
-                            + interval '1 month - 1 day')::date;
+            v_fine_comp := script.fn_fine_mese_di(p_competenza_mese);
 
             -- ⚠️ LEAST e non GREATEST: si prende la piu'
             --    PERMISSIVA delle due, perche' sono due ragioni

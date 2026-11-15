@@ -38,8 +38,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            # nullValue: ""
-            nullValue: "NULL"
             primaryKey: "id"
 
             columns:

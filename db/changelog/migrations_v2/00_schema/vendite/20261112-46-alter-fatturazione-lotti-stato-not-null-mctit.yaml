@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DEL LOTTO LO SAPPIAMO SEMPRE
+#   Brief: brief-db-stati-documento-dal-vocabolario §4.1 (c), S-6
+#   (Tid, 2026-11-08). Giro 1: il vocabolario fiscale.
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Con il trigger della nascita (-45) un INSERT senza stato riceve lo stato
+#   iniziale: un lotto senza stato non e' piu' sul modello, e lo si dichiara,
+#   come per la fattura (20261024-08). Il BEFORE INSERT scatta prima del
+#   controllo NOT NULL.
+#   I rami che gestivano il lotto senza stato (vendite.vw_lotti_fase,
+#   vendite.vw_documenti_trattenuti_da_lotto: LEFT JOIN, stato IGNOTO)
+#   restano: sono un LEFT JOIN corretto anche col NOT NULL. Si ritirano i
+#   casi dei pgTAP che li costruivano, perche' il contratto non li ammette.
+#
+# ── DATI ────────────────────────────────────────────────────────────
+#   Fatto datato, 2026-11-12: su dbdev nessun lotto ha lo stato NULL, quindi
+#   l'ALTER non trova righe da rifiutare. Nessun seed di 80_data scrive lotti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261112-46-alter-fatturazione-lotti-stato-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261112-46-alter-fatturazione-lotti-stato-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_lotti.stato_doc_fiscale_id NOT NULL: lo stato alla nascita lo mette il trigger della nascita. Brief: brief-db-stati-documento-dal-vocabolario §4.1 (c), S-6.
+      preConditions:
+        - onFail: HALT
+        - columnExists: { schemaName: vendite, tableName: fatturazione_lotti, columnName: stato_doc_fiscale_id }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti
+                  ALTER COLUMN stato_doc_fiscale_id SET NOT NULL;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti.stato_doc_fiscale_id IS
+                  'Stato del lotto (FK config.stati_doc_fiscale), sempre valorizzato. Alla nascita lo mette il trigger BEFORE INSERT trg_fatturazione_lotti_a05_stato_iniziale_ins (BB script.trgfn_doc_stato_iniziale): lo stato iniziale del vocabolario quando l''INSERT non lo dice, rifiutato ogni altro. Gli altri stati si raggiungono dai passaggi di config.stati_doc_fiscale_transizioni con solo_fattura = false, scritti dai verbi del lotto (porta script.trgfn_doc_stato_solo_dal_verbo).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.fatturazione_lotti ALTER COLUMN stato_doc_fiscale_id DROP NOT NULL;
+
+              COMMENT ON COLUMN vendite.fatturazione_lotti.stato_doc_fiscale_id IS
+                  'FK -> config.stati_doc_fiscale.id (stato lotto/documenti).';

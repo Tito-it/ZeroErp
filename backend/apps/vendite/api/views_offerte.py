@@ -111,8 +111,9 @@ _ESITO_REQUEST = inline_serializer(
         # Esito cliente da EMESSA: ACCETTATA (motivazione rifiutata dal verbo,
         # E_OFFERTA_MOTIVAZIONE_NON_AMMESSA) oppure RIFIUTATA (motivazione
         # obbligatoria: lo dice la riga del passaggio, al verbo,
-        # E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA).
-        "esito": serializers.ChoiceField(choices=["ACCETTATA", "RIFIUTATA"]),
+        # E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA). Le parole le dice il service
+        # (`ESITI`), non una copia qui.
+        "esito": serializers.ChoiceField(choices=sorted(offerte_service.ESITI)),
         "motivazione": serializers.CharField(required=False, allow_blank=True, allow_null=True),
     },
 )
@@ -381,8 +382,11 @@ class ApiOffertaRegistraEsito(DomainAPIView):
     # L'azione del passaggio (stato corrente -> `esito`) dalla riga della
     # matrice, la stessa che legge il verbo: oggi accetta e rifiuta non ne
     # hanno, e decide il livello sul documento (M-3, guida §6; §13.6 punto 5).
+    # Il permesso guarda la riga verso lo stato che il verbo scrive (dal
+    # vocabolario, per il ruolo dell'esito), non verso la parola dell'API.
     post_passaggio = PassaggioDocumento(
         testata=TESTATA_OFFERTE, documento_kwarg="offerta_id", campo_stato="esito",
+        stato_del_campo=offerte_service.RUOLO_DEGLI_ESITI,
     )
 
     @extend_schema(

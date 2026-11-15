@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.articoli`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -245,9 +245,6 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Una nota impedisce di spegnere l'articolo.** La partizione delle note di articolo non ha
-  `attivo`, quindi per il trigger `block_deact` ogni nota è un figlio vivo
-  (`E_ATTIVO_BLOCK_CHILDREN_EXIST`).
 * **L'IVA di un kit non si cambia più**, se il kit ha legami attivi: vedi
   `catalogo.trgfn_articoli_guard_iva_bom_attiva`.
 
@@ -267,8 +264,9 @@ rifiutano finché una tabella figlia ha righe attive che lo puntano. Riaccenderl
 * `E_ARTICOLO_ONERE_NATURA_MERCE`, `E_ARTICOLO_ONERE_STRUTTURA`: un onere con natura di merce o
   con una caratteristica da bene.
 * `E_ATTIVO_PADRE_NON_ATTIVO`: un vocabolario puntato è spento (al COMMIT).
-* `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`: l'articolo si spegne mentre
-  una tabella figlia lo usa.
+* `E_ATTIVO_BLOCK_SI_RITIRA`: l'articolo si spegne mentre altre righe lo nominano (documenti,
+  listini, la distinta, da kit o da componente, anche con il legame chiuso). Un articolo usato non
+  si spegne: si ritira con `obsoleto_dal`.
 
 ---
 

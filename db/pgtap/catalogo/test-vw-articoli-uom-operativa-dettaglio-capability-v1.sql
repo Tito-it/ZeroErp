@@ -6,22 +6,34 @@
 -- 28-04-2026, migration 20260428-06).
 --
 -- Capability esposte:
---   puo_eliminarsi          BOOLEAN  = NOT is_base
---   motivo_non_eliminabile  TEXT     = 'UOM_BASE_NON_ELIMINABILE' [NULL se eliminabile]
+--   puo_eliminarsi          BOOLEAN  = non e' la base e non ha giorni passati
+--   motivo_non_eliminabile  TEXT     = 'UOM_BASE_NON_ELIMINABILE' sulla base,
+--                                      'UOM_STORIA_IN_VIGORE' su una riga in vigore,
+--                                      NULL se eliminabile
+--   ⚠️ Rev 2026-11-11 (20261111-72, brief-db-revisione-catalogo §15.11, G2): fino
+--   a oggi puo_eliminarsi era NOT is_base, e la riga secondaria del test (senza
+--   inizio, cioe' «da sempre») risultava eliminabile, mentre dal giro 2-bis il
+--   guard della storia la rifiuta. La secondaria ora comincia oggi (nessun giorno
+--   passato: si cancella), e una terza riga in vigore da trenta giorni prova il
+--   rifiuto. Le altre colonne della capability le prova
+--   catalogo/test-uom-conversione-capability-v1.
 --
 -- Setup: usiamo ART_TEST_BASE come articolo prodotto e creiamo 2
 -- righe articoli_uom_operativa nel test:
 --   - is_base=true   (UoM base, non eliminabile)
---   - is_base=false  (UoM operativa secondaria, eliminabile)
+--   - is_base=false  (UoM operativa secondaria da oggi, eliminabile)
+--   - is_base=false  (UoM operativa in vigore da trenta giorni, non eliminabile)
 -- ROLLBACK ripristina lo stato.
 --
--- Indice test (1..6):
+-- Indice test (1..8):
 --   1. presenza vista
 --   2. UoM BASE: puo_eliminarsi = false
 --   3. UoM BASE: motivo_non_eliminabile = 'UOM_BASE_NON_ELIMINABILE'
 --   4. UoM SECONDARIA: puo_eliminarsi = true
 --   5. UoM SECONDARIA: motivo_non_eliminabile = NULL
 --   6. denormalizzazione articolo_codice/uom_codice presenti
+--   7. UoM IN VIGORE: puo_eliminarsi = false
+--   8. UoM IN VIGORE: motivo_non_eliminabile = 'UOM_STORIA_IN_VIGORE'
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -41,7 +53,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(6);
+SELECT plan(8);
 
 -- =========================================================
 -- 1) Presenza vista
@@ -94,12 +106,29 @@ SELECT 'base', auo.id
 -- Riga SECONDARIA (uom_b)
 WITH ins AS (
     INSERT INTO catalogo.articoli_uom_operativa (
-        articolo_id, uom_id, is_base, factor_to_base, attivo
+        articolo_id, uom_id, is_base, factor_to_base, attivo, valido_dal
     )
-    SELECT art_id, uom_b_id, false, 6, true FROM _t_ctx
+    SELECT art_id, uom_b_id, false, 6, true, script.fn_data_operativa() FROM _t_ctx
     RETURNING id
 )
 INSERT INTO _t_uom_riga (kind, uom_op_id) SELECT 'secondaria', id FROM ins;
+
+-- Riga IN VIGORE: una terza unita', ne' la base ne' uom_b (le validita' della
+-- stessa unita' non si sovrappongono).
+WITH ins AS (
+    INSERT INTO catalogo.articoli_uom_operativa (
+        articolo_id, uom_id, is_base, factor_to_base, attivo, valido_dal
+    )
+    SELECT c.art_id,
+           (SELECT u.id FROM catalogo.unita_misura u
+             WHERE u.id <> c.uom_b_id
+               AND u.id <> (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = c.art_id)
+             ORDER BY u.id LIMIT 1),
+           false, 12, true, script.fn_data_operativa() - 30
+      FROM _t_ctx c
+    RETURNING id
+)
+INSERT INTO _t_uom_riga (kind, uom_op_id) SELECT 'in_vigore', id FROM ins;
 
 -- =========================================================
 -- 2..3) Riga BASE
@@ -127,7 +156,7 @@ SELECT is(
        FROM catalogo.vw_articoli_uom_operativa_dettaglio
       WHERE id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'secondaria')),
     true,
-    '4) UoM SECONDARIA: puo_eliminarsi = true (NOT is_base)'
+    '4) UoM SECONDARIA da oggi: puo_eliminarsi = true (nessun giorno passato)'
 );
 SELECT is(
     (SELECT motivo_non_eliminabile
@@ -148,6 +177,24 @@ SELECT ok(
        FROM catalogo.vw_articoli_uom_operativa_dettaglio v
       WHERE v.id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'base')),
     '6) Denormalizzazione: articolo_codice e uom_codice valorizzati per la riga BASE'
+);
+
+-- =========================================================
+-- 7..8) Riga IN VIGORE (giorni passati: si chiude, non si cancella)
+-- =========================================================
+SELECT is(
+    (SELECT puo_eliminarsi
+       FROM catalogo.vw_articoli_uom_operativa_dettaglio
+      WHERE id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'in_vigore')),
+    false,
+    '7) UoM IN VIGORE: puo_eliminarsi = false'
+);
+SELECT is(
+    (SELECT motivo_non_eliminabile
+       FROM catalogo.vw_articoli_uom_operativa_dettaglio
+      WHERE id = (SELECT uom_op_id FROM _t_uom_riga WHERE kind = 'in_vigore')),
+    'UOM_STORIA_IN_VIGORE',
+    '8) UoM IN VIGORE: motivo_non_eliminabile = UOM_STORIA_IN_VIGORE'
 );
 
 SELECT * FROM finish();

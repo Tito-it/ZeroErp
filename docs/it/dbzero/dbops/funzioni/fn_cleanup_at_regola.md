@@ -56,7 +56,7 @@ BEGIN
      WHERE r.enabled
        AND r.rule_type = 'CLEANUP_AT'
        AND dbops.fn_schema_match(r.target_schema, p_schema)
-       AND (upper(r.target_table) = '*ALL' OR p_table ILIKE r.target_table)
+       AND (r.target_table = '*all' OR p_table = r.target_table)
      ORDER BY r.priority, r.id
      LIMIT 1;
 

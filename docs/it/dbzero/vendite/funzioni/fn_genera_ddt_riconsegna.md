@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): il reso si ri-spedisce dallo
+--   stato di emissione (la colonna emissione), non dal codice CONFERMATO.
 -- rev 2026-10-24 (20261024-16, brief-modello-documento-vendita N-1/P-2):
 --   lo stato iniziale non si scrive piu' qui: lo mette il trigger della
 --   nascita (script.trgfn_doc_stato_iniziale), letto dal vocabolario.
@@ -48,7 +50,8 @@ BEGIN
             NULL::uuid, 'p_reso_id deve essere > 0');
     END IF;
 
-    -- 2) Reso CONFERMATO + testata origine (DDT sorgente).
+    -- 2) Reso emesso (la colonna emissione del suo stato: la conferma) +
+    --    testata origine (DDT sorgente).
     --    rev 2026-08-28 (Fase A): si legge anche il blocco
     --    «relazione» — le colonne che dicono CON CHI e PERCHE'
     --    la merce si muove. Sono le stesse per il viaggio di
@@ -72,6 +75,7 @@ BEGIN
     --    e NON si solleva, i guard dell'emissione fanno gia' il
     --    loro mestiere.
     SELECT sdr.codice_interno AS stato,
+           sdr.emissione      AS emissione,
            r.uid AS reso_uid,
            d.id  AS ddt_origine_id,
            d.destinatario_soggetto_ruolo_id, d.billing_account_id,
@@ -101,7 +105,7 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    IF v_orig.stato IS DISTINCT FROM 'CONFERMATO' THEN
+    IF v_orig.emissione IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_genera_ddt_riconsegna','E_RESO_NON_CONFERMATO',
             jsonb_build_object('reso_id', p_reso_id, 'stato', v_orig.stato),
@@ -253,6 +257,11 @@ BEGIN
                dr_src.natura_vendita_id   AS src_natura_vendita_id,
                dr_src.prezzo_unitario     AS src_prezzo_unitario,
                dr_src.sconto_percentuale  AS src_sconto_percentuale,
+               -- La provenienza del prezzo della bolla d'origine (R-4).
+               dr_src.origine_prezzo          AS src_origine_prezzo,
+               dr_src.listino_versione_id     AS src_listino_versione_id,
+               dr_src.listino_riga_id         AS src_listino_riga_id,
+               dr_src.prezzo_resolver_context AS src_prezzo_resolver_context,
                iva_src.id                 AS src_iva_id,
                vendite.fn_resi_riga_residuo_riconsegna(rr.id) AS residuo_ric,
                (SELECT (e->>'qta')::numeric
@@ -321,6 +330,7 @@ BEGIN
             prezzo_unitario, sconto_percentuale, iva_id,
             qta_operativa, uom_operativa_id, factor_to_base,
             natura_vendita_id,
+            origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
             sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_new_ddt_id, v_riga_nr, v_riga.articolo_id, v_riga.descrizione,
@@ -334,6 +344,11 @@ BEGIN
             -- La natura della riga di bolla d'origine (A-4, A-6): si
             -- restituisce cio' che e' uscito.
             v_riga.src_natura_vendita_id,
+            -- La provenienza, come il prezzo: solo senza ordine (R-4).
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_origine_prezzo END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_listino_versione_id END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_listino_riga_id END,
+            CASE WHEN v_riga.ordine_riga_id IS NULL THEN v_riga.src_prezzo_resolver_context END,
             -- La provenienza (D-4): il reso e la riga del reso. Il legame con
             -- l'ordine, se c'e', resta nel fulfillment.
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.resi_riga_id)
@@ -384,7 +399,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
-IS 'Madre della ri-spedizione di un reso: una bolla DRAFT nuova, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge da resi.sorgente_id (la bolla ha chiave id). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e la richiude subito. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione.';
+IS 'Madre della ri-spedizione di un reso emesso (lo stato del reso ha la colonna emissione di config.stati_doc_reso; altrimenti E_RESO_NON_CONFERMATO, la porta di vendite.fn_chiudi_riconsegna_reso, vendite.fn_riapri_riconsegna_reso e di can_riconsegna nella capability): una bolla nuova, nello stato iniziale del suo vocabolario, legata all''ordine (order-backed) o senza ordine (standalone). La provenienza e'' il reso, per la testata e per ogni riga: RESO_VENDITA con la chiave del reso da script.fn_sorgente_provenienza, e sulla riga in sorgente_riga la riga del reso. Il legame con l''ordine resta nel fulfillment, e la corsia di fatturazione dell''ordine la trova vendite.fn_ddt_trigger_ordine_testata. Per ogni riga del reso con un residuo da riconsegnare (vendite.fn_resi_riga_residuo_riconsegna, al netto di riconsegne e rinunce; p_righe [{resi_riga_id, qta}], NULL = tutto il residuo) scrive la riga di bolla, il ponte vendite.resi_righe_riconsegne e, se order-backed, il fulfillment che richiude il residuo dell''ordine. La bolla d''origine del reso si legge da resi.sorgente_id (la bolla ha chiave id). Eredita dalla bolla d''origine le scelte (causale, aspetto, modalita'' di addebito, mittente, vettore, fatturazione_immediata) e gli indirizzi di ambito DDT_VENDITA, non le misure del viaggio (colli, pesi, volume, targa, autista, date, tracking). Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su attivo: un elemento ritirato lascia il campo vuoto invece di far fallire la generazione. Nel solo ramo standalone copia prezzo, sconto e aliquota dalla riga della bolla d''origine; nell''order-backed il valore lo risale vendite.fn_list_ddt_da_pushare dal fulfillment. La riga porta la natura della riga resa. Mentre scrive le righe accende la porta zeroerp.ddt_riconsegna (l''id del reso), con cui il guard delle regole sull''articolo esenta gli articoli del reso, e la richiude subito. Lo stato dell''ordine lo proietta vendite.fn_ordine_proietta_stato_evasione.';
 ```
 
 </div>

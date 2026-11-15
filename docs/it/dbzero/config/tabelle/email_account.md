@@ -32,6 +32,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_email_account_codice_interno_nonvuoto |  |
+| CHECK | chk_email_account_email_reply_to_non_vuoto |  |
 | CHECK | chk_email_account_smtp_port |  |
 | CHECK | chk_email_account_tls_ssl_exclusive |  |
 | FOREIGN KEY | email_account_unita_organizzativa_id_fkey | unita_organizzativa_id |

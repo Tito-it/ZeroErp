@@ -78,6 +78,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ANAG_VALIDAZIONE": "Parametri anagrafiche non validi.",
     "E_APPROVAZIONE_PREZZO_NON_AMMESSA": "Operazione di approvazione prezzo non ammessa nello stato corrente.",
     "E_ARGOMENTI_A_COPPIE": "Trigger configurato con argomenti non a coppie.",
+    "E_ARTICOLO_CAUSALE_ONERE_GIA_USATA": "La causale onere scelta e' gia' di un altro articolo: ogni causale va a un articolo solo.",
     "E_ARTICOLO_ESCLUSO_DA_CONTRATTO": "L'articolo e' stato escluso dal contratto e non puo' essere venduto a questo cliente.",
     "E_ARTICOLO_KIT_SENZA_COMPONENTI": "Il kit non ha componenti in vigore da oggi in poi: non puo' stare in una riga di documento. Completare la sua distinta o scegliere un altro articolo.",
     "E_ARTICOLO_MISMATCH": "Riga ordine e riga DDT hanno articoli diversi.",
@@ -121,6 +122,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ATTIVO_BLOCK_CHILDREN_EXIST": "Non si puo' disattivare: ci sono ancora righe collegate.",
     "E_ATTIVO_BLOCK_FKCOL_NOT_FOUND": "Configurazione trigger di protezione non valida.",
     "E_ATTIVO_BLOCK_REF_NULL": "Colonna di riferimento nulla nel guard di disattivazione.",
+    "E_ATTIVO_BLOCK_SI_RITIRA": "Non si puo' disattivare: e' ancora usato. Per non sceglierlo piu' si ritira con una data di ritiro.",
     "E_ATTIVO_PADRE_NON_ATTIVO": "La riga a cui si collega non e' attiva: non vi si puo' collegare una riga attiva.",
     # Dal 2026-11-07 lo solleva solo il generatore (brief-db-revisione-dbops D46):
     # il trigger dice E_ATTIVO_PADRE_NON_ATTIVO, E_PADRE_INESISTENTE ed
@@ -151,13 +153,26 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_BOM_COMPONENTE_COMPOSITO": "Il componente e' a sua volta un articolo composito: una distinta contiene solo articoli semplici.",
     "E_BOM_COMPONENTE_DIVENTA_COMPOSITO": "L'articolo e' un componente di una distinta: non puo' diventare composito.",
     "E_BOM_COMPONENTE_PADRE": "L'articolo non puo' essere componente della propria distinta.",
+    # Brief-db-revisione-catalogo, giro 3 (2026-11-10): la chiusura di un
+    #    legame coi prezzi bundle. Il catalogo porta componente, kit e numeri
+    #    con dei `%s`; qui la regola senza argomenti.
+    "E_BOM_CHIUSURA_CON_PREZZI": "Chiudendo il componente si chiudono anche dei prezzi bundle nei listini: da quella data il prezzo del kit non comprende piu' il componente. Serve una conferma.",
+    "E_BOM_CHIUSURA_PREZZI_ALTRE_AZIENDE": "Il componente ha prezzi bundle in listini che non puoi vedere: il legame non si chiude finche' quei prezzi restano aperti.",
+    "E_BOM_CHIUSURA_PRIMA_DEI_PREZZI": "Il componente ha prezzi bundle in listini gia' attivi che cominciano dopo questa data: scegliere una fine del legame da quel giorno in poi.",
     # Brief-db-revisione-catalogo, giro 1 (2026-11-09): la fine di un legame.
     #    Il catalogo porta la data con un `%s`; qui la frase senza argomenti.
     "E_BOM_CHIUSURA_RETROATTIVA": "La fine del legame non puo' cambiare i giorni gia' passati: scegliere una data da ieri in poi.",
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
     "E_BOM_LEGAME_CHIUSO": "Il legame e' gia' finito: la sua fine non si cambia piu'. Per rimettere il componente nella distinta, inserire un legame nuovo.",
+    "E_BOM_LEGAME_NOT_FOUND": "Il componente della distinta non c'e': ricaricare la distinta e riprovare.",
     "E_BOM_MODIFICA_VIETATA": "Struttura BoM immutabile: i campi di struttura non sono modificabili. Per correggere, chiudere la riga e inserirne una nuova versione.",
     "E_BOM_VALIDO_AL_INVALIDO": "Data di chiusura non valida: deve essere uguale o successiva alla data di inizio della riga.",
+    "E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA": "Il tipo soggetto scelto e' di un'altra famiglia: una persona fisica non diventa una societa', e viceversa.",
+    "E_CAMBIO_NATURA_CON_DATI_SOCIETARI": "Il tipo soggetto scelto non ha dati societari: vanno eliminati prima del cambio.",
+    "E_CAMBIO_NATURA_CON_DOCUMENTI": "Il soggetto compare gia' in un documento: il cambio gli toglierebbe o gli darebbe la partita IVA, e non si puo' fare.",
+    "E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI": "Il tipo soggetto scelto non ammette alcuni indirizzi del soggetto: vanno eliminati prima del cambio.",
+    "E_CAMBIO_NATURA_PIVA_NON_APPLICABILE": "Il tipo soggetto scelto non ha partita IVA: va svuotata prima del cambio (lo puo' fare solo un amministratore).",
+    "E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI": "Il tipo soggetto scelto non ammette titoli IVA in vigore presentati ad altre aziende: deve chiuderli un amministratore.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",
     "E_CAMPO_NON_AMMESSO": "Un campo inviato non si puo' scrivere con questa operazione.",
     "E_CANALE_ORIGINE_IMMUTABILE": "Il canale origine non e' modificabile dopo l'inserimento.",
@@ -166,7 +181,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "Articolo non trovato.",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "Componente non trovato.",
     "E_CATALOGO_CONV_NOT_FOUND": "Conversione unita' di misura non trovata.",
-    "E_CATALOGO_NOTA_NOT_FOUND": "Nota non trovata.",
     "E_CATALOGO_OBSOLETO_NUOVA_ISTANZA": "Voce di catalogo obsoleta: non selezionabile per nuove istanze.",
     "E_CATALOGO_UOM_NOT_FOUND": "UoM operativa non trovata.",
     "E_CATALOGO_UOM_TIPO_NOT_FOUND": "Tipologia UoM non trovata.",
@@ -323,6 +337,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti e soggetti di prova) non si creano in un'installazione di produzione.",
     "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "Hai scelto di inviare la fattura elettronica con il codice SDI, ma il codice manca.",
     "E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO": "Il codice destinatario SDI non e' valido: 7 caratteri, lettere maiuscole e cifre (6 per una pubblica amministrazione).",
+    "E_DATI_SOCIETARI_NON_ELIMINABILI": "Il tipo soggetto richiede i dati societari: non si possono eliminare.",
     "E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE": "Hai scelto di inviare la fattura elettronica via PEC, ma la PEC manca.",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "Dati societari obbligatori mancanti per questo tipo soggetto.",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
@@ -410,6 +425,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # verbo che ne e' la causa. Due codici TECNICI: nessuna maschera li provoca.
     "E_DOC_STATO_SOLO_DAL_VERBO": "Lo stato del documento si cambia solo dalle sue operazioni (emetti, conferma, annulla...), non con una modifica diretta: segnalalo all'assistenza.",
     "E_DOC_PASSAGGIO_DI_PROCESSO": "Questo passaggio di stato lo fa il sistema, come conseguenza di un'altra operazione: non si chiede a mano.",
+    # brief-db-stati-documento-dal-vocabolario §6.12 (giro 3, 2026-11-14): da uno
+    # stato terminale non esce nessun passaggio a mano. Lo solleva il trigger sui
+    # vocabolari degli stati; il testo a catalogo nomina stato e passaggio.
+    "E_DOC_TERMINALE_CON_USCITA_MANUALE": "La configurazione degli stati non e' valida: da uno stato dichiarato terminale esce un passaggio a mano. Segnalalo all'assistenza.",
     # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-12): la scheda di
     # fornitura segue la coppia della testata. Due codici TECNICI.
     "E_DOC_FORNITURA_FUORI_TESTATA": "La scheda di fornitura indicata non e' della fornitura del documento: segnalalo all'assistenza.",
@@ -451,8 +470,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "Eliminazione versione non consentita: stato non BOZZA o gia' usata da documenti generati.",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "Versione template documento non trovata.",
     "E_DOCUMENTO_DATA_ANTERIORE_ULTIMO_NUMERO": "La data del documento e' anteriore a quella dell'ultimo numero gia' emesso su questo registro: la sequenza di un sezionale segue il tempo, e il numero successivo non puo' portare una data precedente.",
-    "E_DOCUMENTI_VERSIONE_OVERLAP": "Le date di validita' si sovrappongono con un'altra versione PUBBLICATA attiva del template. Chiudi quella esistente prima di pubblicare la nuova.",
-    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "Versione PUBBLICATA non modificabile. Crea o clona una nuova versione BOZZA.",
+    "E_DOCUMENTI_VERSIONE_OVERLAP": "Le date di validita' si sovrappongono con un'altra versione attiva del template, pubblicata o superata ma ancora in vigore. Scegli una data di inizio che venga dopo l'inizio della versione pubblicata piu' recente: la precedente si chiude da sola il giorno prima.",
+    "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE": "Una versione pubblicata di un template documentale non puo' essere modificata, nemmeno quando e' superata da una versione successiva.",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "La versione template non e' in uno stato pubblicabile.",
     "E_DOC_COMPONENTE_BOM_NON_VALIDA": "Riga BoM non valida alla data del documento.",
     "E_DOC_COMPONENTE_ID_INCOERENTE": "Componente non coerente con la riga di distinta base indicata.",
@@ -654,6 +673,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # dell'indirizzo fisico, il «trova o crea» e la modifica per tutti.
     "E_INDIRIZZO_CIVICO_NON_POSITIVO": "Il numero civico deve essere maggiore di zero. Per un indirizzo senza numero civico si lascia vuoto il campo.",
     "E_INDIRIZZO_COMUNE_ALTRO_STATO": "Il comune scelto non e' dello stato dell'indirizzo.",
+    "E_INDIRIZZO_COPIA_NESSUN_TIPO": "Questo indirizzo non si può copiare: non c'è un altro tipo di indirizzo da aggiungere.",
     "E_INDIRIZZO_DETTAGLIO_DUPLICATO": "Esiste gia' un indirizzo uguale: la modifica ne creerebbe un doppione.",
     "E_INDIRIZZO_DETTAGLIO_NON_RILETTO": "L'indirizzo risulta gia' presente, ma non si riesce a rileggerlo. Riprovare l'operazione.",
     "E_INDIRIZZO_DETTAGLIO_SENZA_LETTERE": "Estensione, palazzina, scala, piano e interno vogliono almeno una lettera o una cifra.",
@@ -664,7 +684,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INDIRIZZO_FATTURA_MANCANTE": "Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate.",
     "E_INDIRIZZO_LIBERO_INCOMPLETO": "Indirizzo incompleto: manca un campo della sua forma (via, stato, e poi comune e CAP oppure la localita').",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
+    "E_INDIRIZZO_RUOLO_NON_TROVATO": "L'indirizzo da copiare non c'è, o non è di questo ruolo. Riaprire l'elenco degli indirizzi del ruolo e ripetere la copia.",
+    "E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE": "Il ruolo ha già un indirizzo di questo tipo. Modificare l'indirizzo che c'è, oppure scegliere un altro tipo.",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "Indirizzo anagrafico non trovato: ricaricare gli indirizzi del cliente.",
+    "E_INDIRIZZO_SOGGETTO_NON_TROVATO": "L'indirizzo da copiare non c'è, o non è di questo soggetto. Riaprire l'elenco degli indirizzi del soggetto e ripetere la copia.",
+    "E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE": "Il soggetto ha già un indirizzo di questo tipo. Modificare l'indirizzo che c'è, oppure scegliere un altro tipo.",
     "E_INDIRIZZO_VIA_NON_RISOLTA": "La via scelta non e' completa nell'elenco delle vie: manca il comune, la provincia o il CAP.",
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",
@@ -706,6 +730,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_LISTINO_RIGA_COMPOSITO_VIETATO": "Articolo composito: il prezzo diretto non e' ammesso, usare i componenti.",
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "Prezzo bundle riferito a un componente non presente nella distinta base del padre composito.",
     "E_LISTINO_RIGA_IDENTITA_IMMUTABILE": "Una riga di listino non cambia articolo, unita' di misura o versione.",
+    # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): l'unita' del prezzo
+    #    vale per tutto il periodo della versione. Il catalogo porta versione,
+    #    unita', articolo e giorno con dei `%s`; qui la regola senza argomenti.
+    "E_LISTINO_UOM_NON_CONVERTIBILE": "L'unita' del prezzo non si converte per l'articolo in tutto il periodo della versione: aggiungere la conversione per tutto il periodo, oppure usare un'altra unita' o un periodo piu' corto.",
     "E_LISTINO_TIPOLOGIA_UTILITY": "Combinazione utility / tipologia non ammessa per questo listino.",
     "E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE": "Fuori dalla bozza questo campo della versione di listino non si cambia: di una versione attiva si cambia solo la fine validita', di una chiusa niente.",
     "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "La versione di listino e' chiusa: le sue date di validita' non si possono piu' modificare.",
@@ -1139,6 +1167,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PREZZO_LISTINO_VERSIONE_BOZZA": "La versione del listino e' ancora in bozza: i suoi prezzi non si usano finche' non e' attiva.",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
+    "E_PRICING_PROVENIENZA_SUPERATA": "Il prezzo del listino è cambiato dopo che la riga è stata compilata. Ricarica il prezzo dal listino, oppure scrivilo a mano.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
     # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano
@@ -1433,9 +1462,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TRIGGER_ARGOMENTI_INVALIDI": "Trigger montato con argomenti non validi.",
     "E_TIPO_FONDO_NOT_FOUND": "Tipo fondo non trovato.",
     "E_TIPO_INDIRIZZO": "Tipo indirizzo non ammesso per questo documento.",
-    "E_TIPO_INDIRIZZO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di ruolo.",
+    "E_TIPO_INDIRIZZO_NON_PERMESSO": "Il ruolo non prevede questo tipo di indirizzo. Scegliere un altro tipo, oppure aggiungerlo ai tipi di indirizzo ammessi per il ruolo.",
     "E_TIPO_INDIRIZZO_NON_TROVATO": "Il tipo di indirizzo non esiste.",
-    "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "Tipo indirizzo non permesso per questo tipo di soggetto.",
+    "E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO": "Il tipo soggetto non prevede questo tipo di indirizzo. Scegliere un altro tipo, oppure aggiungerlo ai tipi di indirizzo ammessi per il tipo soggetto.",
     "E_TIPO_RUOLO_NON_TROVATO": "Tipo ruolo non trovato.",
     "E_TOKEN": "Token non valido, scaduto o gia' utilizzato.",
     "E_TXID_GENERATION": "Generazione del tx_id fallita.",
@@ -1466,10 +1495,18 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",
     "E_UOM_CALENDARIO_NON_TEMPO": "Un'unita' si puo' contare dal calendario solo se e' un'unita' di tempo.",
+    # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): la storia delle
+    #    conversioni (mappature dell'articolo e conversioni generali). Il
+    #    catalogo nomina la conversione e le date con dei `%s`.
+    "E_UOM_CHIUSURA_CON_LISTINI_ATTIVI": "La conversione non si chiude cosi': dei prezzi di listini attivi resterebbero in un'unita' che non si converte. Chiudere prima quelle versioni di listino, oppure inserire la conversione che continua questa.",
     "E_UOM_CONVERSIONE_TIPO_DIVERSO": "Non si possono convertire unita' di tipologia diversa: per un caso come il cartone di pezzi, indicare il fattore nelle unita' operative dell'articolo.",
     "E_UOM_MISMATCH": "Riga ordine e riga DDT hanno unita' di misura diverse.",
     "E_UOM_MISSING": "L'unita' della riga non si converte nell'unita' base dell'articolo alla data del documento.",
-    "E_UOM_RIGA_BASE_IMMUTABILE": "L'unita' base dell'articolo non si cambia e non si toglie.",
+    "E_UOM_RIGA_BASE_IMMUTABILE": "L'unita' base dell'articolo non si cambia, non si spegne e non si toglie.",
+    "E_UOM_STORIA_CHIUSA": "La conversione e' gia' finita: la sua fine non si cambia piu'. Per riprenderla, inserirne una nuova che cominci da oggi.",
+    "E_UOM_STORIA_CHIUSURA_RETROATTIVA": "La fine della conversione non puo' cambiare i giorni gia' passati: scegliere una data da ieri in poi.",
+    "E_UOM_STORIA_IMMUTABILE": "Una conversione non si cambia sul posto: chiuderla e aprirne una nuova coi valori nuovi.",
+    "E_UOM_STORIA_IN_VIGORE": "La conversione e' gia' in vigore: non si spegne e non si cancella, si chiude impostando la data di fine.",
     "E_UOM_TIPO_IN_USO": "La tipologia dell'unita' non si cambia: l'unita' compare in una conversione.",
     "E_UPDATE_NOT_ALLOWED": "Modifica non permessa su questa riga.",
     "E_USER_DISABILITATO": "Utente disabilitato. Contattare l'amministratore.",

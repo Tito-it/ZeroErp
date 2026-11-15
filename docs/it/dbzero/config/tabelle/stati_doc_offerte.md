@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA, RIFIUTATA (terminale), SUPERATA (terminale, is_superato: una revisione l'ha rimpiazzata) e ANNULLATA (terminale, is_abortito). I verbi leggono dal vocabolario lo stato iniziale, quello d'emissione, quello d'annullo e quello di superamento (iniziale, emissione, is_abortito, is_superato), non i codici. codice_interno e' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni. Brief: brief-modello-documento-vendita §13 (rev 2026-10-26; prima del giro il commento diceva cinque stati e nessun is_abortito).
+> Vocabolario degli stati di vendite.offerte_commerciali: BOZZA (iniziale, modificabile), EMESSA (emissione: proposta al cliente), ACCETTATA (accettazione), RIFIUTATA (rifiuto, terminale), SUPERATA (is_superato, terminale: una revisione l'ha rimpiazzata) e ANNULLATA (is_abortito, terminale). I verbi, il guard e la capability leggono il significato dalle colonne (iniziale, emissione, accettazione, rifiuto, is_abortito, is_superato, terminale), non i codici. codice_interno e' immutabile (script.trgfn_lock_columns). I passaggi ammessi sono la matrice config.stati_doc_offerte_transizioni.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -29,6 +29,7 @@
 | iniziale | boolean | NO | false |
 | emissione | boolean | NO | false |
 | accettazione | boolean | NO | false |
+| rifiuto | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +40,7 @@
 | CHECK | chk_stati_doc_offerte_fase |  |
 | CHECK | chk_stati_doc_offerte_iniziale_attivo |  |
 | CHECK | chk_stati_doc_offerte_pdf_mode |  |
+| CHECK | chk_stati_doc_offerte_rifiuto_attivo |  |
 | CHECK | chk_stati_doc_offerte_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_offerte_esito | esito |
 | PRIMARY KEY | pk_stati_doc_offerte | id |
@@ -56,6 +58,7 @@
 | uq_stati_doc_offerte_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_offerte_codice_interno ON config.stati_doc_offerte USING btree (codice_interno)` |
 | uq_stati_doc_offerte_emissione | `CREATE UNIQUE INDEX uq_stati_doc_offerte_emissione ON config.stati_doc_offerte USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_offerte_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_offerte_iniziale ON config.stati_doc_offerte USING btree (iniziale) WHERE iniziale` |
+| uq_stati_doc_offerte_rifiuto | `CREATE UNIQUE INDEX uq_stati_doc_offerte_rifiuto ON config.stati_doc_offerte USING btree (rifiuto) WHERE rifiuto` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -66,10 +69,12 @@
 | trg_stati_doc_offerte_a10_offerte_commerciali_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali', 'stato_doc_offerta_id', 'id', 'attivo')` |
 | trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni_3acc96 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_offerte_a10_stati_doc_offerte_transizioni_89db14 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'stato_da_id', 'id', 'attivo')` |
+| trg_stati_doc_offerte_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
+| trg_stati_doc_offerte_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali')` |
 | trg_stati_doc_offerte_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_stati_doc_offerte_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_stati_doc_offerte_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stati_doc_offerte_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_stati_doc_offerte_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

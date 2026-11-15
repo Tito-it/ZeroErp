@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_preventivi`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,6 +21,7 @@
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — legge lo stato di `emissione`
 > * [script.fn_stato_accettazione_id](/dbzero/script/funzioni/fn_stato_accettazione_id) — legge lo stato di `accettazione`
 > * [script.fn_stato_scadenza_id](/dbzero/script/funzioni/fn_stato_scadenza_id) — legge lo stato di `scadenza`
+> * [script.fn_stato_rifiuto_id](/dbzero/script/funzioni/fn_stato_rifiuto_id) — legge lo stato di `rifiuto`
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — legge lo stato di annullo (`is_abortito`)
 > * [vendite.fn_chiudi_preventivi_scaduti](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti) — il job delle scadenze
 > * [script.fn_available_actions_preventivo](/dbzero/script/funzioni/fn_available_actions_preventivo) — la capability, che legge i flag, `meta` e `pdf_mode`
@@ -52,7 +53,7 @@ passaggi fra gli stati stanno nella matrice
 | `EMESSO` | proposto al cliente: ha il numero e il PDF | `emissione` |
 | `ACCETTATO` | il cliente ha accettato: da qui la push a commessa e la push a ordine | `accettazione` |
 | `EVASO` | lo smistamento verso commessa e ordine lo ha portato a termine | `terminale` |
-| `RIFIUTATO` | il cliente ha detto no | `terminale` |
+| `RIFIUTATO` | il cliente ha detto no | `rifiuto`, `terminale` |
 | `SCADUTO` | la validità è finita senza una risposta del cliente | `scadenza`, `terminale` |
 | `ANNULLATO` | la revisione è stata abbandonata | `is_abortito`, `terminale` |
 
@@ -72,23 +73,36 @@ tutti i lettori seguono.
 * **`iniziale`** — lo stato in cui un preventivo nasce. Il trigger
   [`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) su
   `vendite.preventivi` mette questo stato quando chi crea non ne dice uno, e rifiuta ogni altro con
-  `E_DOC_STATO_INIZIALE_NON_VALIDO`.
-* **`emissione`** — lo stato in cui il preventivo è emesso: ci si arriva solo da «Emetti», che
-  produce numero e PDF insieme; il backend lo rifiuta sul cambio di stato generico. La leggono il
+  `E_DOC_STATO_INIZIALE_NON_VALIDO`. È anche la **bozza**: la leggono il lock delle righe e della
+  testata ([`script.fn_doc_lock_regola`](/dbzero/script/funzioni/fn_doc_lock_regola), e da lì
+  `can_edit_*` della capability), la revisione, che non ne crea una seconda se una è già nello stato
+  iniziale, e il cruscotto ([`vendite.vw_dash_fatturazione_preventivi`](/dbzero/vendite/views/vw_dash_fatturazione_preventivi), `DOC_BOZZA`).
+* **`emissione`** — lo stato in cui il preventivo è emesso: ci si arriva solo da «Emetti»; il backend lo
+  rifiuta sul cambio di stato generico. La leggono il
   guard di transizione
   ([`vendite.trgfn_preventivi_guard_transizione`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_transizione)),
   la capability, la revisione
   ([`vendite.fn_crea_revisione_preventivo`](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo))
-  e il job delle scadenze, che chiude solo i preventivi emessi.
+  il job delle scadenze, che chiude solo i preventivi emessi, e il cruscotto
+  (`IN_ATTESA_ACCETTAZIONE`).
 * **`accettazione`** — lo stato in cui il preventivo è accettato. Non chiude il documento: da qui si
   va a `EVASO`. La leggono l'elenco dei preventivi da smistare
   ([`vendite.fn_list_preventivi_da_pushare`](/dbzero/vendite/funzioni/fn_list_preventivi_da_pushare)),
   la push a ordine ([`vendite.fn_push_preventivo_a_ordine`](/dbzero/vendite/funzioni/fn_push_preventivo_a_ordine))
-  e la capability.
+  la capability, la Regola 3 del guard di transizione (la validità finita e i prezzi non
+  autorizzati, entrando qui) e la proiezione dello smistamento
+  ([`vendite.fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento)),
+  che parte da qui e ci torna da `EVASO`.
 * **`scadenza`** — lo stato in cui il preventivo è scaduto. Lo scrive il job delle scadenze
   ([`vendite.fn_chiudi_preventivi_scaduti`](/dbzero/vendite/funzioni/fn_chiudi_preventivi_scaduti))
   quando la validità è finita; da qui la revisione ripropone il preventivo.
-* **`is_abortito`** — la revisione con questo stato è stata abbandonata. Lo legge il verbo d'annullo
+* **`rifiuto`** — lo stato in cui il cliente ha rifiutato il preventivo. Non è il contrario di
+  `accettazione`: `SCADUTO` e `ANNULLATO` hanno anche loro un esito negativo, ma non sono un no del
+  cliente. Si legge con [`script.fn_stato_rifiuto_id`](/dbzero/script/funzioni/fn_stato_rifiuto_id);
+  il codice del preventivo non lo nomina ancora per significato.
+* **`is_abortito`** — la revisione con questo stato è stata abbandonata. Lo leggono il guard
+  dell'annullo ([`vendite.trgfn_preventivi_guard_annullamento`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_annullamento))
+  e la capability, per i motivi che fermano l'annullo; lo legge il verbo d'annullo
   ([`vendite.fn_annulla_preventivo`](/dbzero/vendite/funzioni/fn_annulla_preventivo)) attraverso
   [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id), e lo legge
   [`vendite.vw_preventivi`](/dbzero/vendite/views/vw_preventivi) per derivare la revisione attiva:
@@ -131,6 +145,8 @@ stato è vuoto.
   perché non ci sono azioni. La capability la espone come `stato_info_key`.
 * **`pdf_mode`** e **`pdf_allow_allegati`** — che cosa offre il bottone PDF in quello stato:
   l'anteprima in bozza, l'archivio negli altri. Non hanno un default: uno stato nuovo li dichiara.
+  `pdf_mode` lo leggono la capability (`pdf.mode`, nel dettaglio) e la lista
+  (`vendite.vw_preventivi_lista.pdf_mode`, dove il PDF si accende su `ARCHIVE`).
 
 Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_preventivi.csv`.
 
@@ -149,6 +165,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_preve
 * `db/pgtap/script/test-doc-stati-dal-vocabolario-v1.sql` — i lettori di `accettazione`, `scadenza` e degli altri stati marcati.
 * `db/pgtap/vendite/test-preventivo-scadenza-v1.sql` — la scadenza scritta dal job.
 * `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita.
+* `db/pgtap/vendite/test-preventivo-stati-dal-vocabolario-v1.sql` — guard, capability, revisione, cruscotto e proiezione seguono la marca spostata.
 
 ---
 
@@ -159,6 +176,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_preve
 * 2026-10-31 — arrivano `accettazione` (brief `brief-modello-documento-vendita` §17) e `scadenza`
   (brief `brief-db-scadenza-preventivi` §8.1): il codice smette di scrivere `'ACCETTATO'` e
   `'SCADUTO'`.
+* 2026-11-13 — arriva `rifiuto` (brief `brief-db-stati-documento-dal-vocabolario`, giro 2).
 
 ---
 

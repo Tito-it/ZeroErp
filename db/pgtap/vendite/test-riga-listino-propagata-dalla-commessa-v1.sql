@@ -51,16 +51,6 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- La commessa (apre il contesto dell'operatore) e un listino dello stesso
 -- emittente, versione ATTIVA, per l'utility del billing account.
@@ -86,6 +76,12 @@ SELECT a.uom_id AS u1,
          WHERE u.attivo AND u.id <> a.uom_id ORDER BY u.id LIMIT 1) AS u2
   FROM catalogo.articoli a
  WHERE a.id = (SELECT articolo_id FROM t_art);
+
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D25/Q24): un prezzo vale in
+--   un'unita' che si converte per l'articolo per tutto il periodo della versione
+--   (vendite.trgfn_listini_righe_guard_uom_periodo). La seconda unita' si mappa.
+INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, factor_to_base)
+SELECT (SELECT articolo_id FROM t_art), u2, 2 FROM t_uom;
 
 CREATE TEMP TABLE t_r AS
 WITH ins AS (
@@ -144,14 +140,14 @@ SELECT is(
 -- 3-4) R1 citata: UPDATE e DELETE rifiutati col codice giusto
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.listini_righe SET prezzo = 11.00 WHERE id = %s', (SELECT r1 FROM t_r))),
     'E_RIGA_LISTINO_PROPAGATA',
     '3) UPDATE della riga di listino citata dalla commessa -> E_RIGA_LISTINO_PROPAGATA'
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'DELETE FROM vendite.listini_righe WHERE id = %s', (SELECT r1 FROM t_r))),
     'E_RIGA_LISTINO_PROPAGATA',
     '4) DELETE della riga di listino citata dalla commessa -> E_RIGA_LISTINO_PROPAGATA'
@@ -249,7 +245,7 @@ SELECT is(
 -- 9) R2 ora citata: rifiutata
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.listini_righe SET prezzo = 22.00 WHERE id = %s', (SELECT r2 FROM t_r))),
     'E_RIGA_LISTINO_PROPAGATA',
     '9) UPDATE della riga di listino citata dopo il re-push -> E_RIGA_LISTINO_PROPAGATA'

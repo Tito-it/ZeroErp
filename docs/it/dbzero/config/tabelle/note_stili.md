@@ -25,6 +25,7 @@
 |------|------|---------|
 | CHECK | chk_cfg_note_stili_codice_interno_len |  |
 | CHECK | chk_cfg_note_stili_codice_len |  |
+| CHECK | chk_note_stili_note_non_vuota |  |
 | PRIMARY KEY | pk_config_note_stili | id |
 | UNIQUE | uq_cfg_note_stili_codice | codice |
 | UNIQUE | uq_cfg_note_stili_codice_interno | codice_interno |

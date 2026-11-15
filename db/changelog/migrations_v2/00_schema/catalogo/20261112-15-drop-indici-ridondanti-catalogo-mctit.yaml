@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Ritiro di due indici che ripetono un vincolo (Q14).
+#
+#   uq_articoli_componenti_prodotto_componente_from (UNIQUE prodotto_id, componente_id,
+#   valido_dal): implicato da uq_articoli_componenti_no_overlap, perche' valido_dal e'
+#   NOT NULL e due legami con lo stesso inizio si sovrappongono sempre. Resta
+#   uq_articoli_componenti_id_temporal, che regge la FK temporale dei listini.
+#   ix_uom_tipi_codice_interno_upper: nessuna lettura usa upper(codice_interno); la
+#   ricerca e' su codice, che si salva normalizzato.
+#   Restano ix_artuomop_art_isbase (l'unico btree che comincia da articolo_id) e la FK
+#   semplice di vendite.listini_righe_componenti (da li' l'automazione ATTIVO deriva
+#   block e require): §17.2 A.
+#   Nessun changeSet di 80_data o 90_end li nomina (grep del 2026-11-11).
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261112-15-drop-indici-ridondanti-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261112-15-drop-indici-ridondanti-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: via due indici che ripetono un vincolo (uq_articoli_componenti_prodotto_componente_from, ix_uom_tipi_codice_interno_upper).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_class
+               WHERE oid IN (to_regclass('catalogo.uq_articoli_componenti_prodotto_componente_from'),
+                             to_regclass('catalogo.ix_uom_tipi_codice_interno_upper'),
+                             to_regclass('catalogo.uq_articoli_componenti_no_overlap'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                  DROP CONSTRAINT uq_articoli_componenti_prodotto_componente_from;
+              DROP INDEX catalogo.ix_uom_tipi_codice_interno_upper;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_uom_tipi_codice_interno_upper
+                  ON catalogo.uom_tipi USING btree (upper((codice_interno)::text));
+              ALTER TABLE catalogo.articoli_componenti
+                  ADD CONSTRAINT uq_articoli_componenti_prodotto_componente_from
+                  UNIQUE (prodotto_id, componente_id, valido_dal);
+              COMMENT ON CONSTRAINT uq_articoli_componenti_prodotto_componente_from ON catalogo.articoli_componenti IS
+                  'Unicità prodotto+componente+valid_from';

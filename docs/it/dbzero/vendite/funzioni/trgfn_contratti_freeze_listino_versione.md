@@ -32,19 +32,27 @@ AS $function$
 --    vigore di ogni giorno: l'opposto di «congela all'attivazione».
 -- C) listino_versione_id gia' valorizzato (dal push dell'offerta): resta.
 -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c): il
+--   passaggio e' dallo stato iniziale allo stato di emissione, che il
+--   vocabolario marca; dove sopra si legge DRAFT→ATTIVO vale quello.
 DECLARE
     v_codice_da   config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a    config.stati_doc_contratti.codice_interno%TYPE;
+    -- La partenza e' lo stato iniziale, la destinazione quello di emissione?
+    v_iniziale_da config.stati_doc_contratti.iniziale%TYPE;
+    v_emissione_a config.stati_doc_contratti.emissione%TYPE;
 BEGIN
     SELECT
         max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
-        max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END)
-      INTO v_codice_da, v_codice_a
+        max(CASE WHEN id = NEW.stato_doc_contratto_id THEN codice_interno END),
+        bool_or(iniziale)  FILTER (WHERE id = OLD.stato_doc_contratto_id),
+        bool_or(emissione) FILTER (WHERE id = NEW.stato_doc_contratto_id)
+      INTO v_codice_da, v_codice_a, v_iniziale_da, v_emissione_a
       FROM config.stati_doc_contratti
      WHERE id IN (OLD.stato_doc_contratto_id, NEW.stato_doc_contratto_id);
 
-    -- Attivo solo su DRAFT→ATTIVO
-    IF v_codice_da <> 'DRAFT' OR v_codice_a <> 'ATTIVO' THEN
+    -- Attivo solo dallo stato iniziale allo stato di emissione.
+    IF (v_iniziale_da AND v_emissione_a) IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -86,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
-IS 'Trigger BEFORE UPDATE su vendite.contratti, solo su DRAFT->ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA attiva con prezzo (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE). Con listino: solleva il primo motivo di script.fn_check_listino_congelabile(''CONTRATTO'', ...) — nessuna versione in vigore oggi, E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO — e congela listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi). Una versione già fissata (dal push dell''offerta) resta anche se nel frattempo si è chiusa: è quella che il cliente ha accettato. Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2, decisione A-D2 di Tid): prima il contratto si attivava con la versione NULL (§4.4 del 2026-05-18) e il risolutore delle righe lo faceva galleggiare sulla versione in vigore di ogni giorno. La capability script.fn_available_actions_contratto legge la stessa check e spegne «Attiva» col motivo.';
+IS 'Trigger BEFORE UPDATE su vendite.contratti, solo sul passaggio dallo stato iniziale allo stato di emissione (le colonne iniziale ed emissione di config.stati_doc_contratti: l''attivazione). Negoziato puro (listino_id NULL): richiede almeno un''AGGIUNTA attiva con prezzo (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE). Con listino: solleva il primo motivo di script.fn_check_listino_congelabile(''CONTRATTO'', ...), cioe'' nessuna versione in vigore oggi (E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO), e congela listino_versione_id con vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi). Una versione gia'' fissata (dal push dell''offerta) resta anche se nel frattempo si e'' chiusa: e'' quella che il cliente ha accettato. La capability script.fn_available_actions_contratto legge la stessa check e spegne «Attiva» col motivo.';
 ```
 
 </div>

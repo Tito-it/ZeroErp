@@ -1,58 +1,119 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_asset`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [documenti.tipi_asset_documento](/dbzero/documenti/tabelle/tipi_asset_documento)  
-> • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/manual/emittenti_fiscali)  
+> * [documenti.tipi_asset_documento](/dbzero/documenti/tabelle/tipi_asset_documento) — che genere di asset è
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'azienda a cui l'asset appartiene
 >
+> Approfondimento funzioni:
+>
+> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [documenti.trgfn_template_asset_protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file) — il file di un asset non cambia
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — l'azienda presa dalla sessione
+>
+> Guide:
+>
+> * [Documenti e stampe](/guide/documenti-e-stampe) — gli asset nella stampa
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 29-04-2026)
-`documenti.template_asset` è il catalogo degli **asset documentali riusabili**
-associati a un emittente fiscale: logo, firme, immagini, CSS o altri file di
-supporto usati nella resa dei template.
+
+`documenti.template_asset` è il catalogo degli **elementi grafici di un'azienda** usati nella stampa:
+logo, carta intestata, firma, immagini, fogli di stile. La riga descrive il file (nome, tipo, peso,
+impronta SHA-256, chiave nello storage) e il suo ruolo; il file sta nello storage.
 
 ---
 
-### Ruolo nel processo
+### Una versione richiama un asset per codice interno
 
-* centralizza gli asset caricati e riusabili da più template/versioni;
-* separa l'identità funzionale dell'asset dal file binario sottostante;
-* consente validità temporale di asset diversi nel tempo per lo stesso
-  emittente.
+Una versione di template cita un asset col suo `codice_interno`, e il motore lo cerca fra gli asset
+**dell'azienda del documento**. La chiave è (azienda, codice interno), unica: al più un asset per
+codice e azienda. Il codice interno non si modifica (`E_CODICE_NON_MODIFICABILE`), quindi un asset
+rinominato non rompe i template che lo citano.
 
----
+Per questo i modelli standard, che non hanno azienda, non richiamano asset.
 
-### Campi chiave (semantica)
-
-* **Identita` funzionale**: `codice_interno`, `codice`, `descrizione`.
-* **Classificazione**: `asset_tipo_id`, `emittente_fiscale_id`.
-* **Identita` binaria**: `sha256`.
-* **Persistenza file**: `mime_type`, `file_name`, `file_size_bytes`,
-  `storage_key`.
-* **Validita`**: `valido_dal`, `valido_al`, `validita`.
+Nessuna FK lega un asset a un template o a una stampa: il legame è il codice scritto nel corpo della
+versione.
 
 ---
 
-### Regole operative
+### ⛔ Un asset non cambia file e non si cancella
 
-* `codice_interno` è la chiave tecnica stabile dell'asset nel perimetro
-  dell'emittente;
-* `sha256` identifica il file binario ed evita duplicati per lo stesso
-  emittente;
-* `validita` è calcolata dal trigger standard e va trattata come derivata;
-* la presenza di `attivo = false` o la chiusura della finestra di validità
-  impediscono nuovi utilizzi senza perdere tracciabilità storica.
+* Il file di un asset non cambia: chiave nello storage, impronta, peso, tipo e nome sono quelli del
+  caricamento ([protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file)).
+* Un asset non si cancella mai
+  ([block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete)).
+
+Insieme fanno dell'asset un'istantanea stabile: la ristampa fedele di un documento ritrova il file di
+allora, anche se oggi l'asset è scaduto o spento.
+
+Restano modificabili descrizione, codice, meta, attivo e le date.
 
 ---
 
-### Distinzione importante
+### Lo stesso file una volta sola per azienda
 
-* `codice_interno` identifica **che cos'è** l'asset nel dominio applicativo;
-* `sha256` identifica **quale file binario** è stato caricato;
-* due asset con ruolo diverso non devono condividere la stessa identità
-  funzionale, anche se in teoria il file fosse uguale.
+L'impronta SHA-256 è unica per azienda (`uq_template_asset_emittente_sha256`): lo stesso file non si
+carica due volte, nemmeno con due ruoli diversi. Due aziende possono avere lo stesso file.
+
+---
+
+### Attivo e valido: che cosa la stampa può usare
+
+Una stampa nuova e l'anteprima usano solo gli asset attivi e validi oggi; la ristampa fedele usa
+l'asset di allora comunque. `validita` è l'intervallo generato da `valido_dal` e `valido_al`, estremi
+compresi, e l'ordine delle date lo verifica il guard comune. Un asset si ritira chiudendo la validità
+o spegnendolo.
+
+---
+
+### ⭐ Un logo nuovo è un asset nuovo, e una versione nuova del template
+
+Il codice interno è unico per azienda senza tener conto della validità, e il file non si
+sostituisce: il logo nuovo è un asset nuovo con un codice interno nuovo. Le versioni pubblicate, che
+non si modificano, continuano a citare il vecchio; per stampare col logo nuovo si pubblica una
+versione nuova di ogni template che lo cita. Due asset con lo stesso codice in periodi diversi non
+sono ammessi.
+
+È voluto: lo stesso codice interno indica sempre gli stessi byte, ed è ciò su cui si regge la
+ristampa fedele, che ritrova il file di allora anche se oggi l'asset è scaduto o spento.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* «Attivo e valido oggi» per un asset non ha una sede nel database: lo scrive il backend.
+
+---
+
+### Codici errore
+
+* `E_DOCUMENTI_ASSET_DELETE_BLOCKED` — cancellazione di un asset.
+* `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` — modifica del file di un asset.
+* `E_CODICE_NON_MODIFICABILE` — modifica del codice interno.
+* `E_DATA_AL_MINORE_DAL` — fine che precede l'inizio.
+* Le unicità (codice, codice interno, impronta) arrivano come violazione di vincolo, e il backend le
+  traduce per nome.
+
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-template-asset.sql` — unicità dell'impronta, cancellazione
+  bloccata, file immutabile, meta modificabile.
+
+---
+
+### Note di migrazione
+
+* 2026-04-29 — nasce la tabella.
+* 2026-05-14 — `validita` diventa una colonna generata.
 
 ---
 

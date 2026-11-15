@@ -1,6 +1,6 @@
 # Guida — Presidi e registri del debito
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database e backend, e chi costruisce o mantiene un
 > controllo automatico (un guardrail, un pgTAP di presidio, una vista di controllo)
@@ -431,6 +431,12 @@ committato con lo stato noto, e la CI che fallisce sul **delta**.
 rossa è la richiesta di una decisione: o serve un codice nuovo, o l'uso è
 legittimo e la baseline si aggiorna **con la ragione nel messaggio di commit**.
 
+⛔ **Con più lavori aperti insieme `--update` non si usa.** La fotografia contiene
+anche i codici degli altri lavori, e li firmerebbe senza spiegazione. Si confronta
+la fotografia con la baseline e si cambiano a mano le sole righe del proprio
+lavoro, senza riordinare il file; le righe altrui restano com'erano e si
+segnalano a chi le possiede.
+
 ⚠️ **Un presidio va guardato anche nel verso in cui le cose migliorano.** Se un
 codice si restringe e la baseline non viene stretta, la baseline continua a
 dichiarare ammessa la famiglia che il codice non ha più: il giorno in cui qualcuno
@@ -466,7 +472,11 @@ dei valori li scrive l'applicazione. Il canale dice chi verifica la riga:
 ⚠️ `ESENTE` non vuol dire «non scritto»: vuol dire che il **criterio** non lo
 vede. Il caso tipico è un log che riceve lo stato **copiandolo** dal padre:
 scritto a ogni riga, e nessun valore compare in nessuna funzione. Stringere il
-`CHECK` romperebbe il log.
+`CHECK` romperebbe il log. Per questo, prima di togliere un valore da un `CHECK`,
+si cercano le funzioni che scrivono la colonna con una **variabile** (un `INSERT`
+o un `SET` che nomina la colonna senza letterale): «nessun corpo contiene il
+letterale» non vuol dire «nessuno lo scrive». Una riga che porta quel valore è il
+controesempio che chiude la domanda.
 
 **La lista di lavoro** ([`dbops.vw_stati_check_da_sanare`](/dbzero/dbops/views/vw_stati_check_da_sanare))
 è un cancello: `db/pgtap/dbops/test-stati-check-scrittori-v1.sql` la fa rossa su
@@ -481,6 +491,13 @@ vede. E PostgreSQL stampa lo stesso `CHECK` in due forme diverse (colonna `text`
 `varchar`): una misura che ne riconosce una sola si restringe senza dirlo. Ognuno
 di questi limiti è scritto nel commento della vista e ha un caso costruito nel
 pgTAP.
+
+⚠️ **Quando un refactor sposta un letterale e un valore esce non dichiarato**, il
+rosso dice che quel valore il database non l'ha mai scritto davvero: lo vedeva
+scritto per una coincidenza di testo. Non si rimette il letterale dov'era: si
+cerca chi scrive il valore e lo si dichiara nel registro col suo canale,
+rileggendo le ragioni delle righe vicine, che possono poggiare sulla stessa
+coincidenza.
 
 ### 3.7 Una colonna che promette un'automazione
 
@@ -651,7 +668,46 @@ La ricetta, nell'ordine:
 9. **Se è una vista di controllo, mettila nel catalogo** [`dbops.presidi`](/dbzero/dbops/tabelle/presidi)
    con le sue parole in [`presidi_testi`](/dbzero/dbops/tabelle/presidi_testi): è
    così che qualcuno la legge. Se ci si dimentica, il pgTAP del catalogo diventa
-   rosso. I passi sono nella scheda della tabella.
+   rosso. I passi sono nella scheda della tabella. ⚠️ Il perimetro di quel test
+   sono gli schemi che compaiono nella colonna `vista`: iscrivere la vista di uno
+   schema di dominio obbliga a catalogare tutte le viste di quello schema. Un
+   presidio su dati di dominio nasce come vista lettrice in `dbops` (la forma di
+   [`dbops.vw_lotti_fermi_da_guardare`](/dbzero/dbops/views/vw_lotti_fermi_da_guardare)).
+10. **Chiediti che cosa non entra nell'elenco.** Un presidio che sceglie i file da
+    guardare li cerca in profondità (`find`, `rglob`), mai con un glob a un
+    livello (`*/*.sql`): una sottocartella fuori dal glob non produce nessuna
+    riga, e «non ho guardato» si legge come «tutto a posto». Lo stesso vale per un
+    presidio che cerca un nome nel testo di un **elenco di funzioni**: vede solo
+    quell'elenco, ed estrarre un pezzo di codice in una funzione nuova lo rende
+    cieco. Chi estrae codice cerca prima in `db/pgtap/` chi nomina la funzione di
+    partenza ed estende l'elenco nello stesso giro; togliere la voce
+    dall'inventario per far tacere il rosso è un verde per sottrazione.
+11. **Un presidio che legge il catalogo prende lo schema dall'oggetto che lo
+    porta.** Chi legge `pg_depend` non filtra con `pg_identify_object(…).schema`:
+    per viste (`pg_rewrite`), trigger, policy e default quel campo è vuoto, e
+    quegli oggetti escono dal perimetro senza errore. Lo schema si prende dalla
+    tabella che li porta (`ev_class`, `tgrelid`, `polrelid`, `adrelid`),
+    l'identità da `.identity`, che non dipende dalla lingua, e il pgTAP ha un
+    testimone per ogni tipo di oggetto.
+12. **Un presidio che legge `pg_stat_activity` decide sull'esistenza della riga**
+    (`pid`, `usename`, `application_name` li vedono tutti), mai su
+    `backend_start`, `state` o `query`: PostgreSQL li mostra solo all'utente
+    della sessione e a chi ha il diritto di leggere le statistiche, e una vista
+    non cambia l'utente con cui l'elenco si legge. Le colonne mascherabili sono
+    informazione, e possono essere vuote per un lettore legittimo. Il privilegio
+    `pg_read_all_stats` non si concede per rimediare.
+13. **Il test asserisce sullo stato, non sulla fotografia.** Il pgTAP di un
+    presidio con una colonna di stato asserisce «nessuna riga non dichiarata»,
+    non «la vista è vuota» né una riga attesa: queste due fissano la situazione
+    di oggi, e si rompono il giorno in cui un debito legittimo nasce o si salda.
+    Dichiarare un debito zittisce quel test: perciò un test a parte prova che un
+    bersaglio nuovo e rotto esce non dichiarato.
+14. **Un presidio di struttura asserisce la proprietà, non il suo indizio.** Non
+    sceglie il ramo da quali colonne ha la tabella, ma legge la forma del vincolo
+    (`pg_index`) e accetta ogni forma che soddisfa la proprietà. Con due rami, un
+    test asserisce che nessuno dei due è vuoto. E prima di cambiare lo schema per
+    un presidio rosso ci si chiede se il rosso sta chiedendo di **allentare** un
+    vincolo.
 
 ---
 

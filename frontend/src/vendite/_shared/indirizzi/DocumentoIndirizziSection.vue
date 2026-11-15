@@ -30,7 +30,7 @@ import Tag from 'primevue/tag'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
+import { MANAGE_ICONS } from '../../../core/constants'
 import DocumentoIndirizziDrawer from './DocumentoIndirizziDrawer.vue'
 import IndirizzoProvenienzaTags from './IndirizzoProvenienzaTags.vue'
 import { formatSnapshotDisplay, makeIndirizziDocumentoApi, pickTipoDefault } from './documentoIndirizziApi'
@@ -41,7 +41,6 @@ const props = defineProps({
   docId: { type: [Number, null], default: null },
   soggettoRuoloId: { type: [Number, null], default: null },
   istanzaUtilityId: { type: [Number, null], default: null },
-  tipoRuoloCodice: { type: String, default: TIPO_RUOLO.CLIENTE },
   // Readonly dei PERMESSI del chiamante (non quello di stato del drawer).
   readonly: { type: Boolean, default: false },
   // Il blob capability del documento (`useEntityCapabilities().capabilities`):
@@ -177,7 +176,6 @@ async function onChanged() {
       :doc-id="docId"
       :soggetto-ruolo-id="soggettoRuoloId"
       :istanza-utility-id="istanzaUtilityId"
-      :tipo-ruolo-codice="tipoRuoloCodice"
       :readonly="isReadonlyEffective"
       :tipi-ammessi="tipiAmmessi"
       :indirizzi="indirizzi"

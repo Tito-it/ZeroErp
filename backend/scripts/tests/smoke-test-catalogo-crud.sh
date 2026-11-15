@@ -238,30 +238,22 @@ do_curl POST "/api/v1/catalogo/articoli/" "{\"codice\":\"${ART_CODE}\",\"descriz
 check "Create duplicato stesso codice" "400" ".error.code"
 log_info "Codice errore: ${EXTRACTED:-n/d}"
 
-# --- 7. Disattiva articolo: prima i figli, poi il padre ---
-# ⭐ La disattivazione segue «figli prima del padre» (guard generico
-# dbops.trgfn_prevent_deactivate_if_children, E_ATTIVO_BLOCK_CHILDREN_ACTIVE), e
-# un articolo ha SEMPRE almeno un figlio: l'UoM operativa base seminata alla
-# nascita (passo 2c). Fino al 2026-10-12 lo smoke disattivava l'articolo
-# direttamente, che oggi e' giusto venga rifiutato: lo prova (7a), poi segue la
-# strada vera (7b, 7c).
+# --- 7. Disattiva articolo: l'UoM base resta accesa ---
+# ⭐ Dal 2026-11-11 (brief-db-revisione-catalogo, Q31 e Q34) la mappatura
+# dell'unita' operativa e' STORIA, non un figlio vivo: e' in
+# dbops.automazione_attivo_eccezioni, quindi non blocca lo spegnimento
+# dell'articolo. E la riga base non si spegne mai
+# (trgfn_articoli_uom_operativa_guard_base, E_UOM_RIGA_BASE_IMMUTABILE).
+# Fino al 2026-11-11 lo smoke seguiva «figli prima del padre» (spegni la base,
+# poi l'articolo): oggi il primo passo e' giusto che sia rifiutato (7a), e
+# l'articolo si spegne con la base accesa (7b).
 echo ""
-echo "-- 7a. Disattiva articolo con UoM operativa attiva (atteso 409) --"
-do_curl POST "/api/v1/catalogo/articoli/${ART_ID}/disattiva/" "{}"
-smoke_check_codice "Disattiva con figlio attivo rifiutata" 409 E_ATTIVO_BLOCK_CHILDREN_ACTIVE
-
-echo ""
-echo "-- 7b. Disattiva prima l'UoM operativa base (figlio) --"
+echo "-- 7a. Spegni l'UoM operativa base (atteso 409) --"
 do_curl PATCH "/api/v1/catalogo/articoli/${ART_ID}/uom/${SEED_UOM_OP_ROW_ID}/" "{\"attivo\":false}"
-check "Disattiva UoM operativa base" "200" ".data.attivo"
-if [[ "$EXTRACTED" == "False" || "$EXTRACTED" == "false" ]]; then
-    log_ok "UoM operativa disattivata (attivo=false)"
-else
-    log_fail "UoM operativa: atteso attivo=false, ricevuto '${EXTRACTED:-<vuoto>}'"
-fi
+smoke_check_codice "Spegnimento della riga base rifiutato" 409 E_UOM_RIGA_BASE_IMMUTABILE
 
 echo ""
-echo "-- 7c. Disattiva articolo --"
+echo "-- 7b. Disattiva articolo con la base accesa --"
 do_curl POST "/api/v1/catalogo/articoli/${ART_ID}/disattiva/" "{}"
 check "Disattiva articolo" "200" ".data.attivo"
 if [[ "$EXTRACTED" == "False" || "$EXTRACTED" == "false" ]]; then

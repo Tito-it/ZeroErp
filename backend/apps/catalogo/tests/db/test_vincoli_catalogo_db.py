@@ -29,8 +29,8 @@
 #      `uq_articoli_uom_operativa_no_overlap`, senza campo
 #   4) la mappatura si versiona: chiudi e inserisci passa, un periodo che si
 #      sovrappone no (stessa frase del 3)
-#   5) la riga base con un fattore diverso da 1 -> la frase di
-#      `chk_articoli_uom_operativa_base_fissa`
+#   5) la riga base con un fattore diverso da 1 -> `E_UOM_STORIA_IMMUTABILE`
+#      (dal 2026-11-11 il guard della storia, prima del CHECK)
 #   6) la riga base non si toglie -> `E_UOM_RIGA_BASE_IMMUTABILE` dal DB,
 #      intatto fino al middleware
 #   7) la conversione nel verso opposto, nello stesso periodo -> la frase di
@@ -48,6 +48,7 @@ from uuid import uuid4
 from django.db import DatabaseError, connection, transaction
 
 from apps.catalogo.services import catalogo_service
+from apps.catalogo.tests.db._unita_di_prova import crea_unita_di_prova
 from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
@@ -77,18 +78,6 @@ class VincoliCatalogoDbTests(unittest.TestCase):
         with connection.cursor() as cur:
             cur.execute("SELECT uom_id FROM catalogo.articoli WHERE id = %s", [articolo])
             return cur.fetchone()[0]
-
-    # Un'unita' nuova della tipologia indicata (per codice interno), dalla porta
-    # dell'applicazione: niente dipende dalle unita' presenti.
-    def _unita(self, sigla: str, tipologia: str = "MASSA") -> int:
-        with connection.cursor() as cur:
-            cur.execute("SELECT id FROM catalogo.uom_tipi WHERE codice_interno = %s", [tipologia])
-            tipo = cur.fetchone()
-        assert tipo is not None, f"tipologia {tipologia} assente dal seed"
-        riga = catalogo_service.fn_create_unita_misura(
-            {"codice": f"{sigla}{self.sfx[:6]}", "descrizione": f"Prova {sigla}", "tipo_uom_id": tipo[0]},
-        )
-        return int(riga["id"])
 
     def _riga_base(self, articolo: str) -> int:
         with connection.cursor() as cur:
@@ -154,7 +143,7 @@ class VincoliCatalogoDbTests(unittest.TestCase):
     #    (la rilettura dopo la create passa da `get_uom_operativa`).
     def test_uom_operativa_versionata(self) -> None:
         articolo = self._articolo("V")
-        cartone = self._unita("CT")
+        cartone = crea_unita_di_prova("CT", self.sfx)
         prima = catalogo_service.fn_create_uom_operativa(articolo, {
             "uom_id": cartone, "factor_to_base": "10",
             "valido_dal": "2020-01-01", "valido_al": "2020-12-31",
@@ -169,15 +158,20 @@ class VincoliCatalogoDbTests(unittest.TestCase):
         }))
         self.assertIn("periodo che si sovrappone", err.message)
 
-    # 5. La riga base ha fattore 1: un altro lo rifiuta il CHECK.
+    # 5. La riga base ha fattore 1, e non lo cambia.
+    # ⚠️ Dal 2026-11-11 (D24/D27 di brief-db-revisione-catalogo, giro 2-bis) il
+    #    fattore di QUALSIASI mappatura scritta e' fermo:
+    #    `catalogo.trgfn_uom_guard_storia` (BEFORE) rifiuta prima che il CHECK
+    #    `chk_articoli_uom_operativa_base_fissa` venga valutato. Fino a quel
+    #    giorno qui si provava la frase del CHECK (`E_CATALOGO_VALIDATION`): il
+    #    CHECK resta, come ultima difesa del DB, ma da un UPDATE non si raggiunge.
     def test_riga_base_fissa(self) -> None:
         articolo = self._articolo("B")
         base = self._riga_base(articolo)
-        err = self._rifiuto(lambda: catalogo_service.fn_update_uom_operativa(
+        codice = self._rifiuto_db(lambda: catalogo_service.fn_update_uom_operativa(
             articolo, base, {"factor_to_base": "2"},
         ))
-        self.assertEqual(err.code, "E_CATALOGO_VALIDATION")
-        self.assertIn("unita' base", err.message)
+        self.assertEqual(codice, "E_UOM_STORIA_IMMUTABILE")
 
     # 6. La riga base non si toglie: lo dice il guard, col suo codice.
     def test_riga_base_non_si_toglie(self) -> None:
@@ -189,7 +183,7 @@ class VincoliCatalogoDbTests(unittest.TestCase):
     # 7. Una conversione per coppia non orientata e periodo: il verso opposto
     #    nello stesso periodo e' la stessa conversione.
     def test_conversione_verso_opposto_sovrapposta(self) -> None:
-        da, a = self._unita("KA"), self._unita("KB")
+        da, a = crea_unita_di_prova("KA", self.sfx), crea_unita_di_prova("KB", self.sfx)
         catalogo_service.fn_create_conversione(
             {"uom_from_id": da, "uom_to_id": a, "fattore": "1000", "valido_dal": "2020-01-01"},
         )
@@ -201,7 +195,7 @@ class VincoliCatalogoDbTests(unittest.TestCase):
 
     # 8. Tipologie diverse: il guard parla col suo codice, e arriva intatto.
     def test_conversione_tipologie_diverse(self) -> None:
-        massa = self._unita("TM")
+        massa = crea_unita_di_prova("TM", self.sfx)
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT codice_interno FROM catalogo.uom_tipi WHERE codice_interno <> 'MASSA' "
@@ -209,7 +203,7 @@ class VincoliCatalogoDbTests(unittest.TestCase):
             )
             altra = cur.fetchone()
         assert altra is not None, "serve una seconda tipologia nel seed"
-        altro = self._unita("TX", altra[0])
+        altro = crea_unita_di_prova("TX", self.sfx, tipologia=altra[0])
         codice = self._rifiuto_db(lambda: catalogo_service.fn_create_conversione(
             {"uom_from_id": massa, "uom_to_id": altro, "fattore": "2"},
         ))

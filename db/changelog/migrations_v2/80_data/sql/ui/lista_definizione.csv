@@ -20,7 +20,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 19,anagrafiche.emittente_billing_account,Billing account dell emittente fiscale,anagrafiche,NULL,t,2026-07-31 00:00:00,mctit,f,t,3
 20,catalogo.uom_tipi,Tipi di unita di misura,catalogo,uom_tipi,t,2026-07-31 00:00:00,mctit,f,t,1
 21,catalogo.unita_misura,Unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
-22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,NULL,t,2026-07-31 00:00:00,mctit,f,t,1
+22,catalogo.conversioni_uom,Conversioni tra unita di misura,catalogo,vw_unita_misura_conversioni_dettaglio,t,2026-07-31 00:00:00,mctit,f,t,1
 23,vendite.promo_articoli,Promozioni articolo,vendite,NULL,t,2026-08-01 00:00:00,mctit,f,t,3
 24,documenti.template_documenti,Template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,t,t,1
 25,documenti.template_asset,Asset dei template documenti,documenti,NULL,t,2026-08-01 00:00:00,mctit,f,t,1

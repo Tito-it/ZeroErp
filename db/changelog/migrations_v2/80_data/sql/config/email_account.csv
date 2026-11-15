@@ -1,2 +1,2 @@
 id,codice,codice_interno,descrizione,unita_organizzativa_id,smtp_host,smtp_port,smtp_use_tls,smtp_use_ssl,smtp_username,smtp_password_encrypted,email_from,email_reply_to,attivo,meta,data_insert,user_insert,data_update,user_update
-1,SISTEMA,SISTEMA,Account di sistema - fallback per invii senza reparto specifico,,smtp.example.com,587,t,f,noreply@example.com,CONFIGURARE_PASSWORD_CRITTOGRAFATA,noreply@example.com,,t,{},2026-03-29 00:00:00+01,SEED,2026-03-29 00:00:00+01,SEED
+1,SISTEMA,SISTEMA,Account di sistema - fallback per invii senza reparto specifico,NULL,smtp.example.com,587,t,f,noreply@example.com,CONFIGURARE_PASSWORD_CRITTOGRAFATA,noreply@example.com,NULL,t,{},2026-03-29 00:00:00+01,SEED,2026-03-29 00:00:00+01,SEED

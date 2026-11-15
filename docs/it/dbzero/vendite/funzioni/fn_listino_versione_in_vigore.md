@@ -17,12 +17,14 @@ CREATE OR REPLACE FUNCTION vendite.fn_listino_versione_in_vigore(p_listino_id bi
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo: la versione del listino in vigore alla data: ATTIVA o CHIUSA
---   (la BOZZA non e' operativa), attiva, la cui validita' contiene la
---   data. NULL se non ce n'e' una.
+-- Scopo: la versione del listino in vigore alla data: fuori dalla
+--   bozza (non nello stato iniziale del vocabolario: la bozza non e'
+--   operativa), attiva, la cui validita' contiene la data. NULL se non
+--   ce n'e' una.
 -- ⭐ Al piu' UNA per costruzione: ex_listini_versioni_no_overlap vale
---   per ATTIVA e CHIUSA, e le date di una CHIUSA sono bloccate
---   (trgfn_listini_versioni_guard_date_chiusa). Per questo qui non si
+--   per le versioni fuori dalla bozza (gli id del seed nel predicato),
+--   e le date di una CHIUSA sono bloccate
+--   (trgfn_listini_versioni_guard_per_stato). Per questo qui non si
 --   ordina ne' si limita.
 DECLARE
     v_versione_id vendite.listini_versioni.id%TYPE;
@@ -33,7 +35,7 @@ BEGIN
       JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
      WHERE lv.listino_id = p_listino_id
        AND lv.attivo IS TRUE
-       AND s.codice_interno IN ('ATTIVA', 'CHIUSA')
+       AND NOT s.iniziale
        AND lv.validita @> p_data;
 
     RETURN v_versione_id;
@@ -41,7 +43,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_listino_versione_in_vigore(p_listino_id bigint, p_data date)
-IS 'La versione di un listino in vigore a una data: ATTIVA o CHIUSA (la BOZZA non e'' operativa), attiva, la cui validita'' contiene la data; NULL se non ce n''e''. Sede UNICA dal 2026-09-28 (brief-db-liste-righe-documento §8.15): la regola era scritta sette volte in sei funzioni, cinque che ne sceglievano una e due che le guardavano tutte. Decisione di Tid: «le versioni valide oggi», e il buco chiuso — ex_listini_versioni_no_overlap vale per ATTIVA e CHIUSA, e le date di una CHIUSA non si modificano (trgfn_listini_versioni_guard_date_chiusa) — quindi la versione valida e'' al piu'' una per costruzione e la funzione non ordina ne'' limita. STABLE, SECURITY INVOKER. Rev 2026-10-28 (20261028-20, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
+IS 'La versione di un listino in vigore a una data: fuori dalla bozza (non nello stato iniziale del vocabolario config.stati_doc_listino_versioni: la bozza non e'' operativa), attiva, la cui validita'' contiene la data; NULL se non ce n''e''. Sede unica della regola. La versione valida e'' al piu'' una per costruzione: ex_listini_versioni_no_overlap vale per le versioni fuori dalla bozza (gli id del seed stanno nel suo predicato, e vendite/test-listino-versione-al-modello-v1 li confronta coi codici), e le date di una versione chiusa non si modificano (vendite.trgfn_listini_versioni_guard_per_stato); per questo la funzione non ordina ne'' limita. STABLE, SECURITY INVOKER.';
 ```
 
 </div>

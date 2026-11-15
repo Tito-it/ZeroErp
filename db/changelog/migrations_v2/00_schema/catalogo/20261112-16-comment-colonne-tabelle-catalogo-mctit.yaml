@@ -1,0 +1,317 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT delle colonne delle tabelle di catalogo (§3, M3, M4; §3.2; §3.3), e della
+#   FK fk_cat_note_target_tipo, che nominava un brief (trovata dal presidio nuovo).
+#
+#   Si riscrivono interi, al presente (linee-guida-sql §5d): via nomi di brief,
+#   marcatori di revisione, id di changeSet, sigle di decisione. M3: natura_vendita_id
+#   e' gia' NOT NULL. M4: articoli_componenti.id e' uuid, non una sequence.
+#   Nuovi: le colonne di unita_misura_conversioni, le quattro d'audit di uom_tipi, le
+#   colonne di catalogo.note e delle due partizioni; codice e codice_interno di uom_tipi,
+#   oggi uguali, dicono due cose diverse.
+#   Rollback: i COMMENT di prima (NULL dove non c'erano), letti su dbdev il 2026-11-11.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261112-16-comment-colonne-tabelle-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261112-16-comment-colonne-tabelle-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: COMMENT delle colonne delle tabelle, al presente; quelli mancanti.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('catalogo.note_articoli_componenti'), to_regclass('catalogo.unita_misura_conversioni'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli.causale_onere_id IS
+                  'Se valorizzata, l''articolo e'' un onere della porta oneri e questa e'' la sua causale (config.causali_onere), legame 1:1 (uq_articoli_causale_onere). L''IVA dell''onere e'' la iva_id di questo articolo. Un articolo-onere non e'' merce, non e'' gestito a magazzino, composito, a lotti o a matricola (catalogo.trgfn_articoli_guard_onere_natura). Su un articolo usato non cambia (catalogo.trgfn_articoli_guard_struttura_se_usato).';
+              COMMENT ON COLUMN catalogo.articoli.gestito_a_magazzino IS
+                  'L''articolo movimenta giacenza. Default false: nessun articolo comincia a movimentare per distrazione. Non si deriva da natura_vendita = MERCE: una merce puo'' essere consegnata dal fornitore senza passare dalla giacenza. E'' un ingresso della primitiva di scrittura del magazzino. Su un articolo usato non cambia (catalogo.trgfn_articoli_guard_struttura_se_usato).';
+              COMMENT ON COLUMN catalogo.articoli.modo_approvvigionamento_id IS
+                  'Da dove arriva la merce di questo articolo (config.modi_approvvigionamento: ACQUISTO | PRODUZIONE | STOCK | NON_APPLICABILE). NOT NULL, DEFAULT ACQUISTO: il valore si puo'' sempre dare, e un NULL direbbe «non lo so», che e'' lo stato che la colonna esiste per abolire. Rende ponibile «questa riga richiede produzione?» e dice se l''articolo si compra. Non si deriva da is_composito (fatturazione), da natura_vendita_id (destinazione della riga) ne'' da config.nature_vendita.e_cessione_beni (fiscale).';
+              COMMENT ON COLUMN catalogo.articoli.note_target_tipo IS
+                  'Il tipo della nota puntata da note_id (FK composita verso catalogo.note): vale ARTICOLO, il codice di config.tipi_entita della partizione delle note all''articolo; un CHECK della tabella non ammette altro.';
+              COMMENT ON COLUMN catalogo.articoli.obsoleto_dal IS
+                  'Data dalla quale l''articolo non si SCEGLIE piu'' per una riga nuova: NULL = si sceglie; data raggiunta (alla data operativa) = ritirato; data futura = ritiro programmato. Il predicato e'' script.fn_e_obsoleto, sede unica. Ritirato: la riga nuova lo respinge (guard di riga e picker con lo stesso motivo E_ARTICOLO_OBSOLETO), la riga derivata da un altro documento lo accetta, il magazzino non si blocca mai. Non tocca attivo: l''articolo resta un riferimento valido.';
+              COMMENT ON COLUMN catalogo.articoli.requires_lotto IS
+                  'Se true, ogni carico di questo articolo appartiene a una partita (magazzino.lotti) e ogni movimento porta lotto_id: lo pretende la primitiva di scrittura del magazzino. Indipendente da requires_serial: lotto e seriale sono due domande diverse, e un articolo puo'' volerne uno, tutti e due o nessuno. Default false: la tracciabilita'' per lotto si sceglie, non si eredita. Su un articolo usato non cambia (catalogo.trgfn_articoli_guard_struttura_se_usato).';
+              COMMENT ON COLUMN catalogo.articoli.natura_vendita_id IS
+                  'La natura commerciale dell''articolo (config.nature_vendita), NOT NULL, DEFAULT MERCE: decide dove va la riga dopo l''accettazione del preventivo. La riga di preventivo la eredita e la congela. Su un articolo usato non cambia (catalogo.trgfn_articoli_guard_struttura_se_usato).';
+              COMMENT ON COLUMN catalogo.articoli_componenti.esposizione_in_fattura IS
+                  'Come si espone in fattura questo componente quando il kit e'' venduto: NASCOSTO (non compare, valore nel totale del kit), DESCRITTIVO (riga sotto il kit senza importo, valore nel totale del kit), VALORIZZATO (riga sotto il kit con quantita'', prezzo e importo suoi, fuori dal totale del kit). Codice di config.esposizioni_componente (codice_interno), con FK. Proprieta'' della DISTINTA, non del documento: le righe dei documenti non la copiano, il push la mette nel meta delle attivita'' e la fattura la congela su vendite.fatture_righe.kit_esposizione. Campo di struttura: non cambia (catalogo.trgfn_articoli_componenti_block_modifica_struttura).';
+              COMMENT ON COLUMN catalogo.articoli_componenti.note_target_tipo IS
+                  'Il tipo della nota puntata da note_id (FK composita verso catalogo.note): vale ARTICOLO_COMPONENTE, il codice di config.tipi_entita della partizione delle note al legame di distinta; un CHECK della tabella non ammette altro.';
+              COMMENT ON COLUMN catalogo.articoli_componenti.validita IS
+                  'Il periodo del legame, [valido_dal, valido_al] coi giorni estremi compresi, calcolato dalle due date (GENERATED ALWAYS STORED): non si scrive. Lo leggono il vincolo di non sovrapposizione (uq_articoli_componenti_no_overlap), la FK temporale dei listini e le letture alla data.';
+              COMMENT ON COLUMN catalogo.articoli_componenti.id IS
+                  'Identificativo del legame di distinta (uuid, DEFAULT uuidv7()).';
+              COMMENT ON COLUMN catalogo.articoli_componenti.attivo IS
+                  'Stato del legame di distinta (DEFAULT true).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.validita IS
+                  'Il periodo della conversione, [valido_dal, valido_al] coi giorni estremi compresi, calcolato dalle due date (GENERATED ALWAYS STORED): non si scrive. Lo leggono le letture del fattore alla data (catalogo.fn_uom_fonti_conversione).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.id IS
+                  'Identificativo della conversione generale.';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.uom_from_id IS
+                  'L''unita'' di partenza (catalogo.unita_misura): una unita'' uom_from_id vale fattore unita'' uom_to_id. Della stessa tipologia di uom_to_id (catalogo.trgfn_uom_conversioni_guard_tipo); su una conversione gia'' scritta non cambia (lock di colonna).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.uom_to_id IS
+                  'L''unita'' di arrivo (catalogo.unita_misura). La conversione si legge anche nel verso inverso, con 1/fattore. Su una conversione gia'' scritta non cambia (lock di colonna).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.fattore IS
+                  'Quante unita'' uom_to_id vale una unita'' uom_from_id. Su una conversione gia'' scritta non cambia (lock di colonna): un fattore nuovo e'' una conversione nuova, che continua quella chiusa.';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.valido_dal IS
+                  'Il primo giorno in cui la conversione vale (NOT NULL). Su una conversione gia'' scritta non cambia (lock di colonna).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.valido_al IS
+                  'L''ultimo giorno in cui la conversione vale; NULL = senza fine. Si chiude da oggi in poi (catalogo.trgfn_uom_guard_storia), e non lascia una versione di listino ATTIVA senza conversione (catalogo.trgfn_uom_guard_listini_attivi).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.attivo IS
+                  'Stato della conversione. Si spegne solo se non ha giorni passati (catalogo.trgfn_uom_guard_storia); una conversione in vigore si chiude.';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.meta IS
+                  'Dati liberi della conversione (jsonb, DEFAULT ''{}'').';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.user_insert IS
+                  'Utente del database che ha inserito la riga (DEFAULT CURRENT_USER).';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.data_update IS
+                  'Momento dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.user_update IS
+                  'Utente dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.uom_tipi.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN catalogo.uom_tipi.user_insert IS
+                  'Utente del database che ha inserito la riga (DEFAULT CURRENT_USER).';
+              COMMENT ON COLUMN catalogo.uom_tipi.data_update IS
+                  'Momento dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.uom_tipi.user_update IS
+                  'Utente dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.note.target_tipo IS
+                  'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. L''elenco dei tipi lo dice la FK fk_cat_note_target_tipo: un tipo nuovo e'' una riga di config.tipi_entita piu'' la sua partizione.';
+              COMMENT ON COLUMN catalogo.unita_misura.conta_dal_calendario IS
+                  'Se e come la quantita'' di un canone a durata (fonte DURATA) si conta dal calendario in questa unita'': GIORNO = i giorni coperti dal periodo; MESE = i mesi coperti, il mese a meta'' in proporzione ai giorni; NULL = non si conta dal calendario (le ore no: il pacchetto di ore e'' un canone FISSA). Solo su un''unita'' di tipologia TEMPO (catalogo.trgfn_unita_misura_guard_tipo, E_UOM_CALENDARIO_NON_TEMPO). Lo legge vendite.fn_articolo_erogazioni: CANONE/DURATA si propone e si ammette solo su un articolo la cui unita'' si conta dal calendario.';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice IS
+                  'Il codice della tipologia di unita'' di misura che si mostra e si cerca (es. MASSA, ENERGIA, IMBALLAGGIO): si salva normalizzato (script.trgfn_codice_maiuscolo) ed e'' univoco (uq_uom_tipi_codice).';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice_interno IS
+                  'La chiave stabile della tipologia, quella che legge il codice del database (TEMPO in catalogo.trgfn_unita_misura_guard_tipo): univoca (uq_uom_tipi_codice_interno) e bloccata (script.trgfn_lock_columns).';
+              COMMENT ON COLUMN catalogo.note.id IS
+                  'Identificativo della nota.';
+              COMMENT ON COLUMN catalogo.note.target_id IS
+                  'L''id della cosa annotata, nella tabella che il target_tipo della partizione indica (FK della partizione).';
+              COMMENT ON COLUMN catalogo.note.posizione IS
+                  'Dove va la nota: HEADER | FOOTER | SEZIONE | BEFORE | AFTER (chk_note_posizione). Per la nota di catalogo, BEFORE e AFTER dicono dove va rispetto alla riga del documento in cui la cosa annotata compare.';
+              COMMENT ON COLUMN catalogo.note.seq IS
+                  'L''ordine di resa fra le note della stessa cosa e della stessa posizione (>= 0, chk_note_seq_pos).';
+              COMMENT ON COLUMN catalogo.note.testo IS
+                  'Il testo della nota, in chiaro. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note.testo_md IS
+                  'Il testo della nota in Markdown. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note.visibile IS
+                  'La nota si mostra.';
+              COMMENT ON COLUMN catalogo.note.solo_stampa IS
+                  'La nota compare solo nella stampa, non a video.';
+              COMMENT ON COLUMN catalogo.note.meta IS
+                  'Dati liberi della nota (jsonb).';
+              COMMENT ON COLUMN catalogo.note.data_insert IS
+                  'Momento dell''inserimento della riga.';
+              COMMENT ON COLUMN catalogo.note.data_update IS
+                  'Momento dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.note_articoli.id IS
+                  'Identificativo della nota.';
+              COMMENT ON COLUMN catalogo.note_articoli.target_id IS
+                  'L''id della cosa annotata, nella tabella che il target_tipo della partizione indica (FK della partizione).';
+              COMMENT ON COLUMN catalogo.note_articoli.posizione IS
+                  'Dove va la nota: HEADER | FOOTER | SEZIONE | BEFORE | AFTER (chk_note_posizione). Per la nota di catalogo, BEFORE e AFTER dicono dove va rispetto alla riga del documento in cui la cosa annotata compare.';
+              COMMENT ON COLUMN catalogo.note_articoli.seq IS
+                  'L''ordine di resa fra le note della stessa cosa e della stessa posizione (>= 0, chk_note_seq_pos).';
+              COMMENT ON COLUMN catalogo.note_articoli.testo IS
+                  'Il testo della nota, in chiaro. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note_articoli.testo_md IS
+                  'Il testo della nota in Markdown. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note_articoli.visibile IS
+                  'La nota si mostra.';
+              COMMENT ON COLUMN catalogo.note_articoli.solo_stampa IS
+                  'La nota compare solo nella stampa, non a video.';
+              COMMENT ON COLUMN catalogo.note_articoli.meta IS
+                  'Dati liberi della nota (jsonb).';
+              COMMENT ON COLUMN catalogo.note_articoli.data_insert IS
+                  'Momento dell''inserimento della riga.';
+              COMMENT ON COLUMN catalogo.note_articoli.data_update IS
+                  'Momento dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.id IS
+                  'Identificativo della nota.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.target_id IS
+                  'L''id della cosa annotata, nella tabella che il target_tipo della partizione indica (FK della partizione).';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.posizione IS
+                  'Dove va la nota: HEADER | FOOTER | SEZIONE | BEFORE | AFTER (chk_note_posizione). Per la nota di catalogo, BEFORE e AFTER dicono dove va rispetto alla riga del documento in cui la cosa annotata compare.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.seq IS
+                  'L''ordine di resa fra le note della stessa cosa e della stessa posizione (>= 0, chk_note_seq_pos).';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.testo IS
+                  'Il testo della nota, in chiaro. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.testo_md IS
+                  'Il testo della nota in Markdown. Almeno uno fra testo e testo_md (chk_note_testo_non_vuoto).';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.visibile IS
+                  'La nota si mostra.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.solo_stampa IS
+                  'La nota compare solo nella stampa, non a video.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.meta IS
+                  'Dati liberi della nota (jsonb).';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.data_insert IS
+                  'Momento dell''inserimento della riga.';
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.data_update IS
+                  'Momento dell''ultima modifica, scritto da script.trgfn_audit_data_user_generic.';
+              COMMENT ON CONSTRAINT fk_cat_note_target_tipo ON catalogo.note IS
+                  'Il tipo della nota e'' un''entita'' indicabile (config.tipi_entita): l''elenco dei tipi non e'' scritto a mano. Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli.causale_onere_id IS
+                  'Se valorizzata, l''articolo e'' un onere della porta oneri e questa e'' la sua causale (config.causali_onere), legame 1:1 (uq_articoli_causale_onere). L''IVA dell''onere e'' la iva_id di questo articolo. brief-db-immutabilita-quantita-e-porta-oneri §4c.8, rev 2026-07-21.';
+              COMMENT ON COLUMN catalogo.articoli.gestito_a_magazzino IS
+                  'L''articolo movimenta giacenza. Default false = fail-safe: nessun articolo comincia a movimentare per distrazione. NON si deriva da natura_vendita = MERCE (una merce puo'' essere consegnata dal fornitore senza passare da giacenza). E'' un ingresso della primitiva di scrittura del magazzino (analisi carico e scarico, M-2). ⚠️ Al rilascio tutte le righe sono false e la merce va marcata: il presidio di prontezza e'' in dbops.presidi, non un rosso.';
+              COMMENT ON COLUMN catalogo.articoli.modo_approvvigionamento_id IS
+                  'Da dove arriva la merce di questo articolo (config.modi_approvvigionamento: ACQUISTO | PRODUZIONE | STOCK | NON_APPLICABILE). NOT NULL DEFAULT ACQUISTO (decisione di Tid, 2026-09-02): il valore si puo'' sempre dare, e un NULL direbbe «non lo so», che e'' lo stato che la colonna esiste per abolire; il default e'' l''id risolto per codice_interno all''apply di 20260913-11. Rende ponibile «questa riga richiede produzione?» e dice se l''articolo si compra. NON e'' derivabile da is_composito (fatturazione), natura_vendita_id (destinazione della riga) ne'' da nature_vendita.e_cessione_beni (fiscale). Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 3.3.';
+              COMMENT ON COLUMN catalogo.articoli.note_target_tipo IS
+                  'Tipo target per nota (FK composita verso catalogo.note): vale ARTICOLO, il codice di config.tipi_entita della partizione delle note all''articolo. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3): era ARTICOLI, varchar(32).';
+              COMMENT ON COLUMN catalogo.articoli.obsoleto_dal IS
+                  'Data dalla quale l''articolo non si SCEGLIE piu'' per una riga nuova: NULL = si sceglie; data raggiunta (alla data operativa) = ritirato; data futura = ritiro programmato. Il predicato e'' script.fn_e_obsoleto, sede unica. Ritirato: la riga nuova lo respinge (guard di riga e picker con lo stesso motivo E_ARTICOLO_OBSOLETO), la riga derivata da un altro documento lo accetta, il magazzino non si blocca mai. NON tocca attivo (riferimento valido), che resta true. brief-db-articoli-obsoleto-dal.';
+              COMMENT ON COLUMN catalogo.articoli.requires_lotto IS
+                  'Se true, ogni carico di questo articolo appartiene a una partita (magazzino.lotti) e ogni movimento porta lotto_id. Indipendente da requires_serial: lotto e seriale sono due domande diverse e un articolo puo'' volerne uno, entrambi o nessuno. Default false = fail-safe: la tracciabilita'' per lotto si sceglie, non si eredita. Lo legge la primitiva di scrittura del magazzino (Lotto 2); nessun guard in questo lotto. Brief: brief-db-magazzino-lotto-1-terreno-vuoto, sezione 4.3 (M-5).';
+              COMMENT ON COLUMN catalogo.articoli.natura_vendita_id IS
+                  'Natura commerciale dell''articolo ai fini del routing post-accettazione preventivo (config.nature_vendita). Fonte di verita'' della natura: la riga di preventivo la eredita e congela. NULL = articolo non ancora classificato (transitorio pre-backfill); a regime NOT NULL.';
+              COMMENT ON COLUMN catalogo.articoli_componenti.esposizione_in_fattura IS
+                  'Come si espone in fattura questo componente quando il kit e'' venduto: NASCOSTO (non compare, valore nel totale del kit), DESCRITTIVO (riga sotto il kit senza importo, valore nel totale del kit), VALORIZZATO (riga sotto il kit con quantita'', prezzo e importo suoi, fuori dal totale del kit). Codice di config.esposizioni_componente(codice_interno), FK in 80_data (20261001-57). Proprieta'' della DISTINTA, non del documento: le righe dei documenti non la copiano, il push la mette nel meta delle attivita'' e la fattura la congela su vendite.fatture_righe.kit_esposizione. Campo di struttura: immutabile (trgfn_articoli_componenti_block_modifica_struttura). Fino al 2026-10-01 era il booleano esposto_in_fattura (false -> NASCOSTO, true -> DESCRITTIVO). Brief: brief-db-esposizione-componenti-kit-in-fattura.';
+              COMMENT ON COLUMN catalogo.articoli_componenti.note_target_tipo IS
+                  'Tipo target per nota (FK composita verso catalogo.note): vale ARTICOLO_COMPONENTE, il codice di config.tipi_entita della partizione delle note alla riga componente. Rev 2026-10-25 (20261025-57, brief-db-grammatica-unica-documenti lotto 3): era ARTICOLI_COMPONENTI, varchar(32).';
+              COMMENT ON COLUMN catalogo.articoli_componenti.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. Non scrivibile direttamente. rev 2026-05-14.';
+              COMMENT ON COLUMN catalogo.articoli_componenti.id IS
+                  'Id.BoM (sequence catalogo.articoli_componenti_id_seq)';
+              COMMENT ON COLUMN catalogo.articoli_componenti.attivo IS
+                  'Stato attivo/inattivo del articolo (DEFAULT TRUE)';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. Non scrivibile direttamente. rev 2026-05-14.';
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.uom_from_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.uom_to_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.fattore IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.valido_dal IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.valido_al IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.attivo IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.meta IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.data_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.unita_misura_conversioni.user_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.uom_tipi.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.uom_tipi.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.uom_tipi.data_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.uom_tipi.user_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.target_tipo IS
+                  'Il tipo della cosa a cui la nota e'' ancorata: il codice di config.tipi_entita (G-7 di brief-db-grammatica-unica-documenti), che per un documento e'' il codice_interno della sua sorgente. E'' la chiave di partizione: ogni valore ha la sua partizione, con la FK verso la tabella della cosa. ⛔ Non c''e'' piu'' un CHECK con l''elenco: lo dice la FK fk_cat_note_target_tipo, e un tipo nuovo e'' una riga di tipi_entita.csv piu'' la sua partizione.';
+              COMMENT ON COLUMN catalogo.unita_misura.conta_dal_calendario IS
+                  'Se e come la quantità di un canone a durata (fonte DURATA) si conta dal calendario in questa unità: GIORNO = i giorni coperti dal periodo; MESE = i mesi coperti, il mese a metà in proporzione ai giorni; NULL = non si conta dal calendario (le ore no: il pacchetto di ore è un canone FISSA). Lo legge vendite.fn_articolo_erogazioni: CANONE/DURATA si propone e si ammette solo su un articolo la cui unità si conta dal calendario. 20261029-31, brief-db-contratto-righe-periodiche-in-commessa G-9.';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice IS
+                  'Codice stabile della tipologia UoM (es. MASSA, ENERGIA, IMBALLAGGIO).';
+              COMMENT ON COLUMN catalogo.uom_tipi.codice_interno IS
+                  'Codice stabile della tipologia UoM (es. MASSA, ENERGIA, IMBALLAGGIO).';
+              COMMENT ON COLUMN catalogo.note.id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.target_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.posizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.seq IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.testo IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.testo_md IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.visibile IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.solo_stampa IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.meta IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note.data_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.target_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.posizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.seq IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.testo IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.testo_md IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.visibile IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.solo_stampa IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.meta IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli.data_update IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.target_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.posizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.seq IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.testo IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.testo_md IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.visibile IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.solo_stampa IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.meta IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.note_articoli_componenti.data_update IS
+                  NULL;
+              COMMENT ON CONSTRAINT fk_cat_note_target_tipo ON catalogo.note IS
+                  'Il tipo della nota e'' un''entita'' indicabile (G-7 di brief-db-grammatica-unica-documenti): toglie l''elenco scritto a mano. ⚠️ Non sostituisce la partizione: un codice senza partizione e'' rifiutato prima, dal routing.';

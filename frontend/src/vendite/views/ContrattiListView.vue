@@ -1,10 +1,11 @@
 <script setup>
 // Scopo: Vista gestione contratti v5 (testata + pricing A/B/C + righe + utility).
-import { nextTick, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref } from 'vue'
 import { useDrawerState } from '../../core/composables/useDrawerState'
 import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSavedListRefresh'
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
+import { useIngressoDaQuery } from '../../core/composables/useIngressoDaQuery'
+import { FORME_ID, idNellaForma } from '../../core/utils/idNellaForma'
 import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import { useContrattiStore } from '../stores/contratti'
 import ContrattiSearchTable from '../components/ContrattiSearchTable.vue'
@@ -14,31 +15,24 @@ import ContrattoRigheDrawer from '../components/ContrattoRigheDrawer.vue'
 const drawer = useDrawerState()
 const store = useContrattiStore()
 const { onDrawerSaved } = useDrawerSavedListRefresh(store, drawer)
-const route = useRoute()
-const router = useRouter()
 
 // Provider readonly dominio vendite.
 useReadonlyMode(READONLY_DOMAINS.VENDITE, READONLY_MODELS.CONTRATTO)
 
 // Deep-link: ?open=<id> apre direttamente il drawer in edit. Usato per la
-// navigazione cross-dominio (es. post-push da OffertaDrawer). Il query
-// param viene rimosso dopo l'apertura per evitare ri-apertura su refresh.
-watch(
-  () => route.query.open,
-  (openId) => {
-    if (!openId) return
-    const idNum = Number(openId)
-    if (!Number.isFinite(idNum) || idNum <= 0) return
-    nextTick(() => {
-      drawer.editRow({ id: idNum }, 'id')
-      // Rimuove il query param per pulire l'URL.
-      const newQuery = { ...route.query }
-      delete newQuery.open
-      router.replace({ query: newQuery })
-    })
+// navigazione cross-dominio (post-push da OffertaDrawer) e dal bersaglio di un
+// errore. Guard sulla rotta, KeepAlive e pulizia della query: BB
+// `useIngressoDaQuery` (2026-11-11; prima un `watch` senza guard, che sotto
+// KeepAlive reagiva anche al `?open=` di un'altra lista).
+useIngressoDaQuery({
+  nomeRotta: 'vendite-contratti',
+  gestori: {
+    open: (grezzo) => {
+      const id = idNellaForma(grezzo, FORME_ID.INTERO)
+      if (id !== null) drawer.editRow({ id }, 'id')
+    },
   },
-  { immediate: true },
-)
+})
 
 // Drawer righe aperto direttamente dalla lista
 const righeDrawer = ref({

@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DUE TRIGGER DELLA PROVENIENZA DEL PREZZO, SULLE DIECI TABELLE
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.3, §8.4, D-1)
+#
+#   Le righe principali e i componenti di preventivi, ordini, contratti, DDT e
+#   offerte ricevono:
+#     trg_<t>_a20_provenienza_prezzo_ins_upd           BEFORE  vendite.trgfn_riga_documento_provenienza_prezzo
+#     trg_<t>_a10_guard_listino_provenienza_ins_upd    AFTER   vendite.trgfn_riga_documento_guard_listino_provenienza
+#   Le funzioni sono una per regola (D-1: nessuna copia per documento); il
+#   montaggio e' l'unica cosa per tabella.
+#
+# ── I NOMI ──────────────────────────────────────────────────────────
+#   Le righe principali col nome della tabella (offerte_eccezioni, come
+#   trg_offerte_eccezioni_z90_propaga_qta_componenti_upd); i componenti con la
+#   sigla dei loro trigger e vincoli (prevrighe_comp, ordrighe_comp,
+#   contrighe_comp, ddtrighe_comp, oce_comp), per stare nei 63 caratteri.
+#
+# ── L'ORDINE ────────────────────────────────────────────────────────
+#   BEFORE a20: dopo i guard a05/a10 della tabella; nessun BEFORE della
+#   tabella scrive prezzo_unitario, uom_operativa_id, l'articolo o le colonne
+#   della provenienza (letti da pg_trigger di dbdev il 2026-11-13). Sui
+#   componenti i trigger trg_<tabella>_componenti_* vengono comunque prima per
+#   alfabeto, e nessuno scrive il prezzo.
+#   AFTER a10: vede la riga finale. Senza UPDATE OF: le colonne giudicate le
+#   scrive anche il trigger a20 (linee-guida-trigger, «UPDATE o UPDATE OF»).
+#   Montaggi nuovi, nessun nome storico da togliere: DROP IF EXISTS sul nome
+#   per la sola idempotenza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-10-create-trigger-riga-documento-provenienza-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20261113-10-create-trigger-riga-documento-provenienza-prezzo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta sulle righe principali e sui componenti di preventivi, ordini, contratti, DDT e offerte
+        la derivazione della provenienza del prezzo (BEFORE a20) e il guard sulla riga di listino
+        (AFTER a10). Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.3, §8.4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a20_provenienza_prezzo_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.preventivi_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_guard_listino_provenienza_ins_upd ON vendite.preventivi_righe;
+              CREATE TRIGGER trg_preventivi_righe_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.preventivi_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a20_provenienza_prezzo_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ordini_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_guard_listino_provenienza_ins_upd ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.ordini_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a20_provenienza_prezzo_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_listino_provenienza_ins_upd ON vendite.contratti_righe;
+              CREATE TRIGGER trg_contratti_righe_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a20_provenienza_prezzo_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a10_guard_listino_provenienza_ins_upd ON vendite.ddt_righe;
+              CREATE TRIGGER trg_ddt_righe_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.ddt_righe
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a20_provenienza_prezzo_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_listino_provenienza_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.preventivi_righe_componenti;
+              CREATE TRIGGER trg_prevrighe_comp_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.preventivi_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.preventivi_righe_componenti;
+              CREATE TRIGGER trg_prevrighe_comp_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.preventivi_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.ordini_righe_componenti;
+              CREATE TRIGGER trg_ordrighe_comp_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ordini_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.ordini_righe_componenti;
+              CREATE TRIGGER trg_ordrighe_comp_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.ordini_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.contratti_righe_componenti;
+              CREATE TRIGGER trg_contrighe_comp_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.contratti_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.contratti_righe_componenti;
+              CREATE TRIGGER trg_contrighe_comp_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.contratti_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.ddt_righe_componenti;
+              CREATE TRIGGER trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.ddt_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.ddt_righe_componenti;
+              CREATE TRIGGER trg_ddtrighe_comp_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.ddt_righe_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+
+              DROP TRIGGER IF EXISTS trg_oce_comp_a20_provenienza_prezzo_ins_upd ON vendite.offerte_commerciali_eccezioni_componenti;
+              CREATE TRIGGER trg_oce_comp_a20_provenienza_prezzo_ins_upd
+                  BEFORE INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo();
+              DROP TRIGGER IF EXISTS trg_oce_comp_a10_guard_listino_provenienza_ins_upd ON vendite.offerte_commerciali_eccezioni_componenti;
+              CREATE TRIGGER trg_oce_comp_a10_guard_listino_provenienza_ins_upd
+                  AFTER INSERT OR UPDATE ON vendite.offerte_commerciali_eccezioni_componenti
+                  FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_riga_documento_guard_listino_provenienza();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a10_guard_listino_provenienza_ins_upd ON vendite.preventivi_righe;
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a20_provenienza_prezzo_ins_upd ON vendite.preventivi_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a10_guard_listino_provenienza_ins_upd ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a20_provenienza_prezzo_ins_upd ON vendite.ordini_righe;
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_listino_provenienza_ins_upd ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a20_provenienza_prezzo_ins_upd ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a10_guard_listino_provenienza_ins_upd ON vendite.ddt_righe;
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a20_provenienza_prezzo_ins_upd ON vendite.ddt_righe;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_listino_provenienza_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a20_provenienza_prezzo_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.preventivi_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_prevrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.preventivi_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.ordini_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_ordrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.ordini_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.contratti_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_contrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.contratti_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a10_guard_listino_provenienza_ins_upd ON vendite.ddt_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_ddtrighe_comp_a20_provenienza_prezzo_ins_upd ON vendite.ddt_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_oce_comp_a10_guard_listino_provenienza_ins_upd ON vendite.offerte_commerciali_eccezioni_componenti;
+              DROP TRIGGER IF EXISTS trg_oce_comp_a20_provenienza_prezzo_ins_upd ON vendite.offerte_commerciali_eccezioni_componenti;

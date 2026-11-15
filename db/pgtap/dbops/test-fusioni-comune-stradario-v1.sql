@@ -86,19 +86,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(37);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase. Il blocco
--- EXCEPTION e' un savepoint: cio' che la chiamata aveva scritto si annulla.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- ============================================================
 -- Il mondo del test: due comuni, un codice postale ciascuno, due vie sul
@@ -174,7 +161,7 @@ SELECT set_config('myapp.log_with_dblink', COALESCE((SELECT v FROM t_guc), ''), 
 -- LA FUSIONE DELLE VIE
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_1'), pg_temp.id('via_2'))),
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_1'), pg_temp.id('via_2'))),
     'E_MERGE_RIGHE_DOPPIE',
     '3. un indirizzo uguale sulle due vie ferma la fusione con E_MERGE_RIGHE_DOPPIE');
 
@@ -210,7 +197,7 @@ SELECT is(
     '8. D3: gli indirizzi della via fusa sono sulla via di destinazione');
 
 SELECT is(
-    pg_temp.codice_errore(format('UPDATE anagrafiche.indirizzi_dettaglio SET stradario_id = %s WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE anagrafiche.indirizzi_dettaglio SET stradario_id = %s WHERE id = %s',
                                  pg_temp.id('via_1'), pg_temp.id('ind_1'))),
     'E_COLONNA_NON_MODIFICABILE',
     '9. subito dopo, nella stessa transazione, il cambio di via a mano e'' di nuovo rifiutato');
@@ -232,18 +219,18 @@ SELECT is(
     '11. la trasformazione e'' nel suo registro');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_2'), pg_temp.id('via_2'))),
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_2'), pg_temp.id('via_2'))),
     'E_MERGE_ORIGINE_UGUALE_DESTINAZIONE',
     '12. la stessa via come origine e destinazione: E_MERGE_ORIGINE_UGUALE_DESTINAZIONE');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)',
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)',
                                  (SELECT max(id) + 1000 FROM config.stradario), pg_temp.id('via_2'))),
     'E_STRADARIO_NON_TROVATO',
     '13. una via che non esiste: E_STRADARIO_NON_TROVATO');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(NULL, %s)', pg_temp.id('via_2'))),
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(NULL, %s)', pg_temp.id('via_2'))),
     'E_DBOPS_CHIAMATA_NON_VALIDA',
     '14. un id assente: E_DBOPS_CHIAMATA_NON_VALIDA');
 
@@ -261,7 +248,7 @@ SELECT pg_temp.id('comune_b'), pg_temp.id('sg_1'), pg_temp.id('cp_a');
 INSERT INTO t_ids SELECT 'via_b1', currval(pg_get_serial_sequence('config.stradario', 'id'));
 
 SELECT ok(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_comune(%s, %s)', pg_temp.id('comune_a'), pg_temp.id('comune_b')))
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_comune(%s, %s)', pg_temp.id('comune_a'), pg_temp.id('comune_b')))
         = 'E_MERGE_RIGHE_DOPPIE'
     AND (SELECT array_agg(d.riga_origine ->> 'id')
            FROM dbops.fn_fusione_righe_doppie('config.comuni', pg_temp.id('comune_a'), pg_temp.id('comune_b')) d)
@@ -299,7 +286,7 @@ SELECT is(
     '18. le due vie e il codice postale del comune soppresso sono sul comune di destinazione');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_comune(%s, %s)',
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_comune(%s, %s)',
                                  (SELECT max(id) + 1000 FROM config.comuni), pg_temp.id('comune_b'))),
     'E_COMUNE_NON_TROVATO',
     '19. un comune che non esiste: E_COMUNE_NON_TROVATO');
@@ -362,7 +349,7 @@ CREATE UNIQUE INDEX t_figlia_expr_uq ON t_figlia_expr (padre, lower(k));
 INSERT INTO t_figlia_expr VALUES (1, 1, 'Z'), (2, 2, 'z');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT dbops.fn_fusione_ripunta_figlie('pg_temp.t_padre', 1, 2)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_fusione_ripunta_figlie('pg_temp.t_padre', 1, 2)$$),
     'E_MERGE_RIGHE_DOPPIE',
     '23. un doppio su un indice su espressione sfugge al controllo, e la scrittura lo intercetta con lo stesso codice');
 
@@ -373,7 +360,7 @@ SELECT is(
 
 CREATE TEMP TABLE t_senza_chiave (id int);
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM dbops.fn_fusione_figlie('pg_temp.t_senza_chiave')$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM dbops.fn_fusione_figlie('pg_temp.t_senza_chiave')$$),
     'E_DBOPS_CHIAMATA_NON_VALIDA',
     '25. un padre senza chiave primaria: E_DBOPS_CHIAMATA_NON_VALIDA');
 
@@ -381,7 +368,7 @@ CREATE TEMP TABLE t_figlia_rls (id int PRIMARY KEY, padre int REFERENCES t_padre
 ALTER TABLE t_figlia_rls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE t_figlia_rls FORCE ROW LEVEL SECURITY;
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM dbops.fn_fusione_figlie('pg_temp.t_padre')$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM dbops.fn_fusione_figlie('pg_temp.t_padre')$$),
     'E_MERGE_FIGLIA_SOTTO_RLS',
     '26. una figlia sotto RLS per chi lancia: la fusione si ferma prima di scrivere');
 DROP TABLE t_figlia_rls;
@@ -430,19 +417,19 @@ SELECT ok(
     '32. nemmeno la ricerca per comune propone la via soppressa');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT anagrafiche.fn_get_or_create_indirizzo_dettaglio(%s, 9, NULL, NULL, NULL, NULL, NULL)',
         pg_temp.id('via_1'))),
     'E_CATALOGO_OBSOLETO_NUOVA_ISTANZA',
     '33. un indirizzo nuovo sulla via soppressa e'' rifiutato dal guard del ritiro');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_1'), pg_temp.id('via_b1'))),
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_1'), pg_temp.id('via_b1'))),
     'E_STRADARIO_SOPPRESSO',
     '34. una via soppressa non si fonde come origine');
 
 SELECT is(
-    pg_temp.codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_b1'), pg_temp.id('via_1'))),
+    dbops.fn_pgtap_codice_errore(format('SELECT dbops.fn_admin_merge_stradario(%s, %s)', pg_temp.id('via_b1'), pg_temp.id('via_1'))),
     'E_STRADARIO_SOPPRESSO',
     '35. ... ne'' come destinazione');
 

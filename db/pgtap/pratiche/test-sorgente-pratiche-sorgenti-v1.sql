@@ -58,21 +58,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(24);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -243,7 +228,7 @@ SELECT is(
   '12) un ordine che non c''e'': la sentinella UNKNOWN, con la chiave ricevuta');
 
 SELECT is(
-  pg_temp.esito(format('SELECT * FROM pratiche.fn_stato_sorgente(%s, NULL, NULL)', (SELECT t_ord FROM _t))),
+  dbops.fn_pgtap_codice_errore(format('SELECT * FROM pratiche.fn_stato_sorgente(%s, NULL, NULL)', (SELECT t_ord FROM _t))),
   'E_STATO_SORGENTE_PARAM_INVALIDO',
   '13) senza chiave: rifiutato');
 
@@ -270,7 +255,7 @@ SELECT is(
 -- IL GUARD UNICO (scritture a mano: i verbi non le producono)
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link)
        VALUES (%s, %s, %L, 'ROOT')$q$,
     (SELECT pratica_id FROM _pr), (SELECT t_ord FROM _t), (SELECT ordine_uid FROM _or))),
@@ -278,7 +263,7 @@ SELECT is(
   '16) l''uid dell''ordine in sorgente_uid: non e'' la chiave del suo tipo');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_id, ruolo_link)
        VALUES (%s, %s, %s, 'ROOT')$q$,
     (SELECT pratica_id FROM _pr), (SELECT t_ord FROM _t), (SELECT max(id) + 1000000 FROM vendite.ordini))),
@@ -286,14 +271,14 @@ SELECT is(
   '17) un ordine che non c''e'': rifiutato');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$UPDATE pratiche.pratiche_sorgenti SET sorgente_riga = %s WHERE pratica_id = %s AND ruolo_link = 'ROOT'$q$,
     (SELECT preventivo_riga_id FROM _pv WHERE k = 'A'), (SELECT pratica_id FROM _pr))),
-  'PASSA',
+  NULL,
   '18) la riga del preventivo sul suo link: passa (prima la riga non la verificava nessuno)');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$UPDATE pratiche.pratiche_sorgenti SET sorgente_riga = %s WHERE pratica_id = %s AND ruolo_link = 'ROOT'$q$,
     (SELECT preventivo_riga_id FROM _pv WHERE k = 'B'), (SELECT pratica_id FROM _pr))),
   'E_SORG_RIGA_NON_DEL_DOCUMENTO',
@@ -309,7 +294,7 @@ SELECT is(
 UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = (SELECT preventivo_id FROM _pv WHERE k = 'A');
 
 SELECT is(
-  pg_temp.esito(format($q$DELETE FROM vendite.preventivi WHERE id = %s$q$, (SELECT preventivo_id FROM _pv WHERE k = 'A'))),
+  dbops.fn_pgtap_codice_errore(format($q$DELETE FROM vendite.preventivi WHERE id = %s$q$, (SELECT preventivo_id FROM _pv WHERE k = 'A'))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '20) il preventivo collegato a una pratica non si cancella, anche in bozza');
 
@@ -343,11 +328,11 @@ SELECT is(
   '22) un codice che non e'' un tipo: riga E_SORG_CONF senza tipo e senza chiave, il cambio di stato resta');
 
 SELECT is(
-  pg_temp.esito(format(
+  dbops.fn_pgtap_codice_errore(format(
     $q$INSERT INTO pratiche.reconcile_errori (sorgente_tipo_id, sorgente_id, sorgente_uid, errcode, messaggio)
        VALUES (%s, 1, %L, 'PGTAP', 'pgTAP')$q$,
     (SELECT t_ord FROM _t), gen_random_uuid())),
-  '23514 chk_reconcile_errori_sorgente_forma',
+  'chk_reconcile_errori_sorgente_forma',
   '23) il log rifiuta due chiavi del documento');
 
 -- ============================================================

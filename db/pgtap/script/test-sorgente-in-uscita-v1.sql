@@ -126,16 +126,6 @@ CREATE TRIGGER trg_figli_cancella_a10_guard_sorgente_ins_upd BEFORE INSERT OR UP
     FOR EACH ROW EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'CANCELLA');
 GRANT SELECT, DELETE ON pg_temp._figli_blocca, pg_temp._figli_cancella TO zeroerp_owner;
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text)
-RETURNS text AS $fn$
-DECLARE v_codice text;
-BEGIN
-  EXECUTE p_sql;
-  RETURN 'NESSUN ERRORE';
-EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
-  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
-END $fn$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION pg_temp.messaggio_errore(p_sql text)
 RETURNS text AS $fn$
@@ -150,7 +140,7 @@ END $fn$ LANGUAGE plpgsql;
 INSERT INTO pg_temp._figli_blocca (sorgente_tipo_id, sorgente_id, sorgente_riga, sorgente_dettaglio)
 SELECT (SELECT ddt FROM _t), ddt1, r1, prel1 FROM _b;
 
-SELECT is(pg_temp.codice_errore(format('DELETE FROM vendite.ddt_righe_prelievi WHERE id = %s', (SELECT prel1 FROM _b))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ddt_righe_prelievi WHERE id = %s', (SELECT prel1 FROM _b))),
     'E_SORG_ORIGINE_REFERENZIATA',
     '4) cancellare il prelievo da cui nasce un figlio BLOCCA -> E_SORG_ORIGINE_REFERENZIATA');
 
@@ -176,7 +166,7 @@ UPDATE vendite.ddt_righe SET attivo = false WHERE id = (SELECT r1 FROM _b);
 INSERT INTO pg_temp._figli_blocca (sorgente_tipo_id, sorgente_id)
 SELECT (SELECT ddt FROM _t), ddt1 FROM _b;
 
-SELECT is(pg_temp.codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b))),
     'E_SORG_ORIGINE_REFERENZIATA',
     '8) cancellare la bolla con un figlio BLOCCA -> rifiuto');
 
@@ -186,7 +176,7 @@ INSERT INTO pg_temp._figli_cancella (sorgente_tipo_id, sorgente_id, sorgente_rig
 SELECT (SELECT ddt FROM _t), ddt1, r1 FROM _b;
 
 SELECT is(
-    pg_temp.codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b)))
+    dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt1 FROM _b)))
       || '|' || (SELECT count(*) FROM pg_temp._figli_cancella)::text
       || '|' || (SELECT count(*) FROM vendite.ddt WHERE id = (SELECT ddt1 FROM _b))::text,
     'E_SORG_ORIGINE_REFERENZIATA|2|1',
@@ -213,7 +203,7 @@ SELECT (SELECT prev FROM _t), preventivo_uid FROM _p;
 -- bozza e' vuota, e il rifiuto che il test prova resta quello del figlio.
 UPDATE vendite.preventivi_righe SET attivo = false WHERE preventivo_id = (SELECT preventivo_id FROM _p);
 
-SELECT is(pg_temp.codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _p))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _p))),
     'E_SORG_ORIGINE_REFERENZIATA',
     '13) il preventivo con un figlio BLOCCA su sorgente_uid -> rifiuto');
 

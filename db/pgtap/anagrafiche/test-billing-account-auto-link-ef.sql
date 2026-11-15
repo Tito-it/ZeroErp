@@ -362,21 +362,9 @@ SELECT set_config('app.current_user_id',
                   true);
 SELECT set_config('app.current_emittente_id', '', true);
 
--- Il codice di dominio di un errore, letto dal canale CONSTRAINT
--- (contratto P0001 + CONSTRAINT = codice). NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 SELECT is(
-    pg_temp.codice_errore($$ INSERT INTO anagrafiche.billing_account (
+    dbops.fn_pgtap_codice_errore($$ INSERT INTO anagrafiche.billing_account (
            codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal
        )
        SELECT 'PGTAP-AUTOLINK-4-' || floor(random()*1e9)::text,

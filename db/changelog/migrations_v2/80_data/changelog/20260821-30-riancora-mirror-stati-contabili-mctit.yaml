@@ -148,7 +148,6 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             # ⚠️ Convenzione DEL FILE, non quella globale: vedi la testata.
-            nullValue: ""
             primaryKey: "id"
             columns:
               - column: { name: id,             type: STRING }
@@ -182,7 +181,6 @@ databaseChangeLog:
             schemaName: pagamenti
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: "codice"
             columns:
               - column: { name: codice,               type: STRING }

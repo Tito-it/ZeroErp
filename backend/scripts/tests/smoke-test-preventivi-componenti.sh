@@ -25,6 +25,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_cliente.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/_smoke_documenti.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_errori.sh"   # smoke_check_codice
 EPOCH=$(date +%s)
 SUFFIX="smk-${EPOCH}"
 NEW_COMPOSITO_ID=""
@@ -114,7 +115,7 @@ check_http() {
 #        Restano il cliente del giro (un soggetto per giro, come in
 #        contratti-addebito) e la materia stabile del passo 2 (riusata).
 pulisci_giro() {
-    local riga uom_op
+    local riga
     if [[ -n "${PREVENTIVO_ID:-}" ]]; then
         for riga in ${RIGA_ID:-}; do
             do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/righe/${riga}/"
@@ -123,19 +124,24 @@ pulisci_giro() {
         do_curl DELETE "/api/v1/vendite/preventivi/${PREVENTIVO_ID}/"
         check_http "Cleanup preventivo" "200|204" || true
     fi
+    # Un legame di distinta non si spegne ne' si cancella: si CHIUDE, dal verbo
+    # (dal 2026-11-10 la PATCH del legame e' ritirata). E l'UoM operativa base
+    # non si spegne mai (Q34, dal 2026-11-11).
     if [[ -n "$NEW_BOM_ROW_ID" && -n "$NEW_COMPOSITO_ID" ]]; then
-        do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/" '{"attivo": false}'
-        check_http "Cleanup riga BoM (spenta)" "200" || true
+        do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/componenti/${NEW_BOM_ROW_ID}/chiudi/" "{\"valido_al\":\"$(date +%F)\"}"
+        check_http "Cleanup riga BoM (chiusa)" "200" || true
     fi
+    # Il composito non si spegne: si RITIRA (Q35 (c), Tid 2026-11-12). Il
+    # legame chiuso lo nomina ancora, e un articolo nominato da altre righe
+    # rifiuta lo spegnimento con 409 E_ATTIVO_BLOCK_SI_RITIRA; il ritiro con la
+    # data di oggi lo toglie dalle scelte nuove e passa sempre.
     if [[ -n "$NEW_COMPOSITO_ID" ]]; then
-        do_curl GET "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/"
-        uom_op=$(json_get "$LAST_BODY" "data.results.0.id")
-        if [[ -n "$uom_op" ]]; then
-            do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/uom/${uom_op}/" '{"attivo": false}'
-            check_http "Cleanup UoM operativa base (spenta)" "200" || true
+        if [[ -n "$NEW_BOM_ROW_ID" ]]; then
+            do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
+            smoke_check_codice "Cleanup: spegnere il kit con la distinta e' rifiutato" "409" "E_ATTIVO_BLOCK_SI_RITIRA" || true
         fi
-        do_curl POST "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/disattiva/" '{}'
-        check_http "Cleanup articolo composito (disattiva)" "200|204" || true
+        do_curl PATCH "/api/v1/catalogo/articoli/${NEW_COMPOSITO_ID}/" "{\"obsoleto_dal\":\"$(date +%F)\"}"
+        check_http "Cleanup articolo composito (ritirato)" "200" || true
     fi
 }
 

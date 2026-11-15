@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.lista_colonna: l'assenza di un testo opzionale e' NULL, mai la stringa vuota.
+#   Brief: brief-db-lista-colonna-campo-sorgente-null (D1 (a), Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. «Nessuna sorgente», «nessun formato», «nessun gruppo» avevano due
+#   forme: '' dal seed (il mirror scriveva la cella vuota come stringa vuota) e
+#   NULL dal pannello di amministrazione. Chi legge doveva ricordarsi di
+#   accettarle entrambe. Il mirror 80_data/20260806-15 ora scrive NULL; qui la
+#   seconda forma si chiude per costruzione, con un CHECK per ognuna delle cinque
+#   colonne testo nullable: campo_sorgente, etichetta_estesa, formato, gruppo,
+#   etichetta_i18n_key. Una stringa di soli spazi vale come vuota.
+#
+# ℹ️ PERCHE' QUI, IN 90_end. Tutto 00_schema gira prima di 80_data, e i seed
+#   storici di lista_colonna (prima del mirror ri-ancorato) scrivono ancora ''
+#   (linee-guida-sql §11.14, «un vincolo nuovo passa anche da chi scrive gia' la
+#   tabella»). Qui il mirror e' gia' passato.
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE. Le righe del CSV le ha
+#   gia' riscritte il mirror; restano quelle che il CSV non conosce, cioe' le
+#   colonne create su un'installazione. Hanno lo stesso significato, quindi la
+#   conversione non decide niente: rende il dato conforme al vincolo che segue.
+#   Non e' una correzione del catalogo (linee-guida-sql §11.2), perche' sulle
+#   righe del CSV non trova niente da cambiare.
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-12: il seed (il mirror,
+#   ora NULL); nessuna funzione del database; il backend, che porta '' a None
+#   (payload_helpers.optional_string); una fixture pgTAP che costruiva apposta una
+#   sorgente '' (ui/test-fn-lista-colonne-ricerca-full-v1), riscritta nello
+#   stesso giro.
+#
+# ⚠️ Il guard ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente resta com'e':
+#   accetta '' perche' i seed storici, da zero, lo scrivono prima di questo file.
+# Presidio: ui/test-lista-colonna-testi-non-vuoti-v1.
+# Rollback: via i cinque vincoli. Le stringhe vuote convertite non tornano: NULL
+#   e '' qui hanno lo stesso significato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-30-add-chk-lista-colonna-testi-non-vuoti-mctit.yaml
+
+  - changeSet:
+      id: 20261112-30-add-chk-lista-colonna-testi-non-vuoti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.lista_colonna: le stringhe vuote dei cinque testi opzionali diventano NULL, poi un CHECK per
+        colonna vieta la stringa vuota. Brief: brief-db-lista-colonna-campo-sorgente-null.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'ui.lista_colonna'::regclass
+                 AND conname IN ('chk_lista_colonna_campo_sorgente_non_vuoto',
+                                 'chk_lista_colonna_etichetta_estesa_non_vuota',
+                                 'chk_lista_colonna_formato_non_vuoto',
+                                 'chk_lista_colonna_gruppo_non_vuoto',
+                                 'chk_lista_colonna_etichetta_i18n_key_non_vuota');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_colonna lc
+                 SET campo_sorgente     = CASE WHEN btrim(lc.campo_sorgente)     = '' THEN NULL ELSE lc.campo_sorgente     END,
+                     etichetta_estesa   = CASE WHEN btrim(lc.etichetta_estesa)   = '' THEN NULL ELSE lc.etichetta_estesa   END,
+                     formato            = CASE WHEN btrim(lc.formato)            = '' THEN NULL ELSE lc.formato            END,
+                     gruppo             = CASE WHEN btrim(lc.gruppo)             = '' THEN NULL ELSE lc.gruppo             END,
+                     etichetta_i18n_key = CASE WHEN btrim(lc.etichetta_i18n_key) = '' THEN NULL ELSE lc.etichetta_i18n_key END
+               WHERE btrim(lc.campo_sorgente)     = ''
+                  OR btrim(lc.etichetta_estesa)   = ''
+                  OR btrim(lc.formato)            = ''
+                  OR btrim(lc.gruppo)             = ''
+                  OR btrim(lc.etichetta_i18n_key) = '';
+
+              ALTER TABLE ui.lista_colonna
+                ADD CONSTRAINT chk_lista_colonna_campo_sorgente_non_vuoto
+                    CHECK (campo_sorgente IS NULL OR btrim(campo_sorgente) <> ''),
+                ADD CONSTRAINT chk_lista_colonna_etichetta_estesa_non_vuota
+                    CHECK (etichetta_estesa IS NULL OR btrim(etichetta_estesa) <> ''),
+                ADD CONSTRAINT chk_lista_colonna_formato_non_vuoto
+                    CHECK (formato IS NULL OR btrim(formato) <> ''),
+                ADD CONSTRAINT chk_lista_colonna_gruppo_non_vuoto
+                    CHECK (gruppo IS NULL OR btrim(gruppo) <> ''),
+                ADD CONSTRAINT chk_lista_colonna_etichetta_i18n_key_non_vuota
+                    CHECK (etichetta_i18n_key IS NULL OR btrim(etichetta_i18n_key) <> '');
+
+              COMMENT ON CONSTRAINT chk_lista_colonna_campo_sorgente_non_vuoto ON ui.lista_colonna IS
+                'Una colonna senza sorgente (azione, calcolata dal frontend) ha campo_sorgente NULL, mai la stringa vuota: l''assenza ha una forma sola, e chi legge scrive campo_sorgente IS NOT NULL.';
+              COMMENT ON CONSTRAINT chk_lista_colonna_etichetta_estesa_non_vuota ON ui.lista_colonna IS
+                'Senza etichetta estesa la colonna ha NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+              COMMENT ON CONSTRAINT chk_lista_colonna_formato_non_vuoto ON ui.lista_colonna IS
+                'Senza formato la colonna ha NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+              COMMENT ON CONSTRAINT chk_lista_colonna_gruppo_non_vuoto ON ui.lista_colonna IS
+                'Una colonna fuori da ogni gruppo ha gruppo NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+              COMMENT ON CONSTRAINT chk_lista_colonna_etichetta_i18n_key_non_vuota ON ui.lista_colonna IS
+                'Senza chiave di traduzione la colonna ha NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_colonna
+                DROP CONSTRAINT IF EXISTS chk_lista_colonna_campo_sorgente_non_vuoto,
+                DROP CONSTRAINT IF EXISTS chk_lista_colonna_etichetta_estesa_non_vuota,
+                DROP CONSTRAINT IF EXISTS chk_lista_colonna_formato_non_vuoto,
+                DROP CONSTRAINT IF EXISTS chk_lista_colonna_gruppo_non_vuoto,
+                DROP CONSTRAINT IF EXISTS chk_lista_colonna_etichetta_i18n_key_non_vuota;

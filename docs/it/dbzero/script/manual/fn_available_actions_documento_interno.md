@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_documento_interno()`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **I due involucri, che sono ciò che il backend chiama:**
@@ -36,7 +38,7 @@ pulsanti, senza sapere niente delle regole che ci stanno dietro.
 | `available_actions[]` | una voce per **transizione richiedibile**: `key` (`conferma` · `riapri` · `annulla`), `target_state`, `label_key`, `requires_confirm`, `enabled`, `reason`, `reason_key`, `manuale` |
 | `can_change_state` | c'è almeno un'azione — **anche spenta**: la barra deve comparire proprio per mostrare il pulsante grigio col suo motivo (§12.2 punto 2) |
 | `can_edit_testata`, `can_edit_righe`, `can_delete` | lo stato è `DRAFT` — lo **stesso** predicato dei guard che rifiuterebbero |
-| `can_registra`, `can_registra_reason`, `can_registra_reason_key` | la terna del verbo irreversibile |
+| `can_registra`, `can_registra_reason`, `can_registra_reason_key`, `can_registra_reason_valori` | il flag del verbo irreversibile e il suo primo motivo; `_reason_valori` sono i segnaposti della frase (lo stato e la destinazione, l'id del documento o della riga), `[]` quando si registra |
 | `stato_info_key` | sugli stati chiusi, la nota che dice che cosa è successo e qual è la strada (`POSTED`, `CANCEL`); `NULL` altrove |
 
 Chiavi i18n emesse — e sono un **debito verso il frontend**, presidiato da

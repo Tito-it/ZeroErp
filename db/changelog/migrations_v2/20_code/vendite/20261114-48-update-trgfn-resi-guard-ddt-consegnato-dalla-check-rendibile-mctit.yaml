@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RESO NASCE DA UNA BOLLA CONSEGNATA: IL TRIGGER LEGGE LA CHECK
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.22, giro 6e
+#   (D-RESO (a), Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.trgfn_resi_guard_ddt_consegnato scriveva la regola per intero
+#   (bolla di trasferimento, bolla non in CONSEGNATO), e il frontend e il
+#   service del reso la ricopiavano: la capability della bolla non aveva una
+#   chiave da leggere.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   La regola sta in script.fn_check_ddt_rendibile (-47); il trigger solleva il
+#   primo motivo con script.fn_raise_primo_motivo_se_presente, coi codici di
+#   prima (E_RESO_DA_DDT_TRASFERIMENTO, E_RESO_DDT_NON_CONSEGNATO) e la chiave
+#   della bolla (sorgente_id) nel contesto; ddt_id e stato_ddt arrivano dal
+#   dettaglio del motivo. Con la bolla assente la risposta e' quella di prima
+#   (E_RESO_DDT_NON_CONSEGNATO, stato 'NULL').
+#   sorgente_id nullo: il trigger lascia passare e risponde il vincolo della
+#   forma (chk_resi_sorgente_forma); la check rifiuterebbe un id nullo come
+#   parametro non valido, che non e' la risposta di questo caso.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma, INVOKER, nessun SET (pg_proc su dbdev,
+#   2026-11-14). Il montaggio (trg_resi_a10_guard_ddt_consegnato_ins) non
+#   cambia. Il COMMENT dice dove sta la regola.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-14; la firma, coi suoi %TYPE, dal
+#   changeSet che l'ha scritta per ultimo (il catalogo li scioglie). Il
+#   rollback porta il corpo e il COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-48-update-trgfn-resi-guard-ddt-consegnato-dalla-check-rendibile-mctit.yaml
+
+  - changeSet:
+      id: 20261114-48-update-trgfn-resi-guard-ddt-consegnato-dalla-check-rendibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_resi_guard_ddt_consegnato: il primo motivo di script.fn_check_ddt_rendibile, la
+        stessa check della capability della bolla. Brief: brief-db-stati-documento-dal-vocabolario, giro 6e (D-RESO).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): la regola sta in
+              --   script.fn_check_ddt_rendibile, letta anche dalla capability della bolla
+              --   (can_genera_reso). Qui si solleva il primo motivo.
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente lo genera: non da una
+              --   bolla di trasferimento, non da una bolla non consegnata (i motivi di
+              --   script.fn_check_ddt_rendibile). Solo per sorgente DDT_VENDITA
+              --   (data-driven). La bolla ha chiave id: si cerca per sorgente_id.
+              DECLARE
+                  v_is_ddt boolean;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La forma della sorgente (sorgente_id obbligatorio) la fa valere il
+                  -- vincolo chk_resi_sorgente_forma: qui non si risponde al suo posto.
+                  IF NEW.sorgente_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- I motivi (bolla di trasferimento, bolla non consegnata) e il loro
+                  -- ordine stanno nella check, la stessa della capability della bolla.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'trgfn_resi_guard_ddt_consegnato',
+                      script.fn_check_ddt_rendibile(NEW.sorgente_id),
+                      NULL, NULL::uuid,
+                      jsonb_build_object('sorgente_id', NEW.sorgente_id));
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+              IS 'Guard del reso, BEFORE INSERT: un reso da una bolla (sorgente DDT_VENDITA, cercata per sorgente_id: la bolla ha chiave id) nasce solo se script.fn_check_ddt_rendibile non da'' motivi, e qui si solleva il primo: E_RESO_DA_DDT_TRASFERIMENTO per una bolla di trasferimento fra depositi (la merce e'' rimasta nostra, un reso la farebbe rientrare due volte), E_RESO_DDT_NON_CONSEGNATO per una bolla non consegnata o assente. La stessa check da'' can_genera_reso nella capability della bolla (script.fn_available_actions_ddt). Il contesto porta la chiave della bolla (sorgente_id) e il dettaglio del motivo (ddt_id, stato_ddt). Altre sorgenti, e sorgente_id nullo (lo rifiuta il vincolo chk_resi_sorgente_forma), passano.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il reso e' ammesso solo se il DDT sorgente e' CONSEGNATO
+              --   (non si rende cio' che non e' stato consegnato). Solo per
+              --   sorgente DDT_VENDITA (data-driven). La bolla ha chiave id: si
+              --   cerca per sorgente_id.
+              DECLARE
+                  v_is_ddt boolean;
+                  v_stato  config.stati_doc_ddt.codice_interno%TYPE;
+                  v_ddt    vendite.ddt%ROWTYPE;
+              BEGIN
+                  -- Applica solo alla sorgente DDT_VENDITA.
+                  SELECT EXISTS (
+                      SELECT 1 FROM config.sorgenti
+                       WHERE id = NEW.sorgente_tipo_id
+                         AND codice_interno = 'DDT_VENDITA'
+                  ) INTO v_is_ddt;
+
+                  IF NOT v_is_ddt THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT sdd.codice_interno INTO v_stato
+                    FROM vendite.ddt d
+                    JOIN config.stati_doc_ddt sdd ON sdd.id = d.stato_doc_ddt_id
+                   WHERE d.id = NEW.sorgente_id;
+
+                  -- Una bolla di TRASFERIMENTO fra depositi non genera un reso. La merce e'
+                  --   rimasta nostra (e' entrata nel magazzino di arrivo al CONSEGNATO): un
+                  --   reso la farebbe rientrare una seconda volta, con un accredito verso un
+                  --   cliente che non l'ha mai comprata. Si riconosce dalla causale di
+                  --   magazzino della sua causale di trasporto (TRASF_OUT), non dal codice
+                  --   scritto a mano. Prima del controllo di stato: e' la risposta vera.
+                  SELECT d.* INTO v_ddt
+                    FROM vendite.ddt d
+                   WHERE d.id = NEW.sorgente_id;
+                  IF FOUND AND vendite.fn_ddt_causale_magazzino(v_ddt) = 'TRASF_OUT' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DA_DDT_TRASFERIMENTO',
+                          jsonb_build_object('sorgente_id', NEW.sorgente_id, 'ddt_id', v_ddt.id),
+                          NULL::uuid, COALESCE(v_ddt.numero, v_ddt.id::text));
+                  END IF;
+
+                  IF v_stato IS DISTINCT FROM 'CONSEGNATO' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite','trgfn_resi_guard_ddt_consegnato','E_RESO_DDT_NON_CONSEGNATO',
+                          jsonb_build_object('sorgente_id', NEW.sorgente_id, 'stato_ddt', v_stato),
+                          NULL::uuid, COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_resi_guard_ddt_consegnato()
+              IS 'Guard del reso: la bolla sorgente (DDT_VENDITA, cercata per sorgente_id: la bolla ha chiave id) deve essere CONSEGNATA (E_RESO_DDT_NON_CONSEGNATO). Prima, una bolla di trasferimento fra depositi (causale di magazzino TRASF_OUT) non genera un reso (E_RESO_DA_DDT_TRASFERIMENTO): la merce e'' rimasta nostra, e un reso la farebbe rientrare due volte. Il dettaglio dei due errori porta la chiave della bolla (sorgente_id), e ddt_id o stato_ddt.';

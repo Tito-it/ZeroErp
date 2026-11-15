@@ -14,13 +14,17 @@ import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoFor
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
-  listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo
+  listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo,
+  listSoggettoTipiIndirizzo, listRuoloTipiIndirizzo,
+  copiaSoggettoIndirizzo, copiaRuoloIndirizzo,
 } from '../api/anagrafiche'
-import { lookupMatriceIndirizzi, lookupMatriceIndirizziRuolo } from '../../core/apiCore'
+import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
 import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { sortByFonte } from '../../core/utils/string'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
+import CopiaIndirizzoDialog from './CopiaIndirizzoDialog.vue'
+import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import Button from 'primevue/button'
@@ -38,10 +42,8 @@ const indirizzo = useIndirizzoSoggettoForm()
 const props = defineProps({
   visible: { type: Boolean, default: false },
   soggettoId: { type: [String, Number], default: null },
-  tipoSoggettoDettaglioId: { type: Number, default: null },
   context: { type: String, default: 'soggetto' },
   istanzaUtilityId: { type: Number, default: null },
-  tipoRuoloCodice: { type: String, default: null },
   // Modalita' SELEZIONE (drawer gestione indirizzi documento): aggiunge per
   // riga l'azione "usa questo" che emette `select(riga)`. I flussi anagrafici
   // esistenti (aggiungi/cambia/elimina) restano invariati. Default off:
@@ -119,24 +121,34 @@ async function loadIndirizzi() {
   }
 }
 
-// Scopo: Carica matrice tipi indirizzo.
-//        Context soggetto: matrice filtrata per tipo_soggetto_dettaglio.
-//        Context ruolo: matrice per tipo ruolo (tipi ammessi dal trigger guard).
-//        Context soggetto: matrice per tipo soggetto dettaglio.
+// Scopo: Carica i tipi di indirizzo proponibili dal picker del DB (R-2 di
+//        brief-db-copia-indirizzo-soggetto): ogni tipo, con `obbligatorio`,
+//        `ammesso` e il motivo di chi non lo e'.
+//        Context soggetto: il picker del soggetto salvato (natura E tipi che ha gia').
+//        Context ruolo: il picker del ruolo, o della sua istanza (`istanzaUtilityId`):
+//        la chiave su cui la madre di creazione giudica il tipo gia' presente.
+// ⛔ Fino al 2026-11-15 si leggeva la matrice della natura o del tipo di ruolo e si
+//    toglievano a mano i tipi della lista: una copia della regola, gia' divergente
+//    (ignorava la validita' delle righe di matrice, §3.1 del brief).
 async function loadMatrice() {
+  if (!props.soggettoId) return
   try {
-    if (isRuolo.value && props.tipoRuoloCodice) {
-      // Matrice filtrata per tipo ruolo — coerente con trigger DB
-      const res = await lookupMatriceIndirizziRuolo(props.tipoRuoloCodice)
-      matriceCompleta.value = res.data.data.results
-    } else if (props.tipoSoggettoDettaglioId) {
-      // Matrice filtrata per tipo soggetto dettaglio
-      const res = await lookupMatriceIndirizzi(props.tipoSoggettoDettaglioId)
-      matriceCompleta.value = res.data.data.results
-    }
+    const res = isRuolo.value
+      ? await listRuoloTipiIndirizzo(
+        props.soggettoId,
+        props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {},
+      )
+      : await listSoggettoTipiIndirizzo(props.soggettoId)
+    matriceCompleta.value = res.data?.data?.results || []
   } catch {
     matriceCompleta.value = []
   }
+}
+
+// La lista e i tipi proponibili insieme: dopo ogni scrittura il picker cambia
+// (un tipo creato si spegne col motivo «gia' presente»).
+async function ricarica() {
+  await Promise.all([loadIndirizzi(), loadMatrice()])
 }
 
 // Tipi gia' associati (per filtrare in aggiungi)
@@ -144,9 +156,10 @@ const tipiEsistenti = computed(() =>
   new Set(indirizziList.value.map(i => i.tipo_indirizzo_codice_interno))
 )
 
-// Matrice filtrata: solo tipi non ancora associati (per aggiungi)
+// I tipi che «Aggiungi» puo' proporre: quelli che il picker ammette. Il tipo gia'
+// presente lo esclude il DB, col suo motivo.
 const matriceDisponibile = computed(() =>
-  matriceCompleta.value.filter(m => !tipiEsistenti.value.has(m.codice_interno))
+  matriceCompleta.value.filter(m => m.ammesso)
 )
 
 // Tipi obbligatori mancanti
@@ -159,12 +172,7 @@ watch(() => props.visible, async (val) => {
   if (!val) return
   chiudiForm()
   indirizzo.reset()
-  // In context ruolo la matrice non serve (il trigger DB valida i tipi ammessi)
-  if (isRuolo.value) {
-    await loadIndirizzi()
-  } else {
-    await Promise.all([loadIndirizzi(), loadMatrice()])
-  }
+  await ricarica()
 })
 
 // Blocca save se indirizzo da stradario non trovato (centralizzato in useIndirizzoBase).
@@ -175,15 +183,93 @@ const addressNotFound = computed(() =>
 
 // === Azioni ===
 
+// «Copia come…» (R-4 di brief-db-copia-indirizzo-soggetto). Il motivo che la
+// spegne lo dice il REGISTRO delle azioni di riga (BB `useAzioneRiga`): quali
+// colonne della riga lo portano, e la sua chiave. Il layer decide il verbo:
+// le righe del ruolo (e dell'istanza) col verbo del ruolo, quelle del soggetto
+// — anche quando arrivano dalla cascata del ruolo — col verbo del soggetto.
+const azioneCopiaSoggetto = useAzioneRiga('COPIA_INDIRIZZO_SOGGETTO')
+const azioneCopiaRuolo = useAzioneRiga('COPIA_INDIRIZZO_RUOLO')
+const rigaDelRuolo = (ind) => isRuolo.value && ind.fonte !== 'soggetto'
+
+// Le azioni della card, nel kebab (RowActionsMenu): «Cambia» e «Elimina» dove
+// la riga e' del layer che il drawer gestisce, «Copia come…» su ogni riga.
+function azioniRiga(ind) {
+  const visibile = !formMode.value && !isReadonly.value
+  const editabile = !isRuolo.value || rigaDelRuolo(ind)
+  const copia = rigaDelRuolo(ind) ? azioneCopiaRuolo : azioneCopiaSoggetto
+  const labelCopia = t('anagrafiche.indirizzi.copia.azione')
+  return [
+    {
+      key: 'cambia',
+      label: t('anagrafiche.indirizzo_soggetto.cambia_indirizzo'),
+      icon: MANAGE_ICONS.EDIT,
+      visible: visibile && editabile,
+      command: () => onStartReplace(ind),
+    },
+    {
+      key: 'copia',
+      label: labelCopia,
+      icon: MANAGE_ICONS.CLONE,
+      visible: visibile,
+      disabled: copia.bloccata(ind),
+      tooltip: copia.motivo(ind) || labelCopia,
+      command: () => onStartCopia(ind),
+    },
+    {
+      key: 'elimina',
+      label: t('common.delete'),
+      icon: MANAGE_ICONS.DELETE,
+      severity: 'danger',
+      visible: visibile && rigaDelRuolo(ind),
+      command: () => onDeleteRuolo(ind),
+    },
+  ]
+}
+
+const copiaVisible = ref(false)
+const copiaRiga = ref(null)
+const copiaTipi = ref([])
+
+// I tipi in cui copiare: il picker del layer della riga. Per il ruolo, la
+// chiave e' la sua (ruolo o istanza della sorgente): la copia resta li'.
+async function onStartCopia(ind) {
+  const tipi = await execute(() => (rigaDelRuolo(ind)
+    ? listRuoloTipiIndirizzo(
+      props.soggettoId,
+      ind.istanza_utility_id ? { istanza_utility_id: ind.istanza_utility_id } : {},
+    )
+    : listSoggettoTipiIndirizzo(isRuolo.value ? ind.soggetto_id : props.soggettoId)))
+  if (tipi === null) return
+  copiaRiga.value = ind
+  copiaTipi.value = tipi?.results || []
+  copiaVisible.value = true
+}
+
+async function onConfermaCopia(codici) {
+  const ind = copiaRiga.value
+  if (!ind || codici.length === 0) return
+  const result = await execute(
+    () => (rigaDelRuolo(ind)
+      ? copiaRuoloIndirizzo(props.soggettoId, ind.id, codici)
+      : copiaSoggettoIndirizzo(isRuolo.value ? ind.soggetto_id : props.soggettoId, ind.id, codici)),
+    { successMessage: t('anagrafiche.indirizzi.copia.fatta', { n: codici.length }, codici.length) },
+  )
+  if (result !== null) {
+    copiaVisible.value = false
+    await ricarica()
+    emit('saved')
+  }
+}
+
 async function onStartNew() {
   nuovaRiga()
   comuneInitialItem.value = null
   indirizzo.reset()
   if (isRuolo.value) {
-    // In context ruolo: carica matrice se non gia' caricata
-    if (matriceCompleta.value.length === 0) {
-      await loadMatrice()
-    }
+    // In context ruolo la lista porta anche i livelli della cascata (soggetto,
+    // ruolo): i loro tipi restano proponibili sulla chiave del ruolo, ma non si
+    // pre-selezionano.
     indirizzo.setMatrice(matriceCompleta.value, tipiEsistenti.value)
   } else {
     indirizzo.setMatrice(matriceDisponibile.value)
@@ -313,7 +399,7 @@ async function onSaveForm() {
   if (success) {
     chiudiForm()
     indirizzo.reset()
-    await loadIndirizzi()
+    await ricarica()
     emit('saved')
   }
 }
@@ -325,7 +411,7 @@ async function onDeleteRuolo(ind) {
     { successMessage: t('indirizzi.indirizzo_eliminato') }
   )
   if (result !== null) {
-    await loadIndirizzi()
+    await ricarica()
     emit('saved')
   }
 }
@@ -381,24 +467,10 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
               </span>
             </div>
           </div>
-          <!-- Azioni soggetto: solo Cambia (replace) -->
-          <Button
-            v-if="!formMode && !isReadonly && !isRuolo"
-            :icon="MANAGE_ICONS.EDIT"
-            text
-            rounded
-            size="small"
-            class="app-action-btn"
-            :title="t('anagrafiche.indirizzo_soggetto.cambia_indirizzo')"
-            @click="onStartReplace(ind)"
-          />
-          <!-- Azioni ruolo: cambia + delete (solo se editabile e non readonly) -->
-          <div v-if="!formMode && !isReadonly && isRuolo && ind.fonte !== 'soggetto'" class="indirizzo-card-actions">
-            <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
-              :title="t('anagrafiche.indirizzo_soggetto.cambia_indirizzo')"
-              @click="onStartReplace(ind)" />
-            <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
-              class="app-delete-btn" :title="t('common.delete')" @click="onDeleteRuolo(ind)" />
+          <!-- Azioni della card nel kebab (R-4): Cambia, Copia come… (spenta
+               col motivo del registro), Elimina sulle righe del ruolo. -->
+          <div v-if="!formMode && !isReadonly" class="indirizzo-card-actions">
+            <RowActionsMenu :row="ind" :actions="azioniRiga(ind)" force-compact />
           </div>
         </div>
         <!-- Colonna ESTERNA "Usa" (modalita' selezione documento): fuori
@@ -422,8 +494,9 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
         {{ t('anagrafiche.indirizzo_soggetto.tipi_mancanti', { tipi: tipiMancanti.map(t => t.descrizione).join(', ') }) }}
       </div>
 
-      <!-- Pulsante aggiungi (soggetto: se ci sono tipi disponibili, ruolo: sempre, mai in readonly) -->
-      <div v-if="!formMode && !isReadonly && (isRuolo || matriceDisponibile.length > 0)" class="mt-05">
+      <!-- Pulsante aggiungi: se il picker del DB ammette almeno un tipo, sul soggetto e sul
+           ruolo (dal 2026-11-15 il ruolo legge il suo picker), mai in readonly -->
+      <div v-if="!formMode && !isReadonly && matriceDisponibile.length > 0" class="mt-05">
         <Button
           :label="t('anagrafiche.indirizzo_soggetto.aggiungi_indirizzo')"
           :icon="MANAGE_ICONS.ADD"
@@ -475,6 +548,14 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
         @cancel="annullaForm"
       />
     </template>
+
+    <CopiaIndirizzoDialog
+      v-model:visible="copiaVisible"
+      :tipi="copiaTipi"
+      :sorgente="copiaRiga?.tipo_indirizzo_descrizione || ''"
+      :loading="loading"
+      @confirm="onConfermaCopia"
+    />
   </AppDrawer>
 </template>
 

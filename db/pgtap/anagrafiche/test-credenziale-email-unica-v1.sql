@@ -45,18 +45,6 @@ SELECT plan(9);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- Il codice di dominio di un errore, letto dal canale CONSTRAINT
--- (contratto P0001 + CONSTRAINT = codice). NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Una credenziale nuda con l'email data (INSERT diretto: e' cio' che fa la
 -- seconda strada di creazione del backend, che non passa dal guard).
@@ -107,7 +95,7 @@ SELECT is(
 -- 4) (test 24) fn_crea_auth_user: solo le maiuscole diverse -> duplicata
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$SELECT anagrafiche.fn_crea_auth_user(p_username := %L, p_email := %L, p_password_hash := 'x')$$,
         '_pgtap_email_dup_' || substring(md5(clock_timestamp()::text) from 1 for 8),
         lower((SELECT email FROM _em)))),
@@ -163,7 +151,7 @@ BEGIN
 END $dup$;
 
 SELECT CASE WHEN NOT (SELECT indice_atteso FROM _ramo) THEN
-    is(pg_temp.codice_errore(format(
+    is(dbops.fn_pgtap_codice_errore(format(
            $$SELECT script.fn_get_auth_user_id_for_email(%L)$$,
            (SELECT email FROM _em))),
        'E_CREDENZIALE_EMAIL_AMBIGUA',

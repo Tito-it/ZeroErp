@@ -45,16 +45,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(16);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -64,17 +54,6 @@ BEGIN
     RETURN NULL;
 EXCEPTION WHEN SQLSTATE 'P0001' THEN
     GET STACKED DIAGNOSTICS v_c = COLUMN_NAME;
-    RETURN v_c;
-END $$;
-
-CREATE OR REPLACE FUNCTION pg_temp.vincolo_violato(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN unique_violation THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
     RETURN v_c;
 END $$;
 
@@ -203,7 +182,7 @@ SELECT ok(
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(
         (SELECT s_contatto FROM t_s), '{"stato_fornitore_id": 2}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '12. lo stato fra i campi: E_CAMPO_NON_AMMESSO');
@@ -215,18 +194,18 @@ SELECT is(
     '13. ... col campo stato_fornitore_id sul canale COLUMN');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(NULL)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(NULL)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '14. soggetto NULL: E_SCRIPT_CHIAMATA_NON_VALIDA');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore(
         (SELECT s_contatto FROM t_s), '{}'::jsonb, '{"nominativo": "Senza tipo"}'::jsonb)$$),
     'E_CONTATTO_INCOMPLETO',
     '15. contatto incompleto: E_CONTATTO_INCOMPLETO, la regola del BB');
 
 SELECT is(
-    pg_temp.vincolo_violato($$SELECT * FROM anagrafiche.fn_crea_fornitore((SELECT s_ruolo FROM t_s))$$),
+    dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_crea_fornitore((SELECT s_ruolo FROM t_s))$$),
     'uq_fornitori_soggetto_ruolo_id',
     '16. un secondo fornitore sullo stesso soggetto: uq_fornitori_soggetto_ruolo_id');
 

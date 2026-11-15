@@ -64,23 +64,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(24);
 
--- Il codice di dominio di un errore, dal canale CONSTRAINT (P0001); per gli
--- altri, SQLSTATE e vincolo. 'PASSA' se non solleva.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    -- P0001 col codice nel canale CONSTRAINT: il codice. Senza codice (un
-    -- RAISE nudo, come quelli dell'helper di fixture): 'P0001'.
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- =========================================================
 -- Il mondo, gli articoli, il kit.
 --   S: articolo semplice.
@@ -259,14 +242,14 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', %s, 'NON_ESISTE')$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', %s, 'NON_ESISTE')$$,
                          pg_temp.doc('ORDINE_ANN'))),
     'P0001',
     '2) fn_pgtap_porta_a_stato: uno stato che il catalogo non ha e'' un''eccezione, non un ritorno muto'
 );
 
 SELECT is(
-    pg_temp.esito($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', 1, 'EMESSO')$$),
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_pgtap_porta_a_stato('vendite.ddt', 1, 'EMESSO')$$),
     'P0001',
     '3) fn_pgtap_porta_a_stato: un documento che non conosce e'' un''eccezione'
 );
@@ -275,21 +258,21 @@ SELECT is(
 -- 4-9) D-1: le righe d'ordine fuori bozza
 -- =========================================================
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET qta_operativa = 3 WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET qta_operativa = 3 WHERE id = %s',
                          pg_temp.riga('ORDINE'))),
     'E_RIGA_DOC_NON_BOZZA',
     '4) ordine CONFERMATO: la quantita'' di una riga semplice non cambia (prima passava: solo un kit la fermava)'
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 10 WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 10 WHERE id = %s',
                          pg_temp.riga('ORDINE'))),
-    'PASSA',
+    NULL,
     '5) ordine CONFERMATO: la data di consegna confermata cambia (eccezione dichiarata nel montaggio)'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.ordini_righe
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.ordini_righe
                               SET data_consegna_confermata = script.fn_data_operativa() + 11, descrizione = 'altra'
                             WHERE id = %s$$, pg_temp.riga('ORDINE'))),
     'E_RIGA_DOC_NON_BOZZA',
@@ -297,7 +280,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format($$INSERT INTO vendite.ordini_righe
+    dbops.fn_pgtap_codice_errore(format($$INSERT INTO vendite.ordini_righe
                               (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
                             VALUES (%s, 2, %L, 'nuova', 1, 1, 1, %s)$$,
                          pg_temp.doc('ORDINE'), pg_temp.art('S'), (SELECT iva_id FROM _k))),
@@ -306,7 +289,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format('DELETE FROM vendite.ordini_righe WHERE id = %s', pg_temp.riga('ORDINE'))),
+    dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ordini_righe WHERE id = %s', pg_temp.riga('ORDINE'))),
     'E_RIGA_DOC_NON_BOZZA',
     '8) ordine CONFERMATO: una riga non si toglie'
 );
@@ -314,8 +297,8 @@ SELECT is(
 SELECT is(
     dbops.fn_pgtap_porta_a_stato('vendite.ordini', pg_temp.doc('ORDINE_ANN'), 'ANNULLATO')
     || ' | ' ||
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 12 WHERE id = %s',
-                         pg_temp.riga('ORDINE_ANN'))),
+    COALESCE(dbops.fn_pgtap_codice_errore(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 12 WHERE id = %s',
+                         pg_temp.riga('ORDINE_ANN'))), 'PASSA'),
     'ANNULLATO | E_RIGA_DOC_NON_BOZZA',
     '9) ordine ANNULLATO: nemmeno la data cambia — l''eccezione vale solo negli stati da evadere'
 );
@@ -324,9 +307,9 @@ SELECT is(
 -- 10) In DRAFT la riga del preventivo si modifica (il controllo dei rifiuti)
 -- =========================================================
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.preventivi_righe SET qta_operativa = 3 WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE vendite.preventivi_righe SET qta_operativa = 3 WHERE id = %s',
                          pg_temp.riga('PREVENTIVO'))),
-    'PASSA',
+    NULL,
     '10) preventivo DRAFT: la riga si modifica (il controllo dei rifiuti 11-14)'
 );
 
@@ -341,14 +324,14 @@ END $emetti$;
 -- 11-14) D-1: le righe del preventivo fuori bozza
 -- =========================================================
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.preventivi_righe SET qta_operativa = 4 WHERE id = %s',
+    dbops.fn_pgtap_codice_errore(format('UPDATE vendite.preventivi_righe SET qta_operativa = 4 WHERE id = %s',
                          pg_temp.riga('PREVENTIVO'))),
     'E_RIGA_DOC_NON_BOZZA',
     '11) preventivo EMESSO: la quantita'' di una riga semplice non cambia'
 );
 
 SELECT is(
-    pg_temp.esito(format($$INSERT INTO vendite.preventivi_righe
+    dbops.fn_pgtap_codice_errore(format($$INSERT INTO vendite.preventivi_righe
                               (preventivo_id, articolo_id, quantita, qta_operativa, prezzo_unitario, iva_id, ordine)
                             VALUES (%s, %L, 1, 1, 1, %s, 9)$$,
                          pg_temp.doc('PREVENTIVO'), pg_temp.art('S'), (SELECT iva_id FROM _k))),
@@ -357,13 +340,13 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.riga('PREVENTIVO'))),
+    dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi_righe WHERE id = %s', pg_temp.riga('PREVENTIVO'))),
     'E_RIGA_DOC_NON_BOZZA',
     '13) preventivo EMESSO: una riga non si toglie'
 );
 
 SELECT is(
-    pg_temp.esito(format($$UPDATE vendite.preventivi_righe SET stato_approvazione_prezzo = 'APPROVED' WHERE id = %s$$,
+    dbops.fn_pgtap_codice_errore(format($$UPDATE vendite.preventivi_righe SET stato_approvazione_prezzo = 'APPROVED' WHERE id = %s$$,
                          pg_temp.riga('PREVENTIVO'))),
     'E_RIGA_DOC_NON_BOZZA',
     '14) preventivo EMESSO: nessuna eccezione per le marche di approvazione (l''esito arriva in bozza)'
@@ -403,7 +386,7 @@ CREATE TRIGGER trg_tmp_lock_a05_monco
     EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a');
 
 SELECT is(
-    pg_temp.esito('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
+    dbops.fn_pgtap_codice_errore('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
     'E_DOC_RIGHE_LOCK_MONTAGGIO',
     '16) colonne ammesse senza gli stati: errore di MONTAGGIO, non un lock a meta'''
 );
@@ -414,7 +397,7 @@ CREATE TRIGGER trg_tmp_lock_a05_refuso
     EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a,non_esiste', 'CONFERMATO');
 
 SELECT is(
-    pg_temp.esito('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
+    dbops.fn_pgtap_codice_errore('UPDATE _tmp_lock SET a = 1 WHERE id = 1'),
     'E_DOC_RIGHE_LOCK_MONTAGGIO',
     '17) una colonna ammessa che la riga non ha: errore di MONTAGGIO (l''eccezione non scatterebbe mai)'
 );
@@ -425,13 +408,13 @@ CREATE TRIGGER trg_tmp_lock_a05_riga
     EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE_VENDITA', 'riga_ordine_id', 'DRAFT', 'RIGA', 'a', 'CONFERMATO');
 
 SELECT is(
-    pg_temp.esito('UPDATE _tmp_lock SET a = 2 WHERE id = 1'),
-    'PASSA',
+    dbops.fn_pgtap_codice_errore('UPDATE _tmp_lock SET a = 2 WHERE id = 1'),
+    NULL,
     '18) livello RIGA con eccezione: la colonna ammessa cambia nello stato ammesso'
 );
 
 SELECT is(
-    pg_temp.esito('UPDATE _tmp_lock SET b = 2 WHERE id = 1'),
+    dbops.fn_pgtap_codice_errore('UPDATE _tmp_lock SET b = 2 WHERE id = 1'),
     'E_RIGA_DOC_NON_BOZZA',
     '19) livello RIGA con eccezione: un''altra colonna no'
 );

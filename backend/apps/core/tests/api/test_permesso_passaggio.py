@@ -25,6 +25,10 @@ Indice test eseguiti:
 12) test_emissione_assente                        — documento che non si emette: None
 13) test_emissione_esclusiva_con_stato_fisso      — due fonti dello stato: errore di cablaggio
 14) test_iniziale_dal_lettore_della_testata       — «riporta in bozza»: lo stato iniziale dal DB, mai 'DRAFT'
+15) test_parola_del_campo_letta_come_ruolo        — l'esito: la riga verso lo stato del vocabolario, non verso la parola
+16) test_parola_fuori_mappa                       — None, nessuna lettura (la rifiuta il service)
+17) test_stato_del_campo_esclusivo                — con `stato_del_modello` o `stato_chiesto`: errore di cablaggio
+18) test_ruolo_ignoto                             — un ruolo che il BB non sa leggere: errore di cablaggio
 """
 
 from unittest import TestCase
@@ -52,6 +56,10 @@ def _view(passaggio: PassaggioDocumento, corpo: object | None = None) -> MagicMo
 
 
 _CAMBIO = PassaggioDocumento(testata="vendite.ddt", documento_kwarg="documento_id")
+_ESITO = PassaggioDocumento(
+    testata="vendite.offerte_commerciali", documento_kwarg="documento_id", campo_stato="esito",
+    stato_del_campo={"ACCETTATA": "accettazione", "RIFIUTATA": "rifiuto"},
+)
 
 
 class PassaggioNellaCatenaTests(TestCase):
@@ -255,4 +263,46 @@ class PassaggioDocumentoTests(TestCase):
             PassaggioDocumento(
                 testata="vendite.ddt", documento_kwarg="documento_id",
                 stato_chiesto="EMESSO", stato_del_modello="emissione",
+            )
+
+    # L'esito dell'offerta (brief-db-stati-documento-dal-vocabolario §6.9): la
+    # parola del corpo nomina un ruolo, e la riga che si guarda e' quella verso
+    # lo stato che il vocabolario marca con quel ruolo. Lo stato ha un codice
+    # diverso dalla parola apposta: se il BB usasse la parola, il test
+    # vedrebbe `RIFIUTATA` nella chiamata.
+    @patch(_REPO, autospec=True)
+    def test_parola_del_campo_letta_come_ruolo(self, repo_cls) -> None:
+        esito = _ESITO
+        repo = repo_cls.return_value
+        repo.stato_di_rifiuto.return_value = StatoDocumento(id=4, codice="RESPINTA")
+        repo.azione_del_passaggio.return_value = "rifiuta_offerta"
+
+        self.assertEqual(esito.azione(_view(esito, {"esito": " RIFIUTATA "})), "rifiuta_offerta")
+        repo.stato_di_rifiuto.assert_called_once_with("vendite.offerte_commerciali")
+        repo.azione_del_passaggio.assert_called_once_with("vendite.offerte_commerciali", 42, "RESPINTA")
+        repo.stato_di_accettazione.assert_not_called()
+
+    @patch(_REPO, autospec=True)
+    def test_parola_fuori_mappa(self, repo_cls) -> None:
+        self.assertIsNone(_ESITO.azione(_view(_ESITO, {"esito": "FORSE"})))
+        repo_cls.return_value.azione_del_passaggio.assert_not_called()
+        repo_cls.return_value.stato_di_rifiuto.assert_not_called()
+
+    def test_stato_del_campo_esclusivo(self) -> None:
+        with self.subTest(altra="stato_del_modello"), self.assertRaises(ValueError):
+            PassaggioDocumento(
+                testata="vendite.offerte_commerciali", documento_kwarg="documento_id",
+                stato_del_campo={"RIFIUTATA": "rifiuto"}, stato_del_modello="emissione",
+            )
+        with self.subTest(altra="stato_chiesto"), self.assertRaises(ValueError):
+            PassaggioDocumento(
+                testata="vendite.offerte_commerciali", documento_kwarg="documento_id",
+                stato_del_campo={"RIFIUTATA": "rifiuto"}, stato_chiesto="EMESSA",
+            )
+
+    def test_ruolo_ignoto(self) -> None:
+        with self.assertRaises(ValueError):
+            PassaggioDocumento(
+                testata="vendite.offerte_commerciali", documento_kwarg="documento_id",
+                stato_del_campo={"SOSPESA": "sospensione"},  # type: ignore[dict-item]
             )

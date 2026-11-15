@@ -1,0 +1,56 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT AL PRESENTE DI chk_presidi_chi_agisce_se_allarma
+#   Brief: brief-db-revisione-dbops.md, giro 14 (correzione).
+#
+# ⛔ Perche' in 90_end e non in 20_code/dbops/20261111-18 insieme agli altri:
+#   il vincolo nasce in 90_end (20261006-07), dopo il mirror del CSV dei
+#   presidi. Su un database ricostruito da zero 20_code gira prima, e il
+#   COMMENT dentro il -18 falliva perche' il vincolo non c'era ancora.
+#   Qui gira dopo il -07, sia da zero sia sui database gia' migrati.
+#
+# Idempotente: un COMMENT riscrive il testo, e dove e' gia' quello non cambia
+# niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261111-66-update-comment-chk-presidi-chi-agisce-se-allarma-mctit.yaml
+
+  - changeSet:
+      id: 20261111-66-update-comment-chk-presidi-chi-agisce-se-allarma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT al presente (linee-guida-sql §5d) del vincolo chk_presidi_chi_agisce_se_allarma
+        di dbops.presidi, in 90_end perche' il vincolo nasce qui. Brief: brief-db-revisione-dbops,
+        giro 14.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.presidi'::regclass
+                 AND conname = 'chk_presidi_chi_agisce_se_allarma';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_presidi_chi_agisce_se_allarma ON dbops.presidi IS
+                'Un presidio che puo'' accendersi non nasce senza sapere a chi tocca spegnerlo: chi_agisce e'' obbligatoria su ogni natura tranne INVENTARIO, che non si accende. Sta in 90_end perche'' il valore lo scrive il mirror del CSV in 80_data.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_presidi_chi_agisce_se_allarma ON dbops.presidi IS
+                'Un presidio che puo'' accendersi non nasce senza sapere a chi tocca spegnerlo: chi_agisce e'' obbligatoria su ogni natura tranne INVENTARIO, che non si accende. Nato in 90_end perche'' il valore lo scrive il mirror del CSV in 80_data. Brief: brief-db-presidi-cosa-significa-cosa-fare §4.2.';

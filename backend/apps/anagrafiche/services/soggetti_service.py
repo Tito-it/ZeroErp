@@ -102,6 +102,12 @@ _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
+# Il corpo dei motivi del cambio di natura: la natura proposta (obbligatoria) e
+# i tre campi della riga che la check legge. Gli stessi nomi del PATCH.
+_MOTIVI_CAMBIO_NATURA_KEYS: frozenset[str] = frozenset({
+    "tipo_soggetto_dettaglio_id", "partita_iva", "cliente_pa", "split_payment",
+})
+
 
 # Scopo: UN indirizzo nella forma che le madri del DB ricevono
 #        (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`, e attraverso
@@ -216,7 +222,28 @@ class SoggettiService:
             soggetto_id,
         )
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
+        # Le nature proponibili in modifica, dalla regola del DB (K-3 di
+        # brief-db-cambio-natura-soggetto): tutte, le non ammesse col motivo.
+        soggetto["nature_proponibili"] = self._repo.nature_proponibili(soggetto_id)
+        soggetto.update(self._capability_elimina_dati_societari(soggetto_id))
         return soggetto
+
+    # Scopo: La terna dell'azione «Elimina i dati societari» (famiglia 1 di
+    #        api.md §Capability di riga): il flag, il codice del primo motivo,
+    #        la sua chiave i18n e i parametri con nome della frase.
+    # ⛔ Il backend TRASPORTA: il motivo e' quello della check che il verbo
+    #    solleva (`fn_check_elimina_dati_societari`), mai ricalcolato qui.
+    # ⚠️ Con niente da eliminare la check risponde `[]`: l'azione e' «ammessa»
+    #    e la sezione vuota la nasconde da se' (non c'e' niente su cui farla).
+    def _capability_elimina_dati_societari(self, soggetto_id: str) -> dict[str, Any]:
+        motivi = self._repo.check_elimina_dati_societari(soggetto_id)
+        primo = motivi[0] if motivi else None
+        return {
+            "can_elimina_dati_societari": primo is None,
+            "can_elimina_dati_societari_reason": primo.get("codice") if primo else None,
+            "can_elimina_dati_societari_reason_key": primo.get("reason_key") if primo else None,
+            "can_elimina_dati_societari_dettaglio": primo.get("dettaglio") if primo else None,
+        }
 
     # Scopo: Computa la lista dei campi non modificabili per il soggetto in
     #        edit, tutta dal DB: il BB `compute_non_editable_fields` con il
@@ -347,6 +374,57 @@ class SoggettiService:
                     default_message=_MSG_REA_DUPLICATA,
                 )
         return {"updated": True}
+
+    # Scopo: I motivi per cui il soggetto non passerebbe alla natura proposta,
+    #        TUTTI e in ordine (K-4 di brief-db-cambio-natura-soggetto). Il
+    #        rifiuto del PATCH porta solo il primo: l'elenco completo non
+    #        viaggia nell'eccezione del DB (sta nel contesto di
+    #        `dbops.error_log`), e il drawer lo chiede qui (decisione di Tid,
+    #        2026-11-15: endpoint dei motivi, come `magazzino/righe/motivi/`).
+    # ⭐ E' la STESSA check del guard (`fn_check_cambio_natura_soggetto`), coi
+    #    valori proposti: cio' che si mostra e cio' che si rifiuta non possono
+    #    divergere.
+    # ⚠️ P.IVA e flag si leggono per PRESENZA, come nel PATCH: chiave assente =
+    #    il valore salvato, perche' e' quello che il guard vedrebbe se il
+    #    salvataggio non lo tocca.
+    def motivi_cambio_natura(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_MOTIVI_CAMBIO_NATURA_KEYS,
+            message="Payload dei motivi del cambio di natura non valido.",
+        )
+        dati = self._normalizza_flag_fiscali(payload)
+        tipo_id = _V.require_positive_int(dati, "tipo_soggetto_dettaglio_id")
+        # ⛔ Una natura inesistente la check la lascia passare (`[]`: «parla la
+        #    FK» del PATCH). Qui non c'e' una FK che parli, e `[]` direbbe «il
+        #    cambio passa» per un id che non esiste: si rifiuta col campo.
+        ErrorManager.require(
+            self._repo.get_natura_by_tipo_id(tipo_id) is not None,
+            code=E_ANAG_VALIDAZIONE, message="Tipo soggetto non valido.",
+            context={"field": "tipo_soggetto_dettaglio_id", "tipo_soggetto_dettaglio_id": tipo_id},
+        )
+        salvato = require_found(self._repo.get_soggetto(soggetto_id), "Soggetto non trovato.")
+        proposto = {
+            k: (dati[k] if k in dati else salvato.get(k))
+            for k in ("partita_iva", "cliente_pa", "split_payment")
+        }
+        motivi = self._repo.check_cambio_natura(
+            soggetto_id, tipo_soggetto_dettaglio_id=tipo_id, **proposto,
+        )
+        return {"motivi": motivi}
+
+    # Scopo: Elimina a mano i dati societari del soggetto (D-7 di
+    #        brief-db-cambio-natura-soggetto): la strada per una ditta che
+    #        diventa privato, separata dal cambio di natura. Il verbo del DB
+    #        rifiuta se la natura attuale li richiede
+    #        (`E_DATI_SOCIETARI_NON_ELIMINABILI`, 409).
+    #        Risultato: `{"eliminati": bool}`, falso = non c'era niente.
+    def elimina_dati_societari(self, soggetto_id: str) -> dict[str, Any]:
+        from django.db import transaction
+
+        self._require_soggetto_exists(soggetto_id)
+        with transaction.atomic():
+            eliminati = self._repo.elimina_dati_societari(soggetto_id)
+        return {"eliminati": eliminati}
 
     # Scopo: Valida la sezione `dati_societari` della PATCH e della creazione
     #        (contratto: un oggetto con le sole chiavi del verbo) e ne
@@ -537,6 +615,84 @@ class SoggettiService:
     def get_soggetto_indirizzi(self, soggetto_id: str) -> list[dict[str, Any]]:
         self._require_soggetto_exists(soggetto_id)
         return self._repo.get_soggetto_indirizzi(soggetto_id)
+
+    # Scopo: Il picker dei tipi di indirizzo del soggetto salvato
+    #        («Aggiungi», e i tipi in cui copiare un indirizzo): ogni tipo, con
+    #        `obbligatorio`, `ammesso` e il motivo di chi non lo e' (il tipo che
+    #        il soggetto ha gia', quello che la natura non prevede). La lettura
+    #        e' il BB `LookupRepository.list_tipi_indirizzo_proponibili` (R-2 di
+    #        brief-db-copia-indirizzo-soggetto).
+    def get_tipi_indirizzo_proponibili_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
+        from apps.core.db.lookup_repository import LookupRepository
+
+        self._require_soggetto_exists(soggetto_id)
+        return LookupRepository().list_tipi_indirizzo_proponibili("soggetto", soggetto_id)
+
+    # Scopo: Il picker dei tipi di indirizzo del ruolo salvato, sul ruolo
+    #        (`istanza_utility_id` None) o su una sua istanza: la chiave
+    #        (ruolo, istanza) e' quella su cui la madre di creazione giudica il
+    #        tipo gia' presente. Ruolo inesistente = 404.
+    def get_tipi_indirizzo_proponibili_ruolo(
+        self, soggetto_ruolo_id: int, istanza_utility_id: int | None,
+    ) -> list[dict[str, Any]]:
+        from django.db import connection
+
+        from apps.anagrafiche.db._helpers import resolve_soggetto_id
+        from apps.core.db.lookup_repository import LookupRepository
+
+        with connection.cursor() as cursor:
+            resolve_soggetto_id(cursor, soggetto_ruolo_id)
+        return LookupRepository().list_tipi_indirizzo_proponibili(
+            "ruolo", soggetto_ruolo_id, istanza_utility_id,
+        )
+
+    # Scopo: «Copia come…» (R-1 di brief-db-copia-indirizzo-soggetto): un
+    #        indirizzo del soggetto copiato in altri tipi dal verbo del DB, che
+    #        verifica sorgente, tipi e permesso di scrittura della riga.
+    #        Ritorna gli id delle righe nuove, nell'ordine dei tipi.
+    def copia_indirizzo_soggetto(
+        self, soggetto_id: str, indirizzo_soggetto_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        from django.db import transaction
+
+        tipi = self._tipi_da_copiare(payload)
+        self._require_soggetto_exists(soggetto_id)
+        with transaction.atomic():
+            ids = self._repo.copia_indirizzo_soggetto(soggetto_id, indirizzo_soggetto_id, tipi)
+        return {"ids": ids}
+
+    # Scopo: Il gemello sul ruolo: la copia resta nel ruolo e nell'istanza
+    #        della sorgente. La copia fra layer non e' di questo verbo.
+    def copia_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        from django.db import transaction
+
+        tipi = self._tipi_da_copiare(payload)
+        with transaction.atomic():
+            ids = self._repo.copia_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, tipi)
+        return {"ids": ids}
+
+    # Scopo: Il corpo della copia, uguale sui due layer: solo
+    #        `tipi_indirizzo_codice_interno`, una lista non vuota di codici.
+    #        Un corpo sbagliato e' un 400 sul campo; a DB arriverebbe come
+    #        `E_SCRIPT_CHIAMATA_NON_VALIDA`, un errore tecnico.
+    # ⚠️ Solo la FORMA: un tipo inesistente, ripetuto, gia' presente o non
+    #    ammesso lo dice il verbo, col suo codice.
+    @staticmethod
+    def _tipi_da_copiare(payload: dict[str, Any]) -> list[str]:
+        campo = "tipi_indirizzo_codice_interno"
+        _V.validate_allowed_keys(payload, allowed=frozenset({campo}))
+        tipi = payload.get(campo)
+        ErrorManager.require(
+            isinstance(tipi, list) and len(tipi) > 0
+            and all(isinstance(t, str) and t.strip() for t in tipi),
+            code=E_ANAG_VALIDAZIONE,
+            message="Indicare almeno un tipo di indirizzo in cui copiare.",
+            context={"field": campo},
+        )
+        assert isinstance(tipi, list)
+        return [t.strip() for t in tipi]
 
     # Scopo: Crea indirizzo soggetto con validazione tipo.
     def create_indirizzo_soggetto(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -997,6 +1153,9 @@ class SoggettiService:
     #    §6.11): la firma posizionale non aveva la forma estera, e il backend
     #    risolveva da se' la via. Ora un oggetto, la stessa grammatica della
     #    gemella del ruolo.
+    # ⚠️ Il tipo gia' presente lo rifiuta la madre prima di scrivere
+    #    (`E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE`); `create_with_dedup` resta
+    #    per FK, CHECK e la corsa fra due scritture (R-6, 2026-11-15).
     def _create_indirizzo(self, soggetto_id: str, payload: dict[str, Any]) -> int:
         indirizzo = indirizzo_singolo_per_madre(payload)
         return create_with_dedup(
@@ -1036,8 +1195,12 @@ class SoggettiService:
     #        `anagrafiche.fn_crea_indirizzo_ruolo`: la stessa grammatica e gli
     #        stessi pre-check dell'indirizzo di soggetto
     #        (`indirizzo_singolo_per_madre`).
-    #        Un tipo gia' presente sul ruolo (o sull'istanza) lo rifiuta il
-    #        vincolo. Ritorna la riga scritta.
+    #        Un tipo gia' presente sul ruolo (o sull'istanza) lo rifiuta la
+    #        madre prima di scrivere (`E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`,
+    #        P0001 tradotto dal middleware). Ritorna la riga scritta.
+    # ⚠️ `create_with_dedup` resta: traduce FK e CHECK violati dentro la madre
+    #    (400, non 500), e il 23505 della sola corsa fra due scritture dello
+    #    stesso tipo (brief-db-copia-indirizzo-soggetto R-6, 2026-11-15).
     # ⭐ Dal 2026-10-19 (R-DB-16b): fino ad allora la view risolveva tipo e via
     #    e il repository scriveva la riga con una INSERT sua.
     def create_indirizzo_ruolo(

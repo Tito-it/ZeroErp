@@ -1,0 +1,121 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_ordine_evadibile(p_ordine_id)
+#   «Da quest'ordine si genera una bolla di evasione? E se no, perche'?»
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.17, giro 6b-bis
+#   (D-EVAD (a), Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La regola «l'ordine si evade dallo stato di emissione e da
+#   PARZIALMENTE_EVASO» stava in vendite.fn_genera_ddt_da_ordine, e una seconda
+#   copia nel frontend (STATI_ORDINE_EVADIBILI, CONFERMATO e PARZIALMENTE_EVASO
+#   col codice), che accende «Genera bolla» nel drawer. La capability
+#   dell'ordine non aveva una chiave da leggere al suo posto: con la marca
+#   emissione spostata il pulsante restava sui codici e il DB rifiutava.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   La regola esce in una funzione pura, nella forma delle altre fn_check_*
+#   (un array di motivi, [] = lecito). La leggono la bolla (-23), che solleva
+#   il primo motivo, e la capability (-24), che espone can_genera_ddt con
+#   reason e reason_key: una regola, due superfici.
+#   Un motivo: E_DDT_ORDINE_STATO_NON_EVADIBILE (CONFLITTO_STATO, gia' a
+#   catalogo), reason ORDINE_NON_EVADIBILE, reason_key
+#   vendite.ordini.genera_ddt_reason.stato_non_evadibile (chiave i18n nuova:
+#   un debito verso il frontend). valori: il numero dell'ordine e il codice
+#   dello stato, i due %s della frase; dettaglio {stato}, che l'helper fonde
+#   nel contesto.
+#   Lo stato di emissione e' un significato e si legge dalla colonna;
+#   PARZIALMENTE_EVASO e' la destinazione del processo e resta col codice (S-3).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, STABLE, INVOKER, nessun SET, come le fn_check_ordine_*
+#   (pg_proc su dbdev, 2026-11-14). EXECUTE: il default a PUBLIC, come le
+#   sorelle; zeroerp_app esplicito, come le sorelle. Ordine assente: [] (decide
+#   il chiamante, come fn_check_ordine_annullabile).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261114-22-create-fn-check-ordine-evadibile-mctit.yaml
+
+  - changeSet:
+      id: 20261114-22-create-fn-check-ordine-evadibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO script.fn_check_ordine_evadibile: i motivi per cui dall'ordine non si genera una bolla di
+        evasione (lo stato di emissione del vocabolario e PARZIALMENTE_EVASO la ammettono). Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 6b-bis (D-EVAD).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ordine_evadibile(
+                  p_ordine_id vendite.ordini.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi per cui da un ordine non si genera una
+              --   bolla di evasione. Funzione PURA (fn_check_*): [] = lecito.
+              --   Consumatori: vendite.fn_genera_ddt_da_ordine (solleva il primo) e
+              --   script.fn_available_actions_ordine (can_genera_ddt).
+              --   Brief: brief-db-stati-documento-dal-vocabolario §6.17 (D-EVAD).
+              DECLARE
+                -- L'elenco dei motivi: nessuna colonna di cui sia il riflesso.
+                v_motivi    jsonb := '[]'::jsonb;
+                v_numero    vendite.ordini.numero%TYPE;
+                v_stato     config.stati_doc_ordini.codice_interno%TYPE;
+                v_emissione config.stati_doc_ordini.emissione%TYPE;
+              BEGIN
+                IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script', 'fn_check_ordine_evadibile', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'ordine_id', 'valore', p_ordine_id),
+                    NULL::uuid, 'ordine_id obbligatorio (>0)');
+                END IF;
+
+                SELECT o.numero, s.codice_interno, s.emissione
+                  INTO v_numero, v_stato, v_emissione
+                  FROM vendite.ordini o
+                  JOIN config.stati_doc_ordini s ON s.id = o.stato_doc_ordine_id
+                 WHERE o.id = p_ordine_id;
+
+                IF NOT FOUND THEN
+                  RETURN v_motivi;   -- ordine inesistente: decide il chiamante
+                END IF;
+
+                -- L'ordine si evade dallo stato di emissione (la colonna del
+                -- vocabolario) e da PARZIALMENTE_EVASO, la destinazione del processo
+                -- che si nomina col codice, come la nomina la matrice.
+                IF NOT (v_emissione OR v_stato = 'PARZIALMENTE_EVASO') THEN
+                  v_motivi := v_motivi || jsonb_build_object(
+                    'codice',     'E_DDT_ORDINE_STATO_NON_EVADIBILE',
+                    'reason',     'ORDINE_NON_EVADIBILE',
+                    'reason_key', 'vendite.ordini.genera_ddt_reason.stato_non_evadibile',
+                    'dettaglio',  jsonb_build_object('stato', v_stato),
+                    'valori',     jsonb_build_array(COALESCE(v_numero, p_ordine_id::text), v_stato));
+                END IF;
+
+                RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ordine_evadibile(vendite.ordini.id%TYPE)
+              IS 'Pure check: i motivi per cui da un ordine non si genera una bolla di evasione; [] = lecito, e [] anche per un ordine assente (decide il chiamante). L''ordine si evade dallo stato di emissione (la colonna emissione di config.stati_doc_ordini) e da PARZIALMENTE_EVASO, la destinazione del processo, che si nomina col codice; negli altri stati E_DDT_ORDINE_STATO_NON_EVADIBILE, reason ORDINE_NON_EVADIBILE, reason_key vendite.ordini.genera_ddt_reason.stato_non_evadibile, valori il numero dell''ordine e il codice dello stato, dettaglio {stato}. Sede unica della regola: la leggono vendite.fn_genera_ddt_da_ordine, che solleva il primo motivo, e script.fn_available_actions_ordine, che ne fa can_genera_ddt. Parametro non valido: E_PARAMETRO_INVALIDO.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_check_ordine_evadibile(vendite.ordini.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ordine_evadibile(bigint);

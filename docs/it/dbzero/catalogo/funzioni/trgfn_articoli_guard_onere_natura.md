@@ -21,11 +21,16 @@ DECLARE
     -- Il nome di una colonna di catalogo.articoli: nessuna colonna
     -- ne e' il riflesso (come in trgfn_articoli_guard_struttura_se_usato).
     v_campo         text;
+    v_causale       config.causali_onere.descrizione%TYPE;
+    v_altro         catalogo.articoli.codice%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
     --   Un articolo-onere (causale_onere_id valorizzato) e' un
     --   addebito, non un bene:
+    --   0. la sua causale non e' gia' di un altro articolo (il
+    --      legame e' 1:1, uq_articoli_causale_onere: l'indice resta
+    --      la rete per due scritture concorrenti);
     --   1. la sua natura non e' merce (script.fn_natura_e_merce);
     --   2. non e' gestito a magazzino, non e' composito, non e' a
     --      lotti ne' a matricola.
@@ -46,6 +51,37 @@ BEGIN
        AND NEW.requires_lotto      IS NOT DISTINCT FROM OLD.requires_lotto
        AND NEW.requires_serial     IS NOT DISTINCT FROM OLD.requires_serial THEN
         RETURN NEW;
+    END IF;
+
+    -- 0. La causale gia' data a un altro articolo. Si giudica solo
+    --    quando la causale e' scritta (INSERT) o cambia: le altre
+    --    righe si leggono per causale, mai la riga che cambia.
+    IF TG_OP = 'INSERT'
+       OR NEW.causale_onere_id IS DISTINCT FROM OLD.causale_onere_id THEN
+        SELECT a.codice
+          INTO v_altro
+          FROM catalogo.articoli a
+         WHERE a.causale_onere_id = NEW.causale_onere_id
+           AND a.id <> NEW.id
+         LIMIT 1;
+
+        IF FOUND THEN
+            SELECT COALESCE(co.descrizione, co.codice)
+              INTO v_causale
+              FROM config.causali_onere co
+             WHERE co.id = NEW.causale_onere_id;
+
+            PERFORM script.fn_log_and_raise_error(
+                'catalogo', TG_NAME::text, 'E_ARTICOLO_CAUSALE_ONERE_GIA_USATA',
+                jsonb_build_object(
+                    'campo',            'causale_onere_id',
+                    'articolo_id',      NEW.id,
+                    'causale_onere_id', NEW.causale_onere_id),
+                NEW.tx_id,
+                NEW.codice,
+                v_causale,
+                v_altro);
+        END IF;
     END IF;
 
     -- 1. La natura. Natura assente: il BB da' NULL, parla la FK.
@@ -93,7 +129,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_guard_onere_natura()
-IS 'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 1. La sua natura non e'' merce (script.fn_natura_e_merce, la destinazione ORDINE_VENDITA dal vocabolario config.nature_vendita) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id: un onere creato senza dire la natura prenderebbe il DEFAULT, la merce. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica (catalogo.fn_articolo_flag_etichetta); nessuna porta amministratore. Cosi'' magazzino, prelievi, scarico e distinta restano a posto per costruzione anche con gli oneri sulle righe di ordine e bolla. La 1 parla prima della 2. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica.';
+IS 'Guard BEFORE INSERT OR UPDATE OF natura_vendita_id, causale_onere_id, gestito_a_magazzino, is_composito, requires_lotto, requires_serial su catalogo.articoli: un articolo-onere (causale_onere_id valorizzato) e'' un addebito, non un bene. 0. La sua causale non e'' gia'' di un altro articolo (il legame e'' 1:1) -> E_ARTICOLO_CAUSALE_ONERE_GIA_USATA, campo causale_onere_id, valori codice dell''articolo, causale e codice dell''articolo che la porta; giudicata solo quando la causale e'' scritta o cambia, e l''indice uq_articoli_causale_onere resta la rete per due scritture concorrenti. 1. La sua natura non e'' merce (script.fn_natura_e_merce, la destinazione ORDINE_VENDITA dal vocabolario config.nature_vendita) -> E_ARTICOLO_ONERE_NATURA_MERCE, campo natura_vendita_id: un onere creato senza dire la natura prenderebbe il DEFAULT, la merce. 2. Non e'' gestito a magazzino, non e'' composito, non e'' a lotti ne'' a matricola -> E_ARTICOLO_ONERE_STRUTTURA, campo = la prima colonna in quest''ordine, valori codice dell''articolo e nome leggibile della caratteristica (catalogo.fn_articolo_flag_etichetta); nessuna porta amministratore. Cosi'' magazzino, prelievi, scarico e distinta restano a posto per costruzione anche con gli oneri sulle righe di ordine e bolla. Parlano in quest''ordine: 0, 1, 2. Un UPDATE che non cambia nessuna delle sei colonne non rigiudica.';
 ```
 
 </div>

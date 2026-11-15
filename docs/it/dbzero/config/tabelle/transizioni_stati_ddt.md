@@ -44,6 +44,8 @@
 | trg_transizioni_stati_ddt_a10_stati_doc_ddt_require_atti_6babf9 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ddt', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_ddt_a10_stati_doc_ddt_require_atti_80e7d6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ddt', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_ddt_a10_stati_doc_ddt_require_atti_80e7d6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ddt', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_ddt_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt')` |
+| trg_transizioni_stati_ddt_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt')` |
 | trg_transizioni_stati_ddt_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_transizioni_stati_ddt_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

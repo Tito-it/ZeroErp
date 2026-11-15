@@ -1,12 +1,13 @@
 # Migliorie generali da test valutazione — archivio
 
-> **Ultima revisione: 2026-11-01.** Archivio della valutazione dello strato DB aperta il 2026-09-08.
+> **Ultima revisione: 2026-11-14.** Archivio della valutazione dello strato DB aperta il 2026-09-08.
 > Il documento vivo — chi riparte, difetti aperti, scorecard, checklist — è
 > [migliorie-generali-da-test-valutazione.md](../work-in-progress/migliorie-generali-da-test-valutazione.md).
 > Qui, con la numerazione originale: i riallineamenti della testata fino al 2026-10-27, la
 > valutazione di febbraio (§1), ciò che è nato in sette mesi (§2), la valutazione del design del
 > 2026-10-04 (§2-bis), le voci chiuse di §3 (D32), la checklist delle voci chiuse (§6) e le
-> attività svolte (§7). Spostato dal documento vivo il 2026-10-27, senza riscrivere il contenuto:
+> attività svolte (§7). Il 2026-11-14 sono entrate in §6 e §7 D6-bis, D16 e D24, chiuse il
+> 2026-11-03, col testo che avevano nel documento vivo. Spostato dal documento vivo il 2026-10-27, senza riscrivere il contenuto:
 > i numeri dentro sono fatti datati.
 
 ## Testata storica (riallineamenti e correzioni fino al 2026-10-27)
@@ -705,6 +706,15 @@ il brief d'origine è archiviato in `work-done/` (V-3 di Tid, §8.11).
       `work-done/brief-db-zeroerp-log-nella-fase-ruoli` — aperto e chiuso il 2026-10-15.
 * [x] **D36** — il perimetro una volta per istruzione, le famiglie che restano: brief
       `work-done/brief-db-perimetro-una-volta-famiglie-residue` — aperto il 2026-10-18, chiuso il 2026-10-21.
+* [x] **D6-bis** — una forma di `search_path` per le DEFINER: `20261103-04` e `-05` (20 DEFINER
+      con `pg_temp` in coda), i rubinetti 4-5 di `test-security-definer-search-path-v1` diventati
+      divieti — chiusa il 2026-11-03 (§7 D6-bis).
+* [x] **D16** — test con una data scritta a mano: censimento per regola (51 regole, due bombe
+      vere), `test-data-documento-v1` e `test-promo-articoli-v1` a date relative; guardrail statico
+      escluso (Tid) — chiusa il 2026-11-03 (§7 D16).
+* [x] **D24** — il presidio C2 e le policy leggono i codici negli argomenti dei trigger
+      (`20261103-01 … -03`); il BE ha tolto l'esenzione lo stesso giorno — chiusa il 2026-11-03
+      (§7 D24).
 
 ---
 
@@ -719,6 +729,234 @@ il brief d'origine è archiviato in `work-done/` (V-3 di Tid, §8.11).
 > Le date sono quelle dichiarate nei brief, e i brief restano la sede del
 > dettaglio: qui si dice **che cosa è cambiato nel sistema**, non come ci si è
 > arrivati.
+
+### ✅ D6-bis — Una forma di `search_path` per le `SECURITY DEFINER` — chiusa il 2026-11-03
+
+✅ I pin del `search_path` sulle tre DEFINER di `postgres` dal 12-09, e il
+registro degli owner con la sync **riservati al migratore** dal 26-09: §7 D6.
+Qui resta D6-bis.
+
+
+Le `SECURITY DEFINER` proprie sono **38**, e il `search_path` ha sei forme
+(2026-09-08, con i tre pin del 12-09):
+
+| Forma                                                  | Quante |
+| ------------------------------------------------------ | ------ |
+| `pg_catalog, public`                                   | 16     |
+| `pg_catalog, pg_temp`                                  | 8      |
+| `public, pg_temp`                                      | 5      |
+| `pg_catalog, pratiche, script, config, dbops, pg_temp` | 4      |
+| `pg_catalog, public, pg_temp` *(i pin del 12-09)*      | 3      |
+| `pg_catalog, anagrafiche, config, script`              | 2      |
+
+In **18 su 38** `pg_temp` non è elencato — e quando non è elencato PostgreSQL lo
+cerca **per primo** per le relazioni. In altre 5 `public` viene **prima** di
+`pg_catalog`, che è l'ordine opposto a quello prudente.
+
+✅ **Al 2026-10-23 i due rubinetti sono scesi**, per sanatorie fatte di passaggio da altri
+cantieri: senza `pg_temp` **16** (era 18: `script.fn_get_stato_testata_documento` il 05-10,
+`anagrafiche.fn_guard_albero_ba_gestore_globale` il 10-10), `public` prima di `pg_catalog` **4**
+(era 5: `maintenance.fn_job_run_log_failure`, `20261015-03` di `brief-db-ruoli-di-sistema`). Le soglie stanno in
+`db/pgtap/dbops/test-security-definer-search-path-v1.sql` (test 4 e 5) e possono solo calare. È
+il verso giusto — si sana quando un cantiere ci passa — ma senza un giro suo la voce resta aperta.
+
+✅ **Al 2026-11-03: il giro suo, applicato e verde.** Le DEFINER del progetto sono ora **139**
+(dbdev), tutte con il pin; quelle da sanare erano **20** — 16 senza `pg_temp` (14 `pg_catalog,
+public`, 2 `pg_catalog, anagrafiche, config, script`) e 4 con `public, pg_temp`.
+
+* `20261103-04` (`20_code`, 19 funzioni di `zeroerp_owner`) e `20261103-05`
+  (`script.fn_log_error_only`, che è di `postgres`: la proprietà si prende **in prestito** via
+  `dbops.fn_sync_functions_owner` e si restituisce, la forma di `20260807-19`; gira col migrate
+  normale): `pg_temp` **in coda**,
+  `pg_catalog` **in testa** dove mancava, gli altri schemi invariati. `ALTER FUNCTION schema.nome
+  SET search_path` senza firma (nomi unici): il corpo non si tocca e la firma non si deduce.
+* ⛔ **`public` non si è tolto**, anche se il censimento statico dei 19 corpi non trova nessuna
+  chiamata a qualcosa che sta solo in `public`: il path di una DEFINER lo ereditano le INVOKER che
+  chiama e i trigger che le sue scritture fanno scattare, e lì la cecità degrada in silenzio
+  (lezione del 12-09). Toglierlo resta possibile funzione per funzione, con la catena dei chiamati.
+* I rubinetti 4 e 5 di `test-security-definer-search-path-v1` diventano **divieti** che elencano i
+  colpevoli.
+
+Prova (dbdev, SQL estratto del `-04` + presidio, transazione annullata, come `zeroerp_owner`): test
+1-4 verdi, test 5 rosso **solo** su `script.fn_log_error_only` — è il `-05`, che serve un superuser e
+qui non è provato. ✅ Riscritto il `-05` (la prima stesura, in `context: provision`, è stata
+rifiutata dal migrate di Tid: «bisogna essere proprietari») e riprovato come `zeroerp_owner` in
+transazione annullata: test 1-5 verdi, proprietà tornata a `postgres` a fine changeSet.
+✅ **Chiusa il 2026-11-03**: `-04` e `-05` applicati su dbdev, `test-security-definer-search-path-v1`
+verde (corsa di Tid). I due rubinetti sono divieti. Resta, come possibilità e non come debito,
+togliere `public` funzione per funzione guardando la catena dei chiamati.
+
+⛔ **Una forma canonica uguale per tutte non esiste** (lezione del 12-09, §7 D6).
+`pg_catalog, pg_temp` **accieca** chi chiama un'estensione non qualificata —
+`dblink`, `unaccent`, `postgis`, `plpgsql_check` stanno tutte in `public` — e
+dentro un `EXCEPTION WHEN OTHERS` la cecità non fa un rosso: degrada in
+silenzio. Quindi si decide **per funzione**, guardando i suoi chiamati: o si
+qualifica la chiamata, o `public` resta nell'elenco. ⭐ La forma giusta quando
+`public` serve davvero è quella di `dbops.fn_check_funzioni_riferimenti_morti`:
+pinna `pg_catalog, public, pg_temp` **e** qualifica la chiamata (changeSet
+`20260912-37`). ⚠️ Vale anche per `fn_get_or_create_session_tx_id`: se un giorno
+il suo pin si stringesse, **prima** `public.dblink(...)` nel corpo, poi il pin.
+
+### ✅ D16 — Test con una data scritta a mano — chiusa il 2026-11-03
+
+> Emerso il 2026-09-23: `vendite/test-nc-rata-unica-v1.sql`, test 6, rosso senza
+> che fosse cambiato il codice.
+
+Il test creava la nota di credito con `DATE '2026-09-10'` e poi le assegnava il
+numero. La numerazione applica la **finestra di emissione** del registro: un
+documento non può essere datato più indietro di N giorni. Quando il test è stato
+scritto (17-18 settembre) il 10-09 era dentro la finestra. Il 23-09 la prima data
+ammessa era l'11-09, e il test è morto con «la data del documento è troppo
+vecchia perché sia ancora emettibile».
+
+⛔ **Non è un caso isolato, è una classe.** Ogni volta che il database applica una
+regola che dipende da **oggi** (finestra di emissione, scadenze, congelamenti,
+competenze chiuse), un test che scrive a mano una data è una bomba a tempo:
+verde il giorno in cui nasce, rosso qualche settimana dopo, senza che nessuno
+abbia toccato niente. E il rosso arriva sempre nel momento peggiore, mentre si
+sta lavorando ad altro, e sembra una regressione.
+
+**La regola:** in un test, una data che passa da una regola temporale si scrive
+**relativa a oggi** (`current_date`, `current_date - 5`, il primo del mese
+corrente…), mai come letterale. Le date assolute vanno bene solo quando la regola
+non guarda il calendario (per esempio una competenza passata a una funzione pura).
+
+**Sanato:** il test 6 (fixture a `current_date`, e l'atteso del test 3 calcolato
+dalla stessa data), con un commento sul perché.
+
+**Che cosa resta:**
+
+* ⏳ **Censimento.** Oggi nei pgTAP ci sono decine di date scritte a mano. Quasi
+  tutte sono competenze, attività, ordini o preventivi, e non passano dalla
+  finestra di emissione (se ci passassero, sarebbero già rosse). Il censimento
+  vero va fatto per **regola temporale** — quali regole del DB leggono
+  `current_date` — e poi per test che le attraversano, non per ricerca testuale
+  delle date.
+* 💡 **Presidio possibile**: un guardrail statico come
+  `scripts/guardrail_pgtap_preambolo.py`, che segnali un letterale `DATE '…'`
+  nella colonna `data` di un documento fiscale che il test poi numera. Da
+  valutare dopo il censimento: senza sapere quali regole sono temporali, il
+  presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
+
+⏸️ Al 2026-10-23: nessun avanzamento, il censimento non è partito.
+
+✅ **Al 2026-11-03: il censimento, fatto per regola** (dbdev, catalogo; i pgTAP letti come testo).
+
+* **Le regole che leggono «oggi».** «Oggi» è `script.fn_data_operativa()` (il giorno nel fuso
+  dell'azienda), non `current_date`. Le funzioni che lo leggono e sollevano errori sono 51, in
+  tre famiglie: **(A)** rifiuti che confrontano una data con oggi — la finestra di emissione
+  (`vendite.fn_get_pavimento_emissione`, oggi meno N giorni, letta dalla numerazione e da
+  `fn_imposta_data_documento_lotto`), preventivo accettabile/emettibile (`validita_al`), il
+  passaggio a `CESSATO` di un contratto e la chiusura di una versione di listino (`valido_al`),
+  il padre obsoleto (`obsoleto_dal`), l'ultimo super admin (`valido_dal`), la promo che si crea
+  solo nel futuro (`valido_dal`), e le validità a intervallo (matrici degli indirizzi, BoM, UoM,
+  esclusioni articolo, utility); **(B)** i lavori «scaduti» (`fn_cessa_contratti_scaduti`,
+  `fn_chiudi_preventivi_scaduti`, `fn_chiudi_versioni_listino_scadute`,
+  `fn_apply_chiusura_scadenze`); **(C)** default «data = oggi», che non rifiutano niente.
+* **I pgTAP che le attraversano con una data scritta a mano.** 132 file portano date fra il
+  2025 e il 2079 (le 2080+ sono il pattern immune). Incrociati istruzione per istruzione con le
+  colonne delle regole A e B, e letti uno per uno i candidati, le bombe vere sono **due**:
+  1. ✅ `vendite/test-data-documento-v1` (test 10, 11, 13): date future `2027-…` passate alla
+     madre che guarda il pavimento — sarebbero diventate troppo vecchie a metà 2027. Portate a
+     `fn_data_operativa() + 60/90/120/150` (distinte: il test 12 vuole un cambio), l'`anno` del
+     numero derivato dalla data. ✅ Verde.
+  2. ✅ `vendite/test-promo-articoli-v1`: il guard crea una promo solo con `valido_dal` dopo
+     oggi, e il file creava promo nel 2030-2032 → rosso dal 2030-01-01. Deciso da Tid il
+     2026-11-03: date relative (non anni 2080+, che rimandano soltanto). Tutte da UNA base, il
+     primo del mese fra un anno; l'atteso del test 9 calcolato dalla stessa base. ✅ Verde.
+  ⛔ **Guardrail statico: no** (2026-11-03). Un controllo che legge il testo non sa se una data
+  arriva a una regola che guarda oggi: su 132 file con date ne avrebbe segnalati quasi tutti, e
+  non avrebbe visto quelle che passano da un builder. Se servirà una prova completa, la forma è
+  la macchina del tempo (la suite con `fn_data_operativa()` a una data futura), non una regex.
+  ⭐ Non sono bombe, letti: i titoli IVA (la regola prende la data come PARAMETRO, D14), le
+  versioni dei template (nessun lettore di oggi), i contratti in bozza con `valido_al` vicino (il
+  guard guarda `valido_al` solo sul passaggio a `CESSATO`), le date passate dei file che numerano
+  (≥ 62 giorni e verdi: non passano dalla finestra, e il tempo non le peggiora).
+* ⚠️ **Limite dichiarato.** Il censimento legge il testo: una data che arriva alla regola
+  attraverso un builder o una variabile non si vede, e «oggi» non si può spostare —
+  `fn_data_operativa()` legge `now()` e non ha un'impostazione di prova. Una macchina del tempo
+  (la suite con la funzione ridefinita a una data futura, in transazione) sarebbe la prova
+  completa: è una proposta, non fatta.
+
+### ✅ D24 — Il presidio C2 e le policy vedono i codici negli argomenti dei trigger — chiusa il 2026-11-03
+
+Trovato il 2026-10-10 chiudendo il lato BE di D22 (§9.2 di
+[brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md)). Il presidio
+C2 (`backend/apps/core/tests/test_ui_action_e_canale_campi.py`, «una promessa
+`highlight_form_fields` ha un sito che manda il campo») legge i siti PL/pgSQL da
+`dbops.vw_punti_canale_campo`, che trova il codice nel **corpo** della funzione. Un building block
+trigger lo riceve invece da `TG_ARGV` (`pg_trigger.tgargs`), e il `'campo'` lo mette nel contesto
+per conto suo: per la vista quel sito non esiste.
+
+* **Il caso che l'ha mostrato:** `E_DOC_EMITTENTE_BA_INCOERENTE` (BB
+  `script.trgfn_doc_guard_emittente_ba`, sei tabelle) promette il campo, e il campo arriva — provato
+  con una chiamata vera il 2026-10-10 su ordine, preventivo e contratto, `fields =
+  ('emittente_fiscale_id',)` — ma il verso 1 era rosso con «nessun sito». Lato BE è una riga in
+  `_ESENZIONI[("E_DOC_EMITTENTE_BA_INCOERENTE", 1)]`, motivata come esenzione della **misura**, non
+  della regola.
+* **Perché è un difetto della forma, non di un codice:** la stessa cecità vale per ogni BB che
+  prende il codice dagli argomenti. Un override `highlight_form_fields` su uno qualunque di quei
+  codici sarebbe rosso allo stesso modo, e un codice di quella forma che **non** manda il campo
+  passerebbe inosservato dal verso 2. Fatto datato (dbdev, 2026-10-10): otto funzioni ricevono un
+  codice `E_*` da `tgargs` (`trgfn_lock_columns`, `trgfn_doc_testata_lock_fuori_bozza`,
+  `trgfn_doc_righe_lock_fuori_bozza`, `trgfn_doc_guard_emittente_ba`,
+  `trgfn_doc_guard_chiusura_sorgente`, `trgfn_doc_ritira_commessa_attivita`,
+  `trgfn_fattura_satellite_guard_congelamento`, `trgfn_guard_fatturazione_immediata_immutabile`);
+  dei 24 codici così passati la vista ne vede due, `E_CODICE_NON_MODIFICABILE` ed
+  `E_COLONNA_NON_MODIFICABILE`, probabilmente perché nominati anche altrove.
+* **Richiesta al team DB:** insegnare alla vista la forma «BB trigger col codice negli argomenti» —
+  per ogni trigger che esegue una funzione con un codice `E_*` fra i `tgargs`, un sito per quel
+  codice, col canale campo della funzione (anche quando il `'campo'` dipende da una condizione,
+  come la classe del codice in `trgfn_doc_guard_emittente_ba`).
+* **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
+  di ritiro del presidio) e il BE la toglie.
+
+⏸️ Al 2026-10-23: aperta. La vista non legge ancora `tgargs` (doc auto-generata) e l'esenzione è
+ancora in `test_ui_action_e_canale_campi.py`. Ogni BB trigger nuovo col codice negli argomenti
+allarga la cecità senza fare rumore.
+
+⚠️ **La stessa cecità tocca il cancello delle policy** (verificato il 2026-10-27 su dbdev,
+correggendo D11). `test_error_codes_db_policy_guardrail` legge `vw_codici_errore_da_dichiarare`,
+che cerca i letterali nel **corpo**: un codice che arriva solo da `tgargs` non c'è. Fatto datato:
+**30** codici `E_*` stanno solo negli argomenti di un trigger e la misura non li vede (la regex ne
+trova 32, ma `E_VENDITA` ed `E_EVASO` sono pezzi di `NATURE_VENDITA` e `PARZIALMENTE_EVASO`).
+Oggi **tutti e 30 hanno la loro policy**, quindi nessun buco. Ma un codice nuovo passato così a un
+BB trigger, senza policy, **non farebbe rosso il verso 1**: è l'unico punto in cui il registro a
+zero dei codici può essere ottimista. Insegnare `tgargs` alla misura chiude tutti e due i presidi,
+C2 e le policy, con lo stesso lavoro.
+
+✅ **Al 2026-11-03: chiusa lato DB** — applicata su dbdev e `test-punti-canale-campo-v1` verde
+(corsa di Tid). Resta solo la riga del BE qui sotto. Tre changeSet in `20_code/dbops`:
+
+* `20261103-01` — **`dbops.vw_codici_errore_argomenti_trigger`**, la sede unica della lettura
+  «i codici che un trigger passa alla sua funzione» (regola del 2: la usano tutti e due i
+  presidi). Taglia `tgargs` con `dbops.fn_trigger_argomenti`, e un codice è un argomento
+  **intero** `^E_[A-Z0-9_]+$`: niente più `E_VENDITA` da `ORDINE_VENDITA`. Riga `INVENTARIO` in
+  `dbops.presidi`;
+* `20261103-02` — `vw_punti_canale_campo`: i codici degli argomenti entrano fra i codici della
+  funzione, e il ramo che c'era (codice in variabile) li attribuisce, al massimo `IN_VARIABILE`;
+* `20261103-03` — `vw_codici_errore_da_dichiarare`: seconda sorgente, `da_trigger` per costruzione.
+
+Prova sull'SQL estratto, dbdev, transazione annullata: C2 da 1.786 a 1.818 righe, nessuna sparita;
+`E_DOC_EMITTENTE_BA_INCOERENTE` esce `DIRETTO / IN_VARIABILE / campo`; la misura da 734 a 764
+codici, tutti e 30 i nuovi con la policy nel BE (il cancello resta verde); costo stimato di C2 da
+12.707 a 14.664 (soglia JIT 100.000). `test-punti-canale-campo-v1` a 18 test (17-18 costruiti), 18
+su 18 verdi prima dell'apply.
+
+⚠️ Fatto datato, non toccato qui: la misura `vw_codici_errore_da_dichiarare` stima **~1.010.000**
+già prima della revisione (+0,2% dopo), sopra la soglia del JIT, e il presidio JIT non la guarda.
+
+**Richiesta al BE, elenco chiuso** — dopo l'apply:
+
+1. togliere la riga `("E_DOC_EMITTENTE_BA_INCOERENTE", 1)` da `_ESENZIONI` in
+   `backend/apps/core/tests/test_ui_action_e_canale_campi.py`: il verso di ritiro (test 2) la dà
+   rossa, ed è il segnale previsto;
+2. nient'altro: il verso 2 è solo misurato, e i 30 codici nuovi della misura hanno tutti la policy.
+
+✅ **Lato BE chiuso lo stesso giorno** (`67aafefe87`, 2026-11-03): la riga
+`("E_DOC_EMITTENTE_BA_INCOERENTE", 1)` è uscita da `_ESENZIONI`, che è di nuovo vuoto (il
+commento in `backend/apps/core/tests/test_ui_action_e_canale_campi.py` lo dice). Spostata
+nell'archivio il 2026-11-14.
 
 ### ✅ D7 — Il registro della CI certificato: 358 → 23 — 2026-11-01
 

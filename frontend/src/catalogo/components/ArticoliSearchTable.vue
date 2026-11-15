@@ -12,6 +12,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import SearchHint from '../../core/components/SearchHint.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
@@ -180,6 +181,10 @@ onMounted(() => {
     >
       <template #cell-codice="{ data }">
         <span class="codice-truncate" :title="data.codice">{{ data.codice }}</span>
+        <!-- Ritirato alla data operativa (`e_obsoleto` della vista: lo calcola
+             il DB, qui non si confrontano date). Sta sotto il codice perche'
+             la lista non ha una colonna sua. -->
+        <Tag v-if="data.e_obsoleto" :value="t('catalogo.tag_ritirato')" severity="warn" class="mt-025" />
       </template>
       <!-- La colonna IVA porta `iva_ref_id` come campo (e' quello che il seed
            dichiara), ma a video vale l'aliquota: senza slot si vedrebbe l'id. -->

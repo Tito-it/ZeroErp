@@ -141,6 +141,61 @@ class SoggettiDetailView(DomainAPIView):
 
 
 # =================================================================
+# Cambio di natura: i motivi, e l'eliminazione dei dati societari
+# =================================================================
+
+class SoggettoCambioNaturaMotiviView(DomainAPIView):
+    """POST: i motivi per cui il soggetto non passerebbe alla natura proposta."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+    # Una LETTURA che viaggia in POST, come `valida-cf-piva`: il corpo porta la
+    # P.IVA proposta, che non va in una query string (finirebbe nei log delle
+    # richieste). Permesso di lettura e niente `Idempotency-Key`.
+    post_accesso = "view"
+
+    @extend_schema(
+        request=inline_serializer(name="SoggettoCambioNaturaMotiviReq", fields={
+            "tipo_soggetto_dettaglio_id": serializers.IntegerField(),
+            # Assenti = i valori salvati del soggetto (lettura per presenza).
+            "partita_iva": serializers.CharField(required=False, allow_null=True),
+            "cliente_pa": serializers.CharField(required=False),
+            "split_payment": serializers.CharField(required=False),
+        }),
+        responses={200: inline_serializer(name="SoggettoCambioNaturaMotiviResp", fields={
+            "data": inline_serializer(name="SoggettoCambioNaturaMotiviData", fields={
+                "motivi": serializers.ListField(child=serializers.DictField()),
+            }),
+        })},
+    )
+    # Scopo: Tutti i motivi, in ordine (`[]` = il cambio passa): la stessa
+    #        check che il guard solleva al PATCH, dove arriva solo il primo.
+    def post(self, request: Request, soggetto_id: str) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().motivi_cambio_natura(soggetto_id, p),
+        )
+
+
+class SoggettoDatiSocietariView(DomainAPIView):
+    """DELETE: elimina a mano i dati societari del soggetto."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        responses={200: inline_serializer(name="SoggettoDatiSocietariDeleteResp", fields={
+            "data": inline_serializer(name="SoggettoDatiSocietariDeleteData", fields={
+                "eliminati": serializers.BooleanField(),
+            }),
+        })},
+    )
+    # Scopo: Il verbo `fn_elimina_dati_societari`. 409
+    #        `E_DATI_SOCIETARI_NON_ELIMINABILI` se la natura li richiede; la
+    #        riga eliminata resta nello storico.
+    def delete(self, request: Request, soggetto_id: str) -> JsonResponse:
+        return success_response(SoggettiService().elimina_dati_societari(soggetto_id))
+
+
+# =================================================================
 # Contatti di un soggetto
 # =================================================================
 
@@ -228,6 +283,44 @@ class SoggettiIndirizziView(DomainAPIView):
         return handle_post_json(
             request,
             handler=lambda p: SoggettiService().create_indirizzo_soggetto(soggetto_id, p),
+        )
+
+
+class SoggettiIndirizziTipiView(DomainAPIView):
+    """GET i tipi di indirizzo proponibili per il soggetto (picker)."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        responses={200: inline_serializer(name="SoggettoIndirizziTipiResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Il picker dei tipi di «Aggiungi» e della copia: ogni tipo, gli
+    #        esclusi col loro motivo (`ammesso`, `reason_key`, `reason_valori`).
+    def get(self, request: Request, soggetto_id: str) -> JsonResponse:
+        return success_response({
+            "results": SoggettiService().get_tipi_indirizzo_proponibili_soggetto(soggetto_id),
+        })
+
+
+class SoggettiIndirizziCopiaView(DomainAPIView):
+    """POST copia un indirizzo del soggetto in altri tipi («Copia come…»)."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        request=inline_serializer(name="IndirizzoSoggettoCopiaReq", fields={
+            "tipi_indirizzo_codice_interno": serializers.ListField(child=serializers.CharField()),
+        }),
+        responses={200: inline_serializer(name="IndirizzoSoggettoCopiaResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Il verbo `anagrafiche.fn_copia_indirizzo_soggetto`: tutto o niente,
+    #        `{"ids": [...]}` nell'ordine dei tipi (R-1).
+    def post(self, request: Request, soggetto_id: str, indirizzo_soggetto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().copia_indirizzo_soggetto(
+                soggetto_id, indirizzo_soggetto_id, p,
+            ),
         )
 
 

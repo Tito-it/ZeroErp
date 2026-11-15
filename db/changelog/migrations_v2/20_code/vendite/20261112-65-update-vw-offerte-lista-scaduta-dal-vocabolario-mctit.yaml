@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'OFFERTA SCADUTA: LA REGOLA INTERA NELLA VISTA DELLA LISTA
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.7, D-SCAD (Tid
+#   2026-11-13, scelta (a): esito IS NULL).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La regola «quest'offerta e' scaduta» stava in due meta'. La vista diceva
+#   solo «validita_al e' passata», in qualunque stato; il frontend la
+#   completava con STATI_OFFERTA_SEGNALA_SCADENZA (BOZZA, EMESSA), in due
+#   punti. Una regola di dominio scritta per meta' nel frontend; e la colonna
+#   configurabile «Scaduta» della lista diceva si' anche su un'offerta
+#   accettata o annullata, dove il badge taceva.
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   is_scaduta = la validita' e' passata (rispetto a script.fn_data_operativa,
+#   come prima) E il cliente non ha ancora risposto: lo stato non ha un esito
+#   (config.stati_doc_offerte.esito IS NULL). Oggi sono BOZZA ed EMESSA, gli
+#   stessi della costante FE; uno stato nuovo di attesa, senza esito, entra
+#   da se'.
+#   ⚠️ esito nasce come proiezione per il motore pratiche: qui prende un
+#   secondo lettore, per la stessa domanda («c'e' un verdetto?»). Scelta (a)
+#   di Tid, contro (b) iniziale OR emissione, che descriveva gli stati di
+#   oggi e non la domanda.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine, stesso tipo; nessuna
+#   vista dipendente. WITH (security_invoker = on) si ripete (un CREATE OR
+#   REPLACE senza opzioni le azzera). Il COMMENT della vista, una cronaca di
+#   revisioni, e' riscritto al presente; is_scaduta prende il suo COMMENT di
+#   colonna.
+#
+# ── DA DOVE VIENE LA DEFINIZIONE ────────────────────────────────────
+#   pg_get_viewdef su dbdev, 2026-11-13. Il rollback porta definizione,
+#   opzioni e COMMENT di prima, e toglie il COMMENT di colonna, che prima non
+#   c'era.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261112-65-update-vw-offerte-lista-scaduta-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261112-65-update-vw-offerte-lista-scaduta-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_offerte_commerciali_lista: is_scaduta vale solo se lo stato non ha ancora un
+        esito (il cliente non ha risposto), oltre alla validita passata. COMMENT al presente. Brief:
+        brief-db-stati-documento-dal-vocabolario, D-SCAD.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker = on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  sdo.esito IS NULL AND o.validita_al IS NOT NULL AND o.validita_al < (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND so_pr.attivo IS TRUE), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista
+              IS 'Vista flat canonica e self-contained delle offerte commerciali, per la lista configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice); listino_codice, listino_versione_codice e valuta_codice gia'' risolti. Pura denormalizzazione: nessuno scope e nessun filtro, security_invoker=on (la RLS dell''offerta si applica attraverso la vista). Gli stati si leggono per significato dal vocabolario config.stati_doc_offerte: is_superata (is_superato, rimpiazzata da una revisione successiva), is_abortito (annullata), is_attiva = NOT is_superata AND NOT is_abortito; «solo l''ultima revisione» si chiede a is_superata IS FALSE. is_scaduta: la validita'' (validita_al) e'' passata rispetto alla data operativa dell''azienda (script.fn_data_operativa) e il cliente non ha ancora risposto, cioe'' lo stato non ha un esito; un''offerta accettata, rifiutata, superata o annullata non e'' scaduta. has_next_revisione: esiste una revisione figlia, in qualunque stato. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi.';
+
+              COMMENT ON COLUMN vendite.vw_offerte_commerciali_lista.is_scaduta
+              IS 'true = la validita'' dell''offerta (validita_al) e'' passata rispetto alla data operativa dell''azienda e il cliente non ha ancora risposto: lo stato non ha un esito (config.stati_doc_offerte.esito IS NULL, oggi bozza ed emessa). La regola e'' intera qui: chi mostra il badge «Scaduta» legge il flag e non filtra gli stati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  o.validita_al IS NOT NULL AND o.validita_al < (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND so_pr.attivo IS TRUE), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista
+              IS '⭐ rev 2026-10-11 (20261011-97, brief-db-lineage-seminata-per-chiave giro B): la vista non aggancia piu'' vw_documento_lineage. Le 8 colonne del grafo (frontiera_*, n_discendenti_attivi, is_transitato) le legge il backend da vendite.fn_documento_lineage_sintesi per le chiavi della pagina; la pratica resta, da pratiche.fn_pratica_del_documento. Vista flat canonica e self-contained offerte commerciali per la lista UI configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice). Assorbe listino_codice/listino_versione_codice/valuta_codice e materializza is_scaduta (validita_al scaduta; gating per stato lato FE). Pura denormalizzazione: nessuno scope/filtro. security_invoker=on (RLS-ready). Dal 2026-08-28 le due domande sono colonne distinte: is_superata (= stati_doc_offerte.is_superato, rimpiazzata da una revisione successiva) e is_abortito (= stati_doc_offerte.is_abortito, annullata); is_attiva = NOT is_superata AND NOT is_abortito — stessi valori del precedente letterale NOT IN (''SUPERATA'',''ANNULLATA''), ora scritti sul catalogo. «Solo l''ultima revisione» si chiede a is_superata IS FALSE. has_next_revisione = EXISTS figlio (qualunque stato). ⭐ rev 2026-08-29 — porta avanti anche frontiera_natura_doc_codice da vendite.vw_documento_lineage, accanto alle altre quattro frontiera_*. Senza, il chip «Transito» decodifica il solo tipo e chiama «Fattura» una nota di credito: vendite.fatture e'' UNA tabella, e la chiave del nodo di frontiera (frontiera_uid) da questa vista non esce, quindi il consumatore non ha modo onesto di ricavarsela. ⚠️ La colonna e'' in ULTIMA posizione perche'' CREATE OR REPLACE VIEW puo'' solo appendere: non e'' un disordine da sistemare. ⛔ NULL non significa «non lo so» ma «la frontiera non e'' un documento fiscale»: la natura esiste solo per le fatture. ⛔ rev 2026-08-29 — BONIFICA NAMING §6c + il CODICE DEL TIPO. (1) `frontiera_natura_doc_codice` si chiama ora `frontiera_natura_doc_codice_interno`: il valore viene da `config.nature_doc_fiscale.codice_interno`, che e'' la colonna IMMUTABILE, e linee-guida-sql §6c vieta `codice_interno AS *_codice` perche'' il nome mentirebbe sulla sorgente — un consumatore che confronta contro un `*_codice` si aspetta la colonna MUTABILE. Il guardrail CI scripts/sql/check_naming_stato_codice.sql fallisce sul pattern. (2) arriva `frontiera_tipo_codice_interno`, il CODICE del tipo accanto al suo id: prima ogni consumatore se lo traduceva con lo stesso join a config.sorgenti — dieci copie scritte a mano nel backend, tutte fuori dalla portata del guardrail, che scansiona solo le viste. ⚠️ Il nome NON e'' `frontiera_tipo_codice`: quel valore e'' `config.sorgenti.codice_interno` e il FE lo usa per la chiave i18n e per instradare, cioe'' come LOGICA. Chiamarlo `*_codice` avrebbe spostato dieci mislabel nascosti dentro l''unico posto dove il guardrail li vede.';
+
+              COMMENT ON COLUMN vendite.vw_offerte_commerciali_lista.is_scaduta IS NULL;

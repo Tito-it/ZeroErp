@@ -77,21 +77,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(32);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 CREATE FUNCTION pg_temp.messaggio(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $f$
 BEGIN
@@ -169,7 +154,7 @@ SELECT (SELECT contratto_id FROM _c), dbops.fn_pgtap_crea_articolo('PGT-T4-ART')
 -- ============================================================
 -- ORDINE
 -- ============================================================
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _o))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _o))),
     'E_DELETE_DOC_CON_RIGHE',
     '4) ordine in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
 
@@ -180,18 +165,18 @@ SELECT ok(
 
 DELETE FROM vendite.ordini_righe WHERE id = (SELECT ordine_riga_id FROM _o);
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _o))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _o))),
+    NULL,
     '6) tolta la riga, la bozza vuota si cancella');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _oc))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ordini WHERE id = %s', (SELECT ordine_id FROM _oc))),
     'E_DELETE_DOC_NON_BOZZA',
     '7) ordine confermato: E_DELETE_DOC_NON_BOZZA, prima delle righe');
 
 -- ============================================================
 -- BOLLA
 -- ============================================================
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt_id FROM _d))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt_id FROM _d))),
     'E_DELETE_DOC_CON_RIGHE',
     '8) bolla in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
 
@@ -200,7 +185,7 @@ UPDATE vendite.ddt_righe SET attivo = false WHERE id = (SELECT ddt_riga_id FROM 
 -- ⚠️ L'esito e il conteggio in due istruzioni: una SELECT sola leggerebbe le
 --   righe con lo snapshot preso prima del DELETE che la funzione esegue.
 CREATE TEMP TABLE _d_esito AS
-SELECT pg_temp.esito(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt_id FROM _d))) AS esito;
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.ddt WHERE id = %s', (SELECT ddt_id FROM _d))), 'PASSA') AS esito;
 
 SELECT is(
     (SELECT esito FROM _d_esito)
@@ -211,32 +196,32 @@ SELECT is(
 -- ============================================================
 -- RESO (V-4)
 -- ============================================================
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rc))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rc))),
     'E_DELETE_DOC_NON_BOZZA',
     '10) reso confermato: E_DELETE_DOC_NON_BOZZA');
 
 SELECT ok(EXISTS (SELECT 1 FROM vendite.resi_righe WHERE reso_id = (SELECT reso_id FROM _rc) AND attivo),
     '11) ...e le sue righe ci sono ancora');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rb))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rb))),
     'E_DELETE_DOC_CON_RIGHE',
     '12) reso in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
 
 DELETE FROM vendite.resi_righe WHERE id = (SELECT resi_riga_id FROM _rb);
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rb))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.resi WHERE id = %s', (SELECT reso_id FROM _rb))),
+    NULL,
     '13) tolta la riga, il reso in bozza vuoto si cancella');
 
 -- ============================================================
 -- CONTRATTO
 -- ============================================================
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _c))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _c))),
     'E_DELETE_DOC_CON_RIGHE',
     '14) contratto in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _cv))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _cv))),
+    NULL,
     '15) contratto in bozza vuoto: si cancella');
 
 -- ============================================================
@@ -258,7 +243,7 @@ SELECT is(
     '17) fk_contratti_parent e'' ON DELETE NO ACTION: i successori non si staccano in silenzio');
 
 SELECT is(
-    pg_temp.esito(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _cp)))
+    COALESCE(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.contratti WHERE id = %s', (SELECT contratto_id FROM _cp))), 'PASSA')
       || '|' || (SELECT (c.parent_contratto_id = (SELECT contratto_id FROM _cp))::text
                    FROM vendite.contratti c WHERE c.id = (SELECT contratto_id FROM _cs)),
     'E_DELETE_CONTRATTO_CON_SUCCESSIVI|true',
@@ -279,18 +264,18 @@ SELECT preventivo_id FROM dbops.fn_pgtap_crea_preventivo_con_righe('PGT-Z2-PE', 
 CREATE TEMP TABLE _pb AS
 SELECT preventivo_id, preventivo_riga_id FROM dbops.fn_pgtap_crea_preventivo_con_righe('PGT-Z2-PB', 'DRAFT');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pe))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pe))),
     'E_DELETE_DOC_NON_BOZZA',
     '20) preventivo emesso: E_DELETE_DOC_NON_BOZZA, un DELETE diretto non lo cancella piu''');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
     'E_DELETE_DOC_CON_RIGHE',
     '21) preventivo in bozza con una riga attiva: E_DELETE_DOC_CON_RIGHE');
 
 DELETE FROM vendite.preventivi_righe WHERE id = (SELECT preventivo_riga_id FROM _pb);
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.preventivi WHERE id = %s', (SELECT preventivo_id FROM _pb))),
+    NULL,
     '22) tolta la riga, il preventivo in bozza vuoto si cancella');
 
 -- ============================================================
@@ -335,17 +320,17 @@ SELECT o.id, a.articolo_id, 'AGGIUNTA'::vendite.tipo_eccezione_contratto,
        'UNA_TANTUM', 'FISSA', 50.00, TRUE, 1.00
   FROM _off o, _oart a WHERE o.k IN (1, 2);
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 2))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 2))),
     'E_DELETE_DOC_CON_RIGHE',
     '23) offerta in bozza (BOZZA) con un''eccezione attiva: E_DELETE_DOC_CON_RIGHE');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 3))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 3))),
+    NULL,
     '24) offerta in bozza senza eccezioni: si cancella');
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.offerte_commerciali', (SELECT id FROM _off WHERE k = 1), 'EMESSA') AS stato;
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 1))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _off WHERE k = 1))),
     'E_DELETE_DOC_NON_BOZZA',
     '25) offerta emessa: E_DELETE_DOC_NON_BOZZA');
 
@@ -369,7 +354,7 @@ UPDATE vendite.offerte_commerciali_eccezioni SET attivo = false
  WHERE offerta_id = (SELECT id FROM _orev);
 
 CREATE TEMP TABLE _orev_esito AS
-SELECT pg_temp.esito(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _orev))) AS esito;
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.offerte_commerciali WHERE id = %s', (SELECT id FROM _orev))), 'PASSA') AS esito;
 
 SELECT is(
     (SELECT esito FROM _orev_esito)
@@ -391,19 +376,19 @@ SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CV', NULL, NULL, fa
 CREATE TEMP TABLE _cap AS
 SELECT commessa_id FROM dbops.fn_pgtap_crea_commessa('PGT-Z2-CP', 'APERTA');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _ca))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _ca))),
     'E_DELETE_DOC_CON_RIGHE',
     '28) commessa in bozza con un''attivita'': E_DELETE_DOC_CON_RIGHE');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cl))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cl))),
     'E_DELETE_DOC_CON_RIGHE',
     '29) commessa in bozza col solo documento collegato: E_DELETE_DOC_CON_RIGHE');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cvz))),
-    'PASSA',
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cvz))),
+    NULL,
     '30) commessa in bozza vuota: si cancella');
 
-SELECT is(pg_temp.esito(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cap))),
+SELECT is(dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.commesse WHERE id = %s', (SELECT commessa_id FROM _cap))),
     'E_DELETE_DOC_NON_BOZZA',
     '31) commessa aperta: E_DELETE_DOC_NON_BOZZA');
 

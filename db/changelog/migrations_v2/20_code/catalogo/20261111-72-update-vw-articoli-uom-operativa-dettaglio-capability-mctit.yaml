@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_articoli_uom_operativa_dettaglio: la capability segue il guard della
+#   storia (G2, Q33 di Tid, 2026-11-11).
+#
+#   Prima puo_eliminarsi era NOT is_base: dal giro 2-bis il guard rifiuta la
+#   cancellazione di ogni mappatura con giorni passati, e la vista offriva «elimina»
+#   su righe che il database respinge. Ora la capability la da'
+#   catalogo.fn_uom_conversione_capability (-70), lo stesso BB che legge il guard
+#   (-71): puo_eliminarsi, motivo_non_eliminabile e, in coda, puo_cambiare_attivo,
+#   puo_chiudersi, data_min_chiusura, data_default_chiusura, motivo_non_chiudibile.
+#   Sulla riga base resta il motivo UOM_BASE_NON_ELIMINABILE, e attivo e fine non si
+#   offrono (motivo UOM_BASE): la base vale 1 a ogni data per
+#   catalogo.fn_get_uom_factor, e chiuderla o spegnerla non dice niente.
+#   CREATE OR REPLACE: le colonne di prima restano nello stesso ordine e tipo, le
+#   nuove vanno in coda; GRANT e COMMENT della vista restano. Il resto della
+#   definizione e' quello vivo (doc auto-generata, 2026-11-11).
+#   Rollback: la definizione e il COMMENT di prima, senza le colonne nuove (DROP e
+#   CREATE: una CREATE OR REPLACE non toglie colonne), col GRANT di -03.
+#   Brief: brief-db-revisione-catalogo, §15.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-72-update-vw-articoli-uom-operativa-dettaglio-capability-mctit.yaml
+
+  - changeSet:
+      id: 20261111-72-update-vw-articoli-uom-operativa-dettaglio-capability
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_articoli_uom_operativa_dettaglio: la capability da catalogo.fn_uom_conversione_capability, le colonne della chiusura in coda (G2, Q33). Brief: brief-db-revisione-catalogo, §15.11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.proname = 'fn_uom_conversione_capability'
+                 AND p.pronamespace = 'catalogo'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+               SELECT auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  (NOT auo.is_base AND cap.puo_eliminarsi) AS puo_eliminarsi,
+                  CASE
+                      WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'::text
+                      ELSE cap.motivo_non_eliminabile
+                  END AS motivo_non_eliminabile,
+                  (NOT auo.is_base AND cap.puo_cambiare_attivo) AS puo_cambiare_attivo,
+                  (NOT auo.is_base AND cap.puo_chiudersi) AS puo_chiudersi,
+                  CASE WHEN NOT auo.is_base THEN cap.data_min_chiusura END AS data_min_chiusura,
+                  CASE WHEN NOT auo.is_base THEN cap.data_default_chiusura END AS data_default_chiusura,
+                  CASE
+                      WHEN auo.is_base THEN 'UOM_BASE'::text
+                      ELSE cap.motivo_non_chiudibile
+                  END AS motivo_non_chiudibile
+                 FROM catalogo.articoli_uom_operativa auo
+                   LEFT JOIN catalogo.unita_misura u ON u.id = auo.uom_id
+                   LEFT JOIN catalogo.articoli a ON a.id = auo.articolo_id
+                   CROSS JOIN LATERAL catalogo.fn_uom_conversione_capability(auo.valido_dal, auo.valido_al) cap;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW catalogo.vw_articoli_uom_operativa_dettaglio IS
+                  'Le unita'' operative di un articolo per la lista e il drawer: le righe di catalogo.articoli_uom_operativa con codice e descrizione dell''unita'' e dell''articolo, e la capability di riga, che dice che cosa il database lascia fare oggi. La da'' catalogo.fn_uom_conversione_capability, lo stesso giudizio di catalogo.trgfn_uom_guard_storia: puo_eliminarsi e puo_cambiare_attivo (spegnere o riaccendere) solo su una mappatura senza giorni passati (motivo_non_eliminabile UOM_STORIA_IN_VIGORE); puo_chiudersi se la fine e'' vuota o non ancora passata (motivo_non_chiudibile UOM_STORIA_CHIUSA), con data_min_chiusura (la piu'' tarda fra inizio e ieri) e data_default_chiusura (la piu'' tarda fra inizio e oggi). Sulla riga dell''unita'' base niente di tutto questo: non si cancella (UOM_BASE_NON_ELIMINABILE, catalogo.trgfn_articoli_uom_operativa_guard_base), e attivo e fine non si offrono (UOM_BASE), perche'' la base vale 1 a ogni data. Le colonne che non si cambiano mai (unita'', articolo, fattore, inizio) il form le legge da dbops.vw_non_editable_fields. Nessuna security_invoker: le tabelle lette non hanno RLS.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.puo_eliminarsi IS
+                  'La riga si cancella: non e'' la base e non ha giorni passati (catalogo.fn_uom_conversione_capability).';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.motivo_non_eliminabile IS
+                  'Perche'' non si cancella: UOM_BASE_NON_ELIMINABILE (la riga base) o UOM_STORIA_IN_VIGORE (ha giorni passati: si chiude). Vuoto se si cancella.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.puo_cambiare_attivo IS
+                  'La riga si spegne o si riaccende: non e'' la base e non ha giorni passati. Una mappatura in vigore si chiude, non si spegne.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.puo_chiudersi IS
+                  'La fine si mette o si sposta: non e'' la base e la fine e'' vuota o non ancora passata.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.data_min_chiusura IS
+                  'La prima fine ammessa: la piu'' tarda fra l''inizio e ieri. Vuota se la riga non si chiude.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.data_default_chiusura IS
+                  'La fine proposta: la piu'' tarda fra l''inizio e oggi. Vuota se la riga non si chiude.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.motivo_non_chiudibile IS
+                  'Perche'' la fine non si mette ne'' si sposta: UOM_BASE (la riga base) o UOM_STORIA_CHIUSA (la fine e'' gia'' passata). Vuoto se si chiude.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW catalogo.vw_articoli_uom_operativa_dettaglio;
+              CREATE VIEW catalogo.vw_articoli_uom_operativa_dettaglio AS
+               SELECT auo.id,
+                  auo.articolo_id,
+                  auo.uom_id,
+                  auo.is_base,
+                  auo.factor_to_base,
+                  auo.is_sell_uom,
+                  auo.is_purchase_uom,
+                  auo.is_logistic_uom,
+                  auo.qty_step,
+                  auo.max_decimals,
+                  auo.forbid_fraction,
+                  auo.gtin,
+                  auo.valido_dal,
+                  auo.valido_al,
+                  auo.validita,
+                  auo.attivo,
+                  auo.meta,
+                  auo.user_insert,
+                  auo.user_update,
+                  auo.data_insert,
+                  auo.data_update,
+                  auo.tx_id,
+                  auo.storicizza,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  NOT auo.is_base AS puo_eliminarsi,
+                      CASE
+                          WHEN auo.is_base THEN 'UOM_BASE_NON_ELIMINABILE'::text
+                          ELSE NULL::text
+                      END AS motivo_non_eliminabile
+                 FROM catalogo.articoli_uom_operativa auo
+                   LEFT JOIN catalogo.unita_misura u ON u.id = auo.uom_id
+                   LEFT JOIN catalogo.articoli a ON a.id = auo.articolo_id;
+              GRANT SELECT, INSERT, UPDATE, DELETE ON catalogo.vw_articoli_uom_operativa_dettaglio TO zeroerp_app;
+              COMMENT ON VIEW catalogo.vw_articoli_uom_operativa_dettaglio IS
+                  'Le unita'' operative di un articolo per la lista e il drawer: le righe di catalogo.articoli_uom_operativa con codice e descrizione dell''unita'' e dell''articolo, e la capability della cancellazione: puo_eliminarsi e'' falsa sulla riga dell''unita'' base (motivo_non_eliminabile UOM_BASE_NON_ELIMINABILE), che il database non lascia togliere (catalogo.trgfn_articoli_uom_operativa_guard_base). Nessuna security_invoker: le tabelle lette non hanno RLS.';

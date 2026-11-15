@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_offerta_scaduta(esito, validita_al, data) -> boolean
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.9, V-1 (giro 2-bis).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   La regola «quest'offerta e' scaduta» (D-SCAD: la validita' e' passata e
+#   lo stato non ha ancora un esito) stava scritta solo dentro
+#   vendite.vw_offerte_commerciali_lista. Il dettaglio dell'offerta, il
+#   secondo lettore, la prendeva con una sottoquery sulla vista intera, e
+#   pagava la pratica (LATERAL pratiche.fn_pratica_del_documento) e le altre
+#   colonne per un solo booleano. La regola prende una sede sua: la vista la
+#   compone (20261113-39) e il dettaglio la chiama sulla sua riga.
+#
+# ── LA FORMA (linee-guida-sql §13.8, §13.2) ─────────────────────────
+#   Riceve i VALORI, non l'id dell'offerta: pura, IMMUTABLE, LANGUAGE sql,
+#   si incorpora nella vista senza una lettura per riga e si prova senza
+#   fixture. La data di riferimento e' un argomento: chi chiama passa
+#   script.fn_data_operativa() (nella vista come sottoquery non correlata,
+#   calcolata una volta). Una sottoquery nel corpo impedirebbe
+#   l'incorporazione.
+#   ⛔ NON e' STRICT: esito NULL e' il caso normale (il cliente non ha
+#   risposto), e STRICT spegnerebbe proprio la risposta vera.
+#   Nessuna tabella letta: il corpo a stringa basta (§5c vale per chi legge
+#   tabelle). Eseguibile da PUBLIC, come le altre funzioni pure.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-38-create-fn-offerta-scaduta-mctit.yaml
+
+  - changeSet:
+      id: 20261113-38-create-fn-offerta-scaduta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.fn_offerta_scaduta: la sede della regola dell'offerta scaduta (validita
+        passata e nessun esito), pura sui valori, composta dalla vista della lista e chiamata dal
+        dettaglio. Brief: brief-db-stati-documento-dal-vocabolario, V-1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_offerta_scaduta(
+                  p_esito            config.stati_doc_offerte.esito%TYPE,
+                  p_validita_al      vendite.offerte_commerciali.validita_al%TYPE,
+                  -- date nudo: il valore di script.fn_data_operativa(), non una colonna.
+                  p_data_riferimento date)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              PARALLEL SAFE
+              AS $function$
+                  -- Scaduta = il cliente non ha ancora risposto (lo stato non ha un
+                  -- esito) e la validita' e' passata. Senza validita' non scade.
+                  SELECT p_esito IS NULL
+                     AND p_validita_al IS NOT NULL
+                     AND p_validita_al < p_data_riferimento;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_scaduta(
+                  config.stati_doc_offerte.esito%TYPE,
+                  vendite.offerte_commerciali.validita_al%TYPE,
+                  date) IS
+                  'true = l''offerta e'' scaduta: il cliente non ha ancora risposto (p_esito, la colonna esito dello stato corrente in config.stati_doc_offerte, e'' NULL) e la validita'' (p_validita_al) e'' passata rispetto a p_data_riferimento. Senza validita'' l''offerta non scade; un''offerta accettata, rifiutata, superata o annullata ha un esito e non e'' scaduta. Il chiamante passa la data operativa dell''azienda, script.fn_data_operativa(). Pura sui valori (IMMUTABLE, LANGUAGE sql): vendite.vw_offerte_commerciali_lista la incorpora per is_scaduta, il dettaglio dell''offerta la chiama sulla sua riga. Non e'' STRICT: esito NULL e'' il caso normale.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_offerta_scaduta(character varying, date, date);

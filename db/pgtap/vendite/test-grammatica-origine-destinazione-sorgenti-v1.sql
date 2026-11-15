@@ -56,20 +56,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(12);
 
-CREATE OR REPLACE FUNCTION pg_temp.vincolo_violato(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), SQLSTATE);
-    END;
-END;
-$fx$;
-
 CREATE TEMP TABLE _col ON COMMIT DROP AS
 SELECT * FROM (VALUES
     ('config.nature_vendita'::regclass, 'destinazione_tipo'::name)) v(tabella, colonna);
@@ -183,13 +169,13 @@ SELECT is_empty(
     '8) i codici corti OFFERTA e ORDINE non sono sorgenti: nessuna provenienza li puo'' nominare');
 
 SELECT is(
-    pg_temp.vincolo_violato(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$UPDATE vendite.ordini
              SET sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE'),
                  sorgente_uid = %L
            WHERE id = %s$$,
         (SELECT uid FROM _off), (SELECT ordine_id FROM _ord))),
-    'NESSUN ERRORE',
+    NULL,
     '9) la provenienza OFFERTA_COMMERCIALE con la chiave dell''offerta: passa');
 
 SELECT results_eq(

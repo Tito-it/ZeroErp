@@ -19,10 +19,13 @@ AS $function$
       DECLARE
         rtab record;
         rrule record;
-        v_schemas text[] ;
+        -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
+        v_schemas text[];
+        -- esiti calcolati qui: nessuna colonna ne e' il riflesso
         has_flag boolean;
-        storicizza_col text;
-        fk_col text;
+        storicizza_col dbops.automation_overrides_cols.col_name%TYPE;
+        fk_col dbops.automation_overrides_cols.col_name%TYPE;
+        -- letto dai params jsonb della regola: nessuna colonna lo porta
         create_gin boolean;
       BEGIN
         v_schemas := dbops.fn_resolve_scope(p_schemas);
@@ -60,7 +63,7 @@ AS $function$
               AND r.rule_type='STORICO_PROVISION'
               AND (r.exec_mode='AUTO' OR r.exec_mode=p_exec_mode)
               AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-              AND (UPPER(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+              AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
           LOOP
             --  parametri regola
             create_gin := COALESCE((rrule.params->>'create_gin_index')::boolean, false);
@@ -87,7 +90,7 @@ AS $function$
       $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_storico_provision(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Provisioning delle shadow storico.<tabella> con le regole STORICO_PROVISION di dbops.automation_rules_tbl. Per ogni tabella (relkind r) degli schemi di dbops.fn_resolve_scope(p_schemas), escluso storico, che dbops.fn_table_in_scope ammette, applica le regole abilitate che valgono per lo schema (dbops.fn_schema_match) e per la tabella (target_table *all o ILIKE) e la cui exec_mode e'' AUTO o uguale a p_exec_mode (il CHECK della tabella ammette AUTO, CI, SCHEDULED). Una tabella entra solo se ha la colonna del flag di storicizzazione (storicizza, o l''override STORICIZZA_COL di dbops.automation_overrides_cols); la colonna che punta alla madre nella shadow e'' <tabella>_id, o l''override STORICO_FK. Per ognuna chiama dbops.fn_ensure_storico_table, che crea la shadow solo se manca e non modifica quelle esistenti; il parametro create_gin_index della regola chiede l''indice GIN sullo snapshot. p_dry_run: nessun DDL, audit DRYRUN.';
+IS 'Provisioning delle shadow storico.<tabella> con le regole STORICO_PROVISION di dbops.automation_rules_tbl. Per ogni tabella (relkind r) degli schemi di dbops.fn_resolve_scope(p_schemas), escluso storico, che dbops.fn_table_in_scope ammette, applica le regole abilitate che valgono per lo schema (dbops.fn_schema_match) e per la tabella (target_table *all, o il nome esatto della tabella) e la cui exec_mode e'' AUTO o uguale a p_exec_mode (il CHECK della tabella ammette AUTO, CI, SCHEDULED). Una tabella entra solo se ha la colonna del flag di storicizzazione (storicizza, o l''override STORICIZZA_COL di dbops.automation_overrides_cols); la colonna che punta alla madre nella shadow e'' <tabella>_id, o l''override STORICO_FK. Per ognuna chiama dbops.fn_ensure_storico_table, che crea la shadow solo se manca e non modifica quelle esistenti; il parametro create_gin_index della regola chiede l''indice GIN sullo snapshot. p_dry_run: nessun DDL, audit DRYRUN.';
 ```
 
 </div>

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_run_and_log`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 >
 > * [maintenance.fn_job_run_log_failure](/dbzero/maintenance/funzioni/fn_job_run_log_failure) — il verbale del fallimento, scritto fuori transazione
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il contratto da cui si legge il codice di dominio
+> * [script.fn_codice_dominio](/dbzero/script/funzioni/fn_codice_dominio) — la lettura del codice di dominio da un errore catturato
 > * [script.fn_job_run_start](/dbzero/script/funzioni/fn_job_run_start) — la porta gemella, per i lavori del backend
 > * [maintenance.proc_analyze_statistiche_job](/dbzero/maintenance/funzioni/proc_analyze_statistiche_job) — un esempio dei wrapper `proc_*_job` che la chiamano
 >
@@ -145,8 +146,11 @@ contesto e SQLSTATE dell'errore, e ne fa due cose:
 * **`sqlstate`** riceve lo SQLSTATE;
 * **`error_code`** riceve il **codice di dominio** (`E_…`) quando l'errore rispetta il
   contratto di `script.fn_log_and_raise_error` — SQLSTATE `P0001` con il canale del vincolo
-  valorizzato — e altrimenti lo SQLSTATE. ⚠️ Il canale del vincolo da solo non basta: per
-  una violazione di unicità porta il nome del vincolo, non un codice d'errore.
+  valorizzato — e altrimenti lo SQLSTATE. La regola la legge
+  [`script.fn_codice_dominio`](/dbzero/script/funzioni/fn_codice_dominio), la stessa del batch
+  delle commesse; il ripiego sullo SQLSTATE è di questa funzione. ⚠️ Il canale del vincolo da
+  solo non basta: per una violazione di unicità porta il nome del vincolo, non un codice
+  d'errore.
 
 Poi la funzione **rilancia** l'errore, ed è voluto: smettere di propagarlo farebbe risultare
 riuscito a chi l'ha chiesto un lavoro che non lo è. Il RAISE non si toglie.
@@ -192,9 +196,10 @@ dice il processo, perché ogni scarto ha la sua.
   sessione non si apre).
 * `db/pgtap/maintenance/test-job-run-ruolo-sessione-v1.sql` — la corsa e la riga saltata
   portano il ruolo che si è collegato.
-* `db/pgtap/maintenance/test-job-run-sqlstate-e-codice-v1.sql` — la lettura del codice di
-  dominio solo col contratto `P0001` e il passaggio dello SQLSTATE al verbale: presidi sul
-  testo, perché il ramo di fallimento lascerebbe una riga vera nel giornale.
+* `db/pgtap/maintenance/test-job-run-sqlstate-e-codice-v1.sql` — il codice di dominio letto
+  con `script.fn_codice_dominio` e il passaggio dello SQLSTATE al verbale: presidi sul testo,
+  perché il ramo di fallimento lascerebbe una riga vera nel giornale. La regola sui valori la
+  prova `db/pgtap/script/test-fn-codice-dominio-v1.sql`.
 * `db/pgtap/maintenance/test-job-run-log-failure-out-of-tx.sql` — la funzione chiama il
   verbale fuori transazione, e continua a rilanciare.
 * `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — una corsa con lock e senza
@@ -228,6 +233,9 @@ dice il processo, perché ogni scarto ha la sua.
   l'apertura stava fuori dal gestore d'errore, e una riga respinta lasciava il lock preso per
   tutta la vita della connessione: le corse successive risultavano saltate
   (`brief-db-revisione-maintenance` D2).
+* 2026-11-12 — il codice di dominio lo legge `script.fn_codice_dominio`, al posto del
+  confronto scritto qui; il comportamento non cambia (brief-db-revisione-catalogo, giro
+  5-bis).
 * 2026-11-03 — l'esito di una `SELECT` si legge e va in `meta.esito`, e nasce la riuscita con
   scarti (`E_JOB_ESITO_CON_SCARTI`). Prima il risultato si scartava: una corsa con aziende
   fallite risultava verde, e il presidio taceva proprio quando serviva

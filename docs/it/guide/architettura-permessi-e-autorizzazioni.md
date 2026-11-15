@@ -1,6 +1,6 @@
 # Guida — Architettura Permessi e Autorizzazioni
 
-> **Ultimo aggiornamento**: 15 ottobre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -548,7 +548,8 @@ il resolver deve sapere per conto di **quale veste** si sta risolvendo.
 ### 6.2 Permission class DRF
 
 Sono previste tre permission class, una per ciascun namespace API, tutte
-delegate allo stesso `PermissionResolver`:
+delegate allo stesso `PermissionResolver`. Le view del pannello di amministrazione
+ne usano una quarta, descritta sotto le tre:
 
 * **`ZeroERPPermission`** — per `/api/admin/*` (operatori interni)
 * **`PortaleBasePermission`** — per `/api/portale/*` (clienti, fornitori)
@@ -582,6 +583,42 @@ occupano solo di:
   `model_name`) e si consulta il livello effettivo. Il livello viene
   quindi tradotto in insieme dei verbi ammessi: se il verbo richiesto
   non e' nell'insieme, l'accesso e' negato.
+
+**La quarta: `IsAdminZeroERP`, per le view di amministrazione.** Le view che
+ereditano da `AdminAPIView` (il pannello Amministrazione software) passano da
+`IsAdminZeroERP`, che decide una cosa sola: l'utente è superuser Django o ha il
+profilo `SUPER_ADMIN`, altrimenti 403. Non consulta aree né azioni di processo.
+⛔ Per questo un `<metodo>_permission` su una view di amministrazione **non lo
+valuta nessuno**: chi arriva è già `SUPER_ADMIN`, che le azioni le ha tutte, e
+chi non lo è non arriva. Una riga di `config.azioni_processo` nominata solo da
+una view di amministrazione non concede niente a nessuno. Se un verbo deve
+aprirsi a un operatore, la view passa a `DomainAPIView`, con l'`area_funzionale`
+e il `<metodo>_permission`; finché resta di amministrazione, l'azione a catalogo
+è solo la sede per quel giorno, e la view lo dichiara (es. `processo_avvia`, su
+«Esegui ora» dei processi).
+
+**I presidi.** Tre test tengono allineate le azioni dichiarate, il catalogo e chi
+le legge (`backend/apps/core/tests/db/test_azioni_processo_dichiarate_e_lette.py`):
+
+* **P-1** — una view che `ZeroERPPermission` non valuta non dichiara né un
+  `<metodo>_permission` né un `<metodo>_passaggio`; e una view che la catena
+  valuta li dichiara solo sulle chiavi che serve (il metodo HTTP che implementa,
+  o l'action del viewset). ⛔ La catena legge la dichiarazione con la chiave
+  della richiesta: un `post_permission` su una view che serve solo `DELETE` non
+  lo chiede nessuno, e il gesto ricade sul livello d'area (il caso di
+  `ApiFondoFatturaDelete`, corretto il 2026-11-14);
+* **P-2** — ogni azione dichiarata da una view, e ogni azione passata a
+  `PermissionResolver.check_azione`, è un `permission_codename` attivo del seed
+  di `config.azioni_processo`. Un argomento di `check_azione` che non è un
+  letterale né una costante di modulo è un rosso, salvo che la funzione che lo
+  inoltra sia dichiarata nel test con la provenienza dei suoi valori;
+* **P-3** (sul DB vero) — ogni azione attiva ha almeno un lettore: il backend,
+  una riga di una matrice di transizioni (ogni colonna
+  `azione_processo_codename` di una tabella, trovata per nome; una vista non è
+  una matrice), il corpo di una funzione del
+  database, oppure una riga del registro delle azioni seminate prima del loro
+  verbo, col motivo. Oggi in quel registro c'è solo `processo_avvia`; la riga
+  esce il giorno in cui l'azione trova un lettore.
 
 **Determinazione dell'area di un model.** Per default, l'area coincide
 con lo schema DB (uguale a `app_label` Django). Se per quel model

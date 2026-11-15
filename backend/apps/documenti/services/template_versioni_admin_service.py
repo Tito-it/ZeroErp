@@ -108,8 +108,9 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "ex_template_documenti_versioni_no_overlap_pubblicata": (
         E_VERSIONE_OVERLAP,
         "Le date di validita' si sovrappongono con un'altra versione "
-        "PUBBLICATA attiva del template. Chiudi quella esistente prima "
-        "di pubblicare la nuova.",
+        "pubblicata o obsoleta del template. Scegli una data d'inizio "
+        "successiva a quella della versione piu' recente: la precedente "
+        "si chiude da sola.",
     ),
 }
 

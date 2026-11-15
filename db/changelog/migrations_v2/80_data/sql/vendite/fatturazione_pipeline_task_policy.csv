@@ -1,28 +1,28 @@
-id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,user_insert,data_update,user_update
-1,1,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-2,1,generate_fatture_righe,t,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-3,3,genera_fondi_source_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-4,3,applica_fondi_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-5,3,ricalcola_iva_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-6,3,reset_lotto_draft,t,RESET_STEP,t,"{""scope"":""EMESSA"",""rollback"":true}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-7,4,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-8,5,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-9,6,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-10,7,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,titodb,2026-02-18 18:30:00+01,titodb
-11,1,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
-12,8,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
-13,8,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
-14,8,generate_fatture_righe,t,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,titodb,2026-06-15 09:00:00+02,titodb
-15,4,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-07-20 00:00:00+02,titodb,,
-16,6,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-07-20 00:00:00+02,titodb,,
-17,1,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-07-31 00:00:00+02,titodb,,
-18,8,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-07-31 00:00:00+02,titodb,,
-19,3,genera_scadenze_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-08-01 00:00:00+02,titodb,,
-20,2,genera_scadenze_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
-21,2,genera_fondi_source_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
-22,2,applica_fondi_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
-23,2,ricalcola_iva_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,titodb,,
-24,4,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-08-18 00:00:00+02,mctit,,
-25,6,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-18 00:00:00+02,mctit,,
-26,4,consuma_plafond_lotto,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-08-31 00:00:00+02,mctit,,
-27,6,consuma_plafond_lotto,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-31 00:00:00+02,mctit,,
+id,pipeline_id,task_code,annullabile,resume_mode,attivo,meta,data_insert,data_update
+1,1,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+2,1,generate_fatture_righe,t,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+3,3,genera_fondi_source_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+4,3,applica_fondi_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+5,3,ricalcola_iva_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+6,3,reset_lotto_draft,t,RESET_STEP,t,"{""scope"":""EMESSA"",""rollback"":true}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+7,4,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+8,5,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+9,6,numera_fatture,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+10,7,prepare_sdi_payload_lotto,t,RESUME_TASK,t,"{""scope"":""INVIATA"",""tipo_lotto"":""GIORNALIERO""}",2026-02-18 18:30:00+01,2026-02-18 18:30:00+01
+11,1,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-06-15 09:00:00+02,2026-06-15 09:00:00+02
+12,8,pull_attivita_da_commessa,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,2026-06-15 09:00:00+02
+13,8,select_attivita,f,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,2026-06-15 09:00:00+02
+14,8,generate_fatture_righe,t,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-06-15 09:00:00+02,2026-06-15 09:00:00+02
+15,4,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-07-20 00:00:00+02,
+16,6,stampa_documenti_lotto,t,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-07-20 00:00:00+02,
+17,1,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT""}",2026-07-31 00:00:00+02,
+18,8,snapshot_indirizzi_lotto,t,RESUME_TASK,t,"{""scope"":""DRAFT"",""tipo_lotto"":""GIORNALIERO""}",2026-07-31 00:00:00+02,
+19,3,genera_scadenze_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA""}",2026-08-01 00:00:00+02,
+20,2,genera_scadenze_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,
+21,2,genera_fondi_source_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,
+22,2,applica_fondi_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,
+23,2,ricalcola_iva_lotto,t,RESUME_TASK,t,"{""scope"":""EMESSA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-01 00:00:00+02,
+24,4,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-08-18 00:00:00+02,
+25,6,popola_fatture_rettifiche,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-18 00:00:00+02,
+26,4,consuma_plafond_lotto,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA""}",2026-08-31 00:00:00+02,
+27,6,consuma_plafond_lotto,f,RESUME_TASK,t,"{""scope"":""DEFINITIVA"",""tipo_lotto"":""GIORNALIERO""}",2026-08-31 00:00:00+02,

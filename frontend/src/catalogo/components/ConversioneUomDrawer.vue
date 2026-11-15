@@ -1,7 +1,15 @@
 <script setup>
 // Scopo: Drawer crea/modifica conversione UoM.
 //        In create: seleziona UoM Da, UoM A, fattore, date validita'.
-//        In edit: UoM Da/A immutabili, modifica fattore, date, attivo.
+//        In edit: unita' Da/A, fattore e inizio immutabili (dal 2026-11-11,
+//        BE21: guard della storia, dai `non_editable_fields`) e non rimandati;
+//        si cambia la fine. ⭐ Interruttore «attivo» e data di fine seguono la
+//        capability del dettaglio (dal 2026-11-11, BE21-e: la vista
+//        `vw_unita_misura_conversioni_dettaglio`, BB del DB
+//        `fn_uom_conversione_capability`), letta dall'helper comune
+//        `capabilityConversioneUom`: spenti col motivo, la fine dalla prima
+//        data ammessa, e non rimandati. Fino a quel giorno il toggle restava
+//        acceso e il DB rifiutava dopo il clic.
 //        Contenuto deferito a dopo l'animazione per evitare rimbalzi visivi.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,6 +18,10 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString, oggiAziendale } from '../../core/utils/date'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
+import {
+  capabilityConversioneUom, fermoDallaCapability, fraseMotivoUom,
+} from '../utils/capabilityConversioneUom'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -19,7 +31,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 
 const ALWAYS_VALID_FROM = '1900-01-01'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useConversioniUomStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const uomLookup = useLookupCodici('catalogo.unita_misura', { immediate: true })
@@ -41,12 +53,20 @@ const form = ref({
 // conferma se si chiude con modifiche (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 
-// Fase 5: campi immutabili dopo create per conversioni UoM. Vengono dal
-// detail (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields`
-// + gap Python su catalogo.unita_misura_conversioni).
+// Campi immutabili dopo create per conversioni UoM. Vengono dal detail
+// (`detail.non_editable_fields`, fonte = `dbops.vw_non_editable_fields`: dal
+// 2026-11-11 il lock di colonna di unita', fattore e inizio, BE21-a).
 const nonEditableFields = ref([])
 function isFieldLocked(name) {
   return isEdit.value && nonEditableFields.value.includes(name)
+}
+
+// La capability del dettaglio (in creazione nessuna riga: tutto libero).
+const dettaglio = ref(null)
+const cap = computed(() => capabilityConversioneUom(isEdit.value ? dettaglio.value : null))
+// Fermo per il PATCH: i campi del lock e quelli che la capability spegne.
+function fermoNelPatch(name) {
+  return isFieldLocked(name) || fermoDallaCapability(cap.value, name)
 }
 
 const selectedFromTipoId = computed(() => {
@@ -68,8 +88,11 @@ function resetForm() {
 
 async function loadDetail() {
   if (!props.convId) return
+  // Fail-closed mentre il dettaglio arriva: niente capability di un'altra riga.
+  dettaglio.value = {}
   const data = await store.fetchDetail(props.convId)
   if (!data) return
+  dettaglio.value = data
   form.value = {
     uom_from_id: data.uom_from_id,
     uom_to_id: data.uom_to_id,
@@ -114,12 +137,17 @@ const canSave = computed(() =>
 async function handleSave() {
   const f = form.value
   if (isEdit.value) {
-    const payload = {
+    // ⛔ I campi fermi NON si rimandano (2026-11-11, BE21; BB
+    //    `senzaCampiFermi`). Il fattore arriva come stringa numeric(18,6) e il
+    //    form lo tiene come Number (`loadDetail`): oltre ~15 cifre
+    //    significative il valore rimandato non e' piu' quello scritto, e il
+    //    guard della storia rifiuterebbe una semplice chiusura.
+    const payload = senzaCampiFermi({
       fattore: f.fattore,
       valido_dal: toDateString(f.valido_dal),
       valido_al: toDateString(f.valido_al),
       attivo: f.attivo,
-    }
+    }, fermoNelPatch)
     const result = await execute(
       () => store.update(props.convId, payload),
       { successMessage: t('catalogo.conv_salvata') }
@@ -178,7 +206,8 @@ function close() {
       </div>
       <div class="form-field">
         <label>{{ t('catalogo.field_fattore') }} *</label>
-        <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal" />
+        <InputNumber v-model="form.fattore" :min-fraction-digits="2" :max-fraction-digits="6" :min="0" mode="decimal"
+          :disabled="isFieldLocked('fattore')" :invalid="campiErrati.includes('fattore')" />
       </div>
     </div>
 
@@ -190,15 +219,18 @@ function close() {
           :dateFormat="DATE_FORMAT"
           showIcon
           showButtonBar
-          :disabled="!isEdit && form.valido_dal_sempre"
+          :disabled="isFieldLocked('valido_dal') || (!isEdit && form.valido_dal_sempre)"
           :invalid="campiErrati.includes('valido_dal')"
         />
       </div>
       <div class="form-field">
         <label>{{ t('common.data_a') }}</label>
         <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :disabled="cap.fineFerma"
+          :min-date="cap.primaFine ?? undefined"
           :invalid="campiErrati.includes('valido_al')"
         />
+        <small v-if="cap.motivoFine" data-testid="motivo-fine">{{ fraseMotivoUom(t, te, cap.motivoFine) }}</small>
       </div>
     </div>
     <div v-if="!isEdit" class="form-grid">
@@ -212,8 +244,10 @@ function close() {
       <div class="form-field">
         <label>{{ t('indirizzi.campo_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo"
+          :disabled="cap.attivoFermo"
           :invalid="campiErrati.includes('attivo')"
         />
+        <small v-if="cap.motivoAttivo" data-testid="motivo-attivo">{{ fraseMotivoUom(t, te, cap.motivoAttivo) }}</small>
       </div>
     </div>
   </AppDrawer>

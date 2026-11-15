@@ -37,7 +37,6 @@ databaseChangeLog:
             #   documenti sfogliabili. ⚠️ Modifica INERTE per le 15 colonne
             #   preesistenti: verificato che nel CSV non esiste alcuna cella
             #   vuota ne' alcuna cella contenente la stringa "NULL".
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

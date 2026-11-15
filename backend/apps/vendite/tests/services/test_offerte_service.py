@@ -32,6 +32,8 @@ Indice test eseguiti:
 19) registra_esito_routing_accettata                  [routing service]
     (+ registra_esito_accettata_con_motivazione_la_rifiuta_il_verbo)
 20) registra_esito_routing_rifiutata_motivazione_al_verbo
+    (+ registra_rifiuto_stato_dal_vocabolario,
+    registra_rifiuto_senza_lo_stato_nel_vocabolario)
 21) registra_esito_invalido
 22) aggiorna_offerta_payload_vuoto_fallisce           [fix #3]
 23) aggiorna_offerta_ok                               [happy path]
@@ -97,6 +99,10 @@ from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
+from apps.vendite.services._pricing_gate_helpers import (
+    PROVENIENZA_MANUALE_RIGA,
+    EsitoPrezzoRiga,
+)
 
 
 def _make_offerta_dict(stato_codice: str = "BOZZA") -> dict[str, object]:
@@ -381,6 +387,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_rifiuto_senza_motivazione_la_rifiuta_il_db(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -401,6 +409,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_rifiuto_motivazione_non_stringa_e_400(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         with self.assertRaises(ServiceError) as cm:
             OfferteService().registra_rifiuto(1, motivazione=42)
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
@@ -411,6 +421,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
     def test_registra_rifiuto_da_bozza_lo_rifiuta_il_db_c3(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
+
+        self.rifiuto_del_documento("RIFIUTATA")
 
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
@@ -758,6 +770,8 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
     def test_registra_esito_routing_rifiutata_motivazione_al_verbo(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
+        self.rifiuto_del_documento("RIFIUTATA")
+
         _atomic.return_value.__enter__ = MagicMock()
         _atomic.return_value.__exit__ = MagicMock(return_value=False)
         repo = repo_cls.return_value
@@ -776,6 +790,42 @@ class OfferteServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             OfferteService().registra_esito(1, esito="RIFIUTATA")
         self.assertEqual(cm.exception.code, "E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA")
         repo.cambia_stato.assert_called_once_with(1, "RIFIUTATA", None)
+
+    # Scopo: lo stato che il rifiuto scrive lo dice il vocabolario (colonna
+    #        `rifiuto`, brief-db-stati-documento-dal-vocabolario §6.7), non un
+    #        letterale: con un codice che non e' RIFIUTATA il verbo riceve
+    #        quello, e la domanda va al BB con la testata dell'offerta.
+    @patch("apps.vendite.services.offerte_service.transaction.atomic")
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_registra_rifiuto_stato_dal_vocabolario(self, repo_cls, _atomic):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        self.rifiuto_del_documento("RESPINTA")
+        _atomic.return_value.__enter__ = MagicMock()
+        _atomic.return_value.__exit__ = MagicMock(return_value=False)
+        repo = repo_cls.return_value
+        repo.get_offerta.return_value = _make_offerta_dict('RESPINTA')
+        repo.list_eccezioni.return_value = []
+        repo.get_utility.return_value = None
+
+        OfferteService().registra_esito(1, esito="RIFIUTATA", motivazione="prezzo alto")
+
+        repo.cambia_stato.assert_called_once_with(1, "RESPINTA", "prezzo alto")
+        self.modello_documento.stato_di_rifiuto.assert_called_once_with(
+            "vendite.offerte_commerciali",
+        )
+
+    # Scopo: senza uno stato di rifiuto nel vocabolario il rifiuto non arriva
+    #        al verbo: e' configurazione rotta (E_CONFIG_MANCANTE). Gemello di
+    #        `registra_accettazione_senza_lo_stato_nel_vocabolario`.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository", autospec=True)
+    def test_registra_rifiuto_senza_lo_stato_nel_vocabolario(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        with self.assertRaises(ServiceError) as cm:
+            OfferteService().registra_rifiuto(1, motivazione="prezzo alto")
+        self.assertEqual(cm.exception.code, "E_CONFIG_MANCANTE")
+        repo_cls.return_value.cambia_stato.assert_not_called()
 
     # Scopo: registra_esito esito non valido -> 422.
     def test_registra_esito_invalido(self):
@@ -1809,9 +1859,10 @@ class OfferteGatePrezzoTests(TestCase):
             STATO_APPROVAZIONE_PENDING,
         )
 
-        mock_resolve.return_value = (
-            Decimal("12.50"),
-            {
+        mock_resolve.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("12.50"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={
                 "richiesta_approvazione_pending": True,
                 "violazione_l2": {"tipo_violazione": "SCONTO"},
                 "prezzo_base_resolver": "10.00",
@@ -1845,7 +1896,7 @@ class OfferteGatePrezzoTests(TestCase):
             resolve_or_check_override_prezzo_riga_offerta,
         )
 
-        prezzo, meta = resolve_or_check_override_prezzo_riga_offerta(
+        esito = resolve_or_check_override_prezzo_riga_offerta(
             testata={"listino_id": None, "validita_dal": "2026-06-01"},
             articolo_id="x",
             uom_id=5,
@@ -1853,8 +1904,9 @@ class OfferteGatePrezzoTests(TestCase):
             auth_user_id=99,
             function_name="test",
         )
-        self.assertEqual(prezzo, "12.50")
-        self.assertIsNone(meta)
+        self.assertEqual(esito.prezzo, "12.50")
+        self.assertIsNone(esito.provenienza)
+        self.assertIsNone(esito.meta)
         mock_bb.assert_not_called()
 
     # 58) _apply_pricing_gate_eccezione: su override entro-soglia preserva il
@@ -1866,9 +1918,10 @@ class OfferteGatePrezzoTests(TestCase):
         from apps.vendite.services.offerte_service import OfferteService
 
         # Override accettato (no L3): meta audit senza richiesta_approvazione.
-        mock_resolve.return_value = (
-            Decimal("11.00"),
-            {"origine_prezzo": "MANUALE", "prezzo_base_resolver": "10.00"},
+        mock_resolve.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("11.00"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={"prezzo_base_resolver": "10.00"},
         )
         svc = OfferteService()
         svc._repo = MagicMock()
@@ -1886,9 +1939,12 @@ class OfferteGatePrezzoTests(TestCase):
             fallback_meta={"nota_interna": "preesistente"},
         )
 
-        # Il meta esistente (`nota_interna`) sopravvive + audit pricing mergiato.
+        # Il meta esistente (`nota_interna`) sopravvive + audit pricing mergiato;
+        # la provenienza nelle colonne (K-5), non nel meta.
         self.assertEqual(payload["meta"]["nota_interna"], "preesistente")
-        self.assertEqual(payload["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(payload["meta"]["prezzo_base_resolver"], "10.00")
+        self.assertEqual(payload["origine_prezzo"], "MANUALE")
+        self.assertNotIn("origine_prezzo", payload["meta"])
         # Nessun workflow L3 → niente stato/pratica nel payload.
         self.assertNotIn("stato_approvazione_prezzo", payload)
 

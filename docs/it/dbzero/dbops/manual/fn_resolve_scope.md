@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_resolve_scope`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -79,7 +79,7 @@ significato di `*all` nel bersaglio di una regola, dove vuol dire «qualunque sc
 
 * 2026-11-08 — la risposta è senza doppi e senza spazi: prima `dbops`, che ha sette righe in
   `automation_scope`, compariva sette volte, e un nome con spazi attorno passava così com'era
-  (`20261109-67`, brief-db-revisione-dbops D13).
+  (`brief-db-revisione-dbops`, D13).
 
 ---
 

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/documenti/manual/formati_template.md" %}
 # 📚 Tabella `formati_template`
 
 > 📝 **Descrizione**

@@ -55,22 +55,14 @@
 
 from __future__ import annotations
 
-import csv
 import inspect
 import unittest
 
 from apps.ui.db.ui_repository import UiRepository
 from apps.core.tests._repo import repo_root
+from apps.core.tests._seed_csv import seed_ui
 
 _TIPI_CRONOLOGICI = ("date", "datetime")
-
-
-def _seed(nome: str) -> list[dict[str, str]]:
-    percorso = (
-        repo_root() / "db/changelog/migrations_v2/80_data/sql/ui" / nome
-    )
-    with percorso.open(newline="", encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
 
 
 def _sorgente_lista_configurabile() -> str:
@@ -186,7 +178,7 @@ class OrdinamentoDataDescTests(unittest.TestCase):
         )
 
     def test_esiste_almeno_una_colonna_data_ordinabile_a_catalogo(self) -> None:
-        colonne = _seed("lista_colonna.csv")
+        colonne = seed_ui("lista_colonna.csv")
         cronologiche = [
             c for c in colonne
             if c["attivo"] == "t"

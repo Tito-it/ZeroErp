@@ -1,0 +1,160 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TIPI DI INDIRIZZO CHE SI POSSONO PROPORRE, SUL SOGGETTO E SULLA NATURA
+#   anagrafiche.fn_tipi_indirizzo_proponibili_natura(natura) -> TABLE
+#   anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(soggetto) -> TABLE
+#   Brief: brief-db-copia-indirizzo-soggetto §3.1, §4.3, giro 2.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il drawer degli indirizzi sceglie i tipi da una lettura della matrice del
+#   backend (solo righe attive), che il guard non legge: propone un tipo con la
+#   riga fuori finestra, e non propone niente a una natura senza matrice, che
+#   invece ammette tutto. Il picker (linee-guida-sql §12.6) e' una lettura nel
+#   database che chiama la STESSA check della madre singolare:
+#   anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto (20261114-86).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Una riga per tipo di config.tipi_indirizzi: obbligatorio (riga obbligatoria
+#   della matrice che il predicato del guard ammette oggi, la lettura della
+#   plurale), ammesso, il primo motivo appiattito (codice, reason, reason_key,
+#   valori: §12.2) e tutti i motivi. Prima gli ammessi, poi gli altri, per
+#   codice interno. Un tipo escluso resta, col suo motivo.
+#   * sulla NATURA: il soggetto non esiste ancora (il form di creazione); i
+#     tipi presenti sono nessuno, quindi «gia' presente» non compare;
+#   * sul SOGGETTO: il contesto e' la riga salvata (natura e tipi presenti),
+#     letto una volta; il motivo «gia' presente» compare.
+#   Le due funzioni chiamano la stessa meta' sui motivi con contesti diversi:
+#   la natura non arriva mai da due fonti (niente parametro facoltativo sulla
+#   stessa firma). Il giorno e' script.fn_data_operativa(), quello del guard.
+#   BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER. Soggetto inesistente: nessuna
+#   riga, come anagrafiche.fn_nature_proponibili_soggetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-96-create-fn-tipi-indirizzo-proponibili-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261114-96-create-fn-tipi-indirizzo-proponibili-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I picker dei tipi di indirizzo sulla natura e sul soggetto, dalla stessa check della
+        madre singolare.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_soggetto_dettaglio_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         EXISTS (SELECT 1
+                                   FROM config.tipi_soggetto_dettaglio_tipi_indirizzo mo
+                                  WHERE mo.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                                    AND mo.tipo_indirizzo_id = ti.id
+                                    AND mo.obbligatorio
+                                    AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                                            p_tipo_soggetto_dettaglio_id, ti.id,
+                                            script.fn_data_operativa())),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto(
+                                    p_tipo_soggetto_dettaglio_id, '{}'::integer[], ti.id,
+                                    script.fn_data_operativa(), NULL::uuid) AS motivi) c
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_natura(
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per un soggetto che non esiste ancora, sulla natura di dettaglio scelta nel form: una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice che anagrafiche.fn_tipo_indirizzo_ammesso_per_natura ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, senza tipi presenti: l''unico motivo possibile e'' il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Natura NULL o senza matrice: tutti ammessi, come per il guard. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa().';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_soggetto_dettaglio_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         EXISTS (SELECT 1
+                                   FROM config.tipi_soggetto_dettaglio_tipi_indirizzo mo
+                                  WHERE mo.tipo_soggetto_dettaglio_id = ctx.natura
+                                    AND mo.tipo_indirizzo_id = ti.id
+                                    AND mo.obbligatorio
+                                    AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                                            ctx.natura, ti.id, script.fn_data_operativa())),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM (SELECT s.id,
+                                 s.tipo_soggetto_dettaglio_id AS natura,
+                                 ARRAY(SELECT i.tipo_indirizzo_id
+                                         FROM anagrafiche.indirizzi_soggetti i
+                                        WHERE i.soggetto_id = s.id) AS presenti
+                            FROM anagrafiche.soggetti s
+                           WHERE s.id = p_soggetto_id) ctx
+                    CROSS JOIN config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto(
+                                    ctx.natura, ctx.presenti, ti.id,
+                                    script.fn_data_operativa(), ctx.id) AS motivi) c
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(
+                  anagrafiche.soggetti.id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per il soggetto salvato (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice della natura che anagrafiche.fn_tipo_indirizzo_ammesso_per_natura ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: la natura e i tipi che il soggetto ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_soggetto solleva: il tipo gia'' presente (E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE), poi il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Prima gli ammessi, poi gli altri, per codice interno. Soggetto inesistente: nessuna riga. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(uuid);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_natura(bigint);

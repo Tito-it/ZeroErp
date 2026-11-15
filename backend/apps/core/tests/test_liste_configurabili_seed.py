@@ -48,6 +48,16 @@
 5. test_ogni_lista_del_seed_ha_un_preset_default
    Senza preset `is_default` la lista non ha una configurazione di partenza.
 
+5-bis. test_l_ordinamento_dei_preset_nomina_il_campo_sorgente
+   Ogni `col` dell'`ordinamento_default` di un preset e' un `campo_sorgente`
+   delle colonne attive della sua lista, non un `codice`: dove i due divergono,
+   il preset aprirebbe la lista ordinata per una colonna che non esiste, e il DB
+   non lo rifiuta (K-4 di brief-db-lista-colonna-campo-sorgente-null).
+
+5-ter. test_l_ordinamento_col_codice_e_rifiutato
+   Il rosso del 5-bis, su un preset costruito col codice di una colonna
+   divergente: la prova che il presidio vede il difetto che dichiara.
+
 6. test_registro_copre_tutte_le_liste_montate_dal_frontend
    Chiude il buco del registro: una lista convertita ma non aggiunta a `_LISTE`
    sfuggirebbe a TUTTI i test sopra, in silenzio. La fonte di verita' e' il
@@ -108,28 +118,19 @@
 I test 4-6 girano su TUTTE: valgono a prescindere dalla chiave della whitelist.
 """
 
-import csv
+import json
 import re
 import unittest
 from functools import lru_cache
-from apps.core.tests._repo import repo_root
-
-
-_SEED_DIR = repo_root() / "db/changelog/migrations_v2/80_data/sql/ui"
-
-
-# Scopo: sorgente `.vue` senza commenti. Serve a distinguere chi USA uno slot da
-#        chi lo NOMINA — un presidio che cerca una PAROLA si accende sui
-#        messaggi, ed e' successo il 2026-08-26: un commento che citava
-#        `#cell-azioni` per spiegare il difetto ha fatto diventare rosso il
-#        test che quel difetto presidia.
-# ⭐ Non e' una toppa: il guard gemello `frontend/scripts/check-liste-configurabili.mjs`
-#    ha `senzaCommenti()` dal primo giorno, con la stessa motivazione scritta
-#    accanto. Qui mancava, ed era l'unica differenza fra i due.
-def _senza_commenti(testo: str) -> str:
-    senza_html = re.sub(r"<!--.*?-->", "", testo, flags=re.S)
-    senza_blocco = re.sub(r"/\*.*?\*/", "", senza_html, flags=re.S)
-    return re.sub(r"^\s*//.*$", "", senza_blocco, flags=re.M)
+from apps.core.tests._repo import repo_root, sorgente_senza_commenti, vue_senza_commenti
+from apps.core.tests._seed_csv import (
+    SEED_UI_DIR,
+    RigaSeed,
+    generatore_seed_lista,
+    seed_colonne_attive,
+    seed_lista_id,
+    seed_ui,
+)
 
 
 # Scopo: TUTTI i montaggi di lista del frontend, letti UNA volta sola.
@@ -150,7 +151,7 @@ def _montaggi_lista() -> tuple[tuple[str, str, str, str], ...]:
     src = repo_root() / "frontend/src"
     trovati: list[tuple[str, str, str, str]] = []
     for percorso in src.rglob("*.vue"):
-        senza_commenti = _senza_commenti(percorso.read_text(encoding="utf-8"))
+        senza_commenti = vue_senza_commenti(percorso.read_text(encoding="utf-8"))
         # ⛔ Non un componente solo. Una lista si monta con
         #    `<ListaConfigurabile>`, con `<DrawerTabLista>` o con
         #    `<ListaPaginaSemplice>`: cercare
@@ -208,18 +209,12 @@ def _tag_apertura(testo: str, inizio: int) -> str:
 #    regex: le due letture devono dare lo stesso insieme, e due regex gemelle
 #    sono il modo classico per farle divergere quando una delle due funzioni
 #    cambia forma. Il generatore e' gia' la sede di quel parsing.
-# ⚠️ Import per percorso e non `from scripts...`: `scripts/` non e' un package
-#    e non sta sul path del runner Django.
+# ⚠️ L'import del generatore e' quello del BB `_seed_csv`, che legge da li' anche
+#    il token NULL dei CSV.
 def _whitelist_da_funzione_db(percorso_doc: str):
     def risolvi() -> set[str]:
-        import importlib.util
-
-        sorgente = repo_root() / "scripts" / "gen_seed_lista.py"
-        spec = importlib.util.spec_from_file_location("_gen_seed_lista", sorgente)
-        assert spec and spec.loader
-        modulo = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(modulo)
-        return modulo.whitelist_funzione_db(percorso_doc)
+        chiavi: set[str] = generatore_seed_lista().whitelist_funzione_db(percorso_doc)
+        return chiavi
 
     return risolvi
 
@@ -790,7 +785,7 @@ def _colonne_desc_dichiarate(whitelist_fn) -> dict[str, set[str]] | None:
     if not modulo or not costante:
         return None
     mod = importlib.import_module(modulo)
-    sorgente = _senza_commenti(Path(mod.__file__).read_text(encoding="utf-8"))
+    sorgente = sorgente_senza_commenti(Path(mod.__file__).read_text(encoding="utf-8"))
     siti = [
         c for c in _chiamate_sql_order_clause(sorgente)
         if re.search(rf"colonne\s*=\s*{re.escape(costante)}\b", c)
@@ -809,7 +804,7 @@ def _colonne_desc_dichiarate(whitelist_fn) -> dict[str, set[str]] | None:
 #        che il ripiego DESC deve coprire.
 def _colonne_data_ordinabili(codice: str) -> set[str]:
     return {
-        r["campo_sorgente"] for r in _colonne_attive(codice)
+        r["campo_sorgente"] for r in seed_colonne_attive(codice)
         if r["ordinabile"] == "t" and r["tipo_dato"] in _TIPI_DATA
     }
 
@@ -828,29 +823,34 @@ def _liste_locali() -> tuple[str, ...]:
     return tuple(c for c, w in _LISTE if w is ORDINAMENTO_LOCALE)
 
 
-# Scopo: righe di un CSV di seed della cartella ui.
-def _seed(nome: str) -> list[dict[str, str]]:
-    with (_SEED_DIR / nome).open(newline="", encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
-
-
-# Scopo: id della lista dal suo codice (il seed puo' rinumerare: il test segue).
-def _lista_id(codice: str) -> str:
-    for riga in _seed("lista_definizione.csv"):
-        if riga["codice"] == codice:
-            return riga["id"]
-    raise AssertionError(f"lista '{codice}' assente da lista_definizione.csv")
-
-
-# Scopo: colonne ATTIVE del catalogo di una lista. Le disattivate non arrivano a
-#        video (`fn_resolve_lista_config` le esclude), quindi i loro flag non
-#        dicono nulla sul contratto lista<->backend.
-def _colonne_attive(codice: str) -> list[dict[str, str]]:
-    lista_id = _lista_id(codice)
-    return [
-        r for r in _seed("lista_colonna.csv")
-        if r["lista_id"] == lista_id and r["attivo"] == "t"
-    ]
+# Scopo: le chiavi `col` degli `ordinamento_default` che NON sono un
+#        `campo_sorgente` delle colonne attive della lista del preset — e quante
+#        chiavi si sono esaminate, per chi vuole sapere che il presidio ha materia.
+# ⛔ Il `col` nomina il `campo_sorgente`, non il `codice`: `<ListaConfigurabile>`
+#    monta le Column con `:field="col.campo_sorgente"` e il sort parte da li'.
+#    Dove i due divergono, un preset scritto col codice apre la lista ordinata
+#    per una colonna che non esiste, senza errore a DB (K-4).
+# ⭐ Funzione pura sulle righe, non sul file: il test che la vede rossa le passa
+#    un preset costruito, senza toccare il seed.
+def _ordinamenti_fuori_catalogo(
+    preset: list[RigaSeed], colonne: list[RigaSeed],
+) -> tuple[list[tuple[str | None, object]], int]:
+    sorgenti: dict[str | None, set[str | None]] = {}
+    for c in colonne:
+        if c["attivo"] == "t":
+            sorgenti.setdefault(c["lista_id"], set()).add(c["campo_sorgente"])
+    fuori: list[tuple[str | None, object]] = []
+    esaminate = 0
+    for p in preset:
+        ordinamento = p["ordinamento_default"]
+        if ordinamento is None:
+            continue
+        for chiave in json.loads(ordinamento):
+            esaminate += 1
+            col = chiave.get("col")
+            if col is None or col not in sorgenti.get(p["lista_id"], set()):
+                fuori.append((p["codice"], col))
+    return sorted(fuori, key=str), esaminate
 
 
 # Scopo: colonne per cui ESISTE un grant esplicito in `ui.lista_colonna_permesso`.
@@ -859,11 +859,13 @@ def _colonne_attive(codice: str) -> list[dict[str, str]]:
 #        colonna sensibile. Il giorno in cui il seed arrivera', il test si stringe
 #        da se' sulla singola colonna, senza modifiche.
 def _colonne_con_grant() -> set[str]:
-    percorso = _SEED_DIR / "lista_colonna_permesso.csv"
+    percorso = SEED_UI_DIR / "lista_colonna_permesso.csv"
     if not percorso.exists():
         return set()
-    with percorso.open(newline="", encoding="utf-8") as fh:
-        return {r["colonna_id"] for r in csv.DictReader(fh)}
+    # Dal BB, col token NULL del suo caricatore: un file senza caricatore solleva.
+    return {
+        r["colonna_id"] for r in seed_ui(percorso.name) if r["colonna_id"] is not None
+    }
 
 
 _CELLA_VUE = repo_root() / "frontend/src/core/components/CellaConfigurabile.vue"
@@ -877,7 +879,7 @@ _CELLA_VUE = repo_root() / "frontend/src/core/components/CellaConfigurabile.vue"
 #    per sottrazione il test che lo consuma.
 @lru_cache(maxsize=1)
 def _formati_resi_dal_frontend() -> frozenset[str]:
-    sorgente = _senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
+    sorgente = vue_senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
     trovati = set(re.findall(r"case '([a-z0-9_]+)':", sorgente))
     trovati |= set(re.findall(r"formato === '([a-z0-9_]+)'", sorgente))
     if not trovati:
@@ -900,7 +902,7 @@ def _formati_resi_dal_frontend() -> frozenset[str]:
 #    presidio che perde la sua fonte deve dirlo, non tornare vuoto.
 @lru_cache(maxsize=1)
 def _gemelle_per_formato() -> dict[str, tuple[str, ...]]:
-    sorgente = _senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
+    sorgente = vue_senza_commenti(_CELLA_VUE.read_text(encoding="utf-8"))
     m = re.search(r"const CAMPO_GEMELLO_NATURA_DOC = '([a-z0-9_]+)'", sorgente)
     if m is None:
         raise AssertionError(
@@ -928,7 +930,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         for codice, whitelist_fn in _liste_allineate():
             with self.subTest(lista=codice):
                 ordinabili = {
-                    r["campo_sorgente"] for r in _colonne_attive(codice)
+                    r["campo_sorgente"] for r in seed_colonne_attive(codice)
                     if r["ordinabile"] == "t"
                 }
                 mancanti = sorted(ordinabili - whitelist_fn())
@@ -941,7 +943,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
     def test_seed_offre_tutto_cio_che_il_backend_sa_ordinare(self) -> None:
         for codice, whitelist_fn in _liste_allineate():
             with self.subTest(lista=codice):
-                colonne = _colonne_attive(codice)
+                colonne = seed_colonne_attive(codice)
                 ordinabili = {
                     r["campo_sorgente"] for r in colonne if r["ordinabile"] == "t"
                 }
@@ -961,13 +963,18 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         for codice, whitelist_fn in _liste_allineate():
             with self.subTest(lista=codice):
                 whitelist = whitelist_fn()
-                for riga in _colonne_attive(codice):
+                for riga in seed_colonne_attive(codice):
                     sorgente = riga["campo_sorgente"]
                     if not sorgente or sorgente == riga["codice"]:
                         continue
-                    divergenti_totali += 1
                     if riga["ordinabile"] != "t":
                         continue
+                    # ⚠️ Si conta DOPO il filtro dell'ordinabile: il contatore
+                    #    arma le asserzioni qui sotto, e una divergente non
+                    #    ordinabile non ne esercita nessuna. Contata prima, e col
+                    #    `'NULL'` del CSV letto per un sorgente, lo soddisfacevano
+                    #    le 85 colonne senza sorgente (K-2, 2026-11-12).
+                    divergenti_totali += 1
                     self.assertIn(
                         sorgente, whitelist,
                         f"[{codice}] la whitelist deve usare il campo fisico "
@@ -982,14 +989,14 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         # per caso senza discriminare le due convenzioni.
         self.assertGreater(
             divergenti_totali, 0,
-            "nessuna colonna con codice != campo_sorgente in tutto il registro: "
-            "il test non discrimina piu' le due convenzioni, va rivisto.",
+            "nessuna colonna ordinabile con codice != campo_sorgente in tutto il "
+            "registro: il test non discrimina piu' le due convenzioni, va rivisto.",
         )
 
     def test_colonna_azione_mai_ordinabile(self) -> None:
         for codice, _ in _LISTE:
             with self.subTest(lista=codice):
-                for riga in _colonne_attive(codice):
+                for riga in seed_colonne_attive(codice):
                     if riga["tipo_colonna"] == "azione":
                         self.assertEqual(
                             riga["ordinabile"], "f",
@@ -1014,14 +1021,14 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
     #
     # ⚠️ Il presidio guarda i `.vue`, non il seed: e' un difetto di CHIAMATA,
     #    e nel database non se ne vede traccia.
-    # ⚠️ E guarda il sorgente SENZA COMMENTI (`_senza_commenti`): chi NOMINA lo
+    # ⚠️ E guarda il sorgente SENZA COMMENTI (`vue_senza_commenti`): chi NOMINA lo
     #    slot sbagliato per spiegarlo non lo sta usando. Senza, il presidio si
     #    accende sulla propria documentazione — successo il 2026-08-26.
     def test_lo_slot_delle_azioni_si_chiama_actions(self) -> None:
         src = repo_root() / "frontend/src"
         colpevoli: list[str] = []
         for percorso in sorted(src.rglob("*.vue")):
-            testo = _senza_commenti(percorso.read_text(encoding="utf-8"))
+            testo = vue_senza_commenti(percorso.read_text(encoding="utf-8"))
             if "<ListaConfigurabile" not in testo:
                 continue
             if "#cell-azioni" in testo:
@@ -1072,7 +1079,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             f"{codice} ({dove})"
             for codice, dove in con_slot.items()
             if not any(
-                r["tipo_colonna"] == "azione" for r in _colonne_attive(codice)
+                r["tipo_colonna"] == "azione" for r in seed_colonne_attive(codice)
             )
         )
         self.assertEqual(
@@ -1131,7 +1138,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         for codice, _ in _LISTE:
             with self.subTest(lista=codice):
                 orfane = [
-                    r["codice"] for r in _colonne_attive(codice)
+                    r["codice"] for r in seed_colonne_attive(codice)
                     if r["sensibile"] == "t" and r["id"] not in con_grant
                 ]
                 self.assertEqual(
@@ -1156,7 +1163,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                 continue
             whitelist = whitelist_fn()
             divergenti = [
-                r for r in _colonne_attive(codice)
+                r for r in seed_colonne_attive(codice)
                 if r["campo_sorgente"]
                 and r["codice"] != r["campo_sorgente"]
                 and r["ordinabile"] == "t"
@@ -1219,10 +1226,10 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                 )
 
     def test_ogni_lista_del_seed_ha_un_preset_default(self) -> None:
-        preset = _seed("lista_preset.csv")
+        preset = seed_ui("lista_preset.csv")
         for codice, _ in _LISTE:
             with self.subTest(lista=codice):
-                lista_id = _lista_id(codice)
+                lista_id = seed_lista_id(codice)
                 default = [
                     p for p in preset
                     if p["lista_id"] == lista_id and p["is_default"] == "t"
@@ -1233,6 +1240,57 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                     "lista senza configurazione di partenza, due la rendono "
                     "non deterministica.",
                 )
+
+    # 5-bis. La chiave `col` dell'ordinamento di un preset e' il `campo_sorgente`
+    #        (K-4 di brief-db-lista-colonna-campo-sorgente-null).
+    def test_l_ordinamento_dei_preset_nomina_il_campo_sorgente(self) -> None:
+        fuori, esaminate = _ordinamenti_fuori_catalogo(
+            seed_ui("lista_preset.csv"), seed_ui("lista_colonna.csv"),
+        )
+        self.assertEqual(
+            fuori, [],
+            "`ordinamento_default` di un preset nomina una colonna che la sua "
+            "lista non ha fra i `campo_sorgente` attivi: la lista si apre "
+            "ordinata per un campo che non esiste, e il DB non lo rifiuta.",
+        )
+        # Il verso che arma il presidio: a zero chiavi esaminate sarebbe verde
+        # per sottrazione (fatto datato, 2026-11-12: 81 chiavi).
+        self.assertGreater(esaminate, 0, "nessun `ordinamento_default` letto dal seed")
+
+    # 5-ter. Il rosso del 5-bis, su un preset costruito col CODICE di una colonna
+    #        dove codice e campo_sorgente divergono: e' il difetto che presidia, e
+    #        senza questa prova il test potrebbe essere verde per come e' scritto.
+    def test_l_ordinamento_col_codice_e_rifiutato(self) -> None:
+        colonne = seed_ui("lista_colonna.csv")
+        # ⚠️ Il codice della divergente non deve essere il `campo_sorgente` di
+        #    un'ALTRA colonna attiva della stessa lista: li' il preset sarebbe
+        #    giusto, e il test diventerebbe rosso per come sono fatti i dati.
+        sorgenti: dict[str | None, set[str | None]] = {}
+        for c in colonne:
+            if c["attivo"] == "t":
+                sorgenti.setdefault(c["lista_id"], set()).add(c["campo_sorgente"])
+        divergente = next(
+            (
+                c for c in colonne
+                if c["attivo"] == "t" and c["campo_sorgente"]
+                and c["codice"] != c["campo_sorgente"]
+                and c["codice"] not in sorgenti[c["lista_id"]]
+            ),
+            None,
+        )
+        if divergente is None:
+            self.fail(
+                "nessuna colonna attiva con codice != campo_sorgente: il rosso "
+                "del 5-bis non si sa piu' costruire dal seed, va rivisto."
+            )
+        preset_col_codice: RigaSeed = {
+            "codice": "preset_di_prova",
+            "lista_id": divergente["lista_id"],
+            "ordinamento_default": json.dumps([{"col": divergente["codice"], "dir": "asc"}]),
+        }
+        fuori, esaminate = _ordinamenti_fuori_catalogo([preset_col_codice], colonne)
+        self.assertEqual(esaminate, 1)
+        self.assertEqual(fuori, [("preset_di_prova", divergente["codice"])])
 
     # 9. Un `formato` che il frontend non conosce non fa errore: la colonna esce
     #    come testo grezzo. Il precedente e' `yesno` (frontend-standards §Si'/No):
@@ -1245,7 +1303,7 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
         self.assertIn("natura_doc", conosciuti)
         sconosciuti = sorted({
             (r["formato"], r["id"], r["codice"])
-            for r in _seed("lista_colonna.csv")
+            for r in seed_ui("lista_colonna.csv")
             if r["attivo"] == "t" and (r["formato"] or "").strip()
             and r["formato"].strip() not in conosciuti
         })

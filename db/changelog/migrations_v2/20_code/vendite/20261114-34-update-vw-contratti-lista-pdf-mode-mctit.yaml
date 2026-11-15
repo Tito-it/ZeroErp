@@ -1,0 +1,188 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LISTA DEI CONTRATTI: pdf_mode DAL VOCABOLARIO
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.19, giro 6c (D-PDF (a),
+#   Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La lista dei contratti (frontend ContrattiSearchTable.vue) spegne il PDF
+#   con stato_codice_interno === 'DRAFT': il codice della bozza scritto nel
+#   frontend, una copia della regola di stampa (S-10). La vista non porta
+#   pdf_mode.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   + pdf_mode in coda (config.stati_doc_contratti.pdf_mode), lo stesso nome
+#   delle liste di ordini, preventivi e offerte. Il backend legge la vista con
+#   SELECT v.*: la colonna arriva al frontend senza altro.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW, la colonna in ULTIMA posizione, WITH
+#   (security_invoker = on) ripetuto (reloptions su dbdev, 2026-11-14);
+#   nessuna vista dipendente. Il COMMENT, gia' al presente, aggiunge la frase.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_viewdef su dbdev, 2026-11-14. Il rollback porta la definizione e
+#   il COMMENT di prima; una vista non perde colonne con CREATE OR REPLACE: il
+#   rollback fa DROP e ricrea, col GRANT a zeroerp_app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-34-update-vw-contratti-lista-pdf-mode-mctit.yaml
+
+  - changeSet:
+      id: 20261114-34-update-vw-contratti-lista-pdf-mode
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_contratti_lista: + pdf_mode dal vocabolario, per il PDF della lista. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 6c (D-PDF).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_contratti_lista WITH (security_invoker = on) AS
+               SELECT c.id,
+                  c.uid,
+                  c.numero,
+                  c.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  c.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  c.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  c.ambito,
+                  c.data,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.stato_doc_contratto_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.codice AS stato_codice,
+                  sd.descrizione AS stato_descrizione,
+                  c.listino_id,
+                  l.codice AS listino_codice,
+                  l.descrizione AS listino_descrizione,
+                  c.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  c.tipo_variazione_globale,
+                  c.valore_variazione_globale,
+                  c.categoria_cliente_id_snapshot,
+                  cc_snap.codice AS categoria_cliente_snapshot_codice,
+                  cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+                  c.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  v_val.descrizione AS valuta_descrizione,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sd.pdf_mode
+                 FROM vendite.contratti c
+                   JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   JOIN config.utilities u ON u.id = c.utility_id
+                   JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN vendite.listini l ON l.id = c.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
+                   LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+                   LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'CONTRATTO'::text AND so_pr.attivo IS TRUE), c.id, c.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_contratti_lista
+              IS 'Vista flat dei contratti per la lista UI configurabile vendite.contratti (ui.lista_definizione): cliente (billing account e soggetto), emittente fiscale con la ragione sociale, utility, stato con la sua fase, listino e versione, variazione globale, categoria cliente dallo snapshot del contratto (non quella corrente del billing account), valuta, audit e la pratica del contratto. Pura denormalizzazione: nessun filtro, scope, ordinamento o paginazione propri, che restano al repository consumer. security_invoker: vale la RLS di chi legge; billing account, soggetto, utility e stato sono JOIN interni, quindi un contratto col billing account fuori perimetro non compare, mentre emittente, listino, versione, categoria e valuta sono LEFT JOIN e lasciano NULL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display). pratica_id, pratica_numero e n_pratiche vengono da pratiche.fn_pratica_del_documento, col tipo CONTRATTO (da config.sorgenti per codice_interno, solo se attivo) e le due chiavi del contratto, id e uid. Le colonne del grafo (frontiera, discendenti, transito) non sono nella vista: il backend le chiede a vendite.fn_documento_lineage_sintesi per i contratti della pagina. pdf_mode: la modalita'' del PDF nello stato (config.stati_doc_contratti.pdf_mode); la lista accende il PDF dove e'' ARCHIVE, la stessa colonna da cui la capability del dettaglio dice pdf.mode.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_contratti_lista;
+
+              CREATE VIEW vendite.vw_contratti_lista WITH (security_invoker = on) AS
+               SELECT c.id,
+                  c.uid,
+                  c.numero,
+                  c.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  c.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  c.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  c.ambito,
+                  c.data,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.stato_doc_contratto_id,
+                  sd.codice_interno AS stato_codice_interno,
+                  sd.codice AS stato_codice,
+                  sd.descrizione AS stato_descrizione,
+                  c.listino_id,
+                  l.codice AS listino_codice,
+                  l.descrizione AS listino_descrizione,
+                  c.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  c.tipo_variazione_globale,
+                  c.valore_variazione_globale,
+                  c.categoria_cliente_id_snapshot,
+                  cc_snap.codice AS categoria_cliente_snapshot_codice,
+                  cc_snap.descrizione AS categoria_cliente_snapshot_descrizione,
+                  c.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  v_val.descrizione AS valuta_descrizione,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sd.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche
+                 FROM vendite.contratti c
+                   JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+                   JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
+                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   JOIN config.utilities u ON u.id = c.utility_id
+                   JOIN config.stati_doc_contratti sd ON sd.id = c.stato_doc_contratto_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = c.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN vendite.listini l ON l.id = c.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = c.listino_versione_id
+                   LEFT JOIN anagrafiche.categorie_clienti cc_snap ON cc_snap.id = c.categoria_cliente_id_snapshot
+                   LEFT JOIN config.valute v_val ON v_val.id = c.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'CONTRATTO'::text AND so_pr.attivo IS TRUE), c.id, c.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_contratti_lista
+              IS 'Vista flat dei contratti per la lista UI configurabile vendite.contratti (ui.lista_definizione): cliente (billing account e soggetto), emittente fiscale con la ragione sociale, utility, stato con la sua fase, listino e versione, variazione globale, categoria cliente dallo snapshot del contratto (non quella corrente del billing account), valuta, audit e la pratica del contratto. Pura denormalizzazione: nessun filtro, scope, ordinamento o paginazione propri, che restano al repository consumer. security_invoker: vale la RLS di chi legge; billing account, soggetto, utility e stato sono JOIN interni, quindi un contratto col billing account fuori perimetro non compare, mentre emittente, listino, versione, categoria e valuta sono LEFT JOIN e lasciano NULL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display). pratica_id, pratica_numero e n_pratiche vengono da pratiche.fn_pratica_del_documento, col tipo CONTRATTO (da config.sorgenti per codice_interno, solo se attivo) e le due chiavi del contratto, id e uid. Le colonne del grafo (frontiera, discendenti, transito) non sono nella vista: il backend le chiede a vendite.fn_documento_lineage_sintesi per i contratti della pagina.';
+
+              GRANT SELECT, INSERT, UPDATE, DELETE ON vendite.vw_contratti_lista TO zeroerp_app;

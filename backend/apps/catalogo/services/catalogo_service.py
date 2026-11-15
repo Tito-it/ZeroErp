@@ -19,9 +19,6 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
-    NOTA_TARGET_ARTICOLO,
-    NOTA_TARGET_COMPONENTE,
-    NOTA_WRITE_COLUMNS,
     CatalogoBomRepository,
 )
 from apps.catalogo.db.catalogo_repository import (
@@ -49,7 +46,6 @@ from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.non_editable_fields_helper import compute_non_editable_fields
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.partitioned_note_service import ordine_note_valido
 from apps.core.services.testata_guard import o_not_found, pagina_dopo_testata
 from apps.core.services.payload_helpers import (
     MISSING as _MISSING,
@@ -85,6 +81,11 @@ _ARTICOLO_INT_FIELDS: tuple[str, ...] = (
     # e `0` non e' «non si applica». Il CHECK `>= 0` e' anticipato nel service
     # con messaggio parlante (vedi `_validate_articolo_payload`).
     "lead_time_giorni",
+    # La causale dell'articolo-onere (§9.10, D-1 di Tid 2026-11-12): NULL e' la
+    # merce, un id fa dell'articolo un onere. Nessun giudizio qui: il doppione,
+    # la natura, i flag di struttura e il blocco sull'articolo usato li dice il
+    # DB (guard dell'onere, A-10).
+    "causale_onere_id",
 )
 # Scopo: FK NOT NULL a DB con DEFAULT: (chiave, dettaglio dell'errore se
 #        arriva null). Il valore si puo' cambiare, mai azzerare — assente nel
@@ -99,6 +100,7 @@ _ARTICOLO_FK_NOT_NULL: tuple[tuple[str, str], ...] = (
 _ARTICOLO_NULLABLE_FIELDS: frozenset[str] = frozenset({
     "descrizione_breve",
     *_ARTICOLO_INT_FIELDS,
+    "obsoleto_dal",
     "meta",
 })
 _ARTICOLO_CREATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_CREATE_COLUMNS
@@ -106,45 +108,15 @@ _ARTICOLO_UPDATE_ALLOWED_KEYS: frozenset[str] = ARTICOLI_UPDATE_COLUMNS
 _UOM_CREATE_ALLOWED_KEYS: frozenset[str] = UOM_OPERATIVA_WRITE_COLUMNS
 _UOM_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(key for key in UOM_OPERATIVA_WRITE_COLUMNS if key != "uom_id")
 _COMPONENTE_CREATE_ALLOWED_KEYS: frozenset[str] = COMPONENTE_WRITE_COLUMNS
-_COMPONENTE_UPDATE_ALLOWED_KEYS: frozenset[str] = frozenset(
-    key for key in COMPONENTE_WRITE_COLUMNS if key != "componente_id"
-)
-_NOTA_ALLOWED_KEYS: frozenset[str] = NOTA_WRITE_COLUMNS
-_NOTA_ANCHOR_VALIDI: frozenset[str] = frozenset({"DOCUMENTO", "RIGA"})
-_NOTA_POSIZIONE_VALIDI: frozenset[str] = frozenset({"HEADER", "FOOTER", "SEZIONE", "BEFORE", "AFTER"})
 
-# Gap conosciuti rispetto a `dbops.vw_non_editable_fields`.
-# Dal giro 10a di brief-db-revisione-dbops (D25, BE2) la vista legge il lock
-# VIVO: ogni colonna che un trigger di lock blocca davvero, `codice_interno`
-# compreso. Qui restano solo le colonne immutabili per il dominio che il DB
-# NON dichiara ancora come lock:
-#   - catalogo.articoli_uom_operativa.uom_id (immutabile per coppia)
-#   - catalogo.unita_misura_conversioni.uom_from_id / uom_to_id
-# ⛔ Un gap che ripete una colonna gia' bloccata dal DB e' una seconda sede
-#    della stessa regola: quando il DB la dichiara, la voce qui si toglie
-#    (cosi' e' uscito `catalogo.articoli.codice`, 2026-11-09).
-_NON_EDITABLE_DB_GAPS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("catalogo", "articoli_uom_operativa"): ("uom_id",),
-    ("catalogo", "unita_misura_conversioni"): ("uom_from_id", "uom_to_id"),
-}
-
-
-# Scopo: `non_editable_fields` di una tabella di catalogo: il BB
-#        `compute_non_editable_fields` coi gap di `_NON_EDITABLE_DB_GAPS`.
-#        Con `record_id` aggiunge i lock condizionali valutati sul record
-#        (es. `catalogo.articoli` usato o con distinta in vigore).
-# ⛔ Non e' piu' una copia (2026-11-09, regola del 2, ok Tid): fino a quel
-#    giorno qui si riscriveva l'unione lock DB + gap + ordinamento, e il ramo
-#    per record esisteva solo in questa copia. Ora la logica sta nel BB, e qui
-#    resta solo cio' che e' di catalogo: quali gap per quale tabella.
-def _non_editable_fields_catalogo(
-    schema: str, table: str, *, record_id: str | int | None = None,
-) -> list[str]:
-    return compute_non_editable_fields(
-        schema, table,
-        gaps=_NON_EDITABLE_DB_GAPS.get((schema, table), ()),
-        record_id=record_id,
-    )
+# ⭐ `non_editable_fields` delle tabelle di catalogo: il BB
+#    `compute_non_editable_fields`, senza gap. Fino al 2026-11-11 qui c'era
+#    `_NON_EDITABLE_DB_GAPS`, le colonne ferme che il DB non dichiarava
+#    (unita', fattore e inizio di mappature e conversioni). Dal giro G1-G2 di
+#    brief-db-revisione-catalogo (BE21-a) le ferma un lock di colonna
+#    (`E_UOM_STORIA_IMMUTABILE`) e `dbops.vw_non_editable_fields` le dichiara:
+#    una seconda sede qui sarebbe la stessa regola scritta due volte (cosi'
+#    era uscito `catalogo.articoli.codice`, 2026-11-09).
 
 
 # Scopo: in create, applica il default `valido_dal=today` se il campo manca
@@ -465,38 +437,6 @@ def _extract_payload_uuid(
         )
 
 
-# Scopo: Estrae stringa opzionale ma limitata ad un set di valori ammessi.
-def _extract_enum_string(
-    payload: dict[str, Any],
-    key: str,
-    *,
-    function_name: str,
-    allowed_values: frozenset[str],
-    nullable: bool = False,
-    message: str = "Payload catalogo non valido.",
-) -> str | None | _MissingType:
-    value = _extract_string(
-        payload,
-        key,
-        function_name=function_name,
-        nullable=nullable,
-        message=message,
-    )
-    if isinstance(value, _MissingType) or value is None:
-        return value
-    upper_value = value.upper()
-    ErrorManager.require(
-        upper_value in allowed_values,
-        code="E_CATALOGO_VALIDATION",
-        message=message,
-        detail=f"{key} deve essere uno tra: {', '.join(sorted(allowed_values))}",
-        context={"field": key, "allowed_values": sorted(allowed_values)},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return upper_value
-
-
 # Scopo: Estrae i campi scrivibili di un articolo con una sola regola condivisa.
 def _extract_articolo_payload(
     payload: dict[str, Any],
@@ -641,6 +581,15 @@ def _extract_articolo_payload(
             log_to_db=True,
         )
 
+    # Il ritiro: una data, o null per toglierla (l'articolo torna a scegliersi).
+    # Passata, di oggi o futura: quando vale lo dice il DB (`e_obsoleto`).
+    obsoleto_dal = _extract_payload_date(
+        payload, "obsoleto_dal", function_name=function_name, nullable=True,
+        message="Payload articolo non valido.",
+    )
+    if obsoleto_dal is not _MISSING:
+        data["obsoleto_dal"] = obsoleto_dal
+
     meta = _extract_meta(payload, function_name=function_name)
     if meta is not _MISSING:
         data["meta"] = meta
@@ -653,6 +602,14 @@ def _extract_articolo_payload(
 # `map_integrity_error`.
 _ARTICOLO_UNIQUE: dict[str, tuple] = {
     "uq_articoli_codice": ("E_CATALOGO_VALIDATION", "Codice articolo gia' esistente.", "codice"),
+    # Il legame articolo-causale e' 1:1. Il doppione lo rifiuta prima il guard
+    # dell'onere col suo codice; l'indice scatta solo su due scritture
+    # concorrenti, e risponde con lo stesso codice (§9.10, C-3).
+    "uq_articoli_causale_onere": (
+        "E_ARTICOLO_CAUSALE_ONERE_GIA_USATA",
+        "La causale onere scelta e' gia' di un altro articolo.",
+        "causale_onere_id",
+    ),
 }
 # ⚠️ Il CHECK su composito/solo componente (brief-db-revisione-catalogo, BE10)
 #    non ha UN campo: e' la coppia a essere incoerente, e il form spegne
@@ -850,56 +807,40 @@ def _extract_uom_operativa_payload(
     return data
 
 
-# Scopo: Estrae il payload scrivibile di un componente BoM con regole condivise.
+# Scopo: Estrae il payload scrivibile di un componente BoM nuovo.
+# ⚠️ Solo la CREATE: dal 2026-11-10 un legame non si aggiorna (la PATCH e'
+#    ritirata). La sua fine passa dal verbo (`fn_chiudi_componente`).
 def _extract_componente_payload(
     payload: dict[str, Any],
     *,
-    for_update: bool,
     function_name: str,
 ) -> dict[str, Any]:
     data: dict[str, Any] = {}
     payload_message = "Payload componente non valido."
 
-    if for_update:
-        ErrorManager.require(
-            "componente_id" not in payload,
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="componente_id e' immutabile e non puo' essere aggiornato.",
-            context={"field": "componente_id"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        _V.validate_allowed_keys(
-            payload,
-            allowed=_COMPONENTE_UPDATE_ALLOWED_KEYS | {"componente_id"},
-            function_name=function_name,
-            message=payload_message,
-        )
-    else:
-        _V.validate_allowed_keys(
-            payload,
-            allowed=_COMPONENTE_CREATE_ALLOWED_KEYS,
-            function_name=function_name,
-            message=payload_message,
-        )
-        componente_id = _extract_payload_uuid(
-            payload,
-            "componente_id",
-            function_name=function_name,
-            nullable=False,
-            message=payload_message,
-        )
-        ErrorManager.require(
-            isinstance(componente_id, UUID),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload componente non valido.",
-            detail="componente_id obbligatorio.",
-            context={"field": "componente_id"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["componente_id"] = componente_id
+    _V.validate_allowed_keys(
+        payload,
+        allowed=_COMPONENTE_CREATE_ALLOWED_KEYS,
+        function_name=function_name,
+        message=payload_message,
+    )
+    componente_id = _extract_payload_uuid(
+        payload,
+        "componente_id",
+        function_name=function_name,
+        nullable=False,
+        message=payload_message,
+    )
+    ErrorManager.require(
+        isinstance(componente_id, UUID),
+        code="E_CATALOGO_VALIDATION",
+        message="Payload componente non valido.",
+        detail="componente_id obbligatorio.",
+        context={"field": "componente_id"},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    data["componente_id"] = componente_id
 
     coeff_qta = _V.extract_optional_decimal(
         payload,
@@ -911,7 +852,7 @@ def _extract_componente_payload(
     )
     if coeff_qta is not _MISSING:
         data["coeff_qta"] = coeff_qta
-    elif not for_update:
+    else:
         ErrorManager.raise_error(
             code="E_CATALOGO_VALIDATION",
             message="Payload componente non valido.",
@@ -936,7 +877,7 @@ def _extract_componente_payload(
         message=payload_message,
     )
     # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
-    valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
+    valido_dal = _apply_valido_dal_default(valido_dal, for_create=True)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
@@ -979,191 +920,6 @@ def _extract_componente_payload(
     return data
 
 
-# Scopo: Estrae il payload scrivibile di una nota catalogo con validazioni comuni.
-def _extract_nota_payload(
-    payload: dict[str, Any],
-    *,
-    for_update: bool,
-    function_name: str,
-) -> dict[str, Any]:
-    data: dict[str, Any] = {}
-    payload_message = "Payload nota non valido."
-    _V.validate_allowed_keys(
-        payload,
-        allowed=_NOTA_ALLOWED_KEYS,
-        function_name=function_name,
-        message=payload_message,
-    )
-
-    target_riga_id = _extract_payload_uuid(
-        payload,
-        "target_riga_id",
-        function_name=function_name,
-        nullable=True,
-        message=payload_message,
-    )
-    if target_riga_id is not _MISSING:
-        data["target_riga_id"] = target_riga_id
-
-    anchor_tipo = _extract_enum_string(
-        payload,
-        "anchor_tipo",
-        function_name=function_name,
-        allowed_values=_NOTA_ANCHOR_VALIDI,
-        message=payload_message,
-    )
-    if anchor_tipo is not _MISSING:
-        data["anchor_tipo"] = anchor_tipo
-
-    posizione = _extract_enum_string(
-        payload,
-        "posizione",
-        function_name=function_name,
-        allowed_values=_NOTA_POSIZIONE_VALIDI,
-        message=payload_message,
-    )
-    if posizione is not _MISSING:
-        data["posizione"] = posizione
-
-    seq = _extract_nullable_int(
-        payload,
-        "seq",
-        function_name=function_name,
-        message=payload_message,
-    )
-    if not isinstance(seq, _MissingType):
-        ErrorManager.require(
-            seq is None or seq >= 0,
-            code="E_CATALOGO_VALIDATION",
-            message="Payload nota non valido.",
-            detail="seq deve essere >= 0.",
-            context={"field": "seq", "value": seq},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["seq"] = seq
-
-    testo = _extract_string(
-        payload,
-        "testo",
-        function_name=function_name,
-        nullable=True,
-        message=payload_message,
-    )
-    if testo is not _MISSING:
-        data["testo"] = testo
-    testo_md = _extract_string(
-        payload,
-        "testo_md",
-        function_name=function_name,
-        nullable=True,
-        message=payload_message,
-    )
-    if testo_md is not _MISSING:
-        data["testo_md"] = testo_md
-
-    id_stile = _extract_nullable_int(
-        payload,
-        "id_stile",
-        function_name=function_name,
-        message=payload_message,
-    )
-    if id_stile is not _MISSING:
-        ErrorManager.require(
-            isinstance(id_stile, int),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload nota non valido.",
-            detail="id_stile deve essere un intero.",
-            context={"field": "id_stile"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-        data["id_stile"] = id_stile
-    elif not for_update:
-        ErrorManager.raise_error(
-            code="E_CATALOGO_VALIDATION",
-            message="Payload nota non valido.",
-            detail="id_stile obbligatorio.",
-            context={"field": "id_stile"},
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-    id_lingua = _extract_nullable_int(
-        payload,
-        "id_lingua",
-        function_name=function_name,
-        message=payload_message,
-    )
-    if id_lingua is not _MISSING:
-        data["id_lingua"] = id_lingua
-
-    for field_name in ("visibile", "solo_stampa"):
-        field_value = _extract_present_bool(
-            payload,
-            field_name,
-            function_name=function_name,
-            message=payload_message,
-        )
-        if field_value is not _MISSING:
-            data[field_name] = field_value
-
-    meta = _extract_meta(payload, function_name=function_name, message=payload_message)
-    if meta is not _MISSING:
-        # ⛔ `catalogo.note.meta` e' NOT NULL DEFAULT '{}' (le altre tabelle del
-        #    catalogo no): `meta: null` dal client vuol dire «nessun metadato»,
-        #    cioe' `{}`. Fino al 2026-09-26 arrivava NULL al DB e la scrittura
-        #    falliva sul vincolo.
-        data["meta"] = {} if meta is None else meta
-
-    if not for_update:
-        ErrorManager.require(
-            bool(data.get("testo")) or bool(data.get("testo_md")),
-            code="E_CATALOGO_VALIDATION",
-            message="Payload nota non valido.",
-            detail="Almeno uno tra testo e testo_md deve essere valorizzato.",
-            context={"fields": ["testo", "testo_md"]},
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-        # Default derivati per anchor_tipo + posizione (CREATE only).
-        # Allineamento col pattern vendite `PartitionedNoteService._normalize`:
-        # se l'operatore non specifica anchor_tipo/posizione, vengono derivati
-        # da target_riga_id (RIGA/AFTER se valorizzato, DOCUMENTO/HEADER altrimenti).
-        # Le colonne `note_articoli`/`note_articoli_componenti` sono NOT NULL,
-        # quindi senza questi default un payload minimale (solo testo+stile)
-        # del building block FE `NoteDrawer` fallirebbe al constraint DB.
-        # In UPDATE i default non si applicano: chi vuole cambiarli deve farlo
-        # esplicitamente, altrimenti restano i valori persisted.
-        riga_eff = data.get("target_riga_id")
-        if "anchor_tipo" not in data:
-            data["anchor_tipo"] = "RIGA" if riga_eff is not None else "DOCUMENTO"
-        if "posizione" not in data:
-            data["posizione"] = "AFTER" if data["anchor_tipo"] == "RIGA" else "HEADER"
-
-        # Coerenza anchor_tipo <-> target_riga_id (defense-in-depth simmetrica
-        # alla guard di vendite, anche se i CHECK DB la coprono in extremis).
-        has_riga = riga_eff is not None
-        ErrorManager.require(
-            (data["anchor_tipo"] == "RIGA") == has_riga,
-            code="E_CATALOGO_VALIDATION",
-            message="Payload nota non valido.",
-            detail=(
-                "anchor_tipo='RIGA' richiede target_riga_id valorizzato; "
-                "anchor_tipo='DOCUMENTO' richiede target_riga_id NULL."
-            ),
-            context={
-                "anchor_tipo": data["anchor_tipo"],
-                "target_riga_id": riga_eff,
-            },
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-    return data
-
-
 # I vincoli di `catalogo.articoli_uom_operativa` e `catalogo.articoli_componenti`
 # che l'operatore puo' violare scegliendo, coi nomi della doc auto-generata. Il
 # resto (CHECK di forma, FK) lo ferma prima la validazione del payload, e cade
@@ -1196,10 +952,6 @@ _COMPONENTE_UNIQUE: dict[str, tuple] = {
         "E_CATALOGO_VALIDATION",
         "Il componente e' gia' nella distinta in un periodo che si sovrappone: chiudere il legame in vigore prima di aprirne uno nuovo.",
     ),
-    "uq_articoli_componenti_prodotto_componente_from": (
-        "E_CATALOGO_VALIDATION",
-        "Il componente ha gia' un legame che comincia lo stesso giorno.",
-    ),
 }
 
 
@@ -1226,42 +978,6 @@ def _translate_componente_integrity_error(exc: IntegrityError, *, function_name:
         function_name=function_name,
         log_to_db=True,
     )
-
-
-# Scopo: Converte IntegrityError su note catalogo in errore applicativo leggibile.
-def _translate_nota_integrity_error(exc: IntegrityError, *, function_name: str) -> NoReturn:
-    map_integrity_error(
-        exc,
-        fallback_code="E_CATALOGO_VALIDATION",
-        fallback_message="Violazione vincoli nota.",
-        function_name=function_name,
-        log_to_db=True,
-    )
-
-
-# Scopo: Risolve una nota da id e richiede un solo record anche con PK composita.
-def _resolve_single_nota(nota_id: int, *, function_name: str) -> dict[str, Any]:
-    repository = CatalogoBomRepository()
-    candidates = repository.resolve_nota(nota_id)
-    ErrorManager.require(
-        bool(candidates),
-        code="E_CATALOGO_NOTA_NOT_FOUND",
-        message="Nota non trovata.",
-        detail=f"Nessuna nota con id={nota_id}.",
-        context={"nota_id": nota_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    ErrorManager.require(
-        len(candidates) == 1,
-        code="E_CATALOGO_VALIDATION",
-        message="Nota ambigua.",
-        detail=f"Più note condividono id={nota_id}; serve discriminante target_tipo.",
-        context={"nota_id": nota_id, "target_tipi": [item["nota_target_tipo"] for item in candidates]},
-        function_name=function_name,
-        log_to_db=True,
-    )
-    return candidates[0]
 
 
 # Scopo: Restituisce elenco articoli paginato con filtri, search e ordinamento.
@@ -1317,8 +1033,8 @@ def _get_articolo_base(articolo_id: UUID | str) -> dict[str, Any]:
     return articolo
 
 
-# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti,
-#        note e i metadata `non_editable_fields` (Fase 5) per il FE.
+# Scopo: Restituisce il dettaglio completo di un articolo con UoM, componenti
+#        e i metadata `non_editable_fields` (Fase 5) per il FE.
 def fn_get_articolo(articolo_id: UUID | str) -> dict[str, Any]:
     articolo = _get_articolo_base(articolo_id)
     uom_repository = CatalogoUomRepository()
@@ -1330,12 +1046,14 @@ def fn_get_articolo(articolo_id: UUID | str) -> dict[str, Any]:
         if articolo.get("is_composito") is True
         else []
     )
-    articolo["note"] = bom_repository.list_note_articolo(articolo_id)
+    # ⛔ Niente `note` nel dettaglio (ritirato il 2026-11-11, decisione di
+    #    Tid): era una terza lettura delle note, nessuno la leggeva. Le note
+    #    si leggono dalla loro lista (`…/articoli/<id>/note/`, BB delle note).
     # record_id valorizzato: include lock condizionali (es. flag struttura
     # immutabili quando BoM attiva, seed 20260522-04). Senza record_id
     # avremmo solo i lock statici e l'UX non saprebbe del vincolo finche'
     # il trigger DB non rifiuta al save.
-    articolo["non_editable_fields"] = _non_editable_fields_catalogo(
+    articolo["non_editable_fields"] = compute_non_editable_fields(
         # `str(...)`: lo fa comunque il repository dei lock; qui rende il tipo
         # coerente con la firma (`UUID | str` -> `str`).
         "catalogo", "articoli", record_id=str(articolo_id),
@@ -1619,7 +1337,7 @@ def fn_list_uom_operative_pagina(
     results, total = CatalogoUomRepository().list_uom_operative_pagina(
         articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
-    return results, total, _non_editable_fields_catalogo("catalogo", "articoli_uom_operativa")
+    return results, total, compute_non_editable_fields("catalogo", "articoli_uom_operativa")
 
 
 # Scopo: Tutte le UoM operative dell'articolo, coi campi non modificabili:
@@ -1628,7 +1346,7 @@ def fn_list_uom_operative(articolo_id: UUID | str) -> dict[str, Any]:
     _get_articolo_base(articolo_id)
     repository = CatalogoUomRepository()
     response = collezione_completa(repository.list_uom_operative(articolo_id))
-    response["non_editable_fields"] = _non_editable_fields_catalogo(
+    response["non_editable_fields"] = compute_non_editable_fields(
         "catalogo", "articoli_uom_operativa",
     )
     return response
@@ -1649,7 +1367,7 @@ def fn_create_uom_operativa(articolo_id: UUID | str, payload: dict[str, Any]) ->
         _translate_uom_integrity_error(exc, function_name=function_name)
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _non_editable_fields_catalogo(
+    result["non_editable_fields"] = compute_non_editable_fields(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -1686,7 +1404,7 @@ def fn_update_uom_operativa(
     )
     result = repository.get_uom_operativa(articolo_id, uom_operativa_id)
     assert result is not None
-    result["non_editable_fields"] = _non_editable_fields_catalogo(
+    result["non_editable_fields"] = compute_non_editable_fields(
         "catalogo", "articoli_uom_operativa",
     )
     return result
@@ -1739,7 +1457,7 @@ def fn_list_componenti_pagina(
 def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "catalogo.catalogo_service.fn_create_componente"
     articolo = _get_articolo_base(articolo_id)
-    data = _extract_componente_payload(payload, for_update=False, function_name=function_name)
+    data = _extract_componente_payload(payload, function_name=function_name)
     ErrorManager.require(
         str(data["componente_id"]) != str(articolo["id"]),
         code="E_CATALOGO_VALIDATION",
@@ -1759,98 +1477,6 @@ def fn_create_componente(articolo_id: UUID | str, payload: dict[str, Any]) -> di
     result = repository.get_componente(articolo_id, componente_row_id)
     assert result is not None
     return result
-
-
-# Scopo: Aggiorna un componente BoM e restituisce la riga aggiornata.
-def fn_update_componente(
-    articolo_id: UUID | str,
-    componente_row_id: UUID | str,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_update_componente"
-    _get_articolo_base(articolo_id)
-    data = _extract_componente_payload(payload, for_update=True, function_name=function_name)
-    _V.require_campi_da_aggiornare(
-        data,
-        message="Payload componente non valido.",
-        detail="Nessun campo aggiornabile presente nel payload.",
-        function_name=function_name,
-    )
-    repository = CatalogoBomRepository()
-    try:
-        updated = repository.update_componente(articolo_id, componente_row_id, data)
-    except IntegrityError as exc:
-        _translate_componente_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        updated,
-        code="E_CATALOGO_COMPONENTE_NOT_FOUND",
-        message="Componente non trovato.",
-        detail=f"Nessun componente id={componente_row_id} per articolo id={articolo_id}.",
-        context={"articolo_id": articolo_id, "componente_row_id": str(componente_row_id)},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    result = repository.get_componente(articolo_id, componente_row_id)
-    assert result is not None
-    return result
-
-
-# Scopo: La PAGINA delle note dell'articolo (lista `catalogo.note`, dal
-#        2026-10-31), previa verifica esistenza articolo. L'ordinamento si
-#        valida sulla whitelist COMUNE delle note (`ordine_note_valido`, la
-#        stessa di `vendite.note`).
-def fn_list_note_articolo(
-    articolo_id: UUID | str,
-    *,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int = DEFAULT_LIMIT,
-    offset: int = 0,
-) -> tuple[list[dict[str, Any]], int]:
-    _get_articolo_base(articolo_id)
-    order_by, order_dir = ordine_note_valido(
-        order_by, order_dir, function_name="catalogo.catalogo_service.fn_list_note_articolo",
-    )
-    return CatalogoBomRepository().list_note_articolo_pagina(
-        articolo_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
-    )
-
-
-# Scopo: Crea una nota articolo e restituisce il dettaglio arricchito della nota.
-def fn_create_nota_articolo(articolo_id: UUID | str, payload: dict[str, Any]) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_create_nota_articolo"
-    _get_articolo_base(articolo_id)
-    data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
-    repository = CatalogoBomRepository()
-    try:
-        nota_id = repository.create_nota(NOTA_TARGET_ARTICOLO, articolo_id, data)
-    except IntegrityError as exc:
-        _translate_nota_integrity_error(exc, function_name=function_name)
-    result = repository.get_nota_articolo(articolo_id, nota_id)
-    assert result is not None
-    return result
-
-
-# Scopo: La PAGINA delle note di un componente dell'articolo (lista
-#        `catalogo.note`), previa verifica che il componente sia dell'articolo.
-#        Ordinamento validato come le note dell'articolo (`ordine_note_valido`).
-def fn_list_note_componente(
-    articolo_id: UUID | str,
-    componente_id: UUID | str,
-    *,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int = DEFAULT_LIMIT,
-    offset: int = 0,
-) -> tuple[list[dict[str, Any]], int]:
-    function_name = "catalogo.catalogo_service.fn_list_note_componente"
-    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
-    order_by, order_dir = ordine_note_valido(order_by, order_dir, function_name=function_name)
-    return CatalogoBomRepository().list_note_componente(
-        componente_id, search=search, order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
-    )
 
 
 # Scopo: ⛔ Il componente dell'URL esiste ED e' dell'articolo dell'URL, o 404.
@@ -1873,75 +1499,75 @@ def _componente_dell_articolo(
     )
 
 
-# Scopo: Crea una nota per un componente articolo.
-def fn_create_nota_componente(
+# Scopo: Il cancello del padre delle note di un legame di distinta (BB
+#        `make_note_views`, `cancello_padre`): il legame dell'URL e'
+#        dell'articolo dell'URL, o 404. Stessa regola di
+#        `_componente_dell_articolo`, che resta la sede.
+def fn_verifica_componente_dell_articolo(articolo_id: UUID | str, componente_id: UUID | str) -> None:
+    _componente_dell_articolo(
+        articolo_id, componente_id,
+        function_name="catalogo.catalogo_service.fn_verifica_componente_dell_articolo",
+    )
+
+
+# ⭐ LA CHIUSURA DI UN LEGAME COI PREZZI BUNDLE (BE19 di
+#    brief-db-revisione-catalogo, giro 3, 2026-11-10). Un legame che ha prezzi
+#    bundle oltre la nuova fine non si chiude in silenzio: il verbo del DB
+#    `catalogo.fn_chiudi_legame_distinta` rifiuta il primo tentativo con
+#    `E_BOM_CHIUSURA_CON_PREZZI` (`confirm_and_retry`), la finestra elenca i
+#    prezzi (`fn_get_chiusura_componente`) e la conferma DICHIARA quanti ne ha
+#    visti (`prezzi_confermati`). E' lo stampo dell'annullo con legami
+#    (`_annullo_con_legami.py`); un legame senza prezzi si chiude al primo colpo.
+_CAMPO_PREZZI_CONFERMATI = "prezzi_confermati"
+
+
+# Scopo: I prezzi bundle che la chiusura del legame alla data `valido_al`
+#        tocca, per la finestra di conferma: le righe del lettore del DB e il
+#        loro numero (`prezzi`), che e' cio' che la conferma dichiara.
+# ⚠️ `prezzi` conta TUTTE le righe, come `legami` dell'annullo. Il verbo conta
+#    le sole CHIUDE e TOGLIE, ma una riga BLOCCA o fuori perimetro gli fa
+#    rifiutare la chiusura PRIMA del confronto: quando la conferma serve, i due
+#    numeri coincidono. Scegliere qui quali esiti contare sarebbe una copia
+#    della regola del verbo.
+def fn_get_chiusura_componente(
+    articolo_id: UUID | str, componente_id: UUID | str, params: dict[str, Any],
+) -> dict[str, Any]:
+    function_name = "catalogo.catalogo_service.fn_get_chiusura_componente"
+    _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
+    valido_al = _V.require_date(params, "valido_al", function_name=function_name)
+    righe = CatalogoBomRepository().prezzi_legame_oltre_la_fine(componente_id, valido_al)
+    return {"valido_al": valido_al, "prezzi": len(righe), "righe": righe}
+
+
+# Scopo: Chiude il legame della distinta alla data `valido_al`, coi suoi
+#        prezzi bundle, dal verbo del DB. Ritorna il legame come la lista lo
+#        mostra e quanti prezzi il verbo ha chiuso e tolto.
+# ⛔ Al primo tentativo `prezzi_confermati` NON c'e': dichiarare un numero mai
+#    letto svuoterebbe la conferma. Un valore non intero e' un 400 col campo.
+def fn_chiudi_componente(
     articolo_id: UUID | str, componente_id: UUID | str, payload: dict[str, Any],
 ) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_create_nota_componente"
+    function_name = "catalogo.catalogo_service.fn_chiudi_componente"
+    _V.validate_allowed_keys(
+        payload,
+        allowed=frozenset({"valido_al", _CAMPO_PREZZI_CONFERMATI}),
+        function_name=function_name,
+        message="Payload chiusura componente non valido.",
+    )
     _componente_dell_articolo(articolo_id, componente_id, function_name=function_name)
-    data = _extract_nota_payload(payload, for_update=False, function_name=function_name)
-    repository = CatalogoBomRepository()
-    try:
-        nota_id = repository.create_nota(NOTA_TARGET_COMPONENTE, componente_id, data)
-    except IntegrityError as exc:
-        _translate_nota_integrity_error(exc, function_name=function_name)
-    result = repository.get_nota_componente(nota_id)
-    assert result is not None
-    return result
-
-
-# Scopo: Aggiorna una nota catalogo e restituisce il record arricchito coerente col target.
-def fn_update_nota(nota_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_update_nota"
-    resolved = _resolve_single_nota(nota_id, function_name=function_name)
-    data = _extract_nota_payload(payload, for_update=True, function_name=function_name)
-    _V.require_campi_da_aggiornare(
-        data,
-        message="Payload nota non valido.",
-        detail="Nessun campo aggiornabile presente nel payload.",
-        function_name=function_name,
+    valido_al = _V.require_date(payload, "valido_al", function_name=function_name)
+    confermati = _V.optional_positive_int(
+        payload, _CAMPO_PREZZI_CONFERMATI, function_name=function_name,
     )
     repository = CatalogoBomRepository()
-    try:
-        updated = repository.update_nota(nota_id, resolved["nota_target_tipo"], data)
-    except IntegrityError as exc:
-        _translate_nota_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        updated,
-        code="E_CATALOGO_NOTA_NOT_FOUND",
-        message="Nota non trovata.",
-        detail=f"Nessuna nota con id={nota_id}.",
-        context={"nota_id": nota_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    if resolved["nota_target_tipo"] == NOTA_TARGET_ARTICOLO:
-        result = repository.get_nota_articolo(resolved["nota_target_id"], nota_id)
-    else:
-        result = repository.get_nota_componente(nota_id)
-    assert result is not None
-    return result
-
-
-# Scopo: Elimina una nota catalogo usando il discriminante target della PK composita.
-def fn_delete_nota(nota_id: int) -> dict[str, Any]:
-    function_name = "catalogo.catalogo_service.fn_delete_nota"
-    resolved = _resolve_single_nota(nota_id, function_name=function_name)
-    repository = CatalogoBomRepository()
-    try:
-        deleted = repository.delete_nota(nota_id, resolved["nota_target_tipo"])
-    except IntegrityError as exc:
-        _translate_nota_integrity_error(exc, function_name=function_name)
-    ErrorManager.require(
-        deleted,
-        code="E_CATALOGO_NOTA_NOT_FOUND",
-        message="Nota non trovata.",
-        detail=f"Nessuna nota con id={nota_id}.",
-        context={"nota_id": nota_id},
-        function_name=function_name,
-        log_to_db=False,
-    )
-    return {"deleted": True}
+    esito = repository.chiudi_legame(componente_id, valido_al, confermati)
+    componente = repository.get_componente(articolo_id, componente_id)
+    assert componente is not None
+    return {
+        "componente": componente,
+        "prezzi_chiusi": esito["prezzi_chiusi"],
+        "prezzi_tolti": esito["prezzi_tolti"],
+    }
 
 
 # ============================================================
@@ -2362,7 +1988,7 @@ def fn_get_conversione(conv_id: int) -> dict[str, Any]:
     assert result is not None
     # Fase 5: arricchisce il detail coi campi non editabili (uom_from_id,
     # uom_to_id immutabili dopo create per coerenza con exclude daterange).
-    result["non_editable_fields"] = _non_editable_fields_catalogo(
+    result["non_editable_fields"] = compute_non_editable_fields(
         "catalogo", "unita_misura_conversioni",
     )
     return result

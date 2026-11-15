@@ -20,6 +20,7 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
@@ -31,7 +32,7 @@ import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
-import { CAMPI_FORM_TESTATA_RESO, STATO_RESO } from '../constants'
+import { CAMPI_FORM_TESTATA_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
 import ResoRientriSection from './ResoRientriSection.vue'
@@ -57,10 +58,16 @@ const form = ref({})
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
+// Capability (blob del dettaglio): letta prima del readonly, che ne dipende.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+// Il corpo del drawer dopo la bozza: dalla capability, non dallo stato.
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_righe'],
+  sezioni: ['can_edit_righe'],
+  presente: () => props.resoId != null || detail.value !== null,
+})
 const hasDetail = computed(() => detail.value !== null)
-const isConfermato = computed(
-  () => detail.value?.stato_codice_interno === STATO_RESO.CONFERMATO,
-)
 
 // Readonly cumulativo: prop esplicita OR readonly area iniettato OR stato
 // post-DRAFT (modifiche libere solo in bozza). Le azioni di stato restano
@@ -70,20 +77,27 @@ const parentReadonly = useInjectReadonly()
 // dialog di processo lanciate dal drawer, che devono restare operabili su un
 // documento post-DRAFT — che per loro e' il caso normale, non l'eccezione.
 const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-R3) il corpo
+//    non confronta piu' il codice dello stato con DRAFT: lo chiude la chiave
+//    della capability (`can_edit_righe`, il lock delle righe del DB), col BB
+//    `useCorpoDocumento`. Righe, indirizzi e testata leggono gia' la loro.
 const isReadonly = computed(
   () => props.readonly
     || parentReadonly.value
-    || (detail.value !== null
-        && detail.value.stato_codice_interno !== STATO_RESO.DRAFT),
+    || corpo.corpoChiuso.value,
 )
 provide(READONLY_KEY, isReadonly)
 
 // Capability data-driven dal detail BE (script.fn_available_actions_reso):
 // availableActions (conferma/annulla dalla matrice) + can_edit_testata/righe.
-const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// La ri-spedizione (i tre verbi della riconsegna) si apre dove la capability
+// la concede (`can_riconsegna`, dalla colonna `emissione` del vocabolario che
+// i verbi leggono), non dal codice CONFERMATO (FE-R3, brief-db-stati-
+// documento-dal-vocabolario §6.22, D-RESO (a)).
+const canRiconsegna = computed(() => caps.flag('can_riconsegna'))
 // La testata dopo la bozza: quali campi del form si cambiano, dalla capability
 // (brief-db-testata-dopo-emissione, R-FE-3). Il form del reso mostra data e
 // magazzino di rientro, fermi fuori bozza: lo dice la capability, non lo stato.
@@ -215,7 +229,7 @@ async function eseguiAzione(action) {
 
 // Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
 //   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
-//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   database (`DRAFT` -> «Bozza», `PARZIALMENTE_EVASO` -> «Parzialmente evaso»: non e'
 //   derivabile dal codice), quindi arriva dalla capability come
 //   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
 //   label dell'azione — comportamento invariato, nessun testo mancante.
@@ -250,9 +264,10 @@ const drawerActions = computed(() => {
   return [
     ...stateActions,
     // DDT ri-spedizione: apre la dialog dedicata (righe con copertura ancora
-    // pendente). Solo post-conferma; per i resi solo-credito la dialog si
-    // presenta vuota e in sola chiusura (nessuna riga riapre_residuo).
-    ...(isConfermato.value
+    // pendente). Dove la capability la concede (`can_riconsegna`); per i resi
+    // solo-credito la dialog si presenta vuota e in sola chiusura (nessuna
+    // riga riapre_residuo).
+    ...(canRiconsegna.value
       ? [{
           key: 'ddt-rispedizione',
           kind: 'manage',
@@ -371,9 +386,9 @@ async function onCoperturaRiconsegnaCambiata() {
        Il DDT nasce DRAFT e si rifinisce dal tab DDT; una ri-spedizione parziale
        lascia il resto in coda (la riga resta con `qta_residua` ridotta).
        `readonly` = quello PURO del chiamante: il lock di stato del drawer
-       (CONFERMATO) non deve disabilitare un'azione legittima in quello stato. -->
+       (dopo la conferma) non deve disabilitare un'azione legittima li'. -->
   <ResoRiconsegnaDialog
-    v-if="props.resoId && isConfermato"
+    v-if="props.resoId && canRiconsegna"
     v-model:visible="riconsegnaDialogVisible"
     :reso-id="props.resoId"
     :readonly="props.readonly || parentReadonly"

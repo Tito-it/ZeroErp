@@ -1,17 +1,17 @@
-id,codice,descrizione,segno,ordine,attivo,meta,tx_id,user_insert,user_update,data_insert,data_update,storicizza,is_installazione_asset,is_rettifica,consente_stock_negativo,codice_interno
-13,CARICO_ACQ,Carico da DDT acquisto,1,10,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,CARICO_ACQ
-14,SCARICO_VEN,Scarico per DDT vendita,-1,20,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,SCARICO_VEN
-15,TRASF_OUT,Trasferimento uscita (da A),-1,30,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,TRASF_OUT
-16,TRASF_IN,Trasferimento entrata (a B),1,31,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,TRASF_IN
-17,RETT_POS,Rettifica positiva (allineamento +),1,40,t,"{""motivi_suggeriti"": [""INVENTARIO_DIFF"", ""ALLINEAMENTO_INIZIALE"", ""ROTTURA_STORNATA""]}",,,,2025-10-05 10:54:20.332608+02,,f,f,t,f,RETT_POS
-18,RETT_NEG,Rettifica negativa (allineamento -),-1,41,t,"{""motivi_suggeriti"": [""ROTTURA"", ""SMARRIMENTO"", ""INVENTARIO_DIFF""]}",,,,2025-10-05 10:54:20.332608+02,,f,f,t,f,RETT_NEG
-19,ODL_USCITA_MAT,Uscita materiali per ODL,-1,50,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,ODL_USCITA_MAT
-20,ODL_ENTRATA_MAT,Rientro materiali da ODL,1,51,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,ODL_ENTRATA_MAT
-21,ASSET_INSTALL,Installazione asset presso cliente,-1,60,t,{},,,,2025-10-05 10:54:20.332608+02,,f,t,f,f,ASSET_INSTALL
-22,ASSET_RIENTRO,Rientro asset da cliente,1,61,t,{},,,,2025-10-05 10:54:20.332608+02,,f,f,f,f,ASSET_RIENTRO
-23,CARICO_RESO_VEN,Carico da reso cliente,1,21,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,CARICO_RESO_VEN
-24,SCARICO_RESO_ACQ,Scarico per reso a fornitore,-1,22,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,SCARICO_RESO_ACQ
-25,ODL_VERSAMENTO_PF,Versamento prodotto finito da ODL,1,52,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,ODL_VERSAMENTO_PF
-26,INV_INIZIALE,Inventario iniziale (primo carico),1,42,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,INV_INIZIALE
-27,STORNO_POS,Storno in entrata (specchio di una uscita),1,90,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,STORNO_POS
-28,STORNO_NEG,Storno in uscita (specchio di una entrata),-1,91,t,{},,,,2026-09-15 00:00:00+02,,f,f,f,f,STORNO_NEG
+id,codice,descrizione,segno,ordine,attivo,meta,tx_id,data_insert,data_update,storicizza,is_installazione_asset,is_rettifica,consente_stock_negativo,codice_interno
+13,CARICO_ACQ,Carico da DDT acquisto,1,10,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,CARICO_ACQ
+14,SCARICO_VEN,Scarico per DDT vendita,-1,20,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,SCARICO_VEN
+15,TRASF_OUT,Trasferimento uscita (da A),-1,30,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,TRASF_OUT
+16,TRASF_IN,Trasferimento entrata (a B),1,31,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,TRASF_IN
+17,RETT_POS,Rettifica positiva (allineamento +),1,40,t,"{""motivi_suggeriti"": [""INVENTARIO_DIFF"", ""ALLINEAMENTO_INIZIALE"", ""ROTTURA_STORNATA""]}",,2025-10-05 10:54:20.332608+02,,f,f,t,f,RETT_POS
+18,RETT_NEG,Rettifica negativa (allineamento -),-1,41,t,"{""motivi_suggeriti"": [""ROTTURA"", ""SMARRIMENTO"", ""INVENTARIO_DIFF""]}",,2025-10-05 10:54:20.332608+02,,f,f,t,f,RETT_NEG
+19,ODL_USCITA_MAT,Uscita materiali per ODL,-1,50,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,ODL_USCITA_MAT
+20,ODL_ENTRATA_MAT,Rientro materiali da ODL,1,51,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,ODL_ENTRATA_MAT
+21,ASSET_INSTALL,Installazione asset presso cliente,-1,60,t,{},,2025-10-05 10:54:20.332608+02,,f,t,f,f,ASSET_INSTALL
+22,ASSET_RIENTRO,Rientro asset da cliente,1,61,t,{},,2025-10-05 10:54:20.332608+02,,f,f,f,f,ASSET_RIENTRO
+23,CARICO_RESO_VEN,Carico da reso cliente,1,21,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,CARICO_RESO_VEN
+24,SCARICO_RESO_ACQ,Scarico per reso a fornitore,-1,22,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,SCARICO_RESO_ACQ
+25,ODL_VERSAMENTO_PF,Versamento prodotto finito da ODL,1,52,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,ODL_VERSAMENTO_PF
+26,INV_INIZIALE,Inventario iniziale (primo carico),1,42,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,INV_INIZIALE
+27,STORNO_POS,Storno in entrata (specchio di una uscita),1,90,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,STORNO_POS
+28,STORNO_NEG,Storno in uscita (specchio di una entrata),-1,91,t,{},,2026-09-15 00:00:00+02,,f,f,f,f,STORNO_NEG

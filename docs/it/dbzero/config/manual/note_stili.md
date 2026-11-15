@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.note_stili`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimenti tabelle note e messaggi:
@@ -68,6 +70,11 @@ Esempi di stili tipici:
 
   * flag booleano che indica se lo stile è **abilitato alla storicizzazione** nell’ambito del motore note;
   * può essere usato per differenziare stili "di sistema" (magari non storicizzati) da stili legati a contenuti da mantenere nel tempo.
+
+* **Nota assente** (`note`, dal 2026-11-13, `90_end/20261112-58`):
+
+  * uno stile senza nota ha `note` `NULL`, mai la stringa vuota: il `CHECK` `chk_note_stili_note_non_vuota` la rifiuta, anche di soli spazi;
+  * nel CSV del seed la cella senza valore porta il token `NULL`; dal pannello, svuotare il campo salva `NULL` (`config.fn_pannello_scrivi`, `20_code/config/20261112-57`).
 
 * **Audit**:
 

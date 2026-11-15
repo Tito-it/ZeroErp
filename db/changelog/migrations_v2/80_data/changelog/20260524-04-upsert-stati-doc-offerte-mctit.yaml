@@ -48,7 +48,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }
@@ -80,3 +79,6 @@ databaseChangeLog:
               # 2026-10-31 (20261031-05, brief-modello-documento-vendita §17): lo stato di
               # accettazione del cliente. Va dichiarata qui, o la cella del CSV non la governa.
               - column: { name: accettazione, type: BOOLEAN }
+              # 2026-11-13 (20261112-59, brief-db-stati-documento-dal-vocabolario giro 2): lo stato
+              # di rifiuto del cliente. Va dichiarata qui, o la cella del CSV non la governa.
+              - column: { name: rifiuto, type: BOOLEAN }

@@ -307,7 +307,7 @@ previsto.
 > (`20260915-16`). La sezione resta come il **perché** di §5-bis.
 
 ⚠️ **`magazzino.movimenti` non è scritto da nessuna parte.** Verificato: lo schema
-ha **due** funzioni in tutto — `fn_get_magazzino_note` e `trgfn_magazzini_normalize`
+ha **due** funzioni in tutto — `fn_get_magazzino_note` (ritirata il 2026-11-12) e `trgfn_magazzini_normalize`
 — nessuna delle due tocca il ledger, e `backend/apps/magazzino/` è uno scheletro
 (`apps.py` e poco altro).
 

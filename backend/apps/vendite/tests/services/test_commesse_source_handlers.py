@@ -63,13 +63,16 @@ Path snapshot componenti pre-popolati (refactor 2026-05-11):
 39) BoMComponentExpanderTests.test_snapshot_loader_vuoto_fallback_resolver
 40) BoMComponentExpanderTests.test_snapshot_loader_skip_se_riga_sorgente_id_none
 
-Snapshot pricing v5 al push (F2-BE-12 / analisi-commesse §4.3 #2):
-41) PricingAuditSnapshotTests.test_audit_snapshot_popolato_da_resolver
-42) PricingAuditSnapshotTests.test_prezzo_snapshot_negoziato_non_sovrascritto
-43) PricingAuditSnapshotTests.test_audit_best_effort_resolver_errore_non_blocca
-44) PricingAuditSnapshotTests.test_origine_prezzo_da_meta_prevale_su_resolver
-45) PricingAuditSnapshotTests.test_audit_skip_se_uom_none_nessuna_chiamata_resolver
-46) PricingAuditSnapshotTests.test_audit_cache_dedup_stesso_contesto_un_solo_resolve
+La provenienza del prezzo viaggia col prezzo (K-2, K-4 di
+brief-db-provenienza-prezzo-segue-il-prezzo; i 41-46 e il 54 dell'audit dal
+resolver ritirati il 2026-11-14 col percorso che provavano):
+41) ProvenienzaDalDocumentoTests.test_la_provenienza_della_riga_arriva_alla_commessa
+42) ProvenienzaDalDocumentoTests.test_prezzo_snapshot_negoziato_non_sovrascritto
+43) ProvenienzaDalDocumentoTests.test_riga_senza_provenienza_passa_vuota
+44) ProvenienzaDalDocumentoTests.test_il_componente_porta_la_sua_provenienza
+45) ProvenienzaDalDocumentoTests.test_il_kit_dal_listino_porta_la_versione
+45b) ProvenienzaDalDocumentoTests.test_il_componente_senza_le_colonne_prov_e_un_errore
+46) ProvenienzaDalDocumentoTests.test_il_push_non_chiede_la_provenienza_al_resolver
 
 Fan-out compositi modello unico per sorgenti ≠ preventivo (analisi-commesse §4.3 #3):
 47) CompositiFanOutWiringTests.test_factory_preventivi_ritorna_repo_componenti
@@ -79,7 +82,6 @@ Fan-out compositi modello unico per sorgenti ≠ preventivo (analisi-commesse §
 51) CompositiFanOutWiringTests.test_default_expander_ha_componenti_loader_per_documento
 52) CompositiFanOutWiringTests.test_consumi_nessuna_factory_componenti
 53) CompositiFanOutWiringTests.test_ordini_default_fanout_compositi_da_componenti
-54) PricingAuditSnapshotTests.test_audit_origine_fuori_check_diventa_null
 
 Hook fasi di lavorazione (scaffolding §6):
 55) PreCommessaHookTests.test_hook_default_identity
@@ -94,14 +96,20 @@ I componenti del kit dal LISTINO (D-2 (c), brief-db-contratto-righe-periodiche-i
 """
 
 import dataclasses
-from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
 from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from apps.vendite.db.commesse_repository import BatchUpsertResult, CommesseRepository, PushableRow
+from apps.vendite.db._provenienza_prezzo import (
+    COLONNA_DEL_LISTER, COLONNE_PROVENIENZA_PREZZO, PREFISSO_COMPONENTE,
+    PROVENIENZA_VUOTA, ProvenienzaPrezzo,
+)
+from apps.vendite.db.commesse_repository import (
+    BatchUpsertResult, CommesseRepository, ErroreBatchAttivita, PushableRow,
+)
+from apps.vendite.services import commesse_source_handlers
 from apps.vendite.services.commesse_source_handlers import (
     BoMComponentExpander,
     ComponenteConsumabile,
@@ -257,7 +265,10 @@ class CommesseSourceHandlersTests(TestCase):
         repo.fetch_pushable_rows.return_value = [riga_ok, riga_ko]
         repo.batch_upsert_attivita.return_value = BatchUpsertResult(
             total_rows=2, inserted=1, updated=0,
-            errors=[{"segment_key": "TEST:uid-002:R:1", "error": "guard KO"}],
+            errors=[ErroreBatchAttivita(
+                index=1, segment_key="TEST:uid-002:R:1", error="guard KO",
+                sqlstate="P0001", codice="E_UOM_MISSING", campo="uom_operativa_id",
+            )],
         )
         handler = HandlerPreventivi(repo)
 
@@ -268,7 +279,10 @@ class CommesseSourceHandlersTests(TestCase):
         self.assertEqual([c[1] for c in coppie], ["TEST:uid-001:R:1"])
         # L'errore resta visibile nel report.
         self.assertEqual(result.skipped, 1)
-        self.assertTrue(any("TEST:uid-002:R:1" in e for e in result.errors))
+        # Il report porta il codice di dominio del rifiuto (BE30).
+        self.assertIn(
+            "Errore batch segment_key=TEST:uid-002:R:1 [E_UOM_MISSING]: guard KO", result.errors,
+        )
 
     # Scopo: sorgente_id valorizzato → propagato a fetch_pushable_rows del repo.
     # Assicura che il push singolo UI-driven filtri davvero a livello DB.
@@ -651,7 +665,18 @@ def _make_snapshot_componente(**overrides) -> dict:
         "origine_prezzo": "CATEGORIA",
     }
     defaults.update(overrides)
-    return defaults
+    return _con_provenienza(defaults)
+
+
+# Scopo: un componente letto nella forma dei due loader del push (K-4, R-7):
+#        le dieci colonne `prov_*` del BB del DB in coda. Quelle che il test
+#        non dice valgono NULL, salvo l'origine, che e' quella della riga.
+def _con_provenienza(componente: dict) -> dict:
+    for colonna in COLONNA_DEL_LISTER.values():
+        componente.setdefault(f"{PREFISSO_COMPONENTE}{colonna}", None)
+    if componente[f"{PREFISSO_COMPONENTE}origine_prezzo"] is None:
+        componente[f"{PREFISSO_COMPONENTE}origine_prezzo"] = componente.get("origine_prezzo")
+    return componente
 
 
 class BoMComponentExpanderTests(TestCase):
@@ -712,22 +737,22 @@ class BoMComponentExpanderTests(TestCase):
     # propagato nel meta. Tutti i figli passano in commessa.
     def test_snapshot_loader_genera_pushable_rows_da_componenti(self):
         snapshot_loader = MagicMock(return_value=[
-            {
+            _con_provenienza({
                 "componente_id": "cmp-01",
                 "uom_operativa_id": 42,
                 "prezzo_unitario": Decimal("200.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "LISTINO_BUNDLE",
                 "esposizione_in_fattura": "VALORIZZATO",
-            },
-            {
+            }),
+            _con_provenienza({
                 "componente_id": "cmp-02",
                 "uom_operativa_id": 43,
                 "prezzo_unitario": Decimal("75.00"),
                 "coeff_qta_snapshot": Decimal("4"),
                 "origine_prezzo": "MANUALE",
                 "esposizione_in_fattura": "NASCOSTO",
-            },
+            }),
         ])
         expander = BoMComponentExpander(
             is_composito_fn=MagicMock(return_value=True),
@@ -754,9 +779,11 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[0].meta["esposizione"], "VALORIZZATO")
         self.assertEqual(result[0].meta["componente_di"], str(row.articolo_id))
         self.assertEqual(result[1].meta["esposizione"], "NASCOSTO")
-        # origine_prezzo propagato in meta per audit downstream
-        self.assertEqual(result[0].meta["origine_prezzo"], "LISTINO_BUNDLE")
-        self.assertEqual(result[1].meta["origine_prezzo"], "MANUALE")
+        # L'origine del componente nella sua provenienza, non piu' nel meta
+        # (K-4): dalle colonne `prov_*` della proiezione.
+        self.assertEqual(result[0].provenienza.origine_prezzo, "LISTINO_BUNDLE")
+        self.assertEqual(result[1].provenienza.origine_prezzo, "MANUALE")
+        self.assertNotIn("origine_prezzo", result[0].meta)
         # Il modo e' il CODICE letto dalla distinta, non un booleano
         # (dal 2026-10-01), e nessuna vecchia chiave resta nel meta.
         self.assertNotIn("esposto_in_fattura", result[0].meta)
@@ -765,14 +792,14 @@ class BoMComponentExpanderTests(TestCase):
     # distinta) → il default della colonna, NASCOSTO.
     def test_snapshot_loader_esposizione_default_nascosto_se_assente(self):
         snapshot_loader = MagicMock(return_value=[
-            {
+            _con_provenienza({
                 "componente_id": "cmp-01",
                 "uom_operativa_id": 42,
                 "prezzo_unitario": Decimal("100.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "MANUALE",
                 # Nessuna esposizione_in_fattura
-            },
+            }),
         ])
         expander = BoMComponentExpander(
             is_composito_fn=MagicMock(return_value=True),
@@ -962,7 +989,8 @@ class BoMComponentExpanderTests(TestCase):
         self.assertTrue(componente.fatturazione_immediata)
 
     # Scopo: DEC-6 — meta componente arricchito con `esposizione`,
-    # `componente_di` (audit inverso), `coeff_qta`, `origine_prezzo`.
+    # `componente_di` (audit inverso), `coeff_qta` (l'origine sta nella
+    # provenienza della riga dal 2026-11-14, K-4).
     # Preserva meta padre.
     def test_snapshot_meta_arricchito(self):
         snapshot_loader = MagicMock(return_value=[
@@ -988,7 +1016,7 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[0].meta["esposizione"], "DESCRITTIVO")
         self.assertEqual(result[0].meta["componente_di"], "art-parent")
         self.assertEqual(result[0].meta["coeff_qta"], "2")
-        self.assertEqual(result[0].meta["origine_prezzo"], "MANUALE")
+        self.assertNotIn("origine_prezzo", result[0].meta)
         # Quantita' e UoM della riga PADRE (R-BE-B2): la fattura le congela
         # sulla riga del kit. Il padre qui e' 3 in uom 42; il componente 3 x 2.
         self.assertEqual(result[0].meta["qta_padre"], "3")
@@ -1299,151 +1327,141 @@ class BoMModuleCacheIsCompositoTests(TestCase):
                 "post invalidate la query DB deve essere ri-eseguita")
 
 
-class PricingAuditSnapshotTests(TestCase):
-    """Snapshot pricing v5 (F2-BE-12 / analisi-commesse §4.3 #2): il push popola
-    gli 8 campi audit di derivazione del prezzo via PricingService, senza
-    sovrascrivere il prezzo negoziato (autoritativo)."""
+class ProvenienzaDalDocumentoTests(TestCase):
+    """La provenienza del prezzo viaggia col prezzo, dalla riga del documento
+    alla riga di commessa (brief-db-provenienza-prezzo-segue-il-prezzo §8.7,
+    K-2 e K-4). Il push la COPIA, non la ricostruisce dal resolver."""
+
+    _PROVENIENZA = ProvenienzaPrezzo(
+        prezzo_base_snapshot=Decimal("30.00"),
+        origine_prezzo="CONTRATTO_LISTINO",
+        tipo_variazione_applicata="PERCENTUALE",
+        valore_variazione_applicata=Decimal("-10.00"),
+        promo_id=None,
+        contratto_id=77,
+        categoria_cliente_id_snapshot=5,
+        classe_utenza_id_snapshot=None,
+        listino_riga_id=505,
+        listino_versione_id=404,
+    )
 
     @staticmethod
-    def _handler(repo, pricing_service):
-        # is_composito_fn=False → expand pass-through senza query DB; resolver iniettato.
+    def _handler(repo, *, bom_expander=None):
+        # is_composito_fn=False → expand pass-through senza query DB.
         return HandlerPreventivi(
             repo,
-            bom_expander=BoMComponentExpander(is_composito_fn=lambda _aid: False),
-            pricing_service=pricing_service,
+            bom_expander=bom_expander
+            or BoMComponentExpander(is_composito_fn=lambda _aid: False),
         )
 
-    @staticmethod
-    def _resolver_full() -> MagicMock:
-        ps = MagicMock()
-        ps.resolve_prezzo.return_value = {
-            "prezzo_base_snapshot": Decimal("30.00"),
-            "origine": "CONTRATTO_LISTINO",
-            "tipo_variazione_applicata": "PERCENTUALE",
-            "valore_variazione_applicata": Decimal("-10.00"),
-            "promo_id": None,
-            "contratto_id": 77,
-            "categoria_cliente_id_snapshot": 5,
-            "classe_utenza_id_snapshot": None,
-            "listino_versione_id": 404,
-            "listino_riga_id": 505,
-        }
-        return ps
-
-    @staticmethod
-    def _atomic_noop():
-        # transaction.atomic → no-op context (test unitario senza DB).
-        return patch(
-            "apps.vendite.services.commesse_source_handlers.transaction.atomic",
-            side_effect=lambda *a, **k: nullcontext(),
-        )
-
-    # Scopo: i 8 campi audit del resolver atterrano sul CommessaAttivitaInput.
-    def test_audit_snapshot_popolato_da_resolver(self):
+    # Scopo: ogni campo della provenienza della riga atterra sul
+    #        CommessaAttivitaInput, riga di listino compresa (decisione B: il
+    #        prezzo e' venuto da li', citarla e' giusto).
+    def test_la_provenienza_della_riga_arriva_alla_commessa(self):
         repo = _mock_repo()
-        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
-        ps = self._resolver_full()
-        handler = self._handler(repo, ps)
-
-        with self._atomic_noop():
-            handler.run()
+        repo.fetch_pushable_rows.return_value = [
+            _make_row(uom_id=9, provenienza=self._PROVENIENZA)
+        ]
+        self._handler(repo).run()
 
         inp = repo.batch_upsert_attivita.call_args[0][0][0]
-        self.assertEqual(inp.prezzo_base_snapshot, Decimal("30.00"))
-        self.assertEqual(inp.origine_prezzo, "CONTRATTO_LISTINO")
-        self.assertEqual(inp.tipo_variazione_applicata, "PERCENTUALE")
-        self.assertEqual(inp.valore_variazione_applicata, Decimal("-10.00"))
-        self.assertIsNone(inp.promo_id)
-        self.assertEqual(inp.contratto_id, 77)
-        self.assertEqual(inp.categoria_cliente_id_snapshot, 5)
-        self.assertIsNone(inp.classe_utenza_id_snapshot)
-        # ⭐ 2026-10-08: anche la versione di listino, o il guard «versione
-        #    cambiata» di riallinea confronta con NULL e non scatta mai.
-        self.assertEqual(inp.listino_versione_id, 404)
-        # ⛔ 2026-10-09 (decisione B): la riga di listino NO, anche se il
-        #    resolver la restituisce. Il prezzo e' del documento: citarla
-        #    renderebbe «propagata» una riga di listino che non l'ha dato.
-        self.assertIsNone(inp.listino_riga_id)
-        ps.resolve_prezzo.assert_called_once()
+        for campo in COLONNE_PROVENIENZA_PREZZO:
+            with self.subTest(campo=campo):
+                self.assertEqual(getattr(inp, campo), getattr(self._PROVENIENZA, campo))
+        self.assertEqual(inp.listino_riga_id, 505)
 
-    # Scopo: il prezzo negoziato alla sorgente NON viene sovrascritto dal resolver.
+    # Scopo: il prezzo negoziato alla sorgente passa com'e'.
     def test_prezzo_snapshot_negoziato_non_sovrascritto(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [
-            _make_row(uom_id=9, prezzo_snapshot=Decimal("27.00"))
+            _make_row(uom_id=9, prezzo_snapshot=Decimal("27.00"), provenienza=self._PROVENIENZA)
         ]
-        handler = self._handler(repo, self._resolver_full())
-
-        with self._atomic_noop():
-            handler.run()
+        self._handler(repo).run()
 
         inp = repo.batch_upsert_attivita.call_args[0][0][0]
         self.assertEqual(inp.prezzo_snapshot, Decimal("27.00"))
 
-    # Scopo: errore resolver → audit a None ma la riga e' comunque upsertata.
-    def test_audit_best_effort_resolver_errore_non_blocca(self):
+    # Scopo: una riga senza provenienza (il consumo, R-5) arriva vuota: niente
+    #        si inventa al push.
+    def test_riga_senza_provenienza_passa_vuota(self):
         repo = _mock_repo()
         repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
-        ps = MagicMock()
-        ps.resolve_prezzo.side_effect = RuntimeError("resolver down")
-        handler = self._handler(repo, ps)
+        self._handler(repo).run()
 
-        with self._atomic_noop():
-            result = handler.run()
-
-        self.assertEqual(result.created, 1)
         inp = repo.batch_upsert_attivita.call_args[0][0][0]
-        self.assertIsNone(inp.prezzo_base_snapshot)
-        self.assertIsNone(inp.contratto_id)
+        for campo in COLONNE_PROVENIENZA_PREZZO:
+            with self.subTest(campo=campo):
+                self.assertIsNone(getattr(inp, campo))
 
-    # Scopo: per i componenti BoM, origine_prezzo negoziato (meta) prevale.
-    def test_origine_prezzo_da_meta_prevale_su_resolver(self):
+    # Scopo: un componente di kit porta la SUA provenienza, letta dalle
+    #        colonne `prov_*` della proiezione per il push, non quella del padre.
+    def test_il_componente_porta_la_sua_provenienza(self):
+        loader = MagicMock(return_value=[_make_snapshot_componente(
+            prov_origine_prezzo="CATEGORIA",
+            prov_listino_versione_id=11,
+            prov_listino_riga_id=12,
+            prov_prezzo_base_snapshot=Decimal("9.50"),
+            prov_tipo_variazione_applicata="NESSUNA",
+            prov_valore_variazione_applicata=None,
+            prov_promo_id=None,
+            prov_prezzo_contratto_id=13,
+            prov_categoria_cliente_id_snapshot=2,
+            prov_classe_utenza_id_snapshot=None,
+        )])
+        expander = BoMComponentExpander(
+            is_composito_fn=MagicMock(return_value=True), componenti_loader=loader,
+        )
         repo = _mock_repo()
-        repo.fetch_pushable_rows.return_value = [
-            _make_row(
-                uom_id=9,
-                meta={
-                    "tipo_commessa": "AUTO",
-                    "policy_fatturazione": "DA_DOCUMENTO",
-                    "origine_prezzo": "PROMO",
-                },
+        repo.fetch_pushable_rows.return_value = [_make_composito_row(
+            riga_sorgente_id=42, provenienza=self._PROVENIENZA,
+        )]
+        self._handler(repo, bom_expander=expander).run()
+
+        inp = repo.batch_upsert_attivita.call_args[0][0][0]
+        self.assertEqual(inp.origine_prezzo, "CATEGORIA")
+        self.assertEqual(inp.listino_versione_id, 11)
+        self.assertEqual(inp.listino_riga_id, 12)
+        self.assertEqual(inp.prezzo_base_snapshot, Decimal("9.50"))
+        # ⭐ Il contratto del prezzo esce dal BB come `prezzo_contratto_id`.
+        self.assertEqual(inp.contratto_id, 13)
+        self.assertEqual(inp.categoria_cliente_id_snapshot, 2)
+
+    # Scopo: le colonne `prov_*` sono OBBLIGATORIE (R-7): un componente letto
+    #        senza la proiezione della provenienza e' un `KeyError`, non un
+    #        componente con la sola origine. Fino al 2026-11-15 passava, ed era
+    #        la forma del kit dal listino del contratto.
+    def test_il_componente_senza_le_colonne_prov_e_un_errore(self):
+        componente = _make_snapshot_componente(origine_prezzo="LISTINO_BUNDLE")
+        for colonna in [k for k in componente if k.startswith(PREFISSO_COMPONENTE)]:
+            del componente[colonna]
+        with self.assertRaises(KeyError):
+            BoMComponentExpander._build_componente_row_from_snapshot(
+                _make_composito_row(provenienza=self._PROVENIENZA), componente,
             )
-        ]
-        handler = self._handler(repo, self._resolver_full())
 
-        with self._atomic_noop():
-            handler.run()
+    # Scopo: il kit dal listino del contratto porta la provenienza del
+    #        resolver come un componente negoziato (R-7): la versione e il
+    #        contesto, la riga NULL (il prezzo sta in `listini_righe_componenti`).
+    def test_il_kit_dal_listino_porta_la_versione(self):
+        riga = BoMComponentExpander._build_componente_row_from_snapshot(
+            _make_composito_row(provenienza=self._PROVENIENZA),
+            _make_snapshot_componente(
+                origine_prezzo="LISTINO_BUNDLE",
+                prov_listino_versione_id=31,
+                prov_prezzo_base_snapshot=Decimal("10.00"),
+            ),
+        )
+        self.assertEqual(riga.provenienza, ProvenienzaPrezzo(
+            origine_prezzo="LISTINO_BUNDLE", listino_versione_id=31,
+            prezzo_base_snapshot=Decimal("10.00"),
+        ))
 
-        inp = repo.batch_upsert_attivita.call_args[0][0][0]
-        self.assertEqual(inp.origine_prezzo, "PROMO")
-
-    # Scopo: uom None → resolver non chiamato (guard), audit a None.
-    def test_audit_skip_se_uom_none_nessuna_chiamata_resolver(self):
-        repo = _mock_repo()
-        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=None)]
-        ps = MagicMock()
-        handler = self._handler(repo, ps)
-
-        handler.run()
-
-        ps.resolve_prezzo.assert_not_called()
-        inp = repo.batch_upsert_attivita.call_args[0][0][0]
-        self.assertIsNone(inp.prezzo_base_snapshot)
-
-    # Scopo: due righe stesso contesto pricing → una sola risoluzione (cache).
-    def test_audit_cache_dedup_stesso_contesto_un_solo_resolve(self):
-        repo = _mock_repo()
-        repo.fetch_pushable_rows.return_value = [
-            _make_row(uom_id=9, segment_key="S:1", sorgente_chiave="u1"),
-            _make_row(uom_id=9, segment_key="S:2", sorgente_chiave="u2"),
-        ]
-        ps = self._resolver_full()
-        handler = self._handler(repo, ps)
-
-        with self._atomic_noop():
-            handler.run()
-
-        self.assertEqual(ps.resolve_prezzo.call_count, 1)
+    # Scopo: il push non ha piu' un resolver da interrogare per la
+    #        provenienza: il percorso che la ricostruiva e' ritirato.
+    def test_il_push_non_chiede_la_provenienza_al_resolver(self):
+        self.assertFalse(hasattr(commesse_source_handlers, "PricingService"))
+        self.assertFalse(hasattr(HandlerPreventivi, "_resolve_pricing_audit"))
+        self.assertEqual(_make_row().provenienza, PROVENIENZA_VUOTA)
 
 
 class CompositiFanOutWiringTests(TestCase):
@@ -1534,69 +1552,27 @@ class CompositiFanOutWiringTests(TestCase):
 
         comp_repo = MagicMock()
         comp_repo.list_componenti_riga.return_value = [
-            {"componente_id": "c1", "uom_operativa_id": 9,
+            _con_provenienza({"componente_id": "c1", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("5.00"), "coeff_qta_snapshot": "1",
-             "esposizione_in_fattura": "DESCRITTIVO", "origine_prezzo": "CONTRATTO_LISTINO"},
-            {"componente_id": "c2", "uom_operativa_id": 9,
+             "esposizione_in_fattura": "DESCRITTIVO", "origine_prezzo": "CONTRATTO_LISTINO"}),
+            _con_provenienza({"componente_id": "c2", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("3.00"), "coeff_qta_snapshot": "2",
-             "esposizione_in_fattura": "NASCOSTO", "origine_prezzo": "CONTRATTO_LISTINO"},
+             "esposizione_in_fattura": "NASCOSTO", "origine_prezzo": "CONTRATTO_LISTINO"}),
         ]
-        ps = MagicMock()
-        ps.resolve_prezzo.return_value = {}  # audit best-effort, non rilevante qui
-
         with patch.object(HandlerOrdini, "_componenti_repo_factory",
                           staticmethod(lambda: comp_repo)), \
              patch(
                  "apps.vendite.services.commesse_source_handlers."
-                 "BoMComponentExpander._default_is_composito", return_value=True), \
-             patch(
-                 "apps.vendite.services.commesse_source_handlers.transaction.atomic",
-                 side_effect=lambda *a, **k: nullcontext()):
-            handler = HandlerOrdini(repo, pricing_service=ps)
+                 "BoMComponentExpander._default_is_composito", return_value=True):
+            handler = HandlerOrdini(repo)
             handler.run()
 
-        comp_repo.list_componenti_riga.assert_called_once_with(55)
+        # La proiezione per il push, con la provenienza del componente (K-4).
+        comp_repo.list_componenti_riga.assert_called_once_with(55, con_provenienza=True)
         inputs = repo.batch_upsert_attivita.call_args[0][0]
         self.assertEqual(len(inputs), 2, "articolo composito → 2 righe componente")
         segment_keys = {i.segment_key for i in inputs}
         self.assertTrue(all("#CMP:" in sk for sk in segment_keys))
-
-
-class _OrigineFuoriCheckTests(TestCase):
-    """Regressione: il resolver puo' restituire origine fuori dal CHECK
-    (es. 'LISTINO_BUNDLE') → deve diventare NULL, non far fallire l'upsert."""
-
-    # Scopo: origine resolver fuori set → origine_prezzo NULL, riga salvata.
-    def test_audit_origine_fuori_check_diventa_null(self):
-        repo = _mock_repo()
-        repo.fetch_pushable_rows.return_value = [_make_row(uom_id=9)]
-        ps = MagicMock()
-        ps.resolve_prezzo.return_value = {
-            "prezzo_base_snapshot": Decimal("12.00"),
-            "origine": "LISTINO_BUNDLE",  # NON nel CHECK
-            "tipo_variazione_applicata": "NESSUNA",
-            "valore_variazione_applicata": None,
-            "promo_id": None,
-            "contratto_id": None,
-            "categoria_cliente_id_snapshot": None,
-            "classe_utenza_id_snapshot": None,
-        }
-        handler = HandlerPreventivi(
-            repo,
-            bom_expander=BoMComponentExpander(is_composito_fn=lambda _aid: False),
-            pricing_service=ps,
-        )
-        with patch(
-            "apps.vendite.services.commesse_source_handlers.transaction.atomic",
-            side_effect=lambda *a, **k: nullcontext(),
-        ):
-            result = handler.run()
-
-        self.assertEqual(result.created, 1)
-        inp = repo.batch_upsert_attivita.call_args[0][0][0]
-        self.assertIsNone(inp.origine_prezzo, "origine fuori CHECK deve essere NULL")
-        self.assertEqual(inp.prezzo_base_snapshot, Decimal("12.00"))
-        self.assertEqual(inp.tipo_variazione_applicata, "NESSUNA")
 
 
 class PreCommessaHookTests(TestCase):

@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.core.tests._repo import repo_root
 
-_APPS = Path(__file__).resolve().parents[2]
+_APPS = repo_root() / "backend/apps"
 
 # Il tetto: il suo numero accanto a un limite di pagina, fuori da un commento.
 _TETTO = re.compile(

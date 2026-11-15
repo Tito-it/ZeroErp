@@ -18,6 +18,16 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
  STABLE
  SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6g, D-VAL): +
+--   can_genera_reso_reason_valori, i valori del primo motivo della check
+--   (la terza chiave sorella del flag: reason, reason_key, valori).
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): + can_genera_reso ·
+--   _reason · _reason_key dal primo motivo di script.fn_check_ddt_rendibile,
+--   la stessa check da cui il reso dalla bolla rifiuta.
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6d): i motivi dell'emissione sulla
+--   colonna emissione della destinazione, can_edit_righe dal lock delle righe
+--   (script.fn_doc_riga_modificabile). Dove sotto si legge EMESSO o DRAFT,
+--   vale lo stato che il vocabolario marca.
 -- Scopo: capability DDT per il detail API (data-driven,
 --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.
 --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
@@ -118,6 +128,8 @@ DECLARE
     -- La testata nello stato, dal montaggio del lock (rev 2026-10-10):
     -- {modificabile, non_modificabili}.
     v_testata jsonb;
+    -- I motivi per cui dalla bolla non nasce un reso: calcolati, nessuna colonna.
+    v_mot_reso jsonb;
 BEGIN
     -- Riga completa: serve sia per lo stato sia per passarla alla
     -- fn_check (che valuta i valori della riga, non un id).
@@ -172,23 +184,23 @@ BEGIN
                 'outlined',         COALESCE((t.meta->>'outlined')::boolean, false),
                 -- Verso EMESSO comandano i motivi della fn_check;
                 -- altrove resta il predicato requires_righe.
-                'enabled',          CASE WHEN sa.codice_interno = 'EMESSO'
+                'enabled',          CASE WHEN sa.emissione
                                          THEN v_emit_ok
                                          ELSE NOT (COALESCE((t.meta->>'requires_righe')::boolean, false)
                                                    AND NOT v_ha_righe) END,
-                'reason',           CASE WHEN sa.codice_interno = 'EMESSO'
+                'reason',           CASE WHEN sa.emissione
                                          THEN v_emit_reason
                                          WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
                                               AND NOT v_ha_righe
                                          THEN 'DOCUMENTO_SENZA_RIGHE' END,
-                'reason_key',       CASE WHEN sa.codice_interno = 'EMESSO'
+                'reason_key',       CASE WHEN sa.emissione
                                          THEN v_emit_reason_key
                                          WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
                                               AND NOT v_ha_righe
                                          THEN 'common.azione_reason.senza_righe' END,
                 -- Elenco completo dei motivi: il FE puo' mostrarli
                 -- tutti nel tooltip invece del solo primo.
-                'reasons',          CASE WHEN sa.codice_interno = 'EMESSO'
+                'reasons',          CASE WHEN sa.emissione
                                               AND jsonb_array_length(v_motivi) > 0
                                          THEN v_motivi END
             )
@@ -298,16 +310,26 @@ BEGIN
                         ELSE '[]'::jsonb END;
     v_testata := script.fn_doc_testata_in_stato('vendite.ddt'::regclass, v_stato_cod, v_sempre);
 
+    -- Il reso dalla bolla (rev 2026-11-14, giro 6e): la stessa check da cui
+    -- vendite.trgfn_resi_guard_ddt_consegnato rifiuta. Il flag discende dal motivo.
+    v_mot_reso := script.fn_check_ddt_rendibile(p_ddt_id);
+
     RETURN jsonb_build_object(
         'available_actions',            v_actions,
         'can_change_state',             v_can_change,
         'can_edit_testata',  (v_testata ->> 'modificabile')::boolean,
-        'can_edit_righe',               (v_stato_cod = 'DRAFT'),
+        'can_edit_righe',               script.fn_doc_riga_modificabile('vendite.ddt_righe'::regclass, v_stato_cod),
         -- Dal montaggio del lock dei satelliti (rev 2026-10-11, R-DB-3).
         'can_edit_indirizzi',  script.fn_doc_riga_modificabile('vendite.ddt_indirizzi'::regclass, v_stato_cod),
         'can_push_commessa',            v_push_ok,
         'can_push_commessa_reason',     v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
+        'can_genera_reso',              jsonb_array_length(v_mot_reso) = 0,
+        'can_genera_reso_reason',       v_mot_reso -> 0 ->> 'reason',
+        'can_genera_reso_reason_key',   v_mot_reso -> 0 ->> 'reason_key',
+        -- I valori della frase del primo motivo; [] col flag vero o con una
+        -- frase senza segnaposti.
+        'can_genera_reso_reason_valori', COALESCE(v_mot_reso -> 0 -> 'valori', '[]'::jsonb),
         'stato_info_key',           v_stato_info_key,
         'non_editable_fields', v_testata -> 'non_modificabili',
         'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
@@ -317,7 +339,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'La capability della bolla per il dettaglio API. available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse, con target_state e target_state_descrizione; un passaggio con un''azione di processo si nasconde a chi non l''ha (script.fn_check_azione_processo: permesso => nascondi, stato => disabilita col motivo); verso EMESSO il primo motivo di script.fn_check_ddt_emittibile. push_commessa: la partita del push si legge una volta da vendite.fn_ddt_push_diagnosi, la fonte unica dell''eleggibilita'' (can_push_commessa = esiste una riga senza motivo; poi il segmento, ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi il motivo piu'' forte, mappato per stringa con un ELSE generico). can_change_state; can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato); billing_account_id fra le colonne ferme solo se un vincolo lo tiene, letto da vendite.fn_ddt_vincoli_cliente con la sorgente intera (tipo, uid, id), la stessa del guard vendite.trgfn_ddt_guard_cliente_sorgente; can_edit_indirizzi dal lock di vendite.ddt_indirizzi (script.fn_doc_riga_modificabile). stato_info_key dal meta dello stato corrente (proprieta'' nessuna_azione_key), sempre presente nel blob, null quando non si applica. stato_codice. Le azioni portano il significato (key, label_key, outlined): icona e colore li sceglie il frontend dal verbo. Gemella di script.fn_available_actions_ordine.';
+IS 'La capability della bolla per il dettaglio API. available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse, con target_state e target_state_descrizione; un passaggio con un''azione di processo si nasconde a chi non l''ha (script.fn_check_azione_processo: permesso => nascondi, stato => disabilita col motivo); verso lo stato di emissione (la colonna emissione di config.stati_doc_ddt) il primo motivo di script.fn_check_ddt_emittibile, gli altri col predicato requires_righe del passaggio. push_commessa: la partita del push si legge una volta da vendite.fn_ddt_push_diagnosi, la fonte unica dell''eleggibilita'' (can_push_commessa = esiste una riga senza motivo; poi il segmento, ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi il motivo piu'' forte, mappato per stringa con un ELSE generico). can_change_state; can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato); billing_account_id fra le colonne ferme solo se un vincolo lo tiene, letto da vendite.fn_ddt_vincoli_cliente con la sorgente intera (tipo, uid, id), la stessa del guard vendite.trgfn_ddt_guard_cliente_sorgente; can_edit_righe e can_edit_indirizzi dal lock di vendite.ddt_righe e vendite.ddt_indirizzi (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare. stato_info_key dal meta dello stato corrente (proprieta'' nessuna_azione_key), sempre presente nel blob, null quando non si applica. stato_codice. can_genera_reso, con can_genera_reso_reason, can_genera_reso_reason_key e can_genera_reso_reason_valori (i valori della frase, [] quando il flag e'' vero o la frase non ha segnaposti), dal primo motivo di script.fn_check_ddt_rendibile, la stessa check da cui vendite.trgfn_resi_guard_ddt_consegnato rifiuta il reso. Le azioni portano il significato (key, label_key, outlined): icona e colore li sceglie il frontend dal verbo. Gemella di script.fn_available_actions_ordine.';
 ```
 
 </div>

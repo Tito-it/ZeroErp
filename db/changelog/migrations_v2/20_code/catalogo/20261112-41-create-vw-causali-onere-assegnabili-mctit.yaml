@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE CAUSALI CHE SI POSSONO DARE A UN ARTICOLO — catalogo.vw_causali_onere_assegnabili
+#   Brief: brief-db-addebito-trasporto-ordine §9.10 (C-2, Tid 2026-11-12).
+#
+# ── ⭐ PERCHE' ───────────────────────────────────────────────────────
+#   Il drawer articolo sceglie la causale dell'onere in inserimento. Il legame
+#   articolo-causale e' 1:1 (uq_articoli_causale_onere): una causale gia' data
+#   a un articolo non si offre. La regola sta qui, non nel BE.
+#
+# ── ⭐ FORMA ─────────────────────────────────────────────────────────
+#   Una vista sulla forma del lookup generico (dbops.fn_get_lookup_codici:
+#   id, codice, codice_interno, descrizione, attivo), registrata in
+#   config.tabelle_gestibili con lookup = true (seed, stesso giro): nessun
+#   endpoint nuovo. Il filtro «attivo» lo fa il lookup (p_attivo_only), la
+#   vista toglie solo le causali gia' legate.
+#   La causale dell'articolo aperto in modifica non c'e' (e' legata a lui):
+#   il drawer la mostra dalla riga di catalogo.vw_articoli_dettaglio
+#   (causale_onere_descrizione), e la offre solo se l'articolo non e' usato
+#   (A-10, dbops.vw_non_editable_fields).
+#   Nessuna RLS sotto (config.causali_onere, catalogo.articoli): niente
+#   security_invoker. Nessun GRANT: lo danno le ALTER DEFAULT PRIVILEGES.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-41-create-vw-causali-onere-assegnabili-mctit.yaml
+
+  - changeSet:
+      id: 20261112-41-create-vw-causali-onere-assegnabili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_causali_onere_assegnabili: le causali onere non ancora legate a un articolo, per il lookup generico. Brief: brief-db-addebito-trasporto-ordine §9.10 (C-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('catalogo.vw_causali_onere_assegnabili')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_causali_onere_assegnabili AS
+               SELECT co.id,
+                  co.codice,
+                  co.codice_interno,
+                  co.descrizione,
+                  co.attivo
+                 FROM config.causali_onere co
+                WHERE NOT EXISTS ( SELECT 1
+                         FROM catalogo.articoli a
+                        WHERE a.causale_onere_id = co.id);
+
+              COMMENT ON VIEW catalogo.vw_causali_onere_assegnabili IS
+                  'Le causali onere (config.causali_onere) che si possono dare a un articolo nuovo: quelle non ancora legate a nessun articolo, perche'' il legame articolo-causale e'' 1:1 (uq_articoli_causale_onere; il guard catalogo.trgfn_articoli_guard_onere_natura rifiuta il doppione con E_ARTICOLO_CAUSALE_ONERE_GIA_USATA). Ha la forma del lookup generico (id, codice, codice_interno, descrizione, attivo) ed e'' registrata in config.tabelle_gestibili con lookup = true: la tendina la legge da dbops.fn_get_lookup_codici, che filtra le attive. La causale dell''articolo aperto non c''e'', perche'' e'' legata a lui: il drawer la legge da catalogo.vw_articoli_dettaglio. Nessuna security_invoker: config.causali_onere e catalogo.articoli non hanno RLS.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP VIEW IF EXISTS catalogo.vw_causali_onere_assegnabili;

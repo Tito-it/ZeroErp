@@ -25,16 +25,20 @@ AS $function$
 --   - p_versione_contesto e' la forma dei dati che il builder del
 --     backend produce per quel tipo di documento: la versione si
 --     pubblica solo se dichiara di leggere quella forma
---     (documenti.fn_guard_versione_contesto, rev 20260930-21).
+--     (documenti.fn_guard_versione_contesto).
 --     Una BOZZA puo' dichiarare una forma che il builder non produce
---     ancora (D-C4): il controllo e' qui, non sulla bozza;
+--     ancora: il controllo e' qui, non sulla bozza;
 --   - l'ordine delle date (p_valido_al non precede p_valido_dal) NON si
 --     giudica qui: lo giudica il guard comune script.trgfn_guard_date_validita
---     sull'UPDATE della versione (rev 20260924-02: ritirata la copia sui
---     parametri, che rispondeva con E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO);
+--     sull'UPDATE della versione;
 --   - prima della pubblicazione vengono rese OBSOLETE e chiuse a
 --     p_valido_dal - 1 le versioni PUBBLICATE attive dello stesso
---     template con valido_dal < p_valido_dal e intervallo sovrapposto;
+--     template con valido_dal < p_valido_dal e intervallo sovrapposto.
+--     Una OBSOLETA stampa fino al suo valido_al: che cosa stampa lo
+--     decide la validita' (documenti.vw_template_versioni_stampabili);
+--   - la chiusura e' una scrittura sola, sotto la porta
+--     zeroerp.allow_template_versione_chiusura_override: il Guard A1
+--     protegge PUBBLICATA e OBSOLETA, e ammette solo questa forma;
 --   - il vincolo EXCLUDE resta il guardrail finale contro overlap
 --     residui o race concorrenti.
 DECLARE
@@ -98,10 +102,10 @@ BEGIN
         );
     END IF;
 
-    -- Il patto versione/forma dei dati (rev 20260930-21): prima di
-    -- toccare qualunque altra versione, cosi' un rifiuto non lascia
-    -- niente a meta' da annullare. La riga e' gia' sotto FOR UPDATE:
-    -- la forma letta dal guard non puo' cambiare fino al commit.
+    -- Il patto versione/forma dei dati: prima di toccare qualunque
+    -- altra versione, cosi' un rifiuto non lascia niente a meta' da
+    -- annullare. La riga e' gia' sotto FOR UPDATE: la forma letta dal
+    -- guard non puo' cambiare fino al commit.
     PERFORM documenti.fn_guard_versione_contesto(p_versione_id, p_versione_contesto);
 
     -- Lock ordinato di tutte le versioni del template: evita race fra
@@ -122,13 +126,12 @@ BEGIN
              AND v.stato = 'PUBBLICATA'
              AND v.attivo IS TRUE
              AND v.valido_dal < p_valido_dal
-             -- ⚠️ rev 20260924-02: la finestra nuova e' [p_valido_dal, oltre).
-             --   Una versione che parte PRIMA di p_valido_dal si sovrappone
-             --   alla nuova se e solo se e' ancora aperta a p_valido_dal:
-             --   p_valido_al non conta. Prima qui si costruiva
-             --   daterange(p_valido_dal, p_valido_al): con le date invertite
-             --   sollevava 22000 (limite inferiore > superiore) PRIMA che
-             --   l'UPDATE incontrasse il guard comune delle date.
+             -- La finestra nuova e' [p_valido_dal, oltre). Una versione
+             --   che parte PRIMA di p_valido_dal si sovrappone alla nuova
+             --   se e solo se e' ancora aperta a p_valido_dal: p_valido_al
+             --   non conta. Un daterange(p_valido_dal, p_valido_al) qui
+             --   solleverebbe 22000 con le date invertite PRIMA che
+             --   l'UPDATE incontri il guard comune delle date.
              AND v.validita && daterange(p_valido_dal, NULL, '[)')
            ORDER BY v.valido_dal, v.id
            FOR UPDATE
@@ -138,16 +141,19 @@ BEGIN
     v_closed_count := COALESCE(array_length(v_closed_ids, 1), 0);
 
     IF v_closed_count > 0 THEN
-        -- Il trigger A1 blocca UPDATE OF valido_al quando OLD.stato = PUBBLICATA.
-        -- Step 1: porta a OBSOLETA (colonna stato non e' nell''UPDATE OF' del trigger).
-        -- Step 2: aggiorna valido_al (ora OLD.stato = OBSOLETA, trigger non blocca).
-        UPDATE documenti.template_documenti_versioni
-           SET stato = 'OBSOLETA'
-         WHERE id = ANY(v_closed_ids);
+        -- Una scrittura sola, stato e data insieme: il Guard A1 protegge
+        -- PUBBLICATA e OBSOLETA, e a porta aperta ammette solo questa
+        -- forma (PUBBLICATA -> OBSOLETA, valido_al accorciato). La porta
+        -- si apre qui, dopo la scelta delle versioni, e si richiude
+        -- subito: nessun'altra scrittura della transazione la trova aperta.
+        PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'on', true);
 
         UPDATE documenti.template_documenti_versioni
-           SET valido_al = p_valido_dal - 1
+           SET stato     = 'OBSOLETA',
+               valido_al = p_valido_dal - 1
          WHERE id = ANY(v_closed_ids);
+
+        PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'off', true);
     END IF;
 
     UPDATE documenti.template_documenti_versioni
@@ -179,7 +185,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
-IS 'Pubblica una versione template documento con auto-close atomico delle versioni PUBBLICATE precedenti sovrapposte. Rev 20260930-21: p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce; la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). Rev 20260924-02: l''ordine delle date non e'' piu'' giudicato sui parametri: lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
+IS 'Pubblica una versione template BOZZA e chiude, nella stessa transazione, le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). La chiusura passa dal Guard A1 a porta zeroerp.allow_template_versione_chiusura_override aperta. p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
 ```
 
 </div>

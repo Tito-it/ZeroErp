@@ -31,6 +31,7 @@ import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import CommessaRegistroDialog from './CommessaRegistroDialog.vue'
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
+import { AZIONE_ANNULLA } from '../_shared/annullo/avvisoDocumentiCollegati'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -52,7 +53,6 @@ import { useDocumentoDrawer } from '../../core/composables/useDocumentoDrawer'
 import { buildApriDocumentoAction } from '../dashboardAree'
 import {
   STATO_APPROVAZIONE_ATTIVITA,
-  STATO_COMMESSA,
   STATO_EMISSIONE_ATTIVITA,
   TIPO_MOVIMENTO_ATTIVITA,
 } from '../constants'
@@ -400,7 +400,7 @@ function onFiltroStatoChange() {
 
 // Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
 //   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
-//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   database (`DRAFT` -> «Bozza», `PARZIALMENTE_EVASO` -> «Parzialmente evaso»: non e'
 //   derivabile dal codice), quindi arriva dalla capability come
 //   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
 //   label dell'azione — comportamento invariato, nessun testo mancante.
@@ -507,7 +507,7 @@ const stateActions = computed(() => mapAvailableActionsToDrawerActions({
     confirmAction({
       header: t('vendite.commesse.stato_header'),
       message: t('vendite.commesse.stato_conferma', { stato: statoDestinazione(action) }),
-      onAccept: () => eseguiCambioStato(action.target_state),
+      onAccept: () => eseguiCambioStato(action),
     })
   },
 }))
@@ -525,13 +525,16 @@ const { richiestaConferma: domandaAnnullo } = cambioStato
 const commesseStore = useCommesseStore()
 
 // Scopo: esegue l'azione di stato; l'annullo SEMPRE senza dichiarazione al
-//        primo tentativo.
-async function eseguiCambioStato(targetState) {
-  const res = targetState === STATO_COMMESSA.ANNULLATA
+//        primo tentativo. L'annullo si riconosce dal verbo dell'azione
+//        (`key` = `annulla`), non dalla destinazione (2026-11-14, gemello di
+//        ordine, bolla, preventivo e contratto, brief-db-stati-documento-dal-
+//        vocabolario).
+async function eseguiCambioStato(action) {
+  const res = action.key === AZIONE_ANNULLA
     ? await cambioStato.esegui(
-      (dichiarazione) => commesseStore.cambiaStato(props.commessaId, targetState, dichiarazione),
+      (dichiarazione) => commesseStore.cambiaStato(props.commessaId, action, dichiarazione),
     )
-    : await execute(() => commesseStore.cambiaStato(props.commessaId, targetState))
+    : await execute(() => commesseStore.cambiaStato(props.commessaId, action))
   if (res !== null) await dopoCambioStato()
 }
 

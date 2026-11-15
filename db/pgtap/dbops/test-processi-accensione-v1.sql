@@ -96,18 +96,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(47);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- ============================================================
 -- Forma
@@ -207,10 +195,10 @@ SELECT is(
 SELECT is(maintenance.fn_sveglia_accesa('listen_permessi'), true,
           '18. un non spegnibile: la sveglia e'' accesa');
 
-SELECT is(pg_temp.codice_errore($$SELECT maintenance.fn_sveglia_accesa('PGTAP-PROCESSO-CHE-NON-ESISTE')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT maintenance.fn_sveglia_accesa('PGTAP-PROCESSO-CHE-NON-ESISTE')$$),
           'E_PROCESSO_NON_TROVATO', '19. codice inesistente: E_PROCESSO_NON_TROVATO');
 
-SELECT is(pg_temp.codice_errore($$SELECT maintenance.fn_sveglia_accesa('avvio_manuale')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT maintenance.fn_sveglia_accesa('avvio_manuale')$$),
           'E_PROCESSO_SENZA_SVEGLIA', '20. processo CODA: E_PROCESSO_SENZA_SVEGLIA');
 
 -- ============================================================
@@ -262,19 +250,19 @@ SELECT is(
     't|pgTAP: prova del ritorno al default',
     '25-bis. ... e la riga resta, con acceso NULL e il motivo: chi e perche'' non si perdono (S-1)');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('listen_permessi', false, 'pgTAP: prova')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('listen_permessi', false, 'pgTAP: prova')$$),
           'E_PROCESSO_NON_SPEGNIBILE', '26. spegnere listen_permessi: E_PROCESSO_NON_SPEGNIBILE');
 
 SELECT is(dbops.fn_imposta_accensione_processo('listen_permessi', true, 'pgTAP: conferma'),
           true, '27. confermare acceso un non spegnibile e'' ammesso');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', false, '   ')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', false, '   ')$$),
           'E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO', '28. motivo vuoto: E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('avvio_manuale', false, 'pgTAP: prova')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('avvio_manuale', false, 'pgTAP: prova')$$),
           'E_PROCESSO_SENZA_SVEGLIA', '29. un processo CODA non ha sveglia: E_PROCESSO_SENZA_SVEGLIA');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('PGTAP-PROCESSO-CHE-NON-ESISTE', false, 'pgTAP')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('PGTAP-PROCESSO-CHE-NON-ESISTE', false, 'pgTAP')$$),
           'E_PROCESSO_NON_TROVATO', '30. codice inesistente: E_PROCESSO_NON_TROVATO');
 
 -- ============================================================
@@ -288,7 +276,7 @@ SELECT is(
     false,
     '31. acceso e'' nullable: NULL = tornato al default (20261017-02)');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', NULL, NULL)$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo('smoke_notturno', NULL, NULL)$$),
           'E_PROCESSO_ACCENSIONE_MOTIVO_OBBLIGATORIO',
           '32. anche tornare al default vuole il motivo');
 

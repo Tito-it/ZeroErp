@@ -25,6 +25,8 @@
 | is_abortito | boolean | NO | false |
 | iniziale | boolean | NO | false |
 | emissione | boolean | NO | false |
+| esito | character varying(50) | YES |  |
+| terminale | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -34,6 +36,8 @@
 | CHECK | chk_stati_doc_ddt_fase |  |
 | CHECK | chk_stati_doc_ddt_iniziale_attivo |  |
 | CHECK | chk_stati_doc_ddt_pdf_mode |  |
+| CHECK | chk_stati_doc_ddt_terminale_chiuso |  |
+| FOREIGN KEY | fk_stati_doc_ddt_esito | esito |
 | PRIMARY KEY | pk_stati_doc_ddt | id |
 | UNIQUE | uq_stati_doc_ddt_codice | codice |
 | UNIQUE | uq_stati_doc_ddt_codice_interno | codice_interno |
@@ -54,7 +58,11 @@
 |------|--------|--------|--------|
 | trg_stati_doc_ddt_a10_ddt_block_deact_upd_560bc3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'stato_doc_ddt_id', 'id', 'attivo')` |
 | trg_stati_doc_ddt_a10_ddt_block_deact_upd_7a56cc | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'stato_doc_ddt_id', 'id', 'attivo')` |
+| trg_stati_doc_ddt_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
+| trg_stati_doc_ddt_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_ddt_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_stati_doc_ddt_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt')` |
+| trg_stati_doc_ddt_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt')` |
 | trg_stati_doc_ddt_a10_transizioni_stati_ddt_block_deact_664aa3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ddt', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_ddt_a10_transizioni_stati_ddt_block_deact_f6a6ee | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ddt', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_doc_ddt_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |

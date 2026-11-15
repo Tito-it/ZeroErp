@@ -1,6 +1,6 @@
 # Standard delle guide — checklist di revisione
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: chiunque scriva o riveda una guida in `docs/it/guide/` o una pagina
 > `docs/it/dbzero/<schema>/manual/` (persone o agenti).
@@ -133,6 +133,14 @@ non si eseguono.
   trovarli: `grep -rn "views/<nome_ritirato>" docs/`.
 * **La pagina del successore.** Quando un oggetto viene ritirato, la spiegazione del ritiro va nel
   `manual/` dell'oggetto che lo ha sostituito, non in un blocco in testa alla guida.
+* ⛔ **La pagina `manual/` di un oggetto ritirato si cancella**, nello stesso lavoro che lo ritira:
+  non si lascia una pagina che spiega dov'è finito. L'indice dello schema si genera scansionando
+  `manual/`, e una pagina rimasta continua a pubblicizzare un oggetto che non esiste. «Si marca, non
+  si cancella» vale per i documenti di registrazione storica, non per `manual/`.
+* **Un debito documentale è saldato solo se il file lo dice.** Prima di dichiararlo fatto si cerca
+  nel documento la frase che doveva entrare e si guarda la data di revisione. Una guida lunga si
+  aggiorna in **ogni** punto che parla della cosa (tabelle d'esempio, riepiloghi, checklist). Chi
+  chiude un lavoro che ha ereditato debito documentale da un altro lo evade o lo restituisce.
 
 ## Le altre pagine: `manual/` e doc auto-generata
 

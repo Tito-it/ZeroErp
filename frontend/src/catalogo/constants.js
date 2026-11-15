@@ -3,6 +3,9 @@
 export const CATALOGO_LOOKUP_RELS = {
   UOM_TIPI: 'catalogo.uom_tipi',
   UNITA_MISURA: 'catalogo.unita_misura',
+  // Le causali onere che nessun articolo porta (20261112-41): la tendina della
+  // causale nel drawer articolo. Ogni scrittura di un articolo la rende stantia.
+  CAUSALI_ONERE_ASSEGNABILI: 'catalogo.vw_causali_onere_assegnabili',
 }
 
 // Schede della vista «Unita' di misura» (2026-09-04, raggruppamento chiesto da

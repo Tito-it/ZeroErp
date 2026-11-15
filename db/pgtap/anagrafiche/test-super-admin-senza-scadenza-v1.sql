@@ -56,18 +56,6 @@ SELECT plan(16);
 -- ============================================================
 -- Fixture
 -- ============================================================
--- Il codice dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error).
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Due amministratori dal percorso di produzione (madre: persona, rapporto,
 -- credenziale, veste accesa, binding SUPER_ADMIN).
@@ -112,7 +100,7 @@ SELECT is(script.fn_identita_super_admin_senza_scadenza((SELECT identita_id FROM
 -- 3-5. La garanzia passa da A a B
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _a))),
     NULL,
@@ -131,35 +119,35 @@ SELECT is(
 -- 6-10. B e' l'ultimo: le scritture che riducono si fermano
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '6) data di fine sulla veste dell''ultimo: rifiutata');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '7) inizio della veste dell''ultimo spostato a domani: rifiutato');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '8) data di fine sul RAPPORTO dell''ultimo: rifiutata (guard -20)');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() + 1 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '9) inizio del rapporto dell''ultimo spostato a domani: rifiutato');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = %s',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
@@ -171,7 +159,7 @@ SELECT is(
 -- ⚠️ Scrittura e lettura in due istruzioni: una funzione STABLE nella stessa
 --   istruzione vede la fotografia di PRIMA dell'UPDATE.
 CREATE TEMP TABLE _esito11 AS
-SELECT COALESCE(pg_temp.codice_errore(format(
+SELECT COALESCE(dbops.fn_pgtap_codice_errore(format(
            'UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = %s',
            (SELECT identita_id FROM _a))), 'nessun errore') AS esito;
 
@@ -182,14 +170,14 @@ SELECT is(
     '11) ad A si toglie la data di fine: permesso, e A torna senza scadenza');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     NULL,
     '12) ora la data di fine a B passa: A non scade');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _c))),
     NULL,

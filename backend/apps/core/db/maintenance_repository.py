@@ -337,11 +337,13 @@ class MaintenanceRepository:
             if not chiave.replace("_", "").isalnum():
                 raise ValueError(f"chiave meta non ammessa: {chiave!r}")
             # Il mese di `started_at` e' quello dell'AZIENDA (BB DB
-            # `fn_giorno_operativo`): fino al 2026-10-09 era `date_trunc` nel
-            # fuso della sessione, e un run della notte del 1° finiva nel mese prima.
+            # `fn_giorno_operativo`, poi `fn_mese_di`): fino al 2026-10-09 era
+            # `date_trunc` nel fuso della sessione, e un run della notte del 1°
+            # finiva nel mese prima. Dal 2026-11-15 il primo del mese e' del BB
+            # (R-BE-1 di brief-db-mese-di-un-giorno), non una copia qui.
             conditions.append(
                 f"COALESCE(meta ->> '{chiave}',"
-                " to_char(date_trunc('month', script.fn_giorno_operativo(started_at)::timestamp),"
+                " to_char(script.fn_mese_di(script.fn_giorno_operativo(started_at)),"
                 " 'YYYY-MM-DD')) = %s"
             )
             params.append(str(mese))

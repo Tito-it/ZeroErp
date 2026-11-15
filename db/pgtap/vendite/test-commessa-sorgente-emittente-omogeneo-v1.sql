@@ -40,19 +40,10 @@
 -- Piano: brief-db-emittente-commessa-invariante, L8 (§7.8)
 -- ------------------------------------------------------------
 
--- =========================================================
--- Cleanup iniziale (idempotente, FUORI dalla transazione)
--- =========================================================
-DO $$
-BEGIN
-    DELETE FROM vendite.commesse_sorgenti cs
-     WHERE cs.commessa_id IN (
-         SELECT c.id FROM vendite.commesse c WHERE c.codice LIKE 'TST-SORG-EMITT-%');
-
-    DELETE FROM vendite.commesse c
-     WHERE c.codice LIKE 'TST-SORG-EMITT-%';
-END;
-$$;
+-- ⛔ Niente pulizia iniziale fuori dalla transazione (tolta il 2026-11-15):
+--   cancellava in autocommit le righe di prova di corse vecchie, che col
+--   ROLLBACK in coda non possono piu' nascere, e teneva il file fuori da
+--   scripts/prova_changeset.py (la prima istruzione deve essere BEGIN).
 
 BEGIN;
 

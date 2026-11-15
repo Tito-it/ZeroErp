@@ -19,8 +19,7 @@ import {
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
-import { STATO_PREVENTIVO } from '../../constants'
-import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
+import { avvisaDopoAzione } from '../../_shared/annullo/avvisoDocumentiCollegati'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   const { emitDataChanged } = useTabEvents()
@@ -104,11 +103,15 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // PreventivoEmissioneDialog). Il BE rifiuterebbe E_PREV_VALIDAZIONE.
   // Verso ANNULLATO `extras` porta la dichiarazione della conferma
   // (`{ legami_confermati }`), e l'annullo riapre i documenti dall'altra parte.
-  async function cambiaStato(id, nuovoStato, extras = {}) {
-    const payload = { nuovo_stato: nuovoStato, ...extras }
+  // `azione` = l'entry di `available_actions` scelta (destinazione =
+  // `target_state`); che sia l'annullo lo dice l'azione, non il codice della
+  // destinazione (brief-db-stati-documento-dal-vocabolario, simmetria di
+  // FE-O2/FE-C3/FE-D3, decisa da Tid il 2026-11-14).
+  async function cambiaStato(id, azione, extras = {}) {
+    const payload = { nuovo_stato: azione.target_state, ...extras }
     const res = await cambiaStatoPreventivo(id, payload)
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
-    if (nuovoStato === STATO_PREVENTIVO.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
+    avvisaDopoAzione(azione, emitDataChanged)
     return res.data.data
   }
 

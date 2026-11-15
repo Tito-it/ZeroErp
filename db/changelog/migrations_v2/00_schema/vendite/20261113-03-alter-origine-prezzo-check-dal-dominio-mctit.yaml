@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I SETTE CHECK SULL'ORIGINE DEL PREZZO LEGGONO IL DOMINIO UNICO
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2, D-2 di Tid 2026-11-13)
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Due elenchi dissentivano: i cinque componenti ammettevano LISTINO_BUNDLE,
+#   commesse_attivita e attivita_fatturabili no (e il BE, al push, faceva NULL
+#   del valore che la commessa non ammetteva). D-2: un elenco solo, da
+#   vendite.fn_origine_prezzo_ammessa (20261113-01), che porta anche
+#   COMPONENTI. Ogni CHECK si ricrea con lo STESSO nome: i pgTAP che ne
+#   asseriscono l'esistenza e il rifiuto di un valore fuori elenco restano
+#   veri (test-*-righe-componenti-v1).
+#
+# ── COSA CAMBIA PER CHI SCRIVE ──────────────────────────────────────
+#   Solo l'allargamento: commessa e attivita' fatturabili ammettono anche
+#   LISTINO_BUNDLE e COMPONENTI. Nessun valore oggi ammesso diventa
+#   rifiutato. Il NOT NULL dei componenti resta dov'e' (la colonna): la
+#   funzione ammette NULL.
+#
+#   DROP e ADD nella stessa istruzione ALTER TABLE, per tabella: la tabella
+#   non resta mai senza vincolo. Le righe che ci sono passano per costruzione
+#   (l'elenco nuovo contiene quello vecchio).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261113-03-alter-origine-prezzo-check-dal-dominio-mctit.yaml
+
+  - changeSet:
+      id: 20261113-03-alter-origine-prezzo-check-dal-dominio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I sette CHECK sull'origine del prezzo (commesse_attivita, attivita_fatturabili e i cinque
+        componenti) leggono vendite.fn_origine_prezzo_ammessa, l'elenco unico. Stessi nomi.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 7
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE contype = 'c'
+                 AND conname IN ('chk_commesse_attivita_origine_prezzo',
+                                 'chk_attivita_fatturabili_origine_prezzo',
+                                 'chk_prevrighe_comp_origine', 'chk_ordrighe_comp_origine',
+                                 'chk_ddtrighe_comp_origine', 'chk_contrighe_comp_origine',
+                                 'chk_oce_comp_origine')
+                 AND connamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT chk_commesse_attivita_origine_prezzo,
+                  ADD CONSTRAINT chk_commesse_attivita_origine_prezzo
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT chk_attivita_fatturabili_origine_prezzo,
+                  ADD CONSTRAINT chk_attivita_fatturabili_origine_prezzo
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT chk_prevrighe_comp_origine,
+                  ADD CONSTRAINT chk_prevrighe_comp_origine
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT chk_ordrighe_comp_origine,
+                  ADD CONSTRAINT chk_ordrighe_comp_origine
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT chk_ddtrighe_comp_origine,
+                  ADD CONSTRAINT chk_ddtrighe_comp_origine
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT chk_contrighe_comp_origine,
+                  ADD CONSTRAINT chk_contrighe_comp_origine
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  DROP CONSTRAINT chk_oce_comp_origine,
+                  ADD CONSTRAINT chk_oce_comp_origine
+                      CHECK (vendite.fn_origine_prezzo_ammessa(origine_prezzo));
+
+              COMMENT ON CONSTRAINT chk_commesse_attivita_origine_prezzo ON vendite.commesse_attivita IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa) o NULL.';
+              COMMENT ON CONSTRAINT chk_attivita_fatturabili_origine_prezzo ON vendite.attivita_fatturabili IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa) o NULL.';
+              COMMENT ON CONSTRAINT chk_prevrighe_comp_origine ON vendite.preventivi_righe_componenti IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa).';
+              COMMENT ON CONSTRAINT chk_ordrighe_comp_origine ON vendite.ordini_righe_componenti IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa).';
+              COMMENT ON CONSTRAINT chk_ddtrighe_comp_origine ON vendite.ddt_righe_componenti IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa) o NULL.';
+              COMMENT ON CONSTRAINT chk_contrighe_comp_origine ON vendite.contratti_righe_componenti IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa).';
+              COMMENT ON CONSTRAINT chk_oce_comp_origine ON vendite.offerte_commerciali_eccezioni_componenti IS
+                  'L''origine del prezzo e'' nell''elenco unico (vendite.fn_origine_prezzo_ammessa).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                  DROP CONSTRAINT chk_commesse_attivita_origine_prezzo,
+                  ADD CONSTRAINT chk_commesse_attivita_origine_prezzo CHECK (origine_prezzo IS NULL OR origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE']));
+              ALTER TABLE vendite.attivita_fatturabili
+                  DROP CONSTRAINT chk_attivita_fatturabili_origine_prezzo,
+                  ADD CONSTRAINT chk_attivita_fatturabili_origine_prezzo CHECK (origine_prezzo IS NULL OR origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE']));
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  DROP CONSTRAINT chk_prevrighe_comp_origine,
+                  ADD CONSTRAINT chk_prevrighe_comp_origine CHECK (origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE','LISTINO_BUNDLE']));
+              ALTER TABLE vendite.ordini_righe_componenti
+                  DROP CONSTRAINT chk_ordrighe_comp_origine,
+                  ADD CONSTRAINT chk_ordrighe_comp_origine CHECK (origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE','LISTINO_BUNDLE']));
+              ALTER TABLE vendite.ddt_righe_componenti
+                  DROP CONSTRAINT chk_ddtrighe_comp_origine,
+                  ADD CONSTRAINT chk_ddtrighe_comp_origine CHECK (origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE','LISTINO_BUNDLE']));
+              ALTER TABLE vendite.contratti_righe_componenti
+                  DROP CONSTRAINT chk_contrighe_comp_origine,
+                  ADD CONSTRAINT chk_contrighe_comp_origine CHECK (origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE','LISTINO_BUNDLE']));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                  DROP CONSTRAINT chk_oce_comp_origine,
+                  ADD CONSTRAINT chk_oce_comp_origine CHECK (origine_prezzo::text = ANY (ARRAY['PROMO','CONTRATTO_OVERRIDE','CONTRATTO_LISTINO','CATEGORIA','MANUALE','LISTINO_BUNDLE']));

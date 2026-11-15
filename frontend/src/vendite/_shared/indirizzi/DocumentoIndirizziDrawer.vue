@@ -27,7 +27,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
+import { MANAGE_ICONS } from '../../../core/constants'
 import IndirizzoProvenienzaTags from './IndirizzoProvenienzaTags.vue'
 import { formatSnapshotDisplay, makeIndirizziDocumentoApi, pickTipoDefault } from './documentoIndirizziApi'
 import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
@@ -40,8 +40,6 @@ const props = defineProps({
   // soggetto_ruolo del cliente del documento (lista indirizzi anagrafici).
   soggettoRuoloId: { type: [Number, null], default: null },
   istanzaUtilityId: { type: [Number, null], default: null },
-  // Tipo ruolo per la matrice tipi dell'"aggiungi indirizzo" anagrafico.
-  tipoRuoloCodice: { type: String, default: TIPO_RUOLO.CLIENTE },
   readonly: { type: Boolean, default: false },
   // Stato documento posseduto dalla SEZIONE contenitrice (single source):
   // tipi ammessi + slot impostati. Passati per props → il drawer NON rifetcha
@@ -194,7 +192,6 @@ const fotoLibero = useFotografiaDialog(() => ({ tipo: liberoTipoId.value, ...lib
     context="ruolo"
     :soggetto-id="soggettoRuoloId"
     :istanza-utility-id="istanzaUtilityId"
-    :tipo-ruolo-codice="tipoRuoloCodice"
     selectable
     :select-tooltip="t('vendite.indirizzi.usa_questo')"
     @select="onSelect">

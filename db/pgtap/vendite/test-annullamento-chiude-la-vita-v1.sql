@@ -103,7 +103,10 @@ WITH ins AS (
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, stato_lotto, meta)
     SELECT 'PGTAP-VITA-' || v.sigla || '-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
            date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
-           CASE v.sigla WHEN 'D' THEN r.stato_definitiva_id ELSE r.stato_draft_id END,
+           -- ⚠️ Tutti nascono nello stato iniziale: lo pretende il trigger
+           --   della nascita del lotto (20261112-45). D si porta a DEFINITIVA
+           --   subito sotto, dai verbi del lotto.
+           r.stato_draft_id,
            v.stato_lotto,
            jsonb_build_object('test_scope', 'pgtap_annullamento_vita', 'sigla', v.sigla)
       FROM _rif r,
@@ -114,6 +117,11 @@ WITH ins AS (
     RETURNING id, codice, meta ->> 'sigla' AS sigla
 )
 SELECT id, codice, sigla FROM ins;
+
+-- D congelato: dalla bozza a DEFINITIVA lungo la matrice, coi verbi del lotto.
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', l.id, 'DEFINITIVA')
+  FROM _lotti l
+ WHERE l.sigla = 'D';
 
 -- Cattura SQLSTATE, codice di dominio (CONSTRAINT) e frase di un UPDATE di
 -- stato_lotto. ⚠️ throws_ok vede solo SQLSTATE e messaggio: il codice esce nel

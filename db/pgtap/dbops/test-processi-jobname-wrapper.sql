@@ -5,6 +5,7 @@
 -- Test: il registro dei processi e i jobname dei wrapper parlano la STESSA
 --       lingua (DB-7)
 -- Brief: brief-db-processi-automatici-residui-be.md, sezione DB-7 e §1-quater
+-- pgtap-pgagent-owner: ammesso — pgagent solo in una query dinamica dopo has_schema_privilege: da app il test si salta
 --
 -- Elenco test (plan 4):
 --  1) ⛔ IL PRESIDIO: ogni jobname passato da un wrapper esiste in dbops.processi

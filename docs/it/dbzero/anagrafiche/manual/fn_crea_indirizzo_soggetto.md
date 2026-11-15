@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzo_soggetto()`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -57,8 +57,15 @@ si rifiuta (`E_CAMPO_NON_AMMESSO`): `*_codice` è il display, come nelle viste d
 | una chiave che un indirizzo non ha | `fn_indirizzo_elemento` | `E_CAMPO_NON_AMMESSO` (col nome del campo) |
 | un tipo che non esiste | `fn_indirizzo_elemento` | `E_TIPO_INDIRIZZO_NON_TROVATO` |
 | la forma dell'indirizzo libero (campi mancanti, campi dell'altra forma, comune e CAP coerenti) | il guard della tabella, [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/manual/trgfn_indirizzi_guard_forma_libera) | `E_INDIRIZZO_LIBERO_INCOMPLETO`, `E_INDIRIZZO_CAMPO_ALTRA_FORMA`, `E_INDIRIZZO_COMUNE_ALTRO_STATO`, `E_INDIRIZZO_CAP_ALTRO_COMUNE` |
-| il tipo ammesso per il tipo di soggetto | `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` | — |
-| un tipo che il soggetto ha già | `uq_indirizzi_soggetti_soggetto_tipo` | — |
+| un tipo che il soggetto ha già | [`fn_check_tipo_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_soggetto), primo motivo | `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` (campo `tipo_indirizzo_codice_interno`) |
+| un tipo che la natura del soggetto non ammette | la stessa check, col predicato del guard [`fn_tipo_indirizzo_ammesso_per_natura`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura) | `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` |
+| un soggetto che non esiste | la stessa check | `E_SOGGETTO_NOT_FOUND` |
+
+⭐ **Il tipo lo giudica la check, e la madre la chiama** (linee guida SQL §12.5.2): solleva il primo
+motivo prima di scrivere, e non contiene il predicato. La stessa check servirà al picker dei tipi e
+alla copia di un indirizzo. Sulla tabella restano il guard
+`trgfn_indirizzi_soggetti_guard_tipo_indirizzo` (ogni altra strada) e il vincolo
+`uq_indirizzi_soggetti_soggetto_tipo` (due scritture concorrenti): da questa madre non parlano più.
 
 ⭐ La completezza ha **una sede sola**, il guard della tabella: la madre non la ripete.
 Se si indicano insieme `indirizzo_dettaglio_id` e `indirizzo_libero` vale il dettaglio

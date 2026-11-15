@@ -72,7 +72,6 @@ databaseChangeLog:
             encoding: UTF-8
             # Sentinel letterale NULL (non cella vuota): esito_richiesto NULL =
             # "qualsiasi verdetto".
-            nullValue: "NULL"
             # Merge sul template step (NON sull'id surrogato): unico binding per step.
             primaryKey: "template_flusso_id"
             columns:

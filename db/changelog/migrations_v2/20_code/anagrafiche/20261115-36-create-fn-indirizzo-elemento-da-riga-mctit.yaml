@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ELEMENTO DI UN INDIRIZZO, RICOSTRUITO DA UNA RIGA SALVATA
+#   anagrafiche.fn_indirizzo_elemento_da_riga(colonne dell'indirizzo) -> jsonb
+#   Brief: brief-db-copia-indirizzo-soggetto §2 («Che cosa si copia»), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   I due verbi della copia (soggetto -37, ruolo -38) scrivono la riga nuova
+#   con la madre singolare, che prende l'elemento nella grammatica di
+#   anagrafiche.fn_indirizzo_elemento. L'elemento si ricostruisce dalla riga
+#   sorgente allo stesso modo sui due layer (le colonne hanno gli stessi tipi):
+#   seconda occorrenza, BB in un posto solo.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Si copiano le colonne della grammatica, e nient'altro:
+#   * dettaglio: solo indirizzo_dettaglio_id (il dettaglio e' condiviso, non si
+#     duplica; i campi liberi li svuota comunque il normalize);
+#   * forma libera: indirizzo_libero, stato_id, comune_id, codice_postale_id,
+#     administrative_area, locality, sublocality, postal_code, quelli
+#     valorizzati (jsonb_strip_nulls). Sono i valori che i trigger della tabella
+#     hanno gia' accettato sulla sorgente.
+#   Senza il tipo: lo aggiunge il verbo, uno per tipo di destinazione. geoloc,
+#   tx_id, audit e storicizza sono quelli di una riga nuova.
+#   Sui VALORI, non sull'id della riga: vale per le due tabelle. IMMUTABLE.
+#   BEGIN ATOMIC (§5c).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261115-36-create-fn-indirizzo-elemento-da-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261115-36-create-fn-indirizzo-elemento-da-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'elemento di un indirizzo (grammatica di fn_indirizzo_elemento) dalle colonne di una
+        riga salvata, senza il tipo: il BB dei due verbi della copia.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzo_elemento_da_riga(
+                  p_indirizzo_dettaglio_id anagrafiche.indirizzi_soggetti.indirizzo_dettaglio_id%TYPE,
+                  p_indirizzo_libero       anagrafiche.indirizzi_soggetti.indirizzo_libero%TYPE,
+                  p_stato_id               anagrafiche.indirizzi_soggetti.stato_id%TYPE,
+                  p_comune_id              anagrafiche.indirizzi_soggetti.comune_id%TYPE,
+                  p_codice_postale_id      anagrafiche.indirizzi_soggetti.codice_postale_id%TYPE,
+                  p_administrative_area    anagrafiche.indirizzi_soggetti.administrative_area%TYPE,
+                  p_locality               anagrafiche.indirizzi_soggetti.locality%TYPE,
+                  p_sublocality            anagrafiche.indirizzi_soggetti.sublocality%TYPE,
+                  p_postal_code            anagrafiche.indirizzi_soggetti.postal_code%TYPE)
+              RETURNS jsonb
+              LANGUAGE sql
+              IMMUTABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                           WHEN p_indirizzo_dettaglio_id IS NOT NULL
+                           THEN jsonb_build_object('indirizzo_dettaglio_id', p_indirizzo_dettaglio_id)
+                           ELSE jsonb_strip_nulls(jsonb_build_object(
+                                    'indirizzo_libero',    p_indirizzo_libero,
+                                    'stato_id',            p_stato_id,
+                                    'comune_id',           p_comune_id,
+                                    'codice_postale_id',   p_codice_postale_id,
+                                    'administrative_area', p_administrative_area,
+                                    'locality',            p_locality,
+                                    'sublocality',         p_sublocality,
+                                    'postal_code',         p_postal_code))
+                         END;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzo_elemento_da_riga(
+                  anagrafiche.indirizzi_soggetti.indirizzo_dettaglio_id%TYPE,
+                  anagrafiche.indirizzi_soggetti.indirizzo_libero%TYPE,
+                  anagrafiche.indirizzi_soggetti.stato_id%TYPE,
+                  anagrafiche.indirizzi_soggetti.comune_id%TYPE,
+                  anagrafiche.indirizzi_soggetti.codice_postale_id%TYPE,
+                  anagrafiche.indirizzi_soggetti.administrative_area%TYPE,
+                  anagrafiche.indirizzi_soggetti.locality%TYPE,
+                  anagrafiche.indirizzi_soggetti.sublocality%TYPE,
+                  anagrafiche.indirizzi_soggetti.postal_code%TYPE)
+              IS 'Building block: l''elemento di un indirizzo, nella grammatica di anagrafiche.fn_indirizzo_elemento e senza il tipo, ricostruito dalle colonne di una riga salvata (indirizzi_soggetti o indirizzi, che hanno gli stessi tipi). Con il dettaglio: solo indirizzo_dettaglio_id (il dettaglio si condivide, non si duplica). Altrimenti la forma libera: indirizzo_libero, stato_id, comune_id, codice_postale_id, administrative_area, locality, sublocality, postal_code, quelli valorizzati. geoloc, tx_id, audit e storicizza non si copiano: sono quelli della riga nuova. Lo usano i verbi della copia anagrafiche.fn_copia_indirizzo_soggetto e fn_copia_indirizzo_ruolo, che aggiungono il tipo e scrivono con la madre singolare. Pura, IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzo_elemento_da_riga(bigint, text, integer, integer, integer, character varying, character varying, character varying, character varying);

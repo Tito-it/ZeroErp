@@ -45,7 +45,7 @@ BEGIN
             jsonb_build_object('parametro', 'p_lock_batch_id', 'valore', NULL), NULL::uuid, 'p_lock_batch_id obbligatorio quando p_lock=true');
     END IF;
 
-    v_competenza := date_trunc('month', p_competenza_mese)::DATE;
+    v_competenza := script.fn_mese_di(p_competenza_mese);
     v_data_fatturazione := COALESCE(p_data_fatturazione, script.fn_data_operativa());
 
     v_where := ' WHERE a.approvato IS TRUE AND a.fatturato IS FALSE AND a.sospesa IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE'

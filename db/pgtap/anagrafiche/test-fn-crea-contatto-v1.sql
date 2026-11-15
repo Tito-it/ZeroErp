@@ -42,16 +42,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(13);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.colonna_errore(p_sql text) RETURNS text
 LANGUAGE plpgsql AS $$
@@ -132,7 +122,7 @@ SELECT is((SELECT r -> 'pec' FROM t_c2), 'null'::jsonb,
 -- I rifiuti
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_contatto((SELECT soggetto_id FROM t_s), NULL,
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_contatto((SELECT soggetto_id FROM t_s), NULL,
         jsonb_build_object('nominativo', '   ', 'tipo_contatto_id', (SELECT tipo_id FROM t_s)))$$),
     'E_CONTATTO_INCOMPLETO',
     '6. nominativo vuoto: E_CONTATTO_INCOMPLETO');
@@ -150,13 +140,13 @@ SELECT is(
     '8. tipo di contatto assente: E_CONTATTO_INCOMPLETO sul campo tipo_contatto_id');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_contatto((SELECT soggetto_id FROM t_s), NULL,
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_contatto((SELECT soggetto_id FROM t_s), NULL,
         '{"nominativo": "x", "tipo_contatto_id": 1, "soggetto_id": "00000000-0000-0000-0000-000000000000"}'::jsonb)$$),
     'E_CAMPO_NON_AMMESSO',
     '9. chiave estranea (anche soggetto_id nei campi): E_CAMPO_NON_AMMESSO');
 
 SELECT is(
-    pg_temp.codice_errore($$SELECT anagrafiche.fn_crea_contatto(NULL, NULL, '{"nominativo": "x", "tipo_contatto_id": 1}'::jsonb)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT anagrafiche.fn_crea_contatto(NULL, NULL, '{"nominativo": "x", "tipo_contatto_id": 1}'::jsonb)$$),
     'E_SCRIPT_CHIAMATA_NON_VALIDA',
     '10. soggetto NULL: E_SCRIPT_CHIAMATA_NON_VALIDA');
 

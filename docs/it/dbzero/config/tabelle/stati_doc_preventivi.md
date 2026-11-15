@@ -29,6 +29,7 @@
 | emissione | boolean | NO | false |
 | accettazione | boolean | NO | false |
 | scadenza | boolean | NO | false |
+| rifiuto | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -39,6 +40,7 @@
 | CHECK | chk_stati_doc_preventivi_fase |  |
 | CHECK | chk_stati_doc_preventivi_iniziale_attivo |  |
 | CHECK | chk_stati_doc_preventivi_pdf_mode |  |
+| CHECK | chk_stati_doc_preventivi_rifiuto_attivo |  |
 | CHECK | chk_stati_doc_preventivi_scadenza_attivo |  |
 | CHECK | chk_stati_doc_preventivi_terminale_chiuso |  |
 | FOREIGN KEY | fk_stati_doc_preventivi_esito | esito |
@@ -57,6 +59,7 @@
 | uq_stati_doc_preventivi_codice_interno | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_codice_interno ON config.stati_doc_preventivi USING btree (codice_interno)` |
 | uq_stati_doc_preventivi_emissione | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_emissione ON config.stati_doc_preventivi USING btree (emissione) WHERE emissione` |
 | uq_stati_doc_preventivi_iniziale | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_iniziale ON config.stati_doc_preventivi USING btree (iniziale) WHERE iniziale` |
+| uq_stati_doc_preventivi_rifiuto | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_rifiuto ON config.stati_doc_preventivi USING btree (rifiuto) WHERE rifiuto` |
 | uq_stati_doc_preventivi_scadenza | `CREATE UNIQUE INDEX uq_stati_doc_preventivi_scadenza ON config.stati_doc_preventivi USING btree (scadenza) WHERE scadenza` |
 
 ## 🚨 Trigger
@@ -66,6 +69,8 @@
 | trg_stati_doc_preventivi_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_preventivi_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_stati_doc_preventivi_a10_preventivi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi', 'stato_doc_preventivo_id', 'id', 'attivo')` |
+| trg_stati_doc_preventivi_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi')` |
+| trg_stati_doc_preventivi_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi')` |
 | trg_stati_doc_preventivi_a10_transizioni_stati_preventiv_24c434 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_preventivi', 'stato_da_id', 'id', 'attivo')` |
 | trg_stati_doc_preventivi_a10_transizioni_stati_preventiv_4353e6 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_preventivi', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_doc_preventivi_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |

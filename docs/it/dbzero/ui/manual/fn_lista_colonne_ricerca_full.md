@@ -1,5 +1,7 @@
 # fn_lista_colonne_ricerca_full
 
+> **Ultimo aggiornamento**: 12 novembre 2026
+
 ### 🎯 Scopo Principale
 
 Dice **in quali colonne di una lista l'utente che la sta guardando può fare la ricerca libera**, e per ciascuna quale campo della vista interrogare. Il backend la legge a ogni ricerca: così il flag `ricercabile_full` cambiato dal pannello di amministrazione vale subito, e una colonna che l'utente non può vedere non entra mai nella ricerca.
@@ -35,7 +37,7 @@ Tutte quelle che rispettano **insieme** quattro condizioni:
 |---|---|
 | colonna attiva | una colonna spenta non esiste per la lista |
 | `ricercabile_full = true` | è la scelta, fatta nel catalogo, di cercarci dentro |
-| `campo_sorgente` valorizzato | senza, non c'è niente da interrogare. Vuoto vuol dire sia `NULL` sia stringa vuota (è la forma che scrive il caricamento del catalogo) |
+| `campo_sorgente` valorizzato | senza, non c'è niente da interrogare. Senza sorgente vuol dire `NULL`: la stringa vuota la rifiuta un vincolo della tabella. Il filtro accetta ancora anche `''`, ed è innocuo |
 | livello effettivo diverso da `BLOCCATO` | se l'utente non vede la colonna, non ci cerca. `LETTURA` entra: spegne l'export, non la vista |
 
 Il livello effettivo viene da [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), la stessa sede da cui lo legge `fn_resolve_lista_config`. Le due risposte coincidono per costruzione.

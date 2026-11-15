@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.note`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 >
 > Approfondimento viste:
 >
+> * [catalogo.vw_note](/dbzero/catalogo/views/vw_note) — la proiezione di una nota, con stile e lingua
 > * [catalogo.vw_articoli_note](/dbzero/catalogo/views/vw_articoli_note) — la lettura delle note di un articolo
 > * [catalogo.vw_articoli_componenti_note](/dbzero/catalogo/views/vw_articoli_componenti_note) — la lettura delle note di un legame di distinta
 
@@ -49,13 +50,16 @@ partizione giusta.
 
 ### Codici errore
 
-* `E_ATTIVO_PADRE_NON_ATTIVO` — una nota scritta su un articolo o su un legame spento.
-* `E_ATTIVO_BLOCK_CHILDREN_EXIST` — si spegne un articolo o un legame che ha una nota.
+La tabella non ne solleva di registrati. I due CHECK della forma (`chk_note_testo_non_vuoto`,
+`chk_note_catalogo_ancora_documento`) rispondono col codice di PostgreSQL 23514.
 
 ---
 
 ### Test
 
+* `db/pgtap/catalogo/test-note-catalogo-forma-v1.sql` — il testo vuoto e l'àncora `RIGA` sono
+  rifiutati, `user_*` è testo e `tx_id` si scrive; un articolo con una nota si spegne e su un
+  articolo spento una nota si scrive; le due viste leggono la vista base, con le colonne di prima.
 * `db/pgtap/catalogo/test-articoli-vincoli-note-uom-overlap.sql` — crea una nota su un articolo
   dal padre, e prova il puntatore dell'articolo: il codice di un'altra partizione e una nota
   inesistente sono rifiutati.
@@ -77,6 +81,9 @@ partizione giusta.
 * 2026-10-25 — `target_tipo` passa al codice di `config.tipi_entita`, al singolare (prima
   `ARTICOLI` e `ARTICOLI_COMPONENTI`), con una chiave esterna al posto del CHECK scritto a mano;
   il padre è ricostruito e le partizioni staccate e riattaccate.
+* 2026-11-11 — la forma delle note degli altri schemi: testo non vuoto, `user_*` testo, `tx_id`;
+  l'àncora solo `DOCUMENTO`; la nota non tiene acceso il suo bersaglio
+  (brief-db-revisione-catalogo, giro 4).
 
 ---
 

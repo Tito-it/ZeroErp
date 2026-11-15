@@ -1,0 +1,200 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'OFFERTA SCADUTA: LA VISTA DELLA LISTA COMPONE LA SEDE DELLA REGOLA
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.9, V-1 (giro 2-bis).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La regola di is_scaduta (D-SCAD, 20261112-65) era scritta solo qui. Il
+#   dettaglio dell'offerta la leggeva con una sottoquery sulla vista intera,
+#   e per un booleano pagava la pratica e le altre colonne.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   is_scaduta = vendite.fn_offerta_scaduta(sdo.esito, o.validita_al,
+#   (SELECT script.fn_data_operativa())), la funzione del 20261113-38. Pura
+#   sui valori: si incorpora, e il piano resta quello di prima (la data
+#   operativa una volta, come sottoquery non correlata). Stessi valori in
+#   ogni caso: la funzione e' l'espressione di prima.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine, stesso tipo;
+#   nessuna vista dipendente. WITH (security_invoker = on) si ripete. Il
+#   COMMENT della vista e quello di is_scaduta rimandano alla funzione.
+#
+# ── DA DOVE VIENE LA DEFINIZIONE ────────────────────────────────────
+#   20261112-65, verificato uguale al vivo su dbdev il 2026-11-14
+#   (pg_get_viewdef). Il ritorno indietro porta la definizione e i COMMENT
+#   del 20261112-65, e va eseguito prima di quello del 20261113-38.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-39-update-vw-offerte-lista-scaduta-dalla-funzione-mctit.yaml
+
+  - changeSet:
+      id: 20261113-39-update-vw-offerte-lista-scaduta-dalla-funzione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_offerte_commerciali_lista: is_scaduta compone vendite.fn_offerta_scaduta, la
+        sede della regola che legge anche il dettaglio. Stessi valori, stesse colonne. Brief:
+        brief-db-stati-documento-dal-vocabolario, V-1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker = on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  vendite.fn_offerta_scaduta(sdo.esito, o.validita_al, (( SELECT script.fn_data_operativa() AS fn_data_operativa))) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND so_pr.attivo IS TRUE), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista
+              IS 'Vista flat canonica e self-contained delle offerte commerciali, per la lista configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice); listino_codice, listino_versione_codice e valuta_codice gia'' risolti. Pura denormalizzazione: nessuno scope e nessun filtro, security_invoker=on (la RLS dell''offerta si applica attraverso la vista). Gli stati si leggono per significato dal vocabolario config.stati_doc_offerte: is_superata (is_superato, rimpiazzata da una revisione successiva), is_abortito (annullata), is_attiva = NOT is_superata AND NOT is_abortito; «solo l''ultima revisione» si chiede a is_superata IS FALSE. is_scaduta: la regola di vendite.fn_offerta_scaduta (la validita'' e'' passata rispetto alla data operativa dell''azienda e il cliente non ha ancora risposto, cioe'' lo stato non ha un esito), sullo stato e sulla validita'' della riga; un''offerta accettata, rifiutata, superata o annullata non e'' scaduta. has_next_revisione: esiste una revisione figlia, in qualunque stato. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi.';
+
+              COMMENT ON COLUMN vendite.vw_offerte_commerciali_lista.is_scaduta
+              IS 'true = l''offerta e'' scaduta: la validita'' (validita_al) e'' passata rispetto alla data operativa dell''azienda e il cliente non ha ancora risposto, cioe'' lo stato non ha un esito (config.stati_doc_offerte.esito IS NULL). La regola la dice vendite.fn_offerta_scaduta, la stessa che legge il dettaglio dell''offerta: chi mostra il badge «Scaduta» legge il flag e non filtra gli stati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker = on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  NOT sdo.is_superato AND NOT sdo.is_abortito AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE figlio.revisione_padre_id = o.id)) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  sdo.esito IS NULL AND o.validita_al IS NOT NULL AND o.validita_al < (( SELECT script.fn_data_operativa() AS fn_data_operativa)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  pr.pratica_id,
+                  pr.pratica_numero,
+                  pr.n_pratiche,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  o.revisione_radice_id
+                 FROM vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON sdo.id = o.stato_doc_offerta_id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = o.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = o.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = ef.soggetto_ruolo_id
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                   LEFT JOIN config.utilities u ON u.id = o.utility_id
+                   LEFT JOIN vendite.listini l ON l.id = o.listino_id
+                   LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
+                   LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
+                   LEFT JOIN LATERAL pratiche.fn_pratica_del_documento(( SELECT so_pr.id
+                         FROM config.sorgenti so_pr
+                        WHERE so_pr.codice_interno::text = 'OFFERTA_COMMERCIALE'::text AND so_pr.attivo IS TRUE), o.id, o.uid) pr(n_pratiche, pratica_id, pratica_numero) ON true;
+
+              COMMENT ON VIEW vendite.vw_offerte_commerciali_lista
+              IS 'Vista flat canonica e self-contained delle offerte commerciali, per la lista configurabile (vendite.offerte). Nomi canonici (ragione_sociale_completa, id_fiscale_univoco_cf_piva, ba_codice); listino_codice, listino_versione_codice e valuta_codice gia'' risolti. Pura denormalizzazione: nessuno scope e nessun filtro, security_invoker=on (la RLS dell''offerta si applica attraverso la vista). Gli stati si leggono per significato dal vocabolario config.stati_doc_offerte: is_superata (is_superato, rimpiazzata da una revisione successiva), is_abortito (annullata), is_attiva = NOT is_superata AND NOT is_abortito; «solo l''ultima revisione» si chiede a is_superata IS FALSE. is_scaduta: la validita'' (validita_al) e'' passata rispetto alla data operativa dell''azienda (script.fn_data_operativa) e il cliente non ha ancora risposto, cioe'' lo stato non ha un esito; un''offerta accettata, rifiutata, superata o annullata non e'' scaduta. has_next_revisione: esiste una revisione figlia, in qualunque stato. La pratica viene da pratiche.fn_pratica_del_documento; le colonne del grafo del lineage le legge il backend da vendite.fn_documento_lineage_sintesi.';
+
+              COMMENT ON COLUMN vendite.vw_offerte_commerciali_lista.is_scaduta
+              IS 'true = la validita'' dell''offerta (validita_al) e'' passata rispetto alla data operativa dell''azienda e il cliente non ha ancora risposto: lo stato non ha un esito (config.stati_doc_offerte.esito IS NULL, oggi bozza ed emessa). La regola e'' intera qui: chi mostra il badge «Scaduta» legge il flag e non filtra gli stati.';

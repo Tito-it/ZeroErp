@@ -115,8 +115,10 @@ $fx$;
 -- P ha un componente (F); V no: e' il kit vuoto (D-7).
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
 VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, '2020-01-01');
--- X spento: figli prima, padre poi (la UoM operativa nata col builder).
-UPDATE catalogo.articoli_uom_operativa SET attivo = FALSE WHERE articolo_id = pg_temp.art('X');
+-- X spento.
+-- ⚠️ Rev 2026-11-11 (brief-db-revisione-catalogo, Q34): la riga base non si spegne
+--   (trgfn_articoli_uom_operativa_guard_base), e non serve spegnerla: il legame
+--   ATTIVO fra mappatura e articolo e' fra le eccezioni (Q31).
 UPDATE catalogo.articoli SET attivo = FALSE WHERE id = pg_temp.art('X');
 
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(

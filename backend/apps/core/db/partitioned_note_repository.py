@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Repository generico per partizioni della tabella vendite.note
-#        (LIST PARTITION su target_tipo). Una sola implementazione
-#        riusabile da qualunque dominio sorgente (PREVENTIVO, CONTRATTO,
-#        ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, FATTURA, ATTIVITA)
-#        e da futuri schemi che adotteranno lo stesso pattern partizionato.
+# Scopo: Repository generico per le partizioni delle tabelle-madre
+#        `<schema>.note` (LIST PARTITION su target_tipo). Una sola
+#        implementazione per `vendite.note` (PREVENTIVO, CONTRATTO,
+#        ORDINE_VENDITA, DDT_VENDITA, OFFERTA_COMMERCIALE, FATTURA) e
+#        `catalogo.note` (ARTICOLO, ARTICOLO_COMPONENTE, dal 2026-11-11), e
+#        per i futuri schemi con lo stesso pattern partizionato.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -96,33 +97,43 @@ POSIZIONI_AMMESSE: frozenset[str] = frozenset({
     "HEADER", "SEZIONE", "FOOTER", "BEFORE", "AFTER",
 })
 
-# Colonne lette in SELECT base. Decode via LEFT JOIN: stile da
-# config.note_stili (codice + codice_interno + descrizione), lingua da
-# config.lingue (codice_iso + descrizione, NULL se id_lingua NULL).
+# ⭐ LA LETTURA DI UNA NOTA STA NELLA VISTA DELLA SEDE (2026-11-12, BE33 di
+#    brief-db-revisione-catalogo §20): `<schema>.vw_note`, una per tabella-madre
+#    (`catalogo`, `vendite`, `acquisti`, `magazzino`), tutte con le stesse
+#    colonne nello stesso ordine (le tiene gemelle il pgTAP
+#    `dbops/test-viste-note-gemelle-v1`). Lo stile e la lingua li decodifica la
+#    vista: le due LEFT JOIN che stavano qui erano la seconda copia della sua
+#    proiezione, e sono ritirate nello stesso giro.
+#    ⭐ La vista e' `security_invoker`: chi legge vede cio' che le policy della
+#    madre gli concedono, come leggendo la partizione.
+#    Qui si fissa solo il CONTRATTO D'USCITA dell'API, che non cambia: i nomi
+#    della vista (`nota_*`, `stile_id`, `lingua_id`) tornano quelli che la lista
+#    a catalogo (`ui.lista_colonna.campo_sorgente`) e il frontend leggono.
+#    ⚠️ `id_stile`/`id_lingua` sono, nella vista, `stile_id`/`lingua_id`.
 _SELECT_COLUMNS = """
-    n.id,
-    n.target_tipo,
-    n.target_id,
-    n.target_riga_id,
-    n.anchor_tipo,
-    n.posizione,
-    n.seq,
-    n.testo,
-    n.testo_md,
-    n.visibile,
-    n.solo_stampa,
-    n.meta,
-    n.id_stile,
-    s.codice          AS stile_codice,
-    s.codice_interno  AS stile_codice_interno,
-    s.descrizione     AS stile_descrizione,
-    n.id_lingua,
-    l.codice_iso      AS lingua_codice_iso,
-    l.descrizione     AS lingua_descrizione,
-    n.data_insert,
-    n.user_insert,
-    n.data_update,
-    n.user_update
+    v.nota_id             AS id,
+    v.nota_target_tipo    AS target_tipo,
+    v.nota_target_id      AS target_id,
+    v.nota_target_riga_id AS target_riga_id,
+    v.nota_anchor_tipo    AS anchor_tipo,
+    v.nota_posizione      AS posizione,
+    v.nota_seq            AS seq,
+    v.nota_testo          AS testo,
+    v.nota_testo_md       AS testo_md,
+    v.nota_visibile       AS visibile,
+    v.nota_solo_stampa    AS solo_stampa,
+    v.nota_meta           AS meta,
+    v.stile_id            AS id_stile,
+    v.stile_codice,
+    v.stile_codice_interno,
+    v.stile_descrizione,
+    v.lingua_id           AS id_lingua,
+    v.lingua_codice_iso,
+    v.lingua_descrizione,
+    v.nota_data_insert    AS data_insert,
+    v.nota_user_insert    AS user_insert,
+    v.nota_data_update    AS data_update,
+    v.nota_user_update    AS user_update
 """
 
 
@@ -144,9 +155,7 @@ NOTE_ORDER_COLUMNS: dict[str, str] = {
 }
 # Le note del documento prima di quelle di riga, poi per riga, ambito,
 # posizione e ordine: il preset (`posizione`, `seq`) dentro ogni aggancio.
-# Sui nomi di USCITA (`x.`): lo legge anche la collezione intera delle note
-# dell'articolo (`CatalogoBomRepository.list_note_articolo`), che avvolge la
-# sua query in `x` per mostrarle nello stesso ordine della pagina.
+# Sui nomi di USCITA (`x.`): `pagina_note` avvolge la query della sede in `x`.
 NOTE_ORDINE_DEFAULT = (
     "(x.target_riga_id IS NOT NULL) ASC, x.target_riga_id ASC NULLS FIRST, "
     "x.anchor_tipo ASC, x.posizione ASC, x.seq ASC"
@@ -222,7 +231,7 @@ def _ordine_note(order_by: str | None, order_dir: str | None) -> str:
 
 
 class PartitionedNoteRepository:
-    """Accesso DB generico a una partizione di `vendite.note`.
+    """Accesso DB generico a una partizione di una tabella-madre `<schema>.note`.
 
     La PK composita `(target_tipo, id)` impone di filtrare SEMPRE per
     `target_tipo` in UPDATE/DELETE/GET — il routing alla partizione corretta
@@ -241,6 +250,10 @@ class PartitionedNoteRepository:
 
     `child_table`/`child_parent_fk` sono opzionali: servono solo se il
     dominio ammette note di riga (anchor_tipo='RIGA').
+
+    `target_id_uuid=True` quando il padre ha la chiave UUID (le anagrafiche
+    di catalogo: `catalogo.articoli`, `catalogo.articoli_componenti`); il
+    default e' la chiave intera dei documenti di vendita.
     """
 
     # Scopo: Inizializza il repository per una partizione specifica.
@@ -255,6 +268,7 @@ class PartitionedNoteRepository:
         parent_pk: str = "id",
         child_table: str | None = None,
         child_parent_fk: str | None = None,
+        target_id_uuid: bool = False,
     ) -> None:
         if (child_table is None) != (child_parent_fk is None):
             raise ValueError(
@@ -268,9 +282,13 @@ class PartitionedNoteRepository:
         if child_parent_fk is not None:
             _validate_sql_identifier(child_parent_fk, kind="child_parent_fk", dotted=False)
         self._partition_table = partition_table
+        schema = partition_table.split(".", 1)[0]
         # La lista a catalogo e' quella della TABELLA-MADRE (`<schema>.note`,
         # D-2): la partizione `vendite.note_preventivo` e' di `vendite.note`.
-        self.lista_codice = f"{partition_table.split('.', 1)[0]}.note"
+        self.lista_codice = f"{schema}.note"
+        # La lettura passa dalla vista della sede (BE33): le scritture restano
+        # sulla partizione, la proiezione con stile e lingua e' del DB.
+        self._vista = f"{schema}.vw_note"
         if self.lista_codice not in RICERCHE_NOTE:
             raise ValueError(f"PartitionedNoteRepository: nessuna lista a catalogo per {self.lista_codice}")
         self._target_tipo = target_tipo
@@ -278,6 +296,7 @@ class PartitionedNoteRepository:
         self._parent_pk = parent_pk
         self._child_table = child_table
         self._child_parent_fk = child_parent_fk
+        self._target_id_uuid = target_id_uuid
 
     @property
     def target_tipo(self) -> str:
@@ -288,13 +307,18 @@ class PartitionedNoteRepository:
         return self._partition_table
 
     @property
+    def target_id_uuid(self) -> bool:
+        """True se la chiave del padre (`target_id`) e' un UUID, non un intero."""
+        return self._target_id_uuid
+
+    @property
     def supports_riga(self) -> bool:
         """True se il dominio ammette note di riga (anchor_tipo='RIGA')."""
         return self._child_table is not None
 
     # Scopo: Verifica esistenza del documento padre (preventivo/contratto/ecc.).
     #        Usato dal service per 404 esplicito prima di scrivere/leggere note.
-    def exists_parent(self, target_id: int) -> bool:
+    def exists_parent(self, target_id: int | str) -> bool:
         sql = (
             f"SELECT 1 FROM {self._parent_table} "  # noqa: S608
             f"WHERE {self._parent_pk} = %s LIMIT 1"
@@ -307,7 +331,7 @@ class PartitionedNoteRepository:
     #        Difesa applicativa anti-tampering URL (es. POST /preventivi/1/note/
     #        con target_riga_id che appartiene al preventivo 99). Il trigger DB
     #        `trgfn_note_validate_generic` e' la difesa finale.
-    def riga_belongs_to_parent(self, target_id: int, riga_id: int) -> bool:
+    def riga_belongs_to_parent(self, target_id: int | str, riga_id: int) -> bool:
         if self._child_table is None or self._child_parent_fk is None:
             return False
         sql = (
@@ -319,12 +343,13 @@ class PartitionedNoteRepository:
             return cursor.fetchone() is not None
 
     # Scopo: Lista note per un target_id (documento), filtrabile per riga,
-    #        con paginazione e decode dello stile. Ordinamento deterministico:
+    #        con paginazione, dalla vista della sede (stile e lingua decodificati
+    #        dal DB). Ordinamento deterministico:
     #        prima note documento, poi per riga; entro lo stesso scope per
     #        posizione/seq/id (tiebreaker id obbligatorio, vedi policy paginazione).
     def list(
         self,
-        target_id: int,
+        target_id: int | str,
         *,
         target_riga_id: int | None = None,
         include_invisible: bool = True,
@@ -334,18 +359,18 @@ class PartitionedNoteRepository:
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        where = ["n.target_tipo = %s", "n.target_id = %s"]
+        # Il filtro sul `target_tipo` e' il confine della partizione: sulla
+        # vista (semplice, PG la espande) tiene il pruning sulla madre.
+        where = ["v.nota_target_tipo = %s", "v.nota_target_id = %s"]
         params: list[Any] = [self._target_tipo, target_id]
         if target_riga_id is not None:
-            where.append("n.target_riga_id = %s")
+            where.append("v.nota_target_riga_id = %s")
             params.append(target_riga_id)
         if not include_invisible:
-            where.append("n.visibile = TRUE")
+            where.append("v.nota_visibile = TRUE")
         select_sql = (
-            f"SELECT {_SELECT_COLUMNS} "  # noqa: S608
-            f"FROM {self._partition_table} n "
-            f"LEFT JOIN config.note_stili s ON s.id = n.id_stile "
-            f"LEFT JOIN config.lingue l ON l.id = n.id_lingua "
+            f"SELECT {_SELECT_COLUMNS} "  # noqa: S608 — vista dal costruttore (schema verificato da _validate_sql_identifier), valori come parametri
+            f"FROM {self._vista} v "
             f"WHERE {' AND '.join(where)}"
         )
         return pagina_note(
@@ -355,20 +380,18 @@ class PartitionedNoteRepository:
 
     # Scopo: Restituisce singola nota filtrata per pk composita (target_tipo, id)
     #        + target_id (anti-tampering). Ritorna None se non esiste.
-    def get(self, note_id: int, target_id: int) -> dict[str, Any] | None:
+    def get(self, note_id: int, target_id: int | str) -> dict[str, Any] | None:
         sql = (
-            f"SELECT {_SELECT_COLUMNS} "  # noqa: S608
-            f"FROM {self._partition_table} n "
-            f"LEFT JOIN config.note_stili s ON s.id = n.id_stile "
-            f"LEFT JOIN config.lingue l ON l.id = n.id_lingua "
-            f"WHERE n.target_tipo = %s AND n.id = %s AND n.target_id = %s"
+            f"SELECT {_SELECT_COLUMNS} "  # noqa: S608 — vista dal costruttore, valori come parametri
+            f"FROM {self._vista} v "
+            f"WHERE v.nota_target_tipo = %s AND v.nota_id = %s AND v.nota_target_id = %s"
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [self._target_tipo, note_id, target_id])
             return row_to_dict(cursor)
 
     # Scopo: Conta note attive su un documento padre. Usato per badge UI.
-    def count_for_parent(self, target_id: int) -> int:
+    def count_for_parent(self, target_id: int | str) -> int:
         sql = (
             f"SELECT COUNT(*) FROM {self._partition_table} "  # noqa: S608
             f"WHERE target_tipo = %s AND target_id = %s"
@@ -388,7 +411,7 @@ class PartitionedNoteRepository:
     #        lo sa adattare: ogni nota con `meta` era un 500. Il BB lo serializza.
     #        Lo strip del BB su `testo`/`testo_md` non cambia niente: il service
     #        li strippa gia' (`optional_string`).
-    def create(self, target_id: int, payload: dict[str, Any]) -> int:
+    def create(self, target_id: int | str, payload: dict[str, Any]) -> int:
         riga = execute_dynamic_insert(
             self._partition_table,
             {**payload, "target_tipo": self._target_tipo, "target_id": target_id},
@@ -403,7 +426,7 @@ class PartitionedNoteRepository:
     #        `patch` vuoto -> False senza SQL. Restituisce True se la riga e'
     #        stata aggiornata.
     def update(
-        self, note_id: int, target_id: int, patch: dict[str, Any],
+        self, note_id: int, target_id: int | str, patch: dict[str, Any],
     ) -> bool:
         if not patch:
             return False
@@ -421,7 +444,7 @@ class PartitionedNoteRepository:
 
     # Scopo: DELETE su partizione. Hard delete (le note non hanno colonna `attivo`).
     #        Filtrata per pk composita + target_id (anti-tampering).
-    def delete(self, note_id: int, target_id: int) -> bool:
+    def delete(self, note_id: int, target_id: int | str) -> bool:
         sql = (
             f"DELETE FROM {self._partition_table} "  # noqa: S608
             f"WHERE target_tipo = %s AND id = %s AND target_id = %s"

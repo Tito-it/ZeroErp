@@ -32,12 +32,26 @@
 #      (db/pgtap/dbops/test-oggi-dal-fuso-aziendale-v1.sql), che i test non li
 #      vede. Brief: brief-be-db-fe-un-solo-fuso-aziendale (T-5).
 #
+# E la chiusura, che e' la meta' di A:
+#
+#   E) ogni `BEGIN;` si chiude con `ROLLBACK;` prima del `BEGIN;` successivo o
+#      della fine del file, e nessun `COMMIT;`. Un file che finisce con
+#      `finish()` e nient'altro non lascia dati SOLO perche' psql, uscendo,
+#      annulla la transazione aperta: un runner che lo eseguisse nella stessa
+#      sessione di un altro lo farebbe partire dentro la sua transazione, e
+#      scripts/prova_changeset.py lo rifiuta, quindi esce in silenzio dalle
+#      regressioni (2026-11-15: cinque file, uno dei quali presidiava una
+#      funzione del giro in prova; brief-db-mese-di-un-giorno §6.3). I file a
+#      piu' transazioni (plan() fuori, un BEGIN…ROLLBACK per caso, finish()
+#      dopo) sono giusti cosi' e passano.
+#
 # ⚠️ Le esclusioni esistono, e devono essere DICHIARATE nel file — non spiegate
 # in prosa e basta. Una ragione in prosa non e' leggibile da un cancello, e
 # soprattutto non distingue «escluso apposta» da «dimenticato»:
 #     -- pgtap-contesto: escluso — <perche>
 #     -- pgtap-differiti: escluso — <perche>
 #     -- pgtap-oggi: escluso — <perche>
+#     -- pgtap-transazione: escluso — <perche>
 # E' lo stesso schema del marcatore `pgtap-runner`, per la stessa ragione:
 # l'eccezione sta accanto al test e porta la sua motivazione.
 #
@@ -117,6 +131,32 @@ RX_OGGI = re.compile(
     re.I,
 )
 RX_OGGI_ESCL = re.compile(r"^--\s*pgtap-oggi:\s*escluso\b", re.M)
+# Le istruzioni di transazione a inizio riga, sul testo mascherato: un `END;`
+# non c'e', perche' a inizio riga chiude quasi sempre un CASE di una SELECT.
+RX_TRANSAZIONE = re.compile(r"^[ \t]*(BEGIN|ROLLBACK|COMMIT)[ \t]*;", re.M | re.I)
+RX_TRANS_ESCL = re.compile(r"^--\s*pgtap-transazione:\s*escluso\b", re.M)
+
+
+# Scopo: le violazioni della chiusura (E): un BEGIN dentro una transazione
+#   aperta, un COMMIT, una transazione che arriva aperta alla fine del file.
+def chiusura(mascherato: str) -> list[str]:
+    aperta, fuori = None, []
+    for mo in RX_TRANSAZIONE.finditer(mascherato):
+        parola = mo.group(1).upper()
+        riga = mascherato.count("\n", 0, mo.start()) + 1
+        if parola == "BEGIN":
+            if aperta is not None:
+                fuori.append(f"riga {riga}: `BEGIN;` con la transazione della riga {aperta} ancora aperta")
+            aperta = riga
+        elif parola == "ROLLBACK":
+            aperta = None
+        else:
+            fuori.append(f"riga {riga}: `COMMIT;`: i dati del test restano nel database")
+            aperta = None
+    if aperta is not None:
+        fuori.append(f"il `BEGIN;` della riga {aperta} non si chiude: manca `ROLLBACK;` in coda "
+                     "(dopo `finish()`, se la transazione e' una sola)")
+    return fuori
 
 
 # Scopo: azzerare commenti, stringhe e dollar-quote preservando gli offset,
@@ -230,6 +270,9 @@ def main() -> int:
 
         if not RX_BEGIN.search(m):
             viol.append((rel, "manca `BEGIN;`: un fallimento a meta' lascia residui"))
+        elif not RX_TRANS_ESCL.search(t):
+            for perche in chiusura(m):
+                viol.append((rel, perche))
         if not RX_SETC.search(senza_commenti(t)) and not RX_DIF_ESCL.search(t):
             viol.append((rel, "manca `SET CONSTRAINTS ALL IMMEDIATE`: i vincoli differiti non scattano"))
         if not RX_CTX.search(senza_commenti(t)) and not RX_CTX_ESCL.search(t):

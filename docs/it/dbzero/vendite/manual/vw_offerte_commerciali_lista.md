@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_offerte_commerciali_lista`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
@@ -63,18 +65,21 @@ In più è `WITH (security_invoker = on)` (RLS-ready).
 ### Colonna materializzata — `is_scaduta`
 
 ```sql
-(o.validita_al IS NOT NULL AND o.validita_al < CURRENT_DATE) AS is_scaduta
+vendite.fn_offerta_scaduta(sdo.esito, o.validita_al, (SELECT script.fn_data_operativa())) AS is_scaduta
 ```
 
-`TRUE` quando la finestra di validità dell'offerta è già scaduta. **Prima
-viveva solo lato frontend** (nessuna colonna backend); spostandola in vista
-diventa un dato di dominio unico e testabile.
+`TRUE` quando l'offerta è **scaduta per l'operatore**: la validità è passata (rispetto alla data
+operativa dell'azienda) **e** il cliente non ha ancora risposto, cioè lo stato non ha un esito nel
+vocabolario (`config.stati_doc_offerte.esito`, oggi vuoto su bozza ed emessa). Un'offerta accettata,
+rifiutata, superata o annullata con la validità passata non è scaduta: il cliente ha già risposto, o
+l'offerta non è più viva.
 
-> **Gating per stato lato FE**: il badge «scaduta» nell'interfaccia non si basa
-> sul solo `is_scaduta`, ma sull'AND con l'appartenenza dello stato all'insieme
-> `STATI_OFFERTA_SEGNALA_SCADENZA` (es. non si segnala una scadenza su un'offerta
-> già ACCETTATA o ANNULLATA). La vista espone il dato grezzo `is_scaduta`; il
-> filtro per stato resta una scelta di presentazione del frontend.
+⭐ **La regola sta in [`vendite.fn_offerta_scaduta`](/dbzero/vendite/manual/fn_offerta_scaduta)**, che
+la vista compone e che il dettaglio dell'offerta chiama sulla sua riga: lista e dettaglio dicono la stessa
+cosa senza che il dettaglio legga la vista. Chi mostra il badge «Scaduta» legge il flag e non filtra gli
+stati per conto suo; la colonna configurabile «Scaduta» della lista dice la stessa
+cosa del badge. Lo stato si legge per significato (l'esito), non per codice: uno stato nuovo di
+attesa, senza esito, entra da sé.
 
 ---
 
@@ -160,7 +165,10 @@ piu' nessuno stato** — il significato di `SUPERATA` sta ora dove stanno gia'
 * **Identificatori**: `id`, `uid`, `codice`, `revisione_numero`, `revisione_padre_id`
 * **Flag revisione**: **`is_attiva`**, **`is_superata`**, **`is_abortito`**, **`has_next_revisione`**
 * **Stato**: `stato_doc_offerta_id`, **`stato_codice_interno`** (severity Tag FE), `stato_descrizione`
-* **Scadenza**: **`is_scaduta`** (badge FE, gating per stato lato frontend)
+* **Scadenza**: **`is_scaduta`** (badge FE: validità passata e nessun esito, la regola intera)
+* **PDF**: **`pdf_mode`**, in ultima posizione, da `config.stati_doc_offerte.pdf_mode`: la lista
+  accende il PDF dove è `ARCHIVE`, come la lista degli ordini, senza confrontare il codice della
+  bozza
 * **Cliente (via istanza)**: `billing_account_id`, **`ba_codice`**, `soggetto_id`, **`ragione_sociale_completa`**, **`id_fiscale_univoco_cf_piva`**
 * **Permessi / emittente**: `emittente_fiscale_id` (scope), **`emittente_fiscale_codice`**
 * **Utility e istanza**: `utility_id`, **`utility_codice`**, `utility_descrizione`, `istanza_utility_id`, `istanza_utility_codice`
@@ -216,7 +224,7 @@ SELECT id, codice, revisione_numero, stato_codice_interno, ragione_sociale_compl
 ```
 
 ```sql
--- Offerte scadute ma ancora in uno stato che segnala scadenza (gating in app)
+-- Offerte scadute: validità passata e nessuna risposta del cliente
 SELECT id, codice, stato_codice_interno, validita_al
   FROM vendite.vw_offerte_commerciali_lista
  WHERE is_scaduta = TRUE
@@ -227,9 +235,9 @@ SELECT id, codice, stato_codice_interno, validita_al
 
 ### Note operative
 
-* **`is_scaduta` è grezzo**: rappresenta solo l'avvenuto superamento di
-  `validita_al`. La decisione se mostrarlo all'utente (badge) appartiene al
-  frontend, che lo combina con lo stato.
+* **`is_scaduta` è la regola intera**: la validità passata **e** nessun esito
+  dello stato. Il frontend mostra il badge dal flag, senza combinarlo con lo
+  stato.
 * **Listino opzionale**: `listino_codice`/`listino_versione_codice` sono NULL per
   offerte senza listino — la cella FE mostra il solo codice o nulla.
 * **`security_invoker=on`**: vista pronta per un'eventuale RLS sulla tabella base.

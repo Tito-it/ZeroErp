@@ -34,11 +34,12 @@ BEGIN
     -- Regole:
     --   - la grammatica e la via sono dei BB fn_indirizzo_elemento
     --     e fn_indirizzo_elemento_dettaglio, comuni con
-    --     fn_crea_indirizzi_ruolo;
+    --     fn_crea_indirizzo_ruolo;
+    --   - il tipo (gia' presente, ammesso dalla natura) lo giudica
+    --     fn_check_tipo_indirizzo_soggetto: qui si solleva il suo
+    --     primo motivo, il predicato non si ricopia;
     --   - la completezza e la forma le dice il guard della
-    --     tabella (trgfn_indirizzi_guard_forma_libera); il tipo
-    --     ammesso, trgfn_indirizzi_soggetti_guard_tipo_indirizzo;
-    --     un tipo gia' presente, uq_indirizzi_soggetti_soggetto_tipo.
+    --     tabella (trgfn_indirizzi_guard_forma_libera).
     -- =========================================================
     IF p_soggetto_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -52,6 +53,12 @@ BEGIN
     v_el := anagrafiche.fn_indirizzo_elemento(
                 p_indirizzo, c_chi,
                 jsonb_build_object('soggetto_id', p_soggetto_id));
+
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'anagrafiche', c_chi,
+        anagrafiche.fn_check_tipo_indirizzo_soggetto(
+            p_soggetto_id, (v_el ->> 'tipo_indirizzo_id')::integer),
+        'tipo_indirizzo_codice_interno');
 
     INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id, tipo_indirizzo_id,
@@ -76,7 +83,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzo_soggetto(p_soggetto_id uuid, p_indirizzo jsonb)
-IS 'Madre: scrive un indirizzo di un soggetto (anagrafiche.indirizzi_soggetti). p_indirizzo: un oggetto col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). Ritorna l''id della riga. Grammatica e via dai BB anagrafiche.fn_indirizzo_elemento e fn_indirizzo_elemento_dettaglio, gli stessi di fn_crea_indirizzi_ruolo. Rifiuti: soggetto mancante E_SCRIPT_CHIAMATA_NON_VALIDA, poi quelli del BB (E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO); forma e completezza dal guard anagrafiche.trgfn_indirizzi_guard_forma_libera, tipo ammesso da trgfn_indirizzi_soggetti_guard_tipo_indirizzo, tipo gia'' presente da uq_indirizzi_soggetti_soggetto_tipo. INVOKER. Rev 2026-10-18 (D-4 di Tid): fino ad allora la firma era posizionale (sette parametri), senza i campi della forma estera, e pretendeva comune e CAP per ogni indirizzo libero. Richiesta BE in brief-db-processi-accensione-per-ambiente §6.11.';
+IS 'Madre: scrive un indirizzo di un soggetto (anagrafiche.indirizzi_soggetti). p_indirizzo: un oggetto col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). Ritorna l''id della riga. Grammatica e via dai BB anagrafiche.fn_indirizzo_elemento e fn_indirizzo_elemento_dettaglio, gli stessi di fn_crea_indirizzo_ruolo. Il tipo lo giudica anagrafiche.fn_check_tipo_indirizzo_soggetto, di cui si solleva il primo motivo prima di scrivere (campo tipo_indirizzo_codice_interno): tipo gia'' presente E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE, tipo non ammesso dalla natura E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, soggetto inesistente E_SOGGETTO_NOT_FOUND. Altri rifiuti: soggetto mancante E_SCRIPT_CHIAMATA_NON_VALIDA, poi quelli del BB dell''elemento (E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO); forma e completezza dal guard anagrafiche.trgfn_indirizzi_guard_forma_libera. Restano sulla tabella, per ogni altra strada e contro la corsa, il guard trgfn_indirizzi_soggetti_guard_tipo_indirizzo e il vincolo uq_indirizzi_soggetti_soggetto_tipo. INVOKER.';
 ```
 
 </div>

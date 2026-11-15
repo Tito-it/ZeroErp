@@ -19,6 +19,9 @@ Indice test eseguiti:
 1) CreateResoDbTests.test_la_testata_nasce_dal_ddt_consegnato_coi_default
    (anche: il dettaglio porta il magazzino di rientro della bolla d'origine,
    e la lettura dei guard di riga risolve la bolla dalla provenienza)
+2) CreateResoDbTests.test_dalla_bolla_non_consegnata_il_reso_lo_rifiuta_il_db
+   (BE-R1, 2026-11-14: il service non ha piu' il guard gemello; la bolla
+   SPEDITA arriva al trigger, che risponde E_RESO_DDT_NON_CONSEGNATO, 409)
 """
 from __future__ import annotations
 
@@ -27,8 +30,11 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.db._helpers import row_to_dict
+from apps.core.services.error_policies_generated import CLASSE_PER_CODICE
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.resi_repository import ResiRepository
+from apps.vendite.services import resi_service
 from apps.vendite.tests.db._ddt_consegnato import crea_ddt_consegnato
 
 _META = {"test_scope": "be_create_reso_db", "annidato": {"n": 1, "lista": [1, 2]}}
@@ -122,5 +128,31 @@ class CreateResoDbTests(unittest.TestCase):
                     assert guard is not None
                     self.assertEqual(guard["ddt_origine_id"], ddt["id"])
                     self.assertEqual(guard["stato_codice_interno"], "DRAFT")
+            finally:
+                transaction.set_rollback(True)
+
+    def test_dalla_bolla_non_consegnata_il_reso_lo_rifiuta_il_db(self):
+        # Il service non giudica piu' la bolla (BE-R1, brief-db-stati-
+        # documento-dal-vocabolario §6.22): la regola sta in
+        # `script.fn_check_ddt_rendibile`, letta dal trigger del reso. Qui si
+        # prova che il rifiuto arriva davvero, col codice del trigger e la sua
+        # classe (CONFLITTO_STATO = 409): un mock non vedrebbe il trigger.
+        with transaction.atomic():
+            try:
+                with connection.cursor() as cur:
+                    ddt = crea_ddt_consegnato(cur, etichetta="reso da spedito", fino_a="SPEDITO")
+                    # Il caso si e' formato davvero: una bolla spedita, non consegnata.
+                    self.assertEqual(ddt["stato"], "SPEDITO")
+                    cur.execute("SELECT count(*) FROM vendite.resi WHERE sorgente_id = %s", [ddt["id"]])
+                    prima = cur.fetchone()[0]
+
+                with self.assertRaises(ServiceError) as cm:
+                    resi_service.crea_reso({"ddt_id": ddt["id"]})
+                self.assertEqual(cm.exception.code, "E_RESO_DDT_NON_CONSEGNATO")
+                self.assertEqual(CLASSE_PER_CODICE[cm.exception.code], "CONFLITTO_STATO")
+
+                with connection.cursor() as cur:
+                    cur.execute("SELECT count(*) FROM vendite.resi WHERE sorgente_id = %s", [ddt["id"]])
+                    self.assertEqual(cur.fetchone()[0], prima)
             finally:
                 transaction.set_rollback(True)

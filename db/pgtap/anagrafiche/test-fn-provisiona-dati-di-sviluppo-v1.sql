@@ -55,16 +55,6 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(20);
 
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Il mondo: c'e' django.auth_user?
 CREATE TEMP TABLE t_mondo AS SELECT to_regclass('django.auth_user') IS NOT NULL AS django;

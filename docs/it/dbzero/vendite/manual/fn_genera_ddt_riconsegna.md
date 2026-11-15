@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_genera_ddt_riconsegna`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -30,7 +30,7 @@
 ### 🎯 Scopo Principale
 
 **Funzione madre atomica** (`SECURITY INVOKER`) che genera il **DDT di ri-spedizione** per un reso
-CONFERMATO e chiude l'aggancio duro con la coda di ri-consegna.
+emesso (confermato) e chiude l'aggancio duro con la coda di ri-consegna.
 
 Restituisce l'id della bolla. `p_righe` dice, per riga di reso, la quantità per una ri-spedizione
 **parziale**; vuoto = tutta la copertura residua. `p_data` vuota = la data operativa.
@@ -39,7 +39,9 @@ Restituisce l'id della bolla. `p_righe` dice, per riga di reso, la quantità per
 
 ### Logica
 
-1. Guard: reso in stato CONFERMATO (`E_RESO_NON_CONFERMATO`).
+1. Guard: reso nel lo stato di **emissione** del vocabolario (la colonna `emissione` di [config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso): la conferma, CONFERMATO nel seed), altrimenti
+   `E_RESO_NON_CONFERMATO`. È la porta delle sorelle (chiusura e riapertura) e di
+   `can_riconsegna` nella [capability del reso](/dbzero/script/funzioni/fn_available_actions_reso).
 2. Nuovo **DDT DRAFT** che **eredita la testata** del DDT d'origine (sezione «L'eredità» qui
    sotto): destinatario, billing/utility/valuta/emittente, e il blocco
    **relazione** — causale di trasporto, aspetto dei beni, modalità di addebito, mittente,

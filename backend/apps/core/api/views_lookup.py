@@ -77,32 +77,36 @@ class LookupFormeGiuridicheView(DomainAPIView):
         return success_response({"results": results})
 
 
-class LookupMatriceIndirizziView(DomainAPIView):
-    """Matrice indirizzi ammessi per un tipo soggetto dettaglio."""
+class LookupTipiIndirizzoNaturaView(DomainAPIView):
+    """I tipi di indirizzo proponibili per un soggetto da creare, sulla natura."""
     skip_area_check = True
 
     @extend_schema(
-        responses={200: risposta_lookup("MatriceIndirizziResponse")},
+        responses={200: risposta_lookup("TipiIndirizzoNaturaResponse")},
     )
-    # Scopo: Restituisce la matrice tipi indirizzo ammessi/obbligatori per un tipo
-    # soggetto dettaglio. Il frontend usa questi dati per mostrare i form indirizzo
-    # corretti in base al tipo di soggetto selezionato.
+    # Scopo: Il picker dei tipi di indirizzo del form di creazione del soggetto,
+    #        sulla natura scelta nel form (`fn_tipi_indirizzo_proponibili_natura`):
+    #        ogni tipo, con `obbligatorio`, `ammesso` e il motivo di chi non lo
+    #        e'. Una natura senza matrice ammette tutti i tipi.
     def get(self, request: Request, tipo_soggetto_dettaglio_id: int) -> JsonResponse:
-        repo = LookupRepository()
-        results = repo.list_matrice_indirizzi(tipo_soggetto_dettaglio_id)
+        results = LookupRepository().list_tipi_indirizzo_proponibili(
+            "natura", tipo_soggetto_dettaglio_id,
+        )
         return success_response({"results": results})
 
 
-class LookupMatriceIndirizziRuoloView(DomainAPIView):
-    """Matrice indirizzi ammessi per un tipo ruolo (codice_interno)."""
+class LookupTipiIndirizzoTipoRuoloView(DomainAPIView):
+    """I tipi di indirizzo proponibili per un ruolo da assegnare (codice_interno)."""
     skip_area_check = True
 
     @extend_schema(
-        responses={200: risposta_lookup("MatriceIndirizziRuoloResponse")},
+        responses={200: risposta_lookup("TipiIndirizzoTipoRuoloResponse")},
     )
+    # Scopo: Il picker dei tipi di indirizzo dell'assegnazione di un ruolo
+    #        (crea cliente, crea fornitore), sul tipo di ruolo
+    #        (`fn_tipi_indirizzo_proponibili_tipo_ruolo`).
     def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
-        repo = LookupRepository()
-        results = repo.list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
+        results = LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo(tipo_ruolo_codice)
         return success_response({"results": results})
 
 

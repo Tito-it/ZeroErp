@@ -22,6 +22,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_iva_assoggettamenti_note_non_vuota |  |
 | PRIMARY KEY | pk_config_iva_assoggettamenti | id |
 | UNIQUE | uq_cfg_iva_assoggettamenti_codice | codice |
 

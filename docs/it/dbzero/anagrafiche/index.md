@@ -6,7 +6,7 @@ search:
 # Schema `anagrafiche`
 
 ## 📚 Tabelle
-- [bank_branches](tabelle/bank_branches.md) — (latest review 02-12-25) La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
+- [bank_branches](tabelle/bank_branches.md) — La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 - [billing_account](tabelle/billing_account.md) — (latest review 20-04-2026 — aggiunta colonna `canale_origine`)
 - [catasto_unita_immobiliari](tabelle/catasto_unita_immobiliari.md) — La tabella `anagrafiche.catasto_unita_immobiliari` archivia i **dati catastali** associati a un `indirizzo_dettaglio` e a una specifica `istanza_utility`. Questo approccio:
 - [catasto_unita_immobiliari_indirizzi](tabelle/catasto_unita_immobiliari_indirizzi.md) — (latest review 16-12-25) La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
@@ -34,7 +34,7 @@ search:
 - [resellers_billing_account](tabelle/resellers_billing_account.md) — (latest review 26-01-2026) La tabella **`anagrafiche.resellers_billing_account`** gestisce l’associazione tra **billing_account** e **reseller** (ruolo), con validita` temporale. Non prevede un emittente “di default”: il legame e` sempre esplicito.
 - [risorse_umane](tabelle/risorse_umane.md) — (latest review 06-01-26) La tabella **`anagrafiche.risorse_umane`** rappresenta le persone (dipendenti, consulenti, collaboratori) associate a un soggetto tramite un ruolo di tipo **`RISORSA_UMANA`**. Consente di collegare ogni risorsa a una **qualifica** e, opzionalmente, a una **unita organizzativa**.
 - [soggetti](tabelle/soggetti.md) — (latest review 10-01-26) - **Coerenza dei dati**     Garantire che ogni soggetto—persona fisica, giuridica o fisica forzata—sia identificato in modo univoco e validato secondo le regole aziendali.
-- [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — (latest review 10-01-26) `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
+- [soggetti_conti_bancari](tabelle/soggetti_conti_bancari.md) — `anagrafiche.soggetti_conti_bancari` gestisce l’**associazione tra un Soggetto** (persona/azienda) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_ruoli](tabelle/soggetti_ruoli.md) — (latest review 15-02-26) * **Associazione molti-a-molti**: stabilisce una relazione N\:N tra la tabella `anagrafiche.soggetti` e `config.tipi_ruoli`, consentendo a ogni soggetto di rivestire più ruoli (es. cliente, fornitore, gestore) e a ogni ruolo di essere assegnato a molti soggetti. * **Estensione semantica**: il campo `meta` (JSONB) offre la possibilità di collegare metadati aggiuntivi per la singola associazione soggetto-ruolo (ad esempio, parametri contrattuali specifici se il ruolo è “fornitore” o date di attivazione per il ruolo “cliente”). * **Tracciatura delle modifiche**: grazie ai campi di audit (`user_insert`, `data_insert`, `user_update`, `data_update`) aggiornati automaticamente, la tabella conserva la cronologia di creazione e aggiornamento di ciascuna associazione.
 - [soggetti_ruoli_conti_bancari](tabelle/soggetti_ruoli_conti_bancari.md) — (latest review 25-03-26) `anagrafiche.soggetti_ruoli_conti_bancari` gestisce l’**associazione tra un Ruolo** di un soggetto (CLIENTE, FORNITORE, GESTORE, …) e uno o più **conti bancari (IBAN)**, distinguendo l’**uso** del conto: `INCASSO`, `PAGAMENTO`, `RIMBORSO`, `GENERICO`.
 - [soggetti_titoli_iva](tabelle/soggetti_titoli_iva.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
@@ -48,11 +48,21 @@ search:
 - [fn_ba_ha_storia_emittente](funzioni/fn_ba_ha_storia_emittente.md) — (latest review 31-08-2026)
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). La usano anche il «trova o crea» `fn_get_or_create_indirizzo_dettaglio` (cerca coi valori come li salva il trigger) e `script.fn_check_indirizzo_duplicato`. (ultima revisione 25-10-2026: vuoto → NULL, SNC solo col civico NULL)
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
+- [fn_check_cambio_natura_soggetto](funzioni/fn_check_cambio_natura_soggetto.md)
+- [fn_check_copia_indirizzo_ruolo](funzioni/fn_check_copia_indirizzo_ruolo.md)
+- [fn_check_copia_indirizzo_soggetto](funzioni/fn_check_copia_indirizzo_soggetto.md)
+- [fn_check_elimina_dati_societari](funzioni/fn_check_elimina_dati_societari.md)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_pdp_occupato](funzioni/fn_check_pdp_occupato.md)
+- [fn_check_tipo_indirizzo_ruolo](funzioni/fn_check_tipo_indirizzo_ruolo.md)
+- [fn_check_tipo_indirizzo_ruolo_su_contesto](funzioni/fn_check_tipo_indirizzo_ruolo_su_contesto.md)
+- [fn_check_tipo_indirizzo_soggetto](funzioni/fn_check_tipo_indirizzo_soggetto.md)
+- [fn_check_tipo_indirizzo_soggetto_su_contesto](funzioni/fn_check_tipo_indirizzo_soggetto_su_contesto.md)
 - [fn_check_titolo_iva_ambito](funzioni/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_clienti_stessa_chiave](funzioni/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](funzioni/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
+- [fn_copia_indirizzo_ruolo](funzioni/fn_copia_indirizzo_ruolo.md)
+- [fn_copia_indirizzo_soggetto](funzioni/fn_copia_indirizzo_soggetto.md)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_billing_account](funzioni/fn_crea_billing_account.md)
 - [fn_crea_cliente](funzioni/fn_crea_cliente.md)
@@ -69,6 +79,7 @@ search:
 - [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 20-10-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (se la natura li pretende o se passati: lo decide [fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/manual/fn_scrivi_dati_societari_alla_nascita), lo stesso BB della porta delle persone fisiche).
 - [fn_crea_veste_portale](funzioni/fn_crea_veste_portale.md)
 - [fn_create_indirizzo](funzioni/fn_create_indirizzo.md) — (latest review 08-07-2026)
+- [fn_elimina_dati_societari](funzioni/fn_elimina_dati_societari.md)
 - [fn_forma_giuridica_ammessa](funzioni/fn_forma_giuridica_ammessa.md)
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
 - [fn_get_emittente_fiscale_pk](funzioni/fn_get_emittente_fiscale_pk.md) — (creata 07-04-2026 · latest review 13-09-2026)
@@ -89,21 +100,32 @@ search:
 - [fn_id_fiscale_bloccato](funzioni/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_indirizzo_elemento_da_riga](funzioni/fn_indirizzo_elemento_da_riga.md)
 - [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_istanza_di_altro_soggetto](funzioni/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
+- [fn_nature_proponibili_soggetto](funzioni/fn_nature_proponibili_soggetto.md)
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_parametri_importo_utility](funzioni/fn_parametri_importo_utility.md)
 - [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
+- [fn_regime_pa_campo_non_ammesso](funzioni/fn_regime_pa_campo_non_ammesso.md)
 - [fn_ruolo_di_altro_soggetto](funzioni/fn_ruolo_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a e D-17b di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_scrivi_dati_societari](funzioni/fn_scrivi_dati_societari.md)
 - [fn_scrivi_dati_societari_alla_nascita](funzioni/fn_scrivi_dati_societari_alla_nascita.md)
 - [fn_search_indirizzi_dettaglio](funzioni/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
 - [fn_soggetto_id_fiscale_bloccato](funzioni/fn_soggetto_id_fiscale_bloccato.md)
+- [fn_soggetto_primo_documento](funzioni/fn_soggetto_primo_documento.md)
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
+- [fn_tipi_indirizzo_proponibili_natura](funzioni/fn_tipi_indirizzo_proponibili_natura.md)
+- [fn_tipi_indirizzo_proponibili_ruolo](funzioni/fn_tipi_indirizzo_proponibili_ruolo.md)
+- [fn_tipi_indirizzo_proponibili_soggetto](funzioni/fn_tipi_indirizzo_proponibili_soggetto.md)
+- [fn_tipi_indirizzo_proponibili_tipo_ruolo](funzioni/fn_tipi_indirizzo_proponibili_tipo_ruolo.md)
+- [fn_tipo_indirizzo_ammesso_per_natura](funzioni/fn_tipo_indirizzo_ammesso_per_natura.md)
+- [fn_tipo_indirizzo_ammesso_per_ruolo](funzioni/fn_tipo_indirizzo_ammesso_per_ruolo.md)
+- [fn_titoli_iva_non_ammessi](funzioni/fn_titoli_iva_non_ammessi.md)
+- [fn_titoli_iva_non_ammessi_conta](funzioni/fn_titoli_iva_non_ammessi_conta.md)
 - [fn_titolo_iva_ammesso](funzioni/fn_titolo_iva_ammesso.md)
-- [fn_titolo_iva_non_ammesso_del_soggetto](funzioni/fn_titolo_iva_non_ammesso_del_soggetto.md)
 - [fn_titolo_iva_vigente](funzioni/fn_titolo_iva_vigente.md)
 - [fn_titolo_iva_vigente_su_natura_esiste](funzioni/fn_titolo_iva_vigente_su_natura_esiste.md)
 - [fn_update_cliente](funzioni/fn_update_cliente.md) — (latest review 08-07-2026)
@@ -181,6 +203,7 @@ search:
 - [trgfn_sepa_mandati_guard](funzioni/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
 - [trgfn_soggetti_conti_bancari_guard](funzioni/trgfn_soggetti_conti_bancari_guard.md) — (latest review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_conti_bancari_guard()`** applica controlli di guardia (coerenza e ammissibilità) sui legami tra soggetti e conti bancari, con due obiettivi principali:
 - [trgfn_soggetti_gen_codice](funzioni/trgfn_soggetti_gen_codice.md) — (rev 2026-08-21)
+- [trgfn_soggetti_guard_cambio_natura](funzioni/trgfn_soggetti_guard_cambio_natura.md)
 - [trgfn_soggetti_guard_cf_piva_obbligatori](funzioni/trgfn_soggetti_guard_cf_piva_obbligatori.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_guard_dati_societari_required](funzioni/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_forma_giuridica_natura](funzioni/trgfn_soggetti_guard_forma_giuridica_natura.md)
@@ -189,7 +212,6 @@ search:
 - [trgfn_soggetti_guard_regime_pa](funzioni/trgfn_soggetti_guard_regime_pa.md)
 - [trgfn_soggetti_guard_sesso_policy](funzioni/trgfn_soggetti_guard_sesso_policy.md)
 - [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — (latest review 28-12-25) * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
-- [trgfn_soggetti_guard_titoli_iva_ammessi](funzioni/trgfn_soggetti_guard_titoli_iva_ammessi.md)
 - [trgfn_soggetti_normalize](funzioni/trgfn_soggetti_normalize.md) — (latest review 28-12-25) * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
 - [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
@@ -219,6 +241,8 @@ search:
 - [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md) — (latest review 25-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
 - [vw_indirizzi_resolved_ruolo](views/vw_indirizzi_resolved_ruolo.md) — (latest review 20‑12‑25) La vista **`anagrafiche.vw_indirizzi_resolved_ruolo`** fornisce una rappresentazione **unificata, pronta all’uso e semanticamente ricca** degli indirizzi associati a uno **specifico ruolo di un soggetto** (es. cliente, fornitore, punto di fornitura).
 - [vw_indirizzi_resolved_soggetto](views/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
+- [vw_indirizzi_ruolo_azioni](views/vw_indirizzi_ruolo_azioni.md)
+- [vw_indirizzi_soggetti_azioni](views/vw_indirizzi_soggetti_azioni.md)
 - [vw_istanze_dati_precontrattuali_dettaglio](views/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 - [vw_pdp](views/vw_pdp.md) — (rev 2026-08-21)

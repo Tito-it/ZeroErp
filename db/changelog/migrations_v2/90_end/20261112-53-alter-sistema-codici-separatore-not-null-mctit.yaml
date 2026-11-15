@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.sistema_codici: separatore NOT NULL DEFAULT ''. «Nessun separatore» e'
+#   la stringa vuota. Brief: brief-db-token-null-dei-seed (D1, Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. script.fn_generate_codice compone il codice con
+#   prefix || sep || lpad(...): con il separatore NULL il codice generato e' NULL.
+#   Qui la stringa vuota e' il valore, e ad avere torto era la nullabilita'. Il
+#   seed scrive gia' '' (la cella vuota di una colonna STRING, linee-guida-sql
+#   §11.2), mentre la creazione dal pannello, che col campo vuoto non manda la
+#   colonna, la lasciava NULL: ora prende il default.
+#
+# ℹ️ IL PRIMO PASSO porta a '' i separatori NULL rimasti, cioe' le righe nate dal
+#   pannello. Il loro significato era «nessun separatore», l'unico che il
+#   generatore possa dare a un NULL senza rompersi.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14).
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-13: il seed (i mirror
+#   80_data/20250813-05 e 20260524-25, sullo stesso CSV); il pannello
+#   (config.fn_pannello_scrivi: in creazione il campo vuoto non viaggia e vale il
+#   default, in modifica viaggia ''); 80_data/20260831-53 (solo DELETE); nessuna
+#   funzione del database, nessun endpoint dedicato. Chi la legge:
+#   script.fn_generate_codice e il lookup del backend (get_sistema_codici), che la
+#   restituisce com'e'.
+# Presidio: config/test-sistema-codici-separatore-v1.
+# Rollback: via il NOT NULL e il default. I valori scritti restano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-53-alter-sistema-codici-separatore-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261112-53-alter-sistema-codici-separatore-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.sistema_codici: i separatori NULL diventano '', poi separatore e' NOT NULL DEFAULT ''.
+        Brief: brief-db-token-null-dei-seed.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = 'config.sistema_codici'::regclass
+                 AND a.attname = 'separatore'
+                 AND a.attnotnull;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.sistema_codici sc
+                 SET separatore = ''
+               WHERE sc.separatore IS NULL;
+
+              ALTER TABLE config.sistema_codici
+                ALTER COLUMN separatore SET DEFAULT '',
+                ALTER COLUMN separatore SET NOT NULL;
+
+              COMMENT ON COLUMN config.sistema_codici.separatore IS
+                'Il testo fra prefisso e numero nel codice generato (script.fn_generate_codice). Nessun separatore e'' la stringa vuota, il default; NULL non e'' ammesso, perche'' renderebbe NULL il codice.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.sistema_codici
+                ALTER COLUMN separatore DROP NOT NULL,
+                ALTER COLUMN separatore DROP DEFAULT;

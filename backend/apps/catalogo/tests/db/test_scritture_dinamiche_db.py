@@ -14,10 +14,8 @@
 #
 # ⭐ Il mondo si COSTRUISCE (regola zero): azienda e operatore da
 #    `fn_pgtap_crea_emittente_operatore`, il contesto, gli articoli da
-#    `fn_pgtap_crea_articolo` o dal repository stesso. Unica lettura dal seed:
-#    uno stile nota attivo (`config.note_stili`, FK NOT NULL della nota) — e'
-#    configurazione di sistema, come la UoM che sceglie la fixture articolo.
-#    Tutto in transazione ANNULLATA.
+#    `fn_pgtap_crea_articolo` o dal repository stesso. Tutto in transazione
+#    ANNULLATA.
 #
 # ⛔ IL RIFIUTO (classe senza DB). Una chiave fuori whitelist in una scrittura
 #    e' `RuntimeError` PRIMA di toccare il database: fino al 2026-09-26 veniva
@@ -32,10 +30,9 @@ Opt-in `ZEROERP_TEST_DB_E2E=1`:
 2) ScrittureDinamicheCatalogoDbTests.test_articolo_create_e_update
    meta dict -> oggetto jsonb (non uno scalare stringa), stringhe strippate,
    None -> NULL, payload vuoto in update -> False senza SQL.
-3) ScrittureDinamicheCatalogoDbTests.test_componente_bom_create_e_update
-   padre dal path, UUID/Decimal/date come parametri, ownership nel WHERE.
-4) ScrittureDinamicheCatalogoDbTests.test_nota_articolo_create_e_update
-   partizione e padre dal repository, meta jsonb.
+3) ScrittureDinamicheCatalogoDbTests.test_componente_bom_create
+   padre dal path, UUID/Decimal/date come parametri.
+4) (ritirato il 2026-11-11: la nota di catalogo la scrive il BB delle note)
 5) ScrittureDinamicheCatalogoDbTests.test_uom_operativa_update
    SET su riga seminata dal trigger (UoM base), ownership nel WHERE.
 6) ScrittureDinamicheCatalogoDbTests.test_uom_tipo_unita_conversione_update
@@ -45,7 +42,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import date
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
@@ -99,9 +96,6 @@ class RifiutoChiaviFuoriListaTests(unittest.TestCase):
             ("update_unita_misura", lambda: repo.update_unita_misura(1, {"codice": "Y"})),
             ("update_conversione", lambda: repo.update_conversione(1, {"uom_from_id": 2})),
             ("create_componente", lambda: bom.create_componente("a", {"coeff_qta": 1, "estranea": 1})),
-            ("update_componente", lambda: bom.update_componente("a", "c", {"prodotto_id": "b"})),
-            ("create_nota", lambda: bom.create_nota("ARTICOLO", "a", {"testo": "t", "estranea": 1})),
-            ("update_nota", lambda: bom.update_nota(1, "ARTICOLO", {"target_id": "b"})),
             ("create_uom_operativa", lambda: uom.create_uom_operativa("a", {"uom_id": 1, "estranea": 1})),
             ("update_uom_operativa", lambda: uom.update_uom_operativa("a", 1, {"articolo_id": "b"})),
         )
@@ -163,8 +157,8 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
         except Annulla:
             pass
 
-    # 3. Componente BoM: padre dal path, ownership nel WHERE dell'UPDATE.
-    def test_componente_bom_create_e_update(self):
+    # 3. Componente BoM: il padre dal path.
+    def test_componente_bom_create(self):
         repo, bom = CatalogoRepository(), CatalogoBomRepository()
         try:
             with transaction.atomic(), connection.cursor() as cur:
@@ -190,59 +184,17 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 self.assertEqual(riga["coeff_qta"], Decimal("2.5"))
                 self.assertEqual(riga["tipo_meta"], "object")
 
-                # ⚠️ Solo campi NON di struttura: la BoM e' immutabile nei
-                #    campi di struttura (`trgfn_articoli_componenti_block_
-                #    modifica_struttura`); si chiude (valido_al) e si annota.
-                chiusura = date.fromordinal(oggi_aziendale().toordinal() + 30)
-                self.assertTrue(bom.update_componente(padre, riga_id, {
-                    "valido_al": chiusura, "meta": {"k": "w"},
-                }))
-                # ⛔ Ownership: sotto un altro padre la riga non si tocca.
-                self.assertFalse(bom.update_componente(figlio, riga_id, {"meta": {}}))
-                self.assertFalse(bom.update_componente(padre, riga_id, {}))
-                riga = _riga(cur, """
-                    SELECT valido_al, meta FROM catalogo.articoli_componenti WHERE id = %s
-                """, [riga_id])
-                self.assertEqual(riga["valido_al"], chiusura)
-                self.assertEqual(_json(riga["meta"]), {"k": "w"})
+                # ⛔ Nessun UPDATE: dal 2026-11-10 un legame non si aggiorna
+                #    dal repository (la fine passa dal verbo, provata in
+                #    `test_chiusura_legame_prezzi_db`).
                 raise Annulla
         except Annulla:
             pass
 
-    # 4. Nota articolo: partizione e padre dal repository.
-    def test_nota_articolo_create_e_update(self):
-        bom = CatalogoBomRepository()
-        try:
-            with transaction.atomic(), connection.cursor() as cur:
-                _apri_mondo(cur)
-                cur.execute("SELECT dbops.fn_pgtap_crea_articolo('SCRDYN-NOTA', false)")
-                art = cur.fetchone()[0]
-                cur.execute("SELECT id FROM config.note_stili ORDER BY id LIMIT 1")
-                stile = cur.fetchone()
-                self.assertIsNotNone(stile, "config.note_stili vuota: e' un seed")
-
-                nota_id = bom.create_nota("ARTICOLO", art, {
-                    "anchor_tipo": "DOCUMENTO",
-                    "posizione": "HEADER",
-                    "testo": "Nota di prova",
-                    "id_stile": stile[0],
-                    "meta": {"n": 1},
-                })
-                riga = _riga(cur, """
-                    SELECT target_tipo, target_id, testo, jsonb_typeof(meta) AS tipo_meta
-                    FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s
-                """, [nota_id])
-                self.assertEqual(riga["target_tipo"], "ARTICOLO")
-                self.assertEqual(str(riga["target_id"]), str(art))
-                self.assertEqual(riga["tipo_meta"], "object")
-
-                self.assertTrue(bom.update_nota(nota_id, "ARTICOLO", {"testo": "Aggiornata", "seq": 2}))
-                self.assertFalse(bom.update_nota(nota_id, "ARTICOLO_COMPONENTE", {"testo": "no"}))
-                riga = _riga(cur, "SELECT testo, seq FROM catalogo.note WHERE target_tipo = 'ARTICOLO' AND id = %s", [nota_id])
-                self.assertEqual((riga["testo"], riga["seq"]), ("Aggiornata", 2))
-                raise Annulla
-        except Annulla:
-            pass
+    # 4. (ritirato il 2026-11-11) La nota di catalogo: la scrive il BB
+    #    `PartitionedNoteRepository`, presidiato in
+    #    `core/tests/db/test_scritture_email_note_db.py`; il giro intero sul
+    #    DB vero e' in `catalogo/tests/db/test_note_catalogo_db.py`.
 
     # 5. UoM operativa: SET sulla riga base che il trigger ha seminato.
     def test_uom_operativa_update(self):
@@ -290,16 +242,20 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 riga = repo.get_unita_misura(u1)
                 self.assertEqual((riga["descrizione"], riga["descrizione_fattura"]), ("U1 bis", "Fatt"))
 
+                oggi = oggi_aziendale()
                 conv = repo.create_conversione({
                     "uom_from_id": u1, "uom_to_id": u2, "fattore": Decimal("10"),
-                    "valido_dal": date(2026, 1, 1),
+                    "valido_dal": oggi - timedelta(days=10),
                 })
-                self.assertTrue(repo.update_conversione(conv, {
-                    "fattore": Decimal("12"), "valido_al": date(2026, 12, 31),
-                }))
+                # ⛔ Dal 2026-11-11 (D27 di brief-db-revisione-catalogo) fattore,
+                #    unita' e inizio di una conversione non si cambiano sul posto
+                #    (`catalogo.trgfn_uom_guard_storia`): si cambia la FINE, dal
+                #    giorno aziendale in poi. Il binding si prova su quella.
+                fine = oggi + timedelta(days=30)
+                self.assertTrue(repo.update_conversione(conv, {"valido_al": fine}))
                 riga = repo.get_conversione(conv)
-                self.assertEqual(riga["fattore"], Decimal("12"))
-                self.assertEqual(riga["valido_al"], date(2026, 12, 31))
+                self.assertEqual(riga["fattore"], Decimal("10"))
+                self.assertEqual(riga["valido_al"], fine)
                 self.assertFalse(repo.update_conversione(conv, {}))
                 raise Annulla
         except Annulla:

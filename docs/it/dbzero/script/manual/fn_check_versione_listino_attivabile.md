@@ -19,6 +19,7 @@ Elenco vuoto = si attiva. Non solleva.
 | 1 | `E_LISTINO_VERSIONE_SPENTA` | la versione è spenta (`attivo = false`) |
 | 2 | `E_LISTINO_VERSIONE_SENZA_RIGHE` | la versione non ha prezzi: nessuna riga attiva e nessun composito col prezzo bundle |
 | 3 | `E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA` | una quota fissa a canone ([`vendite.fn_articolo_quota_fissa_a_canone`](/dbzero/vendite/manual/fn_articolo_quota_fissa_a_canone)), riga o kit, senza periodicità ([`vendite.fn_listino_periodicita_articolo`](/dbzero/vendite/manual/fn_listino_periodicita_articolo)). Il primo articolo per codice; `dettaglio.campo` = `periodicita` |
+| 4 | `E_LISTINO_UOM_NON_CONVERTIBILE` | un prezzo attivo in un'unità che, in un giorno del periodo della versione, non si converte per l'articolo ([`vendite.fn_listino_versione_riga_uom_non_convertibile`](/dbzero/vendite/manual/fn_listino_versione_riga_uom_non_convertibile)). Valori: versione, unità, articolo, primo giorno scoperto; `dettaglio.campo` = `uom_id` |
 
 ### Regole
 
@@ -27,6 +28,9 @@ Elenco vuoto = si attiva. Non solleva.
   una quota fissa a canone si addebita da sé a ogni contratto del listino, e fuori dalla bozza la
   riga non si corregge più. Senza periodicità ogni contratto del listino resterebbe con un canone
   che non può partire. La bozza resta libera di essere incompleta.
+* Il motivo 4 (dal 10-11-2026): un prezzo si scrive solo in un'unità che si converte per tutto il
+  periodo, ma una bozza si può rompere sotto, quando il catalogo chiude una mappatura o una
+  conversione. Il catalogo lo impedisce solo per le versioni attive: la bozza la ferma qui.
 * Versione inesistente o fuori perimetro: nessun motivo.
 * La chiamano il verbo (prima di chiudere le precedenti), il guard di transizione e la superficie
   della lista: una regola, tre letture.

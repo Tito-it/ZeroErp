@@ -213,19 +213,9 @@ SELECT is(
 --   codice viaggia nel canale CONSTRAINT_NAME dell'eccezione P0001: si pinna
 --   il codice, non la frase del catalogo.
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT script.fn_get_search_detail(%L::uuid, %s)$q$,
         (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
           WHERE sr.id = (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'A')),

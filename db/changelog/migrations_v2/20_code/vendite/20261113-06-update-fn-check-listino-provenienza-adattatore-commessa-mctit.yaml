@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_check_listino_provenienza(commessa, ...): da regola ad adattatore
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.4, F-8, D-1)
+#
+#   Le tre regole sulla riga di listino citata per il prezzo passano in
+#   vendite.fn_check_listino_provenienza_emittente (20261113-05), che le
+#   righe di documento leggono con l'emittente del documento. Questa funzione
+#   tiene firma, risultato, proprieta' (STABLE, SECURITY DEFINER, search_path)
+#   e privilegi: ricava l'emittente della commessa e chiama quella. Il guard
+#   della commessa (vendite.trgfn_attivita_guard_listino_riga) e il suo pgTAP
+#   (test-guard-listino-riga-coerente-v1) non cambiano: la regola e' la stessa,
+#   scritta una volta (regola del 2: nessuna copia resta).
+#   Commessa inesistente: emittente NULL, quindi EMITTENTE_DIVERSO se c'e' una
+#   versione da giudicare, come prima.
+#   Rollback: il corpo del 20261028-18.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-06-update-fn-check-listino-provenienza-adattatore-commessa-mctit.yaml
+
+  - changeSet:
+      id: 20261113-06-update-fn-check-listino-provenienza-adattatore-commessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_check_listino_provenienza (commessa): ricava l'emittente della commessa e chiama
+        vendite.fn_check_listino_provenienza_emittente, dove le regole stanno una volta sola.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_check_listino_provenienza(
+                  p_commessa_id         vendite.commesse.id%TYPE,
+                  p_articolo_id         vendite.listini_righe.articolo_id%TYPE,
+                  p_uom_id              vendite.listini_righe.uom_id%TYPE,
+                  p_listino_versione_id vendite.listini_righe.listino_versione_id%TYPE,
+                  p_listino_riga_id     vendite.listini_righe.id%TYPE)
+              RETURNS config.codici_errore.codice%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_emittente_commessa vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   la regola sulla riga e sulla versione di listino citate
+                  --   per il prezzo di una riga della commessa data: ricava
+                  --   l'emittente della commessa e chiede al BB
+                  --   vendite.fn_check_listino_provenienza_emittente.
+                  -- =========================================================
+                  -- Ne' riga ne' versione: niente da giudicare, nessuna lettura.
+                  IF p_listino_riga_id IS NULL AND p_listino_versione_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT c.emittente_soggetto_ruolo_id
+                    INTO v_emittente_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+
+                  RETURN vendite.fn_check_listino_provenienza_emittente(
+                      v_emittente_commessa, p_articolo_id, p_uom_id,
+                      p_listino_versione_id, p_listino_riga_id);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_check_listino_provenienza(vendite.commesse.id%TYPE, vendite.listini_righe.articolo_id%TYPE, vendite.listini_righe.uom_id%TYPE, vendite.listini_righe.listino_versione_id%TYPE, vendite.listini_righe.id%TYPE) IS
+                  'Check per la commessa: il codice del primo motivo per cui la riga e la versione di listino citate per il prezzo di una riga della commessa data non sono ammesse; NULL = ammesse. Ricava l''emittente della commessa e applica le regole di vendite.fn_check_listino_provenienza_emittente (riga coerente con articolo, unita'' di misura e versione; listino dell''emittente; versione non in bozza), con gli stessi codici. Ne'' riga ne'' versione: NULL. SECURITY DEFINER: le commesse hanno la RLS per emittente. Non solleva: lo fa vendite.trgfn_attivita_guard_listino_riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo del 20261028-18 (le tre regole scritte qui).
+              CREATE OR REPLACE FUNCTION vendite.fn_check_listino_provenienza(
+                  p_commessa_id         vendite.commesse.id%TYPE,
+                  p_articolo_id         vendite.listini_righe.articolo_id%TYPE,
+                  p_uom_id              vendite.listini_righe.uom_id%TYPE,
+                  p_listino_versione_id vendite.listini_righe.listino_versione_id%TYPE,
+                  p_listino_riga_id     vendite.listini_righe.id%TYPE)
+              RETURNS config.codici_errore.codice%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_riga_articolo      vendite.listini_righe.articolo_id%TYPE;
+                  v_riga_uom           vendite.listini_righe.uom_id%TYPE;
+                  v_riga_versione      vendite.listini_righe.listino_versione_id%TYPE;
+                  v_versione           vendite.listini_versioni.id%TYPE := p_listino_versione_id;
+                  v_stato              config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_emittente_listino  vendite.listini.emittente_soggetto_ruolo_id%TYPE;
+                  v_emittente_commessa vendite.commesse.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                  IF p_listino_riga_id IS NOT NULL THEN
+                      SELECT lr.articolo_id, lr.uom_id, lr.listino_versione_id
+                        INTO v_riga_articolo, v_riga_uom, v_riga_versione
+                        FROM vendite.listini_righe lr
+                       WHERE lr.id = p_listino_riga_id;
+                      IF NOT FOUND
+                         OR v_riga_articolo IS DISTINCT FROM p_articolo_id
+                         OR v_riga_uom      IS DISTINCT FROM p_uom_id
+                         OR (v_versione IS NOT NULL AND v_riga_versione <> v_versione) THEN
+                          RETURN 'E_ATTIVITA_LISTINO_RIGA_INCOERENTE';
+                      END IF;
+                      v_versione := v_riga_versione;
+                  END IF;
+                  IF v_versione IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+                  SELECT s.codice_interno, l.emittente_soggetto_ruolo_id
+                    INTO v_stato, v_emittente_listino
+                    FROM vendite.listini_versioni lv
+                    JOIN vendite.listini l ON l.id = lv.listino_id
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = v_versione;
+                  SELECT c.emittente_soggetto_ruolo_id
+                    INTO v_emittente_commessa
+                    FROM vendite.commesse c
+                   WHERE c.id = p_commessa_id;
+                  IF v_emittente_listino IS DISTINCT FROM v_emittente_commessa THEN
+                      RETURN 'E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO';
+                  END IF;
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN 'E_ATTIVITA_LISTINO_VERSIONE_BOZZA';
+                  END IF;
+                  RETURN NULL;
+              END;
+              $function$;

@@ -346,20 +346,8 @@ SELECT is(
 --   Si asserisce il CODICE, non solo «solleva»: 21 e 23 prima sollevavano
 --   gia', ma per E_SORG_NOT_FOUND — un rosso per il motivo sbagliato.
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore_sorgente(p_sql text)
-RETURNS text AS $fn$
--- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
-DECLARE v_codice text;
-BEGIN
-  EXECUTE p_sql;
-  RETURN 'NESSUN ERRORE';
-EXCEPTION WHEN OTHERS THEN
-  GET STACKED DIAGNOSTICS v_codice = CONSTRAINT_NAME;
-  RETURN COALESCE(NULLIF(v_codice, ''), SQLSTATE);
-END $fn$ LANGUAGE plpgsql;
-
 SELECT is(
-  pg_temp.codice_errore_sorgente(format(
+  dbops.fn_pgtap_codice_errore(format(
     $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
     (SELECT commessa_host FROM tmp_guard_commesse),
     (SELECT src_commessa FROM tmp_guard_refs),
@@ -369,7 +357,7 @@ SELECT is(
 );
 
 SELECT is(
-  pg_temp.codice_errore_sorgente(format(
+  dbops.fn_pgtap_codice_errore(format(
     $$SELECT vendite.fn_link_commessa_sorgente(%s, %s, %L, NULL, '{}'::jsonb)$$,
     (SELECT commessa_host FROM tmp_guard_commesse),
     (SELECT src_preventivo FROM tmp_guard_refs),

@@ -16,10 +16,12 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_listini_kit_guard()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: la riga di vendite.listini_kit si scrive solo in una versione in
---   BOZZA (INSERT, UPDATE, DELETE), e solo per un articolo composito.
+--   bozza, lo stato iniziale del vocabolario (INSERT, UPDATE, DELETE), e
+--   solo per un articolo composito.
 --   Regola completa nell'intestazione del changeSet 20261031-30.
 DECLARE
     v_stato       config.stati_doc_listino_versioni.codice_interno%TYPE;
+    v_iniziale    config.stati_doc_listino_versioni.iniziale%TYPE;
     v_riga_id     vendite.listini_kit.id%TYPE;
     v_versione_id vendite.listini_kit.listino_versione_id%TYPE;
     v_composito   catalogo.articoli.is_composito%TYPE;
@@ -29,13 +31,13 @@ BEGIN
     v_versione_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.listino_versione_id
                           ELSE NEW.listino_versione_id END;
 
-    SELECT s.codice_interno INTO v_stato
+    SELECT s.codice_interno, s.iniziale INTO v_stato, v_iniziale
       FROM vendite.listini_versioni lv
       JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
      WHERE lv.id = v_versione_id;
 
     -- 1. Solo in bozza. Una versione che non si legge non e' una bozza.
-    IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+    IF v_iniziale IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
             jsonb_build_object(
@@ -73,7 +75,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_kit_guard()
-IS 'Guard di vendite.listini_kit: la riga (la periodicita'' di un kit su una versione di listino) si scrive solo in una versione in BOZZA, INSERT UPDATE e DELETE (E_RIGA_LISTINO_VERSIONE_CHIUSA, come i componenti, E-1 di Tid del 2026-10-28), e solo per un articolo composito (E_LISTINO_KIT_NON_COMPOSITO): la periodicita'' di un articolo semplice sta sulla sua riga di listino. L''identita'' la ferma il lucchetto generato. Nasce il 2026-10-31 (20261031-30), brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).';
+IS 'Guard di vendite.listini_kit: la riga (la periodicita'' di un kit su una versione di listino) si scrive solo in una versione in bozza, lo stato iniziale del vocabolario config.stati_doc_listino_versioni, in INSERT, UPDATE e DELETE (E_RIGA_LISTINO_VERSIONE_CHIUSA, come i componenti), e solo per un articolo composito (E_LISTINO_KIT_NON_COMPOSITO): la periodicita'' di un articolo semplice sta sulla sua riga di listino. Una versione che non si legge non e'' una bozza. L''identita'' la ferma il lucchetto generato.';
 ```
 
 </div>

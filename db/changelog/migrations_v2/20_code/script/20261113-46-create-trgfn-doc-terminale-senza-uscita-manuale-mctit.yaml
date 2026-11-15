@@ -1,0 +1,203 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO BUILDING BLOCK: TERMINALE E MATRICE NON POSSONO DISSENTIRE
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (④ b, S-1 = A,
+#   S-4).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Da uno stato terminale non esce nessun passaggio a mano. Il trigger la
+#   giudica sulla configurazione intera della testata, con
+#   script.fn_doc_terminali_con_uscita_manuale (20261113-45), e solleva
+#   E_DOC_TERMINALE_CON_USCITA_MANUALE alla prima coppia (stato, uscita).
+#   La solleva solo chi scrive la configurazione: le migrazioni e i seed.
+#
+# ── IL MONTAGGIO ────────────────────────────────────────────────────
+#   CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED, per riga (linee-guida-
+#   trigger, «Trigger differiti»): la regola si giudica a transazione
+#   completa, perche' vocabolario e matrice si scrivono in istruzioni
+#   diverse (spegnere l'uscita e poi dichiarare lo stato terminale, o il
+#   contrario) e l'ordine non conta. I pgTAP girano con SET CONSTRAINTS ALL
+#   IMMEDIATE: li' scatta a fine istruzione.
+#   Un argomento: la testata, per script.fn_doc_stato_modello. Montato sui
+#   sette vocabolari dei documenti che hanno terminale e sulle loro matrici:
+#     vocabolario  AFTER INSERT OR UPDATE OF terminale
+#     matrice      AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta
+#   Nessun trigger BEFORE delle quattordici tabelle scrive quelle colonne
+#   (linee-guida-trigger, UPDATE OF). Fase a10: e' un guard.
+#   Il vocabolario fiscale e quello della commessa non hanno terminale: fuori.
+#
+# ── I SEED ──────────────────────────────────────────────────────────
+#   Da zero il codice gira prima dei dati: i mirror di 80_data attraversano
+#   il trigger. Con il seed del giro 3 nessuno stato terminale ha un'uscita
+#   a mano (dbdev, 2026-11-14: il solo era il reso CONFERMATO, che S-5 rende
+#   non terminale nello stesso giro). I changeSet storici di 80_data che
+#   scrivono le stesse tabelle toccano esito e meta.ui, non terminale ne' le
+#   uscite a mano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261113-46-create-trgfn-doc-terminale-senza-uscita-manuale-mctit.yaml
+
+  - changeSet:
+      id: 20261113-46-create-trgfn-doc-terminale-senza-uscita-manuale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo building block script.trgfn_doc_terminale_senza_uscita_manuale, trigger differito sui
+        sette vocabolari con terminale e sulle loro matrici: da uno stato terminale non esce nessun
+        passaggio a mano (E_DOC_TERMINALE_CON_USCITA_MANUALE). Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- La testata del montaggio (TG_ARGV[0]): regclass, nessuna
+                  -- colonna a cui ancorarla.
+                  v_testata regclass;
+                  v_stato   text;   -- codice_interno di uno di sette vocabolari
+                  v_uscita  text;   -- idem
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: da uno stato terminale non esce nessun passaggio a
+                  --   mano (S-1, lettura A). Giudica la configurazione intera
+                  --   della testata, non la sola riga: una riga di matrice e
+                  --   la colonna terminale del vocabolario sono due meta' della
+                  --   stessa regola.
+                  -- Montaggio: CONSTRAINT TRIGGER differito, per riga, con un
+                  --   argomento, la testata (script.fn_doc_stato_modello).
+                  -- =========================================================
+                  IF TG_NARGS <> 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('trigger', TG_NAME,
+                                             'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'tg_argv', TG_ARGV),
+                          NULL::uuid,
+                          TG_NAME::text,
+                          'un argomento: la testata del documento (script.fn_doc_stato_modello)');
+                  END IF;
+                  v_testata := TG_ARGV[0]::regclass;
+
+                  SELECT x.stato, x.uscita
+                    INTO v_stato, v_uscita
+                    FROM script.fn_doc_terminali_con_uscita_manuale(v_testata) AS x
+                   LIMIT 1;
+
+                  IF v_stato IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.trgfn_doc_terminale_senza_uscita_manuale',
+                          'E_DOC_TERMINALE_CON_USCITA_MANUALE',
+                          jsonb_build_object('testata', v_testata::text,
+                                             'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                             'stato',   v_stato,
+                                             'uscita',  v_uscita),
+                          NULL::uuid,
+                          v_stato,
+                          v_uscita,
+                          v_testata::text);
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale() IS
+                  'Building block: da uno stato terminale non esce nessun passaggio a mano. Trigger differito (CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED, per riga) montato sui vocabolari degli stati che hanno la colonna terminale e sulle loro matrici, con un argomento: la testata del documento (script.fn_doc_stato_modello). Giudica la configurazione intera della testata con script.fn_doc_terminali_con_uscita_manuale, a transazione completa, cosi'' vocabolario e matrice si scrivono in qualunque ordine; alla prima coppia (stato terminale, destinazione a mano) solleva E_DOC_TERMINALE_CON_USCITA_MANUALE. Lo incontra solo chi scrive la configurazione. Un montaggio senza l''argomento solleva E_SCRIPT_CHIAMATA_NON_VALIDA.';
+
+              -- ── I montaggi: vocabolario (terminale) e matrice (le uscite) ──
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_preventivi_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_preventivi
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_preventivi_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_preventivi
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.preventivi');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_offerte_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_offerte
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali');
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.stati_doc_offerte_transizioni
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.offerte_commerciali');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_contratti_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_contratti
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.contratti');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_contratti_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_contratti
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.contratti');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_ordini_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_ordini
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ordini');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_ordini_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_ordini
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ordini');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_ddt_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_ddt
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_ddt_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_ddt
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ddt');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_reso_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_reso
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_reso_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_reso
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.resi');
+
+              CREATE CONSTRAINT TRIGGER trg_stati_doc_listino_versioni_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF terminale ON config.stati_doc_listino_versioni
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.listini_versioni');
+              CREATE CONSTRAINT TRIGGER trg_transizioni_stati_listino_versioni_a10_terminale_ins_upd
+                  AFTER INSERT OR UPDATE OF stato_da_id, attivo, meta ON config.transizioni_stati_listino_versioni
+                  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.listini_versioni');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stati_doc_preventivi_a10_terminale_ins_upd ON config.stati_doc_preventivi;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_preventivi_a10_terminale_ins_upd ON config.transizioni_stati_preventivi;
+              DROP TRIGGER IF EXISTS trg_stati_doc_offerte_a10_terminale_ins_upd ON config.stati_doc_offerte;
+              DROP TRIGGER IF EXISTS trg_stati_doc_offerte_transizioni_a10_terminale_ins_upd ON config.stati_doc_offerte_transizioni;
+              DROP TRIGGER IF EXISTS trg_stati_doc_contratti_a10_terminale_ins_upd ON config.stati_doc_contratti;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_contratti_a10_terminale_ins_upd ON config.transizioni_stati_contratti;
+              DROP TRIGGER IF EXISTS trg_stati_doc_ordini_a10_terminale_ins_upd ON config.stati_doc_ordini;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_ordini_a10_terminale_ins_upd ON config.transizioni_stati_ordini;
+              DROP TRIGGER IF EXISTS trg_stati_doc_ddt_a10_terminale_ins_upd ON config.stati_doc_ddt;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_ddt_a10_terminale_ins_upd ON config.transizioni_stati_ddt;
+              DROP TRIGGER IF EXISTS trg_stati_doc_reso_a10_terminale_ins_upd ON config.stati_doc_reso;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_reso_a10_terminale_ins_upd ON config.transizioni_stati_reso;
+              DROP TRIGGER IF EXISTS trg_stati_doc_listino_versioni_a10_terminale_ins_upd ON config.stati_doc_listino_versioni;
+              DROP TRIGGER IF EXISTS trg_transizioni_stati_listino_versioni_a10_terminale_ins_upd ON config.transizioni_stati_listino_versioni;
+              DROP FUNCTION IF EXISTS script.trgfn_doc_terminale_senza_uscita_manuale();

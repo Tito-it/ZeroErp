@@ -24,6 +24,10 @@ AS $function$
 --   qui si solleva soltanto, col codice del PRIMO motivo.
 --   Brief: brief-db-vie-uscita-operatore §3.1.
 --
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6a):
+--   l'annullo e' la destinazione che il vocabolario marca is_abortito,
+--   non un codice. Il codice resta per il contesto dell'errore.
+--
 -- rev 2026-08-04 (bonifica riferimenti morti, F5): `NEW.codice` non e' una
 --   colonna di vendite.preventivi. L'identificativo leggibile e' `numero`
 --   (varchar); ci sono anche `uid` (uuid, la chiave usata dalle catene
@@ -31,6 +35,8 @@ AS $function$
 --   fa, ed e' arrivato al controllo lo stesso giorno.
 DECLARE
     v_codice_a config.stati_doc_preventivi.codice_interno%TYPE;
+    -- La destinazione e' lo stato di annullo? Dal vocabolario.
+    v_abortito config.stati_doc_preventivi.is_abortito%TYPE;
     v_motivi   jsonb;
 BEGIN
     -- No-op se lo stato non cambia davvero.
@@ -38,12 +44,14 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    SELECT sdp.codice_interno
-      INTO v_codice_a
+    SELECT sdp.codice_interno, sdp.is_abortito
+      INTO v_codice_a, v_abortito
       FROM config.stati_doc_preventivi sdp
      WHERE sdp.id = NEW.stato_doc_preventivo_id;
 
-    IF v_codice_a IS DISTINCT FROM 'ANNULLATO' THEN
+    -- Stato non trovato: v_abortito NULL, niente da giudicare (la FK lo
+    -- esclude, come prima).
+    IF v_abortito IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -71,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_preventivi_guard_annullamento()
-IS 'Trigger function: blocca l''annullamento di un preventivo che ha gia'' un figlio a valle (ordine generato o riga in commesse_sorgenti), delegando il verdetto a script.fn_check_preventivo_annullabile — la stessa funzione letta da fn_available_actions_preventivo. Creata 2026-08-04 con la riattivazione delle transizioni verso ANNULLATO (brief-db-vie-uscita-operatore).';
+IS 'Guard dell''annullo del preventivo (BEFORE UPDATE OF stato_doc_preventivo_id). Quando lo stato cambia verso lo stato di annullo, quello che il vocabolario config.stati_doc_preventivi marca is_abortito, solleva il primo motivo di script.fn_check_preventivo_annullabile: E_PREV_ORDINE_GIA_GENERATO (un ordine non annullato nato dal preventivo) o E_PREV_ANNULLA_COMMESSA_EMESSA (righe del preventivo gia'' emesse dalla commessa). E'' la stessa funzione con cui script.fn_available_actions_preventivo spegne l''annullo, col motivo. Il codice dello stato serve solo al contesto dell''errore. Che il passaggio sia nella matrice lo giudica vendite.trgfn_preventivi_guard_transizione, che scatta dopo.';
 ```
 
 </div>

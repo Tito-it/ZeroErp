@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_check_famiglia_documento_disattivabile`
 
+> **Ultimo aggiornamento**: 10 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > **Consumatori:**
@@ -26,7 +28,7 @@
 
 **Dice se una famiglia di documento si può spegnere, e quando non si può dice
 perché.** Ritorna `[]` se si può, altrimenti l'array **ordinato** dei motivi:
-`[{codice, reason, reason_key, dettaglio, valori}, …]`.
+`[{codice, reason, reason_key, dettaglio}, …]`.
 
 ---
 
@@ -103,11 +105,13 @@ quando serve, non per simmetria.
 
 | Chiave | Contenuto |
 | --- | --- |
-| `codice` | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (registri) / `E_ATTIVO_BLOCK_CHILDREN_EXIST` (documenti) — ⭐ **riusati**, non coniati: dicono esattamente questo, con l'arità giusta |
+| `codice` | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (registri) / `E_ATTIVO_BLOCK_CHILDREN_EXIST` (documenti) — ⭐ **riusati**, non coniati: sono i codici del guard generico di disattivazione, con la stessa frase |
 | `reason` | `HA_REGISTRI_ATTIVI` / `HA_DOCUMENTI_NUMERATI`. ⛔ Senza prefisso `E_`, riservato ai codici a catalogo |
 | `reason_key` | `amministrazione.famiglie_documento.disattiva_blocco.*` |
 | `dettaglio` | `famiglia_id`, `codice_interno`, il conteggio, e per i documenti anche la tabella |
-| `valori` | i quattro argomenti del messaggio: tabella padre, colonna chiave, valore, tabella figlia |
+
+Non c'è una chiave `valori`: le frasi dei due codici non hanno segnaposti, e non nominano tabelle.
+La tabella dei documenti sta nel `dettaglio`, che il guard porta nel contesto del registro errori.
 
 ⚠️ La `reason_key` è un **debito verso il frontend**: va nei file di lingua nello
 stesso giro del lavoro sulla maschera.

@@ -3,14 +3,13 @@
 > 📝 **Descrizione**
 >
 > SEDE UNICA del criterio «questa riga di commessa puo' entrare in un giro di fatturazione, e se no perche'». Una riga per riga di commessa. Consumatori: vendite.fn_list_emittibili_lane (filtra classe = PRONTA), vendite.fn_list_commesse_emittibili (quali commesse visitare), vendite.fn_emit_attivita_fatturabili_da_commessa (quali righe emettere) e vendite.fn_diagnostica_gruppi_fatturabili (conta per classe).
-> ⭐ NASCE PERCHE' IL CRITERIO ERA SCRITTO DUE VOLTE: la lane lo FILTRA, la diagnostica lo CONTA, ed e' dichiarata «lo specchio della lane». Il 2026-09-09 lo specchio si e' rotto in silenzio — un criterio aggiunto alla lane e non alla diagnostica, che rispondeva «era pronto» su un documento che la lane non aveva offerto. Ora il criterio non e' scritto in nessuna delle due.
+> ⭐ IL CRITERIO E' SCRITTO UNA VOLTA SOLA, QUI: la lane lo FILTRA e la diagnostica lo CONTA, ed e' «lo specchio della lane» solo perche' leggono la stessa classe. Un criterio aggiunto a uno solo dei due lettori farebbe rispondere alla diagnostica «era pronto» su un documento che la lane non ha offerto, senza nessun errore: per questo non e' scritto in nessuno dei due.
 > ⭐ I DUE FATTORI SONO ORTOGONALI: `classe_emittibilita` descrive la RIGA, `commessa_emittibile` la TESTATA, e chi decide dichiara quali dei due usa. ⛔ Fonderli toglierebbe alla diagnostica la sola cosa che sa dire meglio della lane («le righe sarebbero pronte, e' la commessa a essere in BOZZA»).
 > ⭐ VOCABOLARIO CHIUSO di sei valori: EMESSA · ANNULLATA · RIFIUTATA · NON_APPROVATA · TRATTENUTA · PRONTA.
 > ⛔ NON contiene il PERIMETRO DELLA DOMANDA — tetto di competenza, billing account, utility, emittente, corsia, p_gruppi, e l'auto-esclusione del proprio lotto nel pull: quelli dipendono da chi chiede. E' anche il motivo per cui «fuori competenza» non e' una classe: quella riga e' PRONTA, solo non per quel mese.
 > ⭐ MA IL LEGAME DI COMPETENZA DEL TRATTENUTO SI': qui la competenza della riga c'e'. E' `lotto_competenza_mese &gt;= ca.competenza_mese`, perche' la selezione e' CUMULATIVA. ⛔ Non e' un'uguaglianza: il LATERAL dell'esito su vw_dash_competenza_gruppi lega =, e copiarlo darebbe un blocco piu' stretto della regola.
-> ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e' fra i criteri: e' un ramo irraggiungibile da quando chk_commesse_attivita_tipo_doc_emittibile e' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
+> ⚠️ `tipo_doc_fiscale_id IS NOT NULL` non e' fra i criteri: e' un ramo irraggiungibile, perche' chk_commesse_attivita_tipo_doc_emittibile e' VALIDATO, e i presidi sono i test 9 e 10 di test-diagnostica-gruppi-fatturabili-v1.sql.
 > ⚠️ `trattenuta_da_lotti` e' NULL quando la riga non e' trattenuta (mai un array vuoto) ed e' ORDINATO per lotto_id: chi ne vuole uno prende il primo e non scommette.
-> Brief: brief-db-il-trattenuto-passa-lo-stesso.md (L3).
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 

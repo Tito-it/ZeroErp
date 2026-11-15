@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_tx_id`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -89,6 +89,11 @@ Il primo errore ferma l'intera corsa: le tabelle successive non si guardano.
   (`brief-db-revisione-dbops`).
 * 2026-11-08 — il trigger si riconosce dalla funzione: la strategia d'esistenza della regola esce; il
   nome viene solo dal registro, senza ripiego (`20261109-68`, brief-db-revisione-dbops D17, D20).
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-67`).
 
 ---
 

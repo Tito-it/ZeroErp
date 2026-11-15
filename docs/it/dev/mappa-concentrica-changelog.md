@@ -285,7 +285,7 @@ solo (D6 del civico, senza brief). Vedi
 [brief-db-dati-societari-in-creazione.md](work-done/brief-db-dati-societari-in-creazione.md),
 [brief-db-cliente-manuale-uno-per-soggetto-e-utility.md](work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md),
 [brief-db-unicita-civico-indirizzi-dettaglio.md](work-done/brief-db-unicita-civico-indirizzi-dettaglio.md),
-[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-in-progress/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
+[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
 [brief-db-catena-istanze-pdp.md](work-in-progress/brief-db-catena-istanze-pdp.md).
 
 **Anello 3 (`vendite`, `magazzino`) — Il documento segue il suo cliente, la

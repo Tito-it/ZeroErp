@@ -78,7 +78,8 @@
 --  18) Contratto CESSATO: UPDATE di riga -> rifiutato (il caso che la copia lasciava aperto)
 --  19) Montaggio senza argomenti -> E_DOC_RIGHE_LOCK_MONTAGGIO
 --  20) Montaggio con colonna FK inesistente -> E_DOC_RIGHE_LOCK_MONTAGGIO
---  21) Stato bozza con codice diverso (TG_ARGV[2]): la riga passa in quello stato e non in DRAFT
+--  21) Stato bozza con codice diverso (TG_ARGV[2]): non si legge, la bozza la dice il vocabolario
+--      (DRAFT): la riga passa sul DDT in bozza e non su quello emesso
 -- ------------------------------------------------------------
 
 -- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
@@ -446,17 +447,18 @@ CREATE TRIGGER trg_tmp_a05_lock BEFORE INSERT ON tmp_righe_col_sbagliata
   FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'documento_id');
 SELECT pg_temp.lr_prova('20_montaggio_col', 'INSERT INTO tmp_righe_col_sbagliata (ddt_id) VALUES (1)');
 
--- TG_ARGV[2]: lo stato «bozza» si chiama EMESSO per questa tabella finta ->
--- la riga del DDT emesso PASSA, quella del DDT in bozza NO.
+-- TG_ARGV[2] = EMESSO non si legge: la bozza la dice il vocabolario del DDT
+-- (lo stato iniziale, DRAFT) -> la riga del DDT emesso NO, quella del DDT in
+-- bozza PASSA. Un lock che leggesse l'argomento farebbe il contrario.
 CREATE TEMP TABLE tmp_righe_bozza_diversa (id serial PRIMARY KEY, ddt_id bigint);
 CREATE TRIGGER trg_tmp_a05_lock BEFORE INSERT ON tmp_righe_bozza_diversa
   FOR EACH ROW EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT_VENDITA', 'ddt_id', 'EMESSO');
 SELECT pg_temp.lr_prova('21a_argv2_emesso',
   format('INSERT INTO tmp_righe_bozza_diversa (ddt_id) VALUES (%s)', (SELECT id FROM tmp_fix WHERE chiave='ddt_emesso')))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_emesso');
-SELECT pg_temp.lr_prova('21b_argv2_cons',
-  format('INSERT INTO tmp_righe_bozza_diversa (ddt_id) VALUES (%s)', (SELECT id FROM tmp_fix WHERE chiave='ddt_cons')))
- WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_cons');
+SELECT pg_temp.lr_prova('21b_argv2_bozza',
+  format('INSERT INTO tmp_righe_bozza_diversa (ddt_id) VALUES (%s)', (SELECT id FROM tmp_fix WHERE chiave='ddt_bozza')))
+ WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='ddt_bozza');
 
 -- ============================================================
 -- 6) DDT in bozza: le tre porte PASSANO
@@ -603,12 +605,12 @@ SELECT ok(
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_esito WHERE caso = '21a_argv2_emesso')
-    THEN skip('fixture DDT emesso/consegnato non costruita', 1)
+    THEN skip('fixture DDT emesso/in bozza non costruita', 1)
   ELSE is(
     (SELECT string_agg(caso || '=' || COALESCE(righe::text, sqlstate), ' ' ORDER BY caso)
-       FROM tmp_esito WHERE caso IN ('21a_argv2_emesso', '21b_argv2_cons')),
-    '21a_argv2_emesso=1 21b_argv2_cons=P0001',
-    '21) TG_ARGV[2] = EMESSO: passa sul DDT emesso, rifiuta sul consegnato (lo stato «bozza» e'' parametrico)')
+       FROM tmp_esito WHERE caso IN ('21a_argv2_emesso', '21b_argv2_bozza')),
+    '21a_argv2_emesso=P0001 21b_argv2_bozza=1',
+    '21) TG_ARGV[2] = EMESSO non si legge: la bozza dal vocabolario, la riga passa sul DDT in bozza e non su quello emesso')
 END;
 
 SELECT * FROM finish();

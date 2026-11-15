@@ -13,7 +13,6 @@ db/pgtap/script/test-vw-giornale-entita.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-af-emit-batch-marchio-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-documento-trattenuto-da-lotto-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-guard-congelamento-fusione-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE

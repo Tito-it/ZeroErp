@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_resolve_lotto_utility_emittente(bigint,integer,bigint,text,text,boolean): le due
+# colonne del RETURNS TABLE tornano dichiarate col %TYPE.
+#
+#   Il 20260222-06 le dichiarava config.utilities.id%TYPE e anagrafiche.soggetti_ruoli.id%TYPE;
+#   il 20260331-22 le aveva sciolte in INTEGER/BIGINT, e il 20261112-12 (gia' applicato) ne
+#   ha copiato la dichiarazione. Qui la dichiarazione torna quella del modello.
+#   I tipi risolti sono gli stessi (integer, bigint): CREATE OR REPLACE ammesso, il corpo e il
+#   COMMENT non cambiano, l'oggetto compilato e' identico. Cambia la fonte che il prossimo
+#   changeSet della funzione ricopiera'.
+#   Corpo = quello del 20261112-12. Rollback = la dichiarazione del 20261112-12.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17.6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261112-22-update-fn-resolve-lotto-utility-emittente-returns-type-mctit.yaml
+
+  - changeSet:
+      id: 20261112-22-update-fn-resolve-lotto-utility-emittente-returns-type
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_resolve_lotto_utility_emittente: le colonne del RETURNS TABLE tornano col %TYPE. Brief: brief-db-revisione-catalogo, giro 5-A.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid IN (to_regprocedure('vendite.fn_resolve_lotto_utility_emittente(bigint,integer,bigint,text,text,boolean)'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_lotto_utility_emittente(
+                   p_billing_account_id          anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                   p_utility_id                  config.utilities.id%TYPE DEFAULT NULL,
+                   p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                   p_scope                       TEXT DEFAULT 'LOTTO',
+                   p_caller                      TEXT DEFAULT 'fn_resolve_lotto_utility_emittente',
+                   p_check_emittente_attivo       BOOLEAN DEFAULT TRUE
+               )
+               RETURNS TABLE(resolved_utility_id config.utilities.id%TYPE, resolved_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              DECLARE
+                  v_utility_from_ba  anagrafiche.billing_account.utility_id%TYPE;
+                  v_emittente_from_ba anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_emittente_attivo BOOLEAN;
+              BEGIN
+                  -- Guard: parametri opzionali ma se forniti devono essere > 0
+                  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id se fornito deve essere > 0');
+                  END IF;
+
+                  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id se fornito deve essere > 0');
+                  END IF;
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id se fornito deve essere > 0');
+                  END IF;
+
+                  -- Risolvi utility da BA
+                  resolved_utility_id := p_utility_id;
+
+                  IF p_billing_account_id IS NOT NULL THEN
+                      SELECT ba.utility_id INTO v_utility_from_ba
+                        FROM anagrafiche.billing_account ba WHERE ba.id = p_billing_account_id;
+
+                      IF v_utility_from_ba IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_VALORE_MANCANTE',
+                              jsonb_build_object('billing_account_id', p_billing_account_id), NULL::uuid, concat('utility non risolta da BA ', p_billing_account_id));
+                      END IF;
+
+                      IF resolved_utility_id IS NOT NULL AND resolved_utility_id <> v_utility_from_ba THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_CLIENTE_UTILITY_MISMATCH_BA',
+                              jsonb_build_object('billing_account_id', p_billing_account_id, 'utility_parametro', resolved_utility_id, 'utility_ba', v_utility_from_ba),
+                              NULL::uuid, p_billing_account_id::text, resolved_utility_id::text, v_utility_from_ba::text);
+                      END IF;
+
+                      resolved_utility_id := COALESCE(resolved_utility_id, v_utility_from_ba);
+                  END IF;
+
+                  -- Risolvi emittente da BA (include fallback default globale)
+                  v_emittente_from_ba := anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id);
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL
+                     AND p_billing_account_id IS NOT NULL
+                     AND p_emittente_soggetto_ruolo_id <> v_emittente_from_ba THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                          jsonb_build_object('parametro', 'emittente_soggetto_ruolo_id', 'atteso', v_emittente_from_ba, 'ricevuto', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid, 'emittente_soggetto_ruolo_id', 'BA');
+                  END IF;
+
+                  resolved_emittente_soggetto_ruolo_id := COALESCE(p_emittente_soggetto_ruolo_id, v_emittente_from_ba);
+
+                  -- Verifica emittente attivo
+                  IF p_check_emittente_attivo THEN
+                      SELECT EXISTS (
+                          SELECT 1 FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.soggetto_ruolo_id = resolved_emittente_soggetto_ruolo_id AND ef.attivo IS TRUE
+                      ) INTO v_emittente_attivo;
+
+                      IF NOT v_emittente_attivo THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_CODICE',
+                              jsonb_build_object('emittente_soggetto_ruolo_id', resolved_emittente_soggetto_ruolo_id),
+                              NULL::uuid, resolved_emittente_soggetto_ruolo_id::text, 'anagrafiche.emittenti_fiscali');
+                      END IF;
+                  END IF;
+
+                  RETURN NEXT;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_resolve_lotto_utility_emittente(
+                   p_billing_account_id          anagrafiche.billing_account.id%TYPE DEFAULT NULL,
+                   p_utility_id                  config.utilities.id%TYPE DEFAULT NULL,
+                   p_emittente_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE DEFAULT NULL,
+                   p_scope                       TEXT DEFAULT 'LOTTO',
+                   p_caller                      TEXT DEFAULT 'fn_resolve_lotto_utility_emittente',
+                   p_check_emittente_attivo       BOOLEAN DEFAULT TRUE
+               )
+               RETURNS TABLE(resolved_utility_id INTEGER, resolved_emittente_soggetto_ruolo_id BIGINT)
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+               AS $function$
+              DECLARE
+                  v_utility_from_ba  anagrafiche.billing_account.utility_id%TYPE;
+                  v_emittente_from_ba anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_emittente_attivo BOOLEAN;
+              BEGIN
+                  -- Guard: parametri opzionali ma se forniti devono essere > 0
+                  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id), NULL::uuid, 'p_billing_account_id se fornito deve essere > 0');
+                  END IF;
+
+                  IF p_utility_id IS NOT NULL AND p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_utility_id', 'valore', p_utility_id), NULL::uuid, 'p_utility_id se fornito deve essere > 0');
+                  END IF;
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL AND p_emittente_soggetto_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_emittente_soggetto_ruolo_id', 'valore', p_emittente_soggetto_ruolo_id), NULL::uuid, 'p_emittente_soggetto_ruolo_id se fornito deve essere > 0');
+                  END IF;
+
+                  -- Risolvi utility da BA
+                  resolved_utility_id := p_utility_id;
+
+                  IF p_billing_account_id IS NOT NULL THEN
+                      SELECT ba.utility_id INTO v_utility_from_ba
+                        FROM anagrafiche.billing_account ba WHERE ba.id = p_billing_account_id;
+
+                      IF v_utility_from_ba IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_VALORE_MANCANTE',
+                              jsonb_build_object('billing_account_id', p_billing_account_id), NULL::uuid, concat('utility non risolta da BA ', p_billing_account_id));
+                      END IF;
+
+                      IF resolved_utility_id IS NOT NULL AND resolved_utility_id <> v_utility_from_ba THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_CLIENTE_UTILITY_MISMATCH_BA',
+                              jsonb_build_object('billing_account_id', p_billing_account_id, 'utility_parametro', resolved_utility_id, 'utility_ba', v_utility_from_ba),
+                              NULL::uuid, p_billing_account_id::text, resolved_utility_id::text, v_utility_from_ba::text);
+                      END IF;
+
+                      resolved_utility_id := COALESCE(resolved_utility_id, v_utility_from_ba);
+                  END IF;
+
+                  -- Risolvi emittente da BA (include fallback default globale)
+                  v_emittente_from_ba := anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id);
+
+                  IF p_emittente_soggetto_ruolo_id IS NOT NULL
+                     AND p_billing_account_id IS NOT NULL
+                     AND p_emittente_soggetto_ruolo_id <> v_emittente_from_ba THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_LOTTO_PARAMETRO_NON_COERENTE',
+                          jsonb_build_object('parametro', 'emittente_soggetto_ruolo_id', 'atteso', v_emittente_from_ba, 'ricevuto', p_emittente_soggetto_ruolo_id),
+                          NULL::uuid, 'emittente_soggetto_ruolo_id', 'BA');
+                  END IF;
+
+                  resolved_emittente_soggetto_ruolo_id := COALESCE(p_emittente_soggetto_ruolo_id, v_emittente_from_ba);
+
+                  -- Verifica emittente attivo
+                  IF p_check_emittente_attivo THEN
+                      SELECT EXISTS (
+                          SELECT 1 FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.soggetto_ruolo_id = resolved_emittente_soggetto_ruolo_id AND ef.attivo IS TRUE
+                      ) INTO v_emittente_attivo;
+
+                      IF NOT v_emittente_attivo THEN
+                          PERFORM script.fn_log_and_raise_error('vendite', p_caller, 'E_CODICE',
+                              jsonb_build_object('emittente_soggetto_ruolo_id', resolved_emittente_soggetto_ruolo_id),
+                              NULL::uuid, resolved_emittente_soggetto_ruolo_id::text, 'anagrafiche.emittenti_fiscali');
+                      END IF;
+                  END IF;
+
+                  RETURN NEXT;
+              END;
+              $function$;

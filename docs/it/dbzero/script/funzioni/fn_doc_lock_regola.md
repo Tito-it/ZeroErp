@@ -28,6 +28,12 @@ DECLARE
   v_ammesse  text[];
   v_stati    text[];
   v_colonne  jsonb := '[]'::jsonb;
+  -- La bozza del documento: dalla sua testata (config.sorgenti) al
+  -- vocabolario (script.fn_doc_stato_modello), allo stato iniziale.
+  v_testata     config.sorgenti.target_table%TYPE;
+  v_vocabolario regclass;  -- nudo: un vocabolario qualunque della mappa
+  v_iniziale_id bigint;    -- nudo: l'id di uno stato di sei vocabolari
+  v_bozza       text;      -- nudo: il codice_interno di sei vocabolari
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -38,15 +44,39 @@ BEGIN
   --   non possono capire gli argomenti in due modi.
   --   La decisione («questa colonna, in questo stato?») sta in
   --   script.fn_doc_lock_colonna_bloccata.
+  -- ⭐ La bozza la dice il vocabolario del documento: stato_bozza e'
+  --   il codice dello stato iniziale (colonna iniziale), non un
+  --   argomento. L'argomento dello stato bozza resta nella grammatica,
+  --   nella sua posizione, e non si legge: i montaggi non cambiano.
   -- =========================================================
   a := ARRAY(SELECT x
                FROM unnest(p_argomenti) WITH ORDINALITY AS u(x, k)
               ORDER BY k);
   n := COALESCE(cardinality(a), 0);
 
+  -- Il primo argomento di tutti e due i building block e' il tipo
+  -- documento. Un documento senza testata, senza vocabolario o senza
+  -- stato iniziale lascia v_bozza NULL: e' un montaggio sbagliato.
+  SELECT so.target_table
+    INTO v_testata
+    FROM config.sorgenti so
+   WHERE so.codice_interno = NULLIF(a[1], '');
+  IF v_testata IS NOT NULL THEN
+    SELECT m.vocabolario
+      INTO v_vocabolario
+      FROM script.fn_doc_stato_modello(v_testata) AS m;
+  END IF;
+  IF v_vocabolario IS NOT NULL THEN
+    v_iniziale_id := script.fn_stato_iniziale_id(v_vocabolario);
+    EXECUTE format('SELECT s.codice_interno::text FROM %s s WHERE s.id = $1', v_vocabolario)
+       INTO v_bozza
+      USING v_iniziale_id;
+  END IF;
+
   IF p_building_block = 'RIGHE' THEN
     -- [0] tipo documento, [1] colonna FK verso il padre,
-    -- [2] (opz.) stato bozza, [3] (opz.) livello TESTATA | RIGA,
+    -- [2] (opz., non letto: la bozza la dice il vocabolario),
+    -- [3] (opz.) livello TESTATA | RIGA,
     -- [4] (opz.) colonne che un UPDATE cambia fuori bozza,
     -- [5] (opz., con [4]) gli stati in cui le cambia,
     -- [6] (opz.) il codice errore da sollevare, default
@@ -64,7 +94,7 @@ BEGIN
       'building_block',   'RIGHE',
       'documento',        NULLIF(a[1], ''),
       'colonna_fk',       NULLIF(a[2], ''),
-      'stato_bozza',      COALESCE(NULLIF(a[3], ''), 'DRAFT'),
+      'stato_bozza',      v_bozza,
       'livello',          COALESCE(NULLIF(a[4], ''), 'TESTATA'),
       'colonne_ammesse',  to_jsonb(v_ammesse),
       'stati_ammessi',    to_jsonb(v_stati),
@@ -82,11 +112,15 @@ BEGIN
                -- stati senza colonne, sono un montaggio a meta'.
                OR (cardinality(v_ammesse) = 0) <> (cardinality(v_stati) = 0)
              THEN 'attesi: tipo documento, colonna FK della riga [, codice stato bozza [, livello TESTATA | RIGA [, colonne ammesse fuori bozza, stati in cui sono ammesse [, codice errore]]]]'
+             WHEN v_bozza IS NULL
+             THEN format('il tipo documento %s non porta a uno stato iniziale: serve la testata in config.sorgenti, il vocabolario in script.fn_doc_stato_modello e uno stato con iniziale = true', COALESCE(NULLIF(a[1], ''), 'NULL'))
         END);
   END IF;
 
   IF p_building_block = 'TESTATA' THEN
-    -- [0] tipo documento, [1] stato bozza, [2..] terne (colonna,
+    -- [0] tipo documento, [1] stato bozza (obbligatorio nella
+    -- grammatica, non letto: la bozza la dice il vocabolario), [2..]
+    -- terne (colonna,
     -- codice errore, stati in cui resta aperta fuori bozza). Stati
     -- vuoti: bloccata fuori bozza. Una lista (codice_interno separati
     -- da virgola): aperta solo in quegli stati, chiusa negli altri
@@ -111,9 +145,18 @@ BEGIN
       RETURN jsonb_build_object(
         'building_block', 'TESTATA',
         'documento',      NULLIF(a[1], ''),
-        'stato_bozza',    NULLIF(a[2], ''),
+        'stato_bozza',    v_bozza,
         'colonne',        '[]'::jsonb,
         'errore',         'attesi: tipo documento, codice dello stato bozza, e terne (colonna, codice errore, stati in cui resta aperta fuori bozza, vuoto, o - se e'' ferma anche in bozza)');
+    END IF;
+
+    IF v_bozza IS NULL THEN
+      RETURN jsonb_build_object(
+        'building_block', 'TESTATA',
+        'documento',      a[1],
+        'stato_bozza',    NULL,
+        'colonne',        '[]'::jsonb,
+        'errore',         format('il tipo documento %s non porta a uno stato iniziale: serve la testata in config.sorgenti, il vocabolario in script.fn_doc_stato_modello e uno stato con iniziale = true', a[1]));
     END IF;
 
     FOR i IN 3 .. n BY 3 LOOP
@@ -131,7 +174,7 @@ BEGIN
     RETURN jsonb_build_object(
       'building_block', 'TESTATA',
       'documento',      a[1],
-      'stato_bozza',    a[2],
+      'stato_bozza',    v_bozza,
       'colonne',        v_colonne,
       'errore',         NULL);
   END IF;
@@ -145,7 +188,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_doc_lock_regola(p_building_block text, p_argomenti text[])
-IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la GRAMMATICA dei montaggi dei due building block «si tocca solo in bozza». Dagli argomenti di un trigger (TG_ARGV, o pg_trigger.tgargs letto da dbops.fn_trigger_argomenti; qualunque primo indice) alla regola che dicono, in jsonb. p_building_block = RIGHE (vendite.trgfn_doc_righe_lock_fuori_bozza): documento, colonna_fk, stato_bozza (default DRAFT), livello (default TESTATA), colonne_ammesse e stati_ammessi (argomenti [4] e [5], liste separate da virgola), codice (argomento [6], default E_RIGA_DOC_NON_BOZZA), colonne_tecniche. TESTATA (vendite.trgfn_doc_testata_lock_fuori_bozza): documento, stato_bozza, colonne = [{colonna, codice, stati_ammessi}] nell''ordine degli argomenti: dal 2026-10-10 (fase 2) gli argomenti sono terne (colonna, codice, stati in cui resta aperta fuori bozza; vuoto = bloccata fuori bozza), D-8 e D-10. errore: NULL, o la frase di un montaggio sbagliato, che il chiamante solleva con E_DOC_RIGHE_LOCK_MONTAGGIO. La chiamano i due building block e il lettore script.fn_doc_lock_montaggi: trigger e capability non possono capire gli argomenti in due modi. La decisione per colonna e stato e'' script.fn_doc_lock_colonna_bloccata. STABLE. rev 2026-10-10 (fase 2, §5-bis.7 del brief, accettato da Tid): la testata a terne; una terna con colonna o codice vuoti e'' un montaggio sbagliato. rev 2026-10-11 (§11, R-DB-3 e D-12 di Tid): RIGHE legge un settimo argomento, il codice da sollevare, perche'' i satelliti del documento (indirizzi, fornitura) montano lo stesso building block con un codice la cui frase non parla di righe; oltre sette argomenti e'' un montaggio sbagliato. Gli adottanti di prima non lo passano e restano su E_RIGA_DOC_NON_BOZZA. rev 2026-10-18 (brief-db-indirizzi-documento-seguono-il-cliente §8.7): TESTATA, il terzo elemento della terna puo'' essere ''-'': la colonna e'' ferma sempre, anche in bozza (ferma_sempre = true, stati_ammessi vuoto). Ogni colonna della regola porta ferma_sempre. Un ''-'' mescolato a degli stati e'' un montaggio sbagliato. Primi adottanti: emittente_fiscale_id e utility_id di preventivo, offerta e contratto.';
+IS 'La grammatica dei montaggi dei due building block «si tocca solo in bozza»: dagli argomenti di un trigger (TG_ARGV, o pg_trigger.tgargs letto da dbops.fn_trigger_argomenti; qualunque primo indice) alla regola che dicono, in jsonb. stato_bozza e'' il codice dello stato iniziale del vocabolario del documento: dal tipo documento (primo argomento) alla testata (config.sorgenti.target_table), al vocabolario (script.fn_doc_stato_modello), allo stato con iniziale = true (script.fn_stato_iniziale_id). L''argomento dello stato bozza resta nella grammatica, nella sua posizione, e non si legge. p_building_block = RIGHE (vendite.trgfn_doc_righe_lock_fuori_bozza): documento, colonna_fk, stato_bozza, livello (default TESTATA), colonne_ammesse e stati_ammessi (argomenti [4] e [5], liste separate da virgola), codice (argomento [6], default E_RIGA_DOC_NON_BOZZA; i satelliti del documento, indirizzi e fornitura, montano un codice la cui frase non parla di righe), colonne_tecniche. TESTATA (vendite.trgfn_doc_testata_lock_fuori_bozza): documento, stato_bozza, colonne = [{colonna, codice, ferma_sempre, stati_ammessi}] dalle terne degli argomenti (colonna, codice, stati in cui resta aperta fuori bozza: vuoto = bloccata fuori bozza, ''-'' = ferma anche in bozza). errore: NULL, o la frase di un montaggio sbagliato (argomenti mancanti o in eccesso, una terna incompleta, un ''-'' mescolato a degli stati, un tipo documento che non porta a uno stato iniziale), che il chiamante solleva con E_DOC_RIGHE_LOCK_MONTAGGIO. La chiamano i due building block e il lettore script.fn_doc_lock_montaggi: trigger e capability non possono capire gli argomenti in due modi. La decisione per colonna e stato e'' script.fn_doc_lock_colonna_bloccata.';
 ```
 
 </div>

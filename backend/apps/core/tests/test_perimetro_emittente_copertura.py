@@ -42,16 +42,13 @@ Indice test (0..N):
 """
 
 import ast
-import csv
 import re
 import unittest
 from functools import lru_cache
 
 from apps.core.tests._repo import repo_root
-from apps.core.tests.test_liste_configurabili_seed import (
-    _LISTE,
-    _seed,
-)
+from apps.core.tests._seed_csv import RigaSeed, seed_csv, seed_ui
+from apps.core.tests.test_liste_configurabili_seed import _LISTE
 
 
 _APPS = repo_root() / "backend/apps"
@@ -331,7 +328,7 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
         — ma solo per chi ha lo scope multiplo, cioe' quasi nessuno: il difetto
         resterebbe invisibile per mesi. Qui si vede il giorno stesso.
         """
-        a_catalogo = {r["codice"] for r in _seed("lista_definizione.csv")}
+        a_catalogo = {r["codice"] for r in seed_ui("lista_definizione.csv")}
         fantasmi = sorted(set(_cancelli_dichiarati()) - a_catalogo)
         self.assertEqual(
             fantasmi, [],
@@ -454,7 +451,7 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
         """
         colonna = {
             r["codice"]: r["perimetro_emittente"]
-            for r in _seed("lista_definizione.csv")
+            for r in seed_ui("lista_definizione.csv")
         }
         self.assertTrue(
             all(v in ("t", "f") for v in colonna.values()),
@@ -504,12 +501,8 @@ def _esenzioni_senza_perimetro() -> set[str]:
     }
 
 
-# Scopo: righe di un CSV di seed della cartella `config` (i codici errore).
-#        `_seed` del modulo gemello legge la cartella `ui`: qui serve un'altra
-#        cartella, non un'altra logica.
-def _seed_config(nome: str) -> list[dict[str, str]]:
-    percorso = (
-        repo_root() / "db/changelog/migrations_v2/80_data/sql/config" / nome
-    )
-    with percorso.open(newline="", encoding="utf-8") as fh:
-        return list(csv.DictReader(fh))
+# Scopo: righe di un CSV di seed della cartella `config` (i codici errore),
+#        dal BB `seed_csv`: la stessa lettura col token NULL del caricatore.
+#        Leggere oggi solo colonne NOT NULL non e' una ragione per una copia.
+def _seed_config(nome: str) -> list[RigaSeed]:
+    return seed_csv(f"config/{nome}")

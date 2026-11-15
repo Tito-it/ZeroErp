@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_upsert_commessa_attivita`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -97,6 +97,11 @@ manda in commessa, compresi i pgTAP che partono da questa madre.
   (`E_COMMESSA_NON_MODIFICABILE`).
 * **Riga già emessa**: se la riga esistente non è più `NON_EMESSA` non si riscrive
   (`E_COMMESSA_ATTIVITA_GIA_EMESSA`).
+* **Fattore verso la base**: `p_factor_to_base` è facoltativo e passa com'è. Vuoto, lo legge il
+  trigger della tabella alla data dell'attività
+  ([`trgfn_attivita_fattore_alla_data`](/dbzero/vendite/funzioni/trgfn_attivita_fattore_alla_data));
+  senza mappatura per l'unità la riga è rifiutata (`E_UOM_MISSING`). La funzione non scrive più
+  1 al suo posto.
 
 ---
 
@@ -172,6 +177,8 @@ tocca; uno tolto o rinominato sì.
 * 2026-11-07 — la provenienza passa al modello: `p_sorgente_uid` lascia il posto a
   `p_sorgente_chiave` (testo, `id` o `uid`), la coppia di colonne la scrive `script.fn_sorgente_chiave`,
   e arriva `p_sorgente_riga` (brief-db-sorgente-documento-e-riga).
+* 2026-11-10 — `p_factor_to_base` vuoto per difetto, e non più 1: il fattore che manca lo
+  legge la tabella alla data dell'attività (brief-db-revisione-catalogo, giro 2-bis).
 
 ---
 

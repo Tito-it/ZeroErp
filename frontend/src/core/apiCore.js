@@ -36,13 +36,19 @@ export function lookupFormeGiuridiche(tipoSoggettoDettaglioId = null) {
   return api.get(`${BASE}/lookup/forme-giuridiche/`, { params })
 }
 
-export function lookupMatriceIndirizzi(tipoSoggettoDettaglioId) {
+// --- I picker dei tipi di indirizzo per un soggetto o un ruolo DA CREARE
+//     (R-2 di brief-db-copia-indirizzo-soggetto): ogni tipo, con `obbligatorio`,
+//     `ammesso` e il motivo di chi non lo e'. Per il soggetto e il ruolo gia'
+//     salvati i gemelli stanno in `anagrafiche/api` (`listSoggettoTipiIndirizzo`,
+//     `listRuoloTipiIndirizzo`). ⛔ Fino al 2026-11-15 erano `lookupMatriceIndirizzi*`
+//     e davano le righe della matrice: solo gli ammessi, senza validita'. ---
+export function lookupTipiIndirizzoNatura(tipoSoggettoDettaglioId) {
   return api.get(
     `${BASE}/lookup/tipi-soggetto-dettaglio/${tipoSoggettoDettaglioId}/indirizzi/`
   )
 }
 
-export function lookupMatriceIndirizziRuolo(tipoRuoloCodice) {
+export function lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice) {
   return api.get(
     `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/indirizzi/`
   )

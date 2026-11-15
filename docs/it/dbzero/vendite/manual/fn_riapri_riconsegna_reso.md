@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_riapri_riconsegna_reso(...)`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > Inversa:
@@ -37,7 +39,8 @@ resta comunque in `vendite.storico` via trigger.
 
 ### Regole chiave
 
-- **Gate**: reso `CONFERMATO`, come le sorelle.
+- **Gate**: reso nel lo stato di **emissione** del vocabolario (la colonna `emissione` di [config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso): la conferma, CONFERMATO nel seed), come le sorelle
+  (`E_RESO_NON_CONFERMATO`; nella capability `can_riconsegna`).
 - **`p_righe = NULL`** → riapre **tutte** le rinunce delle righe ri-consegna del reso.
 - **`[{resi_riga_id, qta}]`** → riapre fino a `qta`, scalando dalle rinunce **più
   recenti** (LIFO): si annulla *l'ultimo errore*, non il primo evento registrato.

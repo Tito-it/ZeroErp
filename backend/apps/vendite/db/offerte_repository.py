@@ -143,7 +143,9 @@ OFFERTA_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data_emissione
 # catalogo liste 'vendite.offerte', e materializza listino_codice,
 # listino_versione_codice, valuta_codice, is_scaduta (prima JOIN/derivati nel
 # repository). Nessun JOIN ulteriore qui: la vista basta. Il detail
-# (`get_offerta`) usa la propria proiezione `_SELECT_COLS_OFFERTA` + JOIN.
+# (`get_offerta`) usa la propria proiezione `_SELECT_COLS_OFFERTA` + JOIN, e
+# `is_scaduta` lo chiede alla sede della regola, `vendite.fn_offerta_scaduta`,
+# la stessa che la vista chiama (brief-db-stati-documento-dal-vocabolario V-1).
 _FROM_LISTA_OFFERTE = "FROM vendite.vw_offerte_commerciali_lista v"
 
 
@@ -185,6 +187,13 @@ _SELECT_COLS_OFFERTA = """
     o.valore_variazione_globale,
     o.validita_dal,
     o.validita_al,
+    -- «Quest'offerta e' scaduta» chiesto alla sede della regola,
+    -- `vendite.fn_offerta_scaduta` (validita' passata e nessun esito del
+    -- cliente), non ricalcolato qui: la vista della lista chiama la stessa
+    -- funzione, e dettaglio e lista dicono la stessa cosa
+    -- (brief-db-stati-documento-dal-vocabolario §6.8 D-SCAD, §6.10 V-1).
+    vendite.fn_offerta_scaduta(sd.esito, o.validita_al, script.fn_data_operativa())
+                             AS is_scaduta,
     o.stato_doc_offerta_id,
     sd.codice_interno        AS stato_codice_interno,
     sd.descrizione           AS stato_descrizione,
@@ -761,6 +770,10 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # Approvazione prezzo L3 (migration 20260601-01, simmetria contratti_righe).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     ECCEZIONE_UPDATE_COLUMNS: frozenset[str] = frozenset({
@@ -779,6 +792,8 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         # (`_update_riga_offerta`) e dal gate (REJECTED/meta motivazione).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Inserisce un'eccezione offerta. I 5 CHECK constraint DB

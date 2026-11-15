@@ -1,5 +1,7 @@
 # fn_available_actions_ordine
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 ### Scopo
 
 Restituisce in un **unico JSONB** tutte le capability dell'ordine di vendita
@@ -58,14 +60,19 @@ script.fn_available_actions_ordine(
         }
     ],
     "can_change_state":   true,   // SOLO transizioni di stato (escluso push_commessa)
-    "can_edit_testata":   true,   // true solo in DRAFT
-    "can_edit_righe":     true,   // true solo in DRAFT
+    "can_edit_testata":   true,   // dal montaggio del lock di testata (script.fn_doc_testata_in_stato)
+    "can_edit_righe":     true,   // dal lock delle righe (script.fn_doc_riga_modificabile): oggi solo nello stato iniziale
     "can_edit_data_consegna_confermata":            false,             // la promessa di consegna, col verbo dedicato (rev 2026-10-10)
     "can_edit_data_consegna_confermata_reason":     "ORDINE_IN_BOZZA", // null se ammesso
     "can_edit_data_consegna_confermata_reason_key": "vendite.ordini.data_consegna_confermata_reason.in_bozza",
+    "can_edit_data_consegna_confermata_reason_valori": [],             // i valori della frase; [] in bozza
     "can_push_commessa":  false,  // true se righe pushabili (trigger CONFERMATO, anche PARZIALMENTE_EVASO/EVASO)
     "can_push_commessa_reason":     "ORDINE_NON_CONFERMATO",                  // null se push disponibile
-    "can_push_commessa_reason_key": "ordini.push_commessa_reason.non_confermato", // chiave i18n tooltip
+    "can_push_commessa_reason_key": "vendite.ordini.push_commessa_reason.non_confermato", // chiave i18n tooltip
+    "can_genera_ddt":            false,                    // la bolla di evasione: da script.fn_check_ordine_evadibile
+    "can_genera_ddt_reason":     "ORDINE_NON_EVADIBILE",   // null se si evade
+    "can_genera_ddt_reason_key": "vendite.ordini.genera_ddt_reason.stato_non_evadibile",
+    "can_genera_ddt_reason_valori": ["ORD-2026-0042", "DRAFT"],       // i valori della frase: numero (o id), stato
     "non_editable_fields": [...],
     "stato_codice":       "DRAFT"
 }
@@ -76,7 +83,7 @@ script.fn_available_actions_ordine(
 | `stato_codice` | Azioni in `available_actions` | Note |
 |---|---|---|
 | `DRAFT` | `conferma`, `annulla` | Ordinate per `stati_doc_ordini.ordine` (CONFERMATO=20, ANNULLATO=60) |
-| `CONFERMATO` | `push_commessa` *(se eleggibile)* | Nessuna transizione manuale: `CONFERMATO → ANNULLATO` è `attivo=false`. `push_commessa` appesa solo se l'ordine è pushabile |
+| `CONFERMATO` | `annulla`, `push_commessa` *(se eleggibile)* | L'annullo del confermato chiede l'azione `emetti_ordine` (si nasconde a chi non ce l'ha). `push_commessa` appesa solo se l'ordine è pushabile |
 | `PARZIALMENTE_EVASO` / `EVASO` | `push_commessa` *(se eleggibile)* | **Rev 2026-07-10 (decoupling)**: la spedizione non chiude la finestra di push per il trigger CONFERMATO (fix «orfano») |
 | `ANNULLATO` | `[]` | Terminale |
 
@@ -89,7 +96,8 @@ script.fn_available_actions_ordine(
 
 Appesa a mano (non da matrice) quando l'ordine ha almeno una riga pushabile secondo
 `fn_list_ordini_da_pushare` (fonte unica: `fatturazione_trigger='CONFERMATO'`, stato
-**non** `DRAFT`/`ANNULLATO`/`FATTURATO`, righe non ancora `EMESSA`). **Rev 2026-07-10
+fuori dallo stato iniziale e da quello di annullo del vocabolario, righe non ancora
+`EMESSA`). **Rev 2026-07-10
 (decoupling fatturazione ↔ spedizione)**: vale anche in `PARZIALMENTE_EVASO`/`EVASO` —
 la fatturazione su conferma è ortogonale alla spedizione (recupero ordine «orfano»,
 piano `piano-db-fix-orfano-push-ordine-confermato.md`):
@@ -111,11 +119,15 @@ valorizza la coppia motivo/chiave i18n per il tooltip:
 
 | Condizione | `can_push_commessa` | `can_push_commessa_reason` | `can_push_commessa_reason_key` |
 |---|:---:|---|---|
-| stato `DRAFT`/`ANNULLATO` | `false` | `ORDINE_NON_CONFERMATO` | `ordini.push_commessa_reason.non_confermato` |
-| `fatturazione_trigger` ≠ CONFERMATO | `false` | `ORDINE_FATTURA_DA_DDT` | `ordini.push_commessa_reason.fattura_da_ddt` |
+| lo stato iniziale (colonna `iniziale`, oggi `DRAFT`) | `false` | `ORDINE_NON_CONFERMATO` | `vendite.ordini.push_commessa_reason.non_confermato` |
+| lo stato di annullo (colonna `is_abortito`, oggi `ANNULLATO`) | `false` | `ORDINE_ANNULLATO` | `vendite.ordini.push_commessa_reason.annullato` |
+| `fatturazione_trigger` ≠ CONFERMATO | `false` | `ORDINE_FATTURA_DA_DDT` | `vendite.ordini.push_commessa_reason.fattura_da_ddt` |
 | ≥1 riga pushabile (`fn_list_ordini_da_pushare`) | `true` | `null` | `null` |
-| 0 righe pushabili, ≥1 segmento `EMESSA` | `false` | `ORDINE_GIA_FATTURATO` | `ordini.push_commessa_reason.gia_fatturato` |
-| 0 righe pushabili, nessun segmento emesso | `false` | `ORDINE_NESSUNA_RIGA_PUSHABILE` | `ordini.push_commessa_reason.nessuna_riga_pushabile` |
+| 0 righe pushabili, ≥1 segmento `ALLOCATA` | `false` | `ORDINE_GIA_INVIATO` | `vendite.ordini.push_commessa_reason.gia_inviato` |
+| 0 righe pushabili, ≥1 segmento `EMESSA` | `false` | `ORDINE_GIA_FATTURATO` | `vendite.ordini.push_commessa_reason.gia_fatturato` |
+| 0 righe pushabili, nessun segmento emesso | `false` | `ORDINE_NESSUNA_RIGA_PUSHABILE` | `vendite.ordini.push_commessa_reason.nessuna_riga_pushabile` |
+
+Il significato dello stato (iniziale, annullo) si legge dal vocabolario, non dal codice.
 
 > **`ORDINE_GIA_EVASO` rimosso (rev 2026-07-10).** Asseriva «EVASO = già fatturato», in
 > collisione con «EVASO = spedizione completa» del flusso DDT. La verità di billing è
@@ -161,13 +173,16 @@ da DRAFT è bloccata tutta la testata, allineata a `_UPDATE_KEYS_ORDINE` di
    `sa.ordine`. Guard defense-in-depth: `AND t.meta ? 'action_key' AND t.meta ? 'label_key'`.
 3. **`can_change_state`** — `jsonb_array_length(v_actions) > 0` calcolato **qui**, prima di
    appendere `push_commessa`.
-4. **push_commessa** — cascata (rev 2026-07-10): stato `DRAFT`/`ANNULLATO` → reason;
+4. **push_commessa** — cascata: stato iniziale → `ORDINE_NON_CONFERMATO`; stato di annullo →
+   `ORDINE_ANNULLATO`;
    `fatturazione_trigger ≠ 'CONFERMATO'` → `ORDINE_FATTURA_DA_DDT`; `EXISTS` su
    `fn_list_ordini_da_pushare(p_ordine_id)` → eleggibile; ≥1 segmento
-   `ORD:{uid}:R:{riga_id}` con `stato_emissione='EMESSA'` → `ORDINE_GIA_FATTURATO`;
+   chiave di `script.fn_segment_key` `ALLOCATA` → `ORDINE_GIA_INVIATO`, `EMESSA` → `ORDINE_GIA_FATTURATO`;
    fallback → `ORDINE_NESSUNA_RIGA_PUSHABILE`.
-5. **Capability editabilità** — da `v_stato_cod`: `can_edit_testata/righe = (stato='DRAFT')`;
-   `non_editable_fields` via `CASE` con costanti PL/pgSQL.
+5. **Capability editabilità** — `can_edit_testata` e `non_editable_fields` dal montaggio del
+   lock di testata (`script.fn_doc_testata_in_stato`); `can_edit_righe` e `can_edit_indirizzi`
+   dal lock delle righe e degli indirizzi (`script.fn_doc_riga_modificabile`), lo stesso che i
+   trigger fanno rispettare.
 6. **Build JSONB** — `jsonb_build_object` con tutte le chiavi.
 
 ## Dipendenze
@@ -202,7 +217,7 @@ Regola decisa da Tid: *un prezzo che nessuno ha autorizzato non esce dalla bozza
 ordine con un componente BoM **attivo** in attesa di approvazione (`PENDING`) o
 **rifiutato** (`REJECTED`) non si conferma.
 
-* **Dalla bozza**, i motivi dell'azione verso `CONFERMATO` sommano a quelli di
+* **Dallo stato iniziale**, i motivi dell'azione verso lo stato di emissione sommano a quelli di
   [`script.fn_check_ordine_confermabile`](/dbzero/script/funzioni/fn_check_ordine_confermabile)
   i motivi di [`script.fn_check_prezzi_autorizzati`](/dbzero/script/funzioni/fn_check_prezzi_autorizzati). `enabled`, `reason` e `reason_key` discendono dallo stesso array.
 * **Solo dalla bozza**, come la Regola 5 di
@@ -221,17 +236,27 @@ Dopo la conferma le righe dell'ordine non si toccano più, salvo la **data di co
 confermata**, che si sposta finché c'è merce da evadere. Il backend la cambia con un verbo
 dedicato, e la terna dice quando proporlo (famiglia 1: motivo e chiave dal nome del flag).
 
-| Stato | `can_edit_data_consegna_confermata` | `_reason` | `_reason_key` |
-|---|:---:|---|---|
-| `DRAFT` | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` — in bozza la data si scrive modificando la riga |
-| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` |
-| tutti gli altri | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` |
+| Stato | `can_edit_data_consegna_confermata` | `_reason` | `_reason_key` | `_reason_valori` |
+|---|:---:|---|---|---|
+| lo stato iniziale (colonna `iniziale`, oggi `DRAFT`) | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` — in bozza la data si scrive modificando la riga | `[]` |
+| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` | `[]` |
+| tutti gli altri | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` | l'etichetta del documento, lo stato, il verbo (`modificare`) |
 
 ⭐ Gli stati **non sono scritti qui**: li dice il montaggio del lock delle righe d'ordine,
 letto da [`script.fn_check_ordine_data_consegna_confermata`](/dbzero/script/funzioni/fn_check_ordine_data_consegna_confermata).
 Il flag discende dal motivo. Capability di documento, non di riga: la regola guarda solo
 lo stato della testata.
 (changeSet `20261010-67`, brief `brief-db-testata-dopo-emissione`, fase 1.)
+
+## La bolla di evasione: `can_genera_ddt`
+
+Il flag `can_genera_ddt`, con `_reason`, `_reason_key` e `_reason_valori`, dice se dall'ordine si
+genera una bolla di evasione, e se no perché. `_reason_valori` sono i segnaposti della frase (il
+numero dell'ordine, o l'id se non è numerato, e lo stato), `[]` quando la bolla si genera. Viene dal primo motivo di
+[`script.fn_check_ordine_evadibile`](/dbzero/script/funzioni/fn_check_ordine_evadibile), la stessa
+check da cui [`vendite.fn_genera_ddt_da_ordine`](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine)
+rifiuta: si evade dallo stato di emissione e da `PARZIALMENTE_EVASO`. Il flag discende dal motivo.
+Il drawer accende «Genera bolla» da qui, non da una lista di stati sua.
 
 ## Rev 2026-10-11 — gli indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
 

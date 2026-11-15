@@ -15,7 +15,7 @@ import SoggettoDrawer from '../components/SoggettoDrawer.vue'
 import ContattiSoggettoDrawer from '../components/ContattiSoggettoDrawer.vue'
 import IndirizziSoggettoDrawer from '../components/IndirizziSoggettoDrawer.vue'
 import ContiBancariDrawer from '../components/ContiBancariDrawer.vue'
-import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 
 const drawer = useDrawerState()
 const store = useClientiStore()
@@ -102,7 +102,6 @@ function onContiBancari(data) {
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.ruoloId"
       :istanza-utility-id="indirizziDrawer.istanzaUtilityId"
-      :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
       context="ruolo"
     />
 

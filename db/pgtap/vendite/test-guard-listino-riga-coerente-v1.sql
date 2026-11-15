@@ -79,16 +79,6 @@ SELECT plan(15);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' OR SQLSTATE '23514' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Due aziende, costruite PRIMA del contesto (fn_pgtap_crea_mondo_cliente: «una
 -- seconda azienda si costruisce coi builder atomici, prima del contesto»; con
@@ -171,6 +161,12 @@ SELECT a.uom_id AS u1,
   FROM catalogo.articoli a
  WHERE a.id = (SELECT a1 FROM t_art);
 
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D25/Q24): un prezzo vale in
+--   un'unita' che si converte per l'articolo per tutto il periodo della versione
+--   (vendite.trgfn_listini_righe_guard_uom_periodo). La seconda unita' si mappa.
+INSERT INTO catalogo.articoli_uom_operativa (articolo_id, uom_id, factor_to_base)
+SELECT (SELECT a1 FROM t_art), u2, 2 FROM t_uom;
+
 -- R1 e R2: stesso articolo, stessa versione, UoM diverse.
 CREATE TEMP TABLE t_r AS
 WITH ins AS (
@@ -231,7 +227,7 @@ SELECT is(
 -- 4-6) Incoerenti: articolo, versione, unita' di misura
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_articolo_id => %L::uuid, p_listino_riga_id => %s)',
         (SELECT commessa_id FROM t_c), (SELECT a2 FROM t_art), (SELECT r1 FROM t_r))),
     'E_ATTIVITA_LISTINO_RIGA_INCOERENTE',
@@ -239,7 +235,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_listino_versione_id => %s, p_listino_riga_id => %s)',
         (SELECT commessa_id FROM t_c), (SELECT listino_versione_id FROM t_l2), (SELECT r1 FROM t_r))),
     'E_ATTIVITA_LISTINO_RIGA_INCOERENTE',
@@ -247,7 +243,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.commesse_attivita SET listino_riga_id = %s WHERE id = %s',
         (SELECT r2 FROM t_r), (SELECT attivita_id FROM t_a))),
     'E_ATTIVITA_LISTINO_RIGA_INCOERENTE',
@@ -258,7 +254,7 @@ SELECT is(
 -- 7) La versione si toglie, la riga resta: non piu' lecito (D-2)
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.commesse_attivita SET listino_versione_id = NULL WHERE id = %s',
         (SELECT attivita_id FROM t_a))),
     'chk_commesse_attivita_listino_riga_con_versione',
@@ -293,7 +289,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.attivita_fatturabili SET listino_riga_id = %s WHERE commessa_attivita_id = %s',
         (SELECT r2 FROM t_r), (SELECT attivita_id FROM t_a))),
     'E_ATTIVITA_LISTINO_RIGA_INCOERENTE',
@@ -306,7 +302,7 @@ SELECT is(
 -- R2 non e' citata (i rifiuti sopra sono tornati indietro): sulla versione
 -- ATTIVA il guard di stato la lascerebbe passare, e parla il lock.
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.listini_righe SET uom_id = %s WHERE id = %s',
         (SELECT u3 FROM t_uom), (SELECT r2 FROM t_r))),
     'E_LISTINO_RIGA_IDENTITA_IMMUTABILE',
@@ -322,7 +318,7 @@ SELECT is(
 --   Senza, il builder si fermava su «nessuna riga» e il guard non veniva mai
 --   raggiunto: verde da owner, rosso come app.
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_articolo_id => %L::uuid, p_listino_versione_id => %s, p_listino_riga_id => %s)',
         (SELECT commessa_id FROM t_c), (SELECT a3 FROM t_art_altrui),
         (SELECT listino_versione_id FROM t_l_altrui), (SELECT r3 FROM t_r_altrui))),
@@ -331,7 +327,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_articolo_id => %L::uuid, p_listino_versione_id => %s)',
         (SELECT commessa_id FROM t_c), (SELECT a1 FROM t_art), (SELECT listino_versione_id FROM t_l_altrui))),
     'E_ATTIVITA_LISTINO_EMITTENTE_DIVERSO',
@@ -360,7 +356,7 @@ WITH ins AS (
 SELECT id AS rb FROM ins;
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'SELECT dbops.fn_pgtap_crea_commessa_attivita(p_commessa_id => %s, p_listino_riga_id => %s)',
         (SELECT commessa_id FROM t_c), (SELECT rb FROM t_rb))),
     'E_ATTIVITA_LISTINO_VERSIONE_BOZZA',

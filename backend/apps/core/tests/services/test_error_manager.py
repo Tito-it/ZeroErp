@@ -55,7 +55,7 @@ class RaiseErrorTests(SimpleTestCase):
     # Chi chiude con `raise_error`/`map_integrity_error` e non ha altro dopo
     # dichiara lo stesso contratto: i chiamanti non scrivono l'«irraggiungibile».
     def test_i_traduttori_che_lo_usano_per_ultimi_sono_noreturn(self):
-        from apps.catalogo.services.catalogo_service import _translate_nota_integrity_error
+        from apps.catalogo.services.catalogo_service import _translate_uom_integrity_error
         from apps.core.services.payload_helpers import map_integrity_error
         from apps.pratiche.services.pratiche_service import _raise_known_db_error
         from apps.vendite.services.famiglie_service import FamiglieDocumentoService
@@ -69,7 +69,7 @@ class RaiseErrorTests(SimpleTestCase):
             map_integrity_error,
             _translate_integrity_error,
             _raise_known_db_error,
-            _translate_nota_integrity_error,
+            _translate_uom_integrity_error,
             FamiglieDocumentoService._traduci,
             RegistriService._traduci,
         ):

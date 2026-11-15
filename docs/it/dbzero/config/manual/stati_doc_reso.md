@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_reso`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,7 +19,7 @@
 > * [script.trgfn_doc_stato_iniziale](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) — fa nascere il reso nello stato iniziale
 > * [vendite.fn_conferma_reso](/dbzero/vendite/funzioni/fn_conferma_reso) — la conferma, che fa da emissione
 > * [vendite.fn_annulla_reso](/dbzero/vendite/funzioni/fn_annulla_reso) — l'annullo, che storna gli effetti
-> * [script.fn_available_actions_reso](/dbzero/script/funzioni/fn_available_actions_reso) — la capability, che legge `meta`
+> * [script.fn_available_actions_reso](/dbzero/script/funzioni/fn_available_actions_reso) — la capability, che legge `meta` e le colonne del significato
 >
 > Guide:
 >
@@ -41,11 +41,13 @@ annullo e a che punto è del suo ciclo; i passaggi stanno nella matrice
 | `codice_interno` | Che cosa vuol dire | Marcato da |
 | --- | --- | --- |
 | `DRAFT` | bozza: le righe si cambiano, nessun numero | `iniziale` |
-| `CONFERMATO` | gli effetti del reso sono applicati e il numero è assegnato | — |
+| `CONFERMATO` | gli effetti del reso sono applicati e il numero è assegnato | `emissione` |
 | `ANNULLATO` | il reso è annullato, e gli effetti di una conferma sono stornati | `is_abortito` |
 
-La logica usa sempre `codice_interno`, che non si modifica (`E_CODICE_NON_MODIFICABILE`), mai
-`codice`. Uno stato già usato da un reso o dalla matrice non si disattiva.
+Il significato di uno stato si legge dalle sue colonne, non dal codice: chi legge che cosa è nella
+sezione qui sotto. Dove serve un codice (un parametro, la matrice, un errore) si usa
+`codice_interno`, che non si modifica (`E_CODICE_NON_MODIFICABILE`), mai `codice`. Uno stato già
+usato da un reso o dalla matrice non si disattiva.
 
 ---
 
@@ -61,14 +63,41 @@ La logica usa sempre `codice_interno`, che non si modifica (`E_CODICE_NON_MODIFI
   `IN_CORSO`, `CHIUSO`): la bozza è aperta, conferma e annullo sono chiusi. Il reso è un ramo
   inverso della genealogia dei documenti, fuori dalla frontiera in avanti.
 
-Il reso **non si emette**: il vocabolario non ha la colonna `emissione`, e chiesto al suo lettore lo
-stato di emissione è vuoto. Al suo posto c'è la conferma, il passaggio `DRAFT → CONFERMATO` che
-chiede l'azione `conferma_reso`.
+* **`emissione`** — lo stato in cui il reso è emesso: `CONFERMATO`, a cui si arriva dalla conferma
+  (`DRAFT → CONFERMATO`, azione `conferma_reso`). Lì nasce il numero
+  ([`vendite.trgfn_resi_gen_numero`](/dbzero/vendite/manual/trgfn_resi_gen_numero)) e da lì la merce è
+  rientrata (`script.vw_stati_doc_reso_merce_rientrata`). Al più uno, e attivo.
+* **`esito`** e **`terminale`** — come negli altri vocabolari, e la vista
+  [`vendite.vw_stato_sorgente_reso`](/dbzero/vendite/views/vw_stato_sorgente_reso) li passa così come
+  sono:
 
-Non dichiara nemmeno `esito` e `terminale`: li deriva la vista
-[`vendite.vw_stato_sorgente_reso`](/dbzero/vendite/views/vw_stato_sorgente_reso), dove l'annullo è
-un esito negativo, ogni altro stato chiuso un esito positivo, e ogni stato chiuso è terminale. Non ha
-le colonne della stampa (`pdf_mode`, `pdf_allow_allegati`): il reso è fuori dal motore di stampa.
+| Stato | `esito` | `terminale` |
+| --- | --- | --- |
+| `DRAFT` | *(nessuno)* | ❌ |
+| `CONFERMATO` | `POSITIVO` | ❌ |
+| `ANNULLATO` | `NEGATIVO` | ✅ |
+
+⭐ **Il reso confermato non è terminale.** Ha fatto il suo lavoro (esito positivo, fase chiusa), ma
+resta annullabile a mano: `CONFERMATO → ANNULLATO` è lo storno. È la stessa regola dell'offerta
+accettata. `terminale` vuol dire che dallo stato non esce nessun passaggio a mano, e lo fa rispettare
+[`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale).
+
+Il vocabolario non ha le colonne della stampa (`pdf_mode`, `pdf_allow_allegati`): il reso è fuori dal
+motore di stampa.
+
+---
+
+### Chi legge ogni colonna
+
+| Colonna | Chi la legge, e per che cosa |
+| --- | --- |
+| `iniziale` | la nascita (`script.trgfn_doc_stato_iniziale`); il lock delle righe e della testata, e quindi `can_edit_righe` della capability |
+| `emissione` | la conferma, che va verso questo stato ([`vendite.fn_conferma_reso`](/dbzero/vendite/funzioni/fn_conferma_reso)); il numero (`vendite.trgfn_resi_gen_numero`); lo storno dell'annullo, che c'è solo se il reso era emesso; la porta della riconsegna ([`vendite.fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna), la chiusura e la riapertura) e `can_riconsegna`; i motivi della merce sull'azione di conferma |
+| `is_abortito` | l'annullo, che va verso questo stato ([`vendite.fn_annulla_reso`](/dbzero/vendite/funzioni/fn_annulla_reso)); i resi che non contano nei tetti della quantità resa (`vendite.trgfn_resi_righe_guard_quantita`, `script.fn_check_reso_merce`); il motivo degli accrediti sull'azione di annullo |
+
+Da quali stati si conferma e si annulla lo dice la matrice, non una lista di codici: la conferma e
+l'annullo rifiutano (`E_RESO_STATO_NON_CONFERMABILE`, `E_RESO_STATO_NON_ANNULLABILE`) dove la riga
+del passaggio non c'è.
 
 ---
 
@@ -93,6 +122,7 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_reso.
 * `db/pgtap/script/test-trgfn-doc-stato-iniziale-v1.sql` — uno stato iniziale per vocabolario, attivo, e la nascita.
 * `db/pgtap/script/test-doc-verbo-comune-e-porta-v1.sql` — conferma e annullo sul verbo comune, con la porta.
 * `db/pgtap/script/test-capability-motivi-e-nessuna-azione-v1.sql` — la spiegazione sugli stati senza azioni.
+* `db/pgtap/vendite/test-reso-stati-dal-vocabolario-v1.sql` — i lettori di ogni colonna, con le marche `iniziale`, `emissione` e `is_abortito` spostate.
 
 ---
 
@@ -102,6 +132,8 @@ Il contenuto di tutte le colonne sta nel CSV `80_data/sql/config/stati_doc_reso.
   DDT senza le colonne della stampa; la fase stava allora in `meta.fase`, poi è diventata una
   colonna.
 * 2026-10-24 — arriva `iniziale` (brief `brief-modello-documento-vendita`).
+* 2026-11-14 — conferma, annullo, riconsegna, capability e tetti delle quantità leggono le colonne,
+  non i codici (brief `brief-db-stati-documento-dal-vocabolario`, giro 6e).
 
 ---
 

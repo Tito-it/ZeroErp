@@ -16,6 +16,8 @@ CREATE OR REPLACE FUNCTION vendite.fn_chiudi_riconsegna_reso(p_reso_id bigint, p
  RETURNS integer
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): il reso si chiude dallo stato
+--   di emissione (la colonna emissione), non dal codice CONFERMATO.
 -- Scopo: madre della CHIUSURA della ri-consegna. Dichiara che una
 --   quota di merce resa PER RI-CONSEGNA non tornera' al cliente:
 --   scrive vendite.resi_righe_rinunce e ri-proietta lo stato ordine
@@ -35,6 +37,7 @@ AS $function$
 --   quando il magazzino arrivera', il movimento parte da qui.
 DECLARE
     v_stato          config.stati_doc_reso.codice_interno%TYPE;
+    v_emissione      config.stati_doc_reso.emissione%TYPE;
     v_riga           RECORD;
     v_ord            RECORD;
     v_residuo        numeric;
@@ -49,10 +52,11 @@ BEGIN
             NULL::uuid, 'reso_id obbligatorio (>0)');
     END IF;
 
-    -- 2) Reso esistente e CONFERMATO (stesso gate della generazione:
-    --    si chiude cio' che si potrebbe ri-spedire).
-    SELECT sdr.codice_interno
-      INTO v_stato
+    -- 2) Reso esistente ed emesso (la colonna emissione del suo stato: la
+    --    conferma). Stesso gate della generazione: si chiude cio' che si
+    --    potrebbe ri-spedire.
+    SELECT sdr.codice_interno, sdr.emissione
+      INTO v_stato, v_emissione
       FROM vendite.resi r
       JOIN config.stati_doc_reso sdr ON sdr.id = r.stato_doc_reso_id
      WHERE r.id = p_reso_id;
@@ -64,7 +68,7 @@ BEGIN
             NULL::uuid, p_reso_id::text);
     END IF;
 
-    IF v_stato IS DISTINCT FROM 'CONFERMATO' THEN
+    IF v_emissione IS NOT TRUE THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite','fn_chiudi_riconsegna_reso','E_RESO_NON_CONFERMATO',
             jsonb_build_object('reso_id', p_reso_id, 'stato', v_stato),
@@ -149,7 +153,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_chiudi_riconsegna_reso(p_reso_id bigint, p_righe jsonb, p_note character varying)
-IS 'Madre CHIUSURA ri-consegna (brief-db-chiusura-riconsegna-reso-definitivo S4.3): dichiara che una quota di merce resa PER RI-CONSEGNA non tornera'' al cliente. Scrive vendite.resi_righe_rinunce e ri-proietta lo stato ordine (il residuo si chiude -> EVASO). Speculare a fn_genera_ddt_riconsegna: gate reso CONFERMATO, p_righe NULL = tutta la copertura residua altrimenti [{resi_riga_id, qta}] troncata al residuo, E_RESO_NESSUNA_RICONSEGNA_PENDENTE se non c''e'' nulla da chiudere. Ritorna il numero di righe chiuse. NON crea documenti e NON cambia numeri: l''importo dell''accredito resta identico, passa solo da FACOLTATIVA a DOVUTA. MERCE FISICA: la quota rinunciata resta materialmente al fornitore - senza modulo magazzino non c''e'' nulla da movimentare, ma quando il magazzino arrivera'' il movimento parte da qui (S5.4). rev 2026-07-26. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
+IS 'Madre della chiusura della ri-consegna: dichiara che una quota di merce resa per ri-consegna non tornera'' al cliente. Scrive vendite.resi_righe_rinunce e ri-proietta lo stato dell''ordine (il residuo si chiude) con vendite.fn_ordine_proietta_stato_evasione. Speculare a vendite.fn_genera_ddt_riconsegna: la stessa porta (il reso emesso, la colonna emissione di config.stati_doc_reso; altrimenti E_RESO_NON_CONFERMATO), la stessa semantica di p_righe (NULL = tutta la copertura residua, altrimenti [{resi_riga_id, qta}] troncata al residuo), E_RESO_NESSUNA_RICONSEGNA_PENDENTE se non c''e'' nulla da chiudere. Ritorna il numero di righe chiuse. Non crea documenti e non cambia numeri: l''importo dell''accredito resta, passa da FACOLTATIVA a DOVUTA. La quota rinunciata resta materialmente al fornitore; senza modulo magazzino non c''e'' nulla da movimentare, e il movimento, quando servira'', parte da qui.';
 ```
 
 </div>

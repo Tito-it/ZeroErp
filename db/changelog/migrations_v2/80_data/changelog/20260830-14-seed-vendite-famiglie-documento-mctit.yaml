@@ -110,7 +110,6 @@ databaseChangeLog:
             #    migrate su COMMESSA — apply del 18-09 sera, rosso al primo
             #    colpo. E' la convenzione di lista_definizione.csv e di tutti i
             #    laterali ritirati: il NULL si SCRIVE, non si lascia vuoto.
-            nullValue: "NULL"
             # ⭐ Chiave naturale, non id (identity: DISTINTA e' 812 qui, 6 da
             #    zero). Vedi intestazione.
             primaryKey: "codice_interno"

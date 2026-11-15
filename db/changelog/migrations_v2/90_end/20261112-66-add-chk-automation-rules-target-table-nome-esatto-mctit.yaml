@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automation_rules_tbl: target_table e' '*all' o il nome esatto di una tabella,
+#   mai un modello di nomi (decisione di Tid, 2026-11-13, strada b). Residuo di
+#   brief-db-revisione-dbops §27.8, chiuso in framework-automazione-db-migliorie §2.4
+#   (archiviato).
+#
+# ⚠️ PERCHE'. I runner confrontavano la tabella con ILIKE r.target_table: il '_' di un
+#   nome valeva come jolly, e una regola su event_log copriva anche una eventXlog. Il
+#   «dove» lo dice gia' l'ambito (dbops.automation_scope.table_like, un modello per
+#   costruzione); la regola dice il «cosa», e una regola mirata e' l'eccezione di UNA
+#   tabella. I dieci lettori passano a = in 20_code/dbops/20261112-67 … -76; qui il
+#   registro rifiuta la forma che quel confronto non saprebbe piu' leggere: un '%', una
+#   maiuscola, uno spazio, '*ALL' in un'altra grafia.
+#
+# ℹ️ IL NOME: minuscolo, lettere, cifre e '_', non piu' di 63 caratteri, come i nomi
+#   delle tabelle del progetto (linee-guida-sql §2). Nessun controllo che la tabella
+#   esista: una regola su una tabella sparita resta un dato, e i runner la saltano.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror del seed (80_data/20250918-02) e dopo
+#   80_data/20260110-13, che scrivono il registro (linee-guida-sql §11.14).
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-13: il seed
+#   (automation_rules_tbl.csv: '*all' o nomi esatti); 80_data/20260110-13 ('*all');
+#   80_data/20261109-74 (non tocca target_table); nessuna funzione del database, nessun
+#   endpoint; i pgTAP scrivono nomi esatti o '*all'. Sui dati del 2026-11-13 (dbdev e
+#   scratch) nessuna riga e' fuori forma: nessuna bonifica.
+# Presidio: dbops/test-registro-regole-vincoli-v1.
+# Rollback: via il vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-66-add-chk-automation-rules-target-table-nome-esatto-mctit.yaml
+
+  - changeSet:
+      id: 20261112-66-add-chk-automation-rules-target-table-nome-esatto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automation_rules_tbl: un CHECK vuole target_table uguale a '*all' o al nome esatto di una tabella.
+        Residuo di brief-db-revisione-dbops §27.8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.automation_rules_tbl'::regclass
+                 AND conname = 'chk_automation_rules_tbl_target_table_nome_esatto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                ADD CONSTRAINT chk_automation_rules_tbl_target_table_nome_esatto
+                    CHECK (target_table = '*all'
+                           OR (target_table ~ '^[a-z_][a-z0-9_]*$' AND length(target_table) <= 63));
+
+              COMMENT ON CONSTRAINT chk_automation_rules_tbl_target_table_nome_esatto ON dbops.automation_rules_tbl IS
+                'target_table e'' ''*all'' (tutte le tabelle dell''ambito) o il nome esatto di una tabella: minuscolo, lettere, cifre e _, al piu'' 63 caratteri. Non e'' un modello di nomi: i runner confrontano con =, e l''insieme di tabelle lo dice dbops.automation_scope.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automation_rules_tbl
+                DROP CONSTRAINT IF EXISTS chk_automation_rules_tbl_target_table_nome_esatto;

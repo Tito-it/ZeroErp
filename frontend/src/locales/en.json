@@ -395,6 +395,7 @@
         "assets_ownership": "Assets Ownership",
         "canali_pratiche": "Case Channels",
         "categoria_accisa": "Excise Category",
+        "causali_onere": "Charge Reasons",
         "causali_trasporto": "Transport Reasons",
         "classi_utenze": "Utility Classes",
         "conti_contabili": "Ledger Accounts",
@@ -582,6 +583,7 @@
       "righe_table": "Lines table",
       "ripartizione": "Split",
       "ripetibilita": "Repeatability",
+      "rifiuto": "Rejection state",
       "scadenza": "Expiry state",
       "schema_db": "DB schema",
       "schema_tabella": "Table schema",
@@ -1975,7 +1977,7 @@
     "disattiva_articolo": "Deactivate",
     "riattiva_articolo": "Reactivate",
     "disattiva_dialog_titolo": "Deactivate article",
-    "disattiva_dialog_messaggio": "Article {codice} will be deactivated. Linked operative UoMs, BoM rows and price lists remain unchanged. Confirm?",
+    "disattiva_dialog_messaggio": "Article {codice} will be deactivated. If it is still in use (in a bill of materials, a document, a price list) it cannot be deactivated: withdraw it with the «Withdrawn from» date instead. Confirm?",
     "riattiva_dialog_titolo": "Reactivate article",
     "riattiva_dialog_messaggio": "Article {codice} will be reactivated. Child entities (operative UoMs, BoM rows) keep their current state: reactivate them separately if needed. Confirm?",
     "correggi_struttura": "Correct structure",
@@ -2037,6 +2039,9 @@
     "field_gestito_a_magazzino": "Stocked",
     "hint_gestito_a_magazzino": "Moves stock quantities. Independent of the sales nature: goods can be sold without going through the warehouse",
     "field_lead_time_giorni": "Lead time (days)",
+    "field_obsoleto_dal": "Withdrawn from",
+    "hint_obsoleto_dal": "From this date the item can no longer be chosen for a new line; existing documents do not change. A future date schedules the withdrawal, clearing it removes it",
+    "tag_ritirato": "Withdrawn",
     "field_spesa": "Expense type",
     "field_iva": "VAT",
     "field_composito": "Composite",
@@ -2045,6 +2050,9 @@
     "field_requires_lotto": "Requires lot",
     "hint_requires_lotto": "The item is tracked by batches: every movement names a lot",
     "hint_onere_struttura": "This is a charge, not goods: no stock, kit, batches or serial numbers",
+    "field_causale_onere": "Charge reason",
+    "select_causale_onere": "None: these are goods",
+    "hint_causale_onere": "Only for a charge (transport, travel…): each reason belongs to one item only, and a charge cannot have a goods sales nature",
     "hint_composito_solo_componente": "Composite and component-only exclude each other: switch the other off to turn this one on",
     "field_desc_fattura": "Invoice description",
     "field_fattore": "Factor",
@@ -2110,7 +2118,10 @@
     "nuova_versione_componente": "New component version",
     "nuova_versione_hint": "Source '{codice}' closed on {data}. Fields are pre-filled from the closed row: edit if needed, then save to insert the new version.",
     "bom_immutabile_hint": "BoM structural fields (component, coefficient, invoice display, etc.) are not editable. To fix them, close the row and insert a new one.",
-    "motivo_uom_base_non_eliminabile": "Base UoM cannot be deleted",
+    "motivo_uom_base_non_eliminabile": "The base unit always applies: it cannot be deleted or deactivated",
+    "motivo_uom_base": "The base unit always applies: it has no end date",
+    "motivo_uom_storia_in_vigore": "Already in effect: it cannot be deactivated or deleted, close it by setting the end date",
+    "motivo_uom_storia_chiusa": "Already ended: the end date can no longer change. To resume it, add a new one",
     "motivo_articolo_solo_componente": "Article marked as component-only: cannot have a bill of materials",
     "motivo_articolo_non_composito": "Non-composite article: cannot have a bill of materials",
     "nota_testo_placeholder": "Note text...",
@@ -2155,6 +2166,17 @@
         "prezzi_altre_aziende": "It has bundle prices in other companies' price lists, which you cannot see: the link cannot be closed while those prices stay open.",
         "prezzi_dopo_la_fine": "It has bundle prices in active price lists that start after this date: the link can be closed from their start at the earliest."
       }
+    },
+    "chiusura_prezzi": {
+      "prezzi": "Bundle prices affected by the closing",
+      "riga": "Price list {listino}, version {versione} ({stato}) · from {dal} to {al} · {prezzo}, on the kit {kit}",
+      "senza_fine": "no end",
+      "esito_chiude": "closes on the same date",
+      "esito_toglie": "is removed (draft)",
+      "esito_blocca": "prevents the closing",
+      "fuori_perimetro": "{n} prices in price lists you cannot see",
+      "nessun_prezzo": "In the meantime this component's bundle prices are gone: the link closes without touching any price list.",
+      "spiegazione": "A bundle price only applies while the component is in the kit: by confirming, the listed prices end together with the link, and from that date the kit price in those price lists no longer includes the component."
     }
   },
   "billing_account": {
@@ -2580,7 +2602,7 @@
       "preview_hint": "Rows are read from the price list. Add an override to customise an article's price.",
       "preview_listino_senza_versione": "Price list {codice} has no operational version today: no prices to display. Activate a price list version to compute pricing.",
       "banner_locked_attivo": "Contract in status {stato}: use the Terminate button or create a new contract for changes.",
-      "banner_locked_cessato": "Contract TERMINATED: terminal status, no edits allowed.",
+      "banner_locked_cessato": "Contract in status {stato}: terminal status, no edits allowed.",
       "field_data_cessazione": "Termination date",
       "field_cessazione_programmata": "Termination scheduled for",
       "cessa_dialog_titolo_immediata": "Terminate contract",
@@ -2919,6 +2941,10 @@
       "filtro_utility": "Utility",
       "gestisci_note": "Manage notes",
       "genera_reso": "Create return",
+      "genera_reso_reason": {
+        "trasferimento": "Delivery note {0} is a transfer between warehouses: the goods stayed ours, there is no customer to return them.",
+        "non_consegnato": "A return can only be created from a delivery note delivered to the customer."
+      },
       "note_titolo": "DDT notes",
       "field_destinatario": "Recipient",
       "field_destinatario_placeholder": "Search recipient (subcontractor, warehouse)...",
@@ -3418,6 +3444,7 @@
       "clona_versione": "Clone version",
       "versione_sorgente": "Source version",
       "versione_clonata": "Version cloned to DRAFT",
+      "clona_righe_saltate": "{count} price(s) not copied: the item is withdrawn and does not enter a new version.",
       "clona_componenti_saltati": "{count} composite component(s) not copied: the bill of materials does not include them in the new version's period.",
       "clona_help": "The new version is created in DRAFT status with active rows copied from the source. You can edit it freely before activation.",
       "warning_retroattivo": "Warning: you are creating a version with retroactive start. Invoices already issued in the period will not be automatically updated. A dedicated adjustment is required to correct them.",
@@ -3436,7 +3463,10 @@
         "versione_citata": "The version is used by other documents: remove it from those documents before deleting it.",
         "versione_non_attiva": "Only an active version can be closed: change a draft's dates instead; a closed version no longer changes.",
         "fine_nel_passato": "The end cannot be before today: choose today or a future date.",
-        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from."
+        "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from.",
+        "uom_non_convertibile": "A price is in a unit that, on a day of the period, does not convert for the item: add the conversion, or redo that price in another unit, before activating it.",
+        "versione_chiusa": "The version is closed: prices cannot be added, changed or deleted.",
+        "riga_propagata": "The price has already been used by a document: to change it, create a new version of the price list."
       },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",
@@ -3901,8 +3931,7 @@
       "stato_info": {
         "evaso": "The order is fulfilled: its status is recalculated from the DDTs, it is not set by hand.",
         "parzialmente_evaso": "Fulfilment in progress: the status is recalculated at every DDT.",
-        "annullato": "The order is cancelled: this state is final.",
-        "fatturato": "The order is invoiced: follow-up happens on the invoice."
+        "annullato": "The order is cancelled: this state is final."
       },
       "azione_push_commessa": "Send to job",
       "conferma_cambio_stato": "Move the order to status {stato}?",
@@ -3928,6 +3957,9 @@
         "stato_non_ammette": "In this status the delivery date can no longer be changed.",
         "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with.",
         "riga_onere": "The line is a charge: a charge is not shipped and has no delivery dates."
+      },
+      "genera_ddt_reason": {
+        "stato_non_evadibile": "A delivery note is generated from a confirmed or partially shipped order: in this status the order cannot be shipped."
       },
       "azione_data_consegna_confermata": "Change the confirmed delivery date",
       "data_consegna_confermata_titolo": "Confirmed delivery date",
@@ -6013,7 +6045,8 @@
       "email": "Email",
       "articolo_componente": "BOM component",
       "asset": "Asset",
-      "movimento": "Stock movement"
+      "movimento": "Stock movement",
+      "ricevuta": "Receipt"
     },
     "registri_giornale": {
       "event_log": "Domain events",
@@ -6245,6 +6278,24 @@
       "context_fornitore": "Supplier",
       "replace_non_trovato": "Address not found. To create a new one use \"Address not listed, create new\"."
     },
+    "indirizzi": {
+      "tipo_blocco": {
+        "gia_presente": "There is already a «{0}» address: edit that one, or choose another type.",
+        "non_ammesso_dalla_natura": "The party type {0} does not provide for the «{1}» address.",
+        "non_ammesso_dal_ruolo": "The role {0} does not provide for the «{1}» address."
+      },
+      "copia_blocco": {
+        "nessun_tipo_proponibile": "There is no other address type to copy it into: all the allowed types are already there."
+      },
+      "copia": {
+        "azione": "Copy as…",
+        "titolo": "Copy the address",
+        "titolo_da": "Copy the «{tipo}» address",
+        "spiegazione": "Choose the address types to add with this same address. Disabled types cannot be added: the reason is shown next to them.",
+        "conferma": "Copy",
+        "fatta": "Address copied into one more type | Address copied into {n} types"
+      }
+    },
     "soggetti": {
       "search_placeholder": "Search by name, tax ID, VAT...",
       "filtro_tipo": "Subject type",
@@ -6267,7 +6318,28 @@
       "aggiungi_ruolo": "Add role",
       "select_ruolo": "Select role...",
       "genera_cf": "Generate tax code from personal data",
-      "soggetto": "Subject"
+      "soggetto": "Subject",
+      "cambio_natura_blocco": {
+        "altra_macro_tipologia": "The chosen legal nature belongs to another family: a natural person does not become a company, and vice versa. Choose a nature of the same family, or create a new party.",
+        "con_documenti": "The party already appears in a document, and this change would remove or add its VAT number: recorded documents carry its current tax identity. The change cannot be made.",
+        "piva_non_applicabile": "The chosen nature has no VAT number, and the party has one: it must be cleared before the change (only an administrator can do it).",
+        "cliente_pa": "The chosen nature cannot be a Public Administration: set «Public Administration client» back to No.",
+        "split_payment": "The chosen nature does not allow split payment: set «Split payment» back to No.",
+        "titoli_iva": "The chosen nature does not allow {titoli} VAT exemption declarations still in force: close them first (end-of-validity date).",
+        "titoli_iva_altri_emittenti": "The chosen nature does not allow {titoli} VAT exemption declarations in force with other companies, not visible from here: an administrator, or the company that received them, must close them.",
+        "dati_societari": "The chosen nature has no company data: delete it before the change.",
+        "indirizzi": "The chosen nature does not allow {indirizzi} addresses of the party: delete them before the change.",
+        "senza_natura_con_titoli_iva": "The party has VAT exemption declarations in force and cannot have them without a legal nature: choose a nature, or close the declarations first."
+      },
+      "dati_societari_elimina_blocco": {
+        "natura_li_richiede": "The party's legal nature requires company data: to delete it, first change the nature to one that does not require it."
+      },
+      "cambio_natura_motivi_titolo": "The legal nature cannot be changed while these reasons remain:",
+      "cambio_natura_motivi_non_verificati": "It was not possible to check whether the legal nature can be changed: on saving, if it cannot, the reason will be shown.",
+      "elimina_dati_societari": "Delete company data",
+      "elimina_dati_societari_conferma": "Delete the party's company data (legal form, REA, share capital, e-invoicing)? It stays in the history, but the party will no longer have it.",
+      "dati_societari_eliminati": "Company data deleted.",
+      "dati_societari_non_previsti": "The chosen legal nature has no company data: delete it before the change."
     },
     "titoli_iva": {
       "aggiungi_ambito": "Add goods",

@@ -42,9 +42,9 @@ BEGIN
     --    «L'id piu' alto» e' arbitrario ma SCRITTO: senza, il
     --    database ne sceglierebbe uno a caso e il prezzo cambierebbe
     --    da una corsa all'altra.
-    -- ⚠️ `codice_interno` e non `codice`: il secondo e' modificabile
-    --    dall'utente e smetterebbe di agganciarsi in silenzio al
-    --    primo rename.
+    -- ⭐ rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c):
+    --    in vigore e' lo stato di emissione, la colonna del vocabolario, non
+    --    un codice.
     SELECT c.id
       INTO v_contratto_id
       FROM vendite.contratti c
@@ -53,7 +53,7 @@ BEGIN
      WHERE c.billing_account_id = p_billing_account_id
        AND c.utility_id         = p_utility_id
        AND c.validita          @> p_data_riferimento
-       AND s.codice_interno     = 'ATTIVO'
+       AND s.emissione
      ORDER BY c.id DESC
      LIMIT 1;
 
@@ -62,7 +62,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_get_contratto_attivo(p_billing_account_id bigint, p_utility_id integer, p_data_riferimento date)
-IS 'LA SEDE UNICA del predicato «contratto attivo per (billing account, utility, data)»: dato quel che un documento porta, dice di quale FORNITURA si sta parlando. ⭐ Serve perche'' NESSUNA testata di documento porta un contratto_id — verificato su ddt, ordini, preventivi e fatture, tutte portano invece quella terna. La regola completa e'': i contratti di quel billing account, per quella utility, con la validita'' che contiene la data, in stato ATTIVO; se ne resta piu'' di uno, quello con l''id piu'' alto. ⚠️ L''ultima riga e'' la parte che conta: piu'' di uno ci puo'' restare davvero, perche'' le finestre di due contratti si sovrappongono ogni volta che un rinnovo parte prima che il vecchio scada. «L''id piu'' alto» e'' arbitrario ma SCRITTO — senza, PostgreSQL ne sceglierebbe uno a caso e il prezzo cambierebbe da una corsa all''altra senza che nessuno capisse perche''. 🔴 Estratta il 2026-08-29 da vendite.fn_resolve_prezzo_listino_v2_esito, dove viveva dentro: serve IDENTICA al risolutore IVA, che da quel contratto arriva al tipo d''uso della fornitura (config.tipi_utenze) — se le due funzioni scegliessero contratti diversi sullo stesso overlap, prezzo e aliquota della STESSA riga verrebbero da forniture diverse, e non lo direbbe nessun errore: si vedrebbe solo il giorno che non quadra un totale. ⭐ Decisione di Tid: si estrae invece di ricopiare, e l''argomento che avevo usato per difendere la copia («il nucleo ha molti chiamanti») era sbagliato — estrarre una porzione interna non ne cambia la firma, quindi i chiamanti non vedono nulla. ℹ️ Ritorna SOLO l''id: listino, versione, variazione globale e snapshot categoria sono snapshot del contratto e restano affare del pricing, non del predicato che lo sceglie. ⚠️ Ritorna NULL e non solleva: nessun contratto attivo e'' legittimo — un preventivo a un cliente nuovo non ha ancora nessuna fornitura. STABLE, sola lettura.';
+IS 'Il predicato «contratto in vigore per (billing account, utility, data)», in un posto solo: dato cio'' che un documento porta, dice di quale fornitura si parla, perche'' nessuna testata di documento (bolle, ordini, preventivi, fatture) porta un contratto_id, tutte portano quella terna. La regola: i contratti di quel billing account, per quella utility, con la validita'' che contiene la data, nello stato di emissione (la colonna emissione di config.stati_doc_contratti); se ne resta piu'' di uno, quello con l''id piu'' alto. Piu'' di uno ci puo'' restare davvero, perche'' le finestre di due contratti si sovrappongono quando un rinnovo parte prima che il vecchio scada; «l''id piu'' alto» e'' arbitrario ma scritto, cosi'' il prezzo non cambia da una corsa all''altra. La leggono il risolutore dei prezzi (vendite.fn_resolve_prezzo_listino_v2_esito) e quello IVA (vendite.fn_get_tipo_utenza_fornitura), che da quel contratto arriva al tipo d''uso della fornitura: sceglierne due diversi darebbe prezzo e aliquota della stessa riga da forniture diverse. Ritorna solo l''id; NULL, senza sollevare, quando nessun contratto e'' in vigore, che e'' un caso legittimo (un cliente nuovo). STABLE, sola lettura.';
 ```
 
 </div>

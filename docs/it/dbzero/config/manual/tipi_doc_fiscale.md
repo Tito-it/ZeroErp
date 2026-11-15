@@ -23,6 +23,14 @@ indica il *perche`* del documento, separandolo dalla numerazione contabile.
 * Guida il **raggruppamento** e la selezione delle attivita` fatturabili.
 * Viene associato a un **registro** tramite `vendite.tipi_doc_fiscale_registri`.
 
+⛔ **Il tipo non si deriva.** Nessuna regola cablata stabilisce quale tipo spetta a un documento:
+ogni azienda lo usa per la propria classificazione, o non lo usa. Il sistema applica al più un
+default configurabile e facoltativo, quello della sorgente (`config.sorgenti.tipo_doc_fiscale_id`,
+che resta facoltativa). L'unica garanzia è di riga: una riga di commessa emittibile non può
+averlo vuoto, e lo fa valere un guard
+([vendite.trgfn_commesse_attivita_guard_tipo_doc_emittibile](/dbzero/vendite/funzioni/trgfn_commesse_attivita_guard_tipo_doc_emittibile)),
+non un default obbligatorio a monte.
+
 ---
 
 ### Relazioni principali

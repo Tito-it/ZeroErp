@@ -150,7 +150,6 @@ databaseChangeLog:
             # Token letterale «NULL», non la cella vuota: la cella vuota genera
             # una stringa vuota, che viola i CHECK di non-vuoto. Oggi nessuna
             # cella di questo CSV e' nulla, ma la regola vale per chi lo estende.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id,               type: NUMERIC }

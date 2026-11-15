@@ -9,9 +9,11 @@
 --
 -- Indice test (1..4):
 --   1) natura_vendita_id NOT NULL
---   2) nessun articolo con natura_vendita_id NULL (backfill completo)
+--   2) un articolo con natura_vendita_id NULL esplicita e' rifiutato (23502)
 --   3) INSERT articolo senza natura_vendita_id -> ammesso (DEFAULT)
 --   4) la natura dell'articolo appena inserito = MERCE (default applicato)
+-- I soggetti sono costruiti (dbops.fn_pgtap_crea_articolo): niente conteggi su tutto
+-- il catalogo, niente «primo articolo esistente» (brief-db-revisione-catalogo, giro 5-A).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -44,21 +46,28 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2) nessun articolo con natura NULL (backfill completo)
+-- Fixture: i riferimenti di un articolo costruito dal builder
 -- ============================================================
-SELECT is(
-    (SELECT count(*) FROM catalogo.articoli WHERE natura_vendita_id IS NULL),
-    0::bigint,
-    '2) nessun articolo con natura_vendita_id NULL (backfill -> MERCE completo)'
-);
+-- Il builder in una tabella sua: nel WHERE girerebbe una volta per riga.
+CREATE TEMP TABLE tmp_art_ref_id AS
+SELECT dbops.fn_pgtap_crea_articolo('PGTAP_NAT_NOTNULL_REF') AS id;
+
+CREATE TEMP TABLE tmp_art_ref AS
+SELECT a.uom_id, a.tipo_voce_id, a.gruppo_voce_id, a.spesa_id, a.iva_id
+  FROM catalogo.articoli a
+  JOIN tmp_art_ref_id r ON r.id = a.id;
 
 -- ============================================================
--- Fixture: valori FK validi presi da un articolo esistente
+-- 2) natura NULL esplicita -> rifiutata dal NOT NULL
 -- ============================================================
-CREATE TEMP TABLE tmp_art_ref AS
-SELECT uom_id, tipo_voce_id, gruppo_voce_id, spesa_id, iva_id
-  FROM catalogo.articoli
- ORDER BY id LIMIT 1;
+SELECT throws_ok(
+    $$INSERT INTO catalogo.articoli (codice, descrizione, uom_id, tipo_voce_id, gruppo_voce_id, spesa_id, iva_id, natura_vendita_id)
+      SELECT 'PGTAP_NAT_NOTNULL_NULL', 'Articolo test natura NULL',
+             uom_id, tipo_voce_id, gruppo_voce_id, spesa_id, iva_id, NULL
+        FROM tmp_art_ref$$,
+    '23502', NULL,
+    '2) INSERT con natura_vendita_id NULL esplicita -> rifiutato (23502)'
+);
 
 -- ============================================================
 -- 3) INSERT senza natura_vendita_id -> ammesso (DEFAULT MERCE)

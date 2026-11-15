@@ -1,0 +1,248 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.trgfn_listini_righe_guard_stato: una riga di listino citata da un
+#   documento e' «propagata»
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.5, D-4 di Tid 2026-11-13)
+#
+#   Il guard protegge la riproducibilita' di un prezzo USATO: in una versione
+#   ATTIVA una riga che qualcuno cita non si rettifica e non si cancella. Fin qui
+#   «qualcuno» erano commesse e attivita' fatturabili. Dal giro 1 anche le righe
+#   e i componenti di preventivi, ordini, contratti, DDT e offerte citano la riga
+#   di listino da cui il prezzo e' venuto (20261113-04): D-4, si contano anche
+#   loro, ANCHE da una bozza (scartata la via «solo fuori bozza»: legherebbe la
+#   regola agli stati di ogni documento). Per cambiare quel prezzo si fa una
+#   versione nuova del listino.
+#   Senza, la rettifica di una riga citata da un documento passava, e il
+#   documento diceva «viene da R» con R cambiata; la cancellazione la fermava la
+#   FK, con un errore tecnico.
+#   Dieci UNION ALL in piu', ciascuno sull'indice parziale della sua colonna
+#   (fk_index_policy, giro 1). Il corpo e' quello del 20261028-23, verificato
+#   identico al vivo il 2026-11-13; il COMMENT si riscrive al presente.
+#   Rollback: il 20261028-23.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-21-update-trgfn-listini-righe-guard-stato-propagata-dai-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20261113-21-update-trgfn-listini-righe-guard-stato-propagata-dai-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_righe_guard_stato: una riga di listino citata da una riga o da un
+        componente di documento e' propagata (D-4). Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: protezione righe listino in base allo stato della versione padre.
+              --   BOZZA  → passa sempre
+              --   ATTIVA → ammessa solo se la riga non e` propagata a valle
+              --   CHIUSA → blocca sempre
+              -- Perimetro: solo UPDATE e DELETE (INSERT su ATTIVA e` ammesso come rettifica).
+              DECLARE
+                  v_stato config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_propagata boolean;
+              BEGIN
+                  -- Recupera stato della versione padre
+                  SELECT s.codice_interno
+                    INTO v_stato
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = OLD.listino_versione_id;
+
+                  -- BOZZA: modifica libera
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  -- CHIUSA: blocca sempre
+                  IF v_stato = 'CHIUSA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_righe_guard_stato',
+                          'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'listino_riga_id', OLD.id,
+                              'listino_versione_id', OLD.listino_versione_id,
+                              'stato', v_stato,
+                              'operazione', TG_OP
+                          ),
+                          OLD.tx_id,
+                          -- ⚠️ ARITA' (2026-08-18): il messaggio comincia con «Operazione %s
+                          --   non ammessa: ...» e di segnaposto ne ha TRE; qui ne arrivavano
+                          --   due. Mancava proprio il primo, l'operazione — che il trigger
+                          --   aveva gia' in mano (TG_OP) e metteva perfino nel context.
+                          TG_OP, OLD.id::text, v_stato
+                      );
+                  END IF;
+
+                  -- ATTIVA: verifica propagazione. Una riga e' «propagata» se il suo prezzo
+                  -- e' stato USATO: la cita una riga di commessa, un'attivita' fatturabile, o
+                  -- una riga (o un componente) di preventivo, ordine, contratto, DDT, offerta
+                  -- (D-4 di Tid, 2026-11-13, brief-db-provenienza-prezzo-segue-il-prezzo §8.5:
+                  -- anche da una bozza). Ogni colonna listino_riga_id ha il suo indice parziale.
+                  -- Per aggiungere nuove tabelle: UNION ALL qui sotto
+                  SELECT EXISTS(
+                      SELECT 1 FROM vendite.commesse_attivita
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.attivita_fatturabili
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.preventivi_righe
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.preventivi_righe_componenti
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.ordini_righe
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.ordini_righe_componenti
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.contratti_righe
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.contratti_righe_componenti
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.ddt_righe
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.ddt_righe_componenti
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.offerte_commerciali_eccezioni
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.offerte_commerciali_eccezioni_componenti
+                       WHERE listino_riga_id = OLD.id
+                  )
+                  INTO v_propagata;
+
+                  IF v_propagata THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_righe_guard_stato',
+                          'E_RIGA_LISTINO_PROPAGATA',
+                          jsonb_build_object(
+                              'listino_riga_id', OLD.id,
+                              'listino_versione_id', OLD.listino_versione_id,
+                              'stato', v_stato,
+                              'operazione', TG_OP
+                          ),
+                          OLD.tx_id,
+                          OLD.id::text
+                      );
+                  END IF;
+
+                  -- ATTIVA e non propagata: rettifica controllata ammessa
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_stato() IS
+                  'Guard sulle righe di listino, BEFORE UPDATE e DELETE, secondo lo stato della versione (dal vocabolario config.stati_doc_listino_versioni, codice_interno): BOZZA passa; CHIUSA rifiuta sempre (E_RIGA_LISTINO_VERSIONE_CHIUSA); ATTIVA passa solo se la riga non e'' propagata, cioe'' se il suo prezzo non e'' stato usato (E_RIGA_LISTINO_PROPAGATA). Propagata: la cita (listino_riga_id) una riga di commessa, un''attivita'' fatturabile, o una riga principale o un componente di preventivo, ordine, contratto, DDT od offerta, anche in bozza. Per cambiare il prezzo di una riga propagata si fa una versione nuova del listino.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_righe_guard_stato()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: protezione righe listino in base allo stato della versione padre.
+              --   BOZZA  → passa sempre
+              --   ATTIVA → ammessa solo se la riga non e` propagata a valle
+              --   CHIUSA → blocca sempre
+              -- Perimetro: solo UPDATE e DELETE (INSERT su ATTIVA e` ammesso come rettifica).
+              DECLARE
+                  v_stato config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_propagata boolean;
+              BEGIN
+                  -- Recupera stato della versione padre
+                  SELECT s.codice_interno
+                    INTO v_stato
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = OLD.listino_versione_id;
+
+                  -- BOZZA: modifica libera
+                  IF v_stato = 'BOZZA' THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  -- CHIUSA: blocca sempre
+                  IF v_stato = 'CHIUSA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_righe_guard_stato',
+                          'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'listino_riga_id', OLD.id,
+                              'listino_versione_id', OLD.listino_versione_id,
+                              'stato', v_stato,
+                              'operazione', TG_OP
+                          ),
+                          OLD.tx_id,
+                          -- ⚠️ ARITA' (2026-08-18): il messaggio comincia con «Operazione %s
+                          --   non ammessa: ...» e di segnaposto ne ha TRE; qui ne arrivavano
+                          --   due. Mancava proprio il primo, l'operazione — che il trigger
+                          --   aveva gia' in mano (TG_OP) e metteva perfino nel context.
+                          TG_OP, OLD.id::text, v_stato
+                      );
+                  END IF;
+
+                  -- ATTIVA: verifica propagazione
+                  -- Tabelle controllate per propagazione riga:
+                  -- 1. vendite.commesse_attivita (listino_riga_id)
+                  -- 2. vendite.attivita_fatturabili (listino_riga_id)
+                  -- Per aggiungere nuove tabelle: UNION ALL qui sotto
+                  SELECT EXISTS(
+                      SELECT 1 FROM vendite.commesse_attivita
+                       WHERE listino_riga_id = OLD.id
+                      UNION ALL
+                      SELECT 1 FROM vendite.attivita_fatturabili
+                       WHERE listino_riga_id = OLD.id
+                  )
+                  INTO v_propagata;
+
+                  IF v_propagata THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'vendite.trgfn_listini_righe_guard_stato',
+                          'E_RIGA_LISTINO_PROPAGATA',
+                          jsonb_build_object(
+                              'listino_riga_id', OLD.id,
+                              'listino_versione_id', OLD.listino_versione_id,
+                              'stato', v_stato,
+                              'operazione', TG_OP
+                          ),
+                          OLD.tx_id,
+                          OLD.id::text
+                      );
+                  END IF;
+
+                  -- ATTIVA e non propagata: rettifica controllata ammessa
+                  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_righe_guard_stato() IS
+                  'Guard N6: protegge righe listino in base a stato versione. BOZZA=passa, ATTIVA=solo se non propagata, CHIUSA=blocca. Solo UPDATE/DELETE. Rev 2026-10-28 (20261028-23, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';

@@ -47,7 +47,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: id
             columns:
               - column: { name: id,           type: NUMERIC }
@@ -73,7 +72,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: id
             columns:
               - column: { name: id,                 type: NUMERIC }
@@ -94,7 +92,6 @@ databaseChangeLog:
             schemaName: config
             separator: ","
             encoding: UTF-8
-            nullValue: ""
             primaryKey: id
             columns:
               - column: { name: id,                      type: NUMERIC }

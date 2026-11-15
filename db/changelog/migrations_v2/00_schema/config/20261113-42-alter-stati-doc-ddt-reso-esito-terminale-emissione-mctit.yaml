@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# BOLLA E RESO DICHIARANO ESITO E TERMINALE; IL RESO DICE LA SUA EMISSIONE
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (⑦, S-5, S-3;
+#   Tid 2026-11-08).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Gli altri vocabolari dei documenti di vendita dichiarano esito e
+#   terminale in colonna. Bolla e reso no: vendite.vw_stato_sorgente_ddt e
+#   vendite.vw_stato_sorgente_reso li calcolavano da fase e is_abortito,
+#   cioe' una regola scritta nella vista. Sul reso confermato quella regola
+#   contraddice terminale (S-1, lettura A): fase CHIUSO, ma l'annullo a mano
+#   e' attivo.
+#   Il reso non diceva nemmeno lo stato della sua emissione (lì nasce il
+#   numero, e da lì la merce e' rientrata): lo nominavano col codice
+#   CONFERMATO.
+#
+# ── LE COLONNE ──────────────────────────────────────────────────────
+#   Su config.stati_doc_ddt e config.stati_doc_reso, come sugli altri
+#   vocabolari:
+#     esito      varchar(50) NULL, FK verso config.esiti_flussi_pratiche
+#                (NULL = nessun verdetto); il guard del verdetto lo monta il
+#                20261113-44;
+#     terminale  boolean NOT NULL DEFAULT false, CHECK terminale -> fase
+#                CHIUSO.
+#   Su config.stati_doc_reso, come sulla bolla (20261025-37):
+#     emissione  boolean NOT NULL DEFAULT false, al piu' uno per vocabolario
+#                (indice unico parziale) e su uno stato attivo (CHECK).
+#   I valori stanno nei CSV dei due vocabolari (80_data), non qui
+#   (linee-guida-sql §11.2): da zero le colonne nascono coi default e il
+#   mirror le riempie dopo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261113-42-alter-stati-doc-ddt-reso-esito-terminale-emissione-mctit.yaml
+
+  - changeSet:
+      id: 20261113-42-alter-stati-doc-ddt-reso-esito-terminale-emissione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonne esito (FK verso config.esiti_flussi_pratiche) e terminale (CHECK verso fase
+        CHIUSO) su config.stati_doc_ddt e config.stati_doc_reso; emissione su config.stati_doc_reso
+        (indice unico parziale, CHECK attivo). Valori dai CSV di 80_data. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: config, tableName: stati_doc_ddt }
+            - tableExists: { schemaName: config, tableName: stati_doc_reso }
+            - tableExists: { schemaName: config, tableName: esiti_flussi_pratiche }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.stati_doc_ddt
+                  ADD COLUMN esito VARCHAR(50) NULL,
+                  ADD COLUMN terminale BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT fk_stati_doc_ddt_esito FOREIGN KEY (esito)
+                      REFERENCES config.esiti_flussi_pratiche (codice_interno),
+                  ADD CONSTRAINT chk_stati_doc_ddt_terminale_chiuso CHECK (NOT terminale OR fase = 'CHIUSO');
+
+              ALTER TABLE config.stati_doc_reso
+                  ADD COLUMN esito VARCHAR(50) NULL,
+                  ADD COLUMN terminale BOOLEAN NOT NULL DEFAULT false,
+                  ADD COLUMN emissione BOOLEAN NOT NULL DEFAULT false,
+                  ADD CONSTRAINT fk_stati_doc_reso_esito FOREIGN KEY (esito)
+                      REFERENCES config.esiti_flussi_pratiche (codice_interno),
+                  ADD CONSTRAINT chk_stati_doc_reso_terminale_chiuso CHECK (NOT terminale OR fase = 'CHIUSO'),
+                  ADD CONSTRAINT chk_stati_doc_reso_emissione_attivo CHECK (NOT emissione OR attivo);
+
+              CREATE UNIQUE INDEX uq_stati_doc_reso_emissione ON config.stati_doc_reso (emissione) WHERE emissione;
+
+              COMMENT ON COLUMN config.stati_doc_ddt.esito IS
+                  'Il verdetto della bolla in questo stato, per la proiezione di stato delle pratiche (vendite.vw_stato_sorgente_ddt): un esito di config.esiti_flussi_pratiche con is_verdetto (lo controlla config.trgfn_stati_doc_guard_esito_verdetto). NULL = nessun verdetto: la bolla non e'' ancora arrivata. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_ddt.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_ddt) con meta.manuale = true. L''operatore non ha piu'' niente da fare sulla bolla. Il sistema puo'' ancora spostarla coi passaggi di processo (manuale = false: la bolla consegnata che diventa resa); per questo chi lo legge lo rilegge, non lo copia. CHECK: implica fase = CHIUSO (chk_stati_doc_ddt_terminale_chiuso). Non sostituisce is_abortito. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_reso.esito IS
+                  'Il verdetto del reso in questo stato, per la proiezione di stato delle pratiche (vendite.vw_stato_sorgente_reso): un esito di config.esiti_flussi_pratiche con is_verdetto (lo controlla config.trgfn_stati_doc_guard_esito_verdetto). NULL = nessun verdetto: il reso e'' ancora in bozza. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_reso.terminale IS
+                  'true = da questo stato non esce nessun passaggio a mano: nessuna riga attiva della matrice (config.transizioni_stati_reso) con meta.manuale = true. L''operatore non ha piu'' niente da fare sul reso. Il reso confermato non lo e'': resta annullabile a mano (lo storno, vendite.fn_annulla_reso), come l''offerta accettata. CHECK: implica fase = CHIUSO (chk_stati_doc_reso_terminale_chiuso). Non sostituisce is_abortito. Lo fa rispettare script.trgfn_doc_terminale_senza_uscita_manuale. Il valore sta nel CSV del vocabolario in 80_data.';
+              COMMENT ON COLUMN config.stati_doc_reso.emissione IS
+                  'true = lo stato in cui il reso e'' EMESSO: lì nasce il numero (vendite.trgfn_resi_gen_numero) e da lì la merce e'' rientrata (script.vw_stati_doc_reso_merce_rientrata). Ci si arriva dalla conferma (vendite.fn_conferma_reso). Al massimo uno per vocabolario (uq_stati_doc_reso_emissione) ed e'' attivo (chk_stati_doc_reso_emissione_attivo). Lo legge script.fn_stato_emissione_id, o il chiamante che ha gia'' la riga del vocabolario, non un letterale ''CONFERMATO''. Il valore sta nel CSV del vocabolario in 80_data.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS config.uq_stati_doc_reso_emissione;
+              ALTER TABLE config.stati_doc_reso
+                  DROP COLUMN IF EXISTS emissione,
+                  DROP COLUMN IF EXISTS terminale,
+                  DROP COLUMN IF EXISTS esito;
+              ALTER TABLE config.stati_doc_ddt
+                  DROP COLUMN IF EXISTS terminale,
+                  DROP COLUMN IF EXISTS esito;

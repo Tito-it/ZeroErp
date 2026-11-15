@@ -37,8 +37,8 @@
 --   14) provincia REA senza numero -> CHECK chk_dati_societari_rea_coppia (23514)
 --   15) forma NULL -> NOT NULL (23502)
 --   cambio di natura (guard al COMMIT 20261010-98)
---   16) SC -> ENC senza cambiare la forma SRL -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA al COMMIT
---   17) SC -> ENC e poi forma associazione, nella stessa transazione -> passa
+--   16) SC -> SP senza cambiare la forma SRL -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA al COMMIT
+--   17) SC -> SP e poi forma SNC, nella stessa transazione -> passa
 --   18) l'ordine inverso (prima la forma, natura ancora SC) -> rifiuto immediato della forma
 --   fn_crea_soggetto_pg (B-4, B-6, B-7)
 --   19) una SRL con REA e capitale e senza canale FE -> nasce (il canale non e' piu' obbligatorio)
@@ -71,7 +71,9 @@ END $f$;
 CREATE TEMP TABLE _ref AS
 SELECT (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'ENC') AS enc,
        (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'SC')  AS sc,
+       (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'SP')  AS sp,
        (SELECT id FROM config.forme_giuridiche WHERE codice = 'SRL')   AS srl,
+       (SELECT id FROM config.forme_giuridiche WHERE codice = 'SNC')   AS snc,
        (SELECT id FROM config.forme_giuridiche WHERE codice = 'ASSOC') AS assoc,
        (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1)      AS prov;
 
@@ -233,21 +235,25 @@ SELECT throws_ok(
 -- ============================================================
 -- Cambio di natura: il guard al COMMIT (20261010-98)
 -- ============================================================
+-- ⚠️ rev 2026-11-14 (brief-db-cambio-natura-soggetto-conferma-e-pulizia, D-11): il cambio
+--   SC -> ENC attraversava due macro-tipologie, e dal 20261114-67 il guard del cambio di natura
+--   lo rifiuta prima (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA). La forma si prova dentro la
+--   stessa famiglia: SC -> SP, dove la SRL non e' ammessa e la SNC si'.
 SELECT throws_like(
     format($$UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = %s WHERE id = %L;
              SET CONSTRAINTS anagrafiche.trg_soggetti_def_guard_forma_giuridica_natura_upd IMMEDIATE$$,
-           (SELECT enc FROM _ref), (SELECT id FROM _sc)),
+           (SELECT sp FROM _ref), (SELECT id FROM _sc)),
     '%non ammette la forma giuridica%',
-    '16. una SRL che diventa ente senza cambiare forma -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA al COMMIT');
+    '16. una SRL che diventa societa'' di persone senza cambiare forma -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA al COMMIT');
 SET CONSTRAINTS ALL DEFERRED;
 
 SELECT lives_ok(
     format($$UPDATE anagrafiche.soggetti SET tipo_soggetto_dettaglio_id = %s WHERE id = %L;
              %s;
              SET CONSTRAINTS anagrafiche.trg_soggetti_def_guard_forma_giuridica_natura_upd IMMEDIATE$$,
-           (SELECT enc FROM _ref), (SELECT id FROM _sc),
-           pg_temp.ds_sql((SELECT id FROM _sc), (SELECT assoc FROM _ref), 'REA-PGTAP-V17', NULL)),
-    '17. prima la natura, poi la forma (associazione), nella stessa transazione -> passa al COMMIT');
+           (SELECT sp FROM _ref), (SELECT id FROM _sc),
+           pg_temp.ds_sql((SELECT id FROM _sc), (SELECT snc FROM _ref), 'REA-PGTAP-V17', NULL)),
+    '17. prima la natura, poi la forma (SNC), nella stessa transazione -> passa al COMMIT');
 SET CONSTRAINTS ALL DEFERRED;
 
 SELECT throws_like(

@@ -60,7 +60,6 @@ databaseChangeLog:
             # 2026-10-26 (20261026-29): "NULL", non "": la cella vuota sarebbe '' e
             # la FK di azione_processo_codename la rifiuterebbe (brief-modello-
             # documento-vendita §7.5). Nessun'altra cella del CSV e' vuota.
-            nullValue: "NULL"
             primaryKey: "id"
             columns:
               - column: { name: id, type: STRING }

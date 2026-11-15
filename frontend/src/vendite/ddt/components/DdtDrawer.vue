@@ -26,10 +26,11 @@ import { useEmittenteFiscaleField } from '../../../core/composables/useEmittente
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
-import { CAMPI_FORM_TESTATA_DDT, STATO_DDT } from '../constants'
+import { CAMPI_FORM_TESTATA_DDT } from '../constants'
 import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
@@ -103,6 +104,15 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 })
 const modificatoDocumento = documento.modificato
 const detail = ref(null)
+// Capability (blob del dettaglio): letta prima del readonly, che ne dipende.
+const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+// Il corpo del drawer dopo la bozza: dalla capability, non dallo stato.
+const corpo = useCorpoDocumento({
+  caps,
+  corpo: ['can_edit_righe'],
+  sezioni: ['can_edit_righe', 'can_edit_indirizzi'],
+  presente: () => isEdit.value || detail.value !== null,
+})
 // Il cliente del DDT: il billing account, o il destinatario senza BA (D-1 di
 // brief-db-indirizzi-documento-seguono-il-cliente).
 const CAMPI_CLIENTE_DDT = Object.freeze([...CLIENTE_BA, 'destinatario_soggetto_ruolo_id'])
@@ -200,11 +210,14 @@ const hasDetail = computed(() => detail.value !== null)
 // transizione fuori DRAFT deve bloccare subito il form. Le azioni di stato
 // restano cliccabili in readonly grazie a `app-escape` di DrawerActionsBar.
 const parentReadonly = useInjectReadonly()
+// ⭐ Dal 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-D1) il corpo
+//    non confronta piu' il codice dello stato con DRAFT: lo chiude la chiave
+//    della capability (`can_edit_righe`, il lock delle righe del DB), col BB
+//    `useCorpoDocumento`. Righe, indirizzi e testata leggono gia' la loro.
 const isReadonly = computed(
   () => props.readonly
     || parentReadonly.value
-    || (detail.value !== null
-        && detail.value.stato_codice_interno !== STATO_DDT.DRAFT),
+    || corpo.corpoChiuso.value,
 )
 provide(READONLY_KEY, isReadonly)
 
@@ -212,14 +225,17 @@ provide(READONLY_KEY, isReadonly)
 // rende cio' che non e' stato consegnato. E' il percorso per aprire un reso;
 // il flip del DDT a RESO resta automatico lato DB alla conferma di un reso
 // TOTALE (fn_conferma_reso), mai manuale.
-const showResoAction = computed(
-  () => detail.value?.stato_codice_interno === STATO_DDT.CONSEGNATO,
-)
+// ⭐ Da quale bolla nasce un reso lo dice la capability (`can_genera_reso`,
+//    dalla check `script.fn_check_ddt_rendibile` che il trigger del reso
+//    legge: consegnata, e non un trasferimento fra depositi), spenta col
+//    motivo. Fino al 2026-11-14 qui c'era `stato === CONSEGNATO`, una copia
+//    della regola senza il trasferimento (FE-R2, brief-db-stati-documento-dal-
+//    vocabolario §6.22, D-RESO (a)).
+const showResoAction = computed(() => caps.flag('can_genera_reso'))
 
 // Capability data-driven dal detail BE (script.fn_available_actions_ddt):
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
-const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
@@ -645,7 +661,7 @@ function onPush() {
 
 // Scopo: il nome dello STATO di destinazione per la frase di conferma («Portare
 //   il documento nello stato {stato}?»). La descrizione leggibile la sa solo il
-//   database (`DRAFT` -> «Bozza», `ALLOCATO` -> «Allocato a magazzino»: non e'
+//   database (`DRAFT` -> «Bozza», `PARZIALMENTE_EVASO` -> «Parzialmente evaso»: non e'
 //   derivabile dal codice), quindi arriva dalla capability come
 //   `target_state_descrizione`. Finche' il DB non la espone si ripiega sulla
 //   label dell'azione — comportamento invariato, nessun testo mancante.
@@ -672,7 +688,7 @@ function onAction(action) {
 // tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
   const result = await cambioStato.esegui(
-    (dichiarazione) => store.cambiaStato(effectiveDdtId.value, action.target_state, dichiarazione),
+    (dichiarazione) => store.cambiaStato(effectiveDdtId.value, action, dichiarazione),
     { successMessage: t('vendite.ddt.stato_cambiato') },
   )
   await dopoCambioStato(result)
@@ -714,15 +730,15 @@ const drawerActions = computed(() => {
     // Genera reso: apre la dialog dedicata (righe consegnate con residuo
     // rendibile). Resta visibile anche in readonly puro — la dialog si apre
     // in sola consultazione (footer di sola chiusura).
-    ...(showResoAction.value
-      ? [{
-          key: 'genera-reso',
-          kind: 'manage',
-          label: t('vendite.ddt.genera_reso'),
-          icon: NAV_ICONS.RESI,
-          command: () => { resoDialogVisible.value = true },
-        }]
-      : []),
+    // Genera reso: dove la capability lo concede; spento col motivo
+    // (trasferimento, non consegnata) dal BB `azioneDaFlag` (FE-R2).
+    ...caps.azioneDaFlag('can_genera_reso', {
+      key: 'genera-reso',
+      kind: 'manage',
+      label: t('vendite.ddt.genera_reso'),
+      icon: NAV_ICONS.RESI,
+      command: () => { resoDialogVisible.value = true },
+    }, { t, te }),
     contatoreNote.azione({
       label: t('vendite.ddt.gestisci_note'),
       command: () => { noteDrawerVisible.value = true },

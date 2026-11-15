@@ -57,17 +57,14 @@ from pathlib import Path
 
 import yaml
 
-from _yaml_veloce import carica as carica_yaml
+# ⭐ Lettura dei changelog e primitive lessicali in un posto solo
+#   (scripts/_guardrail_comune.py).
+import _guardrail_comune as gc
 
-ROOT = Path(__file__).resolve().parent.parent
-BASE = ROOT / "db" / "changelog" / "migrations_v2"
-FILENAME_RE = re.compile(r"^(\d{8})-(\d{2,3})\D.*\.(ya?ml)$", re.IGNORECASE)
 # ⭐ Il perimetro: dal primo changeSet scritto con la regola in vigore e il
 #   presidio acceso (giro 14 di brief-db-revisione-dbops).
 INIZIO = (20261111, 18)
-MARCATORE_RE = re.compile(r"^#\s*comment-al-presente:\s*ammesso\s*[—-]\s*(\S.*)$", re.MULTILINE)
 COMMENT_IS_RE = re.compile(r"\bCOMMENT\s+ON\b.*?\bIS\s+", re.IGNORECASE | re.DOTALL)
-DOLLAR_RE = re.compile(r"\$[A-Za-z_][A-Za-z_0-9]*\$|\$\$")
 MARCHE = (
     ("brief", re.compile(r"brief", re.IGNORECASE)),
     ("revisione", re.compile(r"\brev\b", re.IGNORECASE)),
@@ -79,27 +76,16 @@ MARCHE = (
 # Scopo: il letterale che comincia in `sql[i]`, come (testo, fine), oppure
 #        None se dopo IS non c'e' un letterale (NULL, un'espressione).
 def letterale(sql: str, i: int) -> tuple[str, int] | None:
-    n = len(sql)
     if sql.startswith(("E'", "e'"), i):
         i += 1
-    if i < n and sql[i] == "'":
-        j, pezzi = i + 1, []
-        while j < n:
-            if sql[j] == "'":
-                if j + 1 < n and sql[j + 1] == "'":
-                    pezzi.append("'")
-                    j += 2
-                    continue
-                return "".join(pezzi), j + 1
-            pezzi.append(sql[j])
-            j += 1
-        return "".join(pezzi), n
-    m = DOLLAR_RE.match(sql, i)
-    if m:
-        tag = m.group(0)
-        chiusura = sql.find(tag, m.end())
-        fine = n if chiusura < 0 else chiusura
-        return sql[m.end():fine], fine + len(tag)
+    if i < len(sql) and sql[i] == "'":
+        testo, fine = gc.contenuto_letterale(sql, i)
+        return testo, fine.pos
+    dq = gc.dollar_quote(sql, i)
+    if dq:
+        tag, fine = dq
+        corpo_fine = fine.pos - len(tag) if fine.chiuso else len(sql)
+        return sql[i + len(tag):corpo_fine], fine.pos if fine.chiuso else len(sql) + len(tag)
     return None
 
 
@@ -128,50 +114,17 @@ def marche_nei_comment(sql: str) -> list[tuple[int, str, str]]:
 
 # Scopo: le violazioni di un changelog, guardando SOLO `changes`, mai `rollback`.
 def violazioni_di(percorso: Path) -> list[tuple[str, str]]:
-    doc = carica_yaml(percorso.read_text(encoding="utf-8"))
-    if not isinstance(doc, dict):
-        return []
     fuori: list[tuple[str, str]] = []
-    for voce in doc.get("databaseChangeLog") or []:
-        if not isinstance(voce, dict):
-            continue
-        cs = voce.get("changeSet")
-        if not isinstance(cs, dict) or not cs.get("changes"):
-            continue
-        cambi = cs["changes"]
-        for cambio in cambi if isinstance(cambi, list) else [cambi]:
-            if not isinstance(cambio, dict) or "sql" not in cambio:
-                continue
-            corpo = cambio["sql"]
-            testo = corpo.get("sql") if isinstance(corpo, dict) else corpo
-            if isinstance(testo, str):
-                for riga, marca, estratto in marche_nei_comment(testo):
-                    fuori.append((f"COMMENT a riga ~{riga} del blocco, marca «{marca}»", estratto))
-    return fuori
-
-
-# Scopo: i file da esaminare — quelli passati, oppure il perimetro, oppure
-#        tutta la storia con --tutto.
-def file_da_esaminare(argomenti: list[str]) -> list[Path]:
-    tutto = "--tutto" in argomenti
-    espliciti = [a for a in argomenti if a != "--tutto"]
-    if espliciti:
-        return [Path(a).resolve() for a in espliciti]
-    if not BASE.is_dir():
-        return []
-    fuori = []
-    for p in sorted(BASE.rglob("*")):
-        m = FILENAME_RE.match(p.name)
-        if not p.is_file() or not m:
-            continue
-        if tutto or (int(m.group(1)), int(m.group(2))) >= INIZIO:
-            fuori.append(p)
+    for cs in gc.changeset(percorso):
+        for _sezione, testo in gc.blocchi_sql(cs):
+            for riga, marca, estratto in marche_nei_comment(testo):
+                fuori.append((f"COMMENT a riga ~{riga} del blocco, marca «{marca}»", estratto))
     return fuori
 
 
 # Scopo: orchestra la passata e stampa un rapporto che dica DOVE e COSA fare.
 def main() -> int:
-    percorsi = file_da_esaminare(sys.argv[1:])
+    percorsi = gc.file_changelog(sys.argv[1:], INIZIO)
     violazioni: list[tuple[str, str, str]] = []
     dichiarati: list[tuple[str, str, int]] = []
     esaminati = 0
@@ -185,10 +138,10 @@ def main() -> int:
         esaminati += 1
         if not trovate:
             continue
-        rel = str(percorso.relative_to(ROOT)) if ROOT in percorso.parents else str(percorso)
-        marcatore = MARCATORE_RE.search(percorso.read_text(encoding="utf-8"))
-        if marcatore:
-            dichiarati.append((rel, marcatore.group(1).strip(), len(trovate)))
+        rel = gc.rel(percorso)
+        motivo = gc.marcatore(percorso.read_text(encoding="utf-8"), "comment-al-presente")
+        if motivo:
+            dichiarati.append((rel, motivo, len(trovate)))
             continue
         for dove, estratto in trovate:
             violazioni.append((rel, dove, estratto))

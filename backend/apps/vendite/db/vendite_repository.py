@@ -1000,7 +1000,7 @@ class VenditeRepository:
                       FROM vendite.fatturazione_lotti_fatture lf_r
                       JOIN vendite.fatture f_r ON f_r.id = lf_r.fattura_id
                      WHERE lf_r.lotto_id = fl.id
-                       AND date_trunc('month', f_r.data)::date = %s
+                       AND script.fn_mese_di(f_r.data) = %s
                 )
                 """
             )
@@ -1797,14 +1797,15 @@ class VenditeRepository:
     #        di competenza di un anno — alimenta il semaforo/badge mensile
     #        senza caricare l'intera lista errori.
     # Perimetro: sola lettura su vw_dash_competenza_errori (scope GUC in vista).
-    #        Il bucket mensile e' normalizzato con date_trunc: a differenza di
+    #        Il bucket mensile e' normalizzato col BB DB `script.fn_mese_di`
+    #        (R-BE-1 di brief-db-mese-di-un-giorno): a differenza di
     #        commesse_attivita, fatturazione_lotti.competenza_mese NON ha un
     #        CHECK primo-del-mese, e una chiave a meta' mese non matcherebbe
     #        mai la griglia del service (errore invisibile).
     # Risultato: dict {competenza_mese_iso: n_errori} dei soli mesi con errori.
     def count_dash_competenza_errori_mensile(self, *, anno: int) -> dict[str, int]:
         sql = """
-            SELECT date_trunc('month', competenza_mese)::date AS mese,
+            SELECT script.fn_mese_di(competenza_mese) AS mese,
                    COUNT(*)::integer
             FROM vendite.vw_dash_competenza_errori
             WHERE competenza_mese >= make_date(%s, 1, 1)
@@ -3012,9 +3013,9 @@ class VenditeRepository:
         conditions: list[str] = []
         params: list[Any] = []
         if competenza_mese is not None:
-            # date_trunc simmetrico al conteggio mensile: la competenza dei
+            # `script.fn_mese_di`, come il conteggio mensile: la competenza dei
             # lotti non e' vincolata al 1° del mese (nessun CHECK sul DB).
-            conditions.append("date_trunc('month', e.competenza_mese)::date = %s")
+            conditions.append("script.fn_mese_di(e.competenza_mese) = %s")
             params.append(competenza_mese)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""

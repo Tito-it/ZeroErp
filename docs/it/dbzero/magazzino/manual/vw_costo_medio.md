@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `magazzino.vw_costo_medio`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -46,6 +46,11 @@ Il costo è vuoto (`NULL`) quando la quantità è **zero o negativa**: con una c
 ammette lo stock negativo (`consente_stock_negativo`) la giacenza può scendere sotto zero, e
 un rapporto fra un valore e una quantità negativa non è un costo. Significa **«costo non
 determinabile»**, non «costo zero», e non va trattato come zero in un totale.
+
+Un carico **senza costo**, invece, non rende vuota la media: aggiunge zero al valore, e con una
+quantità positiva il costo medio è 0. Le uscite che seguono sono quindi a costo 0, non a costo
+vuoto. Un'uscita a costo vuoto esiste solo quando la giacenza è a zero o sotto, cioè con una
+causale che ammette lo stock negativo.
 
 ---
 

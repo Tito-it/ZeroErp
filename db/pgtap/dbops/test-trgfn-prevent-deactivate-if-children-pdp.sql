@@ -170,11 +170,9 @@ LIMIT 1;
 --        perche' i rimedi sono diversi: qui si DISATTIVANO le righe figlie
 --        (ed e' esattamente quello che fa il test 5 qui sotto), nell'altro
 --        ramo si TOLGONO;
---      · «anagrafiche.pdp» -> nel messaggio padre e figlia sono entrambi
---        `schema.tabella`. Se il loro ordine si scambiasse rispetto ai
---        segnaposti del catalogo, la frase resterebbe grammaticalmente
---        perfetta e nominerebbe config.stati_pdp: nessun controllo di
---        sintassi puo' vederlo, questo test si'.
+--      · la frase non nomina tabelle (brief-db-revisione-dbops, S-BE-1):
+--        padre e figlia stanno nel contesto del diario, e la frase e' quella
+--        del catalogo per il ramo ATTIVE.
 SELECT CASE
     WHEN (SELECT utility_id IS NOT NULL AND indirizzo_id IS NOT NULL FROM tmp_pdp_base) THEN
         throws_like(
@@ -183,7 +181,7 @@ SELECT CASE
             SET attivo = false
             WHERE id = (SELECT id FROM tmp_stato_pdp);
             $$,
-            '%righe collegate attive in anagrafiche.pdp%',
+            '%ci sono ancora righe collegate attive.',
             'Disattivazione stato_pdp con figli: bloccata, col messaggio del ramo ATTIVE'
         )
     ELSE
@@ -245,12 +243,12 @@ END;
 
 -- =========================================================
 -- 13) ⛔ I DUE MESSAGGI CONDIVIDONO UNA SOLA LISTA DI VALORI.
---     Dal 20260820-08 questa funzione sceglie fra due codici, ma li solleva
---     con la STESSA chiamata e quindi con gli STESSI valori: padre, colonna
---     referenziata, suo valore, figlia. Se uno dei due messaggi avesse piu'
---     segnaposti dell'altro, format() alzerebbe W_MESSAGGIO_ARITA e l'errore
---     di dominio sparirebbe in un 22023 — cioe' il guard smetterebbe di
---     dire perche' ha bloccato, proprio mentre blocca.
+--     La funzione sceglie fra due codici, ma li solleva con la STESSA
+--     chiamata e quindi con gli STESSI valori: oggi nessuno (variadico vuoto),
+--     perche' le due frasi non nominano tabelle. Se uno dei due messaggi
+--     avesse piu' segnaposti dei valori passati, format() farebbe sparire
+--     l'errore di dominio in un errore tecnico — cioe' il guard smetterebbe
+--     di dire perche' ha bloccato, proprio mentre blocca.
 --     ⚠️ Si asserisce la COPPIA e non «sono uguali»: un confronto fra due
 --     valori resta vero anche se una delle due righe non esiste piu'.
 -- =========================================================
@@ -261,8 +259,8 @@ SELECT is(
        FROM config.messaggi_errore m
       WHERE m.codice IN ('E_ATTIVO_BLOCK_CHILDREN_ACTIVE', 'E_ATTIVO_BLOCK_CHILDREN_EXIST')
         AND m.lingua = 'it'),
-    '4|4',
-    '13) i due codici del guard hanno lo stesso numero di segnaposti (4): la lista dei valori e'' una sola'
+    '0|0',
+    '13) i due codici del guard hanno lo stesso numero di segnaposti (zero, come i valori che il guard passa)'
 );
 
 -- Cleanup

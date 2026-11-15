@@ -46,6 +46,10 @@
     "pagamenti/components/DistintaDrawer.vue": {
       "motivo": "`stato_info_key` e' una COLONNA della distinta (`st.meta ->> 'nessuna_azione_key'` in `pagamenti_repository`): la distinta non ha una `fn_available_actions_*` ne' un blob.",
       "chiavi": { "stato_info_key": 1 }
+    },
+    "vendite/components/CommessaGestioneDrawer.vue": {
+      "motivo": "`stato_emissione` e' la colonna delle attivita' di commessa (NON_EMESSA/EMESSA, `STATO_EMISSIONE_ATTIVITA`: filtro, cella e azione di riga), non la marca dello stato del contratto che la capability emette dal giro 6g (`20261114-75`): stesso nome, altra sorgente.",
+      "chiavi": { "stato_emissione": 4 }
     }
   }
 }

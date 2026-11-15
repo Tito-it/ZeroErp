@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_lock_columns_divergenze`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -123,6 +123,11 @@ che le due cose coincidano non lo dice questa funzione, ma il presidio
   nessuna regola copriva usciva dal confronto con i suoi lock.
 * 2026-11-08 — il nome atteso viene solo dal template della regola: esce il ripiego
   `trg_{table}_a10_lock_columns_upd` (`20261109-73`, brief-db-revisione-dbops D20).
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-74`).
 
 ---
 

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_reso`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [config.transizioni_stati_reso](/dbzero/config/tabelle/transizioni_stati_reso) ·
@@ -17,8 +19,34 @@ lato-**lettura** simmetrico al guard `trgfn_resi_guard_transizione` (stessa matr
 espone), così il FE **non hardcoda** i pulsanti.
 
 `STABLE`, `SECURITY INVOKER`. Ritorna JSONB: `available_actions` (transizioni ammesse col filtro
-`manuale`, ordinate), `can_change_state`, `can_edit_testata`/`can_edit_righe` (solo DRAFT),
-`non_editable_fields`, `stato_codice`.
+`manuale`, ordinate), `can_change_state`, `can_edit_testata`, `can_edit_righe`, `can_riconsegna`,
+`non_editable_fields`, `stato_info_key`, `stato_codice`.
+
+### Gli stati dal vocabolario
+
+La funzione non nomina i codici degli stati: ogni significato viene da una colonna di
+[config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso).
+
+| Chiave o motivo | Da dove viene |
+| --- | --- |
+| il motivo degli accrediti | l'azione verso lo stato di **annullo** (`is_abortito` della destinazione) |
+| i motivi della merce | l'azione verso lo stato di **emissione** (`emissione` della destinazione): la conferma |
+| `can_edit_righe` | il lock delle righe, [`script.fn_doc_riga_modificabile`](/dbzero/script/funzioni/fn_doc_riga_modificabile)`('vendite.resi_righe', stato)`: la stessa risposta del trigger |
+| `can_riconsegna` | lo stato corrente è quello di **emissione** |
+
+I motivi della merce si calcolano in ogni stato: li legge la sola azione verso lo stato di
+emissione, e da quali stati si conferma lo dice la matrice. Con il seed la conferma parte solo
+dalla bozza.
+
+`can_riconsegna` è la porta dei tre verbi della riconsegna,
+[`vendite.fn_genera_ddt_riconsegna`](/dbzero/vendite/funzioni/fn_genera_ddt_riconsegna),
+[`vendite.fn_chiudi_riconsegna_reso`](/dbzero/vendite/funzioni/fn_chiudi_riconsegna_reso) e
+[`vendite.fn_riapri_riconsegna_reso`](/dbzero/vendite/funzioni/fn_riapri_riconsegna_reso), che fuori
+dallo stato di emissione rifiutano con `E_RESO_NON_CONFERMATO`. Il drawer del reso accende la
+ri-spedizione da questa chiave, non dal codice CONFERMATO.
+
+Test: `db/pgtap/vendite/test-reso-stati-dal-vocabolario-v1.sql`, con le marche `iniziale` ed
+`emissione` spostate.
 
 ### ⭐ La transizione ad ANNULLATO si spegne col motivo (20-08-2026)
 

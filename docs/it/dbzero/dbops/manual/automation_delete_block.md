@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_delete_block`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -41,7 +41,8 @@ La chiave naturale è (`schema_name`, `table_name`): una tabella ha una sola reg
 * `guc_key` — il nome del parametro di sessione che, se vale `on`, lascia passare la
   cancellazione. Finisce come argomento del trigger.
 * `trigger_name` — il nome del trigger, se non si vuole quello del template
-  (`trg_<tabella>_a10_delete_block_dlt`). Vuoto vuol dire template; il nome lo risolve
+  (`trg_<tabella>_a10_delete_block_dlt`). `NULL` vuol dire template, e la stringa vuota la rifiuta
+  il `CHECK` `chk_automation_delete_block_trigger_name_non_vuoto`; il nome lo risolve
   [fn_nome_oggetto_dichiarato](/dbzero/dbops/funzioni/fn_nome_oggetto_dichiarato), che lo
   accorcia con un hash oltre i 63 caratteri.
 * `enabled` — acceso, la tabella ha il blocco; spento, il giro lo toglie.
@@ -69,6 +70,13 @@ cancellerebbe in silenzio una protezione nata fuori dal registro.
 Una tabella che non esiste più si salta, con un `WARN TABLE_NOT_FOUND` in audit nel dry run come
 nella corsa vera. Ogni azione della corsa vera lascia una riga `OK`.
 
+⛔ **Una riga accesa sta solo su una tabella dell'ambito.** Fuori dall'ambito il giro non arriva:
+salterebbe la riga senza traccia, e la tabella resterebbe cancellabile mentre il registro la
+dichiara protetta. Qui, a differenza dei lock di colonna, non c'è il trigger montato da una
+migrazione: la tabella da proteggere entra nell'ambito, altrimenti la riga resta spenta. Il
+presidio di `test-delete-block-convergenza-v1` guarda le due metà: nessun blocco vivo e nessuna
+riga accesa fuori dall'ambito.
+
 ---
 
 ### ⭐ `BEFORE`, prima delle cascate
@@ -92,6 +100,9 @@ parlare al posto suo.
   figli prima del rifiuto. Al primo giro dopo l'aggiornamento i blocchi esistenti si rigenerano
   `BEFORE`. Prima `enabled` falso lasciava il trigger montato, e cambiare `trigger_name` ne
   montava un secondo (`brief-db-revisione-dbops`, giro 10c).
+* 2026-11-13 — il presidio vede anche la riga accesa su una tabella fuori dall'ambito, che il giro
+  saltava senza traccia (residuo di `framework-automazione-db-migliorie` §2.4). Nessuna riga del
+  seed era in quel caso.
 
 ---
 

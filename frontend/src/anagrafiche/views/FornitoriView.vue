@@ -8,7 +8,7 @@ import { useDrawerSavedListRefresh } from '../../core/composables/useDrawerSaved
 import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useContextStore } from '../../stores/context'
 import { useFornitoriStore } from '../stores/fornitori'
-import { TIPO_RUOLO, READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
+import { READONLY_DOMAINS, READONLY_MODELS } from '../../core/constants'
 import FornitoriSearchTable from '../components/FornitoriSearchTable.vue'
 import FornitoreDrawer from '../components/FornitoreDrawer.vue'
 import SoggettoDrawer from '../components/SoggettoDrawer.vue'
@@ -92,7 +92,6 @@ function onContiBancari(data) {
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.ruoloId"
-      :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
       context="ruolo"
     />
 

@@ -1,0 +1,377 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA VERSIONE FUORI BOZZA NON SI MODIFICA — NEMMENO SUPERATA
+#   documenti.trgfn_template_documenti_versioni_protect_pubblicata (Guard A1)
+#   trg_template_documenti_versioni_a10_protect_pubblicata_upd (stato nell'OF)
+#   documenti.fn_pubblica_template_documento_versione (chiusura in una scrittura)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il Guard A1 proteggeva solo OLD.stato = 'PUBBLICATA'. Una versione OBSOLETA
+#   si poteva modificare (HTML, CSS, pagina, date, forma dei dati), e dal
+#   20261114-02 una OBSOLETA stampa fino all'ultimo giorno della sua validita':
+#   cambiarla cambierebbe le stampe di oggi, e la ristampa fedele di quelle
+#   gia' fatte. Decisione di Tid del 2026-11-14: le versioni obsolete non si
+#   modificano.
+#   In piu' `stato` non era nell'UPDATE OF: un UPDATE del solo stato riportava
+#   una PUBBLICATA (o una OBSOLETA) in BOZZA, e da li' si modificava tutto. Lo
+#   stato entra nell'elenco: fuori bozza non si torna indietro.
+#
+# -- LA PORTA DELLA MADRE ---------------------------------------------------
+#   L'unica scrittura legittima su una versione fuori bozza e' la chiusura che
+#   fa la pubblicazione: PUBBLICATA -> OBSOLETA con valido_al = p_valido_dal - 1.
+#   Prima passava in due UPDATE (lo stato, poi la data quando lo stato non era
+#   piu' protetto); con OBSOLETA protetta il secondo morirebbe. Ora e' una
+#   scrittura sola, sotto la porta zeroerp.allow_template_versione_chiusura_override,
+#   che la funzione apre (SET LOCAL via set_config) dopo aver scelto le versioni
+#   da chiudere e richiude subito dopo (linee guida trigger, «Dove si mette un
+#   guard»). Anche a porta aperta il guard ammette SOLO quella forma: da
+#   PUBBLICATA a OBSOLETA, valido_al che si accorcia, ogni altra colonna
+#   protetta invariata. La porta protegge da un backend che sbaglia, non da uno
+#   manomesso.
+#
+# -- CHI SCRIVE LA TABELLA (censito 2026-11-14) ------------------------------
+#   Nel DB solo fn_pubblica_template_documento_versione. I seed 80_data
+#   (20260805-09, 20260816-01) aggiornano solo BOZZE; le pubblicazioni dei seed
+#   passano dalla funzione. Il BE non scrive `stato` (VERSIONE_UPDATE_COLUMNS lo
+#   esclude) e modifica solo bozze; `attivo` e `titolo` restano fuori dall'OF,
+#   come prima: spegnere una versione resta possibile. Le fixture pgTAP che
+#   scrivono lo stato partono da BOZZA (test-documenti-template-versioni,
+#   test-documenti-template-standard-v1), e da BOZZA tutto passa come prima.
+#   Il trigger ha avuto un solo nome (20260501-01, 20260930-17): DROP + CREATE
+#   per nome rimonta l'unico montaggio.
+#   Corpo della funzione dalla doc auto-generata (ultimo changeSet 20260930-21):
+#   cambia solo il blocco di chiusura e il COMMENT; firma, LANGUAGE, volatilita',
+#   SECURITY INVOKER invariati, nessuna clausola SET/COST/ROWS da ripetere.
+#   Il testo del messaggio di E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE si
+#   allarga nel CSV (messaggi_errore.csv), con lo stesso inizio: i pgTAP che lo
+#   cercano per pattern non cambiano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261114-04-update-protect-pubblicata-anche-obsoleta-mctit.yaml
+
+  - changeSet:
+      id: 20261114-04-update-protect-pubblicata-anche-obsoleta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard A1: una versione PUBBLICATA o OBSOLETA non si modifica, e lo stato fuori bozza non
+        torna indietro (stato nell'UPDATE OF). L'unica eccezione e' la chiusura fatta da
+        fn_pubblica_template_documento_versione, in una scrittura sola sotto la porta
+        zeroerp.allow_template_versione_chiusura_override.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'documenti'
+                 AND p.proname = 'fn_pubblica_template_documento_versione'
+                 AND p.pronargs = 4
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Una versione template fuori bozza (PUBBLICATA o OBSOLETA) non si
+              --   modifica: HTML, CSS, render engine, pagina, validita', forma dei
+              --   dati, template_documento_id, versione e stato restano quelli della
+              --   pubblicazione. Per ogni cambio si crea una nuova BOZZA.
+              --
+              -- Eccezione (una sola):
+              --   la chiusura che fa documenti.fn_pubblica_template_documento_versione
+              --   quando pubblica la versione successiva: PUBBLICATA -> OBSOLETA con
+              --   valido_al che si accorcia, ogni altra colonna protetta invariata, e
+              --   solo a porta aperta (zeroerp.allow_template_versione_chiusura_override
+              --   = 'on', che la funzione apre e richiude).
+              --
+              -- Errore:
+              --   E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+              BEGIN
+                IF OLD.stato IN ('PUBBLICATA', 'OBSOLETA') THEN
+                  IF OLD.stato = 'PUBBLICATA'
+                     AND NEW.stato = 'OBSOLETA'
+                     AND current_setting('zeroerp.allow_template_versione_chiusura_override', true) = 'on'
+                     AND NEW.valido_al IS NOT NULL
+                     AND (OLD.valido_al IS NULL OR NEW.valido_al <= OLD.valido_al)
+                     AND (NEW.html_template, NEW.css_template, NEW.markdown_template,
+                          NEW.render_engine_id, NEW.formato_template, NEW.page_format,
+                          NEW.page_orientation, NEW.margin_top_mm, NEW.margin_right_mm,
+                          NEW.margin_bottom_mm, NEW.margin_left_mm, NEW.valido_dal,
+                          NEW.context_schema, NEW.versione_contesto,
+                          NEW.template_documento_id, NEW.versione)
+                         IS NOT DISTINCT FROM
+                         (OLD.html_template, OLD.css_template, OLD.markdown_template,
+                          OLD.render_engine_id, OLD.formato_template, OLD.page_format,
+                          OLD.page_orientation, OLD.margin_top_mm, OLD.margin_right_mm,
+                          OLD.margin_bottom_mm, OLD.margin_left_mm, OLD.valido_dal,
+                          OLD.context_schema, OLD.versione_contesto,
+                          OLD.template_documento_id, OLD.versione)
+                  THEN
+                    RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                    'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato,
+                      'stato_nuovo', NEW.stato
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata() IS
+                'Guard A1: una versione template PUBBLICATA o OBSOLETA non si modifica, e il suo stato non torna indietro (E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE). Unica eccezione: la chiusura di documenti.fn_pubblica_template_documento_versione, da PUBBLICATA a OBSOLETA con valido_al accorciato e nient''altro cambiato, a porta zeroerp.allow_template_versione_chiusura_override aperta.';
+
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  BEFORE UPDATE OF
+                      html_template, css_template, markdown_template, render_engine_id,
+                      formato_template, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, context_schema, versione_contesto,
+                      template_documento_id, versione, stato
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
+
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni IS
+                  'Guard A1: una versione PUBBLICATA o OBSOLETA non si modifica. L''elenco comprende lo stato, che fuori bozza non torna indietro, e la forma dei dati che la versione legge.';
+
+              -- Firma con i tipi ancorati del 20260930-21 (la doc auto-generata li
+              -- scioglie): CREATE OR REPLACE sulla stessa firma, che risolve a
+              -- (bigint, date, integer, date).
+              CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(
+                  p_versione_id       documenti.template_documenti_versioni.id%TYPE,
+                  p_valido_dal        documenti.template_documenti_versioni.valido_dal%TYPE,
+                  p_versione_contesto documenti.template_documenti_versioni.versione_contesto%TYPE,
+                  p_valido_al         documenti.template_documenti_versioni.valido_al%TYPE DEFAULT NULL
+              )
+               RETURNS TABLE(
+                  versione_id           documenti.template_documenti_versioni.id%TYPE,
+                  template_documento_id documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  versioni_obsolete     integer
+              )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Pubblica una versione template documento in modo atomico.
+              --
+              -- Regole:
+              --   - la versione target deve esistere ed essere BOZZA;
+              --   - p_valido_dal e' obbligatorio;
+              --   - p_versione_contesto e' la forma dei dati che il builder del
+              --     backend produce per quel tipo di documento: la versione si
+              --     pubblica solo se dichiara di leggere quella forma
+              --     (documenti.fn_guard_versione_contesto).
+              --     Una BOZZA puo' dichiarare una forma che il builder non produce
+              --     ancora: il controllo e' qui, non sulla bozza;
+              --   - l'ordine delle date (p_valido_al non precede p_valido_dal) NON si
+              --     giudica qui: lo giudica il guard comune script.trgfn_guard_date_validita
+              --     sull'UPDATE della versione;
+              --   - prima della pubblicazione vengono rese OBSOLETE e chiuse a
+              --     p_valido_dal - 1 le versioni PUBBLICATE attive dello stesso
+              --     template con valido_dal < p_valido_dal e intervallo sovrapposto.
+              --     Una OBSOLETA stampa fino al suo valido_al: che cosa stampa lo
+              --     decide la validita' (documenti.vw_template_versioni_stampabili);
+              --   - la chiusura e' una scrittura sola, sotto la porta
+              --     zeroerp.allow_template_versione_chiusura_override: il Guard A1
+              --     protegge PUBBLICATA e OBSOLETA, e ammette solo questa forma;
+              --   - il vincolo EXCLUDE resta il guardrail finale contro overlap
+              --     residui o race concorrenti.
+              DECLARE
+                  v_template_id  documenti.template_documenti_versioni.template_documento_id%TYPE;
+                  v_stato        documenti.template_documenti_versioni.stato%TYPE;
+                  -- id di documenti.template_documenti_versioni: %TYPE[] non e' sintassi valida
+                  v_closed_ids   bigint[] := ARRAY[]::bigint[];
+                  -- un conteggio: nessuna colonna di cui sia il riflesso
+                  v_closed_count integer  := 0;
+              BEGIN
+                  IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
+                          jsonb_build_object('versione_id', p_versione_id),
+                          NULL::uuid,
+                          'versione_id deve essere un intero positivo'
+                      );
+                  END IF;
+
+                  IF p_valido_dal IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO',
+                          jsonb_build_object('campo', 'valido_dal', 'versione_id', p_versione_id),
+                          NULL::uuid,
+                          'valido_dal e'' obbligatorio'
+                      );
+                  END IF;
+
+                  SELECT v.template_documento_id, v.stato
+                    INTO v_template_id, v_stato
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.id = p_versione_id
+                   FOR UPDATE;
+
+                  IF v_template_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_NOT_FOUND',
+                          jsonb_build_object('versione_id', p_versione_id),
+                          NULL::uuid,
+                          p_versione_id::text
+                      );
+                  END IF;
+
+                  IF v_stato <> 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
+                          jsonb_build_object(
+                              'versione_id',   p_versione_id,
+                              'stato_corrente', v_stato
+                          ),
+                          NULL::uuid,
+                          p_versione_id::text, v_stato
+                      );
+                  END IF;
+
+                  -- Il patto versione/forma dei dati: prima di toccare qualunque
+                  -- altra versione, cosi' un rifiuto non lascia niente a meta' da
+                  -- annullare. La riga e' gia' sotto FOR UPDATE: la forma letta dal
+                  -- guard non puo' cambiare fino al commit.
+                  PERFORM documenti.fn_guard_versione_contesto(p_versione_id, p_versione_contesto);
+
+                  -- Lock ordinato di tutte le versioni del template: evita race fra
+                  -- due pubblicazioni concorrenti dello stesso template.
+                  PERFORM 1
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.template_documento_id = v_template_id
+                   ORDER BY v.id
+                   FOR UPDATE;
+
+                  SELECT COALESCE(array_agg(c.id ORDER BY c.valido_dal, c.id), ARRAY[]::bigint[])
+                    INTO v_closed_ids
+                    FROM (
+                        SELECT v.id, v.valido_dal
+                          FROM documenti.template_documenti_versioni v
+                         WHERE v.template_documento_id = v_template_id
+                           AND v.id <> p_versione_id
+                           AND v.stato = 'PUBBLICATA'
+                           AND v.attivo IS TRUE
+                           AND v.valido_dal < p_valido_dal
+                           -- La finestra nuova e' [p_valido_dal, oltre). Una versione
+                           --   che parte PRIMA di p_valido_dal si sovrappone alla nuova
+                           --   se e solo se e' ancora aperta a p_valido_dal: p_valido_al
+                           --   non conta. Un daterange(p_valido_dal, p_valido_al) qui
+                           --   solleverebbe 22000 con le date invertite PRIMA che
+                           --   l'UPDATE incontri il guard comune delle date.
+                           AND v.validita && daterange(p_valido_dal, NULL, '[)')
+                         ORDER BY v.valido_dal, v.id
+                         FOR UPDATE
+                    ) c;
+
+                  -- Calcola subito: evita GET DIAGNOSTICS post-UPDATE.
+                  v_closed_count := COALESCE(array_length(v_closed_ids, 1), 0);
+
+                  IF v_closed_count > 0 THEN
+                      -- Una scrittura sola, stato e data insieme: il Guard A1 protegge
+                      -- PUBBLICATA e OBSOLETA, e a porta aperta ammette solo questa
+                      -- forma (PUBBLICATA -> OBSOLETA, valido_al accorciato). La porta
+                      -- si apre qui, dopo la scelta delle versioni, e si richiude
+                      -- subito: nessun'altra scrittura della transazione la trova aperta.
+                      PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'on', true);
+
+                      UPDATE documenti.template_documenti_versioni
+                         SET stato     = 'OBSOLETA',
+                             valido_al = p_valido_dal - 1
+                       WHERE id = ANY(v_closed_ids);
+
+                      PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'off', true);
+                  END IF;
+
+                  UPDATE documenti.template_documenti_versioni
+                     SET stato      = 'PUBBLICATA',
+                         valido_dal = p_valido_dal,
+                         valido_al  = p_valido_al
+                   WHERE id    = p_versione_id
+                     AND stato = 'BOZZA';
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti',
+                          'fn_pubblica_template_documento_versione',
+                          'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
+                          jsonb_build_object(
+                              'versione_id',    p_versione_id,
+                              'stato_corrente', v_stato
+                          ),
+                          NULL::uuid,
+                          p_versione_id::text, v_stato
+                      );
+                  END IF;
+
+                  versione_id           := p_versione_id;
+                  template_documento_id := v_template_id;
+                  versioni_obsolete     := v_closed_count;
+                  RETURN NEXT;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(
+                  documenti.template_documenti_versioni.id%TYPE, documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.versione_contesto%TYPE, documenti.template_documenti_versioni.valido_al%TYPE) IS
+                'Pubblica una versione template BOZZA e chiude, nella stessa transazione, le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). La chiusura passa dal Guard A1 a porta zeroerp.allow_template_versione_chiusura_override aperta. p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback rimonta il trigger senza `stato` nell'OF (montaggio del
+              -- 20260930-17). I due corpi restano quelli di questo changeSet, e sono
+              -- coerenti fra loro: la pubblicazione chiude in una scrittura sola e
+              -- passa dal guard anche col montaggio vecchio. Riportare i corpi a
+              -- prima (OBSOLETA modificabile) e' un changeSet nuovo, col corpo preso
+              -- dalla doc auto-generata.
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  ON documenti.template_documenti_versioni;
+              CREATE TRIGGER trg_template_documenti_versioni_a10_protect_pubblicata_upd
+                  BEFORE UPDATE OF
+                      html_template, css_template, markdown_template, render_engine_id,
+                      formato_template, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, context_schema, versione_contesto,
+                      template_documento_id, versione
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();

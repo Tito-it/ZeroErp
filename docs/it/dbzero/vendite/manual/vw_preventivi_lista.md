@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_preventivi_lista`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle/viste:
@@ -98,6 +100,10 @@ serve al toggle dello storico**, che non è `is_attiva`.
 * **Flag di revisione** (rev 2026-08-28, changeSet `20260828-09`): **`is_attiva`**,
   **`is_superata`**, **`is_abortito`**, **`has_next_revisione`** — propagati da
   `vw_preventivi`, dove sono documentati per esteso.
+* **PDF**: **`pdf_mode`**, in ultima posizione: la modalità del PDF nello stato, da
+  `config.stati_doc_preventivi.pdf_mode`. La lista accende il PDF dove è `ARCHIVE`, come la
+  lista degli ordini, e non confronta il codice della bozza: è la stessa colonna da cui la
+  capability del dettaglio dice `pdf.mode`.
 
 ---
 

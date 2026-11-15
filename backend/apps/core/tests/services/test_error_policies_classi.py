@@ -49,7 +49,6 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
 from unittest import TestCase, mock
 
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
@@ -62,15 +61,14 @@ from apps.core.services.error_policies import (
 )
 from apps.core.services.error_policies_generated import CLASSE_PER_CODICE, CODICI_RITIRATI
 from apps.core.services.error_ui_overrides import UI_ACTION_OVERRIDE
+from apps.core.tests._repo import repo_root
 
 # L'unica classe del vocabolario che non ha uno status, e non e' una lacuna:
 # un avviso non rifiuta niente e non raggiunge mai un client (brief §4.2).
 _CLASSE_SENZA_STATUS = "AVVISO"
 
-# I CSV di seed del catalogo: .../backend/apps/core/tests/services/<file>
-# -> parents[5] = radice del repo (services, tests, core, apps, backend, root).
 _SEED = (
-    Path(__file__).resolve().parents[5] / "db/changelog/migrations_v2/80_data/sql/config"
+    repo_root() / "db/changelog/migrations_v2/80_data/sql/config"
 )
 _CSV_CATALOGO = _SEED / "codici_errore.csv"
 _CSV_VOCABOLARIO = _SEED / "classi_errore.csv"

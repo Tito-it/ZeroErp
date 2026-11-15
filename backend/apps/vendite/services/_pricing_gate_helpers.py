@@ -27,33 +27,35 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.core.db._helpers import coerce_jsonb_dict
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
+from apps.vendite.services._approvazioni_prezzo_constants import AZIONE_OVERRIDE_PREZZO
 from apps.vendite.services.pricing_service import (
     PARAM_MAX_MAGGIORAZIONE_PCT,
     PARAM_MAX_SCONTO_PCT,
 )
 
-# Codice azione di processo per il gate L1 (override manuale prezzo).
-# Storicamente importato come `AZIONE_OVERRIDE_PREZZO` da
-# _approvazioni_prezzo_constants. Mantenuto qui come constante locale per
-# evitare cicli di import (questo modulo e' importato sia da preventivi che
-# da contratti, mentre il modulo originale dipendeva da `apps.vendite.services`).
-AZIONE_OVERRIDE_PREZZO = "prezzo_override_manuale"
+# Il codice azione del gate L1 (override manuale prezzo) sta nel modulo delle
+# costanti delle approvazioni, accanto a `AZIONE_APPROVA_PREZZO` (regola del 2,
+# ok Tid 2026-11-14: qui ce n'era una copia). Quel modulo non importa niente,
+# quindi non chiude cicli: la ragione della copia non c'e' piu'.
 
 # L'origine di un prezzo scritto a mano: la scrivono il gate prezzi di riga
-# (qui) e la PATCH dei componenti (`_componenti_service_helpers`), una sede.
-# ⚠️ Sta QUI e non nel modulo dei componenti: quello importa il gate L1 da
-#    questo modulo, e la costante nell'altro verso faceva un ciclo.
+# (qui) e il prezzo di una riga di commessa (`prezzo_riga_commessa`), una sede.
+# ⚠️ La PATCH dei componenti NON la scrive piu' (2026-11-14): sul prezzo
+#    cambiato la provenienza la fa decadere il trigger del DB
+#    (`_componenti_service_helpers.dati_patch_componente`).
 ORIGINE_PREZZO_MANUALE = "MANUALE"
 
 
@@ -370,58 +372,234 @@ def _raise_or_return_violazione_l2(
 _PRICE_COMPARE_QUANTIZE = Decimal("0.0001")
 
 
-# Scopo: Orchestratore dei 3 gate prezzo (L1 permesso + L2 soglia + L3
-#        escalation) per la modifica manuale del prezzo unitario su righe
-#        documento (preventivi, contratti, in futuro ordini/ddt).
+# Il codice del 409 della provenienza dichiarata e smentita dal listino (D-5,
+# R-8 di brief-db-provenienza-prezzo-segue-il-prezzo §8.11): lo solleva il BE,
+# qui e solo qui. Policy generata, ripiego in `error_messages_fallback`.
+E_PRICING_PROVENIENZA_SUPERATA = "E_PRICING_PROVENIENZA_SUPERATA"
+
+# La chiave del corpo con cui il form di riga DICHIARA la provenienza del
+# prezzo che rimanda (K-6): l'oggetto `{origine_prezzo, listino_versione_id,
+# listino_riga_id}` ricevuto dall'endpoint di pricing. ⛔ Non e' una colonna:
+# la legge `provenienza_dichiarata`, che la toglie dal corpo prima che il
+# dominio componga i campi da scrivere.
+CHIAVE_PROVENIENZA_DICHIARATA = "provenienza_prezzo"
+_CHIAVI_DICHIARAZIONE: frozenset[str] = frozenset(
+    {"origine_prezzo", "listino_versione_id", "listino_riga_id"}
+)
+
+# Le quattro colonne della provenienza del prezzo su ogni riga di documento di
+# vendita (e sui componenti), coi nomi delle tabelle. ⭐ Il gate le scrive TUTTE
+# o nessuna: una sola scritta lascerebbe le altre del prezzo di prima, e il
+# CHECK `chk_<tabella>_provenienza_prezzo` rifiuterebbe un MANUALE che cita il
+# listino.
+COLONNE_PROVENIENZA_RIGA: tuple[str, ...] = (
+    "origine_prezzo", "listino_versione_id", "listino_riga_id", "prezzo_resolver_context",
+)
+PROVENIENZA_MANUALE_RIGA: Mapping[str, Any] = {
+    "origine_prezzo": ORIGINE_PREZZO_MANUALE,
+    "listino_versione_id": None,
+    "listino_riga_id": None,
+    "prezzo_resolver_context": None,
+}
+
+
+# Scopo: la provenienza che il form dichiara per il prezzo che rimanda (D-5).
+#        La dichiarazione si VERIFICA (`resolve_or_check_override_prezzo`):
+#        da sola non rende un prezzo «da listino».
+@dataclass(frozen=True)
+class ProvenienzaDichiarata:
+    origine_prezzo: str
+    listino_versione_id: int | None
+    listino_riga_id: int | None
+
+
+# Scopo: legge e TOGLIE dal corpo la provenienza dichiarata
+#        (`CHIAVE_PROVENIENZA_DICHIARATA`). `None` se il corpo non la porta,
+#        cioe' un prezzo scritto a mano o nessun prezzo. Forma sbagliata = 400
+#        col codice del dominio e il campo.
+def provenienza_dichiarata(
+    payload: dict[str, Any], *, error_code: str, function_name: str,
+) -> ProvenienzaDichiarata | None:
+    raw = payload.pop(CHIAVE_PROVENIENZA_DICHIARATA, None)
+    if raw is None:
+        return None
+    ErrorManager.require(
+        isinstance(raw, dict),
+        code=error_code,
+        message="La provenienza del prezzo dev'essere un oggetto.",
+        context={"field": CHIAVE_PROVENIENZA_DICHIARATA},
+        function_name=function_name,
+    )
+    assert isinstance(raw, dict)
+    v = PayloadValidator(validation_code=error_code)
+    v.validate_allowed_keys(
+        raw, allowed=_CHIAVI_DICHIARAZIONE,
+        message="Provenienza del prezzo non valida.", function_name=function_name,
+    )
+    return ProvenienzaDichiarata(
+        origine_prezzo=v.require_string(raw, "origine_prezzo", function_name=function_name).strip(),
+        listino_versione_id=v.optional_positive_int(
+            raw, "listino_versione_id", function_name=function_name,
+        ),
+        listino_riga_id=v.optional_positive_int(
+            raw, "listino_riga_id", function_name=function_name,
+        ),
+    )
+
+
+# Scopo: l'esito del gate per una riga. `provenienza` sono le quattro colonne
+#        da scrivere (`COLONNE_PROVENIENZA_RIGA`), `None` se il gate non ha
+#        niente da dire e la provenienza la decide il trigger del DB
+#        (`trgfn_riga_documento_provenienza_prezzo`). `meta` sono le sole chiavi
+#        d'audit dell'override (prezzo applicato, utente, delta, L3): ⛔ la
+#        provenienza non sta piu' nel `meta` (K-5). `esito_codice` e' il motivo
+#        per cui il resolver non ha dato un prezzo, quando lo dice (il DDT lo
+#        conserva).
+@dataclass(frozen=True)
+class EsitoPrezzoRiga:
+    prezzo: Any
+    provenienza: Mapping[str, Any] | None = None
+    meta: Mapping[str, Any] | None = None
+    esito_codice: str | None = None
+
+    @property
+    def richiesta_approvazione_pending(self) -> bool:
+        return bool(self.meta and self.meta.get("richiesta_approvazione_pending"))
+
+    # Scopo: scrive l'esito sui campi della riga da salvare: il prezzo (se il
+    #        gate ne ha uno), le quattro colonne della provenienza, l'audit
+    #        fuso sul `meta` (quello dei campi, altrimenti `meta_base`, il
+    #        `meta` della riga esistente in modifica: senza, l'audit nuovo
+    #        cancellerebbe le chiavi che la riga ha gia').
+    # ⭐ Una sede per i cinque documenti: era ricopiata nei gate di preventivo
+    #    (due volte), contratto e offerta.
+    def applica(self, campi: dict[str, Any], *, meta_base: Any = None) -> None:
+        if self.prezzo is not None:
+            campi["prezzo_unitario"] = self.prezzo
+        if self.provenienza is not None:
+            campi.update(self.provenienza)
+        if self.meta:
+            fuso = dict(coerce_jsonb_dict(campi.get("meta") or meta_base))
+            fuso.update(self.meta)
+            campi["meta"] = fuso
+
+
+# Scopo: le quattro colonne dal risultato del resolver: l'origine, la versione
+#        e la riga che hanno dato il prezzo, e il contesto calcolato dal DB
+#        (`vendite.fn_prezzo_resolver_contesto`, letto dal repository del
+#        resolver: la regola di cosa entra nel contesto non si ricopia qui).
+def _provenienza_dal_resolver(risultato: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "origine_prezzo": risultato.get("origine"),
+        "listino_versione_id": risultato.get("listino_versione_id"),
+        "listino_riga_id": risultato.get("listino_riga_id"),
+        "prezzo_resolver_context": risultato.get("prezzo_resolver_context"),
+    }
+
+
+def _q(valore: Any) -> Decimal:
+    return Decimal(str(valore)).quantize(_PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP)
+
+
+# Scopo: una modifica di riga che rimanda il prezzo che la riga ha gia', con
+#        la stessa unita' di misura, non cambia il prezzo: non c'e' niente da
+#        autorizzare ne' da verificare, e la provenienza resta quella che e'.
+#        Il chiamante toglie il prezzo dai campi e non chiama il gate.
+#        ⭐ Senza, chi corregge la sola quantita' di una riga ripasserebbe dal
+#        gate col prezzo di prima: un 403 a chi non ha l'override su un prezzo
+#        scritto da un altro, o un 409 su un prezzo da listino che nel
+#        frattempo il listino ha cambiato.
+#        La tolleranza e' quella del trasporto (`_PRICE_COMPARE_QUANTIZE`).
+def prezzo_invariato(campi: Mapping[str, Any], riga_esistente: Mapping[str, Any]) -> bool:
+    if "prezzo_unitario" not in campi:
+        return False
+    if (
+        "uom_operativa_id" in campi
+        and campi["uom_operativa_id"] is not None
+        and riga_esistente.get("uom_operativa_id") is not None
+        and int(campi["uom_operativa_id"]) != int(riga_esistente["uom_operativa_id"])
+    ):
+        return False
+    nuovo, vecchio = campi["prezzo_unitario"], riga_esistente.get("prezzo_unitario")
+    if nuovo is None or vecchio is None:
+        return nuovo is None and vecchio is None
+    if isinstance(nuovo, bool):
+        return False
+    try:
+        return _q(nuovo) == _q(vecchio)
+    except (InvalidOperation, ValueError):
+        # Un prezzo malformato lo rifiuta il gate, col suo codice e il campo.
+        return False
+
+
+# Scopo: il 409 di una provenienza dichiarata che il listino di adesso non
+#        conferma, o che non si puo' verificare (D-5, R-8): la riga non si
+#        salva. `listino` = cio' che il listino da' oggi, se lo si e' chiesto.
+#        Una sede: la usano il gate (`resolve_or_check_override_prezzo`) e i
+#        wrapper di offerta e contratto, che senza listino non lo chiamano.
+def rifiuta_provenienza_dichiarata(
+    dichiarata: ProvenienzaDichiarata, *, dettaglio: str, function_name: str,
+    listino: Mapping[str, Any] | None = None,
+) -> NoReturn:
+    ErrorManager.raise_error(
+        code=E_PRICING_PROVENIENZA_SUPERATA,
+        message="Il prezzo del listino è cambiato dopo che la riga è stata compilata.",
+        detail=dettaglio,
+        context={
+            "field": "prezzo_unitario",
+            "dichiarata": {
+                "origine_prezzo": dichiarata.origine_prezzo,
+                "listino_versione_id": dichiarata.listino_versione_id,
+                "listino_riga_id": dichiarata.listino_riga_id,
+            },
+            "listino": dict(listino) if listino is not None else None,
+        },
+        function_name=function_name,
+    )
+
+
+# Scopo: Orchestratore dei gate prezzo per una riga documento (preventivo,
+#        offerta, contratto, ordine, DDT): la provenienza del prezzo e, sul
+#        prezzo scritto a mano, i gate L1 permesso + L2 soglia + L3 escalation.
 #
-#        Pattern simmetrico per tutte le sorgenti che ammettono override
-#        prezzo: il caller passa la propria funzione di resolver
-#        (`resolver_fn`) che sa come derivare il prezzo suggerito dato il
-#        contesto documento, e il codice errore di validazione applicabile
-#        al dominio (`error_code_validazione`).
+#        Il caller passa la propria funzione di resolver (`resolver_fn`), che
+#        sa derivare il prezzo dal contesto del documento, e il codice errore
+#        di validazione del dominio (`error_code_validazione`).
 #
-#        Comportamento:
-#          1. Se mancano dati per il resolver (BA / utility / data /
-#             articolo_id / uom_id) → ritorna payload_prezzo + None
-#             (skip wiring, accept manuale).
-#          2. Chiama `resolver_fn(documento_id, articolo_id=, uom_id=,
-#             auth_user_id=)` dentro savepoint (best-effort: se fallisce,
-#             accetta payload manuale senza meta).
-#          3. Auto-fill: se payload_prezzo None → ritorna resolver con meta.
-#          4. Confronto payload vs resolver con tolleranza 4 decimali:
-#             se uguali → no override, meta = resolver.
-#          5. Override (payload != resolver):
-#             - Gate L1: `check_permesso_override_prezzo` (azione
-#               `prezzo_override_manuale`)
-#             - Gate L2: `check_limite_variazione_prezzo` (soglia % via
-#               cascata user → categoria → group → emittente → default)
-#             - Gate L3: se `richiesta_approvazione=True`, eventuale
-#               violazione L2 viene ritornata in meta come
-#               `richiesta_approvazione_pending=True` invece di sollevare;
-#               il caller orchestrera' la creazione della pratica.
-#
-#        Ritorna (prezzo_finale: Decimal | Any, meta_patch: dict | None):
-#          - meta_patch include `origine_prezzo`, `prezzo_resolver_context`,
-#            e per override anche `prezzo_applicato`, `override_user_id`,
-#            `prezzo_base_resolver`, `delta_override`, `delta_override_pct`,
-#            opzionalmente `richiesta_approvazione_pending` + `violazione_l2`.
+#        I TRE CASI (D-5 di brief-db-provenienza-prezzo-segue-il-prezzo §8.11):
+#          1. Payload senza prezzo → il prezzo e la provenienza del resolver.
+#          2. Prezzo CON la provenienza dichiarata dal form (`dichiarata`) → si
+#             rilancia il resolver: se origine, versione, riga e prezzo
+#             coincidono con quello che il listino da' adesso, la riga e' da
+#             listino, con le colonne scritte dal resolver; altrimenti 409
+#             `E_PRICING_PROVENIENZA_SUPERATA` e non si salva.
+#          3. Prezzo SENZA dichiarazione → MANUALE: gate L1
+#             (`prezzo_override_manuale`), L2 (soglia %), L3 se
+#             `richiesta_approvazione` (la violazione L2 torna nel `meta` come
+#             `richiesta_approvazione_pending` invece di sollevare).
+#        ⛔ Non si deduce piu' «viene dal listino» da un prezzo uguale a
+#           quello del resolver (§2, §8.1): un operatore che riscrive lo
+#           stesso numero ha scritto un prezzo a mano.
+#        Fuori dai tre casi:
+#          - mancano dati per il resolver (BA / utility / data / articolo /
+#            uom) → senza prezzo, nessun prezzo (la provenienza la decide il
+#            DB); col prezzo, MANUALE con L1 (non L2/L3: non c'e' un listino da
+#            cui misurare, R-1 del 2026-11-15); con una dichiarazione, 409;
+#          - il resolver solleva → con un prezzo nel payload come sopra
+#            (savepoint); senza, l'errore risale.
 #
 #        Parametri:
 #          - `testata`: dict con almeno `id`, `billing_account_id`,
-#            `utility_id`, `data`. Usato per skip-context e per propagare
-#            `billing_account_id` come BA per la cascata L2.
-#          - `resolver_fn`: callable con signature
-#            `(documento_id: int, *, articolo_id: str, uom_id: int,
-#             auth_user_id: int | None) -> dict[str, Any]`.
-#            Deve ritornare un dict con almeno `prezzo_finale` (None se non
-#            risolto); opzionalmente `origine`, `listino_id`, `contratto_id`,
-#            `promo_id`, `tipo_variazione_applicata`,
-#            `valore_variazione_applicata` per il resolver_context.
-#          - `error_code_validazione`: codice ServiceError di dominio
-#            (es. `E_PREV_VALIDAZIONE` per preventivi,
-#            `E_VENDITE_VALIDATION` per contratti). Usato solo se il payload
-#            di prezzo non e' numerico.
-#          - `richiesta_approvazione`: flag L3 escalation (Sprint E).
+#            `utility_id`, `data`.
+#          - `resolver_fn`: `(documento_id, *, articolo_id, uom_id,
+#            auth_user_id) -> dict` con `prezzo_finale` (None se non risolto),
+#            `origine`, `listino_versione_id`, `listino_riga_id`,
+#            `prezzo_resolver_context`, e per il DDT `esito_codice`.
+#          - `dichiarata`: la provenienza dichiarata dal form
+#            (`provenienza_dichiarata`), o None.
+#          - `error_code_validazione`: il codice del payload di prezzo non
+#            numerico.
+#          - `richiesta_approvazione`: flag L3.
 def resolve_or_check_override_prezzo(
     *,
     testata: Mapping[str, Any],
@@ -433,9 +611,38 @@ def resolve_or_check_override_prezzo(
     resolver_fn: Callable[..., dict[str, Any]],
     error_code_validazione: str,
     richiesta_approvazione: bool = False,
-) -> tuple[Any, dict[str, Any] | None]:
-    # Requisiti minimi per invocare il resolver. Se mancano, skippiamo il
-    # wiring e ritorniamo il prezzo del payload senza meta audit.
+    dichiarata: ProvenienzaDichiarata | None = None,
+) -> EsitoPrezzoRiga:
+    def _smentita(dettaglio: str, listino: Mapping[str, Any] | None = None) -> NoReturn:
+        assert dichiarata is not None
+        rifiuta_provenienza_dichiarata(
+            dichiarata, dettaglio=dettaglio, listino=listino, function_name=function_name,
+        )
+
+    # Una dichiarazione vale solo per un prezzo: senza prezzo il caso e' il 1.
+    if payload_prezzo is None:
+        dichiarata = None
+
+    # Il prezzo a mano quando il listino non risponde (manca il contesto, o il
+    # resolver solleva): L1 si applica lo stesso, L2 e L3 no (non c'e' un
+    # prezzo di listino da cui misurare lo scostamento). ⛔ Fino al 2026-11-15
+    # qui il prezzo passava senza L1: chi non ha l'override poteva prezzare a
+    # piacere un articolo fuori listino (R-1 della revisione, decisione (a) di
+    # Tid del 2026-11-15).
+    def _a_mano_senza_listino() -> EsitoPrezzoRiga:
+        prezzo = PayloadValidator(validation_code=error_code_validazione).coerce_decimal(
+            payload_prezzo,
+            field="prezzo_unitario",
+            message="Prezzo unitario non numerico.",
+            function_name=function_name,
+        )
+        check_permesso_override_prezzo(auth_user_id, function_name=function_name)
+        return EsitoPrezzoRiga(
+            prezzo=prezzo,
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={"prezzo_applicato": str(prezzo), "override_user_id": auth_user_id},
+        )
+
     missing_resolver_ctx = (
         not articolo_id
         or not uom_id
@@ -444,51 +651,52 @@ def resolve_or_check_override_prezzo(
         or testata.get("data") is None
     )
     if missing_resolver_ctx:
-        return payload_prezzo, None
+        if dichiarata is not None:
+            _smentita("Manca il contesto per chiedere il prezzo al listino.")
+        if payload_prezzo is None:
+            return EsitoPrezzoRiga(prezzo=None)
+        return _a_mano_senza_listino()
 
-    # Resolver best-effort: se qualunque errore applicativo (es.
-    # E_CATEGORIA_LISTINO_NON_MAPPATA) accettiamo il prezzo manuale.
-    # Savepoint annidato: le RAISE EXCEPTION dentro il resolver DB marcano
-    # la tx PostgreSQL come aborted; senza savepoint l'INSERT successivo
-    # fallirebbe con InFailedSqlTransaction → mascherato in E_DATABASE
-    # generico. Il savepoint isola l'errore e mantiene integra la tx esterna.
+    # Resolver best-effort, in un savepoint: le RAISE EXCEPTION del resolver DB
+    # marcano la transazione come abortita, e senza savepoint l'INSERT
+    # successivo fallirebbe con InFailedSqlTransaction (mascherato in
+    # E_DATABASE). Il savepoint isola l'errore e tiene integra la transazione.
+    risultato: dict[str, Any]
     prezzo_resolver: Decimal | None = None
-    resolver_context: dict[str, Any] | None = None
     try:
         with transaction.atomic():
-            resolver_result = resolver_fn(
+            risultato = resolver_fn(
                 int(testata["id"]),
                 articolo_id=str(articolo_id),
                 uom_id=int(uom_id),
                 auth_user_id=auth_user_id,
             )
-            if resolver_result.get("prezzo_finale") is not None:
-                prezzo_resolver = Decimal(str(resolver_result["prezzo_finale"]))
-                resolver_context = {
-                    "origine": resolver_result.get("origine"),
-                    "listino_id": resolver_result.get("listino_id"),
-                    "contratto_id": resolver_result.get("contratto_id"),
-                    "promo_id": resolver_result.get("promo_id"),
-                    "tipo_variazione": resolver_result.get("tipo_variazione_applicata"),
-                    "valore_variazione": resolver_result.get("valore_variazione_applicata"),
-                }
     except Exception:
-        # Best-effort: se il resolver non trova prezzo, accettiamo il
-        # payload manuale (se presente). Se payload_prezzo e' None in
-        # questo ramo, il DB dara' NOT NULL sulla colonna oppure il
-        # default del trigger — non e' responsabilita' di questo helper.
-        return payload_prezzo, None
+        # Senza prezzo nel payload non c'e' niente da accettare: l'errore del
+        # listino RISALE col suo codice (il guscio del resolver solleva quando
+        # non risolve, ed e' cio' che ferma il prezzo assente; il nucleo del
+        # DDT non solleva). ⚠️ Fino al 2026-11-15 si inghiottiva anche qui, e
+        # il chiamante riceveva un prezzo None da spiegare con un messaggio suo.
+        if payload_prezzo is None:
+            raise
+        # Il listino non da' un prezzo: quello del payload, a mano (con L1).
+        if dichiarata is not None:
+            _smentita("Il listino non da' un prezzo per questo articolo e unita' di misura.")
+        return _a_mano_senza_listino()
+    if risultato.get("prezzo_finale") is not None:
+        prezzo_resolver = Decimal(str(risultato["prezzo_finale"]))
 
-    # Auto-fill: payload senza prezzo -> uso il resolver.
+    # 1. Payload senza prezzo → il resolver, prezzo e provenienza.
     if payload_prezzo is None:
-        return prezzo_resolver, {
-            "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
-            "prezzo_resolver_context": resolver_context,
-        }
+        return EsitoPrezzoRiga(
+            prezzo=prezzo_resolver,
+            provenienza=_provenienza_dal_resolver(risultato) if prezzo_resolver is not None else None,
+            esito_codice=risultato.get("esito_codice"),
+        )
 
-    # Confronto: payload numerico atteso. La coercizione (da `str`, bool e
-    # NaN rifiutati) e' del BB `PayloadValidator`, col codice del dominio
-    # chiamante e il campo che il form accende.
+    # Payload numerico atteso. La coercizione (da `str`, bool e NaN rifiutati)
+    # e' del BB `PayloadValidator`, col codice del dominio chiamante e il campo
+    # che il form accende.
     payload_decimal = PayloadValidator(validation_code=error_code_validazione).coerce_decimal(
         payload_prezzo,
         field="prezzo_unitario",
@@ -496,34 +704,42 @@ def resolve_or_check_override_prezzo(
         function_name=function_name,
     )
 
-    # Confronto con tolleranza 4 decimali (vedi _PRICE_COMPARE_QUANTIZE).
-    if prezzo_resolver is not None:
-        payload_q = payload_decimal.quantize(
-            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+    # 2. La provenienza dichiarata, verificata sul listino di adesso.
+    if dichiarata is not None:
+        listino = {
+            "origine_prezzo": risultato.get("origine"),
+            "listino_versione_id": risultato.get("listino_versione_id"),
+            "listino_riga_id": risultato.get("listino_riga_id"),
+            "prezzo_unitario": str(prezzo_resolver) if prezzo_resolver is not None else None,
+        }
+        coincide = (
+            prezzo_resolver is not None
+            and listino["origine_prezzo"] == dichiarata.origine_prezzo
+            and listino["listino_versione_id"] == dichiarata.listino_versione_id
+            and listino["listino_riga_id"] == dichiarata.listino_riga_id
+            and _q(payload_decimal) == _q(prezzo_resolver)
         )
-        resolver_q = prezzo_resolver.quantize(
-            _PRICE_COMPARE_QUANTIZE, rounding=ROUND_HALF_UP,
+        if not coincide:
+            _smentita(
+                "La riga dichiara un prezzo preso dal listino, ma oggi il listino "
+                "da' un'altra provenienza o un altro prezzo.",
+                listino,
+            )
+        return EsitoPrezzoRiga(
+            prezzo=prezzo_resolver, provenienza=_provenienza_dal_resolver(risultato),
         )
-        if payload_q == resolver_q:
-            return prezzo_resolver, {
-                "origine_prezzo": resolver_context.get("origine") if resolver_context else None,
-                "prezzo_resolver_context": resolver_context,
-            }
 
-    # Override: L1 richiesta azione processo prezzo_override_manuale.
+    # 3. Prezzo scritto a mano.
+    # L1: azione di processo prezzo_override_manuale.
     check_permesso_override_prezzo(auth_user_id, function_name=function_name)
 
-    # L2: limite percentuale sconto/maggiorazione (Sprint D).
-    # Se resolver non ha prezzo o e' 0 skip (non calcolabile); altrimenti
-    # confronta delta_pct firmato con il parametro appropriato risolto per
-    # l'utente. Cascata estesa (2026-05-15): la categoria cliente del BA
-    # destinatario entra come livello fra user e group. Il lookup BA →
-    # categoria avviene DENTRO `check_limite_variazione_prezzo` dopo gli
-    # early-return (superuser bypass / delta=0 / resolver nullo) per non
-    # sprecare round-trip DB quando L2 non si applica.
-    # L3 (Sprint E): se chiamante chiede `richiesta_approvazione`, l'eventuale
-    # violazione non solleva ma ritorna dict; il chiamante orchestrera' la
-    # creazione pratica.
+    # L2: limite percentuale sconto/maggiorazione (Sprint D). Se il resolver
+    # non ha prezzo o e' 0 si salta (non calcolabile). Cascata estesa
+    # (2026-05-15): la categoria cliente del BA destinatario entra fra user e
+    # group; il lookup BA → categoria avviene DENTRO
+    # `check_limite_variazione_prezzo`, dopo gli early-return.
+    # L3 (Sprint E): con `richiesta_approvazione` la violazione non solleva
+    # ma torna nel `meta`; il chiamante orchestra la pratica.
     violazione_l2 = check_limite_variazione_prezzo(
         auth_user_id=auth_user_id,
         prezzo_resolver=prezzo_resolver,
@@ -534,8 +750,6 @@ def resolve_or_check_override_prezzo(
     )
 
     meta_patch: dict[str, Any] = {
-        "origine_prezzo": ORIGINE_PREZZO_MANUALE,
-        "prezzo_resolver_context": resolver_context,
         "prezzo_applicato": str(payload_decimal),
         "override_user_id": auth_user_id,
     }
@@ -552,4 +766,6 @@ def resolve_or_check_override_prezzo(
         meta_patch["richiesta_approvazione_pending"] = True
         meta_patch["violazione_l2"] = violazione_l2
 
-    return payload_decimal, meta_patch
+    return EsitoPrezzoRiga(
+        prezzo=payload_decimal, provenienza=PROVENIENZA_MANUALE_RIGA, meta=meta_patch,
+    )

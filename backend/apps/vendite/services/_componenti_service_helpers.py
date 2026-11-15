@@ -26,10 +26,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.core.services.value_normalizer import empty_to_none
-from apps.vendite.services._pricing_gate_helpers import (
-    ORIGINE_PREZZO_MANUALE,
-    check_permesso_override_prezzo,
-)
+from apps.vendite.services._pricing_gate_helpers import check_permesso_override_prezzo
 
 
 # Scopo: il contratto dell'OPERATORE sulla PATCH di un componente BoM, uguale
@@ -47,10 +44,8 @@ from apps.vendite.services._pricing_gate_helpers import (
 #    campi li scrive SOLO il workflow L3 (`approvazioni_prezzo_service`).
 #
 # ⛔ `origine_prezzo` NON arriva dal client: un prezzo scritto dall'operatore
-#    e' `MANUALE` per definizione, e lo dice il server. Accettarlo dal client
-#    permetteva di dichiarare «LISTINO» un prezzo scritto a mano. Negli ordini
-#    e nei DDT, inoltre, il filtro locale lo scartava in silenzio: l'origine
-#    manuale non veniva mai scritta.
+#    e' `MANUALE` per definizione. Accettarlo dal client permetteva di
+#    dichiarare «LISTINO» un prezzo scritto a mano.
 COMPONENTE_PATCH_OPERATORE: frozenset[str] = frozenset({
     "prezzo_unitario",
     "attivo",
@@ -59,11 +54,23 @@ COMPONENTE_PATCH_OPERATORE: frozenset[str] = frozenset({
 
 
 # Scopo: valida il payload della PATCH contro `COMPONENTE_PATCH_OPERATORE`
-#        (400 con `error_code` del dominio sulle chiavi estranee), normalizza
-#        le stringhe vuote a None e deriva `origine_prezzo` dal prezzo: un
-#        prezzo scritto -> `MANUALE`; un prezzo tolto (solo i DDT lo ammettono,
-#        prezzo e origine sono facoltativi insieme) -> origine NULL.
-#        Un payload senza campi e' un 400 (BB `require_campi_da_aggiornare`).
+#        (400 con `error_code` del dominio sulle chiavi estranee) e normalizza
+#        le stringhe vuote a None. Un payload senza campi e' un 400 (BB
+#        `require_campi_da_aggiornare`).
+# ⭐ LA PROVENIENZA LA DECIDE IL DB, e qui si scrive solo il prezzo
+#    (brief-db-provenienza-prezzo-segue-il-prezzo §8.3, decisione di Tid del
+#    2026-11-14). Il trigger `vendite.trgfn_riga_documento_provenienza_prezzo`
+#    fa decadere a `MANUALE` (versione, riga e contesto a NULL) la provenienza
+#    da listino di un componente il cui prezzo cambia; un prezzo tolto (solo i
+#    DDT lo ammettono) si porta via origine, versione e riga.
+# ⛔ Fino al 2026-11-14 la derivava il BE (`origine_prezzo = 'MANUALE'`), e
+#    dal giro 3 del brief rompeva: la init scrive ora versione e riga di
+#    listino nelle colonne, il BE cambiava la SOLA origine, il trigger vedeva
+#    una provenienza nuova e non la faceva decadere, e il CHECK
+#    `chk_*_provenienza_prezzo` rifiutava un `MANUALE` che cita il listino —
+#    un `E_DATABASE` muto su ogni prezzo scritto a mano (smoke
+#    `smoke-test-preventivi-componenti`, passo 8). Scrivere qui l'origine vuol
+#    dire scrivere a meta' una regola che ha gia' la sua sede.
 # ⛔ Fino al 2026-10-14 il payload vuoto lo giudicava ogni documento a modo
 #    suo, e DOPO la scrittura: ordini e DDT rispondevano «aggiornato» senza
 #    aver scritto niente, il preventivo 404 su un componente che esiste,
@@ -95,12 +102,8 @@ def dati_patch_componente(
         data, message="Nessun campo aggiornabile sul componente.",
         function_name=function_name,
     )
-    if "prezzo_unitario" in data:
-        if data["prezzo_unitario"] is not None:
-            check_permesso_override_prezzo(auth_user_id, function_name=function_name)
-        data["origine_prezzo"] = (
-            ORIGINE_PREZZO_MANUALE if data["prezzo_unitario"] is not None else None
-        )
+    if data.get("prezzo_unitario") is not None:
+        check_permesso_override_prezzo(auth_user_id, function_name=function_name)
     return data
 
 

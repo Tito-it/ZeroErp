@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -115,7 +115,7 @@ Le **regole** (`dbops.automation_rules_tbl`, seminata dal CSV `80_data/sql/dbops
 | -------------------- | -------------------------------------------------------------------------- |
 | `rule_type`          | Tipo di automazione (TX_ID, AUDIT_UPDATE, STORICO, ecc.)                   |
 | `target_schema`      | Schema target — `'*all'` per tutti gli schemi nell'ambito                  |
-| `target_table`       | Pattern LIKE per le tabelle (es. `foo_%`) oppure NULL per tutte            |
+| `target_table`       | `'*all'` per tutte le tabelle dell'ambito, o il nome esatto di una tabella |
 | `name_template`      | Template per il nome del trigger/oggetto generato                          |
 | `params`             | Parametri JSON specifici per la regola                                     |
 | `exec_mode`          | Quando eseguire: `AUTO`, `CI`, `SCHEDULED`                                 |
@@ -295,6 +295,7 @@ Alcune colonne non devono essere modificate dopo la creazione del record (es. `c
 * La regola `LOCK_COLUMNS` governa la tabella: spenta o cancellata, i lock della tabella si tolgono; se la copre solo una regola di un altro `exec_mode`, il giro non la tocca
 * Il form legge il lock **vivo**, non il registro: [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields) elenca le colonne che un trigger di lock blocca davvero, `codice_interno` compreso
 * ⛔ Un lock di colonna **non si scrive a mano**: si dichiara nel registro. Se un trigger vivo blocca una colonna che il registro non nomina, il runner si ferma e la nomina
+* ⭐ **Una colonna che è identità ha un codice suo.** Una FK di appartenenza che non può cambiare senza lasciare incoerenti i figli e le righe di registro si dichiara qui, non in un ramo del guard (vedi [linee guida trigger](/linee-guida-trigger)). La riga nuova del registro nomina un codice di classe `CONFLITTO_STATO` la cui frase nomina l'entità e dice che cosa fare al posto del cambio; non nomina mai un codice che in `codici_errore.csv` ha `obsoleto_dal`
 * ⚠️ **L'eccezione: una tabella fuori dall'ambito.** Lì il runner non arriva, e se la tabella non deve entrare nell'ambito (porterebbe con sé tutte le altre automazioni) il lock lo monta una migrazione, con il nome del template della regola `LOCK_COLUMNS` e gli argomenti che monterebbe il runner. Il registro lo dichiara comunque: una riga attiva per ogni colonna, con il codice errore. Un presidio pretende che le due metà coincidano — nessun lock fuori dall'ambito senza la sua riga, nessuna riga attiva fuori dall'ambito senza il suo lock. Il caso di oggi è il `codice` di [dbops.domini_task](/dbzero/dbops/tabelle/domini_task); la regola completa sta nella pagina di [dbops.automation_lock_columns](/dbzero/dbops/tabelle/automation_lock_columns)
 
 Il comportamento completo, con le azioni e il caso in cui si ferma, sta nella pagina di
@@ -324,7 +325,7 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 
 **Effetto:** se `OLD.attivo = true` e `NEW.attivo = false` e il padre ha figli attivi → operazione **bloccata con errore**; un figlio attivo che punta a un padre spento → **rifiutato** al commit.
 
-**I rifiuti, e a chi parlano.** Il block solleva `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (figli da spegnere) o `E_ATTIVO_BLOCK_CHILDREN_EXIST` (figli da togliere, se la figlia non ha `attivo`); il require `E_ATTIVO_PADRE_NON_ATTIVO`, e `E_PADRE_INESISTENTE` quando la chiave non riferisce nessuna riga (succede solo su un require montato a mano su una chiave polimorfa). Sono codici per l'operatore: la frase nomina padre, chiave e figlia. Un trigger montato male parla a chi l'ha montato: `E_ATTIVO_BLOCK_ARGS` e `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` per il block, `E_TRIGGER_ARGOMENTI_INVALIDI` per il require.
+**I rifiuti, e a chi parlano.** Il block solleva `E_ATTIVO_BLOCK_SI_RITIRA` quando il padre ha il ritiro (`obsoleto_dal`): una voce che altre righe nominano non si spegne, si ritira con una data. Senza ritiro solleva `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` (figli da spegnere) o `E_ATTIVO_BLOCK_CHILDREN_EXIST` (figli da togliere, se la figlia non ha `attivo`); il require `E_ATTIVO_PADRE_NON_ATTIVO`, e `E_PADRE_INESISTENTE` quando la chiave non riferisce nessuna riga (succede solo su un require montato a mano su una chiave polimorfa). Sono codici per l'operatore, e la frase non nomina tabelle: a un operatore `anagrafiche.risorse_umane` non dice niente, e su un portale o uno shop è un'informazione sulla struttura del database. Quale riga è in causa lo dice il **bersaglio** (tipo e id), che il require mette sul padre spento quando il catalogo dei tipi ne dichiara la tabella (`script.fn_bersaglio_di_riga`); padre, figlia, colonna e valore restano nel contesto del registro errori, per chi ripara il dato. Un trigger montato male parla a chi l'ha montato: `E_ATTIVO_BLOCK_ARGS` e `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` per il block, `E_TRIGGER_ARGOMENTI_INVALIDI` per il require.
 
 **⭐ Padre e figli si guardano con gli occhi del proprietario.** Che un padre sia spento, o ancora usato, non dipende da chi guarda: le due funzioni trigger leggono il padre ([`dbops.fn_trigger_padre_stato`](/dbzero/dbops/funzioni/fn_trigger_padre_stato)) e cercano i figli ([`dbops.fn_trigger_figlie_presenti`](/dbzero/dbops/funzioni/fn_trigger_figlie_presenti)) fuori dalla row level security. Un catalogo visibile a tutti non si spegne se lo usa un'altra azienda, e un require differito si chiude allo stesso modo qualunque sia il contesto al commit. Le due letture rispondono solo per trigger montati su tabelle del proprietario del database: gli argomenti li hanno scritti le migrazioni.
 
@@ -336,6 +337,12 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | --- | --- |
 | `config.profili_accesso_bindings.identita_digitale_id` | **porta e profili**: la veste attiva dice se la porta è aperta, il binding cosa si può fare una volta dentro. La veste OPERATORE nasce spenta (regola unica dell'invito) e deve poter avere i suoi profili prima di essere accesa; i lettori dei permessi chiedono già entrambe le cose |
 | `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
+| `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
+| `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
+
+⚠️ **Una figlia senza `attivo` che è una parte del padre va fra le eccezioni.** Senza `attivo` sulla figlia il block conta **ogni** sua riga. Se la figlia è composizione del padre (righe di composizione, pivot, preferenze) il padre non si spegnerebbe mai: quella FK si dichiara qui. Il guard resta fra due entità che hanno entrambe `attivo`.
+
+⚠️ **Aggiungere o ripuntare una FK verso un padre con `attivo` monta un guard che nessuno ha scritto.** Prima si cercano due cose. Un guard scritto a mano sulla stessa coppia: i due convivono, parla quello col nome minore, e quello a mano può diventare irraggiungibile senza che il comportamento cambi — si decide subito chi tiene la parola, e se deve restare quello a mano la FK si dichiara fra le eccezioni. Una `fn_check_*_disattivabile` del padre che elenca le figlie a mano: la figlia nuova è un motivo nuovo, e la check, il suo pgTAP e la chiave del motivo per il frontend vanno nello stesso lotto della FK.
 
 **Gli orfani: quando la figlia non c'è più.** Il trigger nomina la figlia per testo, e PostgreSQL non lo collega alla tabella: eliminare la figlia toglie la FK ma lascia il block sul padre, che da quel momento rifiuta ogni disattivazione (`E_ATTIVO_BLOCK_FKCOL_NOT_FOUND`). Non serve ricordarsene quando si elimina una tabella: in testa a ogni giro il motore chiama anche [`dbops.fn_ritira_attivo_orfani`](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani), che toglie i trigger ATTIVO che nominano una tabella o una colonna che non esiste più. Orfano vuol dire **nome morto**, non «FK assente»: i require scritti a mano su chiavi polimorfe non hanno FK e restano. L'elenco lo dà [`dbops.fn_trigger_attivo_orfani`](/dbzero/dbops/funzioni/fn_trigger_attivo_orfani); il presidio è `db/pgtap/dbops/test-trigger-attivo-orfani-v1.sql`.
 
@@ -397,6 +404,7 @@ Per tabelle sensibili (es. tabelle ruoli, configurazioni critiche) dove la DELET
 * Trigger `BEFORE DELETE` per riga su `script.trgfn_delete_block_by_guc(guc_key)` — blocca la DELETE a meno che il GUC specificato non sia impostato a `'on'`. ⭐ `BEFORE` perché il rifiuto arrivi prima delle cascate delle FK e dei guard dei figli
 * Runner `dbops.fn_run_automations_delete_block()`, nella convergenza del rilascio e nel giro notturno `automations_delete_block` (§9). **Converge**: crea il blocco dove manca, lo rigenera se non è quello dichiarato (nome, momento, GUC), lo toglie se la riga è spenta
 * ⛔ Per togliere un blocco si **spegne** la riga (`enabled = false`), non la si cancella: un blocco vivo su una tabella che il registro non nomina ferma il runner, che lo nomina
+* ⛔ **Fuori dall'ambito non c'è eccezione**, a differenza dei lock di colonna (§4.1): il runner non ci arriva e il blocco non si monta a mano. Una tabella da proteggere entra nell'ambito; finché non c'entra, la sua riga resta spenta. Il presidio (`test-delete-block-convergenza-v1`) guarda le due metà: nessun blocco vivo e nessuna riga attiva su una tabella fuori dall'ambito
 * Il blocco vivo si riconosce dalla funzione e dal suo argomento, non dal nome: il confronto sta in [dbops.fn_delete_block_divergenze](/dbzero/dbops/funzioni/fn_delete_block_divergenze)
 
 Il comportamento completo sta nella pagina di
@@ -456,6 +464,8 @@ chiave dichiarata e non letta è **una leva finta**: prima o poi qualcuno la
 gira. Una letta e non dichiarata è peggio — non si scopre affatto.
 ⇒ La misura si fa sulla **lettura**, non sulla parola:
 `regexp_matches(prosrc, 'params\s*->>?\s*''([a-z_]+)''','g')`.
+
+⭐ **Un registro che scade nasce con quattro pezzi, nello stesso giro**: la colonna `cleanup_at` (nullable: vuota vuol dire «non scade»), la regola `CLEANUP_AT` col suo termine e, dove serve, `base_ts_column`, il trigger alla nascita [`dbops.trgfn_cleanup_at_alla_nascita`](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) in fase `m50`, e nel guard sul `DELETE` il ramo che lascia passare la riga scaduta. ⛔ Un guard che rifiuta **una** riga ferma la pulizia dell'**intera** tabella: il giro la salta e prosegue (§8), e senza quel ramo la tabella non cala mai.
 
 **Esclusioni:** `dbops.automation_cleanup_exclusions`. Una tabella esclusa non riceve scadenze —
 né dal giro né dal trigger alla nascita — e non perde righe. Il dettaglio sta nella pagina della

@@ -79,20 +79,6 @@ BEGIN;
 
 SELECT plan(8);
 
--- Il codice di dominio di un errore, letto dal canale CONSTRAINT (contratto
--- P0001 + CONSTRAINT = codice); per gli altri errori, SQLSTATE e vincolo.
--- NULL se non solleva.
-CREATE OR REPLACE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' THEN v_c ELSE v_s || ' ' || coalesce(v_c, '') END;
-END $$;
-
 -- ============================================================
 -- Fixture
 -- ⛔ Cio' che un builder scrive si legge in un'istruzione SEPARATA.
@@ -237,7 +223,7 @@ SELECT is(
 --    all'azienda dell'operatore. Per l'installazione segue la predefinita.
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         UPDATE anagrafiche.emittenti_fiscali_billing_account
            SET emittente_soggetto_ruolo_id = (SELECT ef_altro FROM _t_ef)
          WHERE is_default $sql$),
@@ -276,7 +262,7 @@ $$, '5. Da operatore, togliere il collegamento del figlio dell''albero: vive');
 -- 6) * DA OPERATORE: la predefinita su un'altra azienda, albero misto
 -- ============================================================
 SELECT is(
-    pg_temp.esito($sql$
+    dbops.fn_pgtap_codice_errore($sql$
         UPDATE anagrafiche.emittenti_fiscali_billing_account
            SET emittente_soggetto_ruolo_id = (SELECT ef_altro FROM _t_ef)
          WHERE is_default $sql$),

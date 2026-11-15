@@ -82,9 +82,8 @@ BEGIN
     v_commessa := vendite.fn_get_or_create_commessa(
         p_billing_account_id => v_ba_id,
         p_utility_id         => v_utility,
-        p_competenza_dal     => date_trunc('month', (SELECT script.fn_data_operativa()))::date,
-        p_competenza_al      => (date_trunc('month', (SELECT script.fn_data_operativa()))
-                                 + interval '1 month - 1 day')::date,
+        p_competenza_dal     => script.fn_mese_di((SELECT script.fn_data_operativa())),
+        p_competenza_al      => script.fn_fine_mese_di((SELECT script.fn_data_operativa())),
         p_meta               => jsonb_build_object('test_scope', 'pgtap_' || p_etichetta),
         p_force_new          => true);
 

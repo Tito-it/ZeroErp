@@ -16,11 +16,12 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_resi_gen_numero()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti, 2c G-5):
 --   la famiglia di numerazione e' RESO_VENDITA, il codice della
 --   sorgente (era RESO).
 DECLARE
-    v_stato        config.stati_doc_reso.codice_interno%TYPE;
+    v_emissione    config.stati_doc_reso.emissione%TYPE;
     v_emittente_sr vendite.registri_fatturazione.emittente_soggetto_ruolo_id%TYPE;
     v_registro     vendite.registri_fatturazione.id%TYPE;
     v_ass          record;
@@ -28,7 +29,8 @@ DECLARE
 BEGIN
     -- =========================================================
     -- Scopo:
-    --   Assegnare resi.numero alla transizione a CONFERMATO,
+    --   Assegnare resi.numero all'ingresso nello stato di
+    --   emissione del reso (config.stati_doc_reso.emissione),
     --   prendendolo dal MOTORE DEI REGISTRI.
     --
     -- ⭐ rev 2026-08-31: cambia SOLO il contatore. Formato,
@@ -41,11 +43,12 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Numero solo a CONFERMATO (no buchi da bozze scartate).
-    SELECT sdr.codice_interno INTO v_stato
+    -- Numero solo nello stato di emissione (no buchi da bozze
+    -- scartate). Lo dice il vocabolario, non il codice.
+    SELECT sdr.emissione INTO v_emissione
       FROM config.stati_doc_reso sdr
      WHERE sdr.id = NEW.stato_doc_reso_id;
-    IF v_stato IS DISTINCT FROM 'CONFERMATO' THEN
+    IF v_emissione IS NOT TRUE THEN
         RETURN NEW;
     END IF;
 
@@ -87,7 +90,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_gen_numero()
-IS 'Assegna il numero a il reso alla transizione a CONFERMATO, chiamando vendite.fn_assegna_numero_documento. ⭐ rev 2026-08-31 (brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4): i SEI PASSI della numerazione — risolvere il registro, ricavare l''anno dalla data documento, chiedere il progressivo, leggere il formato, comporre — non stanno piu'' qui. Stavano qui E in altre tre funzioni identiche (DDT, ordini, resi, commessa), verificato il 2026-08-31: gli stessi sei passi, quattro volte. ⚠️ Una correzione alla composizione andava fatta in QUATTRO posti, e chi ne dimenticava uno produceva un difetto MUTO — un documento formattato diverso dagli altri, che nessun vincolo respinge. ⭐ QUI RESTA L''UNICA COSA CHE DISTINGUE DAVVERO QUESTO DOCUMENTO DAGLI ALTRI TRE: il MOMENTO. I guard di uscita anticipata decidono SE e QUANDO numerare, poi la chiamata fa il resto — centralizzare anche il momento avrebbe messo in una funzione comune la sola cosa che comune non e''. ⭐ IL FORMATO VIENE TUTTO DAL REGISTRO — prefisso, suffisso e lunghezza, in una lettura sola — e i DEFAULT con cui un registro nasce stanno in vendite.famiglie_documento. ⛔ config.sistema_codici NON C''ENTRA PIU'': il 20260831-53 ne ha tolto le righe di ddt, ordine, reso e commessa. ⚠️ Fino al 20260831-54 questa descrizione diceva che il catalogo dei formati «conserva la sola LUNGHEZZA»: era vero fino al 53, e nel frattempo la funzione centrale continuava a leggerla da li'' — zero righe, lunghezza NULL, 7 cifre a tutti (giusto per caso qui, sbagliato sulla commessa). Corretto dal 20260831-55. ⚠️ Il separatore non si legge piu'': se serve, si scrive dentro il prefisso. ⚠️ Le colonne della chiave si scrivono INSIEME, perche'' sono una cosa sola: scriverne una senza le altre lascerebbe la riga a raccontare un sezionale che non e'' il suo. Piano: brief-db-prefisso-sul-registro-e-allineamento-contatori, P-4 e P-16. Rev 2026-10-20 (20261020-44, brief-db-grammatica-unica-documenti 2c, G-5): la famiglia di numerazione e'' RESO_VENDITA, il codice della sorgente (era RESO).';
+IS 'Assegna il numero al reso quando entra nello stato di emissione del suo vocabolario (config.stati_doc_reso.emissione), chiamando vendite.fn_assegna_numero_documento con la famiglia RESO_VENDITA. Un reso gia'' numerato resta com''e'' (l''immutabilita'' la fa valere vendite.trgfn_v_resi_protect_num); fuori dallo stato di emissione non si numera, cosi'' una bozza scartata non lascia buchi. I passi della numerazione (registro, anno dalla data, progressivo, formato, composizione) stanno in vendite.fn_assegna_numero_documento: qui resta solo il momento. Il formato viene tutto dal registro. Numero, anno e registro si scrivono insieme, perche'' sono la chiave del documento.';
 ```
 
 </div>

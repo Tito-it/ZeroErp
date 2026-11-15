@@ -59,16 +59,6 @@ SELECT plan(8);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Due aziende, costruite PRIMA del contesto (una seconda azienda si
 -- costruisce coi builder atomici, prima del contesto).
@@ -150,7 +140,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.commesse_attivita SET contratto_id = %s WHERE id = %s',
         (SELECT contratto_id FROM t_k_altro_cliente), (SELECT attivita_id FROM t_a))),
     'E_ATTIVITA_CONTRATTO_INCOERENTE',
@@ -158,7 +148,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.commesse_attivita SET contratto_id = %s WHERE id = %s',
         (SELECT contratto_id FROM t_k_altrui), (SELECT attivita_id FROM t_a))),
     'E_ATTIVITA_CONTRATTO_INCOERENTE',
@@ -193,7 +183,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.attivita_fatturabili SET contratto_id = %s WHERE commessa_attivita_id = %s',
         (SELECT contratto_id FROM t_k_altro_cliente), (SELECT attivita_id FROM t_a))),
     'E_ATTIVITA_CONTRATTO_INCOERENTE',

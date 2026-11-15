@@ -7,6 +7,8 @@
 // il verbo del DB (`fn_clona_versione_listino`) sul campo valido_dal.
 // I componenti dei compositi senza giorni in comune fra distinta e versione
 // nuova non si copiano: la risposta li conta (`componenti_saltati`) e lo si dice.
+// Lo stesso per i prezzi di un articolo ritirato (`righe_saltate`): una versione
+// nuova non li ricopia.
 // Avviso retroattivo (D2): se valido_dal < oggi mostra warning sul fatto che
 // le fatturazioni gia' emesse non vengono toccate (servirebbe rettifica DB-L4).
 import { ref, watch, computed } from 'vue'
@@ -102,6 +104,9 @@ async function handleSave() {
   if (result !== null) {
     if (result.componenti_saltati > 0) {
       notify.warn(t('vendite.listini.clona_componenti_saltati', { count: result.componenti_saltati }))
+    }
+    if (result.righe_saltate > 0) {
+      notify.warn(t('vendite.listini.clona_righe_saltate', { count: result.righe_saltate }))
     }
     emit('cloned', { listinoId: props.listino.id, versione: result })
     close()

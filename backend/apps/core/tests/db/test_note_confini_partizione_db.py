@@ -27,6 +27,7 @@
 
 0. test_ogni_repository_di_vendita_nomina_il_confine_della_sua_partizione
 1. test_i_bersagli_delle_note_di_catalogo_sono_confini_di_partizione
+2. test_ogni_repository_di_catalogo_nomina_il_confine_della_sua_partizione
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ from apps.catalogo.db.catalogo_bom_repository import (
     NOTA_TARGET_COMPONENTE,
 )
 from apps.core.db.partitioned_note_repository import PartitionedNoteRepository
+from apps.catalogo.db import note_repositories as note_repositories_catalogo
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db import note_repositories
 
@@ -95,3 +97,20 @@ class NoteConfiniPartizioneTests(TestCase):
         for codice in (NOTA_TARGET_ARTICOLO, NOTA_TARGET_COMPONENTE):
             with self.subTest(codice=codice):
                 self.assertIn(f"FOR VALUES IN ('{codice}')", confini)
+
+    # 2) Dal 2026-11-11 anche le note di catalogo passano dal BB: le istanze di
+    #    `catalogo.db.note_repositories`, raccolte dal modulo come sopra.
+    def test_ogni_repository_di_catalogo_nomina_il_confine_della_sua_partizione(self) -> None:
+        repos = [
+            v for v in vars(note_repositories_catalogo).values()
+            if isinstance(v, PartitionedNoteRepository)
+        ]
+        self.assertEqual(len(repos), 2, "le due partizioni di catalogo.note")
+        confini = _confini("catalogo.note")
+        for repo in repos:
+            with self.subTest(partizione=repo.partition_table):
+                self.assertIn(repo.partition_table, confini)
+                self.assertEqual(
+                    confini[repo.partition_table],
+                    f"FOR VALUES IN ('{repo.target_tipo}')",
+                )

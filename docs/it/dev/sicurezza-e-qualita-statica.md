@@ -1,6 +1,6 @@
 # Sicurezza e qualità statica — strumenti, presidi, configurazione
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: chi sviluppa su backend, frontend o DB, e chi mette in piedi una macchina.
 > La versione descrittiva, per tutti, è la guida [Sicurezza di ZeroErp](../guide/sicurezza.md).
@@ -69,6 +69,12 @@ pre-commit run --all-files                     # prova a vuoto
 
 ⚠️ Gli hook guardano **solo ciò che è in staged**: un `git add` parziale fa girare il cancello su
 un commit diverso da quello che si ha sul disco.
+
+⚠️ **Prima di aprire una PR verso `Tito-dev`** si lanciano il pre-commit sull'intero intervallo dei
+commit (`pre-commit run --from-ref origin/Tito-dev --to-ref HEAD`) e i guardrail statici
+(`python3 scripts/guardrail_*.py`). In CI un passo rosso salta quelli che vengono dopo: senza la
+prova locale ogni correzione scoprirebbe il rosso successivo. `ci-validate` parte solo sui `paths`
+del suo workflow: una PR che non li tocca non lo avvia, e la sua assenza non è un verde.
 
 ---
 

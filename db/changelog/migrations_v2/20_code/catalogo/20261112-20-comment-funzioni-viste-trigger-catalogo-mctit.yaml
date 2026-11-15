@@ -1,0 +1,361 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT di funzioni, viste e trigger di catalogo (§3.1 M2, §3.2, §3.3).
+#
+#   Si riscrivono interi, al presente (linee-guida-sql §5d): fn_articoli_ammessi,
+#   fn_articolo_righe_vive_non_ammesse, la vista vw_articoli_dettaglio (M2: niente id della
+#   lista, requires_lotto ha il suo lock condizionale) e le sue colonne obsoleto_dal,
+#   e_obsoleto, e_onere, causale_onere_id, il trigger del guard onere/natura.
+#   Nuovi: le colonne che le viste calcolano (scelta 3 di Tid: una colonna copiata dalla
+#   tabella resta col COMMENT della tabella) e i trigger scritti a mano dei guard.
+#   I corpi di fn_articoli_ammessi e fn_articolo_righe_vive_non_ammesse non si riaprono.
+#   Rollback: i COMMENT di prima (NULL dove non c'erano), letti su dbdev il 2026-11-11.
+#   Brief: brief-db-revisione-catalogo, giro 5-A (§17).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261112-20-comment-funzioni-viste-trigger-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261112-20-comment-funzioni-viste-trigger-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo: COMMENT di funzioni, viste e trigger al presente; quelli delle colonne calcolate e dei guard.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('catalogo.vw_note'), to_regclass('catalogo.vw_articoli_dettaglio'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_articoli_ammessi(text,bigint,text,integer,vendite.tipo_eccezione_contratto,uuid) IS
+                  'Sede unica del picker degli articoli di una riga: dato il documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO) e il suo id (obbligatorio, altrimenti E_PARAMETRO_INVALIDO; non per ARTICOLO, che vuole p_articolo_padre_id, ne'' per PROMO_ARTICOLO), gli articoli ATTIVI che la ricerca trova (p_search: «contiene», senza maiuscole, su codice o descrizione, letterale; vuoto = tutti), {articolo_id, codice, descrizione, motivo, ordine}: motivo = il PRIMO motivo della check per tipo di riga ({codice, reason, reason_key, dettaglio, valori}; NULL = ammesso), cioe'' quello che il guard di tabella solleverebbe scrivendo la riga; prima gli ammessi, poi per codice; ordine = la posizione. p_tipo_eccezione per offerta e contratto (AGGIUNTA | OVERRIDE | ESCLUSIONE), obbligatorio. Il tetto (p_limit, NULL = nessuno, almeno 1) lo sceglie il chiamante; la check gira su ogni articolo trovato, prima del tetto. Il composito della versione di listino esce con COMPOSITO_COME_BUNDLE: nella versione entra come bundle, coi componenti. Il picker giudica come scelta nuova (p_scelta_nuova = true della check): un articolo ritirato (catalogo.articoli.obsoleto_dal raggiunta, script.fn_e_obsoleto) resta nell''elenco fra gli esclusi col motivo OBSOLETO (E_ARTICOLO_OBSOLETO), lo stesso che solleva il guard di riga. Due meta'' della stessa check dei guard: script.fn_articolo_riga_contesto (il documento, letto una volta) e script.fn_check_articolo_riga_su_contesto (i motivi). Sotto RLS (SECURITY INVOKER).';
+              COMMENT ON FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(uuid) IS
+                  'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo della riga intera, script.fn_check_riga_documento_su_contesto, con la natura, il tipo d''eccezione, l''erogazione e la fonte della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA (lo stato dal vocabolario config.stati_doc_listino_versioni, per codice_interno); promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse.';
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio IS
+                  'Vista della lista degli articoli (ui.lista_definizione catalogo.articoli) e del drawer articolo: catalogo.articoli con le decodifiche (unita'' di misura, tipologia, gruppo, spesa, IVA, tipologia di listino, natura di vendita, modo di approvvigionamento), le capability della distinta (puo_gestire_bom, motivo_non_gestibile_bom, has_componenti_alla_data), l''onere (e_onere) e il ritiro (e_obsoleto). Natura di vendita e modo di approvvigionamento escono con codice_interno, per la logica, e descrizione, a video. Quali colonne non si cambiano lo dice dbops.vw_non_editable_fields: i lock di colonna e quelli condizionali (requires_lotto, per esempio, non cambia su un articolo usato). Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio: db/pgtap/rls/test-rls-viste-security-invoker.sql).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.causale_onere_id IS
+                  'La causale dell''onere (config.causali_onere); NULL sulla merce. Il discrimine resta e_onere: questa colonna porta il valore per chi etichetta o raggruppa.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_onere IS
+                  'La definizione di articolo-onere: causale_onere_id IS NOT NULL (un articolo-onere non e'' merce, non e'' a magazzino, composito, a lotti o a matricola: catalogo.trgfn_articoli_guard_onere_natura). La leggono il picker delle righe (date di consegna nascoste sulla riga nuova: E_RIGA_ONERE_DATA_CONSEGNA) e il form articolo. Sulla RIGA di documento il discrimine e'' e_onere della vista di riga, sulla natura congelata.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.obsoleto_dal IS
+                  'La data del ritiro dell''articolo (catalogo.articoli.obsoleto_dal): NULL = si sceglie; passata = ritirato; futura = ritiro programmato. Il drawer la mostra e la modifica; cancellarla riattiva.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_obsoleto IS
+                  'Ritirato alla data operativa: script.fn_e_obsoleto(obsoleto_dal), lo stesso BB del guard di riga (E_ARTICOLO_OBSOLETO) e del picker (catalogo.fn_articoli_ammessi). La leggono la lista e il drawer: il FE non confronta date. Ritirato non vuol dire non attivo: l''articolo resta valido sulle righe che lo usano gia''.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_ref_id IS
+                  'L''unita'' di misura base (catalogo.unita_misura.id): lo stesso valore di uom_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_codice IS
+                  'Il codice dell''unita'' di misura base (catalogo.unita_misura.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_descrizione IS
+                  'La descrizione dell''unita'' di misura base (catalogo.unita_misura.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_ref_id IS
+                  'La tipologia dell''articolo (vendite.articoli_tipologie.id): lo stesso valore di tipo_voce_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_codice IS
+                  'Il codice della tipologia dell''articolo (vendite.articoli_tipologie.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_descrizione IS
+                  'La descrizione della tipologia dell''articolo (vendite.articoli_tipologie.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_ref_id IS
+                  'Il gruppo dell''articolo (vendite.articoli_gruppi.id): lo stesso valore di gruppo_voce_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_codice IS
+                  'Il codice del gruppo dell''articolo (vendite.articoli_gruppi.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_descrizione IS
+                  'La descrizione del gruppo dell''articolo (vendite.articoli_gruppi.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_ref_id IS
+                  'La voce di spesa dell''articolo (vendite.articoli_spesa.id): lo stesso valore di spesa_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_codice IS
+                  'Il codice della voce di spesa (vendite.articoli_spesa.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_descrizione IS
+                  'La descrizione della voce di spesa (vendite.articoli_spesa.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_ref_id IS
+                  'L''IVA dell''articolo (config.iva.id): lo stesso valore di iva_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_codice IS
+                  'Il codice dell''IVA (config.iva.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_descrizione IS
+                  'La descrizione dell''IVA (config.iva.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_aliquota_iva IS
+                  'L''aliquota dell''IVA (config.iva.aliquota_iva).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_listino_codice IS
+                  'Il codice della tipologia di listino dell''articolo (config.listini_tipologie.codice, da listino_tipologia_id).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_listino_descrizione IS
+                  'La descrizione della tipologia di listino dell''articolo (config.listini_tipologie.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.puo_gestire_bom IS
+                  'L''articolo ha una distinta da gestire: e'' composito e non e'' solo componente.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.motivo_non_gestibile_bom IS
+                  'Perche'' la distinta non si gestisce: ARTICOLO_SOLO_COMPONENTE o ARTICOLO_NON_COMPOSITO; NULL quando puo_gestire_bom.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.has_componenti_alla_data IS
+                  'Il composito ha almeno un legame alla data operativa (catalogo.fn_distinta_alla_data a script.fn_data_operativa).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_codice_interno IS
+                  'Il codice_interno della natura di vendita (config.nature_vendita), per la logica.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_descrizione IS
+                  'La descrizione della natura di vendita (config.nature_vendita), a video.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_destinazione_tipo IS
+                  'Dove va la riga dopo l''accettazione del preventivo, per questa natura (config.nature_vendita.destinazione_tipo).';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.modo_approvvigionamento_codice_interno IS
+                  'Il codice_interno del modo di approvvigionamento (config.modi_approvvigionamento), per la logica.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.modo_approvvigionamento_descrizione IS
+                  'La descrizione del modo di approvvigionamento (config.modi_approvvigionamento), a video.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.prodotto_codice IS
+                  'Il codice del kit (l''articolo prodotto_id).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.prodotto_descrizione IS
+                  'La descrizione del kit (l''articolo prodotto_id).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.componente_codice IS
+                  'Il codice del componente (l''articolo componente_id).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.componente_descrizione IS
+                  'La descrizione del componente (l''articolo componente_id).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.puo_chiudersi IS
+                  'Il legame si puo'' chiudere: non ha ancora una fine (valido_al NULL).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.data_min_chiusura IS
+                  'La fine piu'' presto ammessa per un legame aperto: il piu'' tardi fra valido_dal e il giorno prima della data operativa, perche'' un legame si chiude da oggi in poi. NULL su un legame gia'' chiuso.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.data_default_chiusura IS
+                  'La fine proposta per un legame aperto: il piu'' tardi fra valido_dal e la data operativa. NULL su un legame gia'' chiuso.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.motivo_non_chiudibile IS
+                  'RIGA_GIA_CHIUSA su un legame che ha gia'' una fine; NULL quando puo_chiudersi.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.esposizione_in_fattura_codice IS
+                  'Il codice dell''esposizione in fattura (config.esposizioni_componente.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.esposizione_in_fattura_etichetta_key IS
+                  'La chiave di traduzione dell''etichetta dell''esposizione in fattura (config.esposizioni_componente.etichetta_key).';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.uom_codice IS
+                  'Il codice dell''unita'' della mappatura (catalogo.unita_misura.codice).';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.uom_descrizione IS
+                  'La descrizione dell''unita'' della mappatura (catalogo.unita_misura.descrizione).';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.articolo_codice IS
+                  'Il codice dell''articolo della mappatura.';
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.articolo_descrizione IS
+                  'La descrizione dell''articolo della mappatura.';
+              COMMENT ON COLUMN catalogo.vw_note.stile_id IS
+                  'Lo stile della nota (config.note_stili.id).';
+              COMMENT ON COLUMN catalogo.vw_note.stile_codice IS
+                  'Il codice dello stile della nota (config.note_stili).';
+              COMMENT ON COLUMN catalogo.vw_note.stile_descrizione IS
+                  'La descrizione dello stile della nota (config.note_stili).';
+              COMMENT ON COLUMN catalogo.vw_note.lingua_id IS
+                  'La lingua della nota (config.lingue.id).';
+              COMMENT ON COLUMN catalogo.vw_note.lingua_codice_iso IS
+                  'Il codice ISO della lingua della nota (config.lingue).';
+              COMMENT ON COLUMN catalogo.vw_note.lingua_descrizione IS
+                  'La descrizione della lingua della nota (config.lingue).';
+              COMMENT ON COLUMN catalogo.vw_note.lingua_descrizione_locale IS
+                  'La descrizione della lingua nella lingua stessa (config.lingue).';
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_id IS
+                  'L''articolo annotato: lo stesso valore di nota_target_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_codice IS
+                  'Il codice dell''articolo annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_descrizione IS
+                  'La descrizione dell''articolo annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.articolo_componente_id IS
+                  'Il legame di distinta annotato: lo stesso valore di nota_target_id.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_id IS
+                  'Il kit del legame annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_codice IS
+                  'Il codice del kit del legame annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_descrizione IS
+                  'La descrizione del kit del legame annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_id IS
+                  'Il componente del legame annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_codice IS
+                  'Il codice del componente del legame annotato.';
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_descrizione IS
+                  'La descrizione del componente del legame annotato.';
+              COMMENT ON TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd ON catalogo.articoli IS
+                  'Un articolo-onere e'' un addebito, non un bene: la natura non e'' merce (E_ARTICOLO_ONERE_NATURA_MERCE) e non e'' gestito a magazzino, composito, a lotti o a matricola (E_ARTICOLO_ONERE_STRUTTURA). Fascia _a10_. UPDATE OF le sei colonne che la funzione giudica: nessun trigger BEFORE della tabella le scrive.';
+              COMMENT ON TRIGGER trg_articoli_a10_guard_flags_struttura_bom_attiva_upd ON catalogo.articoli IS
+                  'I flag di struttura che una distinta in vigore o futura rende immutabili (catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva, E_BOM_MODIFICA_VIETATA). BEFORE UPDATE OF is_composito, is_solo_componente, requires_serial.';
+              COMMENT ON TRIGGER trg_articoli_a10_seed_uom_base_ins ON catalogo.articoli IS
+                  'Crea la riga dell''unita'' base dell''articolo in catalogo.articoli_uom_operativa (catalogo.trgfn_articoli_seed_uom_base). AFTER INSERT.';
+              COMMENT ON TRIGGER trg_articoli_a10_guard_iva_bom_attiva_upd ON catalogo.articoli IS
+                  'Un kit e i suoi componenti hanno la stessa IVA, sui legami da oggi in poi (catalogo.trgfn_articoli_guard_iva_bom_attiva). CONSTRAINT TRIGGER AFTER UPDATE OF iva_id, DEFERRABLE INITIALLY DEFERRED, quando l''IVA cambia: si giudica a fine transazione, cosi'' l''IVA del kit e dei componenti si cambia insieme, in qualunque ordine.';
+              COMMENT ON TRIGGER trg_articoli_a10_guard_struttura_se_usato_upd ON catalogo.articoli IS
+                  'Un articolo usato non cambia le colonne strutturali (catalogo.trgfn_articoli_guard_struttura_se_usato, E_ARTICOLO_USATO_STRUTTURA_IMMUTABILE); la porta amministratore e'' catalogo.fn_articolo_correggi_struttura. BEFORE UPDATE OF le colonne di catalogo.fn_articolo_colonne_struttura.';
+              COMMENT ON TRIGGER trg_articoli_componenti_a10_guard_riga_componente_ins_upd ON catalogo.articoli_componenti IS
+                  'Ogni composizione nuova passa la check della riga di tipo ARTICOLO: padre composito, componente ammesso (catalogo.trgfn_articoli_componenti_guard_componente). BEFORE INSERT OR UPDATE OF componente_id, prodotto_id, attivo, valido_al.';
+              COMMENT ON TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt ON catalogo.articoli_componenti IS
+                  'La distinta e'' una storia: un legame non si cancella, la sua struttura non cambia, e la fine non riscrive i giorni passati (catalogo.trgfn_articoli_componenti_block_modifica_struttura, E_BOM_MODIFICA_VIETATA). BEFORE DELETE OR UPDATE OF prodotto_id, componente_id, coeff_qta, obbligatorio, esposizione_in_fattura, valido_dal, valido_al.';
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_storia_upd_dlt ON catalogo.articoli_uom_operativa IS
+                  'La storia della conversione: si spegne, si riaccende e si cancella solo se non ha giorni passati, e si chiude da oggi in poi (catalogo.trgfn_uom_guard_storia). BEFORE UPDATE OF attivo, valido_al OR DELETE.';
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_listini_attivi_upd ON catalogo.articoli_uom_operativa IS
+                  'Chiudere o spegnere la conversione non lascia una versione di listino ATTIVA con un prezzo in un''unita'' che non si converte (catalogo.trgfn_uom_guard_listini_attivi). CONSTRAINT TRIGGER AFTER UPDATE OF valido_al, attivo, quando cambiano, DEFERRABLE INITIALLY DEFERRED: si giudica a fine transazione, cosi'' «chiudi e inserisci» passa in qualunque ordine.';
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_listini_attivi_dlt ON catalogo.articoli_uom_operativa IS
+                  'Togliere la conversione non lascia una versione di listino ATTIVA con un prezzo in un''unita'' che non si converte (catalogo.trgfn_uom_guard_listini_attivi). CONSTRAINT TRIGGER AFTER DELETE, DEFERRABLE INITIALLY DEFERRED: si giudica a fine transazione.';
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_storia_upd_dlt ON catalogo.unita_misura_conversioni IS
+                  'La storia della conversione: si spegne, si riaccende e si cancella solo se non ha giorni passati, e si chiude da oggi in poi (catalogo.trgfn_uom_guard_storia). BEFORE UPDATE OF attivo, valido_al OR DELETE.';
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_listini_attivi_upd ON catalogo.unita_misura_conversioni IS
+                  'Chiudere o spegnere la conversione non lascia una versione di listino ATTIVA con un prezzo in un''unita'' che non si converte (catalogo.trgfn_uom_guard_listini_attivi). CONSTRAINT TRIGGER AFTER UPDATE OF valido_al, attivo, quando cambiano, DEFERRABLE INITIALLY DEFERRED: si giudica a fine transazione, cosi'' «chiudi e inserisci» passa in qualunque ordine.';
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_listini_attivi_dlt ON catalogo.unita_misura_conversioni IS
+                  'Togliere la conversione non lascia una versione di listino ATTIVA con un prezzo in un''unita'' che non si converte (catalogo.trgfn_uom_guard_listini_attivi). CONSTRAINT TRIGGER AFTER DELETE, DEFERRABLE INITIALLY DEFERRED: si giudica a fine transazione.';
+              COMMENT ON TRIGGER trg_uom_conversioni_a10_guard_tipo_ins_upd ON catalogo.unita_misura_conversioni IS
+                  'Una conversione generale vale solo fra unita'' della stessa tipologia (catalogo.trgfn_uom_conversioni_guard_tipo, E_UOM_CONVERSIONE_TIPO_DIVERSO). BEFORE INSERT OR UPDATE OF uom_from_id, uom_to_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_articoli_ammessi(text,bigint,text,integer,vendite.tipo_eccezione_contratto,uuid) IS
+                  'Sede unica del picker degli articoli di una riga (R-2, A-7): dato il documento (codice di config.tipi_entita: PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA | OFFERTA_COMMERCIALE | CONTRATTO | LISTINO_VERSIONE | ARTICOLO | PROMO_ARTICOLO) e il suo id (A-1: obbligatorio, E_PARAMETRO_INVALIDO, tranne ARTICOLO, che vuole p_articolo_padre_id, e PROMO_ARTICOLO), gli articoli ATTIVI che la ricerca trova (p_search: «contiene», senza maiuscole, su codice o descrizione, letterale; vuoto = tutti), {articolo_id, codice, descrizione, motivo, ordine}: motivo = il PRIMO motivo della check per tipo di riga ({codice, reason, reason_key, dettaglio, valori}; NULL = ammesso), cioe'' quello che il guard di tabella solleverebbe scrivendo la riga; prima gli ammessi, poi per codice; ordine = la posizione. p_tipo_eccezione per offerta e contratto (AGGIUNTA | OVERRIDE | ESCLUSIONE), obbligatorio. Il tetto (p_limit, NULL = nessuno, almeno 1) lo sceglie il chiamante; la check gira su ogni articolo trovato, prima del tetto. Il composito della versione di listino esce con COMPOSITO_COME_BUNDLE: nella versione entra come bundle, coi componenti. Due meta'' della stessa check dei guard (A-2): script.fn_articolo_riga_contesto (il documento, letto una volta: R-5) e script.fn_check_articolo_riga_su_contesto (i motivi). Sotto RLS (SECURITY INVOKER). Nasce il 2026-10-14, brief-db-articoli-ammessi-per-documento (Lotto 4, §9.4); prende il posto dei filtri liberi di catalogo_repository.lookup_articoli per le righe di documento (giro BE/FE). ⭐ rev 2026-11-05 (20261105-12, brief-db-articoli-obsoleto-dal §4): il picker giudica come SCELTA NUOVA (p_scelta_nuova = true della check): un articolo ritirato (catalogo.articoli.obsoleto_dal raggiunta, script.fn_e_obsoleto) resta nell''elenco fra gli esclusi col motivo OBSOLETO (E_ARTICOLO_OBSOLETO, il primo), lo stesso che il guard di riga solleva.';
+              COMMENT ON FUNCTION catalogo.fn_articolo_righe_vive_non_ammesse(uuid) IS
+                  'Le righe VIVE di un articolo che la check dei guard di riga non ammette: {documento (codice di config.tipi_entita), documento_id, riga_id, motivo = il primo motivo della riga intera, script.fn_check_riga_documento_su_contesto, con la natura, il tipo d''eccezione, l''erogazione e la fonte della riga}; solo le righe con un motivo. Viva = attiva, e il documento non e'' chiuso: fase dello stato diversa da CHIUSO per preventivo, ordine, bolla, offerta e contratto; versione di listino non CHIUSA; promo col periodo non finito alla data operativa (script.fn_data_operativa). Le sette tabelle sono quelle dove e'' montato script.trgfn_righe_guard_articolo_ammesso (per la promo documento_id = riga_id = id della promo). SECURITY INVOKER: sotto RLS chi la chiama vede le sue righe; il verbo catalogo.fn_articolo_correggi_struttura (SECURITY DEFINER) la chiama su tutte le aziende, prima e dopo la correzione, e rifiuta solo le righe che la correzione rende non ammesse (A-11 di brief-db-articoli-ammessi-per-documento). Nasce il 2026-10-18 (§9.8.6). Rev 2026-10-21 (20261021-55, brief-db-offerta-emissione-ed-erogazione §I.2): la check e'' la riga intera, su offerta e contratto anche erogazione e fonte; una correzione della struttura non porta piu'' una riga fuori dal perimetro d''erogazione senza essere fermata. Rev 2026-10-28 (20261028-16, brief-modello-documento-vendita §16, L-1): lo stato della versione di listino si legge dal vocabolario config.stati_doc_listino_versioni (codice_interno), non piu'' dalla colonna testo stato.';
+              COMMENT ON VIEW catalogo.vw_articoli_dettaglio IS
+                  'Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e'' vero (passo 6), e l''operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne'' fra i non_editable_fields del BE ne'' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo'' solo appendere). La decodifica e'' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche'' il BE non la nomina. Rev 2026-10-25 (20261025-57/-60, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche'' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla colonna di catalogo.articoli. rev 2026-11-03 (20261103-53, brief-db-addebito-trasporto-ordine §9.9, richiesta del FE): + e_onere e causale_onere_id in coda: il picker articoli e il form articolo sanno se l''articolo scelto e'' un onere (date di consegna nascoste sulla riga nuova; flag magazzino, composito, lotto, matricola spenti, gemello del guard trgfn_articoli_guard_onere_natura). Anche queste colonne non escono finche'' il BE non le nomina. ⭐ rev 2026-11-06 (20261106-03, brief-db-articoli-obsoleto-dal §7.3 lotto D): + obsoleto_dal ed e_obsoleto in coda. obsoleto_dal e'' la data del ritiro (NULL = si sceglie; futura = ritiro programmato); e_obsoleto e'' il BB script.fn_e_obsoleto alla data operativa, lo stesso predicato del guard di riga e del picker: il FE lo legge e non confronta date. Anche queste colonne non escono finche'' il BE non le nomina.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.causale_onere_id IS
+                  'La causale dell''onere (config.causali_onere); NULL sulla merce. Il discrimine resta e_onere: questa colonna porta il valore per chi etichetta o raggruppa. brief-db-addebito-trasporto-ordine §9.9.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_onere IS
+                  'La definizione di articolo-onere: causale_onere_id IS NOT NULL (un articolo-onere non e'' merce, non e'' a magazzino, composito, a lotti o a matricola: trgfn_articoli_guard_onere_natura). La leggono il picker delle righe (date di consegna nascoste sulla riga nuova: E_RIGA_ONERE_DATA_CONSEGNA) e il form articolo. Sulla RIGA di documento il discrimine e'' e_onere della vista di riga, sulla natura congelata. brief-db-addebito-trasporto-ordine §9.9.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.obsoleto_dal IS
+                  'La data del ritiro dell''articolo (catalogo.articoli.obsoleto_dal): NULL = si sceglie; passata = ritirato; futura = ritiro programmato. Il drawer la mostra e la modifica; cancellarla riattiva. brief-db-articoli-obsoleto-dal §3.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.e_obsoleto IS
+                  'Ritirato alla data operativa: script.fn_e_obsoleto(obsoleto_dal), lo stesso BB del guard di riga (E_ARTICOLO_OBSOLETO) e del picker (catalogo.fn_articoli_ammessi). La leggono la lista e il drawer: il FE non confronta date. Ritirato non vuol dire non attivo: l''articolo resta valido sulle righe che lo usano gia''. brief-db-articoli-obsoleto-dal §3 e §4.';
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_ref_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.uom_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_ref_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_ref_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.gruppo_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_ref_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.spesa_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_ref_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.iva_aliquota_iva IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_listino_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.tipologia_listino_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.puo_gestire_bom IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.motivo_non_gestibile_bom IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.has_componenti_alla_data IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_codice_interno IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.natura_vendita_destinazione_tipo IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.modo_approvvigionamento_codice_interno IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_dettaglio.modo_approvvigionamento_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.prodotto_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.prodotto_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.componente_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.componente_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.puo_chiudersi IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.data_min_chiusura IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.data_default_chiusura IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.motivo_non_chiudibile IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.esposizione_in_fattura_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_dettaglio.esposizione_in_fattura_etichetta_key IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.uom_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.uom_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.articolo_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_uom_operativa_dettaglio.articolo_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.stile_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.stile_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.stile_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.lingua_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.lingua_codice_iso IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.lingua_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_note.lingua_descrizione_locale IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_note.articolo_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.articolo_componente_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.prodotto_descrizione IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_id IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_codice IS
+                  NULL;
+              COMMENT ON COLUMN catalogo.vw_articoli_componenti_note.componente_descrizione IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_a10_guard_onere_natura_ins_upd ON catalogo.articoli IS
+                  'Un articolo-onere e'' un addebito, non un bene: la natura non e'' merce (E_ARTICOLO_ONERE_NATURA_MERCE) e non e'' gestito a magazzino, composito, a lotti o a matricola (E_ARTICOLO_ONERE_STRUTTURA). Fascia _a10_. UPDATE OF le sei colonne che la funzione giudica: nessun trigger BEFORE della tabella le scrive. Brief: brief-db-articoli-ammessi-per-documento (A-9); rev 2026-11-03 (20261103-20, brief-db-addebito-trasporto-ordine §8.1, decisione 10).';
+              COMMENT ON TRIGGER trg_articoli_a10_guard_flags_struttura_bom_attiva_upd ON catalogo.articoli IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_a10_seed_uom_base_ins ON catalogo.articoli IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_a10_guard_iva_bom_attiva_upd ON catalogo.articoli IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_a10_guard_struttura_se_usato_upd ON catalogo.articoli IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_componenti_a10_guard_riga_componente_ins_upd ON catalogo.articoli_componenti IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_componenti_a10_block_modifica_struttura_upd_dlt ON catalogo.articoli_componenti IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_storia_upd_dlt ON catalogo.articoli_uom_operativa IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_listini_attivi_upd ON catalogo.articoli_uom_operativa IS
+                  NULL;
+              COMMENT ON TRIGGER trg_articoli_uom_operativa_a10_guard_listini_attivi_dlt ON catalogo.articoli_uom_operativa IS
+                  NULL;
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_storia_upd_dlt ON catalogo.unita_misura_conversioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_listini_attivi_upd ON catalogo.unita_misura_conversioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_unita_misura_conversioni_a10_guard_listini_attivi_dlt ON catalogo.unita_misura_conversioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_uom_conversioni_a10_guard_tipo_ins_upd ON catalogo.unita_misura_conversioni IS
+                  NULL;

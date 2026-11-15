@@ -17,6 +17,9 @@ CREATE OR REPLACE FUNCTION script.trgfn_lock_columns()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
+  -- Tipi nudi DICHIARATI: contatori, nomi di colonna e codici letti
+  -- da TG_ARGV, valori di colonne qualunque resi a testo. Nessuna
+  -- colonna di cui siano il riflesso.
   n_args  int := array_length(TG_ARGV, 1);
   i       int;
   col     text;
@@ -53,11 +56,14 @@ BEGIN
     ) USING OLD, NEW INTO oldval, newval;
 
     IF oldval IS DISTINCT FROM newval THEN
+      -- 'campo': la colonna da evidenziare nel form, letta da
+      -- script.fn_log_and_raise_error. 'column' resta per chi la legge.
       PERFORM script.fn_log_and_raise_error(
         'database',
         TG_NAME,
         msgcode,
         jsonb_build_object(
+          'campo',     col,
           'column',    col,
           'old_value', oldval,
           'new_value', newval
@@ -73,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_lock_columns()
-IS 'Impedisce modifica colonne protette. Override: SET LOCAL zeroerp.allow_lock_columns_override = ''on''. Argomenti a coppie (colonna, codice_messaggio).';
+IS 'Impedisce la modifica delle colonne protette. Argomenti a coppie (colonna, codice_messaggio): per ogni colonna cambiata solleva il suo codice, col nome della colonna come valore del messaggio e nel contesto campo (la colonna da evidenziare nel form), column, old_value, new_value. Argomenti dispari -> E_ARGOMENTI_A_COPPIE. I trigger li genera l''automazione LOCK_COLUMNS da dbops.automation_lock_columns; il form legge le colonne bloccate da dbops.vw_non_editable_fields. Override per la manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = ''on''.';
 ```
 
 </div>

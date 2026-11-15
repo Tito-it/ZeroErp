@@ -20,10 +20,16 @@
 #   * Riscritti al presente le colonne e i vincoli di job_run_log, i due
 #     presidi, fn_analyze_statistiche e i quattro wrapper dei job.
 #   * Nuovo: maintenance.job_run_log (la tabella non aveva COMMENT).
-#   Solo COMMENT ON (13 istruzioni), nessun corpo. Testi di partenza
+#   Solo COMMENT ON (12 istruzioni), nessun corpo. Testi di partenza
 #   letti su dbdev; il rollback rimette quelli di oggi (IS NULL dove mancava).
 #   Nessuna preCondition: un COMMENT su un oggetto che non c'e' fallisce da
 #   se', e nessuno degli oggetti nasce dopo 20_code.
+#   ⛔ Corretto il 2026-11-11: il COMMENT su chk_job_run_log_processo_dichiarato
+#   e' uscito da qui. Il vincolo nasce in 90_end (20260905-16): su un database
+#   ricostruito da zero questo file gira prima e il COMMENT falliva («constraint
+#   ... does not exist»). Il COMMENT al presente sta in 90_end/20261111-68.
+#   validCheckSums ANY perche' dove il changeSet e' gia' girato il checksum e'
+#   quello del testo di prima.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -33,6 +39,8 @@ databaseChangeLog:
       id: 20261111-20-update-comment-maintenance-al-presente
       author: mctit
       runOnChange: false
+      validCheckSums:
+        - ANY
       failOnError: true
       comment: >
         COMMENT al presente (linee-guida-sql §5d) di maintenance, job_run_log compresa. Brief: brief-db-revisione-dbops, giro 14.
@@ -54,8 +62,6 @@ databaseChangeLog:
               COMMENT ON COLUMN maintenance.job_run_log.sqlstate IS
                 'Lo SQLSTATE dell''errore che ha fatto fallire la corsa, quando l''errore e'' passato dal database (cinque caratteri, chk_job_run_log_sqlstate_forma). NULL per una corsa riuscita e per un errore che il database non ha visto (un''eccezione Python di un command). Separato da error_code, che resta «il codice piu'' preciso che chi scrive ha» (dominio, applicativo, o in mancanza SQLSTATE o classe Python): la classe SQLSTATE dice a maintenance.vw_job_run_da_guardare se il guasto e'' dell''ambiente (08, 53, 57, 58). Lo scrivono maintenance.fn_run_and_log, maintenance.fn_job_run_log_failure e script.fn_job_run_end.';
 
-              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
-                'Una corsa NUOVA deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: le righe scritte prima che la colonna esistesse non hanno un processo, e non si puo'' fornirlo a posteriori; riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. Per lo stesso motivo non si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: un processo che non sa dire chi e'' non gira, e fallire rumorosamente e'' meglio di una riga muta.';
 
               COMMENT ON CONSTRAINT chk_job_run_log_saltata ON maintenance.job_run_log IS
                 'Una corsa saltata e'' chiusa (ended_at valorizzato) e senza esito (ok NULL): non ha fatto lavoro, quindi non e'' ne'' riuscita ne'' fallita, e non e'' nemmeno aperta.';
@@ -98,8 +104,6 @@ databaseChangeLog:
               COMMENT ON COLUMN maintenance.job_run_log.sqlstate IS
                 'Lo SQLSTATE dell''errore che ha fatto fallire la corsa, quando l''errore e'' passato dal database (cinque caratteri, chk_job_run_log_sqlstate_forma). NULL per una corsa riuscita e per un errore che il database non ha visto (un''eccezione Python di un command). Separato da error_code, che resta «il codice piu'' preciso che chi scrive ha» (dominio, applicativo, o in mancanza SQLSTATE o classe Python): la classe SQLSTATE dice a maintenance.vw_job_run_da_guardare se il guasto e'' dell''ambiente (08, 53, 57, 58). Lo scrivono maintenance.fn_run_and_log, maintenance.fn_job_run_log_failure e script.fn_job_run_end. Le righe di prima del 2026-10-16 sono state convertite dalla forma di error_code. Brief: brief-db-presidio-job-run-a-chi-tocca (D5).';
 
-              COMMENT ON CONSTRAINT chk_job_run_log_processo_dichiarato ON maintenance.job_run_log IS
-                'Un run NUOVO deve dichiarare di quale processo e''. ⛔ NOT VALID e non un NOT NULL: al 2026-09-05 la tabella ha 99.775 righe senza attore su 100.738, scritte prima che la colonna esistesse — il giornale di ieri, dove l''attore non si puo'' fornire e non si potra'' mai. Riempirle per far passare il vincolo sarebbe inventare un attore per corse che non l''avevano. ⚠️ Chi non si dichiara vede fallire l''INSERT, quindi il job: e'' la scelta, non un effetto collaterale — un processo che non sa dire chi e'' non deve girare, e fallire rumorosamente e'' meglio che lasciare una riga muta. ⛔ NON si esegue VALIDATE CONSTRAINT: fallirebbe sulle righe storiche, ed e'' giusto che le nomini invece di accettarle. Brief: brief-db-processi-automatici-residui-be, DB-5.';
 
               COMMENT ON CONSTRAINT chk_job_run_log_saltata ON maintenance.job_run_log IS
                 'Una corsa saltata e'' chiusa (ended_at valorizzato) e senza esito (ok NULL): non ha fatto lavoro, quindi non e'' ne'' riuscita ne'' fallita, e non e'' nemmeno aperta. Brief: brief-db-corsa-saltata-non-e-una-corsa §8, D2.';

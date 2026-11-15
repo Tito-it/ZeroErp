@@ -121,7 +121,7 @@ CREATE TEMP TABLE tmp_refs_mnf AS
 SELECT
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'DRAFT' ORDER BY id LIMIT 1) AS stato_draft_id,
-  -- Lo stato che spegne un lotto: congela_fiscale, quindi vw_lotti_fase.in_gioco = false.
+  -- Lo stato che spegne un lotto: congela_fiscale, quindi vw_lotti_fase.pre_fiscale = false.
   (SELECT id FROM config.stati_doc_fiscale
     WHERE upper(btrim(codice_interno)) = 'ANNULLATA' ORDER BY id LIMIT 1) AS stato_annullata_id,
   (SELECT billing_account_id FROM tmp_cmm_mnf) AS billing_account_id,
@@ -139,6 +139,13 @@ SELECT
     WHERE sc.attivo IS TRUE AND sc.codice_interno <> 'ANNULLATA'
     ORDER BY sc.id LIMIT 1)           AS stato_commessa_id,
   script.fn_pgtap_registro_fattura((SELECT emittente_sr_id FROM tmp_cost_mnf))            AS registro_id;
+
+-- ⚠️ 2026-11-10 (brief-db-revisione-catalogo, giro 2-bis, D26/Q30): un'attivita'
+--   senza fattore prende quello alla data, e un'unita' che per l'articolo non si
+--   converte si rifiuta (E_UOM_MISSING). «Un'unita' qualunque» accanto a «un
+--   articolo qualunque» passava col fattore 1 per difetto: l'unita' e' la base
+--   dell'articolo scelto.
+UPDATE tmp_refs_mnf SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = tmp_refs_mnf.articolo_id);
 
 SELECT ok(
   (SELECT r.stato_draft_id IS NOT NULL
@@ -254,10 +261,11 @@ WITH ins AS (
   RETURNING id, codice)
 SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
 
--- ⭐ Il lotto MORTO (rev 2026-09-12): nasce direttamente ANNULLATA — l'INSERT
---   non passa dalla matrice delle transizioni, per progetto (§7c.6) — e il suo
---   lock_batch_id e' il marchio che la LIBERA_MORTA porta in emit_batch_id.
---   Su vw_lotti_fase.in_gioco vale false: e' cio' che separa 5-bis da 5-ter.
+-- ⭐ Il lotto MORTO: nasce nello stato iniziale (lo pretende il trigger della
+--   nascita del lotto, 20261112-45) e si annulla dai verbi del lotto, lungo la
+--   matrice; il suo lock_batch_id e' il marchio che la LIBERA_MORTA porta in
+--   emit_batch_id.
+--   Su vw_lotti_fase.pre_fiscale vale false: e' cio' che separa 5-bis da 5-ter.
 CREATE TEMP TABLE tmp_lotto_morto_mnf AS
 WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
@@ -268,11 +276,14 @@ WITH ins AS (
          r.tipo_doc_fiscale_id,
          (SELECT emittente_sr_id FROM tmp_cost_mnf),
          (SELECT lock_batch_morto FROM tmp_cost_mnf),
-         r.stato_annullata_id,
+         r.stato_draft_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_mnf))
     FROM tmp_refs_mnf r
   RETURNING id, codice)
 SELECT id AS lotto_id, codice AS lotto_codice FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.fatturazione_lotti', l.lotto_id, 'ANNULLATA')
+  FROM tmp_lotto_morto_mnf l;
 
 -- Una fattura DRAFT con una riga, per il caso IN_FATTURA
 CREATE TEMP TABLE tmp_fattura_mnf AS
@@ -385,11 +396,11 @@ SELECT ok(
          FROM vendite.attivita_fatturabili a
         WHERE a.id = (SELECT attivita_id FROM tmp_af_mnf WHERE slot = 'VIVA_NULL'))
   AND (SELECT l.lotto_id IS NOT NULL FROM tmp_lotto_mnf l)
-  -- ⭐ I due lotti stanno ai due lati di `in_gioco`: senza questo, 5-bis e
+  -- ⭐ I due lotti stanno ai due lati di `pre_fiscale`: senza questo, 5-bis e
   --   5-ter proverebbero la stessa cosa due volte.
-  AND (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+  AND (SELECT f.pre_fiscale FROM vendite.vw_lotti_fase f
         WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_mnf))
-  AND NOT (SELECT f.in_gioco FROM vendite.vw_lotti_fase f
+  AND NOT (SELECT f.pre_fiscale FROM vendite.vw_lotti_fase f
             WHERE f.lotto_id = (SELECT lotto_id FROM tmp_lotto_morto_mnf)),
   '3) fixture: otto righe di commessa EMESSA, sette attivita, un lotto in gioco e uno morto; l ottava senza attivita fatturabile'
 );

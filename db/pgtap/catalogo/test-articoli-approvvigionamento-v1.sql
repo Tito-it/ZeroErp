@@ -187,8 +187,9 @@ SELECT throws_like(
          SET modo_approvvigionamento_id = (SELECT id FROM config.modi_approvvigionamento
                                             WHERE codice_interno = 'PGTAP_SPENTO')
        WHERE id = (SELECT articolo_id FROM _articolo)$$,
-    -- la frase di E_ATTIVO_PADRE_NON_ATTIVO: padre, chiave, figlia
-    '%config.modi_approvvigionamento (id = %) non è attivo%catalogo.articoli.',
+    -- la frase di E_ATTIVO_PADRE_NON_ATTIVO, che non nomina tabelle (S-BE-1 di
+    --   brief-db-revisione-dbops): padre e figlia stanno nel contesto del diario
+    'La riga a cui si collega non è attiva%',
     '10) un articolo non puo'' puntare a un modo spento (require sul figlio, ci_apply)'
 );
 

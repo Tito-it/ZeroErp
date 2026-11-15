@@ -428,14 +428,12 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
     <!-- Badge indirizzi/contatti/conti — creazione: soggetto preview, edit: ruolo editabile -->
     <SoggettoPreviewBadges v-if="!isEdit && soggettoSelezionato"
       :soggetto-id="soggettoSelezionato.id"
-      :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
       preview />
     <!-- §1.6: accessi web (solo portale per fornitori, no shop B2C)
          tramite pulsante Web in SoggettoPreviewBadges, apre
          WebAccessiDrawer autonomo. -->
     <SoggettoPreviewBadges v-else-if="isEdit && detail"
       :soggetto-ruolo-id="detail.soggetto_ruolo_id"
-      :tipo-ruolo-codice="TIPO_RUOLO.FORNITORE"
       entita-tipo-web="fornitore"
       :entita-id-web="props.fornitoreId"
       :email-iniziale-web="detail?.pec_email || ''" />

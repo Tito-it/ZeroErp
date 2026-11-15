@@ -386,7 +386,7 @@ BEGIN
                   --    un'etichetta che ogni consumatore
                   --    dovrebbe saper tradurre.
                   p_quantita                      => - v_qta_doc,
-                  p_competenza_mese               => date_trunc('month', v_data)::date,
+                  p_competenza_mese               => script.fn_mese_di(v_data),
                   p_competenza_dal                => v_data,
                   p_competenza_al                 => v_data,
                   -- ⭐ N-1: COPIATO dalla riga di fattura, mai
@@ -405,7 +405,7 @@ BEGIN
                           THEN - (v_qta_doc * v_cmp.ca_qta_operativa / v_cmp.ca_quantita)
                       END,
                   p_uom_operativa_id              => v_cmp.uom_operativa_id,
-                  p_factor_to_base                => COALESCE(v_cmp.factor_to_base, 1::numeric),
+                  p_factor_to_base                => v_cmp.factor_to_base,
                   p_posticipa_al                  => NULL,
                   p_tipo_doc_fiscale_id           => v_cmp.tipo_doc_fiscale_id,
                   p_valuta_id                     => v_cmp.valuta_id,

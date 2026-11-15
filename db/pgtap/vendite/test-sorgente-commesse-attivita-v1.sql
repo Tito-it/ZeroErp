@@ -56,21 +56,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(22);
 
--- L'esito di un'istruzione: PASSA, il codice d'errore applicativo (dal
--- CONSTRAINT dell'errore di fn_log_and_raise_error), o SQLSTATE + vincolo.
-CREATE FUNCTION pg_temp.esito(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $f$
-DECLARE v_s text; v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN 'PASSA';
-EXCEPTION WHEN OTHERS THEN
-    GET STACKED DIAGNOSTICS v_s = RETURNED_SQLSTATE, v_c = CONSTRAINT_NAME;
-    RETURN CASE WHEN v_s = 'P0001' AND coalesce(v_c, '') <> '' THEN v_c
-                ELSE v_s || coalesce(' ' || nullif(v_c, ''), '') END;
-END
-$f$;
-
 -- ============================================================
 -- LA FORMA
 -- ============================================================
@@ -207,10 +192,10 @@ SELECT is(
   '8) la chiave del gruppo: l''uid del documento anche per l''ordine (D-6), la stessa nella vista di emittibilita''');
 
 SELECT is(
-  pg_temp.esito(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+  dbops.fn_pgtap_codice_errore(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
                            p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => %L)$q$,
                        (SELECT commessa_id FROM _comm), (SELECT ordine_id::text FROM _or))),
-  'PASSA',
+  NULL,
   '9) senza riga, la provenienza e'' il documento intero: il livello DOCUMENTO la ammette');
 
 -- ============================================================
@@ -235,34 +220,34 @@ SELECT format(
 $fx$;
 
 SELECT is(
-  pg_temp.esito(pg_temp.copia(
+  dbops.fn_pgtap_codice_errore(pg_temp.copia(
     (SELECT script.fn_segment_key('ORDINE_VENDITA', o.ordine_uid::text, p.preventivo_riga_id) FROM _or o, _pv p),
     (SELECT t_ord FROM _t), (SELECT ordine_id FROM _or), NULL, (SELECT preventivo_riga_id FROM _pv))),
   'E_SORG_RIGA_NON_DEL_DOCUMENTO',
   '10) la riga del preventivo citata da una riga dell''ordine: rifiutata dal guard unico');
 
 SELECT is(
-  pg_temp.esito(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
+  dbops.fn_pgtap_codice_errore(format($q$SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
                            p_commessa_id => %s, p_sorgente_codice => 'ORDINE_VENDITA', p_sorgente_chiave => %L)$q$,
                        (SELECT commessa_id FROM _comm), (SELECT (max(id) + 1000000)::text FROM vendite.ordini))),
   'E_SORG_NOT_FOUND',
   '11) un ordine che non c''e'': la madre lo rifiuta prima di scrivere');
 
 SELECT is(
-  pg_temp.esito(pg_temp.copia(
+  dbops.fn_pgtap_codice_errore(pg_temp.copia(
     (SELECT script.fn_segment_key('ORDINE_VENDITA', p.preventivo_uid::text, o.ordine_riga_id) || '#T12' FROM _or o, _pv p),
     (SELECT t_ord FROM _t), (SELECT ordine_id FROM _or), NULL, (SELECT ordine_riga_id FROM _or))),
   'E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO',
   '12) la chiave del push con l''uid del preventivo per una riga dell''ordine: il gruppo sarebbe sbagliato');
 
 SELECT is(
-  pg_temp.esito(pg_temp.copia('PGT-SEG-T13', (SELECT t_ord FROM _t), (SELECT ordine_id FROM _or), NULL,
+  dbops.fn_pgtap_codice_errore(pg_temp.copia('PGT-SEG-T13', (SELECT t_ord FROM _t), (SELECT ordine_id FROM _or), NULL,
                               (SELECT ordine_riga_id FROM _or))),
   'E_COMMESSA_ATTIVITA_CHIAVE_NON_DEL_DOCUMENTO',
   '13) una chiave fuori grammatica con la provenienza: il gruppo non si costruirebbe');
 
 SELECT is(
-  pg_temp.esito(format($q$UPDATE vendite.commesse_attivita SET segment_key = %L WHERE id = %s$q$,
+  dbops.fn_pgtap_codice_errore(format($q$UPDATE vendite.commesse_attivita SET segment_key = %L WHERE id = %s$q$,
                        (SELECT script.fn_segment_key('ORDINE_VENDITA', p.preventivo_uid::text, o.ordine_riga_id) || '#T14'
                           FROM _or o, _pv p),
                        pg_temp.att('ORD'))),
@@ -348,7 +333,7 @@ SELECT is(
 -- LA CANCELLAZIONE (BLOCCA)
 -- ============================================================
 SELECT is(
-  pg_temp.esito(format('DELETE FROM vendite.attivita_consumi WHERE id = %s',
+  dbops.fn_pgtap_codice_errore(format('DELETE FROM vendite.attivita_consumi WHERE id = %s',
                        (SELECT ca.sorgente_id FROM vendite.commesse_attivita ca WHERE ca.id = (SELECT attivita_id FROM _b)))),
   'E_SORG_ORIGINE_REFERENZIATA',
   '21) il consumo citato da una riga di commessa non si cancella');

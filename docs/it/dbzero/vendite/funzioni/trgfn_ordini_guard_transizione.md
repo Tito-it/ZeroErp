@@ -31,9 +31,18 @@ AS $function$
 --   un prezzo (brief-db-be-iva-risolutore-e-regime-cliente, I9).
 --   rev 2026-09-24: Regola 5, i prezzi non autorizzati su DRAFT ->
 --   CONFERMATO (brief-db-preventivi-congelamento-pricing, D-5/D-6).
+--   rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6b):
+--   le regole 2-5 sul significato degli stati, dal vocabolario: lo stato
+--   iniziale della partenza, lo stato di emissione e quello di annullo
+--   (is_abortito) della destinazione. Dove sotto si legge DRAFT,
+--   CONFERMATO o ANNULLATO, vale lo stato che il vocabolario marca.
 DECLARE
     v_codice_da config.stati_doc_ordini.codice_interno%TYPE;
     v_codice_a  config.stati_doc_ordini.codice_interno%TYPE;
+    -- Il significato della partenza e della destinazione, dal vocabolario.
+    v_iniziale_da  config.stati_doc_ordini.iniziale%TYPE;
+    v_emissione_a  config.stati_doc_ordini.emissione%TYPE;
+    v_abortito_a   config.stati_doc_ordini.is_abortito%TYPE;
     v_ammessa   boolean := false;
     v_motivi    jsonb;
 BEGIN
@@ -44,8 +53,11 @@ BEGIN
 
     SELECT
         max(CASE WHEN id = OLD.stato_doc_ordine_id THEN codice_interno END),
-        max(CASE WHEN id = NEW.stato_doc_ordine_id THEN codice_interno END)
-      INTO v_codice_da, v_codice_a
+        max(CASE WHEN id = NEW.stato_doc_ordine_id THEN codice_interno END),
+        bool_or(iniziale)    FILTER (WHERE id = OLD.stato_doc_ordine_id),
+        bool_or(emissione)   FILTER (WHERE id = NEW.stato_doc_ordine_id),
+        bool_or(is_abortito) FILTER (WHERE id = NEW.stato_doc_ordine_id)
+      INTO v_codice_da, v_codice_a, v_iniziale_da, v_emissione_a, v_abortito_a
       FROM config.stati_doc_ordini
      WHERE id IN (OLD.stato_doc_ordine_id, NEW.stato_doc_ordine_id);
 
@@ -83,7 +95,7 @@ BEGIN
     -- sole righe inattive e' vuoto e non va confermato.
     -- Nessun vincolo su quantita/prezzo/totale: conta la sola
     -- presenza (un ordine a totale zero deve poter avanzare).
-    IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+    IF v_iniziale_da AND v_emissione_a THEN
         IF NOT EXISTS (
             SELECT 1 FROM vendite.ordini_righe r
              WHERE r.ordine_id = NEW.id
@@ -109,7 +121,7 @@ BEGIN
     -- valle. La regola vive nella funzione pura, la STESSA che
     -- fn_available_actions_ordine usa per accendere il bottone:
     -- qui si solleva soltanto, col codice del PRIMO motivo.
-    IF v_codice_a = 'ANNULLATO' THEN
+    IF v_abortito_a THEN
         v_motivi := script.fn_check_ordine_annullabile(NEW.id);
 
         -- ⭐ La coda del primo motivo sta in un posto solo: l'helper legge il
@@ -148,7 +160,7 @@ BEGIN
     -- ⛔ E nessuna chiave `campo`: il codice e' CONFLITTO_STATO, non
     --   DATO_ERRATO — la richiesta e' «porta l'ordine a CONFERMATO»,
     --   e non c'e' un campo di QUELLA richiesta da accendere.
-    IF v_codice_a = 'CONFERMATO' THEN
+    IF v_emissione_a THEN
         v_motivi := script.fn_check_ordine_confermabile(NEW.id);
 
         -- ⚠️ `riga_id` e `riga_nr` NON si estraggono piu' a mano: stanno nel
@@ -187,7 +199,7 @@ BEGIN
     --   d'uscita (D-2). L'aliquota invece protegge il riepilogo IVA, che non
     --   sa da dove si arriva: per questo le due regole hanno perimetri
     --   diversi, ed e' voluto.
-    IF v_codice_da = 'DRAFT' AND v_codice_a = 'CONFERMATO' THEN
+    IF v_iniziale_da AND v_emissione_a THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_prezzi_autorizzati('vendite.ordini'::regclass, NEW.id),
@@ -205,7 +217,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_guard_transizione()
-IS 'Trigger function: enforcement del grafo transizioni stato ordine (matrice config.transizioni_stati_ordini), riga attiva obbligatoria su DRAFT->CONFERMATO, controlli sull''annullamento delegati a script.fn_check_ordine_annullabile (2026-08-04) e, dal 2026-08-29, controlli sulla CONFERMA delegati a script.fn_check_ordine_confermabile — le stesse funzioni lette da fn_available_actions_ordine, cosi'' bottone e guard non divergono. ⭐ rev 2026-08-29 (brief-db-be-iva-risolutore-e-regime-cliente, I9): Regola 4, una riga attiva che porta un PREZZO deve portare anche l''ALIQUOTA, altrimenti l''ordine non si conferma. Chiude su ordini il difetto silenzioso gia'' sanato sul DDT il 2026-08-28: vw_ordini_righe_iva_base filtra solo attivo e quantita > 0, quindi la riga entra nel riepilogo con imponibile pieno e imposta zero. ⚠️ Il perimetro della Regola 4 e'' QUALUNQUE transizione verso CONFERMATO e non il solo DRAFT->CONFERMATO della Regola 2: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⛔ Non e'' un NOT NULL di colonna e non poteva esserlo: ordini_righe.iva_id e'' nullable e la bozza deve restare libera — il vincolo e'' alla conferma, non al salvataggio. rev 2026-09-24: Regola 5 — su DRAFT -> CONFERMATO solleva il primo motivo di script.fn_check_prezzi_autorizzati (componenti BoM attivi con prezzo PENDING o REJECTED, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO); prima l''''ordine non guardava il prezzo. ⛔ Solo dalla bozza, e non dentro fn_check_ordine_confermabile: la matrice fa rientrare l''''ordine in CONFERMATO da EVASO/PARZIALMENTE_EVASO in automatico, e bloccare quel rientro fermerebbe l''''annullamento a valle. La capability fn_available_actions_ordine legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-5, D-6).';
+IS 'Trigger function (BEFORE UPDATE dello stato di vendite.ordini): giudica il passaggio. Regola 1: la transizione esiste attiva in config.transizioni_stati_ordini (E_ORDINE_TRANSIZIONE_NON_AMMESSA). Regola 2: dallo stato iniziale allo stato di emissione l''ordine ha almeno una riga attiva (E_ORDINE_CONFERMA_SENZA_RIGHE), senza vincoli su quantita'' e prezzo. Regola 3: verso lo stato di annullo (is_abortito) il primo motivo di script.fn_check_ordine_annullabile. Regola 4: verso lo stato di emissione, da qualunque partenza (anche il rientro automatico dall''evasione), il primo motivo di script.fn_check_ordine_confermabile: una riga attiva che porta un prezzo porta anche l''aliquota, perche'' il riepilogo IVA non sa da dove si arriva. Regola 5: dallo stato iniziale allo stato di emissione il primo motivo di script.fn_check_prezzi_autorizzati (componenti BoM attivi col prezzo in attesa o rifiutato); non sul rientro dall''evasione, che non conferma niente di nuovo e non deve fermare l''annullamento a valle. Il significato degli stati (iniziale, emissione, is_abortito) si legge da config.stati_doc_ordini; i codici vanno nel contesto degli errori. Sono gli stessi predicati che script.fn_available_actions_ordine usa per spegnere i pulsanti.';
 ```
 
 </div>

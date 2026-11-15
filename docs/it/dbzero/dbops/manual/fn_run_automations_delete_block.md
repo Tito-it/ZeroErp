@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_delete_block`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -98,8 +98,9 @@ Se un DDL fallisce su una tabella, l'errore finisce prima nel registro errori co
 
 ### Test
 
-* `db/pgtap/dbops/test-delete-block-convergenza-v1.sql` — su tutto l'ambito nessun blocco diverge;
-  un blocco `AFTER` scritto a mano si rigenera `BEFORE`, e il padre con un figlio in cascata è
+* `db/pgtap/dbops/test-delete-block-convergenza-v1.sql` — su tutto l'ambito nessun blocco diverge,
+  e fuori dall'ambito non c'è né un blocco vivo né una riga accesa del registro, che il giro
+  salterebbe senza traccia; un blocco `AFTER` scritto a mano si rigenera `BEFORE`, e il padre con un figlio in cascata è
   rifiutato con il figlio intatto; una `guc_key` o un `trigger_name` cambiati arrivano sul
   trigger; una tabella dal nome lungo non diverge dopo due giri; una riga spenta toglie il blocco;
   un blocco su una tabella senza riga ferma il runner con `E_DELETE_BLOCK` senza toccarlo; il dry

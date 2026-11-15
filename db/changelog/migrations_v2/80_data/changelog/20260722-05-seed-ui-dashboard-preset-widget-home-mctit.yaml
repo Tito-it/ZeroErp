@@ -54,7 +54,6 @@ databaseChangeLog:
             schemaName: ui
             separator: ","
             encoding: UTF-8
-            nullValue: "NULL"
             primaryKey: "preset_id,widget_id"
             columns:
               - column: { name: preset_id, type: NUMERIC }

@@ -1,0 +1,53 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SI RITIRA IL LETTORE COMUNE DELLE NOTE, CON I SUOI TRE INVOLUCRI
+#   Brief: brief-db-revisione-catalogo §20.4 (Q37 (a), Tid 2026-11-12).
+#
+#   script.fn_get_note ricomponeva la proiezione delle note (JOIN config.note_stili, LEFT JOIN
+#   config.lingue), che ora sta nelle viste <schema>.vw_note (-31 … -34): sarebbe la seconda copia.
+#   Ne' lei ne' vendite.fn_get_vendite_note, acquisti.fn_get_acquisti_note e
+#   magazzino.fn_get_magazzino_note hanno un consumatore: nessuna funzione viva, nessun file del
+#   backend o del frontend, nessun pgTAP, nessun seed (letto il 2026-11-12). Il 2026-11-01 fallivano
+#   a ogni chiamata e nessuno se n'era accorto. Chi legge le note legge la vista della sede.
+#   Le pagine manual/ delle quattro si cancellano nello stesso giro.
+#
+#   Ordine: prima gli involucri, poi la funzione che chiamano (il loro corpo LANGUAGE sql non
+#   registra la dipendenza, ma l'ordine dice cio' che il codice faceva). IF EXISTS: su un database
+#   in cui un involucro non fosse nato, il ritiro non si ferma.
+#   Rollback: le quattro tornano rieseguendo 20251004-12, 20251004-13, 20261101-19 (gli involucri)
+#   e 20261101-18 (la funzione comune).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261112-35-drop-fn-get-note-e-involucri-mctit.yaml
+
+  - changeSet:
+      id: 20261112-35-drop-fn-get-note-e-involucri
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP script.fn_get_note e dei tre involucri (vendite, acquisti, magazzino): nessun consumatore, la proiezione delle note sta nelle viste <schema>.vw_note. Brief: brief-db-revisione-catalogo §20.4 (Q37).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_get_vendite_note(text, bigint, bigint, boolean, boolean, boolean);
+              DROP FUNCTION IF EXISTS acquisti.fn_get_acquisti_note(text, bigint, bigint, boolean, boolean, boolean);
+              DROP FUNCTION IF EXISTS magazzino.fn_get_magazzino_note(text, bigint, bigint, boolean, boolean, boolean);
+              DROP FUNCTION IF EXISTS script.fn_get_note(regclass, text, bigint, bigint, boolean, boolean, boolean);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le quattro tornano rieseguendo 20261101-18 e i changeSet degli involucri.
+              SELECT 1;

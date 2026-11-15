@@ -21,14 +21,18 @@ DECLARE
     v_codice        catalogo.articoli.codice%TYPE;
     v_uom_codice    catalogo.unita_misura.codice%TYPE;
     v_riga          catalogo.articoli_uom_operativa%ROWTYPE;
+    -- Il nome della colonna da evidenziare nel form: nessuna colonna ne
+    -- porta il tipo, e' il nome di una colonna di questa tabella.
+    v_campo         text := 'uom_id';
 BEGIN
     -- =========================================================
     -- Scopo:
     --   La riga dell'unita' base segue l'articolo: sta sull'unita'
     --   dell'articolo, non si sposta, non smette di essere la base,
-    --   non si toglie. Fattore 1 e nessuna data li tiene il CHECK
-    --   chk_articoli_uom_operativa_base_fissa.
-    -- Eventi: INSERT; UPDATE OF articolo_id, uom_id, is_base; DELETE.
+    --   non si toglie, nasce attiva e non si spegne. Fattore 1 e
+    --   nessuna data li tiene il CHECK chk_articoli_uom_operativa_base_fissa.
+    --   La riaccensione di una base spenta passa.
+    -- Eventi: INSERT; UPDATE OF articolo_id, uom_id, is_base, attivo; DELETE.
     -- =========================================================
     IF TG_OP = 'DELETE' THEN
         IF NOT OLD.is_base THEN
@@ -44,9 +48,13 @@ BEGIN
         END IF;
         v_riga := OLD;
     ELSIF TG_OP = 'UPDATE' THEN
-        IF NEW.is_base IS NOT DISTINCT FROM OLD.is_base
-           AND NOT (OLD.is_base AND (NEW.uom_id IS DISTINCT FROM OLD.uom_id
-                                     OR NEW.articolo_id IS DISTINCT FROM OLD.articolo_id)) THEN
+        IF NEW.is_base IS DISTINCT FROM OLD.is_base
+           OR (OLD.is_base AND (NEW.uom_id IS DISTINCT FROM OLD.uom_id
+                                OR NEW.articolo_id IS DISTINCT FROM OLD.articolo_id)) THEN
+            v_campo := 'uom_id';
+        ELSIF OLD.is_base AND OLD.attivo IS TRUE AND NEW.attivo IS NOT TRUE THEN
+            v_campo := 'attivo';
+        ELSE
             RETURN NEW;
         END IF;
         v_riga := OLD;
@@ -58,7 +66,14 @@ BEGIN
           FROM catalogo.articoli a
          WHERE a.id = NEW.articolo_id;
         -- Articolo inesistente: parla la FK.
-        IF NOT FOUND OR NEW.uom_id IS NOT DISTINCT FROM v_uom_articolo THEN
+        IF NOT FOUND THEN
+            RETURN NEW;
+        END IF;
+        IF NEW.uom_id IS DISTINCT FROM v_uom_articolo THEN
+            v_campo := 'uom_id';
+        ELSIF NEW.attivo IS NOT TRUE THEN
+            v_campo := 'attivo';
+        ELSE
             RETURN NEW;
         END IF;
         v_riga := NEW;
@@ -73,7 +88,7 @@ BEGIN
         'catalogo', 'catalogo.trgfn_articoli_uom_operativa_guard_base',
         'E_UOM_RIGA_BASE_IMMUTABILE',
         jsonb_build_object(
-            'campo',       'uom_id',
+            'campo',       v_campo,
             'operazione',  TG_OP,
             'articolo_id', v_riga.articolo_id,
             'riga_id',     v_riga.id,
@@ -86,7 +101,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_uom_operativa_guard_base()
-IS 'Guard BEFORE INSERT, UPDATE OF articolo_id, uom_id, is_base e DELETE su catalogo.articoli_uom_operativa: la riga dell''unita'' base segue l''articolo. Nasce sull''unita'' dell''articolo (catalogo.articoli.uom_id), non cambia unita'' ne'' articolo, non smette e non diventa base, e non si toglie: E_UOM_RIGA_BASE_IMMUTABILE. Passa la sua cancellazione quando l''articolo non c''e'' piu'' (ON DELETE CASCADE). Fattore 1 e nessuna data li tiene il CHECK chk_articoli_uom_operativa_base_fissa; la riga la crea catalogo.trgfn_articoli_seed_uom_base.';
+IS 'Guard BEFORE INSERT, UPDATE OF articolo_id, uom_id, is_base, attivo e DELETE su catalogo.articoli_uom_operativa: la riga dell''unita'' base segue l''articolo. Nasce sull''unita'' dell''articolo (catalogo.articoli.uom_id) e attiva, non cambia unita'' ne'' articolo, non smette e non diventa base, non si spegne e non si toglie: E_UOM_RIGA_BASE_IMMUTABILE, col campo uom_id o attivo. La riaccensione di una base spenta passa. Passa la sua cancellazione quando l''articolo non c''e'' piu'' (ON DELETE CASCADE). Fattore 1 e nessuna data li tiene il CHECK chk_articoli_uom_operativa_base_fissa; la riga la crea catalogo.trgfn_articoli_seed_uom_base.';
 ```
 
 </div>

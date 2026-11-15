@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Callable
+from unittest.mock import patch
 
 from django.db import connection, transaction
 
@@ -127,6 +128,13 @@ def _override_senza_erogazione(cur) -> dict:
 class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
     def setUp(self):
         richiedi_db_provvisto("dbops.fn_pgtap_crea_mondo_cliente(text,character varying)")
+        # Il prezzo del payload e' scritto a mano (senza la provenienza
+        # dichiarata dal form): dal 2026-11-15 passa dal gate L1 (K-5 di
+        # brief-db-provenienza-prezzo-segue-il-prezzo), e qui non c'e' un
+        # operatore. Il soggetto e' l'erogazione, non il gate: si neutralizza.
+        gate = patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo")
+        gate.start()
+        self.addCleanup(gate.stop)
 
     # Scopo: costruisce il mondo, lancia `azione(cur)` e ritorna l'errore che
     #        risponde. Il blocco viene annullato.

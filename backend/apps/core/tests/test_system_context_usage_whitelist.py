@@ -26,11 +26,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest import TestCase
 
+from apps.core.tests._repo import repo_root
+
 # Radice apps/ del backend (questo file è apps/core/tests/...).
-_APPS_ROOT = Path(__file__).resolve().parents[2]
+_APPS_ROOT = repo_root() / "backend/apps"
 
 # ⛔ VUOTE, e sono la sostanza del presidio: dal 2026-09-05 non c'e' nessun
 #    modulo autorizzato, perche' non c'e' nessun uso legittimo. Se un giorno

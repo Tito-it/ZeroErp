@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `script.trgfn_qta_from_operativa`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,7 +12,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [catalogo.fn_get_uom_factor](/dbzero/catalogo/funzioni/fn_get_uom_factor) — il fattore alla data del documento
+> * [script.fn_fattore_uom_alla_data](/dbzero/script/funzioni/fn_fattore_uom_alla_data) — il fattore alla data del documento, o il rifiuto
 > * [catalogo.fn_uom_operativa_alla_data](/dbzero/catalogo/funzioni/fn_uom_operativa_alla_data) — le regole della quantità alla data del documento
 > * [catalogo.fn_get_uom_base](/dbzero/catalogo/funzioni/fn_get_uom_base) — l'unità base, quando la riga non dice l'unità
 > * [script.fn_fonte_porta_quantita](/dbzero/script/funzioni/fn_fonte_porta_quantita) — quali fonti della quantità la portano sulla riga
@@ -33,7 +33,8 @@ nell'unità che l'operatore ha scelto, per il fattore verso l'unità base dell'a
 * **Il fattore scritto sulla riga** (`factor_to_base`) è la fotografia e si rispetta: anche
   quello copiato da un documento sorgente (l'ordine dal preventivo, la bolla dall'ordine, il
   reso dalla bolla).
-* **Altrimenti** si legge con `catalogo.fn_get_uom_factor` alla **data del documento**: 1 per
+* **Altrimenti** si legge con `script.fn_fattore_uom_alla_data` (che chiede
+  `catalogo.fn_get_uom_factor`) alla **data del documento**: 1 per
   l'unità base, poi la mappatura dell'articolo in vigore quel giorno, poi la conversione
   generale fra le due unità. Il fattore usato si fotografa sulla riga, e da lì in poi resta:
   cambiare la mappatura non tocca le righe già scritte.
@@ -44,7 +45,9 @@ nell'unità che l'operatore ha scelto, per il fattore verso l'unità base dell'a
 * **Senza unità operativa** vale l'unità base dell'articolo.
 
 Su ordini, bolle e resi `factor_to_base` è obbligatorio ma non ha un valore predefinito: una
-riga che arriva senza fattore lo riceve da questo trigger, non da un «1» scritto prima.
+riga che arriva senza fattore lo riceve da questo trigger, non da un «1» scritto prima. La stessa
+regola vale per le attività di commessa, con lo stesso BB
+(`vendite.trgfn_attivita_fattore_alla_data`).
 
 ---
 
@@ -145,6 +148,8 @@ niente.
 * 2026-11-09 — il fattore alla data del documento da `catalogo.fn_get_uom_factor`, la riga
   senza fattore rifiutata invece del fattore 1, `max_decimals` applicato, il cambio d'unità che
   rilegge il fattore; tre argomenti nuovi del montaggio (brief-db-revisione-catalogo, giro 2).
+* 2026-11-10 — il fattore alla data, o il rifiuto, lo dà `script.fn_fattore_uom_alla_data`, che
+  usano anche le attività di commessa (brief-db-revisione-catalogo, giro 2-bis).
 
 ---
 

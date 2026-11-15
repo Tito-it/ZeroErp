@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `catalogo.uom_tipi`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 11 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -52,7 +52,9 @@ Il seed porta `LUNGHEZZA`, `MASSA`, `VOLUME`, `AREA`, `ENERGIA`, `POTENZA`, `TEM
 La tabella ha due codici, `codice` e `codice_interno`, tutti e due unici, e nel seed hanno
 lo stesso valore. Quello bloccato è `codice_interno`: dopo la creazione non si modifica.
 `codice` invece si può cambiare, e si salva normalizzato (senza spazi ai lati, in
-maiuscolo).
+maiuscolo). È `codice` quello che si mostra e si cerca: il backend lo usa come etichetta della
+famiglia, per l'ordinamento e per la ricerca. Per questo le due colonne restano tutte e due:
+dicono la stessa cosa oggi, ma servono a due lettori diversi.
 
 ---
 
@@ -83,6 +85,9 @@ fine della transazione.
 
 * 2026-04-28 — nasce la tabella, con il seed delle famiglie e il riempimento di
   `unita_misura.tipo_uom_id` per le unità che esistevano già.
+* 2026-11-11 — ritirato l'indice su `upper(codice_interno)`, che nessuna lettura usava; i
+  COMMENT di `codice` e `codice_interno` dicono le due cose diverse
+  (brief-db-revisione-catalogo, giro 5).
 
 ---
 

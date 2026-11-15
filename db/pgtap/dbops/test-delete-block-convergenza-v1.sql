@@ -10,24 +10,30 @@
 -- dbops.automation_delete_block, e il runner che si FERMA invece di cancellare un blocco che
 -- il registro non conosce.
 -- Brief: brief-db-revisione-dbops, giro 10c, blocco 10c-1 (D19, D33, Q14 ⑪; Q3).
+--   Test 3 e 18 (2026-11-13): la seconda meta' del presidio fuori ambito, residuo di
+--   §2.4 di framework-automazione-db-migliorie (archiviato).
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 18):
 --  1)    ⭐ PRESIDIO: su tutto l'ambito nessun blocco diverge dal registro
---  2)    ⭐ PRESIDIO: nessun trigger della funzione su una tabella fuori dall'ambito
---  3)    un blocco AFTER scritto a mano col nome atteso: RIGENERA
---  4)    dopo il giro: un trigger solo, BEFORE DELETE FOR EACH ROW, argomento guc_key
---  5)    ⭐ il padre col figlio in cascata e' rifiutato con E_DELETE_NOT_ALLOWED...
---  6)    ...e il figlio e' intatto: il rifiuto arriva prima della cascata
---  7)    con la GUC accesa il DELETE passa
---  8)    guc_key cambiato: RIGENERA, e il trigger porta la chiave nuova
---  9)    trigger_name cambiato: il vecchio sparisce, c'e' solo il nuovo
--- 10)    ⭐ una tabella di 50 caratteri: due giri, un trigger, nessuna divergenza (D19)
--- 11)    riga spenta: TOGLIE...
--- 12)    ...e dopo il giro il trigger non c'e'
--- 13)    un trigger della funzione su una tabella senza riga: SCONOSCIUTO
--- 14)    ...e il runner si ferma con E_DELETE_BLOCK, nominandolo
--- 15)    ...senza aver toccato niente: il trigger sconosciuto c'e' ancora
--- 16)    DRY RUN: nessuna DDL
+--  2)    ⭐ PRESIDIO: nessun trigger della funzione su una tabella fuori dall'ambito...
+--  3)    ⭐ PRESIDIO: ...e nessuna riga attiva del registro su una tabella fuori
+--        dall'ambito: il runner la salterebbe senza traccia, e la promessa di
+--        blocco non avrebbe esecutore
+--  4)    un blocco AFTER scritto a mano col nome atteso: RIGENERA
+--  5)    dopo il giro: un trigger solo, BEFORE DELETE FOR EACH ROW, argomento guc_key
+--  6)    ⭐ il padre col figlio in cascata e' rifiutato con E_DELETE_NOT_ALLOWED...
+--  7)    ...e il figlio e' intatto: il rifiuto arriva prima della cascata
+--  8)    con la GUC accesa il DELETE passa
+--  9)    guc_key cambiato: RIGENERA, e il trigger porta la chiave nuova
+-- 10)    trigger_name cambiato: il vecchio sparisce, c'e' solo il nuovo
+-- 11)    ⭐ una tabella di 50 caratteri: due giri, un trigger, nessuna divergenza (D19)
+-- 12)    riga spenta: TOGLIE...
+-- 13)    ...e dopo il giro il trigger non c'e'
+-- 14)    un trigger della funzione su una tabella senza riga: SCONOSCIUTO
+-- 15)    ...e il runner si ferma con E_DELETE_BLOCK, nominandolo
+-- 16)    ...senza aver toccato niente: il trigger sconosciuto c'e' ancora
+-- 17)    DRY RUN: nessuna DDL
+-- 18)    il presidio 3 vede una riga attiva su una tabella fuori dall'ambito
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -36,7 +42,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(18);
 
 -- ============================================================
 -- ⭐ I presidi, prima che la fixture esista
@@ -60,6 +66,21 @@ SELECT is(
                  AND dbops.fn_table_in_scope(n.nspname, c.relname))),
     ARRAY[]::text[],
     '2) nessun blocco di DELETE su una tabella fuori dall''ambito: il runner non ci arriva');
+
+-- L'altra meta': la riga attiva fuori dall'ambito. Stesso criterio d'ambito del test 2 e del
+--   runner (fn_resolve_scope, poi fn_table_in_scope). La vista temporanea la rilegge il test 18.
+CREATE TEMP VIEW _dbk_righe_fuori_ambito AS
+SELECT d.schema_name, d.table_name
+  FROM dbops.automation_delete_block d
+ WHERE d.enabled
+   AND NOT (    d.schema_name = ANY (dbops.fn_resolve_scope(NULL))
+            AND dbops.fn_table_in_scope(d.schema_name, d.table_name));
+
+SELECT is(
+    (SELECT COALESCE(array_agg(f.schema_name||'.'||f.table_name ORDER BY 1), ARRAY[]::text[])
+       FROM _dbk_righe_fuori_ambito f),
+    ARRAY[]::text[],
+    '3) nessuna riga attiva di dbops.automation_delete_block su una tabella fuori dall''ambito: o la tabella entra nell''ambito, o la riga si spegne');
 
 -- ============================================================
 -- Fixture
@@ -90,13 +111,13 @@ INSERT INTO dbops.tst_dbk_padre (id) VALUES (1);
 INSERT INTO dbops.tst_dbk_figlio (padre_id) VALUES (1), (1);
 
 -- ============================================================
--- 3-7) Il momento: AFTER → BEFORE, e il rifiuto prima della cascata
+-- 4-8) Il momento: AFTER → BEFORE, e il rifiuto prima della cascata
 -- ============================================================
 SELECT is(
     (SELECT d.azione FROM dbops.fn_delete_block_divergenze(ARRAY['dbops']) d
       WHERE d.table_name = 'tst_dbk_padre'),
     'RIGENERA',
-    '3) un blocco AFTER col nome atteso e'' difforme: RIGENERA');
+    '4) un blocco AFTER col nome atteso e'' difforme: RIGENERA');
 
 SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['dbops'], false);
 
@@ -109,17 +130,17 @@ SELECT is(
       WHERE tg.tgrelid = 'dbops.tst_dbk_padre'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     'trg_tst_dbk_padre_a10_delete_block_dlt 11 zeroerp.pgtap_dbk',
-    '4) dopo il giro: un trigger solo, BEFORE DELETE FOR EACH ROW (tgtype 11), argomento guc_key');
+    '5) dopo il giro: un trigger solo, BEFORE DELETE FOR EACH ROW (tgtype 11), argomento guc_key');
 
 SELECT throws_like(
     $$ DELETE FROM dbops.tst_dbk_padre WHERE id = 1 $$,
     '%dbops.tst_dbk_padre%',
-    '5) il padre col figlio in cascata e'' rifiutato con E_DELETE_NOT_ALLOWED, che nomina la tabella');
+    '6) il padre col figlio in cascata e'' rifiutato con E_DELETE_NOT_ALLOWED, che nomina la tabella');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.tst_dbk_figlio WHERE padre_id = 1),
     2,
-    '6) il figlio e'' intatto: il rifiuto arriva prima della cascata');
+    '7) il figlio e'' intatto: il rifiuto arriva prima della cascata');
 
 SET LOCAL zeroerp.pgtap_dbk = 'on';
 DELETE FROM dbops.tst_dbk_padre WHERE id = 1;
@@ -128,10 +149,10 @@ SET LOCAL zeroerp.pgtap_dbk = 'off';
 SELECT is(
     (SELECT count(*)::int FROM dbops.tst_dbk_padre WHERE id = 1),
     0,
-    '7) con la GUC accesa il DELETE passa');
+    '8) con la GUC accesa il DELETE passa');
 
 -- ============================================================
--- 8-9) La riga cambia: chiave e nome
+-- 9-10) La riga cambia: chiave e nome
 -- ============================================================
 UPDATE dbops.automation_delete_block SET guc_key = 'zeroerp.pgtap_dbk_due'
  WHERE schema_name = 'dbops' AND table_name = 'tst_dbk_padre';
@@ -143,7 +164,7 @@ SELECT is(
       WHERE tg.tgrelid = 'dbops.tst_dbk_padre'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     ARRAY['zeroerp.pgtap_dbk_due'],
-    '8) guc_key cambiato nel registro: il trigger porta la chiave nuova');
+    '9) guc_key cambiato nel registro: il trigger porta la chiave nuova');
 
 UPDATE dbops.automation_delete_block SET trigger_name = 'trg_tst_dbk_padre_a10_blocco_nuovo_dlt'
  WHERE schema_name = 'dbops' AND table_name = 'tst_dbk_padre';
@@ -155,10 +176,10 @@ SELECT is(
       WHERE tg.tgrelid = 'dbops.tst_dbk_padre'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     ARRAY['trg_tst_dbk_padre_a10_blocco_nuovo_dlt'],
-    '9) trigger_name cambiato: il vecchio sparisce, c''e'' solo il nuovo');
+    '10) trigger_name cambiato: il vecchio sparisce, c''e'' solo il nuovo');
 
 -- ============================================================
--- 10) Il nome lungo (D19)
+-- 11) Il nome lungo (D19)
 -- ============================================================
 SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['dbops'], false);
 
@@ -168,10 +189,10 @@ SELECT ok(
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure) = 1
     AND NOT EXISTS (SELECT 1 FROM dbops.fn_delete_block_divergenze(ARRAY['dbops']) d
                      WHERE d.table_name = 'tst_dbk_nome_lunghissimo_per_provare_il_troncamento'),
-    '10) una tabella di 50 caratteri: dopo due giri un trigger solo e nessuna divergenza (prima il secondo giro prendeva 42710)');
+    '11) una tabella di 50 caratteri: dopo due giri un trigger solo e nessuna divergenza (prima il secondo giro prendeva 42710)');
 
 -- ============================================================
--- 11-12) Riga spenta
+-- 12-13) Riga spenta
 -- ============================================================
 UPDATE dbops.automation_delete_block SET enabled = false
  WHERE schema_name = 'dbops' AND table_name = 'tst_dbk_padre';
@@ -180,7 +201,7 @@ SELECT is(
     (SELECT d.azione FROM dbops.fn_delete_block_divergenze(ARRAY['dbops']) d
       WHERE d.table_name = 'tst_dbk_padre'),
     'TOGLIE',
-    '11) riga spenta col trigger vivo: TOGLIE');
+    '12) riga spenta col trigger vivo: TOGLIE');
 
 SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['dbops'], false);
 
@@ -189,10 +210,10 @@ SELECT is(
       WHERE tg.tgrelid = 'dbops.tst_dbk_padre'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     0,
-    '12) dopo il giro il blocco non c''e'' piu''');
+    '13) dopo il giro il blocco non c''e'' piu''');
 
 -- ============================================================
--- 13-16) Un blocco che il registro non conosce, e il dry run
+-- 14-17) Un blocco che il registro non conosce, e il dry run
 -- ============================================================
 CREATE TRIGGER trg_tst_dbk_ignota_a10_delete_block_dlt
     BEFORE DELETE ON dbops.tst_dbk_ignota
@@ -202,19 +223,19 @@ SELECT is(
     (SELECT d.azione FROM dbops.fn_delete_block_divergenze(ARRAY['dbops']) d
       WHERE d.table_name = 'tst_dbk_ignota'),
     'SCONOSCIUTO',
-    '13) un trigger della funzione su una tabella senza riga del registro: SCONOSCIUTO');
+    '14) un trigger della funzione su una tabella senza riga del registro: SCONOSCIUTO');
 
 SELECT throws_like(
     $$ SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['dbops'], false) $$,
     '%dbops.tst_dbk_ignota%',
-    '14) il runner si ferma con E_DELETE_BLOCK e nomina la tabella');
+    '15) il runner si ferma con E_DELETE_BLOCK e nomina la tabella');
 
 SELECT is(
     (SELECT count(*)::int FROM pg_trigger tg
       WHERE tg.tgrelid = 'dbops.tst_dbk_ignota'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     1,
-    '15) ...senza averlo cancellato');
+    '16) ...senza averlo cancellato');
 
 DROP TRIGGER trg_tst_dbk_ignota_a10_delete_block_dlt ON dbops.tst_dbk_ignota;
 UPDATE dbops.automation_delete_block SET enabled = true
@@ -226,7 +247,18 @@ SELECT is(
       WHERE tg.tgrelid = 'dbops.tst_dbk_padre'::regclass
         AND tg.tgfoid = 'script.trgfn_delete_block_by_guc()'::regprocedure),
     0,
-    '16) il dry run non crea il trigger della riga riaccesa');
+    '17) il dry run non crea il trigger della riga riaccesa');
+
+-- ============================================================
+-- 18) Il presidio 3 morde: tst_dbk_figlio non ha riga d'ambito, e lo schema dbops ne ha
+-- ============================================================
+INSERT INTO dbops.automation_delete_block (schema_name, table_name, guc_key, enabled)
+VALUES ('dbops', 'tst_dbk_figlio', 'zeroerp.pgtap_dbk', true);
+
+SELECT ok(
+    EXISTS (SELECT 1 FROM _dbk_righe_fuori_ambito f
+             WHERE f.schema_name = 'dbops' AND f.table_name = 'tst_dbk_figlio'),
+    '18) una riga attiva su una tabella fuori dall''ambito e'' vista dal presidio 3');
 
 SELECT * FROM finish();
 ROLLBACK;

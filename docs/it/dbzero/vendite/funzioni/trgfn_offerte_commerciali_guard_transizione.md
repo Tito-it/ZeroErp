@@ -16,39 +16,29 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-
-
--- Scopo: bloccare transizioni stato non ammesse sul workflow offerta
--- commerciale (config-driven via stati_doc_offerte_transizioni).
--- Valorizza i timestamp di passaggio stato e applica guard listino
--- al momento dell'emissione (BOZZA->EMESSA).
--- rev 2026-08-28: + regola del rientro da uno stato di superamento;
--- data_emissione non si riscrive su un secondo ingresso in EMESSA.
--- rev 2026-09-24: + i prezzi non autorizzati verso EMESSA e ACCETTATA,
--- dal building block script.fn_check_prezzi_autorizzati; escluso il
--- rientro da uno stato di superamento (brief-db-preventivi-congelamento-
--- pricing, D-4/D-5).
--- rev 2026-10-07: BOZZA->EMESSA congela la versione di listino (la fissata,
--- altrimenti quella in vigore oggi) dopo il predicato
--- script.fn_check_listino_congelabile (brief-db-offerta-emissione-ed-
--- erogazione §C.1.3).
--- rev 2026-10-11: BOZZA->EMESSA solleva anche il primo motivo di
--- script.fn_check_indirizzi_documento_cliente — un indirizzo d'anagrafica
--- che non e' del cliente dell'offerta (brief-db-indirizzi-documento-
--- seguono-il-cliente, D-3).
--- rev 2026-10-21 (brief-db-offerta-emissione-ed-erogazione §I.2, §H.3):
--- BOZZA->EMESSA solleva per ultimo il primo motivo di
--- script.fn_check_righe_documento — una riga che la regola intera non
--- ammette piu' (H-R1); verso ANNULLATA quello di
--- script.fn_check_offerta_annullabile — un contratto o un ordine ancora
--- vivo nato dall'offerta (H-R3, la transizione ACCETTATA->ANNULLATA).
+-- Scopo: il guard del cambio di stato dell'offerta commerciale. La
+--   transizione deve stare nella matrice (config.stati_doc_offerte_
+--   transizioni, righe attive); poi le regole del passaggio, ognuna sul
+--   SIGNIFICATO che il vocabolario dichiara in colonna, mai sul codice:
+--   - l'emissione (dallo stato iniziale allo stato di emissione) congela la
+--     versione di listino e giudica indirizzi e righe;
+--   - verso l'emissione e verso l'accettazione, i prezzi autorizzati;
+--   - verso lo stato di annullo, i documenti vivi nati dall'offerta;
+--   - l'uscita da uno stato di superamento, la revisione figlia viva;
+--   - la data del passaggio, dal significato dello stato di destinazione.
+--   I codici servono solo ai messaggi.
 DECLARE
-    v_codice_da config.stati_doc_offerte.codice_interno%TYPE;
-    v_codice_a  config.stati_doc_offerte.codice_interno%TYPE;
-    -- Nudi DICHIARATI: bool_or su un'espressione (id = stato AND
-    -- is_superato), un valore calcolato e non il riflesso di una colonna.
-    v_superato_da boolean;
-    v_superato_a  boolean;
+    -- I codici degli estremi, per i messaggi.
+    v_codice_da       config.stati_doc_offerte.codice_interno%TYPE;
+    v_codice_a        config.stati_doc_offerte.codice_interno%TYPE;
+    -- Il significato degli estremi, dalle colonne del vocabolario.
+    v_iniziale_da     config.stati_doc_offerte.iniziale%TYPE;
+    v_superato_da     config.stati_doc_offerte.is_superato%TYPE;
+    v_emissione_a     config.stati_doc_offerte.emissione%TYPE;
+    v_accettazione_a  config.stati_doc_offerte.accettazione%TYPE;
+    v_rifiuto_a       config.stati_doc_offerte.rifiuto%TYPE;
+    v_abortito_a      config.stati_doc_offerte.is_abortito%TYPE;
+    v_superato_a      config.stati_doc_offerte.is_superato%TYPE;
     v_figlia_viva_codice vendite.offerte_commerciali.codice%TYPE;
 BEGIN
     -- Nessuna transizione effettiva: niente da validare.
@@ -56,16 +46,20 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Risolve i codici interni degli stati per messaggi leggibili,
-    -- e la dichiarazione di superamento dei due estremi.
-    SELECT
-        max(CASE WHEN id = OLD.stato_doc_offerta_id THEN codice_interno END),
-        max(CASE WHEN id = NEW.stato_doc_offerta_id THEN codice_interno END),
-        bool_or(id = OLD.stato_doc_offerta_id AND is_superato IS TRUE),
-        bool_or(id = NEW.stato_doc_offerta_id AND is_superato IS TRUE)
-      INTO v_codice_da, v_codice_a, v_superato_da, v_superato_a
-      FROM config.stati_doc_offerte
-     WHERE id IN (OLD.stato_doc_offerta_id, NEW.stato_doc_offerta_id);
+    -- Le due righe del vocabolario, lette una volta: le colonne dicono il
+    -- significato, il codice resta per i messaggi. Lo stato e' una FK verso
+    -- il vocabolario: le due righe ci sono.
+    SELECT s.codice_interno, s.iniziale, s.is_superato
+      INTO v_codice_da, v_iniziale_da, v_superato_da
+      FROM config.stati_doc_offerte s
+     WHERE s.id = OLD.stato_doc_offerta_id;
+
+    SELECT s.codice_interno, s.emissione, s.accettazione, s.rifiuto,
+           s.is_abortito, s.is_superato
+      INTO v_codice_a, v_emissione_a, v_accettazione_a, v_rifiuto_a,
+           v_abortito_a, v_superato_a
+      FROM config.stati_doc_offerte s
+     WHERE s.id = NEW.stato_doc_offerta_id;
 
     -- Verifica transizione ammessa (config-driven, solo righe attive).
     IF NOT EXISTS (
@@ -90,14 +84,14 @@ BEGIN
         );
     END IF;
 
-    -- ⭐ RIENTRO da uno stato di superamento. La transizione SUPERATA->EMESSA
+    -- ⭐ RIENTRO da uno stato di superamento. La transizione di rientro
     -- esiste per l'automatismo «annullo la revisione, il padre torna vivo»
     -- (trg_offerte_commerciali_z90_rientro_padre_upd). Ma una transizione
     -- ammessa e' una porta aperta a chiunque scriva, quindi la condizione va
     -- detta qui, dove vale per tutti: si esce dal superamento SOLO se non c'e'
     -- piu' una revisione figlia viva. Altrimenti il lineage avrebbe due
     -- revisioni vive insieme, che e' l'invariante che il dominio non ammette.
-    IF COALESCE(v_superato_da, false) AND NOT COALESCE(v_superato_a, false) THEN
+    IF v_superato_da AND NOT v_superato_a THEN
 
         -- Una figlia "viva" e' una revisione il cui stato non e' di
         -- annullamento: una revisione abortita non rimpiazza nessuno.
@@ -133,18 +127,18 @@ BEGIN
 
     END IF;
 
-    -- Emissione (BOZZA -> EMESSA), rev 2026-10-07 (brief-db-offerta-
-    -- emissione-ed-erogazione §C.1.3): l'offerta vive sulla versione di
-    -- listino in vigore e la CONGELA qui, nella stessa scrittura del cambio
-    -- stato. Prima il predicato, script.fn_check_listino_congelabile: lo
-    -- stesso con cui fn_available_actions_offerta spegne «Emetti», quindi
-    -- pulsante e guard non possono dissentire. Poi il congelamento,
+    -- L'emissione (dallo stato iniziale allo stato di emissione): l'offerta
+    -- vive sulla versione di listino in vigore e la CONGELA qui, nella stessa
+    -- scrittura del cambio stato. Prima il predicato,
+    -- script.fn_check_listino_congelabile: lo stesso con cui
+    -- fn_available_actions_offerta spegne «Emetti», quindi pulsante e guard
+    -- non possono dissentire. Poi il congelamento,
     -- vendite.fn_listino_versione_operativa: la fissata se c'e', altrimenti
     -- quella in vigore oggi.
-    -- ⚠️ Fino a questa rev la versione la fissava il backend prima del
-    --   cambio stato, e la capability guardava la colonna nuda: «Emetti»
-    --   restava spento perche' il congelamento non c'era ancora stato.
-    IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+    -- ⚠️ Dallo stato INIZIALE, non da qualunque stato verso l'emissione: il
+    --   rientro da uno stato di superamento arriva anche lui nello stato di
+    --   emissione, e non e' un invio al cliente.
+    IF v_iniziale_da AND v_emissione_a THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_listino_congelabile('OFFERTA_COMMERCIALE', NEW.listino_id, NEW.listino_versione_id),
@@ -160,23 +154,21 @@ BEGIN
             NEW.listino_id, NEW.listino_versione_id);
     END IF;
 
-    -- Prezzi non autorizzati (rev 2026-09-24): un'offerta con un prezzo che
-    -- nessuno ha autorizzato — in attesa o rifiutato, su eccezioni o loro
-    -- componenti BoM attivi — non va al cliente (EMESSA) e non diventa un
-    -- impegno (ACCETTATA). D-1, D-4.
+    -- Prezzi non autorizzati: un'offerta con un prezzo che nessuno ha
+    -- autorizzato — in attesa o rifiutato, su eccezioni o loro componenti BoM
+    -- attivi — non va al cliente (stato di emissione) e non diventa un
+    -- impegno (stato di accettazione).
     --
     -- ⭐ Il predicato e' il building block script.fn_check_prezzi_autorizzati,
     --   lo STESSO che fn_available_actions_offerta usa per spegnere i
     --   pulsanti: qui si solleva soltanto.
-    -- ⛔ NON sul RIENTRO da uno stato di superamento (SUPERATA -> EMESSA):
-    --   e' l'automatismo «annullo la revisione, il padre torna vivo»
+    -- ⛔ NON sul RIENTRO da uno stato di superamento: e' l'automatismo
+    --   «annullo la revisione, il padre torna vivo»
     --   (trg_offerte_commerciali_z90_rientro_padre_upd), non un invio al
     --   cliente — l'offerta era gia' stata mandata. Un prezzo rimasto non
     --   autorizzato sul padre bloccherebbe l'ANNULLAMENTO della revisione,
-    --   cioe' una via d'uscita (D-2). Letto dal flag is_superato, non da un
-    --   codice.
-    IF v_codice_a IN ('EMESSA', 'ACCETTATA')
-       AND NOT COALESCE(v_superato_da, false) THEN
+    --   cioe' una via d'uscita.
+    IF (v_emissione_a OR v_accettazione_a) AND NOT v_superato_da THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_prezzi_autorizzati('vendite.offerte_commerciali'::regclass, NEW.id),
@@ -189,16 +181,15 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
-    -- Indirizzi del cliente (rev 2026-10-11, brief-db-indirizzi-documento-
-    -- seguono-il-cliente, D-3 di Tid): il cliente dell'offerta (BA/istanza) si
-    -- cambia in bozza, e un indirizzo d'anagrafica del cliente di prima, o di
-    -- una fornitura che l'offerta non ha piu', non va al cliente.
+    -- Indirizzi del cliente: il cliente dell'offerta (BA/istanza) si cambia
+    -- in bozza, e un indirizzo d'anagrafica del cliente di prima, o di una
+    -- fornitura che l'offerta non ha piu', non va al cliente.
     -- ⭐ Il predicato e' script.fn_check_indirizzi_documento_cliente, lo
     --   stesso che fn_available_actions_offerta legge per spegnere «Emetti»,
     --   dopo listino e prezzi: lo stesso ordine qui.
-    -- ⚠️ Solo all'emissione (BOZZA -> EMESSA): il rientro da uno stato di
+    -- ⚠️ Solo all'emissione dallo stato iniziale: il rientro da uno stato di
     --   superamento non e' un invio al cliente.
-    IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+    IF v_iniziale_da AND v_emissione_a THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_indirizzi_documento_cliente('OFFERTA_COMMERCIALE', NEW.id),
@@ -211,18 +202,16 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
-    -- Le righe (rev 2026-10-21, brief-db-offerta-emissione-ed-erogazione
-    -- §I.2, H-R1): la regola di una riga dipende da dati che stanno fuori
-    -- dalla riga (il listino operativo, il vocabolario del perimetro), e i
-    -- guard di riga la giudicano solo quando la riga si scrive. Le righe
-    -- gia' scritte le intercetta l'emissione (R-6, A-5 di brief-db-articoli-
-    -- ammessi-per-documento).
+    -- Le righe: la regola di una riga dipende da dati che stanno fuori dalla
+    -- riga (il listino operativo, il vocabolario del perimetro), e i guard di
+    -- riga la giudicano solo quando la riga si scrive. Le righe gia' scritte
+    -- le intercetta l'emissione.
     -- ⭐ Il predicato e' script.fn_check_righe_documento, lo stesso che
     --   fn_available_actions_offerta legge per spegnere «Emetti», dopo
     --   listino, prezzi e indirizzi: lo stesso ordine qui. Il contesto
     --   legge la versione di listino della riga in tabella (la fissata,
     --   altrimenti quella in vigore oggi), che e' quella congelata sopra.
-    IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+    IF v_iniziale_da AND v_emissione_a THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_righe_documento('OFFERTA_COMMERCIALE', NEW.id),
@@ -235,12 +224,12 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
-    -- Annullo (rev 2026-10-21, §H.3 H-R3): da ACCETTATA si esce anche
-    -- annullando, ma non sotto i piedi di un contratto o di un ordine ancora
-    -- vivo nato dall'offerta: prima si annulla lui. Il predicato e'
+    -- Annullo: dallo stato di accettazione si esce anche annullando, ma non
+    -- sotto i piedi di un contratto o di un ordine ancora vivo nato
+    -- dall'offerta: prima si annulla lui. Il predicato e'
     -- script.fn_check_offerta_annullabile, lo stesso della capability.
-    -- Sulla DESTINAZIONE: da BOZZA non ci sono documenti, e passa.
-    IF v_codice_a = 'ANNULLATA' THEN
+    -- Sulla DESTINAZIONE: dalla bozza non ci sono documenti, e passa.
+    IF v_abortito_a THEN
         PERFORM script.fn_raise_primo_motivo_se_presente(
             'database', TG_NAME::text,
             script.fn_check_offerta_annullabile(NEW.id),
@@ -253,25 +242,27 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
-    -- Valorizza il timestamp corrispondente al passaggio stato.
-    -- ⚠️ data_emissione con COALESCE: un rientro SUPERATA->EMESSA e' un
-    -- SECONDO ingresso in EMESSA, e riscrivere la data cancellerebbe il
-    -- giorno in cui l'offerta e' stata davvero mandata al cliente. Sul primo
-    -- ingresso (BOZZA->EMESSA) la colonna e' NULL: valore identico a prima.
-    CASE v_codice_a
-        WHEN 'EMESSA'    THEN NEW.data_emissione    := COALESCE(NEW.data_emissione, now());
-        WHEN 'ACCETTATA' THEN NEW.data_accettazione := now();
-        WHEN 'RIFIUTATA' THEN NEW.data_rifiuto      := now();
-        WHEN 'ANNULLATA' THEN NEW.data_annullamento  := now();
-        ELSE NULL;
-    END CASE;
+    -- La data del passaggio, dal significato dello stato di destinazione.
+    -- ⚠️ data_emissione con COALESCE: un rientro da uno stato di superamento
+    -- e' un SECONDO ingresso nello stato di emissione, e riscrivere la data
+    -- cancellerebbe il giorno in cui l'offerta e' stata davvero mandata al
+    -- cliente. Sul primo ingresso la colonna e' NULL.
+    IF v_emissione_a THEN
+        NEW.data_emissione := COALESCE(NEW.data_emissione, now());
+    ELSIF v_accettazione_a THEN
+        NEW.data_accettazione := now();
+    ELSIF v_rifiuto_a THEN
+        NEW.data_rifiuto := now();
+    ELSIF v_abortito_a THEN
+        NEW.data_annullamento := now();
+    END IF;
 
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): BOZZA->EMESSA non pretende più una versione già fissata, la CONGELA: solleva il primo motivo di script.fn_check_listino_congelabile(''OFFERTA'', ...) — nessuna versione in vigore oggi (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) o versione fissata non ATTIVA (E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA), lo stesso predicato della capability — poi scrive NEW.listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi), nella stessa scrittura del cambio stato. Prima la fissava il backend, e la capability spegneva «Emetti» perché non era ancora fissata. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): BOZZA->EMESSA solleva anche il primo motivo di script.fn_check_indirizzi_documento_cliente(''OFFERTA'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, un indirizzo d''anagrafica che non e'' del cliente dell''offerta (altro ruolo, o fornitura diversa) — dopo listino e prezzi, nell''ordine della capability. ⭐ rev 2026-10-19 (20261019-28, brief-db-grammatica-unica-documenti lotto 1, G-1 di Tid): il documento si nomina col codice della sorgente, CONTRATTO | OFFERTA_COMMERCIALE (era OFFERTA); dove sopra si legge OFFERTA come selettore, oggi e'' OFFERTA_COMMERCIALE. ⚠️ fn_check_indirizzi_documento_cliente riceve ancora OFFERTA: grammatica delle testate, lotto 2. ⭐ rev 2026-10-19 (20261019-62, brief-db-grammatica-unica-documenti lotto 2a, G-1 di Tid): la grammatica delle testate passa ai codici delle sorgenti (DDT -> DDT_VENDITA, ORDINE -> ORDINE_VENDITA, OFFERTA -> OFFERTA_COMMERCIALE, RESO -> RESO_VENDITA, EMAIL_BOZZA -> EMAIL; PREVENTIVO, CONTRATTO, COMMESSA, FATTURA invariati); dove sopra si legge un codice corto come selettore, oggi vale il codice della sorgente. Rev 2026-10-21 (20261021-57, brief-db-offerta-emissione-ed-erogazione §I.2, §H.3): BOZZA->EMESSA solleva per ultimo il primo motivo di script.fn_check_righe_documento (E_DOC_RIGA_NON_AMMESSA: una riga che la regola intera non ammette piu'', H-R1); verso ANNULLATA quello di script.fn_check_offerta_annullabile (E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI, H-R3: la transizione ACCETTATA->ANNULLATA e'' nuova).';
+IS 'Guard del cambio di stato dell''offerta commerciale (BEFORE UPDATE OF stato_doc_offerta_id). Ogni regola legge il significato dello stato dalle colonne del vocabolario config.stati_doc_offerte, mai il codice, che serve solo ai messaggi. (1) La transizione deve essere una riga attiva di config.stati_doc_offerte_transizioni, altrimenti E_OFFERTA_TRANSIZIONE_NON_AMMESSA. (2) Si esce da uno stato is_superato solo se non resta una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA: la condizione vale per chiunque scriva, non solo per l''automatismo del rientro. (3) L''emissione, dallo stato iniziale allo stato di emissione, solleva il primo motivo di script.fn_check_listino_congelabile e congela la versione di listino (vendite.fn_listino_versione_operativa: la fissata, altrimenti quella in vigore oggi); poi il primo motivo di script.fn_check_indirizzi_documento_cliente e quello di script.fn_check_righe_documento. Il rientro da uno stato di superamento non e'' un''emissione. (4) Verso lo stato di emissione e quello di accettazione, fuori dal rientro, il primo motivo di script.fn_check_prezzi_autorizzati (E_DOC_PREZZO_PENDENTE, E_DOC_PREZZO_RIFIUTATO). (5) Verso lo stato di annullo (is_abortito), il primo motivo di script.fn_check_offerta_annullabile (E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI). (6) La data del passaggio: emissione -> data_emissione, solo se ancora NULL (un rientro non riscrive il giorno dell''invio); accettazione -> data_accettazione; rifiuto -> data_rifiuto; is_abortito -> data_annullamento. I predicati sono gli stessi che script.fn_available_actions_offerta legge per spegnere i pulsanti, nello stesso ordine.';
 ```
 
 </div>

@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.iva_natura: user_insert nella forma di linee-guida-sql §7, cioe'
+#   NOT NULL DEFAULT CURRENT_USER. Brief: brief-db-token-null-dei-seed (D2, Tid
+#   2026-11-12), la forma di magazzino.causali (90_end/20261112-39).
+#
+# ⚠️ PERCHE'. user_insert era nullable e senza default, e il seed la scriveva
+#   come stringa vuota in tutte le 21 righe: un'audit che non dice chi ha
+#   scritto. Il seed ora non porta piu' user_insert ne' user_update (mirror
+#   80_data/20250816-01): vale il default.
+#
+# ℹ️ IL PRIMO PASSO SCRIVE LE RIGHE GIA' NATE: user_insert NULL o vuota, e
+#   user_update vuota, prendono il ruolo che migra, cioe' chi le ha scritte. Il
+#   trigger di audit dell'UPDATE riscrive comunque user_update e data_update, e
+#   quello dello storico salva la riga di prima.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14). Da zero il
+#   mirror inserisce prima del default, e le sue righe nascono con user_insert
+#   NULL: le scrive il primo passo.
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-13: il seed (il mirror,
+#   ora senza le colonne di audit); il pannello (config.fn_pannello_scrivi, che
+#   salta le colonne di sistema: ora prende il default); 00_schema/20260829-47 e
+#   20260402-01 (is_reverse_charge e il tipo di codice, non toccano l'audit);
+#   nessuna funzione del database, nessun endpoint dedicato.
+# Presidio: config/test-iva-natura-audit-insert-v1.
+# Rollback: via il NOT NULL e il default. I valori scritti restano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-54-alter-iva-natura-user-insert-audit-mctit.yaml
+
+  - changeSet:
+      id: 20261112-54-alter-iva-natura-user-insert-audit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.iva_natura: le colonne di audit vuote prendono il ruolo che migra, poi user_insert diventa
+        NOT NULL DEFAULT CURRENT_USER (linee-guida-sql §7). Brief: brief-db-token-null-dei-seed.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = 'config.iva_natura'::regclass
+                 AND a.attname = 'user_insert'
+                 AND a.attnotnull;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.iva_natura n
+                 SET user_insert = CASE WHEN NULLIF(btrim(n.user_insert), '') IS NULL
+                                        THEN CURRENT_USER ELSE n.user_insert END,
+                     user_update = CASE WHEN btrim(n.user_update) = ''
+                                        THEN CURRENT_USER ELSE n.user_update END
+               WHERE NULLIF(btrim(n.user_insert), '') IS NULL
+                  OR btrim(n.user_update) = '';
+
+              ALTER TABLE config.iva_natura
+                ALTER COLUMN user_insert SET DEFAULT CURRENT_USER,
+                ALTER COLUMN user_insert SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.iva_natura
+                ALTER COLUMN user_insert DROP NOT NULL,
+                ALTER COLUMN user_insert DROP DEFAULT;

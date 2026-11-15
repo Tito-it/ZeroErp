@@ -13,7 +13,7 @@ CREATE FUNCTION fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_acc
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date DEFAULT NULL::date, p_billing_account_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_consumo_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(consumo_id bigint, consumo_uid uuid, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer)
+ RETURNS TABLE(consumo_id bigint, consumo_uid uuid, billing_account_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, competenza_dal date, competenza_al date, fatturazione_immediata boolean, sorgente_tipo_id bigint, sorgente_chiave text, segment_key character varying, articolo_id uuid, istanza_utility_id bigint, data_attivita date, uom_id bigint, quantita numeric, qta_operativa numeric, uom_operativa_id bigint, factor_to_base numeric, competenza_mese date, prezzo_snapshot numeric, prezzo_bloccato boolean, pricing_mode character varying, tipo_movimento character varying, valuta_id integer, meta jsonb, tipo_doc_fiscale_id bigint, termine_pagamento_id bigint, modalita_pagamento_id integer, origine_prezzo character varying, listino_versione_id bigint, listino_riga_id bigint, prezzo_base_snapshot numeric, tipo_variazione_applicata character varying, valore_variazione_applicata numeric, promo_id bigint, prezzo_contratto_id bigint, categoria_cliente_id_snapshot smallint, classe_utenza_id_snapshot integer)
  LANGUAGE plpgsql
 AS $function$
 -- rev 2026-10-20 (20261020-89, brief-db-grammatica-unica-documenti, 2e G-8):
@@ -100,7 +100,10 @@ BEGIN
     ),
     v_tipo_doc_fiscale_id,
     NULL::bigint,
-    NULL::integer
+    NULL::integer,
+    -- R-5: un consumo non porta prezzo, quindi nemmeno provenienza.
+    NULL::varchar, NULL::bigint, NULL::bigint, NULL::numeric, NULL::varchar,
+    NULL::numeric, NULL::bigint, NULL::bigint, NULL::smallint, NULL::integer
   FROM vendite.attivita_consumi ac
   JOIN anagrafiche.billing_account ba ON ba.id = ac.billing_account_id
   WHERE ac.stato_calcolo = 'OK'
@@ -127,7 +130,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
-IS 'I consumi da mandare in commessa: stato_calcolo OK, non ancora fatturati (fattura_id NULL) e non gia'' instradati (script.fn_get_stato_push_segment = LIBERA: una riga ANNULLATA non occupa, e annullata la commessa il consumo torna da mandare). p_consumo_id: un consumo solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ATTIVITA_CONSUMI assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per competenza e consumo, p_limit come tetto. Il consumo non ha righe: una riga di commessa per consumo, senza articolo e senza prezzo. La chiave del documento esce in sorgente_chiave, l''uid del consumo in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ATTIVITA_CONSUMI:<uid> la compone script.fn_segment_key. Un fan-out per componente dovra'' usare il suffisso #CMP:, che il classificatore vede. fatturazione_immediata e'' FALSE per scelta di dominio: un consumo e'' una misura, e la corsia la decide il contratto che lo governa; non va sostituita con una colonna. termine_pagamento_id e modalita_pagamento_id sono NULL: un consumo non ha condizioni di pagamento. Il backend legge le colonne per nome.';
+IS 'I consumi da mandare in commessa: stato_calcolo OK, non ancora fatturati (fattura_id NULL) e non gia'' instradati (script.fn_get_stato_push_segment = LIBERA: una riga ANNULLATA non occupa, e annullata la commessa il consumo torna da mandare). p_consumo_id: un consumo solo (NULL = tutti; <= 0 solleva E_PUSH_SORGENTE_ID_INVALIDO); la sorgente ATTIVITA_CONSUMI assente dal catalogo solleva E_CODICE. Filtri in AND, ordine per competenza e consumo, p_limit come tetto. Il consumo non ha righe: una riga di commessa per consumo, senza articolo e senza prezzo. La chiave del documento esce in sorgente_chiave, l''uid del consumo in testo, come la riceve la madre vendite.fn_upsert_commessa_attivita (p_sorgente_chiave) e come la legge la chiave sorgente_chiave del batch vendite.fn_batch_upsert_commessa_attivita; la chiave del push ATTIVITA_CONSUMI:<uid> la compone script.fn_segment_key. Un fan-out per componente dovra'' usare il suffisso #CMP:, che il classificatore vede. fatturazione_immediata e'' FALSE per scelta di dominio: un consumo e'' una misura, e la corsia la decide il contratto che lo governa; non va sostituita con una colonna. termine_pagamento_id e modalita_pagamento_id sono NULL: un consumo non ha condizioni di pagamento. Il backend legge le colonne per nome. Le dieci colonne della provenienza del prezzo (origine_prezzo … classe_utenza_id_snapshot) escono NULL: un consumo non porta prezzo dalla sorgente, e chi scrivera'' il prezzo ne scrivera'' la provenienza.';
 ```
 
 </div>

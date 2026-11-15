@@ -252,3 +252,4 @@ SELECT lives_ok(
 );
 
 SELECT * FROM finish();
+ROLLBACK;

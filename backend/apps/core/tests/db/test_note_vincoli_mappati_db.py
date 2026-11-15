@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Ogni CHECK e ogni FK delle partizioni di `vendite.note` ha la sua voce
-#        nelle mappe di `PartitionedNoteService`, e ogni voce delle mappe
-#        nomina un vincolo che esiste (F-7 di
-#        analisi-be-difetti-emersi-verifica-doc-api-core).
+# Scopo: Ogni CHECK e ogni FK delle partizioni di `vendite.note` e di
+#        `catalogo.note` (dal 2026-11-11: le note di catalogo passano dallo
+#        stesso service) ha la sua voce nelle mappe di
+#        `PartitionedNoteService`, e ogni voce delle mappe nomina un vincolo
+#        che esiste (F-7 di analisi-be-difetti-emersi-verifica-doc-api-core).
 #
 # ⛔ PERCHE' ESISTE. Un vincolo non mappato non da' errore: la violazione cade
 #    sul `fallback_code` `E_NOTA_VALIDATION`, 400, col messaggio generico. Fino
@@ -46,12 +47,12 @@ _SQL_VINCOLI = """
     SELECT DISTINCT c.conname
       FROM pg_inherits i
       JOIN pg_constraint c ON c.conrelid = i.inhrelid
-     WHERE i.inhparent = 'vendite.note'::regclass
+     WHERE i.inhparent IN ('vendite.note'::regclass, 'catalogo.note'::regclass)
        AND c.contype IN ('c', 'f')
 """
 
 
-# Scopo: i nomi dei CHECK e delle FK di tutte le partizioni di `vendite.note`.
+# Scopo: i nomi dei CHECK e delle FK di tutte le partizioni delle due madri.
 def _vincoli_partizioni() -> set[str]:
     with connection.cursor() as cur:
         cur.execute(_SQL_VINCOLI)
@@ -67,7 +68,7 @@ class NoteVincoliMappatiTests(TestCase):
 
     # 0) Senza partizioni i due test sotto sarebbero verdi per sottrazione.
     def test_la_madre_ha_partizioni(self) -> None:
-        self.assertTrue(_vincoli_partizioni(), "vendite.note senza partizioni")
+        self.assertTrue(_vincoli_partizioni(), "vendite.note e catalogo.note senza partizioni")
 
     # 1) Un vincolo senza voce esce `E_NOTA_VALIDATION` col messaggio generico.
     def test_ogni_vincolo_delle_partizioni_e_mappato(self) -> None:

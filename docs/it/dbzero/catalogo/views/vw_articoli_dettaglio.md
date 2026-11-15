@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista della lista (ui.lista_definizione 26) e del drawer articolo: catalogo.articoli + decodifiche (uom, tipologia, gruppo, spesa, iva, tipologia listino, natura di vendita) + capability BoM. Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli non ha RLS e la vista non attraversa tabelle protette (presidio sul merito: db/pgtap/rls/test-rls-viste-security-invoker.sql). ⭐ rev 2026-09-18 (P-1, brief-db-magazzino-lotto-2-motore sezione 4.9): + requires_lotto in coda — la primitiva di magazzino pretende il lotto quando e' vero (passo 6), e l'operatore deve poterlo vedere e impostare; SENZA lock BoM (Lotto 1 sezione 4.3: il lotto non entra nella distinta), quindi ne' fra i non_editable_fields del BE ne' disabilitato nel drawer. rev 2026-09-13 (P-6, brief-db-modifiche-certe-ciclo-vendita-e-articolo sezione 5.2): + modo_approvvigionamento_id, modo_approvvigionamento_codice_interno, modo_approvvigionamento_descrizione, gestito_a_magazzino, lead_time_giorni, in coda (CREATE OR REPLACE VIEW puo' solo appendere). La decodifica e' sulla forma di natura_vendita_*: codice_interno per la logica, descrizione a video; NON `_codice`, che mentirebbe sulla sorgente (linee-guida-sql 6c). ⚠️ catalogo_repository proietta ARTICOLI_DETAIL_COLUMNS per nome: una colonna nuova non esce finche' il BE non la nomina. Rev 2026-10-25 (20261025-57/-60, brief-db-grammatica-unica-documenti lotto 3, G-7): tolta e rimessa identica perche' la colonna che legge cambia tipo; note_target_tipo vale ARTICOLO (era ARTICOLI) e diventa varchar(50), dalla colonna di catalogo.articoli. rev 2026-11-03 (20261103-53, brief-db-addebito-trasporto-ordine §9.9, richiesta del FE): + e_onere e causale_onere_id in coda: il picker articoli e il form articolo sanno se l'articolo scelto e' un onere (date di consegna nascoste sulla riga nuova; flag magazzino, composito, lotto, matricola spenti, gemello del guard trgfn_articoli_guard_onere_natura). Anche queste colonne non escono finche' il BE non le nomina. ⭐ rev 2026-11-06 (20261106-03, brief-db-articoli-obsoleto-dal §7.3 lotto D): + obsoleto_dal ed e_obsoleto in coda. obsoleto_dal e' la data del ritiro (NULL = si sceglie; futura = ritiro programmato); e_obsoleto e' il BB script.fn_e_obsoleto alla data operativa, lo stesso predicato del guard di riga e del picker: il FE lo legge e non confronta date. Anche queste colonne non escono finche' il BE non le nomina.
+> Vista della lista degli articoli (ui.lista_definizione catalogo.articoli) e del drawer articolo: catalogo.articoli con le decodifiche (unita' di misura, tipologia, gruppo, spesa, IVA, tipologia di listino, natura di vendita, modo di approvvigionamento, causale dell'onere), le capability della distinta (puo_gestire_bom, motivo_non_gestibile_bom, has_componenti_alla_data), l'onere (e_onere) e il ritiro (e_obsoleto). Natura di vendita, modo di approvvigionamento e causale dell'onere escono con codice_interno, per la logica, e descrizione, a video. Quali colonne non si cambiano lo dice dbops.vw_non_editable_fields: i lock di colonna e quelli condizionali (requires_lotto e causale_onere_id, per esempio, non cambiano su un articolo usato). Nessuna security_invoker, e non deve prenderla per imitazione: catalogo.articoli e config.causali_onere non hanno RLS e la vista non attraversa tabelle protette (presidio: db/pgtap/rls/test-rls-viste-security-invoker.sql).
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -75,8 +75,10 @@ SELECT a.id,
     (a.causale_onere_id IS NOT NULL) AS e_onere,
     a.causale_onere_id,
     a.obsoleto_dal,
-    script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto
-   FROM (((((((((catalogo.articoli a
+    script.fn_e_obsoleto(a.obsoleto_dal) AS e_obsoleto,
+    co.codice_interno AS causale_onere_codice_interno,
+    co.descrizione AS causale_onere_descrizione
+   FROM ((((((((((catalogo.articoli a
      CROSS JOIN ( SELECT script.fn_data_operativa() AS data_operativa
          OFFSET 0) oggi)
      LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
@@ -86,7 +88,8 @@ SELECT a.id,
      LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
      LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
      LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
-     LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
+     LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)))
+     LEFT JOIN config.causali_onere co ON ((co.id = a.causale_onere_id)));
 ```
 
 </div>

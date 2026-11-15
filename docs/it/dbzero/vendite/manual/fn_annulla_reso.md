@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_annulla_reso`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -17,8 +17,11 @@
 (rev 2026-07-13)
 
 **Funzione madre atomica** (`SECURITY INVOKER`) che annulla un reso e **storna** gli effetti,
-simmetrica a `fn_conferma_reso`. Stati ammessi: `DRAFT` o `CONFERMATO`
-(`E_RESO_STATO_NON_ANNULLABILE`).
+simmetrica a `fn_conferma_reso`. Stati ammessi: quelli da cui la matrice
+`config.transizioni_stati_reso` ha il passaggio verso lo stato di annullo (con il seed `DRAFT` e
+`CONFERMATO`); dagli altri `E_RESO_STATO_NON_ANNULLABILE`. Il rifiuto legge la stessa riga della
+matrice del guard del permesso (`script.fn_doc_passaggio`); da uno stato già di annullo parla prima
+il guard (`E_DOC_GIA_NELLO_STATO`).
 
 ### Logica
 
@@ -32,12 +35,15 @@ simmetrica a `fn_conferma_reso`. Stati ammessi: `DRAFT` o `CONFERMATO`
      rettifica a quantità negativa che il giro di fatturazione raccoglie da solo: annullare il
      reso senza disfarla farebbe uscire **una nota di credito per un reso che non esiste più**.
      Il messaggio dice la strada: annullare prima l'accredito sulla riga, poi il reso.
-2. Transizione → `ANNULLATO`.
-3. **Solo se era CONFERMATO** — storno: l'addendo reso decade (l'helper filtra i CONFERMATI) →
+2. Transizione verso lo stato di **annullo** del vocabolario (la colonna `is_abortito` di
+   [config.stati_doc_reso](/dbzero/config/tabelle/stati_doc_reso), `ANNULLATO` nel seed).
+3. **Solo se il reso era emesso** (la colonna `emissione` dello stato di partenza: la conferma è
+   l'emissione, e gli effetti nascono lì) — storno: l'addendo reso decade (l'helper filtra i CONFERMATI) →
    **ri-proiezione stato ordine** (`PARZIALMENTE_EVASO`/`EVASO`); e **ri-flip DDT** `RESO →
    CONSEGNATO` se non è più reso totale (transizione seedata nella matrice DDT).
 
-Un annullo in `DRAFT` non ha effetti (nulla era stato applicato).
+Un annullo in bozza non ha effetti (nulla era stato applicato). `RESO` e `CONSEGNATO` della bolla
+sono destinazioni del processo, e si nominano col codice.
 
 ### ⚠️ La guardia dell'accredito: cosa guarda e cosa non guarda (rev 2026-08-19)
 

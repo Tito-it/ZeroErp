@@ -1,5 +1,7 @@
 # fn_available_actions_preventivo
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 ### Scopo
 
 Restituisce in un **unico JSONB** tutte le capability del preventivo
@@ -49,8 +51,8 @@ script.fn_available_actions_preventivo(
             "requires_confirm": false              // se true → dialog conferma
         }
     ],
-    "can_edit_testata":             true,    // true solo in DRAFT
-    "can_edit_righe":               true,    // true solo in DRAFT
+    "can_edit_testata":             true,    // dal lock di testata, nello stato
+    "can_edit_righe":               true,    // dal lock delle righe: in bozza (stato iniziale) sì
     "can_push_commessa":            false,   // ACCETTATO + residuo servizi (rev 12-06-2026)
     "can_push_commessa_reason":     "PREVENTIVO_NON_ACCETTATO",         // reason code machine-readable; null se can_push=true
     "can_push_commessa_reason_key": "preventivi.push_commessa_reason.non_accettato", // chiave i18n associata; null se can_push=true
@@ -58,10 +60,21 @@ script.fn_available_actions_preventivo(
     "can_genera_ordine_reason":     "PREVENTIVO_NON_ACCETTATO",
     "can_genera_ordine_reason_key": "preventivi.genera_ordine_reason.non_accettato",
     "can_create_revisione":         false,   // true solo in EMESSO
+    "in_smistamento":               false,   // stato da cui il preventivo si smista: accettazione o EVASO
     "non_editable_fields":          ["utility_id", "emittente_fiscale_id"],  // in bozza; vedi dettaglio sotto
     "stato_codice":                 "DRAFT"  // codice_interno stato corrente
 }
 ```
+
+### `in_smistamento` e i due flag dello smistamento
+
+`in_smistamento` dice che lo stato corrente è uno **da cui il preventivo si smista**: lo stato di
+accettazione (la colonna `accettazione` del vocabolario) o `EVASO`, dove il pannello resta in
+consultazione. Lo calcola [`vendite.fn_preventivo_in_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_in_smistamento),
+la stessa risposta da cui parte la proiezione dello stato
+([`vendite.fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento)).
+Non dice che un invio si possa fare **adesso**: quello lo dicono `can_push_commessa` e
+`can_genera_ordine`. Il drawer apre il pannello da `in_smistamento` e accende i pulsanti dai due flag.
 
 ### Coppie `can_*_reason` / `can_*_reason_key`
 
@@ -145,7 +158,10 @@ fatturazione, push commessa).
    - `genera_ordine` se `v_can_ordine` (ACCETTATO + residuo merce).
    Il FE distingue queste azioni dal `key` e usa routing speciale nel drawer.
 4. **Capability derivate**:
-   - `can_edit_testata / can_edit_righe = (stato = 'DRAFT')`
+   - `can_edit_testata`: dal montaggio del lock di testata (`script.fn_doc_testata_in_stato`)
+   - `can_edit_righe`, `can_edit_indirizzi`: dal lock delle righe e dei satelliti
+     (`script.fn_doc_riga_modificabile`), lo stesso che il trigger fa rispettare; il lock
+     riconosce la bozza dallo stato iniziale del vocabolario *(rev 14-11-2026)*
    - `can_push_commessa = (stato di accettazione) AND vendite.fn_preventivo_ha_residuo_commessa(id)` *(rev 12-06-2026)*
    - `can_genera_ordine = (stato di accettazione) AND vendite.fn_preventivo_ha_residuo_ordine(id)` *(rev 09-06-2026)*
    - `can_create_revisione = (stato di emissione)`
@@ -203,8 +219,8 @@ preventivo con una riga o un componente BoM **attivi** in attesa di approvazione
   [`script.fn_check_preventivo_emettibile`](/dbzero/script/funzioni/fn_check_preventivo_emettibile),
   che dalla stessa data li contiene (MOTIVO 2).
 * **Annulla non cambia**: è la via d'uscita dell'operatore.
-* `can_edit_testata` / `can_edit_righe` restano quelli di prima (`DRAFT`): il blocco sta
-  sulla sola riga in attesa, dal suo guard per riga.
+* `can_edit_testata` / `can_edit_righe` non cambiano: il blocco sta sulla sola riga in
+  attesa, dal suo guard per riga.
 
 Motivi possibili: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 `common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.

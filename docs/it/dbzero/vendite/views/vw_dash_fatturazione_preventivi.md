@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Dashboard fatturazione: resolver area PREVENTIVI. Valore imponibile totale vs transitato (vw_preventivi_smistamento_righe, ramo commessa EMESSA). Competenza COALESCE(competenza_mese, mese validita_dal, mese data). is_abortito=esito NEGATIVO (null-safe). cliente_display=ragione sociale intestatario istanza (path vw_preventivi_lista). Consumata da vw_dash_fatturazione_documenti. Rev 2026-10-20 (20261020-70, brief-db-grammatica-unica-documenti 2d, G-6): l'area PREVENTIVI diventa PREVENTIVO, il codice della sorgente (il plurale e' ritirato).
+> Dashboard della fatturazione, area PREVENTIVO: una riga per preventivo, la sola revisione attiva (vendite.vw_preventivi.is_attiva). Valore imponibile totale e transitato dalle righe di vendite.vw_preventivi_smistamento_righe: una riga e' transitata quando non e' piu' RESIDUA. competenza_mese: COALESCE(competenza_mese, mese di validita_dal, mese della data). is_abortito: esito NEGATIVO dello stato (null-safe). motivo_fermo: NULL se abortito o transitato per intero; DOC_BOZZA nello stato iniziale del vocabolario, IN_ATTESA_ACCETTAZIONE nello stato di emissione, altrimenti RIGA_RESIDUA. cliente_display: la ragione sociale dell'intestatario dell'istanza. La consuma vendite.vw_dash_fatturazione_documenti. security_invoker=on.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -23,7 +23,7 @@ WITH righe AS (
              JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))
         )
  SELECT 'PREVENTIVO'::character varying AS area,
-    COALESCE(p.competenza_mese, (date_trunc('month'::text, (p.validita_dal)::timestamp with time zone))::date, (date_trunc('month'::text, (p.data)::timestamp with time zone))::date) AS competenza_mese,
+    COALESCE(p.competenza_mese, script.fn_mese_di(p.validita_dal), script.fn_mese_di(p.data)) AS competenza_mese,
     p.id AS documento_id,
     (p.uid)::text AS documento_uid,
     (p.numero)::text AS codice,
@@ -39,8 +39,8 @@ WITH righe AS (
         CASE
             WHEN COALESCE(((sdp.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
             WHEN ((count(r.riga_id) > 0) AND (count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata))) THEN NULL::text
-            WHEN ((sdp.codice_interno)::text = 'DRAFT'::text) THEN 'DOC_BOZZA'::text
-            WHEN ((sdp.codice_interno)::text = 'EMESSO'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+            WHEN sdp.iniziale THEN 'DOC_BOZZA'::text
+            WHEN sdp.emissione THEN 'IN_ATTESA_ACCETTAZIONE'::text
             ELSE 'RIGA_RESIDUA'::text
         END)::character varying AS motivo_fermo,
     sdp.codice_interno AS stato_codice_interno,
@@ -54,7 +54,7 @@ WITH righe AS (
      LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = p.istanza_utility_id)))
      LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
   WHERE p.is_attiva
-  GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, s.ragione_sociale_completa;
+  GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, sdp.iniziale, sdp.emissione, s.ragione_sociale_completa;
 ```
 
 </div>

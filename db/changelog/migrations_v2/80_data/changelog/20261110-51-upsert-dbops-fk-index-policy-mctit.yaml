@@ -78,7 +78,6 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             # Token letterale NULL: su una colonna STRING la cella vuota entrerebbe come stringa vuota.
-            nullValue: "NULL"
             primaryKey: "schema_name,table_name,constraint_name"
             columns:
               - column: { name: schema_name,     type: STRING }

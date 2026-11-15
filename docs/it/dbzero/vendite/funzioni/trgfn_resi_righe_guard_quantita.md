@@ -16,8 +16,11 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_resi_righe_guard_quantita()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): i resi non annullati dalla
+--   colonna is_abortito, non dal codice.
 -- Scopo: guardia over-return su resi_righe. Sigma quantita (base)
---   dei resi non-ANNULLATI sulla stessa ddt_riga_id <= consegnato
+--   dei resi non annullati (non nello stato di annullo: la colonna
+--   is_abortito del vocabolario) sulla stessa ddt_riga_id <= consegnato
 --   (ddt_righe.quantita). Lock FOR UPDATE anti-concorrenza.
 DECLARE
     v_consegnato vendite.ddt_righe.quantita%TYPE;
@@ -41,7 +44,7 @@ BEGIN
     SELECT quantita INTO v_consegnato
       FROM vendite.ddt_righe WHERE id = NEW.ddt_riga_id;
 
-    -- 3) Somma resa sulla stessa riga DDT dai resi NON-ANNULLATI
+    -- 3) Somma resa sulla stessa riga DDT dai resi non annullati
     --    (esclusa la riga corrente in UPDATE).
     SELECT COALESCE(SUM(rr.quantita), 0)
       INTO v_gia_reso
@@ -49,7 +52,7 @@ BEGIN
       JOIN vendite.resi r          ON r.id = rr.reso_id
       JOIN config.stati_doc_reso s ON s.id = r.stato_doc_reso_id
      WHERE rr.ddt_riga_id = NEW.ddt_riga_id
-       AND s.codice_interno <> 'ANNULLATO'
+       AND s.is_abortito IS NOT TRUE
        AND (TG_OP <> 'UPDATE' OR rr.id <> NEW.id);
 
     v_residuo := v_consegnato - v_gia_reso;
@@ -72,7 +75,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_righe_guard_quantita()
-IS 'Guard over-return resi_righe: Sigma quantita non-ANNULLATI su ddt_riga <= consegnato (E_RESO_QTA_SUPERA_CONSEGNATO). Lock FOR UPDATE. Mirror trgfn_ordini_ful_guard_consistenza. Fase a20 (dopo qta_from_operativa). rev 2026-07-13.';
+IS 'Guardia sulle righe del reso (fase a20, dopo qta_from_operativa): la quantita'' resa su una riga di bolla, sommata sui resi non annullati (non nello stato di annullo: la colonna is_abortito di config.stati_doc_reso), non supera la consegnata (E_RESO_QTA_SUPERA_CONSEGNATO); una quantita'' non positiva e'' E_QTA_NON_POSITIVA. La riga di bolla e le righe di reso sulla stessa riga si prendono FOR UPDATE: due resi concorrenti si serializzano. Gemella di trgfn_ordini_ful_guard_consistenza.';
 ```
 
 </div>

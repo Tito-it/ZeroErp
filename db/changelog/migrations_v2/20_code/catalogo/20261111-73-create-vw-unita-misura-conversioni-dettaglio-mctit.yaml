@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.vw_unita_misura_conversioni_dettaglio: VISTA NUOVA, la sorgente della lista
+#   delle conversioni generali con la capability di riga (G2, Q33 di Tid, 2026-11-11).
+#
+#   Le conversioni generali hanno le regole della mappatura (guard della storia, Q29),
+#   ma non avevano una vista: la lista catalogo.conversioni_uom aveva vista_sql NULL e
+#   il backend leggeva la tabella, senza sapere quali azioni offrire. La vista proietta
+#   le colonne della tabella, codice e descrizione delle due unita' (le colonne della
+#   lista: uom_from_codice, uom_from_descrizione, uom_to_codice, uom_to_descrizione) e
+#   la capability di catalogo.fn_uom_conversione_capability (-70), con gli stessi nomi
+#   di catalogo.vw_articoli_uom_operativa_dettaglio. La lista la prende come vista_sql
+#   (ui.lista_definizione, 80_data, stesso giro).
+#   Nessuna security_invoker: le tabelle lette non hanno RLS, come la vista gemella.
+#   Solo SELECT: si scrive sulla tabella.
+#   Rollback: la vista si toglie.
+#   Brief: brief-db-revisione-catalogo, §15.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-73-create-vw-unita-misura-conversioni-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261111-73-create-vw-unita-misura-conversioni-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.vw_unita_misura_conversioni_dettaglio: le conversioni generali con le due unita' e la capability di riga (G2, Q33). Brief: brief-db-revisione-catalogo, §15.11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.proname = 'fn_uom_conversione_capability'
+                 AND p.pronamespace = 'catalogo'::regnamespace
+                 AND to_regclass('catalogo.vw_unita_misura_conversioni_dettaglio') IS NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_unita_misura_conversioni_dettaglio AS
+               SELECT c.id,
+                  c.uom_from_id,
+                  c.uom_to_id,
+                  c.fattore,
+                  c.valido_dal,
+                  c.valido_al,
+                  c.validita,
+                  c.attivo,
+                  c.meta,
+                  c.data_insert,
+                  c.user_insert,
+                  c.data_update,
+                  c.user_update,
+                  uf.codice AS uom_from_codice,
+                  uf.descrizione AS uom_from_descrizione,
+                  ut.codice AS uom_to_codice,
+                  ut.descrizione AS uom_to_descrizione,
+                  cap.puo_eliminarsi,
+                  cap.motivo_non_eliminabile,
+                  cap.puo_cambiare_attivo,
+                  cap.puo_chiudersi,
+                  cap.data_min_chiusura,
+                  cap.data_default_chiusura,
+                  cap.motivo_non_chiudibile
+                 FROM catalogo.unita_misura_conversioni c
+                   JOIN catalogo.unita_misura uf ON uf.id = c.uom_from_id
+                   JOIN catalogo.unita_misura ut ON ut.id = c.uom_to_id
+                   CROSS JOIN LATERAL catalogo.fn_uom_conversione_capability(c.valido_dal, c.valido_al) cap;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              GRANT SELECT ON catalogo.vw_unita_misura_conversioni_dettaglio TO zeroerp_app;
+              COMMENT ON VIEW catalogo.vw_unita_misura_conversioni_dettaglio IS
+                  'Le conversioni generali fra unita'' di misura (catalogo.unita_misura_conversioni) per la lista e il drawer: le colonne della tabella, codice e descrizione delle due unita'' e la capability di riga, che dice che cosa il database lascia fare oggi. La da'' catalogo.fn_uom_conversione_capability, lo stesso giudizio di catalogo.trgfn_uom_guard_storia: puo_eliminarsi e puo_cambiare_attivo (spegnere o riaccendere) solo su una conversione senza giorni passati (motivo_non_eliminabile UOM_STORIA_IN_VIGORE); puo_chiudersi se la fine e'' vuota o non ancora passata (motivo_non_chiudibile UOM_STORIA_CHIUSA), con data_min_chiusura (la piu'' tarda fra inizio e ieri) e data_default_chiusura (la piu'' tarda fra inizio e oggi). Le colonne che non si cambiano mai (le due unita'', il fattore, l''inizio) il form le legge da dbops.vw_non_editable_fields. Sorgente della lista configurabile catalogo.conversioni_uom. Tutte le righe, anche le spente e le chiuse: filtro e ordine li mette chi legge. Gemella di catalogo.vw_articoli_uom_operativa_dettaglio. Nessuna security_invoker: le tabelle lette non hanno RLS.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.uom_from_codice IS
+                  'Codice dell''unita'' di partenza (catalogo.unita_misura.codice).';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.uom_from_descrizione IS
+                  'Descrizione dell''unita'' di partenza.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.uom_to_codice IS
+                  'Codice dell''unita'' di arrivo (catalogo.unita_misura.codice).';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.uom_to_descrizione IS
+                  'Descrizione dell''unita'' di arrivo.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.puo_eliminarsi IS
+                  'La conversione si cancella: non ha giorni passati (catalogo.fn_uom_conversione_capability).';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.motivo_non_eliminabile IS
+                  'Perche'' non si cancella: UOM_STORIA_IN_VIGORE (ha giorni passati: si chiude). Vuoto se si cancella.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.puo_cambiare_attivo IS
+                  'La conversione si spegne o si riaccende: non ha giorni passati. Una conversione in vigore si chiude, non si spegne.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.puo_chiudersi IS
+                  'La fine si mette o si sposta: e'' vuota o non ancora passata.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.data_min_chiusura IS
+                  'La prima fine ammessa: la piu'' tarda fra l''inizio e ieri. Vuota se la conversione non si chiude.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.data_default_chiusura IS
+                  'La fine proposta: la piu'' tarda fra l''inizio e oggi. Vuota se la conversione non si chiude.';
+              COMMENT ON COLUMN catalogo.vw_unita_misura_conversioni_dettaglio.motivo_non_chiudibile IS
+                  'Perche'' la fine non si mette ne'' si sposta: UOM_STORIA_CHIUSA (la fine e'' gia'' passata). Vuoto se si chiude.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS catalogo.vw_unita_misura_conversioni_dettaglio;

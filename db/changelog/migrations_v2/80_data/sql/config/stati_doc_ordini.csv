@@ -1,10 +1,6 @@
 id,codice_interno,codice,descrizione,attivo,ordine,meta,fase,terminale,pdf_mode,pdf_allow_allegati,is_abortito,iniziale,emissione
 2,CONFERMATO,CONFERMATO,Confermato,t,20,{},IN_CORSO,f,ARCHIVE,f,f,f,t
-3,ALLOCATO,ALLOCATO,Allocato a magazzino,t,30,{},IN_CORSO,f,ARCHIVE,f,f,f,f
-4,SPEDITO,SPEDITO,Spedito,t,40,{},IN_CORSO,f,ARCHIVE,f,f,f,f
-5,CONSEGNATO,CONSEGNATO,Consegnato,t,50,{},IN_CORSO,f,ARCHIVE,f,f,f,f
 6,ANNULLATO,ANNULLATO,Annullato,t,60,"{""nessuna_azione_key"":""vendite.ordini.stato_info.annullato""}",CHIUSO,t,ARCHIVE,f,t,f,f
-7,FATTURATO,FATTURATO,Fatturato,t,70,"{""nessuna_azione_key"":""vendite.ordini.stato_info.fatturato""}",CHIUSO,t,ARCHIVE,f,f,f,f
 1,DRAFT,DRAFT,Bozza,t,10,{},APERTO,f,PREVIEW,f,f,t,f
 8,EVASO,EVASO,Evaso,t,25,"{""nessuna_azione_key"":""vendite.ordini.stato_info.evaso""}",CHIUSO,t,ARCHIVE,f,f,f,f
 9,PARZIALMENTE_EVASO,PARZIALMENTE_EVASO,Parzialmente evaso,t,22,"{""nessuna_azione_key"":""vendite.ordini.stato_info.parzialmente_evaso""}",IN_CORSO,f,ARCHIVE,f,f,f,f

@@ -72,16 +72,6 @@ SELECT plan(17);
 -- ============================================================
 -- Fixture
 -- ============================================================
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- Una credenziale nuda (nessuna veste), con un nome che non collide.
 CREATE OR REPLACE FUNCTION pg_temp.credenziale(p_nome text) RETURNS integer
@@ -193,7 +183,7 @@ SELECT is(
 -- 4-6. La natura della credenziale
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO anagrafiche.identita_digitali
               (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
           VALUES (%s, %s, 'API_CLIENT', false)$$,
@@ -202,7 +192,7 @@ SELECT is(
     '4) API_CLIENT su una credenziale di persona (anche con la veste spenta): rifiutata');
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $$INSERT INTO anagrafiche.identita_digitali
               (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
           VALUES (%s, %s, 'SHOP_CUSTOMER', false)$$,

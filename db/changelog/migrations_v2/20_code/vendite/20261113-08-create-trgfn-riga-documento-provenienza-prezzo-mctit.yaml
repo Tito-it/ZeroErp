@@ -1,0 +1,126 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_riga_documento_provenienza_prezzo()
+#   BEFORE INSERT OR UPDATE, fase a20 (derivazione), sulle dieci tabelle con un
+#   prezzo di documento (montaggio: 20261113-10)
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.3, R-2, D-1)
+#
+# ── LA REGOLA SU CHI SCRIVE (R-2) ───────────────────────────────────
+#   · Senza prezzo, nessuna provenienza: origine, versione e riga a NULL.
+#   · Un prezzo senza origine e' MANUALE: chi non dichiara da dove viene il
+#     prezzo l'ha scritto lui.
+#   · ⭐ La decadenza. In un UPDATE che cambia il prezzo, l'articolo o l'unita'
+#     di misura operativa senza toccare la provenienza (origine, versione,
+#     riga, contesto tutti uguali), una provenienza da listino torna MANUALE,
+#     e riga, versione e contesto vanno a NULL. E' il caso del §1 del brief:
+#     un prezzo cambiato a mano che continuerebbe a dire «viene dal listino».
+#     Chi riprende davvero il prezzo dal listino (riallineamento, nuova
+#     precompilazione) scrive la provenienza nuova nella STESSA istruzione, e
+#     la riga non decade. MANUALE e COMPONENTI non decadono: il primo non cita
+#     niente, il secondo lo riscrive script.fn_ricalcola_prezzo_padre_da_componenti
+#     a ogni cambio dei componenti.
+#   Il confronto e' sui VALORI, non sulle colonne nominate nel SET
+#   (linee-guida-trigger, «UPDATE o UPDATE OF»): un salvataggio che riscrive
+#   tutta la riga con la stessa provenienza e lo stesso prezzo non decade.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Generica: le dieci tabelle hanno gli stessi nomi per prezzo_unitario,
+#   uom_operativa_id, origine_prezzo, listino_versione_id, listino_riga_id e
+#   prezzo_resolver_context. Solo l'articolo ha due nomi: articolo_id sulle
+#   righe principali, componente_id sui componenti (tabelle *_componenti), e
+#   si legge dalla riga in jsonb con quel nome.
+#   Fase a20: dopo i guard a05/a10 della tabella (documento fuori bozza,
+#   regole d'articolo, quantita' da operativa), prima dei trigger senza fase.
+#   Nessuno dei BEFORE della tabella scrive le colonne che questo legge.
+#   Non solleva: la coerenza la giudicano il CHECK
+#   chk_<tabella>_provenienza_prezzo e, sulla riga di listino, il guard
+#   AFTER vendite.trgfn_riga_documento_guard_listino_provenienza.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261113-08-create-trgfn-riga-documento-provenienza-prezzo-mctit.yaml
+
+  - changeSet:
+      id: 20261113-08-create-trgfn-riga-documento-provenienza-prezzo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova vendite.trgfn_riga_documento_provenienza_prezzo: senza prezzo nessuna provenienza, un
+        prezzo senza origine e' MANUALE, un prezzo da listino cambiato senza dichiarare la provenienza
+        nuova torna MANUALE. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- text nudo: il NOME della colonna dell'articolo, che ha due grafie.
+                  v_col_articolo text := CASE WHEN TG_TABLE_NAME LIKE '%\_componenti' ESCAPE '\'
+                                              THEN 'componente_id' ELSE 'articolo_id' END;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   BEFORE INSERT OR UPDATE sulle righe e sui componenti dei
+                  --   documenti di vendita: deriva la provenienza del prezzo
+                  --   (nessuna senza prezzo, MANUALE di default) e la fa
+                  --   decadere quando il prezzo cambia senza una provenienza
+                  --   nuova.
+                  -- =========================================================
+
+                  -- Senza prezzo, nessuna provenienza.
+                  IF NEW.prezzo_unitario IS NULL THEN
+                      NEW.origine_prezzo      := NULL;
+                      NEW.listino_versione_id := NULL;
+                      NEW.listino_riga_id     := NULL;
+                      RETURN NEW;
+                  END IF;
+
+                  -- La decadenza: il prezzo (o cio' a cui si riferisce) cambia,
+                  -- la provenienza da listino resta com'era.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.origine_prezzo IS NOT NULL
+                     AND NEW.origine_prezzo NOT IN ('MANUALE', 'COMPONENTI')
+                     AND (   NEW.prezzo_unitario  IS DISTINCT FROM OLD.prezzo_unitario
+                          OR NEW.uom_operativa_id IS DISTINCT FROM OLD.uom_operativa_id
+                          OR (to_jsonb(NEW) ->> v_col_articolo)
+                             IS DISTINCT FROM (to_jsonb(OLD) ->> v_col_articolo))
+                     AND NEW.origine_prezzo          IS NOT DISTINCT FROM OLD.origine_prezzo
+                     AND NEW.listino_versione_id     IS NOT DISTINCT FROM OLD.listino_versione_id
+                     AND NEW.listino_riga_id         IS NOT DISTINCT FROM OLD.listino_riga_id
+                     AND NEW.prezzo_resolver_context IS NOT DISTINCT FROM OLD.prezzo_resolver_context
+                  THEN
+                      NEW.origine_prezzo          := 'MANUALE';
+                      NEW.listino_versione_id     := NULL;
+                      NEW.listino_riga_id         := NULL;
+                      NEW.prezzo_resolver_context := NULL;
+                  END IF;
+
+                  -- Un prezzo senza origine e' MANUALE.
+                  IF NEW.origine_prezzo IS NULL THEN
+                      NEW.origine_prezzo := 'MANUALE';
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_riga_documento_provenienza_prezzo() IS
+                  'Trigger BEFORE INSERT OR UPDATE (fase a20) sulle righe principali e sui componenti di preventivi, ordini, contratti, DDT e offerte: la provenienza del prezzo segue il prezzo. Senza prezzo, origine, versione e riga di listino vanno a NULL. Un prezzo senza origine e'' MANUALE. In un UPDATE che cambia prezzo, articolo (articolo_id, o componente_id sui componenti) o unita'' di misura operativa lasciando la provenienza com''era (origine, versione, riga, contesto), un''origine da listino torna MANUALE e versione, riga e contesto vanno a NULL; chi riprende il prezzo dal listino scrive la provenienza nuova nella stessa istruzione. MANUALE e COMPONENTI non decadono. Confronta valori, non colonne nominate. Non solleva: la coerenza la giudicano i CHECK chk_<tabella>_provenienza_prezzo e il guard vendite.trgfn_riga_documento_guard_listino_provenienza.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_riga_documento_provenienza_prezzo();

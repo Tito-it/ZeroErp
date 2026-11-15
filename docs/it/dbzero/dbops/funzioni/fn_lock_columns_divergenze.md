@@ -31,6 +31,7 @@ AS $function$
 -- codice_interno e' la colonna implicita del framework: non e' mai una
 --   colonna «persa», anche dove nessuna regola la chiede piu'.
 DECLARE
+    -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
     v_schemas text[] := dbops.fn_resolve_scope(p_schemas);
 BEGIN
     RETURN QUERY
@@ -54,7 +55,7 @@ BEGIN
             ON r.enabled
            AND upper(btrim(r.rule_type)) = 'LOCK_COLUMNS'
            AND dbops.fn_schema_match(r.target_schema, t.sch)
-           AND (upper(r.target_table) = '*ALL' OR t.tbl ILIKE r.target_table)
+           AND (r.target_table = '*all' OR t.tbl = r.target_table)
     ),
     -- La prima regola del modo della corsa: ne da' il nome.
     regola AS (

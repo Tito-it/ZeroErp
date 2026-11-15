@@ -1,6 +1,6 @@
 # Linee guida Trigger (PostgreSQL + Liquibase)
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > **Destinatari**: chi scrive o modifica un trigger o una funzione trigger
 >
@@ -42,6 +42,17 @@ trg_<schema_opzionale>_<tabella>_<fase>_<descrizione_breve>_<eventi>
 e aggiunge un hash. Un nome generato si scrive in un documento o in un test **solo dopo averlo letto**
 su `pg_trigger`; in un pgTAP si cerca per **funzione e argomenti**, non per nome.
 
+⚠️ **Il nome generato dipende anche dal database su cui nasce.** Il trigger del lato «in uscita»
+della provenienza (`dbops.fn_sorgente_converge_uscita`) mette lo schema nel nome solo se in quel
+momento esiste un'altra tabella con lo stesso nome, e chi è già montato non viene rinominato: lo
+stesso trigger può chiamarsi in due modi su due database. Un test non lo nomina mai.
+
+⛔ **Un trigger si rimonta per funzione, non per nome.** `DROP TRIGGER IF EXISTS <nome nuovo>` seguito
+da `CREATE TRIGGER` lascia in piedi il montaggio col nome storico sui database dove la rinomina non
+è mai avvenuta (uno ricostruito da zero che ha saltato quel changeSet), e i due trigger scattano
+entrambi. Prima di rimontare si leggono i montaggi della funzione sulla tabella (`pg_trigger.tgfoid`)
+su un database nato da zero, e si tolgono con `IF EXISTS` tutti i nomi, storici compresi.
+
 ---
 
 ## La fase: l'ordine di esecuzione
@@ -65,6 +76,15 @@ sbagliata. Si governa col nome (`a05` prima di `a10`, e dentro `a10` l'alfabeto 
 si presidia con un pgTAP che asserisce **la frase** (`throws_like`), così un rinomina futura diventa
 rossa. `a05` non è una fascia «più importante»: è una precedenza fra rifiuti, da usare solo quando
 l'ordine è dominio.
+
+⛔ **Chi legge una colonna gira dopo chi la risolve.** Un `BEFORE` che legge `NEW.colonna` la vede
+com'è **prima** dei trigger che vengono dopo di lui in ordine alfabetico. Un trigger senza fase nel
+nome (`trg_<tabella>_normalize_…`, `…_gen_tx_id_…`) ordina dopo tutti gli `_a…_`: un guard o un
+default `a10` che legge l'emittente risolto dal normalize, o il `tx_id`, lo trova `NULL`. Prima di
+agganciare un `BEFORE` si cerca fra i `BEFORE` della tabella chi scrive le colonne che legge, e si
+sceglie la fase perché venga dopo (`z10`). Si presidia con un pgTAP di forma (il `tgname` del
+lettore, confrontato in `COLLATE "C"`, è maggiore di quello del risolutore) e con un test di
+comportamento che passa dal percorso reale, non da un helper che scrive la colonna in modo esplicito.
 
 Una fase nuova non si inventa: si sceglie la zona che dice il suo posto, e un numero libero dentro.
 
@@ -91,6 +111,10 @@ lettore (per la famiglia ATTIVO, `dbops.fn_trigger_attivo_argomenti`). `TG_ARGV`
 `dbops.fn_trigger_argomenti` da 1: la funzione condivisa rinumera, e nessun chiamante conta
 posizioni. Gli argomenti si leggono per nome e senza valori di riserva: un ripiego che indovina
 una colonna dà una colonna sbagliata che non si vede.
+
+⚠️ Una funzione trigger che nasce **prima** del suo primo montaggio accende il presidio dei
+riferimenti morti: porta la sua voce di esenzione nello stesso giro, e chi la monta la toglie (vedi
+[riferimenti_morti_esenzioni](/dbzero/dbops/tabelle/riferimenti_morti_esenzioni)).
 
 Check e guard — che cosa restituisce una `fn_check_*` e che cosa solleva una `fn_guard_*` — e come si
 solleva un errore sono in [Linee guida SQL, §5](linee-guida-sql.md).
@@ -130,6 +154,12 @@ lasciava i componenti con quella vecchia.
 * Prima di agganciare un trigger con `UPDATE OF colonna`, si guarda se un altro trigger `BEFORE` della
   tabella scrive `NEW.colonna`. Se sì, `OF` è la forma sbagliata.
 * Se la logica dipende dal **record intero** (storico, audit), si usa `UPDATE` senza `OF` e senza `WHEN`.
+* ⛔ **Una FK di appartenenza non si presidia con un ramo `UPDATE OF` nel guard.** Il guard vede il
+  padre nuovo; una riga che cambia appartenenza lascia dall'altra parte i suoi figli e le righe di
+  registro che la nominano insieme al genitore. Se cambiarla non lascia coerenti gli uni e le altre,
+  la colonna è **identità**: si dichiara in `dbops.automation_lock_columns` con un codice suo, e la
+  frase dice che cosa fare al posto del cambio (vedi
+  [Automazione DB §4.1](/guide/automazione-db)).
 
 ### ⛔ Una colonna nuova entra anche nell'elenco `OF`
 
@@ -149,6 +179,13 @@ una colonna la deriva il database e da fuori non si scrive, servono due trigger:
 * la derivazione `a20`, `BEFORE UPDATE OF <colonna da cui derivano>`, che scrive le derivate in `NEW`
   e non riattraversa il guard.
 
+⚠️ **Il backfill di una colonna derivata non passa dai trigger.** Un `UPDATE` che allinea uno snapshot
+fa scattare guard, audit e storico della tabella per una scrittura che non è di dominio, e un guard
+può rifiutare uno stato che il modello ammette. Un blocco `DO` legge da `pg_trigger` i trigger non
+interni accesi (`tgenabled <> 'D'`), li spegne per nome, fa l'`UPDATE` e li riaccende ciascuno nel suo
+modo. Non si usa `DISABLE`/`ENABLE TRIGGER USER`, che riaccenderebbe anche quelli spenti di
+proposito. Un dato di dominio, invece, passa dai trigger.
+
 ---
 
 ## `BEFORE` e `AFTER`: che cosa vede il trigger
@@ -159,7 +196,8 @@ una colonna la deriva il database e da fuori non si scrive, servono due trigger:
   stessa istruzione entra senza errore. Le colonne giudicate entrano come **parametri** (i valori di
   `NEW`); dalla tabella si legge solo il resto (righe figlie, cataloghi). Si prova con **una sola**
   istruzione (`SET colonna = X, stato_id = …`), non con due `UPDATE` separati, che sono verdi con
-  entrambe le forme.
+  entrambe le forme. Il parametro non ha `DEFAULT NULL` quando `NULL` è un valore legittimo:
+  dimenticarlo deve non compilare, non voler dire «nessun controllo».
 * ⚠️ **Un `BEFORE ROW` parla prima dei vincoli della tabella.** Montare un guard anche su `INSERT`
   sposta la sede del rifiuto: lo SQLSTATE passa da `23514` (CHECK) a `P0001` (dominio), e un pgTAP che
   asseriva il vincolo diventa rosso. È un miglioramento — il guard dice i valori ammessi, il CHECK no
@@ -175,10 +213,52 @@ una colonna la deriva il database e da fuori non si scrive, servono due trigger:
   trigger (tabella e nome) e legge gli argomenti dal montaggio, e risponde solo per tabelle del
   proprietario — altrimenti chiunque la chiami legge qualunque colonna. Esempio:
   `dbops.fn_trigger_padre_stato` e `dbops.fn_trigger_figlie_presenti`, le letture dei guard ATTIVO.
+  Il caso che lo mostra meglio è la tabella con una policy a più strade (`… OR …`): chi vede la
+  riga da una strada può non vedere il padre dell'altra, e il guard che lo legge da invocante tace.
+  Ogni guard su una tabella così si rilegge per ciascuna strada della policy, e si prova con il
+  ruolo dell'applicazione: da proprietario la row level security non c'è.
 * ⛔ **Un trigger che scrive una colonna lucchettata non la «difende».** Riassegnare
   `NEW.colonna := OLD.colonna` «per sicurezza» annulla anche le scritture che passano dalla porta del
   lucchetto (`zeroerp.allow_lock_columns_override`), e lo fa senza errore. A parità di condizione
   `RETURN NEW`, e a giudicare resta il lucchetto.
+* ⛔ **Un guard `BEFORE` può vedere una riga che alla fine dell'istruzione non esisterà.** Una FK
+  `ON UPDATE CASCADE` aggiorna il satellite prima del trigger che lo riallinea, e i suoi guard vedono
+  metà dei valori nuovi. Un `INSERT … ON CONFLICT DO UPDATE` fa giudicare ai `BEFORE INSERT` la riga
+  proposta, anche parziale, prima che il conflitto sia rilevato. Prima di una cascata o di un upsert
+  si leggono i `BEFORE` della tabella: dove giudicano la coerenza, al posto della cascata si scrive
+  un guard sul satellite più un riallineamento `AFTER`, e al posto dell'upsert `IF EXISTS → UPDATE`,
+  altrimenti `INSERT`.
+* ⚠️ **Un trigger che normalizza cambia il valore sotto chi lo rilegge.** Il valore salvato non è più
+  quello scritto: chi lo ricompone e lo cerca non trova la riga, chi lo rilegge con `RETURNING` sì.
+  Prima di montarlo si cercano i confronti con letterali, quelli con espressioni e variabili, e i
+  lettori applicativi che partono da un valore digitato dall'operatore. Le collisioni create dalla
+  normalizzazione si contano sull'intera chiave `UNIQUE`, non sulla sola colonna.
+
+---
+
+## Dove si mette un guard
+
+* ⛔ **Una regola su una colonna vale per ogni strada che la scrive.** Prima di metterla dentro una
+  funzione si cercano tutti gli scrittori della colonna, nel database e in `backend/`: se uno di
+  loro fa un `UPDATE` diretto, la regola dentro la funzione è muta sul percorso vero e va su un
+  trigger `BEFORE UPDATE OF <colonna>`.
+* ⛔ **Un predicato scritto per un verbo dell'operatore non si applica tale e quale a una porta
+  fisica.** Da un `BEFORE DELETE` passano anche le funzioni madri di sistema, che hanno un criterio
+  loro. Prima di chiudere la porta si cercano, nel corpo vivo delle funzioni e nel backend, i
+  `DELETE` e gli `UPDATE` su quella tabella. La madre legittima apre con
+  `SET LOCAL zeroerp.allow_<entità>_delete_override = 'on'` dopo aver verificato il suo criterio, e
+  richiude; il pgTAP asserisce «aperta passa» e «richiusa rifiuta».
+* ⛔ **Un guard che confronta con uno stato accumulato non rifiuta una riga: chiude una porta.**
+  Prima di scriverlo ci si chiede quale percorso lecito diventa irraggiungibile una volta passata
+  la soglia; prima di toglierlo, com'è lo stato dopo l'azione che il guard impedisce. Se quel
+  percorso è vivo il guard è nel posto sbagliato; se quello stato non ha uscita il guard è la
+  difesa. Un guard acceso «per simmetria» con la famiglia accanto è un rifiuto nuovo, e si giudica
+  come tale.
+* ⛔ **Un tetto che è una somma non sta in un trigger di riga quando le righe misurano unità
+  diverse.** Il trigger non conosce l'unità di aggregazione né sa quando l'operazione è finita, e
+  rifiuta il caso legittimo. Nel guard di riga resta ciò che è esatto riga per riga; il tetto
+  aggregato va nella funzione madre, come **uguaglianza** e non come `≤`: la madre è l'unica a
+  sapere di aver finito.
 
 ---
 
@@ -223,6 +303,19 @@ seguono i template del framework, non la regola delle fasi qui sopra
 * ⚠️ **Un trigger nuovo che deriva o rifiuta passa anche dai seed già scritti.** Su un database da zero
   tutto il codice gira prima di tutti i dati: un backfill di `80_data` di ieri attraversa il trigger
   scritto oggi. Si cercano i changeSet di `80_data` che scrivono la stessa tabella o colonna.
+* ⚠️ **Un guard nuovo passa anche dai test già scritti.** Un guard, un `CHECK` o una funzione che
+  cambia comportamento rompono i pgTAP scritti sul contratto di prima. Prima di scriverli si cercano
+  in `db/pgtap` **tutti** gli oggetti toccati (tabelle, funzioni, viste), in due passi: i file che
+  nominano la colonna, poi fra quelli chi tocca la tabella. Una ricerca «tabella e colonna sulla
+  stessa riga» non vede gli elenchi che vanno a capo, né il nome passato come letterale a un
+  `format()`. I test che cadono si riscrivono nello stesso changeSet, con la ragione scritta sopra.
+* ⚠️ **Aggiungere una FK verso un padre con `attivo` monta un guard che nessuno ha scritto**, e può
+  togliere la parola a uno scritto a mano: che cosa cercare prima è in
+  [Automazione DB §4.2](/guide/automazione-db).
+* **Prima di togliere una famiglia di trigger per rigenerarla**, l'elenco si legge dai changelog
+  (`CREATE TRIGGER … <funzione>(`), non da `pg_trigger` del database di sviluppo: su un database
+  ricostruito da zero i trigger di `20_code` esistono già alla prima passata, anche quelli che lo
+  sviluppo ha perso.
 
 ---
 
@@ -246,7 +339,10 @@ seguono i template del framework, non la regola delle fasi qui sopra
 * [ ] Una colonna nuova giudicata da un guard esistente è anche nel suo elenco `OF`.
 * [ ] Un guard `BEFORE ROW` non rilegge per id la riga che sta cambiando: i valori entrano come parametri.
 * [ ] Il pgTAP prova `INSERT` e `UPDATE`, l'`UPDATE` in un'istruzione sola, e asserisce la frase quando conta chi parla per primo.
+* [ ] Un `BEFORE` che legge una colonna risolta da un altro trigger ha una fase che lo fa girare dopo.
+* [ ] Cercati tutti gli scrittori della colonna o della tabella presidiata, nel database e nel backend: `UPDATE` diretti e funzioni madri di sistema.
 * [ ] Cercati i seed di `80_data` che scrivono la stessa tabella.
+* [ ] Cercati in `db/pgtap` i test scritti sul contratto di prima, e riscritti nello stesso changeSet.
 
 ---
 

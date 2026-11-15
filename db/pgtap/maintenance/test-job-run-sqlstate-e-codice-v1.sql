@@ -23,8 +23,8 @@
 --  6) maintenance.fn_job_run_log_failure ha UNA firma, con p_sqlstate in coda
 --     e default
 --  7) e il verbale scrive la colonna (presidio sul testo)
---  8) fn_run_and_log legge il canale CONSTRAINT solo col contratto P0001
---     (presidio sul testo)
+--  8) fn_run_and_log legge il canale CONSTRAINT con script.fn_codice_dominio
+--     (il contratto P0001), ripiegando sullo SQLSTATE (presidio sul testo)
 --  9) e passa lo SQLSTATE al verbale fuori transazione (presidio sul testo)
 --
 -- ────────────────────────────────────────────────────────────────
@@ -136,9 +136,12 @@ SELECT ok(
     '7. il verbale scrive la colonna sqlstate (presidio sul testo)'
 );
 
+-- La regola «P0001 + CONSTRAINT valorizzato» sta nel BB script.fn_codice_dominio
+--   (provata sui valori da script/test-fn-codice-dominio-v1): qui si presidia che
+--   fn_run_and_log la legga da li', col ripiego sullo SQLSTATE che e' suo.
 SELECT ok(
     (SELECT p.prosrc LIKE '%CONSTRAINT_NAME%'
-        AND p.prosrc LIKE '%v_sqlstate = ''P0001'' AND NULLIF(v_vincolo, '''') IS NOT NULL%'
+        AND p.prosrc LIKE '%COALESCE(script.fn_codice_dominio(v_sqlstate, v_vincolo),%'
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'maintenance' AND p.proname = 'fn_run_and_log'),
     '8. fn_run_and_log prende il codice di dominio solo col contratto P0001 + CONSTRAINT (presidio sul testo)'

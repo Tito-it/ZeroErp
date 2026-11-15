@@ -31,6 +31,23 @@
 //      perche'; nessun valore cambia da solo
 //   7) la sezione della distinta la apre `puo_gestire_bom` del dettaglio, non
 //      il composito acceso nel form e non ancora salvato (BE12)
+//   8) il ritiro (`obsoleto_dal`, brief-db-articoli-obsoleto-dal §8): la data
+//      del dettaglio torna nel PATCH come giorno ISO; svuotata, viaggia `null`
+//      (il ritiro si toglie)
+//  10) in inserimento la causale scelta fa dell'articolo un onere (D-2,
+//      brief-db-addebito-trasporto-ordine §9.10): i quattro interruttori si
+//      fermano subito, e la causale viaggia nel POST; la tendina legge le sole
+//      causali libere
+//  11) in modifica la causale dell'articolo arriva alla tendina come voce del
+//      record (attiva, non «non attiva»), viaggia nel PATCH, e si spegne
+//      quando il DB la dichiara bloccata (articolo usato, A-10)
+//  12) un interruttore ACCESO resta spegnibile quando si sceglie la causale:
+//      nessun valore cambia da solo, e l'operatore lo puo' togliere
+//  13) ogni scrittura dell'articolo invalida la cache delle causali libere
+//   9) lo spegnimento rifiutato col ritiro (409 `E_ATTIVO_BLOCK_SI_RITIRA`,
+//      `fields: ['obsoleto_dal']`, Q35 (c)): il campo «Ritirato dal» e' rosso
+//      e il drawer ci porta l'operatore; un rifiuto che non nomina il campo
+//      non sposta niente
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -39,6 +56,9 @@ import { flushPromises } from '@vue/test-utils'
 
 const getArticolo = vi.fn()
 const updateArticolo = vi.fn()
+const createArticolo = vi.fn()
+const invalidateLookup = vi.fn()
+const disattivaArticolo = vi.fn()
 
 // `useDrawerFormPreserve` legge la route per il cambio pagina.
 vi.mock('vue-router', () => ({
@@ -51,14 +71,19 @@ vi.mock('../../core/composables/useConfirmAction', () => ({
 vi.mock('../api/catalogo', () => ({
   listArticoli: vi.fn(),
   getArticolo: (...a) => getArticolo(...a),
-  createArticolo: vi.fn(),
+  createArticolo: (...a) => createArticolo(...a),
   updateArticolo: (...a) => updateArticolo(...a),
-  disattivaArticolo: vi.fn(),
+  disattivaArticolo: (...a) => disattivaArticolo(...a),
   riattivaArticolo: vi.fn(),
   lookupArticoloUom: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
   listArticoloComponenti: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
   makeArticoloNotesApi: () => ({ list: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }) }),
   getArticoloFormDefaults: vi.fn().mockResolvedValue({ data: { data: {} } }),
+}))
+
+vi.mock('../../core/composables/useGlobalLookup', async (importOriginal) => ({
+  ...(await importOriginal()),
+  invalidateLookup: (...a) => invalidateLookup(...a),
 }))
 
 const { monta } = await import('../../../test/montaggio')
@@ -88,6 +113,20 @@ const AzioniFinte = defineComponent({
   },
 })
 const Vuoto = defineComponent({ render: () => null })
+// La tendina finta: porta le props che il drawer le passa, ed emette il valore.
+const LookupFinto = defineComponent({
+  name: 'LookupFinto',
+  props: {
+    modelValue: { type: [Number, String], default: null },
+    rel: { type: String, default: '' },
+    disabled: { type: Boolean, default: false },
+    voceCorrente: { type: Object, default: null },
+    voceCorrenteAttiva: { type: Boolean, default: false },
+  },
+  emits: ['update:modelValue'],
+  render: () => null,
+})
+const REL_CAUSALI = 'catalogo.vw_causali_onere_assegnabili'
 
 // Un articolo USATO: il DB ha bloccato le colonne strutturali.
 function articolo(sovrascritture = {}) {
@@ -103,15 +142,15 @@ function articolo(sovrascritture = {}) {
   }
 }
 
-async function apri(dettaglio) {
+async function apri(dettaglio, { mode = 'edit' } = {}) {
   getArticolo.mockResolvedValue(comeAxios(dettaglio))
-  const w = monta(ArticoloDrawer, { visible: false, mode: 'edit', articoloId: ID }, {
+  const w = monta(ArticoloDrawer, { visible: false, mode, articoloId: mode === 'edit' ? ID : null }, {
     global: {
       stubs: {
         AppDrawer: AppDrawerFinto,
         DrawerActionsBar: AzioniFinte,
         DrawerEntityHeader: Vuoto,
-        LookupSelect: Vuoto,
+        LookupSelect: LookupFinto,
         IvaSelect: Vuoto,
         ContoContabileSelect: Vuoto,
         ArticoloUomDrawer: Vuoto,
@@ -132,6 +171,11 @@ function toggle(w, etichetta) {
   const campo = w.findAll('.form-field').find(f => f.find('label').exists()
     && f.find('label').text() === etichetta)
   return campo.findComponent(ToggleSwitch)
+}
+
+// Scopo: la tendina della causale onere, trovata dal suo `rel`.
+function tendinaCausale(w) {
+  return w.findAllComponents(LookupFinto).find(c => c.props('rel') === REL_CAUSALI)
 }
 
 async function correggi(w) {
@@ -192,8 +236,9 @@ describe('ArticoloDrawer — articolo-onere', () => {
   })
 
   it('4) un onere spegne i quattro interruttori, anche in correzione', async () => {
+    // ⚠️ Un onere col magazzino non esiste: lo rifiuta il guard del DB.
     const w = await apri(articolo({
-      e_onere: true, causale_onere_id: 6,
+      e_onere: true, causale_onere_id: 6, gestito_a_magazzino: false,
       non_editable_fields: ['requires_lotto'], struttura_correggibile: ['requires_lotto'],
     }))
     for (const etichetta of ONERE_SENZA) {
@@ -260,5 +305,147 @@ describe('ArticoloDrawer — la sezione della distinta', () => {
 
     const k = await apri(articolo({ ...libero, is_composito: true, puo_gestire_bom: true }))
     expect(k.text()).toContain('catalogo.tab_bom')
+  })
+})
+
+describe('ArticoloDrawer — ritiro dell\'articolo', () => {
+  beforeEach(() => {
+    getArticolo.mockReset()
+    updateArticolo.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios(articolo(payload))))
+  })
+
+  it('8) la data del ritiro viaggia nel PATCH; svuotata, viaggia null', async () => {
+    const { default: DatePicker } = await import('primevue/datepicker')
+    const w = await apri(articolo({ obsoleto_dal: '2026-12-31', e_obsoleto: false }))
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateArticolo.mock.calls[0][1].obsoleto_dal).toBe('2026-12-31')
+
+    const w2 = await apri(articolo({ obsoleto_dal: '2026-12-31', e_obsoleto: false }))
+    w2.findComponent(DatePicker).vm.$emit('update:modelValue', null)
+    await w2.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateArticolo.mock.calls[1][1].obsoleto_dal).toBeNull()
+  })
+})
+
+describe('ArticoloDrawer — lo spegnimento rifiutato porta al ritiro', () => {
+  // Un rifiuto del backend come lo consegna axios: l'envelope sta in `response`.
+  const rifiuto = (error) => Object.assign(new Error('409'), {
+    response: { status: 409, data: { error } },
+  })
+
+  beforeEach(() => {
+    getArticolo.mockReset()
+    disattivaArticolo.mockReset()
+    // jsdom non ha `scrollIntoView`: si conta chi la chiama.
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  it('9) col campo nominato, il «Ritirato dal» e\' rosso e in vista; senza, niente', async () => {
+    const { default: DatePicker } = await import('primevue/datepicker')
+    disattivaArticolo.mockRejectedValue(rifiuto({
+      code: 'E_ATTIVO_BLOCK_SI_RITIRA', message: 'si ritira', fields: ['obsoleto_dal'],
+    }))
+    const w = await apri(articolo())
+    await w.find('.azione-disattiva').trigger('click')
+    await flushPromises()
+    expect(disattivaArticolo).toHaveBeenCalledWith(ID)
+    expect(w.findComponent(DatePicker).props('invalid')).toBe(true)
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1)
+
+    Element.prototype.scrollIntoView.mockClear()
+    disattivaArticolo.mockRejectedValue(rifiuto({ code: 'E_ALTRO', message: 'altro' }))
+    const w2 = await apri(articolo())
+    await w2.find('.azione-disattiva').trigger('click')
+    await flushPromises()
+    expect(w2.findComponent(DatePicker).props('invalid')).toBe(false)
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()
+  })
+})
+
+describe('ArticoloDrawer — la causale onere (§9.10)', () => {
+  const ONERE_SENZA = [
+    'catalogo.field_gestito_a_magazzino', 'catalogo.field_composito',
+    'catalogo.field_requires_lotto', 'catalogo.field_requires_serial',
+  ]
+  const libero = { non_editable_fields: [], struttura_correggibile: [], gestito_a_magazzino: false }
+
+  beforeEach(() => {
+    getArticolo.mockReset()
+    invalidateLookup.mockReset()
+    createArticolo.mockReset().mockImplementation((payload) =>
+      Promise.resolve(comeAxios(articolo(payload))))
+    updateArticolo.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios(articolo(payload))))
+  })
+
+  it('10) in inserimento la causale scelta fa l\'onere, e viaggia nel POST', async () => {
+    const w = await apri(null, { mode: 'create' })
+    const tendina = tendinaCausale(w)
+    expect(tendina.props('disabled')).toBe(false)
+    expect(tendina.props('voceCorrente')).toBeNull()
+    for (const etichetta of ONERE_SENZA) {
+      expect(toggle(w, etichetta).props('disabled'), etichetta).toBe(false)
+    }
+    await tendina.vm.$emit('update:modelValue', 7)
+    await flushPromises()
+    for (const etichetta of ONERE_SENZA) {
+      expect(toggle(w, etichetta).props('disabled'), etichetta).toBe(true)
+    }
+    expect(w.text()).toContain('catalogo.hint_onere_struttura')
+
+    // I due obbligatori hanno l'asterisco nell'etichetta.
+    const campo = (etichetta) => w.findAll('.form-field')
+      .find(f => f.find('label').exists() && f.find('label').text() === `${etichetta} *`)
+    await campo('catalogo.field_codice').find('input').setValue('ONERE-NUOVO')
+    await campo('catalogo.field_descrizione').find('input').setValue('Onere nuovo')
+    await w.findAllComponents(LookupFinto).find(c => c.props('rel') === 'catalogo.unita_misura')
+      .vm.$emit('update:modelValue', 1)
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(createArticolo).toHaveBeenCalledTimes(1)
+    expect(createArticolo.mock.calls[0][0].causale_onere_id).toBe(7)
+  })
+
+  it('11) in modifica la causale e\' la voce del record; bloccata, si spegne', async () => {
+    const onere = {
+      ...libero, e_onere: true, causale_onere_id: 6,
+      causale_onere_codice_interno: 'TRASPORTO', causale_onere_descrizione: 'Trasporto',
+    }
+    const w = await apri(articolo(onere))
+    const tendina = tendinaCausale(w)
+    expect(tendina.props('modelValue')).toBe(6)
+    expect(tendina.props('voceCorrente')).toEqual(
+      { id: 6, codice_interno: 'TRASPORTO', descrizione: 'Trasporto' })
+    expect(tendina.props('voceCorrenteAttiva')).toBe(true)
+    expect(tendina.props('disabled')).toBe(false)
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(updateArticolo.mock.calls[0][1].causale_onere_id).toBe(6)
+
+    const usato = await apri(articolo({ ...onere, non_editable_fields: ['causale_onere_id'] }))
+    expect(tendinaCausale(usato).props('disabled')).toBe(true)
+  })
+
+  it('12) un interruttore acceso resta spegnibile scegliendo la causale', async () => {
+    const w = await apri(articolo({ ...libero, gestito_a_magazzino: true }))
+    await tendinaCausale(w).vm.$emit('update:modelValue', 7)
+    await flushPromises()
+    const magazzino = toggle(w, 'catalogo.field_gestito_a_magazzino')
+    expect(magazzino.props('disabled')).toBe(false)
+    expect(magazzino.props('modelValue')).toBe(true)
+    expect(toggle(w, 'catalogo.field_composito').props('disabled')).toBe(true)
+    await magazzino.vm.$emit('update:modelValue', false)
+    await flushPromises()
+    expect(toggle(w, 'catalogo.field_gestito_a_magazzino').props('disabled')).toBe(true)
+  })
+
+  it('13) una scrittura dell\'articolo invalida le causali libere', async () => {
+    const w = await apri(articolo(libero))
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+    expect(invalidateLookup).toHaveBeenCalledWith(REL_CAUSALI)
   })
 })

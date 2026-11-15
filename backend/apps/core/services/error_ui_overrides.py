@@ -208,6 +208,15 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # dichiarazione. ⛔ Sostituisce `E_DDT_ANNULLO_CON_LEGAMI` (della sola
     # bolla), ritirato lo stesso giorno: il suo override si e' tolto con lui.
     "E_DOC_ANNULLO_CON_LEGAMI": "confirm_and_retry",  # classe CONFLITTO_STATO
+    # La chiusura di un legame di distinta che ha prezzi bundle oltre la nuova
+    # fine (brief-db-revisione-catalogo, giro 3, Q19-Q22 di Tid, 2026-11-09):
+    # stesso stampo. Il verbo `catalogo.fn_chiudi_legame_distinta` ferma la
+    # chiusura finche' il secondo tentativo non DICHIARA quanti prezzi
+    # l'operatore ha visto (`prezzi_confermati`), e allora chiude o toglie i
+    # prezzi insieme al legame. Col banner il legame non si chiuderebbe mai
+    # da un kit prezzato: la finestra (`useForzaturaConfermata`) elenca i
+    # prezzi (`GET …/componenti/<id>/chiusura/`) e ripete con la dichiarazione.
+    "E_BOM_CHIUSURA_CON_PREZZI": "confirm_and_retry",  # classe CONFLITTO_STATO
     # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `config.messaggi_errore`
 
+> **Ultimo aggiornamento**: 13 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:    
@@ -39,6 +41,11 @@ La tabella **`config.messaggi_errore`** è il **catalogo centralizzato** dei tes
 
 * **Primary Key**: `pk_messaggi_errore (id)` garantisce l’identificativo univoco.
 * **Unique Constraint**: `uq_messaggi_errore_codice_lingua (codice, lingua)` per evitare duplicati della medesima traduzione.
+* **Causa e soluzione assenti** (dal 2026-11-13, `90_end/20261112-55`): un messaggio senza causa o
+  senza soluzione le ha `NULL`, mai la stringa vuota. Due `CHECK`
+  (`chk_messaggi_errore_causa_non_vuota`, `chk_messaggi_errore_soluzione_non_vuota`) rifiutano `''`,
+  anche di soli spazi. Nel CSV del seed la cella senza valore porta il token `NULL`: una cella vuota
+  arriverebbe come stringa vuota (linee-guida-sql §11.2), e il guardrail delle forme la rifiuta.
 
 ---
 

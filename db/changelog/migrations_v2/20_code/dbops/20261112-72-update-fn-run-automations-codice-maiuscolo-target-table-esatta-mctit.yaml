@@ -1,0 +1,384 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_run_automations_codice_maiuscolo: la regola vale per la tabella che nomina, non per un modello
+#   di nomi. target_table e' '*all' o il nome esatto di una tabella (decisione di Tid,
+#   2026-11-13, strada b): il confronto da ILIKE diventa =, e '*all' si confronta nella
+#   forma canonica che il vincolo chk_automation_rules_tbl_target_table_nome_esatto
+#   (90_end/20261112-66) garantisce. Con ILIKE il '_' di un nome valeva come jolly: una
+#   regola su event_log copriva anche una eventXlog. L'insieme di tabelle lo dice
+#   l'ambito (dbops.automation_scope), non la regola.
+#   Residuo di brief-db-revisione-dbops §27.8, chiuso in framework-automazione-db-migliorie
+#   §2.4 (archiviato).
+#
+# ℹ️ La testata e' ri-ancorata (linee-guida-sql §5g): i tipi risolti sono gli stessi del
+#   vivo, la firma non cambia.
+# Corpo di partenza: 20261104-04-create-fn-run-automations-codice-maiuscolo-mctit.yaml, uguale al vivo di dbdev e
+#   dello scratch (2026-11-13). Rollback = il corpo di prima.
+# Presidio: dbops/test-registro-regole-vincoli-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261112-72-update-fn-run-automations-codice-maiuscolo-target-table-esatta-mctit.yaml
+
+  - changeSet:
+      id: 20261112-72-update-fn-run-automations-codice-maiuscolo-target-table-esatta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_run_automations_codice_maiuscolo: target_table e' '*all' o il nome esatto di una tabella, il confronto e' = e non ILIKE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_run_automations_codice_maiuscolo(text,text[],boolean)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_codice_maiuscolo(
+                  p_exec_mode dbops.automation_rules_tbl.exec_mode%TYPE,
+                  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
+                  p_schemas   text[],
+                  -- interruttore del chiamante: nessuna colonna ne e' il riflesso
+                  p_dry_run   boolean
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              /*
+                Scopo
+                -----
+                Automazione CODICE_MAIUSCOLO: porta i trigger
+                  BEFORE INSERT OR UPDATE FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_codice_maiuscolo()
+                allo stato che dbops.fn_codice_maiuscolo_perimetro dichiara.
+
+                Azioni
+                ------
+                CREA      il trigger col nome dal template della regola
+                RIGENERA  toglie tutti i trigger vivi sulla funzione, crea quello atteso
+                TOGLIE    toglie tutti i trigger vivi (eccezione, colonna tolta,
+                          tabella fuori ambito)
+
+                Regola
+                ------
+                CREA e RIGENERA chiedono una regola CODICE_MAIUSCOLO accesa in
+                dbops.automation_rules_tbl che copra schema e tabella: da li' il
+                template del nome. Senza, la tabella non si tocca (audit WARN
+                NO_RULE). TOGLIE non chiede regola.
+
+                DRY RUN
+                -------
+                p_dry_run = true: nessuna DDL, una riga di audit DRYRUN per azione.
+              */
+              DECLARE
+                  v_ctx_errore dbops.error_log.context%TYPE;
+                  r            record;
+                  v_template   dbops.automation_rules_tbl.name_template%TYPE;
+                  v_nome       pg_catalog.pg_trigger.tgname%TYPE;
+                  v_trg        pg_catalog.pg_trigger.tgname%TYPE;
+              BEGIN
+                  FOR r IN
+                      SELECT d.*
+                        FROM dbops.fn_codice_maiuscolo_perimetro(p_schemas) AS d
+                       WHERE d.azione IS NOT NULL
+                       ORDER BY d.schema_name, d.table_name
+                  LOOP
+                      v_nome := NULL;
+
+                      IF r.azione IN ('CREA', 'RIGENERA') THEN
+                          SELECT rr.name_template
+                            INTO v_template
+                            FROM dbops.automation_rules_tbl rr
+                           WHERE rr.enabled
+                             AND upper(btrim(rr.rule_type)) = 'CODICE_MAIUSCOLO'
+                             AND dbops.fn_schema_match(rr.target_schema, r.schema_name)
+                             AND (rr.target_table = '*all' OR r.table_name = rr.target_table)
+                             AND (upper(btrim(rr.exec_mode)) = 'AUTO' OR rr.exec_mode = p_exec_mode)
+                           ORDER BY rr.priority, rr.id
+                           LIMIT 1;
+
+                          IF NOT FOUND THEN
+                              PERFORM dbops.fn_audit_log_once(
+                                  p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                                  p_status        => 'WARN',
+                                  p_rule_type     => 'CODICE_MAIUSCOLO',
+                                  p_exec_mode     => p_exec_mode,
+                                  p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                                  p_dry_run       => p_dry_run,
+                                  p_params        => jsonb_build_object(
+                                                       'table',  r.schema_name || '.' || r.table_name,
+                                                       'action', 'NO_RULE'),
+                                  p_message       => 'Nessuna regola CODICE_MAIUSCOLO accesa: tabella non toccata'
+                              );
+                              CONTINUE;
+                          END IF;
+
+                          v_nome := dbops.fn_name_from_template(
+                                        COALESCE(NULLIF(btrim(v_template), ''),
+                                                 'trg_{table}_a15_codice_maiuscolo_ins_upd'),
+                                        r.schema_name, r.table_name,
+                                        NULL, NULL, NULL, NULL);
+                      END IF;
+
+                      IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                              p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                              p_status        => 'DRYRUN',
+                              p_rule_type     => 'CODICE_MAIUSCOLO',
+                              p_exec_mode     => p_exec_mode,
+                              p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                              p_dry_run       => true,
+                              p_params        => jsonb_build_object(
+                                                   'table',        r.schema_name || '.' || r.table_name,
+                                                   'trigger',      v_nome,
+                                                   'trigger_vivi', r.trigger_vivi,
+                                                   'action',       'DRYRUN_' || r.azione),
+                              p_message       => 'Codice maiuscolo: ' || r.azione
+                          );
+                          CONTINUE;
+                      END IF;
+
+                      BEGIN
+                          FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                              EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                                             v_trg, r.schema_name, r.table_name);
+                          END LOOP;
+
+                          IF r.azione IN ('CREA', 'RIGENERA') THEN
+                              EXECUTE format($f$
+                                  CREATE TRIGGER %I
+                                  BEFORE INSERT OR UPDATE ON %I.%I
+                                  FOR EACH ROW
+                                  EXECUTE FUNCTION script.trgfn_codice_maiuscolo()
+                              $f$, v_nome, r.schema_name, r.table_name);
+                          END IF;
+                      EXCEPTION WHEN others THEN
+                          -- Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente:
+                          -- connessione, risorse, arresto, sistema, privilegio, lock) si
+                          -- rilancia COM'E', col suo SQLSTATE, dopo averlo scritto nel
+                          -- registro errori; un difetto di struttura esce col codice
+                          -- dell'automazione (stessa forma dei runner gemelli).
+                          v_ctx_errore := jsonb_build_object(
+                                  'where',  'CODICE_MAIUSCOLO',
+                                  'table',  r.schema_name || '.' || r.table_name,
+                                  'azione', r.azione,
+                                  'error',  SQLERRM);
+                          IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                              PERFORM script.fn_log_error_only(
+                                  'dbops', 'fn_run_automations_codice_maiuscolo', 'E_CODICE_MAIUSCOLO',
+                                  v_ctx_errore, NULL::uuid,
+                                  r.schema_name || '.' || r.table_name, SQLERRM);
+                              RAISE;
+                          END IF;
+                          PERFORM script.fn_log_and_raise_error(
+                              'dbops', 'fn_run_automations_codice_maiuscolo', 'E_CODICE_MAIUSCOLO',
+                              v_ctx_errore, NULL::uuid,
+                              r.schema_name || '.' || r.table_name, SQLERRM);
+                      END;
+
+                      PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                          p_status        => 'OK',
+                          p_rule_type     => 'CODICE_MAIUSCOLO',
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                          p_dry_run       => false,
+                          p_params        => jsonb_build_object(
+                                               'table',        r.schema_name || '.' || r.table_name,
+                                               'trigger',      v_nome,
+                                               'trigger_vivi', r.trigger_vivi,
+                                               'action',       r.azione),
+                          p_message       => 'Codice maiuscolo: ' || r.azione
+                      );
+
+                      RAISE NOTICE 'CODICE_MAIUSCOLO: % %.% (vivi: %; atteso: %)',
+                          r.azione, r.schema_name, r.table_name,
+                          COALESCE(array_to_string(r.trigger_vivi, ', '), ''),
+                          COALESCE(v_nome, '');
+                  END LOOP;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_run_automations_codice_maiuscolo(
+                  p_exec_mode dbops.automation_rules_tbl.exec_mode%TYPE,
+                  -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
+                  p_schemas   text[],
+                  -- interruttore del chiamante: nessuna colonna ne e' il riflesso
+                  p_dry_run   boolean
+              )
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              /*
+                Scopo
+                -----
+                Automazione CODICE_MAIUSCOLO: porta i trigger
+                  BEFORE INSERT OR UPDATE FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_codice_maiuscolo()
+                allo stato che dbops.fn_codice_maiuscolo_perimetro dichiara.
+
+                Azioni
+                ------
+                CREA      il trigger col nome dal template della regola
+                RIGENERA  toglie tutti i trigger vivi sulla funzione, crea quello atteso
+                TOGLIE    toglie tutti i trigger vivi (eccezione, colonna tolta,
+                          tabella fuori ambito)
+
+                Regola
+                ------
+                CREA e RIGENERA chiedono una regola CODICE_MAIUSCOLO accesa in
+                dbops.automation_rules_tbl che copra schema e tabella: da li' il
+                template del nome. Senza, la tabella non si tocca (audit WARN
+                NO_RULE). TOGLIE non chiede regola.
+
+                DRY RUN
+                -------
+                p_dry_run = true: nessuna DDL, una riga di audit DRYRUN per azione.
+              */
+              DECLARE
+                  v_ctx_errore dbops.error_log.context%TYPE;
+                  r            record;
+                  v_template   dbops.automation_rules_tbl.name_template%TYPE;
+                  v_nome       pg_catalog.pg_trigger.tgname%TYPE;
+                  v_trg        pg_catalog.pg_trigger.tgname%TYPE;
+              BEGIN
+                  FOR r IN
+                      SELECT d.*
+                        FROM dbops.fn_codice_maiuscolo_perimetro(p_schemas) AS d
+                       WHERE d.azione IS NOT NULL
+                       ORDER BY d.schema_name, d.table_name
+                  LOOP
+                      v_nome := NULL;
+
+                      IF r.azione IN ('CREA', 'RIGENERA') THEN
+                          SELECT rr.name_template
+                            INTO v_template
+                            FROM dbops.automation_rules_tbl rr
+                           WHERE rr.enabled
+                             AND upper(btrim(rr.rule_type)) = 'CODICE_MAIUSCOLO'
+                             AND dbops.fn_schema_match(rr.target_schema, r.schema_name)
+                             AND (upper(rr.target_table) = '*ALL' OR r.table_name ILIKE rr.target_table)
+                             AND (upper(btrim(rr.exec_mode)) = 'AUTO' OR rr.exec_mode = p_exec_mode)
+                           ORDER BY rr.priority, rr.id
+                           LIMIT 1;
+
+                          IF NOT FOUND THEN
+                              PERFORM dbops.fn_audit_log_once(
+                                  p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                                  p_status        => 'WARN',
+                                  p_rule_type     => 'CODICE_MAIUSCOLO',
+                                  p_exec_mode     => p_exec_mode,
+                                  p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                                  p_dry_run       => p_dry_run,
+                                  p_params        => jsonb_build_object(
+                                                       'table',  r.schema_name || '.' || r.table_name,
+                                                       'action', 'NO_RULE'),
+                                  p_message       => 'Nessuna regola CODICE_MAIUSCOLO accesa: tabella non toccata'
+                              );
+                              CONTINUE;
+                          END IF;
+
+                          v_nome := dbops.fn_name_from_template(
+                                        COALESCE(NULLIF(btrim(v_template), ''),
+                                                 'trg_{table}_a15_codice_maiuscolo_ins_upd'),
+                                        r.schema_name, r.table_name,
+                                        NULL, NULL, NULL, NULL);
+                      END IF;
+
+                      IF p_dry_run THEN
+                          PERFORM dbops.fn_audit_log_once(
+                              p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                              p_status        => 'DRYRUN',
+                              p_rule_type     => 'CODICE_MAIUSCOLO',
+                              p_exec_mode     => p_exec_mode,
+                              p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                              p_dry_run       => true,
+                              p_params        => jsonb_build_object(
+                                                   'table',        r.schema_name || '.' || r.table_name,
+                                                   'trigger',      v_nome,
+                                                   'trigger_vivi', r.trigger_vivi,
+                                                   'action',       'DRYRUN_' || r.azione),
+                              p_message       => 'Codice maiuscolo: ' || r.azione
+                          );
+                          CONTINUE;
+                      END IF;
+
+                      BEGIN
+                          FOREACH v_trg IN ARRAY r.trigger_vivi LOOP
+                              EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I',
+                                             v_trg, r.schema_name, r.table_name);
+                          END LOOP;
+
+                          IF r.azione IN ('CREA', 'RIGENERA') THEN
+                              EXECUTE format($f$
+                                  CREATE TRIGGER %I
+                                  BEFORE INSERT OR UPDATE ON %I.%I
+                                  FOR EACH ROW
+                                  EXECUTE FUNCTION script.trgfn_codice_maiuscolo()
+                              $f$, v_nome, r.schema_name, r.table_name);
+                          END IF;
+                      EXCEPTION WHEN others THEN
+                          -- Un guasto dell'AMBIENTE (script.fn_sqlstate_di_ambiente:
+                          -- connessione, risorse, arresto, sistema, privilegio, lock) si
+                          -- rilancia COM'E', col suo SQLSTATE, dopo averlo scritto nel
+                          -- registro errori; un difetto di struttura esce col codice
+                          -- dell'automazione (stessa forma dei runner gemelli).
+                          v_ctx_errore := jsonb_build_object(
+                                  'where',  'CODICE_MAIUSCOLO',
+                                  'table',  r.schema_name || '.' || r.table_name,
+                                  'azione', r.azione,
+                                  'error',  SQLERRM);
+                          IF script.fn_sqlstate_di_ambiente(SQLSTATE) THEN
+                              PERFORM script.fn_log_error_only(
+                                  'dbops', 'fn_run_automations_codice_maiuscolo', 'E_CODICE_MAIUSCOLO',
+                                  v_ctx_errore, NULL::uuid,
+                                  r.schema_name || '.' || r.table_name, SQLERRM);
+                              RAISE;
+                          END IF;
+                          PERFORM script.fn_log_and_raise_error(
+                              'dbops', 'fn_run_automations_codice_maiuscolo', 'E_CODICE_MAIUSCOLO',
+                              v_ctx_errore, NULL::uuid,
+                              r.schema_name || '.' || r.table_name, SQLERRM);
+                      END;
+
+                      PERFORM dbops.fn_audit_log_once(
+                          p_function_name => 'dbops.fn_run_automations_codice_maiuscolo',
+                          p_status        => 'OK',
+                          p_rule_type     => 'CODICE_MAIUSCOLO',
+                          p_exec_mode     => p_exec_mode,
+                          p_parts         => ARRAY['CODICE_MAIUSCOLO'],
+                          p_dry_run       => false,
+                          p_params        => jsonb_build_object(
+                                               'table',        r.schema_name || '.' || r.table_name,
+                                               'trigger',      v_nome,
+                                               'trigger_vivi', r.trigger_vivi,
+                                               'action',       r.azione),
+                          p_message       => 'Codice maiuscolo: ' || r.azione
+                      );
+
+                      RAISE NOTICE 'CODICE_MAIUSCOLO: % %.% (vivi: %; atteso: %)',
+                          r.azione, r.schema_name, r.table_name,
+                          COALESCE(array_to_string(r.trigger_vivi, ', '), ''),
+                          COALESCE(v_nome, '');
+                  END LOOP;
+              END;
+              $function$;

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_contratti`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,7 +21,7 @@
 > * [script.fn_stato_emissione_id](/dbzero/script/funzioni/fn_stato_emissione_id) — legge lo stato di `emissione` (l'attivazione)
 > * [script.fn_stato_cessazione_id](/dbzero/script/funzioni/fn_stato_cessazione_id) — legge lo stato di `cessazione`
 > * [script.fn_stato_abortito_id](/dbzero/script/funzioni/fn_stato_abortito_id) — legge lo stato di annullo (`is_abortito`)
-> * [vendite.trgfn_doc_snapshot_da_stato](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato) — copia `is_abortito` e `is_bozza` sul contratto
+> * [vendite.trgfn_doc_snapshot_da_stato](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato) — copia `is_abortito` e `iniziale` sul contratto
 > * [script.fn_available_actions_contratto](/dbzero/script/funzioni/fn_available_actions_contratto) — la capability, che legge `meta` e `pdf_mode`
 >
 > Guide:
@@ -47,7 +47,7 @@ lettore. I passaggi fra gli stati stanno nella matrice
 
 | `codice_interno` | Che cosa vuol dire | Marcato da |
 | --- | --- | --- |
-| `DRAFT` | bozza in costruzione: si modifica tutto; non partecipa all'esclusività del periodo | `iniziale`, `is_bozza` |
+| `DRAFT` | bozza in costruzione: si modifica tutto; non partecipa all'esclusività del periodo | `iniziale` |
 | `ATTIVO` | il contratto è in vigore: lo usa il prezzo, si fattura | `emissione` |
 | `CESSATO` | il contratto ha finito il suo corso, alla sua data di fine | `cessazione`, `terminale` |
 | `ANNULLATO` | la bozza è stata annullata prima dell'attivazione | `is_abortito`, `terminale` |
@@ -66,10 +66,17 @@ tutti i lettori seguono.
 * **`iniziale`** — lo stato in cui un contratto nasce. Il trigger
   [`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale) su
   `vendite.contratti` mette questo stato quando chi crea non ne dice uno, e rifiuta ogni altro con
-  `E_DOC_STATO_INIZIALE_NON_VALIDO`. Gli altri stati si raggiungono solo coi passaggi.
+  `E_DOC_STATO_INIZIALE_NON_VALIDO`. Gli altri stati si raggiungono solo coi passaggi. È anche la
+  **bozza**: il lock delle righe e della testata, la capability (`can_edit_righe`, i motivi delle
+  righe ammesse) e il freeze del listino all'attivazione la leggono da qui. Fuori da questo stato il
+  lock della testata congela anche la categoria del cliente fissata nel contratto. Lo snapshot
+  `is_draft_snapshot` copia la marca sul contratto (vedi sotto).
 * **`emissione`** — lo stato in cui il contratto è emesso, cioè **attivato**. Ci si arriva solo da
   «Emetti», che genera il PDF (il numero del contratto si assegna alla nascita, non all'emissione:
-  divergenza dichiarata dalla guida del modello). Il backend chiede a
+  divergenza dichiarata dalla guida del modello). È lo stato **in vigore**: lo cerca
+  [`vendite.fn_get_contratto_attivo`](/dbzero/vendite/funzioni/fn_get_contratto_attivo), da cui il
+  prezzo e l'IVA ricavano la fornitura; il guard di transizione ci arriva solo coi quattro motivi
+  dell'attivazione. Il backend chiede a
   [`script.fn_doc_azione_passaggio`](/dbzero/script/funzioni/fn_doc_azione_passaggio) se il passaggio
   porta in emissione e, se sì, lo rifiuta sul cambio di stato generico. La leggono anche il job delle
   scadenze e la maturazione degli addebiti, per sapere quali contratti sono in corso.
@@ -78,7 +85,8 @@ tutti i lettori seguono.
   scadenze ([`vendite.fn_cessa_contratti_scaduti`](/dbzero/vendite/funzioni/fn_cessa_contratti_scaduti));
   la leggono la generazione dei canoni
   ([`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati)),
-  il guard di transizione del contratto e i controlli della distinta in `pagamenti`.
+  il guard di transizione del contratto (verso questo stato la data di fine deve essere arrivata) e
+  i controlli della distinta in `pagamenti`.
 * **`is_abortito`** — lo stato di annullo. Lo legge il verbo d'annullo
   ([`vendite.fn_annulla_contratto`](/dbzero/vendite/funzioni/fn_annulla_contratto)) attraverso
   [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
@@ -88,7 +96,7 @@ di accettazione del contratto è vuoto.
 
 ---
 
-### `is_bozza` e `is_abortito` decidono chi partecipa all'esclusività del periodo
+### `iniziale` e `is_abortito` decidono chi partecipa all'esclusività del periodo
 
 Due contratti con lo stesso account di fatturazione, la stessa fornitura e lo stesso ambito non possono avere
 periodi di validità che si sovrappongono. Il vincolo (`ex_contratti_no_overlap` su
@@ -98,8 +106,10 @@ annullato**.
 
 Le due metà arrivano da qui: il trigger
 [`vendite.trgfn_doc_snapshot_da_stato`](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato) copia
-`is_bozza` e `is_abortito` dello stato sul contratto (`is_draft_snapshot`, `is_abortito_snapshot`) a
-ogni scrittura. Una bozza quindi non occupa il periodo, e un'annullata lo libera.
+`iniziale` e `is_abortito` dello stato sul contratto (`is_draft_snapshot`, `is_abortito_snapshot`) a
+ogni scrittura. Una bozza quindi non occupa il periodo, e un'annullata lo libera. La bozza è lo stato
+iniziale, la stessa marca che leggono il lock e la capability: il periodo lo libera esattamente lo
+stato in cui il contratto si modifica ancora.
 
 ⚠️ `terminale` non sostituisce `is_abortito`: `CESSATO` è terminale ma occupa ancora il suo periodo,
 perché è la storia di un contratto che è stato in vigore; `ANNULLATO` è terminale e non lo occupa.
@@ -156,6 +166,7 @@ Il contenuto di tutte le colonne, `meta` compreso, sta nel CSV
 * `db/pgtap/script/test-doc-stati-dal-vocabolario-v1.sql` — i lettori di `emissione`, `cessazione` e degli altri stati marcati.
 * `db/pgtap/vendite/test-contratto-al-modello-v1.sql` — il contratto sul modello del documento.
 * `db/pgtap/vendite/test-contratto-attiva-spento-se-sovrapposto-v1.sql` — la bozza fuori dall'esclusività del periodo.
+* `db/pgtap/vendite/test-contratto-stati-dal-vocabolario-v1.sql` — i lettori seguono le marche spostate di `iniziale`, `emissione` e `cessazione`, e lo snapshot della bozza segue `iniziale`.
 
 ---
 
@@ -167,6 +178,9 @@ Il contenuto di tutte le colonne, `meta` compreso, sta nel CSV
   spenti, perché su un database ricostruito da zero riportavano in vita le chiavi vecchie.
 * 2026-10-24 / 2026-10-31 — arrivano `iniziale`, `emissione` e `cessazione` (brief
   `brief-modello-documento-vendita`): il codice smette di scrivere `'DRAFT'`, `'ATTIVO'`, `'CESSATO'`.
+* 2026-11-14 — esce `is_bozza` (nata il 2026-06-02 per l'esclusività del periodo): la bozza è lo
+  stato iniziale, e lo snapshot `is_draft_snapshot` la legge da `iniziale` (brief
+  `brief-db-stati-documento-dal-vocabolario`, D-BOZZA).
 
 ---
 

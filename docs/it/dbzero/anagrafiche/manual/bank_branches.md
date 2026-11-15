@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.bank_branches`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:  
@@ -18,7 +20,6 @@ Altre guide correlate:
 
 ---
 ### 🎯 Scopo Principale
-(latest review 02-12-25)
 La tabella **`anagrafiche.bank_branches`** rappresenta le **filiali di istituti di credito** (branch bancarie) collegate a un determinato **ruolo di soggetto** di tipo *ISTITUTO_CREDITO* (`anagrafiche.soggetti_ruoli`).
 
 Obiettivi principali:
@@ -81,9 +82,9 @@ Note:
 
   * Indicizza il campo `attivo` per filtrare rapidamente solo le filiali utilizzabili.
 
-* **`ix_bank_branches_soggetto_ruolo_id`**
+* **`uq_bank_branches_soggetto_ruolo_bank_branch_code`** (prefisso `soggetto_ruolo_id`)
 
-  * Ottimizza ricerche per ruolo di banca (es. caricamento filiali di uno specifico istituto per UI o API).
+  * Oltre all'unicità, serve le ricerche per ruolo di banca e il controllo della FK: l'indice dedicato `ix_bank_branches_soggetto_ruolo_id`, ridondante, è tolto dal 2026-11-14 (`20261114-21`). Ottimizza ricerche per ruolo di banca (es. caricamento filiali di uno specifico istituto per UI o API).
 
 Queste index supportano bene:
 

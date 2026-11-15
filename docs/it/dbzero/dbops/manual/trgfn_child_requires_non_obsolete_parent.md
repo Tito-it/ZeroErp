@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `dbops.trgfn_child_requires_non_obsolete_parent`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 10 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,6 +16,7 @@
 > * [dbops.fn_trigger_padre_stato](/dbzero/dbops/funzioni/fn_trigger_padre_stato) — legge il catalogo, fuori dalla row level security
 > * [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto) — il predicato «ritirato alla data operativa»
 > * [dbops.fn_get_lookup_codici](/dbzero/dbops/funzioni/fn_get_lookup_codici) — la selezione che nasconde le voci obsolete
+> * [script.fn_bersaglio_di_riga](/dbzero/script/funzioni/fn_bersaglio_di_riga) — il bersaglio della voce, dal catalogo dei tipi
 >
 > Guide:
 >
@@ -80,9 +81,12 @@ un altro trigger, nessuna logica nuova.
 ### Codici errore
 
 * `E_CATALOGO_OBSOLETO_NUOVA_ISTANZA` (conflitto di stato, colonna FK nel campo) — la voce di
-  catalogo è obsoleta: il caso per cui il codice esiste.
+  catalogo è obsoleta: il caso per cui il codice esiste. La frase non nomina tabelle; quale voce lo
+  dice il **bersaglio** (tipo e id), quando il catalogo dei tipi ne dichiara la tabella, come per la
+  gemella. La data del ritiro, la voce, la colonna e il valore stanno nel contesto del registro
+  errori.
 * `E_PADRE_INESISTENTE` (dato errato) — nessuna voce del catalogo ha quella chiave; succede dove il
-  collegamento non è una FK.
+  collegamento non è una FK. Frase senza tabelle, nessun bersaglio.
 * `E_TRIGGER_ARGOMENTI_INVALIDI` — il trigger è montato fuori grammatica, o nomina una colonna FK o
   di esenzione che la figlia non ha, o una tabella o una colonna del catalogo che non esiste.
 
@@ -97,6 +101,8 @@ un altro trigger, nessuna logica nuova.
 * `db/pgtap/dbops/test-guard-attivo-grammatica-e-codici-v1.sql` — su tabelle temporanee: il
   catalogo assente, l'esenzione della riga derivata, i montaggi sbagliati col loro codice.
 * `db/pgtap/vendite/test-articolo-ritirato-v1.sql` — il kit e l'onere su un articolo ritirato.
+* `db/pgtap/dbops/test-bersaglio-guard-attivo-v1.sql` — la frase del catalogo e il bersaglio della
+  voce ritirata.
 
 ---
 
@@ -110,6 +116,8 @@ un altro trigger, nessuna logica nuova.
   dell'obsoleto, un 409 che chiedeva all'operatore di scegliere un'altra voce); il catalogo assente
   si riconosce (prima passava); la colonna referenziata è obbligatoria; il catalogo si legge fuori
   dalla row level security.
+* 2026-11-10 — la frase non nomina più il catalogo (prima: «Catalogo schema.tabella obsoleto dal …»,
+  composta qui) e il rifiuto porta il bersaglio della voce.
 
 ---
 

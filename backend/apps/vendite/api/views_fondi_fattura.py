@@ -247,7 +247,11 @@ class ApiFondoFatturaDelete(DomainAPIView):
     # porta piu' larga di quello che lo ha scritto. ⛔ Seminarla non e'
     # concederla: finche' non e' assegnata a un profilo resta chiusa per tutti
     # tranne il super admin, ed e' voluto.
-    post_permission = "governa_fondo_fattura"
+    # ⛔ `delete_permission`, non `post_permission`: la catena legge
+    #    `<metodo>_permission` col metodo della richiesta. Fino al 2026-11-14 la
+    #    riga era `post_permission` su una view che serve solo DELETE: non la
+    #    leggeva nessuno, e il gesto passava col solo livello sull'area vendite.
+    delete_permission = "governa_fondo_fattura"
 
     @extend_schema(
         operation_id="vendite_fondo_fattura_delete",

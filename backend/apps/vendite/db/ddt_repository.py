@@ -458,6 +458,10 @@ class DdtRepository(
     RIGA_UPDATE_COLUMNS: frozenset[str] = frozenset({
         "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
         "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Aggiorna campi modificabili della testata DDT. Accetta None per
@@ -533,14 +537,24 @@ class DdtRepository(
         sconto_percentuale: str | None = None,
         iva_id: int | None = None,
         meta: dict[str, Any] | None = None,
+        origine_prezzo: str | None = None,
+        listino_versione_id: int | None = None,
+        listino_riga_id: int | None = None,
+        prezzo_resolver_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # La provenienza del prezzo (K-5) la dice il gate; assente, la decide
+        # il trigger del DB. Senza prezzo il contesto puo' portare il MOTIVO
+        # (`esito_codice`), come sui componenti.
         sql = """
             INSERT INTO vendite.ddt_righe (
                 ddt_id, riga_nr, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
-                prezzo_unitario, sconto_percentuale, iva_id, meta
+                prezzo_unitario, sconto_percentuale, iva_id, meta,
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                prezzo_resolver_context
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+                %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -550,6 +564,8 @@ class DdtRepository(
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id,
                 json.dumps(meta or {}),
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                json.dumps(prezzo_resolver_context) if prezzo_resolver_context is not None else None,
             ])
             result = row_to_dict(cursor)
             assert result is not None

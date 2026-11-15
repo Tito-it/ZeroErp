@@ -72,6 +72,11 @@ DECLARE
     v_bersagli      jsonb;
     v_overrides     jsonb;
     v_riga          record;
+    -- La provenienza del prezzo della riga, se il prezzo e' dell'eccezione.
+    v_p_origine     vendite.ordini_righe.origine_prezzo%TYPE;
+    v_p_versione    vendite.ordini_righe.listino_versione_id%TYPE;
+    v_p_riga        vendite.ordini_righe.listino_riga_id%TYPE;
+    v_p_contesto    vendite.ordini_righe.prezzo_resolver_context%TYPE;
 BEGIN
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -201,16 +206,32 @@ BEGIN
                                     riga_nr)
          ORDER BY r.riga_nr
     LOOP
+        -- La provenienza (R-4): quella dell'eccezione quando il prezzo e' il suo
+        -- (OVERRIDE, AGGIUNTA). Il prezzo DA_LISTINO viene dall'espansione del
+        -- listino dell'offerta, che non porta la riga: MANUALE (residuo, brief §8.8).
+        -- Il kit: COMPONENTI, dalla somma.
+        SELECT e.origine_prezzo, e.listino_versione_id, e.listino_riga_id, e.prezzo_resolver_context
+          INTO v_p_origine, v_p_versione, v_p_riga, v_p_contesto
+          FROM vendite.offerte_commerciali_eccezioni e
+         WHERE e.id = v_riga.eccezione_id
+           AND v_riga.is_composito IS NOT TRUE
+           AND v_riga.origine IN ('OVERRIDE', 'AGGIUNTA');
+        IF NOT FOUND THEN
+            v_p_origine := NULL; v_p_versione := NULL; v_p_riga := NULL; v_p_contesto := NULL;
+        END IF;
+
         INSERT INTO vendite.ordini_righe (
             ordine_id, riga_nr, articolo_id, descrizione,
             quantita, qta_operativa, uom_operativa_id, factor_to_base,
             prezzo_unitario, sconto_percentuale, iva_id,
+            origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context,
             sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga)
         VALUES (
             v_ordine_id, v_riga.riga_nr::integer, v_riga.articolo_id, v_riga.descrizione,
             v_riga.quantita, v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
             CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
             v_riga.sconto_percentuale, v_riga.iva_id,
+            v_p_origine, v_p_versione, v_p_riga, v_p_contesto,
             -- La provenienza: l'offerta e l'eccezione da cui la riga viene
             -- (NULL per la riga del solo listino: la provenienza e' l'offerta).
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.eccezione_id)

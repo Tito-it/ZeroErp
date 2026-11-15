@@ -45,10 +45,12 @@ DECLARE
   -- ⭐ Rev 2026-10-16: il contesto dell'errore, costruito una volta e usato
   --   dalle due chiamate del gestore (registro e involucro).
   v_ctx_errore dbops.error_log.context%TYPE;
+    -- array: %TYPE non compone con [] (elementi: dbops.automation_scope.schema_name)
     v_schemas   text[];
     rtab        record;
     rrule       record;
-    trg_name    text;
+    trg_name    pg_catalog.pg_trigger.tgname%TYPE;
+    -- esito calcolato qui: nessuna colonna ne e' il riflesso
     created     boolean;
 BEGIN
     v_schemas := dbops.fn_resolve_scope(p_schemas);
@@ -75,7 +77,7 @@ BEGIN
              WHERE r.enabled
                AND upper(btrim(r.rule_type)) = 'DATE_VALIDITA'
                AND dbops.fn_schema_match(r.target_schema, rtab.schema_name)
-               AND (upper(r.target_table) = '*ALL' OR rtab.table_name ILIKE r.target_table)
+               AND (r.target_table = '*all' OR rtab.table_name = r.target_table)
                AND (upper(btrim(r.exec_mode)) = 'AUTO' OR r.exec_mode = p_exec_mode)
              ORDER BY r.priority, r.id
         LOOP

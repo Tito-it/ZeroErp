@@ -79,18 +79,6 @@ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _op));
 END $ctx$;
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error): si pinna il codice, non la frase.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 CREATE TEMP TABLE _ruoli ON COMMIT DROP AS
 SELECT tr.codice_interno, tr.id FROM config.tipi_ruoli tr;
@@ -129,7 +117,7 @@ SELECT is(
 
 -- 3) Una vista non e' ammessa: la RLS e' della tabella.
 SELECT is(
-    pg_temp.codice_errore($q$
+    dbops.fn_pgtap_codice_errore($q$
         UPDATE config.tipi_ruoli
            SET entita_esistenza = 'anagrafiche.vw_clienti_codice_ba'
          WHERE codice_interno = 'CL'$q$),
@@ -139,7 +127,7 @@ SELECT is(
 
 -- 4) Una tabella senza soggetto_ruolo_id non sa a chi appartiene.
 SELECT is(
-    pg_temp.codice_errore($q$
+    dbops.fn_pgtap_codice_errore($q$
         UPDATE config.tipi_ruoli
            SET entita_esistenza = 'config.utilities'
          WHERE codice_interno = 'RE'$q$),
@@ -307,7 +295,7 @@ SELECT is(
 -- ============================================================
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM script.fn_search_soggetti_universale('ZQRUV', %s)$q$,
         (SELECT id FROM _ruoli WHERE codice_interno = 'EF'))),
     'E_TIPO_RUOLO_NON_RICERCABILE',
@@ -315,7 +303,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.codice_errore(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM script.fn_search_soggetti_universale('ZQRUV', %s)$q$,
         (SELECT COALESCE(max(id), 0) + 1000 FROM _ruoli))),
     'E_TIPO_RUOLO_NON_TROVATO',

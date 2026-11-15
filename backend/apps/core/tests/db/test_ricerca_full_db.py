@@ -87,7 +87,7 @@ from apps.core.tests.db_e2e import (
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
-from apps.core.tests.test_liste_configurabili_seed import _seed
+from apps.core.tests._seed_csv import seed_ui
 from apps.core.tests.test_ricerca_full_seed import _RICERCHE
 
 
@@ -170,10 +170,10 @@ def _risolvi_test(percorso: str) -> None:
 
 # Scopo: la vista qualificata di una lista, dal seed del catalogo.
 def _vista(codice: str) -> str | None:
-    for riga in _seed("lista_definizione.csv"):
+    for riga in seed_ui("lista_definizione.csv"):
         if riga["codice"] == codice:
             vista = riga["vista_sql"]
-            if not vista or vista == "NULL":
+            if not vista:
                 return None
             return f"{riga['schema_dati']}.{vista}"
     raise AssertionError(f"lista '{codice}' assente da lista_definizione.csv")
@@ -657,13 +657,13 @@ class RicercaFullDbTests(unittest.TestCase):
     #        preventivo, una di un articolo e una di un componente, col testo
     #        che sta solo li', si trovano dalla loro lista con la ricerca del BB
     #        comune (`pagina_note`). ⭐ Il componente e' la SECONDA query di
-    #        `catalogo.note` (`list_note_componente`, su un'altra vista): la
-    #        ricerca e' la stessa, la SELECT no, e va eseguita anche lei.
+    #        `catalogo.note` (l'altra partizione): la ricerca e' la stessa, la
+    #        tabella no, e va eseguita anche lei. Dal 2026-11-11 le note di
+    #        catalogo passano dal BB `PartitionedNoteRepository`, come vendita.
     def test_note_trovano_ogni_colonna_accesa(self):
-        from apps.catalogo.db.catalogo_bom_repository import (
-            NOTA_TARGET_ARTICOLO,
-            NOTA_TARGET_COMPONENTE,
-            CatalogoBomRepository,
+        from apps.catalogo.db.note_repositories import (
+            NOTE_REPO_ARTICOLO,
+            NOTE_REPO_ARTICOLO_COMPONENTE,
         )
         from apps.vendite.db.note_repositories import NOTE_REPO_PREVENTIVO
 
@@ -678,15 +678,14 @@ class RicercaFullDbTests(unittest.TestCase):
                 stile = cur.fetchone()[0]
                 nota = {"anchor_tipo": "DOCUMENTO", "posizione": "HEADER", "id_stile": stile}
                 nota_ven = NOTE_REPO_PREVENTIVO.create(preventivo_id, {**nota, "testo": "Nota ricnotaven"})
-                bom = CatalogoBomRepository()
-                nota_cat = bom.create_nota(NOTA_TARGET_ARTICOLO, articolo_id, {**nota, "testo": "Nota ricnotacat"})
+                nota_cat = NOTE_REPO_ARTICOLO.create(articolo_id, {**nota, "testo": "Nota ricnotacat"})
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "vendite.note", nota_ven, {"testo": "ricnotaven"},
                     lambda t: NOTE_REPO_PREVENTIVO.list(preventivo_id, search=t, limit=200)[0],
                 )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "catalogo.note", nota_cat, {"testo": "ricnotacat"},
-                    lambda t: bom.list_note_articolo_pagina(articolo_id, search=t, limit=200, offset=0)[0],
+                    lambda t: NOTE_REPO_ARTICOLO.list(articolo_id, search=t, limit=200)[0],
                 )
                 # Il componente: un kit costruito, con l'articolo sopra dentro.
                 cur.execute(
@@ -699,12 +698,12 @@ class RicercaFullDbTests(unittest.TestCase):
                     [kit_id, articolo_id],
                 )
                 componente_id = cur.fetchone()[0]
-                nota_comp = bom.create_nota(
-                    NOTA_TARGET_COMPONENTE, componente_id, {**nota, "testo": "Nota ricnotacomp"},
+                nota_comp = NOTE_REPO_ARTICOLO_COMPONENTE.create(
+                    componente_id, {**nota, "testo": "Nota ricnotacomp"},
                 )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "catalogo.note", nota_comp, {"testo": "ricnotacomp"},
-                    lambda t: bom.list_note_componente(componente_id, search=t, limit=200, offset=0)[0],
+                    lambda t: NOTE_REPO_ARTICOLO_COMPONENTE.list(componente_id, search=t, limit=200)[0],
                 )
                 raise Annulla
         except Annulla:

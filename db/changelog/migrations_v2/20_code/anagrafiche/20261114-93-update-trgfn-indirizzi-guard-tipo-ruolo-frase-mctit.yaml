@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL TIPO DI INDIRIZZO DEL RUOLO PASSA ALLA FRASE CIO' CHE L'OPERATORE RICONOSCE
+#   anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo
+#   Brief: brief-db-copia-indirizzo-soggetto §5.2 (Q-1, Tid 2026-11-15).
+#   Corpo di partenza: 20261114-85 (applicato, la doc auto-generata non e' ancora
+#   rigenerata: il corpo e' quello del vivo).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   La frase di E_TIPO_INDIRIZZO_NON_PERMESSO si riscrive senza nomi di colonna,
+#   con due segnaposto: «Il ruolo %s non prevede l'indirizzo «%s».»
+#   (messaggi_errore.csv, id 108). Il guard passa quindi la descrizione del
+#   tipo di ruolo e quella del tipo di indirizzo, nell'ordine della frase,
+#   invece dei tre id: gli id restano nel contesto, per chi diagnostica.
+#   Le descrizioni si leggono solo nel ramo che rifiuta.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il predicato (anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo), il codice,
+#   il contesto col suo 'campo', i rami DELETE e «riferimenti mancanti», i
+#   montaggi del trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-93-update-trgfn-indirizzi-guard-tipo-ruolo-frase-mctit.yaml
+
+  - changeSet:
+      id: 20261114-93-update-trgfn-indirizzi-guard-tipo-ruolo-frase
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo passa alla frase il tipo di ruolo e
+        il tipo di indirizzo per descrizione, non gli id.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                v_ruolo_nome    config.tipi_ruoli.descrizione%TYPE;
+                v_tipo_nome     config.tipi_indirizzi.descrizione%TYPE;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_ruolo_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero il tipo di ruolo dal ruolo
+                SELECT sr.tipo_ruolo_id
+                  INTO v_tipo_ruolo_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                 WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                -- Il predicato e' quello che leggono anche la check del tipo
+                -- sul ruolo e la plurale: tipo di ruolo NULL o senza matrice =
+                -- indirizzi liberi; altrimenti la coppia deve essere in
+                -- matrice, attiva e valida oggi.
+                IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                           v_tipo_ruolo_id, NEW.tipo_indirizzo_id,
+                           script.fn_data_operativa()) THEN
+                  -- La frase vuole cio' che l'operatore riconosce: le
+                  -- descrizioni. Gli id restano nel contesto.
+                  SELECT tr.descrizione INTO v_ruolo_nome
+                    FROM config.tipi_ruoli tr
+                   WHERE tr.id = v_tipo_ruolo_id;
+                  SELECT ti.descrizione INTO v_tipo_nome
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.id = NEW.tipo_indirizzo_id;
+
+                  -- Codice PROPRIO di questo layer, distinto da quello del
+                  -- guard sugli indirizzi di SOGGETTO, che legge un'altra
+                  -- matrice.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                    'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'campo',             'tipo_indirizzo_id',
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_ruolo_id',     v_tipo_ruolo_id,
+                      'soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                    NEW.tx_id,
+                    COALESCE(v_ruolo_nome, v_tipo_ruolo_id::text),
+                    COALESCE(v_tipo_nome, NEW.tipo_indirizzo_id::text));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+              IS 'Guard sugli indirizzi di RUOLO (anagrafiche.indirizzi), quando si scrive un indirizzo: il tipo di indirizzo deve essere ammesso dal tipo di ruolo del soggetto_ruolo, col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo (giorno: script.fn_data_operativa()); altrimenti E_TIPO_INDIRIZZO_NON_PERMESSO, campo tipo_indirizzo_id, coi valori della frase nell''ordine tipo di ruolo e tipo di indirizzo, per descrizione (gli id nel contesto). Fallback permissivo quando il tipo di ruolo non ha nessuna riga di matrice. Le madri singolari lo anticipano con anagrafiche.fn_check_tipo_indirizzo_ruolo, sullo stesso predicato e con gli stessi valori: questo guard resta il presidio di ogni altra strada. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo, che e'' il guard del layer SOGGETTO e legge un''altra matrice, con un codice d''errore suo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' nella doc auto-generata; si torna indietro con un changeSet nuovo.
+              SELECT 1;

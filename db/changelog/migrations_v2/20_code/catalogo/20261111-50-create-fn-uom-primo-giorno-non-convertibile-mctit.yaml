@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.fn_uom_primo_giorno_non_convertibile: il primo giorno di un periodo in cui
+#   un'unita' non si converte per un articolo (D25, Q24).
+#
+#   La regola di Q24 («l'unita' della riga di listino vale per tutto il periodo della
+#   versione») in un posto: i giorni scoperti sono il periodo meno l'unione dei periodi
+#   delle fonti (catalogo.fn_uom_fonti_conversione, -47). La leggono i tre lati della
+#   regola (-52, -54, -55). Funzione nuova, rollback: DROP.
+#   Brief: brief-db-revisione-catalogo, giro 2-bis.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-50-create-fn-uom-primo-giorno-non-convertibile-mctit.yaml
+
+  - changeSet:
+      id: 20261111-50-create-fn-uom-primo-giorno-non-convertibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.fn_uom_primo_giorno_non_convertibile: il primo giorno di un periodo in cui un'unita' non si converte per un articolo; la regola di D25 (Q24) in un posto. Brief: brief-db-revisione-catalogo, giro 2-bis.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.pronamespace = 'catalogo'::regnamespace
+                 AND p.proname IN ('fn_uom_fonti_conversione', 'fn_uom_primo_giorno_non_convertibile')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION catalogo.fn_uom_primo_giorno_non_convertibile(
+                  p_articolo_id catalogo.articoli.id%TYPE,
+                  p_uom_id      catalogo.unita_misura.id%TYPE,
+                  p_periodo     daterange)
+               RETURNS date
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  SELECT CASE
+                             WHEN s.scoperti IS NULL OR isempty(s.scoperti) THEN NULL::date
+                             WHEN lower_inf(s.scoperti)                     THEN '-infinity'::date
+                             ELSE lower(s.scoperti)
+                         END
+                    FROM (SELECT datemultirange(p_periodo)
+                                 - COALESCE((SELECT range_agg(f.validita)
+                                               FROM catalogo.fn_uom_fonti_conversione(p_articolo_id, p_uom_id) f),
+                                            '{}'::datemultirange) AS scoperti) s;
+              END
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.fn_uom_primo_giorno_non_convertibile(uuid, bigint, daterange) IS
+                  'Il primo giorno del periodo p_periodo in cui l''unita'' p_uom_id NON si converte nell''unita'' base dell''articolo p_articolo_id; NULL se si converte in ogni giorno del periodo (o se il periodo e'' NULL o vuoto). Si converte un giorno coperto da almeno una fonte di catalogo.fn_uom_fonti_conversione (la base, una mappatura, una conversione generale): i giorni scoperti sono il periodo meno l''unione dei periodi delle fonti. Un buco senza inizio esce ''-infinity''. E'' la regola «l''unita'' vale per tutto il periodo» delle righe di listino: la leggono vendite.trgfn_listini_righe_guard_uom_periodo, vendite.fn_listino_versione_riga_uom_non_convertibile e vendite.fn_listini_attivi_uom_non_convertibili. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS catalogo.fn_uom_primo_giorno_non_convertibile(uuid, bigint, daterange);

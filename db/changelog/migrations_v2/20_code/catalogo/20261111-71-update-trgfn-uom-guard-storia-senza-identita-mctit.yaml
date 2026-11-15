@@ -1,0 +1,323 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo.trgfn_uom_guard_storia: la regola «le colonne della conversione non si
+#   cambiano» esce dal guard e va a script.trgfn_lock_columns (G1, Q32 di Tid,
+#   2026-11-11); le regole che restano le giudica catalogo.fn_uom_conversione_capability
+#   (-70), lo stesso BB che leggono le viste di dettaglio (G2, Q33).
+#
+#   Prima la regola 1 era un lock incondizionato scritto dentro il guard (colonne da
+#   TG_ARGV): dbops.vw_lock_columns_vivi riconosce solo i trigger su
+#   script.trgfn_lock_columns, quindi il form non vedeva le colonne ferme e il backend
+#   ne teneva una lista a mano. Ora le otto colonne stanno in
+#   dbops.automation_lock_columns (80_data, stesso giro) col codice
+#   E_UOM_STORIA_IMMUTABILE, e il trigger lo genera l'automazione LOCK_COLUMNS.
+#   ⚠️ Su un database di sviluppo, fra il migrate e la convergenza dell'automazione le
+#   colonne non le blocca nessuno: la convergenza va lanciata subito dopo l'apply
+#   (brief §15.11). In CI la fa la passata ci_apply.
+#   Il guard non riceve piu' argomenti e scatta solo su UPDATE OF attivo, valido_al e
+#   su DELETE. I due trigger sono del giro 2-bis (-52), scritti a mano: si tolgono e si
+#   rimontano qui. Il resto del corpo e' quello di -52, con le regole lette dal BB.
+#   Rollback: il corpo, i trigger e il COMMENT di -52.
+#   Brief: brief-db-revisione-catalogo, §15.11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261111-71-update-trgfn-uom-guard-storia-senza-identita-mctit.yaml
+
+  - changeSet:
+      id: 20261111-71-update-trgfn-uom-guard-storia-senza-identita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.trgfn_uom_guard_storia senza la regola delle colonne (passa a script.trgfn_lock_columns, Q32), con le altre regole lette da catalogo.fn_uom_conversione_capability (Q33). Brief: brief-db-revisione-catalogo, §15.11.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_proc p
+               WHERE p.pronamespace = 'catalogo'::regnamespace
+                 AND p.proname IN ('fn_uom_conversione_capability', 'trgfn_uom_guard_storia')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a10_guard_storia_upd_dlt ON catalogo.articoli_uom_operativa;
+              DROP TRIGGER IF EXISTS trg_unita_misura_conversioni_a10_guard_storia_upd_dlt ON catalogo.unita_misura_conversioni;
+
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_guard_storia()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- La riga come jsonb: una funzione sola su due tabelle.
+                  v_old      jsonb := to_jsonb(OLD);
+                  v_new      jsonb;
+                  -- L'inizio: NULL vuol dire «da sempre» sulla mappatura. Tipo nudo
+                  -- DICHIARATO: la colonna e' di due tabelle diverse.
+                  v_dal      date := COALESCE((to_jsonb(OLD) ->> 'valido_dal')::date, '-infinity'::date);
+                  v_al_old   date := (to_jsonb(OLD) ->> 'valido_al')::date;
+                  v_al_new   date;
+                  -- Che cosa si puo' fare sulla riga, dalle sue date di prima: lo stesso
+                  -- giudizio che le viste di dettaglio pubblicano.
+                  v_cap      record;
+                  -- La conversione nei valori dei messaggi, e il contesto.
+                  v_oggetto  text;
+                  v_contesto jsonb;
+                  v_articolo catalogo.articoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: una conversione gia' scritta non riscrive i giorni
+                  --   passati: si spegne o si cancella solo senza giorni passati, e
+                  --   la fine si sposta solo in avanti da ieri.
+                  -- Eventi: UPDATE OF attivo, valido_al; DELETE.
+                  -- ⛔ Le colonne che fanno la conversione (unita', articolo,
+                  --   fattore, inizio) non passano di qui: le blocca
+                  --   script.trgfn_lock_columns (dbops.automation_lock_columns),
+                  --   che il form legge in dbops.vw_non_editable_fields.
+                  -- =========================================================
+
+                  -- La riga base della mappatura e' ferma altrove.
+                  IF TG_TABLE_NAME = 'articoli_uom_operativa' AND (v_old ->> 'is_base')::boolean THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  -- La conversione, per le frasi; e se l'articolo o l'unita' non c'e'
+                  -- piu', e' la sua cancellazione che porta via la riga.
+                  IF TG_TABLE_NAME = 'articoli_uom_operativa' THEN
+                      v_articolo := (v_old ->> 'articolo_id')::uuid;
+                      v_oggetto  := catalogo.fn_uom_conversione_nome(v_articolo, (v_old ->> 'uom_id')::bigint, NULL);
+                  ELSE
+                      v_oggetto  := catalogo.fn_uom_conversione_nome(NULL, (v_old ->> 'uom_from_id')::bigint,
+                                                                     (v_old ->> 'uom_to_id')::bigint);
+                  END IF;
+                  IF v_oggetto IS NULL THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  SELECT * INTO v_cap
+                    FROM catalogo.fn_uom_conversione_capability((v_old ->> 'valido_dal')::date, v_al_old);
+
+                  v_contesto := jsonb_build_object(
+                      'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'riga_id', v_old -> 'id',
+                      'operazione', TG_OP);
+                  IF v_articolo IS NOT NULL THEN
+                      v_contesto := v_contesto
+                          || jsonb_build_object('articolo_id', v_articolo,
+                                                'bersaglio', jsonb_build_array(
+                                                    jsonb_build_object('tipo', 'ARTICOLO', 'id', v_articolo::text)));
+                  END IF;
+
+                  -- 1 (DELETE). Solo una riga senza giorni passati.
+                  IF TG_OP = 'DELETE' THEN
+                      IF NOT v_cap.puo_eliminarsi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_IN_VIGORE',
+                              v_contesto,
+                              (v_old ->> 'tx_id')::uuid,
+                              v_oggetto);
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  v_new := to_jsonb(NEW);
+
+                  -- 1 (UPDATE). Spegnere o riaccendere: solo senza giorni passati.
+                  IF (v_new -> 'attivo') IS DISTINCT FROM (v_old -> 'attivo') AND NOT v_cap.puo_cambiare_attivo THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_IN_VIGORE',
+                          v_contesto || jsonb_build_object('campo', 'attivo'),
+                          (v_new ->> 'tx_id')::uuid,
+                          v_oggetto);
+                  END IF;
+
+                  -- 2. La fine. Una fine prima dell'inizio la giudica
+                  --    script.trgfn_guard_date_validita.
+                  v_al_new := (v_new ->> 'valido_al')::date;
+                  IF v_al_new IS DISTINCT FROM v_al_old
+                     AND (v_al_new IS NULL OR v_al_new >= v_dal) THEN
+                      IF NOT v_cap.puo_chiudersi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_CHIUSA',
+                              v_contesto || jsonb_build_object('campo', 'valido_al', 'valido_al', v_al_old),
+                              (v_new ->> 'tx_id')::uuid,
+                              v_oggetto, to_char(v_al_old, 'DD/MM/YYYY'));
+                      END IF;
+                      IF v_al_new < v_cap.data_min_chiusura THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_CHIUSURA_RETROATTIVA',
+                              v_contesto || jsonb_build_object('campo', 'valido_al', 'valido_al', v_al_new,
+                                                               'valido_al_min', v_cap.data_min_chiusura),
+                              (v_new ->> 'tx_id')::uuid,
+                              v_oggetto, to_char(v_cap.data_min_chiusura, 'DD/MM/YYYY'));
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_articoli_uom_operativa_a10_guard_storia_upd_dlt
+                  BEFORE UPDATE OF attivo, valido_al OR DELETE ON catalogo.articoli_uom_operativa
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia();
+
+              CREATE TRIGGER trg_unita_misura_conversioni_a10_guard_storia_upd_dlt
+                  BEFORE UPDATE OF attivo, valido_al OR DELETE ON catalogo.unita_misura_conversioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION catalogo.trgfn_uom_guard_storia() IS
+                  'Guard della storia delle conversioni, su catalogo.articoli_uom_operativa (la mappatura di un articolo) e catalogo.unita_misura_conversioni (la conversione generale): sono versionate, e una conversione gia'' scritta non riscrive i giorni passati. BEFORE UPDATE OF attivo, valido_al OR DELETE; nessun argomento. Regole, giudicate da catalogo.fn_uom_conversione_capability sulle date di prima (lo stesso giudizio che pubblicano le viste di dettaglio): 1. spegnere o riaccendere (attivo) e cancellare sono ammessi solo se la conversione comincia oggi o dopo (nessun giorno passato, la riga inserita per errore); altrimenti -> E_UOM_STORIA_IN_VIGORE; 2. la fine (valido_al): se e'' gia'' passata (prima di oggi) non si cambia piu'' -> E_UOM_STORIA_CHIUSA; altrimenti la fine nuova e'' vuota o da ieri in avanti -> E_UOM_STORIA_CHIUSURA_RETROATTIVA. Una fine prima dell''inizio la giudica script.trgfn_guard_date_validita. Le colonne che fanno la conversione (le unita'', l''articolo, il fattore, l''inizio) non si cambiano mai: non le giudica questo guard ma script.trgfn_lock_columns, dal registro dbops.automation_lock_columns, col codice E_UOM_STORIA_IMMUTABILE; cosi'' il form le trova in dbops.vw_non_editable_fields. La riga dell''unita'' base di un articolo non passa di qui: e'' ferma per catalogo.trgfn_articoli_uom_operativa_guard_base e per il CHECK chk_articoli_uom_operativa_base_fissa. La cancellazione di un articolo o di un''unita'' porta via le sue conversioni senza giudizio. Valori dei messaggi: la conversione col nome di catalogo.fn_uom_conversione_nome; bersaglio ARTICOLO per la mappatura. Che la chiusura non lasci un listino attivo senza conversione lo giudica catalogo.trgfn_uom_guard_listini_attivi, a fine transazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_articoli_uom_operativa_a10_guard_storia_upd_dlt ON catalogo.articoli_uom_operativa;
+              DROP TRIGGER IF EXISTS trg_unita_misura_conversioni_a10_guard_storia_upd_dlt ON catalogo.unita_misura_conversioni;
+
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_uom_guard_storia()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_oggi     date := script.fn_data_operativa();
+                  -- La riga come jsonb: una funzione sola su due tabelle.
+                  v_old      jsonb := to_jsonb(OLD);
+                  v_new      jsonb;
+                  -- L'inizio: NULL vuol dire «da sempre» sulla mappatura.
+                  v_dal      date := COALESCE((to_jsonb(OLD) ->> 'valido_dal')::date, '-infinity'::date);
+                  v_al_old   date := (to_jsonb(OLD) ->> 'valido_al')::date;
+                  v_al_new   date;
+                  v_min_al   date := script.fn_data_operativa() - 1;
+                  -- Nomi di colonna (TG_ARGV): nessuna colonna di cui siano il riflesso.
+                  v_campo    text;
+                  -- La conversione nei valori dei messaggi, e il contesto.
+                  v_oggetto  text;
+                  v_contesto jsonb;
+                  v_articolo catalogo.articoli.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo: una conversione gia' scritta non riscrive i giorni
+                  --   passati: si chiude e se ne apre una nuova.
+                  -- Eventi: UPDATE, DELETE. TG_ARGV: le colonne della conversione.
+                  -- =========================================================
+
+                  -- La riga base della mappatura e' ferma altrove.
+                  IF TG_TABLE_NAME = 'articoli_uom_operativa' AND (v_old ->> 'is_base')::boolean THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  -- La conversione, per le frasi; e se l'articolo o l'unita' non c'e'
+                  -- piu', e' la sua cancellazione che porta via la riga.
+                  IF TG_TABLE_NAME = 'articoli_uom_operativa' THEN
+                      v_articolo := (v_old ->> 'articolo_id')::uuid;
+                      v_oggetto  := catalogo.fn_uom_conversione_nome(v_articolo, (v_old ->> 'uom_id')::bigint, NULL);
+                  ELSE
+                      v_oggetto  := catalogo.fn_uom_conversione_nome(NULL, (v_old ->> 'uom_from_id')::bigint,
+                                                                     (v_old ->> 'uom_to_id')::bigint);
+                  END IF;
+                  IF v_oggetto IS NULL THEN
+                      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+                  END IF;
+
+                  v_contesto := jsonb_build_object(
+                      'tabella', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'riga_id', v_old -> 'id',
+                      'operazione', TG_OP);
+                  IF v_articolo IS NOT NULL THEN
+                      v_contesto := v_contesto
+                          || jsonb_build_object('articolo_id', v_articolo,
+                                                'bersaglio', jsonb_build_array(
+                                                    jsonb_build_object('tipo', 'ARTICOLO', 'id', v_articolo::text)));
+                  END IF;
+
+                  -- 2 (DELETE). Solo una riga senza giorni passati.
+                  IF TG_OP = 'DELETE' THEN
+                      IF v_dal < v_oggi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_IN_VIGORE',
+                              v_contesto,
+                              (v_old ->> 'tx_id')::uuid,
+                              v_oggetto);
+                      END IF;
+                      RETURN OLD;
+                  END IF;
+
+                  v_new := to_jsonb(NEW);
+
+                  -- 1. Le colonne della conversione non si cambiano.
+                  FOR v_i IN 0 .. TG_NARGS - 1 LOOP
+                      v_campo := TG_ARGV[v_i];
+                      IF (v_new -> v_campo) IS DISTINCT FROM (v_old -> v_campo) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_IMMUTABILE',
+                              v_contesto || jsonb_build_object('campo', v_campo),
+                              (v_new ->> 'tx_id')::uuid,
+                              v_oggetto);
+                      END IF;
+                  END LOOP;
+
+                  -- 2 (UPDATE). Spegnere o riaccendere: solo senza giorni passati.
+                  IF (v_new -> 'attivo') IS DISTINCT FROM (v_old -> 'attivo') AND v_dal < v_oggi THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_IN_VIGORE',
+                          v_contesto || jsonb_build_object('campo', 'attivo'),
+                          (v_new ->> 'tx_id')::uuid,
+                          v_oggetto);
+                  END IF;
+
+                  -- 3. La fine.
+                  v_al_new := (v_new ->> 'valido_al')::date;
+                  IF v_al_new IS DISTINCT FROM v_al_old
+                     AND (v_al_new IS NULL OR v_al_new >= v_dal) THEN
+                      IF v_al_old < v_oggi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_CHIUSA',
+                              v_contesto || jsonb_build_object('campo', 'valido_al', 'valido_al', v_al_old),
+                              (v_new ->> 'tx_id')::uuid,
+                              v_oggetto, to_char(v_al_old, 'DD/MM/YYYY'));
+                      END IF;
+                      IF v_al_new < v_min_al THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'catalogo', 'catalogo.trgfn_uom_guard_storia', 'E_UOM_STORIA_CHIUSURA_RETROATTIVA',
+                              v_contesto || jsonb_build_object('campo', 'valido_al', 'valido_al', v_al_new,
+                                                               'valido_al_min', v_min_al),
+                              (v_new ->> 'tx_id')::uuid,
+                              v_oggetto, to_char(v_min_al, 'DD/MM/YYYY'));
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_articoli_uom_operativa_a10_guard_storia_upd_dlt
+                  BEFORE UPDATE OR DELETE ON catalogo.articoli_uom_operativa
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia('articolo_id', 'uom_id', 'factor_to_base', 'valido_dal');
+
+              CREATE TRIGGER trg_unita_misura_conversioni_a10_guard_storia_upd_dlt
+                  BEFORE UPDATE OR DELETE ON catalogo.unita_misura_conversioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION catalogo.trgfn_uom_guard_storia('uom_from_id', 'uom_to_id', 'fattore', 'valido_dal');
+
+              COMMENT ON FUNCTION catalogo.trgfn_uom_guard_storia() IS
+                  'Guard della storia delle conversioni, su catalogo.articoli_uom_operativa (la mappatura di un articolo) e catalogo.unita_misura_conversioni (la conversione generale): sono versionate, e una conversione gia'' scritta non riscrive i giorni passati. BEFORE UPDATE OR DELETE. TG_ARGV: le colonne che fanno la conversione (le unita'', l''articolo, il fattore, l''inizio). Regole: 1. una di quelle colonne cambiata -> E_UOM_STORIA_IMMUTABILE (campo: la colonna): la conversione si chiude e se ne apre una nuova; 2. spegnere o riaccendere (attivo) e cancellare sono ammessi solo se la conversione comincia oggi o dopo (nessun giorno passato, la riga inserita per errore); altrimenti -> E_UOM_STORIA_IN_VIGORE; 3. la fine (valido_al): se e'' gia'' passata (prima di oggi) non si cambia piu'' -> E_UOM_STORIA_CHIUSA; altrimenti la fine nuova e'' vuota o da ieri in avanti -> E_UOM_STORIA_CHIUSURA_RETROATTIVA. Una fine prima dell''inizio la giudica script.trgfn_guard_date_validita. Il giorno e'' script.fn_data_operativa. La riga dell''unita'' base di un articolo non passa di qui: e'' ferma per catalogo.trgfn_articoli_uom_operativa_guard_base e per il CHECK chk_articoli_uom_operativa_base_fissa. La cancellazione di un articolo o di un''unita'' porta via le sue conversioni senza giudizio. Valori dei messaggi: la conversione col nome di catalogo.fn_uom_conversione_nome; bersaglio ARTICOLO per la mappatura. Che la chiusura non lasci un listino attivo senza conversione lo giudica catalogo.trgfn_uom_guard_listini_attivi, a fine transazione.';

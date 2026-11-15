@@ -16,7 +16,7 @@
 | attivo | boolean | NO | true |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
-| user_insert | text | YES |  |
+| user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES |  |

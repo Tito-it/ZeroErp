@@ -8,6 +8,7 @@
 //    collezione intera, col form scritto qui.
 // Click riga → modifica (pattern master-detail inline); il kebab tiene la
 // sola azione secondaria, l'eliminazione, spenta col motivo dalla vista DB.
+// Interruttore e data di fine li spegne il form (`ArticoloUomForm`).
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
@@ -17,6 +18,7 @@ import { deleteArticoloUom } from '../api/catalogo'
 import { useArticoloUomStore } from '../stores/articoloUom'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { labelOrCode } from '../../core/utils/i18nLabel'
+import { chiaveMotivoUom } from '../utils/capabilityConversioneUom'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConFormInline from '../../core/components/ListaConFormInline.vue'
@@ -52,15 +54,16 @@ async function onDelete(row) {
   if (result !== null && listaRef.value) listaRef.value.cambiata()
 }
 
-// Capability eliminazione (Fase 6) letta dalla vista DB: row.puo_eliminarsi +
-// row.motivo_non_eliminabile (solo is_base blocca). L'azione resta visibile
-// anche quando non eseguibile, col motivo nel tooltip.
+// Capability eliminazione letta dalla vista DB: row.puo_eliminarsi +
+// row.motivo_non_eliminabile (la riga base, e dal 2026-11-11 una mappatura
+// con giorni passati: UOM_STORIA_IN_VIGORE, «si chiude»). L'azione resta
+// visibile anche quando non eseguibile, col motivo nel tooltip. La chiave
+// del motivo la da' l'helper comune (`chiaveMotivoUom`).
 function deleteUomTooltip(row) {
   if (row.puo_eliminarsi) return t('common.delete')
-  const motivo = row.motivo_non_eliminabile
-  if (!motivo) return t('common.delete')
+  const key = chiaveMotivoUom(row.motivo_non_eliminabile)
+  if (!key) return t('common.delete')
   // Difensivo: motivo nuovo non mappato i18n -> label generica.
-  const key = `catalogo.motivo_${motivo.toLowerCase()}`
   return labelOrCode(t, te, key, t('common.delete'))
 }
 

@@ -27,7 +27,7 @@
 -- 17) fn_stato_sorgente guard: sorgente_tipo_id 0 -> errore parametri
 -- --- Roll-out offerte/ordini/contratti (brief-db-...-rollout) ---
 -- 18) Seed D1 OFFERTA: mappa completa (fase/esito/terminale per stato)
--- 19) Seed D1 ORDINE: mappa completa
+-- 19) Seed D1 ORDINE: mappa completa (i cinque stati, dopo il ritiro di S-8)
 -- 20) Seed D1 CONTRATTO: mappa completa
 -- 21) Invariante terminale=>CHIUSO su offerte+ordini+contratti
 -- 22) Guard verdetto attivo su config.stati_doc_offerte
@@ -375,18 +375,17 @@ SELECT results_eq(
 -- successive: il test segnalava EVASO come sbagliato quando il seed era giusto.
 -- ⚠️ Causa diversa dal guard sorgente polimorfa: era mascherata dal fallimento
 -- del fixture, che abortiva prima di arrivare qui.
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 4, S-8): ALLOCATO,
+-- SPEDITO, CONSEGNATO e FATTURATO sono ritirati (nessun passaggio li raggiungeva).
+-- Il confronto porta il codice: una riga che manca o si sposta si vede per nome.
 SELECT results_eq(
-  $$SELECT fase, esito, terminale FROM config.stati_doc_ordini ORDER BY ordine$$,
-  $$VALUES ('APERTO'::varchar,   NULL::varchar,       false),
-          ('IN_CORSO'::varchar, NULL::varchar,       false),
-          ('IN_CORSO'::varchar, NULL::varchar,       false),
-          ('CHIUSO'::varchar,   'POSITIVO'::varchar, true),
-          ('IN_CORSO'::varchar, NULL::varchar,       false),
-          ('IN_CORSO'::varchar, NULL::varchar,       false),
-          ('IN_CORSO'::varchar, NULL::varchar,       false),
-          ('CHIUSO'::varchar,   'NEGATIVO'::varchar, true),
-          ('CHIUSO'::varchar,   'POSITIVO'::varchar, true)$$,
-  '19) Seed D1 ORDINE: DRAFT/CONFERMATO/PARZIALMENTE_EVASO/EVASO/ALLOCATO/SPEDITO/CONSEGNATO/ANNULLATO/FATTURATO mappati'
+  $$SELECT codice_interno::text, fase, esito, terminale FROM config.stati_doc_ordini ORDER BY ordine$$,
+  $$VALUES ('DRAFT',              'APERTO'::varchar,   NULL::varchar,       false),
+          ('CONFERMATO',         'IN_CORSO'::varchar, NULL::varchar,       false),
+          ('PARZIALMENTE_EVASO', 'IN_CORSO'::varchar, NULL::varchar,       false),
+          ('EVASO',              'CHIUSO'::varchar,   'POSITIVO'::varchar, true),
+          ('ANNULLATO',          'CHIUSO'::varchar,   'NEGATIVO'::varchar, true)$$,
+  '19) Seed D1 ORDINE: DRAFT/CONFERMATO/PARZIALMENTE_EVASO/EVASO/ANNULLATO mappati'
 );
 
 SELECT results_eq(

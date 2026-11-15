@@ -25,13 +25,13 @@
 
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Literal
 
 from django.db import transaction
 
@@ -41,6 +41,7 @@ from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.documento_modello import (
     stato_di_accettazione,
     stato_di_emissione,
+    stato_di_rifiuto,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
@@ -92,8 +93,14 @@ from apps.vendite.services._componenti_service_helpers import (
     resolve_emittente_sr_id_for_testata,
 )
 from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    EsitoPrezzoRiga,
+    ProvenienzaDichiarata,
     guard_uom_id_positive,
+    prezzo_invariato,
+    provenienza_dichiarata,
     resolve_or_check_override_prezzo,
+    rifiuta_provenienza_dichiarata,
     validate_componenti_overrides_authorization,
 )
 from apps.vendite.services._campi_canone import check_campi_canone, con_campi_canone
@@ -134,14 +141,15 @@ _CAMPO_MOTIVAZIONE = "motivazione"
 
 # Codici stato documento (chiavi naturali `codice_interno` in
 # config.stati_doc_offerte) che il service nomina: la bozza dell'eliminazione e
-# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione ne' l'annullo, che
-# li dice il vocabolario (`stato_di_emissione`, `stato_di_accettazione`; lo
-# stato d'annullo lo sceglie `vendite.fn_annulla_offerta`), e non gli stati di
-# partenza dei passaggi.
-# ⚠️ `ACCETTATA` resta come PAROLA dell'API: il valore di `esito` che la rotta
-#    dell'esito accetta (`_ESITI`, il ChoiceField della view). Lo stato che
-#    l'accettazione scrive lo legge `registra_accettazione` dal vocabolario
-#    (brief-modello-documento-vendita §17.6 BE-T2).
+# i due esiti del cliente. ⛔ Non l'emissione, l'accettazione, il rifiuto ne'
+# l'annullo, che li dice il vocabolario (`stato_di_emissione`,
+# `stato_di_accettazione`, `stato_di_rifiuto`; lo stato d'annullo lo sceglie
+# `vendite.fn_annulla_offerta`), e non gli stati di partenza dei passaggi.
+# ⚠️ `ACCETTATA` e `RIFIUTATA` restano come PAROLE dell'API: i valori di
+#    `esito` che la rotta dell'esito accetta (`ESITI`, che legge anche il
+#    ChoiceField della view). Lo stato che l'esito scrive lo leggono `registra_accettazione` e
+#    `registra_rifiuto` dal vocabolario (brief-modello-documento-vendita §17.6
+#    BE-T2; brief-db-stati-documento-dal-vocabolario §6.7).
 class StatoOfferta:
     BOZZA = "BOZZA"
     ACCETTATA = "ACCETTATA"
@@ -154,9 +162,17 @@ class StatoOfferta:
 # chiamava `_ESITI_AMMESSI_DA_EMESSA` e insieme a `_STATI_DA_EMESSA`,
 # `_STATI_PUSHABILI` e `_STATI_TERMINALI` ripeteva la matrice e i guard delle
 # madri (revisione, push): ritirati (§13.6 punto 4).
-_ESITI: frozenset[str] = frozenset(
-    {StatoOfferta.ACCETTATA, StatoOfferta.RIFIUTATA}
-)
+# ⭐ Ogni parola nomina il ruolo del modello che lo stato scritto ha nel
+#    vocabolario (colonne `accettazione` e `rifiuto`): la stessa mappa la legge
+#    il permesso della rotta (`PassaggioDocumento(stato_del_campo=...)`), cosi'
+#    la riga della matrice che si guarda e' quella dello stato che il verbo
+#    scrive, non quella della parola (brief-db-stati-documento-dal-vocabolario
+#    §6.9).
+RUOLO_DEGLI_ESITI: Mapping[str, Literal["accettazione", "rifiuto"]] = MappingProxyType({
+    StatoOfferta.ACCETTATA: "accettazione",
+    StatoOfferta.RIFIUTATA: "rifiuto",
+})
+ESITI: frozenset[str] = frozenset(RUOLO_DEGLI_ESITI)
 
 
 # Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
@@ -348,6 +364,9 @@ CREATE_KEYS_ECCEZIONE: frozenset[str] = frozenset({
     # Flag opt-in workflow L3 (richiesta approvazione su violazione L2). Non e'
     # colonna DB: estratto pre-INSERT dal service (mirror contratti).
     "richiesta_approvazione",
+    # La provenienza del prezzo dichiarata dal form (D-5): non e' colonna, la
+    # legge e la toglie il BB del gate (`provenienza_dichiarata`).
+    CHIAVE_PROVENIENZA_DICHIARATA,
 })
 
 
@@ -846,7 +865,9 @@ class OfferteService:
 
     # Scopo: EMESSA -> RIFIUTATA (esito cliente negativo). Il trigger DB
     #        valorizza `data_rifiuto`; la motivazione la scrive il verbo in
-    #        `motivazione_rifiuto`.
+    #        `motivazione_rifiuto`. Lo stato di arrivo dal vocabolario (colonna
+    #        `rifiuto`, brief-db-stati-documento-dal-vocabolario §6.7), non
+    #        `StatoOfferta.RIFIUTATA`.
     #        ⭐ Che la motivazione sia obbligatoria lo dice la riga del passaggio
     #        (`requires_motivazione`), al verbo:
     #        E_OFFERTA_MOTIVAZIONE_OBBLIGATORIA, al client col campo
@@ -855,8 +876,11 @@ class OfferteService:
     def registra_rifiuto(
         self, offerta_id: int, *, motivazione: Any
     ) -> dict[str, Any]:
+        stato = stato_di_rifiuto(
+            TESTATA_OFFERTE, function_name="offerte_service.registra_rifiuto",
+        )
         return self._cambia_stato(
-            offerta_id, stato_codice=StatoOfferta.RIFIUTATA,
+            offerta_id, stato_codice=stato.codice,
             motivazione=self._motivazione(motivazione),
         )
 
@@ -872,10 +896,10 @@ class OfferteService:
         self, offerta_id: int, *, esito: str, motivazione: Any = None
     ) -> dict[str, Any]:
         ErrorManager.require(
-            esito in _ESITI,
+            esito in ESITI,
             code=E_VENDITE_VALIDATION,
             message="Esito non valido.",
-            detail=f"Atteso uno tra {sorted(_ESITI)}, ricevuto {esito!r}.",
+            detail=f"Atteso uno tra {sorted(ESITI)}, ricevuto {esito!r}.",
             context={"offerta_id": offerta_id, "esito": esito, "field": "esito"},
         )
         if esito == StatoOfferta.ACCETTATA:
@@ -1112,6 +1136,10 @@ class OfferteService:
         # Flag opt-in workflow L3. Estratto qui per non finire nel payload INSERT.
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
         payload.pop("richiesta_approvazione", None)
+        dichiarata = provenienza_dichiarata(
+            payload, error_code=E_VENDITE_VALIDATION,
+            function_name="offerte_service.crea_eccezione",
+        )
 
         # Estrae overrides BoM prima di passare il payload al repo (la colonna
         # non esiste su `offerte_commerciali_eccezioni`); normalizza valori.
@@ -1183,6 +1211,7 @@ class OfferteService:
                         payload=payload,
                         auth_user_id=auth_user_id,
                         richiesta_approvazione=richiesta_approvazione,
+                        dichiarata=dichiarata,
                         riga_id_for_link=None,  # eccezione_id non noto qui
                     )
                 eccezione_id = self._repo.create_eccezione(offerta_id, payload)
@@ -1243,6 +1272,10 @@ class OfferteService:
         # campo di update di per se').
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
         payload.pop("richiesta_approvazione", None)
+        dichiarata = provenienza_dichiarata(
+            payload, error_code=E_VENDITE_VALIDATION,
+            function_name="offerte_service.aggiorna_eccezione",
+        )
         self._v.require_campi_da_aggiornare(
             payload, context={"op": "aggiorna_eccezione"}, log_to_db=False,
         )
@@ -1261,6 +1294,9 @@ class OfferteService:
         # nessun gate (i componenti hanno il proprio workflow). `articolo_id` e
         # `tipo_eccezione` sono immutabili → letti dalla riga esistente.
         tipo_existing = existing.get("tipo_eccezione")
+        # Un prezzo che non cambia non ripassa dal gate (BB `prezzo_invariato`).
+        if prezzo_invariato(payload, existing):
+            payload.pop("prezzo_unitario")
         # Fix analisi-fix-transazioni #9 (Classe B): il gate L3 (crea + linka
         # inline la pratica di approvazione) vive DENTRO transaction.atomic()
         # insieme all'UPDATE eccezione. Prima era invocato PRIMA dell'atomic →
@@ -1280,6 +1316,7 @@ class OfferteService:
                         payload=payload,
                         auth_user_id=auth_user_id,
                         richiesta_approvazione=richiesta_approvazione,
+                        dichiarata=dichiarata,
                         riga_id_for_link=eccezione_id,  # noto: link inline
                         # Preserva il meta persistito (audit/altre chiavi): senza,
                         # l'UPDATE prezzo lo sovrascriverebbe col solo audit nuovo.
@@ -1308,10 +1345,11 @@ class OfferteService:
         richiesta_approvazione: bool,
         riga_id_for_link: int | None,
         fallback_meta: dict[str, Any] | None = None,
+        dichiarata: ProvenienzaDichiarata | None = None,
     ) -> tuple[int | None, dict[str, Any]]:
         testata_gate = self._repo.get_offerta(offerta_id)
         assert testata_gate is not None
-        prezzo_finale, prezzo_meta = resolve_or_check_override_prezzo_riga_offerta(
+        esito_prezzo = resolve_or_check_override_prezzo_riga_offerta(
             testata=testata_gate,
             articolo_id=articolo_id,
             uom_id=uom_id,
@@ -1319,33 +1357,20 @@ class OfferteService:
             auth_user_id=auth_user_id,
             function_name="offerte_service._apply_pricing_gate_eccezione",
             richiesta_approvazione=richiesta_approvazione,
+            dichiarata=dichiarata,
         )
-        if prezzo_finale is not None:
-            payload["prezzo_unitario"] = prezzo_finale
-        if prezzo_meta:
-            # Merge audit pricing sul meta corrente. Priorita': payload.meta >
-            # `fallback_meta` (meta della riga esistente, case update) > {}.
-            # Senza fallback, un UPDATE che tocca il prezzo (payload senza meta)
-            # sovrascriverebbe il meta persistito perdendo le chiavi precedenti.
-            base_meta = payload.get("meta") or fallback_meta or {}
-            # Coerce JSONB→dict difensivo (mirror contratti): il meta puo'
-            # arrivare come stringa JSON da certi path repo.
-            if isinstance(base_meta, str):
-                try:
-                    parsed = json.loads(base_meta)
-                    base_meta = parsed if isinstance(parsed, dict) else {}
-                except (json.JSONDecodeError, ValueError):
-                    base_meta = {}
-            merged_meta = dict(base_meta)
-            merged_meta.update(prezzo_meta)
-            payload["meta"] = merged_meta
+        # Prezzo, provenienza e audit sul payload (BB del gate): l'audit si
+        # fonde sul `meta` del payload o, in update, su quello della riga
+        # (`fallback_meta`), che altrimenti l'audit nuovo cancellerebbe.
+        esito_prezzo.applica(payload, meta_base=fallback_meta)
         pratica_id_l3: int | None = None
-        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+        if esito_prezzo.richiesta_approvazione_pending:
+            assert esito_prezzo.meta is not None
             pratica_id_l3 = _orchestrate_l3_request_offerta(
                 offerta_id=offerta_id,
                 articolo_id=articolo_id,
-                prezzo_finale=prezzo_finale,
-                prezzo_meta=prezzo_meta,
+                prezzo_finale=esito_prezzo.prezzo,
+                prezzo_meta=dict(esito_prezzo.meta),
                 auth_user_id=auth_user_id,
                 riga_id_for_link=riga_id_for_link,
             )
@@ -1849,9 +1874,19 @@ def resolve_or_check_override_prezzo_riga_offerta(
     auth_user_id: int | None,
     function_name: str,
     richiesta_approvazione: bool = False,
-) -> tuple[Any, dict[str, Any] | None]:
+    dichiarata: ProvenienzaDichiarata | None = None,
+) -> EsitoPrezzoRiga:
+    # Senza listino non c'e' gate: il prezzo e' del payload e la provenienza la
+    # decide il DB (MANUALE). ⛔ Una dichiarazione «dal listino» qui non si puo'
+    # verificare: 409, come il gate senza contesto (R-2 della revisione del
+    # 2026-11-15; prima diventava MANUALE in silenzio).
     if testata.get("listino_id") is None:
-        return payload_prezzo, None
+        if dichiarata is not None and payload_prezzo is not None:
+            rifiuta_provenienza_dichiarata(
+                dichiarata, dettaglio="Il documento non ha un listino da cui il prezzo possa venire.",
+                function_name=function_name,
+            )
+        return EsitoPrezzoRiga(prezzo=payload_prezzo)
 
     testata_normalized = (
         testata if testata.get("data") is not None
@@ -1867,6 +1902,7 @@ def resolve_or_check_override_prezzo_riga_offerta(
         resolver_fn=offerta_suggerisci_prezzo_riga,
         error_code_validazione=E_VENDITE_VALIDATION,
         richiesta_approvazione=richiesta_approvazione,
+        dichiarata=dichiarata,
     )
 
 

@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL VERDETTO SUI VOCABOLARI DI BOLLA E RESO
+#   Brief: brief-db-stati-documento-dal-vocabolario, giro 3 (⑦).
+#
+#   Con il 20261113-42 config.stati_doc_ddt e config.stati_doc_reso hanno la
+#   colonna esito. config.trgfn_stati_doc_guard_esito_verdetto, montato sugli
+#   altri vocabolari dei documenti di vendita, ammette solo un esito con
+#   is_verdetto (o NULL), con la frase parlante prima della FK. Stesso
+#   montaggio, stessa fase.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261113-44-create-trg-stati-doc-ddt-reso-guard-esito-verdetto-mctit.yaml
+
+  - changeSet:
+      id: 20261113-44-create-trg-stati-doc-ddt-reso-guard-esito-verdetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta config.trgfn_stati_doc_guard_esito_verdetto su config.stati_doc_ddt e
+        config.stati_doc_reso, come sugli altri vocabolari. Brief:
+        brief-db-stati-documento-dal-vocabolario, giro 3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_stati_doc_ddt_a10_guard_esito_verdetto_ins_upd
+                  BEFORE INSERT OR UPDATE OF esito ON config.stati_doc_ddt
+                  FOR EACH ROW EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+              CREATE TRIGGER trg_stati_doc_reso_a10_guard_esito_verdetto_ins_upd
+                  BEFORE INSERT OR UPDATE OF esito ON config.stati_doc_reso
+                  FOR EACH ROW EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stati_doc_ddt_a10_guard_esito_verdetto_ins_upd ON config.stati_doc_ddt;
+              DROP TRIGGER IF EXISTS trg_stati_doc_reso_a10_guard_esito_verdetto_ins_upd ON config.stati_doc_reso;

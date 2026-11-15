@@ -15,10 +15,12 @@
 • [vendite.fn_get_or_create_lotto](/dbzero/vendite/funzioni/fn_get_or_create_lotto)   
 >
 ### 🎯 Scopo Principale
-(latest review 27-01-2026)
+(latest review 12-11-2026)
 La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di
-fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e
-inizializza lo stato documento a **DRAFT**.
+fatturazione con parametri coerenti (competenza, utility, tipo documento, BA).
+Lo stato non lo sceglie: il lotto nasce nello stato iniziale del vocabolario
+[`config.stati_doc_fiscale`](/dbzero/config/manual/stati_doc_fiscale), che mette
+il trigger della nascita.
 
 ---
 
@@ -28,7 +30,11 @@ inizializza lo stato documento a **DRAFT**.
 * `utility_id` e` obbligatoria: se `billing_account_id` e` presente viene ricavata da BA.
 * `tipo_doc_fiscale_id` e` **obbligatorio** e deve essere attivo.
 * Deve esistere il mapping `tipo_doc_fiscale → registro` in `vendite.tipi_doc_fiscale_registri`.
-* `stato_doc_fiscale_id` viene impostato su **DRAFT** (solo se applicabile al lotto).
+* `stato_doc_fiscale_id` non è nell'`INSERT`: lo mette il trigger
+  `trg_fatturazione_lotti_a05_stato_iniziale_ins`
+  ([`script.trgfn_doc_stato_iniziale`](/dbzero/script/funzioni/trgfn_doc_stato_iniziale)),
+  leggendo la colonna `iniziale` del vocabolario. Che lo stato iniziale si applichi
+  al lotto lo garantisce un vincolo del vocabolario, non questa funzione.
 * `lock_batch_id` viene generato se non fornito.
 
 ---

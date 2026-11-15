@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_crea_revisione_preventivo(...)`
 
+> **Ultimo aggiornamento**: 14 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 [vendite.preventivi](/dbzero/vendite/tabelle/preventivi)
@@ -30,15 +32,17 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
 
 ### Regole principali
 
-* **Stato ammesso**: solo preventivi in stato `EMESSO` (era `EMESSO` o `ACCETTATO`
-  prima del 03-05-2026).
-* **No DRAFT esistente**: non deve esistere gia' una revisione in DRAFT per lo stesso numero.
-* **Guard stato DRAFT**: se lo stato DRAFT non e' configurato/attivo in `config.stati_doc_preventivi`,
-  errore esplicito `E_CONFIG_MANCANTE` (non fallisce con FK generico).
-* La nuova revisione ha `rev = max(rev) + 1`, stato DRAFT.
+* **Stato ammesso**: lo stato di emissione o quello di scadenza, che il vocabolario
+  `config.stati_doc_preventivi` dichiara (colonne `emissione` e `scadenza`); gli altri stati
+  restano esclusi.
+* **Nessuna bozza esistente**: non deve esistere gia' una revisione dello stesso numero nello
+  **stato iniziale** del vocabolario (colonna `iniziale`), che e' quello in cui la revisione
+  nuova nasce.
+* La nuova revisione ha `rev = max(rev) + 1`; lo stato iniziale glielo mette
+  `script.trgfn_doc_stato_iniziale`, letto dal vocabolario.
 * **Attivazione derivata**: non viene piu' aggiornato alcun flag sul predecessore.
   `is_attiva` e' calcolata dinamicamente in `vendite.vw_preventivi` — la nuova rev
-  DRAFT (non-abortita) rende automaticamente non-attiva la rev precedente.
+  in bozza (non abortita) rende automaticamente non-attiva la rev precedente.
 * **Righe copiate**: solo attive con `quantita > 0`, `ORDER BY ordine, id`, una
   alla volta col suo `RETURNING` (dal 2026-10-08: è l'id restituito che lega i
   componenti, non l'ordinamento).
@@ -168,10 +172,9 @@ ritirati con `obsoleto_dal` — fino al 14-09-2026 questa tabella li citava anco
 
 | Codice | Quando |
 | --- | --- |
-| `E_PREV_REVISIONE_STATO_NON_AMMESSO` | Stato corrente diverso da `EMESSO` (rev 03-05-2026: `ACCETTATO` non piu' ammesso) |
-| `E_PREV_REVISIONE_BOZZA_ESISTENTE` | Esiste gia' una revisione DRAFT per lo stesso numero |
+| `E_PREV_REVISIONE_STATO_NON_AMMESSO` | Lo stato corrente non e' ne' lo stato di emissione ne' quello di scadenza |
+| `E_PREV_REVISIONE_BOZZA_ESISTENTE` | Esiste gia' una revisione dello stesso numero nello stato iniziale |
 | `E_PREV_STATO_CORRENTE_NON_TROVATO` | Preventivo non trovato |
-| `E_CONFIG_MANCANTE` | Stato DRAFT non configurato/attivo in config.stati_doc_preventivi |
 | `E_PARAMETRO_INVALIDO` | p_preventivo_id NULL o <= 0 |
 
 ---

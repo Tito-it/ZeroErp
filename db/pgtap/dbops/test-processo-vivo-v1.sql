@@ -57,24 +57,12 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(26);
 
--- Il CODICE dell'errore viaggia nel canale CONSTRAINT_NAME dell'eccezione
--- P0001 (fn_log_and_raise_error); per un CHECK e' il nome del vincolo.
-CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
-LANGUAGE plpgsql AS $$
-DECLARE v_c text;
-BEGIN
-    EXECUTE p_sql;
-    RETURN NULL;
-EXCEPTION WHEN SQLSTATE 'P0001' OR SQLSTATE '23514' THEN
-    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
-    RETURN v_c;
-END $$;
 
 -- ============================================================
 -- Il catalogo
 -- ============================================================
 SELECT is(
-    pg_temp.codice_errore($$
+    dbops.fn_pgtap_codice_errore($$
         INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, attivo,
                                     acceso_in_sviluppo, acceso_in_produzione, spegnibile,
                                     causa_fallimento, accendibile_in_produzione)
@@ -84,7 +72,7 @@ SELECT is(
     '1. attivo = false senza la data del ritiro e'' rifiutato');
 
 SELECT is(
-    pg_temp.codice_errore($$
+    dbops.fn_pgtap_codice_errore($$
         INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, obsoleto_dal,
                                     causa_fallimento)
         VALUES (9700, 'PGTAP-VIVO-SENZA-ACC', 'ritirato senza accensione', 'MANUTENZIONE', 'COMMAND',
@@ -118,19 +106,19 @@ VALUES (9701, 'PGTAP-VIVO-PROGRAMMATO', 'ritiro programmato', 'DOMINIO', 'COMMAN
 SELECT is(maintenance.fn_sveglia_accesa('PGTAP-VIVO-PROGRAMMATO'), true,
     '4. ritiro programmato: la sveglia risponde fino al suo giorno');
 
-SELECT is(pg_temp.codice_errore($$SELECT maintenance.fn_sveglia_accesa('PGTAP-VIVO-RAGGIUNTO')$$),
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT maintenance.fn_sveglia_accesa('PGTAP-VIVO-RAGGIUNTO')$$),
     'E_PROCESSO_SENZA_SVEGLIA',
     '5. ritiro raggiunto oggi: senza sveglia');
 
 SELECT is(maintenance.fn_sveglia_accesa('PGTAP-VIVO-SPENTO'), true,
     '6. attivo = false con ritiro programmato: vivo, la data e'' l''unica sede del ritiro');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo(
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo(
               'PGTAP-VIVO-PROGRAMMATO', true, 'pgTAP: ritiro programmato')$$),
     NULL,
     '7. ritiro programmato: la scelta a mano e'' ammessa');
 
-SELECT is(pg_temp.codice_errore($$SELECT dbops.fn_imposta_accensione_processo(
+SELECT is(dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_imposta_accensione_processo(
               'PGTAP-VIVO-RAGGIUNTO', true, 'pgTAP: ritiro raggiunto')$$),
     'E_PROCESSO_SENZA_SVEGLIA',
     '8. ritiro raggiunto: niente scelta a mano');

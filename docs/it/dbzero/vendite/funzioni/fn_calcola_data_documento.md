@@ -102,11 +102,10 @@ BEGIN
                 'p_competenza_mese (obbligatorio con politica FINE_MESE_COMPETENZA)');
         END IF;
 
-        -- ℹ️ date_trunc anche se la competenza e' il primo del
+        -- ℹ️ Si tronca al mese anche se la competenza e' il primo del
         --    mese per abitudine: la funzione non deve dipendere
         --    da un'abitudine che nessun vincolo impone.
-        v_data := (date_trunc('month', p_competenza_mese)
-                   + interval '1 month - 1 day')::date;
+        v_data := script.fn_fine_mese_di(p_competenza_mese);
 
     ELSIF v_politica = 'OGGI' THEN
         v_data := script.fn_data_operativa();

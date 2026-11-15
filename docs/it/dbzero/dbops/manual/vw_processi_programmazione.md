@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_programmazione`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -184,6 +184,11 @@ e a chi mandarlo ([dbops.presidi_cause](/dbzero/dbops/tabelle/presidi_cause)).
 costruzione. Il presidio [vw_processi_programmazione_da_guardare](/dbzero/dbops/views/vw_processi_programmazione_da_guardare)
 la **proietta** invece di ripetere un elenco di stati sani; chi aggiunge uno stato passa di qui e
 deve decidere, senza un comportamento predefinito in cui cadere per distrazione.
+
+⛔ **Stato e causa restano scritti nella definizione della vista**, come coppia letterale; uno
+stato sano è la coppia con la causa vuota. Il pgTAP delle cause le censisce leggendo la
+definizione: una regola spostata in una funzione uscirebbe dal censimento, e i test resterebbero
+verdi per sottrazione.
 
 ---
 

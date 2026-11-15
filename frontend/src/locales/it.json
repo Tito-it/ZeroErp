@@ -395,6 +395,7 @@
         "assets_ownership": "Assets Ownership",
         "canali_pratiche": "Canali Pratiche",
         "categoria_accisa": "Categoria Accisa",
+        "causali_onere": "Causali Onere",
         "causali_trasporto": "Causali Trasporto",
         "classi_utenze": "Classi Utenze",
         "conti_contabili": "Conti Contabili",
@@ -582,6 +583,7 @@
       "righe_table": "Tabella delle righe",
       "ripartizione": "Ripartizione",
       "ripetibilita": "Ripetibilità",
+      "rifiuto": "Stato di rifiuto",
       "scadenza": "Stato di scadenza",
       "schema_db": "Schema DB",
       "schema_tabella": "Schema tabella",
@@ -1975,7 +1977,7 @@
     "disattiva_articolo": "Disattiva",
     "riattiva_articolo": "Riattiva",
     "disattiva_dialog_titolo": "Disattivare articolo",
-    "disattiva_dialog_messaggio": "L'articolo {codice} verra' disattivato. Eventuali UoM operative, righe BoM e listini collegati restano invariati. Confermi?",
+    "disattiva_dialog_messaggio": "L'articolo {codice} verra' disattivato. Se e' ancora usato (in una distinta, in un documento, in un listino) non si disattiva: si ritira con la data «Ritirato dal». Confermi?",
     "riattiva_dialog_titolo": "Riattivare articolo",
     "riattiva_dialog_messaggio": "L'articolo {codice} verra' riattivato. Le entita' figlie (UoM operative, righe BoM) restano nello stato corrente: vanno riattivate separatamente se necessario. Confermi?",
     "correggi_struttura": "Correggi struttura",
@@ -2037,6 +2039,9 @@
     "field_gestito_a_magazzino": "Gestito a magazzino",
     "hint_gestito_a_magazzino": "Movimenta giacenza. Non dipende dalla natura: una merce può essere venduta senza passare da magazzino",
     "field_lead_time_giorni": "Lead time (giorni)",
+    "field_obsoleto_dal": "Ritirato dal",
+    "hint_obsoleto_dal": "Da questa data l'articolo non si sceglie più per una riga nuova; i documenti già fatti non cambiano. Una data futura programma il ritiro, cancellarla lo toglie",
+    "tag_ritirato": "Ritirato",
     "field_spesa": "Tipo Spesa",
     "field_iva": "IVA",
     "field_composito": "Composito",
@@ -2045,6 +2050,9 @@
     "field_requires_lotto": "Richiede lotto",
     "hint_requires_lotto": "L'articolo si movimenta per partite: ogni movimento nomina un lotto",
     "hint_onere_struttura": "E' un onere: un addebito, non un bene. Niente magazzino, composito, lotti o matricola",
+    "field_causale_onere": "Causale onere",
+    "select_causale_onere": "Nessuna: è un bene",
+    "hint_causale_onere": "Solo per un addebito (trasporto, trasferta…): ogni causale va a un articolo solo, e un onere non ha natura da merce",
     "hint_composito_solo_componente": "Composito e solo componente si escludono: per accendere questo, spegnere l'altro",
     "field_desc_fattura": "Descrizione Fattura",
     "field_fattore": "Fattore",
@@ -2110,7 +2118,10 @@
     "nuova_versione_componente": "Nuova versione componente",
     "nuova_versione_hint": "Sorgente '{codice}' chiusa al {data}. I campi sono pre-compilati dalla riga chiusa: modificali se serve, poi salva per inserire la nuova versione.",
     "bom_immutabile_hint": "I campi struttura della BoM (componente, coefficiente, modo in fattura, ecc.) non sono modificabili. Per correggerli, chiudi la riga e inseriscine una nuova.",
-    "motivo_uom_base_non_eliminabile": "L'UoM base non puo' essere eliminata",
+    "motivo_uom_base_non_eliminabile": "L'unità base vale sempre: non si elimina e non si spegne",
+    "motivo_uom_base": "L'unità base vale sempre: non ha una data di fine",
+    "motivo_uom_storia_in_vigore": "È già in vigore: non si spegne e non si elimina, si chiude impostando la data di fine",
+    "motivo_uom_storia_chiusa": "È già finita: la data di fine non si cambia più. Per riprenderla, inserirne una nuova",
     "motivo_articolo_solo_componente": "Articolo marcato come solo componente: non puo' avere distinta base",
     "motivo_articolo_non_composito": "Articolo non composito: non puo' avere distinta base",
     "nota_testo_placeholder": "Testo della nota...",
@@ -2155,6 +2166,17 @@
         "prezzi_altre_aziende": "Ha prezzi bundle in listini di altre aziende, che non puoi vedere: il legame non si chiude finché quei prezzi restano aperti.",
         "prezzi_dopo_la_fine": "Ha prezzi bundle in listini già attivi che cominciano dopo questa data: il legame si chiude al più presto dal loro inizio."
       }
+    },
+    "chiusura_prezzi": {
+      "prezzi": "Prezzi bundle che la chiusura tocca",
+      "riga": "Listino {listino}, versione {versione} ({stato}) · dal {dal} al {al} · {prezzo}, sul kit {kit}",
+      "senza_fine": "senza fine",
+      "esito_chiude": "si chiude alla stessa data",
+      "esito_toglie": "si toglie (bozza)",
+      "esito_blocca": "impedisce la chiusura",
+      "fuori_perimetro": "{n} prezzi in listini che non puoi vedere",
+      "nessun_prezzo": "Nel frattempo i prezzi bundle di questo componente non ci sono più: il legame si chiude senza toccare listini.",
+      "spiegazione": "Un prezzo bundle vale solo finché il componente è nel kit: confermando, i prezzi elencati finiscono insieme al legame, e da quella data il prezzo del kit in quei listini non comprende più il componente."
     }
   },
   "billing_account": {
@@ -2580,7 +2602,7 @@
       "preview_hint": "Le righe sono lette dal listino. Aggiungi un override per personalizzare il prezzo di un articolo.",
       "preview_listino_senza_versione": "Il listino {codice} non ha una versione operativa oggi: nessun prezzo da mostrare. Attivare una versione del listino per calcolare il pricing.",
       "banner_locked_attivo": "Contratto in stato {stato}: per modifiche utilizzare il pulsante Cessa o creare un nuovo contratto.",
-      "banner_locked_cessato": "Contratto CESSATO: stato terminale, nessuna modifica ammessa.",
+      "banner_locked_cessato": "Contratto in stato {stato}: stato terminale, nessuna modifica ammessa.",
       "field_data_cessazione": "Data cessazione",
       "field_cessazione_programmata": "Cessazione programmata al",
       "cessa_dialog_titolo_immediata": "Cessa contratto",
@@ -2919,6 +2941,10 @@
       "filtro_utility": "Utility",
       "gestisci_note": "Gestisci note",
       "genera_reso": "Genera reso",
+      "genera_reso_reason": {
+        "trasferimento": "La bolla {0} è un trasferimento fra depositi: la merce è rimasta nostra, non c'è un cliente da cui farla rendere.",
+        "non_consegnato": "Il reso nasce solo da una bolla consegnata al cliente."
+      },
       "note_titolo": "Note DDT",
       "field_destinatario": "Destinatario",
       "field_destinatario_placeholder": "Cerca destinatario (terzista, deposito)...",
@@ -3418,6 +3444,7 @@
       "clona_versione": "Clona versione",
       "versione_sorgente": "Versione sorgente",
       "versione_clonata": "Versione clonata in BOZZA",
+      "clona_righe_saltate": "{count} prezzo/i non copiato/i: l'articolo è ritirato e non entra in una versione nuova.",
       "clona_componenti_saltati": "{count} componente/i dei compositi non copiato/i: la distinta non li prevede nel periodo della nuova versione.",
       "clona_help": "La nuova versione viene creata in stato BOZZA con le righe attive copiate dalla sorgente. Puoi modificarla liberamente prima dell'attivazione.",
       "warning_retroattivo": "Attenzione: stai creando una versione con decorrenza retroattiva. Le fatturazioni gia' emesse nel periodo non verranno modificate automaticamente. Per correggerle e' necessaria una rettifica dedicata.",
@@ -3436,7 +3463,10 @@
         "versione_citata": "La versione è usata da altri documenti: toglierla da quei documenti prima di eliminarla.",
         "versione_non_attiva": "Si chiude solo una versione attiva: di una bozza si modificano le date, una chiusa non cambia più.",
         "fine_nel_passato": "La fine non può essere prima di oggi: scegliere oggi o una data futura.",
-        "clone_prima_della_sorgente": "La nuova versione non può cominciare prima della versione da cui si copia."
+        "clone_prima_della_sorgente": "La nuova versione non può cominciare prima della versione da cui si copia.",
+        "uom_non_convertibile": "Un prezzo è in un'unità che, in un giorno del periodo, non si converte per l'articolo: aggiungere la conversione, o rifare quel prezzo in un'altra unità, prima di attivarla.",
+        "versione_chiusa": "La versione è chiusa: non si aggiungono, non si modificano e non si eliminano prezzi.",
+        "riga_propagata": "Il prezzo è già stato usato da un documento: per cambiarlo si fa una nuova versione del listino."
       },
       "elimina_versione": "Elimina versione",
       "versione_eliminata": "Versione eliminata",
@@ -3901,8 +3931,7 @@
       "stato_info": {
         "evaso": "L'ordine è evaso: lo stato si ricalcola dai DDT, non si imposta a mano.",
         "parzialmente_evaso": "Evasione in corso: lo stato si ricalcola a ogni DDT.",
-        "annullato": "L'ordine è annullato: lo stato è definitivo.",
-        "fatturato": "L'ordine è fatturato: il seguito si gestisce sulla fattura."
+        "annullato": "L'ordine è annullato: lo stato è definitivo."
       },
       "azione_push_commessa": "Invia a commessa",
       "conferma_cambio_stato": "Portare l'ordine nello stato {stato}?",
@@ -3928,6 +3957,9 @@
         "stato_non_ammette": "In questo stato la data di consegna non si cambia più.",
         "riga_spedita": "La merce di questa riga è già partita con un DDT: la data di consegna confermata resta quella con cui è partita.",
         "riga_onere": "La riga è un onere: un onere non si spedisce e non porta date di consegna."
+      },
+      "genera_ddt_reason": {
+        "stato_non_evadibile": "La bolla si genera da un ordine confermato o evaso in parte: in questo stato l'ordine non si evade."
       },
       "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
       "data_consegna_confermata_titolo": "Data di consegna confermata",
@@ -6013,7 +6045,8 @@
       "email": "Email",
       "articolo_componente": "Componente di distinta",
       "asset": "Asset",
-      "movimento": "Movimento di magazzino"
+      "movimento": "Movimento di magazzino",
+      "ricevuta": "Ricevuta"
     },
     "registri_giornale": {
       "event_log": "Eventi di dominio",
@@ -6245,6 +6278,24 @@
       "context_fornitore": "Fornitore",
       "replace_non_trovato": "Indirizzo non presente. Per crearne uno nuovo usa \"Indirizzo non presente, crea nuovo\"."
     },
+    "indirizzi": {
+      "tipo_blocco": {
+        "gia_presente": "C'è già un indirizzo «{0}»: si modifica quello, oppure si sceglie un altro tipo.",
+        "non_ammesso_dalla_natura": "Il tipo soggetto {0} non prevede l'indirizzo «{1}».",
+        "non_ammesso_dal_ruolo": "Il ruolo {0} non prevede l'indirizzo «{1}»."
+      },
+      "copia_blocco": {
+        "nessun_tipo_proponibile": "Non c'è un altro tipo di indirizzo in cui copiarlo: i tipi ammessi ci sono già tutti."
+      },
+      "copia": {
+        "azione": "Copia come…",
+        "titolo": "Copia l'indirizzo",
+        "titolo_da": "Copia l'indirizzo «{tipo}»",
+        "spiegazione": "Scegli i tipi di indirizzo da aggiungere con questo stesso indirizzo. I tipi spenti non si possono aggiungere: accanto c'è il perché.",
+        "conferma": "Copia",
+        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi"
+      }
+    },
     "soggetti": {
       "search_placeholder": "Cerca per nome, CF, P.IVA...",
       "filtro_tipo": "Tipo soggetto",
@@ -6267,7 +6318,28 @@
       "aggiungi_ruolo": "Aggiungi ruolo",
       "select_ruolo": "Seleziona ruolo...",
       "genera_cf": "Genera codice fiscale dai dati anagrafici",
-      "soggetto": "Soggetto"
+      "soggetto": "Soggetto",
+      "cambio_natura_blocco": {
+        "altra_macro_tipologia": "La natura scelta è di un'altra famiglia: una persona fisica non diventa una società, e viceversa. Si sceglie una natura della stessa famiglia, oppure si crea un soggetto nuovo.",
+        "con_documenti": "Il soggetto compare già in un documento, e questo cambio gli toglierebbe o gli darebbe la partita IVA: i documenti registrati portano l'identità fiscale che ha oggi. Il cambio non si può fare.",
+        "piva_non_applicabile": "La natura scelta non ha partita IVA, e il soggetto ne ha una scritta: va svuotata prima del cambio (lo può fare solo un amministratore).",
+        "cliente_pa": "La natura scelta non può essere una Pubblica Amministrazione: «Cliente PA» va riportato a No.",
+        "split_payment": "La natura scelta non ammette la scissione dei pagamenti: «Split payment» va riportato a No.",
+        "titoli_iva": "La natura scelta non ammette {titoli} titoli IVA ancora in vigore: vanno chiusi prima del cambio (data di fine validità).",
+        "titoli_iva_altri_emittenti": "La natura scelta non ammette {titoli} titoli IVA in vigore presentati ad altre aziende, che da qui non si vedono: deve chiuderli un amministratore, o l'azienda che li ha ricevuti.",
+        "dati_societari": "La natura scelta non ha dati societari: vanno eliminati prima del cambio.",
+        "indirizzi": "La natura scelta non ammette {indirizzi} indirizzi del soggetto: vanno eliminati prima del cambio.",
+        "senza_natura_con_titoli_iva": "Il soggetto ha titoli IVA in vigore, e senza una natura non li può avere: si sceglie la natura, oppure si chiudono prima i titoli."
+      },
+      "dati_societari_elimina_blocco": {
+        "natura_li_richiede": "La natura del soggetto richiede i dati societari: per eliminarli si cambia prima la natura in una che non li prevede."
+      },
+      "cambio_natura_motivi_titolo": "Il cambio di natura non si può fare finché restano questi motivi:",
+      "cambio_natura_motivi_non_verificati": "Non è stato possibile verificare se il cambio di natura si può fare: al salvataggio, se non si può, si vedrà il motivo.",
+      "elimina_dati_societari": "Elimina i dati societari",
+      "elimina_dati_societari_conferma": "Eliminare i dati societari del soggetto (forma giuridica, REA, capitale, fatturazione elettronica)? Restano nello storico, ma il soggetto non li avrà più.",
+      "dati_societari_eliminati": "Dati societari eliminati.",
+      "dati_societari_non_previsti": "La natura scelta non prevede i dati societari: vanno eliminati prima del cambio."
     },
     "titoli_iva": {
       "aggiungi_ambito": "Aggiungi una merce",

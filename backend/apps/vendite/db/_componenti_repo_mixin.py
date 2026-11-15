@@ -28,6 +28,7 @@ from django.db import connection
 
 from apps.core.db._helpers import row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import execute_dynamic_update
+from apps.vendite.db._provenienza_prezzo import sql_provenienza_esplosa
 
 # Whitelist colonne UPDATE su `*_righe_componenti`. Campi struttura immutabili
 # (`componente_id`, `articolo_componente_id`, `coeff_qta_snapshot`, FK riga)
@@ -80,10 +81,20 @@ class ComponentiRepositoryMixin:
     # (vista compatta retro-compatibile, expander tabella righe).
     # `solo_attivi=False`: include opzionali disattivati — usato dall'EDIT
     # panel per consentire riattivazione.
+    # `con_provenienza=True`: in piu' le dieci colonne della provenienza del
+    # prezzo, col prefisso `prov_` (`_provenienza_prezzo`), lette dal BB del DB
+    # `vendite.fn_provenienza_prezzo_esplosa` senza ricopiarne la regola. Lo
+    # chiede il push verso la commessa (K-4 di brief-db-provenienza-prezzo-
+    # segue-il-prezzo); le API dei componenti no, e la loro forma non cambia.
     def list_componenti_riga(
-        self, riga_id: int, *, solo_attivi: bool = True,
+        self, riga_id: int, *, solo_attivi: bool = True, con_provenienza: bool = False,
     ) -> list[dict[str, Any]]:
         filtro_attivo = "AND c.attivo = TRUE" if solo_attivi else ""
+        colonne_prov, lateral_prov = (
+            sql_provenienza_esplosa("c") if con_provenienza else ("", "")
+        )
+        if colonne_prov:
+            colonne_prov = ",\n" + colonne_prov
         sql = f"""
             SELECT
                 c.id,
@@ -110,13 +121,14 @@ class ComponentiRepositoryMixin:
                 c.ordine,
                 c.attivo,
                 ac.obbligatorio,
-                ac.esposizione_in_fattura
+                ac.esposizione_in_fattura{colonne_prov}
               FROM {self._componenti_table_name} c
               LEFT JOIN catalogo.articoli a    ON a.id  = c.componente_id
               LEFT JOIN catalogo.unita_misura um ON um.id = c.uom_operativa_id
               LEFT JOIN config.iva iva         ON iva.id = c.iva_id
               LEFT JOIN catalogo.articoli_componenti ac
                      ON ac.id = c.articolo_componente_id
+              {lateral_prov}
              WHERE c.{self._componenti_fk_riga} = %s
                {filtro_attivo}
              ORDER BY c.ordine NULLS LAST, c.id

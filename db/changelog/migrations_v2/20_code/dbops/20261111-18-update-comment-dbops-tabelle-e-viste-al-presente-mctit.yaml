@@ -26,6 +26,12 @@
 #   letti su dbdev; il rollback rimette quelli di oggi (IS NULL dove mancava).
 #   Nessuna preCondition: un COMMENT su un oggetto che non c'e' fallisce da
 #   se', e nessuno degli oggetti nasce dopo 20_code.
+#   ⛔ Corretto il 2026-11-11: il COMMENT su chk_presidi_chi_agisce_se_allarma
+#   e' uscito da qui. Il vincolo nasce in 90_end (20261006-07): su un database
+#   ricostruito da zero questo file gira prima e il COMMENT falliva («constraint
+#   ... does not exist»). Il COMMENT al presente sta in 90_end/20261111-66.
+#   validCheckSums ANY perche' dove il changeSet e' gia' girato il checksum e'
+#   quello del testo di prima.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -35,6 +41,8 @@ databaseChangeLog:
       id: 20261111-18-update-comment-dbops-tabelle-e-viste-al-presente
       author: mctit
       runOnChange: false
+      validCheckSums:
+        - ANY
       failOnError: true
       comment: >
         COMMENT al presente (linee-guida-sql §5d) di tabelle, colonne, viste, vincoli e indici di dbops. Brief: brief-db-revisione-dbops, giro 14.
@@ -230,8 +238,6 @@ databaseChangeLog:
               COMMENT ON COLUMN dbops.stati_check_dichiarazioni.canale IS
                 'Chi verifica la dichiarazione. APPLICAZIONE = il valore lo scrive un repository del backend (anche passandolo come parametro a una funzione): il test del backend pretende il letterale in un file Python non di test che nomini la tabella o uno dei suoi scrittori, e fa rosso se sparisce. ESENTE = il criterio non lo vede per la ragione scritta (cantiere aperto, tabella senza scrittori, copia da un''altra colonna): il pgTAP fa rosso se uno scrittore compare a DB (DEBITO_ESTINTO). Il CHECK e'' la sorgente da cui il pgTAP legge i canali ammessi.';
 
-              COMMENT ON CONSTRAINT chk_presidi_chi_agisce_se_allarma ON dbops.presidi IS
-                'Un presidio che puo'' accendersi non nasce senza sapere a chi tocca spegnerlo: chi_agisce e'' obbligatoria su ogni natura tranne INVENTARIO, che non si accende. Sta in 90_end perche'' il valore lo scrive il mirror del CSV in 80_data.';
 
               COMMENT ON INDEX dbops.ix_error_log_area_occurred_at IS
                 'Filtro area (esatto) della consultazione di error_log, con il tempo in coda per l''ORDER BY. Da solo o insieme a function_name (il planner sceglie il piu'' selettivo).';
@@ -559,8 +565,6 @@ databaseChangeLog:
               COMMENT ON COLUMN dbops.stati_check_dichiarazioni.canale IS
                 'Chi verifica la dichiarazione. APPLICAZIONE = il valore lo scrive un repository Python (anche passandolo come parametro a una funzione): il test del backend pretende il letterale in un .py non di test che nomini la tabella o uno dei suoi scrittori, e fa rosso se sparisce. ESENTE = il criterio non lo vede per la ragione scritta (cantiere aperto, tabella senza scrittori, copia da un''altra colonna): il pgTAP fa rosso se uno scrittore compare a DB (DEBITO_ESTINTO). ⭐ Il CHECK e'' la sorgente da cui il pgTAP legge i canali ammessi.';
 
-              COMMENT ON CONSTRAINT chk_presidi_chi_agisce_se_allarma ON dbops.presidi IS
-                'Un presidio che puo'' accendersi non nasce senza sapere a chi tocca spegnerlo: chi_agisce e'' obbligatoria su ogni natura tranne INVENTARIO, che non si accende. Nato in 90_end perche'' il valore lo scrive il mirror del CSV in 80_data. Brief: brief-db-presidi-cosa-significa-cosa-fare §4.2.';
 
               COMMENT ON INDEX dbops.ix_error_log_area_occurred_at IS
                 'Filtro `area` (esatto) della consultazione di error_log, con il tempo in coda per l''ORDER BY. Da solo o insieme a function_name (il planner sceglie il piu'' selettivo). P-3 di brief-db-osservabilita-lotto-fermo-r6-indici (2026-09-19).';

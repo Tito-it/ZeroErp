@@ -37,8 +37,8 @@ import { useTabFreshness } from '../../../core/composables/useTabFreshness'
 import { MANAGE_ICONS, TAB_ENTITIES, TIPO_RUOLO } from '../../../core/constants'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import { exportOrdini } from '../api/ordiniApi'
-import { PDF_MODE } from '../../../documenti/constants'
 import { useOrdiniStore } from '../stores/ordini'
+import { azionePdfLista, pdfArchiviato } from '../../../documenti/utils/azionePdfLista'
 
 const emit = defineEmits(['new', 'row-click'])
 const { t } = useI18n()
@@ -90,7 +90,8 @@ const noteDrawerOrdine = ref(null)
 // documenti gia' generati alla conferma. La capability `pdf_mode` arriva
 // data-driven dalla vista (`vw_ordini_lista`, colonna da config.stati_doc_ordini).
 function onPdfClick(row) {
-  if (!row?.id || row.pdf_mode !== PDF_MODE.ARCHIVE) return
+  // La voce e' spenta dove la riga non ha PDF archiviati (`azionePdfLista`).
+  if (!pdfArchiviato(row)) return
   pdfDialogOrdine.value = row
   pdfDialogVisible.value = true
 }
@@ -105,19 +106,9 @@ function onNoteClick(row) {
 // Conferma/push vivono nel drawer (dove sono caricate le capability), non in
 // lista: la lista resta consultazione + gestione documenti generati + note.
 function buildRowActions(data) {
-  const conDocumento = data.pdf_mode === PDF_MODE.ARCHIVE
   return [
-    {
-      key: 'documenti-pdf',
-      label: t('vendite.ordini.pdf.label_scarica'),
-      icon: MANAGE_ICONS.PDF,
-      severity: 'primary',
-      disabled: !conDocumento,
-      tooltip: conDocumento
-        ? t('vendite.ordini.pdf.tooltip_lista')
-        : t('vendite.ordini.pdf.tooltip_lista_disabilitato'),
-      command: () => onPdfClick(data),
-    },
+    // Il PDF della riga: da `pdf_mode` della vista, non dallo stato (D-PDF).
+    azionePdfLista(t, data, { prefisso: 'vendite.ordini', apri: onPdfClick }),
     {
       key: 'gestisci-note',
       label: t('vendite.ordini.gestisci_note'),

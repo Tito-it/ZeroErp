@@ -2352,7 +2352,7 @@ esente, da rivedere nel lotto Z.
   `DDT_VENDITA_PRELIEVO` / `RESO_VENDITA_RIENTRO` senza filtro su `attivo`: se il tipo non c'è, saltano lo storno senza
   errore. I cinque tipi si ritirano solo dopo.
 * **Le tre viste `dbops` di magazzino portano anche tre difetti di
-  [brief-db-revisione-dbops](../work-in-progress/brief-db-revisione-dbops.md)** (§8.1 di quel brief), che confluiscono qui per
+  [brief-db-revisione-dbops](brief-db-revisione-dbops.md)** (§8.1 di quel brief), che confluiscono qui per
   decisione di Tid (2026-11-06): le viste si riscrivono una volta sola.
   * **D58** — `vw_ddt_emessi_senza_scarico`, `vw_resi_confermati_senza_carico`: la domanda va alla grana del
     **prelievo** e del **rientro**, non del documento. Il contratto del posting è un movimento per prelievo e un

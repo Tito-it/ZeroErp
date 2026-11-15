@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.note_stili: uno stile senza nota ha note NULL, mai la stringa vuota.
+#   Brief: brief-db-token-null-dei-seed (D3, Tid 2026-11-12; D5 (a) 2026-11-13).
+#
+# ⚠️ PERCHE'. «Nessuna nota» aveva due forme: '' dal seed (le cinque righe del
+#   CSV, cella vuota di una colonna STRING) e NULL da chi scrive la riga per
+#   altra strada. Il CSV ora scrive NULL (mirror 80_data/20260519-02), e qui la
+#   seconda forma si chiude per costruzione. Una stringa di soli spazi vale come
+#   vuota.
+#
+# ⛔ DOPO IL VERBO DEL PANNELLO. La tabella e' nel pannello generico, che in
+#   modifica manda '' quando si svuota il campo. Da 20_code/config/20261112-57
+#   config.fn_pannello_scrivi porta quella stringa a null: senza, svuotare la
+#   nota dal pannello darebbe 23514. 20_code gira prima di 90_end.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14).
+#
+# ℹ️ IL PRIMO PASSO PORTA A NULL LE STRINGHE VUOTE RIMASTE. Hanno lo stesso
+#   significato, quindi la conversione non decide niente.
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-13: il seed (il mirror,
+#   ora NULL); il pannello (config.fn_pannello_scrivi, ora null per la stringa
+#   vuota); nessuna funzione del database; il backend la legge soltanto
+#   (partitioned_note_service, per codice_interno).
+# Presidio: config/test-note-stili-note-non-vuota-v1.
+# Rollback: via il vincolo. Le stringhe vuote convertite non tornano: NULL e ''
+#   qui hanno lo stesso significato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-58-add-chk-note-stili-note-non-vuota-mctit.yaml
+
+  - changeSet:
+      id: 20261112-58-add-chk-note-stili-note-non-vuota
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.note_stili: le note vuote diventano NULL, poi un CHECK vieta la stringa vuota.
+        Brief: brief-db-token-null-dei-seed.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'config.note_stili'::regclass
+                 AND conname = 'chk_note_stili_note_non_vuota';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE config.note_stili ns
+                 SET note = NULL
+               WHERE btrim(ns.note) = '';
+
+              ALTER TABLE config.note_stili
+                ADD CONSTRAINT chk_note_stili_note_non_vuota
+                    CHECK (note IS NULL OR btrim(note) <> '');
+
+              COMMENT ON CONSTRAINT chk_note_stili_note_non_vuota ON config.note_stili IS
+                'Uno stile senza nota ha note NULL, mai la stringa vuota: l''assenza ha una forma sola.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.note_stili
+                DROP CONSTRAINT IF EXISTS chk_note_stili_note_non_vuota;

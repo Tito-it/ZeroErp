@@ -27,6 +27,7 @@ from unittest import TestCase
 
 from apps.core.api.email_views import AMBITI_OUTBOX
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
+from apps.core.tests._repo import repo_root
 
 
 class EmailOutboxAmbitoGuardrail(TestCase):
@@ -84,9 +85,8 @@ class EmailOutboxAmbitoGuardrail(TestCase):
 
     def test_nessun_chiamante_inventa_un_ambito(self) -> None:
         import re
-        from pathlib import Path
 
-        radice = Path(__file__).resolve().parents[3]
+        radice = repo_root() / "backend/apps"
         assegnazione = re.compile(r"""\bambito\s*=\s*["']([^"']+)["']""")
         inventati: list[str] = []
         esaminati = 0

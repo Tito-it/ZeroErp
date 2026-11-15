@@ -1,0 +1,47 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL COMMENT DI config.tipi_entita.key_selector: 'id' NON E' SEMPRE NUMERICO
+#   Brief: brief-db-revisione-dbops.md §35.8 (passo 9-nonagies-septies)
+#
+# ⛔ Il COMMENT scritto da 20261111-67 dice «'id' (la PK numerica)». Per
+#   ARTICOLO la chiave primaria e' un uuid (catalogo.articoli.id): key_selector
+#   dice QUALE colonna, non che forma ha. Il -67 e' applicato e non si
+#   riscrive; questo changeSet riparte dal COMMENT vivo (dbdev, 2026-11-11) e
+#   cambia la sola parentesi, piu' la frase sulla forma.
+#
+# Solo COMMENT ON: idempotente, nessuna preCondition (la colonna nasce in
+# 00_schema/20260823-01). Il rollback rimette il testo del -67.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261111-81-update-comment-tipi-entita-key-selector-forma-id-mctit.yaml
+
+  - changeSet:
+      id: 20261111-81-update-comment-tipi-entita-key-selector-forma-id
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di config.tipi_entita.key_selector: 'id' e' la chiave primaria, numerica o uuid
+        secondo la tabella. Brief: brief-db-revisione-dbops §35.8.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_entita.key_selector IS
+                'Con quale chiave si raggiunge da fuori un''entita'' di questo tipo: ''id'' (la chiave primaria, numerica o uuid secondo la tabella) oppure ''uid'' (il codice lungo). Dice quale colonna, non che forma ha il valore. Serve a chi punta all''entita'' per aprirla, come il bersaglio di un errore (script.fn_bersaglio_di_riga): un pulsante che apre la cosa sbagliata e'' peggio di nessun pulsante. Usa lo stesso vocabolario di config.sorgenti.key_selector ma risponde a un''altra domanda: quella dice con che chiave un documento cita il tipo come sua provenienza, e per uno stesso tipo i due valori possono differire. Il giornale non la usa: per vendite.event_log l''entity_id e'' sempre la PK id. Nessun DEFAULT: chi semina un tipo nuovo dichiara la chiave.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.tipi_entita.key_selector IS
+                'Con quale chiave si raggiunge da fuori un''entita'' di questo tipo: ''id'' (la PK numerica) oppure ''uid'' (il codice lungo). Serve a chi punta all''entita'' per aprirla, come il bersaglio di un errore (script.fn_bersaglio_di_riga): un pulsante che apre la cosa sbagliata e'' peggio di nessun pulsante. Usa lo stesso vocabolario di config.sorgenti.key_selector ma risponde a un''altra domanda: quella dice con che chiave un documento cita il tipo come sua provenienza, e per uno stesso tipo i due valori possono differire. Il giornale non la usa: per vendite.event_log l''entity_id e'' sempre la PK id. Nessun DEFAULT: chi semina un tipo nuovo dichiara la chiave.';

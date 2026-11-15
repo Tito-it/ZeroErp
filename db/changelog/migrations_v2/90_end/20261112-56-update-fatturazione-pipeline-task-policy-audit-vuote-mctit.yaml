@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fatturazione_pipeline_task_policy: le colonne di audit vuote prendono
+#   il ruolo che migra. Brief: brief-db-token-null-dei-seed (D2, Tid 2026-11-12),
+#   la forma di magazzino.causali (90_end/20261112-39).
+#
+# ⚠️ PERCHE'. Il seed scriveva user_update come stringa vuota in 13 righe (la
+#   cella vuota di una colonna STRING, linee-guida-sql §11.2): un'audit che non
+#   dice chi ha scritto. La tabella non ha trigger di audit, quindi nessuno la
+#   riscriveva: su un database costruito da zero le 13 righe restano ''. Il seed
+#   ora non porta piu' le colonne di audit (mirror 80_data/20260218-05), e le
+#   righe nuove prendono il default.
+#
+# ℹ️ SOLO LA CONVERSIONE. user_insert e user_update sono gia' NOT NULL DEFAULT
+#   CURRENT_USER (linee-guida-sql §7): la struttura non cambia.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14).
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-13: il seed (il mirror,
+#   ora senza le colonne di audit); nessuna funzione del database, nessun
+#   endpoint, e la tabella non e' nel pannello.
+# Presidio: config/test-iva-natura-audit-insert-v1 (test 4).
+# Rollback: nessuno. I valori scritti restano: '' non era un dato da ripristinare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-56-update-fatturazione-pipeline-task-policy-audit-vuote-mctit.yaml
+
+  - changeSet:
+      id: 20261112-56-update-fatturazione-pipeline-task-policy-audit-vuote
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fatturazione_pipeline_task_policy: user_insert e user_update vuote prendono il ruolo che migra.
+        Brief: brief-db-token-null-dei-seed.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: fatturazione_pipeline_task_policy
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE vendite.fatturazione_pipeline_task_policy tp
+                 SET user_insert = CASE WHEN btrim(tp.user_insert) = ''
+                                        THEN CURRENT_USER ELSE tp.user_insert END,
+                     user_update = CASE WHEN btrim(tp.user_update) = ''
+                                        THEN CURRENT_USER ELSE tp.user_update END
+               WHERE btrim(tp.user_insert) = ''
+                  OR btrim(tp.user_update) = '';
+      rollback:
+        - empty: {}

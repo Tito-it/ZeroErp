@@ -90,22 +90,6 @@ SELECT plan(25);
 --   il permesso: l'azione si concede all'utente del contesto.
 SELECT dbops.fn_pgtap_concedi_azione(current_setting('app.current_user_id')::integer, 'emetti_offerta');
 
--- Scopo: esegue uno statement che deve essere rifiutato e ne rende il codice,
---   dal canale CONSTRAINT dell'eccezione ('NESSUN ERRORE' se passa).
-CREATE OR REPLACE FUNCTION pg_temp.codice(p_sql text)
-RETURNS text LANGUAGE plpgsql AS $fx$
-DECLARE v_cst text;
-BEGIN
-    BEGIN
-        EXECUTE p_sql;
-        RETURN 'NESSUN ERRORE';
-    EXCEPTION WHEN OTHERS THEN
-        GET STACKED DIAGNOSTICS v_cst = CONSTRAINT_NAME;
-        RETURN coalesce(nullif(v_cst, ''), '-');
-    END;
-END;
-$fx$;
-
 -- Scopo: l'azione di una capability per chiave, come jsonb.
 CREATE OR REPLACE FUNCTION pg_temp.azione(p_blob jsonb, p_key text)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $fx$
@@ -283,7 +267,7 @@ SELECT is(
     '5) l''offerta in bozza: un motivo, con la riga, il suo motivo e il codice dell''articolo');
 
 SELECT is(
-    pg_temp.codice($$SELECT script.fn_check_righe_documento('ORDINE_VENDITA', 1)$$),
+    dbops.fn_pgtap_codice_errore($$SELECT script.fn_check_righe_documento('ORDINE_VENDITA', 1)$$),
     'E_DOC_TIPO_NON_GESTITO',
     '6) un documento che non e'' offerta ne'' contratto: E_DOC_TIPO_NON_GESTITO');
 
@@ -300,7 +284,7 @@ SELECT ok(
 
 -- rev 2026-10-26 (giro 9): l'emissione si chiede al verbo, non con un UPDATE.
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM vendite.fn_cambia_stato_offerta(%s, 'EMESSA', NULL)$q$,
         pg_temp.doc('EM'))),
     'E_DOC_RIGA_NON_AMMESSA',
@@ -317,7 +301,7 @@ SELECT is(
     '9) «Genera contratto» proposto e spento: can_push_contratto false, reason RIGA_NON_AMMESSA');
 
 SELECT is(
-    pg_temp.codice(format($$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL)$$,
                           pg_temp.doc('PUSH'))),
     'E_RIGA_EROGAZIONE_FUORI_PERIMETRO',
     '10) …e il push lo ferma il guard di riga del contratto (la rete)');
@@ -334,7 +318,7 @@ SELECT is(
     '11) un servizio: «Genera ordine» spento (RIGA_NON_AMMESSA), «Genera contratto» acceso');
 
 SELECT is(
-    pg_temp.codice(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('SERV'))),
+    dbops.fn_pgtap_codice_errore(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('SERV'))),
     'E_DOC_RIGA_NON_AMMESSA',
     '12) …e il verbo rifiuta con E_DOC_RIGA_NON_AMMESSA prima di scrivere');
 
@@ -360,18 +344,18 @@ SELECT is(
     '13) la merce: l''ordine DRAFT, con la provenienza e la riga espansa al prezzo negoziato');
 
 SELECT is(
-    pg_temp.codice(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('ORD'))),
+    dbops.fn_pgtap_codice_errore(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('ORD'))),
     'E_ORD_OFFERTA_GIA_CONVERTITA',
     '14) …una seconda volta: E_ORD_OFFERTA_GIA_CONVERTITA');
 
 SELECT is(
-    pg_temp.codice(format($$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL)$$,
+    dbops.fn_pgtap_codice_errore(format($$SELECT vendite.fn_push_offerta_a_contratto(%s, NULL)$$,
                           pg_temp.doc('ORD'))),
     'E_OFFERTA_ORDINE_GIA_GENERATO',
     '15) …e il push dopo l''ordine: E_OFFERTA_ORDINE_GIA_GENERATO');
 
 SELECT is(
-    pg_temp.codice(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('EM'))),
+    dbops.fn_pgtap_codice_errore(format($$SELECT vendite.fn_genera_ordine_da_offerta(%s)$$, pg_temp.doc('EM'))),
     'E_ORD_ORIGINE_NON_CONVERTIBILE',
     '16) da un''offerta non ACCETTATA: E_ORD_ORIGINE_NON_CONVERTIBILE');
 
@@ -389,7 +373,7 @@ SELECT is(
 -- rev 2026-10-26 (giro 9): l'annullo dal verbo vendite.fn_annulla_offerta, con
 --   la motivazione (nessun legame: l'offerta non e' una revisione).
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT vendite.fn_annulla_offerta(%s, 'pgtap', NULL)$q$, pg_temp.doc('ORD'))),
     'E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI',
     '18) …e l''annullo e'' rifiutato con E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI');
@@ -408,9 +392,9 @@ SELECT is(
     '19) annullato l''ordine, «Annulla» si accende');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT vendite.fn_annulla_offerta(%s, 'pgtap', NULL)$q$, pg_temp.doc('ORD'))),
-    'NESSUN ERRORE',
+    NULL,
     '20) …e l''offerta si annulla');
 
 -- ============================================================
@@ -429,7 +413,7 @@ SELECT ok(
     '21) «Attiva» spento col motivo RIGA_NON_AMMESSA');
 
 SELECT is(
-    pg_temp.codice(format(
+    dbops.fn_pgtap_codice_errore(format(
         $q$SELECT * FROM vendite.fn_cambia_stato_contratto(%s, 'ATTIVO')$q$, pg_temp.doc('CTR'))),
     'E_DOC_RIGA_NON_AMMESSA',
     '22) …e l''attivazione e'' rifiutata con E_DOC_RIGA_NON_AMMESSA');

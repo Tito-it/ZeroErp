@@ -28,6 +28,7 @@
 import { DOCUMENTO_DRAWER_TIPI, drawerEntita } from './drawerEntita'
 import { MANAGE_ICONS, READONLY_DOMAINS } from './constants'
 import { NAV_ICONS } from './navigation'
+import { FORME_ID, idNellaForma } from './utils/idNellaForma'
 
 // ⭐ LA MAPPA TIPO → DESTINAZIONE, e la scoperta che l'ha resa corta: le chiavi
 // di `DOCUMENTO_DRAWER_TIPI` **sono gia'** i `config.sorgenti.codice_interno`,
@@ -41,18 +42,18 @@ import { NAV_ICONS } from './navigation'
 // fallire la build).
 //
 // I CAMPI:
-//   `chiave`   ⭐ `id` | `uid`, e RISPECCHIA `config.tipi_entita.key_selector`.
-//              Il brief lo scrive esplicitamente: *«l'id e' opaco, la differenza
-//              e' dichiarata nel catalogo e il frontend non deve dedurla dal
-//              formato del valore»*. Serve a sapere se convertire a numero —
-//              le prop `*Id` dei drawer sono dichiarate `Number`, e passare una
-//              stringa e' un difetto silenzioso in produzione (la validazione
-//              delle prop e' compilata via) e un avviso in sviluppo.
-//              ⚠️ **Al 2026-08-24 tutti e nove i tipi hanno `id`**, e il campo
-//              resta lo stesso: il catalogo ammette ancora `uid`, e il giorno
-//              che una superficie pubblica indirizzera' cosi' quella riga
-//              cambia con un seed — senza toccare nessuna funzione. Scritto
-//              perche' registri un fatto verificato invece di una supposizione.
+//   `forma`    ⭐ LA FORMA DELL'ID che la destinazione si aspetta
+//              (`FORME_ID.INTERO` | `FORME_ID.UUID`, BB `idNellaForma`). Il
+//              brief lo scrive esplicitamente: *«l'id e' opaco, la differenza
+//              e' dichiarata e il frontend non deve dedurla dal formato del
+//              valore»*. Serve a sapere se convertire a numero: le prop `*Id`
+//              dei drawer numerici sono dichiarate `Number`, e una stringa e' un
+//              difetto silenzioso in produzione.
+//              ⚠️ Fino al 2026-11-11 era `chiave: 'id' | 'uid'`, specchio di
+//              `config.tipi_entita.key_selector`, e `id` voleva dire «intero».
+//              Ma `key_selector` dice QUALE colonna, non che forma ha: per
+//              ARTICOLO e' `id`, e `catalogo.articoli.id` e' un uuid. Con la
+//              vecchia regola il suo bersaglio si sarebbe scartato in silenzio.
 //   `drawer`   chiave del registro dei drawer (`drawerEntita`) (il caso normale: un
 //              documento si apre, non si "visita").
 //   `rotta`    per le entita' che hanno una pagina: `queryKey` per un
@@ -75,7 +76,7 @@ import { NAV_ICONS } from './navigation'
 const DESTINAZIONI = Object.freeze({
   FATTURA: {
     area: READONLY_DOMAINS.VENDITE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     drawer: DOCUMENTO_DRAWER_TIPI.FATTURA,
     // L'indirizzo della traduzione lo DICHIARA IL DATABASE, in
     // `config.tipi_entita.etichetta_key`: qui si ripete la stessa chiave, non
@@ -86,7 +87,7 @@ const DESTINAZIONI = Object.freeze({
   },
   COMMESSA: {
     area: READONLY_DOMAINS.VENDITE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     drawer: DOCUMENTO_DRAWER_TIPI.COMMESSA,
     etichettaKey: 'config.tipi_entita.commessa',
     // ⚠️ La commessa non ha una voce di navigazione (nessuna lista propria):
@@ -96,7 +97,7 @@ const DESTINAZIONI = Object.freeze({
   },
   LOTTO: {
     area: READONLY_DOMAINS.VENDITE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     // Il lotto non ha un drawer nel registry: ha una LISTA, e ci si arriva col
     // deep-link `?open=<id>` che la view apre da sola (stesso meccanismo gia'
     // in servizio su `vendite-contratti`).
@@ -106,14 +107,14 @@ const DESTINAZIONI = Object.freeze({
   },
   CONTRATTO: {
     area: READONLY_DOMAINS.VENDITE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     drawer: DOCUMENTO_DRAWER_TIPI.CONTRATTO,
     etichettaKey: 'config.tipi_entita.contratto',
     icona: NAV_ICONS.CONTRATTI,
   },
   ORDINE_VENDITA: {
     area: READONLY_DOMAINS.VENDITE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     drawer: DOCUMENTO_DRAWER_TIPI.ORDINE_VENDITA,
     etichettaKey: 'config.tipi_entita.ordine_vendita',
     icona: NAV_ICONS.ORDINI,
@@ -127,14 +128,14 @@ const DESTINAZIONI = Object.freeze({
     //    (`20260824-10`), e la regola che ne e' uscita sta nel loro changeSet:
     //    *il valore di `key_selector` si MISURA sulle rotte del frontend; non si
     //    eredita, e non si deduce dal fatto che una colonna `uid` esista.*
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     drawer: DOCUMENTO_DRAWER_TIPI.PREVENTIVO,
     etichettaKey: 'config.tipi_entita.preventivo',
     icona: NAV_ICONS.PREVENTIVI,
   },
   FLUSSO: {
     area: READONLY_DOMAINS.PRATICHE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     // ⭐ La dashboard pratiche apre un flusso dal solo id: chiede al backend
     //    dove vive (`/pratiche/flussi/<id>/pratica/`) e prosegue. Fino al
     //    2026-08-24 il deep-link voleva ANCHE `pratica_id` e senza quello non
@@ -146,7 +147,7 @@ const DESTINAZIONI = Object.freeze({
   },
   DEFINIZIONE_WORKFLOW: {
     area: READONLY_DOMAINS.AMM_SOFTWARE,
-    chiave: 'id',
+    forma: FORME_ID.INTERO,
     // ⭐ L'unica destinazione che e' una PAGINA con un parametro di percorso, e
     // non un drawer: il dettaglio strutturale di un'edizione e' troppo ricco
     // per un pannello (lo dice il commento della rotta stessa).
@@ -159,10 +160,34 @@ const DESTINAZIONI = Object.freeze({
     // La voce «Definizioni workflow» del menu amm-software porta questo segno.
     icona: NAV_ICONS.DEFINIZIONI_WORKFLOW,
   },
-  // ⛔ UN SOLO TIPO DEL CATALOGO NON E' QUI, e non e' una svista: `TASK_RUN`.
-  //    Nessuna schermata mostra un giro per id — sta a catalogo perche' serve
-  //    al giornale degli eventi dell'altro cantiere, non al bersaglio.
-  //    Otto destinazioni su nove tipi.
+  // ⭐ ARTICOLO e PROMO_ARTICOLO (2026-11-11, S-BE-1 di brief-db-revisione-
+  //    dbops): il require ATTIVO mette il bersaglio sul padre SPENTO, e il
+  //    padre spento piu' comune e' l'articolo. Ci si arriva col deep-link
+  //    `?open=` delle due liste (BB `useIngressoDaQuery`).
+  //    ⚠️ Il pulsante APRE e basta: riattivare resta dei permessi di chi
+  //    clicca (drawer in sola lettura) e del DB (`fn_riattiva_articolo`).
+  ARTICOLO: {
+    area: READONLY_DOMAINS.CATALOGO,
+    // ⚠️ `key_selector` e' `id`, ma l'id dell'articolo e' un UUID.
+    forma: FORME_ID.UUID,
+    rotta: { name: 'catalogo-articoli', queryKey: 'open' },
+    etichettaKey: 'config.tipi_entita.articolo',
+    // La voce «Articoli» del menu catalogo porta questo segno.
+    icona: NAV_ICONS.CATALOGO,
+  },
+  PROMO_ARTICOLO: {
+    area: READONLY_DOMAINS.VENDITE,
+    forma: FORME_ID.INTERO,
+    rotta: { name: 'vendite-promo-articoli', queryKey: 'open' },
+    etichettaKey: 'config.tipi_entita.promo_articolo',
+    icona: NAV_ICONS.PROMO_ARTICOLI,
+  },
+  // ⛔ I tipi del catalogo che NON sono qui non sono una svista: nessuna
+  //    schermata li apre dal solo id. `TASK_RUN` (serve al giornale degli
+  //    eventi, non al bersaglio); ASSET, ARTICOLO_COMPONENTE, LISTINO_VERSIONE
+  //    e le righe (verificato il 2026-11-11, N5 di S-BE-1: la versione di
+  //    listino vuole anche il listino, un componente vive nella distinta del
+  //    suo articolo). Il degrado e' dichiarato: nessun pulsante.
 })
 
 // Scopo: ⭐ I NOMI DEI TIPI, per chi un bersaglio se lo COMPONE invece di
@@ -257,25 +282,11 @@ function raggiungibile(destinazione, authStore) {
   return !authStore?.isAreaBlocked?.(destinazione.area)
 }
 
-// Scopo: L'identificativo nella forma che la destinazione si aspetta.
-//
-// ⛔ NON SI DEDUCE DAL VALORE, si legge dal catalogo (`chiave`, specchio di
-//    `config.tipi_entita.key_selector`) — il brief lo scrive esplicitamente,
-//    perché un uuid e un numero si distinguono a occhio ma la regola non è il
-//    formato: è cosa quell'entità usa come chiave.
-//
-// ⚠️ E serve davvero: le prop `*Id` dei drawer sono dichiarate `Number`.
-//    Passargli la stringa che arriva dall'envelope è un avviso in sviluppo e un
-//    difetto silenzioso in produzione, dove la validazione delle prop non c'è.
+// Scopo: L'identificativo nella forma che la destinazione dichiara (`forma`),
+//        o `null`. La regola (intero > 0, uuid valido) sta nel BB
+//        `idNellaForma`, che serve anche il deep-link delle liste.
 function identificativo(destinazione, id) {
-  if (destinazione.chiave !== 'id') return id
-  const n = Number(id)
-  // ⛔ `> 0`, non solo «è un numero». `Number('0')` è `0` e `Number('-3')` è
-  //    `-3`: entrambi finiti, entrambi accettati dalla regex del canale — e
-  //    entrambi produrrebbero un pulsante che apre `/fatture/0/`, cioè un 404.
-  //    È la regola che questa casa scrive per ogni id numerico in AGENTS.md
-  //    («errore se NULL o <= 0»), applicata dove il valore diventa una rotta.
-  return Number.isInteger(n) && n > 0 ? n : null
+  return idNellaForma(id, destinazione.forma)
 }
 
 // Scopo: ⭐ Il bersaglio risolto in qualcosa che si puo' PREMERE, o `null`.
@@ -290,7 +301,7 @@ export function risolviBersaglio(bersaglio, authStore) {
   const destinazione = DESTINAZIONI[bersaglio?.tipo]
   if (!raggiungibile(destinazione, authStore)) return null
   const id = identificativo(destinazione, bersaglio.id)
-  // Un tipo a chiave numerica con un id che numero non è: il database non
+  // Un id che non ha la forma dichiarata: il database non
   // dovrebbe produrlo, e se succede vale la regola di sempre — si scarta in
   // silenzio, non si offre un pulsante che apre il vuoto.
   if (id === null) return null

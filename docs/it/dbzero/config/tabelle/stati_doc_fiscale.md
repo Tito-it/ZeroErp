@@ -28,6 +28,7 @@
 |------|------|---------|
 | CHECK | chk_stati_doc_fiscale_abortito_attivo |  |
 | CHECK | chk_stati_doc_fiscale_fase |  |
+| CHECK | chk_stati_doc_fiscale_iniziale_applica |  |
 | CHECK | chk_stati_doc_fiscale_iniziale_attivo |  |
 | PRIMARY KEY | pk_stati_doc_fiscale | id |
 | UNIQUE | uq_stati_doc_fiscale_codice | codice |

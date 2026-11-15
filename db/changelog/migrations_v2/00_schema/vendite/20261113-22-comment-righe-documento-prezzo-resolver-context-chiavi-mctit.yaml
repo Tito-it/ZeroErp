@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Le chiavi di prezzo_resolver_context sulle cinque righe principali
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7, giro 2)
+#
+#   Il giro 2 fissa il contratto del contesto: le chiavi sono i nomi delle
+#   colonne del risultato del resolver, e le legge
+#   vendite.fn_provenienza_prezzo_esplosa (20261113-13). La scheda della
+#   colonna lo dice a chi scrive (il BE, al pricing gate; le funzioni di
+#   copia, al giro 3). Sui componenti il contesto ha oggi altre chiavi (le
+#   scrivono le fn_*_riga_componenti_init): si allinea al giro 3, e la loro
+#   scheda cambia allora.
+#   Solo COMMENT: niente da allineare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261113-22-comment-righe-documento-prezzo-resolver-context-chiavi-mctit.yaml
+
+  - changeSet:
+      id: 20261113-22-comment-righe-documento-prezzo-resolver-context-chiavi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La scheda di prezzo_resolver_context sulle cinque righe principali dice le sue chiavi.
+        Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $do$
+              DECLARE
+                  v_t text;
+              BEGIN
+                  FOREACH v_t IN ARRAY ARRAY['preventivi_righe', 'ordini_righe', 'contratti_righe',
+                                             'ddt_righe', 'offerte_commerciali_eccezioni'] LOOP
+                      EXECUTE format($c$COMMENT ON COLUMN vendite.%I.prezzo_resolver_context IS %L$c$, v_t,
+                          'La fotografia del resolver da cui e'' venuto il prezzo, quando e'' venuto dal listino. Le chiavi sono i nomi delle colonne del risultato del resolver (vendite.fn_resolve_prezzo_listino_v2_esito): prezzo_base_snapshot, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot; to_jsonb di una riga del resolver va bene cosi'' com''e'', le chiavi in piu'' si ignorano. Le legge vendite.fn_provenienza_prezzo_esplosa, che le porta nelle colonne della riga di commessa al push. Non e'' un riferimento giudicato: riga e versione di listino stanno nelle loro colonne. Conta solo per un''origine da listino; un prezzo MANUALE o COMPONENTI non ne ha, e torna NULL quando la provenienza decade.');
+                  END LOOP;
+              END;
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              SELECT 1;

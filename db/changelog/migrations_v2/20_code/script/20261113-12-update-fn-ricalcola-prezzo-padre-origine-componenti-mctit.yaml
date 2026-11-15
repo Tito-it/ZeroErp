@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_ricalcola_prezzo_padre_da_componenti: il prezzo del kit dichiara
+#   da dove viene, COMPONENTI
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2, D-2 di Tid 2026-11-13)
+#
+#   La funzione scrive il prezzo della riga principale di un kit come somma
+#   dei componenti attivi: e' l'unico scrittore di quel prezzo, quindi dichiara
+#   anche la provenienza, nella stessa istruzione. origine_prezzo = COMPONENTI
+#   («la provenienza sta su ciascun componente»), versione, riga di listino e
+#   contesto a NULL (il CHECK chk_<tabella>_provenienza_prezzo non ammette
+#   COMPONENTI con un listino). Se la somma e' NULL (un componente senza
+#   prezzo), il trigger di derivazione svuota l'origine: senza prezzo nessuna
+#   provenienza.
+#   Senza questa riga il cambio di un componente cambierebbe il prezzo del kit
+#   lasciando l'origine di prima: MANUALE (righe allineate o scritte senza
+#   provenienza), o una provenienza da listino, che il trigger farebbe decadere
+#   a MANUALE. In entrambi i casi il kit direbbe «scritto a mano».
+#   I cinque montaggi (vendite.*_righe_componenti e
+#   offerte_commerciali_eccezioni_componenti, via
+#   script.trgfn_componenti_ricalcola_padre) sono tutti su righe principali
+#   che hanno le colonne (20261113-04). Il resto del corpo e' quello del
+#   20260819-12, verificato identico al vivo il 2026-11-13.
+#   Rollback: il corpo del 20260819-12.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261113-12-update-fn-ricalcola-prezzo-padre-origine-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20261113-12-update-fn-ricalcola-prezzo-padre-origine-componenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_ricalcola_prezzo_padre_da_componenti: con il prezzo del kit scrive anche la
+        provenienza, COMPONENTI, senza listino. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(
+                  -- text nudi: NOMI di schema, tabelle e colonna, composti con format(%I).
+                  p_schema       text,
+                  p_tab_padre    text,
+                  p_tab_figli    text,
+                  p_col_fk_padre text,
+                  -- bigint nudo: chiave polimorfa, l'id della riga principale in una delle
+                  -- tabelle date.
+                  p_riga_padre_id bigint)
+              RETURNS void
+              LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  -- Ricalcola prezzo_unitario del padre dai figli ATTIVI, e
+                  -- dichiara la provenienza: COMPONENTI, senza listino.
+                  --
+                  -- ⛔ Tre casi per il prezzo:
+                  --
+                  --     nessun figlio attivo          -> 0
+                  --     almeno un figlio senza prezzo -> NULL  «non si sa»
+                  --     tutti valorizzati             -> SUM(prezzo * coeff)
+                  --
+                  --   Su vendite.ddt_righe_componenti il prezzo puo' mancare
+                  --   (un kit che viaggia senza vendersi): la SUM semplice
+                  --   IGNOREREBBE il figlio scoperto e restituirebbe la somma
+                  --   degli altri, un prezzo sbagliato al posto di un prezzo
+                  --   assente. Il kit a prezzo assente lo ferma il gate
+                  --   all'emissione; il kit a prezzo PARZIALE il gate lo passa.
+                  --   ⚠️ Niente COALESCE(..., 0): rifarebbe il difetto in un
+                  --   altro modo.
+                  --
+                  -- La provenienza: COMPONENTI, cioe' «sta su ciascun
+                  -- componente». Con un prezzo NULL l'origine la svuota il
+                  -- trigger vendite.trgfn_riga_documento_provenienza_prezzo.
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = (
+                                SELECT CASE
+                                         WHEN count(*) = 0 THEN 0
+                                         WHEN count(*) FILTER (
+                                                WHERE c.prezzo_unitario IS NULL) > 0
+                                           THEN NULL
+                                         ELSE SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+                                       END
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            ),
+                                origine_prezzo          = 'COMPONENTI',
+                                listino_versione_id     = NULL,
+                                listino_riga_id         = NULL,
+                                prezzo_resolver_context = NULL
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(text, text, text, text, bigint) IS
+                  'Ricalcola il prezzo della riga principale di un kit dai suoi componenti attivi e ne dichiara la provenienza. Prezzo: 0 senza componenti attivi; NULL se almeno un componente non ha prezzo (il kit a prezzo assente lo ferma il gate all''emissione, uno a prezzo parziale no); altrimenti la somma di prezzo per coefficiente. Provenienza: origine_prezzo COMPONENTI (la provenienza sta su ciascun componente), versione, riga di listino e contesto del resolver a NULL; con un prezzo NULL l''origine la svuota vendite.trgfn_riga_documento_provenienza_prezzo. Parametrizzata su schema, tabella della riga, tabella dei componenti e colonna FK; la chiama script.trgfn_componenti_ricalcola_padre sui componenti di preventivi, ordini, contratti, DDT e offerte.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo del 20260819-12.
+              CREATE OR REPLACE FUNCTION script.fn_ricalcola_prezzo_padre_da_componenti(p_schema text, p_tab_padre text, p_tab_figli text, p_col_fk_padre text, p_riga_padre_id bigint)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sql text;
+              BEGIN
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET prezzo_unitario = (
+                                SELECT CASE
+                                         WHEN count(*) = 0 THEN 0
+                                         WHEN count(*) FILTER (
+                                                WHERE c.prezzo_unitario IS NULL) > 0
+                                           THEN NULL
+                                         ELSE SUM(c.prezzo_unitario * c.coeff_qta_snapshot)
+                                       END
+                                  FROM %1$I.%3$I c
+                                 WHERE c.%4$I = $1
+                                   AND c.attivo = TRUE
+                            )
+                          WHERE id = $1$q$,
+                      p_schema,
+                      p_tab_padre,
+                      p_tab_figli,
+                      p_col_fk_padre
+                  );
+                  EXECUTE v_sql USING p_riga_padre_id;
+              END;
+              $function$;

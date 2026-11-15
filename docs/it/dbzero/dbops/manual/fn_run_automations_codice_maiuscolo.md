@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_codice_maiuscolo`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 13 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,6 +61,16 @@ dare il nome a quello che si crea.
 
 `db/pgtap/dbops/test-codice-maiuscolo-v1.sql`: dry run senza DDL (test 10), un trigger per tabella
 del tipo giusto (12), idempotenza (19), TOGLIE (21, 22), regola spenta (23-24).
+
+---
+
+### Note di migrazione
+
+* 2026-11-13 — la regola vale per la tabella che nomina: `target_table` si confronta con `=`,
+  non più con `ILIKE`, che faceva del `_` di un nome un jolly (una regola su `event_log` copriva
+  anche una `eventXlog`). `*all` ha una forma sola, garantita dal CHECK
+  `chk_automation_rules_tbl_target_table_nome_esatto` (`90_end/20261112-66`). Testata ri-ancorata
+  con `%TYPE`, firma invariata (`20261112-72`).
 
 ---
 

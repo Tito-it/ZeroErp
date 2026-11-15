@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# acquisti.vw_note: la proiezione di una nota di acquisti, nella forma comune delle viste delle note.
+#   Brief: brief-db-revisione-catalogo §19 voce 2, §20 (Tid, 2026-11-12: «per tutte, per rendere
+#   omogeneo il meccanismo»).
+#
+# ⭐ PERCHE'. Una vista per ogni sede delle note, con le stesse colonne nello stesso ordine di
+#   catalogo.vw_note (-31): la proiezione con stile e lingua sta a DB, e il backend legge la vista
+#   della sede invece di comporre la sua query. Il presidio delle quattro gemelle e'
+#   db/pgtap/dbops/test-viste-note-gemelle-v1.sql.
+#
+# ⭐ SICUREZZA. Oggi acquisti.note non ha RLS (ne' la madre ne' le partizioni: fatto del 2026-11-12, segnalato nel brief); la vista e' security_invoker come le sorelle, cosi' le policy che arriveranno varranno anche qui senza toccarla.
+#   Vista nuova, rollback: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/acquisti/20261112-33-create-vw-note-mctit.yaml
+
+  - changeSet:
+      id: 20261112-33-create-vw-note
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Vista acquisti.vw_note: la proiezione di una nota di acquisti, con stile e lingua, nella forma comune delle viste delle note (security_invoker). Brief: brief-db-revisione-catalogo §20.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('acquisti.vw_note')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW acquisti.vw_note
+                WITH (security_invoker = true) AS
+               SELECT n.id AS nota_id,
+                  n.target_tipo AS nota_target_tipo,
+                  n.target_id AS nota_target_id,
+                  n.target_riga_id AS nota_target_riga_id,
+                  n.anchor_tipo AS nota_anchor_tipo,
+                  n.posizione AS nota_posizione,
+                  n.seq AS nota_seq,
+                  n.testo AS nota_testo,
+                  n.testo_md AS nota_testo_md,
+                  n.visibile AS nota_visibile,
+                  n.solo_stampa AS nota_solo_stampa,
+                  n.meta AS nota_meta,
+                  n.data_insert AS nota_data_insert,
+                  n.user_insert AS nota_user_insert,
+                  n.data_update AS nota_data_update,
+                  n.user_update AS nota_user_update,
+                  ns.id AS stile_id,
+                  ns.codice AS stile_codice,
+                  ns.descrizione AS stile_descrizione,
+                  l.id AS lingua_id,
+                  l.codice_iso AS lingua_codice_iso,
+                  l.descrizione AS lingua_descrizione,
+                  l.descrizione_locale AS lingua_descrizione_locale,
+                  ns.codice_interno AS stile_codice_interno
+                 FROM acquisti.note n
+                   LEFT JOIN config.note_stili ns ON ns.id = n.id_stile
+                   LEFT JOIN config.lingue l ON l.id = n.id_lingua;
+
+              COMMENT ON VIEW acquisti.vw_note IS
+                'La proiezione di una nota di acquisti, una riga per nota di ogni partizione di acquisti.note, con la decodifica dello stile (config.note_stili: codice, descrizione, codice_interno) e della lingua (config.lingue). Non filtra: le note nascoste e quelle di sola stampa ci sono. Ha le stesse colonne, nello stesso ordine, di catalogo.vw_note, vendite.vw_note, magazzino.vw_note: una vista per ogni sede delle note, e la proiezione sta solo qui. security_invoker: si legge con le policy di chi la interroga, quando la sede ne avra''. Si legge, non si scrive: le note si scrivono sul padre o sulla partizione.';
+
+              GRANT SELECT ON acquisti.vw_note TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS acquisti.vw_note;

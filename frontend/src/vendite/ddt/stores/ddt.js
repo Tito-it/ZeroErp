@@ -17,8 +17,7 @@ import { defineStore } from 'pinia'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
-import { STATO_DDT } from '../constants'
-import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
+import { avvisaDopoAzione } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import {
   cambiaStatoDdt,
   correggiQtaEvasa as apiCorreggiQtaEvasa,
@@ -105,15 +104,17 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     return res.data.data
   }
 
-  // Transizione di stato generica data-driven (SPEDITO/CONSEGNATO/RESO/ANNULLATO).
-  // `statoCodice` = target_state dell'azione; il trigger DB valida l'ammissibilita'.
-  // `dichiarazione`: la conferma dell'annullo di una bolla con legami (D-8).
+  // Transizione di stato generica data-driven. `azione` = l'entry di
+  // `available_actions` scelta (destinazione = `target_state`); il trigger DB
+  // valida l'ammissibilita'. `dichiarazione`: la conferma dell'annullo di una
+  // bolla con legami (D-8).
   // ⚠️ L'annullo ritira i legami: si avvisano i tab dei documenti che si
-  // riaprono (BB `avvisaDocumentiCollegati`).
-  async function cambiaStato(id, statoCodice, dichiarazione = {}) {
-    const res = await cambiaStatoDdt(id, statoCodice, dichiarazione)
+  // riaprono. Che sia l'annullo lo dice l'azione, non il codice della
+  // destinazione (FE-D3, brief-db-stati-documento-dal-vocabolario §6.21).
+  async function cambiaStato(id, azione, dichiarazione = {}) {
+    const res = await cambiaStatoDdt(id, azione.target_state, dichiarazione)
     emitDataChanged(TAB_ENTITIES.DDT, id)
-    if (statoCodice === STATO_DDT.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
+    avvisaDopoAzione(azione, emitDataChanged)
     return res.data.data
   }
 

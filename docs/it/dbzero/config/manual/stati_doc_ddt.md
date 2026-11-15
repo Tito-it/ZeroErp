@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `config.stati_doc_ddt`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 14 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -73,9 +73,19 @@ tutti i lettori seguono.
   [`script.fn_doc_azione_passaggio`](/dbzero/script/funzioni/fn_doc_azione_passaggio) se il passaggio
   porta in emissione e, se sì, lo rifiuta sul cambio di stato generico; il verbo
   [`vendite.fn_cambia_stato_ddt`](/dbzero/vendite/funzioni/fn_cambia_stato_ddt) lo legge per sapere
-  quando il passaggio è un'emissione.
+  quando il passaggio è un'emissione. La leggono anche la capability (i motivi di
+  `script.fn_check_ddt_emittibile`), il guard di transizione (la riga attiva dallo stato iniziale
+  allo stato di emissione), la numerazione (`vendite.trgfn_ddt_gen_numero_emesso`: il numero si
+  assegna qui) e i tre guard dell'emissione (valore delle righe, indirizzi, prezzi).
 * **`is_abortito`** — lo stato di annullo, letto dal verbo di stato attraverso
-  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id).
+  [`script.fn_stato_abortito_id`](/dbzero/script/funzioni/fn_stato_abortito_id), e dal verbo
+  d'annullo [`vendite.fn_annulla_ddt`](/dbzero/vendite/funzioni/fn_annulla_ddt), che porta la bolla lì.
+
+`iniziale` è anche la **bozza**: il lock delle righe, la capability (`can_edit_righe`), la correzione
+della quantità evasa (`script.fn_check_ddt_riga_correggi_qta_evasa`, dal lock delle righe), il guard
+del legame di evasione (il ritiro con la bolla in bozza) e il cruscotto (`DOC_BOZZA`) la leggono da qui.
+`SPEDITO`, `CONSEGNATO` e `RESO` non hanno una colonna: sono destinazioni del processo, e chi le usa
+le nomina col codice, come la matrice.
 
 Il vocabolario del DDT **non ha** le colonne `accettazione`, `cessazione` e `scadenza`: chiesti ai
 loro lettori, quegli stati sono vuoti.
@@ -89,10 +99,23 @@ Ogni stato dichiara la sua `fase` sulla scala comune a tutti i documenti (`APERT
 `ANNULLATO` sono chiusi. La legge anche la genealogia dei documenti: la frontiera esclude i DDT in
 fase chiusa o annullati.
 
-A differenza di preventivi, offerte, ordini e contratti, questo vocabolario **non dichiara** `esito`
-e `terminale`: li deriva la vista
-[`vendite.vw_stato_sorgente_ddt`](/dbzero/vendite/views/vw_stato_sorgente_ddt), dove l'annullo è un
-esito negativo, ogni altro stato chiuso un esito positivo, e ogni stato chiuso è terminale.
+Come preventivi, offerte, ordini e contratti, il vocabolario dichiara **`esito`** e **`terminale`**,
+e la vista [`vendite.vw_stato_sorgente_ddt`](/dbzero/vendite/views/vw_stato_sorgente_ddt) li passa
+così come sono:
+
+| Stato | `esito` | `terminale` |
+| --- | --- | --- |
+| `DRAFT`, `EMESSO`, `SPEDITO` | *(nessuno)* | ❌ |
+| `CONSEGNATO`, `RESO` | `POSITIVO` | ✅ |
+| `ANNULLATO` | `NEGATIVO` | ✅ |
+
+* **`esito`** è un verdetto di
+  [`config.esiti_flussi_pratiche`](/dbzero/config/tabelle/esiti_flussi_pratiche), o vuoto (lo controlla
+  [`config.trgfn_stati_doc_guard_esito_verdetto`](/dbzero/config/funzioni/trgfn_stati_doc_guard_esito_verdetto)).
+  La bolla resa è `POSITIVO`: la merce tornata non è un documento annullato.
+* **`terminale`** vuol dire che dallo stato non esce nessun passaggio a mano. Il sistema può ancora
+  spostare la bolla coi passaggi di processo (`CONSEGNATO → RESO`). Implica `fase = CHIUSO`; lo fa
+  rispettare [`script.trgfn_doc_terminale_senza_uscita_manuale`](/dbzero/script/manual/fn_doc_terminali_con_uscita_manuale).
 
 ---
 

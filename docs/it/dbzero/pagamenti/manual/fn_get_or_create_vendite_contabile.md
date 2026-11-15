@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `pagamenti.fn_get_or_create_vendite_contabile`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 12 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -89,6 +89,10 @@ Se il chiamante non dice l'origine, la distinta è `GENERATA`: chi chiama **senz
 uno script. ⚠️ Un chiamante che inserisca una distinta manuale dimenticando l'origine la
 vedrebbe risultare «prodotta dal sistema»: è il prezzo del default, accettato perché questa
 funzione è l'unica strada che il progetto ammette.
+
+Vale anche per chi scrive la tabella direttamente, come una fixture di test: la colonna `origine`
+ha lo stesso default. Una riga che non la nomina è una distinta `GENERATA`, e ogni regola
+riservata alla distinta manuale la rifiuta.
 
 ---
 

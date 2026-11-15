@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/documenti/manual/formati_pagina.md" %}
 # 📚 Tabella `formati_pagina`
 
 > 📝 **Descrizione**

@@ -19,16 +19,19 @@
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying(80) | NO | CURRENT_USER |
+| user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying(80) | NO | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
+| tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
+| CHECK | chk_note_catalogo_ancora_documento |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
+| CHECK | chk_note_testo_non_vuoto |  |
 | FOREIGN KEY | fk_cat_note_id_lingua | id_lingua |
 | FOREIGN KEY | fk_cat_note_id_stile | id_stile |
 | FOREIGN KEY | fk_cat_note_target_tipo | target_tipo |

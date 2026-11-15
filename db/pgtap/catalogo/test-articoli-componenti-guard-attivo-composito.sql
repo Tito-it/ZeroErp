@@ -239,10 +239,9 @@ UPDATE catalogo.articoli_componenti
  WHERE prodotto_id = (SELECT prodotto_id FROM tmp_art)
    AND attivo = true;
 
-UPDATE catalogo.articoli_uom_operativa
-   SET attivo = false
- WHERE articolo_id = (SELECT prodotto_id FROM tmp_art)
-   AND attivo = true;
+-- ⚠️ Rev 2026-11-11 (brief-db-revisione-catalogo, Q34): la riga base non si spegne
+--   (trgfn_articoli_uom_operativa_guard_base), e non serve spegnerla: il legame
+--   ATTIVO fra mappatura e articolo e' fra le eccezioni (Q31).
 
 UPDATE catalogo.articoli
 SET attivo = false
@@ -281,10 +280,9 @@ WHERE id = (SELECT prodotto_id FROM tmp_art);
 -- 🔴 Figli prima del padre anche qui (2026-08-18): il componente ha la propria
 --   `articoli_uom_operativa` di base, nata da trigger alla creazione. Stesso
 --   ordine imposto da `prevent_deactivate_if_children`.
-UPDATE catalogo.articoli_uom_operativa
-   SET attivo = false
- WHERE articolo_id = (SELECT componente_id FROM tmp_art)
-   AND attivo = true;
+-- ⚠️ Rev 2026-11-11 (brief-db-revisione-catalogo, Q34): la riga base non si spegne
+--   (trgfn_articoli_uom_operativa_guard_base), e non serve spegnerla: il legame
+--   ATTIVO fra mappatura e articolo e' fra le eccezioni (Q31).
 
 UPDATE catalogo.articoli
 SET attivo = false

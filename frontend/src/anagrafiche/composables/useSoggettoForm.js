@@ -4,7 +4,7 @@
 
 import { reactive, ref, computed, watch } from 'vue'
 import { useLookup } from '../../core/composables/useLookup'
-import { lookupTipiSoggettoDettaglio, lookupMatriceIndirizzi } from '../../core/apiCore'
+import { lookupTipiSoggettoDettaglio, lookupTipiIndirizzoNatura } from '../../core/apiCore'
 
 // Il sesso che il form PROPONE a video a un privato in creazione: una proposta
 // visibile, mai un default scritto senza che nessuno l'abbia visto.
@@ -97,10 +97,11 @@ export function useSoggettoForm(options = {}) {
     sessoProposto = null
   }, { flush: 'sync', immediate: true })
 
-  // Matrice indirizzi: ricaricata al cambio tipo
+  // I tipi di indirizzo proponibili per la natura scelta (picker del DB,
+  // ricaricato al cambio tipo): tutti i tipi, gli esclusi col motivo.
   const matriceIndirizzi = ref([])
   const indirizziObbligatori = computed(
-    () => matriceIndirizzi.value.filter(m => m.obbligatorio)
+    () => matriceIndirizzi.value.filter(m => m.obbligatorio && m.ammesso)
   )
 
   watch(() => form.tipo_soggetto_dettaglio_id, async (id) => {
@@ -109,7 +110,7 @@ export function useSoggettoForm(options = {}) {
       return
     }
     try {
-      const res = await lookupMatriceIndirizzi(id)
+      const res = await lookupTipiIndirizzoNatura(id)
       matriceIndirizzi.value = res.data.data.results
     } catch {
       matriceIndirizzi.value = []

@@ -101,7 +101,7 @@ ricompaia.
 
 | Cosa manca | Che cosa significa | Come risponde la vista |
 | --- | --- | --- |
-| lo **stato** non si risolve | il lotto c'è, il suo stato no | la riga **c'è**, `pre_fiscale` è `false` (fail-closed) e i tre assi restano `NULL` |
+| lo **stato** non si risolve | non succede: lo stato del lotto è obbligatorio e nasce dal vocabolario | la vista lo difende lo stesso: `pre_fiscale` è `false` (fail-closed) e i tre assi restano `NULL` |
 | la **riga** non c'è | il lotto non esiste, oppure è fuori dal perimetro RLS | è un'altra domanda: i quattro `fn_check_*` la trattano come errore (`E_LOTTO_NON_TROVATO`) |
 
 ⚠️ **Il fail-closed sta nel derivato, non nei grezzi.** Se anche i tre assi

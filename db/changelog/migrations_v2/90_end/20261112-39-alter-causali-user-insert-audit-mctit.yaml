@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# magazzino.causali: user_insert nella forma di linee-guida-sql §7, cioe'
+#   NOT NULL DEFAULT CURRENT_USER. Brief: brief-db-nullvalue-vuoto-cinque-mirror
+#   (D1-c, Tid 2026-11-12).
+#
+# ⚠️ PERCHE'. user_insert era nullable e senza default: chi inserisce senza
+#   dichiararla la lasciava NULL (il pannello di configurazione, che non scrive le
+#   colonne di sistema), e il seed la scriveva come stringa vuota. Un'audit vuota
+#   non e' un'assenza: e' un dato che manca. Il seed ora non porta piu'
+#   user_insert ne' user_update (mirror 80_data/20251001-51): vale il default.
+#
+# ℹ️ IL PRIMO PASSO SCRIVE LE RIGHE GIA' NATE: user_insert NULL o vuota, e
+#   user_update vuota (NOT NULL, ma il seed vecchio la scriveva ''), prendono il
+#   ruolo che migra, cioe' chi le ha scritte. Il trigger di audit dell'UPDATE
+#   riscrive comunque user_update e data_update.
+#
+# ℹ️ PERCHE' QUI, IN 90_end: dopo il mirror (linee-guida-sql §11.14). Da zero il
+#   mirror inserisce prima del default, e le sue righe nascono con user_insert
+#   NULL: le scrive il primo passo.
+#
+# CENSIMENTO DI CHI SCRIVE LA TABELLA (§11.14), 2026-11-12: il seed (il mirror,
+#   ora senza le colonne di audit); il pannello (config.fn_pannello_scrivi, che
+#   salta le colonne di sistema: ora prende il default); 00_schema/20251005-39
+#   (backfill di codice_interno, non tocca l'audit); nessun endpoint dedicato.
+# Presidio: magazzino/test-causali-audit-insert-v1.
+# Rollback: via il NOT NULL e il default. I valori scritti restano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261112-39-alter-causali-user-insert-audit-mctit.yaml
+
+  - changeSet:
+      id: 20261112-39-alter-causali-user-insert-audit
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.causali: le colonne di audit vuote prendono il ruolo che migra, poi user_insert diventa
+        NOT NULL DEFAULT CURRENT_USER (linee-guida-sql §7). Brief: brief-db-nullvalue-vuoto-cinque-mirror.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = 'magazzino.causali'::regclass
+                 AND a.attname = 'user_insert'
+                 AND a.attnotnull;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE magazzino.causali c
+                 SET user_insert = CASE WHEN NULLIF(btrim(c.user_insert), '') IS NULL
+                                        THEN CURRENT_USER ELSE c.user_insert END,
+                     user_update = CASE WHEN btrim(c.user_update) = ''
+                                        THEN CURRENT_USER ELSE c.user_update END
+               WHERE NULLIF(btrim(c.user_insert), '') IS NULL
+                  OR btrim(c.user_update) = '';
+
+              ALTER TABLE magazzino.causali
+                ALTER COLUMN user_insert SET DEFAULT CURRENT_USER,
+                ALTER COLUMN user_insert SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.causali
+                ALTER COLUMN user_insert DROP NOT NULL,
+                ALTER COLUMN user_insert DROP DEFAULT;

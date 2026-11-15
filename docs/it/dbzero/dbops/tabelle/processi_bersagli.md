@@ -34,7 +34,6 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_processi_bersagli_emittente_via | `CREATE INDEX ix_processi_bersagli_emittente_via ON dbops.processi_bersagli USING btree (emittente_via)` |
-| ix_processi_bersagli_processo_id | `CREATE INDEX ix_processi_bersagli_processo_id ON dbops.processi_bersagli USING btree (processo_id)` |
 | pk_processi_bersagli | `CREATE UNIQUE INDEX pk_processi_bersagli ON dbops.processi_bersagli USING btree (id)` |
 | uq_processi_bersagli_target | `CREATE UNIQUE INDEX uq_processi_bersagli_target ON dbops.processi_bersagli USING btree (processo_id, schema_tabella, nome_tabella)` |
 
