@@ -734,6 +734,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    vale per tutto il periodo della versione. Il catalogo porta versione,
     #    unita', articolo e giorno con dei `%s`; qui la regola senza argomenti.
     "E_LISTINO_UOM_NON_CONVERTIBILE": "L'unita' del prezzo non si converte per l'articolo in tutto il periodo della versione: aggiungere la conversione per tutto il periodo, oppure usare un'altra unita' o un periodo piu' corto.",
+    "E_LISTINO_VARIAZIONE_FUORI_INTERVALLO": "La variazione percentuale o i decimali dell'arrotondamento sono fuori dai limiti ammessi: correggerli e ripetere la variazione.",
     "E_LISTINO_TIPOLOGIA_UTILITY": "Combinazione utility / tipologia non ammessa per questo listino.",
     "E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE": "Fuori dalla bozza questo campo della versione di listino non si cambia: di una versione attiva si cambia solo la fine validita', di una chiusa niente.",
     "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI": "La versione di listino e' chiusa: le sue date di validita' non si possono piu' modificare.",

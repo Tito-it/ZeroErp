@@ -916,21 +916,25 @@ caso del successore contiguo (`valido_dal = valido_al + 1`), che fino al
 |---|---|
 | **Metodo** | `POST` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/applica-variazione/` |
+| **Verbo DB** | `vendite.fn_varia_prezzi_versione_listino` (dal 2026-11-15, BE-L7) |
 
-Applica una variazione percentuale ai prezzi di tutte le righe attive di una versione
-in bozza (N8a: «clone + variazione + attiva»). Supporta `dry_run` per preview e filtro
-opzionale per articoli.
+Applica una variazione percentuale ai prezzi delle righe attive di una versione in bozza
+(N8a: «clone + variazione + attiva»). Anteprima e gesto sono **la stessa chiamata al
+verbo**, che si distingue solo per `dry_run`. Il backend controlla la **forma** del corpo
+e mette il default dei decimali; tutto il resto è del verbo.
 
 ### Body JSON
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `variazione_percentuale` | decimal | Si | Positivo = aumento, negativo = riduzione. Range: -99 a +1000 |
-| `arrotondamento_decimali` | int | No | Decimali da mantenere. Default `4`, range 0-10 |
-| `filtro_articoli` | array uuid | No | Se valorizzato, applica solo a questi articoli |
-| `dry_run` | bool | No | Se `true`, calcola preview senza modificare. Default `false` |
+| `variazione_percentuale` | decimal | Si | Positivo = aumento, negativo = riduzione. Intervallo del verbo: da -99 a +1000, estremi compresi |
+| `arrotondamento_decimali` | int | No | Decimali da mantenere. Default `4`; intervallo del verbo: da 0 a 10 |
+| `filtro_articoli` | array uuid \| null | No | Assente o `null` = tutte le righe attive; un elenco = solo quegli articoli; ⚠️ `[]` = **nessuna** riga |
+| `dry_run` | bool | No | Se `true`, l'anteprima: calcola senza scrivere. Default `false` |
 
 ### Risposta dry_run (200)
+
+Una riga per riga presa, ordinata per codice articolo; `righe_coinvolte` è il loro numero.
 
 ```json
 {
@@ -939,11 +943,12 @@ opzionale per articoli.
     "righe_coinvolte": 500,
     "preview": [
       {
-        "riga_id": 1001,
+        "listino_riga_id": 1001,
+        "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
         "articolo_codice": "ART001",
         "articolo_descrizione": "Articolo esempio",
-        "prezzo_attuale": "12.5000",
-        "prezzo_calcolato": "12.8750"
+        "prezzo_precedente": "12.5000",
+        "prezzo_nuovo": "12.8750"
       }
     ],
     "variazione_percentuale": "3.0",
@@ -951,6 +956,10 @@ opzionale per articoli.
   }
 }
 ```
+
+⚠️ Dal 2026-11-15 i nomi sono quelli del verbo: `riga_id` → `listino_riga_id`,
+`prezzo_attuale` → `prezzo_precedente`, `prezzo_calcolato` → `prezzo_nuovo`; `articolo_id`
+è nuovo.
 
 ### Risposta applicazione (200)
 
@@ -966,22 +975,27 @@ opzionale per articoli.
 
 ### Regole specifiche
 
-- **Solo in bozza**: lo dice il guard di stato delle righe, sulla prima riga che
-  l'UPDATE tocca, e l'istruzione salta intera (`409 E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`
-  / `E_RIGA_LISTINO_VERSIONE_CHIUSA`). ⭐ Anche il `dry_run` rifiuta cosi': calcola i
-  prezzi, poi fa l'UPDATE vero in un savepoint annullato (come l'anteprima
-  dell'attivazione). Il FE spegne il gesto da `variazione_blocco_*` della versione.
-- Guard range: `-99 <= variazione <= 1000`. Fuori range → 400.
-- **Arrotondamento composto**: ogni applicazione e` atomica con arrotondamento immediato.
+- **Solo in bozza, e lo dice la versione**: anche quando il filtro non prende nessuna riga,
+  e anche col `dry_run` (`409 E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` /
+  `E_RIGA_LISTINO_VERSIONE_CHIUSA`). È lo stesso motivo di `variazione_blocco_*` della
+  versione, da cui il FE spegne il gesto. ⛔ Fino al 2026-11-15 lo diceva il guard delle
+  righe sull'UPDATE del backend: a righe zero non scattava, e il gesto cadeva poi sulla
+  traccia in meta con `E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE`.
+- **Arrotondamento composto**: ogni applicazione è atomica con arrotondamento immediato.
   Due variazioni successive (+3% poi +2%) producono risultati diversi da una singola +5.06%.
-- **Audit**: la variazione viene registrata in `versione.meta.variazioni_percentuali[]`
-  con data, percentuale, arrotondamento, righe aggiornate e filtro.
+- **Traccia**: il gesto (non l'anteprima) scrive in `versione.meta.variazioni_percentuali[]`
+  data, operatore, percentuale, arrotondamento, righe aggiornate e filtro, anche a righe zero.
+  La scrive il verbo, nella stessa transazione dei prezzi.
 - Frontend: `ApplicaVariazioneDialog.vue` (2 step: input → preview dry_run → conferma).
 
 ### Errori tipici
 
-- `400` `E_VENDITE_VALIDATION`: percentuale fuori range, arrotondamento fuori range
-- `409` `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` / `E_RIGA_LISTINO_VERSIONE_CHIUSA` (dal guard DB): la versione non e' in bozza
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_VENDITE_VALIDATION` | 400 | Forma del corpo: percentuale assente o non numerica, decimali non interi, filtro non un array di UUID |
+| `E_LISTINO_VARIAZIONE_FUORI_INTERVALLO` | 400 | Percentuale o decimali fuori intervallo; `error.fields` = `variazione_percentuale` o `arrotondamento_decimali` |
+| `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` / `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | La versione non è in bozza |
+| `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` | 404 | Versione inesistente o fuori perimetro (o non di quel listino) |
 
 ---
 
