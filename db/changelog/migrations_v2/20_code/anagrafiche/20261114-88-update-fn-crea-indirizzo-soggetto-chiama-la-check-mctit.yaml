@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SINGOLARE DEL SOGGETTO CHIAMA LA CHECK DEL TIPO, E SOLLEVA IL PRIMO MOTIVO
+#   anagrafiche.fn_crea_indirizzo_soggetto(soggetto, jsonb)
+#   Brief: brief-db-copia-indirizzo-soggetto §4.2, giro 1 (D-3).
+#   Corpo di partenza: docs/it/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto.md
+#   (rigenerata dopo l'ultimo changeSet sull'oggetto, 20261101-09).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Dopo la grammatica dell'elemento, e prima dell'INSERT, la madre chiama
+#   anagrafiche.fn_check_tipo_indirizzo_soggetto (-86) e solleva il primo
+#   motivo con script.fn_raise_primo_motivo_se_presente (§12.5.2): il tipo gia'
+#   presente esce con E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE e il tipo, invece
+#   del 23505 di uq_indirizzi_soggetti_soggetto_tipo; il tipo non ammesso dalla
+#   natura esce dalla check prima del guard, con lo stesso codice. Il campo da
+#   accendere e' tipo_indirizzo_codice_interno, come per il tipo che non esiste.
+#   Un soggetto inesistente ora esce con E_SOGGETTO_NOT_FOUND dalla check,
+#   invece della violazione di FK.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il predicato non entra nella madre (il presidio e' «la singolare non
+#   contiene il predicato»). Il vincolo e il guard della tabella restano: il
+#   primo contro la corsa, il secondo per ogni altra strada. Firma e ritorno
+#   identici. COMMENT riscritto al presente (§5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-88-update-fn-crea-indirizzo-soggetto-chiama-la-check-mctit.yaml
+
+  - changeSet:
+      id: 20261114-88-update-fn-crea-indirizzo-soggetto-chiama-la-check
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_crea_indirizzo_soggetto chiama fn_check_tipo_indirizzo_soggetto e solleva il
+        primo motivo prima di scrivere (tipo gia' presente col suo codice).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzo_soggetto(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_indirizzo   jsonb)
+               RETURNS anagrafiche.indirizzi_soggetti.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  c_chi CONSTANT text := 'anagrafiche.fn_crea_indirizzo_soggetto';
+                  v_el  jsonb;
+                  v_id  anagrafiche.indirizzi_soggetti.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere un indirizzo di un soggetto. p_indirizzo e' un
+                  --   oggetto col tipo (tipo_indirizzo_id o
+                  --   tipo_indirizzo_codice_interno) e l'indirizzo in una di tre
+                  --   forme: libero (indirizzo_libero, stato, poi comune e CAP
+                  --   del catalogo oppure locality e postal_code), dettaglio
+                  --   gia' risolto (indirizzo_dettaglio_id), via da risolvere.
+                  --   Ritorna l'id della riga.
+                  --
+                  -- Regole:
+                  --   - la grammatica e la via sono dei BB fn_indirizzo_elemento
+                  --     e fn_indirizzo_elemento_dettaglio, comuni con
+                  --     fn_crea_indirizzo_ruolo;
+                  --   - il tipo (gia' presente, ammesso dalla natura) lo giudica
+                  --     fn_check_tipo_indirizzo_soggetto: qui si solleva il suo
+                  --     primo motivo, il predicato non si ricopia;
+                  --   - la completezza e la forma le dice il guard della
+                  --     tabella (trgfn_indirizzi_guard_forma_libera).
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid,
+                          c_chi,
+                          'manca il soggetto');
+                  END IF;
+
+                  v_el := anagrafiche.fn_indirizzo_elemento(
+                              p_indirizzo, c_chi,
+                              jsonb_build_object('soggetto_id', p_soggetto_id));
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'anagrafiche', c_chi,
+                      anagrafiche.fn_check_tipo_indirizzo_soggetto(
+                          p_soggetto_id, (v_el ->> 'tipo_indirizzo_id')::integer),
+                      'tipo_indirizzo_codice_interno');
+
+                  INSERT INTO anagrafiche.indirizzi_soggetti (
+                      soggetto_id, tipo_indirizzo_id,
+                      indirizzo_dettaglio_id, indirizzo_libero,
+                      stato_id, comune_id, codice_postale_id,
+                      administrative_area, locality, sublocality, postal_code)
+                  VALUES (
+                      p_soggetto_id, (v_el ->> 'tipo_indirizzo_id')::integer,
+                      anagrafiche.fn_indirizzo_elemento_dettaglio(v_el),
+                      NULLIF(btrim(v_el ->> 'indirizzo_libero'), ''),
+                      (v_el ->> 'stato_id')::integer,
+                      (v_el ->> 'comune_id')::integer,
+                      (v_el ->> 'codice_postale_id')::integer,
+                      v_el ->> 'administrative_area',
+                      v_el ->> 'locality',
+                      v_el ->> 'sublocality',
+                      v_el ->> 'postal_code')
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzo_soggetto(
+                  anagrafiche.soggetti.id%TYPE, jsonb)
+              IS 'Madre: scrive un indirizzo di un soggetto (anagrafiche.indirizzi_soggetti). p_indirizzo: un oggetto col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). Ritorna l''id della riga. Grammatica e via dai BB anagrafiche.fn_indirizzo_elemento e fn_indirizzo_elemento_dettaglio, gli stessi di fn_crea_indirizzo_ruolo. Il tipo lo giudica anagrafiche.fn_check_tipo_indirizzo_soggetto, di cui si solleva il primo motivo prima di scrivere (campo tipo_indirizzo_codice_interno): tipo gia'' presente E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE, tipo non ammesso dalla natura E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, soggetto inesistente E_SOGGETTO_NOT_FOUND. Altri rifiuti: soggetto mancante E_SCRIPT_CHIAMATA_NON_VALIDA, poi quelli del BB dell''elemento (E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO); forma e completezza dal guard anagrafiche.trgfn_indirizzi_guard_forma_libera. Restano sulla tabella, per ogni altra strada e contro la corsa, il guard trgfn_indirizzi_soggetti_guard_tipo_indirizzo e il vincolo uq_indirizzi_soggetti_soggetto_tipo. INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' nella doc auto-generata; si torna indietro con un changeSet nuovo.
+              SELECT 1;

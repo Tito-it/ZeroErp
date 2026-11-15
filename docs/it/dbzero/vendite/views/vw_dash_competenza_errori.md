@@ -63,7 +63,7 @@ WITH escope AS (
                   WHERE (lf2.fattura_id = fc.id))))
         UNION
          SELECT fc.id,
-            (date_trunc('month'::text, (fc.data)::timestamp with time zone))::date AS competenza_mese,
+            script.fn_mese_di(fc.data) AS competenza_mese,
             NULL::bigint AS lotto_id
            FROM fatture_critiche fc
           WHERE ((NOT (EXISTS ( SELECT 1

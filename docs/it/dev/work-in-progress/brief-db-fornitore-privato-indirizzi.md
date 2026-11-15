@@ -5,6 +5,15 @@
 > **Origine:** smoke `smoke-test-soggetti.sh` (assegnazione ruoli) e la domanda di Tid
 > «un'azienda può comprare da un privato?» del 2026-10-09.
 > **Stato:** 🔵 da fare.
+>
+> ⚠️ **Oggetti cambiati sotto questo brief (team DB, 2026-11-15).** Con il giro 1 di
+> [brief-db-copia-indirizzo-soggetto](brief-db-copia-indirizzo-soggetto.md) (§5.1,
+> `20261114-84 … -91`) il predicato «il tipo di ruolo ammette il tipo di indirizzo» non sta più
+> nel corpo di `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`: sta in
+> `anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo`, che leggono il trigger, la check
+> `fn_check_tipo_indirizzo_ruolo_su_contesto` e `fn_crea_indirizzi_ruolo` (gli obbligatori da
+> copiare, ora attivi **e** validi oggi). Chi riparte da qui cambia la regola lì, una volta sola:
+> i rimandi dei §2-§4 al corpo del trigger valgono per il comportamento, non per la sede.
 
 ## 1. Il caso di dominio
 

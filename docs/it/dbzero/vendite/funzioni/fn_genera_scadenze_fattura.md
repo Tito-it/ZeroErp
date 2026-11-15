@@ -249,8 +249,7 @@ BEGIN
         -- del proprio mese. Il clamp lo fa PostgreSQL nativamente,
         -- quindi il caso a cavallo d'anno non ha codice dedicato.
         IF v_fine_mese THEN
-            v_data_rata := (date_trunc('month', v_data_rata::timestamp)
-                            + interval '1 month - 1 day')::date;
+            v_data_rata := script.fn_fine_mese_di(v_data_rata);
         END IF;
 
         IF n < v_num_rate THEN

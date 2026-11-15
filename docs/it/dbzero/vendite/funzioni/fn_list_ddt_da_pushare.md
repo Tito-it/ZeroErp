@@ -126,7 +126,7 @@ BEGIN
     WHERE g.motivo IS NULL
       -- I filtri DI CHIAMATA: non decidono l'eleggibilita', scelgono
       -- una fetta delle righe eleggibili (lista push per mese/BA).
-      AND (p_competenza_mese IS NULL OR date_trunc('month', d.data)::date = p_competenza_mese)
+      AND (p_competenza_mese IS NULL OR script.fn_mese_di(d.data) = p_competenza_mese)
       AND (p_billing_account_id IS NULL OR g.billing_account_id = p_billing_account_id)
   )
   SELECT
@@ -153,7 +153,7 @@ BEGIN
     x.dr_qta_op * (x.quantita_push / NULLIF(x.dr_quantita, 0)),
     x.dr_uom_op,
     COALESCE(x.dr_factor, 1::numeric),
-    date_trunc('month', x.d_data)::date,
+    script.fn_mese_di(x.d_data),
     COALESCE(x.dr_prezzo, x.src_prezzo_unitario),
     -- prezzo_bloccato: dipende dal PREZZO della riga,
     -- INDIPENDENTE dal flag di corsia.

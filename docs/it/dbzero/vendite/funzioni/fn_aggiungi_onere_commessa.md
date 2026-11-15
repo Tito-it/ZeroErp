@@ -88,7 +88,7 @@ BEGIN
   END IF;
 
   v_data      := COALESCE(p_data_attivita, script.fn_data_operativa());
-  v_comp_mese := date_trunc('month', v_data)::date;
+  v_comp_mese := script.fn_mese_di(v_data);
 
   -- =====================================================
   -- segment_key progressivo della porta manuale per la commessa.

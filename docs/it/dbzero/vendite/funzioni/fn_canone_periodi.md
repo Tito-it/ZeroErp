@@ -70,13 +70,13 @@ BEGIN
     END IF;
 
     v_dal  := greatest(p_valido_dal, coalesce(p_dal, p_valido_dal));
-    v_comp := date_trunc('month', p_data_giro)::date;
+    v_comp := script.fn_mese_di(p_data_giro);
 
     -- Il periodo del calendario che contiene l'inizio del contratto: il mese
     -- di partenza piu' un multiplo dei mesi della periodicita'.
     v_offset := ((extract(month FROM p_valido_dal)::integer - p_mese_partenza)
                  % v_mesi + v_mesi) % v_mesi;
-    v_inizio := (date_trunc('month', p_valido_dal)
+    v_inizio := (script.fn_mese_di(p_valido_dal)
                  - make_interval(months => v_offset))::date;
 
     LOOP
@@ -106,8 +106,8 @@ BEGIN
                              / (m.eom - m.bom + 1)) / v_mesi, 6)
               INTO v_tot
               FROM (SELECT g::date AS bom,
-                           (g + interval '1 month' - interval '1 day')::date AS eom
-                      FROM generate_series(date_trunc('month', v_pezzo_s),
+                           script.fn_fine_mese_di(g::date) AS eom
+                      FROM generate_series(script.fn_mese_di(v_pezzo_s),
                                            v_e, interval '1 month') g) m;
             v_acc := 0;
 
@@ -128,8 +128,8 @@ BEGIN
                                      / (m.eom - m.bom + 1)) / v_mesi, 6)
                       INTO frazione
                       FROM (SELECT g::date AS bom,
-                                   (g + interval '1 month' - interval '1 day')::date AS eom
-                              FROM generate_series(date_trunc('month', v_pezzo_s),
+                                   script.fn_fine_mese_di(g::date) AS eom
+                              FROM generate_series(script.fn_mese_di(v_pezzo_s),
                                                    v_pezzo_e, interval '1 month') g) m;
                     v_acc := v_acc + frazione;
                 END IF;

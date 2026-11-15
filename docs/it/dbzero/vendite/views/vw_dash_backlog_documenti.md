@@ -34,7 +34,7 @@ WITH base AS (
           WHERE (d.motivo_fermo IS NOT NULL)
         UNION ALL
          SELECT 'RESO_VENDITA'::character varying AS area,
-            (date_trunc('month'::text, (q.data)::timestamp with time zone))::date AS competenza_mese,
+            script.fn_mese_di(q.data) AS competenza_mese,
             q.reso_id AS documento_id,
             (q.reso_uid)::text AS documento_uid,
             (q.reso_numero)::text AS codice,
@@ -54,7 +54,7 @@ WITH base AS (
           GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
         UNION ALL
          SELECT 'RESO_VENDITA'::character varying AS area,
-            (date_trunc('month'::text, (a.data)::timestamp with time zone))::date AS competenza_mese,
+            script.fn_mese_di(a.data) AS competenza_mese,
             a.reso_id AS documento_id,
             (a.reso_uid)::text AS documento_uid,
             (a.reso_numero)::text AS codice,

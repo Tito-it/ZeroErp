@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.VW_DASH_FATTURAZIONE_PREVENTIVI: IL MESE DAL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 2 (§6.2).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   2 espressioni `date_trunc('month', <date>)::date` → script.fn_mese_di(<date>):
+#   il mese della validita' o della data del preventivo, quando la
+#   competenza non e' scritta.
+#   Il risultato e' lo stesso giorno su ogni data e in ogni fuso di sessione
+#   (script/test-mese-di-un-giorno-v1, 12-15), e la colonna resta date.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: nomi, ordine e tipi delle colonne non cambiano,
+#   quindi le viste che dipendono da questa restano in piedi, e COMMENT e
+#   GRANT (che stanno sull'oggetto) non si toccano. WITH (security_invoker)
+#   si RIPETE: il REPLACE sostituisce le opzioni con quelle scritte.
+#   Il corpo e' la definizione viva del 2026-11-15, letta con
+#   `SET search_path = pg_catalog` (nomi qualificati, linee-guida-sql §5c);
+#   il rollback la rimette identica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-07-update-vw-dash-fatturazione-preventivi-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261115-07-update-vw-dash-fatturazione-preventivi-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_preventivi: il mese di competenza da script.fn_mese_di invece che da
+        date_trunc, stesso risultato. Brief: brief-db-mese-di-un-giorno, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT (SELECT count(*) FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'vendite' AND c.relname = 'vw_dash_fatturazione_preventivi' AND c.relkind = 'v')
+                   + (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi WITH (security_invoker = on) AS
+               WITH righe AS (
+                       SELECT sr.preventivo_id,
+                          sr.riga_id,
+                          script.fn_imponibile_riga(COALESCE(sr.quantita, 0::numeric), sr.prezzo_unitario, pr.sconto_percentuale) AS valore_riga,
+                          sr.stato_smistamento <> 'RESIDUA'::text AS transitata
+                         FROM vendite.vw_preventivi_smistamento_righe sr
+                           JOIN vendite.preventivi_righe pr ON pr.id = sr.riga_id
+                      )
+               SELECT 'PREVENTIVO'::character varying AS area,
+                  COALESCE(p.competenza_mese, script.fn_mese_di(p.validita_dal), script.fn_mese_di(p.data)) AS competenza_mese,
+                  p.id AS documento_id,
+                  p.uid::text AS documento_uid,
+                  p.numero::text AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                  count(r.riga_id)::integer AS unita_totali,
+                  count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                  count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                  COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                      CASE
+                          WHEN COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                          WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                          WHEN sdp.iniziale THEN 'DOC_BOZZA'::text
+                          WHEN sdp.emissione THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'RIGA_RESIDUA'::text
+                      END::character varying AS motivo_fermo,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.codice AS stato_codice,
+                  sdp.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  p.data AS data_riferimento
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN righe r ON r.preventivo_id = p.id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                WHERE p.is_attiva
+                GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, sdp.iniziale, sdp.emissione, s.ragione_sociale_completa;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_preventivi WITH (security_invoker = on) AS
+               WITH righe AS (
+                       SELECT sr.preventivo_id,
+                          sr.riga_id,
+                          script.fn_imponibile_riga(COALESCE(sr.quantita, 0::numeric), sr.prezzo_unitario, pr.sconto_percentuale) AS valore_riga,
+                          sr.stato_smistamento <> 'RESIDUA'::text AS transitata
+                         FROM vendite.vw_preventivi_smistamento_righe sr
+                           JOIN vendite.preventivi_righe pr ON pr.id = sr.riga_id
+                      )
+               SELECT 'PREVENTIVO'::character varying AS area,
+                  COALESCE(p.competenza_mese, date_trunc('month'::text, p.validita_dal::timestamp with time zone)::date, date_trunc('month'::text, p.data::timestamp with time zone)::date) AS competenza_mese,
+                  p.id AS documento_id,
+                  p.uid::text AS documento_uid,
+                  p.numero::text AS codice,
+                  p.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  COALESCE(sum(r.valore_riga), 0::numeric) AS valore_totale,
+                  COALESCE(sum(r.valore_riga) FILTER (WHERE r.transitata), 0::numeric) AS valore_transitato,
+                  count(r.riga_id)::integer AS unita_totali,
+                  count(r.riga_id) FILTER (WHERE r.transitata)::integer AS unita_transitate,
+                  count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) AS is_transitato,
+                  COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) AS is_abortito,
+                      CASE
+                          WHEN COALESCE(sdp.esito::text = 'NEGATIVO'::text, false) THEN NULL::text
+                          WHEN count(r.riga_id) > 0 AND count(r.riga_id) = count(r.riga_id) FILTER (WHERE r.transitata) THEN NULL::text
+                          WHEN sdp.iniziale THEN 'DOC_BOZZA'::text
+                          WHEN sdp.emissione THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'RIGA_RESIDUA'::text
+                      END::character varying AS motivo_fermo,
+                  sdp.codice_interno AS stato_codice_interno,
+                  sdp.codice AS stato_codice,
+                  sdp.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  p.data AS data_riferimento
+                 FROM vendite.vw_preventivi p
+                   JOIN config.stati_doc_preventivi sdp ON sdp.id = p.stato_doc_preventivo_id
+                   LEFT JOIN righe r ON r.preventivo_id = p.id
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON iu.id = p.istanza_utility_id
+                   LEFT JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                WHERE p.is_attiva
+                GROUP BY p.id, p.uid, p.numero, p.competenza_mese, p.validita_dal, p.data, p.emittente_fiscale_id, sdp.codice_interno, sdp.codice, sdp.fase, sdp.esito, sdp.iniziale, sdp.emissione, s.ragione_sociale_completa;

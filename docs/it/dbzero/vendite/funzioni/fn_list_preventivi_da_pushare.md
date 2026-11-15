@@ -150,7 +150,7 @@ BEGIN
     -- competenza_mese: policy autorevole, fallback al derivato (pregresso)
     COALESCE(
       p.competenza_mese,
-      date_trunc('month', COALESCE(p.validita_dal, p.data))::date
+      script.fn_mese_di(COALESCE(p.validita_dal, p.data))
     )                                                             AS competenza_mese,
     pr.prezzo_unitario                                            AS prezzo_snapshot,
     COALESCE(p.fatturazione_immediata, false)                     AS prezzo_bloccato,
@@ -191,7 +191,7 @@ BEGIN
     AND (p_competenza_mese IS NULL
          OR COALESCE(
               p.competenza_mese,
-              date_trunc('month', COALESCE(p.validita_dal, p.data))::date
+              script.fn_mese_di(COALESCE(p.validita_dal, p.data))
             ) = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR p.billing_account_id = p_billing_account_id)
     AND (p_preventivo_id IS NULL OR p.id = p_preventivo_id)

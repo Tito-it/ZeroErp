@@ -2,18 +2,31 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB**, col giro 1 del §5. Le decisioni D-1 … D-4 le ha prese Tid il
-2026-11-15 (§6): tutte come da proposta.
+**Riparte: il BE/FE**, con la richiesta del §7: R-0 e R-0 bis (chiavi i18n, sbloccano il commit
+DB), R-6, R-2, poi R-1, R-3, R-4, R-5. Il DB è fatto: giri 1, 2, 3 e Q-1 applicati e verdi
+(2026-11-15). Le decisioni D-1 … D-4 le ha prese Tid il 2026-11-15
+(§6): tutte come da proposta.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team DB | giro 1: le check e il motivo «tipo già presente», chiamate dalle singolari, sui due layer; gli obbligatori delle plurali sulla finestra di validità (D-4) | §4.1, §4.2, §4.6 | — |
-| 2 | team DB | giro 2: i picker dei tipi, sui due layer | §4.3, §4.6 | 1 |
-| 3 | team DB | giro 3: i verbi della copia e il loro motivo di riga, sui due layer | §4.4, §4.5, §4.6 | 1 |
-| 4 | BE/FE | richiesta R-1 … R-5 | §7 | 2, 3 |
+| 1 | team DB | ✅ giro 1 scritto e provato in `ROLLBACK` (2026-11-15) | §5.1 | — |
+| 1-bis | Tid | ✅ giro 1 applicato, pgTAP verdi (2026-11-15) | §5.1 | — |
+| 1-quater | team DB | ✅ Q-1 scritta e provata in `ROLLBACK` (2026-11-15): le due frasi, i due guard e le due check sulle descrizioni | §5.2 | — |
+| 1-quinquies | Tid | ✅ Q-1 applicata, pgTAP verdi (2026-11-15) | §5.2 | — |
+| 1-ter | BE/FE | R-0 (le tre chiavi i18n, che sbloccano il commit DB) e R-6 (il test Django sul duplicato, le policy dei due codici nuovi) | §7 | — |
+| 2 | team DB | ✅ giro 2 scritto e provato in `ROLLBACK` (2026-11-15): i quattro picker | §5.3 | — |
+| 2-bis | Tid | ✅ giro 2 applicato, pgTAP verdi coi presidi 1-2 riscritti (2026-11-15) | §5.3 | — |
+| 2-ter | BE/FE | R-2 (i lookup dei tipi leggono i picker; si ritirano le due letture della matrice) | §7 | — |
+| 3 | team DB | ✅ giro 3 scritto e provato in `ROLLBACK` (2026-11-15): verbi, check di riga, viste, registro | §5.4 | — |
+| 3-bis | Tid | ✅ giro 3 applicato, pgTAP verdi (2026-11-15) | §5.4 | — |
+| 4 | BE/FE | richiesta R-1, R-3, R-4, R-5 e R-0 bis | §7 | — |
 | 5 | chi chiude | archiviazione in `work-done/` | — | 4 |
 
-Decisioni aperte di Tid: nessuna. Lavoro fatto da committare: questo file.
+Decisioni aperte di Tid: nessuna. Lavoro fatto da committare: il giro 1 (otto changeSet, due CSV, un pgTAP nuovo e due
+riscritti, cinque pagine `manual/` e la guida degli indirizzi), Q-1 (quattro changeSet, due righe
+di CSV, quattro asserzioni nel pgTAP del giro), il giro 2 (due changeSet, un pgTAP, la guida), il giro 3 (sette changeSet, tre CSV, un pgTAP
+nuovo e la soglia del rubinetto, la guida) e questo file; il commit aspetta le
+chiavi i18n del FE (R-0).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-15.
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE al §7.
@@ -168,7 +181,7 @@ riga non si può copiare **in nessun tipo**, per §12.1:
 
 | `reason` | Condizione |
 | --- | --- |
-| `DETTAGLIO_NON_ATTIVO` | la riga punta a un dettaglio spento: la riga nuova lo rifiuterebbe (`trgfn_child_requires_active_parent`) |
+| ~~`DETTAGLIO_NON_ATTIVO`~~ | ⚠️ superato (§5.4): lo stato non esiste nel modello, il motivo non si scrive. ~~la riga punta a un dettaglio spento: la riga nuova lo rifiuterebbe (`trgfn_child_requires_active_parent`)~~ |
 | `NESSUN_TIPO_PROPONIBILE` | il picker del §4.3 non ha un tipo ammesso |
 
 Proposta: `anagrafiche.fn_check_copia_indirizzo_soggetto(p_indirizzo_soggetto_id bigint) RETURNS jsonb`,
@@ -235,6 +248,230 @@ Ogni giro copre i due layer, soggetto e ruolo (D-1).
 Ogni codice nuovo entra in `codici_errore.csv` con la sua policy: il BE rigenera
 `error_policies_generated.py` e aggiunge il ripiego (§7, R-5).
 
+### 5.1 Giro 1, fatto (team DB, 2026-11-15)
+
+| Pezzo | File (`20_code/anagrafiche/`, salvo dove detto) |
+| --- | --- |
+| `fn_tipo_indirizzo_ammesso_per_ruolo(tipo ruolo, tipo, giorno)`: il predicato del ruolo, gemello di quello della natura, `BEGIN ATOMIC` | `20261114-84-create-fn-tipo-indirizzo-ammesso-per-ruolo` |
+| `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` legge il predicato: stesse risposte, stesso codice, stessi valori | `20261114-85-update-trgfn-indirizzi-guard-tipo-ruolo-dal-predicato` |
+| `fn_check_tipo_indirizzo_soggetto_su_contesto(natura, tipi presenti, tipo, giorno, soggetto)` e `fn_check_tipo_indirizzo_soggetto(soggetto, tipo)` | `20261114-86-create-fn-check-tipo-indirizzo-soggetto` |
+| `fn_check_tipo_indirizzo_ruolo_su_contesto(tipo ruolo, tipi presenti, tipo, giorno, ruolo)` e `fn_check_tipo_indirizzo_ruolo(ruolo, istanza, tipo)` | `20261114-87-create-fn-check-tipo-indirizzo-ruolo` |
+| `fn_crea_indirizzo_soggetto` chiama la check e solleva il primo motivo (campo `tipo_indirizzo_codice_interno`) | `20261114-88-update-fn-crea-indirizzo-soggetto-chiama-la-check` |
+| `fn_crea_indirizzo_ruolo` idem, sulla chiave (ruolo, istanza) | `20261114-89-update-fn-crea-indirizzo-ruolo-chiama-la-check` |
+| `fn_crea_indirizzi_soggetto` e `fn_crea_indirizzi_ruolo`: gli obbligatori col predicato (D-4) | `20261114-90-…-soggetto-obbligatori-dal-predicato`, `20261114-91-…-ruolo-obbligatori-dal-predicato` |
+| `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` e `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` (`DATO_ERRATO`), frasi id 1492 e 1493 | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` |
+| Il pgTAP del giro (30 asserzioni) | `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` |
+| Due test riscritti sul contratto nuovo: il duplicato ora è il codice, non il 23505 | `test-fn-crea-indirizzo-soggetto.sql` (5), `test-indirizzi-singolare-e-plurale-v1.sql` (4) |
+| Pagine `manual/` delle quattro madri e del guard del ruolo; guida *Gestione degli indirizzi* (R2, R5) | `docs/it/dbzero/anagrafiche/manual/`, `docs/it/guide/` |
+
+**Le scelte fatte scrivendo:**
+
+* **La check è divisa in due metà** (§12.6) già nel giro 1: il **contesto** (natura o tipo di
+  ruolo, e i tipi presenti) lo legge la firma completa; i **motivi** di un tipo sono la metà
+  `_su_contesto`, che non legge né il soggetto né il ruolo. Così i picker del giro 2 sulla natura e
+  sul tipo di ruolo (soggetto e ruolo non ancora nati) la chiamano con i tipi presenti vuoti.
+* **«Già presente» sul ruolo** si legge sulla chiave dei due indici: istanza
+  `IS NOT DISTINCT FROM` quella data. Un tipo del ruolo non blocca la stessa istanza, e viceversa.
+* **La delega fra le due metà è un'assegnazione** (`v_motivi := …_su_contesto(…)`), non un
+  `RETURN …(…)`: `dbops.vw_funzioni_check_codici` riconosce solo `:=` e `||`. Con il `RETURN` il
+  presidio `test-punti-canale-campo-v1` (2) vedeva le due singolari come siti ciechi (vicolo
+  cieco provato e corretto).
+* La reason_key del «già presente» è la stessa sui due layer
+  (`anagrafiche.indirizzi.tipo_blocco.gia_presente`), i codici no: la frase dice «il soggetto» o
+  «il ruolo».
+* Un soggetto inesistente, dalla singolare, ora esce con `E_SOGGETTO_NOT_FOUND` (dalla check)
+  invece della violazione di FK.
+* Le plurali **non** incontrano il motivo nuovo: saltano i tipi presenti prima della singolare,
+  come prima.
+
+**Prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli`, 2026-11-15): estratto degli otto
+changeSet eseguito per intero, catalogo identico dopo il `ROLLBACK`.
+
+| pgTAP | Senza l'estratto | Con l'estratto |
+| --- | --- | --- |
+| `test-check-tipo-indirizzo-v1` (nuovo) | interrotto (le funzioni non ci sono) | 30 ok / 0 |
+| `test-fn-crea-indirizzo-soggetto`, `test-indirizzi-singolare-e-plurale-v1` (riscritti) | 1 rosso ciascuno (il contratto nuovo) | tutti verdi |
+| `test-fn-crea-indirizzi-ruolo-v1`, `test-istanza-dello-stesso-soggetto-v1`, `test-indirizzi-fallback`, `test-emittenti-fiscali`, `test-indirizzo-libero-due-forme-v1`, `test-cambio-natura-soggetto-v1` | verdi | verdi, invariati |
+| presidi `dbops`: canale del campo, motivo nominato, valore atteso, check sotto JIT, riferimenti morti, corpo senza commenti, corpo leggibile; `script`: rubinetto, catalogo messaggi | verdi (il rubinetto ha il suo rosso dichiarato) | invariati |
+
+**Mutazione**: senza `-90` e `-91` (le plurali di prima) diventano rossi il 20, il 21, il 28 e il
+presidio 4: il pgTAP distingue davvero la finestra di validità degli obbligatori.
+I due CSV: upsert di **tutte** le righe in una transazione annullata, verde; nessun `\r`, diff di
+due righe per file.
+
+⛔ **Non provati prima dell'apply:** le frasi dei due codici nuovi (i CSV non sono nell'estratto: il
+pgTAP asserisce i codici, non le frasi, apposta) e il `rollback` dei changeSet (la prova estrae
+solo i `changes`).
+
+**Debito trovato (Q-1, decisa da Tid il 2026-11-15: si fa subito, §5.2).** Le frasi dei due codici del tipo non ammesso sono scritte sugli
+id: `E_TIPO_INDIRIZZO_NON_PERMESSO` «Tipo indirizzo %s non permesso per tipo_ruolo_id %s
+(soggetto_ruolo_id=%s)», `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` «… per il tipo soggetto %s
+(soggetto_id=%s)». I due guard passano gli id; le check nuove passano le descrizioni (il tipo, il
+tipo di ruolo o la natura) e l'id del ruolo o del soggetto, perché da qui in avanti la frase la
+legge l'operatore. Proposta: riscrivere le due frasi senza nomi di colonna e coi due guard sulle
+descrizioni, in un giro del brief (due righe di CSV, due corpi di guard). Da decidere: se e quando.
+
+**Doc auto-generata**: va rigenerata dopo l'apply; le pagine `manual/` e la guida rimandano già
+alle quattro funzioni nuove.
+
+**Apply**: giro 1 applicato da Tid il 2026-11-15, pgTAP verdi.
+
+### 5.2 Q-1, le due frasi del tipo non ammesso (team DB, 2026-11-15)
+
+Decisa da Tid il 2026-11-15 («le riscriviamo subito»). Le due frasi perdono i nomi di colonna e
+gli id, e passano a due valori, per descrizione, nell'ordine «chi non ammette», «quale
+indirizzo». La stessa forma di `E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI`:
+
+| Codice | Frase (id) | Valori |
+| --- | --- | --- |
+| `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` | «Il tipo soggetto %s non prevede l'indirizzo «%s».» (930) | la natura, il tipo |
+| `E_TIPO_INDIRIZZO_NON_PERMESSO` | «Il ruolo %s non prevede l'indirizzo «%s».» (108) | il tipo di ruolo, il tipo |
+
+Causa e soluzione riscritte per chi le legge: non nominano più le tabelle di configurazione.
+
+| Pezzo | File (`20_code/anagrafiche/`, salvo dove detto) |
+| --- | --- |
+| Il guard del soggetto passa le due descrizioni; il contesto guadagna `campo` = `tipo_indirizzo_id` | `20261114-92-update-trgfn-indirizzi-soggetti-guard-tipo-indirizzo-frase` |
+| Il guard del ruolo passa le due descrizioni (il `campo` c'era già) | `20261114-93-update-trgfn-indirizzi-guard-tipo-ruolo-frase` |
+| Le due metà `_su_contesto` delle check: il motivo del tipo non ammesso porta gli stessi due valori | `20261114-94-…-soggetto-su-contesto-frase`, `20261114-95-…-ruolo-su-contesto-frase` |
+| Le due righe di frase | `80_data/sql/config/messaggi_errore.csv` (id 108, 930) |
+| Quattro asserzioni nuove (30-33: i valori dei due motivi, la frase intera dei due guard da un `UPDATE` che salta la madre); plan 34 | `db/pgtap/anagrafiche/test-check-tipo-indirizzo-v1.sql` |
+
+Le descrizioni i guard le leggono solo nel ramo che rifiuta. Gli id restano nel contesto, per chi
+diagnostica.
+
+**Prova** (`scripts/prova_changeset.py`, scratch col giro 1 applicato, 2026-11-15), con
+l'aggiornamento delle due frasi anteposto al pgTAP (i CSV non sono nell'estratto):
+
+| pgTAP | Senza l'estratto | Con l'estratto |
+| --- | --- | --- |
+| `test-check-tipo-indirizzo-v1` | 30 ok / 4 rossi: le quattro asserzioni nuove | 34 ok / 0 |
+| `test-catalogo-messaggi-errore-completo` | 1 rosso: frasi nuove con i guard vecchi (tre valori su due segnaposto) | verde |
+| valore atteso, canale del campo, motivo nominato, `test-indirizzi-fallback`, `test-cambio-natura-soggetto-v1`, i due test delle singolari | verdi | verdi |
+
+⭐ Il rosso del catalogo dei messaggi senza l'estratto dice che **frasi e corpi entrano
+insieme**: un apply delle sole righe di CSV darebbe a quei guard una frase con un valore di
+troppo. Upsert di tutte le righe del CSV in `ROLLBACK`: verde; nessun `\r`.
+
+⛔ **Non provato:** il `rollback` dei changeSet.
+
+**Apply**: Q-1 applicata da Tid il 2026-11-15, pgTAP verdi.
+
+Il ripiego del BE (`error_messages_fallback.py`) ha già una frase generica, senza segnaposto, per i
+due codici: non cambia.
+
+### 5.3 Giro 2, fatto (team DB, 2026-11-15)
+
+| Pezzo | File (`20_code/anagrafiche/`, salvo dove detto) |
+| --- | --- |
+| `fn_tipi_indirizzo_proponibili_natura(natura)` e `fn_tipi_indirizzo_proponibili_soggetto(soggetto)` | `20261114-96-create-fn-tipi-indirizzo-proponibili-soggetto` |
+| `fn_tipi_indirizzo_proponibili_tipo_ruolo(tipo ruolo)` e `fn_tipi_indirizzo_proponibili_ruolo(ruolo, istanza)` | `20261114-97-create-fn-tipi-indirizzo-proponibili-ruolo` |
+| Il pgTAP del giro (21 asserzioni) | `db/pgtap/anagrafiche/test-tipi-indirizzo-proponibili-v1.sql` |
+| La guida *Gestione degli indirizzi* (R6): da dove il form prende i tipi | `docs/it/guide/` |
+
+**La forma.** `RETURNS TABLE (tipo_indirizzo_id, obbligatorio, ammesso, motivo_codice, reason,
+reason_key, reason_valori, motivi)`, una riga per tipo di `config.tipi_indirizzi`, prima gli
+ammessi e poi gli altri, per codice interno. `BEGIN ATOMIC`, `STABLE`, INVOKER.
+
+* `ammesso` e il primo motivo vengono dalla metà `_su_contesto` della check della madre
+  singolare (§5.1): il picker non scrive nessuna regola. Il contesto (natura o tipo di ruolo, tipi
+  presenti) si legge una volta per chiamata (§12.6).
+* `obbligatorio` è la lettura della plurale: riga obbligatoria della matrice che il predicato del
+  guard ammette oggi. Una riga obbligatoria scaduta non è obbligatoria.
+* Il primo motivo è appiattito come vuole il §12.2 (`reason`, `reason_key`, `reason_valori`), e in
+  più `motivo_codice`, come `fn_nature_proponibili_soggetto`.
+* Sulla **natura** e sul **tipo di ruolo** i tipi presenti sono nessuno: il soggetto o il ruolo non
+  esistono ancora, e «già presente» non può comparire. Sono firme diverse, non un parametro
+  facoltativo (§4.3).
+* Sul **ruolo** l'istanza non ha `DEFAULT`: `NULL` vuol dire il ruolo, ed è un valore legittimo.
+* Soggetto o ruolo inesistenti: nessuna riga.
+* Nessuna `reason_key` nuova: sono quelle delle check (R-0).
+
+**Prova** (`scripts/prova_changeset.py`, scratch con giro 1 e Q-1 applicati, 2026-11-15): estratto
+eseguito per intero, catalogo identico dopo il `ROLLBACK`; `test-tipi-indirizzo-proponibili-v1`
+interrotto senza l'estratto (le funzioni non ci sono), 21 ok / 0 con l'estratto. Ognuno dei due casi
+del §3.1 è costruito su entrambe le matrici, e su ciascuno il codice del picker è confrontato con
+quello che la madre singolare solleva (9, 10, 17), o la madre accetta ciò che il picker propone
+(14, 21). Invariati e verdi: `test-check-tipo-indirizzo-v1`, i presidi `dbops` (check sotto JIT,
+canale del campo, motivo nominato, riferimenti morti, corpo senza commenti, corpo leggibile) e il
+rubinetto. Guardrail statici verdi.
+
+⛔ **Non provati:** il `rollback` dei changeSet; il piano come applicazione (§13.1): il pgTAP lo
+esercita da `zeroerp_app` quando lo lancia Tid; il picker legge nove tipi per chiamata.
+
+**Prima corsa di Tid (dbdev, 2026-11-15, giro 2 applicato):** 19 ok, 2 rossi, i presidi 1 e 2.
+Causa: per una `BEGIN ATOMIC` `pg_get_functiondef` stampa i nomi relativi al `search_path` della
+sessione (§5c); da `zeroerp_app`, che ha `anagrafiche` nel path, la chiamata alla check esce senza
+schema e il `LIKE '%anagrafiche.fn_check_…'` non la trova. Nella prova, da owner, il path era un
+altro e i due presidi passavano: **vicolo cieco della prova da owner**. Corretti: il legame si
+asserisce su `pg_depend` (la funzione dipende dalla check), indipendente dal path; le quattro
+dipendenze lette su dbdev ci sono.
+
+**Apply**: giro 2 applicato da Tid il 2026-11-15; pgTAP verdi alla seconda corsa, coi presidi 1-2
+riscritti.
+
+### 5.4 Giro 3, fatto (team DB, 2026-11-15)
+
+| Pezzo | File (`20_code/anagrafiche/`, salvo dove detto) |
+| --- | --- |
+| `fn_check_copia_indirizzo_soggetto(indirizzo)`: il motivo di riga | `20261115-34-create-fn-check-copia-indirizzo-soggetto` |
+| `fn_check_copia_indirizzo_ruolo(indirizzo)`: la gemella | `20261115-35-create-fn-check-copia-indirizzo-ruolo` |
+| `fn_indirizzo_elemento_da_riga(…)`: l'elemento ricostruito dalla riga, BB dei due verbi | `20261115-36-create-fn-indirizzo-elemento-da-riga` |
+| `fn_copia_indirizzo_soggetto(soggetto, indirizzo, tipi[]) → bigint[]` | `20261115-37-create-fn-copia-indirizzo-soggetto` |
+| `fn_copia_indirizzo_ruolo(ruolo, indirizzo, tipi[]) → bigint[]` | `20261115-38-create-fn-copia-indirizzo-ruolo` |
+| `vw_indirizzi_soggetti_azioni`: la superficie di `COPIA_INDIRIZZO_SOGGETTO` | `20261115-39-create-vw-indirizzi-soggetti-azioni` |
+| `vw_indirizzi_ruolo_azioni`: la superficie di `COPIA_INDIRIZZO_RUOLO` | `20261115-40-create-vw-indirizzi-ruolo-azioni` |
+| `E_INDIRIZZO_SOGGETTO_NON_TROVATO`, `E_INDIRIZZO_RUOLO_NON_TROVATO` (`NON_TROVATO`), `E_INDIRIZZO_COPIA_NESSUN_TIPO` (`CONFLITTO_STATO`); frasi 1494-1496, senza segnaposto | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` |
+| Le due azioni nel registro (id 5, 6) | `80_data/sql/config/azioni_riga.csv` |
+| Il pgTAP del giro (26 asserzioni) | `db/pgtap/anagrafiche/test-copia-indirizzo-v1.sql` |
+| La soglia del rubinetto, da 56 a 58 (i due verbi sono siti nuovi dell'helper) | `db/pgtap/script/test-rubinetto-primo-motivo-v1.sql` |
+| La guida *Gestione degli indirizzi* (R2): la copia | `docs/it/guide/` |
+
+**Le scelte fatte scrivendo:**
+
+* ⚠️ **Il motivo `DETTAGLIO_NON_ATTIVO` del §4.5 non c'è.** Il modello non ammette una riga che
+  punta a un dettaglio spento: la rifiuta `trgfn_child_requires_active_parent`, e lo spegnimento di
+  un dettaglio che ha indirizzi lo rifiuta `trgfn_prevent_deactivate_if_children` (le due tabelle
+  degli indirizzi non hanno `attivo`: ogni figlia blocca). Un motivo per uno stato che non esiste
+  non si scrive. Resta un motivo solo, `NESSUN_TIPO_PROPONIBILE`, letto dal **picker** del giro 2
+  (nessun tipo ammesso): la regola non si riscrive.
+* **Il codice di quel motivo è nuovo** (`E_INDIRIZZO_COPIA_NESSUN_TIPO`, lo stesso sui due layer:
+  la frase non nomina il layer). Il §12.5.2 vuole i motivi su codici a catalogo; qui la madre che
+  lo solleva è nuova, e nessuna strada rifiutava già quello stato.
+* **Le viste di riga sono viste di azioni** (`vw_indirizzi_soggetti_azioni`,
+  `vw_indirizzi_ruolo_azioni`), come `vendite.vw_listini_versioni_azioni`: l'id della riga, le
+  chiavi del padre e le due colonne del motivo. La domanda del §4.5 («`vw_indirizzi_resolved_soggetto`
+  o una nuova?») ha la risposta «una nuova»: la catena `vw_indirizzi_resolved_*` la leggono altri,
+  unisce i due layer e non è `security_invoker`, mentre il registro vuole la superficie
+  `security_invoker`. Le colonne dell'indirizzo (anche quelle della forma estera) il BE le prende
+  dalla catena, per id: nessuna join si ricopia (R-3).
+* **L'elemento dalla riga è un BB** (`fn_indirizzo_elemento_da_riga`): i due verbi lo costruiscono
+  allo stesso modo, seconda occorrenza. Dal dettaglio solo l'id; dalla forma libera le otto colonne
+  valorizzate. Le copie nazionale ed estera arrivano con tutte le colonne uguali alla sorgente (3, 4).
+* **Il controllo del tipo lo fa la singolare**, non il verbo: il verbo costruisce l'elemento col
+  tipo e chiama `fn_crea_indirizzo_*`, che risolve il codice, chiama la check del tipo e passa dai
+  guard. Un tipo ripetuto nell'elenco è un tipo già presente al secondo giro. Tutto o niente: una
+  funzione, un'istruzione.
+
+**Prova** (`scripts/prova_changeset.py` col `search_path` del runner, scratch, 2026-11-15): estratto
+dei sette changeSet eseguito per intero, catalogo identico dopo il `ROLLBACK`;
+`test-copia-indirizzo-v1` 26 ok / 0. Con le righe nuove dei tre CSV anteposte al pgTAP (l'estratto
+non le porta): `config/test-azioni-riga-registro-v1` da 4 rossi (le due righe puntano a oggetti che
+senza l'estratto non ci sono) a 8 ok; verdi i presidi `dbops` (canale del campo, motivo nominato,
+valore atteso, riferimenti morti, corpo senza commenti, corpo leggibile, check sotto JIT),
+`rls/test-rls-viste-security-invoker`, il catalogo dei messaggi, i pgTAP dei giri 1 e 2. Il
+rubinetto era rosso (56 attese, 58 trovate): soglia portata a 58, verde. Upsert di tutte le righe
+dei tre CSV in `ROLLBACK`, verde; nessun `\r`. Guardrail statici verdi.
+
+Due difetti del pgTAP trovati nella prova e corretti prima della consegna: la rilettura delle righe
+nuove nella stessa istruzione che le scrive (non le vede: ora in due istruzioni), e un rifiuto
+provato dopo che il soggetto aveva già tutti i tipi (parlava prima `E_INDIRIZZO_COPIA_NESSUN_TIPO`:
+riordinato).
+
+⛔ **Non provati:** il `rollback` dei changeSet; le frasi dei tre codici nuovi a video.
+
+**Apply**: giro 3 applicato da Tid il 2026-11-15, pgTAP verdi.
+
 ## 6. Decisioni di Tid (prese il 2026-11-15, tutte come da proposta)
 
 * **D-1 — Il ruolo nello stesso lavoro: sì.** La check, il picker e il verbo gemelli sul ruolo
@@ -256,12 +493,46 @@ Ogni codice nuovo entra in `codici_errore.csv` con la sua policy: il BE rigenera
 * **R-1 (BE)** — `POST soggetti/<id>/indirizzi/<indirizzo_soggetto_id>/copia/` e
   `POST ruoli/<soggetto_ruolo_id>/indirizzi/<indirizzo_id>/copia/`, con
   `{"tipi_indirizzo_codice_interno": [...]}` → i verbi del §4.4 e §4.6; rispondono con gli id.
-* **R-2 (BE)** — il lookup dei tipi del drawer e dei form di creazione (soggetto e assegnazione del
+  Dopo l'apply del giro 3 (§5.4) le firme sono:
+  `SELECT anagrafiche.fn_copia_indirizzo_soggetto(%s::uuid, %s, %s::text[])` e
+  `SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s, %s, %s::text[])`, ritorno `bigint[]` (gli id
+  nell'ordine dei tipi). Una sola `SELECT`: è già tutto o niente. Codici da mappare:
+  `E_INDIRIZZO_SOGGETTO_NON_TROVATO`, `E_INDIRIZZO_RUOLO_NON_TROVATO` (404),
+  `E_INDIRIZZO_COPIA_NESSUN_TIPO` (409), e quelli della singolare (§5.1). Il permesso lo controlla
+  la view, come per «Aggiungi».
+* **R-2 (BE)** — ⏭️ si può fare dopo l'apply del giro 2 (§5.3), senza aspettare il giro 3. Il lookup dei tipi del drawer e dei form di creazione (soggetto e assegnazione del
   ruolo) legge i picker del §4.3 e §4.6; si ritirano `LookupRepository.list_matrice_indirizzi` e la
   lettura gemella della matrice del ruolo (regola del 2: la copia divergente si toglie nello stesso
-  giro), dopo aver cercato ogni altro chiamante.
+  giro), dopo aver cercato ogni altro chiamante. Le quattro funzioni, tutte
+  `SELECT … FROM fn(…)` (sono `RETURNS TABLE`):
+
+  | Dove | Funzione |
+  | --- | --- |
+  | drawer del soggetto, «Aggiungi» e i tipi di «Copia come…» | `anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(soggetto_id uuid)` |
+  | form di creazione del soggetto (la natura scelta nel form) | `anagrafiche.fn_tipi_indirizzo_proponibili_natura(tipo_soggetto_dettaglio_id bigint)` |
+  | drawer in contesto ruolo (istanza `NULL` = il ruolo) | `anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(soggetto_ruolo_id bigint, istanza_utility_id bigint)` |
+  | assegnazione del ruolo (il tipo di ruolo scelto) | `anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(tipo_ruolo_id integer)` |
+
+  Colonne: `tipo_indirizzo_id`, `obbligatorio`, `ammesso`, `motivo_codice`, `reason`,
+  `reason_key`, `reason_valori`, `motivi`. Il codice del tipo (`codice`, `codice_interno`) e la
+  descrizione si prendono da `config.tipi_indirizzi` con un join su `tipo_indirizzo_id`. Un tipo non
+  ammesso resta nell'elenco, spento col tooltip dalla `reason_key` e dai `reason_valori` (R-4).
+  Con una natura o un tipo di ruolo senza matrice il picker ammette tutti i tipi: il pulsante
+  «Aggiungi» resta.
 * **R-3 (BE)** — le liste `GET soggetti/<id>/indirizzi/` e `GET ruoli/<id>/indirizzi/` leggono le
-  viste del §4.5 e §4.6 e portano `copia_blocco_reason` / `copia_blocco_reason_key`.
+  viste del §4.5 e §4.6 e portano `copia_blocco_reason` / `copia_blocco_reason_key`. Dopo l'apply
+  del giro 3 (§5.4) le superfici sono viste di azioni, da unire per id alla catena che porta le
+  colonne dell'indirizzo:
+  * soggetto: `anagrafiche.vw_indirizzi_resolved_soggetto v LEFT JOIN
+    anagrafiche.vw_indirizzi_soggetti_azioni a ON a.indirizzo_soggetto_id = v.indirizzo_id`. Così
+    `SoggettiRepository.get_soggetto_indirizzi` smette di essere SQL scritto nel BE, e la lista
+    guadagna i campi della forma estera;
+  * ruolo, sui livelli istanza e ruolo della cascata: `vw_indirizzi_resolved_ruolo v LEFT JOIN
+    anagrafiche.vw_indirizzi_ruolo_azioni a ON a.indirizzo_id = v.indirizzo_id`; sul livello
+    soggetto della cascata la vista del soggetto, come sopra (l'azione di quelle righe è la copia
+    del soggetto).
+  I nomi delle due azioni e delle colonne stanno in `config.azioni_riga`
+  (`COPIA_INDIRIZZO_SOGGETTO`, `COPIA_INDIRIZZO_RUOLO`).
 * **R-4 (FE)** — `IndirizziSoggettoDrawer`: le azioni della card passano al kebab `RowActionsMenu`
   («Cambia», «Copia come…» spenta col motivo); «Copia come…» apre la scelta dei tipi dal picker, gli
   esclusi visibili col loro motivo; dopo il salvataggio si ricarica la lista. «Aggiungi» legge lo
@@ -271,3 +542,34 @@ Ogni codice nuovo entra in `codici_errore.csv` con la sua policy: il BE rigenera
   `DocumentoIndirizziDrawer` in modalità selezione: lì l'azione vale uguale, il gesto è sull'anagrafica.
 * **R-5 (BE)** — i codici nuovi (§4.2, §4.4, §4.6): `error_policies_generated.py` rigenerato col DB
   allineato a git, il ripiego in `error_messages_fallback.py`; le `reason_key` nei locales FE.
+
+**Richieste del giro 1, subito dopo l'apply** (non aspettano i giri 2 e 3; scritte dal team DB il
+2026-11-15):
+
+* **R-0 bis (FE, giro 3)** — una chiave i18n in più, il tooltip di «Copia come…» spenta:
+  `anagrafiche.indirizzi.copia_blocco.nessun_tipo_proponibile` — «Non c'è un altro tipo di
+  indirizzo in cui copiarlo»; senza valori.
+* **R-0 (FE)** — tre chiavi i18n in `it.json` ed `en.json`, emesse dalle check del §5.1 e lette
+  dai picker e dal tooltip di «Copia come…»; `check-i18n-keys` rifiuta il commit DB finché
+  mancano:
+  * `anagrafiche.indirizzi.tipo_blocco.gia_presente` — «Il soggetto (o il ruolo) ha già un
+    indirizzo di questo tipo»; valore `{0}`: il tipo;
+  * `anagrafiche.indirizzi.tipo_blocco.non_ammesso_dalla_natura` — «Il tipo soggetto {0} non
+    prevede l'indirizzo «{1}»»; valori, in quest'ordine: la natura, il tipo (§5.2);
+  * `anagrafiche.indirizzi.tipo_blocco.non_ammesso_dal_ruolo` — «Il ruolo {0} non prevede
+    l'indirizzo «{1}»»; valori, in quest'ordine: il tipo di ruolo, il tipo (§5.2).
+* **R-6 (BE)** — il contratto del «tipo già presente» cambia dall'apply del giro 1, ed è il DB a
+  cambiare per primo:
+  * `backend/apps/core/services/error_policies_generated.py`: rigenerato col DB allineato, con
+    `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` ed `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`
+    (`DATO_ERRATO`, campo `tipo_indirizzo_codice_interno`); il ripiego in
+    `error_messages_fallback.py`. Fino ad allora il guardrail
+    `apps/core/tests/test_error_codes_db_policy_guardrail.py` è rosso per due codici senza policy;
+  * `backend/apps/anagrafiche/tests/db/test_creazioni_dalle_madri_db.py`, riga 250
+    (`test_un_indirizzo_singolo_dalla_madre`): si aspetta `E_ANAG_DUPLICATO` sul secondo indirizzo
+    dello stesso tipo, ora riceve `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`;
+  * `backend/apps/anagrafiche/services/soggetti_service.py` (righe 306-310 e 1080-1082): il
+    `create_with_dedup` con «Indirizzo duplicato per questo soggetto.» intorno alle due singolari
+    non scatta più per il tipo già presente (arriva un `P0001` col codice, non un `23505`). Resta
+    solo per la corsa fra due scritture: il team BE decide se tenerlo o ritirarlo, dopo aver
+    cercato gli altri chiamanti.

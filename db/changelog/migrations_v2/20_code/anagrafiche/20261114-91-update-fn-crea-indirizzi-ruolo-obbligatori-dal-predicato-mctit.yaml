@@ -1,0 +1,170 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PLURALE DEL RUOLO COPIA SOLO GLI OBBLIGATORI CHE IL GUARD AMMETTE OGGI
+#   anagrafiche.fn_crea_indirizzi_ruolo(ruolo, jsonb)
+#   Brief: brief-db-copia-indirizzo-soggetto §4.6, giro 1 (D-1, D-4).
+#   Corpo di partenza: docs/it/dbzero/anagrafiche/funzioni/fn_crea_indirizzi_ruolo.md
+#   (rigenerata dopo l'ultimo changeSet sull'oggetto, 20261101-10).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────
+#   Gemello di quello del soggetto (-90): gli obbligatori del ruolo si
+#   leggevano dalle righe attive di config.tipi_ruolo_tipi_indirizzo senza la
+#   finestra di validita', mentre il guard della tabella e quello degli
+#   obbligatori (trgfn_soggetti_ruoli_guard_indirizzi_required) giudicano la
+#   riga attiva E valida oggi.
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Gli obbligatori sono le righe obbligatorie per cui il predicato del guard,
+#   anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo (-84), risponde «ammesso»
+#   il giorno di script.fn_data_operativa(). I commenti di cronaca nel corpo
+#   si tolgono (§5d).
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il salto dei tipi che il ruolo ha gia' senza istanza, prima della
+#   singolare. Firma (quella ancorata di 20261019-38), ritorno, rifiuti.
+#   COMMENT riscritto al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-91-update-fn-crea-indirizzi-ruolo-obbligatori-dal-predicato-mctit.yaml
+
+  - changeSet:
+      id: 20261114-91-update-fn-crea-indirizzi-ruolo-obbligatori-dal-predicato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_crea_indirizzi_ruolo legge gli obbligatori da copiare col predicato del guard
+        (riga attiva e valida oggi).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_indirizzi_ruolo(
+                  p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_indirizzi         jsonb)
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  c_chi           CONSTANT text := 'anagrafiche.fn_crea_indirizzi_ruolo';
+                  v_lista         jsonb := COALESCE(p_indirizzi, '[]'::jsonb);
+                  v_norm          jsonb := '[]'::jsonb;  -- elementi col tipo risolto
+                  v_el            jsonb;
+                  v_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                  v_tipo_id       anagrafiche.indirizzi.tipo_indirizzo_id%TYPE;
+                  v_oggi          config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE;
+                  v_n             integer := 0;   -- un conteggio: niente da ancorare
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere gli indirizzi di un ruolo. p_indirizzi e' un
+                  --   array di oggetti; per ognuno il tipo (id o codice
+                  --   interno) e l'indirizzo, in una di tre forme:
+                  --     * libero:  indirizzo_libero (+ stato, comune e CAP del
+                  --       catalogo, oppure localita' e codice postale);
+                  --     * dettaglio gia' risolto: indirizzo_dettaglio_id;
+                  --     * via: stradario_id, oppure via nuova (toponomastica,
+                  --       descrizione_via, comune, CAP), piu' il civico.
+                  --   La grammatica dell'elemento e la via sono dei BB
+                  --   fn_indirizzo_elemento e fn_indirizzo_elemento_dettaglio,
+                  --   comuni con fn_crea_indirizzo_soggetto.
+                  --   Ritorna quanti indirizzi ha scritto.
+                  --
+                  -- Regole:
+                  --   - AUTO-CLONE: i tipi obbligatori del ruolo assenti dal
+                  --     payload si copiano dal primo indirizzo
+                  --     (fn_indirizzi_con_obbligatori); sono obbligatori solo i
+                  --     tipi che il guard ammette oggi
+                  --     (fn_tipo_indirizzo_ammesso_per_ruolo);
+                  --   - un tipo che il ruolo ha gia' senza istanza si salta (la
+                  --     chiave di uq_indirizzi_ruolo_tipo_no_istanza); le righe
+                  --     le scrive la singolare fn_crea_indirizzo_ruolo;
+                  --   - payload vuoto: niente, nemmeno i cloni;
+                  --   - la completezza e la forma le dice il guard della
+                  --     tabella (trgfn_indirizzi_guard_forma_libera).
+                  -- =========================================================
+                  IF jsonb_typeof(v_lista) <> 'array' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('tipo_indirizzi', jsonb_typeof(v_lista)),
+                          NULL::uuid,
+                          c_chi,
+                          'gli indirizzi non sono un elenco');
+                  END IF;
+
+                  SELECT sr.tipo_ruolo_id
+                    INTO v_tipo_ruolo_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          COALESCE(p_soggetto_ruolo_id::text, '-'));
+                  END IF;
+
+                  IF jsonb_array_length(v_lista) = 0 THEN
+                      RETURN 0;
+                  END IF;
+
+                  -- 1. Ogni elemento: un oggetto, chiavi ammesse, tipo risolto.
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_lista) AS e LOOP
+                      v_norm := v_norm || jsonb_build_array(
+                                  anagrafiche.fn_indirizzo_elemento(
+                                      v_el, c_chi,
+                                      jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id)));
+                  END LOOP;
+
+                  -- 2. AUTO-CLONE: le righe obbligatorie che il predicato del
+                  --    guard ammette oggi, copiate dal primo indirizzo.
+                  v_oggi := script.fn_data_operativa();
+                  v_norm := anagrafiche.fn_indirizzi_con_obbligatori(
+                      v_norm,
+                      ARRAY(SELECT m.tipo_indirizzo_id
+                              FROM config.tipi_ruolo_tipi_indirizzo m
+                             WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                               AND m.obbligatorio
+                               AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                                       v_tipo_ruolo_id, m.tipo_indirizzo_id, v_oggi)));
+
+                  -- 3. La scrittura: un tipo che il ruolo ha gia' (senza
+                  --    istanza) si salta. La via si risolve solo qui, per gli
+                  --    indirizzi che si scrivono.
+                  FOR v_el IN SELECT e FROM jsonb_array_elements(v_norm) AS e LOOP
+                      v_tipo_id := (v_el ->> 'tipo_indirizzo_id')::integer;
+
+                      CONTINUE WHEN EXISTS (
+                          SELECT 1
+                            FROM anagrafiche.indirizzi i
+                           WHERE i.soggetto_ruolo_id = p_soggetto_ruolo_id
+                             AND i.tipo_indirizzo_id = v_tipo_id
+                             AND i.istanza_utility_id IS NULL);
+
+                      PERFORM anagrafiche.fn_crea_indirizzo_ruolo(p_soggetto_ruolo_id, v_el);
+
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_ruolo(anagrafiche.soggetti_ruoli.id%TYPE, jsonb)
+              IS 'Madre plurale: scrive gli indirizzi di un ruolo in una sola istruzione e ritorna quanti ne ha scritti. p_indirizzi: array di oggetti, ciascuno col tipo (tipo_indirizzo_id o tipo_indirizzo_codice_interno, codice interno) e l''indirizzo in una di tre forme: libero (indirizzo_libero con stato, poi comune e CAP del catalogo oppure locality e postal_code), dettaglio gia'' risolto (indirizzo_dettaglio_id), via da risolvere (stradario_id oppure toponomastica_id + descrizione_via + comune_id + codice_postale_id, piu'' il civico). AUTO-CLONE: i tipi obbligatori del ruolo assenti dal payload si copiano dal primo indirizzo (anagrafiche.fn_indirizzi_con_obbligatori); sono obbligatori le righe obbligatorie di config.tipi_ruolo_tipi_indirizzo per cui anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo risponde ammesso il giorno di script.fn_data_operativa(), cioe'' attive e valide oggi, lo stesso giudizio dei guard. Un tipo che il ruolo ha gia'' senza istanza si salta (la chiave di uq_indirizzi_ruolo_tipo_no_istanza); payload vuoto: nessuna scrittura. Ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_ruolo. Rifiuti: elenco malformato E_SCRIPT_CHIAMATA_NON_VALIDA, ruolo inesistente E_SOGGETTO_RUOLO_NON_TROVATO; l''elemento lo legge anagrafiche.fn_indirizzo_elemento (oggetto, chiavi ammesse, tipo: E_SCRIPT_CHIAMATA_NON_VALIDA, E_CAMPO_NON_AMMESSO, E_TIPO_INDIRIZZO_NON_TROVATO) e la via la risolve anagrafiche.fn_indirizzo_elemento_dettaglio. Non valida i campi di una via nuova (pre-check del backend) ne'' il permesso. INVOKER. Gemella di anagrafiche.fn_crea_indirizzi_soggetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' nella doc auto-generata; si torna indietro con un changeSet nuovo.
+              SELECT 1;

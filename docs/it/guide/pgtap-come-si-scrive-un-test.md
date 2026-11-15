@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -43,7 +43,7 @@ dichiararlo, la CI si ferma.
 
 | riga | cosa succede senza |
 |---|---|
-| `BEGIN;` … `ROLLBACK;` | un fallimento a metà lascia i dati di prova nel database, e **la corsa successiva vede un rosso non suo** |
+| `BEGIN;` … `ROLLBACK;` | un fallimento a metà lascia i dati di prova nel database, e **la corsa successiva vede un rosso non suo**. Il `ROLLBACK;` va **in coda, dopo `finish()`**: un file che finisce con `finish()` e basta non lascia dati solo perché psql, uscendo, annulla la transazione aperta, e `scripts/prova_changeset.py` lo rifiuta, quindi esce dalle regressioni senza dirlo. Un file a più transazioni (`plan()` fuori, un `BEGIN;` … `ROLLBACK;` per caso, `finish()` dopo) è giusto così. Il cancello chiede che ogni `BEGIN;` si chiuda con un `ROLLBACK;` e rifiuta `COMMIT;` |
 | contesto applicativo | con la RLS attiva le `SELECT` della fixture leggono **zero righe**: le asserzioni finiscono nei rami `skip` e il file diventa **verde per sottrazione** |
 | `SET CONSTRAINTS ALL IMMEDIATE` | i **365 vincoli differiti** scattano al `COMMIT`, che qui non arriva mai: non vengono esercitati, e di nuovo verde per sottrazione |
 

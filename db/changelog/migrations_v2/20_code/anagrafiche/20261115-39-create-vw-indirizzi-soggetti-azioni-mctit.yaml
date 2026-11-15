@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE AZIONI DI RIGA DEGLI INDIRIZZI DEL SOGGETTO: «COPIA COME…» SPENTA COL MOTIVO
+#   anagrafiche.vw_indirizzi_soggetti_azioni
+#   Brief: brief-db-copia-indirizzo-soggetto §4.5, giro 3.
+#
+# ── LA FORMA (linee-guida-sql §12.5.3, §12.5.4, §12.5.7) ────────
+#   La superficie dell'azione COPIA_INDIRIZZO_SOGGETTO del registro
+#   config.azioni_riga: una riga per indirizzo del soggetto
+#   (indirizzo_soggetto_id, soggetto_id) e le due colonne del motivo,
+#   copia_blocco_reason e copia_blocco_reason_key, dal PRIMO motivo di
+#   anagrafiche.fn_check_copia_indirizzo_soggetto (-34), la check che il verbo
+#   anagrafiche.fn_copia_indirizzo_soggetto (-37) solleva. NULL = la copia si
+#   puo' proporre. Le colonne portano il nome del verbo (§12.5.4).
+#
+#   ⭐ Una vista DI AZIONI, non una colonna in piu' sulla catena
+#   vw_indirizzi_resolved_*: quella catena la leggono altri (documenti, la
+#   cascata del ruolo, le funzioni di risoluzione), unisce i due layer e non e'
+#   security_invoker, mentre la superficie del registro deve esserlo. Le colonne
+#   dell'indirizzo il backend le prende dalla catena, per id: nessuna join si
+#   ricopia qui. Come vendite.vw_listini_versioni_azioni.
+#   security_invoker, GRANT SELECT all'applicazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261115-39-create-vw-indirizzi-soggetti-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261115-39-create-vw-indirizzi-soggetti-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La superficie dell'azione di riga COPIA_INDIRIZZO_SOGGETTO: il motivo di «Copia come…»
+        per indirizzo del soggetto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW anagrafiche.vw_indirizzi_soggetti_azioni
+              WITH (security_invoker = true) AS
+              SELECT isg.id          AS indirizzo_soggetto_id,
+                     isg.soggetto_id,
+                     -- Il PRIMO motivo: il verbo solleva quello.
+                     chk.motivi -> 0 ->> 'reason'     AS copia_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS copia_blocco_reason_key
+                FROM anagrafiche.indirizzi_soggetti isg
+                CROSS JOIN LATERAL (
+                    SELECT anagrafiche.fn_check_copia_indirizzo_soggetto(isg.id) AS motivi
+                ) chk;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_soggetti_azioni TO zeroerp_app;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_soggetti_azioni IS
+                  'Le azioni di riga sugli indirizzi del soggetto: una riga per indirizzo (indirizzo_soggetto_id, soggetto_id). copia_blocco_reason / copia_blocco_reason_key: il primo motivo di anagrafiche.fn_check_copia_indirizzo_soggetto, la check che il verbo anagrafiche.fn_copia_indirizzo_soggetto solleva (NULL = la copia si puo'' proporre; l''unico motivo e'' NESSUN_TIPO_PROPONIBILE). E'' la superficie dell''azione COPIA_INDIRIZZO_SOGGETTO nel registro config.azioni_riga. security_invoker. Si filtra per soggetto_id o indirizzo_soggetto_id; le colonne dell''indirizzo stanno in anagrafiche.vw_indirizzi_resolved_soggetto (indirizzo_id = indirizzo_soggetto_id).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_soggetti_azioni;

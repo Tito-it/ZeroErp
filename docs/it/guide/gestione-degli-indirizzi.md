@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -292,6 +292,10 @@ Un solo indirizzo per tipo per entità:
 * Layer ruolo: `UNIQUE (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id)` — implementato con due partial unique index per gestire NULL (`uq_indirizzi_ruolo_tipo_no_istanza` per `istanza_utility_id IS NULL`, `uq_indirizzi_ruolo_istanza_tipo` per `istanza_utility_id IS NOT NULL`)
 * Layer soggetto: `UNIQUE (soggetto_id, tipo_indirizzo_id)`
 
+Un indirizzo si può anche **copiare** in altri tipi, nello stesso soggetto o nello stesso ruolo e istanza: «la sede legale è anche spedizione e fatturazione». Lo fanno [`fn_copia_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_soggetto) e [`fn_copia_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_ruolo), più tipi in un gesto e tutto o niente: ogni riga nuova passa dalle stesse regole di un indirizzo scritto a mano. Un indirizzo con il dettaglio condivide il dettaglio; uno libero copia i suoi campi. L'azione si spegne, col motivo, quando non resta un tipo in cui copiarlo ([`vw_indirizzi_soggetti_azioni`](/dbzero/anagrafiche/views/vw_indirizzi_soggetti_azioni), [`vw_indirizzi_ruolo_azioni`](/dbzero/anagrafiche/views/vw_indirizzi_ruolo_azioni)).
+
+Chi scrive un indirizzo dalle madri ([`fn_crea_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto), [`fn_crea_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_ruolo)) riceve il rifiuto con un codice e il tipo: `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` o `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`, sul campo del tipo. Lo dice la check del tipo ([`fn_check_tipo_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_soggetto), [`fn_check_tipo_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo)) prima di scrivere; gli indici restano per due scritture concorrenti.
+
 ### R3 — Completezza indirizzo libero
 
 Se `indirizzo_dettaglio_id` è NULL (modalità libera), servono sempre la via (`indirizzo_libero`) e lo stato (`stato_id`; se non lo si dice, lo propone il sistema, [R8](#r8-normalizzazione-automatica)). Il resto dipende dallo **stato**, cioè da una sua proprietà: il catalogo dei suoi comuni è completo oppure no (`config.stati.catalogo_comuni_completo`). Oggi è completo per l'Italia.
@@ -313,7 +317,7 @@ Il campo `stradario_id` su `indirizzi_dettaglio` non può essere modificato manu
 
 ### R5 — Validazione tipo indirizzo per ruolo
 
-Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di ruolo del soggetto, consultando la matrice `config.tipi_ruolo_tipi_indirizzo`.
+Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di ruolo del soggetto, consultando la matrice `config.tipi_ruolo_tipi_indirizzo`. La regola sta in [`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo), che leggono anche la check del tipo e la copia degli indirizzi obbligatori.
 
 Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono ammessi (adozione progressiva). Se ha almeno una riga, sono ammessi solo quelli elencati come attivi e in periodo di validità.
 
@@ -322,6 +326,8 @@ Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono amm
 Il trigger `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di soggetto dettaglio, consultando la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 
 Stessa logica di R5: senza righe nella matrice, nessuna restrizione; con righe, whitelist attiva.
+
+I tipi che un form propone li dà il database, con la stessa regola che poi giudica il salvataggio: una riga per tipo, ammesso oppure spento col suo motivo (già presente, non previsto). Sul soggetto [`fn_tipi_indirizzo_proponibili_soggetto`](/dbzero/anagrafiche/funzioni/fn_tipi_indirizzo_proponibili_soggetto) e, in creazione, [`fn_tipi_indirizzo_proponibili_natura`](/dbzero/anagrafiche/funzioni/fn_tipi_indirizzo_proponibili_natura); sul ruolo [`fn_tipi_indirizzo_proponibili_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipi_indirizzo_proponibili_ruolo) e, all'assegnazione, [`fn_tipi_indirizzo_proponibili_tipo_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipi_indirizzo_proponibili_tipo_ruolo).
 
 ### R7 — Unicità del civico
 

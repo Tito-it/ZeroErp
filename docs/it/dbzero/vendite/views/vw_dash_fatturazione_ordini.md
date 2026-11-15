@@ -31,7 +31,7 @@ WITH righe AS (
           WHERE (orr.attivo IS TRUE)
         )
  SELECT 'ORDINE_VENDITA'::character varying AS area,
-    (date_trunc('month'::text, (o.data)::timestamp with time zone))::date AS competenza_mese,
+    script.fn_mese_di(o.data) AS competenza_mese,
     o.id AS documento_id,
     (o.uid)::text AS documento_uid,
     (o.numero)::text AS codice,

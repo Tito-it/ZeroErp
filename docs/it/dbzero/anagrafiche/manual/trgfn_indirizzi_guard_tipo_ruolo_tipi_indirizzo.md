@@ -1,5 +1,7 @@
 ## 📘 Documentazione Funzione – `anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 **Tabelle anagrafiche / config:**
@@ -107,10 +109,14 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 1️⃣ **DELETE** → nessun controllo.
 2️⃣ Se `NEW.soggetto_ruolo_id` *oppure* `NEW.tipo_indirizzo_id` è NULL → `RETURN NEW`.
 3️⃣ Recupera il `tipo_ruolo_id` da `anagrafiche.soggetti_ruoli`.
-4️⃣ Verifica se esiste almeno una riga in matrice:
+4️⃣ Chiede al predicato [`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo)
+(giorno: `script.fn_data_operativa()`), che è la sede unica della regola:
 
-* Se **NO** → indirizzi “liberi” → `RETURN NEW`.
-* Se **SÌ** → si accetta solo se presente una riga attiva & valida.
+* nessuna riga di matrice per il tipo di ruolo → indirizzi “liberi”, ammesso;
+* altrimenti → ammesso solo se c'è una riga attiva e valida per la coppia.
+
+Lo stesso predicato lo leggono la check del tipo sul ruolo (che le madri chiamano prima di
+scrivere) e la plurale, per gli obbligatori da copiare.
 
 📍 Se nessuna riga valida trovata → chiamata a `script.fn_log_and_raise_error(...)` + `RAISE EXCEPTION`.
 

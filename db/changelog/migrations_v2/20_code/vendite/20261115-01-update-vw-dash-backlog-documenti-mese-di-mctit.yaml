@@ -1,0 +1,232 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.VW_DASH_BACKLOG_DOCUMENTI: IL MESE DAL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 2 (§6.2).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   2 espressioni `date_trunc('month', <date>)::date` → script.fn_mese_di(<date>):
+#   il mese della data del documento (preventivo e ordine), nei due rami.
+#   Il risultato e' lo stesso giorno su ogni data e in ogni fuso di sessione
+#   (script/test-mese-di-un-giorno-v1, 12-15), e la colonna resta date.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: nomi, ordine e tipi delle colonne non cambiano,
+#   quindi le viste che dipendono da questa restano in piedi, e COMMENT e
+#   GRANT (che stanno sull'oggetto) non si toccano. WITH (security_invoker)
+#   si RIPETE: il REPLACE sostituisce le opzioni con quelle scritte.
+#   Il corpo e' la definizione viva del 2026-11-15, letta con
+#   `SET search_path = pg_catalog` (nomi qualificati, linee-guida-sql §5c);
+#   il rollback la rimette identica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-01-update-vw-dash-backlog-documenti-mese-di-mctit.yaml
+
+  - changeSet:
+      id: 20261115-01-update-vw-dash-backlog-documenti-mese-di
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_backlog_documenti: il mese di competenza da script.fn_mese_di invece che da
+        date_trunc, stesso risultato. Brief: brief-db-mese-di-un-giorno, giro 2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT (SELECT count(*) FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = 'vendite' AND c.relname = 'vw_dash_backlog_documenti' AND c.relkind = 'v')
+                   + (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker = on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          d.valore_totale - d.valore_transitato AS valore_fermo,
+                          d.unita_totali - d.unita_transitate AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE d.motivo_fermo IS NOT NULL
+                      UNION ALL
+                       SELECT 'RESO_VENDITA'::character varying AS area,
+                          script.fn_mese_di(q.data) AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          q.reso_uid::text AS documento_uid,
+                          q.reso_numero::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON r2.id = q.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r2.stato_doc_reso_id
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESO_VENDITA'::character varying AS area,
+                          script.fn_mese_di(a.data) AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          a.reso_uid::text AS documento_uid,
+                          a.reso_numero::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON r3.id = a.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r3.stato_doc_reso_id
+                        WHERE a.etichetta::text = 'DOVUTA'::text
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  (( SELECT script.fn_data_operativa() AS fn_data_operativa)) - b.data_riferimento AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM base b
+                   LEFT JOIN config.motivi_fermo mf ON mf.codice_interno::text = b.motivo_fermo::text AND mf.attivo IS TRUE
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = b.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                WHERE COALESCE(mf.classe, 'ANOMALIA'::character varying)::text <> 'FISIOLOGICO'::text;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker = on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          d.valore_totale - d.valore_transitato AS valore_fermo,
+                          d.unita_totali - d.unita_transitate AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE d.motivo_fermo IS NOT NULL
+                      UNION ALL
+                       SELECT 'RESO_VENDITA'::character varying AS area,
+                          date_trunc('month'::text, q.data::timestamp with time zone)::date AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          q.reso_uid::text AS documento_uid,
+                          q.reso_numero::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON r2.id = q.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r2.stato_doc_reso_id
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESO_VENDITA'::character varying AS area,
+                          date_trunc('month'::text, a.data::timestamp with time zone)::date AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          a.reso_uid::text AS documento_uid,
+                          a.reso_numero::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          count(*)::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON r3.id = a.reso_id
+                           JOIN config.stati_doc_reso sdr ON sdr.id = r3.stato_doc_reso_id
+                        WHERE a.etichetta::text = 'DOVUTA'::text
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  (( SELECT script.fn_data_operativa() AS fn_data_operativa)) - b.data_riferimento AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM base b
+                   LEFT JOIN config.motivi_fermo mf ON mf.codice_interno::text = b.motivo_fermo::text AND mf.attivo IS TRUE
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ef.id = b.emittente_fiscale_id
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id)
+                   LEFT JOIN anagrafiche.soggetti s_ef ON s_ef.id = sr_ef.soggetto_id
+                WHERE COALESCE(mf.classe, 'ANOMALIA'::character varying)::text <> 'FISIOLOGICO'::text;

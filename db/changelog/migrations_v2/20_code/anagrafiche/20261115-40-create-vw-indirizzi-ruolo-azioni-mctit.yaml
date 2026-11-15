@@ -1,0 +1,66 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE AZIONI DI RIGA DEGLI INDIRIZZI DEL RUOLO: «COPIA COME…» SPENTA COL MOTIVO
+#   anagrafiche.vw_indirizzi_ruolo_azioni
+#   Brief: brief-db-copia-indirizzo-soggetto §4.5, §4.6, giro 3 (D-1).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Gemella di anagrafiche.vw_indirizzi_soggetti_azioni (-39): la superficie
+#   dell'azione COPIA_INDIRIZZO_RUOLO, una riga per indirizzo del ruolo
+#   (indirizzo_id, soggetto_ruolo_id, istanza_utility_id) e le due colonne del
+#   motivo dal PRIMO motivo di anagrafiche.fn_check_copia_indirizzo_ruolo (-35),
+#   la check che il verbo anagrafiche.fn_copia_indirizzo_ruolo (-38) solleva.
+#   Vista di azioni, per la ragione scritta nella gemella; le colonne
+#   dell'indirizzo stanno in anagrafiche.vw_indirizzi_resolved_ruolo.
+#   ⚠️ Nel drawer in contesto ruolo la lista mostra anche gli indirizzi del
+#   SOGGETTO (la cascata): quelle righe non sono qui, la loro azione e' la copia
+#   del soggetto (-39).
+#   security_invoker, GRANT SELECT all'applicazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261115-40-create-vw-indirizzi-ruolo-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261115-40-create-vw-indirizzi-ruolo-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La superficie dell'azione di riga COPIA_INDIRIZZO_RUOLO: il motivo di «Copia come…»
+        per indirizzo del ruolo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW anagrafiche.vw_indirizzi_ruolo_azioni
+              WITH (security_invoker = true) AS
+              SELECT i.id            AS indirizzo_id,
+                     i.soggetto_ruolo_id,
+                     i.istanza_utility_id,
+                     -- Il PRIMO motivo: il verbo solleva quello.
+                     chk.motivi -> 0 ->> 'reason'     AS copia_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS copia_blocco_reason_key
+                FROM anagrafiche.indirizzi i
+                CROSS JOIN LATERAL (
+                    SELECT anagrafiche.fn_check_copia_indirizzo_ruolo(i.id) AS motivi
+                ) chk;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_ruolo_azioni TO zeroerp_app;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_ruolo_azioni IS
+                  'Le azioni di riga sugli indirizzi del ruolo: una riga per indirizzo (indirizzo_id, soggetto_ruolo_id, istanza_utility_id). copia_blocco_reason / copia_blocco_reason_key: il primo motivo di anagrafiche.fn_check_copia_indirizzo_ruolo, la check che il verbo anagrafiche.fn_copia_indirizzo_ruolo solleva (NULL = la copia si puo'' proporre; l''unico motivo e'' NESSUN_TIPO_PROPONIBILE). E'' la superficie dell''azione COPIA_INDIRIZZO_RUOLO nel registro config.azioni_riga. security_invoker. Si filtra per soggetto_ruolo_id o indirizzo_id; le colonne dell''indirizzo stanno in anagrafiche.vw_indirizzi_resolved_ruolo (stesso indirizzo_id). Le righe della cascata che vengono dal soggetto non sono qui: la loro azione e'' la copia del soggetto, in anagrafiche.vw_indirizzi_soggetti_azioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_ruolo_azioni;

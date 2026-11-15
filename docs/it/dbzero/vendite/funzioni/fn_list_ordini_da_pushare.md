@@ -84,7 +84,7 @@ BEGIN
     or_r.qta_operativa,
     or_r.uom_operativa_id,
     COALESCE(or_r.factor_to_base, 1::numeric),
-    date_trunc('month', o.data)::date,
+    script.fn_mese_di(o.data),
     or_r.prezzo_unitario,
     -- prezzo_bloccato: costante TRUE per gli ordini, INDIPENDENTE dal
     -- flag di corsia (l'accoppiamento esiste solo sui preventivi).
@@ -144,7 +144,7 @@ BEGIN
   CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(
     or_r.origine_prezzo, or_r.listino_versione_id, or_r.listino_riga_id, or_r.prezzo_resolver_context) pv
   WHERE o.fatturazione_trigger = 'CONFERMATO'
-    AND (p_competenza_mese IS NULL OR date_trunc('month', o.data)::date = p_competenza_mese)
+    AND (p_competenza_mese IS NULL OR script.fn_mese_di(o.data) = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR o.billing_account_id = p_billing_account_id)
     AND (p_ordine_id IS NULL OR o.id = p_ordine_id)
     -- Esclusione "gia' inviato": eleggibile solo se MAI

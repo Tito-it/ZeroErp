@@ -48,7 +48,7 @@ BEGIN
 
     INSERT INTO vendite.attivita_consumi (billing_account_id, competenza_mese, meta)
     VALUES (p_billing_account_id,
-            date_trunc('month', COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))::date,
+            script.fn_mese_di(COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa()))),
             jsonb_build_object('test_scope', 'pgtap_consumo') || COALESCE(p_meta, '{}'::jsonb))
     RETURNING id, uid INTO v_id, v_uid;
 

@@ -23,7 +23,7 @@ WITH righe AS (
              JOIN vendite.preventivi_righe pr ON ((pr.id = sr.riga_id)))
         )
  SELECT 'PREVENTIVO'::character varying AS area,
-    COALESCE(p.competenza_mese, (date_trunc('month'::text, (p.validita_dal)::timestamp with time zone))::date, (date_trunc('month'::text, (p.data)::timestamp with time zone))::date) AS competenza_mese,
+    COALESCE(p.competenza_mese, script.fn_mese_di(p.validita_dal), script.fn_mese_di(p.data)) AS competenza_mese,
     p.id AS documento_id,
     (p.uid)::text AS documento_uid,
     (p.numero)::text AS codice,

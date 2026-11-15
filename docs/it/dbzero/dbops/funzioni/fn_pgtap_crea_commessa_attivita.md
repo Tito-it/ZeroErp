@@ -65,9 +65,9 @@ DECLARE
     v_segment  vendite.commesse_attivita.segment_key%TYPE;
 BEGIN
     SELECT c.billing_account_id,
-           COALESCE(c.competenza_dal, date_trunc('month', (SELECT script.fn_data_operativa()))::date),
+           COALESCE(c.competenza_dal, script.fn_mese_di((SELECT script.fn_data_operativa()))),
            COALESCE(c.competenza_al,
-                    (date_trunc('month', (SELECT script.fn_data_operativa())) + interval '1 month - 1 day')::date)
+                    script.fn_fine_mese_di((SELECT script.fn_data_operativa())))
       INTO v_ba_id, v_dal, v_al
       FROM vendite.commesse c
      WHERE c.id = p_commessa_id;
@@ -193,7 +193,7 @@ BEGIN
         p_data_attivita                 => v_dal,
         p_uom_id                        => v_uom,
         p_quantita                      => p_quantita,
-        p_competenza_mese               => date_trunc('month', v_dal)::date,
+        p_competenza_mese               => script.fn_mese_di(v_dal),
         p_competenza_dal                => v_dal,
         p_competenza_al                 => v_al,
         p_prezzo_snapshot               => p_prezzo_snapshot,

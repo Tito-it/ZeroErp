@@ -5,7 +5,7 @@
 # Doc: Python
 # Guardrail CI — le forme che passano la lettura e muoiono all'apply
 #
-# COSA PRESIDIA. Quindici regole scritte nella documentazione e ricadute piu'
+# COSA PRESIDIA. Sedici regole scritte nella documentazione e ricadute piu'
 #   volte, ognuna con la sua sede. Hanno in comune che si vedono LEGGENDO il
 #   file, senza database, e che la prova a mano spesso non le prende:
 #
@@ -78,6 +78,14 @@
 #                          colonna. Tutta la storia: i 210 attributi sono usciti
 #                          dai changelog mergiati il 2026-11-13, a checksum
 #                          invariato (brief-db-token-null-dei-seed, giro C)
+#   date-trunc             `date_trunc(` nel codice di un changeSet. Su una data
+#                          passa dal fuso della sessione (la variante e' su
+#                          timestamptz): il mese e' script.fn_mese_di, la fine
+#                          del mese script.fn_fine_mese_di. Su un istante tronca
+#                          nel fuso della sessione: il giorno aziendale e'
+#                          script.fn_giorno_operativo. Si ricopia da solo quando
+#                          una vista viva si ricrea dalla sua definizione
+#                          (linee-guida-sql §11.10)
 #   pgtap-pgagent-owner    un pgTAP che legge `pgagent.*` senza
 #                          `-- pgtap-runner: owner` nelle prime 80 righe: il
 #                          runner lo esegue come applicazione, che sullo schema
@@ -547,6 +555,28 @@ def nullvalue_ignorato(cs: dict, percorso: Path) -> list[Violazione]:
             for tipo, ld, _csv in _caricatori(cs, percorso) if "nullValue" in ld]
 
 
+DATE_TRUNC_RE = re.compile(r"\bdate_trunc\s*\(", re.IGNORECASE)
+
+
+def date_trunc_nel_codice(cs: dict, _percorso: Path) -> list[Violazione]:
+    fuori = []
+    for _sezione, sql in gc.blocchi_sql(cs):
+        if not DATE_TRUNC_RE.search(sql):
+            continue
+        # Commenti, letterali e prosa dei COMMENT tolti: resta la sola chiamata
+        # nel codice. Il primo argomento ('month', 'day'…) e' un letterale e
+        # sparisce con gli altri, quindi la regola guarda ogni unita'.
+        testo = gc.spoglia(sql, prosa_dopo_is=True)
+        righe = sql.split("\n")
+        for m in DATE_TRUNC_RE.finditer(testo):
+            riga = testo.count("\n", 0, m.start()) + 1
+            fuori.append((f"sql, riga ~{riga}: date_trunc nel codice — il mese di un giorno e' "
+                          "script.fn_mese_di, la fine del mese script.fn_fine_mese_di; un "
+                          "istante passa prima da script.fn_giorno_operativo",
+                          righe[riga - 1].strip()[:150] if riga <= len(righe) else ""))
+    return fuori
+
+
 # (nome, regola, inizio del perimetro; None = tutta la storia)
 REGOLE_CHANGESET: list[tuple[str, Callable[[dict, Path], list[Violazione]], tuple[int, int] | None]] = [
     ("sqlcheck-booleano", sqlcheck_booleano, None),
@@ -560,6 +590,10 @@ REGOLE_CHANGESET: list[tuple[str, Callable[[dict, Path], list[Violazione]], tupl
     # ⚠️ Anche queste due partono da oggi, per lo stesso motivo.
     ("jsonb-punto-di-domanda", jsonb_punto_di_domanda, (20261112, 31)),
     ("django-alla-create", django_alla_create, (20261112, 31)),
+    # ⚠️ Parte dal primo changeSet dopo i due BB (20261114-82, -83): le viste e le
+    #   funzioni vive le ritirano i giri di brief-db-mese-di-un-giorno, e i
+    #   changelog mergiati non si toccano.
+    ("date-trunc", date_trunc_nel_codice, (20261114, 84)),
 ]
 
 # type-perso e id-senza-type partono da oggi: la storia ne ha centinaia.

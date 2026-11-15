@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL TIPO DI INDIRIZZO DEL RUOLO LEGGE IL PREDICATO, NON LO RICOPIA
+#   anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo
+#   Brief: brief-db-copia-indirizzo-soggetto §4.6.1, giro 1 (D-1).
+#   Corpo di partenza: docs/it/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.md
+#   (rigenerata dopo l'ultimo changeSet sull'oggetto, 20261009-44).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   I due EXISTS sulla matrice (c'e' una matrice? la coppia e' ammessa oggi?)
+#   diventano una chiamata a anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo
+#   (-84), la sede che leggono anche la check del tipo sul ruolo e la plurale.
+#   Stesse tre risposte, stesso codice E_TIPO_INDIRIZZO_NON_PERMESSO, stesso
+#   contesto, stessi valori della frase; «oggi» resta script.fn_data_operativa().
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────
+#   Il ramo DELETE, il ramo «riferimenti mancanti». Un ruolo che non si trova
+#   lascia il tipo di ruolo NULL, e il predicato risponde «ammesso» come prima
+#   (prima: nessuna riga di matrice per NULL). I montaggi del trigger restano
+#   com'erano: cambia solo il corpo. COMMENT riscritto al presente (§5d).
+#   ⚠️ I valori della frase restano gli id: la frase del codice (messaggi_errore)
+#   e' scritta su di loro. Il debito della frase sta nel brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261114-85-update-trgfn-indirizzi-guard-tipo-ruolo-dal-predicato-mctit.yaml
+
+  - changeSet:
+      id: 20261114-85-update-trgfn-indirizzi-guard-tipo-ruolo-dal-predicato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo legge il predicato da
+        anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo: stesso comportamento, una sede sola.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_ruolo_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero il tipo di ruolo dal ruolo
+                SELECT sr.tipo_ruolo_id
+                  INTO v_tipo_ruolo_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                 WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                -- Il predicato e' quello che leggono anche la check del tipo
+                -- sul ruolo e la plurale: tipo di ruolo NULL o senza matrice =
+                -- indirizzi liberi; altrimenti la coppia deve essere in
+                -- matrice, attiva e valida oggi.
+                IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                           v_tipo_ruolo_id, NEW.tipo_indirizzo_id,
+                           script.fn_data_operativa()) THEN
+                  -- Codice PROPRIO di questo layer, distinto da quello del
+                  -- guard sugli indirizzi di SOGGETTO, che legge un'altra
+                  -- matrice.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                    'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'campo',             'tipo_indirizzo_id',
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_ruolo_id',     v_tipo_ruolo_id,
+                      'soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                    NEW.tx_id,
+                    NEW.tipo_indirizzo_id::text,
+                    v_tipo_ruolo_id::text,
+                    NEW.soggetto_ruolo_id::text);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+              IS 'Guard sugli indirizzi di RUOLO (anagrafiche.indirizzi), quando si scrive un indirizzo: il tipo di indirizzo deve essere ammesso dal tipo di ruolo del soggetto_ruolo, col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo (giorno: script.fn_data_operativa()); altrimenti E_TIPO_INDIRIZZO_NON_PERMESSO. Fallback permissivo quando il tipo di ruolo non ha nessuna riga di matrice. Le madri singolari lo anticipano con anagrafiche.fn_check_tipo_indirizzo_ruolo, sullo stesso predicato: questo guard resta il presidio di ogni altra strada. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo, che e'' il guard del layer SOGGETTO e legge un''altra matrice, con un codice d''errore suo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' nella doc auto-generata; si torna indietro con un changeSet nuovo.
+              SELECT 1;

@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    50,
+    58,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -347,7 +347,29 @@ SELECT is(
     --   catalogo.trgfn_articoli_componenti_block_modifica_struttura (20261111-28)
     --   e il verbo catalogo.fn_chiudi_legame_distinta (20261111-29), che
     --   sollevano il primo motivo di script.fn_check_legame_distinta_chiudibile.
-    'le cinquanta funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-11-15: da 50 a 54. Quattro siti NUOVI nati sull'helper il 2026-11-14:
+    --   vendite.fn_genera_ddt_da_ordine (20261114-23, primo motivo di
+    --   script.fn_check_ordine_evadibile) e vendite.trgfn_resi_guard_ddt_consegnato
+    --   (20261114-48, di script.fn_check_ddt_rendibile), col cantiere degli stati
+    --   dal vocabolario; anagrafiche.trgfn_soggetti_guard_cambio_natura
+    --   (20261114-67, di anagrafiche.fn_check_cambio_natura_soggetto) e il verbo
+    --   anagrafiche.fn_elimina_dati_societari (20261114-69, di
+    --   anagrafiche.fn_check_elimina_dati_societari), col cambio di natura del
+    --   soggetto. ⚠️ fn_genera_ddt_da_ordine sembrava gia' contata: il primo file
+    --   che la nomina accanto all'helper e' il 20261009-50, ma li' la chiamata e'
+    --   di un'altra funzione dello stesso changeSet; la sua prima chiamata e' il -23.
+    -- ⭐ 2026-11-15: da 54 a 56. Due siti NUOVI nati sull'helper: i verbi
+    --   anagrafiche.fn_crea_indirizzo_soggetto (20261114-88) e
+    --   anagrafiche.fn_crea_indirizzo_ruolo (20261114-89), che sollevano il primo
+    --   motivo di anagrafiche.fn_check_tipo_indirizzo_soggetto (-86) e
+    --   anagrafiche.fn_check_tipo_indirizzo_ruolo (-87).
+    -- ⭐ 2026-11-15: da 56 a 58. Due siti NUOVI nati sull'helper col giro 3 di
+    --   brief-db-copia-indirizzo-soggetto: i verbi della copia
+    --   anagrafiche.fn_copia_indirizzo_soggetto (20261115-37) e
+    --   anagrafiche.fn_copia_indirizzo_ruolo (20261115-38), che sollevano il primo
+    --   motivo di anagrafiche.fn_check_copia_indirizzo_soggetto (-34) e
+    --   anagrafiche.fn_check_copia_indirizzo_ruolo (-35).
+    'le cinquantotto funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

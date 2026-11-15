@@ -83,7 +83,7 @@ BEGIN
     --    niente (il limite di emissione non si applica), ma il
     --    ripiego costa nulla e tiene una sola forma di chiamata.
     v_competenza := COALESCE(p_competenza_mese,
-                             date_trunc('month', p_data)::date);
+                             script.fn_mese_di(p_data));
 
     -- ─── ⭐ L'ANNO DEL SECCHIO, NON QUELLO DEL DOCUMENTO ──
     -- ⛔ Sono due cose diverse che si chiamano uguale:

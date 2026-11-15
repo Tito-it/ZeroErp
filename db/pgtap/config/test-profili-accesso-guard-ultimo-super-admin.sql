@@ -184,3 +184,4 @@ SELECT is(
     '3. Scenario lockout identita: disattivare l''ultima identita'' con SUPER_ADMIN -> E_PROFILO_ULTIMO_SUPER_ADMIN');
 
 SELECT * FROM finish();
+ROLLBACK;

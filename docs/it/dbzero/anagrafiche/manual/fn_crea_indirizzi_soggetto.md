@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_soggetto()`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [anagrafiche.fn_crea_indirizzo_soggetto](/dbzero/anagrafiche/manual/fn_crea_indirizzo_soggetto) — la singolare, che questa usa
@@ -36,8 +38,11 @@ del ruolo: stesse regole, cambia solo la matrice da cui si leggono i tipi obblig
 | gli indirizzi non sono un elenco | `E_SCRIPT_CHIAMATA_NON_VALIDA` |
 | elenco vuoto | 0, nessuna copia |
 
-⚠️ I tipi obbligatori si leggono come nella gemella del ruolo: righe attive della matrice, senza
-guardare la finestra di validità.
+I tipi obbligatori sono le righe obbligatorie della matrice che il guard ammette **oggi**: attive e
+nella loro finestra di validità, lette col predicato
+[`fn_tipo_indirizzo_ammesso_per_natura`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura).
+Una riga obbligatoria scaduta non fa nascere una copia, che il guard poi rifiuterebbe. Come nella
+gemella del ruolo.
 
 ---
 

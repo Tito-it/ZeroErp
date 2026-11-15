@@ -183,7 +183,7 @@ BEGIN
     );
   END IF;
 
-  v_competenza_mese := date_trunc('month', p_competenza_mese)::date;
+  v_competenza_mese := script.fn_mese_di(p_competenza_mese);
   -- tipo_movimento NON entra piu' in meta: vive sulla colonna
   -- (una casa sola).
   -- ⛔ rev 2026-10-13: tipo_consumo e' RITIRATO. La chiave si TOGLIE dal

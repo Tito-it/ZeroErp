@@ -67,7 +67,7 @@ BEGIN
     END IF;
 
     -- Competenza normalizzata al primo del mese
-    v_competenza := date_trunc('month', p_competenza_mese)::DATE;
+    v_competenza := script.fn_mese_di(p_competenza_mese);
 
     -- Risolvi utility da BA se fornito
     v_utility_id := p_utility_id;

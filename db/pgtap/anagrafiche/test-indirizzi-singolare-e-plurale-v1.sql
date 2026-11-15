@@ -13,7 +13,7 @@
 --  2)   elenco vuoto: nessuna copia
 --  -- la singolare del ruolo (fn_crea_indirizzo_ruolo) --
 --  3)   un indirizzo del ruolo: l'id, il tipo, nessuna istanza
---  4)   lo stesso tipo di nuovo: lo rifiuta il vincolo
+--  4)   lo stesso tipo di nuovo: E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE (la check, prima del vincolo)
 --  5)   un indirizzo di un'istanza: l'istanza sulla riga
 --  6)   una chiave estranea: E_CAMPO_NON_AMMESSO
 --  7)   un ruolo che non c'e': E_SOGGETTO_RUOLO_NON_TROVATO
@@ -96,12 +96,16 @@ SELECT is(
     'POSTA/ruolo',
     '3) un indirizzo del ruolo: l''id, il tipo, nessuna istanza');
 
-SELECT throws_ok(
-    (SELECT format('SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
-                   _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA'))
+-- Riscritto col 20261114-89: la madre chiama la check del tipo e solleva
+-- E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE prima dell'INSERT; l'indice
+-- uq_indirizzi_ruolo_tipo_no_istanza resta, ma da qui non parla piu'.
+SELECT is(
+    (SELECT dbops.fn_pgtap_codice_errore(
+                format('SELECT anagrafiche.fn_crea_indirizzo_ruolo(%s, %L::jsonb)',
+                       _f.sr_id, _el.base || jsonb_build_object('tipo_indirizzo_codice_interno', 'POSTA')))
        FROM _f, _el),
-    '23505', NULL,
-    '4) lo stesso tipo di nuovo: lo rifiuta uq_indirizzi_ruolo_tipo_no_istanza');
+    'E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE',
+    '4) lo stesso tipo di nuovo: E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE');
 
 CREATE TEMP TABLE _r5 ON COMMIT DROP AS
 SELECT anagrafiche.fn_crea_indirizzo_ruolo(

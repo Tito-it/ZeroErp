@@ -55,7 +55,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 SELECT plan(8);
 
 -- ============================================================
--- I due registri dichiarati (aggiornati il 2026-10-10)
+-- I due registri dichiarati (colonne: 2026-10-10; funzioni: 2026-11-15)
 -- ============================================================
 CREATE TEMP TABLE _registro_colonne (colonna text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _registro_colonne VALUES
@@ -86,9 +86,11 @@ INSERT INTO _registro_colonne VALUES
 
 CREATE TEMP TABLE _registro_funzioni (funzione text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _registro_funzioni VALUES
+    ('anagrafiche.fn_check_cambio_natura_soggetto'),  -- p_cliente_pa, p_split_payment (20261114-66)
     ('anagrafiche.fn_crea_operatore_v2'),      -- p_sesso
     ('anagrafiche.fn_crea_soggetto_pf'),       -- p_sesso, p_stato_iso2
     ('anagrafiche.fn_crea_soggetto_pg'),       -- p_stato_iso2
+    ('anagrafiche.fn_regime_pa_campo_non_ammesso'),   -- p_cliente_pa, p_split_payment (20261114-61)
     ('dbops.fn_admin_merge_comune'),           -- p_event_type
     ('dbops.fn_admin_merge_stradario'),        -- p_event_type
     ('script.fn_esigibilita_iva'),             -- p_cliente_split_payment, esigibilita

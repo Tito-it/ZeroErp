@@ -260,6 +260,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   in sviluppo, un giro per documento. Applicati e verdi i giri 1 … 5, 6a (preventivo), 6b (ordine), 6b-bis, 6a-bis e
   2-ter (D-EVAD, D-PDF), 6c (contratto, `-27 … -34`, D-BOZZA (a): via `is_bozza`), 6c-bis (ritiro del guard della
   categoria) e 6d (bolla), fino a `20261114-46`. Applicati e verdi anche 6e (reso, D-RESO (a)) e 6e-bis, fino a `20261114-58`; il BE/FE ha fatto le richieste dei giri 6a … 6e. Il giro 6g (R-V1 … R-V3 del BE/FE: valori del motivo, marche del contratto, smistamento del preventivo; `20261114-74 … -78`) è applicato e verde (2026-11-15); il 6g-bis (D-VAL-2: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`) è applicato e verde; ora FE-G1 … FE-G4 e il 6f (listino). Chi riparte è in testa al brief.
+- 🔵 **Un indirizzo nuovo partendo da uno esistente** (`work-in-progress/brief-db-copia-indirizzo-soggetto.md`,
+  D-1 … D-4 di Tid del 2026-11-15, soggetto e ruolo insieme): giro 1 (la check
+  del tipo con «tipo già presente», chiamata dalle singolari; il predicato del ruolo estratto; gli obbligatori
+  delle plurali sulla finestra di validità, `20261114-84 … -91`) e Q-1 (le frasi del tipo non ammesso sulle
+  descrizioni, `-92 … -95`) applicati e verdi il 2026-11-15. Giro 2 (i quattro picker dei tipi, `-96`, `-97`)
+  applicato e verde; giro 3 (i verbi della copia, il motivo di riga, le viste e il registro, `20261115-34 … -40`)
+  applicato e verde: il DB è fatto. Ora il BE/FE: R-0 e R-0 bis (chiavi i18n, sbloccano il commit DB), R-6, R-2,
+  R-1, R-3, R-4, R-5.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al

@@ -11,7 +11,7 @@
 --   2. Setup: crea soggetto PF di supporto + indirizzo_dettaglio
 --   3. Creazione indirizzo normalizzato (RESID) con successo
 --   4. Verifica record creato in indirizzi_soggetti
---   5. Errore: duplicato (stesso soggetto + stesso tipo)
+--   5. Errore: duplicato (stesso soggetto + stesso tipo): E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE
 --   6. Creazione secondo tipo (DOMFISC) con successo
 --   7. Errore: chiave estranea nell'oggetto (E_CAMPO_NON_AMMESSO)
 --   8. Errore: l'indirizzo non e' un oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA)
@@ -169,16 +169,19 @@ SELECT ok(
 
 -- =========================================================
 -- 5) Errore: duplicato (stesso soggetto + stesso tipo RESID)
+--    Riscritto col 20261114-88: la madre chiama la check del tipo e solleva
+--    E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE prima dell'INSERT; il vincolo
+--    uq_indirizzi_soggetti_soggetto_tipo resta, ma da qui non parla piu'.
 -- =========================================================
-SELECT throws_matching(
-    format(
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
       $$SELECT anagrafiche.fn_crea_indirizzo_soggetto(%L::uuid, %L::jsonb)$$,
       (SELECT soggetto_id FROM tmp_ind_sogg_ctx),
       jsonb_build_object('tipo_indirizzo_codice_interno', 'RES',
                          'indirizzo_dettaglio_id', (SELECT indirizzo_dettaglio_id FROM tmp_ind_sogg_ctx))
-    ),
-    'uq_indirizzi_soggetti_soggetto_tipo',
-    '5. Errore duplicato soggetto + tipo indirizzo'
+    )),
+    'E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE',
+    '5. Errore duplicato soggetto + tipo indirizzo: E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE'
   );
 
 -- =========================================================
