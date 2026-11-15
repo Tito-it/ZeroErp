@@ -6,6 +6,7 @@
 # Rilasciato sotto GNU AGPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# timestamp-senza-fuso: ammesso — e' la definizione viva della vista, ricreata: in emessa_in_ritardo `(fn_giorno_operativo(af.data_insert))::timestamp` e' il passaggio con cui un GIORNO (date) gia' aziendale entra in date_trunc('month') e torna date; nessun istante memorizzato (la stessa dichiarazione di 20261020-80 e 20261107-94).
 # VENDITE.VW_LOTTI_FASE SENZA IN_GIOCO: UNA COPIA SI RITIRA
 #   Brief: brief-db-stati-documento-dal-vocabolario, giro 5 (R-2; Tid
 #   2026-11-13: il ritiro).
