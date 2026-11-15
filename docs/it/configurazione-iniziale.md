@@ -1,11 +1,14 @@
 # Preparare ZeroERP all'uso
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > **A chi serve**: a chi ha appena ricevuto un'installazione di ZeroERP e deve
 > renderla utilizzabile. Non serve essere sviluppatori.
 >
 > **Che cosa NON copre**: come si installa il programma su una macchina — quello
-> è un altro documento ([play-book operativo](dev/backend/play-book-operativo-backend.md),
-> di taglio tecnico). Qui si parte da *«il programma è installato e si apre»* e si
+> è un altro documento ([Installazione](installazione.md), di taglio tecnico, che
+> rimanda al [play-book operativo](dev/backend/play-book-operativo-backend.md)
+> per la messa in opera del server). Qui si parte da *«il programma è installato e si apre»* e si
 > arriva a *«il programma lavora»*. In mezzo ci sono sette cose, e nessuna è
 > difficile: sono solo poco visibili.
 
@@ -57,7 +60,7 @@ L'ordine conta: ogni passo dà per fatto il precedente.
 Senza questo dato il programma non sa intestare niente, e la maggior parte delle
 schermate resta vuota.
 
-**Dove**: `Amministrazione software → Emittenti fiscali`.
+**Dove**: `Amm. Software → Emittenti Fiscali`.
 
 Si può averne **più di uno** (più aziende sullo stesso programma): in quel caso
 ogni operatore vedrà solo i documenti dell'azienda a cui è assegnato — è il
@@ -68,17 +71,22 @@ passo 2.
 ## Passo 2 — Le persone, e che cosa possono fare
 
 **Perché**: ZeroERP non ha un utente «tuttofare». Ogni persona ha un profilo che
-dice a quali aree accede e con quale libertà (vedere, modificare, niente).
+dice a quali aree accede e con quale libertà: **Tutto**, **Lettura** o
+**Bloccato**. Di partenza una persona eredita il profilo del suo reparto, e si
+corregge solo dove deve fare qualcosa di diverso (il funzionamento completo è in
+[Architettura dei permessi](guide/architettura-permessi-e-autorizzazioni.md)).
 
-**Dove**: `Amministrazione software → Operatori` per le persone,
-`Amministrazione software → Permessi` per i profili.
+**Dove**: `Amm. Software → Accessi`, scheda **Operatori**, per le persone; i
+permessi di una persona stanno nella scheda **Permessi** del suo dettaglio.
+I profili di partenza dei reparti si impostano in `Amm. Software → Profili Reparto`.
 
 ⚠️ **La cosa che si dimentica più spesso**: dopo aver creato una persona, va
-**assegnata a un'azienda** (passo 1). Un operatore senza azienda non vede
+**assegnata a un'azienda** (passo 1), dal suo dettaglio. Un operatore senza azienda non vede
 documenti — e non è un errore, è un elenco vuoto, che si legge come *«non c'è
 niente»* invece di *«non ti è stato assegnato niente»*.
 
-> ✅ **Come so che è andata bene**: la schermata degli operatori mostra un avviso
+> ✅ **Come so che è andata bene**: la scheda **Operatori** mostra in cima un
+> avviso (*«… operatori non sono ancora assegnati a un emittente fiscale»*)
 > quando qualcuno è rimasto senza azienda. Se l'avviso non c'è, sono tutti a
 > posto.
 
@@ -88,25 +96,29 @@ niente»* invece di *«non ti è stato assegnato niente»*.
 documenti ai clienti, le segnalazioni del passo 5. Senza questo passo **nessuna
 di quelle email parte**.
 
-**Dove**: `Amministrazione software → Email accounts`, account `SISTEMA`.
+**Dove**: `Amm. Software → Account Email`, account `SISTEMA`.
 
 Servono: indirizzo del server di posta (`smtp_host`), porta, nome utente,
 password, e l'indirizzo da cui le email risulteranno spedite.
 
 🔴 **Attenzione, ed è la trappola peggiore di tutto il manuale.** Un'installazione
 nuova arriva con un indirizzo **finto**: `smtp.example.com`. Finché resta quello,
-il programma **non dice niente**: fa finta di spedire, scrive nel suo registro
-che l'email è stata inviata, e non arriva a nessuno. Non c'è nessun errore da
-cercare, perché non c'è nessun errore.
+**nessuna email parte**, e il programma non lo grida da nessuna parte: lo scrive
+soltanto nel giornale delle email (`Strumenti → Diagnostica → Log Email`), dove
+ogni invio risulta **fallito** con il motivo *«SMTP non configurato»*. Chi non
+apre quel giornale se ne accorge solo perché la posta non arriva.
 
 ⚠️ **Se usi Gmail** (o un altro servizio con verifica in due passaggi) la password
 del tuo account **non funziona**: serve una *password per le app*, che si genera
 dalle impostazioni di sicurezza del tuo account Google. È un codice di 16
 caratteri, e si vede una volta sola.
 
-> ✅ **Come so che è andata bene**: nella stessa schermata c'è il pulsante **«prova
-> connessione»**. Deve rispondere verde. ⚠️ Se risponde *«SMTP non configurato»*,
-> l'indirizzo finto è ancora lì.
+> ✅ **Come so che è andata bene**: nel dettaglio dell'account c'è il pulsante
+> **«Test connessione»**. Deve rispondere verde. ⚠️ Se risponde *«SMTP non
+> configurato»*, l'indirizzo finto è ancora lì.
+
+Il resto della posta — modelli delle email, account per reparto, la modalità di
+sviluppo che stampa invece di spedire — è in [Gestione mail](guide/gestione-mail.md).
 
 ## Passo 4 — Accendere i lavori automatici
 
@@ -143,8 +155,8 @@ manda un riassunto per email. Ma deve sapere **a chi**.
 ZEROERP_PRESIDI_DIGEST_DESTINATARIO=tuo.indirizzo@esempio.it
 ```
 
-Più indirizzi si separano con una virgola: il primo è il destinatario, gli altri
-ricevono in copia.
+Più indirizzi si separano con una virgola (va bene anche il punto e virgola): il
+primo è il destinatario, gli altri ricevono in copia.
 
 ⚠️ Lasciarlo vuoto **non spegne** le segnalazioni: il programma le prepara lo
 stesso e poi dichiara di non avere nessuno a cui mandarle. È voluto — così
@@ -157,8 +169,8 @@ l'assenza si vede invece di passare per silenzio.
 ## Passo 6 — I valori predefiniti
 
 **Perché**: molte schermate propongono valori già compilati — l'IVA, i termini di
-pagamento, la valuta. Sono **53** impostazioni, quasi tutte già sensate: si
-toccano solo quelle che nella tua azienda funzionano diversamente.
+pagamento, la valuta. Arrivano quasi tutte già sensate: si toccano solo quelle
+che nella tua azienda funzionano diversamente.
 
 **Dove**: `Configurazione → Impostazioni`.
 
@@ -187,9 +199,9 @@ Quando hai finito, questi cinque controlli dicono se il sistema è davvero pront
 
 | Controllo | Come si fa | Esito atteso |
 | --- | --- | --- |
-| l'azienda c'è | `Amm. software → Emittenti fiscali` | almeno uno, attivo |
-| nessuno è rimasto senza azienda | `Amm. software → Operatori` | nessun avviso in cima |
-| la posta esce | `Email accounts` → «prova connessione» | verde |
+| l'azienda c'è | `Amm. Software → Emittenti Fiscali` | almeno uno, attivo |
+| nessuno è rimasto senza azienda | `Amm. Software → Accessi`, scheda Operatori | nessun avviso in cima |
+| la posta esce | `Amm. Software → Account Email` → «Test connessione» | verde |
 | i lavori girano | `systemctl list-timers 'zeroerp-*'` | l'elenco non è vuoto |
 | le segnalazioni arrivano | la posta, la mattina dopo | un'email `[ZeroERP] Presidi …` |
 
@@ -216,8 +228,8 @@ fare, e nessuno gli aveva detto niente. **Un pezzo che manca non fa rumore** —
 ## Che cosa questo manuale non dice ancora
 
 * **come si installa il programma su una macchina nuova**: è un documento a
-  parte, oggi incompleto — la scelta fra i due modi di installare non è ancora
-  stata presa;
+  parte, [Installazione](installazione.md); la parte del database è completa, la
+  scelta fra i due modi di installare il resto non è ancora stata presa;
 * **i salvataggi (backup) e come si rimette in piedi** un'installazione: manca, ed
   è la cosa più importante fra quelle che mancano;
 * **la messa in sicurezza** (certificati, accessi dall'esterno): oggi vive nel
