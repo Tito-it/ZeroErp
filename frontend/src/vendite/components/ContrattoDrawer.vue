@@ -52,7 +52,7 @@ import { AZIONE_ANNULLA } from '../_shared/annullo/avvisoDocumentiCollegati'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
-import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO, STATO_CONTRATTO } from '../constants'
+import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO } from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import CampiCanoneTestata from '../_shared/canoni/CampiCanoneTestata.vue'
 import {
@@ -137,6 +137,21 @@ const corpo = useCorpoDocumento({
   presente: () => isEdit.value,
 })
 const isContractLocked = computed(() => corpo.corpoChiuso.value)
+
+// Le marche dello stato corrente, dal vocabolario attraverso la capability
+// (`stato_iniziale` / `stato_emissione` / `stato_cessazione` /
+// `stato_terminale`, giro 6g): il banner e il campo `valido_al` le leggono al
+// posto dei codici (FE-G2, D-MARCHE (a)). Capability vuota = nessuna marca.
+const statoTerminale = computed(() => caps.flag('stato_terminale'))
+const mostraValidoAl = computed(() => !isEdit.value
+  || caps.flag('stato_iniziale')
+  || caps.flag('stato_cessazione')
+  || (Boolean(form.value?.valido_al) && caps.flag('stato_emissione')))
+const etichettaValidoAl = computed(() => {
+  if (caps.flag('stato_cessazione')) return t('vendite.contratti.field_data_cessazione')
+  if (caps.flag('stato_emissione') && form.value?.valido_al) return t('vendite.contratti.field_cessazione_programmata')
+  return t('vendite.contratti.field_valido_al')
+})
 
 // isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
 // Tutti i campi/azioni del drawer principale e dei sub-drawer (righe, utility)
@@ -977,13 +992,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
          modifica valido_al (programma cessazione) + cambio stato.
          Coerente con Profilo A whitelist BE. -->
-    <Message v-if="isContractLocked && detail.stato_codice_interno !== STATO_CONTRATTO.CESSATO"
+    <!-- ⭐ Avviso o informazione lo dice la marca dello stato
+         (`stato_terminale` della capability: cessato E annullato), non il
+         codice CESSATO (FE-G2, brief-db-stati-documento-dal-vocabolario
+         §6.24, D-MARCHE (a)). Fino al 2026-11-15 un annullato riceveva il
+         banner informativo dell'attivo. -->
+    <Message v-if="isContractLocked && !statoTerminale"
       severity="info" :closable="false" size="small">
       {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
     </Message>
-    <Message v-else-if="isContractLocked && detail.stato_codice_interno === STATO_CONTRATTO.CESSATO"
+    <Message v-else-if="isContractLocked && statoTerminale"
       severity="warn" :closable="false" size="small">
-      {{ t('vendite.contratti.banner_locked_cessato') }}
+      {{ t('vendite.contratti.banner_locked_cessato', { stato: detail.stato_descrizione }) }}
     </Message>
   </template>
 
@@ -1143,26 +1163,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
         :disabled="isEdit && isLocked('valido_dal')"
         :date-format="DATE_FORMAT" show-icon />
     </div>
-    <!-- Campo valido_al condizionale per stato:
-         - DRAFT: editabile come "Fine validita' (opz.)"
-         - ATTIVO con valido_al impostato: readonly come "Cessazione
-           programmata al {data}" (cessazione futura applicata via
-           dialog Cessa, in attesa di scadere)
-         - ATTIVO senza valido_al: nascosto (cessazione passa solo
-           dal dialog dedicato)
-         - CESSATO: readonly come "Data cessazione" -->
-    <div class="form-field"
-      v-if="!isEdit
-        || detail?.stato_codice_interno === STATO_CONTRATTO.DRAFT
-        || detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
-        || (form.valido_al && detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO)">
-      <label>
-        {{ detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
-          ? t('vendite.contratti.field_data_cessazione')
-          : detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO && form.valido_al
-            ? t('vendite.contratti.field_cessazione_programmata')
-            : t('vendite.contratti.field_valido_al') }}
-      </label>
+    <!-- Campo valido_al condizionale per MARCA dello stato (la capability,
+         FE-G2, D-MARCHE (a); fino al 2026-11-15 i codici DRAFT/ATTIVO/CESSATO):
+         - in creazione e nello stato iniziale: editabile come "Fine validita' (opz.)"
+         - stato di emissione con valido_al impostato: readonly come
+           "Cessazione programmata al {data}" (cessazione futura applicata
+           via dialog Cessa, in attesa di scadere)
+         - stato di emissione senza valido_al: nascosto (la cessazione passa
+           solo dal dialog dedicato)
+         - stato di cessazione: readonly come "Data cessazione"
+         - l'annullato non ha nessuna delle tre marche: nascosto, come prima -->
+    <div class="form-field" v-if="mostraValidoAl">
+      <label>{{ etichettaValidoAl }}</label>
       <DatePicker :model-value="parseIsoDate(form.valido_al)"
         @update:model-value="form.valido_al = toIsoDate($event)"
         :disabled="isEdit && isLocked('valido_al')"

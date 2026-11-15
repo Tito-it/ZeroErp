@@ -783,6 +783,17 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         self.iva = iva_patcher.start()
         self.addCleanup(iva_patcher.stop)
         self.iva.return_value = (None, {})
+        # Dal 2026-11-15 (K-5) un prezzo nel payload senza la provenienza
+        # dichiarata e' un prezzo a mano, e passa dai gate L1 e L2 anche sul DDT.
+        # Qui non si provano i gate (`test_pricing_gate_helpers`, i test dei
+        # domini): si neutralizzano, come il risolutore IVA.
+        for bersaglio, ritorno in (
+            ("check_permesso_override_prezzo", None),
+            ("check_limite_variazione_prezzo", None),
+        ):
+            gate = patch(f"apps.vendite.services._pricing_gate_helpers.{bersaglio}", return_value=ritorno)
+            gate.start()
+            self.addCleanup(gate.stop)
 
     # Scopo: testata minima in DRAFT con quel che serve al pricing.
     def _testata(self):
@@ -813,6 +824,9 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 31}
         repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
         self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+        pricing_cls.return_value.resolve_prezzo_esito.return_value = {
+            "prezzo_finale": "10", "esito_codice": None,
+        }
 
         ddt_service.gestisci_riga(7, {
             "articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10",
@@ -853,6 +867,9 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         repo.create_riga.return_value = {"id": 31}
         repo.get_emittente_sr_id_by_fiscale_id.return_value = 42
         self.iva.return_value = (9, {"iva_origine": "TITOLO", "iva_titolo_id": 4})
+        pricing_cls.return_value.resolve_prezzo_esito.return_value = {
+            "prezzo_finale": "10", "esito_codice": None,
+        }
 
         riga = {"articolo_id": "ART1", "uom_operativa_id": 5, "prezzo_unitario": "10"}
         with self.assertRaises(ServiceError) as cm:
@@ -891,12 +908,15 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         # 2. il chiamante riceve il motivo, con un testo gia' pronto (DEC-4)
         self.assertEqual(out["prezzo_esito"]["codice"], "E_CATEGORIA_LISTINO_NON_MAPPATA")
         self.assertTrue(out["prezzo_esito"]["messaggio"])
-        # 3. F-7/DEC-8: il motivo e' persistito, non solo restituito
-        meta = repo.create_riga.call_args.kwargs["meta"]
+        # 3. F-7/DEC-8: il motivo e' persistito, non solo restituito. Dal
+        #    2026-11-15 nella colonna `prezzo_resolver_context` della riga, come
+        #    sui componenti (K-5): non piu' nel meta.
+        scritta = repo.create_riga.call_args.kwargs
         self.assertEqual(
-            meta["prezzo_resolver_context"]["esito_codice"],
+            scritta["prezzo_resolver_context"]["esito_codice"],
             "E_CATEGORIA_LISTINO_NON_MAPPATA",
         )
+        self.assertIsNone(scritta["meta"])
 
     @patch(_PRICING)
     @patch(_REPO, autospec=True)
@@ -915,7 +935,7 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
 
         out = ddt_service.gestisci_riga(7, {"articolo_id": "ART1", "uom_operativa_id": 5})
 
-        self.assertEqual(repo.create_riga.call_args.kwargs["prezzo_unitario"], "12.50")
+        self.assertEqual(str(repo.create_riga.call_args.kwargs["prezzo_unitario"]), "12.50")
         self.assertIsNone(out["prezzo_esito"])
         self.assertIsNone(repo.create_riga.call_args.kwargs["meta"])
 
@@ -938,9 +958,12 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
             "meta": {"origine_import": "XYZ"},
         })
 
-        meta = repo.create_riga.call_args.kwargs["meta"]
-        self.assertEqual(meta["origine_import"], "XYZ")
-        self.assertIn("prezzo_resolver_context", meta)
+        scritta = repo.create_riga.call_args.kwargs
+        self.assertEqual(scritta["meta"], {"origine_import": "XYZ"})
+        self.assertEqual(
+            scritta["prezzo_resolver_context"],
+            {"esito_codice": "E_PREZZO_LISTINO_RIGA_NON_TROVATA"},
+        )
 
     @patch(_REPO, autospec=True)
     def test_riga_composita_niente_zero(self, repo_cls) -> None:
@@ -968,7 +991,9 @@ class DdtRigaSenzaPrezzoTests(SimpleTestCase):
         # non come `""` (che il DB rifiuterebbe) e non come `0`.
         repo = repo_cls.return_value
         repo.get_ddt.return_value = self._testata()
-        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        repo.get_riga.return_value = {
+            "id": 31, "ddt_id": 7, "articolo_id": "ART1", "prezzo_unitario": "10",
+        }
         repo.update_riga.return_value = {"id": 31}
 
         ddt_service.aggiorna_riga(7, 31, {"prezzo_unitario": ""})

@@ -1162,6 +1162,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PREZZO_LISTINO_VERSIONE_BOZZA": "La versione del listino e' ancora in bozza: i suoi prezzi non si usano finche' non e' attiva.",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "Modifica manuale del prezzo non autorizzata. Usa il prezzo suggerito dal listino o richiedi l'autorizzazione al responsabile.",
+    "E_PRICING_PROVENIENZA_SUPERATA": "Il prezzo del listino è cambiato dopo che la riga è stata compilata. Ricarica il prezzo dal listino, oppure scrivilo a mano.",
     "E_PRICING_SCONTO_ECCESSIVO": "Variazione prezzo oltre il limite consentito per il tuo ruolo. Richiedi approvazione o rientra nel limite ammesso.",
     # «Esegui ora» su una sveglia (brief-db-avvio-manuale-di-un-processo §9):
     # i tre motivi del predicato e i due esiti dell'handler. A catalogo portano

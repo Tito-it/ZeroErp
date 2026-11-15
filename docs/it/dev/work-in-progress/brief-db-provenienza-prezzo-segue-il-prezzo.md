@@ -2,12 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il BE/FE** (pgTAP del §8.12 verdi, Tid 2026-11-15): R-8 (il codice del 409) e R-7 (il kit dal listino del contratto
-porta la sua provenienza) sono scritti, provati in transazione e **applicati** il 2026-11-15 (`20261114-73`
-nel `databasechangelog` di dbdev e dello scratch, 09:30; le due righe di CSV sono nel catalogo, id 1491).
-Verificato dalla revisione DB lo stesso giorno (§8.12, «Verifica»). Ora il **BE/FE**: K-5 … K-7 (il codice c'è, la policy si rigenera) e la metà BE di R-7 (§8.10).
-Quando il BE avrà chiuso, il brief si archivia. I giri 1, 2 e 3 sono applicati, verdi e committati
-(`33f85e641`, `11273227f`). ⚠️ Il commit `a85b76d58` «Chiusura brief
+**Riparte: il team DB**, per la chiusura (archiviazione, passo 7). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
+R-8.3 (policy rigenerata, ripiego), la metà BE di R-7 (6b), K-5 con D-5 nel gate dei **cinque** documenti — ordine e
+DDT compresi, con L1/L2 sul prezzo a mano (strada A, decisione di Tid del 2026-11-15) —, K-6 (il solo form che
+precompila dal pricing, il preventivo) e K-7 sul DB vero. Da committare (Tid). I giri 1, 2 e 3 sono applicati, verdi e
+committati (`33f85e641`, `11273227f`). ⚠️ Il commit `a85b76d58` «Chiusura brief
 brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 `brief-db-coerenza-listino-della-riga-di-commessa`: **questo brief è aperto**.
 
@@ -28,17 +27,21 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 4a | ✅ team BE | La PATCH dei componenti scrive il solo prezzo: la provenienza la fa decadere il trigger (decisione di Tid, strada «a», 2026-11-14) | §8.11 | — |
 | 4a-bis | ✅ Tid | D-5: la provenienza dichiarata dal form si verifica sul resolver; se non torna, 409 (2026-11-14) | §8.11 | — |
 | 4a-ter | ✅ team DB | **R-8**: il codice `E_PRICING_PROVENIENZA_SUPERATA` (classe `CONFLITTO_STATO`) nel catalogo dei messaggi; scritto il 2026-11-15 | §8.11, §8.12 | — |
-| 4b | team BE/FE | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE», §8.11 | 6a |
+| 4b | ✅ team BE/FE | K-5 … K-7: pricing gate e scritture delle righe dei cinque documenti, form, test dal push in su (2026-11-15) | §8.13 | 6a |
+| 4b-bis | ✅ Tid | Strada A: ordine e DDT passano dal gate come gli altri tre, prezzo a mano compreso (L1/L2) (2026-11-15) | §8.13 | — |
 | 5 | ✅ team DB | Giro 3: le copie a valle (R-4), override con provenienza, contesto dei componenti (D-3); prova in transazione (2026-11-13) | §8.8 | 3f |
 | 5b | ✅ Tid | Apply del giro 3 e pgTAP del §8.8: verdi (2026-11-14) | §8.8 | 5 |
 | 6 | ✅ team DB | Giro 4: R-8, R-7, il terzo caso di R-6 dal push in su, doc `manual/`; prova in transazione (2026-11-15) | §8.12 | 5b, 4 (✅) |
 | 6a | ✅ Tid | Apply del giro 4 e pgTAP del §8.12: verdi (2026-11-15) | §8.12 | 6 |
-| 6b | team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` | §8.10 | 6a |
-| 7 | team DB | Chiusura: archiviazione, quando il BE ha chiuso 4b e 6b | — | 4b, 6b |
+| 6b | ✅ team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` (2026-11-15) | §8.13 | 6a |
+| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 4b, 6b (✅), commit di Tid |
 
-**Decisioni aperte di Tid:** nessuna. Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
+**Decisioni aperte di Tid:** una proposta di estrazione (regola del 2) al §8.13 «Da decidere»; R-1 e R-2 della revisione del
+2026-11-15 decise e corrette lo stesso giorno (in fondo al §8.13). Decisa il 2026-11-15:
+la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** nessuno. Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
+corpo vivo. **Lavoro da committare:** su `dev/backend-tid` la consegna del §8.13 (BE, FE, catalogo BB, questo brief).
+Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
 pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 1-3 e la PATCH dei componenti sono committati (`33f85e641`,
 `11273227f`, `c4b0915f3`).
 
@@ -751,3 +754,102 @@ rigenerata; `STABLE`, `INVOKER`, `BEGIN ATOMIC`, e i privilegi sono quelli del `
 `zeroerp_app` in `EXECUTE`). I lettori a DB stanno in `fn_contratti_addebiti_maturati_con_provenienza` (due
 `LATERAL`, per nome); il BE legge `k.*` e prende le chiavi per nome (`_build_componente_row_from_snapshot`):
 le tre colonne in coda non rompono niente prima della metà BE. Niente da correggere.
+
+### 8.13 K-5 … K-7, la metà BE di R-7 e R-8.3 — consegnati (sessione BE, 2026-11-15)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-15. **A chi:** team DB per la chiusura; Tid per il
+> commit. Nessuna richiesta nuova al DB.
+
+**Decisione di Tid (2026-11-15), la strada A.** K-6 chiedeva la provenienza dichiarata ai cinque form, K-5 la verifica
+ai soli tre gate di preventivo, offerta e contratto: ordine e DDT scrivevano il prezzo del payload senza gate, e il
+prezzo a mano **senza L1 né L2** (chi non ha l'override su un preventivo poteva aggirarlo con un ordine). Tid: ordine e
+DDT passano dallo stesso gate, prezzo a mano compreso. Senza L3: i due documenti non hanno il workflow di approvazione,
+e una violazione L2 è un rifiuto.
+
+| # | Che cosa | Dove |
+| --- | --- | --- |
+| R-8.3 | Policy rigenerata col DB allineato a git (`-81` su dbdev e nel repo); ripiego senza `%s` | `error_policies_generated.py`, `error_messages_fallback.py` |
+| 6b | Il kit dal listino legge la provenienza col frammento delle tabelle; le `prov_*` obbligatorie (`KeyError`), il ramo «la sola origine» ritirato | `contratti_repository.list_componenti_kit_dal_listino`, `BoMComponentExpander._provenienza_componente` |
+| K-5 | Il gate scrive le quattro colonne (`COLONNE_PROVENIENZA_RIGA`, tutte o nessuna) e non più il `meta`; tre casi: senza prezzo il resolver, con la dichiarazione la verifica D-5 (o 409), senza dichiarazione `MANUALE` + L1/L2(/L3). Esito unico `EsitoPrezzoRiga` con `applica()`: era ricopiato in quattro punti | `_pricing_gate_helpers`; i service e i repository dei cinque documenti |
+| K-5 | Il contesto lo calcola il DB: `vendite.fn_prezzo_resolver_contesto(to_jsonb(r))` nella query del resolver, la stessa espressione delle funzioni che scrivono righe e componenti | `pricing_repository._COLONNE_DECORATE` |
+| K-5 | Ordine e DDT dal gate (strada A): l'ordine col guscio (il prezzo assente è un errore, BE-3/DEC-2 di brief-ddt-righe-senza-prezzo), il DDT col nucleo (il prezzo assente torna con `esito_codice`) | `ordini_service._gate_prezzo_riga`, `ddt_service._gate_prezzo_riga` |
+| K-6 | Il form del preventivo rimanda `provenienza_prezzo` col prezzo dell'endpoint finché l'operatore non lo cambia (anche «Usa prezzo listino» in modifica); sul 409 ricarica il prezzo dal listino | `PreventiviRigaForm.vue` (+ 3 test) |
+| K-7 | Sul DB vero, righe scritte dal service col resolver vero: da listino → cita R, R propagata; lo stesso prezzo a mano → `MANUALE`; cambiato dopo → decaduto, R di nuovo rettificabile; dichiarazione verificata o 409; il lister del push restituisce ciò che il gate ha scritto | `vendite/tests/db/test_provenienza_prezzo_dal_gate_db` (5) |
+| 6b | La proiezione del kit dal listino sul DB vero restituisce le `prov_*` | `test_commesse_porta_nomi_db`, test 6 |
+
+**Fatti trovati facendolo** (si leggano prima di riprendere):
+
+* ⚠️ **K-6 tocca un form solo.** Solo il form del preventivo precompila il prezzo dall'endpoint di pricing. Su contratto e
+  offerta «Modifica prezzo» parte dal prezzo del listino, ma è per definizione una sovrascrittura (OVERRIDE), già
+  riservata a chi ha `prezzo_override_manuale`: resta `MANUALE`, ed è giusto. L'ADESIONE non ha prezzo. Ordine e DDT non
+  precompilano: senza prezzo lo prende il server, che sa da dove viene. Il BE accetta comunque la dichiarazione da tutti e
+  cinque (simmetria del contratto).
+* **In modifica un prezzo che non cambia non ripassa dal gate** (BB `prezzo_invariato`, stessa unità di misura,
+  tolleranza di trasporto): chi corregge la sola quantità riceverebbe un 403 su un prezzo scritto da un altro, o un 409 su
+  un listino cambiato nel frattempo. La provenienza resta quella della riga.
+* **Senza prezzo nel payload l'errore del resolver risale** col suo codice. Fino a oggi il gate lo inghiottiva e il
+  chiamante riceveva un `None` da spiegare con un messaggio suo; il «best-effort» serve ad accettare un prezzo a mano, e
+  senza prezzo non c'è niente da accettare. Effetto: il padre composito del preventivo non passa più dal gate (il suo
+  prezzo è la somma dei figli), come negli altri quattro documenti.
+* **Il motivo del prezzo assente del DDT sta nella colonna** `prezzo_resolver_context` della riga, come sui componenti
+  (`fn_ddt_riga_componenti_init`): stava nel `meta` quando la riga principale la colonna non l'aveva. Nessun lettore del
+  `meta` (FE, BE, DB) — verificato.
+* **Il reset dell'approvazione rifiutata del preventivo** puliva `approvazione_rifiuto` dal `meta` dei campi, che c'era
+  sempre perché il gate ci scriveva l'origine; un prezzo da listino ora non porta audit, e la motivazione sarebbe rimasta.
+  Ora pulisce il `meta` della riga quando i campi non lo portano.
+* **R-7.3 (correzione del team DB)**: il componente del kit dal listino cita la versione e non la riga (il prezzo sta in
+  `listini_righe_componenti`); i test BE provano questo, non «cita R».
+* Due test che non parlano di prezzo mandavano un prezzo del listino senza dichiararlo, e senza operatore
+  (`test_righe_erogazione_obbligatoria_db`, i test IVA del DDT): con K-5 è un prezzo a mano. Il gate L1 vi è neutralizzato,
+  dichiarandolo.
+
+**Da decidere (regola del 2, proposta — non estratta):** `_resolve_prezzo_riga` di ordine e DDT erano già due copie (stessi
+controlli di testata, stessa chiamata al `PricingService`), e ora hanno accanto due `_gate_prezzo_riga` gemelli. Le
+differenze sono di dominio (guscio contro nucleo, codice d'errore), quindi sono parametri: si estraggono in un BB del
+contesto di testata. Lo stesso vale per i due wrapper `resolve_or_check_override_prezzo_riga_offerta` / `_contratto` (il
+salto senza listino e la data normalizzata), copie già prima di oggi. Serve l'ok di Tid.
+
+**Verifiche (2026-11-15):** suite intera del backend col DB vero, 7324 test: verdi tranne 4, nessuno di questo
+lavoro — dalle 11:35 un'altra sessione DB ha applicato su dbdev `20261114-82` … `20261115-26`, non ancora in git
+(due codici d'indirizzo senza policy, la capability del documento interno di magazzino, la madre degli indirizzi);
+⛔ la policy NON si rigenera finché quei changeSet non sono nel repo. `apps.vendite` tutta verde, coi test sul DB vero
+(5 nuovi in `test_provenienza_prezzo_dal_gate_db`, 1 in `test_commesse_porta_nomi_db`); FE 1185 verdi; mypy pulito
+sui sette moduli toccati.
+
+**Revisione BE/FE (`/verifica`, sessione nuova, 2026-11-15)** — corretto, col suo test:
+
+* ⛔ **Il form dichiarava «dal listino» ogni prezzo uguale a quello del listino**, anche riscritto a mano: la deduzione
+  dal confronto che il gate ha ritirato (§2, §8.1) rientrava dal FE. Ora la dichiarazione vale solo se nel campo il
+  prezzo l'ha **scritto** il listino (precompilazione, «Usa prezzo listino») e nessuno l'ha cambiato da allora
+  (`prezzoDalListino` in `PreventiviRigaForm.vue`; spec 3, 4b, 4c, rossi col codice di prima).
+* **Contratto: una PATCH col solo prezzo invariato era un 404** «Riga contratto non trovata»: `prezzo_invariato`
+  toglie il prezzo, l'UPDATE resta senza campi e `execute_dynamic_update` torna `False`. Gli altri quattro documenti
+  ignorano l'esito o saltano l'UPDATE vuoto (`contratti_service.update_riga`;
+  `test_update_riga_solo_prezzo_invariato_non_e_un_404`, rosso col codice di prima).
+* Il motivo dello smistamento del preventivo letto a mano (`_reason_key` senza valori) → `caps.motivoFlag` +
+  `testoMotivi`, la sede che FE-G1 dichiara unica (`PreventiviDrawer.vue`). Oggi nessun valore cambia la frase.
+* `S608` di ruff sul frammento del kit dal listino (`contratti_repository`), annotato come gli altri lettori del BB.
+
+**Da decidere, dalla revisione (Tid):**
+
+* ✅ **R-1 — il prezzo a mano senza L1 quando il listino non risponde.** Con un prezzo nel payload, se mancava il
+  contesto del resolver o il resolver sollevava (articolo fuori listino, categoria non mappata), il gate accettava il
+  prezzo **senza** L1: con la strada A, la scappatoia restava aperta su ordine e DDT per gli articoli senza prezzo di
+  listino. **Decisa da Tid il 2026-11-15, (a): L1 si applica anche lì** (L2/L3 no: non c'è un prezzo da cui misurare lo
+  scostamento); la riga è `MANUALE`, con l'audit dell'override. Chi non ha l'override non prezza un articolo fuori
+  listino. Effetto collaterale corretto nello stesso giro: il padre composito del **contratto** passava dal gate col
+  segnaposto «0» (il resolver ne rifiutava l'articolo, e il gate lo inghiottiva); ora non ci passa, come negli altri
+  quattro documenti (`contratti_service.create_riga`/`update_riga`). ⚠️ Resta come prima, per decisione del
+  2026-05-20, il contratto e l'offerta **senza listino**: lì il prezzo è negoziato e non passa da nessun gate.
+  Test: `test_pricing_gate_helpers` 8 e 8b (rossi senza L1), `test_resolve_or_check_override_missing_context_skips`;
+  tre test di servizio e `test_righe_canone_periodicita_db` neutralizzano L1, che non è il loro soggetto.
+* ✅ **R-2 — offerta e contratto senza listino ignoravano la dichiarazione** (la riga diventava `MANUALE` in silenzio),
+  dove il gate, senza contesto, risponde 409. Corretto il 2026-11-15 (ok Tid): il 409 esce dal gate in
+  `rifiuta_provenienza_dichiarata`, e i due wrapper lo usano senza ricopiarlo (`test_pricing_gate_helpers`
+  `SenzaListinoTests`, rosso col codice di prima). L'estrazione dei due wrapper resta la proposta qui sopra.
+* **Per la chiusura DB (non bloccante):** la `note` di `E_PRICING_PROVENIENZA_SUPERATA` a catalogo dice «pricing gate di
+  preventivo, offerta e contratto»; con la strada A sono cinque documenti. Si corregge dal CSV, poi si rigenera.
+
+Verifiche della revisione: `apps.vendite` col DB vero (`ZEROERP_TEST_DB_E2E=1`) 2719 verdi; spec FE di `vendite` e
+`useEntityCapabilities` 228 verdi; `npm run guards`, `check_i18n_keys`, `check_classi_morte`, ruff sui file toccati:
+puliti.

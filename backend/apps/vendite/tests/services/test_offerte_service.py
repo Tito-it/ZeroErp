@@ -99,6 +99,10 @@ from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.modello_documento_mockato import ModelloDocumentoMockatoMixin
+from apps.vendite.services._pricing_gate_helpers import (
+    PROVENIENZA_MANUALE_RIGA,
+    EsitoPrezzoRiga,
+)
 
 
 def _make_offerta_dict(stato_codice: str = "BOZZA") -> dict[str, object]:
@@ -1855,9 +1859,10 @@ class OfferteGatePrezzoTests(TestCase):
             STATO_APPROVAZIONE_PENDING,
         )
 
-        mock_resolve.return_value = (
-            Decimal("12.50"),
-            {
+        mock_resolve.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("12.50"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={
                 "richiesta_approvazione_pending": True,
                 "violazione_l2": {"tipo_violazione": "SCONTO"},
                 "prezzo_base_resolver": "10.00",
@@ -1891,7 +1896,7 @@ class OfferteGatePrezzoTests(TestCase):
             resolve_or_check_override_prezzo_riga_offerta,
         )
 
-        prezzo, meta = resolve_or_check_override_prezzo_riga_offerta(
+        esito = resolve_or_check_override_prezzo_riga_offerta(
             testata={"listino_id": None, "validita_dal": "2026-06-01"},
             articolo_id="x",
             uom_id=5,
@@ -1899,8 +1904,9 @@ class OfferteGatePrezzoTests(TestCase):
             auth_user_id=99,
             function_name="test",
         )
-        self.assertEqual(prezzo, "12.50")
-        self.assertIsNone(meta)
+        self.assertEqual(esito.prezzo, "12.50")
+        self.assertIsNone(esito.provenienza)
+        self.assertIsNone(esito.meta)
         mock_bb.assert_not_called()
 
     # 58) _apply_pricing_gate_eccezione: su override entro-soglia preserva il
@@ -1912,9 +1918,10 @@ class OfferteGatePrezzoTests(TestCase):
         from apps.vendite.services.offerte_service import OfferteService
 
         # Override accettato (no L3): meta audit senza richiesta_approvazione.
-        mock_resolve.return_value = (
-            Decimal("11.00"),
-            {"origine_prezzo": "MANUALE", "prezzo_base_resolver": "10.00"},
+        mock_resolve.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("11.00"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={"prezzo_base_resolver": "10.00"},
         )
         svc = OfferteService()
         svc._repo = MagicMock()
@@ -1932,9 +1939,12 @@ class OfferteGatePrezzoTests(TestCase):
             fallback_meta={"nota_interna": "preesistente"},
         )
 
-        # Il meta esistente (`nota_interna`) sopravvive + audit pricing mergiato.
+        # Il meta esistente (`nota_interna`) sopravvive + audit pricing mergiato;
+        # la provenienza nelle colonne (K-5), non nel meta.
         self.assertEqual(payload["meta"]["nota_interna"], "preesistente")
-        self.assertEqual(payload["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(payload["meta"]["prezzo_base_resolver"], "10.00")
+        self.assertEqual(payload["origine_prezzo"], "MANUALE")
+        self.assertNotIn("origine_prezzo", payload["meta"])
         # Nessun workflow L3 → niente stato/pratica nel payload.
         self.assertNotIn("stato_approvazione_prezzo", payload)
 

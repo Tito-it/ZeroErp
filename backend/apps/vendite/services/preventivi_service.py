@@ -43,7 +43,13 @@ from apps.vendite.services._annullo_con_legami import (
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    COLONNE_PROVENIENZA_RIGA,
+    EsitoPrezzoRiga,
+    ProvenienzaDichiarata,
     guard_uom_id_positive,
+    prezzo_invariato,
+    provenienza_dichiarata,
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
@@ -152,13 +158,15 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     "articolo_id", "descrizione", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "ordine", "meta",
     "data_consegna_richiesta_cliente", "richiesta_approvazione",
-    "componenti_overrides", "componenti_attivazioni",
+    "componenti_overrides", "componenti_attivazioni", CHIAVE_PROVENIENZA_DICHIARATA,
 })
 # In MODIFICA riga, oltre a `UPDATE_KEYS_RIGA` (le colonne che il repository
-# scrive in blocco), `aggiorna_riga` legge a parte queste due: la data con il
-# suo validatore, la richiesta di approvazione per il gate L3.
+# scrive in blocco), `aggiorna_riga` legge a parte queste tre: la data con il
+# suo validatore, la richiesta di approvazione per il gate L3, la provenienza
+# del prezzo dichiarata dal form (D-5).
 UPDATE_RIGA_LETTE_A_PARTE: frozenset[str] = frozenset({
     "data_consegna_richiesta_cliente", "richiesta_approvazione",
+    CHIAVE_PROVENIENZA_DICHIARATA,
 })
 # Validator stateless del dominio (solo il codice): testata e righe.
 _V = PayloadValidator(validation_code=E_PREV_VALIDAZIONE)
@@ -1009,15 +1017,27 @@ def gestisci_riga(
     uom_id = payload.get("uom_operativa_id")
     payload_prezzo = payload.get("prezzo_unitario")
     richiesta_approvazione = _V.optional_bool(payload, "richiesta_approvazione") is True
-    prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
-        testata=testata,
-        articolo_id=articolo_id,
-        uom_id=uom_id,
-        payload_prezzo=payload_prezzo,
-        auth_user_id=auth_user_id,
-        function_name=f"{_FN}.gestisci_riga",
-        richiesta_approvazione=richiesta_approvazione,
+    dichiarata = provenienza_dichiarata(
+        payload, error_code=E_PREV_VALIDAZIONE, function_name=f"{_FN}.gestisci_riga",
     )
+    # Il padre composito senza prezzo non passa dal gate: il suo prezzo e' la
+    # somma dei figli (segnaposto qui sotto), e il listino non ne ha uno suo
+    # (`E_LISTINO_RIGA_COMPOSITO_VIETATO`). Come offerta, contratto, ordine e
+    # DDT. ⚠️ Fino al 2026-11-15 ci passava, e il gate ne inghiottiva l'errore.
+    if payload_prezzo is None and repo.is_articolo_composito(str(articolo_id)):
+        esito_prezzo = EsitoPrezzoRiga(prezzo=None)
+    else:
+        esito_prezzo = _resolve_or_check_override_prezzo(
+            testata=testata,
+            articolo_id=articolo_id,
+            uom_id=uom_id,
+            payload_prezzo=payload_prezzo,
+            auth_user_id=auth_user_id,
+            function_name=f"{_FN}.gestisci_riga",
+            richiesta_approvazione=richiesta_approvazione,
+            dichiarata=dichiarata,
+        )
+    prezzo_finale, prezzo_meta = esito_prezzo.prezzo, esito_prezzo.meta
 
     # Padre composito (modello unificato 2026-05-13): il FE omette
     # `prezzo_unitario` perche' il prezzo padre e' SUM(figli × coeff_qta)
@@ -1043,10 +1063,11 @@ def gestisci_riga(
                 function_name=f"{_FN}.gestisci_riga",
             )
 
-    # Merge meta esistente del payload con audit prezzo.
-    merged_meta = _coerce_meta_to_dict(payload.get("meta"))
-    if prezzo_meta is not None:
-        merged_meta.update(prezzo_meta)
+    # Prezzo, provenienza e audit dell'override sui campi della riga (BB del
+    # gate): il prezzo del padre composito resta il segnaposto qui sopra.
+    campi_prezzo: dict[str, Any] = {"meta": _coerce_meta_to_dict(payload.get("meta"))}
+    esito_prezzo.applica(campi_prezzo)
+    merged_meta = campi_prezzo["meta"]
 
     # Workflow L3: se la chiamata ha attivato richiesta_approvazione e il
     # prezzo viola L2, crea la pratica PRIMA dell'INSERT riga per ottenere
@@ -1054,12 +1075,13 @@ def gestisci_riga(
     # decorator: failure post-pratica annulla anche la riga.
     pratica_id_l3: int | None = None
     stato_approvazione: str | None = None
-    if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+    if esito_prezzo.richiesta_approvazione_pending:
+        assert prezzo_meta is not None
         pratica_id_l3 = _orchestrate_l3_request(
             preventivo_id=preventivo_id,
             articolo_id=articolo_id,
             prezzo_finale=prezzo_finale,
-            prezzo_meta=prezzo_meta,
+            prezzo_meta=dict(prezzo_meta),
             auth_user_id=auth_user_id,
             # riga_id non noto: link post-create_riga.
         )
@@ -1100,6 +1122,7 @@ def gestisci_riga(
         stato_approvazione_prezzo=stato_approvazione,
         pratica_approvazione_prezzo_id=pratica_id_l3,
         data_consegna_richiesta_cliente=data_consegna_richiesta,
+        **{c: campi_prezzo[c] for c in COLONNE_PROVENIENZA_RIGA if c in campi_prezzo},
     )
     # L3: registra riga_id nel meta della pratica per permettere all'approver
     # di risalire alla riga dalla coda (UI ApprovazioniPrezzoListView).
@@ -1268,10 +1291,17 @@ def aggiorna_riga(
     # L1 check + audit meta se prezzo toccato esplicitamente. Serve contesto
     # riga esistente (`riga_esistente`, letta sopra) per articolo_id/uom_id
     # non sempre presenti nel payload.
+    dichiarata = provenienza_dichiarata(
+        payload, error_code=E_PREV_VALIDAZIONE, function_name=f"{_FN}.aggiorna_riga",
+    )
+    # Un prezzo che non cambia non ripassa dal gate (BB `prezzo_invariato`):
+    # niente da autorizzare, e la provenienza resta quella della riga.
+    if prezzo_invariato(update_fields, riga_esistente):
+        update_fields.pop("prezzo_unitario")
     if "prezzo_unitario" in update_fields:
         articolo_id = riga_esistente["articolo_id"]
         uom_id = update_fields.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id")
-        prezzo_finale, prezzo_meta = _resolve_or_check_override_prezzo(
+        esito_prezzo = _resolve_or_check_override_prezzo(
             testata=testata,
             articolo_id=articolo_id,
             uom_id=uom_id,
@@ -1279,30 +1309,24 @@ def aggiorna_riga(
             auth_user_id=auth_user_id,
             function_name=f"{_FN}.aggiorna_riga",
             richiesta_approvazione=richiesta_approvazione,
+            dichiarata=dichiarata,
         )
+        prezzo_finale, prezzo_meta = esito_prezzo.prezzo, esito_prezzo.meta
         update_fields["prezzo_unitario"] = prezzo_finale
-        if prezzo_meta is not None:
-            # `meta` puo' arrivare come dict (caso normale: psycopg deserializza
-            # jsonb) o come stringa JSON (regressione di adapter / payload FE
-            # serializzato). _coerce_meta_to_dict normalizza entrambi i casi
-            # ed evita il classico ValueError "dictionary update sequence
-            # element #0 has length 1; 2 is required".
-            base = update_fields.get("meta")
-            if not base:
-                base = riga_esistente.get("meta")
-            merged_meta = _coerce_meta_to_dict(base)
-            merged_meta.update(prezzo_meta)
-            update_fields["meta"] = merged_meta
+        # Prezzo, provenienza e audit (BB del gate): l'audit si fonde sul
+        # `meta` del payload o, se non c'e', su quello della riga.
+        esito_prezzo.applica(update_fields, meta_base=riga_esistente.get("meta"))
 
         # Workflow L3: violazione L2 + flag richiesta_approvazione=true
         # -> crea pratica e salva PENDING. Helper condiviso con gestisci_riga.
         # Per update il riga_id e' gia' noto: link riga<->pratica eseguito dentro l'helper.
-        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+        if esito_prezzo.richiesta_approvazione_pending:
+            assert prezzo_meta is not None
             pratica_id_l3 = _orchestrate_l3_request(
                 preventivo_id=preventivo_id,
                 articolo_id=articolo_id,
                 prezzo_finale=prezzo_finale,
-                prezzo_meta=prezzo_meta,
+                prezzo_meta=dict(prezzo_meta),
                 auth_user_id=auth_user_id,
                 riga_id_for_link=riga_id,
             )
@@ -1323,8 +1347,15 @@ def aggiorna_riga(
             if stato_attuale in {STATO_APPROVAZIONE_REJECTED, STATO_APPROVAZIONE_APPROVED}:
                 update_fields["stato_approvazione_prezzo"] = None
                 update_fields["pratica_approvazione_prezzo_id"] = None
-                cleanup_meta = update_fields.get("meta")
-                if isinstance(cleanup_meta, dict) and "approvazione_rifiuto" in cleanup_meta:
+                # Il `meta` da pulire e' quello che si scrive o, se la PATCH
+                # non lo tocca, quello della riga. ⚠️ Fino al 2026-11-15 c'era
+                # sempre nei campi, perche' il gate ci scriveva l'origine del
+                # prezzo; dalla K-5 la provenienza sta nelle colonne, e un
+                # prezzo da listino non porta audit.
+                cleanup_meta = _coerce_meta_to_dict(
+                    update_fields.get("meta") or riga_esistente.get("meta")
+                )
+                if "approvazione_rifiuto" in cleanup_meta:
                     cleanup_meta.pop("approvazione_rifiuto", None)
                     update_fields["meta"] = cleanup_meta
 
@@ -1495,7 +1526,8 @@ def _resolve_or_check_override_prezzo(
     auth_user_id: int | None,
     function_name: str,
     richiesta_approvazione: bool = False,
-) -> tuple[Any, dict[str, Any] | None]:
+    dichiarata: ProvenienzaDichiarata | None = None,
+) -> EsitoPrezzoRiga:
     return resolve_or_check_override_prezzo(
         testata=testata,
         articolo_id=articolo_id,
@@ -1506,6 +1538,7 @@ def _resolve_or_check_override_prezzo(
         resolver_fn=suggerisci_prezzo_riga,
         error_code_validazione=E_PREV_VALIDAZIONE,
         richiesta_approvazione=richiesta_approvazione,
+        dichiarata=dichiarata,
     )
 
 

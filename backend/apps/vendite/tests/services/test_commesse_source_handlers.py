@@ -70,7 +70,8 @@ resolver ritirati il 2026-11-14 col percorso che provavano):
 42) ProvenienzaDalDocumentoTests.test_prezzo_snapshot_negoziato_non_sovrascritto
 43) ProvenienzaDalDocumentoTests.test_riga_senza_provenienza_passa_vuota
 44) ProvenienzaDalDocumentoTests.test_il_componente_porta_la_sua_provenienza
-45) ProvenienzaDalDocumentoTests.test_il_kit_dal_listino_porta_la_sola_origine
+45) ProvenienzaDalDocumentoTests.test_il_kit_dal_listino_porta_la_versione
+45b) ProvenienzaDalDocumentoTests.test_il_componente_senza_le_colonne_prov_e_un_errore
 46) ProvenienzaDalDocumentoTests.test_il_push_non_chiede_la_provenienza_al_resolver
 
 Fan-out compositi modello unico per sorgenti ≠ preventivo (analisi-commesse §4.3 #3):
@@ -102,7 +103,8 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.vendite.db._provenienza_prezzo import (
-    COLONNE_PROVENIENZA_PREZZO, PROVENIENZA_VUOTA, ProvenienzaPrezzo,
+    COLONNA_DEL_LISTER, COLONNE_PROVENIENZA_PREZZO, PREFISSO_COMPONENTE,
+    PROVENIENZA_VUOTA, ProvenienzaPrezzo,
 )
 from apps.vendite.db.commesse_repository import (
     BatchUpsertResult, CommesseRepository, ErroreBatchAttivita, PushableRow,
@@ -663,7 +665,18 @@ def _make_snapshot_componente(**overrides) -> dict:
         "origine_prezzo": "CATEGORIA",
     }
     defaults.update(overrides)
-    return defaults
+    return _con_provenienza(defaults)
+
+
+# Scopo: un componente letto nella forma dei due loader del push (K-4, R-7):
+#        le dieci colonne `prov_*` del BB del DB in coda. Quelle che il test
+#        non dice valgono NULL, salvo l'origine, che e' quella della riga.
+def _con_provenienza(componente: dict) -> dict:
+    for colonna in COLONNA_DEL_LISTER.values():
+        componente.setdefault(f"{PREFISSO_COMPONENTE}{colonna}", None)
+    if componente[f"{PREFISSO_COMPONENTE}origine_prezzo"] is None:
+        componente[f"{PREFISSO_COMPONENTE}origine_prezzo"] = componente.get("origine_prezzo")
+    return componente
 
 
 class BoMComponentExpanderTests(TestCase):
@@ -724,22 +737,22 @@ class BoMComponentExpanderTests(TestCase):
     # propagato nel meta. Tutti i figli passano in commessa.
     def test_snapshot_loader_genera_pushable_rows_da_componenti(self):
         snapshot_loader = MagicMock(return_value=[
-            {
+            _con_provenienza({
                 "componente_id": "cmp-01",
                 "uom_operativa_id": 42,
                 "prezzo_unitario": Decimal("200.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "LISTINO_BUNDLE",
                 "esposizione_in_fattura": "VALORIZZATO",
-            },
-            {
+            }),
+            _con_provenienza({
                 "componente_id": "cmp-02",
                 "uom_operativa_id": 43,
                 "prezzo_unitario": Decimal("75.00"),
                 "coeff_qta_snapshot": Decimal("4"),
                 "origine_prezzo": "MANUALE",
                 "esposizione_in_fattura": "NASCOSTO",
-            },
+            }),
         ])
         expander = BoMComponentExpander(
             is_composito_fn=MagicMock(return_value=True),
@@ -767,7 +780,7 @@ class BoMComponentExpanderTests(TestCase):
         self.assertEqual(result[0].meta["componente_di"], str(row.articolo_id))
         self.assertEqual(result[1].meta["esposizione"], "NASCOSTO")
         # L'origine del componente nella sua provenienza, non piu' nel meta
-        # (K-4): il kit senza le colonne `prov_*` porta la sola origine.
+        # (K-4): dalle colonne `prov_*` della proiezione.
         self.assertEqual(result[0].provenienza.origine_prezzo, "LISTINO_BUNDLE")
         self.assertEqual(result[1].provenienza.origine_prezzo, "MANUALE")
         self.assertNotIn("origine_prezzo", result[0].meta)
@@ -779,14 +792,14 @@ class BoMComponentExpanderTests(TestCase):
     # distinta) → il default della colonna, NASCOSTO.
     def test_snapshot_loader_esposizione_default_nascosto_se_assente(self):
         snapshot_loader = MagicMock(return_value=[
-            {
+            _con_provenienza({
                 "componente_id": "cmp-01",
                 "uom_operativa_id": 42,
                 "prezzo_unitario": Decimal("100.00"),
                 "coeff_qta_snapshot": Decimal("1"),
                 "origine_prezzo": "MANUALE",
                 # Nessuna esposizione_in_fattura
-            },
+            }),
         ])
         expander = BoMComponentExpander(
             is_composito_fn=MagicMock(return_value=True),
@@ -1413,14 +1426,35 @@ class ProvenienzaDalDocumentoTests(TestCase):
         self.assertEqual(inp.contratto_id, 13)
         self.assertEqual(inp.categoria_cliente_id_snapshot, 2)
 
-    # Scopo: il kit dal listino del contratto (`fn_contratto_kit_componenti`)
-    #        dice la sola origine: il resto della provenienza resta vuoto.
-    def test_il_kit_dal_listino_porta_la_sola_origine(self):
+    # Scopo: le colonne `prov_*` sono OBBLIGATORIE (R-7): un componente letto
+    #        senza la proiezione della provenienza e' un `KeyError`, non un
+    #        componente con la sola origine. Fino al 2026-11-15 passava, ed era
+    #        la forma del kit dal listino del contratto.
+    def test_il_componente_senza_le_colonne_prov_e_un_errore(self):
+        componente = _make_snapshot_componente(origine_prezzo="LISTINO_BUNDLE")
+        for colonna in [k for k in componente if k.startswith(PREFISSO_COMPONENTE)]:
+            del componente[colonna]
+        with self.assertRaises(KeyError):
+            BoMComponentExpander._build_componente_row_from_snapshot(
+                _make_composito_row(provenienza=self._PROVENIENZA), componente,
+            )
+
+    # Scopo: il kit dal listino del contratto porta la provenienza del
+    #        resolver come un componente negoziato (R-7): la versione e il
+    #        contesto, la riga NULL (il prezzo sta in `listini_righe_componenti`).
+    def test_il_kit_dal_listino_porta_la_versione(self):
         riga = BoMComponentExpander._build_componente_row_from_snapshot(
             _make_composito_row(provenienza=self._PROVENIENZA),
-            _make_snapshot_componente(origine_prezzo="LISTINO_BUNDLE"),
+            _make_snapshot_componente(
+                origine_prezzo="LISTINO_BUNDLE",
+                prov_listino_versione_id=31,
+                prov_prezzo_base_snapshot=Decimal("10.00"),
+            ),
         )
-        self.assertEqual(riga.provenienza, ProvenienzaPrezzo(origine_prezzo="LISTINO_BUNDLE"))
+        self.assertEqual(riga.provenienza, ProvenienzaPrezzo(
+            origine_prezzo="LISTINO_BUNDLE", listino_versione_id=31,
+            prezzo_base_snapshot=Decimal("10.00"),
+        ))
 
     # Scopo: il push non ha piu' un resolver da interrogare per la
     #        provenienza: il percorso che la ricostruiva e' ritirato.
@@ -1518,12 +1552,12 @@ class CompositiFanOutWiringTests(TestCase):
 
         comp_repo = MagicMock()
         comp_repo.list_componenti_riga.return_value = [
-            {"componente_id": "c1", "uom_operativa_id": 9,
+            _con_provenienza({"componente_id": "c1", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("5.00"), "coeff_qta_snapshot": "1",
-             "esposizione_in_fattura": "DESCRITTIVO", "origine_prezzo": "CONTRATTO_LISTINO"},
-            {"componente_id": "c2", "uom_operativa_id": 9,
+             "esposizione_in_fattura": "DESCRITTIVO", "origine_prezzo": "CONTRATTO_LISTINO"}),
+            _con_provenienza({"componente_id": "c2", "uom_operativa_id": 9,
              "prezzo_unitario": Decimal("3.00"), "coeff_qta_snapshot": "2",
-             "esposizione_in_fattura": "NASCOSTO", "origine_prezzo": "CONTRATTO_LISTINO"},
+             "esposizione_in_fattura": "NASCOSTO", "origine_prezzo": "CONTRATTO_LISTINO"}),
         ]
         with patch.object(HandlerOrdini, "_componenti_repo_factory",
                           staticmethod(lambda: comp_repo)), \

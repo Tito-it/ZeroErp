@@ -578,6 +578,10 @@ class PreventiviRepository(
         "factor_to_base", "prezzo_unitario", "sconto_percentuale",
         "ordine", "meta", "data_consegna_richiesta_cliente",
         "stato_approvazione_prezzo", "pratica_approvazione_prezzo_id",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Aggiorna campi modificabili della testata preventivo.
@@ -836,17 +840,25 @@ class PreventiviRepository(
         stato_approvazione_prezzo: str | None = None,
         pratica_approvazione_prezzo_id: int | None = None,
         data_consegna_richiesta_cliente: date | None = None,
+        origine_prezzo: str | None = None,
+        listino_versione_id: int | None = None,
+        listino_riga_id: int | None = None,
+        prezzo_resolver_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # La provenienza del prezzo (K-5) la dice il gate; assente, la decide
+        # il trigger del DB (MANUALE se c'e' un prezzo).
         sql = """
             INSERT INTO vendite.preventivi_righe (
                 preventivo_id, articolo_id, descrizione,
                 quantita, qta_operativa, uom_operativa_id, factor_to_base,
                 prezzo_unitario, sconto_percentuale, iva_id, ordine, meta,
                 stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
-                data_consegna_richiesta_cliente
+                data_consegna_richiesta_cliente,
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                prezzo_resolver_context
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
-                %s
+                %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -858,6 +870,8 @@ class PreventiviRepository(
                 json.dumps(meta or {}),
                 stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
                 data_consegna_richiesta_cliente,
+                origine_prezzo, listino_versione_id, listino_riga_id,
+                json.dumps(prezzo_resolver_context) if prezzo_resolver_context is not None else None,
             ])
             result = row_to_dict(cursor)
             assert result is not None

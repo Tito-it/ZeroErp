@@ -17,7 +17,7 @@ import { useCorpoDocumento } from '../../../core/composables/useCorpoDocumento'
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { CAMPI_FORM_TESTATA_PREVENTIVO, STATO_PREVENTIVO } from '../../constants'
+import { CAMPI_FORM_TESTATA_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString, giornoDi, parseIsoDate } from '../../../core/utils/date'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
@@ -34,7 +34,7 @@ import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
-import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
+import { mapAvailableActionsToDrawerActions, testoMotivi } from '../../../core/composables/useDrawerActions'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
@@ -257,27 +257,29 @@ const testata = useTestataDocumento({
 // FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
 const canPushCommessa = computed(() => caps.flag('can_push_commessa'))
-const pushCommessaReasonKey = computed(() => capabilities.value.can_push_commessa_reason_key || null)
 // Ramo gemello dello smistamento: `genera_ordine` ha la sua reason, che finora
 // nessuno mostrava (il banner sotto copriva solo il ramo commessa).
 const canGeneraOrdine = computed(() => caps.flag('can_genera_ordine'))
-const generaOrdineReasonKey = computed(() => capabilities.value.can_genera_ordine_reason_key || null)
-// Pannello Smistamento visibile da ACCETTATO in poi (EVASO = consuntivo):
-// prima dell'accettazione non c'e' nulla da smistare e il pannello sarebbe
-// solo rumore (tutte RESIDUA, azioni rifiutate dal BE).
-const showSmistamento = computed(() => {
-  const stato = detail.value?.stato_codice_interno
-  return stato === STATO_PREVENTIVO.ACCETTATO || stato === STATO_PREVENTIVO.EVASO
-})
+// Pannello Smistamento visibile dall'accettazione in poi (evaso = consuntivo):
+// prima non c'e' nulla da smistare e il pannello sarebbe solo rumore (tutte
+// RESIDUA, azioni rifiutate dal BE). Lo dice la capability (`in_smistamento`,
+// dal building block `vendite.fn_preventivo_in_smistamento`, lo stesso della
+// proiezione dello smistamento), non due codici di stato (FE-G3, brief-db-
+// stati-documento-dal-vocabolario §6.24, D-SMIST (a)).
+const showSmistamento = computed(() => caps.flag('in_smistamento'))
 // Smistamento spento quando nessuno dei due rami e' eseguibile (es. EVASO):
 // stato ⇒ disabilita col motivo (frontend-standards). Il motivo e' quello che
 // il DB manda per ramo (`can_*_reason_key`), a tooltip sul pulsante — non piu'
 // due banner che ripetevano la nota di stato della barra.
 const smistamentoReason = computed(() => {
   if (canPushCommessa.value || canGeneraOrdine.value) return ''
-  const keys = [generaOrdineReasonKey.value, pushCommessaReasonKey.value]
-    .filter(k => k && te(k))
-  return [...new Set(keys.map(k => t(k)))].join('\n')
+  // Il motivo di ciascun ramo dalla sede unica (`caps.motivoFlag`, tradotto
+  // coi suoi valori da `testoMotivi`), come il banner dell'offerta.
+  const testi = ['can_genera_ordine', 'can_push_commessa']
+    .map(f => caps.motivoFlag(f))
+    .filter(m => m?.reason_key && te(m.reason_key))
+    .map(m => testoMotivi(t, te, m))
+  return [...new Set(testi)].join('\n')
 })
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
 // Quali campi si cambiano lo dice la capability (`testata.campiBloccati`, dal

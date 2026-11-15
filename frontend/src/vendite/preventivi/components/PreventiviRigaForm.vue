@@ -8,7 +8,7 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
-import { extractApiError } from '../../../core/utils/apiError'
+import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
 import { usePreventiviStore } from '../stores/preventivi'
 import { useLimitiPricing } from '../../composables/useLimitiPricing'
 import { useRigaArticoloComposito } from '../../_shared/righe/useRigaArticoloComposito'
@@ -166,6 +166,33 @@ const canRipristinaPrezzoListino = computed(() => {
 })
 function ripristinaPrezzoListino() {
   form.value.prezzo_unitario = prezzoBaseResolverNum.value
+  prezzoDalListino.value = provenienzaListino.value != null
+}
+
+// La PROVENIENZA del prezzo che l'endpoint di pricing ha dato (K-6, D-5 di
+// brief-db-provenienza-prezzo-segue-il-prezzo §8.11): origine, versione e riga
+// di listino, col prezzo a cui si riferiscono. Il form la rimanda col prezzo
+// finche' l'operatore non lo cambia (`provenienzaDaDichiarare`); il backend la
+// verifica sul listino di adesso. ⛔ Senza, un prezzo precompilato e non
+// toccato arriverebbe come scritto a mano: dal 2026-11-15 il backend non lo
+// deduce piu' dal confronto col listino, e chiederebbe il permesso di override.
+const provenienzaListino = ref(null)
+// ⛔ Il prezzo si dichiara «dal listino» solo se nel campo l'ha SCRITTO il
+//    listino (precompilazione in creazione, «Usa prezzo listino») e da allora
+//    nessuno l'ha cambiato: non basta che il numero coincida. Un operatore che
+//    cambia il prezzo e poi riscrive a mano quello del listino ha scritto un
+//    prezzo a mano (§2 e §8.1 del brief: la deduzione dal confronto e'
+//    ritirata, e non rientra dal form). Lo spegne il watch del prezzo qui sotto.
+const prezzoDalListino = ref(false)
+function provenienzaDaDichiarare(prezzo) {
+  const p = provenienzaListino.value
+  if (!p || !prezzoDalListino.value || prezzo == null || prezzo === '') return null
+  if (Math.abs(Number(prezzo) - p.prezzo) >= 1e-4) return null
+  return {
+    origine_prezzo: p.origine_prezzo,
+    listino_versione_id: p.listino_versione_id,
+    listino_riga_id: p.listino_riga_id,
+  }
 }
 
 // Ultimo prezzo scritto dal resolver: serve al watch sotto per distinguere
@@ -182,6 +209,13 @@ watch(
   [() => form.value.prezzo_unitario, () => form.value.articolo_id],
   ([newPrezzo]) => {
     if (l2Error.value) l2Error.value = null
+    // Un prezzo diverso da quello scritto dal listino e' dell'operatore, anche
+    // se poi torna allo stesso numero (`prezzoDalListino`).
+    const p = provenienzaListino.value
+    if (prezzoDalListino.value
+        && (!p || newPrezzo == null || Math.abs(Number(newPrezzo) - p.prezzo) >= 1e-4)) {
+      prezzoDalListino.value = false
+    }
     if (!prezzoOrigine.value) return
     if (_lastResolverPrice != null && Number(newPrezzo) === Number(_lastResolverPrice)) return
     prezzoOrigine.value = null
@@ -321,6 +355,9 @@ async function suggerisciPrezzo() {
   // per aggiornare il riferimento "Prezzo listino" mostrato accanto.
   const shouldApplyToForm = !isEdit.value && form.value.prezzo_unitario == null
   const tk = ++_resolverToken
+  // La provenienza di prima non vale per l'articolo o l'unita' di adesso.
+  provenienzaListino.value = null
+  prezzoDalListino.value = false
   try {
     const res = await suggerisciPrezzoRiga(props.preventivoId, {
       articolo_id: form.value.articolo_id,
@@ -336,8 +373,17 @@ async function suggerisciPrezzo() {
       // valore originale di confronto senza dover andare al listino).
       _resolverPriceLive.value = proposto
       _lastResolverPrice = proposto
+      provenienzaListino.value = data.origine
+        ? {
+            prezzo: proposto,
+            origine_prezzo: data.origine,
+            listino_versione_id: data.listino_versione_id ?? null,
+            listino_riga_id: data.listino_riga_id ?? null,
+          }
+        : null
       if (shouldApplyToForm) {
         form.value.prezzo_unitario = proposto
+        prezzoDalListino.value = provenienzaListino.value != null
         prezzoOrigine.value = data.origine || null
       }
     }
@@ -426,6 +472,11 @@ function buildRigaPayload(extras = {}) {
     // delle CASO A avviene per componente via PreventiviRigaComponentiPanel.
     if (!isCasoA.value) {
       base.prezzo_unitario = f.prezzo_unitario
+      // «Usa prezzo listino» in modifica: il prezzo torna quello del listino,
+      // e la riga lo dichiara. Un prezzo che non cambia il backend non lo
+      // riesamina.
+      const provenienza = provenienzaDaDichiarare(f.prezzo_unitario)
+      if (provenienza) base.provenienza_prezzo = provenienza
     }
     return { ...base, ...extras }
   }
@@ -450,6 +501,8 @@ function buildRigaPayload(extras = {}) {
   // di EDIT CASO A. Per articoli semplici lo inviamo regolarmente.
   if (!isPadreComposito.value) {
     payload.prezzo_unitario = f.prezzo_unitario
+    const provenienza = provenienzaDaDichiarare(f.prezzo_unitario)
+    if (provenienza) payload.provenienza_prezzo = provenienza
   }
   if (showComponentiDialog.value && componentiPayload.value?.overrides) {
     payload.componenti_overrides = componentiPayload.value.overrides
@@ -457,10 +510,28 @@ function buildRigaPayload(extras = {}) {
   return payload
 }
 
+// Il 409 della provenienza (D-5): il listino e' cambiato fra la precompilazione
+// e il salvataggio. Il messaggio lo da' il backend; qui si ricarica il prezzo
+// dal listino — in creazione nel campo, in modifica nel riferimento accanto
+// («Usa prezzo listino») — perche' il salvataggio dopo trovi quello di adesso.
+const E_PROVENIENZA_SUPERATA = 'E_PRICING_PROVENIENZA_SUPERATA'
+async function salvaRiga(payload) {
+  try {
+    return await submitRiga(payload)
+  } catch (err) {
+    if (extractApiErrorCode(err) === E_PROVENIENZA_SUPERATA) {
+      if (!isEdit.value) form.value.prezzo_unitario = null
+      _resolverPriceLive.value = null
+      suggerisciPrezzo()
+    }
+    throw err
+  }
+}
+
 // Save + richiedi-approvazione con gate L2 via BB condiviso (B12, regola del 2).
 // Banner inline su violazione L2; side-effect di successo (emit 'saved') iniettato.
 const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = useL2SaveFlow({
-  persist: submitRiga,
+  persist: salvaRiga,
   buildPayload: buildRigaPayload,
   onSuccess: (result) => emit('saved', result),
   messages: {

@@ -61,7 +61,16 @@ _COLONNE_DECORATE = """
                     cc.codice               AS categoria_cliente_codice,
                     cc.descrizione          AS categoria_cliente_descrizione,
                     r.classe_utenza_id_snapshot,
-                    clu.descrizione         AS classe_utenza_descrizione"""
+                    clu.descrizione         AS classe_utenza_descrizione,
+                    vendite.fn_prezzo_resolver_contesto(to_jsonb(r))
+                                            AS prezzo_resolver_context"""
+
+# ⭐ `prezzo_resolver_context`: il contesto che una riga di documento salva
+#    nella sua colonna quando prende il prezzo dal resolver (K-5 di
+#    brief-db-provenienza-prezzo-segue-il-prezzo), calcolato dal BB del DB
+#    sulla riga intera del resolver — la stessa espressione che usano le
+#    funzioni del DB che scrivono righe e componenti. La regola di quali chiavi
+#    entrano nel contesto resta li', non si ricopia in Python.
 
 # Le tre colonne che SOLO il nucleo espone: il prezzo puo' non esserci, e
 # `esito_codice` dice perche'.

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1226, di cui 130 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1227, di cui 130 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1481,6 +1481,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PREZZO_LISTINO_VERSIONE_BOZZA": "NON_ESEGUIBILE",
     "E_PRICING_MAGGIORAZIONE_ECCESSIVA": "NON_PERMESSO",
     "E_PRICING_OVERRIDE_NON_AUTORIZZATO": "NON_PERMESSO",
+    # Provenienza del prezzo dichiarata dal form e smentita dal listino, sollevato dal BACKEND (apps/vendite/services/_pricing_gate_helpers.py, resolve_or_check_override_prezzo: pricing gate di preventivo, offerta e contratto) - decisione di Tid del 2026-11-14 (D-5): il form rimanda il prezzo con la provenienza ricevuta dall'endpoint di pricing; il BE rilancia il resolver e, se riga di listino, versione o prezzo non coincidono con cio' che il listino da' adesso, risponde 409 e non salva. Nessuna funzione a DB lo nomina: questa riga e' cio' che lo rende un codice registrato. * CONFLITTO_STATO e non DATO_ERRATO: la riga era giusta quando e' stata compilata, e' cambiato il listino fra la precompilazione e il salvataggio. * Scartate (D-5): far diventare MANUALE la riga (un operatore senza il permesso di override riceverebbe un 403 su un prezzo che non ha toccato) e fidarsi della dichiarazione (un prezzo da listino che il listino non da'). * LA FRASE E' SENZA SEGNAPOSTO: a riempire un %s e' script.fn_log_and_raise_error, da cui un codice del BE non passa. Brief: brief-db-provenienza-prezzo-segue-il-prezzo (§8.11, R-8).
+    "E_PRICING_PROVENIENZA_SUPERATA": "CONFLITTO_STATO",
     # Refactor 2026-05-20: user_message generico "Variazione prezzo" per · entrambi i codici. La distinzione SCONTO/MAGGIORAZIONE resta nel · codice errore + nel detail tecnico (segno della variazione) — utile · per workflow approvazione, dashboard e log, ma non per l'utente. · L'UX vede la direzione esplicita nel detail ("in diminuzione" / · "in aumento") generato da `_raise_or_return_violazione_l2`.
     "E_PRICING_SCONTO_ECCESSIVO": "NON_PERMESSO",
     # Guard dbops.trgfn_processi_accensione_guard (brief-db-processi-accensione-per-ambiente): la scelta a mano su una sveglia (dbops.processi_accensione) vuole un motivo non vuoto. Parla prima di chk_processi_accensione_motivo, che resta come vincolo del dato. Il VARIADIC porta il codice del processo; contesto campo = motivo.

@@ -302,8 +302,9 @@ class BoMComponentExpander:
     #          - `coeff_qta_snapshot` invece di `coeff_qta`
     #          - la provenienza del prezzo del componente (K-4): dalle colonne
     #            `prov_*` della proiezione per il push (`list_componenti_riga(
-    #            con_provenienza=True)`); il kit dal listino del contratto
-    #            (`fn_contratto_kit_componenti`) dice la sola origine.
+    #            con_provenienza=True)`) e, per il kit dal listino del
+    #            contratto, di `list_componenti_kit_dal_listino` (R-7): stessa
+    #            forma, stesso BB del DB.
     #        Modello unificato 2026-05-13: `esposizione_in_fattura` arriva
     #        dalla proiezione del repository (JOIN runtime su
     #        `articoli_componenti`, BoM immutabile per design). Init popola
@@ -335,13 +336,18 @@ class BoMComponentExpander:
             provenienza=cls._provenienza_componente(componente),
         )
 
-    # Scopo: la provenienza del prezzo di un componente letto. Con le colonne
-    #        della proiezione per il push, tutte; altrimenti la sola origine.
+    # Scopo: la provenienza del prezzo di un componente letto, dalle colonne
+    #        `prov_*` che i due loader proiettano col BB del DB
+    #        (`sql_provenienza_esplosa`).
+    #        ⛔ OBBLIGATORIE: una colonna che manca e' un `KeyError`, come i
+    #        campi del lister in `_map_pushable_row`. Fino al 2026-11-15 un
+    #        componente senza le `prov_*` passava con la sola origine: un
+    #        loader nuovo senza la proiezione avrebbe portato in commessa un
+    #        prezzo senza versione ne' contesto, in silenzio (R-7 di
+    #        brief-db-provenienza-prezzo-segue-il-prezzo §8.10).
     @staticmethod
     def _provenienza_componente(componente: dict[str, Any]) -> ProvenienzaPrezzo:
-        if f"{PREFISSO_COMPONENTE}origine_prezzo" in componente:
-            return provenienza_da_colonne(componente.get, prefisso=PREFISSO_COMPONENTE)
-        return ProvenienzaPrezzo(origine_prezzo=componente.get("origine_prezzo"))
+        return provenienza_da_colonne(componente.__getitem__, prefisso=PREFISSO_COMPONENTE)
 
     # Scopo: query lean per is_composito (vs CatalogoRepository.get_articolo
     #        che proietta la vista arricchita). Una sola colonna, indicizzata.

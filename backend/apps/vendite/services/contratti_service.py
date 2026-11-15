@@ -31,7 +31,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -102,9 +101,15 @@ from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_PENDING,
 )
 from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    EsitoPrezzoRiga,
+    ProvenienzaDichiarata,
     check_limite_variazione_globale,
     guard_uom_id_positive,
+    prezzo_invariato,
+    provenienza_dichiarata,
     resolve_or_check_override_prezzo,
+    rifiuta_provenienza_dichiarata,
     validate_componenti_overrides_authorization,
 )
 
@@ -353,6 +358,9 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
     # approvazione quando il prezzo viola L2. Estratto e consumato da
     # create_riga prima di `_build_data_riga` (non finisce nella tabella).
     "richiesta_approvazione",
+    # La provenienza del prezzo dichiarata dal form (D-5): non e' colonna, la
+    # legge e la toglie il BB del gate (`provenienza_dichiarata`).
+    CHIAVE_PROVENIENZA_DICHIARATA,
 })
 
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
@@ -370,6 +378,7 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     # Workflow L3: vedi commento CREATE_KEYS_RIGA. update_riga lo gestisce
     # alla stessa stregua per `prezzo_unitario` modificato che viola L2.
     "richiesta_approvazione",
+    CHIAVE_PROVENIENZA_DICHIARATA,
 })
 
 # In create: contratto_id arriva dall'URL, non da payload. articolo_id e
@@ -1169,6 +1178,9 @@ class ContrattiService:
         # non finire nel data_riga.
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
         payload.pop("richiesta_approvazione", None)
+        dichiarata = provenienza_dichiarata(
+            payload, error_code=E_VENDITE_VALIDATION, function_name="contratti_service.create_riga",
+        )
 
         data = self._build_data_riga(payload, for_create=True)
 
@@ -1180,6 +1192,16 @@ class ContrattiService:
         # DB risparmiato).
         pratica_id_l3: int | None = None
         testata_gate: dict[str, Any] | None = None
+        # Il padre composito non passa dal gate: il suo prezzo e' la somma dei
+        # figli (il trigger lo riscrive), non un prezzo scritto a mano — come
+        # in offerta, preventivo, ordine e DDT. ⚠️ Fino al 2026-11-15 ci
+        # passava, e il gate ne inghiottiva l'errore del listino; con L1 sul
+        # prezzo a mano fuori listino (R-1) il segnaposto sarebbe un 403.
+        is_composito = bool(
+            articolo_id
+            and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE
+            and self._repo.is_articolo_composito(str(articolo_id))
+        )
         # Transazione atomica: gate L3 (crea la pratica di approvazione) +
         # create_riga + (se composito) auto-init componenti.
         # Fix analisi-fix-transazioni #7 (Classe B): il gate era invocato PRIMA
@@ -1199,7 +1221,7 @@ class ContrattiService:
             {"contratto_id": contratto_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
         ), transaction.atomic():
-            if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE:
+            if tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE and not is_composito:
                 pratica_id_l3, testata_gate = self._apply_pricing_gate_riga(
                     contratto_id=contratto_id,
                     articolo_id=articolo_id,
@@ -1209,6 +1231,7 @@ class ContrattiService:
                     richiesta_approvazione=richiesta_approvazione,
                     riga_id_for_link=None,  # riga_id non noto qui
                     function_name="contratti_service.create_riga",
+                    dichiarata=dichiarata,
                 )
             new_id = self._repo.create_riga(contratto_id, data)
 
@@ -1233,11 +1256,7 @@ class ContrattiService:
             # che scriverebbe SUM(figli) sul padre ESCLUSIONE -> violazione.
             # Idem l'ADESIONE: il kit aderito prende prezzo e componenti dal
             # listino, e il DB non inizializza i suoi componenti (`20261029-42`).
-            if (
-                articolo_id
-                and tipo_eccezione in _TIPI_ECCEZIONE_CON_GATE
-                and self._repo.is_articolo_composito(str(articolo_id))
-            ):
+            if is_composito:
                 # Riusa la testata letta dal gate (sopra) se disponibile;
                 # altrimenti (gate skip per ESCLUSIONE) la carica adesso.
                 testata = testata_gate or self._repo.get_contratto(contratto_id)
@@ -1336,10 +1355,11 @@ class ContrattiService:
         riga_id_for_link: int | None,
         function_name: str,
         fallback_meta: dict[str, Any] | None = None,
+        dichiarata: ProvenienzaDichiarata | None = None,
     ) -> tuple[int | None, dict[str, Any]]:
         testata_gate = self._repo.get_contratto(contratto_id)
         assert testata_gate is not None
-        prezzo_finale, prezzo_meta = resolve_or_check_override_prezzo_riga_contratto(
+        esito_prezzo = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata_gate,
             articolo_id=articolo_id,
             uom_id=uom_id,
@@ -1347,41 +1367,24 @@ class ContrattiService:
             auth_user_id=auth_user_id,
             function_name=function_name,
             richiesta_approvazione=richiesta_approvazione,
+            dichiarata=dichiarata,
         )
-        # Override prezzo col valore normalizzato dal BB (auto-fill se
-        # payload era None + resolver ha prezzo, oppure prezzo manuale
-        # confermato dall'L1).
-        if prezzo_finale is not None:
-            data["prezzo_unitario"] = prezzo_finale
-        # Merge meta riga: il BB ritorna `prezzo_meta` con audit pricing.
-        # Va mergiato sul `meta` corrente del data_riga (priorita': payload
-        # > fallback existing meta) senza sovrascrivere chiavi gia' presenti.
-        # Coerce JSONB→dict defensivo (fix 2026-05-20): per certi articoli
-        # psycopg ritorna `meta` JSONB della riga esistente come stringa JSON
-        # invece di dict — `dict(str)` solleverebbe TypeError "dictionary
-        # update sequence". Stesso pattern coerce gia' applicato in altri
-        # repo (`jsonb_out` in commesse_repository, coerceJsonbToObject FE).
-        if prezzo_meta:
-            base_meta = data.get("meta") or fallback_meta or {}
-            if isinstance(base_meta, str):
-                try:
-                    parsed = json.loads(base_meta)
-                    base_meta = parsed if isinstance(parsed, dict) else {}
-                except (json.JSONDecodeError, ValueError):
-                    base_meta = {}
-            merged_meta = dict(base_meta)
-            merged_meta.update(prezzo_meta)
-            data["meta"] = merged_meta
+        prezzo_finale, prezzo_meta = esito_prezzo.prezzo, esito_prezzo.meta
+        # Prezzo, provenienza e audit su `data` (BB del gate): l'audit si fonde
+        # sul `meta` del payload o, in update, su quello della riga
+        # (`fallback_meta`), che altrimenti l'audit nuovo cancellerebbe.
+        esito_prezzo.applica(data, meta_base=fallback_meta)
         # Workflow L3: il BB ha segnalato violazione + richiesta. Crea pratica
         # PRIMA dell'INSERT/UPDATE riga per ottenere la FK; il link riga<->pratica
         # avviene nel caller (post-INSERT per create, inline per update).
         pratica_id_l3: int | None = None
-        if prezzo_meta and prezzo_meta.get("richiesta_approvazione_pending"):
+        if esito_prezzo.richiesta_approvazione_pending:
+            assert prezzo_meta is not None
             pratica_id_l3 = _orchestrate_l3_request_contratto(
                 contratto_id=contratto_id,
                 articolo_id=articolo_id,
                 prezzo_finale=prezzo_finale,
-                prezzo_meta=prezzo_meta,
+                prezzo_meta=dict(prezzo_meta),
                 auth_user_id=auth_user_id,
                 riga_id_for_link=riga_id_for_link,
             )
@@ -1414,6 +1417,9 @@ class ContrattiService:
         # Flag opt-in L3 estratto pre-build_data (non e' una colonna riga).
         richiesta_approvazione = self._v.optional_bool(payload, "richiesta_approvazione") is True
         payload.pop("richiesta_approvazione", None)
+        dichiarata = provenienza_dichiarata(
+            payload, error_code=E_VENDITE_VALIDATION, function_name="contratti_service.update_riga",
+        )
         data = self._build_data_riga(payload, for_create=False)
 
         self._v.require_campi_da_aggiornare(
@@ -1467,9 +1473,13 @@ class ContrattiService:
             {"riga_id": riga_id},
             fallback_message="Violazione vincolo DB su riga contratto.",
         ), transaction.atomic():
+            # Un prezzo che non cambia non ripassa dal gate (BB `prezzo_invariato`).
+            if tipo_existing in _TIPI_ECCEZIONE_CON_GATE and prezzo_invariato(data, existing_riga):
+                data.pop("prezzo_unitario")
             if (
                 "prezzo_unitario" in data
                 and tipo_existing in _TIPI_ECCEZIONE_CON_GATE
+                and not self._repo.is_articolo_composito(str(existing_riga["articolo_id"]))
             ):
                 self._apply_pricing_gate_riga(
                     contratto_id=int(existing_riga["contratto_id"]),
@@ -1485,8 +1495,12 @@ class ContrattiService:
                     riga_id_for_link=riga_id,
                     function_name="contratti_service.update_riga",
                     fallback_meta=existing_riga.get("meta"),
+                    dichiarata=dichiarata,
                 )
-            updated = self._repo.update_riga(riga_id, data)
+            # Una PATCH col solo prezzo invariato non ha piu' niente da
+            # scrivere: la riga esiste (letta dal guard in testa), e l'UPDATE
+            # vuoto tornerebbe False, cioe' un 404 su una riga che c'e'.
+            updated = self._repo.update_riga(riga_id, data) if data else True
 
         ErrorManager.require(
             updated,
@@ -2484,7 +2498,8 @@ def resolve_or_check_override_prezzo_riga_contratto(
     auth_user_id: int | None,
     function_name: str,
     richiesta_approvazione: bool = False,
-) -> tuple[Any, dict[str, Any] | None]:
+    dichiarata: ProvenienzaDichiarata | None = None,
+) -> EsitoPrezzoRiga:
     # Refactor 2026-05-20: skip TUTTI i gate (L1+L2+L3) per contratti senza
     # listino. Semantica del modello "senza_listino": tutte le righe sono
     # AGGIUNTA negoziate, il prezzo e' governato dal contratto stesso —
@@ -2496,8 +2511,17 @@ def resolve_or_check_override_prezzo_riga_contratto(
     # NB: il payload_prezzo viene ritornato as-is senza meta audit; il
     # CHECK chk_contrighe_prezzo_per_tipo_eccezione del DB resta come
     # safety net (prezzo NOT NULL per OVERRIDE/AGGIUNTA non-compositi).
+    # Senza listino non c'e' gate: il prezzo e' del payload e la provenienza la
+    # decide il DB (MANUALE). ⛔ Una dichiarazione «dal listino» qui non si puo'
+    # verificare: 409, come il gate senza contesto (R-2 della revisione del
+    # 2026-11-15; prima diventava MANUALE in silenzio).
     if testata.get("listino_id") is None:
-        return payload_prezzo, None
+        if dichiarata is not None and payload_prezzo is not None:
+            rifiuta_provenienza_dichiarata(
+                dichiarata, dettaglio="Il documento non ha un listino da cui il prezzo possa venire.",
+                function_name=function_name,
+            )
+        return EsitoPrezzoRiga(prezzo=payload_prezzo)
 
     testata_normalized = (
         testata if testata.get("data") is not None
@@ -2513,6 +2537,7 @@ def resolve_or_check_override_prezzo_riga_contratto(
         resolver_fn=contratti_suggerisci_prezzo_riga,
         error_code_validazione=E_VENDITE_VALIDATION,
         richiesta_approvazione=richiesta_approvazione,
+        dichiarata=dichiarata,
     )
 
 

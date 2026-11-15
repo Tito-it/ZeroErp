@@ -22,7 +22,7 @@
 //        Consumer: i drawer di preventivi, offerte, contratti, ordini, DDT,
 //        resi (editFlag=can_edit_testata) e promo articoli (editFlag=can_update).
 import { computed } from 'vue'
-import { labelOrCode } from '../utils/i18nLabel'
+import { testoMotivi } from './useDrawerActions'
 
 /**
  * Ritorna helper reattivi per consumare il blob capabilities di un detail BE.
@@ -38,6 +38,7 @@ import { labelOrCode } from '../utils/i18nLabel'
  *   canEdit: ComputedRef<boolean>,
  *   azioneNegata: (flagKey: string, azione: Object) => Array,
  *   azioneDaFlag: (flagKey: string, azione: Object, i18n: {t, te}) => Array,
+ *   motivoFlag: (flagKey: string) => ({reason, reason_key, valori}|null),
  *   isLocked: (field: string) => boolean,
  *   flag: (key: string) => boolean,
  * }}
@@ -92,38 +93,51 @@ export function useEntityCapabilities(detailRef, opts = {}) {
   //    sembrerebbe una regola e non si saprebbe perche'.
   // Nato da due copie identiche (DdtDrawer, OrdiniDrawer), regola del 2,
   // 2026-09-23.
-  function azioneNegata(flagKey, azione) {
-    if (flag(flagKey)) return []
+  // Scopo: il motivo per cui un flag e' spento, nella forma del motivo di
+  //        un'azione (`{ reason, reason_key, valori }`), o `null` col flag
+  //        acceso o senza motivo. `valori` = `<flag>_reason_valori`, i
+  //        parametri della frase (`{0}`, `{1}`), `[]` se il DB non li manda.
+  // ⭐ Sede unica della lettura delle chiavi sorelle di un flag (2026-11-15,
+  //    brief-db-stati-documento-dal-vocabolario FE-G1, §12.2 delle linee guida
+  //    SQL): la leggono `azioneNegata`, `azioneDaFlag` e chi rende il motivo da
+  //    se' (un banner), sempre con `testoMotivi`.
+  function motivoFlag(flagKey) {
+    if (flag(flagKey)) return null
     const reason = capabilities.value[`${flagKey}_reason`] ?? null
     const reasonKey = capabilities.value[`${flagKey}_reason_key`] ?? null
-    if (!reason && !reasonKey) return []
+    if (!reason && !reasonKey) return null
+    const valori = capabilities.value[`${flagKey}_reason_valori`]
+    return { reason, reason_key: reasonKey, valori: Array.isArray(valori) ? valori : [] }
+  }
+
+  function azioneNegata(flagKey, azione) {
+    const motivo = motivoFlag(flagKey)
+    if (!motivo) return []
     return [{
       target_state: null,
       outlined: false,
       ...azione,
       enabled: false,
-      reason,
-      reason_key: reasonKey,
+      ...motivo,
     }]
   }
 
   // Scopo: un pulsante di GESTIONE della barra del drawer (`kind: 'manage'`,
   //        col suo `command`: «Genera bolla», «Genera reso») acceso da un flag
   //        della capability. Flag acceso → il pulsante; spento CON motivo →
-  //        il pulsante disabilitato, col motivo tradotto a tooltip
-  //        (`labelOrCode`: chiave mancante → la frase del DB); spento SENZA
-  //        motivo → niente, come `azioneNegata`. Sempre array, da spargere
-  //        nella lista della `DrawerActionsBar`.
+  //        il pulsante disabilitato, col motivo a tooltip, tradotto coi suoi
+  //        valori da `testoMotivi` (la sede unica del perche' di un'azione
+  //        spenta: chiave mancante → la frase del DB); spento SENZA motivo →
+  //        niente, come `azioneNegata`. Sempre array, da spargere nella lista
+  //        della `DrawerActionsBar`.
   // Nato il 2026-11-14 (brief-db-stati-documento-dal-vocabolario FE-O3,
   // FE-R2; regola del 2, ok Tid): ordine e bolla accendevano i due pulsanti
   // da un elenco di codici di stato, copie delle regole del DB.
   function azioneDaFlag(flagKey, azione, { t, te }) {
     if (flag(flagKey)) return [{ ...azione, disabled: false }]
-    const reason = capabilities.value[`${flagKey}_reason`] ?? null
-    const reasonKey = capabilities.value[`${flagKey}_reason_key`] ?? null
-    if (!reason && !reasonKey) return []
-    const motivo = reasonKey ? labelOrCode(t, te, reasonKey, reason || reasonKey) : reason
-    return [{ ...azione, disabled: true, tooltip: motivo }]
+    const motivo = motivoFlag(flagKey)
+    if (!motivo) return []
+    return [{ ...azione, disabled: true, tooltip: testoMotivi(t, te, motivo) }]
   }
 
   return {
@@ -135,5 +149,6 @@ export function useEntityCapabilities(detailRef, opts = {}) {
     flag,
     azioneNegata,
     azioneDaFlag,
+    motivoFlag,
   }
 }

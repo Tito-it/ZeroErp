@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Callable
+from unittest.mock import patch
 
 from django.db import connection, transaction
 
@@ -76,6 +77,13 @@ def _aggiunta_a_canone(cur) -> dict:
 class RigheCanonePeriodicitaDbTests(unittest.TestCase):
     def setUp(self):
         richiedi_db_provvisto("dbops.fn_pgtap_crea_mondo_cliente(text,character varying)")
+        # Il prezzo del payload e' scritto a mano su un articolo che il listino
+        # non prezza: dal 2026-11-15 passa da L1 anche fuori listino (R-1 di
+        # brief-db-provenienza-prezzo-segue-il-prezzo §8.13), e qui non c'e' un
+        # operatore. Il soggetto e' il guard della periodicita': si neutralizza.
+        gate = patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo")
+        gate.start()
+        self.addCleanup(gate.stop)
 
     # Scopo: costruisce il mondo, lancia `azione(cur)` e ritorna l'errore che
     #        risponde. Il blocco viene annullato.
