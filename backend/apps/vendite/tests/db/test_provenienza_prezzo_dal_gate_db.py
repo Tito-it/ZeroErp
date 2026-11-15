@@ -52,6 +52,7 @@ from unittest.mock import patch
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import row_to_dict
+from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.vendite.services import ordini_service
@@ -149,7 +150,9 @@ class ProvenienzaPrezzoDalGateDbTests(TestCase):
         except _Annulla:
             return True
         except DatabaseError as exc:
-            self.assertIn("E_RIGA_LISTINO_PROPAGATA", str(exc))
+            # ⚠️ Il codice viaggia nel campo strutturato (`constraint_name`), non
+            # nel testo del messaggio: si legge col BB, non con `str(exc)`.
+            self.assertEqual(db_error_code(exc), "E_RIGA_LISTINO_PROPAGATA")
             return False
 
     # 1. Senza prezzo: il resolver vero, e la riga cita la riga di listino.
