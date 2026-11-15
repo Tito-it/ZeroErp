@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari per LookupRepository (tipi soggetto dettaglio,
-#        matrice indirizzi, autocomplete comuni, search stradario).
+#        picker dei tipi di indirizzo, autocomplete comuni, search stradario).
 # Tutti i test usano mock — nessuna dipendenza da DB reale (CI-compatible).
 # ------------------------------------------------------------
 
@@ -11,8 +11,10 @@
 Indice test eseguiti:
  1) test_list_tipi_soggetto_dettaglio — verifica SQL e mappatura risultati
  2) test_list_tipi_soggetto_dettaglio_empty — nessun risultato
- 3) test_list_matrice_indirizzi — verifica SQL con parametro e mappatura
- 4) test_list_matrice_indirizzi_empty — nessun risultato
+ 3) test_picker_chiama_la_funzione_del_contesto — una funzione per contesto, parametri in ordine
+ 4) test_picker_contesto_sconosciuto — fuori whitelist: KeyError, nessuna query
+ 4b) test_picker_tipo_ruolo_codice_sconosciuto — codice ignoto: elenco vuoto, la funzione non si chiama
+   (il binding vero sul DB: apps/anagrafiche/tests/db/test_tipi_indirizzo_proponibili_db.py)
  5) test_search_comuni_with_search — ricerca ILIKE con risultati
  6) test_search_comuni_no_search — nessun filtro, ritorna primi N
  7) test_search_comuni_empty — nessun risultato
@@ -95,48 +97,50 @@ class TestListTipiSoggettoDettaglio(TestCase):
         self.assertEqual(results, [])
 
 
-class TestListMatriceIndirizzi(TestCase):
-    """Test LookupRepository.list_matrice_indirizzi()."""
+class TestTipiIndirizzoProponibili(TestCase):
+    """Test LookupRepository.list_tipi_indirizzo_proponibili() (R-2)."""
+
+    _COLS = ["tipo_indirizzo_id", "codice", "codice_interno", "descrizione",
+             "obbligatorio", "ammesso", "motivo_codice", "reason", "reason_key",
+             "reason_valori", "motivi"]
 
     @patch("apps.core.db.lookup_repository.connection")
-    def test_list_matrice_indirizzi(self, mock_conn):
-        """Verifica SQL con parametro tipo_soggetto_dettaglio_id e mappatura."""
-        cols = ["tipo_indirizzo_id", "codice_interno", "descrizione",
-                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice_interno"]
-        rows = [
-            (1, "RESID", "Residenza", True, None, None),
-            (2, "DOMFISC", "Domicilio Fiscale", True, None, None),
-            (5, "FATT", "Fatturazione", False, 2, "DOMFISC"),
-        ]
-        mock_cursor = _mock_cursor_with_description(rows, cols)
-        _mock_connection(mock_conn, mock_cursor)
-
+    def test_picker_chiama_la_funzione_del_contesto(self, mock_conn):
         from apps.core.db.lookup_repository import LookupRepository
 
-        repo = LookupRepository()
-        results = repo.list_matrice_indirizzi(1)
+        casi = {
+            "soggetto": ("fn_tipi_indirizzo_proponibili_soggetto", ("019d-uuid",)),
+            "natura": ("fn_tipi_indirizzo_proponibili_natura", (3,)),
+            "ruolo": ("fn_tipi_indirizzo_proponibili_ruolo", (50, None)),
+            "tipo_ruolo": ("fn_tipi_indirizzo_proponibili_tipo_ruolo", (2,)),
+        }
+        for contesto, (funzione, args) in casi.items():
+            with self.subTest(contesto=contesto):
+                mock_cursor = _mock_cursor_with_description([], self._COLS)
+                _mock_connection(mock_conn, mock_cursor)
+                LookupRepository().list_tipi_indirizzo_proponibili(contesto, *args)
+                sql, params = mock_cursor.execute.call_args[0]
+                self.assertIn(f"anagrafiche.{funzione}(", sql)
+                self.assertIn("WITH ORDINALITY", sql)
+                self.assertEqual(params, list(args))
 
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_picker_contesto_sconosciuto(self, mock_conn):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        with self.assertRaises(KeyError):
+            LookupRepository().list_tipi_indirizzo_proponibili("matrice", 1)
+        mock_conn.cursor.assert_not_called()
+
+    @patch("apps.core.db.lookup_repository.connection")
+    def test_picker_tipo_ruolo_codice_sconosciuto(self, mock_conn):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        mock_cursor = _mock_cursor_with_description([], ["id"])
+        mock_cursor.fetchone.return_value = None
+        _mock_connection(mock_conn, mock_cursor)
+        self.assertEqual(LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo("XX"), [])
         mock_cursor.execute.assert_called_once()
-        sql, params = mock_cursor.execute.call_args[0]
-        self.assertIn("tipi_soggetto_dettaglio_tipi_indirizzo", sql)
-        self.assertEqual(params, [1])
-        self.assertEqual(len(results), 3)
-        self.assertTrue(results[0]["obbligatorio"])
-        self.assertEqual(results[2]["fallback_codice_interno"], "DOMFISC")
-
-    @patch("apps.core.db.lookup_repository.connection")
-    def test_list_matrice_indirizzi_empty(self, mock_conn):
-        """Nessun indirizzo configurato per il tipo — lista vuota."""
-        cols = ["tipo_indirizzo_id", "codice_interno", "descrizione",
-                "obbligatorio", "fallback_tipo_indirizzo_id", "fallback_codice_interno"]
-        mock_cursor = _mock_cursor_with_description([], cols)
-        _mock_connection(mock_conn, mock_cursor)
-
-        from apps.core.db.lookup_repository import LookupRepository
-
-        repo = LookupRepository()
-        results = repo.list_matrice_indirizzi(999)
-        self.assertEqual(results, [])
 
 
 class TestSearchComuni(TestCase):

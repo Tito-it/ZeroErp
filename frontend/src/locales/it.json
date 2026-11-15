@@ -6284,6 +6284,14 @@
       },
       "copia_blocco": {
         "nessun_tipo_proponibile": "Non c'è un altro tipo di indirizzo in cui copiarlo: i tipi ammessi ci sono già tutti."
+      },
+      "copia": {
+        "azione": "Copia come…",
+        "titolo": "Copia l'indirizzo",
+        "titolo_da": "Copia l'indirizzo «{tipo}»",
+        "spiegazione": "Scegli i tipi di indirizzo da aggiungere con questo stesso indirizzo. I tipi spenti non si possono aggiungere: accanto c'è il perché.",
+        "conferma": "Copia",
+        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi"
       }
     },
     "soggetti": {

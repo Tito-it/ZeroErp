@@ -33,9 +33,7 @@ provide(READONLY_KEY, computed(() => parentReadonly.value || props.preview))
 const props = defineProps({
   soggettoRuoloId: { type: Number, default: null },
   soggettoId: { type: String, default: null },
-  tipoSoggettoDettaglioId: { type: Number, default: null },
   istanzaUtilityId: { type: Number, default: null },
-  tipoRuoloCodice: { type: String, default: null },
   preview: { type: Boolean, default: false },
   // L'entita' (cliente/fornitore + id) e l'email, per i badge che altri
   // domini contribuiscono all'anteprima (oggi: gli accessi web di portale,
@@ -158,8 +156,6 @@ watch(activeDrawer, (newVal, oldVal) => {
       @update:visible="v => { if (!v) { activeDrawer = null; fetchCounts() } }"
       :soggetto-id="ownerId"
       :istanza-utility-id="istanzaUtilityId"
-      :tipo-soggetto-dettaglio-id="tipoSoggettoDettaglioId"
-      :tipo-ruolo-codice="tipoRuoloCodice"
       :context="drawerContext"
     />
     <ContiBancariDrawer

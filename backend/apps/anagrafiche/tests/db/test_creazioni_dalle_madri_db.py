@@ -18,7 +18,8 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    obbligatori della matrice del ruolo clonati; una seconda corsa non scrive niente; il
    guard differito passa
 3b) IndirizziRuoloDbTests.test_un_indirizzo_singolo_dalla_madre — `fn_crea_indirizzo_ruolo`: forma estera,
-   la riga al client, lo stesso tipo due volte `E_ANAG_DUPLICATO` (R-DB-16b, 2026-10-19)
+   la riga al client, lo stesso tipo due volte 400 `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` sul campo del
+   tipo (R-DB-16b, 2026-10-19; il codice dal 2026-11-15, R-6 di brief-db-copia-indirizzo-soggetto)
 3b-bis) IndirizziRuoloDbTests.test_la_lista_del_ruolo_porta_il_codice_interno — la GET del ruolo:
    `tipo_indirizzo_codice_interno` uguale al catalogo, livello soggetto e livello ruolo (2026-11-01)
 3c) IndirizziSoggettoPluraleDbTests.test_gli_obbligatori_copiati_dal_primo — `fn_crea_indirizzi_soggetto`
@@ -217,8 +218,8 @@ class IndirizziRuoloDbTests(_MondoCostruito):
     # Scopo: UN indirizzo del ruolo dalla madre singolare
     #        `fn_crea_indirizzo_ruolo` (R-DB-16b, 2026-10-19): la forma estera
     #        arriva (la INSERT di prima non la conosceva), la riga torna al
-    #        client, lo stesso tipo una seconda volta e' il duplicato del vincolo
-    #        tradotto per SQLSTATE anche se sollevato DENTRO la funzione.
+    #        client, lo stesso tipo una seconda volta lo rifiuta la madre col
+    #        codice del tipo gia' presente, sul campo del tipo.
     def test_un_indirizzo_singolo_dalla_madre(self):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
 
@@ -247,8 +248,20 @@ class IndirizziRuoloDbTests(_MondoCostruito):
             )
             self.assertEqual((primo, "Prova", "PS1"), cur.fetchone())
 
-        doppio = self._rifiuto(lambda: SoggettiService().create_indirizzo_ruolo(sr_id, dict(payload)))
-        self.assertEqual("E_ANAG_DUPLICATO", doppio.code)
+        # ⭐ Dal giro 1 di brief-db-copia-indirizzo-soggetto (§5.1, 2026-11-15)
+        #    il tipo gia' presente lo dice la check chiamata dalla madre, PRIMA
+        #    di scrivere: arriva un P0001 col codice e il campo, non piu' il
+        #    23505 del vincolo tradotto in `E_ANAG_DUPLICATO` (che resta solo
+        #    per la corsa fra due scritture).
+        from apps.core.services.error_translator import ErrorTranslator
+
+        with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+            SoggettiService().create_indirizzo_ruolo(sr_id, dict(payload))
+        errore = ErrorTranslator.to_api_error(ctx.exception)
+        self.assertEqual(
+            ("E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE", 400, ["tipo_indirizzo_codice_interno"]),
+            (errore.code, ErrorTranslator.get_http_status(errore), list(errore.fields or [])),
+        )
 
     # Scopo: La lista del ruolo (`RuoloIndirizziView.get`, SQL nella view sulle
     #        resolved derivate) porta `tipo_indirizzo_codice_interno` in OGNI

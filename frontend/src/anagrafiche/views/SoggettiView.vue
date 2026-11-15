@@ -22,7 +22,7 @@ const route = useRoute()
 
 // Drawer contatti/indirizzi/conti bancari dalla lista
 const contattiDrawer = ref({ visible: false, soggettoId: null })
-const indirizziDrawer = ref({ visible: false, soggettoId: null, tipoDettaglioId: null })
+const indirizziDrawer = ref({ visible: false, soggettoId: null })
 const contiBancariDrawer = ref({ visible: false, soggettoId: null, ownerName: '' })
 
 function onContatti(data) {
@@ -30,11 +30,7 @@ function onContatti(data) {
 }
 
 function onIndirizzi(data) {
-  indirizziDrawer.value = {
-    visible: true,
-    soggettoId: data.id,
-    tipoDettaglioId: data.tipo_soggetto_dettaglio_id,
-  }
+  indirizziDrawer.value = { visible: true, soggettoId: data.id }
 }
 
 function onContiBancari(data) {
@@ -81,7 +77,6 @@ watch(() => route.fullPath, () => {
       :visible="indirizziDrawer.visible"
       @update:visible="v => indirizziDrawer.visible = v"
       :soggetto-id="indirizziDrawer.soggettoId"
-      :tipo-soggetto-dettaglio-id="indirizziDrawer.tipoDettaglioId"
     />
 
     <ContiBancariDrawer

@@ -46,7 +46,9 @@ from apps.anagrafiche.api.views_fornitori import (
     FornitoriView,
 )
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
-from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziDetailView, RuoloIndirizziView
+from apps.anagrafiche.api.views_indirizzi_ruolo import (
+    RuoloIndirizziCopiaView, RuoloIndirizziDetailView, RuoloIndirizziTipiView, RuoloIndirizziView,
+)
 from apps.anagrafiche.api.views_istanze_utility import (
     IstanzaUtilityLookupByIdView,
     IstanzaUtilityLookupView,
@@ -65,7 +67,9 @@ from apps.anagrafiche.api.views_soggetti import (
     SoggettiContattiView,
     SoggettiDetailView,
     SoggettiExportView,
+    SoggettiIndirizziCopiaView,
     SoggettiIndirizziDetailView,
+    SoggettiIndirizziTipiView,
     SoggettiIndirizziView,
     SoggettiRuoliLookupByIdView,
     SoggettiRuoliLookupView,
@@ -174,7 +178,9 @@ urlpatterns = [
     path("ruoli/<str:tipo_ruolo_codice>/config-resolver/", RuoliConfigResolverView.as_view(), name="anagrafiche-ruoli-config-resolver"),
     # Indirizzi ruolo
     path("ruoli/<int:soggetto_ruolo_id>/indirizzi/", RuoloIndirizziView.as_view(), name="anagrafiche-ruoli-indirizzi"),
+    path("ruoli/<int:soggetto_ruolo_id>/indirizzi/tipi/", RuoloIndirizziTipiView.as_view(), name="anagrafiche-ruoli-indirizzi-tipi"),
     path("ruoli/<int:soggetto_ruolo_id>/indirizzi/<int:indirizzo_id>/", RuoloIndirizziDetailView.as_view(), name="anagrafiche-ruoli-indirizzi-detail"),
+    path("ruoli/<int:soggetto_ruolo_id>/indirizzi/<int:indirizzo_id>/copia/", RuoloIndirizziCopiaView.as_view(), name="anagrafiche-ruoli-indirizzi-copia"),
     # Conti bancari ruolo
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/", RuoloContiBancariView.as_view(), name="anagrafiche-ruoli-conti-bancari"),
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/<int:cb_id>/", RuoloContiBancariDetailView.as_view(), name="anagrafiche-ruoli-conti-bancari-detail"),
@@ -195,7 +201,9 @@ urlpatterns = [
     path("soggetti/<str:soggetto_id>/contatti/", SoggettiContattiView.as_view(), name="anagrafiche-soggetti-contatti"),
     path("soggetti/<str:soggetto_id>/contatti/<int:contatto_id>/", SoggettiContattiDetailView.as_view(), name="anagrafiche-soggetti-contatti-detail"),
     path("soggetti/<str:soggetto_id>/indirizzi/", SoggettiIndirizziView.as_view(), name="anagrafiche-soggetti-indirizzi"),
+    path("soggetti/<str:soggetto_id>/indirizzi/tipi/", SoggettiIndirizziTipiView.as_view(), name="anagrafiche-soggetti-indirizzi-tipi"),
     path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/", SoggettiIndirizziDetailView.as_view(), name="anagrafiche-soggetti-indirizzi-detail"),
+    path("soggetti/<str:soggetto_id>/indirizzi/<int:indirizzo_soggetto_id>/copia/", SoggettiIndirizziCopiaView.as_view(), name="anagrafiche-soggetti-indirizzi-copia"),
     path("soggetti/<str:soggetto_id>/ruoli/", SoggettiRuoliView.as_view(), name="anagrafiche-soggetti-ruoli"),
     # Conti bancari soggetto
     # Titoli IVA del soggetto (I7 / D10). ⭐ `titoli-iva/sfondati/` sta PRIMA

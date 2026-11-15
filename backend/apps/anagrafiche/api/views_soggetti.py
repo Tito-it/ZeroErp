@@ -286,6 +286,44 @@ class SoggettiIndirizziView(DomainAPIView):
         )
 
 
+class SoggettiIndirizziTipiView(DomainAPIView):
+    """GET i tipi di indirizzo proponibili per il soggetto (picker)."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        responses={200: inline_serializer(name="SoggettoIndirizziTipiResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Il picker dei tipi di «Aggiungi» e della copia: ogni tipo, gli
+    #        esclusi col loro motivo (`ammesso`, `reason_key`, `reason_valori`).
+    def get(self, request: Request, soggetto_id: str) -> JsonResponse:
+        return success_response({
+            "results": SoggettiService().get_tipi_indirizzo_proponibili_soggetto(soggetto_id),
+        })
+
+
+class SoggettiIndirizziCopiaView(DomainAPIView):
+    """POST copia un indirizzo del soggetto in altri tipi («Copia come…»)."""
+    area_funzionale = "anagrafiche"
+    model_permission = ("anagrafiche", "soggetto")
+
+    @extend_schema(
+        request=inline_serializer(name="IndirizzoSoggettoCopiaReq", fields={
+            "tipi_indirizzo_codice_interno": serializers.ListField(child=serializers.CharField()),
+        }),
+        responses={200: inline_serializer(name="IndirizzoSoggettoCopiaResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Il verbo `anagrafiche.fn_copia_indirizzo_soggetto`: tutto o niente,
+    #        `{"ids": [...]}` nell'ordine dei tipi (R-1).
+    def post(self, request: Request, soggetto_id: str, indirizzo_soggetto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().copia_indirizzo_soggetto(
+                soggetto_id, indirizzo_soggetto_id, p,
+            ),
+        )
+
+
 class SoggettiIndirizziDetailView(DomainAPIView):
     """PUT sostituisce indirizzo (replace), DELETE elimina."""
     area_funzionale = "anagrafiche"

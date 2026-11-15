@@ -6284,6 +6284,14 @@
       },
       "copia_blocco": {
         "nessun_tipo_proponibile": "There is no other address type to copy it into: all the allowed types are already there."
+      },
+      "copia": {
+        "azione": "Copy as…",
+        "titolo": "Copy the address",
+        "titolo_da": "Copy the «{tipo}» address",
+        "spiegazione": "Choose the address types to add with this same address. Disabled types cannot be added: the reason is shown next to them.",
+        "conferma": "Copy",
+        "fatta": "Address copied into one more type | Address copied into {n} types"
       }
     },
     "soggetti": {

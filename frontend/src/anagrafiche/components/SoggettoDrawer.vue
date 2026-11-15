@@ -902,7 +902,6 @@ async function handleSave() {
     :visible="indirizziDrawerVisible"
     @update:visible="v => indirizziDrawerVisible = v"
     :soggetto-id="props.itemId"
-    :tipo-soggetto-dettaglio-id="soggetto.form.tipo_soggetto_dettaglio_id"
     @saved="onIndirizziSaved"
   />
 

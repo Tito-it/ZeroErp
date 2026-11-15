@@ -25,7 +25,12 @@ export function useIndirizzoMultiTipo({ baseSnapshot, baseRestore, baseReset, fo
 
   // Scopo: Inizializza la matrice tipi e seleziona il primo obbligatorio disponibile.
   // excludeCodici: Set di codici gia' esistenti da non pre-selezionare.
+  // ⭐ `matrice` e' un picker del DB (`fn_tipi_indirizzo_proponibili_*`): porta
+  //    anche i tipi NON ammessi, col motivo. Nel form ne entrano solo gli
+  //    ammessi, qui e una volta sola; `ammesso` assente (la riga sintetica del
+  //    «Cambia») vale ammesso.
   function setMatrice(matrice, excludeCodici = null) {
+    matrice = matrice.filter(m => m.ammesso !== false)
     tipiMatrice.value = matrice
     indirizziSalvati.value = {}
     const disponibili = excludeCodici

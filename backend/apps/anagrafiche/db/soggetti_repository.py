@@ -26,6 +26,11 @@ from apps.core.db._helpers import (
     rows_to_list,
     soglia_ricerca,
 )
+from apps.anagrafiche.db._helpers import (
+    COLONNE_COPIA,
+    COLONNE_INDIRIZZO_RESOLVED,
+    JOIN_COPIA_SOGGETTO,
+)
 from apps.core.db.lookup_repository import SQL_TIPI_SOGGETTO_DETTAGLIO
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
@@ -661,38 +666,17 @@ class SoggettiRepository:
     # Indirizzi soggetto
     # =================================================================
 
-    # Scopo: Lista indirizzi layer soggetto con dettaglio geografico per UI.
+    # Scopo: La lista degli indirizzi del soggetto: la vista risolta (BB
+    #        `COLONNE_INDIRIZZO_RESOLVED`, la stessa riga del livello soggetto
+    #        della cascata del ruolo) col motivo di «Copia come…» (R-3).
     def get_soggetto_indirizzi(self, soggetto_id: str) -> list[dict[str, Any]]:
-        sql = """
-            SELECT isog.id, isog.tipo_indirizzo_id,
-                   ti.descrizione AS tipo_indirizzo_descrizione,
-                   ti.codice_interno AS tipo_indirizzo_codice_interno,
-                   isog.indirizzo_dettaglio_id,
-                   isog.indirizzo_libero,
-                   isog.stato_id, isog.comune_id,
-                   COALESCE(isog.indirizzo_libero,
-                            idet.indirizzo_normalizzato) AS indirizzo_display,
-                   idet.stradario_id,
-                   idet.civico,
-                   idet.estensione_civico,
-                   idet.palazzina,
-                   idet.scala,
-                   idet.piano,
-                   idet.interno,
-                   idet.via_norm AS stradario_display,
-                   s.comune_id AS det_comune_id,
-                   c.descrizione AS descrizione_comune
-              FROM anagrafiche.indirizzi_soggetti isog
-              JOIN config.tipi_indirizzi ti ON ti.id = isog.tipo_indirizzo_id
-              LEFT JOIN anagrafiche.indirizzi_dettaglio idet
-                ON idet.id = isog.indirizzo_dettaglio_id
-              LEFT JOIN config.stradario s
-                ON s.id = idet.stradario_id
-              LEFT JOIN config.comuni c
-                ON c.id = s.comune_id
-             WHERE isog.soggetto_id = %s::uuid
-             ORDER BY ti.id
-        """
+        sql = f"""
+            SELECT {COLONNE_INDIRIZZO_RESOLVED}, {COLONNE_COPIA}
+              FROM anagrafiche.vw_indirizzi_resolved_soggetto v
+              {JOIN_COPIA_SOGGETTO}
+             WHERE v.soggetto_id = %s::uuid
+             ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
+        """  # noqa: S608 — colonne e join costanti di modulo, valore come parametro
         with connection.cursor() as cursor:
             cursor.execute(sql, [soggetto_id])
             return rows_to_list(cursor)
@@ -773,6 +757,30 @@ class SoggettiRepository:
     # ⭐ Dal 2026-10-19 (R-DB-16b, brief-db-processi-accensione-per-ambiente
     #    §6.16): fino ad allora la INSERT era qui, posizionale, senza i campi
     #    della forma estera, e la via la risolveva il backend prima di scrivere.
+    # Scopo: I verbi della COPIA di un indirizzo in altri tipi (giro 3 di
+    #        brief-db-copia-indirizzo-soggetto, R-1): una SELECT sola, tutto o
+    #        niente; ritornano gli id delle righe nuove nell'ordine dei tipi.
+    #        Ogni rifiuto e' del DB, col suo codice (P0001).
+    def copia_indirizzo_soggetto(
+        self, soggetto_id: str, indirizzo_soggetto_id: int, tipi: list[str],
+    ) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_copia_indirizzo_soggetto(%s::uuid, %s::bigint, %s::text[])",
+                [soggetto_id, indirizzo_soggetto_id, tipi],
+            )
+            return list(cursor.fetchone()[0])
+
+    def copia_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_id: int, tipi: list[str],
+    ) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s::bigint, %s::bigint, %s::text[])",
+                [soggetto_ruolo_id, indirizzo_id, tipi],
+            )
+            return list(cursor.fetchone()[0])
+
     def crea_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, indirizzo: dict[str, Any],
     ) -> dict[str, Any]:
