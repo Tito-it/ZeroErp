@@ -1,6 +1,6 @@
 # Mappa Concentrica — Changelog
 
-> **Ultimo aggiornamento**: 31 ottobre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > Cronologia datata degli aggiornamenti della [Mappa Concentrica](../mappa-concentrica.md).
 > La mappa mostra solo lo **stato corrente** per anello; questo documento conserva la storia,
@@ -43,6 +43,183 @@
 > si toccano: l'URL di questo changelog deve restare uno.
 
 ---
+
+## 15 novembre 2026
+
+> Copre il periodo **1 – 15 novembre**: dal commit `bd48ef1c04` (1° novembre, 00:30, dove si
+> fermava la voce del 31 ottobre) al merge `609ef768cb` (15 novembre, 21:55). Quindici giorni,
+> **1.015 changeSet** aggiunti (380 in `vendite`, 226 in `dbops`, 123 in `script`, 65 in
+> `catalogo`, 47 in `anagrafiche`, 38 in `80_data`, 34 in `90_end`, 23 in `config`, 20 in
+> `maintenance`, 16 in `ui` e in `magazzino`, 10 in `pratiche`, 8 in `documenti`, 3 in `pagamenti`
+> e in `acquisti`, 2 in `85_pgagent`, 1 in `shop`), **PR dalla #1992 alla #2001**, poi, con la
+> numerazione ripartita sul repository pubblico, **dalla #1 alla #141**; **venti documenti entrati
+> in `work-done`**. Si scrive per **temi**: sono dodici, e i due prima dell'ultimo riguardano cantieri ancora aperti.
+>
+> ⚠️ Fuori da questa voce: il giro della **variazione percentuale dei prezzi di una versione di
+> listino** (`20261115-79 … -81`), scritto la sera del 15 e non ancora committato.
+
+**Anello 3 (`vendite`) — Gli stati dei documenti: ogni significato dal vocabolario.** Il modello
+del documento di vendita diceva che *che cosa significa* uno stato lo dice il vocabolario; ora lo
+dice davvero, in guard, verbi e superfici di offerta, preventivo, ordine, contratto, bolla, reso,
+fattura, lotto e versione di listino: le colonne `iniziale`, `emissione`, `terminale`, `esito`,
+`fase` al posto dei letterali `'DRAFT'`, `'BOZZA'`, `'EMESSA'`… S-1 fissa che *terminale* vuol
+dire «nessun passaggio **a mano** in uscita» (gli automatismi restano), e bolla e reso dichiarano
+esito e terminale. Nascono i BB della scadenza dell'offerta (`vendite.fn_offerta_scaduta`), del lock
+che riconosce la bozza dal vocabolario (`script.fn_doc_lock_regola`), dell'ordine evadibile e della
+bolla rendibile (`can_genera_ddt`, `can_genera_reso`, `can_riconsegna`); i quattro stati d'ordine
+irraggiungibili (`ALLOCATO`, `SPEDITO`, `CONSEGNATO`, `FATTURATO`) sono **ritirati**, non spenti,
+e il BE/FE ritira le sue costanti di stato. Tre revoche dichiarate: R-1 revoca S-3 per il
+documento fiscale (il cancello IVA resta su EMESSA), D-PROI ne revoca in parte una del 31-10, e il
+giro 6f-ter riporta il **listino** al modello di aprile — una versione si scrive solo in bozza,
+fuori bozza si **rettifica** col motivo, dal verbo `vendite.fn_rettifica_riga_listino` — che
+D-LIST aveva revocato senza dirlo. Aperto l'8, chiuso il 15-11; due residui FE (i prezzi del kit
+fuori bozza, lo spec di `VersioneDrawer`) nel registro dei residui. Vedi
+[brief-db-stati-documento-dal-vocabolario.md](work-done/brief-db-stati-documento-dal-vocabolario.md).
+
+**Trasversale — La sorgente polimorfa: una grammatica sola.** Il modello di Tid del 6-11: il tipo
+è quello del **documento**, la chiave è **una** (`sorgente_id` o `sorgente_uid`, secondo il
+`key_selector`), la riga sta a parte (`sorgente_riga`, NULL = documento intero) e il registro di
+magazzino ha un terzo livello (`sorgente_dettaglio`). Un BB che risolve
+(`script.fn_sorgente_documento`), uno che scrive (`script.fn_sorgente_chiave`), il guard unico
+`script.trgfn_guard_sorgente` e il lato «in uscita», il presidio degli orfani a tre livelli e
+quello di struttura in CI. Escono i tipi `*_RIGA` e le foglie di magazzino, `ATTIVITA` da
+`config.sorgenti`, il registro dei canali di fatturazione, le colonne parallele
+`documento_origine_*`, le colonne `sorgente_*` delle righe di fattura, lo scope `MAGAZZINO`; il
+reso nasce solo dalla bolla. Revoche dichiarate: la D1 del 18-07 (`sorgente_riga` a doppio
+scopo), i modelli A e B, il §4a della guida, la G-2 del 18-10, e i pre-check BE di cancellazione.
+Aperto il 6, chiuso l'8-11; gli acquisti restano nella grammatica precedente, elenco dichiarato
+del presidio. Vedi [brief-db-sorgente-documento-e-riga.md](work-done/brief-db-sorgente-documento-e-riga.md).
+
+**Anello 3 (`vendite`) — Gli oneri come righe di ordine e bolla.** Il trasporto, l'urgenza, le
+spese sono un articolo particolare e stanno sulle righe (forma ii, Tid 03-11): l'onere non si
+evade, non pesa su residuo, magazzino o stato EVASO, passa intero nella prima bolla e va in
+commessa dal push come ONERE con la sua sorgente; su una bolla in porto assegnato o a carico di
+terzi il trasporto non dovuto blocca l'emissione. Otto codici nuovi, i BB `script.fn_natura_e_merce`
+e `vendite.fn_ddt_trigger_ordine_testata`, la causale nella vista e il lookup delle causali
+assegnabili. **Revoca parziale** di D-1 e D-2 del 13-10: «solo MERCE» diventa «MERCE e oneri».
+Prova a video passata, archiviato il 13-11. Vedi
+[brief-db-addebito-trasporto-ordine.md](work-done/brief-db-addebito-trasporto-ordine.md).
+
+**Anello 3 (`vendite`) — Le chiusure del 1° novembre: canone, scadenza, liste.** Il **canone in
+commessa** chiude col passo 4 — la riga a canone senza periodicità non si salva, su contratto e
+offerta (`E_RIGA_CANONE_SENZA_PERIODICITA`) — con la colonna «Periodicità» nella lista 37 e la
+documentazione del giro (L18); i residui (collaudo a video, la colonna ordinabile o no, gli smoke)
+passano al registro. La **scadenza dei preventivi** chiude con E-4: un preventivo con la validità
+finita non si emette (`E_PREV_EMISSIONE_VALIDITA_SCADUTA`), BE/FE e prova a video lo stesso giorno.
+Il **secondo giro delle liste grezze** chiude il 3-11: la soglia della ricerca universale è quella
+del catalogo (D-6). Vedi
+[brief-db-contratto-righe-periodiche-in-commessa.md](work-done/brief-db-contratto-righe-periodiche-in-commessa.md),
+[brief-db-scadenza-preventivi.md](work-done/brief-db-scadenza-preventivi.md),
+[brief-db-liste-datatable-grezze-secondo-giro.md](work-done/brief-db-liste-datatable-grezze-secondo-giro.md).
+
+**Anello 1 (`catalogo`) — La revisione del catalogo, e l'articolo che si ritira.** La **distinta è
+una storia**: un legame non si chiude nel passato né si riapre, e «la distinta alla data» ha una
+sede sola (`catalogo.fn_distinta_alla_data`). Le **unità di misura** hanno la mappatura versionata,
+il fattore letto alla data del documento e mai cambiato sul posto, l'unità del listino valida per
+tutto il periodo, e senza fattore la riga si rifiuta; via il fattore 1 per difetto delle commesse.
+Ritirati tre guard di composito, `rounding_mode`, `require_lot`, `uom_tipi.codice`,
+`script.fn_get_note` (le note hanno una vista per sede). Q35 (c) del 12-11 **revoca** la (a)
+dell'11: un articolo nominato da altri non si spegne, **si ritira** (`E_ATTIVO_BLOCK_SI_RITIRA`).
+Il ritiro ha la sua colonna, `catalogo.articoli.obsoleto_dal` (data futura = ritiro programmato): la
+scelta nuova è vietata, la derivazione ammessa, il magazzino mai bloccato, la copia del listino salta
+l'articolo ritirato; predicato in un BB (`script.fn_e_obsoleto`). Archiviati entrambi il 12-11.
+⚠️ La regola delle unità non ha una guida. Vedi
+[brief-db-revisione-catalogo.md](work-done/brief-db-revisione-catalogo.md),
+[brief-db-articoli-obsoleto-dal.md](work-done/brief-db-articoli-obsoleto-dal.md).
+
+**Anello 1 (`anagrafiche`) — Il cambio di natura rifiuta coi motivi; l'indirizzo si copia.** D-5
+(14-11) **revoca** la pulizia confermata decisa l'11-10 e la mattina stessa: il cambio di natura
+non cancella né chiude niente, nemmeno per il SUPER_ADMIN; il DB rifiuta ed elenca **tutti** i
+motivi, che l'operatore toglie a mano. I documenti intestati al soggetto bloccano solo i cambi che
+toccano l'identità fiscale, il cambio fra macro-tipologie lo vieta il DB, «Elimina i dati
+societari» è un verbo suo, e `shop.ricevute` entra nella grammatica dei documenti come sorgente
+`RICEVUTA`; i motivi arrivano al BE da un endpoint dedicato. Nello stesso giorno nasce «**Copia
+come…**»: un indirizzo si copia in altri tipi dello stesso soggetto o ruolo, più tipi in un gesto e
+tutto o niente (`fn_copia_indirizzo_soggetto`, `fn_copia_indirizzo_ruolo`), coi picker dei tipi
+proponibili e l'azione spenta col motivo. Chiusi il 15-11. ⚠️ Il cambio di natura non ha una
+guida. Vedi
+[brief-db-cambio-natura-soggetto-conferma-e-pulizia.md](work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia.md),
+[brief-db-copia-indirizzo-soggetto.md](work-done/brief-db-copia-indirizzo-soggetto.md).
+
+**Anello 0 (`dbops`, `maintenance`) — La revisione del nucleo: i registri convergono.** Ogni
+registro delle automazioni **converge**: il trigger si riconosce dalla funzione, una riga spenta o
+cancellata toglie il trigger, ogni registro ha il suo presidio di convergenza; `target_table` si
+confronta per nome esatto. La coda lavori va sotto RLS (un lavoro appartiene a un'azienda), il
+ritiro di un processo si scrive con la data, le fusioni di vie e comuni sono riparate, e i
+`COMMENT` descrivono l'oggetto **al presente** (regola in linee-guida-sql §5d, con presidio).
+Ritirati il livello «sessione» degli override (cambio di modello), `fn_audit_begin`/`_end`, il ramo
+dblink dell'audit, la vista `vw_run_senza_attore`. Su `maintenance`: un job che lavora con scarti
+chiude **rosso** senza annullare il lavoro (`E_JOB_ESITO_CON_SCARTI`), i fallimenti si contano per
+corsa, il calendario pgAgent fa sync prima dell'apply. E dal 4-11 **il codice non distingue le
+maiuscole**: ogni colonna `codice` si salva in `upper(btrim())` da un'automazione
+(`CODICE_MAIUSCOLO`, BB `script.fn_codice_normalizzato`), con le eccezioni a registro, e le copie
+BE/FE della regola ritirate. Vedi
+[brief-db-revisione-dbops.md](work-done/brief-db-revisione-dbops.md),
+[brief-db-revisione-maintenance.md](work-done/brief-db-revisione-maintenance.md),
+[framework-automazione-db-migliorie.md](work-done/framework-automazione-db-migliorie.md),
+[brief-be-codice-maiuscolo.md](work-done/brief-be-codice-maiuscolo.md).
+
+**Anello 0 — L'assenza è NULL, e le forme che muoiono all'apply hanno un cancello.** La premessa
+era falsa: Liquibase 5 **ignora** `nullValue:`. La regola si riscrive su questo fatto — il token è
+`NULL`, la cella vuota di una colonna testo è `''` — e l'attributo esce da 191 file a checksum
+invariato. Dove l'assenza è un dato, è NULL e un `CHECK` rifiuta la stringa vuota: le cinque
+colonne testo opzionali di `ui.lista_colonna`, i cinque mirror che scrivevano `''`,
+`messaggi_errore.causa`/`soluzione`, le note degli stili; le colonne di audit escono dai CSV, e il
+verbo del pannello porta a NULL la stringa vuota destinata a un testo nullable. Le **forme che
+passano in sviluppo e muoiono all'apply** hanno uno script solo in CI
+(`scripts/guardrail_forme_changeset.py`, sopra `scripts/_guardrail_comune.py`), in tre gruppi di
+regole. Vedi [brief-db-token-null-dei-seed.md](work-done/brief-db-token-null-dei-seed.md),
+[brief-db-nullvalue-vuoto-cinque-mirror.md](work-done/brief-db-nullvalue-vuoto-cinque-mirror.md),
+[brief-db-lista-colonna-campo-sorgente-null.md](work-done/brief-db-lista-colonna-campo-sorgente-null.md),
+[brief-db-guardrail-forme-residue.md](work-done/brief-db-guardrail-forme-residue.md).
+
+**Anello 0 (`script`) e Anello 1 (permessi) — Il mese dal calendario; ogni azione ha un lettore.**
+Il mese di un giorno si calcola con l'aritmetica delle date, non passando da un istante: i BB
+`script.fn_mese_di`, `fn_fine_mese_di`, `fn_mesi_dopo`, `fn_mesi_del_tratto`, le copie ritirate, i
+tre CHECK «primo del mese» appoggiati sul BB, e tre cancelli nuovi contro `date_trunc` e gli
+intervalli di mese. Lato BE, tre presidi pretendono che ogni azione di processo dichiarata sia a
+catalogo e abbia un lettore: hanno trovato un **cancello decorativo** (la cancellazione del fondo
+fattura dichiarava il permesso su un metodo che la view non serve). Vedi
+[brief-db-mese-di-un-giorno.md](work-done/brief-db-mese-di-un-giorno.md),
+[brief-be-azioni-di-processo-chi-le-legge.md](work-done/brief-be-azioni-di-processo-chi-le-legge.md).
+
+**Cantieri aperti — La provenienza del prezzo, la revisione di `documenti`, PrimeVue.** La
+**provenienza del prezzo segue il prezzo** è ripartita il 13-11: un solo dominio delle origini
+(`vendite.fn_origine_prezzo_ammessa`), la riga di listino in colonna, il prezzo cambiato che fa
+decadere la provenienza a `MANUALE`, una riga di listino citata che non si rettifica, la
+provenienza del form verificata sul resolver (409 se superata), ordine e DDT dal pricing gate; i
+quattro giri DB sono applicati, il BE quasi completo, resta l'estrazione della regola del 2 nel BE.
+La **revisione dello schema `documenti`** ha il giro 0 (la documentazione, 36 pagine) e le dodici
+decisioni del 14-11; i giri 1-5 aspettano il via. Su **PrimeVue** Tid decide il 14-11: si resta
+sulla 4.5.5 e si predispone l'uscita, con OpenVue (fork MIT) come strada preferita e Vuetify di
+riserva; nasce il presidio `guard:classi-interne`. Vedi
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md),
+[brief-db-revisione-documenti.md](work-in-progress/brief-db-revisione-documenti.md),
+[piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
+
+**Trasversale — La catena di verifica: il registro della CI da 358 a 22.** Il 1° novembre il
+rientro certificato sulla corsa della CI porta `baseline-rossi-ci.tsv` da **358** a **23** righe,
+poi a **22** l'11-11; lo scratch scende da 23 a **20**, lo sviluppo da 4 a **3**. Chiuse D6-bis,
+D16, D24 (03-11) e gli indici ridondanti per prefisso (14-11). ⚠️ Dall'11-11 la CI di `Tito-dev` è
+**rossa a ogni corsa** per una regressione (`catalogo/test-comment-al-presente-catalogo-v1`) fuori
+registro. Scorecard del 14-11: catena di verifica 8,5 → 7,5, postura di sicurezza 8 → 8,5, error
+handling 8,5 → 9. Al 15-11 l'albero `db/pgtap` conta **1.080** file. Nello stesso periodo nasce il
+**registro dei residui aperti** (11-11): ciò che un brief chiuso lascia aperto si scrive lì, e
+PROJECT_CONTEXT ne tiene l'indice, una riga per voce. Vedi
+[migliorie-generali-da-test-valutazione.md](work-in-progress/migliorie-generali-da-test-valutazione.md),
+[registro-residui-aperti.md](work-in-progress/registro-residui-aperti.md).
+
+**Trasversale — La qualità di backend e frontend riletta.** La scorecard BE/FE era ferma al 23-10;
+la rilettura del 15-11 rifà gli indicatori e i voti. Si muovono: la catena di verifica del frontend
+7,5 → 8 (test di componente da 140 a 184, 75 col DOM; guard da 13 a 15), il perimetro e i permessi
+applicativi 8 → 8,5 (la chiave d'idempotenza legata a utente ed endpoint), la gestione del debito
+8,5 → 9 (`DataTable` senza motivazione e smoke non verdi arrivati a **zero**); scende il contratto
+API, 9,5 → 9: la copertura della documentazione API è a **731 su 731**, ma nessun cancello la tiene a
+zero, e quattro rotte di `anagrafiche` nate lo stesso giorno (copia indirizzo, motivi del cambio di
+natura, eliminazione dei dati societari) erano senza pagina finché la rilettura non le ha trovate. I
+test sul DB vero passano da 145 a 195; `# Scopo:` resta all'86,7% e senza presidio. Vedi
+[qualita-be-fe-indicatori.md](qualita-be-fe-indicatori.md), il gemello di
+[qualita-db-indicatori.md](qualita-db-indicatori.md).
 
 ## 31 ottobre 2026
 

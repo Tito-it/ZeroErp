@@ -51,8 +51,10 @@ SELECT plan(20);
 CREATE TEMP TABLE _mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('listino distinta articolo ammesso');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione resta in bozza,
+-- e i guard dell'articolo si provano li' (lo stato non e' la loro domanda).
 CREATE TEMP TABLE _listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'listino distinta articolo ammesso');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'listino distinta articolo ammesso', p_in_bozza => true);
 
 CREATE TEMP TABLE _iva AS
 SELECT (SELECT i.id FROM config.iva i WHERE i.attivo AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1)          AS uno,

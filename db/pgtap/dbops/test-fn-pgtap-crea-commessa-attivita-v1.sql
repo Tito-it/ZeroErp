@@ -144,8 +144,10 @@ $$,
 CREATE TEMP TABLE t_c2 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa('presidio attivita listino');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c2), 'presidio attivita');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c2), 'presidio attivita', p_in_bozza => true);
 
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
@@ -179,6 +181,8 @@ WITH ins AS (
 )
 SELECT (SELECT id FROM ins WHERE uom_id = (SELECT u1 FROM t_uom)) AS r1,
        (SELECT id FROM ins WHERE uom_id = (SELECT u2 FROM t_uom)) AS r2;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
 
 CREATE TEMP TABLE t_a3 AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(

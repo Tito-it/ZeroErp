@@ -2,9 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB**, che chiude e archivia: R-BE-1 (§7) è fatto il 2026-11-15, da committare
-sul branch BE (le sei copie nel SQL del backend passano a `script.fn_mese_di`). **Il lato DB è
-finito:** i quattro giri sono applicati e i pgTAP sono verdi (Tid, 2026-11-15). Nel catalogo vivo
+**Nessuno: brief chiuso e archiviato il 2026-11-15.** Nessun debito residuo: D-2 si è chiusa nel
+giro 6 (§6.6). R-BE-2 (§7) è fatto dal team BE il 2026-11-15, da committare: il filtro `scadenza_mese` della lista
+contratti passa a `script.fn_mese_di`, e il service rifiuta un mese fuori da 01-12. Il lato DB è finito: i giri 5 (`-59`) e 6
+(`-62 … -64`, `-76`, `-77`) sono applicati su dbdev e sullo scratch e i pgTAP sono verdi (Tid,
+2026-11-15). `script/test-mesi-dal-calendario-v1` ha 19 asserzioni e dura circa 2 s invece di 19. D-2 si chiude nel giro 6, non in un brief nuovo (Tid, 2026-11-15). R-BE-1 (§7) è fatto e committato
+(`83e1401b8f`, PR #129, 2026-11-15). I quattro giri sono applicati e i pgTAP sono verdi (Tid,
+2026-11-15). Nel catalogo vivo
 nessuna vista e nessuna funzione tronca più con `date_trunc`, e lo dice il presidio
 `script/test-mese-di-un-giorno-v1` (test 17); i tre CHECK del primo del mese poggiano su
 `fn_mese_di` (test 18); il cancello `date-trunc` ferma le copie nuove nei changeSet. Giri: 1
@@ -29,22 +33,35 @@ Tid e numeri `-82…-83` del 2026-11-15; D-1, D-2 e D-3 decise (a) lo stesso gio
 | 7 | ✅ team DB | Giro 4: CHECK (D-1), helper pgTAP, presidio vivo, `20261115-27…-33`; provati in transazione (2026-11-15) | §6.4 | 5 ✅, 6 ✅ |
 | 7b | ✅ team DB | I due pgTAP col `DO` di pulizia prima del `BEGIN;` corretti (decisione di Tid, 2026-11-15) | §6.4 | — |
 | 8 | ✅ Tid | Apply del giro 4 e pgTAP: verdi (2026-11-15) | §6.4 | 7 |
-| 9 | team DB | Chiusura e archiviazione; il debito D-2 (aritmetica dei mesi) va in un brief nuovo | — | 8 ✅, 4b |
+| 8b | ✅ team DB | Alla chiusura: una copia di fine mese rimasta in `fn_get_pavimento_emissione`, e il presidio 17 che guarda solo `date_trunc(` (2026-11-15) | §6.5 | 8 ✅ |
+| 8c | ✅ Tid | Il via al giro 5 («procedi», 2026-11-15) | §6.5 | 8b |
+| 8d | ✅ team DB | Giro 5: `20261115-59`, il test 19, la regola `fine-mese-intervallo`, §11.10; prova in transazione (2026-11-15) | §6.5 | 8c |
+| 8e | ✅ Tid | Apply di `20261115-59` e `script/test-mese-di-un-giorno-v1` (insieme a 8h, 2026-11-15) | §6.5 | 8d |
+| 8f | ✅ Tid | D-2 riletta: giro 6 qui invece di un brief nuovo («falla qui giro 6»); forma: due BB in `script` (2026-11-15) | §6.5, §6.6 | — |
+| 8g | ✅ team DB | Giro 6: `20261115-62 … -64`, il pgTAP nuovo, la regola `mesi-intervallo`, §11.10, due `manual/`; prova in transazione (2026-11-15) | §6.6 | 8f |
+| 8h | ✅ Tid | Apply di `20261115-59` e `-62 … -64` (dbdev e scratch, 2026-11-15); il pgTAP nuovo è lento | §6.6 | 8g |
+| 8h-bis | ✅ team DB | `-76`, `-77`: i due BB senza `STRICT`, espansi dal planner; test con 7b, 8b e domini ristretti; prova (2026-11-15) | §6.6 | 8h |
+| 8h-ter | ✅ Tid | Apply di `20261115-76`, `-77`; pgTAP verdi (2026-11-15) | §6.6 | 8h-bis |
+| 8i | ✅ Tid | La riga del BE: R-BE-2 al team BE, come da proposta (2026-11-15) | §6.5, §7 | — |
+| 8j | ✅ team BE | R-BE-2 (2026-11-15): `scadenza_mese` da `script.fn_mese_di`, un parametro; il service controlla il mese 01-12; un test del service e un test sul DB provvisto (mutazione provata) | §7 | 8i ✅ |
+| 9 | ✅ team BE | Chiusura e archiviazione in `work-done/` (su richiesta di Tid, 2026-11-15) | — | 8h-ter ✅, 8j ✅, 4b ✅ |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: i due pgTAP col `DO` di pulizia (§6.4); i cinque pgTAP senza `ROLLBACK;` (§6.3); D-1 (a), D-2 (a), D-3 (a) (§5). **Lavoro da committare:** il giro 1
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: R-BE-2 (§7); D-2 riletta, giro 6 qui con due BB in `script` (§6.6); i due pgTAP col `DO` di pulizia (§6.4); i cinque pgTAP senza `ROLLBACK;` (§6.3); D-1 (a), D-2 (a), D-3 (a) (§5); il via al giro 5 (§6.5). **Da committare:** R-BE-2 (§7) e l'archiviazione di questo brief, sul branch del BE. **Committato:** i giri 5 e 6 (`dc8d1e133`,
+§6.5, §6.6); R-BE-1 (`83e1401b8f`); in `b8180da711` i giri 1-4, cioè il giro 1
 (`20261114-82`, `-83`, il pgTAP, `scripts/guardrail_forme_changeset.py`, `linee-guida-sql.md`
 §11.10, le due pagine `manual/`), il giro 2 (`20261115-01…-07`), il giro 3 (`20261115-08…-26`), il giro 4 (`20261115-27…-33`, il pgTAP del mese a 18), i due pgTAP senza il `DO` di pulizia, i cinque pgTAP con il `ROLLBACK;`,
 `scripts/guardrail_pgtap_preambolo.py`, la guida pgTAP e questo brief.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-15. **A chi:** Tid, poi il team DB.
 > **Origine:** il cancello `guardrail_timestamp_senza_fuso.py` rosso in CI su `20261114-07`.
-> **BE e FE:** il FE nulla; il BE ha sei copie del calcolo nel suo SQL (R-BE-1, §7).
+> **BE e FE:** il FE nulla; il BE ha sei copie del calcolo nel suo SQL (R-BE-1, §7), più il filtro
+> `scadenza_mese` della lista contratti (R-BE-2, §7).
 > **Brief vicini verificati:**
-> [valutazione-modello-di-dominio-db](valutazione-modello-di-dominio-db.md) V-3 (chiusa il
+> [valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) V-3 (chiusa il
 > 2026-09-21): ha lasciato questi `date_trunc` «fuori perimetro» e dichiarati; questo brief la
 > completa, non la revoca.
-> [brief-db-stati-documento-dal-vocabolario](brief-db-stati-documento-dal-vocabolario.md) e
-> [brief-db-provenienza-prezzo-segue-il-prezzo](brief-db-provenienza-prezzo-segue-il-prezzo.md):
+> [brief-db-stati-documento-dal-vocabolario](../work-done/brief-db-stati-documento-dal-vocabolario.md) e
+> [brief-db-provenienza-prezzo-segue-il-prezzo](../work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md):
 > stesso perimetro di oggetti (viste `vw_dash_*`, `vw_lotti_fase`, lister `*_da_pushare`,
 > `fn_get_or_create_lotto`, `fn_create_fatturazione_lotto`, `fn_genera_scadenze_fattura`,
 > `fn_upsert_commessa_attivita`, `fn_contratti_addebiti_maturati_con_provenienza`), tema diverso.
@@ -494,6 +511,185 @@ subito con file scheletro; l'altra sessione DB riparte da `-34`).
   Provati col giro 4: 7/7 e 7/7 senza e con l'estratto. La regola sulla prima istruzione non è
   stata chiesta, e non c'è.
 * ✅ **Giro 4 applicato, pgTAP verdi** (Tid, 2026-11-15).
+* ⚠️ Il «censimento finale, zero copie» qui sopra ha cercato solo `date_trunc(`: lo corregge il
+  §6.5.
+
+### 6.5 Giro 5 — la copia rimasta senza `date_trunc` (trovata alla chiusura, 2026-11-15)
+
+**Il fatto** (doc auto-generata di dbdev, 2026-11-15). Nel corpo vivo di
+`vendite.fn_get_pavimento_emissione` resta
+
+```sql
+v_primo_succ := (script.fn_fine_mese_di(p_competenza_mese) + 1);
+v_fine_succ  := (v_primo_succ + interval '1 month - 1 day')::date;
+```
+
+La seconda riga è l'ultimo giorno del mese di `v_primo_succ`, cioè `script.fn_fine_mese_di`
+scritto un'altra volta: una delle due copie che il §2.3 contava in questa funzione. Il giro 3
+(`20261115-18`) dichiara in testata di averla sostituita, ma non l'ha fatto. Lo script sul testo
+cercava `date_trunc('month', x) + interval '1 month - 1 day'`, e qui il primo del mese arriva da
+una variabile.
+
+**Perché nessuno l'ha visto.** Il presidio 17 (`script/test-mese-di-un-giorno-v1`) e il cancello
+`date-trunc` cercano solo `date_trunc(`. Il §4.4 voleva anche `1 mon -1 day`, ma l'asserzione
+scritta al giro 4 l'ha lasciato fuori. È un vicolo cieco da non rifare: la regola della fine del
+mese si riconosce dall'**intervallo** `1 mese - 1 giorno`, non da `date_trunc`.
+
+**Censimento con l'intervallo** (doc auto-generata, funzioni e viste, 2026-11-15):
+
+* `fn_get_pavimento_emissione`, `v_fine_succ`: la copia, entra nel giro 5;
+* `fn_canone_periodi`, `v_inizio + make_interval(months => v_mesi) - interval '1 day'`: è la fine
+  di un periodo di `v_mesi` mesi, quindi aritmetica dei mesi (D-2), non entra;
+* nessun'altra funzione e nessuna vista. Nel BE, `contratti_repository.py:428`
+  (`+ interval '1 month'`) è aritmetica dei mesi (D-2), come aveva già detto R-BE-1.
+
+**Scritto il 2026-11-15** (Tid: «procedi»; numero da `prossimo_changeset.py`, occupato subito).
+
+| Che cosa | Dove |
+| --- | --- |
+| `20261115-59` | `20_code/vendite`: `fn_get_pavimento_emissione`, una riga: `v_fine_succ := script.fn_fine_mese_di(v_primo_succ)`. Corpo da `-18`, verificato uguale al vivo sulla doc auto-generata; `%TYPE` conservati; nessun `COST`/`ROWS`/`SET` da ripetere. Rollback: il corpo di `-18` |
+| test **19** | `script/test-mese-di-un-giorno-v1` (ora 19): nessuna vista e nessuna funzione contiene l'intervallo della fine del mese. Il 17 non si allarga: dice un'altra cosa (`date_trunc` è sbagliato anche fuori dal mese) |
+| `fine-mese-intervallo` | `scripts/guardrail_forme_changeset.py`, perimetro da `20261115-59`. Cerca nei letterali del codice, quindi non usa `gc.spoglia` (che li toglie): una variante locale toglie solo i commenti e la prosa dei COMMENT |
+| §11.10 | `linee-guida-sql.md`: la fine del mese anche senza `date_trunc`, e che cosa non è la regola |
+| `manual/` | `script/fn_fine_mese_di` (i presidi), `vendite/fn_get_pavimento_emissione` (i due confini dai BB) |
+
+**Le grafie, lette sul catalogo dello scratch** (`pg_temp`, `ROLLBACK`, 2026-11-15) prima di
+scrivere il pattern. `interval '1 month - 1 day'` in una vista o in una `BEGIN ATOMIC` si stampa
+`'1 mon -1 days'::interval`, mentre `interval '1 month' - interval '1 day'` diventa
+`('1 mon'::interval - '1 day'::interval)`. Nel PL/pgSQL resta il sorgente. Le due espressioni (sotto
+il 19 e nel cancello) prendono tutte e quattro le forme. Non prendono `make_interval(months => n) - 1
+giorno`, `+ interval '1 month'` e `'2 months - 1 day'`. Collaudo del cancello su dodici casi
+costruiti: le quattro forme sì, mentre commento `--`, commento `/* */`, prosa di un COMMENT
+(letterale e dollar-quote) e i tre casi di aritmetica no. Sul file vero: `-18` sì (riga
+`v_fine_succ`), `-59` e `-11` (`fn_canone_periodi`) no.
+
+**Censimento largo** (scratch, 2026-11-15): le funzioni con un intervallo di mesi qualsiasi sono
+due, `fn_canone_periodi` e `fn_get_pavimento_emissione`. ⚠️ La seconda c'è solo perché lo scratch
+ha ancora il corpo di `-18`. Dopo `-59` non somma più mesi, e quindi resta solo `fn_canone_periodi`.
+
+**D-2 riletta sui consumatori** (2026-11-15, da decidere con Tid):
+
+* `fn_canone_periodi` somma mesi sempre a un primo del mese (`fn_mese_di(...)`, poi
+  `make_interval(months => …)`). Lì il giorno che non esiste nel mese d'arrivo non capita, quindi la
+  regola di D-2 non entra. Resta un difetto della **famiglia di questo brief**:
+  `generate_series(<date>, <date>, interval '1 month')` non ha una variante per `date`, e PostgreSQL
+  prende quella su `timestamptz`. Il calcolo dei mesi passa così da un istante nel fuso della
+  sessione: il risultato è giusto, ma la forma è quella che il brief ritira.
+* Il BE, `contratti_repository.py:428` (`valido_al >= primo AND valido_al < primo + 1 mese`), è un
+  filtro «cade nel mese»: la regola di `fn_mese_di` scritta come intervallo, non aritmetica dei mesi.
+
+  **Letta per intero** (albero di `Tito-dev`, 2026-11-15). È il filtro `scadenza_mese` della lista
+  contratti (`GET` della lista, parametro `YYYY-MM`): i contratti il cui `valido_al` cade in quel mese.
+  `list_contratti` costruisce il primo del mese in Python (`f"{scadenza_mese}-01"`), poi scrive
+  `v.valido_al >= %s::date AND v.valido_al < (%s::date + interval '1 month')::date` su
+  `vendite.vw_contratti_lista`. Fatti:
+
+  * dice «il mese di `valido_al` è quello chiesto», cioè `script.fn_mese_di(v.valido_al) = %s::date`.
+    Il limite di destra, «il primo del mese dopo», è `script.fn_fine_mese_di(%s::date) + 1`. È la
+    regola dei BB, ricopiata nel BE come le sei di R-BE-1, che R-BE-1 ha lasciato fuori leggendola
+    come «+1 mese»;
+  * `date + interval` dà un `timestamp` nudo, riportato a data: il risultato non dipende dal fuso,
+    ma è la forma che il cancello `mesi-intervallo` ora rifiuta nei changeSet;
+  * `vendite.contratti` non ha indici su `valido_al` (doc auto-generata), quindi la forma a
+    intervallo non porta niente al piano. È il caso di D-3 (a): si sostituisce e basta;
+  * a margine, nel service (`contratti_service.py:648`), il commento dice «mese >= mese corrente»
+    ma il codice controlla solo il formato `^\d{4}-\d{2}$`. Un `2026-13` passa e arriva al DB come
+    data non valida (22008).
+
+  **Proposta (R-BE-2)**: `contratti_repository.py` scrive `script.fn_mese_di(v.valido_al) = %s::date`,
+  con un parametro solo. In più, a scelta del BE: il commento del service allineato al codice,
+  oppure il controllo del mese mancante. ✅ **Accettata** da Tid il 2026-11-15: la richiesta è nel §7.
+* Proposta del team DB: un giro 6 in questo brief, invece di un brief nuovo. Rivede D-2 (a) del
+  2026-11-15. ✅ **Decisa** da Tid lo stesso giorno («falla qui giro 6»), con la forma dei due BB
+  in `script` (§6.6). Resta aperta la riga del BE.
+
+### 6.6 Giro 6 — i mesi dal calendario (D-2 rivista, 2026-11-15)
+
+**Il fatto** (scratch, 2026-11-15). `pg_typeof` di `generate_series(date, date, interval '1 month')`
+è `timestamp with time zone`: ogni mese è un istante nel fuso della sessione. Nel catalogo (funzioni
+e viste) l'unico `generate_series` con un passo `interval` è in `fn_canone_periodi`, nei due punti
+che contano i mesi del tratto. Le somme di mesi (`make_interval(months => …)`) sono tre, nella stessa
+funzione.
+
+**La forma** (decisa da Tid, 2026-11-15: due BB in `script`, contro un BB solo o l'aritmetica
+locale):
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| `-62` | `20_code/script` | `script.fn_mesi_dopo(date, integer)`: un giorno spostato di n mesi; il giorno che non c'è nel mese d'arrivo diventa l'ultimo (la regola di `date + interval`). Il mese come numero progressivo, `make_date`, poi il giorno tagliato su `fn_fine_mese_di` |
+| `-63` | `20_code/script` | `script.fn_mesi_del_tratto(date, date)` → `(mese, fine_mese)`: i mesi toccati dal tratto, su una serie di interi e `fn_mesi_dopo` |
+| `-64` | `20_code/vendite` | `fn_canone_periodi`: tre `make_interval` → `fn_mesi_dopo`, i due `generate_series` → `fn_mesi_del_tratto(…) AS m(bom, eom)`. Corpo da `-11`, verificato uguale al vivo; rollback: il corpo di `-11` |
+
+Tutte e due IMMUTABLE STRICT PARALLEL SAFE (⚠️ `STRICT` tolto da `-76` e `-77`, vedi sotto), sql
+a stringa come `fn_fine_mese_di`; le dipendenze
+non vanno in `pg_depend`, e le preCondition chiedono che esistano. Anni d.C.: prima dell'anno 1
+`make_date` fallisce, ed è voluto.
+
+**Stesso risultato in `fn_canone_periodi`.** `v_inizio` è sempre un primo del mese, e da un primo
+del mese `fn_mesi_dopo` non taglia il giorno. L'uguaglianza con `make_interval` è provata su ogni
+giorno e per n da −25 a 120, che copre `v_offset` (0-11) e `v_mesi` (fino a 12). `fn_mesi_del_tratto`
+dà gli stessi mesi della serie, provato su circa 14.000 tratti in due fusi. Il corpo nuovo non ha
+più `interval`, `generate_series` né `timestamp`. Il generatore lo verifica, e si ferma se non
+trova le cinque sostituzioni attese.
+
+**Presidi.**
+
+* pgTAP nuovo `script/test-mesi-dal-calendario-v1`, 17 asserzioni: la forma, i casi costruiti, le
+  equivalenze 11, 14 e 15, e il presidio vivo 16, per cui nessuna vista e nessuna funzione scrive
+  `make_interval(months => …)` o un intervallo di mesi.
+* Cancello `mesi-intervallo` in `scripts/guardrail_forme_changeset.py`, con perimetro da `-62` e le
+  stesse espressioni del 16. Collaudo su dodici casi costruiti: le sei forme dei mesi sì; la fine
+  del mese, i giorni, `make_interval(days)`, «monday», la prosa di un COMMENT e un commento no. Sul
+  file vero: `-11` 5 su 5, mentre `-59`, `-62`, `-63` e `-64` danno 0.
+* §11.10 delle linee guida, e le pagine `manual/` dei due BB.
+
+**Prova** (`prova_changeset.py`, scratch, `ROLLBACK`, 2026-11-15). Estratto dei tre changeSet
+eseguito per intero, catalogo identico dopo.
+
+* preCondition: `-62` dà 1. `-63` e `-64` danno 0 e 2 perché la prova le legge prima
+  dell'estratto, quando i BB non ci sono ancora; in sequenza danno 3 e 4.
+* `test-mesi-dal-calendario-v1` esce 17 su 17 con l'estratto. Con i soli `-62` e `-63` esce 16 su
+  17: il 16 trova `vendite.fn_canone_periodi`, come deve.
+* **Regressione** su 83 pgTAP (canoni, contratti, lister del push, dashboard, RLS dei satelliti):
+  nessun esito cambia. I rossi già presenti senza l'estratto restano uguali:
+  * `test-refactor-qta-operativa-preventivi-v1`: 5, gli stessi del giro 4;
+  * `test-fn-contratto-righe-preview-nuovi-campi-v1` e `test-snapshot-indirizzi-fattura-v1`: 1
+    ciascuno, il test 2 della fixture. Sullo scratch non trovano i dati e saltano il resto, quindi
+    qui non provano niente.
+
+  Sui canoni provano `test-canone-periodi-v1` (16), `test-push-contratto-canoni-v1` (15) e i due
+  `test-fn-list-contratti-da-pushare`.
+
+**Correzione dopo l'apply** (Tid, 2026-11-15: «questo test è molto lento»). Misura sullo scratch,
+con `\timing` per asserzione: circa 19 s, di cui 12 nell'11 e 3 ciascuno nel 14 e nel 15.
+
+* **La causa è nei BB, non solo nel test.** Il planner non espande nessuno dei due nel punto d'uso.
+  `fn_mesi_dopo` ha un `FROM` con sottoquery. `fn_mesi_del_tratto` restituisce righe ed è `STRICT`,
+  e una funzione così non si espande mai. Ogni chiamata passa quindi dall'esecutore delle funzioni
+  sql: sono 964.000 chiamate in 12,1 s, contro gli 0,19 s del calcolo con `make_interval`.
+* **`-76`, `fn_mesi_dopo`.** Diventa un'espressione sola e perde `STRICT`, perché il planner non
+  espande una funzione `STRICT` con un corpo non strict, e `least()` non lo è. Il `NULL` resta
+  `NULL` per l'espressione stessa (test 10). Su `pg_temp` sono stati confrontati tre corpi: il
+  corpo di `-62` impiega 12,1 s, un'espressione sola con `STRICT` 12,2 s, la stessa senza `STRICT`
+  3,9 s. L'ultima dà un risultato identico al corpo di `-62` su tutte le chiamate.
+* **`-77`, `fn_mesi_del_tratto`.** Lo stesso corpo, senza `STRICT`: un estremo `NULL` dà ancora
+  nessuna riga, perché `generate_series(0, NULL)` è vuota (test 13). Su 4.386 tratti scende da
+  1,34 s a 0,60 s, il risultato è identico e il piano mostra la funzione espansa.
+* **Il test.** 7 e 8 diventano `isnt_strict`. 7b e 8b pretendono l'espansione nel piano, come il 16
+  del mese. L'11 gira su sette anni interi (2023-2029) più gli inverni dei tre secoli, che sono i
+  casi in cui la regola cambia, invece che su duecento anni. Il 9 prende i tre febbrai di secolo.
+  14 e 15 girano su un inizio ogni due giorni del 2023-2026, cioè circa 4.400 tratti.
+* **Prova** (scratch con `-62 … -64` applicati, `ROLLBACK`). Il test esce 15 ok e 4 rossi senza
+  l'estratto (7, 7b, 8, 8b), 19 su 19 con l'estratto, in **2,2 s**. `test-canone-periodi-v1`, i
+  canoni del push, i due lister e il test del mese sono invariati. I guardrail sui due changeSet
+  sono verdi.
+
+**Prova** (`prova_changeset.py`, scratch, `ROLLBACK`, 2026-11-15). Estratto eseguito per intero,
+preCondition 2 su 2, catalogo identico dopo. `script/test-mese-di-un-giorno-v1`: 18 ok e 1 rosso
+senza l'estratto (il 19, che trova la funzione), 19 su 19 con l'estratto. **Regressione** su
+undici pgTAP del pavimento, della data documento e dei registri: nessun esito cambia. Unico rosso,
+già presente senza l'estratto: `pagamenti/test-distinta-numerazione-registro-v1`, test 18 e 19. Sono
+asserzioni di perimetro RLS, rosse per costruzione da owner. Guardrail sui file del giro: tutti verdi.
 
 ## 7. Backend e frontend
 
@@ -517,3 +713,39 @@ I commenti vicini (`vendite_repository.py` 1800 e 3015, `maintenance_repository.
 di `date_trunc` e vanno riletti insieme. Elenco chiuso alla data: il BE lo rifà sul suo albero
 prima di cambiare. Chi cambia per primo: il DB (i BB devono esistere); il BE non ha scadenza
 legata ai giri 2-4, che non cambiano niente di ciò che legge.
+
+**Richiesta al team BE (R-BE-2)**, accettata da Tid il 2026-11-15, dalla rilettura di D-2 (§6.5).
+La settima copia della regola nel SQL del BE è il filtro `scadenza_mese` della lista contratti.
+R-BE-1 l'aveva lasciata fuori come «+1 mese», ma dice «il mese di `valido_al` è quello chiesto».
+`vendite.contratti` non ha indici su `valido_al`, quindi la forma a intervallo non serve al piano
+(D-3 (a)).
+
+| File | Riga | Oggi | Diventa |
+| --- | --- | --- | --- |
+| `backend/apps/vendite/db/contratti_repository.py` | 424-431 | `v.valido_al IS NOT NULL AND v.valido_al >= %s::date AND v.valido_al < (%s::date + interval '1 month')::date`, due parametri | `script.fn_mese_di(v.valido_al) = %s::date`, un parametro (`primo_mese`). `IS NOT NULL` non serve più: `fn_mese_di(NULL)` è `NULL` e il confronto scarta la riga |
+| `backend/apps/vendite/services/contratti_service.py` | 648 | il commento dice «mese >= mese corrente», il codice controlla solo `^\d{4}-\d{2}$`, quindi `2026-13` arriva al DB come data non valida (22008) | a scelta del BE: il commento allineato al codice, oppure il controllo che manca (mese 01-12, ed eventualmente non nel passato) |
+
+Ricognizione del 2026-11-15 sull'albero di `Tito-dev`: nessun test BE copre `scadenza_mese`. Il
+contratto dell'endpoint non cambia, e nemmeno il parametro, il suo formato e il risultato, quindi
+FE (`ContrattiSearchTable.vue`, store `contratti.js`) e assistente (`ai_assistant/tools/vendite_tools.py`)
+non sono toccati. Chi cambia per primo: nessun vincolo, `script.fn_mese_di` esiste già. Il DB non
+ha nulla da fare: dopo R-BE-2 il team DB chiude e archivia.
+
+**✅ R-BE-2 fatto** (team BE, `dev/backend-tid`, 2026-11-15; da committare). Ricognizione rifatta
+sull'albero: `scadenza_mese` ha un solo punto che lo traduce in SQL, `list_contratti` del
+repository; la view, l'export e lo strumento dell'assistente passano dal service.
+
+* `contratti_repository.py`: `script.fn_mese_di(v.valido_al) = %s::date`, un parametro. Via
+  l'`IS NOT NULL`, come proposto.
+* `contratti_service.py`: scelto il **controllo** al posto del solo commento. Il formato diventa
+  `\d{4}-(0[1-9]|1[0-2])` con `re.fullmatch`: prima `re.match` con `$` accettava anche un `\n`
+  finale. Un mese passato **resta ammesso**, perché dice quali contratti sono scaduti in quel mese,
+  e il commento ora lo dice. Il «mese >= mese corrente» del commento vecchio non era una regola del
+  codice, e non lo diventa.
+* Test del service `test_list_contratti_scadenza_mese_fuori_calendario`: `2026-13`, `2026-00`,
+  `2026-7`, `2026-07-01` e `2026-07\n` danno `E_VENDITE_VALIDATION` senza arrivare al repository.
+* Test sul DB provvisto `vendite/tests/db/test_contratti_lista_scadenza_mese_db.py`: due contratti
+  costruiti, uno che scade l'ultimo giorno del mese M e uno il primo di M+1. Ciascuno esce solo
+  nel suo mese. Un `valido_al` aperto non esce. **Mutazione** (`valido_al <= primo + 31`): rosso il
+  test 1, poi ripristinato. ruff e mypy verdi; i 130 test del service contratti e del file nuovo
+  sono verdi (`ZEROERP_TEST_DB_E2E=1`).

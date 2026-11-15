@@ -3001,10 +3001,24 @@ sua definizione viva ne riporta il cast (`vw_dash_competenza_attivita`, che
 dipende da `vw_lotti_fase`). Le due funzioni fanno solo aritmetica di date, sono
 `IMMUTABLE` e il planner le espande nel punto d'uso. Su un **istante**
 `date_trunc` tronca nel fuso della sessione: il giorno aziendale è
-`fn_giorno_operativo`, e da lì si passa al mese. Presidio:
-`scripts/guardrail_forme_changeset.py`, regola `date-trunc`, dai changeSet
-successivi ai due BB (`20261114-84`); pgTAP
-`db/pgtap/script/test-mese-di-un-giorno-v1.sql`.
+`fn_giorno_operativo`, e da lì si passa al mese. La fine del mese è
+`fn_fine_mese_di` **anche senza `date_trunc`**: `<primo del mese> + interval
+'1 month - 1 day'` è la stessa regola quando il primo del mese arriva da una
+variabile, e cercare `date_trunc` non la trova. **Sommare mesi** è
+`script.fn_mesi_dopo(giorno, n)` (il giorno che non c'è nel mese d'arrivo
+diventa l'ultimo), **i mesi di un tratto** sono `script.fn_mesi_del_tratto(dal,
+al)`: non si scrivono `make_interval(months => n)` né un intervallo di mesi
+(`interval '1 month'`). Una data più un intervallo è un `timestamp` nudo, e
+`generate_series(<date>, <date>, interval '1 month')` usa la variante su
+`timestamptz`, quindi ogni mese diventa un istante nel fuso della sessione.
+Presidio: `scripts/guardrail_forme_changeset.py`, con tre regole:
+
+* `date-trunc`, dai changeSet successivi ai due BB (`20261114-84`);
+* `fine-mese-intervallo`, da `20261115-59`;
+* `mesi-intervallo`, da `20261115-62`.
+
+pgTAP: `db/pgtap/script/test-mese-di-un-giorno-v1.sql` e
+`db/pgtap/script/test-mesi-dal-calendario-v1.sql`.
 
 ### 11.11 ⛔ La prima generazione dei changelog (v1) non si tocca
 
@@ -3552,6 +3566,15 @@ frontend legge dal registro quali colonne mostrare.
 che la rifiuta: chiama la `fn_check` e ne solleva il primo motivo, e il presidio lo verifica
 identico (le righe di listino, `vendite.trgfn_listini_righe_guard_stato`, decisione di Tid del
 2026-11-15).
+
+⛔ **Il guard fa da verbo solo per un'azione che tocca sempre una riga** (un'aggiunta, la modifica
+o l'eliminazione di una riga data). Un gesto su un insieme («varia i prezzi della versione», «togli
+i componenti del kit») può non prendere nessuna riga, e allora il guard non scatta: il pulsante
+dice «vietato», la scrittura risponde «fatto, zero righe», e una scrittura successiva (una
+traccia nella testata) cade su un altro guard con un altro codice. La regola dipende dai dati. Un
+gesto così ha un **verbo** che chiede la `fn_check` per il padre prima di toccare le righe, e
+nell'anteprima come nel gesto vero (`vendite.fn_varia_prezzi_versione_listino`, richiesta del BE
+del 2026-11-15).
 
 ⛔ **Una colonna di blocco composta dal backend non si iscrive**: il presidio non
 può verificarla. Il motivo per riga sta in una **vista DB**, e il backend la legge

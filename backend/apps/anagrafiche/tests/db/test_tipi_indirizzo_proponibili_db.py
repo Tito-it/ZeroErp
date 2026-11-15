@@ -21,12 +21,14 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    e la sua natura propongono gli stessi tipi, salvo quelli che il soggetto ha gia' (spenti col
    motivo del tipo presente, ammessi dalla natura)
 3) SoggettoPickerDbTests.test_prima_gli_ammessi — l'ordine della funzione arriva al client
+3-bis) SoggettoPickerDbTests.test_natura_inesistente — elenco vuoto, non «tutti ammessi» (Q-2)
 4) RuoloPickerDbTests.test_il_tipo_creato_si_spegne_col_motivo — lo stesso sul ruolo,
    `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`
 5) RuoloPickerDbTests.test_il_tipo_di_ruolo_marca_gli_obbligatori — il picker del tipo di ruolo
    segna obbligatori le righe obbligatorie della matrice (seed: contratto) e le ammette
 6) RuoloPickerDbTests.test_codice_di_ruolo_sconosciuto — elenco vuoto, non «tutti ammessi»
 7) RuoloPickerDbTests.test_ruolo_inesistente — 404 `E_ANAG_NOT_FOUND`
+8) RuoloPickerDbTests.test_tipo_di_ruolo_inesistente — per id: elenco vuoto (Q-2)
 """
 
 from __future__ import annotations
@@ -53,6 +55,13 @@ class _Mondo(unittest.TestCase):
         apri_transazione_annullata(self)
         with connection.cursor() as cur:
             apri_contesto_operatore(cur)
+
+    # L'id che non c'e': `max(id) + 1`, costruito e non supposto (Q-2, §8.1).
+    @staticmethod
+    def _id_inesistente(tabella: str) -> int:
+        with connection.cursor() as cur:
+            cur.execute(f"SELECT COALESCE(max(id), 0) + 1 FROM {tabella}")  # nome di tabella cablato nel test
+            return int(cur.fetchone()[0])
 
     @staticmethod
     def _soggetto_pg(nome: str) -> str:
@@ -158,6 +167,12 @@ class SoggettoPickerDbTests(_Mondo):
         ammessi = [r["ammesso"] for r in righe]
         self.assertEqual(sorted(ammessi, reverse=True), ammessi)
 
+    def test_natura_inesistente(self):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        natura_id = self._id_inesistente("config.tipi_soggetto_dettaglio")
+        self.assertEqual([], LookupRepository().list_tipi_indirizzo_proponibili("natura", natura_id))
+
 
 class RuoloPickerDbTests(_Mondo):
 
@@ -218,3 +233,9 @@ class RuoloPickerDbTests(_Mondo):
         with self.assertRaises(ServiceError) as ctx, transaction.atomic():
             SoggettiService().get_tipi_indirizzo_proponibili_ruolo(-1, None)
         self.assertEqual("E_ANAG_NOT_FOUND", ctx.exception.code)
+
+    def test_tipo_di_ruolo_inesistente(self):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        tipo_ruolo_id = self._id_inesistente("config.tipi_ruoli")
+        self.assertEqual([], LookupRepository().list_tipi_indirizzo_proponibili("tipo_ruolo", tipo_ruolo_id))

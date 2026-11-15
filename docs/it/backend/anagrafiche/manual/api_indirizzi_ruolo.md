@@ -255,6 +255,54 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 
 ---
 
+## 5. Copia indirizzo ruolo («Copia come…»)
+
+Copia un indirizzo del ruolo in uno o più tipi, **nello stesso ruolo e nella stessa istanza**
+della sorgente. Tutto o niente. Gemello della copia sul soggetto
+([api_soggetti.md](api_soggetti.md) §8.3), con lo stesso corpo.
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/{indirizzo_id}/copia/` |
+| **Verbo DB** | `anagrafiche.fn_copia_indirizzo_ruolo` |
+
+### Body (JSON)
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `tipi_indirizzo_codice_interno` | string[] | Sì | I tipi di destinazione, per codice interno. Lista non vuota; nessun'altra chiave ammessa |
+
+### Risposta (200)
+
+```json
+{ "data": { "ids": [87, 88] } }
+```
+
+Gli id delle righe nuove, nell'ordine dei tipi.
+
+### Errori
+
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | Corpo sbagliato: lista assente, vuota o con voci non testuali, o chiavi in più (`error.fields` = `tipi_indirizzo_codice_interno`) |
+| `E_SOGGETTO_RUOLO_NON_TROVATO` | 404 | Ruolo inesistente |
+| `E_INDIRIZZO_RUOLO_NON_TROVATO` | 404 | L'indirizzo non esiste o non è di quel ruolo |
+| `E_INDIRIZZO_COPIA_NESSUN_TIPO` | 409 | Nessun tipo proponibile: il motivo con cui `anagrafiche.vw_indirizzi_ruolo_azioni` spegne l'azione di riga (`anagrafiche.fn_check_copia_indirizzo_ruolo`) |
+| `E_TIPO_INDIRIZZO_NON_TROVATO` | 400 | Un codice che il catalogo `config.tipi_indirizzi` non ha |
+| `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` | 400 | Un indirizzo di quel tipo c'è già sulla chiave, anche se il tipo è ripetuto nell'elenco |
+| `E_TIPO_INDIRIZZO_NON_PERMESSO` | 400 | Il tipo di ruolo non ammette quel tipo (`config.tipi_ruolo_tipi_indirizzo`) |
+
+### Regole
+
+- Ogni riga la scrive la singolare `anagrafiche.fn_crea_indirizzo_ruolo`, con l'istanza della
+  sorgente: valgono i suoi guard, come per la creazione (§2).
+- Il backend controlla solo la **forma** del corpo; tipo inesistente, ripetuto, già presente o
+  non ammesso lo dice il verbo.
+- La copia fra layer (soggetto ↔ ruolo) non è di questo endpoint.
+
+---
+
 ## Dipendenze DB
 
 | Oggetto | Schema | Tipo | Ruolo |

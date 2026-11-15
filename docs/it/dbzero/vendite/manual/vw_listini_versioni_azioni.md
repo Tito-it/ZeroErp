@@ -28,8 +28,11 @@ qualunque stato.
 | `eliminazione_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
 | `chiusura_blocco_reason` | il motivo per cui «Chiudi» è spento (la versione non è attiva); `NULL` = si chiude |
 | `chiusura_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
-| `aggiunta_riga_blocco_reason` | il motivo per cui «Aggiungi riga» è spento: `VERSIONE_CHIUSA`, il primo motivo di `script.fn_check_listino_riga_scrivibile` senza riga, lo stesso che il guard di stato delle righe solleva sull'INSERT; `NULL` = la riga si aggiunge (in bozza, o come rettifica di una versione attiva) |
+| `aggiunta_riga_blocco_reason` | il motivo per cui «Aggiungi riga» è spento: `VERSIONE_CHIUSA` o `VERSIONE_NON_IN_BOZZA`, il primo motivo di `script.fn_check_listino_riga_scrivibile` senza riga, lo stesso che il guard di stato delle righe solleva sull'INSERT; `NULL` = la riga si aggiunge (la versione è in bozza) |
 | `aggiunta_riga_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
+| `variazione_blocco_reason` / `_key` | «Variazione %» dei prezzi delle righe: lo stesso motivo, sollevato dal verbo [`vendite.fn_varia_prezzi_versione_listino`](/dbzero/vendite/manual/fn_varia_prezzi_versione_listino) per la versione, anche nell'anteprima e anche quando il gesto non prende righe |
+| `prezzi_bundle_blocco_reason` / `_key` | i prezzi dei componenti di un kit (il dialog bundle): lo stesso motivo, sollevato dal guard di `vendite.listini_righe_componenti` |
+| `periodicita_kit_blocco_reason` / `_key` | la periodicità di un kit (`vendite.listini_kit`): lo stesso motivo, sollevato dal guard del kit |
 
 ### Regole
 
@@ -38,6 +41,11 @@ qualunque stato.
   [eliminabile](/dbzero/script/funzioni/fn_check_versione_listino_eliminabile),
   [chiudibile](/dbzero/script/funzioni/fn_check_versione_listino_chiudibile)): è quello con cui
   il verbo e il guard rifiutano.
+* **Le scritture della versione si fanno solo in bozza**: aggiunta di righe, variazione, prezzi dei
+  componenti e periodicità dei kit hanno quattro coppie di colonne (un'azione, le sue colonne) e
+  una regola sola, `script.fn_check_listino_riga_scrivibile`, calcolata una volta. Il prezzo
+  sbagliato di una riga in uso si **rettifica**: la superficie è
+  [`vendite.vw_listini_righe_azioni`](/dbzero/vendite/manual/vw_listini_righe_azioni).
 * «Chiudi» si legge senza data: la fine nel passato la giudica il verbo con la data scelta nel
   dialogo.
 * Lo stato non c'è: chi può attivare da quale stato lo dice la riga lista

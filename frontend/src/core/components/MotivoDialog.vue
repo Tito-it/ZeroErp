@@ -30,6 +30,7 @@
 //     :loading="loading" :invalid="campiErrati.includes('motivo')"
 //     @conferma="(motivo) => blocca(motivo)"
 //   >
+//   (con altri campi nello slot: `:altri-campi="() => ({ prezzo: prezzo.value })"`)
 //     <p>{{ t('…spiegazione') }}</p>
 //   </MotivoDialog>
 import { computed, ref, watch } from 'vue'
@@ -55,6 +56,12 @@ const props = defineProps({
   width: { type: String, default: 'sm' },
   // Passato tale e quale ad AppDialog: `undefined` eredita la catena.
   readonly: { type: Boolean, default: undefined },
+  // Gli ALTRI campi del gesto, messi dal chiamante nello slot (il prezzo
+  // della rettifica di un listino): un getter, il cui valore entra nella
+  // fotografia col motivo. ⚠️ Senza, uscire dopo aver cambiato solo quei
+  // campi non chiedeva niente (2026-11-15). Il chiamante li prepara PRIMA di
+  // aprire: la fotografia si prende all'apertura.
+  altriCampi: { type: Function, default: null },
 })
 
 const emit = defineEmits(['update:visible', 'conferma'])
@@ -64,7 +71,10 @@ const pulito = computed(() => motivo.value.trim())
 
 watch(() => props.visible, (aperto) => { if (aperto) motivo.value = '' }, { immediate: true })
 
-const fotografia = useFotografiaDialog(() => ({ motivo: motivo.value }), { visibile: () => props.visible })
+const fotografia = useFotografiaDialog(
+  () => ({ motivo: motivo.value, altri: props.altriCampi?.() ?? null }),
+  { visibile: () => props.visible },
+)
 
 function conferma() {
   emit('conferma', pulito.value || null)

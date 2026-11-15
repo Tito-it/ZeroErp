@@ -15,7 +15,7 @@
 --  2) riga nuova in bozza, unita' mappata per tutto il periodo: passa
 --  3) riga nuova in bozza aperta, mappatura che finisce fra trenta giorni:
 --     rifiutata, col primo giorno scoperto
---  4) rettifica in una versione ATTIVA, unita' senza conversione: rifiutata
+--  4) riga nuova in una versione ATTIVA: rifiutata dal guard di stato, prima dell'unita'
 --  5) bozza allungata oltre la fine della mappatura: rifiutata
 --  6) bozza allungata dentro la mappatura: passa
 --  7) bozza accorciata: passa
@@ -245,9 +245,14 @@ SELECT throws_like(pg_temp.riga_sql(pg_temp.ver('BOZ0'), 'A', 'PAL'),
     '3) bozza aperta, mappatura che finisce fra trenta giorni: rifiutata dal giorno dopo');
 
 -- 4
-SELECT throws_like(pg_temp.riga_sql(pg_temp.ver('ATT'), 'B', 'CRT'),
-    pg_temp.msg('E_LISTINO_UOM_NON_CONVERTIBILE'),
-    '4) rettifica in una versione ATTIVA, unita'' senza conversione: rifiutata');
+-- Dal 20261115-65 le righe si scrivono solo in bozza: una riga nuova in una
+-- ATTIVA non e' piu' una rettifica, e la rifiuta il guard di stato
+-- (a10_guard_stato parla prima di a10_guard_uom_periodo). Il ramo ATTIVA del
+-- guard dell'unita' sull'INSERT non ha piu' una strada: resta la chiusura della
+-- mappatura sotto un prezzo ATTIVO (12-15).
+SELECT is(dbops.fn_pgtap_codice_errore(pg_temp.riga_sql(pg_temp.ver('ATT'), 'B', 'CRT')),
+    'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+    '4) riga nuova in una versione ATTIVA: rifiutata dal guard di stato, prima dell''unita''');
 
 -- ============================================================
 -- Il secondo lato: il periodo.

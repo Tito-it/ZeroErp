@@ -105,8 +105,10 @@ BEGIN
         (SELECT auth_user_id FROM t_mondi WHERE lato = 'ALTRUI'));
 END $ctx$;
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l_altrui AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u_altrui), 'riga coerente altrui');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u_altrui), 'riga coerente altrui', p_in_bozza => true);
 
 CREATE TEMP TABLE t_art_altrui AS
 SELECT dbops.fn_pgtap_crea_articolo(
@@ -123,6 +125,8 @@ WITH ins AS (
 )
 SELECT id AS r3 FROM ins;
 
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l_altrui), 'ATTIVA');
+
 -- Il contesto di MIA, e la commessa del test nel suo mondo; due listini del
 -- suo emittente per la sua utility: L (quello del prezzo) e L2 (l'«altra»
 -- versione).
@@ -135,8 +139,10 @@ END $ctx$;
 CREATE TEMP TABLE t_c AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa('listino riga coerente');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga coerente');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga coerente', p_in_bozza => true);
 
 CREATE TEMP TABLE t_l2 AS
 SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga coerente bis');
@@ -179,6 +185,8 @@ WITH ins AS (
 )
 SELECT (SELECT id FROM ins WHERE uom_id = (SELECT u1 FROM t_uom)) AS r1,
        (SELECT id FROM ins WHERE uom_id = (SELECT u2 FROM t_uom)) AS r2;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
 
 -- ============================================================
 -- 1-2) La forma
@@ -299,12 +307,34 @@ SELECT is(
 -- ============================================================
 -- 10) Il lato della riga di listino: identita' immutabile
 -- ============================================================
--- R2 non e' citata (i rifiuti sopra sono tornati indietro): sulla versione
--- ATTIVA il guard di stato la lascerebbe passare, e parla il lock.
+-- Dal 20261115-65 una riga di una versione ATTIVA non si scrive, e il guard di
+-- stato (a10_guard_stato) parla prima del lock (a10_lock_columns): il lock si
+-- prova su una riga di una versione in bozza, dove il guard di stato la lascia
+-- passare.
+-- ⚠️ La versione e la riga in due istruzioni: la policy delle righe rilegge la
+--   versione, e un INSERT nella stessa istruzione (CTE) non la vede ancora. Da
+--   proprietario la RLS non c'e', e la CTE passava.
+CREATE TEMP TABLE t_vlock AS
+WITH v AS (
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
+    SELECT l.listino_id, 'PGT_BOZZA_LOCK', '2098-01-01'::date FROM t_l l
+    RETURNING id
+)
+SELECT id FROM v;
+
+CREATE TEMP TABLE t_lock AS
+WITH r AS (
+    INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+    SELECT v.id, a.a2, ar.uom_id, 5.00
+      FROM t_vlock v, t_art a JOIN catalogo.articoli ar ON ar.id = a.a2
+    RETURNING id
+)
+SELECT id AS rl FROM r;
+
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
         'UPDATE vendite.listini_righe SET uom_id = %s WHERE id = %s',
-        (SELECT u3 FROM t_uom), (SELECT r2 FROM t_r))),
+        (SELECT u3 FROM t_uom), (SELECT rl FROM t_lock))),
     'E_LISTINO_RIGA_IDENTITA_IMMUTABILE',
     '10) lock: una riga di listino non cambia unita'' di misura -> E_LISTINO_RIGA_IDENTITA_IMMUTABILE'
 );

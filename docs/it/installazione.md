@@ -1,6 +1,6 @@
 # Installazione
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 Questa pagina dice **in che ordine** si tira su ZeroErp su una macchina nuova e
 rimanda alle pagine che spiegano ogni passo. Ciò che si configura **dentro** il
@@ -15,10 +15,20 @@ sotto. La messa in opera completa di un server è nel
 
 ## Prerequisiti
 
-- Python, con le dipendenze di `requirements.txt` (Django compreso)
+- Python, alla versione di `.python-version`, con le dipendenze del backend
+  (`backend/requirements.txt`, Django compreso)
 - PostgreSQL 18, con le estensioni del paragrafo «Il database»
-- Liquibase: si usa quello del repository, con `scripts/liquibase5.sh`
-- Node.js, per il frontend (Vue 3 + Vite)
+- Java 17 e Liquibase Community con il driver JDBC di PostgreSQL: le versioni sono
+  fissate in `scripts/liquibase-versioni.env` e li installa
+  `scripts/installa-liquibase.sh` (paragrafo «Liquibase» qui sotto). `tools/` non è
+  nel repository: ogni macchina lo popola con lo script
+- Node.js, per il frontend (Vue 3 + Vite), alla versione di `engines.node` in
+  `frontend/package.json`
+- Redis, la cache del backend (in alternativa, solo per una prova, `CACHE_BACKEND=locmem`)
+- Le **librerie di sistema di WeasyPrint**, che stampa i PDF: senza, l'import di WeasyPrint fallisce
+  e non esce nessuna stampa. L'elenco dei pacchetti è uno solo, nel `Dockerfile` (il blocco
+  `apt-get install` delle librerie native, fra cui `libharfbuzz-subset0`), e sulle macchine di
+  sviluppo si installano gli stessi con `apt install`
 
 Versioni consigliate: [Versioni supportate](versioni-supportate.md).
 
@@ -27,10 +37,27 @@ Versioni consigliate: [Versioni supportate](versioni-supportate.md).
 ```bash
 git clone git@github.com:Tito-it/ZeroErp.git
 cd ZeroErp
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python -m venv backend/.venv
+source backend/.venv/bin/activate
+pip install -r backend/requirements.txt
 ```
+
+⚠️ Il `requirements.txt` in radice contiene solo gli strumenti di sviluppo e della
+documentazione (pre-commit, Zensical): **non** installa Django.
+
+## Liquibase
+
+```bash
+scripts/installa-liquibase.sh
+```
+
+Scarica Liquibase e il driver JDBC nelle versioni di `scripts/liquibase-versioni.env`
+dalle sorgenti ufficiali ([release di Liquibase](https://github.com/liquibase/liquibase/releases),
+Maven Central per il driver), ne verifica lo SHA-256 e li mette in `tools/liquibase/`.
+Si può rilanciare: ciò che c'è già nella versione giusta non si riscarica. Da lì in
+poi Liquibase si lancia **solo** dal wrapper `scripts/liquibase5.sh`, che aggancia il
+driver della versione fissata; nel `PATH` non serve nessun `liquibase`. La CI legge
+le stesse versioni dallo stesso file.
 
 ## Il database
 

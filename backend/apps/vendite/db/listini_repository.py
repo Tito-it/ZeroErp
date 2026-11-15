@@ -7,10 +7,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from django.db import connection, transaction
 
@@ -74,6 +75,11 @@ STATO_VERSIONE_ATTIVA = "ATTIVA"
 #    brief-db-stati-documento-dal-vocabolario §6.27): il primo motivo di
 #    `script.fn_check_listino_riga_scrivibile` senza riga, la stessa che il
 #    guard di stato delle righe solleva sull'INSERT. NULL = si aggiunge.
+# ⭐ `variazione_blocco_*`, `prezzi_bundle_blocco_*`, `periodicita_kit_blocco_*`
+#    (giro 6f-ter, §6.28): la stessa check per la variazione percentuale
+#    (`VARIA_PREZZI_LISTINO`), i prezzi dei componenti del kit
+#    (`PREZZI_BUNDLE_LISTINO`) e la sua periodicita' (`PERIODICITA_KIT_LISTINO`).
+#    Fuori dalla bozza VERSIONE_NON_IN_BOZZA, CHIUSA VERSIONE_CHIUSA.
 # ⭐ `chiusura_programmata`: la versione e' ATTIVA con la fine scritta, quindi
 #    il job la chiude quando la fine passa (L-2). Fra la fine e il passaggio del
 #    job la versione e' ATTIVA con `valido_al` passato: la lista la mostra cosi',
@@ -115,6 +121,12 @@ _SELECT_VERSIONE = f"""
         az.chiusura_blocco_reason_key,
         az.aggiunta_riga_blocco_reason,
         az.aggiunta_riga_blocco_reason_key,
+        az.variazione_blocco_reason,
+        az.variazione_blocco_reason_key,
+        az.prezzi_bundle_blocco_reason,
+        az.prezzi_bundle_blocco_reason_key,
+        az.periodicita_kit_blocco_reason,
+        az.periodicita_kit_blocco_reason_key,
         (s.codice_interno = '{STATO_VERSIONE_ATTIVA}' AND v.valido_al IS NOT NULL)
             AS chiusura_programmata
       FROM vendite.listini_versioni v
@@ -851,22 +863,31 @@ class ListiniRepository:
             SELECT unione.*,
                    COUNT(*) OVER() AS total_count,
                    -- ⭐ Perche' la riga non si modifica ne' si elimina
-                   --    (`MODIFICA_RIGA_LISTINO`, D-LIST (a) del
-                   --    brief-db-stati-documento-dal-vocabolario §6.27): la
-                   --    superficie delle righe, il primo motivo della stessa
-                   --    `fn_check` che il guard di stato solleva. NULL = si
-                   --    modifica. Il composito non ha una riga di listino
-                   --    (`id` NULL): i suoi prezzi hanno la regola del kit.
-                   -- ⚡ Nella lista di uscita, non in una JOIN: PostgreSQL
-                   --    valuta le sottoquery DOPO `ORDER BY … LIMIT`, quindi
-                   --    la `fn_check` gira per le sole righe della pagina e
-                   --    non per l'intera versione.
+                   --    (`MODIFICA_RIGA_LISTINO`) e perche' non si rettifica
+                   --    (`RETTIFICA_RIGA_LISTINO`, il verbo
+                   --    `vendite.fn_rettifica_riga_listino`): la superficie delle
+                   --    righe, il primo motivo delle due `fn_check` che il guard
+                   --    e il verbo sollevano (brief-db-stati-documento-dal-
+                   --    vocabolario §6.27, §6.28). NULL = il gesto e' ammesso.
+                   --    Il composito non ha una riga di listino (`id` NULL): i
+                   --    suoi prezzi hanno la superficie della versione
+                   --    (`prezzi_bundle_blocco_*`).
+                   -- ⚡ Una sottoquery per colonna nella lista di uscita, non
+                   --    una JOIN: PostgreSQL le valuta DOPO `ORDER BY … LIMIT`,
+                   --    quindi le `fn_check` girano per le sole righe della
+                   --    pagina e non per l'intera versione.
                    (SELECT az.modifica_blocco_reason
                       FROM vendite.vw_listini_righe_azioni az
                      WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason,
                    (SELECT az.modifica_blocco_reason_key
                       FROM vendite.vw_listini_righe_azioni az
-                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason_key
+                     WHERE az.listino_riga_id = unione.id) AS modifica_blocco_reason_key,
+                   (SELECT az.rettifica_blocco_reason
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS rettifica_blocco_reason,
+                   (SELECT az.rettifica_blocco_reason_key
+                      FROM vendite.vw_listini_righe_azioni az
+                     WHERE az.listino_riga_id = unione.id) AS rettifica_blocco_reason_key
               FROM unione
             {where_unione}
              ORDER BY {ordinamento}
@@ -968,103 +989,54 @@ class ListiniRepository:
     #    brief-db-revisione-catalogo): la regola dell'unita' e' del DB, per tutto
     #    il periodo della versione (vedi `listini_service`).
 
-    # Scopo: Blocca la riga con FOR UPDATE per prevenire race condition durante
-    #        la rettifica controllata N6. Restituisce True se la riga esiste.
-    def lock_riga_for_update(self, versione_id: int, riga_id: int) -> bool:
+    # Scopo: La «Rettifica» di una riga di listino, dal verbo
+    #        `vendite.fn_rettifica_riga_listino` (giro 6f-ter, BE-L3): torna la
+    #        riga, il prezzo di prima e quello nuovo (alla scala della colonna),
+    #        e il motivo. Il chiamante tiene la transazione.
+    def rettifica_riga(self, riga_id: int, prezzo: Decimal, motivo: str | None) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id FROM vendite.listini_righe
-                 WHERE id = %s AND listino_versione_id = %s
-                   FOR UPDATE
-                """,
-                [riga_id, versione_id],
+                "SELECT * FROM vendite.fn_rettifica_riga_listino(%s, %s, %s)",
+                [riga_id, prezzo, motivo],
             )
-            return cursor.fetchone() is not None
+            result = row_to_dict(cursor)
+            assert result is not None
+            return result
 
-    # Scopo: Aggiorna il prezzo di una riga per rettifica controllata N6.
-    #        Aggiorna anche meta con audit trail. Caller gestisce transazione.
-    def update_riga_prezzo_rettifica(
-        self,
-        riga_id: int,
-        nuovo_prezzo: str,
-        meta_aggiornata: dict[str, Any] | None,
-    ) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE vendite.listini_righe
-                   SET prezzo = %(prezzo)s::numeric,
-                       meta = %(meta)s::jsonb
-                 WHERE id = %(riga_id)s
-                """,
-                {
-                    "riga_id": riga_id,
-                    "prezzo": nuovo_prezzo,
-                    "meta": json.dumps(meta_aggiornata) if meta_aggiornata else None,
-                },
-            )
-            return cursor.rowcount > 0
-
-    # Scopo: Applica variazione percentuale massa ai prezzi delle righe attive
-    #        di una versione. Se dry_run=True restituisce la preview senza modificare.
-    #        Restituisce (righe_aggiornate, preview_rows).
-    def applica_variazione_percentuale(
+    # Scopo: Il verbo della variazione percentuale dei prezzi di una versione,
+    #        `vendite.fn_varia_prezzi_versione_listino` (BE-L7): anteprima e gesto
+    #        nella stessa chiamata, che si distinguono solo per `dry_run`.
+    #        Una riga per riga presa, ordinata per codice articolo; nel gesto
+    #        `prezzo_nuovo` e' il prezzo salvato.
+    # ⚠️ Tutto il contratto sta nel verbo: «solo in bozza» (anche a righe zero
+    #    e in anteprima), intervalli di percentuale e decimali, perimetro, e la
+    #    traccia in `meta.variazioni_percentuali[]` della versione. Qui non si
+    #    ricopia niente.
+    # ⚠️ `filtro_articoli`: `None` prende tutte le righe attive, `[]` nessuna.
+    def varia_prezzi_versione(
         self,
         versione_id: int,
-        variazione_pct: str,
-        arrotondamento_decimali: int,
-        filtro_articoli: list[str] | None = None,
+        variazione_pct: Decimal,
+        decimali: int,
+        filtro_articoli: list[UUID] | None,
         *,
-        dry_run: bool = False,
-    ) -> tuple[int, list[dict[str, Any]]]:
+        dry_run: bool,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
-            if dry_run:
-                # Scopo: calcola i prezzi senza modificare, per preview frontend.
-                cursor.execute(
-                    """
-                    SELECT
-                        r.id AS riga_id,
-                        a.codice AS articolo_codice,
-                        a.descrizione AS articolo_descrizione,
-                        r.prezzo AS prezzo_attuale,
-                        ROUND(r.prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s) AS prezzo_calcolato
-                      FROM vendite.listini_righe r
-                      JOIN catalogo.articoli a ON a.id = r.articolo_id
-                     WHERE r.listino_versione_id = %(ver_id)s
-                       AND r.attivo IS TRUE
-                       AND (%(filtro)s::uuid[] IS NULL
-                            OR r.articolo_id = ANY(%(filtro)s::uuid[]))
-                     ORDER BY a.codice, r.id
-                    """,
-                    {
-                        "ver_id": versione_id,
-                        "pct": variazione_pct,
-                        "dec": arrotondamento_decimali,
-                        "filtro": filtro_articoli,
-                    },
-                )
-                preview = rows_to_list(cursor)
-                return len(preview), preview
-
-            # Scopo: applica UPDATE reale sulle righe.
             cursor.execute(
                 """
-                UPDATE vendite.listini_righe
-                   SET prezzo = ROUND(prezzo * (1 + %(pct)s::numeric / 100.0), %(dec)s)
-                 WHERE listino_versione_id = %(ver_id)s
-                   AND attivo IS TRUE
-                   AND (%(filtro)s::uuid[] IS NULL
-                        OR articolo_id = ANY(%(filtro)s::uuid[]))
+                SELECT listino_riga_id, articolo_id, articolo_codice,
+                       articolo_descrizione, prezzo_precedente, prezzo_nuovo
+                  FROM vendite.fn_varia_prezzi_versione_listino(
+                           %s, %s, %s, %s::uuid[], %s)
                 """,
-                {
-                    "ver_id": versione_id,
-                    "pct": variazione_pct,
-                    "dec": arrotondamento_decimali,
-                    "filtro": filtro_articoli,
-                },
+                [
+                    versione_id, variazione_pct, decimali,
+                    None if filtro_articoli is None else [str(a) for a in filtro_articoli],
+                    dry_run,
+                ],
             )
-            return cursor.rowcount, []
+            return rows_to_list(cursor)
 
     # Scopo: Restituisce le tipologie listino ammesse per una utility, leggendo
     #        la matrice config.listini_tipologie_utilities (solo righe attive).

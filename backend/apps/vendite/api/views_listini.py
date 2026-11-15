@@ -642,8 +642,9 @@ class ApiListiniTipologiePerUtility(DomainAPIView):
 #   - GET  /listini/<lid>/versioni/<vid>/bundle/<padre_id>/     preview BoM + prezzi esistenti
 #   - POST /listini/<lid>/versioni/<vid>/bundle/<padre_id>/     upsert batch prezzi bundle
 #
-# Persistenza assoluta (no delta). Solo versioni BOZZA editabili
-# (guard service + trigger DB immutabilita' v5).
+# Persistenza assoluta (no delta). Solo versioni in bozza editabili: lo dice
+# il guard DB `trgfn_listini_righe_comp_guard_immutabilita_v5` (giro 6f-ter),
+# la superficie e' `prezzi_bundle_blocco_*` della versione.
 
 
 
@@ -763,7 +764,7 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     # Scopo: Elimina tutti i prezzi bundle del composito dalla versione
     # listino. Tabula rasa idempotente: soft-delete cascade su
     # `listini_righe_componenti` per la coppia (versione, padre).
-    # Guard BOZZA-only ereditato dal service. Idempotente: 0 disattivati
+    # «Solo in bozza» lo dice il guard DB dei componenti. Idempotente: 0 disattivati
     # senza errore se il composito non aveva prezzi bundle.
     def delete(
         self, request: Request, listino_id: int, ver_id: int, padre_id: str,

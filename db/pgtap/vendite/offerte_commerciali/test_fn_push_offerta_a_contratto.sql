@@ -63,13 +63,16 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
       WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
       ORDER BY u.id LIMIT 1));
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_push_listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_push_cli), 'push offerta a contratto');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_push_cli), 'push offerta a contratto', p_in_bozza => true);
 
 -- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
 --   l'OVERRIDE modifica una riga del listino, quindi l'articolo ci sta.
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT listino_versione_id FROM tmp_push_listino), ARRAY[(SELECT a1 FROM tmp_push_art)]);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM tmp_push_listino), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_push_ctx AS
 SELECT

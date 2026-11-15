@@ -80,9 +80,11 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 -- 2026-10-08 (§F.2): il listino si COSTRUISCE, della utility e dell'emittente
 --   del BA, con la prima tipologia che la utility ammette (guard
 --   trgfn_listini_guard_tipologia_utility).
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_ctx_wd_versione AS
 SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
-  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_wd), 'classe da contratto WD') l;
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_wd), 'classe da contratto WD', p_in_bozza => true) l;
 
 CREATE TEMP TABLE tmp_ctx_wd_listino AS
 SELECT v.listino_id FROM tmp_ctx_wd_versione v;
@@ -139,6 +141,7 @@ DO $riga_wd$ BEGIN
         (SELECT versione_id FROM tmp_ctx_wd_versione),
         ARRAY[(SELECT articolo_id FROM tmp_ctx_wd)],
         100);
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT versione_id FROM tmp_ctx_wd_versione), 'ATTIVA');
 END $riga_wd$;
 
 -- Contratto ATTIVO in modalita' A (con listino, senza variazione globale):
@@ -229,9 +232,11 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 -- 2026-10-08 (§F.2): il listino si COSTRUISCE, della utility e dell'emittente
 --   del BA, con la prima tipologia che la utility ammette (guard
 --   trgfn_listini_guard_tipologia_utility).
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_ctx_nd_versione AS
 SELECT l.listino_versione_id AS versione_id, l.listino_id, l.tipologia_id
-  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_nd), 'classe da contratto ND') l;
+  FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_utility_nd), 'classe da contratto ND', p_in_bozza => true) l;
 
 CREATE TEMP TABLE tmp_ctx_nd_listino AS
 SELECT v.listino_id FROM tmp_ctx_nd_versione v;
@@ -278,6 +283,7 @@ DO $riga_nd$ BEGIN
         (SELECT versione_id FROM tmp_ctx_nd_versione),
         ARRAY[(SELECT articolo_id FROM tmp_ctx_nd)],
         100);
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT versione_id FROM tmp_ctx_nd_versione), 'ATTIVA');
 END $riga_nd$;
 
 -- Contratto ATTIVO su utility commercio (contratti_utilities avra' classe NULL):

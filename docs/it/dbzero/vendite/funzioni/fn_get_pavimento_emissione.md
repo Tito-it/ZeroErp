@@ -121,7 +121,7 @@ BEGIN
         --    mese per abitudine: la funzione non deve dipendere
         --    da un'abitudine che nessun vincolo impone.
         v_primo_succ := (script.fn_fine_mese_di(p_competenza_mese) + 1);
-        v_fine_succ  := (v_primo_succ + interval '1 month - 1 day')::date;
+        v_fine_succ  := script.fn_fine_mese_di(v_primo_succ);
 
         -- ⭐ IL GIORNO SI APPOGGIA AL MESE, NON LO SCAVALCA
         --    (decisione D-6): con 30 su un febbraio la scadenza

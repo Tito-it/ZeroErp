@@ -62,9 +62,11 @@ SELECT id AS stato_id FROM config.stati_doc_contratti WHERE codice_interno = 'AT
 --   listino attivo per id» del DB: il test 4 lo attiva, e da quel giorno un
 --   contratto con un listino senza versione in vigore non si attiva piu'. Con un
 --   listino preso dai dati l'esito dipendeva da cosa c'era sulla macchina.
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_ctx_listino AS
 SELECT listino_id, listino_versione_id FROM dbops.fn_pgtap_crea_listino(
-    (SELECT utility_id FROM tmp_ctx_ba), 'modalita pricing');
+    (SELECT utility_id FROM tmp_ctx_ba), 'modalita pricing', p_in_bozza => true);
 
 -- ⛔ rev 2026-10-13 (brief-db-articoli-ammessi-per-documento, Lotto 3b, A-5):
 --   l'articolo si COSTRUISCE e sta nel listino. Prima era il primo del catalogo,
@@ -77,6 +79,7 @@ CREATE TEMP TABLE tmp_ctx_articolo AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-MOD-PRICING', false) AS articolo_id;
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT listino_versione_id FROM tmp_ctx_listino), ARRAY[(SELECT articolo_id FROM tmp_ctx_articolo)]);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM tmp_ctx_listino), 'ATTIVA');
 
 -- 1) listino + variazione globale in DRAFT -> ok
 SELECT lives_ok(

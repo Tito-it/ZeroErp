@@ -16,21 +16,24 @@
 --   - la madre del push scrive la riga di listino che le si passa, anche dal
 --     batch e anche nel ramo ON CONFLICT;
 --   - una riga di listino citata da una riga di commessa, su versione ATTIVA,
---     rifiuta UPDATE e DELETE con E_RIGA_LISTINO_PROPAGATA; una non citata no;
+--     non si rettifica (vendite.fn_rettifica_riga_listino: E_RIGA_LISTINO_PROPAGATA);
+--     una non citata si'. Dal 20261115-65 una riga di una ATTIVA non si
+--     scrive fuori dal verbo della rettifica, e non si elimina mai
+--     (E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA);
 --   - re-push su un'altra riga di listino: la vecchia torna modificabile;
 --   - l'emissione porta il legame sull'attivita' fatturabile.
 --
 -- Elenco test (plan 9):
 --   1) una sola fn_upsert_commessa_attivita, ed ha p_listino_riga_id
 --   2) il push scrive listino_riga_id = R1
---   3) UPDATE di R1 (citata)  -> E_RIGA_LISTINO_PROPAGATA
---   4) DELETE di R1 (citata)  -> E_RIGA_LISTINO_PROPAGATA
---   5) UPDATE di R2 (non citata) -> passa
+--   3) rettifica di R1 (citata)  -> E_RIGA_LISTINO_PROPAGATA
+--   4) DELETE di R1 (ATTIVA)    -> E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA
+--   5) rettifica di R2 (non citata) -> passa
 --   6) re-push dal BATCH sullo stesso segmento con R2: nessun errore, la riga
 --      di commessa cita R2 (ramo ON CONFLICT)
---   7) R1 non e' piu' citata: UPDATE passa (D-1)
+--   7) R1 non e' piu' citata: la rettifica passa (D-1)
 --   8) l'emissione porta listino_riga_id = R2 sull'attivita' fatturabile
---   9) UPDATE di R2 (ora citata) -> E_RIGA_LISTINO_PROPAGATA
+--   9) rettifica di R2 (ora citata) -> E_RIGA_LISTINO_PROPAGATA
 --
 -- ⚠️ I rifiuti si asseriscono sul CODICE (CONSTRAINT_NAME dell'eccezione di
 --   script.fn_log_and_raise_error), non su un P0001 qualunque: un throws_ok
@@ -57,13 +60,14 @@ SELECT plan(9);
 CREATE TEMP TABLE t_c AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa('riga listino propagata');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga propagata');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_c), 'riga propagata', p_in_bozza => true);
 
 -- Un articolo, due righe di listino (UoM diverse: la chiave attiva e'
--- versione + articolo + UoM). INSERT su versione ATTIVA e' ammesso: e' la
--- rettifica controllata. Un listino TIPIZZATO accetta solo articoli della sua
--- tipologia: l'articolo nasce con quella.
+-- versione + articolo + UoM). Un listino TIPIZZATO accetta solo articoli della
+-- sua tipologia: l'articolo nasce con quella.
 CREATE TEMP TABLE t_art AS
 SELECT dbops.fn_pgtap_crea_articolo(
            ('PGT-RLP-' || substr(md5(clock_timestamp()::text), 1, 12))::varchar,
@@ -94,6 +98,14 @@ WITH ins AS (
 )
 SELECT (SELECT id FROM ins WHERE uom_id = (SELECT u1 FROM t_uom)) AS r1,
        (SELECT id FROM ins WHERE uom_id = (SELECT u2 FROM t_uom)) AS r2;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
+
+-- La rettifica, dal verbo (dal 20261115-67 e' l'unica scrittura di una riga ATTIVA).
+CREATE FUNCTION pg_temp.rettifica(p_riga bigint, p_prezzo numeric)   -- bigint: id riga; numeric: prezzo
+RETURNS text LANGUAGE sql AS $fx$                                    -- text: l'istruzione
+    SELECT format('SELECT * FROM vendite.fn_rettifica_riga_listino(%s, %s, %L)', p_riga, p_prezzo, 'pgTAP')
+$fx$;
 
 -- La riga di commessa con la riga R1, dal builder: e' lui a chiamare la madre
 -- (dal 2026-10-15, 20261015-23, accetta articolo, versione e riga di listino).
@@ -137,28 +149,28 @@ SELECT is(
 );
 
 -- ============================================================
--- 3-4) R1 citata: UPDATE e DELETE rifiutati col codice giusto
+-- 3-4) R1 citata: la rettifica rifiutata col codice giusto; il DELETE in una
+--   ATTIVA non c'e' piu' (dal 20261115-65: fuori dalla bozza non si elimina)
 -- ============================================================
 SELECT is(
-    dbops.fn_pgtap_codice_errore(format(
-        'UPDATE vendite.listini_righe SET prezzo = 11.00 WHERE id = %s', (SELECT r1 FROM t_r))),
+    dbops.fn_pgtap_codice_errore(pg_temp.rettifica((SELECT r1 FROM t_r), 11.00)),
     'E_RIGA_LISTINO_PROPAGATA',
-    '3) UPDATE della riga di listino citata dalla commessa -> E_RIGA_LISTINO_PROPAGATA'
+    '3) rettifica della riga di listino citata dalla commessa -> E_RIGA_LISTINO_PROPAGATA'
 );
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
         'DELETE FROM vendite.listini_righe WHERE id = %s', (SELECT r1 FROM t_r))),
-    'E_RIGA_LISTINO_PROPAGATA',
-    '4) DELETE della riga di listino citata dalla commessa -> E_RIGA_LISTINO_PROPAGATA'
+    'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+    '4) DELETE di una riga di una versione ATTIVA -> E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA'
 );
 
 -- ============================================================
 -- 5) R2 non citata: la rettifica controllata passa
 -- ============================================================
 SELECT lives_ok(
-    format('UPDATE vendite.listini_righe SET prezzo = 21.00 WHERE id = %s', (SELECT r2 FROM t_r)),
-    '5) UPDATE di una riga di listino NON citata passa (rettifica N6)'
+    pg_temp.rettifica((SELECT r2 FROM t_r), 21.00),
+    '5) la rettifica di una riga di listino NON citata passa (N6)'
 );
 
 -- ============================================================
@@ -211,8 +223,8 @@ SELECT is(
 -- 7) D-1: «propagata» = citata ADESSO. R1 torna modificabile
 -- ============================================================
 SELECT lives_ok(
-    format('UPDATE vendite.listini_righe SET prezzo = 12.00 WHERE id = %s', (SELECT r1 FROM t_r)),
-    '7) R1 non piu'' citata (nessuna AF emessa la cita): UPDATE passa'
+    pg_temp.rettifica((SELECT r1 FROM t_r), 12.00),
+    '7) R1 non piu'' citata (nessuna AF emessa la cita): la rettifica passa'
 );
 
 -- ============================================================
@@ -245,10 +257,9 @@ SELECT is(
 -- 9) R2 ora citata: rifiutata
 -- ============================================================
 SELECT is(
-    dbops.fn_pgtap_codice_errore(format(
-        'UPDATE vendite.listini_righe SET prezzo = 22.00 WHERE id = %s', (SELECT r2 FROM t_r))),
+    dbops.fn_pgtap_codice_errore(pg_temp.rettifica((SELECT r2 FROM t_r), 22.00)),
     'E_RIGA_LISTINO_PROPAGATA',
-    '9) UPDATE della riga di listino citata dopo il re-push -> E_RIGA_LISTINO_PROPAGATA'
+    '9) rettifica della riga di listino citata dopo il re-push -> E_RIGA_LISTINO_PROPAGATA'
 );
 
 SELECT * FROM finish();

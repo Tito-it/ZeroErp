@@ -28,7 +28,7 @@
 --   2) la superficie: «Elimina» acceso su VB (BOZZA)
 --   3) la superficie: «Elimina» spento su VA (ATTIVA), col motivo
 --   4) ⛔ il verbo su VA: E_LISTINO_VERSIONE_NON_ELIMINABILE
---   5) ⛔ DELETE diretto di un componente di VA: E_RIGA_LISTINO_VERSIONE_CHIUSA
+--   5) ⛔ DELETE diretto di un componente di VA: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA
 --   6) ...e VA non ha perso niente (1 riga, 2 componenti)
 --   7) E-1: un componente di una BOZZA (VB) si cancella
 --   8) E-3: la check su VC citata dal contratto: VERSIONE_CITATA, dove vendite.contratti
@@ -174,12 +174,15 @@ SELECT throws_like(
     pg_temp.msg('E_LISTINO_VERSIONE_NON_ELIMINABILE'),
     '4) il verbo su VA (ATTIVA): E_LISTINO_VERSIONE_NON_ELIMINABILE');
 
-SELECT throws_like(
-    format($$DELETE FROM vendite.listini_righe_componenti WHERE id = %s$$,
-           (SELECT min(c.id) FROM vendite.listini_righe_componenti c
-             WHERE c.listino_versione_id = pg_temp.ver('VA'))),
-    pg_temp.msg('E_RIGA_LISTINO_VERSIONE_CHIUSA'),
-    '5) DELETE diretto di un componente di VA: E_RIGA_LISTINO_VERSIONE_CHIUSA');
+-- Dal 20261115-69 la ATTIVA rifiuta col motivo suo, VERSIONE_NON_IN_BOZZA
+-- (prima E_RIGA_LISTINO_VERSIONE_CHIUSA, che diceva «chiusa» di una attiva).
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        'DELETE FROM vendite.listini_righe_componenti WHERE id = %s',
+        (SELECT min(c.id) FROM vendite.listini_righe_componenti c
+          WHERE c.listino_versione_id = pg_temp.ver('VA')))),
+    'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+    '5) DELETE diretto di un componente di VA: E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA');
 
 SELECT is(pg_temp.conta(pg_temp.ver('VA')), '1:1:2',
     '6) ...e VA non ha perso niente: la versione, 1 riga, 2 componenti');

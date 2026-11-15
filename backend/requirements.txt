@@ -56,7 +56,7 @@ et-xmlfile==2.0.0
     # via openpyxl
 fonttools[woff]==4.68.0
     # via weasyprint
-gunicorn==27.0.0
+gunicorn==27.0.1
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
@@ -90,9 +90,9 @@ pillow==13.0.0
     # via
     #   -r ../requirements.in
     #   weasyprint
-psycopg==3.3.8
+psycopg==3.3.9
     # via -r ../requirements.in
-psycopg-binary==3.3.8
+psycopg-binary==3.3.9
     # via -r ../requirements.in
 pycparser==3.12
     # via cffi
@@ -108,7 +108,7 @@ pyjwt==2.15.1
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
-pyotp==2.10.0
+pyotp==2.11.2
     # via -r ../requirements.in
 pyphen==0.18.1
     # via weasyprint

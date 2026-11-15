@@ -86,7 +86,21 @@
 #                          script.fn_giorno_operativo. Si ricopia da solo quando
 #                          una vista viva si ricrea dalla sua definizione
 #                          (linee-guida-sql §11.10)
-#   pgtap-pgagent-owner    un pgTAP che legge `pgagent.*` senza
+#   fine-mese-intervallo   la fine del mese scritta con l'intervallo «1 mese -
+#                          1 giorno» nel codice di un changeSet: e'
+#                          script.fn_fine_mese_di anche senza date_trunc, quando
+#                          il primo del mese arriva da una variabile. Non e' la
+#                          regola: make_interval(months => n) - 1 giorno (fine di
+#                          un periodo di n mesi) e + 1 mese (aritmetica dei mesi)
+#                          (linee-guida-sql §11.10)
+#   mesi-intervallo        mesi sommati con un interval nel codice di un
+#                          changeSet: make_interval(months => …) o un letterale
+#                          di mesi ('1 month', '1 mon'). n mesi dopo un giorno e'
+#                          script.fn_mesi_dopo, i mesi di un tratto
+#                          script.fn_mesi_del_tratto; su un istante si passa
+#                          prima da script.fn_giorno_operativo (linee-guida-sql
+#                          §11.10)
+#   pgtap-pgagent-owner  un pgTAP che legge `pgagent.*` senza
 #                          `-- pgtap-runner: owner` nelle prime 80 righe: il
 #                          runner lo esegue come applicazione, che sullo schema
 #                          pgagent non ha USAGE (guida pgTAP)
@@ -557,6 +571,106 @@ def nullvalue_ignorato(cs: dict, percorso: Path) -> list[Violazione]:
 
 DATE_TRUNC_RE = re.compile(r"\bdate_trunc\s*\(", re.IGNORECASE)
 
+# La fine del mese scritta con l'intervallo: un letterale «1 mese - 1 giorno»,
+# oppure «1 mese» seguito da «- 1 giorno». Le stesse due espressioni del
+# presidio vivo (script/test-mese-di-un-giorno-v1, 19), che coprono anche le
+# grafie stampate da PostgreSQL ('1 mon -1 days'::interval).
+FINE_MESE_INTERVALLO_RE = (
+    re.compile(r"'\s*1\s*mon(th)?s?\s*-\s*1\s*days?\s*'", re.IGNORECASE),
+    re.compile(r"'\s*1\s*mon(th)?s?\s*'(\s*::\s*interval)?\s*\)?\s*-\s*(interval\s*)?'\s*1\s*days?\s*'",
+               re.IGNORECASE),
+)
+
+
+# Scopo: il codice di un blocco SQL senza commenti e senza la prosa dei
+#        COMMENT (letterale o dollar-quote subito dopo IS), ma con i
+#        letterali del codice: e' gc.spoglia, che invece li toglie tutti.
+#        Serve alle regole che cercano un letterale (un intervallo); le righe
+#        restano al loro posto.
+def _codice_con_letterali(sql: str) -> str:
+    fuori: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        if sql.startswith("--", i):
+            fine = sql.find("\n", i)
+            i = n if fine < 0 else fine
+            continue
+        if sql.startswith("/*", i):
+            f = gc.fine_commento_blocco(sql, i)
+            fuori.append("\n" * sql.count("\n", i, f.pos))
+            i = f.pos
+            continue
+        prosa = gc.IS_PRIMA_RE.search("".join(fuori).rstrip()) is not None
+        if sql[i] == "$":
+            m = gc.DOLLAR_RE.match(sql, i)
+            if m:
+                if prosa:
+                    dq = gc.dollar_quote(sql, i)
+                    assert dq is not None
+                    fine = dq[1].pos
+                    fuori.append("\n" * sql.count("\n", i, fine))
+                    i = fine
+                    continue
+                fuori.append(m.group(0))
+                i = m.end()
+                continue
+        if sql[i] == "'":
+            f = gc.fine_letterale(sql, i)
+            fine = f.pos if f.chiuso else n
+            fuori.append("\n" * sql.count("\n", i, fine) if prosa else sql[i:fine])
+            i = fine
+            continue
+        m = gc.SPECIALE_RE.search(sql, i + 1)
+        fine = n if m is None else m.start()
+        fuori.append(sql[i:fine])
+        i = fine
+    return "".join(fuori)
+
+
+# Sommare mesi per conto proprio: make_interval(months => …) o un intervallo
+# di mesi ('1 month', '12 months', '1 mon'). Le stesse espressioni del
+# presidio vivo (script/test-mesi-dal-calendario-v1, 16). La fine del mese
+# ('1 month - 1 day') e' l'altra regola: questa non la prende.
+MESI_INTERVALLO_RE = (
+    re.compile(r"make_interval\s*\([^)]*\bmonths\s*=>", re.IGNORECASE),
+    re.compile(r"'\s*[-+]?\d+\s*mon(th)?s?\s*'", re.IGNORECASE),
+)
+
+
+def mesi_intervallo(cs: dict, _percorso: Path) -> list[Violazione]:
+    fuori = []
+    for _sezione, sql in gc.blocchi_sql(cs):
+        if not re.search(r"mon", sql, re.IGNORECASE):
+            continue
+        testo = _codice_con_letterali(sql)
+        righe = sql.split("\n")
+        for regola in MESI_INTERVALLO_RE:
+            for m in regola.finditer(testo):
+                riga = testo.count("\n", 0, m.start()) + 1
+                fuori.append((f"sql, riga ~{riga}: mesi sommati con un interval — n mesi dopo un "
+                              "giorno e' script.fn_mesi_dopo, i mesi di un tratto "
+                              "script.fn_mesi_del_tratto; un istante passa prima da "
+                              "script.fn_giorno_operativo (linee-guida-sql §11.10)",
+                              righe[riga - 1].strip()[:150] if riga <= len(righe) else ""))
+    return fuori
+
+
+def fine_mese_intervallo(cs: dict, _percorso: Path) -> list[Violazione]:
+    fuori = []
+    for _sezione, sql in gc.blocchi_sql(cs):
+        if not re.search(r"mon", sql, re.IGNORECASE):
+            continue
+        testo = _codice_con_letterali(sql)
+        righe = sql.split("\n")
+        for regola in FINE_MESE_INTERVALLO_RE:
+            for m in regola.finditer(testo):
+                riga = testo.count("\n", 0, m.start()) + 1
+                fuori.append((f"sql, riga ~{riga}: la fine del mese scritta come «1 mese - 1 giorno» — "
+                              "e' script.fn_fine_mese_di, anche quando il primo del mese arriva da "
+                              "una variabile (linee-guida-sql §11.10)",
+                              righe[riga - 1].strip()[:150] if riga <= len(righe) else ""))
+    return fuori
+
 
 def date_trunc_nel_codice(cs: dict, _percorso: Path) -> list[Violazione]:
     fuori = []
@@ -594,6 +708,12 @@ REGOLE_CHANGESET: list[tuple[str, Callable[[dict, Path], list[Violazione]], tupl
     #   funzioni vive le ritirano i giri di brief-db-mese-di-un-giorno, e i
     #   changelog mergiati non si toccano.
     ("date-trunc", date_trunc_nel_codice, (20261114, 84)),
+    # ⚠️ Parte dal giro 5 di brief-db-mese-di-un-giorno (20261115-59), che ritira
+    #   l'ultima copia viva; 20261115-18 la porta ancora, ed e' mergiato.
+    ("fine-mese-intervallo", fine_mese_intervallo, (20261115, 59)),
+    # ⚠️ Parte dal giro 6 (20261115-62), che ritira l'ultima aritmetica dei
+    #   mesi viva (fn_canone_periodi, -64); i changelog mergiati la portano.
+    ("mesi-intervallo", mesi_intervallo, (20261115, 62)),
 ]
 
 # type-perso e id-senza-type partono da oggi: la storia ne ha centinaia.

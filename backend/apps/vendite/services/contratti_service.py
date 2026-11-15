@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date
@@ -645,11 +646,13 @@ class ContrattiService:
                 detail=f"Ammessi: {', '.join(sorted(_AMBITI_VALIDI))}.",
                 context={"ambito": ambito},
             )
-        # Validazione scadenza_mese: formato YYYY-MM, mese >= mese corrente.
+        # Validazione scadenza_mese: formato YYYY-MM con mese 01-12. Un mese
+        # passato e' ammesso: dice quali contratti sono scaduti in quel mese.
+        # Senza il controllo del mese, `2026-13` arriverebbe al DB come data
+        # non valida (22008) invece che come errore di validazione.
         if scadenza_mese is not None:
-            import re
             ErrorManager.require(
-                bool(re.match(r"^\d{4}-\d{2}$", scadenza_mese)),
+                bool(re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", scadenza_mese)),
                 code=E_VENDITE_VALIDATION,
                 message="Formato scadenza_mese non valido.",
                 detail="Atteso YYYY-MM (es. 2026-07).",

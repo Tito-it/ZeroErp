@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_articolo_quota_fissa_a_canone(p_articolo_id)`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -23,8 +23,12 @@ listino, deve avere la periodicità.
 
 * il motivo 3 di [`script.fn_check_versione_listino_attivabile`](/dbzero/script/manual/fn_check_versione_listino_attivabile):
   la versione non si attiva con una quota fissa a canone senza periodicità;
-* il guard [`vendite.trgfn_listini_righe_guard_periodicita_quota_fissa`](/dbzero/vendite/funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa):
-  fuori dalla bozza la sua periodicità non si toglie.
+* il builder dei pgTAP `dbops.fn_pgtap_listino_aggiungi_articoli`, per dare la periodicità alle
+  quote che la vogliono.
+
+Dopo l'attivazione la periodicità non si toglie perché la riga non si tocca: fuori dalla bozza
+non si scrive niente
+([vendite.trgfn_listini_righe_guard_stato](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato)).
 
 ⚠️ La dice il **catalogo**, che può cambiare dopo l'attivazione del listino. Il lister dei canoni
 lo vede e lo segnala (`SENZA_PERIODICITA`, `QUOTA_FISSA_SENZA_CANONE`, in

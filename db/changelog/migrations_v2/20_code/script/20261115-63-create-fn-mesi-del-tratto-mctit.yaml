@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_mesi_del_tratto — I MESI CHE UN TRATTO DI GIORNI TOCCA
+#   Brief: brief-db-mese-di-un-giorno, giro 6 (§6.6). Forma decisa da Tid
+#   il 2026-11-15 (due BB in script).
+#
+# ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────
+#   I mesi di un tratto si contavano con
+#   `generate_series(<date>, <date>, interval '1 month')`. generate_series
+#   non ha una variante per date: PostgreSQL sceglie quella su timestamptz,
+#   quindi ogni mese era un ISTANTE, la mezzanotte nel fuso della sessione,
+#   riportato a data con un cast. Il risultato coincide, ma il calendario
+#   passava da un istante: e' la forma che brief-db-mese-di-un-giorno ritira
+#   (letto sullo scratch il 2026-11-15: pg_typeof = timestamp with time zone).
+#
+# ── LA REGOLA ───────────────────────────────────────────────────────
+#   Una riga per ogni mese di calendario dal mese di p_dal al mese di p_al
+#   compresi, in ordine: il primo e l'ultimo giorno del mese. p_al in un
+#   mese prima di quello di p_dal: nessuna riga. Lo stesso insieme di
+#   generate_series(fn_mese_di(p_dal), p_al, interval '1 month').
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Una serie di INTERI (0 .. mesi fra i due), da cui il mese con
+#   script.fn_mesi_dopo e la fine con script.fn_fine_mese_di. Niente
+#   interval, timestamp o fuso. IMMUTABLE STRICT PARALLEL SAFE: con un
+#   estremo NULL, nessuna riga. sql a stringa: le dipendenze dai tre BB non
+#   vanno in pg_depend, e la preCondition chiede che esistano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261115-63-create-fn-mesi-del-tratto-mctit.yaml
+
+  - changeSet:
+      id: 20261115-63-create-fn-mesi-del-tratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_mesi_del_tratto(date, date): i mesi di calendario che un tratto di giorni
+        tocca, col primo e l'ultimo giorno di ciascuno, su una serie di interi (IMMUTABLE).
+        Sostituisce generate_series(<date>, <date>, interval '1 month'), che passa da
+        timestamptz. Brief: brief-db-mese-di-un-giorno, giro 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT (count(*) FILTER (WHERE p.proname = 'fn_mesi_del_tratto') = 0
+                      AND count(*) FILTER (WHERE p.proname IN ('fn_mese_di', 'fn_fine_mese_di',
+                                                               'fn_mesi_dopo')) = 3)::int
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_mesi_del_tratto', 'fn_mese_di', 'fn_fine_mese_di',
+                                   'fn_mesi_dopo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: due giorni qualunque del
+              -- calendario e i mesi fra loro. Serve colonne e parametri diversi,
+              -- quindi non e' il riflesso di nessuna colonna.
+              CREATE OR REPLACE FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+               RETURNS TABLE(mese date, fine_mese date)
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- k = 0 e' il mese di p_dal; l'ultimo k e' il mese di p_al.
+                  -- Con p_al in un mese prima, la serie e' vuota.
+                  SELECT s.primo, script.fn_fine_mese_di(s.primo)
+                    FROM (SELECT k, script.fn_mesi_dopo(script.fn_mese_di(p_dal), k) AS primo
+                            FROM generate_series(
+                                     0,
+                                     (extract(year FROM p_al)::integer * 12
+                                      + extract(month FROM p_al)::integer)
+                                     - (extract(year FROM p_dal)::integer * 12
+                                        + extract(month FROM p_dal)::integer)) AS k) s
+                   ORDER BY s.k
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_del_tratto(p_dal date, p_al date)
+                IS 'I mesi di calendario che il tratto da p_dal a p_al tocca: una riga per mese, in ordine, col primo giorno (mese) e l''ultimo (fine_mese). p_al in un mese prima di quello di p_dal: nessuna riga; un estremo NULL: nessuna riga. Gli estremi del tratto non tagliano il mese: chi vuole i giorni coperti li taglia con greatest/least. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di generate_series(<date>, <date>, interval ''1 month''), che passa da timestamptz. Lavora su GIORNI: un istante passa prima da script.fn_giorno_operativo. Il mese di un giorno e'' script.fn_mese_di, n mesi dopo script.fn_mesi_dopo.';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono: il ciclo che li ridistribuisce gira in ci_apply.
+              --    Il ruolo batch e' coperto dal provisioning (linee-guida-sql.md §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_mesi_del_tratto(date, date) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_mesi_del_tratto(date, date);

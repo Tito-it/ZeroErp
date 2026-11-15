@@ -22,7 +22,9 @@
 --     vendite.fn_contratti_addebiti_maturati_con_provenienza;
 --   - una riga di listino citata da una riga d'ordine o da una riga di
 --     preventivo in bozza non si rettifica e non si cancella
---     (E_RIGA_LISTINO_PROPAGATA); una non citata si';
+--     (E_RIGA_LISTINO_PROPAGATA, dal verbo della rettifica); una non citata
+--     si'; e in una ATTIVA nessuna riga si cancella (dal 20261115-65,
+--     E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA);
 --   - il prezzo cambiato dopo la precompilazione fa decadere la provenienza
 --     (il trigger di riga, R-2): il push la porta MANUALE, senza listino, e la
 --     riga di listino che nessun altro cita torna rettificabile.
@@ -37,10 +39,10 @@
 --   7) ordine: la riga scritta a mano esce MANUALE, senza listino ne' contesto
 --   8) bolla senza prezzo: prezzo e provenienza della riga d'ordine
 --   9) la riga di listino citata da un ordine non si rettifica (propagata)
---  10) e non si cancella
+--  10) e non si cancella: in una ATTIVA nessuna riga si cancella
 --  11) la riga di listino citata da un preventivo IN BOZZA non si rettifica
 --  12) una riga di listino che nessuno cita si rettifica
---  13) la riga propagata del guard di stato (la sua check, giro 6f-bis) guarda le dieci tabelle dei documenti
+--  13) la riga propagata (la check della rettifica, giro 6f-ter) guarda le dieci tabelle dei documenti
 --  14) la riga di listino non esce piu' dal meta del push dei contratti
 --  15) ordine: il prezzo cambiato dopo la precompilazione esce MANUALE, senza listino
 --  16) e la riga di listino che citava torna rettificabile
@@ -76,8 +78,10 @@ SELECT min(u.id) AS utility_id
  WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
                 WHERE ltu.utility_id = u.id AND ltu.attivo);
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test (anche R5, del caso 15-16) e si attiva dal verbo.
 CREATE TEMP TABLE t_l AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza push');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM t_u), 'provenienza push', p_in_bozza => true);
 
 -- a1 (da listino), a2 (a mano), a3 (il preventivo in bozza), a4 (nessuno lo cita).
 CREATE TEMP TABLE t_art AS
@@ -101,6 +105,28 @@ WITH ins AS (
 SELECT (SELECT id FROM ins WHERE articolo_id = (SELECT a1 FROM t_art)) AS r1,
        (SELECT id FROM ins WHERE articolo_id = (SELECT a3 FROM t_art)) AS r3,
        (SELECT id FROM ins WHERE articolo_id = (SELECT a4 FROM t_art)) AS r4;
+
+CREATE TEMP TABLE t_a5 AS
+SELECT dbops.fn_pgtap_crea_articolo(('PGT-PPU-5' || substr(md5(clock_timestamp()::text), 1, 10))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a5;
+
+CREATE TEMP TABLE t_r5 AS
+WITH ins AS (
+    INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+    SELECT (SELECT listino_versione_id FROM t_l), a.id, a.uom_id, 50.00
+      FROM catalogo.articoli a
+     WHERE a.id = (SELECT a5 FROM t_a5)
+    RETURNING id
+)
+SELECT id AS r5 FROM ins;
+
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM t_l), 'ATTIVA');
+
+-- La rettifica, dal verbo (dal 20261115-67 e' l'unica scrittura di una riga ATTIVA).
+CREATE FUNCTION pg_temp.rettifica(p_riga bigint, p_prezzo numeric)   -- bigint: id riga; numeric: prezzo
+RETURNS text LANGUAGE sql AS $fx$                                    -- text: l'istruzione
+    SELECT format('SELECT * FROM vendite.fn_rettifica_riga_listino(%s, %s, %L)', p_riga, p_prezzo, 'pgTAP')
+$fx$;
 
 -- Il contesto del resolver che il pricing gate scriverebbe.
 CREATE TEMP TABLE t_ctx AS
@@ -253,8 +279,7 @@ SELECT is(
 -- 9-13) D-4: la riga di listino citata da un documento e' propagata
 -- ============================================================
 SELECT is(
-    dbops.fn_pgtap_codice_errore(format(
-        'UPDATE vendite.listini_righe SET prezzo = 51 WHERE id = %s', (SELECT r1 FROM t_r))),
+    dbops.fn_pgtap_codice_errore(pg_temp.rettifica((SELECT r1 FROM t_r), 51)),
     'E_RIGA_LISTINO_PROPAGATA',
     '9) la riga di listino citata da un ordine non si rettifica'
 );
@@ -262,19 +287,18 @@ SELECT is(
 SELECT is(
     dbops.fn_pgtap_codice_errore(format(
         'DELETE FROM vendite.listini_righe WHERE id = %s', (SELECT r1 FROM t_r))),
-    'E_RIGA_LISTINO_PROPAGATA',
-    '10) e non si cancella'
+    'E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA',
+    '10) e non si cancella: in una versione ATTIVA nessuna riga si cancella'
 );
 
 SELECT is(
-    dbops.fn_pgtap_codice_errore(format(
-        'UPDATE vendite.listini_righe SET prezzo = 51 WHERE id = %s', (SELECT r3 FROM t_r))),
+    dbops.fn_pgtap_codice_errore(pg_temp.rettifica((SELECT r3 FROM t_r), 51)),
     'E_RIGA_LISTINO_PROPAGATA',
     '11) la riga di listino citata da un preventivo in bozza non si rettifica'
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.listini_righe SET prezzo = 51 WHERE id = %s', (SELECT r4 FROM t_r)),
+    pg_temp.rettifica((SELECT r4 FROM t_r), 51),
     '12) una riga di listino che nessuno cita si rettifica'
 );
 
@@ -284,12 +308,12 @@ SELECT is(
                          'ordini_righe_componenti', 'contratti_righe', 'contratti_righe_componenti',
                          'ddt_righe', 'ddt_righe_componenti', 'offerte_commerciali_eccezioni',
                          'offerte_commerciali_eccezioni_componenti']) t
-      -- La regola del guard di stato sta nella sua check (giro 6f-bis):
-      --   la riga «propagata» si cerca li'.
-      WHERE pg_get_functiondef('script.fn_check_listino_riga_scrivibile'::regproc)
+      -- «Propagata» e' una domanda della rettifica (giro 6f-ter): la riga si
+      --   cerca nella sua check.
+      WHERE pg_get_functiondef('script.fn_check_listino_riga_rettificabile'::regproc)
             ~ ('FROM vendite\.' || t || '\s+WHERE listino_riga_id = p_listino_riga_id')),
     10,
-    '13) la riga propagata del guard di stato guarda le righe e i componenti dei cinque documenti'
+    '13) la riga propagata della rettifica guarda le righe e i componenti dei cinque documenti'
 );
 
 -- ============================================================
@@ -304,21 +328,9 @@ SELECT ok(
 -- ============================================================
 -- 15-16) R-6, il terzo caso: il prezzo cambiato dopo la precompilazione
 -- ============================================================
--- a5 con la sua riga R5; O3 la cita in bozza, poi l'operatore cambia il prezzo
--- senza ricaricarlo dal listino: per il trigger di riga e' una decadenza.
-CREATE TEMP TABLE t_a5 AS
-SELECT dbops.fn_pgtap_crea_articolo(('PGT-PPU-5' || substr(md5(clock_timestamp()::text), 1, 10))::varchar, false,
-           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a5;
-
-CREATE TEMP TABLE t_r5 AS
-WITH ins AS (
-    INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
-    SELECT (SELECT listino_versione_id FROM t_l), a.id, a.uom_id, 50.00
-      FROM catalogo.articoli a
-     WHERE a.id = (SELECT a5 FROM t_a5)
-    RETURNING id
-)
-SELECT id AS r5 FROM ins;
+-- a5 e la sua riga R5 stanno nella fixture (le righe si scrivono in bozza);
+-- O3 la cita in bozza, poi l'operatore cambia il prezzo senza ricaricarlo dal
+-- listino: per il trigger di riga e' una decadenza.
 
 CREATE TEMP TABLE t_o3 AS
 SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe(
@@ -341,7 +353,7 @@ SELECT is(
 );
 
 SELECT lives_ok(
-    format('UPDATE vendite.listini_righe SET prezzo = 52 WHERE id = %s', (SELECT r5 FROM t_r5)),
+    pg_temp.rettifica((SELECT r5 FROM t_r5), 52),
     '16) e la riga di listino che citava torna rettificabile: nessuno la cita piu'''
 );
 

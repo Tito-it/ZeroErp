@@ -10,7 +10,8 @@
 --   (vendite.fn_resolve_prezzo_listino_v2_esito), -48
 --   (vendite.trgfn_listini_kit_guard), -49
 --   (vendite.trgfn_listini_righe_comp_guard_immutabilita_v5), -50
---   (vendite.trgfn_listini_righe_guard_periodicita_quota_fissa), -51
+--   (vendite.trgfn_listini_righe_guard_periodicita_quota_fissa, ritirato dal
+--   20261115-74: fuori dalla bozza non si scrive niente), -51
 --   (vendite.trgfn_listini_righe_guard_stato), -52
 --   (vendite.trgfn_listini_versioni_guard_per_stato).
 --   Brief: brief-db-stati-documento-dal-vocabolario, giro 6f (S-2, S-3).
@@ -32,7 +33,7 @@
 -- ⭐ I CASI SI COSTRUISCONO: la versione attiva dal builder (che la attiva dal
 --   verbo), la bozza con l'INSERT dell'applicazione (nasce nello stato
 --   iniziale). Nessuno skip.
--- ⚠️ Il kit, i componenti e la periodicita' della quota fissa (-46, -48 … -50)
+-- ⚠️ Il kit e i componenti (-46, -48, -49)
 --   hanno solo il presidio sulla forma: la correzione e' la stessa lettura,
 --   e costruirne i casi chiede un composito e una tipologia di quota fissa.
 --
@@ -207,11 +208,10 @@ SELECT is(
                     'vendite.fn_resolve_prezzo_listino_v2_esito',
                     'vendite.trgfn_listini_kit_guard',
                     'vendite.trgfn_listini_righe_comp_guard_immutabilita_v5',
-                    'vendite.trgfn_listini_righe_guard_periodicita_quota_fissa',
                     'vendite.trgfn_listini_righe_guard_stato',
                     'vendite.trgfn_listini_versioni_guard_per_stato')) x),
-    '11 -',
-    '7. forma: gli undici lettori non nominano BOZZA, la versione in vigore non nomina ATTIVA e CHIUSA'
+    '10 -',
+    '7. forma: i dieci lettori non nominano BOZZA, la versione in vigore non nomina ATTIVA e CHIUSA'
 );
 
 -- ============================================================

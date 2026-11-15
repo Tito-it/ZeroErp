@@ -26,13 +26,18 @@
 #       C, senza listino) e un altro smoke, sullo stesso cliente, trovava
 #       E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C; l'altro tentava un DELETE fisico
 #       che falliva in silenzio.
-#   smoke_articolo_merce                           # -> ARTICOLO_ID
+#   smoke_articolo_merce                           # -> ARTICOLO_ID, ARTICOLO_UOM_ID
 #       Un articolo che puo' stare in un ORDINE o in una BOLLA: attivo, non
 #       composito, con natura di vendita a destinazione ORDINE_VENDITA (la regola di
 #       script.fn_check_articolo_riga, E_RIGA_NATURA_NON_AMMESSA: un servizio
 #       non si spedisce). Fino al 2026-10-13 gli smoke prendevano «il primo
 #       articolo del catalogo», e il giorno che era un servizio l'ordine veniva
 #       rifiutato. Vuoto = nessuna merce nel catalogo (lo smoke si ferma).
+#       ARTICOLO_UOM_ID e' la sua unita' base (`uom_id`, sempre fra le
+#       operative: il DB la iscrive alla nascita), da mandare come
+#       `uom_operativa_id` della riga. ⚠️ Dal 2026-11-15 (gate della provenienza
+#       del prezzo) ordine e bolla la chiedono anche col prezzo a mano: L1/L2 si
+#       confrontano col listino, che risponde per unita'. Senza, la riga e' un 400.
 # Vuole: BASE_URL, TOKEN.
 # Note: ⚠️ Senza un modello di documento per quel documento e quell'emittente,
 #       /emetti/ risponde 404 E_DOCUMENTI_NOT_FOUND: e' CONFIGURAZIONE
@@ -109,24 +114,30 @@ except Exception:
 }
 
 smoke_articolo_merce() {
-    local offset righe
-    ARTICOLO_ID=""
+    local offset righe scelto
+    ARTICOLO_ID=""; ARTICOLO_UOM_ID=""
     # `limit`/`offset`: la lista rifiuta `page`/`page_size` (400).
     for offset in $(seq 0 100 3000); do
         righe=$(curl -s -H "Authorization: Bearer ${TOKEN:-none}" \
             "${BASE_URL}/api/v1/catalogo/articoli/?attivo=true&limit=100&offset=${offset}" 2>/dev/null)
-        ARTICOLO_ID=$(echo "$righe" | python3 -c "
+        # Una riga: «id uom_id» dell'articolo scelto, vuota per «pagina senza
+        # merce», FINE per «catalogo finito».
+        scelto=$(echo "$righe" | python3 -c "
 import sys, json
 try:
     rows = json.load(sys.stdin).get('data', {}).get('results') or []
     r = next((x for x in rows if x.get('natura_vendita_destinazione_tipo') == 'ORDINE_VENDITA'
-              and not x.get('is_composito') and x.get('attivo') is not False), None)
-    print(r['id'] if r else ('' if len(rows) == 100 else 'FINE'))
+              and not x.get('is_composito') and x.get('attivo') is not False
+              and x.get('uom_id') is not None), None)
+    print(f\"{r['id']} {r['uom_id']}\" if r else ('' if len(rows) == 100 else 'FINE'))
 except Exception:
     print('FINE')
 " 2>/dev/null)
-        [[ "$ARTICOLO_ID" == "FINE" ]] && { ARTICOLO_ID=""; break; }
-        [[ -n "$ARTICOLO_ID" ]] && break
+        [[ "$scelto" == "FINE" ]] && break
+        if [[ -n "$scelto" ]]; then
+            ARTICOLO_ID="${scelto%% *}"; ARTICOLO_UOM_ID="${scelto##* }"
+            break
+        fi
     done
     [[ -z "$ARTICOLO_ID" ]] && echo "  [_smoke_documenti] nessun articolo merce (natura a destinazione ORDINE_VENDITA) nel catalogo" >&2
     return 0

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_listino_aggiungi_articoli`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,7 +13,7 @@
 >
 > * [script.fn_check_articolo_riga](/dbzero/script/funzioni/fn_check_articolo_riga) — la regola per cui un'eccezione pretende l'articolo nel listino
 > * [catalogo.trgfn_articoli_guard_struttura_se_usato](/dbzero/catalogo/funzioni/trgfn_articoli_guard_struttura_se_usato) — perché va chiamata prima dell'uso
-> * [vendite.trgfn_listini_righe_guard_periodicita_quota_fissa](/dbzero/vendite/funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa) — la periodicità che una quota fissa vorrebbe
+> * [script.fn_check_listino_riga_scrivibile](/dbzero/script/manual/fn_check_listino_riga_scrivibile) — le righe si scrivono solo in bozza: la versione del builder si chiede con `p_in_bozza => true`, e si attiva dopo
 > * [dbops.fn_pgtap_crea_listino](/dbzero/dbops/funzioni/fn_pgtap_crea_listino) — la fixture del listino su cui di solito si lavora
 >
 > Guide:

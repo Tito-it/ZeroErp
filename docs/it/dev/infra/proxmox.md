@@ -1,6 +1,6 @@
 # Guida operativa Proxmox — Stack DEV
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**    
 >    
@@ -9,7 +9,7 @@
 
 **Target**: ambiente di sviluppo con almeno tre macchine su **Proxmox VE**:
 
-* **VM `dbdev`** (PostgreSQL 17 + Liquibase) — *già operativo*
+* **VM `dbdev`** (PostgreSQL + Liquibase) — *già operativo*
 * **LXC `backend-dev`** (Django API) — *già operativo*
 * **VM/LXC `frontend-dev`** (Vue + Node.js) — *da creare*
 
@@ -75,7 +75,7 @@ sudo tailscale up --advertise-exit-node
 
 ---
 
-## 4) VM `dbdev` (PostgreSQL 17 + Liquibase)
+## 4) VM `dbdev` (PostgreSQL + Liquibase)
 
 ### 4.1 Configurazione DB sicura
 
@@ -93,7 +93,7 @@ sudo tailscale up --advertise-exit-node
   # host all all 192.168.X.0/24  scram-sha-256
   # host all all 100.0.0.0/8     scram-sha-256
   ```
-* Utenti/ownership: `titodb` owner delle tabelle **Liquibase**; estensioni (`postgis`, `postgis_topology`, `dblink`) create da superuser.
+* Ruoli, ownership ed estensioni non si fanno a mano: il migratore è `zeroerp_owner`, i ruoli li crea `scripts/sql/provision_zeroerp.sql` e le estensioni il primo passo di Liquibase, da superuser — [Installazione](../../installazione.md#lordine-dei-passi). La versione di PostgreSQL è quella della CI.
 
 ### 4.2 Accesso e migrazioni
 
@@ -103,17 +103,7 @@ sudo tailscale up --advertise-exit-node
   ssh -L 5432:localhost:5432 tid@100.<IP-dbdev>
   # pgAdmin/liquibase: host=localhost, port=5432
   ```
-* **Liquibase** (su dbdev):
-
-  ```properties
-  # db/liquibase.properties
-  url=jdbc:postgresql://127.0.0.1:5432/zeroerp
-  username=titodb
-  password=*****
-  changeLogFile=changelog/changelog-master.yaml
-  ```
-
-  Comandi: `liquibase validate | status --verbose | updateSQL | update`
+* **Liquibase** (su dbdev): si installa con `scripts/installa-liquibase.sh` e si lancia solo dal wrapper `scripts/liquibase5.sh` (o dal `makefile`), col master `changelog-master-v2.yaml` — [workflow Liquibase](../../liquibase-setup-workflow.md).
 
 ### 4.3 Avvio/Shutdown & Agent
 
@@ -297,10 +287,8 @@ pct set 101 -onboot 1 -startup order=30,up=20,down=60
 # Backup storage NFS (CLI Proxmox)
 pvesm add nfs nas-backup --server 192.168.X.20 --export /volume1/proxmox-backup --content backup --mkdir 1
 
-# Liquibase su dbdev
-liquibase validate
-liquibase status --verbose
-liquibase update
+# Liquibase su dbdev: sempre dal wrapper
+scripts/liquibase5.sh --version
 
 # Tunnel DB dal PC
 ssh -L 5432:localhost:5432 tid@100.<IP-dbdev>

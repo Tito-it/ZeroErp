@@ -1,12 +1,16 @@
 # Guida Operativa — Server “dbdev” su Proxmox con PostgreSQL
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > **Obiettivo**
-> Preparare e gestire un server *dbdev* (VM) con **PostgreSQL 17** su **Proxmox VE**, accessibile in sicurezza via **Tailscale**/**SSH tunnel**, con **Liquibase** per le migrazioni e **backup Proxmox → NAS Synology**.
+> Preparare e gestire un server *dbdev* (VM) con **PostgreSQL** (la versione della CI) su **Proxmox VE**, accessibile in sicurezza via **Tailscale**/**SSH tunnel**, con **Liquibase** per le migrazioni e **backup Proxmox → NAS Synology**.
 >
 > **Contesto**
-> Le istruzioni sintetizzano e normalizzano quanto fatto nelle sessioni “Proxmox parte 1–3” e successive: rete, Tailscale (exit node *solo se serve*), firewall, Postgres (SCRAM), Liquibase, VS Code remoto, MkDocs, backup su NAS.
+> Le istruzioni sintetizzano e normalizzano quanto fatto nelle sessioni “Proxmox parte 1–3” e successive: rete, Tailscale (exit node *solo se serve*), firewall, Postgres (SCRAM), Liquibase, VS Code remoto, documentazione, backup su NAS.
+>
+> ⚠️ Questa pagina descrive la **macchina** (rete, sicurezza, backup). Ruoli, estensioni, ordine dei
+> passi e comandi Liquibase non si ripetono qui: stanno in [Installazione](../../installazione.md) e nel
+> [workflow Liquibase](../../liquibase-setup-workflow.md), che sono la fonte.
 
 ---
 
@@ -14,10 +18,10 @@
 
 * **Host**: Proxmox VE (nodo unico) con accesso web `https://<IP>:8006`.
 * **Rete**: LAN `192.168.X.0/24`; opzionale **Tailscale** per accesso remoto sicuro (IP 100.x).
-* **VM “dbdev”**: Debian/Ubuntu, ospita PostgreSQL 17 e tooling (Liquibase, MkDocs).
+* **VM “dbdev”**: Debian/Ubuntu, ospita PostgreSQL e tooling (Liquibase, documentazione con Zensical).
 * **Accesso DB**: *solo locale* o via **SSH tunnel**; evitare esposizioni esterne (niente 5432 pubblico).
 * **Backup**: **VZDump** Proxmox verso **Synology NAS** via **NFS** (storage `nas-backup`).
-* **Dev tools**: VS Code Remote-SSH, workspace multi-root; documentazione con MkDocs + port-forward 8000.
+* **Dev tools**: VS Code Remote-SSH, workspace multi-root; documentazione con Zensical + port-forward.
 
 ---
 
@@ -94,11 +98,12 @@
 
 ---
 
-## 7) PostgreSQL 17 su “dbdev”
+## 7) PostgreSQL su “dbdev”
 
 ### 7.1 Install & base
 
-* Usa repository ufficiali (già in uso) e servizi systemd.
+* Usa repository ufficiali (già in uso) e servizi systemd, alla versione della CI (l'immagine
+  `postgis/postgis` dei workflow in `.github/workflows/`).
 * Verifica porta:
 
   ```bash
@@ -125,58 +130,32 @@
 
   ```bash
   sudo -u postgres psql -c "ALTER SYSTEM SET password_encryption='scram-sha-256'; SELECT pg_reload_conf();"
-  sudo -u postgres psql -c "ALTER ROLE titodb WITH LOGIN PASSWORD '*****';"
+  sudo -u postgres psql -c "ALTER ROLE zeroerp_owner WITH LOGIN PASSWORD '*****';"
   ```
 
 ### 7.3 Ruoli, estensioni, ownership
 
-* **Ruoli applicativi** (es. `titodb`, `zeroerp_app`):
-
-  ```bash
-  sudo -u postgres psql -c "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='zeroerp_app') THEN CREATE ROLE zeroerp_app LOGIN; END IF; END $$;"
-  ```
-* **Estensioni** (richiedono superuser):
-
-  ```bash
-  sudo -u postgres psql -d zeroerp -c "CREATE EXTENSION IF NOT EXISTS postgis;"
-  sudo -u postgres psql -d zeroerp -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;"
-  sudo -u postgres psql -d zeroerp -c "CREATE EXTENSION IF NOT EXISTS dblink WITH SCHEMA public;"
-  ```
-* **Ownership tabelle Liquibase**:
-
-  ```bash
-  sudo -u postgres psql -d zeroerp -c "ALTER TABLE public.databasechangelog OWNER TO titodb; ALTER TABLE public.databasechangeloglock OWNER TO titodb;"
-  ```
+⛔ Non si creano a mano. I **ruoli di sistema** (`zeroerp_owner`, `zeroerp_app`, `zeroerp_job`,
+`zeroerp_log`) li crea `scripts/sql/provision_zeroerp.sql`; le **estensioni** le crea Liquibase
+(`changelog-provision-pre.yaml`, da superuser) e il migratore è `zeroerp_owner`, proprietario di
+tutti gli oggetti, tabelle di Liquibase comprese. Sul server vanno installati solo i **pacchetti**
+delle estensioni. Dettaglio: [i ruoli](../../installazione.md#i-ruoli-nomi-fissi-uguali-ovunque),
+[le estensioni](../../installazione.md#le-estensioni),
+[l'ordine dei passi](../../installazione.md#lordine-dei-passi).
 
 ---
 
 ## 8) Liquibase — configurazione & uso
 
-* **`db/liquibase.properties`** (su *dbdev*):
-
-  ```properties
-  url=jdbc:postgresql://127.0.0.1:5432/zeroerp
-  username=titodb
-  password=*****
-  changeLogFile=changelog/changelog-master.yaml
-  ```
-* **Comandi tipici (sicuri)**:
-
-  ```bash
-  liquibase validate
-  liquibase status --verbose
-  liquibase updateSQL
-  ```
-* **Esecuzione**:
-
-  ```bash
-  liquibase update
-  ```
+* **Installazione**: `scripts/installa-liquibase.sh`, che mette Liquibase e il driver JDBC nelle
+  versioni di `scripts/liquibase-versioni.env` in `tools/liquibase/` (fuori dal repository).
+* **Esecuzione**: sempre dal wrapper `scripts/liquibase5.sh` o dal `makefile`, col master
+  `changelog-master-v2.yaml`; nel `PATH` non c'è nessun `liquibase`. Comandi e credenziali:
+  [workflow Liquibase](../../liquibase-setup-workflow.md).
 * **Note errori comuni risolti**:
 
   * *password corretta ma login fallito*: mismatch **SCRAM vs md5** in `pg_hba.conf` o uso IPv6 `::1` → forza 127.0.0.1 e `scram-sha-256`.
-  * *estensioni mancanti*: installate come **superuser** prima di `liquibase update`.
-  * *`session_replication_role` negato*: eseguire l’UPDATE richiesto come superuser con `SET LOCAL session_replication_role = replica` entro transazione.
+  * *estensioni mancanti*: mancano i **pacchetti** sul server; le estensioni le crea il primo passo di Liquibase, da superuser.
 
 ---
 
@@ -204,20 +183,15 @@
 
 ---
 
-## 10) Documentazione MkDocs
+## 10) Documentazione
 
-* **Setup**:
+* **Setup e anteprima** (Zensical, con la doc auto-generata rigenerata prima):
 
   ```bash
   cd ~/software/ZeroErp
   python3 -m venv .venv && source .venv/bin/activate
-  pip install -r requirements.txt   # mkdocs/material inclusi qui
-  mkdocs serve -a 127.0.0.1:8000    # VS Code farà port-forward
-  ```
-* **Task VS Code** (esempio):
-
-  ```json
-  { "label": "Docs: serve", "type": "shell", "command": "bash", "args": ["-lc", "source ${workspaceFolder}/.venv/bin/activate && mkdocs serve -a 127.0.0.1:8000" ] }
+  pip install -r requirements.txt   # strumenti di sviluppo e documentazione (Zensical, pre-commit)
+  scripts/serve_docs.sh             # 127.0.0.1:8010; BIND/PORTA per cambiarli, VS Code fa port-forward
   ```
 
 ---
@@ -244,7 +218,7 @@
 
 ## 13) Errori comuni & soluzioni (dall’esperienza)
 
-* **PgAdmin “funziona”, CLI no** → in PgAdmin usavi `postgres`, da CLI `titodb`: allinea utente o permessi.
+* **PgAdmin “funziona”, CLI no** → in PgAdmin usavi `postgres`, da CLI `zeroerp_owner`: allinea utente o permessi.
 * **Autenticazione fallita su localhost** → psql usa `::1` prima di 127.0.0.1: aggiungi regola IPv6 `::1/128` in `pg_hba.conf` con `scram-sha-256`.
 * **Estensioni mancanti (postgis/dblink)** → installale *prima* come superuser; poi `liquibase update` come utente applicativo.
 * **`session_replication_role` negato** → fai l’UPDATE come superuser dentro transazione con `SET LOCAL ... = replica`.
@@ -258,7 +232,7 @@
 * **Affidabilità**: backup *a caldo* delle VM con **snapshot** e **retention** sul NAS.
 * **Semplicità operativa**: un unico job Proxmox copre l’intera VM (OS, Postgres, tool, configurazioni).
 * **Scalabilità**: facile aggiungere nodi/VM; ordine d’avvio garantisce dipendenze corrette.
-* **Dev Experience**: VS Code Remote, workspace multi-root, MkDocs con port-forward; comandi `liquibase` pronti.
+* **Dev Experience**: VS Code Remote, workspace multi-root, documentazione con port-forward; Liquibase dal wrapper.
 * **Governance del DB**: **Liquibase** per migrazioni tracciate e ripetibili; **SCRAM** per auth moderna.
 * **Flessibilità**: Tailscale opzionale; possibile Exit Node solo per host specifici (es. NAS), non per tutti.
 
@@ -270,14 +244,12 @@
 # Tunnel SSH (PC → dbdev)
 ssh -L 5432:localhost:5432 tid@100.<IP-dbdev>
 
-# Liquibase (dbdev)
-liquibase validate
-liquibase status --verbose
-liquibase update
+# Liquibase (dbdev): installazione, poi sempre dal wrapper
+scripts/installa-liquibase.sh
+scripts/liquibase5.sh --version
 
 # Postgres (dbdev)
 sudo -u postgres psql -c "SHOW hba_file;"
-sudo -u postgres psql -d zeroerp -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
 # Proxmox backup storage (CLI)
 pvesm add nfs nas-backup --server 192.168.X.20 --export /volume1/proxmox-backup --content backup --mkdir 1

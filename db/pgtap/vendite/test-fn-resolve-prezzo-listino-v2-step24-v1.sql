@@ -69,9 +69,11 @@ SELECT billing_account_id, istanza_utility_id, utility_id
       WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
       ORDER BY u.id LIMIT 1));
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_v2_listino AS
 SELECT listino_id, listino_versione_id FROM dbops.fn_pgtap_crea_listino(
-    (SELECT utility_id FROM tmp_v2_cli), 'resolve v2 step24');
+    (SELECT utility_id FROM tmp_v2_cli), 'resolve v2 step24', p_in_bozza => true);
 
 CREATE TEMP TABLE tmp_v2_ctx AS
 SELECT
@@ -108,6 +110,7 @@ SELECT dbops.fn_pgtap_crea_articolo('PGT-V2S24-' || g, false) AS id, g AS rn
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT listino_versione_id FROM tmp_v2_listino),
     ARRAY(SELECT id FROM tmp_v2_arts ORDER BY rn));
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM tmp_v2_listino), 'ATTIVA');
 
 -- Scopo: la quantita' di una riga che eredita: 1 se la fonte di default e' FISSA.
 CREATE OR REPLACE FUNCTION pg_temp.qta(p_articolo uuid)

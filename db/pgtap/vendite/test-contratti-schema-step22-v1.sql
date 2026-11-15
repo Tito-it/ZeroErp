@@ -74,8 +74,10 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 CREATE TEMP TABLE tmp_s22_mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('schema step22');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_s22_listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_s22_mondo), 'schema step22');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_s22_mondo), 'schema step22', p_in_bozza => true);
 
 CREATE TEMP TABLE tmp_s22_ctx AS
 SELECT
@@ -94,6 +96,7 @@ SELECT dbops.fn_pgtap_crea_articolo('PGT-S22-' || g, false) AS id, g AS rn
 SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
     (SELECT listino_versione_id FROM tmp_s22_listino),
     ARRAY(SELECT id FROM tmp_s22_arts WHERE rn <= 4 ORDER BY rn));
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM tmp_s22_listino), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_s22_lv AS
 SELECT (SELECT listino_versione_id FROM tmp_s22_listino) AS versione_id,

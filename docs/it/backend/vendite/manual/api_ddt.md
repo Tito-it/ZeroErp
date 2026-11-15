@@ -127,6 +127,13 @@ scartava in silenzio).
   risolutore.
   ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:
   vedi la sezione dedicata più sotto.
+  ⛔ **`uom_operativa_id` serve comunque**, sull'articolo non composito (dal
+  2026-11-15, gate della provenienza del prezzo): in creazione la riga passa
+  sempre dal gate, che chiede il prezzo al listino o ne verifica i limiti L1/L2
+  anche quando è scritto a mano, e il listino risponde per unità. Senza → 400
+  `E_DDT_VALIDAZIONE` sul campo `uom_operativa_id`. Nella PATCH il gate gira
+  solo se arriva un prezzo diverso da quello della riga, e vale l'unità della
+  riga se non se ne manda un'altra. Il padre di un kit ne è fuori.
   Sulla riga **evasa** (`evasa = true` nella lista: legata a una riga d'ordine o
   di reso) articolo, UoM e quantità sono fermi (`E_DDT_RIGA_EVASA_FERMA`); in
   bozza la DELETE riesce e ritira i legami.
