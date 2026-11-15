@@ -23,6 +23,7 @@ DECLARE
     v_el        jsonb;
     v_tipo_sd   anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
     v_tipo_id   anagrafiche.indirizzi_soggetti.tipo_indirizzo_id%TYPE;
+    v_oggi      config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE;
     v_n         integer := 0;   -- un conteggio: niente da ancorare
 BEGIN
     -- =========================================================
@@ -34,9 +35,11 @@ BEGIN
     --
     -- Regole (quelle della gemella fn_crea_indirizzi_ruolo):
     --   1. ogni elemento si normalizza col BB dell'elemento;
-    --   2. se p_copia_obbligatori, i tipi obbligatori del TIPO
-    --      DI SOGGETTO che mancano ricevono una copia del primo
-    --      (anagrafiche.fn_indirizzi_con_obbligatori);
+    --   2. se p_copia_obbligatori, i tipi obbligatori della
+    --      natura che mancano ricevono una copia del primo
+    --      (anagrafiche.fn_indirizzi_con_obbligatori); sono
+    --      obbligatori solo i tipi che il guard ammette oggi
+    --      (fn_tipo_indirizzo_ammesso_per_natura);
     --   3. un tipo che il soggetto ha gia' si salta; le righe le
     --      scrive la singolare fn_crea_indirizzo_soggetto.
     -- =========================================================
@@ -74,15 +77,18 @@ BEGIN
                         jsonb_build_object('soggetto_id', p_soggetto_id)));
     END LOOP;
 
-    -- 2. La copia degli obbligatori, con la matrice del tipo di soggetto.
+    -- 2. La copia degli obbligatori: le righe obbligatorie che il
+    --    predicato del guard ammette oggi.
     IF p_copia_obbligatori THEN
+        v_oggi := script.fn_data_operativa();
         v_norm := anagrafiche.fn_indirizzi_con_obbligatori(
             v_norm,
             ARRAY(SELECT m.tipo_indirizzo_id
                     FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
                    WHERE m.tipo_soggetto_dettaglio_id = v_tipo_sd
-                     AND m.attivo
-                     AND m.obbligatorio));
+                     AND m.obbligatorio
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             v_tipo_sd, m.tipo_indirizzo_id, v_oggi)));
     END IF;
 
     -- 3. La scrittura: un tipo che il soggetto ha gia' si salta.
@@ -104,7 +110,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_indirizzi_soggetto(p_soggetto_id uuid, p_indirizzi jsonb, p_copia_obbligatori boolean)
-IS 'MADRE PLURALE (2026-10-19): scrive gli indirizzi di un soggetto e ritorna quanti ne ha scritti. Elementi con la grammatica di anagrafiche.fn_indirizzo_elemento; se p_copia_obbligatori (il flag auto_clone del backend, vero di default) i tipi obbligatori della matrice del TIPO DI SOGGETTO (config.tipi_soggetto_dettaglio_tipi_indirizzo, righe attive) che mancano ricevono una copia del primo (anagrafiche.fn_indirizzi_con_obbligatori); un tipo che il soggetto ha gia'' si salta; ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_soggetto. Soggetto inesistente E_SOGGETTO_NOT_FOUND, elenco non array E_SCRIPT_CHIAMATA_NON_VALIDA, elenco vuoto 0. Gemella di anagrafiche.fn_crea_indirizzi_ruolo (D-16a). Ritira la saga del backend SoggettiService._apply_auto_clone + _create_indirizzi_batch. R-BE-12, D-16a di Tid, brief-db-processi-accensione-per-ambiente §6.16.';
+IS 'Madre plurale: scrive gli indirizzi di un soggetto e ritorna quanti ne ha scritti. Elementi con la grammatica di anagrafiche.fn_indirizzo_elemento; se p_copia_obbligatori (il flag auto_clone del backend, vero di default) i tipi obbligatori della natura che mancano ricevono una copia del primo (anagrafiche.fn_indirizzi_con_obbligatori). Sono obbligatori le righe obbligatorie di config.tipi_soggetto_dettaglio_tipi_indirizzo per cui anagrafiche.fn_tipo_indirizzo_ammesso_per_natura risponde ammesso il giorno di script.fn_data_operativa(), cioe'' attive e valide oggi: lo stesso giudizio dei guard della tabella e degli obbligatori, quindi una riga scaduta non fa nascere una copia. Un tipo che il soggetto ha gia'' si salta; ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_soggetto. Soggetto inesistente E_SOGGETTO_NOT_FOUND, elenco non array E_SCRIPT_CHIAMATA_NON_VALIDA, elenco vuoto 0. INVOKER. Gemella di anagrafiche.fn_crea_indirizzi_ruolo.';
 ```
 
 </div>

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_ruolo()`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [anagrafiche.indirizzi](/dbzero/anagrafiche/manual/indirizzi) ·
@@ -53,9 +55,13 @@ dopo.
 * I campi di una via nuova (tipo strada, nome, comune, CAP): li controlla il
   backend prima di chiamare, come per `fn_create_indirizzo`.
 * Il permesso: nel dominio anagrafiche lo decide il backend.
-* Il tipo ammesso per il ruolo e la forma dell'indirizzo libero: li dicono i
-  guard della tabella (`trgfn_indirizzi_guard_forma_libera` per la forma, con
-  codice e campo).
+* Il tipo ammesso per il ruolo e la forma dell'indirizzo libero: li dicono la
+  singolare (con la check del tipo) e i guard della tabella
+  (`trgfn_indirizzi_guard_forma_libera` per la forma, con codice e campo).
+* I tipi obbligatori sono le righe obbligatorie della matrice che il guard ammette
+  **oggi** (attive e nella finestra di validità), lette col predicato
+  [`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo):
+  una riga scaduta non fa nascere una copia.
 
 ### 🔄 rev 19-10-2026 — la riga la scrive la singolare
 

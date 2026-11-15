@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# COMMENT di catalogo.articoli.modo_approvvigionamento_id, al presente, scritto DOPO
+#   il changeSet di 80_data che lo aveva scritto per primo (20260913-11).
+#
+# -- PERCHE' QUI E NON IN 00_schema / 20_code -------------------------
+#   La riscritta al presente di questo COMMENT sta in 00_schema/catalogo/20261112-16,
+#   cioe' nell'autogen. 80_data gira DOPO tutto l'autogen (changelog-master-v2.yaml),
+#   quindi su un database costruito da zero (la CI) il 20260913-11 riscriveva il testo
+#   vecchio sopra la riscritta: brief e id di changeSet nel COMMENT, presidio
+#   catalogo/test-comment-al-presente-catalogo-v1 rosso (asserzioni 2 e 4).
+#   Su dbdev no: li' il 20260913-11 e' girato a settembre e la riscritta a novembre.
+#   I due database avevano due COMMENT diversi sulla stessa colonna.
+#   ⇒ Il testo giusto deve arrivare DOPO il 20260913-11 anche nell'ordine di una
+#   costruzione da zero: quindi in 80_data, che si ordina per nome. Su dbdev questo
+#   changeSet riscrive lo stesso testo di 20261112-16: nessun effetto.
+#   ⚠️ LA TRAPPOLA, per chi verra': un COMMENT scritto in 70_dati_sistema / 80_data /
+#   85_pgagent / 90_end vince su ogni riscritta successiva fatta in 00_schema o 20_code,
+#   ma solo su un database nuovo. Questo COMMENT, d'ora in poi, si riscrive qui o in un
+#   changeSet di 80_data che venga dopo questo, mai solo in 20_code.
+#   Censimento del 2026-11-15 su tutto il changelog: era l'unico caso.
+#
+#   Il testo e' quello di 20261112-16, identico.
+#   Rollback: nessuno. Prima di questo changeSet il testo era gia' questo su dbdev, e
+#   tornare a quello di 20260913-11 rimetterebbe il debito che il presidio ferma.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261114-98-comment-articoli-modo-approvvigionamento-dopo-il-seed-mctit.yaml
+
+  - changeSet:
+      id: 20261114-98-comment-articoli-modo-approvvigionamento-dopo-il-seed
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        catalogo.articoli.modo_approvvigionamento_id: COMMENT al presente, dopo quello
+        che 80_data scriveva per primo; vince anche su un database costruito da zero.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: catalogo
+            tableName: articoli
+            columnName: modo_approvvigionamento_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN catalogo.articoli.modo_approvvigionamento_id IS
+                  'Da dove arriva la merce di questo articolo (config.modi_approvvigionamento: ACQUISTO | PRODUZIONE | STOCK | NON_APPLICABILE). NOT NULL, DEFAULT ACQUISTO: il valore si puo'' sempre dare, e un NULL direbbe «non lo so», che e'' lo stato che la colonna esiste per abolire. Rende ponibile «questa riga richiede produzione?» e dice se l''articolo si compra. Non si deriva da is_composito (fatturazione), da natura_vendita_id (destinazione della riga) ne'' da config.nature_vendita.e_cessione_beni (fiscale).';
+      rollback:
+        - empty: {}

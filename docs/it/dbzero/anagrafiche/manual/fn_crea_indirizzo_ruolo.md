@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzo_ruolo()`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [anagrafiche.fn_crea_indirizzi_ruolo](/dbzero/anagrafiche/manual/fn_crea_indirizzi_ruolo) — la plurale, che usa questa
@@ -44,9 +46,17 @@ istanze, e la grammatica è la stessa per i due livelli.
 | --- | --- |
 | il ruolo non esiste | `E_SOGGETTO_RUOLO_NON_TROVATO` |
 | una chiave che la grammatica non conosce | `E_CAMPO_NON_AMMESSO` |
-| un tipo che il ruolo ha già (o che quell'istanza ha già) | il vincolo unico, col suo nome |
-| un tipo che il ruolo non ammette, un indirizzo libero incompleto | i controlli della tabella |
+| un tipo che il ruolo ha già (o che quell'istanza ha già) | `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`, dalla check |
+| un tipo che il tipo di ruolo non ammette | `E_TIPO_INDIRIZZO_NON_PERMESSO`, dalla check |
+| un indirizzo libero incompleto | i controlli della tabella |
 | un'istanza di un altro soggetto | `E_ISTANZA_ALTRO_SOGGETTO`, dal controllo della tabella |
+
+⭐ Il tipo lo giudica [`fn_check_tipo_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo)
+sulla chiave (ruolo, istanza), e la madre ne solleva il primo motivo prima di scrivere (campo
+`tipo_indirizzo_codice_interno`). Il predicato del tipo di ruolo sta in
+[`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo),
+lo stesso del guard della tabella. Gli indici `uq_indirizzi_ruolo_tipo_no_istanza` e
+`uq_indirizzi_ruolo_istanza_tipo` restano, contro due scritture concorrenti.
 
 L'istanza deve essere dello stesso soggetto del ruolo (`E_ISTANZA_ALTRO_SOGGETTO`, campo
 `istanza_utility_id`). Non lo controlla questa funzione: è una regola della tabella, che vale

@@ -49,12 +49,20 @@ search:
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). La usano anche il «trova o crea» `fn_get_or_create_indirizzo_dettaglio` (cerca coi valori come li salva il trigger) e `script.fn_check_indirizzo_duplicato`. (ultima revisione 25-10-2026: vuoto → NULL, SNC solo col civico NULL)
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_cambio_natura_soggetto](funzioni/fn_check_cambio_natura_soggetto.md)
+- [fn_check_copia_indirizzo_ruolo](funzioni/fn_check_copia_indirizzo_ruolo.md)
+- [fn_check_copia_indirizzo_soggetto](funzioni/fn_check_copia_indirizzo_soggetto.md)
 - [fn_check_elimina_dati_societari](funzioni/fn_check_elimina_dati_societari.md)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_pdp_occupato](funzioni/fn_check_pdp_occupato.md)
+- [fn_check_tipo_indirizzo_ruolo](funzioni/fn_check_tipo_indirizzo_ruolo.md)
+- [fn_check_tipo_indirizzo_ruolo_su_contesto](funzioni/fn_check_tipo_indirizzo_ruolo_su_contesto.md)
+- [fn_check_tipo_indirizzo_soggetto](funzioni/fn_check_tipo_indirizzo_soggetto.md)
+- [fn_check_tipo_indirizzo_soggetto_su_contesto](funzioni/fn_check_tipo_indirizzo_soggetto_su_contesto.md)
 - [fn_check_titolo_iva_ambito](funzioni/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [fn_clienti_stessa_chiave](funzioni/fn_clienti_stessa_chiave.md) — (latest review 14-10-26)
 - [fn_consuma_plafond_titolo_iva_righe](funzioni/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
+- [fn_copia_indirizzo_ruolo](funzioni/fn_copia_indirizzo_ruolo.md)
+- [fn_copia_indirizzo_soggetto](funzioni/fn_copia_indirizzo_soggetto.md)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_billing_account](funzioni/fn_crea_billing_account.md)
 - [fn_crea_cliente](funzioni/fn_crea_cliente.md)
@@ -92,6 +100,7 @@ search:
 - [fn_id_fiscale_bloccato](funzioni/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
+- [fn_indirizzo_elemento_da_riga](funzioni/fn_indirizzo_elemento_da_riga.md)
 - [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_istanza_di_altro_soggetto](funzioni/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
@@ -108,7 +117,12 @@ search:
 - [fn_soggetto_primo_documento](funzioni/fn_soggetto_primo_documento.md)
 - [fn_sync_auth_user_expired](funzioni/fn_sync_auth_user_expired.md) — (latest review 18-04-2026)
 - [fn_sync_auth_user_is_active](funzioni/fn_sync_auth_user_is_active.md) — (latest review 20-04-2026 — semantica OR multi-veste)
+- [fn_tipi_indirizzo_proponibili_natura](funzioni/fn_tipi_indirizzo_proponibili_natura.md)
+- [fn_tipi_indirizzo_proponibili_ruolo](funzioni/fn_tipi_indirizzo_proponibili_ruolo.md)
+- [fn_tipi_indirizzo_proponibili_soggetto](funzioni/fn_tipi_indirizzo_proponibili_soggetto.md)
+- [fn_tipi_indirizzo_proponibili_tipo_ruolo](funzioni/fn_tipi_indirizzo_proponibili_tipo_ruolo.md)
 - [fn_tipo_indirizzo_ammesso_per_natura](funzioni/fn_tipo_indirizzo_ammesso_per_natura.md)
+- [fn_tipo_indirizzo_ammesso_per_ruolo](funzioni/fn_tipo_indirizzo_ammesso_per_ruolo.md)
 - [fn_titoli_iva_non_ammessi](funzioni/fn_titoli_iva_non_ammessi.md)
 - [fn_titoli_iva_non_ammessi_conta](funzioni/fn_titoli_iva_non_ammessi_conta.md)
 - [fn_titolo_iva_ammesso](funzioni/fn_titolo_iva_ammesso.md)
@@ -227,6 +241,8 @@ search:
 - [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md) — (latest review 25-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
 - [vw_indirizzi_resolved_ruolo](views/vw_indirizzi_resolved_ruolo.md) — (latest review 20‑12‑25) La vista **`anagrafiche.vw_indirizzi_resolved_ruolo`** fornisce una rappresentazione **unificata, pronta all’uso e semanticamente ricca** degli indirizzi associati a uno **specifico ruolo di un soggetto** (es. cliente, fornitore, punto di fornitura).
 - [vw_indirizzi_resolved_soggetto](views/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
+- [vw_indirizzi_ruolo_azioni](views/vw_indirizzi_ruolo_azioni.md)
+- [vw_indirizzi_soggetti_azioni](views/vw_indirizzi_soggetti_azioni.md)
 - [vw_istanze_dati_precontrattuali_dettaglio](views/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 - [vw_pdp](views/vw_pdp.md) — (rev 2026-08-21)
