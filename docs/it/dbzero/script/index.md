@@ -70,6 +70,7 @@ search:
 - [fn_check_listino_cambiabile](funzioni/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_listino_congelabile](funzioni/fn_check_listino_congelabile.md)
 - [fn_check_listino_documento](funzioni/fn_check_listino_documento.md)
+- [fn_check_listino_riga_rettificabile](funzioni/fn_check_listino_riga_rettificabile.md)
 - [fn_check_listino_riga_scrivibile](funzioni/fn_check_listino_riga_scrivibile.md)
 - [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 12-11-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
@@ -238,6 +239,8 @@ search:
 - [fn_login_parametri](funzioni/fn_login_parametri.md) — (scritta il 25-09-2026)
 - [fn_magazzino_dell_emittente](funzioni/fn_magazzino_dell_emittente.md)
 - [fn_mese_di](funzioni/fn_mese_di.md) — Il primo giorno del mese di un giorno: il **mese di competenza** di una data, calcolato sul calendario.
+- [fn_mesi_del_tratto](funzioni/fn_mesi_del_tratto.md) — I mesi di calendario che un tratto di giorni tocca, dal mese del primo giorno a quello dell'ultimo, compresi: una riga per mese, in ordine, con il primo giorno (`mese`) e l'ultimo (`fine_mese`).
+- [fn_mesi_dopo](funzioni/fn_mesi_dopo.md) — Un giorno spostato di un certo numero di mesi di calendario, in avanti o indietro (un numero negativo va indietro).
 - [fn_natura_e_merce](funzioni/fn_natura_e_merce.md)
 - [fn_norm_testo](funzioni/fn_norm_testo.md) — (rev 2026-08-21)
 - [fn_norm_via](funzioni/fn_norm_via.md) — (rev 2026-08-21)
