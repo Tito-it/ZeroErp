@@ -2,7 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB**, per la chiusura (archiviazione, passo 7). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
+**Riparte: il team BE**, con l'estrazione della regola del 2 (approvata da Tid il 2026-11-15, §8.13 «Da decidere») e la
+policy rigenerata sulla `note` corretta dal team DB (§8.14); poi il team DB archivia (passo 7). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
 R-8.3 (policy rigenerata, ripiego), la metà BE di R-7 (6b), K-5 con D-5 nel gate dei **cinque** documenti — ordine e
 DDT compresi, con L1/L2 sul prezzo a mano (strada A, decisione di Tid del 2026-11-15) —, K-6 (il solo form che
 precompila dal pricing, il preventivo) e K-7 sul DB vero. Da committare (Tid). I giri 1, 2 e 3 sono applicati, verdi e
@@ -34,13 +35,16 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 6 | ✅ team DB | Giro 4: R-8, R-7, il terzo caso di R-6 dal push in su, doc `manual/`; prova in transazione (2026-11-15) | §8.12 | 5b, 4 (✅) |
 | 6a | ✅ Tid | Apply del giro 4 e pgTAP del §8.12: verdi (2026-11-15) | §8.12 | 6 |
 | 6b | ✅ team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` (2026-11-15) | §8.13 | 6a |
-| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 4b, 6b (✅), commit di Tid |
+| 6c | ✅ team DB | La `note` di `E_PRICING_PROVENIENZA_SUPERATA` dice i cinque documenti (strada A); dal CSV, senza changeSet (2026-11-15) | §8.14 | 4b-bis |
+| 6d | ✅ Tid | Estrazione della regola del 2 approvata (2026-11-15) | §8.13 «Da decidere» | — |
+| 6e | **team BE** ⏭️ | L'estrazione: `_resolve_prezzo_riga` + `_gate_prezzo_riga` di ordine e DDT in un BB del contesto di testata; i due wrapper `resolve_or_check_override_prezzo_riga_offerta` / `_contratto`. Poi la policy rigenerata (la `note` di 6c, e i cinque codici `E_INDIRIZZO_*` di brief-db-copia-indirizzo-soggetto, ora in git) | §8.13, §8.14 | 6c, 6d, apply di 6c |
+| 7 | team DB | Chiusura: archiviazione | — | 6e, commit di Tid |
 
-**Decisioni aperte di Tid:** una proposta di estrazione (regola del 2) al §8.13 «Da decidere»; R-1 e R-2 della revisione del
-2026-11-15 decise e corrette lo stesso giorno (in fondo al §8.13). Decisa il 2026-11-15:
-la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
+approvata), R-1 e R-2 della revisione (in fondo al §8.13), la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** su `dev/backend-tid` la consegna del §8.13 (BE, FE, catalogo BB, questo brief).
+corpo vivo. **Lavoro da committare:** su `dev/db-tid` la riga del CSV del §8.14 e questo brief. La consegna del §8.13 è
+nel commit `d16a9a973d` (PR #126).
 Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
 pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 1-3 e la PATCH dei componenti sono committati (`33f85e641`,
 `11273227f`, `c4b0915f3`).
@@ -847,9 +851,31 @@ sui sette moduli toccati.
   dove il gate, senza contesto, risponde 409. Corretto il 2026-11-15 (ok Tid): il 409 esce dal gate in
   `rifiuta_provenienza_dichiarata`, e i due wrapper lo usano senza ricopiarlo (`test_pricing_gate_helpers`
   `SenzaListinoTests`, rosso col codice di prima). L'estrazione dei due wrapper resta la proposta qui sopra.
-* **Per la chiusura DB (non bloccante):** la `note` di `E_PRICING_PROVENIENZA_SUPERATA` a catalogo dice «pricing gate di
-  preventivo, offerta e contratto»; con la strada A sono cinque documenti. Si corregge dal CSV, poi si rigenera.
+* ✅ **Per la chiusura DB (non bloccante):** la `note` di `E_PRICING_PROVENIENZA_SUPERATA` a catalogo dice «pricing gate di
+  preventivo, offerta e contratto»; con la strada A sono cinque documenti. Si corregge dal CSV, poi si rigenera. Fatta, §8.14.
 
 Verifiche della revisione: `apps.vendite` col DB vero (`ZEROERP_TEST_DB_E2E=1`) 2719 verdi; spec FE di `vendite` e
 `useEntityCapabilities` 228 verdi; `npm run guards`, `check_i18n_keys`, `check_classi_morte`, ruff sui file toccati:
 puliti.
+
+### 8.14 La `note` del codice e chi chiude (sessione DB, 2026-11-15)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-15. **A chi:** team BE (6e); Tid per l'apply e il commit.
+
+* **La `note` di `E_PRICING_PROVENIENZA_SUPERATA`** in `80_data/sql/config/codici_errore.csv` dice ora «pricing gate dei
+  cinque documenti, preventivo, offerta, contratto, ordine e DDT - strada A, decisione di Tid del 2026-11-15». La classe
+  (`CONFLITTO_STATO`) e il messaggio non cambiano. Niente changeSet nuovo: il CSV lo carica
+  `20260614-08-upsert-messaggi-errore-chiusura-flusso-prematuro` (`loadUpdateData`, `runOnChange: true`), che al
+  prossimo `update` riscrive la riga. Il nome citato, `resolve_or_check_override_prezzo`, esiste ancora in
+  `_pricing_gate_helpers.py`: se l'estrazione 6e lo rinomina, il BE lo scrive qui e il team DB riallinea la `note`.
+* **Verificato sulla doc auto-generata** ciò che la consegna del §8.13 usa: le quattro colonne di
+  `COLONNE_PROVENIENZA_RIGA` (`origine_prezzo`, `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`) su
+  `preventivi_righe`, `contratti_righe`, `ordini_righe`, `ddt_righe`, e `vendite.fn_prezzo_resolver_contesto`. Torna.
+* **La policy, per il BE (6e):** il blocco del §8.13 («la policy NON si rigenera finché quei changeSet non sono nel
+  repo») è caduto, perché i changeSet dell'altra sessione DB sono in git (`b8180da711`, `42a8fa7847`). Nella policy
+  rigenerata mancano ancora cinque codici di brief-db-copia-indirizzo-soggetto: `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE`,
+  `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`, `E_INDIRIZZO_SOGGETTO_NON_TROVATO`, `E_INDIRIZZO_RUOLO_NON_TROVATO`,
+  `E_INDIRIZZO_COPIA_NESSUN_TIPO`. È probabile che siano loro i 4 rossi della suite del §8.13. Una rigenerazione sola, dopo
+  l'apply della `note`, li porta tutti.
+* **La chiusura (7)** aspetta l'estrazione 6e, approvata da Tid il 2026-11-15: un brief con un debito aperto non si
+  archivia.

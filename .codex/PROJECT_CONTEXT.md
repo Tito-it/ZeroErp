@@ -274,7 +274,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   §8, quattro giri: giro 1 applicato e verde; giro 2 (il push, D-4: `20261113-13 … -22`) applicato e verde.
   Giro 3 (le copie a valle, `20261113-23 … -37`) applicato e verde il 2026-11-14; giro 4 (R-7, R-8) il
   2026-11-15. BE/FE consegnati il 2026-11-15 (§8.13: K-1 … K-7 nei cinque documenti, ordine e DDT dal gate con
-  L1/L2 per la strada A di Tid); resta la chiusura DB, dopo il commit.
+  L1/L2 per la strada A di Tid); `note` del codice 409 corretta dal DB (§8.14). Ora il BE: l'estrazione della regola
+  del 2 (approvata da Tid il 2026-11-15) e la policy rigenerata; poi la chiusura DB.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**
