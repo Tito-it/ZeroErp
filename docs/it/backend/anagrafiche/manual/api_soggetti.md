@@ -776,6 +776,60 @@ curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/1/"
 ```
 
+### 8.3 Copia di un indirizzo in altri tipi («Copia come…»)
+
+Copia un indirizzo del soggetto in uno o più tipi: la stessa riga, col tipo sostituito. Tutto o
+niente: se un tipo è rifiutato, non nasce nessuna riga.
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/indirizzi/{indirizzo_soggetto_id}/copia/` |
+| **Verbo DB** | `anagrafiche.fn_copia_indirizzo_soggetto` |
+
+### Body (JSON)
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `tipi_indirizzo_codice_interno` | string[] | Sì | I tipi di destinazione, per codice interno. Lista non vuota; nessun'altra chiave ammessa |
+
+### Risposta (200)
+
+Gli id delle righe nuove, nell'ordine dei tipi.
+
+```json
+{ "data": { "ids": [412, 413] } }
+```
+
+### Errori
+
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | Corpo sbagliato: lista assente, vuota o con voci non testuali, o chiavi in più (`error.fields` = `tipi_indirizzo_codice_interno`). Il backend controlla solo la **forma** |
+| `E_ANAG_NOT_FOUND` | 404 | Soggetto inesistente |
+| `E_INDIRIZZO_SOGGETTO_NON_TROVATO` | 404 | L'indirizzo non esiste o non è di quel soggetto |
+| `E_INDIRIZZO_COPIA_NESSUN_TIPO` | 409 | Nessun tipo proponibile per la copia: è il motivo con cui `anagrafiche.vw_indirizzi_soggetti_azioni` spegne l'azione di riga (`anagrafiche.fn_check_copia_indirizzo_soggetto`) |
+| `E_TIPO_INDIRIZZO_NON_TROVATO` | 400 | Un codice che il catalogo `config.tipi_indirizzi` non ha |
+| `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` | 400 | Il soggetto ha già un indirizzo di quel tipo, anche se il tipo è ripetuto nell'elenco |
+| `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` | 400 | La natura del soggetto non ammette quel tipo |
+
+### Regole
+
+- Ogni riga la scrive la singolare `anagrafiche.fn_crea_indirizzo_soggetto`: valgono i suoi guard,
+  come per la creazione (§7.2).
+- Il tipo inesistente, ripetuto, già presente o non ammesso lo dice il **verbo**, col suo codice:
+  il backend non ricopia quelle regole.
+- La copia fra layer (dal soggetto a un ruolo, o viceversa) non è di questo endpoint.
+
+### Esempio
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/1/copia/" \
+  -d '{"tipi_indirizzo_codice_interno": ["SPEDIZIONE", "FATTURAZIONE"]}'
+```
+
 ---
 
 ## 9. Ruoli del soggetto
@@ -1222,6 +1276,122 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
   "https://host/api/v1/anagrafiche/ruoli/CL/config-resolver/"
+```
+
+---
+
+## 13. Cambio di natura — i motivi
+
+Una **lettura**: tutti i motivi per cui il soggetto non passerebbe alla natura proposta, in
+ordine. È la stessa check che il guard solleva al PATCH (§4), dove però arriva solo il primo:
+qui il frontend li mostra tutti prima del salvataggio.
+
+| | |
+|---|---|
+| **Metodo** | `POST` (lettura) |
+| **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/cambio-natura/motivi/` |
+| **Permesso** | lettura del soggetto (`post_accesso = "view"`); niente `Idempotency-Key` |
+| **Funzione DB** | `anagrafiche.fn_check_cambio_natura_soggetto` |
+
+⚠️ Viaggia in `POST`, come `valida-cf-piva/` (§10): il corpo porta la P.IVA proposta, che in una
+query string finirebbe nei log delle richieste.
+
+### Body (JSON)
+
+| Campo | Tipo | Obbligatorio | Descrizione |
+|---|---|---|---|
+| `tipo_soggetto_dettaglio_id` | int | Sì | La natura di dettaglio proposta |
+| `partita_iva` | string \| null | No | La P.IVA proposta |
+| `cliente_pa` | string | No | `S` / `N` proposto |
+| `split_payment` | string | No | `S` / `N` proposto |
+
+P.IVA e flag si leggono **per presenza**, come nel PATCH: una chiave assente vale il valore
+salvato del soggetto, perché è quello che il guard vedrebbe se il salvataggio non la tocca.
+
+### Risposta (200)
+
+`motivi: []` = il cambio passa (anche quando la natura non cambia). Ogni motivo ha la forma
+comune delle check: `codice`, `reason`, `reason_key`, `dettaglio`, `valori`.
+
+```json
+{
+  "data": {
+    "motivi": [
+      {
+        "codice": "E_CAMBIO_NATURA_CON_DATI_SOCIETARI",
+        "reason": "…",
+        "reason_key": "…",
+        "dettaglio": {},
+        "valori": {}
+      }
+    ]
+  }
+}
+```
+
+I motivi possibili, nell'ordine in cui la funzione li valuta:
+
+| Codice | Quando |
+|---|---|
+| `E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA` | La natura proposta è di un'altra macro-tipologia (da solo) |
+| `E_CAMBIO_NATURA_CON_DOCUMENTI` | L'identità fiscale cambia (la P.IVA nasce o sparisce) e il soggetto è in un documento, in qualunque ruolo |
+| `E_CAMBIO_NATURA_PIVA_NON_APPLICABILE` | P.IVA proposta su una natura che non ne ha |
+| `E_CLIENTE_PA_NON_AMMESSO` · `E_SPLIT_PAYMENT_NON_AMMESSO` | Flag proposto a `S` dove la natura non lo ammette |
+| `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI` | Titoli IVA vigenti, visibili a chi agisce, non ammessi dalla natura nuova |
+| `E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI` | Come sopra, ma di altri emittenti (non visibili per RLS) |
+| `E_CAMBIO_NATURA_CON_DATI_SOCIETARI` | Il soggetto ha i dati societari e la natura nuova non li prevede: si eliminano prima (§14) |
+| `E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI` | Indirizzi di un tipo che la natura nuova non ammette |
+
+Il cambio **non pulisce niente**: i motivi si tolgono a mano. Forma giuridica, sesso e indirizzi
+obbligatori non sono motivi: li giudicano i guard sullo stato finale, al PATCH.
+
+### Errori
+
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_ANAG_VALIDAZIONE` | 400 | Chiavi non ammesse; `tipo_soggetto_dettaglio_id` assente, non positivo o **inesistente** (`error.fields` = il campo). ⛔ La funzione DB lascerebbe passare una natura inesistente con `[]`, che qui direbbe «il cambio passa»: il backend la rifiuta prima |
+| `E_ANAG_NOT_FOUND` | 404 | Soggetto inesistente |
+
+---
+
+## 14. Eliminazione dei dati societari
+
+Elimina **a mano** la riga dei dati societari del soggetto. È un'azione separata dal cambio di
+natura, che non la chiama: chi cambia una ditta in privato elimina prima i dati societari (§13,
+`E_CAMBIO_NATURA_CON_DATI_SOCIETARI`).
+
+| | |
+|---|---|
+| **Metodo** | `DELETE` |
+| **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/dati-societari/` |
+| **Verbo DB** | `anagrafiche.fn_elimina_dati_societari` (`SECURITY DEFINER`: è l'unica porta della cancellazione, come `fn_scrivi_dati_societari` lo è della scrittura) |
+
+### Risposta (200)
+
+`eliminati: false` = non c'era niente da eliminare (non è un errore).
+
+```json
+{ "data": { "eliminati": true } }
+```
+
+### Errori
+
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_ANAG_NOT_FOUND` | 404 | Soggetto inesistente |
+| `E_DATI_SOCIETARI_NON_ELIMINABILI` | 409 | La natura attuale li pretende (`dati_societari_policy` REQUIRED): il motivo di `anagrafiche.fn_check_elimina_dati_societari` |
+
+### Regole
+
+- Lo storico conserva la riga eliminata.
+- Il permesso lo controlla il backend (`model_permission` del soggetto); il verbo non ha guard di
+  livello.
+
+### Esempio
+
+```bash
+curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
+  "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../dati-societari/"
 ```
 
 ---

@@ -132,12 +132,16 @@ cd backend && ./manage-env.sh copertura_doc_api --dettaglio  # le rotte scoperte
 
 | Indicatore | Verso | Chi lo presidia | 15-11 |
 | --- | --- | --- | --- |
-| rotte documentate / rotte · scoperte · fantasmi | = 0 le ultime due | ⚠️ nessun cancello: `test_copertura_doc_api.py` prova la **misura**, non lo zero | 727 / 731 · 4 · 0 |
+| rotte documentate / rotte · scoperte · fantasmi | = 0 le ultime due | ⚠️ nessun cancello: `test_copertura_doc_api.py` prova la **misura**, non lo zero | 731 / 731 · 0 · 0 |
 
-⚠️ **Il 2026-11-15.** Le quattro rotte scoperte sono tutte di `anagrafiche`, nate coi due giri
-BE/FE dello stesso giorno (copia indirizzo, dati societari, motivi del cambio natura). La
-scorecard del 23-10 scriveva «presidiata (722/722)»: il presidio c'è, ma sulla correttezza del
-conto. Che il conto resti a zero non lo impedisce niente.
+⚠️ **Il 2026-11-15.** La prima lettura del giorno dava **727 su 731**: quattro rotte di
+`anagrafiche` nate coi due giri BE/FE dello stesso giorno (copia indirizzo sul soggetto e sul
+ruolo, motivi del cambio di natura, eliminazione dei dati societari). Documentate lo stesso giorno
+([api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) §8.3, §13, §14;
+[api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) §5). La scorecard
+del 23-10 scriveva «presidiata (722/722)»: il presidio c'è, ma sulla correttezza del conto. Che il
+conto resti a zero non lo impedisce niente, ed è per questo che quelle quattro rotte sono nate
+senza pagina.
 
 ### Che cosa non si misura, e perché
 
@@ -161,7 +165,7 @@ uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura prece
 | Catena di verifica — frontend | 🔴 alto | **8** | 7,5 | Cancello in CI, `npm audit`; i test di componente sono saliti a 184 (75 col DOM), i guard a 15. Manca la prova del percorso a video (end-to-end) e una misura di copertura |
 | Analisi statica — backend | 🔴 alto | **8,5** | 8,5 | `ruff` e `mypy` a registro zero con cancello. `E`/`B` di `ruff` spenti per scelta scritta, `mypy` non `strict` |
 | Catena di verifica — backend | 🔴 alto | **8,5** | 8,5 | Cancello duro, `check --deploy` completo, smoke ogni notte e tutti verdi, test sul DB vero da 145 a 195. Suite in maggioranza mockata; gli smoke non sono un cancello prima del merge |
-| Contratto API pubblicato | 🟠 medio | **9** | 9,5 | Schema OpenAPI a zero rilievi con cricchetto; i difetti dell'idempotenza forte sono chiusi ([brief](work-done/brief-be-verifica-documentazione-api.md) §D5-D7). Scende perché la copertura della doc API è a 727/731 e nessun cancello la tiene a zero (§2, «Fuori dallo script») |
+| Contratto API pubblicato | 🟠 medio | **9** | 9,5 | Schema OpenAPI a zero rilievi con cricchetto; i difetti dell'idempotenza forte sono chiusi ([brief](work-done/brief-be-verifica-documentazione-api.md) §D5-D7). Scende perché nessun cancello tiene a zero la copertura della doc API: è tornata a 731/731 solo rileggendo, dopo quattro rotte nate senza pagina (§2, «Fuori dallo script») |
 | Contratto d'errore — lato backend | 🟠 medio | **9** | 9 | Zero codici vivi senza ripiego; la classe sbagliata di §D1 è chiusa. La `soluzione` del catalogo non arriva per gli errori sollevati in Python: scelta di disegno BE ancora aperta (stesso brief, §D4) |
 | Contratto d'errore — arrivo a video | 🟠 medio | **8** | 8 | `fields`, `targets`, `hint` a video. `notify.error` a mano resta fuori |
 | Perimetro e permessi (applicativo) | 🟠 medio | **8,5** | 8 | Catena unica, fail-closed; letture con lo skip lette una per una (l'unico nuovo, §2, è giusto). La chiave d'idempotenza è legata a utente ed endpoint (§D7). Il controllo nel corpo resta invisibile al presidio |
@@ -170,7 +174,7 @@ uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura prece
 | Building block — frontend | 🟡 basso | **9** | 9 | Un solo punto HTTP, 15 guard; le `DataTable` senza motivazione sono a zero. Nuovo registro a cricchetto degli agganci al DOM di PrimeVue (13 in 9 file), legato al [piano PrimeVue 5](work-in-progress/piano-migrazione-primevue-5.md) |
 | Multilingua | 🟡 basso | **9** | 9 | Parità delle chiavi presidiata. Il catalogo dei messaggi a monte è monolingue (4 messaggi `en` su 1.230) |
 | Gestione del debito | 🟡 basso | **9** | 8,5 | Ogni registro ha un verso, e due sono arrivati in fondo: `DataTable` senza motivazione e smoke non-verdi a zero. `# Scopo:` resta senza presidio e non sale |
-| Documentazione di contesto | 🟡 basso | **8,5** | 9 | Questo documento diceva «copertura presidiata» per un presidio che prova il conto, non lo zero; quattro rotte nuove sono nate senza pagina |
+| Documentazione di contesto | 🟡 basso | **9** | 9 | Doc API di nuovo completa (731/731). Questo documento diceva «copertura presidiata» per un presidio che prova il conto, non lo zero: corretto in questa rilettura |
 
 ---
 
