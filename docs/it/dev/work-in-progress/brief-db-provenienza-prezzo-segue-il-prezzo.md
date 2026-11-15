@@ -1,16 +1,13 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB** con **R-8** (§8.11): il codice d'errore del 409 «la provenienza dichiarata non vale
-più», senza il quale K-5 non può uscire. Il BE/FE riprende K-5 … K-7 alla consegna; la PATCH dei componenti
-(il rosso di `smoke-test-preventivi-componenti`) è già corretta (§8.11, 2026-11-14). K-1 … K-4, il
-lato push, sono fatti il 2026-11-14 (§8.9): il team DB può fare la parte del giro 4 che li aspettava, e
-nello stesso giro **R-7** (§8.10), trovata dalla revisione BE: il kit dal listino del contratto arriva in
-commessa con la sola origine. I
-giri 1, 2 e 3 sono applicati, verdi e committati (`33f85e641`, `11273227f`).
-Riverificato il 2026-11-13 sul catalogo di dbdev e su `backend/` (§7): R-3, R-4 e il §4 avevano
-definizioni superate, marcate ⚠️ e corrette al §7.1. ⚠️ Il commit `a85b76d58` «Chiusura brief
+**Riparte: il BE/FE** (pgTAP del §8.12 verdi, Tid 2026-11-15): R-8 (il codice del 409) e R-7 (il kit dal listino del contratto
+porta la sua provenienza) sono scritti, provati in transazione e **applicati** il 2026-11-15 (`20261114-73`
+nel `databasechangelog` di dbdev e dello scratch, 09:30; le due righe di CSV sono nel catalogo, id 1491).
+Verificato dalla revisione DB lo stesso giorno (§8.12, «Verifica»). Ora il **BE/FE**: K-5 … K-7 (il codice c'è, la policy si rigenera) e la metà BE di R-7 (§8.10).
+Quando il BE avrà chiuso, il brief si archivia. I giri 1, 2 e 3 sono applicati, verdi e committati
+(`33f85e641`, `11273227f`). ⚠️ Il commit `a85b76d58` «Chiusura brief
 brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 `brief-db-coerenza-listino-della-riga-di-commessa`: **questo brief è aperto**.
 
@@ -30,17 +27,20 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 4 | ✅ team BE | K-1 … K-4: il push copia la provenienza della riga, i componenti la loro (2026-11-14) | §8.7, §8.9 | 3f |
 | 4a | ✅ team BE | La PATCH dei componenti scrive il solo prezzo: la provenienza la fa decadere il trigger (decisione di Tid, strada «a», 2026-11-14) | §8.11 | — |
 | 4a-bis | ✅ Tid | D-5: la provenienza dichiarata dal form si verifica sul resolver; se non torna, 409 (2026-11-14) | §8.11 | — |
-| 4a-ter | **team DB** ⏭️ | **R-8**: il codice `E_PRICING_PROVENIENZA_SUPERATA` (classe `CONFLITTO_STATO`) nel catalogo dei messaggi | §8.11 | — |
-| 4b | team BE/FE | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE», §8.11 | 4a-ter |
+| 4a-ter | ✅ team DB | **R-8**: il codice `E_PRICING_PROVENIENZA_SUPERATA` (classe `CONFLITTO_STATO`) nel catalogo dei messaggi; scritto il 2026-11-15 | §8.11, §8.12 | — |
+| 4b | team BE/FE | K-5 … K-7: pricing gate e scritture delle righe, form, test dal push in su | §8.7 «Richiesta BE», §8.11 | 6a |
 | 5 | ✅ team DB | Giro 3: le copie a valle (R-4), override con provenienza, contesto dei componenti (D-3); prova in transazione (2026-11-13) | §8.8 | 3f |
 | 5b | ✅ Tid | Apply del giro 3 e pgTAP del §8.8: verdi (2026-11-14) | §8.8 | 5 |
-| 6 | team DB | Giro 4: R-6 dal push in su (dopo K-1 … K-4), **R-7** (il kit dal listino del contratto porta la sua provenienza), doc `manual/`, chiusura | §8.5, §8.10 | 5b, 4 (✅) |
-| 6b | team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` | §8.10 | 6 (R-7) |
+| 6 | ✅ team DB | Giro 4: R-8, R-7, il terzo caso di R-6 dal push in su, doc `manual/`; prova in transazione (2026-11-15) | §8.12 | 5b, 4 (✅) |
+| 6a | ✅ Tid | Apply del giro 4 e pgTAP del §8.12: verdi (2026-11-15) | §8.12 | 6 |
+| 6b | team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` | §8.10 | 6a |
+| 7 | team DB | Chiusura: archiviazione, quando il BE ha chiuso 4b e 6b | — | 4b, 6b |
 
 **Decisioni aperte di Tid:** nessuna. Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** i giri 1, 2 e 3 (trentasette changeSet, tre CSV, tre pgTAP nuovi,
-quattro adeguati), il brief, la riga di PROJECT_CONTEXT; su `dev/backend-tid` la PATCH dei componenti (§8.11).
+corpo vivo. **Lavoro da committare:** nessuno. Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
+pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 1-3 e la PATCH dei componenti sono committati (`33f85e641`,
+`11273227f`, `c4b0915f3`).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
@@ -632,6 +632,20 @@ restituisce intero, invece del solo `prezzo_finale`»), su una funzione che il g
 
 **Nel frattempo** il BE non ripiega: il componente porta l'origine e basta, com'è scritto al §8.9.
 
+⚠️ **Risposta del team DB (2026-11-15): R-7 fatta, con due correzioni ai fatti** (§8.12):
+
+* **R-7.2**: i due lettori sono `plpgsql`, non `BEGIN ATOMIC`. Non stanno in `pg_depend`, il `DROP` non li
+  ferma e leggono le colonne per nome: niente da riscrivere. La riverifica è dei pgTAP (§8.12).
+* **R-7.3**: per costruzione il componente **non cita una riga di listino**. La funzione passa la versione
+  del contratto come preferita, e il componente ha la sua riga in `listini_righe_componenti` (la stessa del
+  join): il resolver risponde `LISTINO_BUNDLE` con la versione e con `listino_riga_id` NULL. Il prezzo sta
+  in `listini_righe_componenti`, che nessuna riga di documento cita (vale anche per i componenti nati dalle
+  init), e che fuori dalla bozza è già immutabile (`trgfn_listini_righe_comp_guard_immutabilita_v5`): non
+  c'è una «propagata» da accendere. Il guadagno di R-7 è la versione citata (`fn_riallinea_prezzo` non
+  confronta più con NULL) e il contesto. La colonna resta il riflesso del resolver: se la regola del
+  resolver cambia, cambia lì. Il pgTAP prova la funzione, non il push (il push è Python): il caso «dopo il
+  push» è nei test BE della metà BE.
+
 ### 8.11 La PATCH dei componenti, D-5 e la richiesta R-8 (sessione BE, 2026-11-14)
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-14. **A chi:** team DB (`dev/db-tid`) per R-8;
@@ -655,6 +669,10 @@ rifiutava un `MANUALE` che cita il listino. Valeva per i cinque documenti.
   ma non `prezzo_resolver_context`. La coerenza (`fn_provenienza_prezzo_coerente`) non giudica il contesto,
   e `fn_provenienza_prezzo_esplosa` non lo legge senza un'origine da listino: non si vede. Se il team DB
   vuole la simmetria, è una riga nel trigger.
+  ⚠️ **Vicolo cieco, verificato dal team DB il 2026-11-15: la simmetria non si fa.** Senza prezzo il contesto
+  può essere il **motivo** per cui il prezzo manca: `fn_ddt_riga_componenti_init` scrive apposta
+  `esito_codice` nel contesto di un componente senza prezzo (brief-ddt-righe-senza-prezzo, C5), e il trigger
+  è `BEFORE INSERT`: svuotarlo cancellerebbe quel motivo appena nato. L'asimmetria è voluta.
 
 **D-5 — la provenienza dichiarata dal form (decisione di Tid, 2026-11-14).** Con K-6 il form manda il prezzo
 **con** la provenienza ricevuta dall'endpoint di pricing (origine, versione, riga). Il guard del DB giudica la
@@ -671,6 +689,10 @@ passandola dai gate L1/L2: 403 per chi non ha il permesso di override. Il ramo d
 codice del 409, e un codice nuovo nasce nel catalogo del DB.
 
 #### Richiesta R-8 al team DB
+
+✅ **Fatta dal team DB il 2026-11-15** (§8.12): nome e testi come proposti. Il «sollevato dal BE» (R-8.2)
+non ha una colonna sua nel catalogo: sta nelle `note` di `codici_errore.csv`, come per
+`E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO`.
 
 | # | Che cosa |
 | --- | --- |
@@ -689,3 +711,43 @@ codice del 409, e un codice nuovo nasce nel catalogo del DB.
 * FE (K-6): i cinque form di riga conservano la provenienza dell'endpoint di pricing e la rimandano col prezzo
   finché l'operatore non lo cambia; il 409 si legge come «ricarica il prezzo»;
 * K-7, sul DB vero.
+
+### 8.12 Giro 4 — R-8, R-7, il terzo caso di R-6; scritto e provato il 2026-11-15
+
+Numeri concordati con le altre sessioni DB del giorno: questo giro tiene il solo `20261114-73`.
+
+| Che cosa | Dove |
+| --- | --- |
+| **R-8**: `E_PRICING_PROVENIENZA_SUPERATA`, classe `CONFLITTO_STATO`. Frase senza `%s`: «Il prezzo del listino è cambiato dopo che la riga è stata compilata.» Causa e soluzione come al §8.11. La nota dice che lo solleva il BE, e perché `CONFLITTO_STATO` | `config/codici_errore.csv`, `config/messaggi_errore.csv` (id 1491) |
+| **R-7**: `vendite.fn_contratto_kit_componenti` restituisce in coda `listino_versione_id`, `listino_riga_id` e `prezzo_resolver_context`, dal risultato del resolver; il contesto è quello che si salva sulle righe (`fn_prezzo_resolver_contesto(to_jsonb(r))`), cioè la forma delle `*_righe_componenti`. `DROP` + `CREATE` (§5f), sempre `BEGIN ATOMIC`; `COMMENT` e `GRANT` riscritti | `20261114-73` |
+| **R-6, terzo caso**: un ordine col prezzo cambiato dopo la precompilazione esce dal lister `MANUALE`, senza listino né contesto, e la riga di listino che citava torna rettificabile. I primi due casi c'erano già, dal giro 2 (test 6-7 e 9-12) | `vendite/test-provenienza-prezzo-push-v1` (14 → 16) |
+| Il kit dal listino porta la provenienza: `LISTINO_BUNDLE`, la versione, nessuna riga, il contesto, coerente col prezzo | `vendite/test-listino-kit-e-periodicita-v1` (20 → 21) |
+| La pagina `manual/` della funzione | `vendite/manual/fn_contratto_kit_componenti.md` |
+
+**R-5 nel giro 4: niente da fare.** I consumi escono senza provenienza dal giro 2 (§8.7, «Per ramo»):
+il prezzo lo dà il listino più tardi, e chi lo scrive scrive la provenienza.
+
+**Prova** (`scripts/prova_changeset.py`, sullo scratch, transazione ritirata, catalogo identico prima e
+dopo):
+
+* `test-listino-kit-e-periodicita-v1`: senza il `-73` si ferma al test 21, con il `-73` 21/21;
+* `test-provenienza-prezzo-push-v1`: 16/16 con e senza (il terzo caso di R-6 non dipende dal `-73`: prova
+  il trigger e il lister del giro 1-2);
+* i lettori dei contratti, `test-push-contratto-canoni-v1` (15), `test-push-contratto-dalla-madre-v1` (12),
+  `test-vw-dash-contratti-giudizio-v1` (11): verdi con e senza;
+* dopo l'estratto c'è una sola firma, con gli stessi attributi e privilegi (`STABLE`, `INVOKER`,
+  `zeroerp_app` in `EXECUTE`), sempre `BEGIN ATOMIC`.
+
+**Da lanciare dopo l'apply (Tid):** i due pgTAP adeguati, i tre dei contratti e il presidio del catalogo dei
+messaggi.
+
+**Ricaduta BE (alla consegna):** con il DB allineato a git il BE rigenera la policy
+(`genera_error_policies`) e scrive il ripiego senza `%s` (R-8.3); poi K-5 … K-7 (§8.11) e la metà BE di R-7
+(§8.10). Il caso «dopo il push» di R-7.3 è un test BE: la riga di commessa del componente cita la versione e
+non la riga.
+
+**Verifica (revisione DB, 2026-11-15, a `-73` già applicato).** Il corpo coincide con la doc auto-generata
+rigenerata; `STABLE`, `INVOKER`, `BEGIN ATOMIC`, e i privilegi sono quelli del `20261031-34` (niente `PUBLIC`,
+`zeroerp_app` in `EXECUTE`). I lettori a DB stanno in `fn_contratti_addebiti_maturati_con_provenienza` (due
+`LATERAL`, per nome); il BE legge `k.*` e prende le chiavi per nome (`_build_componente_row_from_snapshot`):
+le tre colonne in coda non rompono niente prima della metà BE. Niente da correggere.

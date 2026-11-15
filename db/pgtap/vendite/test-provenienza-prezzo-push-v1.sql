@@ -5,7 +5,8 @@
 -- Test: la provenienza del prezzo viaggia col prezzo nel push (R-3) e una riga
 --   di listino citata da un documento e' «propagata» (D-4).
 -- Riferimento: brief-db-provenienza-prezzo-segue-il-prezzo §8.7 (giro 2), §8.5
---   (D-4 di Tid, 2026-11-13); changeSet 20261113-13 … -22.
+--   (D-4 di Tid, 2026-11-13); changeSet 20261113-13 … -22. Test 15-16: §8.5 giro 4,
+--   R-6 dal push in su (il terzo caso; i primi due sono i test 6-7 e 9-12).
 --
 -- Semantica attesa (il contratto, non l'implementazione):
 --   - il contesto del resolver si legge con le chiavi del risultato del
@@ -21,9 +22,12 @@
 --     vendite.fn_contratti_addebiti_maturati_con_provenienza;
 --   - una riga di listino citata da una riga d'ordine o da una riga di
 --     preventivo in bozza non si rettifica e non si cancella
---     (E_RIGA_LISTINO_PROPAGATA); una non citata si'.
+--     (E_RIGA_LISTINO_PROPAGATA); una non citata si';
+--   - il prezzo cambiato dopo la precompilazione fa decadere la provenienza
+--     (il trigger di riga, R-2): il push la porta MANUALE, senza listino, e la
+--     riga di listino che nessun altro cita torna rettificabile.
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 16):
 --   1) il contesto da listino si legge con le chiavi del resolver
 --   2) con MANUALE il contesto non conta
 --   3) i cinque lister hanno in coda le dieci colonne della provenienza
@@ -38,6 +42,8 @@
 --  12) una riga di listino che nessuno cita si rettifica
 --  13) il guard di stato guarda le dieci tabelle dei documenti
 --  14) la riga di listino non esce piu' dal meta del push dei contratti
+--  15) ordine: il prezzo cambiato dopo la precompilazione esce MANUALE, senza listino
+--  16) e la riga di listino che citava torna rettificabile
 --
 -- ⚠️ Il test 5 confronta le righe che i contratti di questo database danno:
 --   e' la forma della proiezione (stesse colonne, stesse righe), non la
@@ -51,7 +57,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(16);
 
 -- ============================================================
 -- Fixture
@@ -291,6 +297,50 @@ SELECT ok(
     pg_get_functiondef('vendite.fn_contratti_addebiti_maturati_con_provenienza(date,bigint,bigint)'::regprocedure)
         NOT LIKE $$%'listino_riga_id',%$$,
     '14) la riga di listino non esce piu'' dal meta del push dei contratti'
+);
+
+-- ============================================================
+-- 15-16) R-6, il terzo caso: il prezzo cambiato dopo la precompilazione
+-- ============================================================
+-- a5 con la sua riga R5; O3 la cita in bozza, poi l'operatore cambia il prezzo
+-- senza ricaricarlo dal listino: per il trigger di riga e' una decadenza.
+CREATE TEMP TABLE t_a5 AS
+SELECT dbops.fn_pgtap_crea_articolo(('PGT-PPU-5' || substr(md5(clock_timestamp()::text), 1, 10))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM t_l)) AS a5;
+
+CREATE TEMP TABLE t_r5 AS
+WITH ins AS (
+    INSERT INTO vendite.listini_righe (listino_versione_id, articolo_id, uom_id, prezzo)
+    SELECT (SELECT listino_versione_id FROM t_l), a.id, a.uom_id, 50.00
+      FROM catalogo.articoli a
+     WHERE a.id = (SELECT a5 FROM t_a5)
+    RETURNING id
+)
+SELECT id AS r5 FROM ins;
+
+CREATE TEMP TABLE t_o3 AS
+SELECT * FROM dbops.fn_pgtap_crea_ordine_con_righe(
+    'provenienza push O3', 'DRAFT', p_fatturazione_trigger => 'CONFERMATO',
+    p_quantita => 1, p_prezzo => 50, p_articolo_id => (SELECT a5 FROM t_a5));
+SELECT pg_temp.da_listino('vendite.ordini_righe', 'ordine_id', (SELECT ordine_id FROM t_o3), (SELECT a5 FROM t_a5),
+                          (SELECT r5 FROM t_r5));
+UPDATE vendite.ordini_righe SET prezzo_unitario = 47
+ WHERE ordine_id = (SELECT ordine_id FROM t_o3) AND articolo_id = (SELECT a5 FROM t_a5);
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM t_o3), 'CONFERMATO');
+
+SELECT is(
+    (SELECT (l.prezzo_snapshot = 47)::text || '|' || l.origine_prezzo || '|'
+            || coalesce(l.listino_riga_id::text, '-') || '|' || coalesce(l.listino_versione_id::text, '-') || '|'
+            || coalesce(l.prezzo_base_snapshot::text, '-')
+       FROM vendite.fn_list_ordini_da_pushare(p_ordine_id := (SELECT ordine_id FROM t_o3)) l
+      WHERE l.articolo_id = (SELECT a5 FROM t_a5)),
+    'true|MANUALE|-|-|-',
+    '15) ordine: il prezzo cambiato dopo la precompilazione esce MANUALE, senza listino ne'' contesto'
+);
+
+SELECT lives_ok(
+    format('UPDATE vendite.listini_righe SET prezzo = 52 WHERE id = %s', (SELECT r5 FROM t_r5)),
+    '16) e la riga di listino che citava torna rettificabile: nessuno la cita piu'''
 );
 
 SELECT * FROM finish();

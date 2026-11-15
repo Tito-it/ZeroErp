@@ -1,11 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_contratto_kit_componenti(p_contratto_id, p_articolo_padre_id, p_data)`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
 > [vendite.fn_contratti_addebiti_maturati](/dbzero/vendite/manual/fn_contratti_addebiti_maturati) ·
 > [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) ·
+> [vendite.fn_provenienza_prezzo_esplosa](/dbzero/vendite/funzioni/fn_provenienza_prezzo_esplosa) ·
 > [vendite.listini_righe_componenti](/dbzero/vendite/manual/listini_righe_componenti) ·
 > [Guida dei contratti §4-bis.3](/guide/gestione-contratti#4-bis3-il-canone)
 
@@ -22,14 +23,15 @@ Per questi la funzione dà i componenti della versione di listino del contratto
 ([`fn_documento_listino_operativo`](/dbzero/vendite/funzioni/fn_documento_listino_operativo)),
 validi alla data, **nella stessa forma** che l'espansore del backend legge dalle
 `*_righe_componenti`: componente, unità operativa (quella del componente), coefficiente della
-distinta, prezzo unitario, esposizione in fattura, origine del prezzo.
+distinta, prezzo unitario, esposizione in fattura e la **provenienza del prezzo**: origine,
+versione e riga di listino, contesto del resolver.
 
 ### Chi la usa
 
 | Chi | Per che cosa |
 | --- | --- |
-| [`vendite.fn_contratti_addebiti_maturati`](/dbzero/vendite/manual/fn_contratti_addebiti_maturati) | il prezzo del kit: la somma prezzo × coefficiente, alla data del pezzo (la una tantum a `valido_dal`) |
-| l'espansore dei kit del backend (`BoMComponentExpander`, push dei contratti) | i componenti in commessa, alla `data_attivita` del pezzo: la stessa data a cui il kit è prezzato |
+| [`vendite.fn_contratti_addebiti_maturati_con_provenienza`](/dbzero/vendite/funzioni/fn_contratti_addebiti_maturati_con_provenienza) | il prezzo del kit: la somma prezzo × coefficiente, alla data del pezzo (la una tantum a `valido_dal`) |
+| l'espansore dei kit del backend (`BoMComponentExpander`, push dei contratti) | i componenti in commessa, alla `data_attivita` del pezzo: la stessa data a cui il kit è prezzato, ognuno con la sua provenienza |
 
 ### Regole
 
@@ -38,14 +40,23 @@ distinta, prezzo unitario, esposizione in fattura, origine del prezzo.
   sul componente nel contesto del padre: oggi il prezzo del listino **senza** variazione globale
   (`LISTINO_BUNDLE`), come l'anteprima del listino. La funzione non ricopia la regola: se la
   variazione sul kit deve cambiare, cambia nel resolver.
-* Un componente senza prezzo alla data esce con prezzo `NULL`: chi somma non dà un prezzo al kit
-  (il lister lo scarta `SENZA_PREZZO`).
+* **La provenienza è quella del resolver, non del contratto**: versione e riga di listino sono quelle
+  di chi ha dato il prezzo, e il contesto è quello che si salva sulle righe
+  ([`fn_prezzo_resolver_contesto`](/dbzero/vendite/funzioni/fn_prezzo_resolver_contesto)), letto da
+  [`fn_provenienza_prezzo_esplosa`](/dbzero/vendite/funzioni/fn_provenienza_prezzo_esplosa). La riga
+  di commessa del componente cita così la versione da cui viene il prezzo.
+* **Nessuna riga di listino, per costruzione.** Il prezzo di un componente sta nella sua riga di
+  [`listini_righe_componenti`](/dbzero/vendite/manual/listini_righe_componenti), che la funzione
+  stessa trova sulla versione del contratto: il resolver risponde `LISTINO_BUNDLE` con la versione e
+  senza `listino_riga_id`. Quella riga, fuori dalla bozza, è già immutabile.
+* Un componente senza prezzo alla data esce con prezzo `NULL` e senza provenienza: chi somma non dà
+  un prezzo al kit (il lister lo scarta `SENZA_PREZZO`).
 * Contratto fuori perimetro, o senza listino: nessuna riga. `STABLE`, `SECURITY INVOKER`.
 
 ### 🧪 Il presidio
 
 `db/pgtap/vendite/test-listino-kit-e-periodicita-v1.sql` (componenti dal listino, quota fissa del
-kit, ADESIONE sul kit).
+kit, ADESIONE sul kit, la provenienza dei componenti).
 
 ---
 

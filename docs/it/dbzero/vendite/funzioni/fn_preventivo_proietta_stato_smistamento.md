@@ -41,6 +41,10 @@ AS $function$
 --   D-PROI): la partenza e il ritorno sono lo stato di accettazione del
 --   vocabolario, quello da cui lo smistamento si apre; EVASO resta la
 --   destinazione nominata del processo.
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6g,
+--   D-SMIST): da dove la proiezione parte lo dice
+--   vendite.fn_preventivo_in_smistamento, la sede unica che legge anche la
+--   capability.
 -- =========================================================
 DECLARE
     v_stato        config.stati_doc_preventivi.codice_interno%TYPE;
@@ -69,7 +73,10 @@ BEGIN
       JOIN config.stati_doc_preventivi s ON s.id = p.stato_doc_preventivo_id
      WHERE p.id = p_preventivo_id;
 
-    IF v_stato IS NULL OR NOT (v_accettazione OR v_stato = 'EVASO') THEN
+    -- Si parte solo da un preventivo che si smista: la sede unica della
+    -- risposta, la stessa della capability.
+    IF v_stato IS NULL
+       OR NOT vendite.fn_preventivo_in_smistamento(v_accettazione, v_stato) THEN
         RETURN;
     END IF;
 
@@ -104,7 +111,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_preventivo_proietta_stato_smistamento(p_preventivo_id bigint)
-IS 'Porta il preventivo nello stato che il suo smistamento dice. Dallo stato di accettazione (la colonna accettazione di config.stati_doc_preventivi), senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; da EVASO, con un residuo su almeno una -> lo stato di accettazione; ogni altro stato, o preventivo assente -> niente. L''accettazione e'' un significato e si legge dalla colonna, la stessa da cui script.fn_available_actions_preventivo e vendite.fn_push_preventivo_a_ordine aprono lo smistamento; EVASO e'' la destinazione del processo e si nomina col codice (script.fn_doc_stato_id), come la nomina la riga della matrice. Destinazione assente dal vocabolario: E_CONFIG_MANCANTE. E'' il verbo dei passaggi di processo del preventivo (manuale = false nella matrice): scrive con script.fn_doc_scrivi_stato, attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e il passaggio lo giudica vendite.trgfn_preventivi_guard_transizione. Specchio di vendite.fn_ordine_proietta_stato_evasione. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY DEFINER con search_path bloccato, perche'' la porta vuole il proprietario: lo stato e'' la proiezione dei residui, non una scelta di chi chiama, e il perimetro di chi agisce lo controllano i consumatori. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
+IS 'Porta il preventivo nello stato che il suo smistamento dice. Dallo stato di accettazione (la colonna accettazione di config.stati_doc_preventivi), senza residuo su nessuna strada (vendite.fn_preventivo_ha_residuo_ordine, vendite.fn_preventivo_ha_residuo_commessa) -> EVASO; da EVASO, con un residuo su almeno una -> lo stato di accettazione; ogni altro stato, o preventivo assente -> niente. Da dove si parte lo dice vendite.fn_preventivo_in_smistamento (lo stato di accettazione o EVASO), la stessa risposta che script.fn_available_actions_preventivo espone in in_smistamento. L''accettazione e'' un significato e si legge dalla colonna, la stessa da cui script.fn_available_actions_preventivo e vendite.fn_push_preventivo_a_ordine aprono lo smistamento; EVASO e'' la destinazione del processo e si nomina col codice (script.fn_doc_stato_id), come la nomina la riga della matrice. Destinazione assente dal vocabolario: E_CONFIG_MANCANTE. E'' il verbo dei passaggi di processo del preventivo (manuale = false nella matrice): scrive con script.fn_doc_scrivi_stato, attraverso la porta (script.trgfn_doc_stato_solo_dal_verbo), e il passaggio lo giudica vendite.trgfn_preventivi_guard_transizione. Specchio di vendite.fn_ordine_proietta_stato_evasione. Consumatori: vendite.fn_push_preventivo_a_ordine, vendite.fn_documento_ritira_legami (annullo dell''ordine), vendite.trgfn_commesse_attivita_proietta_stato_preventivo (invio in commessa, ritiro delle righe, annullo della commessa). SECURITY DEFINER con search_path bloccato, perche'' la porta vuole il proprietario: lo stato e'' la proiezione dei residui, non una scelta di chi chiama, e il perimetro di chi agisce lo controllano i consumatori. Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA (TECNICO).';
 ```
 
 </div>

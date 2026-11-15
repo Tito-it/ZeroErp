@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.fn_preventivo_in_smistamento(p_accettazione, p_stato)
+#   «Il preventivo in questo stato e' uno che si smista?»
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.23 (R-V3), §6.24, giro 6g
+#   (D-SMIST (a), Tid 2026-11-14).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La risposta stava in vendite.fn_preventivo_proietta_stato_smistamento
+#   (v_accettazione OR v_stato = 'EVASO'), e una seconda copia nel frontend
+#   (showSmistamento: ACCETTATO o EVASO col codice), perche' la capability non
+#   la dava. Darla nella capability scritta di nuovo sarebbe la seconda copia a
+#   DB: regola del 2, si estrae.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Il predicato esce qui; lo leggono la proiezione (-77), che perde la sua
+#   copia, e la capability del preventivo (-78), che emette in_smistamento.
+#   Nessun cambio di modello: l'accettazione dalla colonna, EVASO col codice
+#   (D-PROI (a), 2026-11-14), in un posto solo.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   LANGUAGE sql, IMMUTABLE, corpo a stringa: riceve i valori dello stato e non
+#   legge tabelle (linee-guida-sql §13.8), quindi niente BEGIN ATOMIC (§5c).
+#   Niente STRICT: i due IS TRUE danno falso con un argomento NULL. EXECUTE: il
+#   default a PUBLIC; zeroerp_app esplicito, come le sorelle.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261114-76-create-fn-preventivo-in-smistamento-mctit.yaml
+
+  - changeSet:
+      id: 20261114-76-create-fn-preventivo-in-smistamento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_preventivo_in_smistamento: il preventivo in questo stato si smista (accettazione
+        dal vocabolario, EVASO col codice). Brief: brief-db-stati-documento-dal-vocabolario, giro 6g (D-SMIST).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_preventivo_in_smistamento(p_accettazione config.stati_doc_preventivi.accettazione%TYPE, p_stato config.stati_doc_preventivi.codice_interno%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE
+              AS $function$
+              -- Scopo: «il preventivo in questo stato e' uno che si smista?».
+              --   Dallo stato di accettazione (un significato: la colonna) e da EVASO (la
+              --   destinazione del processo: il codice, come la nomina la matrice).
+              --   Due IS TRUE: un argomento NULL da' falso, mai NULL.
+                SELECT (p_accettazione IS TRUE) OR (p_stato = 'EVASO') IS TRUE;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_in_smistamento(p_accettazione config.stati_doc_preventivi.accettazione%TYPE, p_stato config.stati_doc_preventivi.codice_interno%TYPE)
+              IS 'Il preventivo in questo stato e'' uno che si smista? Vero dallo stato di accettazione (la colonna accettazione di config.stati_doc_preventivi, passata in p_accettazione) e da EVASO, la destinazione del processo di smistamento, che si nomina col codice (p_stato, il codice_interno); falso altrove, e falso anche con un argomento NULL (mai NULL). Riceve i valori dello stato, non l''id: non legge tabelle. Sede unica della risposta: la leggono vendite.fn_preventivo_proietta_stato_smistamento, da cui la proiezione parte, e script.fn_available_actions_preventivo, che ne fa in_smistamento.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_preventivo_in_smistamento(p_accettazione config.stati_doc_preventivi.accettazione%TYPE, p_stato config.stati_doc_preventivi.codice_interno%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_preventivo_in_smistamento(boolean, character varying);

@@ -17,6 +17,10 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_offerta(p_offerta_id bigi
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-11-15 (brief-db-stati-documento-dal-vocabolario, giro 6g-bis,
+--   D-VAL-2): + can_push_contratto_reason_valori e
+--   can_genera_ordine_reason_valori, i valori del primo motivo della check (la terza
+--   chiave sorella del flag: reason, reason_key, valori).
 -- Scopo: la capability dell'offerta commerciale per il dettaglio: le azioni
 --   di stato proposte (dalla matrice, coi motivi che le spengono), le azioni
 --   applicative (crea revisione, genera contratto, genera ordine), cosa si
@@ -312,9 +316,13 @@ BEGIN
         'can_push_contratto',            v_can_push,
         'can_push_contratto_reason',     v_push_reason,
         'can_push_contratto_reason_key', v_push_reason_key,
+        -- I valori della frase del primo motivo; [] col flag vero, coi
+        -- motivi scritti qui (senza valori) o con una frase senza segnaposti.
+        'can_push_contratto_reason_valori', COALESCE(v_mot_push -> 0 -> 'valori', '[]'::jsonb),
         'can_genera_ordine',             v_can_ordine,
         'can_genera_ordine_reason',      v_ordine_reason,
         'can_genera_ordine_reason_key',  v_ordine_reason_key,
+        'can_genera_ordine_reason_valori', COALESCE(v_mot_ordine -> 0 -> 'valori', '[]'::jsonb),
         'non_editable_fields', v_testata -> 'non_modificabili',
         'pdf',                           jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_info_key',                v_stato_info_key,
@@ -327,7 +335,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_offerta(p_offerta_id bigint)
-IS 'Capability dell''offerta commerciale per il dettaglio (NULL se l''offerta non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo si nasconde a chi non ce l''ha), ognuno con enabled, reason, reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione dalla destinazione; label_key, requires_confirm, requires_motivazione, outlined dal meta della transizione. I motivi, sul significato della destinazione: verso lo stato di emissione script.fn_check_listino_congelabile, script.fn_check_prezzi_autorizzati, script.fn_check_indirizzi_documento_cliente e, dallo stato iniziale, script.fn_check_righe_documento; verso lo stato di accettazione i prezzi; verso lo stato di annullo script.fn_check_offerta_annullabile. Sono gli stessi predicati, nello stesso ordine, di vendite.trgfn_offerte_commerciali_guard_transizione. Azioni applicative: crea_revisione dallo stato di emissione, spenta col motivo di script.fn_check_prezzi_in_attesa (can_create_revisione e'' vero solo se la revisione si puo'' creare); push_contratto e genera_ordine dallo stato di accettazione senza documenti vivi nati dall''offerta (vendite.fn_offerta_documenti_vivi), spente coi motivi di script.fn_check_righe_documento e script.fn_check_righe_offerta_in_ordine; can_push_contratto, can_genera_ordine e i loro reason e reason_key. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato), can_edit_eccezioni, can_edit_utility e can_edit_indirizzi dal lock delle righe e dei satelliti (script.fn_doc_riga_modificabile), lo stesso che il trigger fa rispettare. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice: il codice_interno dello stato corrente. stato_terminale: config.stati_doc_offerte.terminale dello stato corrente, perche'' chi mostra il documento non ricopi l''elenco degli stati terminali. Le reason_key sono chiavi i18n del frontend.';
+IS 'Capability dell''offerta commerciale per il dettaglio (NULL se l''offerta non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo si nasconde a chi non ce l''ha), ognuno con enabled, reason, reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione dalla destinazione; label_key, requires_confirm, requires_motivazione, outlined dal meta della transizione. I motivi, sul significato della destinazione: verso lo stato di emissione script.fn_check_listino_congelabile, script.fn_check_prezzi_autorizzati, script.fn_check_indirizzi_documento_cliente e, dallo stato iniziale, script.fn_check_righe_documento; verso lo stato di accettazione i prezzi; verso lo stato di annullo script.fn_check_offerta_annullabile. Sono gli stessi predicati, nello stesso ordine, di vendite.trgfn_offerte_commerciali_guard_transizione. Azioni applicative: crea_revisione dallo stato di emissione, spenta col motivo di script.fn_check_prezzi_in_attesa (can_create_revisione e'' vero solo se la revisione si puo'' creare); push_contratto e genera_ordine dallo stato di accettazione senza documenti vivi nati dall''offerta (vendite.fn_offerta_documenti_vivi), spente coi motivi di script.fn_check_righe_documento e script.fn_check_righe_offerta_in_ordine; can_push_contratto, can_genera_ordine e i loro reason, reason_key e reason_valori (i valori della frase del primo motivo, [] quando il flag e'' vero, quando il motivo e'' lo stato o un documento gia'' generato, o quando la frase non ha segnaposti). Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato), can_edit_eccezioni, can_edit_utility e can_edit_indirizzi dal lock delle righe e dei satelliti (script.fn_doc_riga_modificabile), lo stesso che il trigger fa rispettare. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice: il codice_interno dello stato corrente. stato_terminale: config.stati_doc_offerte.terminale dello stato corrente, perche'' chi mostra il documento non ricopi l''elenco degli stati terminali. Le reason_key sono chiavi i18n del frontend.';
 ```
 
 </div>

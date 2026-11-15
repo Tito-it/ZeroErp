@@ -18,6 +18,9 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
  STABLE
  SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
+-- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6g, D-VAL): +
+--   can_genera_reso_reason_valori, i valori del primo motivo della check
+--   (la terza chiave sorella del flag: reason, reason_key, valori).
 -- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6e): + can_genera_reso ·
 --   _reason · _reason_key dal primo motivo di script.fn_check_ddt_rendibile,
 --   la stessa check da cui il reso dalla bolla rifiuta.
@@ -324,6 +327,9 @@ BEGIN
         'can_genera_reso',              jsonb_array_length(v_mot_reso) = 0,
         'can_genera_reso_reason',       v_mot_reso -> 0 ->> 'reason',
         'can_genera_reso_reason_key',   v_mot_reso -> 0 ->> 'reason_key',
+        -- I valori della frase del primo motivo; [] col flag vero o con una
+        -- frase senza segnaposti.
+        'can_genera_reso_reason_valori', COALESCE(v_mot_reso -> 0 -> 'valori', '[]'::jsonb),
         'stato_info_key',           v_stato_info_key,
         'non_editable_fields', v_testata -> 'non_modificabili',
         'pdf',                          jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
@@ -333,7 +339,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
-IS 'La capability della bolla per il dettaglio API. available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse, con target_state e target_state_descrizione; un passaggio con un''azione di processo si nasconde a chi non l''ha (script.fn_check_azione_processo: permesso => nascondi, stato => disabilita col motivo); verso lo stato di emissione (la colonna emissione di config.stati_doc_ddt) il primo motivo di script.fn_check_ddt_emittibile, gli altri col predicato requires_righe del passaggio. push_commessa: la partita del push si legge una volta da vendite.fn_ddt_push_diagnosi, la fonte unica dell''eleggibilita'' (can_push_commessa = esiste una riga senza motivo; poi il segmento, ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi il motivo piu'' forte, mappato per stringa con un ELSE generico). can_change_state; can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato); billing_account_id fra le colonne ferme solo se un vincolo lo tiene, letto da vendite.fn_ddt_vincoli_cliente con la sorgente intera (tipo, uid, id), la stessa del guard vendite.trgfn_ddt_guard_cliente_sorgente; can_edit_righe e can_edit_indirizzi dal lock di vendite.ddt_righe e vendite.ddt_indirizzi (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare. stato_info_key dal meta dello stato corrente (proprieta'' nessuna_azione_key), sempre presente nel blob, null quando non si applica. stato_codice. can_genera_reso, con can_genera_reso_reason e can_genera_reso_reason_key, dal primo motivo di script.fn_check_ddt_rendibile, la stessa check da cui vendite.trgfn_resi_guard_ddt_consegnato rifiuta il reso. Le azioni portano il significato (key, label_key, outlined): icona e colore li sceglie il frontend dal verbo. Gemella di script.fn_available_actions_ordine.';
+IS 'La capability della bolla per il dettaglio API. available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse, con target_state e target_state_descrizione; un passaggio con un''azione di processo si nasconde a chi non l''ha (script.fn_check_azione_processo: permesso => nascondi, stato => disabilita col motivo); verso lo stato di emissione (la colonna emissione di config.stati_doc_ddt) il primo motivo di script.fn_check_ddt_emittibile, gli altri col predicato requires_righe del passaggio. push_commessa: la partita del push si legge una volta da vendite.fn_ddt_push_diagnosi, la fonte unica dell''eleggibilita'' (can_push_commessa = esiste una riga senza motivo; poi il segmento, ALLOCATA -> DDT_GIA_INVIATO, EMESSA -> DDT_GIA_FATTURATO; poi il motivo piu'' forte, mappato per stringa con un ELSE generico). can_change_state; can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato); billing_account_id fra le colonne ferme solo se un vincolo lo tiene, letto da vendite.fn_ddt_vincoli_cliente con la sorgente intera (tipo, uid, id), la stessa del guard vendite.trgfn_ddt_guard_cliente_sorgente; can_edit_righe e can_edit_indirizzi dal lock di vendite.ddt_righe e vendite.ddt_indirizzi (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare. stato_info_key dal meta dello stato corrente (proprieta'' nessuna_azione_key), sempre presente nel blob, null quando non si applica. stato_codice. can_genera_reso, con can_genera_reso_reason, can_genera_reso_reason_key e can_genera_reso_reason_valori (i valori della frase, [] quando il flag e'' vero o la frase non ha segnaposti), dal primo motivo di script.fn_check_ddt_rendibile, la stessa check da cui vendite.trgfn_resi_guard_ddt_consegnato rifiuta il reso. Le azioni portano il significato (key, label_key, outlined): icona e colore li sceglie il frontend dal verbo. Gemella di script.fn_available_actions_ordine.';
 ```
 
 </div>

@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-14.
+> Ultima revisione: 2026-11-15.
 
 ## Identità del Progetto
 
@@ -259,7 +259,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 🔵 **Gli stati del documento dal vocabolario** (`work-in-progress/brief-db-stati-documento-dal-vocabolario.md`):
   in sviluppo, un giro per documento. Applicati e verdi i giri 1 … 5, 6a (preventivo), 6b (ordine), 6b-bis, 6a-bis e
   2-ter (D-EVAD, D-PDF), 6c (contratto, `-27 … -34`, D-BOZZA (a): via `is_bozza`), 6c-bis (ritiro del guard della
-  categoria) e 6d (bolla), fino a `20261114-46`. Applicati e verdi anche 6e (reso, D-RESO (a)) e 6e-bis, fino a `20261114-58`; ora BE-R1 e FE-R1 … FE-R4 (§6.22), poi il 6f (listino). Chi riparte è in testa al brief.
+  categoria) e 6d (bolla), fino a `20261114-46`. Applicati e verdi anche 6e (reso, D-RESO (a)) e 6e-bis, fino a `20261114-58`; il BE/FE ha fatto le richieste dei giri 6a … 6e. Il giro 6g (R-V1 … R-V3 del BE/FE: valori del motivo, marche del contratto, smistamento del preventivo; `20261114-74 … -78`) è applicato e verde (2026-11-15); il 6g-bis (D-VAL-2: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`) è applicato e verde; ora FE-G1 … FE-G4 e il 6f (listino). Chi riparte è in testa al brief.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al

@@ -18,6 +18,10 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_contratto(p_contratto_id 
  STABLE
 AS $function$
 -- Scopo: capability del contratto per il detail API (pattern data-driven).
+--   rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6g,
+--   D-MARCHE): + stato_iniziale, stato_emissione, stato_cessazione,
+--   stato_terminale, le marche dello stato corrente dal vocabolario: chi
+--   legge il blob non le deduce dal codice.
 --   rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6c): la
 --   bozza dalla colonna iniziale del vocabolario, non dal codice;
 --   can_edit_righe dal lock delle righe (script.fn_doc_riga_modificabile).
@@ -81,6 +85,10 @@ DECLARE
     v_stato_codice config.stati_doc_contratti.codice%TYPE;
     -- Lo stato corrente e' quello iniziale? Dal vocabolario.
     v_iniziale     config.stati_doc_contratti.iniziale%TYPE;
+    -- Le altre marche dello stato corrente, per il blob.
+    v_emissione    config.stati_doc_contratti.emissione%TYPE;
+    v_cessazione   config.stati_doc_contratti.cessazione%TYPE;
+    v_terminale    config.stati_doc_contratti.terminale%TYPE;
     v_valido_dal   vendite.contratti.valido_dal%TYPE;
     v_listino_id   vendite.contratti.listino_id%TYPE;
     v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
@@ -106,11 +114,11 @@ BEGIN
            c.listino_id, c.listino_versione_id, sdc.pdf_mode, sdc.pdf_allow_allegati,
            sdc.meta->>'nessuna_azione_key',
            c.billing_account_id, c.istanza_utility_id, c.utility_id, c.ambito, c.valido_al,
-           sdc.iniziale
+           sdc.iniziale, sdc.emissione, sdc.cessazione, sdc.terminale
       INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
            v_listino_id, v_listino_versione_id, v_pdf_mode, v_pdf_allow, v_stato_info_key,
            v_billing_account_id, v_istanza_utility_id, v_utility_id, v_ambito, v_valido_al,
-           v_iniziale
+           v_iniziale, v_emissione, v_cessazione, v_terminale
       FROM vendite.contratti c
       JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
      WHERE c.id = p_contratto_id;
@@ -261,13 +269,21 @@ BEGIN
         'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
         'stato_codice_interno', v_stato_cod,
         'stato_info_key',       v_stato_info_key,
-        'stato_codice',         v_stato_codice
+        'stato_codice',         v_stato_codice,
+        -- Le marche dello stato corrente, una chiave per colonna del
+        -- vocabolario: non si escludono (lo stato di cessazione e' anche
+        -- terminale), e nessuna si deduce dalle altre (l'annullo e' terminale
+        -- senza essere iniziale, emissione o cessazione).
+        'stato_iniziale',       v_iniziale,
+        'stato_emissione',      v_emissione,
+        'stato_cessazione',     v_cessazione,
+        'stato_terminale',      v_terminale
     );
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_contratto(p_contratto_id bigint)
-IS 'Capability del contratto per il dettaglio (NULL se il contratto non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo, emetti_contratto sull''attivazione e sulla cessazione, si nasconde a chi non ce l''ha), ognuno con enabled, reason e reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione dalla destinazione; label_key, requires_confirm, outlined dal meta del passaggio. I motivi verso lo stato di emissione (l''attivazione), nell''ordine del guard: script.fn_check_listino_congelabile, script.fn_check_prezzi_autorizzati, script.fn_check_indirizzi_documento_cliente, dallo stato iniziale script.fn_check_righe_documento, per ultimo script.fn_check_contratto_sovrapposto; poi DOCUMENTO_SENZA_RIGHE dove il meta del passaggio chiede requires_righe e il contratto e'' vuoto (negoziato puro senza un''AGGIUNTA attiva con prezzo). Sono gli stessi predicati di vendite.trgfn_contratti_guard_transizione_stato e vendite.trgfn_contratti_freeze_listino_versione. can_change_state: vero se c''e'' almeno un''azione. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato), can_edit_righe, can_edit_utility e can_edit_indirizzi dal lock delle righe e dei satelliti (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice_interno e stato_codice: i codici dello stato corrente. Le reason_key sono chiavi i18n del frontend.';
+IS 'Capability del contratto per il dettaglio (NULL se il contratto non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo, emetti_contratto sull''attivazione e sulla cessazione, si nasconde a chi non ce l''ha), ognuno con enabled, reason e reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione dalla destinazione; label_key, requires_confirm, outlined dal meta del passaggio. I motivi verso lo stato di emissione (l''attivazione), nell''ordine del guard: script.fn_check_listino_congelabile, script.fn_check_prezzi_autorizzati, script.fn_check_indirizzi_documento_cliente, dallo stato iniziale script.fn_check_righe_documento, per ultimo script.fn_check_contratto_sovrapposto; poi DOCUMENTO_SENZA_RIGHE dove il meta del passaggio chiede requires_righe e il contratto e'' vuoto (negoziato puro senza un''AGGIUNTA attiva con prezzo). Sono gli stessi predicati di vendite.trgfn_contratti_guard_transizione_stato e vendite.trgfn_contratti_freeze_listino_versione. can_change_state: vero se c''e'' almeno un''azione. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato), can_edit_righe, can_edit_utility e can_edit_indirizzi dal lock delle righe e dei satelliti (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice_interno e stato_codice: i codici dello stato corrente. stato_iniziale, stato_emissione, stato_cessazione e stato_terminale: le marche dello stato corrente, le colonne iniziale, emissione, cessazione e terminale di config.stati_doc_contratti, una chiave per colonna; non si escludono e nessuna si deduce dalle altre (lo stato di annullo e'' terminale senza le altre tre). Le reason_key sono chiavi i18n del frontend.';
 ```
 
 </div>
