@@ -382,7 +382,7 @@ search:
 - [trgfn_listini_guard_spegnimento_storia](manual/trgfn_listini_guard_spegnimento_storia.md) — (rev 2026-10-22, decisione di Tid del 2026-10-21)
 - [trgfn_listini_guard_tipologia_utility](manual/trgfn_listini_guard_tipologia_utility.md) — Guard defense-in-depth: verifica che la coppia `(utility_id, tipologia_id)` su `vendite.listini` sia ammessa dalla matrice `config.listini_tipologie_utilities` con `attivo = true`.
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](manual/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
-- [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
+- [trgfn_listini_righe_guard_stato](manual/trgfn_listini_righe_guard_stato.md) — Il guard delle righe di listino secondo lo stato della versione: rifiuta la scrittura di una riga che la versione non ammette. **La regola non sta qui**: sta in [`script.fn_check_listino_riga_scrivibile`](/dbzero/script/manual/fn_check_listino_riga_scrivibile), e il guard ne solleva il primo motivo (`script.fn_raise_primo_motivo_se_presente`). Le stesse risposte le danno le superfici che il frontend legge, quindi il pulsante e l'errore non possono dire due cose diverse (linee guida SQL §12.5.2).
 - [trgfn_listini_righe_guard_uom_periodo](manual/trgfn_listini_righe_guard_uom_periodo.md) — L'unità di un prezzo di listino si converte per l'articolo in **ogni giorno** del periodo della versione. Lo guarda su un prezzo nuovo (in bozza, o in una versione attiva come rettifica) e su un prezzo riacceso.
 - [trgfn_listini_versioni_guard_per_stato](manual/trgfn_listini_versioni_guard_per_stato.md)
 - [trgfn_listini_versioni_guard_transizione_stato](manual/trgfn_listini_versioni_guard_transizione_stato.md)
@@ -453,6 +453,7 @@ search:
 - [vw_fattura_righe_lista](manual/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)
 - [vw_fatture_scadenze_lista](manual/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](manual/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_listini_righe_azioni](manual/vw_listini_righe_azioni.md)
 - [vw_listini_versioni_azioni](manual/vw_listini_versioni_azioni.md)
 - [vw_lotti_fase](manual/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.
 - [vw_lotti_fatture_incoerenti](manual/vw_lotti_fatture_incoerenti.md) — (rev 2026-10-24, R-1)

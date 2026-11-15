@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_listino_versione_in_vigore`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > **Consumatori:**
@@ -21,9 +23,16 @@
 
 (funzione nata il 2026-09-28, `20260928-35`)
 
-**La versione di un listino in vigore a una data**: quella ATTIVA o CHIUSA,
-attiva, la cui validità contiene la data. `NULL` se non ce n'è una. La BOZZA non
-è mai in vigore («Bug A»: una bozza non è operativa).
+**La versione di un listino in vigore a una data**: quella fuori dalla bozza (non nello
+stato che il vocabolario `config.stati_doc_listino_versioni` marca `iniziale`; col seed,
+ATTIVA o CHIUSA), attiva, la cui validità contiene la data. `NULL` se non ce n'è una. La
+bozza non è mai in vigore: una bozza non è operativa. È la stessa lettura di
+`vendite.fn_listino_ha_storia` e del percorso rapido del resolver, che la bozza la leggono
+anche loro da `iniziale`.
+
+⚠️ Che la versione valida sia al più una lo garantisce `ex_listini_versioni_no_overlap`, che
+porta nel predicato gli id del seed fuori dalla bozza (un vincolo non legge un'altra
+tabella): li confronta coi codici `vendite/test-listino-versione-al-modello-v1`.
 
 ---
 

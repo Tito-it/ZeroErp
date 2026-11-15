@@ -40,7 +40,7 @@
 --  10) e non si cancella
 --  11) la riga di listino citata da un preventivo IN BOZZA non si rettifica
 --  12) una riga di listino che nessuno cita si rettifica
---  13) il guard di stato guarda le dieci tabelle dei documenti
+--  13) la riga propagata del guard di stato (la sua check, giro 6f-bis) guarda le dieci tabelle dei documenti
 --  14) la riga di listino non esce piu' dal meta del push dei contratti
 --  15) ordine: il prezzo cambiato dopo la precompilazione esce MANUALE, senza listino
 --  16) e la riga di listino che citava torna rettificabile
@@ -284,10 +284,12 @@ SELECT is(
                          'ordini_righe_componenti', 'contratti_righe', 'contratti_righe_componenti',
                          'ddt_righe', 'ddt_righe_componenti', 'offerte_commerciali_eccezioni',
                          'offerte_commerciali_eccezioni_componenti']) t
-      WHERE pg_get_functiondef('vendite.trgfn_listini_righe_guard_stato'::regproc)
-            ~ ('FROM vendite\.' || t || '\s+WHERE listino_riga_id = OLD\.id')),
+      -- La regola del guard di stato sta nella sua check (giro 6f-bis):
+      --   la riga «propagata» si cerca li'.
+      WHERE pg_get_functiondef('script.fn_check_listino_riga_scrivibile'::regproc)
+            ~ ('FROM vendite\.' || t || '\s+WHERE listino_riga_id = p_listino_riga_id')),
     10,
-    '13) il guard di stato guarda le righe e i componenti dei cinque documenti'
+    '13) la riga propagata del guard di stato guarda le righe e i componenti dei cinque documenti'
 );
 
 -- ============================================================

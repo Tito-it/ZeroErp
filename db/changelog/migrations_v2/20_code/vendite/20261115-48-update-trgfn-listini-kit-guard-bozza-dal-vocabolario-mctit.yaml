@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL KIT DEL LISTINO SI SCRIVE IN BOZZA: LA BOZZA DALLA COLONNA iniziale
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.26, giro 6f (S-2 e S-3,
+#   Tid 2026-11-08; via di Tid del 2026-11-15).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il guard rifiutava fuori da codice_interno = 'BOZZA'.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   iniziale IS NOT TRUE, la colonna del vocabolario; il codice resta nel
+#   contesto e nei valori del messaggio. Con il seed la risposta e' quella di
+#   prima.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma, INVOKER, nessun SET (pg_proc su dbdev,
+#   2026-11-15). Il montaggio non cambia. Il COMMENT, che era una cronaca, e'
+#   riscritto al presente.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-15; la firma, coi suoi %TYPE, dal
+#   changeSet che l'ha scritta per ultimo (20261031-30: il catalogo li scioglie).
+#   Il rollback porta il corpo e il COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-48-update-trgfn-listini-kit-guard-bozza-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261115-48-update-trgfn-listini-kit-guard-bozza-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_listini_kit_guard: la bozza dalla colonna iniziale, non dal codice BOZZA.
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6f.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_kit_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga di vendite.listini_kit si scrive solo in una versione in
+              --   bozza, lo stato iniziale del vocabolario (INSERT, UPDATE, DELETE), e
+              --   solo per un articolo composito.
+              --   Regola completa nell'intestazione del changeSet 20261031-30.
+              DECLARE
+                  v_stato       config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_iniziale    config.stati_doc_listino_versioni.iniziale%TYPE;
+                  v_riga_id     vendite.listini_kit.id%TYPE;
+                  v_versione_id vendite.listini_kit.listino_versione_id%TYPE;
+                  v_composito   catalogo.articoli.is_composito%TYPE;
+                  v_codice      catalogo.articoli.codice%TYPE;
+              BEGIN
+                  v_riga_id     := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+                  v_versione_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.listino_versione_id
+                                        ELSE NEW.listino_versione_id END;
+
+                  SELECT s.codice_interno, s.iniziale INTO v_stato, v_iniziale
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = v_versione_id;
+
+                  -- 1. Solo in bozza. Una versione che non si legge non e' una bozza.
+                  IF v_iniziale IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'operazione',          TG_OP,
+                              'stato_versione',      v_stato,
+                              'listino_versione_id', v_versione_id,
+                              'riga_id',             v_riga_id,
+                              'tabella',             'listini_kit'),
+                          NULL::uuid,
+                          TG_OP, COALESCE(v_riga_id::text, 'nuova'), COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 2. Il kit e' un composito.
+                  SELECT a.is_composito, a.codice INTO v_composito, v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_padre_id;
+
+                  IF v_composito IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_LISTINO_KIT_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'campo',               'articolo_padre_id',
+                              'articolo_padre_id',   NEW.articolo_padre_id,
+                              'listino_versione_id', NEW.listino_versione_id),
+                          NULL::uuid,
+                          COALESCE(v_codice, NEW.articolo_padre_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_kit_guard()
+              IS 'Guard di vendite.listini_kit: la riga (la periodicita'' di un kit su una versione di listino) si scrive solo in una versione in bozza, lo stato iniziale del vocabolario config.stati_doc_listino_versioni, in INSERT, UPDATE e DELETE (E_RIGA_LISTINO_VERSIONE_CHIUSA, come i componenti), e solo per un articolo composito (E_LISTINO_KIT_NON_COMPOSITO): la periodicita'' di un articolo semplice sta sulla sua riga di listino. Una versione che non si legge non e'' una bozza. L''identita'' la ferma il lucchetto generato.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_listini_kit_guard()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: la riga di vendite.listini_kit si scrive solo in una versione in
+              --   BOZZA (INSERT, UPDATE, DELETE), e solo per un articolo composito.
+              --   Regola completa nell'intestazione del changeSet 20261031-30.
+              DECLARE
+                  v_stato       config.stati_doc_listino_versioni.codice_interno%TYPE;
+                  v_riga_id     vendite.listini_kit.id%TYPE;
+                  v_versione_id vendite.listini_kit.listino_versione_id%TYPE;
+                  v_composito   catalogo.articoli.is_composito%TYPE;
+                  v_codice      catalogo.articoli.codice%TYPE;
+              BEGIN
+                  v_riga_id     := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+                  v_versione_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.listino_versione_id
+                                        ELSE NEW.listino_versione_id END;
+
+                  SELECT s.codice_interno INTO v_stato
+                    FROM vendite.listini_versioni lv
+                    JOIN config.stati_doc_listino_versioni s ON s.id = lv.stato_doc_listino_versione_id
+                   WHERE lv.id = v_versione_id;
+
+                  -- 1. Solo in bozza. Una versione che non si legge non e' una bozza.
+                  IF v_stato IS DISTINCT FROM 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_RIGA_LISTINO_VERSIONE_CHIUSA',
+                          jsonb_build_object(
+                              'operazione',          TG_OP,
+                              'stato_versione',      v_stato,
+                              'listino_versione_id', v_versione_id,
+                              'riga_id',             v_riga_id,
+                              'tabella',             'listini_kit'),
+                          NULL::uuid,
+                          TG_OP, COALESCE(v_riga_id::text, 'nuova'), COALESCE(v_stato, 'NULL'));
+                  END IF;
+
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- 2. Il kit e' un composito.
+                  SELECT a.is_composito, a.codice INTO v_composito, v_codice
+                    FROM catalogo.articoli a
+                   WHERE a.id = NEW.articolo_padre_id;
+
+                  IF v_composito IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', TG_NAME, 'E_LISTINO_KIT_NON_COMPOSITO',
+                          jsonb_build_object(
+                              'campo',               'articolo_padre_id',
+                              'articolo_padre_id',   NEW.articolo_padre_id,
+                              'listino_versione_id', NEW.listino_versione_id),
+                          NULL::uuid,
+                          COALESCE(v_codice, NEW.articolo_padre_id::text));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_listini_kit_guard()
+              IS 'Guard di vendite.listini_kit: la riga (la periodicita'' di un kit su una versione di listino) si scrive solo in una versione in BOZZA, INSERT UPDATE e DELETE (E_RIGA_LISTINO_VERSIONE_CHIUSA, come i componenti, E-1 di Tid del 2026-10-28), e solo per un articolo composito (E_LISTINO_KIT_NON_COMPOSITO): la periodicita'' di un articolo semplice sta sulla sua riga di listino. L''identita'' la ferma il lucchetto generato. Nasce il 2026-10-31 (20261031-30), brief-db-contratto-righe-periodiche-in-commessa §7.7 (L12, D-2-bis).';

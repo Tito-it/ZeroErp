@@ -1,6 +1,6 @@
 # trgfn_listini_righe_comp_guard_immutabilita_v5
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Vedi anche**
 >
@@ -52,7 +52,7 @@ Il trigger gestisce tre casi in base a `TG_OP`:
 ```
 stato della versione di OLD.listino_versione_id
 
-IF TG_OP = 'DELETE' AND v_stato IS DISTINCT FROM 'BOZZA'
+IF TG_OP = 'DELETE' AND v_iniziale IS NOT TRUE
     → raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362)
        context: { operazione: 'DELETE', hint: 'Usare attivo=FALSE', stato_versione,
                   listino_versione_id, riga_id }
@@ -66,7 +66,7 @@ Una versione che non si legge non è una bozza: il DELETE si rifiuta.
 SELECT lv.stato FROM vendite.listini_versioni lv
 WHERE lv.id = NEW.listino_versione_id
 
-IF TG_OP = 'INSERT' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA'
+IF TG_OP = 'INSERT' AND NOT COALESCE(v_iniziale, true)
     → raise E_RIGA_LISTINO_VERSIONE_CHIUSA (362)
        context: { operazione: 'INSERT', stato_versione, listino_versione_id }
 ```
@@ -74,7 +74,7 @@ IF TG_OP = 'INSERT' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA'
 ### UPDATE — campi core bloccati se versione non BOZZA
 
 ```
-IF TG_OP = 'UPDATE' AND COALESCE(v_stato, 'BOZZA') <> 'BOZZA' THEN
+IF TG_OP = 'UPDATE' AND NOT COALESCE(v_iniziale, true) THEN
     IF NEW.prezzo    IS DISTINCT FROM OLD.prezzo
     OR NEW.iva_id    IS DISTINCT FROM OLD.iva_id
     OR NEW.validita  IS DISTINCT FROM OLD.validita
@@ -140,6 +140,7 @@ Questo trigger replica la policy di `trgfn_listini_righe_guard_stato` applicata 
 
 ## Note operative
 
-- Su INSERT e UPDATE il `COALESCE(v_stato, 'BOZZA')` lascia passare: se la versione non viene trovata (improbabile per vincolo FK), il trigger non blocca l'operazione. Sul DELETE no: una versione che non si legge non è una bozza.
+- La bozza è lo stato che il vocabolario `config.stati_doc_listino_versioni` marca `iniziale`.
+- Su INSERT e UPDATE il `COALESCE(v_iniziale, true)` lascia passare: se la versione non viene trovata (improbabile per vincolo FK), il trigger non blocca l'operazione. Sul DELETE no: una versione che non si legge non è una bozza.
 - Per modificare una riga bundle in una versione attiva o chiusa, è necessario creare una nuova versione listino in stato `BOZZA` e replicare la riga con i nuovi valori.
 - Migration di riferimento: `20260513-20`; stato dal vocabolario `20261028-22`; DELETE in BOZZA `20261028-38`; la porta della chiusura del legame `20261111-27` (2026-11-09, brief-db-revisione-catalogo, giro 3).

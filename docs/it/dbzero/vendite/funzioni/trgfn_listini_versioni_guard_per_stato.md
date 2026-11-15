@@ -22,13 +22,14 @@ AS $function$
 --   e 20261029-07.
 DECLARE
     v_stato  config.stati_doc_listino_versioni.codice_interno%TYPE;
+    v_iniziale config.stati_doc_listino_versioni.iniziale%TYPE;
     -- Nomi di colonna della tabella: nessuna colonna di cui
     -- siano il riflesso.
     v_libere text[] := ARRAY['data_update', 'user_update', 'tx_id', 'validita',
                              'stato_doc_listino_versione_id'];
     v_campo  text;
 BEGIN
-    SELECT s.codice_interno INTO v_stato
+    SELECT s.codice_interno, s.iniziale INTO v_stato, v_iniziale
       FROM config.stati_doc_listino_versioni s
      WHERE s.id = OLD.stato_doc_listino_versione_id;
 
@@ -45,7 +46,8 @@ BEGIN
         RETURN OLD;
     END IF;
 
-    IF v_stato = 'BOZZA' THEN
+    -- In bozza (lo stato iniziale del vocabolario) tutto si cambia.
+    IF v_iniziale THEN
         RETURN NEW;
     END IF;
 
@@ -99,7 +101,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_listini_versioni_guard_per_stato()
-IS 'Guard di una versione di listino, stato per stato (BEFORE UPDATE e BEFORE DELETE): BOZZA tutto si cambia e si cancella; ATTIVA si cambia solo valido_al (la chiusura programmata, e quella delle precedenti all''attivazione di una nuova); CHIUSA niente. Se si cancella lo dice script.fn_check_versione_listino_eliminabile, e il ramo DELETE ne solleva il primo motivo (fuori dalla BOZZA E_LISTINO_VERSIONE_NON_ELIMINABILE; una BOZZA citata da un documento E_LISTINO_VERSIONE_CITATA); un altro campo cambiato fuori dalla BOZZA: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE, col primo campo nell''ordine delle colonne. Lo stato non e'' un campo di questa regola (guard di transizione, porta); le colonne d''audit e la generata validita non contano. Prima la regola stava nel backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE, fn_delete_versione), e il database ne aveva solo le date della CHIUSA (vendite.trgfn_listini_versioni_guard_date_chiusa, ritirata qui). Brief: brief-modello-documento-vendita §16 (L-5, Tid 2026-10-28). Rev 2026-10-28 (20261028-37, brief-modello-documento-vendita §16.11): il ramo DELETE dalla check, la stessa del verbo vendite.fn_elimina_versione_listino e del pulsante (vendite.vw_listini_versioni_azioni). Rev 2026-10-29 (20261029-07, §16.15, C-4 = a di Tid): la fine di una ATTIVA cambia solo dalla porta dei verbi vendite.fn_programma_chiusura_versione_listino e vendite.fn_attiva_versione_listino (GUC transazionale zeroerp.listino_versione_fine = id della versione E il proprietario della tabella, script.fn_is_proprietario_tabella); senza: E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO. Stretta di L-5, non revoca.';
+IS 'Guard di una versione di listino, stato per stato (BEFORE UPDATE e BEFORE DELETE): in bozza, lo stato iniziale del vocabolario config.stati_doc_listino_versioni, tutto si cambia e si cancella; ATTIVA si cambia solo valido_al (la chiusura programmata, e quella delle precedenti all''attivazione di una nuova), e solo dalla porta dei verbi vendite.fn_programma_chiusura_versione_listino e vendite.fn_attiva_versione_listino (GUC transazionale zeroerp.listino_versione_fine = id della versione, e il proprietario della tabella, script.fn_is_proprietario_tabella; senza: E_LISTINO_VERSIONE_FINE_SOLO_DAL_VERBO); CHIUSA niente. Se si cancella lo dice script.fn_check_versione_listino_eliminabile, la stessa regola del verbo vendite.fn_elimina_versione_listino e del pulsante (vendite.vw_listini_versioni_azioni), e il ramo DELETE ne solleva il primo motivo (fuori dalla bozza E_LISTINO_VERSIONE_NON_ELIMINABILE; una bozza citata da un documento E_LISTINO_VERSIONE_CITATA); un altro campo cambiato fuori dalla bozza: E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE, col primo campo nell''ordine delle colonne. Lo stato non e'' un campo di questa regola (guard di transizione, porta); le colonne d''audit e la generata validita non contano.';
 ```
 
 </div>

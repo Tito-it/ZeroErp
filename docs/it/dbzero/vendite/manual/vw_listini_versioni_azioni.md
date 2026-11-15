@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `vendite.vw_listini_versioni_azioni`
 
-> **Ultimo aggiornamento**: 29 ottobre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -28,6 +28,8 @@ qualunque stato.
 | `eliminazione_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
 | `chiusura_blocco_reason` | il motivo per cui «Chiudi» è spento (la versione non è attiva); `NULL` = si chiude |
 | `chiusura_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
+| `aggiunta_riga_blocco_reason` | il motivo per cui «Aggiungi riga» è spento: `VERSIONE_CHIUSA`, il primo motivo di `script.fn_check_listino_riga_scrivibile` senza riga, lo stesso che il guard di stato delle righe solleva sull'INSERT; `NULL` = la riga si aggiunge (in bozza, o come rettifica di una versione attiva) |
+| `aggiunta_riga_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
 
 ### Regole
 

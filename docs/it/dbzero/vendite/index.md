@@ -451,7 +451,7 @@ search:
 - [trgfn_listini_kit_guard](funzioni/trgfn_listini_kit_guard.md)
 - [trgfn_listini_righe_comp_guard_immutabilita_v5](funzioni/trgfn_listini_righe_comp_guard_immutabilita_v5.md)
 - [trgfn_listini_righe_guard_periodicita_quota_fissa](funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa.md)
-- [trgfn_listini_righe_guard_stato](funzioni/trgfn_listini_righe_guard_stato.md) — Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata a valle (commesse, attivita` fatturabili).
+- [trgfn_listini_righe_guard_stato](funzioni/trgfn_listini_righe_guard_stato.md) — Il guard delle righe di listino secondo lo stato della versione: rifiuta la scrittura di una riga che la versione non ammette. **La regola non sta qui**: sta in [`script.fn_check_listino_riga_scrivibile`](/dbzero/script/manual/fn_check_listino_riga_scrivibile), e il guard ne solleva il primo motivo (`script.fn_raise_primo_motivo_se_presente`). Le stesse risposte le danno le superfici che il frontend legge, quindi il pulsante e l'errore non possono dire due cose diverse (linee guida SQL §12.5.2).
 - [trgfn_listini_righe_guard_uom_periodo](funzioni/trgfn_listini_righe_guard_uom_periodo.md) — L'unità di un prezzo di listino si converte per l'articolo in **ogni giorno** del periodo della versione. Lo guarda su un prezzo nuovo (in bozza, o in una versione attiva come rettifica) e su un prezzo riacceso.
 - [trgfn_listini_versioni_guard_per_stato](funzioni/trgfn_listini_versioni_guard_per_stato.md)
 - [trgfn_listini_versioni_guard_transizione_stato](funzioni/trgfn_listini_versioni_guard_transizione_stato.md)
@@ -539,6 +539,7 @@ search:
 - [vw_fatture_lista](views/vw_fatture_lista.md)
 - [vw_fatture_scadenze_lista](views/vw_fatture_scadenze_lista.md) — (rev 2026-09-17)
 - [vw_fondi_fattura_da_decidere](views/vw_fondi_fattura_da_decidere.md) — (latest review 15-08-2026)
+- [vw_listini_righe_azioni](views/vw_listini_righe_azioni.md)
 - [vw_listini_versioni_azioni](views/vw_listini_versioni_azioni.md)
 - [vw_lotti_congelati_con_gruppi_in_errore](views/vw_lotti_congelati_con_gruppi_in_errore.md)
 - [vw_lotti_fase](views/vw_lotti_fase.md) — **In che fase è questo lotto**, e in un posto solo.

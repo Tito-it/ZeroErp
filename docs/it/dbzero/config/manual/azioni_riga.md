@@ -14,6 +14,8 @@ giro di un lotto, attivare una versione di listino, e domani le azioni per riga 
 documenti) ha tre pezzi che devono dire la stessa cosa:
 
 * la **funzione che esegue l'azione** (`verbo`), che la rifiuta col primo motivo della sua `fn_check`;
+  quando l'azione è una scrittura diretta della tabella e non c'è un verbo, è il **guard** che la
+  rifiuta (le righe di listino: `vendite.trgfn_listini_righe_guard_stato`);
 * la **vista** che il frontend legge (`superficie`), con una riga per riga dell'elenco e le due colonne
   che dicono perché il pulsante è spento;
 * la **`fn_check`**, che entrambe chiamano.
@@ -30,7 +32,7 @@ il pulsante di riga, non uno per azione.
 | `superficie` | la vista, `schema.nome` |
 | `colonna_motivo`, `colonna_motivo_chiave` | le colonne della vista col motivo e la sua chiave di traduzione; `NULL` nella riga = azione viva |
 | `fn_check` | la funzione dei motivi, `schema.fn_check_…` |
-| `verbo` | la funzione che esegue l'azione, `schema.nome` |
+| `verbo` | la funzione che esegue l'azione, o il guard che la rifiuta quando l'azione è una scrittura diretta, `schema.nome` |
 
 ⚠️ **Testo, non `regclass` o `regprocedure`.** Un tipo `reg*` salva l'OID: segue una rinomina senza
 dirlo e, se l'oggetto sparisce, mostra un numero senza errore. Che i nomi puntino a oggetti vivi lo

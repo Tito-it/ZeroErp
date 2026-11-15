@@ -1,0 +1,261 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I PREZZI OLTRE LA FINE DEL LEGAME: TOGLIE IN BOZZA, DALLA COLONNA iniziale
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.26, giro 6f (S-2 e S-3,
+#   Tid 2026-11-08; via di Tid del 2026-11-15).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   L'esito TOGLIE (il prezzo si cancella) si dava con codice_interno = 'BOZZA'.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   s.iniziale, la colonna del vocabolario. Con il seed la risposta e' quella di
+#   prima.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE, stessa firma e RETURNS TABLE (coi %TYPE dal changeSet di
+#   nascita), SECURITY DEFINER con search_path bloccato. Corpo BEGIN ATOMIC: il
+#   COMMENT sta in un sql: suo (linee-guida-sql §5c), nei changes e nel rollback.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   pg_get_functiondef su dbdev, 2026-11-15; la firma, coi suoi %TYPE, dal
+#   changeSet che l'ha scritta per ultimo (20261111-25: il catalogo li scioglie).
+#   Il rollback porta il corpo e il COMMENT di prima, letti dal catalogo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-46-update-fn-prezzi-legame-oltre-la-fine-bozza-dal-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261115-46-update-fn-prezzi-legame-oltre-la-fine-bozza-dal-vocabolario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_prezzi_legame_oltre_la_fine: TOGLIE dalla colonna iniziale, non dal codice BOZZA.
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6f.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_prezzi_legame_oltre_la_fine(
+                  p_articolo_componente_id vendite.listini_righe_componenti.articolo_componente_id%TYPE,
+                  p_valido_al              vendite.listini_righe_componenti.valido_al%TYPE)
+               RETURNS TABLE(
+                  riga_id             vendite.listini_righe_componenti.id%TYPE,
+                  listino_versione_id vendite.listini_righe_componenti.listino_versione_id%TYPE,
+                  listino_id          vendite.listini.id%TYPE,
+                  listino_codice      vendite.listini.codice%TYPE,
+                  codice_versione     vendite.listini_versioni.codice_versione%TYPE,
+                  stato_versione      config.stati_doc_listino_versioni.codice_interno%TYPE,
+                  valido_dal          vendite.listini_righe_componenti.valido_dal%TYPE,
+                  valido_al           vendite.listini_righe_componenti.valido_al%TYPE,
+                  prezzo              vendite.listini_righe_componenti.prezzo%TYPE,
+                  importo_per_kit     vendite.listini_righe_componenti.prezzo%TYPE,
+                  attivo              vendite.listini_righe_componenti.attivo%TYPE,
+                  nel_perimetro       boolean,
+                  esito               text)
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+               WITH r AS (
+                        SELECT lrc.id,
+                           lrc.listino_versione_id,
+                           lv.listino_id,
+                           l.codice AS listino_codice,
+                           lv.codice_versione,
+                           s.codice_interno AS stato,
+                           lrc.valido_dal,
+                           lrc.valido_al,
+                           lrc.prezzo,
+                           (lrc.prezzo * ac.coeff_qta) AS importo_per_kit,
+                           lrc.attivo,
+                           script.fn_scope_ef_whitelist_via_listino_versione((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, lrc.listino_versione_id) AS visibile,
+                               CASE
+                                   WHEN (lrc.valido_dal <= fn_prezzi_legame_oltre_la_fine.p_valido_al) THEN 'CHIUDE'::text
+                                   WHEN s.iniziale THEN 'TOGLIE'::text
+                                   ELSE 'BLOCCA'::text
+                               END AS esito
+                          FROM ((((vendite.listini_righe_componenti lrc
+                            JOIN catalogo.articoli_componenti ac ON ((ac.id = lrc.articolo_componente_id)))
+                            JOIN vendite.listini_versioni lv ON ((lv.id = lrc.listino_versione_id)))
+                            JOIN vendite.listini l ON ((l.id = lv.listino_id)))
+                            JOIN config.stati_doc_listino_versioni s ON ((s.id = lv.stato_doc_listino_versione_id)))
+                         WHERE ((lrc.articolo_componente_id = fn_prezzi_legame_oltre_la_fine.p_articolo_componente_id) AND (fn_prezzi_legame_oltre_la_fine.p_valido_al IS NOT NULL) AND (COALESCE(lrc.valido_al, 'infinity'::date) > fn_prezzi_legame_oltre_la_fine.p_valido_al))
+                       )
+                SELECT
+                       CASE
+                           WHEN r.visibile THEN r.id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_versione_id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_codice
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.codice_versione
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.stato
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.valido_dal
+                           ELSE NULL::date
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.valido_al
+                           ELSE NULL::date
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.prezzo
+                           ELSE NULL::numeric
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.importo_per_kit
+                           ELSE NULL::numeric
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.attivo
+                           ELSE NULL::boolean
+                       END AS "case",
+                   COALESCE(r.visibile, false) AS "coalesce",
+                   r.esito
+                  FROM r
+                 ORDER BY COALESCE(r.visibile, false) DESC, r.listino_id, r.listino_versione_id, r.id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_prezzi_legame_oltre_la_fine(vendite.listini_righe_componenti.articolo_componente_id%TYPE, vendite.listini_righe_componenti.valido_al%TYPE)
+              IS 'I prezzi bundle di un legame di distinta (vendite.listini_righe_componenti.articolo_componente_id) che vanno oltre la data p_valido_al, cioe'' quelli che una chiusura del legame a quella data tocca: il prezzo deve stare dentro il periodo del legame (FK temporale fk_listrighe_comp_articoli_comp_temporal). Una riga per prezzo, attivi e spenti, in ogni versione e in ogni azienda. esito: CHIUDE (il prezzo comincia entro la fine e ne prende la stessa fine), TOGLIE (comincia dopo, in una versione in bozza, lo stato iniziale del vocabolario config.stati_doc_listino_versioni: si cancella), BLOCCA (comincia dopo, in una versione non in bozza: non si accorcia ne'' si cancella, e la fine del legame deve arrivare almeno al suo inizio). importo_per_kit = prezzo per il coefficiente del legame: quanto il componente pesa sul prezzo di un kit in quella versione, che e'' la somma dei suoi componenti. nel_perimetro: la riga sta nel perimetro di chi chiama (script.fn_scope_ef_whitelist_via_listino_versione, la regola della policy delle righe); fuori perimetro escono solo nel_perimetro = false e l''esito, gli altri campi sono NULL. p_valido_al NULL: nessuna riga. Ordine: prima le righe nel perimetro, poi per listino, versione e riga. Lettori: script.fn_check_legame_distinta_chiudibile, catalogo.trgfn_articoli_componenti_block_modifica_struttura, catalogo.fn_chiudi_legame_distinta, la finestra di conferma. SECURITY DEFINER con search_path bloccato: la distinta e'' comune a tutte le aziende, i listini no. EXECUTE solo all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_prezzi_legame_oltre_la_fine(
+                  p_articolo_componente_id vendite.listini_righe_componenti.articolo_componente_id%TYPE,
+                  p_valido_al              vendite.listini_righe_componenti.valido_al%TYPE)
+               RETURNS TABLE(
+                  riga_id             vendite.listini_righe_componenti.id%TYPE,
+                  listino_versione_id vendite.listini_righe_componenti.listino_versione_id%TYPE,
+                  listino_id          vendite.listini.id%TYPE,
+                  listino_codice      vendite.listini.codice%TYPE,
+                  codice_versione     vendite.listini_versioni.codice_versione%TYPE,
+                  stato_versione      config.stati_doc_listino_versioni.codice_interno%TYPE,
+                  valido_dal          vendite.listini_righe_componenti.valido_dal%TYPE,
+                  valido_al           vendite.listini_righe_componenti.valido_al%TYPE,
+                  prezzo              vendite.listini_righe_componenti.prezzo%TYPE,
+                  importo_per_kit     vendite.listini_righe_componenti.prezzo%TYPE,
+                  attivo              vendite.listini_righe_componenti.attivo%TYPE,
+                  nel_perimetro       boolean,
+                  esito               text)
+               LANGUAGE sql
+               STABLE
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'pg_temp'
+              BEGIN ATOMIC
+               WITH r AS (
+                        SELECT lrc.id,
+                           lrc.listino_versione_id,
+                           lv.listino_id,
+                           l.codice AS listino_codice,
+                           lv.codice_versione,
+                           s.codice_interno AS stato,
+                           lrc.valido_dal,
+                           lrc.valido_al,
+                           lrc.prezzo,
+                           (lrc.prezzo * ac.coeff_qta) AS importo_per_kit,
+                           lrc.attivo,
+                           script.fn_scope_ef_whitelist_via_listino_versione((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer, lrc.listino_versione_id) AS visibile,
+                               CASE
+                                   WHEN (lrc.valido_dal <= fn_prezzi_legame_oltre_la_fine.p_valido_al) THEN 'CHIUDE'::text
+                                   WHEN ((s.codice_interno)::text = 'BOZZA'::text) THEN 'TOGLIE'::text
+                                   ELSE 'BLOCCA'::text
+                               END AS esito
+                          FROM ((((vendite.listini_righe_componenti lrc
+                            JOIN catalogo.articoli_componenti ac ON ((ac.id = lrc.articolo_componente_id)))
+                            JOIN vendite.listini_versioni lv ON ((lv.id = lrc.listino_versione_id)))
+                            JOIN vendite.listini l ON ((l.id = lv.listino_id)))
+                            JOIN config.stati_doc_listino_versioni s ON ((s.id = lv.stato_doc_listino_versione_id)))
+                         WHERE ((lrc.articolo_componente_id = fn_prezzi_legame_oltre_la_fine.p_articolo_componente_id) AND (fn_prezzi_legame_oltre_la_fine.p_valido_al IS NOT NULL) AND (COALESCE(lrc.valido_al, 'infinity'::date) > fn_prezzi_legame_oltre_la_fine.p_valido_al))
+                       )
+                SELECT
+                       CASE
+                           WHEN r.visibile THEN r.id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_versione_id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_id
+                           ELSE NULL::bigint
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.listino_codice
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.codice_versione
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.stato
+                           ELSE NULL::character varying
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.valido_dal
+                           ELSE NULL::date
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.valido_al
+                           ELSE NULL::date
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.prezzo
+                           ELSE NULL::numeric
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.importo_per_kit
+                           ELSE NULL::numeric
+                       END AS "case",
+                       CASE
+                           WHEN r.visibile THEN r.attivo
+                           ELSE NULL::boolean
+                       END AS "case",
+                   COALESCE(r.visibile, false) AS "coalesce",
+                   r.esito
+                  FROM r
+                 ORDER BY COALESCE(r.visibile, false) DESC, r.listino_id, r.listino_versione_id, r.id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_prezzi_legame_oltre_la_fine(vendite.listini_righe_componenti.articolo_componente_id%TYPE, vendite.listini_righe_componenti.valido_al%TYPE)
+              IS 'I prezzi bundle di un legame di distinta (vendite.listini_righe_componenti.articolo_componente_id) che vanno oltre la data p_valido_al, cioe'' quelli che una chiusura del legame a quella data tocca: il prezzo deve stare dentro il periodo del legame (FK temporale fk_listrighe_comp_articoli_comp_temporal). Una riga per prezzo, attivi e spenti, in ogni versione e in ogni azienda. esito: CHIUDE (il prezzo comincia entro la fine e ne prende la stessa fine), TOGLIE (comincia dopo, in una versione in BOZZA: si cancella), BLOCCA (comincia dopo, in una versione non in bozza: non si accorcia ne'' si cancella, e la fine del legame deve arrivare almeno al suo inizio). importo_per_kit = prezzo per il coefficiente del legame: quanto il componente pesa sul prezzo di un kit in quella versione, che e'' la somma dei suoi componenti. nel_perimetro: la riga sta nel perimetro di chi chiama (script.fn_scope_ef_whitelist_via_listino_versione, la regola della policy delle righe); fuori perimetro escono solo nel_perimetro = false e l''esito, gli altri campi sono NULL. p_valido_al NULL: nessuna riga. Ordine: prima le righe nel perimetro, poi per listino, versione e riga. Lettori: script.fn_check_legame_distinta_chiudibile, catalogo.trgfn_articoli_componenti_block_modifica_struttura, catalogo.fn_chiudi_legame_distinta, la finestra di conferma. SECURITY DEFINER con search_path bloccato: la distinta e'' comune a tutte le aziende, i listini no. EXECUTE solo all''applicazione.';

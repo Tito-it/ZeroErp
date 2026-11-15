@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SUPERFICIE DELLA VERSIONE DI LISTINO: SE SI AGGIUNGE UNA RIGA
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.27, giro 6f-bis (D-LIST
+#   decisa (a) da Tid il 2026-11-15, solo DB; il trigger come verbo nel registro,
+#   Tid lo stesso giorno).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La superficie delle azioni della versione non diceva se una riga si
+#   aggiunge: il FE lo deduceva dal codice dello stato (VersioneDrawer.vue,
+#   isBozza), «solo la bozza», piu' stretto del DB.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Due colonne in coda, aggiunta_riga_blocco_reason e
+#   aggiunta_riga_blocco_reason_key: il primo motivo di
+#   script.fn_check_listino_riga_scrivibile senza riga, la stessa che il guard
+#   solleva sull'INSERT. Iscritta nel registro come AGGIUNGI_RIGA_LISTINO (CSV
+#   config/azioni_riga.csv).
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   CREATE OR REPLACE VIEW: le colonne nuove vanno in coda, le altre restano dove
+#   sono; security_invoker ripetuto. Nessuna vista ne dipende. I privilegi non
+#   cambiano (CREATE OR REPLACE li conserva). Il rollback la toglie e la ricrea
+#   dalla definizione di prima (CREATE OR REPLACE non toglie colonne): i
+#   privilegi li danno i default dello schema per zeroerp_owner. Il COMMENT, che
+#   era una cronaca, e' riscritto al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-56-update-vw-listini-versioni-azioni-aggiunta-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261115-56-update-vw-listini-versioni-azioni-aggiunta-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_listini_versioni_azioni: + aggiunta_riga_blocco_reason / _key, dalla
+        script.fn_check_listino_riga_scrivibile. Brief: brief-db-stati-documento-dal-vocabolario, giro 6f-bis.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+              SELECT lv.id         AS versione_id,
+                     lv.listino_id,
+                     -- Il PRIMO motivo: il verbo e il guard sollevano quello.
+                     chk.motivi -> 0 ->> 'reason'     AS attivazione_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS attivazione_blocco_reason_key,
+                     eli.motivi -> 0 ->> 'reason'     AS eliminazione_blocco_reason,
+                     eli.motivi -> 0 ->> 'reason_key' AS eliminazione_blocco_reason_key,
+                     chi.motivi -> 0 ->> 'reason'     AS chiusura_blocco_reason,
+                     chi.motivi -> 0 ->> 'reason_key' AS chiusura_blocco_reason_key,
+                     rig.motivi -> 0 ->> 'reason'     AS aggiunta_riga_blocco_reason,
+                     rig.motivi -> 0 ->> 'reason_key' AS aggiunta_riga_blocco_reason_key
+                FROM vendite.listini_versioni lv
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi
+                ) chk
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_versione_listino_eliminabile(lv.id) AS motivi
+                ) eli
+                CROSS JOIN LATERAL (
+                    -- Senza data: se il pulsante si accende.
+                    SELECT script.fn_check_versione_listino_chiudibile(lv.id) AS motivi
+                ) chi
+                CROSS JOIN LATERAL (
+                    -- Senza riga: la riga nuova.
+                    SELECT script.fn_check_listino_riga_scrivibile(lv.id) AS motivi
+                ) rig;
+
+              COMMENT ON VIEW vendite.vw_listini_versioni_azioni IS 'Le azioni di riga delle versioni di listino: una riga per versione (versione_id, listino_id). attivazione_blocco_reason / attivazione_blocco_reason_key: il primo motivo di script.fn_check_versione_listino_attivabile (la stessa fn_check che vendite.fn_attiva_versione_listino e il guard di transizione sollevano; NULL = niente vieta l''attivazione). eliminazione_blocco_reason / eliminazione_blocco_reason_key: il primo motivo di script.fn_check_versione_listino_eliminabile (la stessa che vendite.fn_elimina_versione_listino e il guard per stato sollevano: non in bozza, citata da un documento; NULL = si elimina). chiusura_blocco_reason / chiusura_blocco_reason_key: il primo motivo di script.fn_check_versione_listino_chiudibile senza data (non ATTIVA; NULL = «Chiudi» acceso; la fine nel passato la giudica vendite.fn_programma_chiusura_versione_listino con la data scelta). aggiunta_riga_blocco_reason / aggiunta_riga_blocco_reason_key: il primo motivo di script.fn_check_listino_riga_scrivibile senza riga, cioe'' per una riga nuova (la stessa che il guard vendite.trgfn_listini_righe_guard_stato solleva sull''INSERT: una versione CHIUSA; NULL = la riga si aggiunge). «Clona» non ha colonne: si clona da qualunque stato. Lo stato non c''e'': chi puo'' attivare da quale stato lo dice la riga lista (script.fn_doc_azioni_permesse). E'' la superficie delle azioni ATTIVA_VERSIONE_LISTINO, ELIMINA_VERSIONE_LISTINO, CHIUDI_VERSIONE_LISTINO e AGGIUNGI_RIGA_LISTINO nel registro config.azioni_riga. security_invoker: i soli listini del proprio perimetro. Si filtra per listino_id o versione_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW vendite.vw_listini_versioni_azioni;
+
+              CREATE VIEW vendite.vw_listini_versioni_azioni
+              WITH (security_invoker = true) AS
+               SELECT lv.id AS versione_id,
+                  lv.listino_id,
+                  ((chk.motivi -> 0) ->> 'reason'::text) AS attivazione_blocco_reason,
+                  ((chk.motivi -> 0) ->> 'reason_key'::text) AS attivazione_blocco_reason_key,
+                  ((eli.motivi -> 0) ->> 'reason'::text) AS eliminazione_blocco_reason,
+                  ((eli.motivi -> 0) ->> 'reason_key'::text) AS eliminazione_blocco_reason_key,
+                  ((chi.motivi -> 0) ->> 'reason'::text) AS chiusura_blocco_reason,
+                  ((chi.motivi -> 0) ->> 'reason_key'::text) AS chiusura_blocco_reason_key
+                 FROM (((vendite.listini_versioni lv
+                   CROSS JOIN LATERAL ( SELECT script.fn_check_versione_listino_attivabile(lv.id) AS motivi) chk)
+                   CROSS JOIN LATERAL ( SELECT script.fn_check_versione_listino_eliminabile(lv.id) AS motivi) eli)
+                   CROSS JOIN LATERAL ( SELECT script.fn_check_versione_listino_chiudibile(lv.id) AS motivi) chi);
+
+              COMMENT ON VIEW vendite.vw_listini_versioni_azioni IS 'Le AZIONI DI RIGA delle versioni di listino: una riga per versione (versione_id, listino_id). attivazione_blocco_reason / attivazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_attivabile (la stessa fn_check che vendite.fn_attiva_versione_listino e il guard di transizione sollevano; NULL = niente vieta l''attivazione). eliminazione_blocco_reason / eliminazione_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_eliminabile (la stessa che vendite.fn_elimina_versione_listino e il guard per stato sollevano: non in bozza, citata da un documento; NULL = si elimina). chiusura_blocco_reason / chiusura_blocco_reason_key: il PRIMO motivo di script.fn_check_versione_listino_chiudibile senza data (non ATTIVA; NULL = «Chiudi» acceso; la fine nel passato la giudica vendite.fn_programma_chiusura_versione_listino con la data scelta). «Clona» non ha colonne: si clona da qualunque stato. Lo stato non c''e'': chi puo'' attivare da quale stato lo dice la riga lista (script.fn_doc_azioni_permesse). E'' la superficie delle azioni ATTIVA_VERSIONE_LISTINO, ELIMINA_VERSIONE_LISTINO e CHIUDI_VERSIONE_LISTINO nel registro config.azioni_riga. security_invoker: i soli listini del proprio perimetro. Si filtra per listino_id o versione_id. Prima i pulsanti si decidevano nel frontend (conteggio delle righe, stato). Brief: brief-modello-documento-vendita §16 (L-4), §16.11 (E-2) e §16.14 (C-2, C-3, Tid 2026-10-29).';

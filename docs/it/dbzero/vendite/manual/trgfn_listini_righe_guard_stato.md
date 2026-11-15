@@ -1,75 +1,78 @@
 ## 📘 Documentazione Concettuale – Funzione Trigger `vendite.trgfn_listini_righe_guard_stato`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+
 > 👀 **Vedi anche**
 >
-Tabelle:
->
-[vendite.listini_righe](/dbzero/vendite/tabelle/listini_righe)
-> [vendite.listini_versioni](/dbzero/vendite/tabelle/listini_versioni)
-> [vendite.commesse_attivita](/dbzero/vendite/tabelle/commesse_attivita)
-> [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili)
->
-Funzioni:
->
-[vendite.fn_resolve_prezzo_listino](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2)
+> [script.fn_check_listino_riga_scrivibile](/dbzero/script/manual/fn_check_listino_riga_scrivibile) — la regola ·
+> [vendite.vw_listini_versioni_azioni](/dbzero/vendite/manual/vw_listini_versioni_azioni) — la riga nuova ·
+> [vendite.vw_listini_righe_azioni](/dbzero/vendite/manual/vw_listini_righe_azioni) — la riga che c'è ·
+> [config.azioni_riga](/dbzero/config/manual/azioni_riga) ·
+> [config.stati_doc_listino_versioni](/dbzero/config/manual/stati_doc_listino_versioni)
 
 ---
+
 ### 🎯 Scopo Principale
 
-Guard N6 — terzo livello di protezione: impedisce la modifica o cancellazione di righe listino
-quando lo stato della versione padre non lo consente o quando la riga e` gia` stata propagata
-a valle (commesse, attivita` fatturabili).
+Il guard delle righe di listino secondo lo stato della versione: rifiuta la scrittura di una riga
+che la versione non ammette. **La regola non sta qui**: sta in
+[`script.fn_check_listino_riga_scrivibile`](/dbzero/script/manual/fn_check_listino_riga_scrivibile),
+e il guard ne solleva il primo motivo (`script.fn_raise_primo_motivo_se_presente`). Le stesse
+risposte le danno le superfici che il frontend legge, quindi il pulsante e l'errore non possono
+dire due cose diverse (linee guida SQL §12.5.2).
 
 ---
 
 ### Contesto di Esecuzione
 
-* **Tipo**: `BEFORE UPDATE OR DELETE` trigger su `vendite.listini_righe`
-* **Nome trigger**: `trg_listini_righe_a10_guard_stato_upd_dlt`
-* **Fase**: `_a10_` (guard/block — prima linea di difesa)
-* **Non si applica a INSERT**: l'aggiunta di righe a una versione ATTIVA e` ammessa come rettifica controllata
+* **Tipo**: `BEFORE INSERT OR UPDATE OR DELETE`, per riga, su `vendite.listini_righe`
+* **Nome trigger**: `trg_listini_righe_a10_guard_stato_ins_upd_dlt`
+* **Fase**: `_a10_` (guard)
+* Sull'INSERT la domanda è la riga nuova della versione (`NEW.listino_versione_id`); su UPDATE e
+  DELETE la riga che c'è (`OLD`).
 
 ---
 
-### Logica Operativa
+### Che cosa ammette
 
-Il trigger recupera lo `stato` della versione padre (`vendite.listini_versioni`) tramite `OLD.listino_versione_id` e applica le seguenti regole:
+| Versione | Riga nuova | Riga che c'è |
+| --- | --- | --- |
+| in bozza (lo stato `iniziale` del vocabolario) | sì | sì |
+| `ATTIVA` | sì: è una rettifica | sì, finché il suo prezzo non è stato usato da un documento (`E_RIGA_LISTINO_PROPAGATA`) |
+| `CHIUSA` | no (`E_RIGA_LISTINO_VERSIONE_CHIUSA`) | no (`E_RIGA_LISTINO_VERSIONE_CHIUSA`) |
 
-| Stato versione | Comportamento |
-| --- | --- |
-| `BOZZA` | Passa sempre — modifica libera |
-| `ATTIVA` | Verifica propagazione: se la riga e` referenziata in almeno una tabella a valle → blocca con `E_RIGA_LISTINO_PROPAGATA`. Se non propagata → passa (rettifica controllata ammessa) |
-| `CHIUSA` | Blocca sempre con `E_RIGA_LISTINO_VERSIONE_CHIUSA` |
+Una riga è **propagata** quando la cita (`listino_riga_id`) una riga di commessa, un'attività
+fatturabile, o una riga principale o un componente di preventivo, ordine, contratto, DDT od
+offerta, anche in bozza: le dodici tabelle stanno nella check. Per cambiare il prezzo di una riga
+propagata si fa una versione nuova del listino.
 
 ---
 
-### Tabelle controllate per propagazione
+### Il verbo nel registro
 
-Il check di propagazione verifica se `OLD.id` e` referenziato come `listino_riga_id` in:
-
-1. `vendite.commesse_attivita` — riga listino che ha generato il `prezzo_snapshot`
-2. `vendite.attivita_fatturabili` — propagato dalla commessa, usato per guard e tracciamento pipeline
-
-Per aggiungere nuove tabelle al controllo: aggiungere `UNION ALL` nel corpo della funzione (espansione concentrica).
+Le righe di listino si scrivono direttamente (il backend fa `INSERT`, `UPDATE`, `DELETE`), e non
+c'è una funzione che esegua l'azione: chi la rifiuta è questo guard. Per questo è il `verbo` delle
+azioni `AGGIUNGI_RIGA_LISTINO` e `MODIFICA_RIGA_LISTINO` in
+[`config.azioni_riga`](/dbzero/config/manual/azioni_riga), e il presidio del registro verifica che
+chiami la check.
 
 ---
 
 ### Codici errore
 
-| Codice | Condizione | Messaggio atteso |
-| --- | --- | --- |
-| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | UPDATE/DELETE su riga di versione CHIUSA | Operazione non ammessa su versione chiusa |
-| `E_RIGA_LISTINO_PROPAGATA` | UPDATE/DELETE su riga ATTIVA gia` propagata a valle | Riga gia` propagata, modifica non ammessa |
+| Codice | Quando |
+| --- | --- |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | una riga nuova, una modifica o un'eliminazione in una versione CHIUSA |
+| `E_RIGA_LISTINO_PROPAGATA` | la modifica o l'eliminazione, fuori dalla bozza, di una riga il cui prezzo è stato usato |
 
 ---
 
-### Relazione con i livelli di protezione N6
+### Test
 
-Questo trigger e` il **terzo livello** della protezione N6 (espansione concentrica):
-
-1. **Primo livello**: vincoli EXCLUDE GIST su `listini_versioni` e `listini_associazioni` — impediscono overlap temporali
-2. **Secondo livello**: logica service Python — validazione business prima della persistenza
-3. **Terzo livello** (questo trigger): guard DB che impedisce modifica/cancellazione di righe gia` consumate a valle
+* `db/pgtap/vendite/test-listino-riga-scrivibile-v1.sql` — la check, le due superfici e il guard
+  rispondono uguale, con la marca `iniziale` spostata.
+* `db/pgtap/vendite/test-provenienza-prezzo-push-v1.sql` (test 13) — le dieci tabelle dei
+  documenti nella check.
 
 ---
 

@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SUPERFICIE DELLE RIGHE DI LISTINO: SE UNA RIGA SI MODIFICA O SI ELIMINA
+#   Brief: brief-db-stati-documento-dal-vocabolario §6.27, giro 6f-bis (D-LIST
+#   decisa (a) da Tid il 2026-11-15, solo DB; il trigger come verbo nel registro,
+#   Tid lo stesso giorno).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il motivo per cui una riga di listino non si cambia non arrivava a nessuna
+#   superficie: il FE spegneva modifica ed eliminazione da isBozza
+#   (VersioneDrawer.vue), e il BE le rifiutava con un guard suo
+#   (_assert_versione_bozza_for_riga_op), entrambi «solo la bozza».
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   vendite.vw_listini_righe_azioni: per riga, il primo motivo di
+#   script.fn_check_listino_riga_scrivibile (§12.5.1: la superficie dove il
+#   pulsante vive, §12.5.3, e' l'elenco delle righe nel drawer della versione).
+#   Iscritta nel registro come MODIFICA_RIGA_LISTINO.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Vista nuova, security_invoker. I privilegi li danno i default dello schema
+#   per zeroerp_owner (SELECT a zeroerp_app).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-57-create-vw-listini-righe-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261115-57-create-vw-listini-righe-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVA vendite.vw_listini_righe_azioni: il motivo per cui una riga di listino non si modifica.
+        Brief: brief-db-stati-documento-dal-vocabolario, giro 6f-bis.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW vendite.vw_listini_righe_azioni
+              WITH (security_invoker = true) AS
+              SELECT lr.id                  AS listino_riga_id,
+                     lr.listino_versione_id,
+                     -- Il PRIMO motivo: il guard di stato solleva quello.
+                     mot.motivi -> 0 ->> 'reason'     AS modifica_blocco_reason,
+                     mot.motivi -> 0 ->> 'reason_key' AS modifica_blocco_reason_key
+                FROM vendite.listini_righe lr
+                CROSS JOIN LATERAL (
+                    SELECT script.fn_check_listino_riga_scrivibile(lr.listino_versione_id, lr.id) AS motivi
+                ) mot;
+
+              COMMENT ON VIEW vendite.vw_listini_righe_azioni IS 'Le azioni di riga delle righe di listino: una riga per riga (listino_riga_id, listino_versione_id). modifica_blocco_reason / modifica_blocco_reason_key: il primo motivo di script.fn_check_listino_riga_scrivibile per la riga, la stessa fn_check che il guard vendite.trgfn_listini_righe_guard_stato solleva su UPDATE e DELETE (VERSIONE_CHIUSA: la versione e'' la storia dei prezzi; RIGA_PROPAGATA: fuori dalla bozza, il prezzo e'' stato usato da un documento; NULL = la riga si modifica e si elimina). E'' la superficie dell''azione MODIFICA_RIGA_LISTINO nel registro config.azioni_riga. security_invoker: le sole righe dei listini del proprio perimetro, e i documenti che le citano col perimetro di chi guarda, come il guard. Si filtra per listino_versione_id o listino_riga_id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS vendite.vw_listini_righe_azioni;
