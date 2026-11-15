@@ -76,14 +76,12 @@ BEGIN
     -- di partenza piu' un multiplo dei mesi della periodicita'.
     v_offset := ((extract(month FROM p_valido_dal)::integer - p_mese_partenza)
                  % v_mesi + v_mesi) % v_mesi;
-    v_inizio := (script.fn_mese_di(p_valido_dal)
-                 - make_interval(months => v_offset))::date;
+    v_inizio := script.fn_mesi_dopo(script.fn_mese_di(p_valido_dal), -v_offset);
 
     LOOP
         EXIT WHEN p_valido_al IS NOT NULL AND v_inizio > p_valido_al;
 
-        v_fine := (v_inizio + make_interval(months => v_mesi)
-                   - interval '1 day')::date;
+        v_fine := script.fn_mesi_dopo(v_inizio, v_mesi) - 1;
         -- Il periodo tagliato sulla validita' del contratto.
         v_s := greatest(v_inizio, p_valido_dal);
         v_e := least(v_fine, coalesce(p_valido_al, v_fine));
@@ -105,10 +103,7 @@ BEGIN
             SELECT round(sum((least(v_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
                              / (m.eom - m.bom + 1)) / v_mesi, 6)
               INTO v_tot
-              FROM (SELECT g::date AS bom,
-                           script.fn_fine_mese_di(g::date) AS eom
-                      FROM generate_series(script.fn_mese_di(v_pezzo_s),
-                                           v_e, interval '1 month') g) m;
+              FROM script.fn_mesi_del_tratto(v_pezzo_s, v_e) AS m(bom, eom);
             v_acc := 0;
 
             -- Un pezzo per anno: il periodo che scavalca il 31/12 si spezza.
@@ -127,10 +122,7 @@ BEGIN
                     SELECT round(sum((least(v_pezzo_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
                                      / (m.eom - m.bom + 1)) / v_mesi, 6)
                       INTO frazione
-                      FROM (SELECT g::date AS bom,
-                                   script.fn_fine_mese_di(g::date) AS eom
-                              FROM generate_series(script.fn_mese_di(v_pezzo_s),
-                                                   v_pezzo_e, interval '1 month') g) m;
+                      FROM script.fn_mesi_del_tratto(v_pezzo_s, v_pezzo_e) AS m(bom, eom);
                     v_acc := v_acc + frazione;
                 END IF;
                 RETURN NEXT;
@@ -139,7 +131,7 @@ BEGIN
             END LOOP;
         END IF;
 
-        v_inizio := (v_inizio + make_interval(months => v_mesi))::date;
+        v_inizio := script.fn_mesi_dopo(v_inizio, v_mesi);
     END LOOP;
 END;
 $function$

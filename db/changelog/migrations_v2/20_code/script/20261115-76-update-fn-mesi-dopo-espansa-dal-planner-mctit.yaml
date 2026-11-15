@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_mesi_dopo — UN'ESPRESSIONE SOLA, ESPANSA DAL PLANNER
+#   Brief: brief-db-mese-di-un-giorno, giro 6 (§6.6), correzione dopo
+#   l'apply (segnalazione di Tid, 2026-11-15: il pgTAP del giro e' lento).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Il corpo di 20261115-62 ha un FROM con due sottoquery, e il planner non
+#   espande nel punto d'uso una funzione sql con un FROM: ogni chiamata
+#   passa dall'esecutore delle funzioni sql. Misurato sullo scratch
+#   (2026-11-15, ~964.000 chiamate): 12,1 s, contro 0,19 s del calcolo con
+#   make_interval che sostituisce.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Lo stesso calcolo in UN'ESPRESSIONE (il numero progressivo del mese
+#   ripetuto dove serve), e SENZA STRICT. Il planner non espande una
+#   funzione STRICT il cui corpo non e' strict, e least() non lo e'.
+#   Il risultato con un argomento NULL resta NULL: ogni ramo di least()
+#   e' NULL, e least() di soli NULL e' NULL (pgTAP 10). Stessa misura con
+#   questa forma: 3,9 s, e risultato identico al corpo di -62 su tutte le
+#   chiamate. IMMUTABLE e PARALLEL SAFE come prima; firma, COMMENT e GRANT
+#   restano quelli dell'oggetto, e il COMMENT si riscrive per dire il NULL.
+#   Il rollback rimette il corpo di -62.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261115-76-update-fn-mesi-dopo-espansa-dal-planner-mctit.yaml
+
+  - changeSet:
+      id: 20261115-76-update-fn-mesi-dopo-espansa-dal-planner
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_mesi_dopo: lo stesso calcolo in un'espressione sola e senza STRICT, perche'
+        il planner la espanda nel punto d'uso; NULL -> NULL come prima. Brief:
+        brief-db-mese-di-un-giorno, giro 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_mesi_dopo', 'fn_fine_mese_di');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: un giorno qualunque del
+              -- calendario e un numero di mesi. Serve colonne e parametri
+              -- diversi, quindi non e' il riflesso di nessuna colonna.
+              -- ⚠️ Niente STRICT: il planner non espande una funzione STRICT
+              --    il cui corpo non e' strict (least() non lo e'). NULL -> NULL
+              --    lo da' l'espressione stessa.
+              CREATE OR REPLACE FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+               RETURNS date
+               LANGUAGE sql
+               IMMUTABLE
+               CALLED ON NULL INPUT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- Il primo del mese d'arrivo (dal numero progressivo del
+                  -- mese, anno * 12 + mese - 1, piu' p_mesi) piu' il giorno di
+                  -- partenza, tagliato sulla fine di quel mese: il 31 su un
+                  -- mese di 30 giorni e' il 30.
+                  SELECT least(
+                             make_date((extract(year FROM p_giorno)::integer * 12
+                                        + extract(month FROM p_giorno)::integer - 1 + p_mesi) / 12,
+                                       (extract(year FROM p_giorno)::integer * 12
+                                        + extract(month FROM p_giorno)::integer - 1 + p_mesi) % 12 + 1,
+                                       1)
+                             + (extract(day FROM p_giorno)::integer - 1),
+                             script.fn_fine_mese_di(
+                                 make_date((extract(year FROM p_giorno)::integer * 12
+                                            + extract(month FROM p_giorno)::integer - 1 + p_mesi) / 12,
+                                           (extract(year FROM p_giorno)::integer * 12
+                                            + extract(month FROM p_giorno)::integer - 1 + p_mesi) % 12 + 1,
+                                           1)))
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+                IS 'Il giorno p_giorno spostato di p_mesi mesi di calendario (negativo = indietro). Se il giorno non esiste nel mese d''arrivo e'' l''ultimo del mese: il 31 gennaio piu'' un mese e'' il 28 (o 29) febbraio, come date + interval in PostgreSQL. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di (x + make_interval(months => n))::date e di x + interval ''n month''. Un''espressione sola, che il planner espande nel punto d''uso; per questo non e'' STRICT (least() non lo e''), ma un argomento NULL da'' NULL lo stesso. Lavora su un GIORNO: un istante (timestamptz) passa prima da script.fn_giorno_operativo. I mesi toccati da un tratto di giorni sono script.fn_mesi_del_tratto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+               RETURNS date
+               LANGUAGE sql
+               IMMUTABLE
+               STRICT
+               PARALLEL SAFE
+               SECURITY INVOKER
+              AS $function$
+                  -- Il giorno di partenza, tagliato sulla fine del mese
+                  -- d'arrivo: il 31 su un mese di 30 giorni e' il 30.
+                  SELECT least(a.primo + (extract(day FROM p_giorno)::integer - 1),
+                               script.fn_fine_mese_di(a.primo))
+                    FROM (SELECT make_date(m.n / 12, m.n % 12 + 1, 1) AS primo
+                            FROM (SELECT extract(year FROM p_giorno)::integer * 12
+                                         + extract(month FROM p_giorno)::integer - 1
+                                         + p_mesi AS n) m) a
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_mesi_dopo(p_giorno date, p_mesi integer)
+                IS 'Il giorno p_giorno spostato di p_mesi mesi di calendario (negativo = indietro). Se il giorno non esiste nel mese d''arrivo e'' l''ultimo del mese: il 31 gennaio piu'' un mese e'' il 28 (o 29) febbraio, come date + interval in PostgreSQL. Solo aritmetica di interi e date, quindi IMMUTABLE e indipendente dal fuso della sessione. ⭐ Si usa al posto di (x + make_interval(months => n))::date e di x + interval ''n month''. Lavora su un GIORNO: un istante (timestamptz) passa prima da script.fn_giorno_operativo. NULL -> NULL. I mesi toccati da un tratto di giorni sono script.fn_mesi_del_tratto.';

@@ -44,7 +44,10 @@ restituisce `NULL`. Il planner la espande nel punto d'uso, insieme a `script.fn_
 
 `db/pgtap/script/test-mese-di-un-giorno-v1.sql`: i casi costruiti (mesi di 28, 29, 30 e 31 giorni,
 i febbrai di secolo, dicembre), l'uguaglianza col calcolo che sostituisce su ogni giorno dal 1899
-al 2101 sotto due fusi di sessione, e l'espansione nel piano.
+al 2101 sotto due fusi di sessione, e l'espansione nel piano. Sul catalogo vivo: nessuna vista e
+nessuna funzione scrive la fine del mese per conto suo, né con `date_trunc` né con l'intervallo
+«1 mese - 1 giorno» (test 17 e 19); per i changeSet nuovi lo dicono le regole `date-trunc` e
+`fine-mese-intervallo` di `scripts/guardrail_forme_changeset.py`.
 
 ---
 

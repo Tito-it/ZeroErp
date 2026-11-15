@@ -1,0 +1,363 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# VENDITE.FN_CANONE_PERIODI: I MESI DAL CALENDARIO
+#   Brief: brief-db-mese-di-un-giorno, giro 6 (§6.6).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   L'aritmetica dei mesi, e nient'altro nel corpo:
+#   - (<date> - make_interval(months => v_offset))::date e
+#     (<date> + make_interval(months => v_mesi))::date
+#       → script.fn_mesi_dopo(<date>, -v_offset / v_mesi)
+#   - (v_inizio + make_interval(months => v_mesi) - interval '1 day')::date
+#       → script.fn_mesi_dopo(v_inizio, v_mesi) - 1
+#   - i mesi del tratto, due volte:
+#       generate_series(script.fn_mese_di(s), e, interval '1 month'), che
+#       passa da timestamptz, con g::date e fn_fine_mese_di(g::date)
+#       → script.fn_mesi_del_tratto(s, e) AS m(bom, eom)
+#   Stesso risultato: v_inizio e' sempre un primo del mese, e su un primo
+#   del mese fn_mesi_dopo non taglia mai il giorno; fn_mesi_del_tratto da'
+#   gli stessi mesi della serie che sostituisce
+#   (script/test-mesi-dal-calendario-v1). Il corpo non ha piu' interval,
+#   generate_series ne' timestamp.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────────
+#   Da 20261115-11 (l'ultimo che scrive la funzione), verificato UGUALE al
+#   corpo vivo il 2026-11-15 sulla doc auto-generata. Non da
+#   pg_get_functiondef: scioglie i %TYPE di firma, RETURNS e DECLARE
+#   (linee-guida-sql §5g), che qui restano come erano. Firma e tipi
+#   immutati; nessun COST, ROWS o SET da ripetere (§13.7): COMMENT e GRANT
+#   restano quelli dell'oggetto. Il rollback rimette il corpo di
+#   20261115-11.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-64-update-fn-canone-periodi-mesi-dal-calendario-mctit.yaml
+
+  - changeSet:
+      id: 20261115-64-update-fn-canone-periodi-mesi-dal-calendario
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_canone_periodi: i mesi da script.fn_mesi_dopo e script.fn_mesi_del_tratto
+        invece che da make_interval e da generate_series su timestamptz, stesso risultato.
+        Brief: brief-db-mese-di-un-giorno, giro 6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'vendite' AND p.proname = 'fn_canone_periodi')
+                   + (SELECT count(*) FROM pg_catalog.pg_proc p
+                        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname IN ('fn_mese_di', 'fn_mesi_dopo', 'fn_mesi_del_tratto'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_canone_periodi(
+                  p_valido_dal    vendite.contratti.valido_dal%TYPE,
+                  p_valido_al     vendite.contratti.valido_al%TYPE,
+                  p_periodicita   config.periodicita.codice%TYPE,
+                  p_mese_partenza vendite.contratti.mese_partenza_canone%TYPE,
+                  p_generazione   vendite.contratti.generazione_canone%TYPE,
+                  p_data_giro     vendite.commesse_attivita.competenza_dal%TYPE,
+                  p_dal           vendite.commesse_attivita.competenza_dal%TYPE DEFAULT NULL)
+              RETURNS TABLE(
+                  periodo_dal         vendite.commesse_attivita.competenza_dal%TYPE,
+                  periodo_al          vendite.commesse_attivita.competenza_al%TYPE,
+                  competenza_mese     vendite.commesse_attivita.competenza_mese%TYPE,
+                  frazione            vendite.commesse_attivita.quantita%TYPE,
+                  -- Il periodo intero del calendario a cui il pezzo appartiene (prima
+                  -- del taglio sulla validita' e della spezzatura): i pezzi dello
+                  -- stesso periodo lo condividono.
+                  periodo_intero_dal  vendite.commesse_attivita.competenza_dal%TYPE,
+                  periodo_intero_al   vendite.commesse_attivita.competenza_al%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: i pezzi di canone da addebitare per una riga, secondo le
+              --   decisioni di Tid (G-2, G-3, F-2 … F-7). Regola completa
+              --   nell'intestazione del changeSet 20261029-25 e nel COMMENT.
+              -- Sede unica della regola dei periodi: la leggono il lister del push e la
+              --   dashboard dei canoni non generati, mai una copia.
+              DECLARE
+                  v_mesi       config.periodicita.mesi%TYPE;
+                  v_dal        vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_comp       vendite.commesse_attivita.competenza_mese%TYPE;
+                  v_inizio     vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_fine       vendite.commesse_attivita.competenza_al%TYPE;
+                  v_s          vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_e          vendite.commesse_attivita.competenza_al%TYPE;
+                  v_pezzo_s    vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_pezzo_e    vendite.commesse_attivita.competenza_al%TYPE;
+                  v_tot        vendite.commesse_attivita.quantita%TYPE;
+                  v_acc        vendite.commesse_attivita.quantita%TYPE;
+                  v_offset     integer;  -- nudo DICHIARATO: mesi fra l'inizio del periodo e il mese del contratto
+                  v_param      text;     -- nudo DICHIARATO: il parametro incoerente, per il contesto
+              BEGIN
+                  -- Guard dei parametri: un valore incoerente e' un errore di chi chiama.
+                  v_param := CASE
+                      WHEN p_valido_dal IS NULL THEN 'p_valido_dal'
+                      WHEN p_data_giro IS NULL THEN 'p_data_giro'
+                      WHEN p_valido_al < p_valido_dal THEN 'p_valido_al'
+                      WHEN p_mese_partenza IS NULL OR p_mese_partenza NOT BETWEEN 1 AND 12 THEN 'p_mese_partenza'
+                      WHEN p_generazione IS NULL
+                           OR p_generazione NOT IN ('INIZIO_PERIODO', 'FINE_PERIODO') THEN 'p_generazione'
+                  END;
+                  IF v_param IS NULL THEN
+                      SELECT p.mesi INTO v_mesi
+                        FROM config.periodicita p
+                       WHERE p.codice = script.fn_codice_normalizzato(p_periodicita);
+                      IF NOT FOUND THEN
+                          v_param := 'p_periodicita';
+                      END IF;
+                  END IF;
+                  IF v_param IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_canone_periodi',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'param',         v_param,
+                              'valido_dal',    p_valido_dal,
+                              'valido_al',     p_valido_al,
+                              'periodicita',   p_periodicita,
+                              'mese_partenza', p_mese_partenza,
+                              'generazione',   p_generazione,
+                              'data_giro',     p_data_giro),
+                          NULL::uuid,
+                          v_param);
+                  END IF;
+
+                  v_dal  := greatest(p_valido_dal, coalesce(p_dal, p_valido_dal));
+                  v_comp := script.fn_mese_di(p_data_giro);
+
+                  -- Il periodo del calendario che contiene l'inizio del contratto: il mese
+                  -- di partenza piu' un multiplo dei mesi della periodicita'.
+                  v_offset := ((extract(month FROM p_valido_dal)::integer - p_mese_partenza)
+                               % v_mesi + v_mesi) % v_mesi;
+                  v_inizio := script.fn_mesi_dopo(script.fn_mese_di(p_valido_dal), -v_offset);
+
+                  LOOP
+                      EXIT WHEN p_valido_al IS NOT NULL AND v_inizio > p_valido_al;
+
+                      v_fine := script.fn_mesi_dopo(v_inizio, v_mesi) - 1;
+                      -- Il periodo tagliato sulla validita' del contratto.
+                      v_s := greatest(v_inizio, p_valido_dal);
+                      v_e := least(v_fine, coalesce(p_valido_al, v_fine));
+
+                      -- Dovuto? Anticipati: appena cominciato; normali: appena finito.
+                      -- I periodi dopo non lo sono di sicuro: si esce.
+                      IF p_generazione = 'INIZIO_PERIODO' THEN
+                          EXIT WHEN v_s > p_data_giro;
+                      ELSE
+                          EXIT WHEN v_e >= p_data_giro;
+                      END IF;
+
+                      -- Gia' addebitato fino a prima del «da»: si salta, o si taglia.
+                      IF v_e >= v_dal THEN
+                          v_pezzo_s := greatest(v_s, v_dal);
+
+                          -- La frazione del tratto da addebitare: mesi interi 1, il mese a
+                          -- meta' giorni coperti / giorni del mese, diviso i mesi del periodo.
+                          SELECT round(sum((least(v_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
+                                           / (m.eom - m.bom + 1)) / v_mesi, 6)
+                            INTO v_tot
+                            FROM script.fn_mesi_del_tratto(v_pezzo_s, v_e) AS m(bom, eom);
+                          v_acc := 0;
+
+                          -- Un pezzo per anno: il periodo che scavalca il 31/12 si spezza.
+                          WHILE v_pezzo_s <= v_e LOOP
+                              v_pezzo_e := least(v_e, make_date(extract(year FROM v_pezzo_s)::integer, 12, 31));
+
+                              periodo_dal        := v_pezzo_s;
+                              periodo_al         := v_pezzo_e;
+                              competenza_mese    := v_comp;
+                              periodo_intero_dal := v_inizio;
+                              periodo_intero_al  := v_fine;
+                              IF v_pezzo_e = v_e THEN
+                                  -- L'ultimo pezzo prende il resto: la somma e' esatta.
+                                  frazione := v_tot - v_acc;
+                              ELSE
+                                  SELECT round(sum((least(v_pezzo_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
+                                                   / (m.eom - m.bom + 1)) / v_mesi, 6)
+                                    INTO frazione
+                                    FROM script.fn_mesi_del_tratto(v_pezzo_s, v_pezzo_e) AS m(bom, eom);
+                                  v_acc := v_acc + frazione;
+                              END IF;
+                              RETURN NEXT;
+
+                              v_pezzo_s := v_pezzo_e + 1;
+                          END LOOP;
+                      END IF;
+
+                      v_inizio := script.fn_mesi_dopo(v_inizio, v_mesi);
+                  END LOOP;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_canone_periodi(
+                  p_valido_dal    vendite.contratti.valido_dal%TYPE,
+                  p_valido_al     vendite.contratti.valido_al%TYPE,
+                  p_periodicita   config.periodicita.codice%TYPE,
+                  p_mese_partenza vendite.contratti.mese_partenza_canone%TYPE,
+                  p_generazione   vendite.contratti.generazione_canone%TYPE,
+                  p_data_giro     vendite.commesse_attivita.competenza_dal%TYPE,
+                  p_dal           vendite.commesse_attivita.competenza_dal%TYPE DEFAULT NULL)
+              RETURNS TABLE(
+                  periodo_dal         vendite.commesse_attivita.competenza_dal%TYPE,
+                  periodo_al          vendite.commesse_attivita.competenza_al%TYPE,
+                  competenza_mese     vendite.commesse_attivita.competenza_mese%TYPE,
+                  frazione            vendite.commesse_attivita.quantita%TYPE,
+                  -- Il periodo intero del calendario a cui il pezzo appartiene (prima
+                  -- del taglio sulla validita' e della spezzatura): i pezzi dello
+                  -- stesso periodo lo condividono.
+                  periodo_intero_dal  vendite.commesse_attivita.competenza_dal%TYPE,
+                  periodo_intero_al   vendite.commesse_attivita.competenza_al%TYPE)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: i pezzi di canone da addebitare per una riga, secondo le
+              --   decisioni di Tid (G-2, G-3, F-2 … F-7). Regola completa
+              --   nell'intestazione del changeSet 20261029-25 e nel COMMENT.
+              -- Sede unica della regola dei periodi: la leggono il lister del push e la
+              --   dashboard dei canoni non generati, mai una copia.
+              DECLARE
+                  v_mesi       config.periodicita.mesi%TYPE;
+                  v_dal        vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_comp       vendite.commesse_attivita.competenza_mese%TYPE;
+                  v_inizio     vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_fine       vendite.commesse_attivita.competenza_al%TYPE;
+                  v_s          vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_e          vendite.commesse_attivita.competenza_al%TYPE;
+                  v_pezzo_s    vendite.commesse_attivita.competenza_dal%TYPE;
+                  v_pezzo_e    vendite.commesse_attivita.competenza_al%TYPE;
+                  v_tot        vendite.commesse_attivita.quantita%TYPE;
+                  v_acc        vendite.commesse_attivita.quantita%TYPE;
+                  v_offset     integer;  -- nudo DICHIARATO: mesi fra l'inizio del periodo e il mese del contratto
+                  v_param      text;     -- nudo DICHIARATO: il parametro incoerente, per il contesto
+              BEGIN
+                  -- Guard dei parametri: un valore incoerente e' un errore di chi chiama.
+                  v_param := CASE
+                      WHEN p_valido_dal IS NULL THEN 'p_valido_dal'
+                      WHEN p_data_giro IS NULL THEN 'p_data_giro'
+                      WHEN p_valido_al < p_valido_dal THEN 'p_valido_al'
+                      WHEN p_mese_partenza IS NULL OR p_mese_partenza NOT BETWEEN 1 AND 12 THEN 'p_mese_partenza'
+                      WHEN p_generazione IS NULL
+                           OR p_generazione NOT IN ('INIZIO_PERIODO', 'FINE_PERIODO') THEN 'p_generazione'
+                  END;
+                  IF v_param IS NULL THEN
+                      SELECT p.mesi INTO v_mesi
+                        FROM config.periodicita p
+                       WHERE p.codice = script.fn_codice_normalizzato(p_periodicita);
+                      IF NOT FOUND THEN
+                          v_param := 'p_periodicita';
+                      END IF;
+                  END IF;
+                  IF v_param IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'fn_canone_periodi',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'param',         v_param,
+                              'valido_dal',    p_valido_dal,
+                              'valido_al',     p_valido_al,
+                              'periodicita',   p_periodicita,
+                              'mese_partenza', p_mese_partenza,
+                              'generazione',   p_generazione,
+                              'data_giro',     p_data_giro),
+                          NULL::uuid,
+                          v_param);
+                  END IF;
+
+                  v_dal  := greatest(p_valido_dal, coalesce(p_dal, p_valido_dal));
+                  v_comp := script.fn_mese_di(p_data_giro);
+
+                  -- Il periodo del calendario che contiene l'inizio del contratto: il mese
+                  -- di partenza piu' un multiplo dei mesi della periodicita'.
+                  v_offset := ((extract(month FROM p_valido_dal)::integer - p_mese_partenza)
+                               % v_mesi + v_mesi) % v_mesi;
+                  v_inizio := (script.fn_mese_di(p_valido_dal)
+                               - make_interval(months => v_offset))::date;
+
+                  LOOP
+                      EXIT WHEN p_valido_al IS NOT NULL AND v_inizio > p_valido_al;
+
+                      v_fine := (v_inizio + make_interval(months => v_mesi)
+                                 - interval '1 day')::date;
+                      -- Il periodo tagliato sulla validita' del contratto.
+                      v_s := greatest(v_inizio, p_valido_dal);
+                      v_e := least(v_fine, coalesce(p_valido_al, v_fine));
+
+                      -- Dovuto? Anticipati: appena cominciato; normali: appena finito.
+                      -- I periodi dopo non lo sono di sicuro: si esce.
+                      IF p_generazione = 'INIZIO_PERIODO' THEN
+                          EXIT WHEN v_s > p_data_giro;
+                      ELSE
+                          EXIT WHEN v_e >= p_data_giro;
+                      END IF;
+
+                      -- Gia' addebitato fino a prima del «da»: si salta, o si taglia.
+                      IF v_e >= v_dal THEN
+                          v_pezzo_s := greatest(v_s, v_dal);
+
+                          -- La frazione del tratto da addebitare: mesi interi 1, il mese a
+                          -- meta' giorni coperti / giorni del mese, diviso i mesi del periodo.
+                          SELECT round(sum((least(v_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
+                                           / (m.eom - m.bom + 1)) / v_mesi, 6)
+                            INTO v_tot
+                            FROM (SELECT g::date AS bom,
+                                         script.fn_fine_mese_di(g::date) AS eom
+                                    FROM generate_series(script.fn_mese_di(v_pezzo_s),
+                                                         v_e, interval '1 month') g) m;
+                          v_acc := 0;
+
+                          -- Un pezzo per anno: il periodo che scavalca il 31/12 si spezza.
+                          WHILE v_pezzo_s <= v_e LOOP
+                              v_pezzo_e := least(v_e, make_date(extract(year FROM v_pezzo_s)::integer, 12, 31));
+
+                              periodo_dal        := v_pezzo_s;
+                              periodo_al         := v_pezzo_e;
+                              competenza_mese    := v_comp;
+                              periodo_intero_dal := v_inizio;
+                              periodo_intero_al  := v_fine;
+                              IF v_pezzo_e = v_e THEN
+                                  -- L'ultimo pezzo prende il resto: la somma e' esatta.
+                                  frazione := v_tot - v_acc;
+                              ELSE
+                                  SELECT round(sum((least(v_pezzo_e, m.eom) - greatest(v_pezzo_s, m.bom) + 1)::numeric
+                                                   / (m.eom - m.bom + 1)) / v_mesi, 6)
+                                    INTO frazione
+                                    FROM (SELECT g::date AS bom,
+                                                 script.fn_fine_mese_di(g::date) AS eom
+                                            FROM generate_series(script.fn_mese_di(v_pezzo_s),
+                                                                 v_pezzo_e, interval '1 month') g) m;
+                                  v_acc := v_acc + frazione;
+                              END IF;
+                              RETURN NEXT;
+
+                              v_pezzo_s := v_pezzo_e + 1;
+                          END LOOP;
+                      END IF;
+
+                      v_inizio := (v_inizio + make_interval(months => v_mesi))::date;
+                  END LOOP;
+              END;
+              $function$;
