@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il BE/FE**, con la richiesta del §7: R-0 e R-0 bis (chiavi i18n, sbloccano il commit
-DB), R-6, R-2, poi R-1, R-3, R-4, R-5. Il DB è fatto: giri 1, 2, 3 e Q-1 applicati e verdi
+**Riparte: il team DB** con Q-2 (§8, dalla verifica BE del 2026-11-15), **poi chi chiude**
+(archiviazione), dopo il commit del BE/FE. Fatte il 2026-11-15 tutte le
+richieste del §7: R-0, R-0 bis e R-5 (commit `940a4e6b6`); R-6, R-2, R-1, R-3, R-4 (da committare). Il DB è fatto: giri 1, 2, 3 e Q-1 applicati e verdi
 (2026-11-15). Le decisioni D-1 … D-4 le ha prese Tid il 2026-11-15
 (§6): tutte come da proposta.
 
@@ -13,14 +14,15 @@ DB), R-6, R-2, poi R-1, R-3, R-4, R-5. Il DB è fatto: giri 1, 2, 3 e Q-1 applic
 | 1-bis | Tid | ✅ giro 1 applicato, pgTAP verdi (2026-11-15) | §5.1 | — |
 | 1-quater | team DB | ✅ Q-1 scritta e provata in `ROLLBACK` (2026-11-15): le due frasi, i due guard e le due check sulle descrizioni | §5.2 | — |
 | 1-quinquies | Tid | ✅ Q-1 applicata, pgTAP verdi (2026-11-15) | §5.2 | — |
-| 1-ter | BE/FE | R-0 (le tre chiavi i18n, che sbloccano il commit DB) e R-6 (il test Django sul duplicato, le policy dei due codici nuovi) | §7 | — |
+| 1-ter | BE/FE | ✅ R-0 (le chiavi i18n, che sbloccano il commit DB) e R-6 (il test Django sul duplicato, le policy dei codici nuovi) (2026-11-15). R-6: `create_with_dedup` resta intorno alle singolari, per FK, CHECK e la corsa fra due scritture | §7 | — |
 | 2 | team DB | ✅ giro 2 scritto e provato in `ROLLBACK` (2026-11-15): i quattro picker | §5.3 | — |
 | 2-bis | Tid | ✅ giro 2 applicato, pgTAP verdi coi presidi 1-2 riscritti (2026-11-15) | §5.3 | — |
-| 2-ter | BE/FE | R-2 (i lookup dei tipi leggono i picker; si ritirano le due letture della matrice) | §7 | — |
+| 2-ter | BE/FE | ✅ R-2 (2026-11-15): i quattro picker in una lettura sola (`LookupRepository.list_tipi_indirizzo_proponibili`), rotte nuove `soggetti/<id>/indirizzi/tipi/` e `ruoli/<id>/indirizzi/tipi/`; ritirate le due letture della matrice, nel BE e nel FE | §7 | — |
 | 3 | team DB | ✅ giro 3 scritto e provato in `ROLLBACK` (2026-11-15): verbi, check di riga, viste, registro | §5.4 | — |
 | 3-bis | Tid | ✅ giro 3 applicato, pgTAP verdi (2026-11-15) | §5.4 | — |
-| 4 | BE/FE | richiesta R-1, R-3, R-4, R-5 e R-0 bis | §7 | — |
-| 5 | chi chiude | archiviazione in `work-done/` | — | 4 |
+| 4 | BE/FE | ✅ R-1 (le due rotte `…/copia/`), R-3 (le liste dalle viste di azioni, BB `COLONNE_INDIRIZZO_RESOLVED`: la lista del soggetto legge la vista risolta e porta la forma estera), R-4 (kebab, «Copia come…» col motivo del registro, `CopiaIndirizzoDialog`), R-5 e R-0 bis (2026-11-15) | §7 | — |
+| 4-bis | team DB | Q-2: il picker della natura e quello del tipo di ruolo, con un id che non esiste, «tutti ammessi» invece di nessuna riga | §8 | — |
+| 5 | chi chiude | archiviazione in `work-done/` | — | 4, 4-bis |
 
 Decisioni aperte di Tid: nessuna. Lavoro fatto da committare: il giro 1 (otto changeSet, due CSV, un pgTAP nuovo e due
 riscritti, cinque pagine `manual/` e la guida degli indirizzi), Q-1 (quattro changeSet, due righe
@@ -573,3 +575,29 @@ riordinato).
     non scatta più per il tipo già presente (arriva un `P0001` col codice, non un `23505`). Resta
     solo per la corsa fra due scritture: il team BE decide se tenerlo o ritirarlo, dopo aver
     cercato gli altri chiamanti.
+
+## 8. Q-2, richiesta al team DB dalla verifica BE (2026-11-15)
+
+> **Chi scrive:** sessione di verifica BE/FE (`dev/backend-tid`), 2026-11-15.
+
+**Il difetto.** `anagrafiche.fn_tipi_indirizzo_proponibili_natura` e
+`anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo` non distinguono un id che **non esiste** da
+una natura (o un tipo di ruolo) **senza matrice**: tutte e due le forme danno ogni tipo ammesso.
+Le gemelle sul salvato non lo fanno: soggetto o ruolo inesistenti, nessuna riga. Fatto datato,
+DB di sviluppo del 2026-11-15: `fn_tipi_indirizzo_proponibili_natura(987654321)` → 9 righe, 9
+ammesse; `fn_tipi_indirizzo_proponibili_tipo_ruolo(987654)` → 9 su 9; `NULL` → 9 su 9;
+`fn_tipi_indirizzo_proponibili_ruolo(987654321, NULL)` → 0 righe.
+
+**Dove si vede.** `GET /core/lookup/tipi-soggetto-dettaglio/<id>/indirizzi/` con un id
+inesistente risponde «tutti i tipi ammessi»; fino al 2026-11-15 (lettura della matrice) rispondeva
+`[]`. Il gemello per codice del tipo di ruolo non ne soffre solo perché il BE, che deve comunque
+risolvere il codice in id, dà `[]` a un codice ignoto (`list_tipi_indirizzo_proponibili_tipo_ruolo`).
+Il BE **non** aggiunge un controllo di esistenza della natura: la regola «inesistente = nessuna
+riga» è del picker, come lo è già per soggetto e ruolo.
+
+**La richiesta.** Un id non `NULL` che non esiste in `config.tipi_soggetto_dettaglio` (o in
+`config.tipi_ruoli`): nessuna riga, come le gemelle; `NULL` resta «nessuna matrice, tutti
+ammessi» se il team DB lo vuole tenere per il form senza natura scelta. Con il pgTAP del caso.
+Ricaduta BE: nessuna modifica di codice; il controllo di `list_tipi_indirizzo_proponibili_tipo_ruolo`
+resta (serve a risolvere il codice), e il test DB `test_tipi_indirizzo_proponibili_db` prende un
+caso «natura inesistente → `[]`» quando il DB è applicato.

@@ -21,16 +21,19 @@ from apps.core.api.success_responses import success_response
 from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.api.schema_indirizzo import campi_indirizzo_madre
-from apps.anagrafiche.db._helpers import resolve_soggetto_id
+from apps.anagrafiche.db._helpers import (
+    COLONNE_COPIA,
+    COLONNE_INDIRIZZO_RESOLVED,
+    JOIN_COPIA_RUOLO,
+    JOIN_COPIA_SOGGETTO,
+    resolve_soggetto_id,
+)
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
 
 _repo = SoggettiRepository()
 
-# Colonne selezionate dalle viste resolved (subset utile per la UI).
-# Fonte: vw_indirizzi_resolved_ruolo / vw_indirizzi_resolved_soggetto
-# (changeset 20260325-04-recreate-indirizzi-chain-istanza-mctit.yaml)
 _RESOLVE_UTILITY = """(SELECT u.codice FROM config.utilities u
             WHERE u.id = COALESCE(
               (SELECT idp.utility_id FROM anagrafiche.istanze_dati_precontrattuali idp
@@ -38,37 +41,6 @@ _RESOLVE_UTILITY = """(SELECT u.codice FROM config.utilities u
               (SELECT ba.utility_id FROM anagrafiche.billing_account ba
                 WHERE ba.istanza_utility_id = v.istanza_utility_id LIMIT 1)
             )) AS utility_codice"""
-
-_COLS = """v.indirizzo_id AS id,
-           v.soggetto_ruolo_id,
-           v.istanza_utility_id,
-           v.tipo_indirizzo_id,
-           v.tipo_indirizzo_codice,
-           v.tipo_indirizzo_codice_interno,
-           v.tipo_indirizzo_descrizione,
-           v.is_normalizzato,
-           v.indirizzo_dettaglio_id,
-           v.indirizzo_display,
-           v.indirizzo_libero,
-           v.comune_id,
-           v.comune_id AS det_comune_id,
-           v.comune_descrizione,
-           v.comune_descrizione AS descrizione_comune,
-           v.cap,
-           v.provincia_sigla,
-           v.stato_id,
-           v.stato_descrizione,
-           v.stato_iso2,
-           v.codice_postale_id,
-           v.cap_codice,
-           v.stradario_id,
-           v.via_norm AS stradario_display,
-           v.civico,
-           v.estensione_civico,
-           v.palazzina,
-           v.scala,
-           v.piano,
-           v.interno"""
 
 
 # =================================================================
@@ -115,12 +87,13 @@ class RuoloIndirizziView(DomainAPIView):
             # Livello 1: indirizzi ruolo + istanza specifica
             if istanza_utility_id is not None:
                 sql_ist = f"""
-                    SELECT {_COLS}, {_RESOLVE_UTILITY}, 'istanza' AS fonte
+                    SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'istanza' AS fonte
                       FROM anagrafiche.vw_indirizzi_resolved_ruolo v
+                      {JOIN_COPIA_RUOLO}
                      WHERE v.soggetto_ruolo_id = %s
                        AND v.istanza_utility_id = %s
                      ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-                """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
+                """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
                 cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
@@ -131,12 +104,13 @@ class RuoloIndirizziView(DomainAPIView):
 
             # Livello 2: indirizzi ruolo senza istanza (generici del ruolo)
             sql_ruolo = f"""
-                SELECT {_COLS}, {_RESOLVE_UTILITY}, 'ruolo' AS fonte
+                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'ruolo' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_ruolo v
+                  {JOIN_COPIA_RUOLO}
                  WHERE v.soggetto_ruolo_id = %s
                    AND v.istanza_utility_id IS NULL
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
+            """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
             for c in l2:
@@ -147,11 +121,12 @@ class RuoloIndirizziView(DomainAPIView):
 
             # Livello 3: indirizzi soggetto (fallback readonly)
             sql_sogg = f"""
-                SELECT {_COLS}, {_RESOLVE_UTILITY}, 'soggetto' AS fonte
+                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'soggetto' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_soggetto v
+                  {JOIN_COPIA_SOGGETTO}
                  WHERE v.soggetto_id = %s::uuid
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """  # noqa: S608 — _COLS/_RESOLVE_UTILITY costanti di modulo, valori come parametri
+            """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
             cursor.execute(sql_sogg, [soggetto_id])
             l3 = rows_to_list(cursor)
             for c in l3:
@@ -191,6 +166,55 @@ class RuoloIndirizziView(DomainAPIView):
 # =================================================================
 # Indirizzo ruolo — dettaglio (PATCH, DELETE)
 # =================================================================
+
+class RuoloIndirizziTipiView(DomainAPIView):
+    """GET i tipi di indirizzo proponibili per il ruolo, o una sua istanza (picker)."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="istanza_utility_id", type=int, required=False),
+        ],
+        responses={200: inline_serializer(
+            name="RuoloIndirizziTipiResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Il picker dei tipi di «Aggiungi» e della copia in contesto ruolo:
+    #        senza `istanza_utility_id` il ruolo, con l'istanza la sua chiave.
+    def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
+        from apps.core.api.payload_validators import qp_int_optional
+
+        istanza_utility_id = qp_int_optional(
+            request.query_params.get("istanza_utility_id"), "istanza_utility_id",
+        )
+        return success_response({
+            "results": SoggettiService().get_tipi_indirizzo_proponibili_ruolo(
+                soggetto_ruolo_id, istanza_utility_id,
+            ),
+        })
+
+
+class RuoloIndirizziCopiaView(DomainAPIView):
+    """POST copia un indirizzo del ruolo in altri tipi («Copia come…»)."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="IndirizzoRuoloCopiaReq", fields={
+            "tipi_indirizzo_codice_interno": serializers.ListField(child=serializers.CharField()),
+        }),
+        responses={200: inline_serializer(name="IndirizzoRuoloCopiaResp", fields={"data": serializers.DictField()})},
+    )
+    # Scopo: Il verbo `anagrafiche.fn_copia_indirizzo_ruolo`: la copia resta nel
+    #        ruolo e nell'istanza della sorgente; `{"ids": [...]}` (R-1).
+    def post(self, request: Request, soggetto_ruolo_id: int, indirizzo_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().copia_indirizzo_ruolo(
+                soggetto_ruolo_id, indirizzo_id, p,
+            ),
+        )
+
 
 class RuoloIndirizziDetailView(DomainAPIView):
     """PATCH aggiorna, DELETE elimina indirizzo del ruolo."""

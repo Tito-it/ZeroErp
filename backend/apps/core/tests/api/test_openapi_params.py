@@ -65,7 +65,8 @@ class RispostaLookupSchemaTests(SimpleTestCase):
         componenti = SchemaGenerator().get_schema(request=None, public=True)["components"]["schemas"]
         for nome in (
             "TipiSoggettoDettaglioResponse", "FormeGiuridicheResponse",
-            "MatriceIndirizziResponse", "ContiContabiliLookupResponse",
+            "TipiIndirizzoNaturaResponse", "TipiIndirizzoTipoRuoloResponse",
+            "ContiContabiliLookupResponse",
         ):
             with self.subTest(componente=nome):
                 self.assertIn(nome, componenti)

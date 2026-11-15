@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Repository core per lookup anagrafiche e config.
-#        Endpoint: matrice indirizzi, autocomplete comuni,
+#        Endpoint: tipi di indirizzo proponibili (natura, tipo di ruolo), autocomplete comuni,
 #        tipi soggetto dettaglio con natura e policy,
 #        search stradario per autocomplete vie.
 # ------------------------------------------------------------
@@ -118,34 +118,76 @@ class LookupRepository:
             cursor.execute(sql, [tipo_soggetto_dettaglio_id, tipo_soggetto_dettaglio_id])
             return rows_to_list(cursor)
 
-    # Scopo: Restituisce la matrice indirizzi ammessi per un tipo soggetto dettaglio.
-    # JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo + config.tipi_indirizzi.
-    # Indica per ogni tipo indirizzo se obbligatorio e il fallback.
-    def list_matrice_indirizzi(
-        self, tipo_soggetto_dettaglio_id: int
+    # Scopo: I PICKER DEI TIPI DI INDIRIZZO, in una lettura sola (regola del 2,
+    #        R-2 di brief-db-copia-indirizzo-soggetto, 2026-11-15). Quattro
+    #        funzioni del DB, una per contesto, con lo stesso ritorno: una riga
+    #        per tipo di `config.tipi_indirizzi`, con `obbligatorio`, `ammesso`,
+    #        il primo motivo (`motivo_codice`, `reason`, `reason_key`,
+    #        `reason_valori`) e tutti i `motivi`. Codice e descrizione del tipo
+    #        dal catalogo. L'ordine e' quello della funzione (prima gli
+    #        ammessi), tenuto con `WITH ORDINALITY`.
+    #          - `soggetto` (soggetto salvato, uuid): Aggiungi e la copia;
+    #          - `natura` (soggetto da creare, tipo_soggetto_dettaglio_id);
+    #          - `ruolo` (ruolo salvato, e l'istanza: NULL = il ruolo);
+    #          - `tipo_ruolo` (ruolo da assegnare, tipo_ruolo_id).
+    # ⭐ Un tipo NON ammesso resta nell'elenco col suo motivo: chi propone i
+    #    tipi lo spegne, non lo nasconde (R-4). Il motivo e' quello della check
+    #    che la madre di creazione solleva, quindi il picker non puo' proporre
+    #    un tipo che la creazione rifiuta.
+    # ⛔ Fino al 2026-11-15 qui c'erano due letture della MATRICE
+    #    (`list_matrice_indirizzi`, `list_matrice_indirizzi_ruolo`): una copia
+    #    della regola gia' divergente (ignorava validita' e tipi presenti, §3.1
+    #    del brief). Ritirate nello stesso giro.
+    _PICKER_TIPI_INDIRIZZO: ClassVar[dict[str, str]] = {
+        "soggetto": "anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(%s::uuid)",
+        "natura": "anagrafiche.fn_tipi_indirizzo_proponibili_natura(%s::bigint)",
+        "ruolo": "anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(%s::bigint, %s::bigint)",
+        "tipo_ruolo": "anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s::integer)",
+    }
+
+    def list_tipi_indirizzo_proponibili(
+        self, contesto: str, *args: Any,
     ) -> list[dict[str, Any]]:
-        sql = """
-            SELECT tsdti.tipo_indirizzo_id,
+        chiamata = self._PICKER_TIPI_INDIRIZZO[contesto]
+        sql = f"""
+            SELECT p.tipo_indirizzo_id,
+                   ti.codice,
                    ti.codice_interno,
                    ti.descrizione,
-                   tsdti.obbligatorio,
-                   tsdti.fallback_tipo_indirizzo_id,
-                   ti_fb.codice_interno AS fallback_codice_interno
-              FROM config.tipi_soggetto_dettaglio_tipi_indirizzo tsdti
-              JOIN config.tipi_indirizzi ti
-                ON ti.id = tsdti.tipo_indirizzo_id
-              LEFT JOIN config.tipi_indirizzi ti_fb
-                ON ti_fb.id = tsdti.fallback_tipo_indirizzo_id
-             WHERE tsdti.tipo_soggetto_dettaglio_id = %s
-               AND tsdti.attivo = true
-             ORDER BY tsdti.obbligatorio DESC, ti.descrizione
-        """
+                   p.obbligatorio,
+                   p.ammesso,
+                   p.motivo_codice,
+                   p.reason,
+                   p.reason_key,
+                   p.reason_valori,
+                   p.motivi
+              FROM {chiamata} WITH ORDINALITY
+                   AS p(tipo_indirizzo_id, obbligatorio, ammesso, motivo_codice,
+                        reason, reason_key, reason_valori, motivi, ordine)
+              JOIN config.tipi_indirizzi ti ON ti.id = p.tipo_indirizzo_id
+             ORDER BY p.ordine
+        """  # noqa: S608 — `chiamata` da whitelist di classe, valori come parametri
         with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo_soggetto_dettaglio_id])
+            cursor.execute(sql, list(args))
             return rows_to_list(cursor)
 
-    # Scopo: Restituisce la matrice indirizzi ammessi per un tipo ruolo (codice_interno).
-    # Usa config.tipi_ruolo_tipi_indirizzo — validata dal trigger guard sul DB.
+    # Scopo: Il picker dei tipi di indirizzo per un ruolo da assegnare, dal
+    #        CODICE del tipo di ruolo (la rotta lo porta per codice). Un codice
+    #        sconosciuto e' un elenco vuoto, come prima: passare NULL alla
+    #        funzione vorrebbe dire «nessuna matrice, tutti ammessi».
+    def list_tipi_indirizzo_proponibili_tipo_ruolo(
+        self, tipo_ruolo_codice: str,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM config.tipi_ruoli WHERE codice_interno = %s",
+                [tipo_ruolo_codice],
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return []
+        return self.list_tipi_indirizzo_proponibili("tipo_ruolo", row[0])
+
     # Scopo: Matrice utility ammesse per un tipo ruolo + override specifici di
     #        un'entita' figlia (es. emittente fiscale, fornitore, cliente). LEFT JOIN
     #        tra config.utilities_tipi_ruolo (matrice base) e una tabella di override
@@ -332,31 +374,6 @@ class LookupRepository:
 
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return rows_to_list(cursor)
-
-    def list_matrice_indirizzi_ruolo(
-        self, tipo_ruolo_codice: str
-    ) -> list[dict[str, Any]]:
-        sql = """
-            SELECT trti.tipo_indirizzo_id,
-                   ti.codice_interno,
-                   ti.descrizione,
-                   trti.obbligatorio,
-                   trti.fallback_tipo_indirizzo_id,
-                   ti_fb.codice_interno AS fallback_codice_interno
-              FROM config.tipi_ruolo_tipi_indirizzo trti
-              JOIN config.tipi_ruoli tr
-                ON tr.id = trti.tipo_ruolo_id
-              JOIN config.tipi_indirizzi ti
-                ON ti.id = trti.tipo_indirizzo_id
-              LEFT JOIN config.tipi_indirizzi ti_fb
-                ON ti_fb.id = trti.fallback_tipo_indirizzo_id
-             WHERE tr.codice_interno = %s
-               AND trti.attivo = true
-             ORDER BY trti.obbligatorio DESC, ti.descrizione
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo_ruolo_codice])
             return rows_to_list(cursor)
 
     # Scopo: Verifica se esiste una configurazione sistema codici per schema/tabella/colonna.

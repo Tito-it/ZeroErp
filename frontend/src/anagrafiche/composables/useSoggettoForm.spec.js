@@ -35,7 +35,7 @@ vi.mock('../../core/composables/useLookup', async () => {
 
 vi.mock('../../core/apiCore', () => ({
   lookupTipiSoggettoDettaglio: vi.fn(),
-  lookupMatriceIndirizzi: async () => ({ data: { data: { results: [] } } }),
+  lookupTipiIndirizzoNatura: async () => ({ data: { data: { results: [] } } }),
 }))
 
 const { useSoggettoForm } = await import('./useSoggettoForm')

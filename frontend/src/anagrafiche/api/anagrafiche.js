@@ -180,6 +180,12 @@ export function listSoggettoIndirizzi(soggettoId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/indirizzi/`)
 }
 
+// Il picker dei tipi di indirizzo del soggetto salvato: ogni tipo, gli esclusi
+// col motivo (il tipo gia' presente, quello che la natura non prevede).
+export function listSoggettoTipiIndirizzo(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/indirizzi/tipi/`)
+}
+
 export function createSoggettoIndirizzo(soggettoId, payload) {
   return api.post(`${BASE}/soggetti/${soggettoId}/indirizzi/`, payload)
 }
@@ -451,12 +457,30 @@ export function listRuoloIndirizzi(ruoloId, params = {}) {
   return api.get(`${BASE}/ruoli/${ruoloId}/indirizzi/`, { params })
 }
 
+// Il picker dei tipi di indirizzo del ruolo salvato; con `istanza_utility_id`
+// quello della sua istanza (la chiave su cui il DB giudica il tipo gia' presente).
+export function listRuoloTipiIndirizzo(ruoloId, params = {}) {
+  return api.get(`${BASE}/ruoli/${ruoloId}/indirizzi/tipi/`, { params })
+}
+
 export function createRuoloIndirizzo(ruoloId, payload) {
   return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi/`, payload)
 }
 
 export function updateRuoloIndirizzo(ruoloId, indirizzoId, payload) {
   return api.patch(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`, payload)
+}
+
+// «Copia come…» (R-1): copia un indirizzo in altri tipi, tutto o niente.
+// Corpo `{ tipi_indirizzo_codice_interno: [...] }`, risposta `{ ids }`.
+export function copiaSoggettoIndirizzo(soggettoId, indirizzoSoggettoId, tipi) {
+  return api.post(`${BASE}/soggetti/${soggettoId}/indirizzi/${indirizzoSoggettoId}/copia/`,
+    { tipi_indirizzo_codice_interno: tipi })
+}
+
+export function copiaRuoloIndirizzo(ruoloId, indirizzoId, tipi) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/copia/`,
+    { tipi_indirizzo_codice_interno: tipi })
 }
 
 export function deleteRuoloIndirizzo(ruoloId, indirizzoId) {

@@ -577,8 +577,6 @@ const eventoStatoDetail = computed(() => {
       <!-- Badge indirizzi/contatti/conti — creazione: readonly preview, edit: editabile -->
       <SoggettoPreviewBadges v-if="!isEdit && previewRuoloId"
         :soggetto-ruolo-id="previewRuoloId"
-        :tipo-soggetto-dettaglio-id="soggettoSelezionato?.tipo_soggetto_dettaglio_id"
-        :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
         preview />
       <!-- §1.6: accessi web (portale + shop) tramite pulsante Web in
            SoggettoPreviewBadges, apre WebAccessiDrawer autonomo. Il
@@ -587,8 +585,6 @@ const eventoStatoDetail = computed(() => {
       <SoggettoPreviewBadges v-else-if="isEdit && detail"
         :soggetto-ruolo-id="detail.soggetto_ruolo_id"
         :istanza-utility-id="detail.istanza_utility_id"
-        :tipo-soggetto-dettaglio-id="detail.tipo_soggetto_dettaglio_id"
-        :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
         entita-tipo-web="cliente"
         :entita-id-web="props.clienteId"
         :email-iniziale-web="detail?.soggetto_email || ''" />

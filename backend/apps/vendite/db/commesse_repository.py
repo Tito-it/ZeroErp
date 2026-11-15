@@ -818,7 +818,9 @@ class CommesseRepository(EventLogRepositoryMixin):
         in-vista (GUC app.current_user_id, security_invoker)."""
         where_clauses = [
             "stadio = %s",
-            "competenza_mese = date_trunc('month', %s::date)::date",
+            # Il mese di un giorno dal BB DB `script.fn_mese_di` (R-BE-1 di
+            # brief-db-mese-di-un-giorno): niente copie del calcolo nel BE.
+            "competenza_mese = script.fn_mese_di(%s::date)",
         ]
         params: list[Any] = [DASH_STADIO_DA_APPROVARE, competenza_mese]
         if commessa_ids:
@@ -1854,7 +1856,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             where_clauses.append("ca.stato_approvazione = %s")
             where_params.append(stato_approvazione)
         if competenza_mese is not None:
-            where_clauses.append("ca.competenza_mese = date_trunc('month', %s::date)::date")
+            where_clauses.append("ca.competenza_mese = script.fn_mese_di(%s::date)")
             where_params.append(competenza_mese)
         # ⚠️ Il COUNT vive su una query SUA, sulla tabella: ogni filtro passato
         # alla fn va ripetuto QUI o il totale del paginatore conta righe che la

@@ -24,8 +24,8 @@ from apps.core.api.views_lookup import (
     LookupTipiEntitaView,
     LookupAzioniRigaView,
     LookupFormeGiuridicheView,
-    LookupMatriceIndirizziView,
-    LookupMatriceIndirizziRuoloView,
+    LookupTipiIndirizzoNaturaView,
+    LookupTipiIndirizzoTipoRuoloView,
     LookupSistemaCodiciView,
     LookupTipiRuoliPerNaturaView,
     LookupTipiSoggettoDettaglioView,
@@ -127,13 +127,13 @@ urlpatterns = [
     ),
     path(
         "lookup/tipi-soggetto-dettaglio/<int:tipo_soggetto_dettaglio_id>/indirizzi/",
-        LookupMatriceIndirizziView.as_view(),
-        name="core-lookup-matrice-indirizzi",
+        LookupTipiIndirizzoNaturaView.as_view(),
+        name="core-lookup-tipi-indirizzo-natura",
     ),
     path(
         "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/indirizzi/",
-        LookupMatriceIndirizziRuoloView.as_view(),
-        name="core-lookup-matrice-indirizzi-ruolo",
+        LookupTipiIndirizzoTipoRuoloView.as_view(),
+        name="core-lookup-tipi-indirizzo-tipo-ruolo",
     ),
     path(
         "lookup/tipi-ruolo/<str:tipo_ruolo_codice>/utilities/",

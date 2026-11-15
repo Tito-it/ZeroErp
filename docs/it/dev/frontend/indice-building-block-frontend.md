@@ -301,7 +301,7 @@
 - L386 `lookupTipiSoggettoDettaglio` — Lista tipi soggetto (PF/PG/ENTE)
 - L387 `lookupTipiRuoliPerNatura` — Tipi ruolo per natura soggetto
 - L388 `lookupFormeGiuridiche` — Forme giuridiche per tipo soggetto
-- L389 `lookupMatriceIndirizzi` / `lookupMatriceIndirizziRuolo` — Matrice tipi indirizzo per soggetto/ruolo
+- L389 `lookupTipiIndirizzoNatura` / `lookupTipiIndirizzoTipoRuolo` · `listSoggettoTipiIndirizzo` / `listRuoloTipiIndirizzo` — I picker dei tipi di indirizzo del DB (2026-11-15, R-2 di…
 - L390 `lookupSistemaCodici` — Config sequenza codici (auto/manuale)
 - L391 `searchComuni` — Ricerca comuni
 - L392 `searchStradario` / `searchStradarioGenerale` — Ricerca stradario locale/nazionale
