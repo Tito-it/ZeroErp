@@ -277,8 +277,10 @@ class TestMaintenanceJobSummary(TestCase):
         # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
         # quelli storici) non matcherebbero mai alcun mese.
         self.assertIn("meta ->> 'competenza'", sql)
-        # ... e il mese di esecuzione e' quello dell'AZIENDA (BB DB), non della sessione.
-        self.assertIn("date_trunc('month', script.fn_giorno_operativo(started_at)::timestamp)", sql)
+        # ... e il mese di esecuzione e' quello dell'AZIENDA (BB DB), non della
+        # sessione; il primo del mese lo da' il BB `fn_mese_di` (R-BE-1).
+        self.assertIn("script.fn_mese_di(script.fn_giorno_operativo(started_at))", sql)
+        self.assertNotIn("date_trunc", sql)
         self.assertIn("COALESCE", sql)
         # Il filtro è PRIMA del GROUP BY: i conteggi sono relativi ai soli run
         # che matchano, non al totale del job.

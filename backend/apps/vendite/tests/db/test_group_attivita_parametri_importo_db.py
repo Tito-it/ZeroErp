@@ -59,7 +59,7 @@ class GroupAttivitaParametriImportoDbTests(unittest.TestCase):
                 competenza_mese, competenza_dal, competenza_al, quantita,
                 commessa_id, commessa_attivita_id, uom_id, prezzo_unitario)
             SELECT _a.articolo_id, _c.istanza_utility_id, _c.billing_account_id,
-                   _a.competenza_dal, date_trunc('month', _a.competenza_dal)::date,
+                   _a.competenza_dal, script.fn_mese_di(_a.competenza_dal),
                    _a.competenza_dal, _a.competenza_al, 1,
                    _c.commessa_id, _a.attivita_id, _a.uom_id, 10
               FROM _c, _a

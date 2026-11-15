@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team BE**, con R-BE-1 (§7): le sei copie del calcolo nel SQL del backend passano a
-`script.fn_mese_di` / `fn_fine_mese_di`. Poi il team DB chiude e archivia. **Il lato DB è
+**Riparte: il team DB**, che chiude e archivia: R-BE-1 (§7) è fatto il 2026-11-15, da committare
+sul branch BE (le sei copie nel SQL del backend passano a `script.fn_mese_di`). **Il lato DB è
 finito:** i quattro giri sono applicati e i pgTAP sono verdi (Tid, 2026-11-15). Nel catalogo vivo
 nessuna vista e nessuna funzione tronca più con `date_trunc`, e lo dice il presidio
 `script/test-mese-di-un-giorno-v1` (test 17); i tre CHECK del primo del mese poggiano su
@@ -20,7 +20,7 @@ Tid e numeri `-82…-83` del 2026-11-15; D-1, D-2 e D-3 decise (a) lo stesso gio
 | 2b | ✅ Tid | Il via allo sviluppo e i numeri `20261114-82…-83` (2026-11-15) | — | 2 |
 | 3 | ✅ team DB | Giro 1: i due BB, il pgTAP, la regola `date-trunc`, §11.10, due `manual/`; prova in transazione (2026-11-15) | §6.1 | 2b |
 | 4 | ✅ Tid | Apply del giro 1 e pgTAP: verdi (2026-11-15) | §6.1 | 3 |
-| 4b | **team BE** ⏭️ | R-BE-1: le sei copie nel SQL del backend passano ai BB | §7 | 4 ✅ |
+| 4b | ✅ team BE | R-BE-1 (2026-11-15): le sei copie passano a `script.fn_mese_di`, ricognizione rifatta sull'albero (le stesse sei; `contratti_repository` +1 mese non è la regola), binding provato con `EXPLAIN` sul DB vero; anche due fixture di test e un test col testo dell'SQL. `fn_fine_mese_di`: nessuna copia nel BE | §7 | 4 ✅ |
 | 5 | ✅ team DB | Giro 2: le viste, `20261115-01…-07` (numeri di Tid); scritti e provati in transazione (2026-11-15) | §6.2 | 4 ✅; stati-dal-vocabolario senza giri aperti sulle viste ✅ |
 | 5b | ✅ Tid | Apply del giro 2 e pgTAP delle viste: verdi (2026-11-15) | §6.2 | 5 |
 | 6 | ✅ team DB | Giro 3: le funzioni di `vendite`, `20261115-08…-26` (numeri di Tid); scritti e provati in transazione (2026-11-15) | §6.3 | 4 ✅ |
