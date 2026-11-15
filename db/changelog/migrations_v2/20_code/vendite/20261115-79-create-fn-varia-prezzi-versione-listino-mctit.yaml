@@ -1,0 +1,261 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO «VARIAZIONE %» DI UNA VERSIONE DI LISTINO
+#   Brief: brief-db-stati-documento-dal-vocabolario, dopo il giro 6f-ter
+#   (richiesta del BE del 2026-11-15, verifica del giro; via di Tid lo
+#   stesso giorno).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Dal 20261115-65 «la variazione solo in bozza» (sviluppo-listini-v3 N8a,
+#   2026-04-12) la diceva il guard di stato delle righe,
+#   vendite.trgfn_listini_righe_guard_stato, che il registro
+#   config.azioni_riga nominava come verbo di VARIA_PREZZI_LISTINO. Un guard
+#   di riga giudica le righe che si scrivono: un UPDATE che non ne prende
+#   nessuna non lo fa scattare. Su una versione non in bozza senza righe
+#   attive, o con un filtro che non prende righe, l'anteprima rispondeva
+#   «ammessa, 0 righe» mentre la superficie diceva bloccato, e il gesto vero
+#   cadeva sulla traccia in listini_versioni.meta con
+#   E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE invece che con
+#   E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA. La regola dipendeva dalle righe.
+#   Il modello ammette la versione senza righe attive e il filtro che non
+#   prende niente: il gesto vale per la versione, e la versione lo giudica.
+#
+# ── IL PERCORSO ─────────────────────────────────────────────────────
+#   1. Parametri obbligatori (E_VENDITE_CHIAMATA_NON_VALIDA).
+#   2. La versione nel perimetro, FOR UPDATE nel gesto vero (fra la check e
+#      la scrittura non si attiva). Non trovata o fuori perimetro:
+#      E_VENDITE_LISTINO_VERSIONE_NOT_FOUND.
+#   3. Prima cio' che vieta: il primo motivo di
+#      script.fn_check_listino_riga_scrivibile della versione, senza riga,
+#      come la superficie (variazione_blocco_*). Anche nell'anteprima:
+#      l'anteprima di un gesto vietato e' vietata, con lo stesso codice.
+#   4. Gli intervalli: la percentuale da -99 a 1000, i decimali
+#      dell'arrotondamento da 0 a 10 (E_LISTINO_VARIAZIONE_FUORI_INTERVALLO,
+#      codice nuovo). Stavano nel backend.
+#   5. Il prezzo nuovo si calcola in un posto solo: l'anteprima lo
+#      restituisce, il gesto lo scrive e restituisce il prezzo salvato.
+#   6. Il gesto lascia la traccia in meta.variazioni_percentuali[] della
+#      versione (la forma del backend, piu' l'operatore), anche a righe
+#      zero. Nessuna porta: la traccia si scrive dopo la check, quindi in
+#      bozza, dove il guard della versione lascia cambiare tutto.
+#
+# ── SECURITY DEFINER ────────────────────────────────────────────────
+#   Come vendite.fn_rettifica_riga_listino: il perimetro lo dice
+#   script.fn_scope_ef_whitelist_via_listino_versione. Il permesso d'area
+#   resta al backend. EXECUTE solo a zeroerp_app.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261115-79-create-fn-varia-prezzi-versione-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261115-79-create-fn-varia-prezzi-versione-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        NUOVO vendite.fn_varia_prezzi_versione_listino: la variazione percentuale dei prezzi delle righe di una
+        versione di listino, con l'anteprima, giudicata dalla versione e non dalle righe che prende.
+        Brief: brief-db-stati-documento-dal-vocabolario, dopo il giro 6f-ter.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_varia_prezzi_versione_listino';
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_listino_riga_scrivibile';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_varia_prezzi_versione_listino(
+                  p_listino_versione_id vendite.listini_versioni.id%TYPE,
+                  -- Tipo esplicito: una percentuale, nessuna colonna di cui sia il riflesso.
+                  p_variazione_pct      numeric,
+                  -- Tipo esplicito: i decimali dell'arrotondamento, argomento di round().
+                  p_decimali            integer,
+                  -- Tipo esplicito: un array di id di catalogo.articoli; NULL = tutte le righe.
+                  p_filtro_articoli     uuid[] DEFAULT NULL,
+                  -- Tipo esplicito: l'interruttore del chiamante (true = anteprima).
+                  p_dry_run             boolean DEFAULT false)
+               RETURNS TABLE(listino_riga_id      vendite.listini_righe.id%TYPE,
+                             articolo_id          vendite.listini_righe.articolo_id%TYPE,
+                             articolo_codice      catalogo.articoli.codice%TYPE,
+                             articolo_descrizione catalogo.articoli.descrizione%TYPE,
+                             prezzo_precedente    vendite.listini_righe.prezzo%TYPE,
+                             prezzo_nuovo         vendite.listini_righe.prezzo%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_tx_id   vendite.listini_versioni.tx_id%TYPE;
+                  -- Tipo esplicito: un conteggio di righe.
+                  v_n       integer;
+                  -- Gli intervalli: una costante sola, letta dal controllo e dal
+                  --   messaggio.
+                  c_pct_min CONSTANT numeric := -99;
+                  c_pct_max CONSTANT numeric := 1000;
+                  c_dec_min CONSTANT integer := 0;
+                  c_dec_max CONSTANT integer := 10;
+              BEGIN
+                  -- ==========================================================
+                  -- Scopo: variare in percentuale i prezzi delle righe attive di
+                  --   una versione di listino (tutte, o quelle degli articoli del
+                  --   filtro), o mostrarne l'anteprima. Si fa solo in bozza, e lo
+                  --   dice la versione, non le righe che il gesto prende. Vedi
+                  --   l'intestazione del changeSet 20261115-79.
+                  -- ==========================================================
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_listino_versione_id IS NULL OR p_listino_versione_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_varia_prezzi_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_listino_versione_id', p_listino_versione_id),
+                          NULL::uuid, 'vendite.fn_varia_prezzi_versione_listino',
+                          'p_listino_versione_id (obbligatorio, maggiore di zero)');
+                  END IF;
+                  IF p_variazione_pct IS NULL OR p_decimali IS NULL OR p_dry_run IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_varia_prezzi_versione_listino',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_listino_versione_id', p_listino_versione_id,
+                                             'p_variazione_pct', p_variazione_pct,
+                                             'p_decimali', p_decimali, 'p_dry_run', p_dry_run),
+                          NULL::uuid, 'vendite.fn_varia_prezzi_versione_listino',
+                          'p_variazione_pct, p_decimali e p_dry_run (obbligatori)');
+                  END IF;
+
+                  -- 2. La versione, nel perimetro. Nel gesto vero FOR UPDATE: fra la
+                  --    check e la scrittura la versione non cambia stato.
+                  IF p_dry_run THEN
+                      SELECT lv.tx_id INTO v_tx_id
+                        FROM vendite.listini_versioni lv
+                       WHERE lv.id = p_listino_versione_id
+                         AND script.fn_scope_ef_whitelist_via_listino_versione(v_utente, lv.id);
+                  ELSE
+                      SELECT lv.tx_id INTO v_tx_id
+                        FROM vendite.listini_versioni lv
+                       WHERE lv.id = p_listino_versione_id
+                         AND script.fn_scope_ef_whitelist_via_listino_versione(v_utente, lv.id)
+                         FOR UPDATE OF lv;
+                  END IF;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_varia_prezzi_versione_listino',
+                          'E_VENDITE_LISTINO_VERSIONE_NOT_FOUND',
+                          -- Frase chiusa: nessun segnaposto, il variadico vuoto e' esplicito.
+                          jsonb_build_object('id', p_listino_versione_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- 3. Prima cio' che vieta: il primo motivo della check della
+                  --    versione, senza riga, come la superficie. Anche
+                  --    nell'anteprima.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', 'vendite.fn_varia_prezzi_versione_listino',
+                      script.fn_check_listino_riga_scrivibile(p_listino_versione_id, NULL, 'UPDATE'),
+                      NULL,
+                      v_tx_id,
+                      jsonb_build_object('listino_versione_id', p_listino_versione_id,
+                                         'variazione_pct', p_variazione_pct,
+                                         'dry_run', p_dry_run));
+
+                  -- 4. Gli intervalli. Il campo da correggere ha il nome del
+                  --    parametro dell'endpoint: esce nel canale COLUMN.
+                  IF p_variazione_pct < c_pct_min OR p_variazione_pct > c_pct_max
+                     OR p_decimali < c_dec_min OR p_decimali > c_dec_max THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_varia_prezzi_versione_listino',
+                          'E_LISTINO_VARIAZIONE_FUORI_INTERVALLO',
+                          jsonb_build_object('campo', CASE WHEN p_variazione_pct BETWEEN c_pct_min AND c_pct_max
+                                                           THEN 'arrotondamento_decimali'
+                                                           ELSE 'variazione_percentuale' END,
+                                             'listino_versione_id', p_listino_versione_id,
+                                             'variazione_pct', p_variazione_pct,
+                                             'decimali', p_decimali),
+                          v_tx_id,
+                          c_pct_min::text, c_pct_max::text, c_dec_min::text, c_dec_max::text);
+                  END IF;
+
+                  -- 5. Il prezzo nuovo, calcolato in un posto solo: l'anteprima lo
+                  --    restituisce, il gesto lo scrive (il guard delle righe, in
+                  --    bozza, passa) e restituisce il prezzo salvato, alla scala
+                  --    della colonna. Prezzo negativo: il CHECK della tabella.
+                  RETURN QUERY
+                  WITH calc AS (
+                      SELECT r.id                                                   AS riga_id,
+                             r.articolo_id                                          AS art_id,
+                             a.codice                                               AS art_codice,
+                             a.descrizione                                          AS art_descrizione,
+                             r.prezzo                                               AS prima,
+                             round(r.prezzo * (1 + p_variazione_pct / 100), p_decimali) AS dopo
+                        FROM vendite.listini_righe r
+                        JOIN catalogo.articoli a ON a.id = r.articolo_id
+                       WHERE r.listino_versione_id = p_listino_versione_id
+                         AND r.attivo
+                         AND (p_filtro_articoli IS NULL OR r.articolo_id = ANY (p_filtro_articoli))
+                  ), scritte AS (
+                      UPDATE vendite.listini_righe lr
+                         SET prezzo = c.dopo
+                        FROM calc c
+                       WHERE lr.id = c.riga_id
+                         AND NOT p_dry_run
+                      RETURNING lr.id AS riga_id, lr.prezzo AS salvato
+                  )
+                  SELECT c.riga_id, c.art_id, c.art_codice, c.art_descrizione, c.prima,
+                         COALESCE(s.salvato, c.dopo)
+                    FROM calc c
+                    LEFT JOIN scritte s ON s.riga_id = c.riga_id
+                   ORDER BY c.art_codice, c.riga_id;
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+                  -- 6. La traccia del gesto, anche a righe zero.
+                  IF NOT p_dry_run THEN
+                      UPDATE vendite.listini_versioni lv
+                         SET meta = jsonb_set(
+                                        lv.meta, '{variazioni_percentuali}',
+                                        COALESCE(lv.meta -> 'variazioni_percentuali', '[]'::jsonb)
+                                        || jsonb_build_array(jsonb_build_object(
+                                               'data',                    now(),
+                                               'operatore',               v_utente,
+                                               'variazione_percentuale',  p_variazione_pct::text,
+                                               'arrotondamento_decimali', p_decimali,
+                                               'righe_aggiornate',        v_n,
+                                               'filtro_articoli',         to_jsonb(p_filtro_articoli))))
+                       WHERE lv.id = p_listino_versione_id;
+                  END IF;
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_varia_prezzi_versione_listino(vendite.listini_versioni.id%TYPE, numeric, integer, uuid[], boolean) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_varia_prezzi_versione_listino(vendite.listini_versioni.id%TYPE, numeric, integer, uuid[], boolean) TO zeroerp_app;
+
+              COMMENT ON FUNCTION vendite.fn_varia_prezzi_versione_listino(vendite.listini_versioni.id%TYPE, numeric, integer, uuid[], boolean)
+              IS 'VERBO «Variazione %» di una versione di listino: varia in percentuale i prezzi delle righe attive della versione (tutte, o quelle degli articoli di p_filtro_articoli; un array vuoto non prende righe), arrotondati a p_decimali, o con p_dry_run ne mostra l''anteprima senza scrivere. Si fa solo in bozza, e lo dice la versione, non le righe che il gesto prende: anche a righe zero. La versione nel perimetro (script.fn_scope_ef_whitelist_via_listino_versione: DEFINER, la RLS non c''e''; FOR UPDATE nel gesto vero; non trovata o fuori perimetro E_VENDITE_LISTINO_VERSIONE_NOT_FOUND; parametri mancanti E_VENDITE_CHIAMATA_NON_VALIDA); prima cio'' che vieta, anche nell''anteprima: il primo motivo di script.fn_check_listino_riga_scrivibile della versione senza riga, lo stesso della superficie vendite.vw_listini_versioni_azioni (variazione_blocco_*): CHIUSA E_RIGA_LISTINO_VERSIONE_CHIUSA, fuori dalla bozza E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA; poi gli intervalli, la percentuale da -99 a 1000 e i decimali da 0 a 10 (E_LISTINO_VARIAZIONE_FUORI_INTERVALLO). Il prezzo nuovo e'' round(prezzo * (1 + p_variazione_pct / 100), p_decimali), calcolato in un posto solo; prezzo negativo: il CHECK chk_listini_righe_prezzo. Ritorna una riga per riga presa (riga, articolo, codice e descrizione dell''articolo, prezzo di prima, prezzo nuovo: salvato, alla scala della colonna, nel gesto vero), per codice articolo. Il gesto vero appende a meta.variazioni_percentuali[] della versione la traccia (data, operatore = app.current_user_id, variazione_percentuale, arrotondamento_decimali, righe_aggiornate, filtro_articoli), anche a righe zero. E'' il verbo dell''azione VARIA_PREZZI_LISTINO nel registro config.azioni_riga. Prende il posto dell''UPDATE e della traccia del backend (listini_service.fn_applica_variazione_percentuale, sviluppo-listini-v3 N8a). Il permesso d''area resta al backend. SECURITY DEFINER con search_path bloccato; EXECUTE solo all''applicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_varia_prezzi_versione_listino(vendite.listini_versioni.id%TYPE, numeric, integer, uuid[], boolean);

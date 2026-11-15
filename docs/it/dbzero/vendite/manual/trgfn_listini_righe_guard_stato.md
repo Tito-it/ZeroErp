@@ -58,10 +58,17 @@ Una porta aperta che cambia altro ricade sulla regola di sempre. È la stessa fo
 ### Il verbo nel registro
 
 Le righe si aggiungono, si modificano e si eliminano direttamente (il backend fa `INSERT`,
-`UPDATE`, `DELETE`), anche in massa con la variazione percentuale: chi le rifiuta è questo guard.
-Per questo è il `verbo` delle azioni `AGGIUNGI_RIGA_LISTINO`, `MODIFICA_RIGA_LISTINO` e
-`VARIA_PREZZI_LISTINO` in [`config.azioni_riga`](/dbzero/config/manual/azioni_riga). La variazione
-su una versione non in bozza si ferma alla prima riga e non scrive niente.
+`UPDATE`, `DELETE`): chi le rifiuta è questo guard. Per questo è il `verbo` delle azioni
+`AGGIUNGI_RIGA_LISTINO` e `MODIFICA_RIGA_LISTINO` in
+[`config.azioni_riga`](/dbzero/config/manual/azioni_riga): un'aggiunta, una modifica o
+un'eliminazione tocca sempre una riga, e il guard la giudica.
+
+La variazione percentuale no: è un gesto della versione, che può non prendere nessuna riga (un
+filtro che non trova articoli, una versione senza righe attive), e lì il guard non scatterebbe. Ha
+il suo verbo,
+[`vendite.fn_varia_prezzi_versione_listino`](/dbzero/vendite/manual/fn_varia_prezzi_versione_listino),
+che chiede la stessa regola per la versione prima di toccare le righe. Le righe che scrive passano
+comunque da qui.
 
 ---
 

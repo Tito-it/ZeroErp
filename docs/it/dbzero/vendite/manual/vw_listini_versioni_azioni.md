@@ -30,7 +30,7 @@ qualunque stato.
 | `chiusura_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
 | `aggiunta_riga_blocco_reason` | il motivo per cui «Aggiungi riga» è spento: `VERSIONE_CHIUSA` o `VERSIONE_NON_IN_BOZZA`, il primo motivo di `script.fn_check_listino_riga_scrivibile` senza riga, lo stesso che il guard di stato delle righe solleva sull'INSERT; `NULL` = la riga si aggiunge (la versione è in bozza) |
 | `aggiunta_riga_blocco_reason_key` | la chiave di traduzione dello stesso motivo |
-| `variazione_blocco_reason` / `_key` | «Variazione %» dei prezzi delle righe: lo stesso motivo; il guard delle righe lo solleva alla prima riga, e la variazione non scrive niente |
+| `variazione_blocco_reason` / `_key` | «Variazione %» dei prezzi delle righe: lo stesso motivo, sollevato dal verbo [`vendite.fn_varia_prezzi_versione_listino`](/dbzero/vendite/manual/fn_varia_prezzi_versione_listino) per la versione, anche nell'anteprima e anche quando il gesto non prende righe |
 | `prezzi_bundle_blocco_reason` / `_key` | i prezzi dei componenti di un kit (il dialog bundle): lo stesso motivo, sollevato dal guard di `vendite.listini_righe_componenti` |
 | `periodicita_kit_blocco_reason` / `_key` | la periodicità di un kit (`vendite.listini_kit`): lo stesso motivo, sollevato dal guard del kit |
 
