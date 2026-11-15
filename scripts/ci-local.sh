@@ -101,8 +101,9 @@
 #   sistema `/opt/liquibase-5.0.2` e i suoi symlink sono stati rimossi), cosi'
 #   un `liquibase` nudo fallisce subito invece di far girare in silenzio una
 #   versione vecchia e senza driver. Il wrapper prende
-#   `tools/liquibase/current` (5.0.4, la stessa della CI) e il driver JDBC
-#   versionato nel repo (`tools/liquibase/jdbc/postgresql-42.7.10.jar`).
+#   `tools/liquibase/current` e il driver JDBC in `tools/liquibase/jdbc/`, nelle
+#   versioni di `scripts/liquibase-versioni.env` (le stesse della CI); `tools/`
+#   non e' nel repo: lo popola `scripts/installa-liquibase.sh`.
 # ------------------------------------------------------------
 set -euo pipefail
 

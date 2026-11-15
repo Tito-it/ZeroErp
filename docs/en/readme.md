@@ -1,6 +1,6 @@
 # ZeroERP
 
-> **Last updated**: 2 November 2026
+> **Last updated**: 15 November 2026
 
 **Open-source ERP for Italian companies, designed with a DB-first and concentric development approach.**
 
@@ -11,10 +11,13 @@ The goal is to reduce unnecessary complexity while preserving rigor in data, rul
 
 ## Project Status
 
-> **Active development (core phase).**
+> **Active development — DB, backend and frontend operational on core, master data, catalog, the
+> full sales cycle (quotes, offers, contracts, orders, delivery notes, returns, invoices, job orders),
+> workflow, documents and configurable presentation. Not yet released for production.**
 >
-> The project is under construction: the database layer is the most advanced area,
-> Django APIs are evolving, and there is no public frontend release yet.
+> The detailed picture, the state per component and the roadmap live in one place: the
+> [Concentric Map](../it/mappa-concentrica.md) (Italian), with its dated
+> [changelog](../it/dev/mappa-concentrica-changelog.md). Below is only a snapshot.
 
 ---
 
@@ -71,7 +74,7 @@ Further reading:
 ## Architecture
 
 ```
-Frontend (future)
+Frontend Vue 3 (presentation only, no business logic)
     |
 Django REST API (orchestration, permissions, endpoints)
     |
@@ -88,14 +91,17 @@ Architectural choices:
 
 ## Technology Stack
 
-| Component | Technology |
-| --- | --- |
-| Database | PostgreSQL 18 |
-| DB versioning | Liquibase 5 |
-| Backend | Django 6.01 + DRF |
-| Backend language | Python 3.14 |
-| Frontend | Vue.js (target), still being defined |
-| Docs/dev tooling | MkDocs, pre-commit, Docker |
+| Component | Technology | The version is read from |
+| --- | --- | --- |
+| Database | PostgreSQL, with PostGIS, pgTAP, pgAgent, plpgsql_check | the CI workflows (`.github/workflows/`) |
+| DB versioning | Liquibase Community (Java 17) | `scripts/liquibase-versioni.env` |
+| Backend | Django + Django REST Framework, Redis as cache, WeasyPrint for PDFs | `backend/requirements.in` |
+| Backend language | Python | `.python-version` |
+| Frontend | Vue 3, Vite, PrimeVue, Pinia | `frontend/package.json` (Node in `engines.node`) |
+| Docs/dev tooling | Zensical + docs preprocessing, pre-commit, Docker | `requirements.txt` at the repository root |
+
+⛔ Version numbers are not copied here: a number written in two places always has one stale copy,
+and the unguarded one is the document.
 
 ---
 
@@ -109,7 +115,7 @@ The database is organized into main functional schemas:
 - `vendite`
 - `magazzino`
 - `pagamenti`
-- `contabilita`
+- `contabilita` (⛔ schema name only, empty and out of scope)
 - `config`
 - `storico`
 - `script`, `dbops`, `maintenance`, `internal`
@@ -132,13 +138,24 @@ The model is designed to support non-linear flows and multi-department operation
 
 ## Development Status
 
-Snapshot (March 2026):
+A snapshot to get oriented; the [Concentric Map](../it/mappa-concentrica.md) is authoritative.
 
-- Core database: advanced
-- Backend APIs: in development
-- Workflow engine: being consolidated
-- Frontend: not started for public release
-- Documentation: continuously updated
+- **Foundations**: DB-native job queue, errors as a catalogued contract, pgTAP tests in CI that run
+  **as the application** (RLS enforced on every run)
+- **Access and master data**: authentication (JWT, multiple roles per credential, second factor),
+  three-level permissions with operator RLS per fiscal issuer, master data, catalog with versioned
+  bills of materials and unit conversions
+- **Sales cycle**: quotes, offers, contracts (including recurring fees), orders, delivery notes,
+  returns, invoices and credit notes — DB + backend + frontend, one model for every sales document
+  (every state change through a DB verb, issued from a single point, state meanings from the
+  vocabulary)
+- **Billing**: batch pipeline with lanes, lots and an operational cockpit
+- **Workflow engine**: operational and validated by its first real consumer
+- **Document engine**: versioned templates, per-issuer assets, PDF, faithful reprint
+- **Warehouse**: delivery notes unload and returns reload stock, through a stock ledger that does not
+  know its consumers
+- **Open areas**: payments collection, SDI e-invoicing, purchasing; accounting is out of scope (if
+  ever needed, it will be a link to an external accounting system)
 
 ---
 
@@ -168,10 +185,10 @@ Essential structure:
 
 ## Roadmap
 
-1. Consolidate DB core and workflow engine
-2. Expand domain APIs (master data, sales, workflow)
-3. Deliver first internal-use frontend
-4. Evolve integrations and vertical modules
+The roadmap is kept in one place, in the [Concentric Map §3](../it/mappa-concentrica.md#3-roadmap)
+(Italian): work in progress (each item with its living document), planned work, open decisions and
+declared debt. Completed work lives in the map's
+[changelog](../it/dev/mappa-concentrica-changelog.md).
 
 ---
 
