@@ -2602,7 +2602,7 @@
       "preview_hint": "Rows are read from the price list. Add an override to customise an article's price.",
       "preview_listino_senza_versione": "Price list {codice} has no operational version today: no prices to display. Activate a price list version to compute pricing.",
       "banner_locked_attivo": "Contract in status {stato}: use the Terminate button or create a new contract for changes.",
-      "banner_locked_cessato": "Contract TERMINATED: terminal status, no edits allowed.",
+      "banner_locked_cessato": "Contract in status {stato}: terminal status, no edits allowed.",
       "field_data_cessazione": "Termination date",
       "field_cessazione_programmata": "Termination scheduled for",
       "cessa_dialog_titolo_immediata": "Terminate contract",
@@ -2942,7 +2942,7 @@
       "gestisci_note": "Manage notes",
       "genera_reso": "Create return",
       "genera_reso_reason": {
-        "trasferimento": "This delivery note is a transfer between warehouses: the goods stayed ours, there is no customer to return them.",
+        "trasferimento": "Delivery note {0} is a transfer between warehouses: the goods stayed ours, there is no customer to return them.",
         "non_consegnato": "A return can only be created from a delivery note delivered to the customer."
       },
       "note_titolo": "DDT notes",

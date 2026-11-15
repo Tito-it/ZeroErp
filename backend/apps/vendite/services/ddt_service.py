@@ -35,7 +35,7 @@
 import logging
 from datetime import date
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any
 
 from django.db import transaction
 
@@ -77,6 +77,13 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    COLONNE_PROVENIENZA_RIGA,
+    EsitoPrezzoRiga,
+    ProvenienzaDichiarata,
+    prezzo_invariato,
+    provenienza_dichiarata,
+    resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
 
@@ -198,11 +205,16 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
 # Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
 # mappa degli override dei prezzi dei componenti, che non e' una colonna e si
 # legge a parte (`normalize_componenti_overrides`).
-CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
+# ⭐ E la provenienza del prezzo dichiarata dal form (D-5 di brief-db-provenienza-
+#    prezzo-segue-il-prezzo): la legge e la toglie il BB del gate.
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {
+    "componenti_overrides", CHIAVE_PROVENIENZA_DICHIARATA,
+}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
 })
+UPDATE_PAYLOAD_RIGA: frozenset[str] = UPDATE_KEYS_RIGA | {CHIAVE_PROVENIENZA_DICHIARATA}
 
 
 # ══════════════════════════════════════════════════════════
@@ -623,6 +635,10 @@ def gestisci_riga(
     prezzo_unitario = data.get("prezzo_unitario")
     esito_codice: str | None = None
     meta_riga = data.get("meta") if isinstance(data.get("meta"), dict) else None
+    dichiarata = provenienza_dichiarata(
+        payload, error_code="E_DDT_VALIDAZIONE", function_name=f"{_FN}.gestisci_riga",
+    )
+    esito_prezzo: EsitoPrezzoRiga | None = None
 
     # Pricing auto-fill (solo articolo NON composito, prezzo non passato).
     #
@@ -633,24 +649,19 @@ def gestisci_riga(
     # quel ricalcolo mette NULL se anche un solo figlio e' scoperto. Partire da
     # zero dichiarerebbe un prezzo che nessuno ha deciso — e lo zero, a
     # differenza del NULL, e' un valore che passa i controlli.
-    if not is_composito and prezzo_unitario is None:
-        esito = _resolve_prezzo_riga(
+    # Il prezzo dal gate (BB `resolve_or_check_override_prezzo`, lo stesso
+    # degli altri quattro documenti): senza prezzo il listino, con la
+    # provenienza dichiarata la verifica, a mano L1+L2.
+    if not is_composito:
+        esito_prezzo = _gate_prezzo_riga(
             repo, testata, articolo_id=str(articolo_id),
-            uom_id=data.get("uom_operativa_id"),
+            uom_id=data.get("uom_operativa_id"), payload_prezzo=prezzo_unitario,
+            dichiarata=dichiarata, auth_user_id=auth_user_id,
+            function_name=f"{_FN}.gestisci_riga",
         )
-        prezzo_unitario = esito.prezzo
-        esito_codice = esito.codice
-        # F-7 / DEC-8: il PERCHE' del prezzo assente si persiste, o ricaricando
-        # la lista sparisce e resta solo una riga vuota che nessuno sa spiegare.
-        # Chiave `prezzo_resolver_context`: lo stesso nome della colonna che il
-        # DB usa sui componenti — due tabelle, un nome. Si scrive SOLO quando il
-        # prezzo manca (l'assenza della chiave e' informazione) e si FONDE col
-        # meta del client, che e' suo.
-        if prezzo_unitario is None and esito_codice is not None:
-            meta_riga = {
-                **(meta_riga or {}),
-                "prezzo_resolver_context": {"esito_codice": esito_codice},
-            }
+        prezzo_unitario = esito_prezzo.prezzo
+        if prezzo_unitario is None:
+            esito_codice = esito_prezzo.esito_codice
 
     # ⭐ L'IVA DI RIGA VIENE DALLA SEDE UNICA (I3, 2026-08-31). Fino a oggi la
     # sceglieva il frontend copiandola dall'articolo in `onArticoloSelect`:
@@ -668,6 +679,19 @@ def gestisci_riga(
     )
     if iva_meta:
         meta_riga = {**(meta_riga or {}), **iva_meta}
+    # Provenienza e audit dell'override sui campi della riga (BB del gate).
+    campi_prezzo: dict[str, Any] = {"meta": meta_riga}
+    if esito_prezzo is not None:
+        esito_prezzo.applica(campi_prezzo)
+        meta_riga = campi_prezzo["meta"]
+    # F-7 / DEC-8: il PERCHE' del prezzo assente si persiste, o ricaricando la
+    # lista sparisce e resta solo una riga vuota che nessuno sa spiegare. Sta
+    # nella colonna `prezzo_resolver_context` della riga, come sui componenti
+    # (`fn_ddt_riga_componenti_init`): fino al 2026-11-15 stava nel `meta`,
+    # quando la riga principale la colonna non l'aveva (K-5). Si scrive SOLO
+    # quando il prezzo manca: l'assenza della chiave e' informazione.
+    if esito_codice is not None:
+        campi_prezzo["prezzo_resolver_context"] = {"esito_codice": esito_codice}
 
     with _db_errors("gestisci_riga"), transaction.atomic():
         riga_nr = repo.next_riga_nr(ddt_id)
@@ -684,6 +708,7 @@ def gestisci_riga(
             sconto_percentuale=data.get("sconto_percentuale"),
             iva_id=iva_id_riga,
             meta=meta_riga,
+            **{c: campi_prezzo[c] for c in COLONNE_PROVENIENZA_RIGA if c in campi_prezzo},
         )
         riga_id = int(created["id"])
 
@@ -726,7 +751,10 @@ def aggiorna_riga(
     # Una chiave fuori whitelist e' un 400, prima di qualunque lettura (vedi
     # CREATE_KEYS_RIGA): da qui in giu' il payload contiene solo chiavi ammesse.
     _V.validate_allowed_keys(
-        payload, allowed=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga",
+        payload, allowed=UPDATE_PAYLOAD_RIGA, function_name=f"{_FN}.aggiorna_riga",
+    )
+    dichiarata = provenienza_dichiarata(
+        payload, error_code="E_DDT_VALIDAZIONE", function_name=f"{_FN}.aggiorna_riga",
     )
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_riga")
@@ -734,13 +762,30 @@ def aggiorna_riga(
         testata, documento=SORGENTE_DDT_VENDITA, documento_id=ddt_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
-    _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
+    riga_esistente = _get_riga_or_raise(repo, ddt_id, riga_id, op="aggiorna_riga")
     data = {k: empty_to_none(v) for k, v in payload.items()}
     _V.require_campi_da_aggiornare(
         data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
+    # Il prezzo cambiato passa dal gate, come in creazione; quello che non
+    # cambia no (BB `prezzo_invariato`). Il padre composito ha il prezzo dei
+    # figli: niente gate. ⚠️ Un prezzo tolto (`null`) resta tolto: sul DDT il
+    # prezzo assente e' ammesso, e chi lo toglie non chiede il listino.
+    if prezzo_invariato(data, riga_esistente):
+        data.pop("prezzo_unitario")
+    if (
+        data.get("prezzo_unitario") is not None
+        and not repo.is_articolo_composito(str(riga_esistente["articolo_id"]))
+    ):
+        esito_prezzo = _gate_prezzo_riga(
+            repo, testata, articolo_id=str(riga_esistente["articolo_id"]),
+            uom_id=data.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id"),
+            payload_prezzo=data["prezzo_unitario"], dichiarata=dichiarata,
+            auth_user_id=auth_user_id, function_name=f"{_FN}.aggiorna_riga",
+        )
+        esito_prezzo.applica(data, meta_base=riga_esistente.get("meta"))
     with _db_errors("aggiorna_riga"):
         repo.update_riga(riga_id, **data)
     return {"ddt_id": ddt_id, "riga_id": riga_id, "updated": True}
@@ -1220,17 +1265,44 @@ _risolvi_iva_riga = make_risolvi_iva_riga(
 
 
 
-# Scopo: l'esito della risoluzione prezzo di una riga DDT: il prezzo se c'e',
-#        altrimenti il CODICE che dice perche' non c'e'. Non e' una tupla nuda
-#        perche' il chiamante deve poter leggere i nomi: `esito.prezzo` e
-#        `esito.codice` si capiscono, `esito[1]` no.
-class _EsitoPrezzoRiga(NamedTuple):
-    prezzo: str | None
-    codice: str | None
+# Scopo: il gate prezzi di una riga DDT (BB `resolve_or_check_override_prezzo`),
+#        col resolver del listino sul contesto della testata. Sul DDT un prezzo
+#        che il listino non da' NON e' un errore (brief-ddt-righe-senza-prezzo):
+#        l'esito torna senza prezzo e col motivo (`esito_codice`), e il
+#        chiamante lo conserva. Senza L3: il DDT non ha il workflow di
+#        approvazione, e una violazione L2 e' un rifiuto.
+def _gate_prezzo_riga(
+    repo: DdtRepository, testata: dict[str, Any], *,
+    articolo_id: str, uom_id: int | None, payload_prezzo: Any,
+    dichiarata: ProvenienzaDichiarata | None, auth_user_id: int | None,
+    function_name: str,
+) -> EsitoPrezzoRiga:
+    # Senza unita' di misura il listino non si interroga, e il gate tratterebbe
+    # ogni prezzo come scritto a mano (L1): qui si dice al form quale campo
+    # manca.
+    ErrorManager.require(
+        uom_id is not None,
+        code="E_DDT_VALIDAZIONE",
+        message="uom_operativa_id obbligatorio per risolvere il prezzo.",
+        context={"field": "uom_operativa_id"},
+        function_name=function_name,
+    )
+
+    def _resolver(_ddt_id: int, *, articolo_id: str, uom_id: int, auth_user_id: int | None) -> dict[str, Any]:
+        del auth_user_id
+        return _resolve_prezzo_riga(repo, testata, articolo_id=articolo_id, uom_id=uom_id)
+
+    return resolve_or_check_override_prezzo(
+        testata=testata, articolo_id=articolo_id, uom_id=uom_id,
+        payload_prezzo=payload_prezzo, auth_user_id=auth_user_id,
+        function_name=function_name, resolver_fn=_resolver,
+        error_code_validazione="E_DDT_VALIDAZIONE", dichiarata=dichiarata,
+    )
 
 
 # Scopo: Risolve il prezzo unitario riga via PricingService (BB condiviso, mai
-#        query dirette su listini — memoria feedback_pricing_centralizzato).
+#        query dirette su listini — memoria feedback_pricing_centralizzato): la
+#        riga intera del resolver, provenienza e contesto compresi.
 #
 #        ⛔ NIENTE RIPIEGO A "0" (V-6 del brief-ddt-righe-senza-prezzo). Fino al
 #        2026-08-19 un prezzo non risolto diventava zero, e zero e' un prezzo:
@@ -1239,12 +1311,12 @@ class _EsitoPrezzoRiga(NamedTuple):
 #        e' una decisione di qualcuno.
 #
 #        ⚠️ Usa il NUCLEO (`resolve_prezzo_esito`), non il guscio: sul DDT il
-#        prezzo mancante non e' un errore — e' un esito da riportare. Gli altri
-#        domini continuano a chiamare `resolve_prezzo`, che solleva (BE-3/DEC-2).
+#        prezzo mancante non e' un errore — e' un esito da riportare
+#        (`prezzo_finale` None, `esito_codice`).
 def _resolve_prezzo_riga(
     repo: DdtRepository, testata: dict[str, Any], *,
     articolo_id: str, uom_id: int | None,
-) -> _EsitoPrezzoRiga:
+) -> dict[str, Any]:
     from apps.vendite.services.pricing_service import PricingService
 
     fn = f"{_FN}._resolve_prezzo_riga"
@@ -1269,7 +1341,7 @@ def _resolve_prezzo_riga(
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
     assert uom_id is not None
-    result = PricingService().resolve_prezzo_esito(
+    return PricingService().resolve_prezzo_esito(
         articolo_id=articolo_id,
         uom_id=int(uom_id),
         data_riferimento=_data_riferimento(testata),
@@ -1277,8 +1349,3 @@ def _resolve_prezzo_riga(
         utility_id=int(testata["utility_id"]),
         emittente_soggetto_ruolo_id=emittente_sr_id,
     )
-    prezzo = result.get("prezzo_finale")
-    codice = result.get("esito_codice")
-    if prezzo is None:
-        return _EsitoPrezzoRiga(prezzo=None, codice=codice)
-    return _EsitoPrezzoRiga(prezzo=str(prezzo), codice=codice)

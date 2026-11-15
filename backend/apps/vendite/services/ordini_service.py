@@ -65,6 +65,13 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    COLONNE_PROVENIENZA_RIGA,
+    EsitoPrezzoRiga,
+    ProvenienzaDichiarata,
+    prezzo_invariato,
+    provenienza_dichiarata,
+    resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
 
@@ -169,12 +176,17 @@ CREATE_KEYS_RIGA: frozenset[str] = frozenset({
 # Le chiavi AMMESSE nella creazione di una riga: le colonne qui sopra piu' la
 # mappa degli override dei prezzi dei componenti, che non e' una colonna e si
 # legge a parte (`normalize_componenti_overrides`). Come il gemello DDT.
-CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {"componenti_overrides"}
+# ⭐ E la provenienza del prezzo dichiarata dal form (D-5 di brief-db-provenienza-
+#    prezzo-segue-il-prezzo): la legge e la toglie il BB del gate.
+CREATE_PAYLOAD_RIGA: frozenset[str] = CREATE_KEYS_RIGA | {
+    "componenti_overrides", CHIAVE_PROVENIENZA_DICHIARATA,
+}
 UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
     "descrizione", "quantita", "qta_operativa", "uom_operativa_id",
     "factor_to_base", "prezzo_unitario", "sconto_percentuale", "meta",
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 })
+UPDATE_PAYLOAD_RIGA: frozenset[str] = UPDATE_KEYS_RIGA | {CHIAVE_PROVENIENZA_DICHIARATA}
 # Le due date di consegna della riga (brief-db-modifiche-certe-ciclo-vendita-e-
 # articolo, Blocco A): la RICHIESTA e' del cliente, la CONFERMATA e' la nostra
 # promessa. Entrambe nullable: ometterle resta legittimo, e in PATCH un `null`
@@ -751,14 +763,24 @@ def gestisci_riga(
 
     is_composito = repo.is_articolo_composito(str(articolo_id))
     prezzo_unitario = data.get("prezzo_unitario")
+    dichiarata = provenienza_dichiarata(
+        payload, error_code="E_ORD_VALIDAZIONE", function_name=f"{_FN}.gestisci_riga",
+    )
 
-    # Pricing auto-fill (solo articolo NON composito, prezzo non passato).
-    if not is_composito and prezzo_unitario is None:
-        prezzo_unitario = _resolve_prezzo_riga(
+    # Il prezzo della riga dal gate (BB `resolve_or_check_override_prezzo`, lo
+    # stesso di preventivo, offerta e contratto): senza prezzo il listino, con
+    # la provenienza dichiarata la verifica, a mano L1+L2. Solo articolo NON
+    # composito: il padre ha il prezzo dei figli.
+    esito_prezzo: EsitoPrezzoRiga | None = None
+    if not is_composito:
+        esito_prezzo = _gate_prezzo_riga(
             repo, testata, articolo_id=str(articolo_id),
-            uom_id=data.get("uom_operativa_id"),
+            uom_id=data.get("uom_operativa_id"), payload_prezzo=prezzo_unitario,
+            dichiarata=dichiarata, auth_user_id=auth_user_id,
+            function_name=f"{_FN}.gestisci_riga",
         )
-    elif is_composito:
+        prezzo_unitario = esito_prezzo.prezzo
+    else:
         # Padre composito: prezzo = SUM(figli), ricalcolato dal trigger DB dopo
         # init componenti. Si inserisce con 0 per soddisfare l'eventuale guard.
         prezzo_unitario = prezzo_unitario if prezzo_unitario is not None else "0"
@@ -778,6 +800,11 @@ def gestisci_riga(
     meta_riga = data.get("meta") if isinstance(data.get("meta"), dict) else None
     if iva_meta:
         meta_riga = {**(meta_riga or {}), **iva_meta}
+    # Provenienza e audit dell'override sui campi della riga (BB del gate).
+    campi_prezzo: dict[str, Any] = {"meta": meta_riga}
+    if esito_prezzo is not None:
+        esito_prezzo.applica(campi_prezzo)
+        meta_riga = campi_prezzo["meta"]
 
     with _db_errors("gestisci_riga"), transaction.atomic():
         riga_nr = repo.next_riga_nr(ordine_id)
@@ -796,6 +823,7 @@ def gestisci_riga(
             meta=meta_riga,
             data_consegna_richiesta_cliente=data.get("data_consegna_richiesta_cliente"),
             data_consegna_confermata=data.get("data_consegna_confermata"),
+            **{c: campi_prezzo[c] for c in COLONNE_PROVENIENZA_RIGA if c in campi_prezzo},
         )
         riga_id = int(created["id"])
 
@@ -826,15 +854,35 @@ def aggiorna_riga(
         testata, documento=SORGENTE_ORDINE_VENDITA, documento_id=ordine_id, verbo="modificare",
         function_name=f"{_FN}.aggiorna_riga",
     )
-    _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
+    riga_esistente = _get_riga_or_raise(repo, ordine_id, riga_id, op="aggiorna_riga")
     # Il contratto: una chiave fuori whitelist e' un 400, mai uno scarto muto.
-    data = _V.solo_chiavi_ammesse(payload, ammesse=UPDATE_KEYS_RIGA, function_name=f"{_FN}.aggiorna_riga")
+    data = _V.solo_chiavi_ammesse(
+        payload, ammesse=UPDATE_PAYLOAD_RIGA, colonne=UPDATE_KEYS_RIGA,
+        function_name=f"{_FN}.aggiorna_riga",
+    )
+    dichiarata = provenienza_dichiarata(
+        payload, error_code="E_ORD_VALIDAZIONE", function_name=f"{_FN}.aggiorna_riga",
+    )
     _V.require_campi_da_aggiornare(
         data,
         message="Nessun campo aggiornabile nel payload riga.",
         function_name=f"{_FN}.aggiorna_riga",
     )
     _parse_date_riga(data, function_name=f"{_FN}.aggiorna_riga")
+    # Il prezzo cambiato passa dal gate, come in creazione; quello che non
+    # cambia no (BB `prezzo_invariato`). Il padre composito ha il prezzo dei
+    # figli: niente gate.
+    if prezzo_invariato(data, riga_esistente):
+        data.pop("prezzo_unitario")
+    if "prezzo_unitario" in data and not repo.is_articolo_composito(str(riga_esistente["articolo_id"])):
+        esito_prezzo = _gate_prezzo_riga(
+            repo, testata, articolo_id=str(riga_esistente["articolo_id"]),
+            uom_id=data.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id"),
+            payload_prezzo=data["prezzo_unitario"], dichiarata=dichiarata,
+            auth_user_id=auth_user_id, function_name=f"{_FN}.aggiorna_riga",
+        )
+        data["prezzo_unitario"] = esito_prezzo.prezzo
+        esito_prezzo.applica(data, meta_base=riga_esistente.get("meta"))
     with _db_errors("aggiorna_riga"):
         repo.update_riga(riga_id, **data)
     return {"ordine_id": ordine_id, "riga_id": riga_id, "updated": True}
@@ -1195,14 +1243,61 @@ def _parse_date_riga(data: dict[str, Any], *, function_name: str) -> None:
             )
 
 
+# Scopo: il gate prezzi di una riga ordine (BB `resolve_or_check_override_prezzo`),
+#        col resolver del listino sul contesto della testata. Un prezzo che il
+#        gate non sa dare e' un errore: sull'ordine il prezzo e' obbligatorio,
+#        e il motivo e' quello del resolver, che solleva (guscio).
+#        Senza L3: l'ordine non ha il workflow di approvazione, e una
+#        violazione L2 e' un rifiuto.
+def _gate_prezzo_riga(
+    repo: OrdiniRepository, testata: dict[str, Any], *,
+    articolo_id: str, uom_id: int | None, payload_prezzo: Any,
+    dichiarata: ProvenienzaDichiarata | None, auth_user_id: int | None,
+    function_name: str,
+) -> EsitoPrezzoRiga:
+    # Senza unita' di misura il listino non si interroga, e il gate tratterebbe
+    # ogni prezzo come scritto a mano (L1): qui si dice al form quale campo
+    # manca.
+    ErrorManager.require(
+        uom_id is not None,
+        code="E_ORD_VALIDAZIONE",
+        message="uom_operativa_id obbligatorio per risolvere il prezzo.",
+        context={"field": "uom_operativa_id"},
+        function_name=function_name,
+    )
+
+    def _resolver(_ordine_id: int, *, articolo_id: str, uom_id: int, auth_user_id: int | None) -> dict[str, Any]:
+        del auth_user_id
+        return _resolve_prezzo_riga(repo, testata, articolo_id=articolo_id, uom_id=uom_id)
+
+    esito = resolve_or_check_override_prezzo(
+        testata=testata, articolo_id=articolo_id, uom_id=uom_id,
+        payload_prezzo=payload_prezzo, auth_user_id=auth_user_id,
+        function_name=function_name, resolver_fn=_resolver,
+        error_code_validazione="E_ORD_VALIDAZIONE", dichiarata=dichiarata,
+    )
+    if esito.prezzo is None:
+        # Il resolver che non risolve SOLLEVA (guscio), e l'errore risale dal
+        # gate col suo codice: qui resta il contesto che manca alla testata.
+        ErrorManager.raise_error(
+            code="E_ORD_VALIDAZIONE",
+            message="Prezzo unitario non risolvibile dal listino: indicarlo.",
+            context={"field": "prezzo_unitario"},
+            function_name=function_name,
+        )
+    return esito
+
+
 # Scopo: Risolve il prezzo unitario riga via PricingService (BB condiviso,
-#        mai query dirette su listini — memoria feedback_pricing_centralizzato).
+#        mai query dirette su listini — memoria feedback_pricing_centralizzato):
+#        la riga intera del resolver, provenienza e contesto compresi.
+#        ⛔ Sul GUSCIO (`resolve_prezzo`), che SOLLEVA quando non risolve:
+#        sull'ordine il prezzo assente non e' un esito ammesso (BE-3/DEC-2 di
+#        brief-ddt-righe-senza-prezzo; il nucleo e' del solo DDT).
 def _resolve_prezzo_riga(
     repo: OrdiniRepository, testata: dict[str, Any], *,
     articolo_id: str, uom_id: int | None,
-) -> str:
-    from decimal import Decimal
-
+) -> dict[str, Any]:
     from apps.vendite.services.pricing_service import PricingService
 
     fn = f"{_FN}._resolve_prezzo_riga"
@@ -1226,7 +1321,7 @@ def _resolve_prezzo_riga(
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
     assert uom_id is not None
-    result = PricingService().resolve_prezzo(
+    return PricingService().resolve_prezzo(
         articolo_id=articolo_id,
         uom_id=int(uom_id),
         data_riferimento=_data_riferimento(testata),
@@ -1234,7 +1329,3 @@ def _resolve_prezzo_riga(
         utility_id=int(testata["utility_id"]),
         emittente_soggetto_ruolo_id=emittente_sr_id,
     )
-    prezzo = result.get("prezzo_finale")
-    if isinstance(prezzo, Decimal):
-        return str(prezzo)
-    return str(prezzo) if prezzo is not None else "0"

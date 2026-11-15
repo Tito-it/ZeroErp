@@ -31,6 +31,8 @@
 //   9) `azioneDaFlag`: acceso -> pulsante attivo; spento col motivo ->
 //      disabilitato col motivo tradotto; chiave mancante -> la frase del DB
 //  10) `azioneDaFlag`: spento SENZA motivo, o capability vuota -> niente
+//  11) ⭐ `<flag>_reason_valori` riempie i segnaposti della frase, nel tooltip
+//      di `azioneDaFlag` e nell'entry di `azioneNegata` (FE-G1); assente -> []
 // ------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest'
@@ -153,5 +155,32 @@ describe('useEntityCapabilities', () => {
     const muto = useEntityCapabilities(ref({ capabilities: { can_genera_reso: false } }))
     expect(muto.azioneDaFlag('can_genera_reso', AZIONE, i18n)).toEqual([])
     expect(useEntityCapabilities(ref(null)).azioneDaFlag('can_genera_reso', AZIONE, i18n)).toEqual([])
+  })
+
+  it('11) i valori del motivo riempiono la frase', () => {
+    const FRASI = { 'vendite.ddt.genera_reso_reason.trasferimento': 'La bolla {0} e\' un trasferimento.' }
+    const conParametri = {
+      t: (k, p) => (FRASI[k] ?? k).replace(/\{(\d+)\}/g, (_, i) => p?.[i] ?? `{${i}}`),
+      te: (k) => k in FRASI,
+    }
+    const caps = useEntityCapabilities(ref({ capabilities: {
+      can_genera_reso: false,
+      can_genera_reso_reason: 'DDT_TRASFERIMENTO',
+      can_genera_reso_reason_key: 'vendite.ddt.genera_reso_reason.trasferimento',
+      can_genera_reso_reason_valori: ['DDT0042'],
+    } }))
+    expect(caps.azioneDaFlag('can_genera_reso', AZIONE, conParametri)[0].tooltip)
+      .toBe("La bolla DDT0042 e' un trasferimento.")
+    const [negata] = caps.azioneNegata('can_genera_reso', { key: 'genera_reso' })
+    expect(negata.valori).toEqual(['DDT0042'])
+    expect(caps.motivoFlag('can_genera_reso')).toEqual({
+      reason: 'DDT_TRASFERIMENTO',
+      reason_key: 'vendite.ddt.genera_reso_reason.trasferimento',
+      valori: ['DDT0042'],
+    })
+    // Senza la chiave dei valori: lista vuota, mai undefined.
+    const senza = useEntityCapabilities(ref({ capabilities: { can_x: false, can_x_reason_key: 'k' } }))
+    expect(senza.motivoFlag('can_x').valori).toEqual([])
+    expect(senza.motivoFlag('can_y')).toBeNull()
   })
 })

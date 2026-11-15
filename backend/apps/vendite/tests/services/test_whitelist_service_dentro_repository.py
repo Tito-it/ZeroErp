@@ -39,6 +39,16 @@ from apps.vendite.services import (
     resi_service,
 )
 from apps.vendite.services.approvazioni_prezzo_service import CAMPI_RIGA_WORKFLOW_L3
+from apps.vendite.services._pricing_gate_helpers import (
+    CHIAVE_PROVENIENZA_DICHIARATA,
+    COLONNE_PROVENIENZA_RIGA,
+)
+
+# Le chiavi del corpo che il service consuma per il gate prezzi e che al
+# repository non arrivano: il flag L3 e la provenienza dichiarata dal form. Al
+# loro posto il gate scrive le quattro colonne della provenienza
+# (`COLONNE_PROVENIENZA_RIGA`), che il repository deve saper scrivere.
+_CONSUMATE_DAL_GATE = {"richiesta_approvazione", CHIAVE_PROVENIENZA_DICHIARATA}
 
 
 class WhitelistServiceDentroRepositoryTests(TestCase):
@@ -48,11 +58,17 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
     def test_whitelist_service_dentro_repository(self) -> None:
         coppie = {
             "ddt testata": (ddt_service.UPDATE_KEYS_DDT, DdtRepository.TESTATA_UPDATE_COLUMNS),
-            "ddt riga": (ddt_service.UPDATE_KEYS_RIGA, DdtRepository.RIGA_UPDATE_COLUMNS),
+            "ddt riga": (
+                ddt_service.UPDATE_KEYS_RIGA | set(COLONNE_PROVENIENZA_RIGA),
+                DdtRepository.RIGA_UPDATE_COLUMNS,
+            ),
             "ordini testata": (
                 ordini_service.UPDATE_KEYS_ORDINE, OrdiniRepository.TESTATA_UPDATE_COLUMNS,
             ),
-            "ordini riga": (ordini_service.UPDATE_KEYS_RIGA, OrdiniRepository.RIGA_UPDATE_COLUMNS),
+            "ordini riga": (
+                ordini_service.UPDATE_KEYS_RIGA | set(COLONNE_PROVENIENZA_RIGA),
+                OrdiniRepository.RIGA_UPDATE_COLUMNS,
+            ),
             "resi testata": (resi_service.UPDATE_KEYS_RESO, ResiRepository.TESTATA_UPDATE_COLUMNS),
             "resi riga": (resi_service.UPDATE_KEYS_RIGA, ResiRepository.RIGA_UPDATE_COLUMNS),
             "preventivi testata": (
@@ -64,7 +80,8 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
             "preventivi riga": (
                 preventivi_service.UPDATE_KEYS_RIGA
                 | {preventivi_service._CHIAVE_DATA_CONSEGNA}
-                | CAMPI_RIGA_WORKFLOW_L3,
+                | CAMPI_RIGA_WORKFLOW_L3
+                | set(COLONNE_PROVENIENZA_RIGA),
                 PreventiviRepository.RIGA_UPDATE_COLUMNS,
             ),
             # Contratti e offerte (2026-09-26, migrazione sul BB). Le chiavi che
@@ -77,8 +94,8 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
                 ContrattiRepository.TESTATA_UPDATE_COLUMNS,
             ),
             "contratti riga": (
-                (contratti_service.UPDATE_KEYS_RIGA - {"richiesta_approvazione"})
-                | CAMPI_RIGA_WORKFLOW_L3,
+                (contratti_service.UPDATE_KEYS_RIGA - _CONSUMATE_DAL_GATE)
+                | CAMPI_RIGA_WORKFLOW_L3 | set(COLONNE_PROVENIENZA_RIGA),
                 ContrattiRepository.RIGA_UPDATE_COLUMNS,
             ),
             "contratti utility": (
@@ -90,8 +107,8 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
                 OfferteRepository.TESTATA_UPDATE_COLUMNS,
             ),
             "offerte eccezione": (
-                (offerte_service.UPDATE_KEYS_ECCEZIONE - {"richiesta_approvazione"})
-                | CAMPI_RIGA_WORKFLOW_L3,
+                (offerte_service.UPDATE_KEYS_ECCEZIONE - _CONSUMATE_DAL_GATE)
+                | CAMPI_RIGA_WORKFLOW_L3 | set(COLONNE_PROVENIENZA_RIGA),
                 OfferteRepository.ECCEZIONE_UPDATE_COLUMNS,
             ),
             "offerte utility": (
@@ -113,10 +130,11 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
     #    (gli id utility dalla testata, i campi del gate L3). Lo stato no: lo
     #    mette il DB alla nascita (brief-modello-documento-vendita P-2).
     def test_whitelist_create_dentro_repository(self) -> None:
-        consumate = {"componenti_overrides", "richiesta_approvazione", "utility"}
+        consumate = {"componenti_overrides", "utility"} | _CONSUMATE_DAL_GATE
         coppie = {
             "contratti riga": (
-                (contratti_service.CREATE_KEYS_RIGA - consumate) | CAMPI_RIGA_WORKFLOW_L3,
+                (contratti_service.CREATE_KEYS_RIGA - consumate) | CAMPI_RIGA_WORKFLOW_L3
+                | set(COLONNE_PROVENIENZA_RIGA),
                 ContrattiRepository.RIGA_CREATE_COLUMNS,
             ),
             "contratti utility": (
@@ -128,7 +146,8 @@ class WhitelistServiceDentroRepositoryTests(TestCase):
                 OfferteRepository.TESTATA_CREATE_COLUMNS,
             ),
             "offerte eccezione": (
-                (offerte_service.CREATE_KEYS_ECCEZIONE - consumate) | CAMPI_RIGA_WORKFLOW_L3,
+                (offerte_service.CREATE_KEYS_ECCEZIONE - consumate) | CAMPI_RIGA_WORKFLOW_L3
+                | set(COLONNE_PROVENIENZA_RIGA),
                 OfferteRepository.ECCEZIONE_CREATE_COLUMNS,
             ),
             "offerte utility": (

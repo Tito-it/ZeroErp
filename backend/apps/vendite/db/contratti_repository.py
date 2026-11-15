@@ -40,6 +40,7 @@ from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynam
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
 from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
+from apps.vendite.db._provenienza_prezzo import sql_provenienza_esplosa
 
 
 # Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
@@ -695,8 +696,20 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                     f"contratto (sorgente_tipo_id={sorgente_tipo_id!r}, "
                     f"chiave={contratto_chiave!r})"
                 )
+            # La provenienza del componente (R-7): la funzione restituisce
+            # origine, versione, riga e contesto del resolver come le
+            # `*_righe_componenti`, e le colonne `prov_*` si leggono con lo
+            # stesso frammento della proiezione dei componenti negoziati
+            # (`list_componenti_riga(con_provenienza=True)`): una forma sola
+            # per i due lettori dell'espansore.
+            colonne_prov, lateral_prov = sql_provenienza_esplosa("k")
             cursor.execute(
-                "SELECT k.* FROM vendite.fn_contratto_kit_componenti(%s, %s::uuid, %s) k",
+                f"""
+                SELECT k.*,
+                       {colonne_prov}
+                  FROM vendite.fn_contratto_kit_componenti(%s, %s::uuid, %s) k
+                  {lateral_prov}
+                """,  # noqa: S608 — frammenti del BB `sql_provenienza_esplosa` su un alias letterale, valori come parametri
                 [int(coppia[0]), str(articolo_padre_id), data],
             )
             return rows_to_list(cursor)
@@ -879,6 +892,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         # nei flussi normali restano NULL.
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Inserisce una riga contratto come eccezione tipizzata
@@ -916,6 +933,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         # + audit, blocca ogni altra modifica struttura su righe PENDING).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
+        # La provenienza del prezzo (K-5): la scrive il gate prezzi, tutte e
+        # quattro insieme (`COLONNE_PROVENIENZA_RIGA`).
+        "origine_prezzo", "listino_versione_id", "listino_riga_id",
+        "prezzo_resolver_context",
     })
 
     # Scopo: Aggiorna una riga contratto sui soli campi forniti.

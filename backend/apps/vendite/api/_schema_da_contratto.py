@@ -57,6 +57,23 @@ def _mappa_attivazioni(**kw: Any) -> serializers.Field:
     )
 
 
+# Scopo: la provenienza del prezzo che il form di riga dichiara (K-6, D-5 di
+#        brief-db-provenienza-prezzo-segue-il-prezzo §8.11): la rimanda col
+#        prezzo ricevuto dall'endpoint di pricing finche' l'operatore non lo
+#        cambia. Il service la verifica sul listino di adesso.
+def _provenienza_prezzo(**kw: Any) -> serializers.Field:
+    return serializers.DictField(
+        help_text=(
+            "Provenienza del prezzo ricevuta dall'endpoint di pricing: "
+            "{origine_prezzo, listino_versione_id, listino_riga_id}. Si manda "
+            "solo col prezzo che l'operatore non ha cambiato; se il listino oggi "
+            "da' un'altra provenienza o un altro prezzo, 409 "
+            "E_PRICING_PROVENIENZA_SUPERATA. Assente = prezzo scritto a mano."
+        ),
+        **kw,
+    )
+
+
 # Il tipo di ogni chiave che un contratto di vendite puo' nominare, e se la
 # colonna ammette NULL. Una chiave nuova in un contratto entra QUI, o l'import
 # fallisce.
@@ -150,6 +167,7 @@ TIPI: Tipi = {
     "richiesta_approvazione": (_booleano, False),
     "componenti_overrides": (_mappa_prezzi, True),
     "componenti_attivazioni": (_mappa_attivazioni, True),
+    "provenienza_prezzo": (_provenienza_prezzo, True),
     # ── utility 1:1 (oggetto `utility` annidato nelle testate) ──
     "istanza_dati_precontrattuali_id": (_intero, True),
     "tipo_utenza_id": (_intero, True),

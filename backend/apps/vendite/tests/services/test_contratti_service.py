@@ -61,6 +61,10 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
 from apps.core.tests._repo import repo_root
+from apps.vendite.services._pricing_gate_helpers import (
+    PROVENIENZA_MANUALE_RIGA,
+    EsitoPrezzoRiga,
+)
 
 
 def _testata_default() -> dict[str, object]:
@@ -1328,6 +1332,9 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertIn("tipo_eccezione obbligatorio", ctx.exception.detail or "")
         repo.create_riga.assert_not_called()
 
+    # Il prezzo del payload, col listino che nel test non risponde, e' a mano:
+    # dal 2026-11-15 (R-1) chiede L1, che qui non e' il soggetto del test.
+    @patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo", new=lambda *a, **k: None)
     @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
@@ -1405,9 +1412,10 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.create_riga.return_value = 77
         repo.get_riga.return_value = {"id": 77, "prezzo_unitario": Decimal("25.50")}
         repo.is_articolo_composito.return_value = False
-        mock_gate.return_value = (
-            Decimal("25.50"),
-            {"origine_prezzo": "MANUALE", "override_user_id": 42},
+        mock_gate.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("25.50"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={"override_user_id": 42},
         )
 
         ContrattiService().create_riga(
@@ -1424,9 +1432,12 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         kwargs = mock_gate.call_args.kwargs
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertFalse(kwargs["richiesta_approvazione"])
-        # Meta audit del gate mergiato nei data riga.
+        # Provenienza nelle colonne, audit del gate mergiato nel meta (K-5).
         data = repo.create_riga.call_args.args[1]
-        self.assertEqual(data["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(data["origine_prezzo"], "MANUALE")
+        self.assertIsNone(data["listino_riga_id"])
+        self.assertEqual(data["meta"]["override_user_id"], 42)
+        self.assertNotIn("origine_prezzo", data["meta"])
         self.assertEqual(data["prezzo_unitario"], Decimal("25.50"))
 
     @patch(
@@ -1478,10 +1489,10 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.get_riga.return_value = {"id": 99, "prezzo_unitario": Decimal("15")}
         repo.is_articolo_composito.return_value = False
         # gate ritorna meta `richiesta_approvazione_pending` (workflow L3).
-        mock_gate.return_value = (
-            Decimal("15"),
-            {
-                "origine_prezzo": "MANUALE",
+        mock_gate.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("15"),
+            provenienza=PROVENIENZA_MANUALE_RIGA,
+            meta={
                 "richiesta_approvazione_pending": True,
                 "violazione_l2": {
                     "tipo_violazione": "SCONTO",
@@ -1538,7 +1549,7 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         repo.create_riga.return_value = 88
         repo.get_riga.return_value = {"id": 88, "prezzo_unitario": Decimal("100")}
         repo.is_articolo_composito.return_value = False
-        mock_gate.return_value = (Decimal("100"), None)  # nessuna base resolver
+        mock_gate.return_value = EsitoPrezzoRiga(prezzo=Decimal("100"))  # nessuna base resolver
 
         ContrattiService().create_riga(
             1,
@@ -1578,7 +1589,10 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
             "meta": {},
         }
         repo.update_riga.return_value = True
-        mock_gate.return_value = (Decimal("28"), {"origine_prezzo": "MANUALE"})
+        repo.is_articolo_composito.return_value = False
+        mock_gate.return_value = EsitoPrezzoRiga(
+            prezzo=Decimal("28"), provenienza=PROVENIENZA_MANUALE_RIGA,
+        )
 
         ContrattiService().update_riga(
             1, 77, {"prezzo_unitario": "28"}, auth_user_id=42,
@@ -1589,6 +1603,36 @@ class ContrattiServiceTests(ModelloDocumentoMockatoMixin, TestCase):
         self.assertEqual(kwargs["articolo_id"], "00000000-0000-0000-0000-000000000001")
         self.assertEqual(kwargs["uom_id"], 5)
         self.assertEqual(kwargs["payload_prezzo"], Decimal("28"))
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "resolve_or_check_override_prezzo_riga_contratto"
+    )
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
+    def test_update_riga_solo_prezzo_invariato_non_e_un_404(self, repo_cls, mock_gate):
+        # Scopo: una PATCH che rimanda il solo prezzo che la riga ha gia'
+        #        (BB `prezzo_invariato`) non passa dal gate e non ha campi da
+        #        scrivere: risponde con la riga, non col 404 dell'UPDATE vuoto
+        #        (`execute_dynamic_update` senza campi torna False).
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_contratto.return_value = _testata_default()
+        riga = {
+            "id": 77, "contratto_id": 1,
+            "articolo_id": "00000000-0000-0000-0000-000000000001",
+            "tipo_eccezione": "OVERRIDE", "uom_operativa_id": 5,
+            "prezzo_unitario": Decimal("30.0000"), "meta": {},
+        }
+        repo.get_riga.return_value = riga
+        repo.update_riga.side_effect = lambda _id, data: bool(data)
+
+        result = ContrattiService().update_riga(
+            1, 77, {"prezzo_unitario": "30"}, auth_user_id=42,
+        )
+
+        mock_gate.assert_not_called()
+        self.assertEqual(result, riga)
 
     @patch(
         "apps.vendite.services.contratti_service."
@@ -2189,6 +2233,9 @@ class ContrattiServiceComponentiTests(TestCase):
         # Init NON chiamato: la guard scatta prima.
         repo.init_componenti_riga.assert_not_called()
 
+    # Il prezzo del payload, col listino che nel test non risponde, e' a mano:
+    # dal 2026-11-15 (R-1) chiede L1, che qui non e' il soggetto del test.
+    @patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo", new=lambda *a, **k: None)
     @patch("apps.vendite.services.contratti_service.transaction.atomic")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository", autospec=True)
     def test_create_riga_articolo_non_composito_no_init(
@@ -2510,23 +2557,29 @@ class ContrattiServicePricingGateTests(TestCase):
     # === resolve_or_check_override_prezzo_riga_contratto ===
 
     def test_resolve_or_check_override_missing_context_skips(self):
-        """Testata senza BA/utility/data → skip resolver, ritorna payload+None."""
+        """Testata senza BA/utility/data → niente resolver, prezzo a mano con L1."""
         from apps.vendite.services.contratti_service import (
             resolve_or_check_override_prezzo_riga_contratto,
         )
 
+        # R-1 (2026-11-15): senza contesto il resolver non si chiama, ma il
+        # prezzo e' a mano: L1 si chiede, la riga e' MANUALE.
         testata = {"id": 1, "billing_account_id": None, "utility_id": 3,
                    "listino_id": 100, "data": "2026-05-15"}
-        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
-            testata=testata,
-            articolo_id="abc",
-            uom_id=5,
-            payload_prezzo=Decimal("10.00"),
-            auth_user_id=42,
-            function_name="test",
-        )
-        self.assertEqual(prezzo, Decimal("10.00"))
-        self.assertIsNone(meta)
+        with patch(
+            "apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo",
+        ) as l1:
+            esito = resolve_or_check_override_prezzo_riga_contratto(
+                testata=testata,
+                articolo_id="abc",
+                uom_id=5,
+                payload_prezzo=Decimal("10.00"),
+                auth_user_id=42,
+                function_name="test",
+            )
+        l1.assert_called_once()
+        self.assertEqual(esito.prezzo, Decimal("10.00"))
+        self.assertEqual(esito.provenienza["origine_prezzo"], "MANUALE")
 
     def test_resolve_or_check_override_skip_per_contratto_senza_listino(self):
         """Refactor 2026-05-20: contratti con listino_id IS NULL saltano
@@ -2540,7 +2593,7 @@ class ContrattiServicePricingGateTests(TestCase):
 
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3,
                    "listino_id": None, "data": "2026-05-15"}
-        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+        esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
             uom_id=5,
@@ -2549,15 +2602,17 @@ class ContrattiServicePricingGateTests(TestCase):
             function_name="test",
         )
         # Skip totale: payload as-is, meta None, nessun gate invocato.
-        self.assertEqual(prezzo, Decimal("99.99"))
-        self.assertIsNone(meta)
+        self.assertEqual(esito.prezzo, Decimal("99.99"))
+        self.assertIsNone(esito.provenienza)
+        self.assertIsNone(esito.meta)
 
     @patch(
         "apps.vendite.services.contratti_service."
         "contratti_suggerisci_prezzo_riga"
     )
     def test_resolve_or_check_override_auto_fill(self, resolver_fn):
-        """payload_prezzo=None → ritorna resolver con meta origine."""
+        """payload_prezzo=None → il prezzo e la provenienza del resolver, nelle
+        colonne (K-5): non piu' nel meta."""
         from apps.vendite.services.contratti_service import (
             resolve_or_check_override_prezzo_riga_contratto,
         )
@@ -2566,11 +2621,14 @@ class ContrattiServicePricingGateTests(TestCase):
             "prezzo_finale": "30.00",
             "origine": "CONTRATTO_LISTINO",
             "listino_id": 100,
+            "listino_versione_id": 7,
+            "listino_riga_id": 70,
+            "prezzo_resolver_context": {"prezzo_base_snapshot": 30},
         }
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
-        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+        esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
             uom_id=5,
@@ -2578,16 +2636,28 @@ class ContrattiServicePricingGateTests(TestCase):
             auth_user_id=42,
             function_name="test",
         )
-        self.assertEqual(prezzo, Decimal("30.00"))
-        self.assertIsNotNone(meta)
-        self.assertEqual(meta["origine_prezzo"], "CONTRATTO_LISTINO")
+        self.assertEqual(esito.prezzo, Decimal("30.00"))
+        self.assertEqual(esito.provenienza, {
+            "origine_prezzo": "CONTRATTO_LISTINO",
+            "listino_versione_id": 7,
+            "listino_riga_id": 70,
+            "prezzo_resolver_context": {"prezzo_base_snapshot": 30},
+        })
+        self.assertIsNone(esito.meta)
 
     @patch(
         "apps.vendite.services.contratti_service."
         "contratti_suggerisci_prezzo_riga"
     )
-    def test_resolve_or_check_override_payload_uguale_resolver(self, resolver_fn):
-        """payload == resolver → no override, meta = resolver context."""
+    @patch(
+        "apps.vendite.services._pricing_gate_helpers."
+        "check_permesso_override_prezzo"
+    )
+    def test_resolve_or_check_override_payload_uguale_resolver(self, gate_l1, resolver_fn):
+        """⛔ K-5: un prezzo uguale a quello del resolver, SENZA la provenienza
+        dichiarata, e' un prezzo scritto a mano. Fino al 2026-11-15 il gate lo
+        deduceva «da listino» dal confronto: un operatore che riscrive lo
+        stesso numero non ha preso il prezzo dal listino."""
         from apps.vendite.services.contratti_service import (
             resolve_or_check_override_prezzo_riga_contratto,
         )
@@ -2599,7 +2669,7 @@ class ContrattiServicePricingGateTests(TestCase):
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
-        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+        esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
             uom_id=5,
@@ -2607,15 +2677,83 @@ class ContrattiServicePricingGateTests(TestCase):
             auth_user_id=42,
             function_name="test",
         )
-        # Quantizzato a 4 decimali → uguale → ritorna resolver (no MANUALE).
-        # Assert positivi sulle chiavi attese: origine dal resolver (non
-        # MANUALE) + prezzo_resolver_context presente. Evita assert NotIn
-        # sul superset di chiavi del ramo override (fragile a future
-        # estensioni del meta_patch del BB).
-        self.assertEqual(prezzo, Decimal("30.00"))
-        self.assertEqual(meta["origine_prezzo"], "CONTRATTO_LISTINO")
-        self.assertIn("prezzo_resolver_context", meta)
-        self.assertNotEqual(meta["origine_prezzo"], "MANUALE")
+        self.assertEqual(esito.prezzo, Decimal("30.00"))
+        self.assertEqual(esito.provenienza["origine_prezzo"], "MANUALE")
+        self.assertIsNone(esito.provenienza["listino_riga_id"])
+        gate_l1.assert_called_once()
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "contratti_suggerisci_prezzo_riga"
+    )
+    @patch(
+        "apps.vendite.services._pricing_gate_helpers."
+        "check_permesso_override_prezzo"
+    )
+    def test_resolve_or_check_override_provenienza_dichiarata_e_verificata(
+        self, gate_l1, resolver_fn,
+    ):
+        """D-5: il prezzo con la provenienza dichiarata dal form, che il
+        listino di adesso conferma, e' da listino: colonne dal resolver,
+        prezzo a piena precisione, nessun gate L1."""
+        from apps.vendite.services._pricing_gate_helpers import ProvenienzaDichiarata
+        from apps.vendite.services.contratti_service import (
+            resolve_or_check_override_prezzo_riga_contratto,
+        )
+
+        resolver_fn.return_value = {
+            "prezzo_finale": "30.0000000001",
+            "origine": "CONTRATTO_LISTINO",
+            "listino_versione_id": 7,
+            "listino_riga_id": 70,
+            "prezzo_resolver_context": {"k": 1},
+        }
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
+                   "data": "2026-05-15"}
+
+        esito = resolve_or_check_override_prezzo_riga_contratto(
+            testata=testata, articolo_id="abc", uom_id=5,
+            payload_prezzo=Decimal("30.00"), auth_user_id=42, function_name="test",
+            dichiarata=ProvenienzaDichiarata("CONTRATTO_LISTINO", 7, 70),
+        )
+        self.assertEqual(esito.prezzo, Decimal("30.0000000001"))
+        self.assertEqual(esito.provenienza["origine_prezzo"], "CONTRATTO_LISTINO")
+        self.assertEqual(esito.provenienza["listino_riga_id"], 70)
+        self.assertIsNone(esito.meta)
+        gate_l1.assert_not_called()
+
+    @patch(
+        "apps.vendite.services.contratti_service."
+        "contratti_suggerisci_prezzo_riga"
+    )
+    def test_resolve_or_check_override_provenienza_dichiarata_smentita_e_409(self, resolver_fn):
+        """D-5: il listino e' cambiato fra la precompilazione e il salvataggio
+        (un'altra riga, o un altro prezzo) → 409 E_PRICING_PROVENIENZA_SUPERATA,
+        non un MANUALE silenzioso."""
+        from apps.vendite.services._pricing_gate_helpers import ProvenienzaDichiarata
+        from apps.vendite.services.contratti_service import (
+            resolve_or_check_override_prezzo_riga_contratto,
+        )
+
+        testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
+                   "data": "2026-05-15"}
+        casi = {
+            "un'altra riga": {"prezzo_finale": "30.00", "listino_riga_id": 71},
+            "un altro prezzo": {"prezzo_finale": "31.00", "listino_riga_id": 70},
+            "nessun prezzo": {"prezzo_finale": None, "listino_riga_id": None},
+        }
+        for nome, risposta in casi.items():
+            with self.subTest(caso=nome):
+                resolver_fn.return_value = {
+                    "origine": "CONTRATTO_LISTINO", "listino_versione_id": 7, **risposta,
+                }
+                with self.assertRaises(ServiceError) as ctx:
+                    resolve_or_check_override_prezzo_riga_contratto(
+                        testata=testata, articolo_id="abc", uom_id=5,
+                        payload_prezzo=Decimal("30.00"), auth_user_id=42, function_name="test",
+                        dichiarata=ProvenienzaDichiarata("CONTRATTO_LISTINO", 7, 70),
+                    )
+                self.assertEqual(ctx.exception.code, "E_PRICING_PROVENIENZA_SUPERATA")
 
     @patch(
         "apps.vendite.services.contratti_service.contratti_suggerisci_prezzo_riga"
@@ -2684,7 +2822,7 @@ class ContrattiServicePricingGateTests(TestCase):
         testata = {"id": 1, "billing_account_id": 10, "utility_id": 3, "listino_id": 100,
                    "data": "2026-05-15"}
 
-        prezzo, meta = resolve_or_check_override_prezzo_riga_contratto(
+        esito = resolve_or_check_override_prezzo_riga_contratto(
             testata=testata,
             articolo_id="abc",
             uom_id=5,
@@ -2693,8 +2831,10 @@ class ContrattiServicePricingGateTests(TestCase):
             function_name="test",
             richiesta_approvazione=True,
         )
-        self.assertEqual(prezzo, Decimal("24.00"))
-        self.assertEqual(meta["origine_prezzo"], "MANUALE")
+        meta = esito.meta
+        self.assertEqual(esito.prezzo, Decimal("24.00"))
+        self.assertEqual(esito.provenienza["origine_prezzo"], "MANUALE")
+        self.assertTrue(esito.richiesta_approvazione_pending)
         self.assertTrue(meta["richiesta_approvazione_pending"])
         self.assertEqual(meta["violazione_l2"]["tipo_violazione"], "SCONTO")
         # L2 chiamato con accept_for_approval=True

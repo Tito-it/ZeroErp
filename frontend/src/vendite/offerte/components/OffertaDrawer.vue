@@ -38,7 +38,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useContatoreNote } from '../../../core/composables/useContatoreNote'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
-import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
+import { mapAvailableActionsToDrawerActions, testoMotivi } from '../../../core/composables/useDrawerActions'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
@@ -151,13 +151,22 @@ const availableActions = caps.availableActions
 //    la stessa abilitazione (fn_available_actions_offerta), quindi i due motivi
 //    coincidono quasi sempre («Disponibile dopo l'accettazione» compariva due
 //    volte, 2026-10-07) — e due `:key` uguali nel `v-for`.
+// ⭐ Dal 2026-11-15 (brief-db-stati-documento-dal-vocabolario FE-G4) la frase
+//    riceve i valori del motivo (`<flag>_reason_valori`, giro 6g-bis): letti
+//    da `caps.motivoFlag` e tradotti da `testoMotivi`, la sede unica del
+//    perche' di un'azione spenta. Senza, `riga_non_ammessa` usciva coi suoi
+//    `{0}` e `{1}` vuoti. Il doppione si toglie sul testo reso.
 const pushReasons = computed(() => {
   const proposte = new Set((availableActions.value || []).map((a) => a.key))
-  const motivi = [
-    { azione: 'push_contratto', ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
-    { azione: 'genera_ordine', ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
-  ].filter((r) => !r.ok && !proposte.has(r.azione) && r.key && te(r.key))
-  return motivi.filter((r, i) => motivi.findIndex((m) => m.key === r.key) === i)
+  const testi = [
+    { azione: 'push_contratto', flag: 'can_push_contratto' },
+    { azione: 'genera_ordine', flag: 'can_genera_ordine' },
+  ]
+    .filter((r) => !proposte.has(r.azione))
+    .map((r) => caps.motivoFlag(r.flag))
+    .filter((m) => m?.reason_key && te(m.reason_key))
+    .map((m) => testoMotivi(t, te, m))
+  return [...new Set(testi)].map((testo) => ({ key: testo, testo }))
 })
 
 // isReadonly cumulativo: OR tra permessi area e workflow lock (offerta fuori
@@ -997,7 +1006,7 @@ const footerDrawer = useFooterDocumento({
         :closable="false"
         class="mt-1"
       >
-        {{ t(r.key) }}
+        {{ r.testo }}
       </Message>
 
       <Message

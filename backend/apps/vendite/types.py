@@ -967,25 +967,18 @@ class OffertaRow(TypedDict):
     # il dialog parlante post-E_OFFERTA_CONTRATTO_GIA_GENERATO.
     contratto_id: int | None
     contratto_numero: str | None
-    # Capability blob da `script.fn_available_actions_offerta` merged sul
-    # detail in `OfferteService.get_offerta` (data-driven 2026-05-26).
-    # Il FE consuma questi campi con `useEntityCapabilities` +
-    # `mapAvailableActionsToDrawerActions` senza ricalcolare la state
-    # machine: la verita' della transizione vive solo in DB.
-    # `available_actions` e' lista di dict opachi (key/target_state/label_key/
-    # requires_confirm/requires_motivazione) — Any per non vincolare il
-    # TypedDict a una sotto-shape che il BE puo' arricchire. Icona e colore
-    # non viaggiano: li sceglie il frontend dal `key` (`core/aspettoAzioni.js`).
-    available_actions: list[dict[str, Any]]
-    can_change_state: bool
-    can_edit_testata: bool
-    can_edit_eccezioni: bool
-    can_edit_utility: bool
-    can_create_revisione: bool
-    can_push_contratto: bool
-    can_push_contratto_reason: str | None
-    can_push_contratto_reason_key: str | None
-    non_editable_fields: list[str]
+    # Capability blob di `script.fn_available_actions_offerta`, intatto SOTTO
+    # `capabilities` (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23;
+    # `capabilities_o_vuoto` in `OfferteService.get_offerta`). Il FE lo legge
+    # con `useEntityCapabilities` senza ricalcolare la state machine: la
+    # verita' vive solo in DB.
+    # ⭐ `dict[str, Any]` e non un TypedDict delle chiavi: il contratto del blob
+    #    e' la doc auto-generata della funzione (lo verifica il guard
+    #    `npm run guard:capability`), e il BE lo passa com'e'. Fino al
+    #    2026-11-15 qui c'era una forma PIATTA delle chiavi, ferma a otto e
+    #    gia' smentita (mancavano, fra le altre, `can_genera_ordine`, le
+    #    `_reason_valori` e `stato_terminale`).
+    capabilities: dict[str, Any]
     # Audit
     data_insert: str
     user_insert: str

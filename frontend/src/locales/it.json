@@ -2602,7 +2602,7 @@
       "preview_hint": "Le righe sono lette dal listino. Aggiungi un override per personalizzare il prezzo di un articolo.",
       "preview_listino_senza_versione": "Il listino {codice} non ha una versione operativa oggi: nessun prezzo da mostrare. Attivare una versione del listino per calcolare il pricing.",
       "banner_locked_attivo": "Contratto in stato {stato}: per modifiche utilizzare il pulsante Cessa o creare un nuovo contratto.",
-      "banner_locked_cessato": "Contratto CESSATO: stato terminale, nessuna modifica ammessa.",
+      "banner_locked_cessato": "Contratto in stato {stato}: stato terminale, nessuna modifica ammessa.",
       "field_data_cessazione": "Data cessazione",
       "field_cessazione_programmata": "Cessazione programmata al",
       "cessa_dialog_titolo_immediata": "Cessa contratto",
@@ -2942,7 +2942,7 @@
       "gestisci_note": "Gestisci note",
       "genera_reso": "Genera reso",
       "genera_reso_reason": {
-        "trasferimento": "Questa bolla è un trasferimento fra depositi: la merce è rimasta nostra, non c'è un cliente da cui farla rendere.",
+        "trasferimento": "La bolla {0} è un trasferimento fra depositi: la merce è rimasta nostra, non c'è un cliente da cui farla rendere.",
         "non_consegnato": "Il reso nasce solo da una bolla consegnata al cliente."
       },
       "note_titolo": "Note DDT",

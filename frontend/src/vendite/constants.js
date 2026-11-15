@@ -142,20 +142,11 @@ export const AZIONE_PUSH_COMMESSA = Object.freeze({
   icon: aspettoAzione('push_commessa').icona,
 })
 
-// Codici stato preventivo (`config.stati_doc_preventivi.codice_interno`).
-// NB: 'Bozza' e' la descrizione it-IT, il codice tecnico stabile e' DRAFT.
-// EVASO e' lo stato terminale post-push commessa: transizione automatica
-// ACCETTATO -> EVASO scatenata dal BE (preventivi_service.push_a_commessa)
-// quando tutte le righe pushable sono in commessa.
-export const STATO_PREVENTIVO = Object.freeze({
-  DRAFT: 'DRAFT',
-  EMESSO: 'EMESSO',
-  ACCETTATO: 'ACCETTATO',
-  EVASO: 'EVASO',
-  RIFIUTATO: 'RIFIUTATO',
-  SCADUTO: 'SCADUTO',
-  ANNULLATO: 'ANNULLATO',
-})
+// ⛔ `STATO_PREVENTIVO` RITIRATA il 2026-11-15 (brief-db-stati-documento-dal-
+//    vocabolario FE-G3 e simmetria del 2026-11-14): il drawer riconosce
+//    emissione, accettazione e annullo dal verbo (`key`) e lo smistamento da
+//    `in_smistamento` della capability; il codice non ha piu' lettori. ⚠️ Non
+//    e' la `STATO_PREVENTIVO` di `core/constants.js` (gli esiti della pratica).
 
 // Destinazione effettiva di smistamento riga preventivo
 // (`config.nature_vendita.destinazione_tipo`, natura NULL = pregresso →
@@ -181,16 +172,10 @@ export const STATO_SMISTAMENTO = Object.freeze({
   FATTURATA: 'FATTURATA',
 })
 
-// Codici stato contratto (`config.stati_doc_contratti.codice_interno`).
-// DRAFT = bozza pre-attivazione; ATTIVO = contratto in vigore; CESSATO =
-// terminato (data fine raggiunta o cessazione manuale anticipata);
-// ANNULLATO = chiuso dalla bozza senza essere mai entrato in vigore.
-export const STATO_CONTRATTO = Object.freeze({
-  DRAFT: 'DRAFT',
-  ATTIVO: 'ATTIVO',
-  CESSATO: 'CESSATO',
-  ANNULLATO: 'ANNULLATO',
-})
+// ⛔ `STATO_CONTRATTO` RITIRATA il 2026-11-15 (brief-db-stati-documento-dal-
+//    vocabolario FE-C1 … FE-C4, FE-G2): lucchetto, azioni, banner e campo
+//    `valido_al` leggono la capability (chiavi `can_edit_*`, `key` del verbo,
+//    marche dello stato); il codice non ha piu' lettori.
 
 // Stati della testata di commessa (`vendite.stati_commessa.codice_interno`)
 // che il frontend NOMINA: solo l'annullo, che passa dalla conferma dei legami

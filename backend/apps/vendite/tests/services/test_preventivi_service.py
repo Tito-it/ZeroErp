@@ -124,6 +124,10 @@ from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_overrides,
 )
 from apps.core.tests._helpers.operatore_di_prova import operatore_di_prova
+from apps.vendite.services._pricing_gate_helpers import (
+    PROVENIENZA_MANUALE_RIGA,
+    EsitoPrezzoRiga,
+)
 
 
 # Wrapper helper test-only: i `TestNormalizeComponenti*` chiamano l'helper
@@ -2082,11 +2086,14 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         self.mock_repo.get_preventivo.return_value = self._testata_completa()
         self.mock_repo.create_riga.return_value = {"id": 11}
+        self.mock_repo.is_articolo_composito.return_value = False
         mock_suggerisci.return_value = {
             "prezzo_finale": "50.00", "origine": "CATEGORIA",
             "listino_id": 100, "contratto_id": None, "promo_id": None,
             "tipo_variazione_applicata": "PERCENTUALE",
             "valore_variazione_applicata": "-5.00",
+            "listino_versione_id": 8, "listino_riga_id": 80,
+            "prezzo_resolver_context": {"listino_id": 100},
         }
 
         gestisci_riga(
@@ -2098,13 +2105,19 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         call = self.mock_repo.create_riga.call_args.kwargs
         # Prezzo popolato dal resolver
         self.assertIsNotNone(call["prezzo_unitario"])
-        # Meta audit con origine = valore resolver
-        self.assertEqual(call["meta"]["origine_prezzo"], "CATEGORIA")
-        self.assertEqual(call["meta"]["prezzo_resolver_context"]["listino_id"], 100)
+        # La provenienza nelle colonne (K-5), col contesto del resolver.
+        self.assertEqual(call["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(call["listino_versione_id"], 8)
+        self.assertEqual(call["listino_riga_id"], 80)
+        self.assertEqual(call["prezzo_resolver_context"], {"listino_id": 100})
+        self.assertIsNone(call["meta"])
 
-    # Scopo: Override prezzo ammesso se payload == resolver (no check permesso).
+    # Scopo: D-5 — il prezzo con la provenienza dichiarata dal form, che il
+    #        listino conferma, e' da listino (nessun check permesso). La
+    #        dichiarazione esce dal corpo: non arriva al repository.
+    @patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo")
     @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
-    def test_gestisci_riga_prezzo_uguale_resolver_ok(self, mock_suggerisci):
+    def test_gestisci_riga_prezzo_uguale_resolver_ok(self, mock_suggerisci, mock_l1):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
         self.mock_repo.get_preventivo.return_value = self._testata_completa()
@@ -2114,9 +2127,46 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
             "listino_id": 100, "contratto_id": None, "promo_id": None,
             "tipo_variazione_applicata": None,
             "valore_variazione_applicata": None,
+            "listino_versione_id": 8, "listino_riga_id": 80,
+            "prezzo_resolver_context": {},
         }
 
-        # Prezzo passato uguale a quello del resolver -> accettato
+        gestisci_riga(
+            1,
+            {
+                "articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "50.00",
+                "provenienza_prezzo": {
+                    "origine_prezzo": "CATEGORIA", "listino_versione_id": 8, "listino_riga_id": 80,
+                },
+            },
+            auth_user_id=42,
+        )
+
+        call = self.mock_repo.create_riga.call_args.kwargs
+        self.assertEqual(str(call["prezzo_unitario"]), "50.00")
+        # Origine = resolver (non MANUALE), nelle colonne
+        self.assertEqual(call["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(call["listino_riga_id"], 80)
+        self.assertNotIn("provenienza_prezzo", call)
+        mock_l1.assert_not_called()
+
+    # Scopo: ⛔ K-5 — lo stesso prezzo SENZA la dichiarazione e' MANUALE e
+    #        passa dal gate L1: il confronto col resolver non dice piu' «da
+    #        listino».
+    @patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo")
+    @patch("apps.vendite.services.preventivi_service.suggerisci_prezzo_riga")
+    def test_gestisci_riga_prezzo_uguale_senza_dichiarazione_e_manuale(
+        self, mock_suggerisci, mock_l1,
+    ):
+        from apps.vendite.services.preventivi_service import gestisci_riga
+
+        self.mock_repo.get_preventivo.return_value = self._testata_completa()
+        self.mock_repo.create_riga.return_value = {"id": 12}
+        mock_suggerisci.return_value = {
+            "prezzo_finale": "50.00", "origine": "CATEGORIA",
+            "listino_versione_id": 8, "listino_riga_id": 80,
+        }
+
         gestisci_riga(
             1,
             {"articolo_id": "uuid-art-1", "uom_operativa_id": 1, "prezzo_unitario": "50.00"},
@@ -2124,9 +2174,9 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         )
 
         call = self.mock_repo.create_riga.call_args.kwargs
-        self.assertEqual(str(call["prezzo_unitario"]), "50.00")
-        # Origine = resolver (non MANUALE)
-        self.assertEqual(call["meta"]["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(call["origine_prezzo"], "MANUALE")
+        self.assertIsNone(call["listino_riga_id"])
+        mock_l1.assert_called_once()
 
     # Scopo: L1 — override prezzo (payload != resolver) bloccato se l'utente
     #        non ha permesso azione prezzo_override_manuale.
@@ -2188,8 +2238,8 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         call = self.mock_repo.create_riga.call_args.kwargs
         self.assertEqual(str(call["prezzo_unitario"]), "45.00")
-        # Meta audit con origine MANUALE + delta tracciato
-        self.assertEqual(call["meta"]["origine_prezzo"], "MANUALE")
+        # Origine MANUALE nelle colonne, delta tracciato nel meta d'audit
+        self.assertEqual(call["origine_prezzo"], "MANUALE")
         self.assertEqual(call["meta"]["prezzo_base_resolver"], "50.00")
         self.assertEqual(call["meta"]["delta_override"], "-5.00")
 
@@ -2226,7 +2276,7 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
 
         call = self.mock_repo.create_riga.call_args.kwargs
         self.assertEqual(str(call["prezzo_unitario"]), "45.00")
-        self.assertEqual(call["meta"]["origine_prezzo"], "MANUALE")
+        self.assertEqual(call["origine_prezzo"], "MANUALE")
 
     # Scopo: L2 — sconto oltre il limite blocca con E_PRICING_SCONTO_ECCESSIVO.
     #        Resolver 50, manuale 40 = -20% sconto, limite 15% -> bloccato.
@@ -2745,7 +2795,11 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         # resolver (nessun override → no richiesta_approvazione_pending).
         with patch(
             "apps.vendite.services.preventivi_service._resolve_or_check_override_prezzo",
-            return_value=(Decimal("10"), {"origine_prezzo": "CATEGORIA"}),
+            return_value=EsitoPrezzoRiga(
+                prezzo=Decimal("10"),
+                provenienza={"origine_prezzo": "CATEGORIA", "listino_versione_id": 8,
+                             "listino_riga_id": 80, "prezzo_resolver_context": {}},
+            ),
         ):
             aggiorna_riga(1, 50, {"prezzo_unitario": "10"}, auth_user_id=42)
 
@@ -2773,12 +2827,15 @@ class TestPreventiviService(ModelloDocumentoMockatoMixin, unittest.TestCase):
         }
         with patch(
             "apps.vendite.services.preventivi_service._resolve_or_check_override_prezzo",
-            return_value=(Decimal("13"), {
-                "origine_prezzo": "MANUALE",
-                "richiesta_approvazione_pending": True,
-                "violazione_l2": {"tipo_violazione": "MAGGIORAZIONE",
-                                   "variazione_abs_pct": "30", "limite_pct": "5"},
-            }),
+            return_value=EsitoPrezzoRiga(
+                prezzo=Decimal("13"),
+                provenienza=PROVENIENZA_MANUALE_RIGA,
+                meta={
+                    "richiesta_approvazione_pending": True,
+                    "violazione_l2": {"tipo_violazione": "MAGGIORAZIONE",
+                                       "variazione_abs_pct": "30", "limite_pct": "5"},
+                },
+            ),
         ), patch(
             "apps.vendite.services.preventivi_service._orchestrate_l3_request",
             return_value=200,
@@ -3097,6 +3154,9 @@ class TestPreventiviRigaDataConsegna(unittest.TestCase):
         self.mock_repo.create_riga.return_value = {"id": 10}
         self.mock_repo.update_riga.return_value = True
 
+    # Il prezzo del payload, col listino che nel test non risponde, e' a mano:
+    # dal 2026-11-15 (R-1) chiede L1, che qui non e' il soggetto del test.
+    @patch("apps.vendite.services._pricing_gate_helpers.check_permesso_override_prezzo", new=lambda *a, **k: None)
     def test_la_data_richiesta_arriva_a_create_riga_come_date(self):
         from apps.vendite.services.preventivi_service import gestisci_riga
 
