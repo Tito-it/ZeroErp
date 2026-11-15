@@ -1,6 +1,6 @@
 # fn_available_actions_contratto
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 ### Scopo
 
@@ -66,9 +66,27 @@ script.fn_available_actions_contratto(
     "can_edit_testata":   true,    // true in DRAFT e ATTIVO; false in terminali (CESSATO, ANNULLATO)
     "can_edit_righe":     true,    // dal lock delle righe (script.fn_doc_riga_modificabile): oggi solo nello stato iniziale
     "non_editable_fields": [...],  // vedi dettaglio sotto
-    "stato_codice":       "DRAFT"
+    "stato_codice":       "DRAFT",
+    // Le marche dello stato corrente, una per colonna di config.stati_doc_contratti.
+    // Non si escludono (CESSATO e' cessazione e terminale) e nessuna si deduce
+    // dalle altre (ANNULLATO e' terminale senza le altre tre).
+    "stato_iniziale":     true,
+    "stato_emissione":    false,
+    "stato_cessazione":   false,
+    "stato_terminale":    false
 }
 ```
+
+| Stato (seed) | `stato_iniziale` | `stato_emissione` | `stato_cessazione` | `stato_terminale` |
+| --- | --- | --- | --- | --- |
+| `DRAFT` | ✅ | — | — | — |
+| `ATTIVO` | — | ✅ | — | — |
+| `CESSATO` | — | — | ✅ | ✅ |
+| `ANNULLATO` | — | — | — | ✅ |
+
+La tabella è il seed di oggi: chi legge il blob guarda le chiavi, non i codici. Il drawer ne sceglie
+il banner fuori bozza (`stato_terminale`) e il campo «Valido al» con la sua etichetta
+(`stato_iniziale`, `stato_emissione`, `stato_cessazione`).
 
 ### Dettaglio `available_actions` per stato
 

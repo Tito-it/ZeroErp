@@ -17,6 +17,10 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-11-15 (brief-db-stati-documento-dal-vocabolario, giro 6g-bis,
+--   D-VAL-2): + can_edit_data_consegna_confermata_reason_valori
+--   e can_genera_ddt_reason_valori, i valori del primo motivo della check (la terza
+--   chiave sorella del flag: reason, reason_key, valori).
 -- rev 2026-11-14 (brief-db-stati-documento-dal-vocabolario, giro 6b-bis):
 --   + can_genera_ddt · _reason · _reason_key dal primo motivo di
 --   script.fn_check_ordine_evadibile, la stessa check da cui la bolla
@@ -356,12 +360,19 @@ BEGIN
         'can_edit_data_consegna_confermata',            (v_dcc_reason IS NULL),
         'can_edit_data_consegna_confermata_reason',     v_dcc_reason,
         'can_edit_data_consegna_confermata_reason_key', v_dcc_reason_key,
+        -- I valori della frase del primo motivo; [] col flag vero, nello
+        -- stato iniziale (il motivo e' scritto qui, senza valori) o con una
+        -- frase senza segnaposti.
+        'can_edit_data_consegna_confermata_reason_valori', COALESCE(v_mot_dcc -> 0 -> 'valori', '[]'::jsonb),
         'can_push_commessa',           v_push_ok,
         'can_push_commessa_reason',    v_push_reason,
         'can_push_commessa_reason_key', v_push_reason_key,
         'can_genera_ddt',              jsonb_array_length(v_mot_evad) = 0,
         'can_genera_ddt_reason',       v_mot_evad -> 0 ->> 'reason',
         'can_genera_ddt_reason_key',   v_mot_evad -> 0 ->> 'reason_key',
+        -- I valori della frase del primo motivo; [] col flag vero o con una
+        -- frase senza segnaposti.
+        'can_genera_ddt_reason_valori', COALESCE(v_mot_evad -> 0 -> 'valori', '[]'::jsonb),
         'stato_info_key',          v_stato_info_key,
         'non_editable_fields', v_testata -> 'non_modificabili',
         'pdf',                         jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
@@ -371,7 +382,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_ordine(p_ordine_id bigint)
-IS 'Capability dell''ordine di vendita per il dettaglio (NULL se l''ordine non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo si nasconde a chi non ce l''ha), ognuno con enabled, reason e reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione (la forma leggibile) dalla destinazione; label_key, requires_confirm, outlined dal meta del passaggio. I motivi, sul significato della destinazione: verso lo stato di annullo (is_abortito) script.fn_check_ordine_annullabile; verso lo stato di emissione script.fn_check_ordine_confermabile e, dallo stato iniziale, i prezzi non autorizzati di script.fn_check_prezzi_autorizzati; poi DOCUMENTO_SENZA_RIGHE dove il meta del passaggio chiede requires_righe e l''ordine non ha righe attive. Sono gli stessi predicati di vendite.trgfn_ordini_guard_transizione. can_change_state: vero se c''e'' almeno un''azione, anche disabilitata. push_commessa c''e'' quando vendite.fn_list_ordini_da_pushare ha righe per l''ordine; can_push_commessa e i suoi reason e reason_key: ORDINE_NON_CONFERMATO nello stato iniziale, ORDINE_ANNULLATO nello stato di annullo, ORDINE_FATTURA_DA_DDT con fatturazione_trigger diverso da CONFERMATO, poi ORDINE_GIA_INVIATO o ORDINE_GIA_FATTURATO da script.fn_get_stato_push_segment (vede anche i componenti #CMP), altrimenti ORDINE_NESSUNA_RIGA_PUSHABILE. can_genera_ddt, can_genera_ddt_reason e can_genera_ddt_reason_key: dal primo motivo di script.fn_check_ordine_evadibile, la stessa check da cui vendite.fn_genera_ddt_da_ordine rifiuta (la bolla si genera dallo stato di emissione e da PARZIALMENTE_EVASO); il flag discende dal motivo. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato; billing_account_id e soggetto_ruolo_id sempre bloccati), can_edit_righe e can_edit_indirizzi dal lock delle righe e degli indirizzi (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare; can_edit_data_consegna_confermata e il suo motivo: nello stato iniziale ORDINE_IN_BOZZA (la data si scrive modificando la riga), negli altri il primo motivo di script.fn_check_ordine_data_consegna_confermata. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice: il codice_interno dello stato corrente. Le reason_key sono chiavi i18n del frontend.';
+IS 'Capability dell''ordine di vendita per il dettaglio (NULL se l''ordine non c''e''). available_actions: i passaggi manuali permessi da script.fn_doc_azioni_permesse (matrice viva, manuale; un passaggio con un''azione di processo si nasconde a chi non ce l''ha), ognuno con enabled, reason e reason_key dal primo motivo e reasons, l''array intero; target_state e target_state_descrizione (la forma leggibile) dalla destinazione; label_key, requires_confirm, outlined dal meta del passaggio. I motivi, sul significato della destinazione: verso lo stato di annullo (is_abortito) script.fn_check_ordine_annullabile; verso lo stato di emissione script.fn_check_ordine_confermabile e, dallo stato iniziale, i prezzi non autorizzati di script.fn_check_prezzi_autorizzati; poi DOCUMENTO_SENZA_RIGHE dove il meta del passaggio chiede requires_righe e l''ordine non ha righe attive. Sono gli stessi predicati di vendite.trgfn_ordini_guard_transizione. can_change_state: vero se c''e'' almeno un''azione, anche disabilitata. push_commessa c''e'' quando vendite.fn_list_ordini_da_pushare ha righe per l''ordine; can_push_commessa e i suoi reason e reason_key: ORDINE_NON_CONFERMATO nello stato iniziale, ORDINE_ANNULLATO nello stato di annullo, ORDINE_FATTURA_DA_DDT con fatturazione_trigger diverso da CONFERMATO, poi ORDINE_GIA_INVIATO o ORDINE_GIA_FATTURATO da script.fn_get_stato_push_segment (vede anche i componenti #CMP), altrimenti ORDINE_NESSUNA_RIGA_PUSHABILE. can_genera_ddt, can_genera_ddt_reason, can_genera_ddt_reason_key e can_genera_ddt_reason_valori (i valori della frase, [] quando il flag e'' vero o la frase non ha segnaposti): dal primo motivo di script.fn_check_ordine_evadibile, la stessa check da cui vendite.fn_genera_ddt_da_ordine rifiuta (la bolla si genera dallo stato di emissione e da PARZIALMENTE_EVASO); il flag discende dal motivo. Cosa si modifica: can_edit_testata e non_editable_fields dal montaggio del lock di testata (script.fn_doc_testata_in_stato; billing_account_id e soggetto_ruolo_id sempre bloccati), can_edit_righe e can_edit_indirizzi dal lock delle righe e degli indirizzi (script.fn_doc_riga_modificabile), lo stesso che i trigger fanno rispettare; can_edit_data_consegna_confermata e il suo motivo (_reason, _reason_key, _reason_valori): nello stato iniziale ORDINE_IN_BOZZA (la data si scrive modificando la riga), senza valori, negli altri il primo motivo di script.fn_check_ordine_data_consegna_confermata coi suoi valori. pdf {mode, allow_allegati} dal vocabolario. stato_info_key: la nota dello stato dal suo meta (proprieta'' nessuna_azione_key), sempre presente, null quando lo stato non la dichiara. stato_codice: il codice_interno dello stato corrente. Le reason_key sono chiavi i18n del frontend.';
 ```
 
 </div>

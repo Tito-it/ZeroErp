@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -47,7 +47,7 @@ La tabella dà il minimo per tipo di lavoro, non il massimo.
 | Un indice | §8 (per una ricerca testuale §8.3; sotto policy §8.5-bis) |
 | Una policy, una funzione di scope, un privilegio | §10, §8.5-bis, §11.6, §11.8, §11.9, §13.1, §13.3 |
 | Un seed o un CSV | §11.2, §11.4, §11.7 |
-| Una capability, un'azione di riga, un picker | §12 |
+| Una capability, un'azione di riga, un picker, un flag col suo motivo | §12 |
 | Un lavoro sulle prestazioni | §13 e [Un database che resta veloce](/guide/database-che-resta-veloce) |
 
 Chi aggiunge una sezione aggiorna la riga della tabella che la riguarda.
@@ -3232,6 +3232,25 @@ Quattro cose da fare bene, tutte già costate:
 4. **L'aggancio è su `codice_interno`**, mai su `codice` (§6c/§6d): al primo
    rename fatto dall'utente un `CASE` su `codice` smette di agganciarsi **in
    silenzio**, e il bottone torna acceso.
+
+**Un flag col suo motivo** (`can_genera_reso`, `can_push_commessa`): quando la
+capability non dà un'azione ma un booleano, il primo motivo si appiattisce in
+chiavi **sorelle** del flag, una per campo dell'oggetto motivo delle
+`fn_check_*`:
+
+| Chiave | Cosa |
+| --- | --- |
+| `<flag>` | `true` se la check non ha motivi |
+| `<flag>_reason` | il `reason` del primo motivo; `null` col flag vero |
+| `<flag>_reason_key` | la sua `reason_key` |
+| `<flag>_reason_valori` | i suoi `valori`, i segnaposti della frase; `[]` col flag vero o con una frase che non ne ha |
+
+⚠️ **I valori non si perdono per strada.** Se la check dà i `valori` e il flag
+porta solo `reason` e `reason_key`, il tooltip mostra `{0}` o tace il dato che
+spiega il motivo. `_reason_valori` si emette quando la sorgente del motivo ha
+valori; un flag la cui sorgente non ne ha mai la aggiunge il giorno in cui la
+sorgente li guadagna. Sulle **azioni** la forma resta la terna più `reasons`,
+l'array intero.
 
 ### 12.3 ⚠️ La `reason_key` è un debito verso il frontend
 

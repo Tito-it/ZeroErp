@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_preventivo_proietta_stato_smistamento`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,6 +10,7 @@
 > • [vendite.fn_preventivo_ha_residuo_commessa](/dbzero/vendite/funzioni/fn_preventivo_ha_residuo_commessa) — la strada dei servizi  
 > • [vendite.trgfn_commesse_attivita_proietta_stato_preventivo](/dbzero/vendite/funzioni/trgfn_commesse_attivita_proietta_stato_preventivo) — chi la chiama dalla commessa  
 > • [vendite.fn_ordine_proietta_stato_evasione](/dbzero/vendite/funzioni/fn_ordine_proietta_stato_evasione) — la gemella dell'ordine  
+> • [vendite.fn_preventivo_in_smistamento](/dbzero/vendite/funzioni/fn_preventivo_in_smistamento) — da dove si parte  
 
 ---
 
@@ -29,6 +30,10 @@ Lo **stato di accettazione** è quello che `config.stati_doc_preventivi` marca c
 `vendite.fn_push_preventivo_a_ordine` aprono lo smistamento, quindi la proiezione parte da
 dove il push lavora. `EVASO` invece si nomina col codice: è la destinazione del processo, come
 la nomina la riga della matrice.
+
+Da dove si parte (lo stato di accettazione o `EVASO`) lo dice
+[`vendite.fn_preventivo_in_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_in_smistamento), la stessa
+risposta che la capability del preventivo espone in `in_smistamento`.
 
 La stessa regola vale **all'andata** (lo smistamento svuota le strade) e **al
 ritorno** (annullare l'ordine o la commessa riapre una strada).

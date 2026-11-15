@@ -13,7 +13,7 @@
 --   le quote fisse dal listino, C2 aderisce al kit. Giro di ottobre 2026
 --   (p_competenza_mese): i numeri si leggono a mano.
 --
--- Indice test (1..20):
+-- Indice test (1..21):
 --  Struttura
 --    1) vendite.listini_kit ha la RLS accesa e la sua policy
 --    2) config.periodicita e' nel lookup e non nel pannello (D-6)
@@ -45,13 +45,19 @@
 --  La quota fissa che non si eroga a canone (§7.3)
 --  20) il default della tipologia cambia dopo l'attivazione: C1 non perde le
 --      quote in silenzio, escono con lo scarto QUOTA_FISSA_SENZA_CANONE
+--  La provenienza del kit dal listino (brief-db-provenienza-prezzo-segue-il-prezzo
+--  §8.10, R-7; 20261114-73)
+--  21) ogni componente porta la provenienza del resolver: LISTINO_BUNDLE, la
+--      versione del contratto, nessuna riga di listino (il prezzo sta in
+--      listini_righe_componenti), il contesto che fn_provenienza_prezzo_esplosa
+--      legge; e la provenienza e' coerente col prezzo (il CHECK delle righe)
 -- ------------------------------------------------------------
 
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(21);
 
 -- ============================================================
 -- FIXTURE
@@ -357,6 +363,26 @@ SELECT is(
             p_competenza_mese => date '2026-11-01', p_contratto_id => pg_temp.ctr('C1')) l),
   'K:QUOTA_FISSA_SENZA_CANONE Q:QUOTA_FISSA_SENZA_CANONE',
   '20) la quota fissa che non si eroga piu'' a canone non sparisce: scarto QUOTA_FISSA_SENZA_CANONE');
+
+-- ============================================================
+-- La provenienza del kit dal listino (R-7)
+-- ============================================================
+SELECT is(
+  (SELECT string_agg(format('%s:%s:%s:%s:%s:%s:%s',
+                            CASE k.componente_id WHEN pg_temp.art('F1') THEN 'F1' ELSE 'F2' END,
+                            k.origine_prezzo,
+                            (k.listino_versione_id = pg_temp.ver())::text,
+                            COALESCE(k.listino_riga_id::text, 'NULL'),
+                            pv.prezzo_base_snapshot::numeric(18,2),
+                            pv.tipo_variazione_applicata,
+                            vendite.fn_provenienza_prezzo_coerente(k.origine_prezzo, k.prezzo_unitario,
+                                                                   k.listino_versione_id, k.listino_riga_id)::text),
+                     ' ' ORDER BY k.coeff_qta_snapshot DESC)
+     FROM vendite.fn_contratto_kit_componenti(pg_temp.ctr('C1'), pg_temp.art('K'), date '2026-03-01') k
+     CROSS JOIN LATERAL vendite.fn_provenienza_prezzo_esplosa(k.origine_prezzo, k.listino_versione_id,
+                                                              k.listino_riga_id, k.prezzo_resolver_context) pv),
+  'F1:LISTINO_BUNDLE:true:NULL:10.00:NESSUNA:true F2:LISTINO_BUNDLE:true:NULL:30.00:NESSUNA:true',
+  '21) il kit dal listino porta la provenienza del resolver: LISTINO_BUNDLE, la versione, nessuna riga, il contesto; coerente col prezzo');
 
 SELECT * FROM finish();
 ROLLBACK;

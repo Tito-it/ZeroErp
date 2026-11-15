@@ -1,6 +1,6 @@
 # fn_available_actions_preventivo
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 ### Scopo
 
@@ -60,10 +60,21 @@ script.fn_available_actions_preventivo(
     "can_genera_ordine_reason":     "PREVENTIVO_NON_ACCETTATO",
     "can_genera_ordine_reason_key": "preventivi.genera_ordine_reason.non_accettato",
     "can_create_revisione":         false,   // true solo in EMESSO
+    "in_smistamento":               false,   // stato da cui il preventivo si smista: accettazione o EVASO
     "non_editable_fields":          ["utility_id", "emittente_fiscale_id"],  // in bozza; vedi dettaglio sotto
     "stato_codice":                 "DRAFT"  // codice_interno stato corrente
 }
 ```
+
+### `in_smistamento` e i due flag dello smistamento
+
+`in_smistamento` dice che lo stato corrente è uno **da cui il preventivo si smista**: lo stato di
+accettazione (la colonna `accettazione` del vocabolario) o `EVASO`, dove il pannello resta in
+consultazione. Lo calcola [`vendite.fn_preventivo_in_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_in_smistamento),
+la stessa risposta da cui parte la proiezione dello stato
+([`vendite.fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento)).
+Non dice che un invio si possa fare **adesso**: quello lo dicono `can_push_commessa` e
+`can_genera_ordine`. Il drawer apre il pannello da `in_smistamento` e accende i pulsanti dai due flag.
 
 ### Coppie `can_*_reason` / `can_*_reason_key`
 

@@ -1,6 +1,6 @@
 # fn_available_actions_ordine
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 ### Scopo
 
@@ -65,12 +65,14 @@ script.fn_available_actions_ordine(
     "can_edit_data_consegna_confermata":            false,             // la promessa di consegna, col verbo dedicato (rev 2026-10-10)
     "can_edit_data_consegna_confermata_reason":     "ORDINE_IN_BOZZA", // null se ammesso
     "can_edit_data_consegna_confermata_reason_key": "vendite.ordini.data_consegna_confermata_reason.in_bozza",
+    "can_edit_data_consegna_confermata_reason_valori": [],             // i valori della frase; [] in bozza
     "can_push_commessa":  false,  // true se righe pushabili (trigger CONFERMATO, anche PARZIALMENTE_EVASO/EVASO)
     "can_push_commessa_reason":     "ORDINE_NON_CONFERMATO",                  // null se push disponibile
     "can_push_commessa_reason_key": "vendite.ordini.push_commessa_reason.non_confermato", // chiave i18n tooltip
     "can_genera_ddt":            false,                    // la bolla di evasione: da script.fn_check_ordine_evadibile
     "can_genera_ddt_reason":     "ORDINE_NON_EVADIBILE",   // null se si evade
     "can_genera_ddt_reason_key": "vendite.ordini.genera_ddt_reason.stato_non_evadibile",
+    "can_genera_ddt_reason_valori": ["ORD-2026-0042", "DRAFT"],       // i valori della frase: numero (o id), stato
     "non_editable_fields": [...],
     "stato_codice":       "DRAFT"
 }
@@ -234,11 +236,11 @@ Dopo la conferma le righe dell'ordine non si toccano più, salvo la **data di co
 confermata**, che si sposta finché c'è merce da evadere. Il backend la cambia con un verbo
 dedicato, e la terna dice quando proporlo (famiglia 1: motivo e chiave dal nome del flag).
 
-| Stato | `can_edit_data_consegna_confermata` | `_reason` | `_reason_key` |
-|---|:---:|---|---|
-| lo stato iniziale (colonna `iniziale`, oggi `DRAFT`) | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` — in bozza la data si scrive modificando la riga |
-| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` |
-| tutti gli altri | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` |
+| Stato | `can_edit_data_consegna_confermata` | `_reason` | `_reason_key` | `_reason_valori` |
+|---|:---:|---|---|---|
+| lo stato iniziale (colonna `iniziale`, oggi `DRAFT`) | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` — in bozza la data si scrive modificando la riga | `[]` |
+| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` | `[]` |
+| tutti gli altri | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` | l'etichetta del documento, lo stato, il verbo (`modificare`) |
 
 ⭐ Gli stati **non sono scritti qui**: li dice il montaggio del lock delle righe d'ordine,
 letto da [`script.fn_check_ordine_data_consegna_confermata`](/dbzero/script/funzioni/fn_check_ordine_data_consegna_confermata).
@@ -248,8 +250,9 @@ lo stato della testata.
 
 ## La bolla di evasione: `can_genera_ddt`
 
-La terna `can_genera_ddt` · `_reason` · `_reason_key` dice se dall'ordine si genera una bolla di
-evasione, e se no perché. Viene dal primo motivo di
+Il flag `can_genera_ddt`, con `_reason`, `_reason_key` e `_reason_valori`, dice se dall'ordine si
+genera una bolla di evasione, e se no perché. `_reason_valori` sono i segnaposti della frase (il
+numero dell'ordine, o l'id se non è numerato, e lo stato), `[]` quando la bolla si genera. Viene dal primo motivo di
 [`script.fn_check_ordine_evadibile`](/dbzero/script/funzioni/fn_check_ordine_evadibile), la stessa
 check da cui [`vendite.fn_genera_ddt_da_ordine`](/dbzero/vendite/funzioni/fn_genera_ddt_da_ordine)
 rifiuta: si evade dallo stato di emissione e da `PARZIALMENTE_EVASO`. Il flag discende dal motivo.

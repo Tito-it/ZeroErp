@@ -1,8 +1,8 @@
 # Brief DB — Gli stati dei documenti: ogni significato dal vocabolario
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il team DB**, con R-V1 … R-V3 del §6.23 (i valori del motivo, le marche dello stato del contratto, lo smistamento del preventivo) e il giro 6f (il listino). Il BE/FE ha fatto le richieste dei giri 6a … 6e (§6.16 … §6.22), da committare su `dev/backend-tid` (2026-11-14). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+**Riparte: il team FE**, con FE-G1 … FE-G3 del §6.24 e FE-G4 del §6.25; poi il team DB col giro 6f (il listino). Il giro 6g-bis (§6.25: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`, D-VAL-2 (a)) è applicato e verde, con la doc rigenerata (Tid, 2026-11-15). Il giro 6g (`20261114-74 … -78`, D-VAL, D-MARCHE e D-SMIST (a)) è applicato e verde (Tid, 2026-11-15). Il BE/FE ha fatto le richieste dei giri 6a … 6e (§6.16 … §6.22): `338356674f`, entrato in `dev/db-tid` con la PR #120 (2026-11-14). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
 (Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
@@ -69,7 +69,14 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i-vicies | ✅ Tid | apply di `20261114-47 … -58` e pgTAP del §6.22: verdi (2026-11-14) | §6.22 | — |
 | 9i-vicies-bis | ✅ FE | FE-R1 (le due chiavi i18n: `check-i18n-keys` rosso fino ad allora), FE-R2 … FE-R4 («Genera reso», ri-spedizione e lucchetto del reso dalla capability; il ritiro di `STATO_RESO`) (da committare, `dev/backend-tid`, 2026-11-14) | §6.22 | — |
 | 9i-vicies-ter | ✅ BE | BE-R1: il ritiro del guard gemello in `crea_reso`, col test sul DB vero (da committare, `dev/backend-tid`, 2026-11-14) | §6.22 | — |
-| 9i-vicies-quater | **DB** ⏭️ | R-V1 … R-V3: i valori del motivo nella capability, le marche dello stato del contratto, lo smistamento del preventivo; poi le richieste FE che ne seguono | §6.23 | — |
+| 9i-vicies-quater | ✅ Tid | D-VAL, D-MARCHE, D-SMIST decise (a), 2026-11-14 | §6.24 | — |
+| 9i-vicies-quinquies | ✅ DB | giro 6g: `20261114-74 … -78`, un pgTAP nuovo (plan 12), cinque pagine `manual/`, §12.2 delle linee guida; prova in transazione (2026-11-15) | §6.24 | 9i-vicies-quater |
+| 9i-vicies-sexies | ✅ Tid | apply di `20261114-74 … -78` e pgTAP del §6.24: verdi (2026-11-15) | §6.24 | 9i-vicies-quinquies |
+| 9i-vicies-septies | **FE** ⏭️ | FE-G1 … FE-G3: i valori del motivo nella frase, il drawer del contratto dalle marche, lo smistamento del preventivo da `in_smistamento` | §6.24 | 9i-vicies-sexies |
+| 9i-vicies-octies | ✅ Tid | D-VAL-2 decisa (a), 2026-11-15 | §6.25 | — |
+| 9i-vicies-novies | ✅ DB | giro 6g-bis: `20261114-79 … -81`, sei casi nel pgTAP del 6g (plan 18), tre pagine `manual/`; prova in transazione (2026-11-15) | §6.25 | 9i-vicies-octies |
+| 9i-vicies-novies-bis | ✅ Tid | apply di `-79 … -81`, pgTAP del §6.25 verdi, doc rigenerata (2026-11-15) | §6.25 | 9i-vicies-novies |
+| 9i-vicies-decies | FE | FE-G4: nessuna frase da cambiare; con FE-G1 i tooltip dei cinque flag ricevono i valori | §6.25 | 9i-vicies-novies, FE-G1 |
 | 9i-unvicies | **DB** ⏭️ | giro 6f: il listino | §6.15 | — |
 | 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
 | 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
@@ -79,10 +86,10 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna. D-RESO (§6.22) decisa il 2026-11-14 (a). D-BOZZA (§6.19) decisa il 2026-11-14 (a). D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna. D-VAL-2 (§6.25) decisa il 2026-11-15 (a). D-VAL, D-MARCHE e D-SMIST (§6.24) decise il 2026-11-14 (a). D-RESO (§6.22) decisa il 2026-11-14 (a). D-BOZZA (§6.19) decisa il 2026-11-14 (a). D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** nessuno. I giri 6c, 6c-bis, 6d, 6e e 6e-bis, applicati e verdi, sono nel commit «Stati del documento dal vocabolario: contratto, bolla e reso» (2026-11-14), con la doc rigenerata: il 6c (§6.19: otto changeSet, il CSV dei contratti, un pgTAP nuovo, due adeguati, sette pagine `manual/`), il 6c-bis (§6.20: un changeSet, una riga del catalogo dei codici, due pagine), il 6d (§6.21: undici changeSet, un pgTAP nuovo, nove pagine), il 6e e il 6e-bis (§6.22: dodici changeSet, un pgTAP nuovo, uno adeguato, undici pagine, una nuova). I giri 6a, 6b, 6b-bis, 6a-bis e 2-ter sono nel commit `f49e5233ca`. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** nessuno. Il giro 6g (§6.24: cinque changeSet, un pgTAP nuovo, cinque pagine `manual/`, §12.2 delle linee guida), la verifica e il giro 6g-bis del §6.25 (tre changeSet, il pgTAP del 6g esteso, tre pagine `manual/`), con la doc rigenerata, sono nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 6c, 6c-bis, 6d, 6e e 6e-bis, applicati e verdi, sono nel commit «Stati del documento dal vocabolario: contratto, bolla e reso» (2026-11-14), con la doc rigenerata: il 6c (§6.19: otto changeSet, il CSV dei contratti, un pgTAP nuovo, due adeguati, sette pagine `manual/`), il 6c-bis (§6.20: un changeSet, una riga del catalogo dei codici, due pagine), il 6d (§6.21: undici changeSet, un pgTAP nuovo, nove pagine), il 6e e il 6e-bis (§6.22: dodici changeSet, un pgTAP nuovo, uno adeguato, undici pagine, una nuova). I giri 6a, 6b, 6b-bis, 6a-bis e 2-ter sono nel commit `f49e5233ca`. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -1786,3 +1793,210 @@ non chiude da solo, perché il dato non è nella capability.
   chiave, e `STATO_PREVENTIVO.ACCETTATO`/`EVASO` escono dal drawer.
 
 Chi cambia per primo: il DB. Le chiavi nuove si aggiungono e nessuna cambia: il FE di oggi continua a funzionare.
+
+### 6.24 Risposta DB a R-V1 … R-V3: ricognizione e tre decisioni (2026-11-14)
+
+> ✅ **Decise da Tid il 2026-11-14: D-VAL (a), D-MARCHE (a), D-SMIST (a)** («ok come da proposta»).
+
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid per le decisioni, poi il team DB (giro 6g).
+> Letti sulla doc auto-generata, rigenerata in `a568963fea` dopo l'ultimo changeSet sugli oggetti
+> (`20261114-58`). **Brief vicini verificati:** nessuno in `work-in-progress/` tocca le tre capability o le tre
+> chiavi; `piano-be-fe-magazzino-lotto-3.md` cita solo la forma `reasons` della bolla. Precedenti in `work-done/`:
+> `brief-db-reso-motivi-conferma-con-valori.md` (2026-10-14: `reasons` coi `valori` su un'**azione**) e
+> `brief-db-i-motivi-si-fermano-dentro-la-check.md` (la check emette i valori). Nessuno dei due ha deciso la forma
+> per un **flag**: R-V1 è nuova, e completa quelle due decisioni.
+
+#### R-V1 — i valori del motivo di un flag (D-VAL)
+
+**Stato.** `script.fn_check_ddt_rendibile` dà a `E_RESO_DA_DDT_TRASFERIMENTO` i `valori` (il numero della bolla, o
+l'id); `script.fn_available_actions_ddt` ne copia `reason` e `reason_key` in `can_genera_reso_reason` e
+`_reason_key`, e i `valori` si perdono. Il difetto è reale sul modello: la frase del motivo ha un valore, e il
+flag non lo porta.
+
+**Forma.** Su un'**azione** la forma di casa è la terna `enabled`/`reason`/`reason_key` più `reasons` (§12.2 delle
+linee guida; brief del 2026-10-14). Un **flag** è il primo motivo appiattito in chiavi sorelle: `<flag>_reason`,
+`<flag>_reason_key`. Strade:
+
+* **(a)** ⭐ `<flag>_reason_valori`, l'array `valori` del primo motivo, `[]` quando il flag è vero o la frase non ha
+  segnaposti. È la richiesta del FE: le chiavi sorelle diventano i tre campi dell'oggetto motivo, uno per uno, e
+  nessun lettore deve sapere di un array di oggetti;
+* **(b)** `<flag>_reasons`, l'array intero della check, come `reasons` sulle azioni. Più simmetrica con le azioni,
+  ma la check della bolla esce al primo motivo: l'array ha sempre un elemento, e il FE dovrebbe leggere due forme
+  per la stessa frase.
+
+⚠️ **Il fatto sotto il perimetro qui sotto è sbagliato (verifica DB del 2026-11-15, §6.25).** `can_genera_reso`
+non è l'unico flag la cui sorgente emette valori: ce ne sono altri cinque, e la regola scritta nel §12.2 li
+lascia fuori regola dal giorno in cui nasce.
+
+**Perimetro.** Solo `can_genera_reso` in questo giro, perché è l'unico flag la cui sorgente emette valori; la
+regola si scrive nel §12.2 delle linee guida (la forma del flag), e gli altri flag la prendono quando la loro
+sorgente avrà valori. Portarla su tutte le capability adesso sarebbe un tema ricopiato documento per documento:
+il fermo del 2026-10-21 lo vieta senza l'ok di Tid.
+
+**Ricaduta FE**, dopo il giro: la frase `vendite.ddt.genera_reso_reason.trasferimento` riprende `{0}`, e
+`azioneDaFlag`/`azioneNegata` passano `<flag>_reason_valori` alla frase.
+
+#### R-V2 — le marche dello stato del contratto (D-MARCHE)
+
+**Stato.** `config.stati_doc_contratti` ha quattro stati: DRAFT (`iniziale`), ATTIVO (`emissione`), CESSATO
+(`cessazione`, `terminale`) e **ANNULLATO** (`is_abortito`, `terminale`, nessuna delle tre marche). Le marche
+`iniziale`, `emissione`, `cessazione` hanno un indice unico parziale ciascuna. La capability del contratto emette
+`stato_codice_interno` e `stato_codice`, nessuna marca; quella dell'offerta emette `stato_terminale` (giro 2,
+`20261112-62`).
+
+⚠️ **La deduzione proposta dal FE non regge sul modello.** «Emissione = non iniziale e non cessazione» vale anche
+per ANNULLATO, che è un quarto stato. Non va dedotta: va emessa.
+
+⚠️ **Il FE di oggi sbaglia già su ANNULLATO.** Col banner scelto da `stato === CESSATO`, un contratto annullato
+riceve il banner informativo dell'attivo. Con `stato_terminale` prende quello di avviso.
+
+**Proposta (a)** ⭐: quattro chiavi booleane, una per colonna, coi nomi dell'offerta: `stato_terminale`,
+`stato_emissione`, `stato_cessazione` e, per completezza, `stato_iniziale`. Il FE ne legge tre. Scartata la chiave
+unica `stato_marca`: le marche non si escludono (CESSATO è `cessazione` **e** `terminale`), e una chiave sola
+dovrebbe scegliere fra le due. **(b)** solo le tre che il drawer legge oggi (`stato_terminale`, `stato_emissione`,
+`stato_cessazione`).
+
+**Ricaduta FE**, dopo il giro: banner da `stato_terminale`; il campo `valido_al` si vede in creazione, con
+`stato_iniziale` (o il lock della bozza), con `stato_cessazione` e con `stato_emissione` più la data; le etichette
+seguono le stesse chiavi. I tre confronti con `STATO_CONTRATTO` escono.
+
+#### R-V3 — lo smistamento del preventivo (D-SMIST)
+
+**Stato.** Il predicato «il preventivo è uno che si smista» esiste già, una volta sola, in
+`vendite.fn_preventivo_proietta_stato_smistamento`: `v_accettazione OR v_stato = 'EVASO'`. Lì EVASO si nomina
+col codice per decisione (D-PROI (a), 2026-11-14: «EVASO resta la destinazione nominata del processo»).
+`config.stati_doc_preventivi` non ha una colonna che distingua EVASO da RIFIUTATO, SCADUTO e ANNULLATO: sono tutti
+`CHIUSO` e `terminale`, e `esito` non è nel seed.
+
+Emettere la chiave nella capability sarebbe la **seconda copia** del predicato: regola del 2, si estrae. Strade:
+
+* **(a)** ⭐ un building block `vendite.fn_preventivo_in_smistamento(<stato>)` → boolean, con dentro il predicato di
+  oggi; lo leggono la proiezione (che perde la sua copia) e `script.fn_available_actions_preventivo`, che emette
+  `in_smistamento`. Nessun cambio di modello: EVASO resta nominato col codice, in un posto solo;
+* **(b)** una marca nuova del vocabolario (`smistamento`, vera su ACCETTATO ed EVASO), letta da tutti e due.
+  È un cambio di **modello**, e **revoca in parte D-PROI**: EVASO non sarebbe più riconosciuto col codice nella
+  partenza della proiezione. Vale la pena solo se lo smistamento deve essere configurabile.
+
+**Ricaduta FE**, dopo il giro: `showSmistamento` da `in_smistamento`, e `STATO_PREVENTIVO.ACCETTATO`/`EVASO` escono
+dal drawer.
+
+#### Il giro 6g, se le tre passano come raccomandate
+
+Cinque changeSet di `20_code`: le capability della bolla e del contratto, il BB, la proiezione che lo legge e la
+capability del preventivo. Poi un pgTAP per capability toccata (costruiti: una bolla di trasferimento, un contratto per
+ognuno dei quattro stati, un preventivo per ognuno dei sette), le pagine `manual/` e il §12.2 delle linee guida.
+Chi cambia per primo: il DB. Le chiavi nuove si aggiungono e nessuna cambia: il FE di oggi continua a funzionare.
+
+#### Giro 6g — fatto dal DB (2026-11-15), applicato e verde (Tid, 2026-11-15)
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20_code/script/20261114-74` | `script.fn_available_actions_ddt`: + `can_genera_reso_reason_valori`, i `valori` del primo motivo di `script.fn_check_ddt_rendibile`, `[]` col flag vero o con una frase senza segnaposti (D-VAL) |
+| `20_code/script/20261114-75` | `script.fn_available_actions_contratto`: + `stato_iniziale`, `stato_emissione`, `stato_cessazione`, `stato_terminale`, le colonne del vocabolario dello stato corrente (D-MARCHE) |
+| `20_code/vendite/20261114-76` | NUOVO `vendite.fn_preventivo_in_smistamento(p_accettazione, p_stato)`: vero dallo stato di accettazione e da EVASO, mai `NULL`; `LANGUAGE sql`, `IMMUTABLE`, non `STRICT` (D-SMIST) |
+| `20_code/vendite/20261114-77` | `vendite.fn_preventivo_proietta_stato_smistamento`: la partenza dal building block, la sua copia del predicato esce |
+| `20_code/script/20261114-78` | `script.fn_available_actions_preventivo`: + `in_smistamento`, dal building block |
+
+Pgtap nuovo: `vendite/test-capability-valori-marche-smistamento-v1` (plan 12; la bolla di trasferimento, le quattro
+marche del contratto nei quattro stati con contrasto, due marche spostate, il building block su sette coppie, due
+presidi sulla forma dichiarati tali). Doc: le pagine `manual/` delle tre capability, della proiezione e del building
+block (nuova); la forma del flag col suo motivo in `linee-guida-sql.md` §12.2. Le chiavi sono nuove e nessuna cambia: il
+FE di oggi funziona. Nessuna `reason_key` nuova.
+
+**Prova (2026-11-15, `scripts/prova_changeset.py` su `zeroerp_ruoli`, in ROLLBACK).** L'estratto passa per intero e il
+catalogo resta identico. Il pgTAP nuovo: 12 ok con l'estratto (senza si interrompe: il building block non c'è). Senza
+regressioni, prima e dopo uguali: `test-preventivo-stati-dal-vocabolario-v1` (18), `test-contratto-stati-dal-vocabolario-v1`
+(14), `test-reso-stati-dal-vocabolario-v1` (14), `test-ddt-trasferimento-v1` (13), `test-doc-stati-dal-vocabolario-v1`
+(13), `test-annullo-commessa-v1` (37), `test-corpo-funzione-senza-commenti-v1`, `test-security-definer-search-path-v1`,
+`test-plan-cache-mode-piano-generico-v1`. ⚠️ `test-contratto-al-modello-v1` ha un rosso **preesistente** (21 ok, 1 not ok
+anche senza l'estratto), da spiegare: non è di questo giro. Guardrail statici verdi (COMMENT al presente, forme,
+letterali, runOnChange). La doc auto-generata è da rigenerare dopo l'apply.
+
+#### Richieste al team FE, dopo l'apply del giro 6g
+
+| # | Che cosa | File |
+| --- | --- | --- |
+| FE-G1 | La frase `vendite.ddt.genera_reso_reason.trasferimento` riprende il segnaposto `{0}` (il numero della bolla), in `it.json` e `en.json`; `azioneDaFlag` e `azioneNegata` passano alla frase `<flag>_reason_valori` (vuoto = nessun valore) | `frontend/src/locales/it.json`, `frontend/src/locales/en.json`, `frontend/src/core/composables/useEntityCapabilities.js` (e il suo spec) |
+| FE-G2 | Il banner fuori bozza da `stato_terminale` (avviso se vero, informativo altrimenti); il campo `valido_al` si vede in creazione, con `stato_iniziale`, con `stato_cessazione` e con `stato_emissione` più la data; l'etichetta «Data cessazione» con `stato_cessazione`, «Cessazione programmata» con `stato_emissione` e la data, «Valido al» altrimenti. Escono i tre confronti con `STATO_CONTRATTO`. ⚠️ Cambia a video l'annullato: oggi riceve il banner informativo dell'attivo, con `stato_terminale` prende quello di avviso | `frontend/src/vendite/components/ContrattoDrawer.vue` |
+| FE-G3 | `showSmistamento` da `in_smistamento`; `STATO_PREVENTIVO.ACCETTATO` ed `EVASO` escono dal drawer | `frontend/src/vendite/preventivi/components/PreventiviDrawer.vue` |
+
+Il BE non ha codice da cambiare: passa il blob della capability così com'è, come per i `reasons` del reso
+(2026-10-14). Se un serializer o un test del BE elenca le chiavi del blob, il BE lo dice.
+
+### 6.25 Verifica DB del giro 6g (2026-11-15, dopo l'apply): cinque flag fuori dalla regola del §12.2
+
+> **Chi scrive:** sessione di revisione DB (`dev/db-tid`), 2026-11-15, su `20261114-74 … -78` già applicati
+> (dbdev e scratch, `databasechangelog` delle 09:30-09:31). **A chi:** Tid, per D-VAL-2.
+
+**Il resto del giro regge.** I corpi coincidono con la doc auto-generata rigenerata; volatilità, `SECURITY`,
+`SET` e privilegi sono quelli di prima (`fn_available_actions_ddt` tiene `plan_cache_mode`); il building block
+dà `false` e mai `NULL` (`IS TRUE` lega più stretto di `OR`); proiezione e capability lo leggono, e la copia
+del predicato è uscita. Il pgTAP nuovo costruisce i casi e sposta le marche, e i due presidi di forma (11, 12)
+sono dichiarati tali.
+
+**Il difetto: la regola nasce già violata.** Il §12.2 dice che `<flag>_reason_valori` «si emette quando la
+sorgente del motivo ha valori». Il §6.24 (R-V1, «Perimetro») ha portato la chiave sul solo `can_genera_reso`,
+dicendo che è l'unico flag la cui sorgente emette valori. Non è vero. Lette sulla doc auto-generata, cinque
+sorgenti di flag emettono già `valori` non vuoti, e i loro flag ne portano solo `reason` e `reason_key`:
+
+| Capability | Flag | Sorgente del motivo | `valori` della sorgente |
+| --- | --- | --- | --- |
+| `script.fn_available_actions_ordine` | `can_edit_data_consegna_confermata` | `script.fn_check_ordine_data_consegna_confermata` | etichetta, stato, verbo |
+| `script.fn_available_actions_ordine` | `can_genera_ddt` | `script.fn_check_ordine_evadibile` | numero dell'ordine (o id), stato |
+| `script.fn_available_actions_offerta` | `can_push_contratto` | `script.fn_check_righe_documento` | etichetta, codice articolo |
+| `script.fn_available_actions_offerta` | `can_genera_ordine` | `script.fn_check_righe_offerta_in_ordine` | etichetta, codice articolo |
+| `script.fn_available_actions_documento_interno` | `can_registra` | `script.fn_check_documento_interno_registrabile` | stato, id del documento o della riga |
+
+È lo stesso difetto che R-V1 correggeva sulla bolla: la frase ha un segnaposto e il flag non lo porta. Il
+FE-G1 è generico (`azioneDaFlag` passa `<flag>_reason_valori` a ogni frase), quindi un flag senza la chiave
+non rompe niente: la sua frase continua a mostrare `{0}`, o tace il dato.
+
+> ✅ **Decisa da Tid il 2026-11-15: D-VAL-2 (a)** («ok a come da tua proposta»); la strada (b) è
+> scartata. Il giro 6g-bis è fatto e applicato lo stesso giorno: sotto, «Giro 6g-bis».
+
+**D-VAL-2 (Tid).** Il tema tocca tre famiglie di documenti, e il fermo del 2026-10-21 chiede l'ok di Tid:
+
+* **(a)** ⭐ un giro 6g-bis: `_reason_valori` sui cinque flag, tre changeSet di `20_code` (ordine, offerta,
+  documento interno), un caso costruito per flag nel pgTAP del 6g, le tre pagine `manual/`. Nessuna chiave
+  cambia: il FE di oggi funziona, e con FE-G1 le frasi riprendono i segnaposti. Prima il DB, poi il FE
+  controlla le cinque frasi in `it.json`/`en.json`;
+* **(b)** la regola del §12.2 resta com'è e i cinque flag restano debito, con un brief «aperto, non
+  iniziato».
+
+Con il giro 6g-bis il §12.2 non ha eccezioni: ogni flag la cui sorgente ha valori porta `_reason_valori`.
+
+#### Giro 6g-bis — fatto dal DB e applicato (2026-11-15)
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20_code/script/20261114-79` | `script.fn_available_actions_ordine`: + `can_edit_data_consegna_confermata_reason_valori` (i valori di `script.fn_check_ordine_data_consegna_confermata`; `[]` nello stato iniziale, dove il motivo `ORDINE_IN_BOZZA` è della capability) e + `can_genera_ddt_reason_valori` (di `script.fn_check_ordine_evadibile`) |
+| `20_code/script/20261114-80` | `script.fn_available_actions_offerta`: + `can_push_contratto_reason_valori` e + `can_genera_ordine_reason_valori` (di `script.fn_check_righe_documento` e `script.fn_check_righe_offerta_in_ordine`; `[]` coi motivi della capability: documento già generato, offerta non accettata) |
+| `20_code/script/20261114-81` | `script.fn_available_actions_documento_interno`: + `can_registra_reason_valori` (di `script.fn_check_documento_interno_registrabile`). La firma resta a tipi nudi, con la ragione accanto: l'id è di tre tabelle |
+
+Il corpo viene da `pg_get_functiondef`, identico alla doc auto-generata; firma ri-ancorata come nell'ultimo
+changeSet di ciascuna funzione; `CREATE OR REPLACE`, attributi e privilegi invariati (`STABLE`, `INVOKER`,
+nessun `SET`, `COST 100`). Il rollback torna al corpo e al `COMMENT` di prima. `can_push_commessa` dell'ordine
+non cambia: i suoi motivi sono scritti dalla capability, senza valori.
+
+**pgTAP:** `vendite/test-capability-valori-marche-smistamento-v1`, da 12 a 18. I casi sono costruiti: l'ordine
+in bozza, confermato ed evaso; l'offerta accettata con un servizio, una in bozza, e una riga che il vocabolario
+della natura esclude; un inventario in bozza e uno confermato senza righe. Per ciascuno, il flag spento coi
+valori e il suo contrasto (`[]`).
+
+**Prova (2026-11-15, `scripts/prova_changeset.py` sullo scratch, in ROLLBACK).** L'estratto passa per intero e il
+catalogo resta identico. Verdi: il pgTAP esteso (18), `test-ordine-stati-dal-vocabolario-v1` (24),
+`test-fn-available-actions-offerta-v1` (19), `test-capability-documenti-interni-v1` (14),
+`test-righe-ammesse-ai-passi-e-annullo-v1` (25), `test-capability-motivi-e-nessuna-azione-v1` (13).
+⚠️ Mentre la prova girava Tid aveva già applicato `-79 … -81` (10:50 su dbdev, 10:51 sullo scratch), quindi la
+corsa «senza» ha girato anch'essa sulle funzioni nuove: il confronto «prima/dopo» non c'è. Che i casi 13-18
+distinguano lo si legge dal test: senza la chiave nuova `concat_ws` salta il `NULL` e la stringa non torna.
+⚠️ **La prova gira da owner, e la RLS non la esercita.** Su dbdev, come `zeroerp_app` (Tid, 2026-11-15), il test si
+fermava a 13/18: l'inventario era rifiutato dalla policy, perché il magazzino nasceva in una CTE della stessa
+istruzione e la policy, che ne legge l'emittente con una funzione `STABLE`, non lo vedeva. Corretto: il magazzino
+nasce in un'istruzione sua. Rilanciato come applicazione: 18/18 (Tid, 2026-11-15).
+
+#### Richiesta al team FE, dopo il giro 6g-bis
+
+| # | Che cosa | File |
+| --- | --- | --- |
+| FE-G4 | Nessuna frase da cambiare. `common.azione_reason.riga_non_ammessa` ha già `{0}` e `{1}`: oggi, nel tooltip di `can_push_contratto` e `can_genera_ordine` dell'offerta, escono vuoti, e con FE-G1 (`azioneDaFlag` passa `<flag>_reason_valori`) si riempiono. Le frasi di `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette`, `vendite.ordini.genera_ddt_reason.stato_non_evadibile` e `magazzino.documenti_interni.registra_reason.*` non hanno segnaposti: i valori arrivano, e usarli resta una scelta del FE. Da controllare: il FE-G1 legge `_reason_valori` per **ogni** flag, non solo per `can_genera_reso` | `frontend/src/core/composables/useEntityCapabilities.js` (con FE-G1) |

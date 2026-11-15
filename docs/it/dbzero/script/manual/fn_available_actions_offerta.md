@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.fn_available_actions_offerta`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -95,6 +95,11 @@ generato uno dei due spariscono entrambe.
 * Con l'azione non proposta, il motivo segue l'ordine «prima il proprio documento»: per il contratto
   `OFFERTA_CONTRATTO_GIA_GENERATO`, poi `OFFERTA_ORDINE_GIA_GENERATO`; per l'ordine l'inverso; in
   ogni altro stato `OFFERTA_NON_ACCETTATA`. Le chiavi di traduzione stanno sotto `vendite.offerte.`.
+* I due flag del blob, `can_push_contratto` e `can_genera_ordine`, portano il primo motivo in chiavi
+  sorelle: `_reason`, `_reason_key` e `_reason_valori`, i segnaposti della frase (l'etichetta del
+  documento e il codice dell'articolo per `RIGA_NON_AMMESSA`). `_reason_valori` è `[]` quando il
+  flag è vero e quando il motivo è uno di quelli scritti dalla capability (documento già generato,
+  offerta non accettata), che non hanno segnaposti.
 
 ⚠️ La capability calcola solo che cosa proporre. La regola vera sta nei verbi, che rifiutano un
 secondo contratto o un ordine accanto al contratto (e viceversa) leggendo gli stessi documenti

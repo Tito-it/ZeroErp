@@ -17,6 +17,9 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_documento_interno(p_famig
  LANGUAGE plpgsql
  STABLE
 AS $function$
+-- rev 2026-11-15 (brief-db-stati-documento-dal-vocabolario, giro 6g-bis,
+--   D-VAL-2): + can_registra_reason_valori, i valori del primo motivo della check (la terza
+--   chiave sorella del flag: reason, reason_key, valori).
 -- Scopo: la capability di un documento interno di magazzino — inventario
 --   o rettifica — per il detail API: quali azioni proporre, quali
 --   spegnere e perche', che cosa si puo' ancora modificare.
@@ -152,12 +155,15 @@ BEGIN
         'can_registra',               v_registra_ok,
         'can_registra_reason',        v_primo ->> 'reason',
         'can_registra_reason_key',    v_primo ->> 'reason_key',
+        -- I valori della frase del primo motivo; [] col flag vero o con una
+        -- frase senza segnaposti.
+        'can_registra_reason_valori', COALESCE(v_primo -> 'valori', '[]'::jsonb),
         'stato_info_key',             v_stato_info_key);
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_available_actions_documento_interno(p_famiglia text, p_documento_id bigint)
-IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA | TRASFERIMENTO) per il detail API: stessa matrice e stesse chiavi i18n per le tre famiglie. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key, stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. Le azioni non portano icona ne'' colore: il DB manda il SIGNIFICATO (key) e il frontend ricava segno e aspetto dal verbo con le sue mappe in core/, cosi'' lo stesso verbo appare uguale in tutti i domini; label_key e outlined restano dati. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}.';
+IS 'Capability di un documento interno di magazzino (p_famiglia = INVENTARIO | RETTIFICA | TRASFERIMENTO) per il detail API: stessa matrice e stesse chiavi i18n per le tre famiglie. Chiavi: stato_codice, available_actions[] (key conferma/riapri/annulla, target_state, label_key, requires_confirm, enabled, reason, reason_key, manuale), can_change_state, can_edit_testata, can_edit_righe, can_delete (tutti = stato DRAFT, lo stesso predicato dei guard), can_registra + _reason + _reason_key + _reason_valori (i valori della frase del primo motivo, [] quando il flag e'' vero o la frase non ha segnaposti), stato_info_key. ⭐ Non contiene nessuna regola propria: le azioni vengono dalla matrice magazzino.fn_documento_interno_transizioni (quella che il guard fa rispettare) e la terna di registra dal primo motivo di script.fn_check_documento_interno_registrabile (quella che le madri del posting sollevano) — linee-guida-sql §12.1/§12.2. ⚠️ POSTED e'' nella matrice ma non e'' un''azione richiedibile (la porta la apre solo l''operazione con la GUC): esce dalle azioni ed e'' la terna can_registra. Le azioni non portano icona ne'' colore: il DB manda il SIGNIFICATO (key) e il frontend ricava segno e aspetto dal verbo con le sue mappe in core/, cosi'' lo stesso verbo appare uguale in tutti i domini; label_key e outlined restano dati. INVOKER: documento fuori perimetro o inesistente -> NULL, il 404 lo da'' il BE sulla testata. Chiavi i18n emesse: magazzino.documenti_interni.azione.{conferma,riapri,annulla}, ....registra_reason.{non_confermato,gia_registrato,annullato,senza_righe,righe_non_postabili}, ....stato_info.{posted,cancel}.';
 ```
 
 </div>
