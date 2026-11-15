@@ -38,6 +38,7 @@ on:
     paths:
       - db/**
       - backend/**
+      - docs/it/backend/** # la doc API: il cancello della copertura la legge (test_copertura_doc_api_cancello)
       - requirements.txt
       - .python-version
       - .pre-commit-config.yaml
@@ -49,6 +50,7 @@ on:
     paths:
       - db/**
       - backend/**
+      - docs/it/backend/** # la doc API: il cancello della copertura la legge (test_copertura_doc_api_cancello)
       - requirements.txt
       - .python-version
       - .pre-commit-config.yaml

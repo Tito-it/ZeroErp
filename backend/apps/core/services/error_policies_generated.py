@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1236, di cui 131 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1237, di cui 131 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1089,6 +1089,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LISTINO_TIPOLOGIA_UTILITY": "DATO_ERRATO",
     # Un prezzo di listino (vendite.listini_righe) e' in un'unita' che, in un giorno del periodo della sua versione, non si converte nell'unita' base dell'articolo (catalogo.fn_uom_primo_giorno_non_convertibile: nessuna mappatura e nessuna conversione generale quel giorno). Regola di D25 (Q24): l'unita' vale per tutto il periodo. La sollevano il guard della riga (vendite.trgfn_listini_righe_guard_uom_periodo, campo uom_id: riga nuova o riaccesa), il guard del periodo (vendite.trgfn_listini_versioni_guard_uom_periodo, campo valido_al o valido_dal: periodo allungato) e l'attivazione (motivo 4 di script.fn_check_versione_listino_attivabile, una bozza rotta dal catalogo). DATO_ERRATO. VALORI: versione, unita', articolo, primo giorno scoperto. Bersaglio LISTINO_VERSIONE. Nasce il 2026-11-10.
     "E_LISTINO_UOM_NON_CONVERTIBILE": "DATO_ERRATO",
+    # vendite.fn_varia_prezzi_versione_listino: la variazione percentuale e' fuori da -99 ... 1000, o i decimali dell'arrotondamento fuori da 0 ... 10. Prima stava nel backend (listini_service.fn_applica_variazione_percentuale, E_VENDITE_VALIDATION). Brief: brief-db-stati-documento-dal-vocabolario, dopo il giro 6f-ter.
+    "E_LISTINO_VARIAZIONE_FUORI_INTERVALLO": "DATO_ERRATO",
     # Guard vendite.trgfn_listini_versioni_guard_per_stato (BEFORE UPDATE su vendite.listini_versioni; L-5, brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28): fuori dalla BOZZA un campo della versione non si cambia (ATTIVA: solo valido_al; CHIUSA: niente). Nomina il primo campo cambiato. Prende il posto di E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI (le date di una CHIUSA) e della regola del backend (listini_service._VERSIONE_PATCH_ALLOWED_BY_STATE).
     "E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE": "CONFLITTO_STATO",
     # RITIRATO il 2026-10-28 (brief-modello-documento-vendita §16, giro 12, Tid 2026-10-28, L-5): le date di una versione CHIUSA erano una meta' della regola «che cosa si cambia di una versione, stato per stato». La dice ora vendite.trgfn_listini_versioni_guard_per_stato col codice E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE; vendite.trgfn_listini_versioni_guard_date_chiusa e' ritirata. Il messaggio resta per il diario.

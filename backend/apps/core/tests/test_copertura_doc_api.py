@@ -75,6 +75,11 @@
 
 12. test_le_lapidi_scritte_bene_si_riconoscono (2026-10-21)
    Titolo barrato, «ritirato», «esistevano»: lapidi, non fantasmi.
+
+13. test_il_pezzo_di_un_esempio_assoluto_non_e_una_coda (2026-11-15)
+   Trappola 10: `https://host/api/v1/anagrafiche/soggetti/a1b2-.../indirizzi/1/copia/`
+   copre la rotta del soggetto, e il suo pezzo `/indirizzi/1/copia/` NON
+   copre `ruoli/{}/indirizzi/{}/copia`. Una relativa scritta da sola, si'.
 """
 
 from __future__ import annotations
@@ -265,3 +270,18 @@ class CoperturaDocApiTests(SimpleTestCase):
         )
         self.assertEqual(sorted(assolute), ["/api/v1/admin/token"])
 
+    # Scopo: test 13 — trappola 10, il verso permissivo: il pezzo di un
+    #        assoluto spezzato ai puntini non vale come coda.
+    def test_il_pezzo_di_un_esempio_assoluto_non_e_una_coda(self):
+        tutte, assolute = _citazioni_da(
+            "| **URL** | `/api/v1/anagrafiche/soggetti/{soggetto_id}/indirizzi/{id}/copia/` |\n"
+            '  "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../indirizzi/1/copia/" \\\n'
+        )
+        coperta = cmd.matcher_copertura(tutte, assolute)
+        self.assertTrue(coperta("/api/v1/anagrafiche/soggetti/{}/indirizzi/{}/copia"))
+        self.assertFalse(coperta("/api/v1/anagrafiche/ruoli/{}/indirizzi/{}/copia"))
+        # La coda scritta DA SOLA resta una citazione relativa (trappola 5).
+        tutte, assolute = _citazioni_da("`POST /definizioni/<id>/archi/<kind>/`\n")
+        self.assertTrue(
+            cmd.matcher_copertura(tutte, assolute)("/api/v1/pratiche/definizioni/{}/archi/{}"),
+        )

@@ -2690,8 +2690,11 @@ Stessa forma di `pgtap-baseline.sh`: non-verde **noto** → silenzio, **nuovo** 
     con `JwtMockedApiTest` (il suo `ClientApi` mette già la key; chi prova l'assenza usa
     `Client`) e, se l'endpoint chiama una funzione del DB, un test sul DB vero
     (`richiedi_db_provvisto`)
-11. Documentare la rotta in `docs/it/backend/<dominio>/manual/`: la copertura la
-    controlla `core/tests/test_copertura_doc_api.py`
+11. Documentare la rotta in `docs/it/backend/<dominio>/manual/`: dal 2026-11-15 una rotta
+    senza pagina è un **rosso in CI** (`core/tests/test_copertura_doc_api_cancello.py`, che
+    vuole a zero anche i path fantasma); l'elenco lo dà
+    `./manage-env.sh copertura_doc_api --dettaglio`. La misura la presidia
+    `core/tests/test_copertura_doc_api.py`
 12. Se endpoint di ricerca: `is_search_endpoint = True`
 13. Registrare i codici errore prima dell'uso: il codice nasce **a catalogo**
     (`config.codici_errore`, con la sua classe — richiesta al team DB), poi
