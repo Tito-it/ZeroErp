@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
-**Riparte: il BE, con BE-L3 subito** (§6.28): il giro 6f-ter (`20261115-65 … -75`, con D-GUARD-MUTI (a)) è applicato su dbdev (17:45) e sullo scratch (17:50), e i suoi pgTAP sono verdi (Tid, 2026-11-15). Da lì la rettifica controllata del BE, che scrive fuori dalla porta, è rifiutata. In parallelo Tid: la doc auto-generata da rigenerare, perché mancano le pagine delle due funzioni nuove. Poi il FE (FE-L1, cinque chiavi, e FE-L2 allargato) e il BE (BE-L1 … BE-L6), un passaggio solo: le richieste del §6.27 si leggono con le correzioni del §6.28. Il giro 6f-ter risponde a R-L1 … R-L3 del BE/FE (2026-11-15): il «solo bozza» del BE era il modello (sviluppo-listini-v3, 2026-04-12), e D-LIST (a) lo aveva revocato senza dirlo. Il giro 6f-bis (`20261115-53 … -58` e due righe del registro `config.azioni_riga`, D-LIST (a)) è applicato e verde, con la doc rigenerata (Tid, 2026-11-15). Il giro 6f (`20261115-42 … -52`, §6.26) è applicato e verde (Tid, 2026-11-15). Il FE ha fatto FE-G1 … FE-G4 (§6.24, §6.25), da committare su `dev/backend-tid` (2026-11-15). Il giro 6g-bis (§6.25: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`, D-VAL-2 (a)) è applicato e verde, con la doc rigenerata (Tid, 2026-11-15). Il giro 6g (`20261114-74 … -78`, D-VAL, D-MARCHE e D-SMIST (a)) è applicato e verde (Tid, 2026-11-15). Il BE/FE ha fatto le richieste dei giri 6a … 6e (§6.16 … §6.22): `338356674f`, entrato in `dev/db-tid` con la PR #120 (2026-11-14). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
+**Riparte: il BE, con BE-L3 subito** (§6.28), e **Tid, con l'apply di `20261115-78`** (giro 6f-quater, §6.29: la `reason_key` propria della scrivibile, chiesta dal BE/FE; scritto e provato, va prima di FE-L1). Il giro 6f-ter (`20261115-65 … -75`, con D-GUARD-MUTI (a)) è applicato su dbdev (17:45) e sullo scratch (17:50), e i suoi pgTAP sono verdi (Tid, 2026-11-15). Da lì la rettifica controllata del BE, che scrive fuori dalla porta, è rifiutata. In parallelo Tid: la doc auto-generata da rigenerare, perché mancano le pagine delle due funzioni nuove. Poi il FE (FE-L1, cinque chiavi, e FE-L2 allargato) e il BE (BE-L1 … BE-L6), un passaggio solo: le richieste del §6.27 si leggono con le correzioni del §6.28. Il giro 6f-ter risponde a R-L1 … R-L3 del BE/FE (2026-11-15): il «solo bozza» del BE era il modello (sviluppo-listini-v3, 2026-04-12), e D-LIST (a) lo aveva revocato senza dirlo. Il giro 6f-bis (`20261115-53 … -58` e due righe del registro `config.azioni_riga`, D-LIST (a)) è applicato e verde, con la doc rigenerata (Tid, 2026-11-15). Il giro 6f (`20261115-42 … -52`, §6.26) è applicato e verde (Tid, 2026-11-15). Il FE ha fatto FE-G1 … FE-G4 (§6.24, §6.25), da committare su `dev/backend-tid` (2026-11-15). Il giro 6g-bis (§6.25: `_reason_valori` sugli altri cinque flag, `20261114-79 … -81`, D-VAL-2 (a)) è applicato e verde, con la doc rigenerata (Tid, 2026-11-15). Il giro 6g (`20261114-74 … -78`, D-VAL, D-MARCHE e D-SMIST (a)) è applicato e verde (Tid, 2026-11-15). Il BE/FE ha fatto le richieste dei giri 6a … 6e (§6.16 … §6.22): `338356674f`, entrato in `dev/db-tid` con la PR #120 (2026-11-14). I giri 6e (il reso, `20261114-47 … -57`, D-RESO (a)) e 6e-bis (`-58`) sono applicati e verdi (Tid, 2026-11-14). I giri 6c-bis (il guard della categoria ritirato, `20261114-35`, §6.20) e 6d (la bolla, `20261114-36 … -46`, §6.21) sono applicati e verdi (Tid, 2026-11-14); il BE ha BE-C1, il FE FE-D1 … FE-D3. Il giro 6c (il contratto, `20261114-27 … -34`, D-BOZZA (a), §6.19) è applicato e verde (Tid, 2026-11-14). I giri 6b (l'ordine, `20261114-14 … -20`, §6.17), 6b-bis, 6a-bis e 2-ter (`-22 … -26`, §6.18) sono applicati e verdi (Tid, 2026-11-14); il FE ha FE-O3, FE-P2 e FE-V3. D-EVAD e D-PDF decise (a) da Tid il 2026-11-14. Il giro 6a (il preventivo, `20261114-08 … -13`) è applicato e verde, con D-PROI decisa (a) (Tid, 2026-11-14). Il giro 5 è applicato e verde (Tid, 2026-11-14). D-LOCK e i giri 3 e 4, con D-ANN, sono applicati e verdi
 (Tid, 2026-11-14). In parallelo il team BE (BE-V1, BE-T1, BE-T2: la rigenerazione dei codici, aggiunta il 2026-11-14 su segnalazione del BE) e il team FE
 (FE-V2, FE-S8). Via di Tid del 2026-11-14 a tutti i giri («procedi anche con tutti gli altri giri»). Il giro 2-bis (V-1: `20261113-38`, `-39`) è applicato e verde (Tid, 2026-11-14). Il BE/FE ha fatto le richieste del giro 2 e di
 D-SCAD (`fec6a713fa`, PR #112, 2026-11-14) e ha trovato V-1 e V-2 (§6.9).
@@ -90,7 +90,10 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 9i-unvicies-undecies | ✅ Tid | apply di `-65 … -75` su dbdev coi CSV (2026-11-15, 17:45) | §6.28 | 9i-unvicies-decies |
 | 9i-unvicies-duodecies | ✅ Tid | apply di `-65 … -75` anche sullo scratch (17:50); pgTAP del §6.28 verdi (2026-11-15) | §6.28 | 9i-unvicies-undecies |
 | 9i-unvicies-quaterdecies | **Tid** ⏭️ | doc auto-generata da rigenerare: mancano le pagine di `fn_check_listino_riga_rettificabile` e `fn_rettifica_riga_listino` | §6.28 | 9i-unvicies-duodecies |
-| 9i-unvicies-terdecies | **BE/FE** ⏭️ | BE-L3 subito; poi FE-L1 (cinque chiavi), FE-L2, BE-L1, BE-L2, BE-L4 … BE-L6 | §6.27, §6.28 | 9i-unvicies-undecies |
+| 9i-unvicies-terdecies | **BE/FE** ⏭️ | BE-L3 subito; poi FE-L1 (cinque chiavi, nella forma del §6.29), FE-L2, BE-L1, BE-L2, BE-L4 … BE-L6 | §6.27, §6.28, §6.29 | 9i-unvicies-undecies |
+| 9i-unvicies-quindecies | ✅ Tid | via al giro 6f-quater (2026-11-15) | §6.29 | — |
+| 9i-unvicies-sexdecies | ✅ DB | giro 6f-quater: `20261115-78`, test 12 di `vendite/test-listino-riga-scrivibile-v1` (plan 12), una pagina `manual/`; prova in transazione (2026-11-15) | §6.29 | 9i-unvicies-quindecies |
+| 9i-unvicies-septdecies | **Tid** ⏭️ | apply di `20261115-78`, pgTAP `vendite/test-listino-riga-scrivibile-v1`; poi la doc rigenerata (con la riga 9i-unvicies-quaterdecies) | §6.29 | 9i-unvicies-sexdecies |
 | 9j | **BE** ⏭️ | BE-T1: la frase di `doc_terminale` in `api_percorso.md` | §6.12 | — |
 | 9k | **FE** ⏭️ | FE-S8: costanti, chiavi i18n e commenti dei quattro stati d'ordine ritirati | §6.13 | 9f |
 | 9i-quater | **DB** ⏭️ | giri 6a … 6f, un documento per volta: preventivo, ordine, contratto, bolla, reso, listino | §6.15 | — |
@@ -99,10 +102,10 @@ Il 2026-11-12 il DB ha riverificato il brief sul catalogo di dbdev (§5) e, col 
 | 10 | BE/FE | le ricadute del §4.10 degli altri giri (FE: costanti degli ordini, giro 4). Il giro 1 non ne ha; quelle del giro 2 sono la riga 9c | §4.10 | il giro che le porta |
 | 11 | ✅ BE | R-2: il test Django che legge `in_gioco` passa a `pre_fiscale` (`e174a302e2`, 2026-11-13) | §6.4 | — |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15 (§6.28) il giro unico per R-L1 … R-L3, la ATTIVA non in vigore che si clona e D-GUARD-MUTI (a). D-LIST (§6.26) decisa il 2026-11-15 (a), solo DB, col trigger come verbo nel registro (§6.27). D-VAL-2 (§6.25) decisa il 2026-11-15 (a). D-VAL, D-MARCHE e D-SMIST (§6.24) decise il 2026-11-14 (a). D-RESO (§6.22) decisa il 2026-11-14 (a). D-BOZZA (§6.19) decisa il 2026-11-14 (a). D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
+**Decisioni aperte di Tid:** nessuna. Deciso il 2026-11-15 il via al giro 6f-quater (§6.29). Decise il 2026-11-15 (§6.28) il giro unico per R-L1 … R-L3, la ATTIVA non in vigore che si clona e D-GUARD-MUTI (a). D-LIST (§6.26) decisa il 2026-11-15 (a), solo DB, col trigger come verbo nel registro (§6.27). D-VAL-2 (§6.25) decisa il 2026-11-15 (a). D-VAL, D-MARCHE e D-SMIST (§6.24) decise il 2026-11-14 (a). D-RESO (§6.22) decisa il 2026-11-14 (a). D-BOZZA (§6.19) decisa il 2026-11-14 (a). D-EVAD (§6.17) e D-PDF (§6.16) decise il 2026-11-14 (a). D-PROI decisa il 2026-11-14 (a), con l'apply di `-13`. D-ANN e D-LOCK decise il 2026-11-14 (a). D-SCAD decisa il 2026-11-13 (a). Decise il 2026-11-13 (§6.4): R-1, S-3 revocata per il fiscale (il cancello IVA
 resta su EMESSA, eccezione voluta); R-2, `in_gioco` si ritira (giro 5, dopo la riga 11); R-3, il lotto non diventa
 REGISTRATO (`applica_lotto` = false, giro 4). Decise il 2026-11-08: S-1, lettura A; S-2 … S-10 come proposte dal DB (§4.9; per S-8 il ritiro, non
-l'`attivo = false`). **Lavoro da committare:** nessuno del giro 6f-ter, che è nel commit `6614e81e8a` (§6.28: undici changeSet, tre CSV, un pgTAP nuovo, ventisette adeguati, dodici pagine `manual/` e la guida dei listini), applicato su dbdev; il giro 6f (§6.26: undici changeSet, un pgTAP nuovo, sette pagine `manual/`), applicato e verde, con la doc rigenerata; il giro 6f-bis (§6.27: sei changeSet, due righe del CSV del registro, un pgTAP nuovo, due adeguati, cinque pagine `manual/`, §12.5.7 delle linee guida), applicato e verde, con la doc rigenerata; questo brief. ⚠️ Con la doc rigenerata `check-i18n-keys` è rosso finché il FE non fa FE-L1 (§6.27). Il giro 6g (§6.24: cinque changeSet, un pgTAP nuovo, cinque pagine `manual/`, §12.2 delle linee guida), la verifica e il giro 6g-bis del §6.25 (tre changeSet, il pgTAP del 6g esteso, tre pagine `manual/`), con la doc rigenerata, sono nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 6c, 6c-bis, 6d, 6e e 6e-bis, applicati e verdi, sono nel commit «Stati del documento dal vocabolario: contratto, bolla e reso» (2026-11-14), con la doc rigenerata: il 6c (§6.19: otto changeSet, il CSV dei contratti, un pgTAP nuovo, due adeguati, sette pagine `manual/`), il 6c-bis (§6.20: un changeSet, una riga del catalogo dei codici, due pagine), il 6d (§6.21: undici changeSet, un pgTAP nuovo, nove pagine), il 6e e il 6e-bis (§6.22: dodici changeSet, un pgTAP nuovo, uno adeguato, undici pagine, una nuova). I giri 6a, 6b, 6b-bis, 6a-bis e 2-ter sono nel commit `f49e5233ca`. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
+l'`attivo = false`). **Lavoro da committare:** il giro 6f-quater (§6.29: `20261115-78`, il pgTAP esteso, una pagina `manual/`) e questo brief; nessuno del giro 6f-ter, che è nel commit `6614e81e8a` (§6.28: undici changeSet, tre CSV, un pgTAP nuovo, ventisette adeguati, dodici pagine `manual/` e la guida dei listini), applicato su dbdev; il giro 6f (§6.26: undici changeSet, un pgTAP nuovo, sette pagine `manual/`), applicato e verde, con la doc rigenerata; il giro 6f-bis (§6.27: sei changeSet, due righe del CSV del registro, un pgTAP nuovo, due adeguati, cinque pagine `manual/`, §12.5.7 delle linee guida), applicato e verde, con la doc rigenerata; questo brief. ⚠️ Con la doc rigenerata `check-i18n-keys` è rosso finché il FE non fa FE-L1 (§6.27). Il giro 6g (§6.24: cinque changeSet, un pgTAP nuovo, cinque pagine `manual/`, §12.2 delle linee guida), la verifica e il giro 6g-bis del §6.25 (tre changeSet, il pgTAP del 6g esteso, tre pagine `manual/`), con la doc rigenerata, sono nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 6c, 6c-bis, 6d, 6e e 6e-bis, applicati e verdi, sono nel commit «Stati del documento dal vocabolario: contratto, bolla e reso» (2026-11-14), con la doc rigenerata: il 6c (§6.19: otto changeSet, il CSV dei contratti, un pgTAP nuovo, due adeguati, sette pagine `manual/`), il 6c-bis (§6.20: un changeSet, una riga del catalogo dei codici, due pagine), il 6d (§6.21: undici changeSet, un pgTAP nuovo, nove pagine), il 6e e il 6e-bis (§6.22: dodici changeSet, un pgTAP nuovo, uno adeguato, undici pagine, una nuova). I giri 6a, 6b, 6b-bis, 6a-bis e 2-ter sono nel commit `f49e5233ca`. I giri 2-bis, D-LOCK, 3, 4 e 5 sono nel commit `f23460d27e`; D-SCAD (§6.8) è nel commit di questo brief, il giro 2 nel commit `2502514207`; la verifica del 2026-11-12
 (§5) e il giro 1 (§6) sono nel commit `a9b7a0f32e` (PR #108).
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-11-08. **A chi:** Tid, poi il team DB.
@@ -2387,7 +2390,7 @@ già la loro `manual/`. Finché non si rigenera, `check-i18n-keys` non vede le c
 
 | # | File | Che cosa |
 | --- | --- | --- |
-| FE-L1 | `frontend/src/locales/it.json`, `en.json` | come nel §6.27 (`versione_chiusa`, `riga_propagata`), più tre chiavi: `vendite.listini.azione_reason.versione_non_in_bozza` (la versione non è in bozza: per correggere il prezzo di una riga non ancora usata si fa la rettifica, per il resto si clona), `.versione_in_bozza` (in bozza la riga si modifica, non si rettifica), `.non_in_vigore` (la versione non è in vigore oggi: si clona). ⚠️ Con la doc rigenerata `check-i18n-keys` è rosso finché non ci sono |
+| FE-L1 | `frontend/src/locales/it.json`, `en.json` | ⚠️ **Corretta dal §6.29**: `versione_non_in_bozza` non è nuova (è dell'eliminabile), la scrivibile prende `righe_non_in_bozza`. Testo originale: come nel §6.27 (`versione_chiusa`, `riga_propagata`), più tre chiavi: `vendite.listini.azione_reason.versione_non_in_bozza` (la versione non è in bozza: per correggere il prezzo di una riga non ancora usata si fa la rettifica, per il resto si clona), `.versione_in_bozza` (in bozza la riga si modifica, non si rettifica), `.non_in_vigore` (la versione non è in vigore oggi: si clona). ⚠️ Con la doc rigenerata `check-i18n-keys` è rosso finché non ci sono |
 | FE-L2 | `frontend/src/vendite/components/VersioneDrawer.vue` | come nel §6.27 (riga nuova da `aggiunta_riga_blocco_*`, modifica ed eliminazione da `modifica_blocco_*`), e in più al posto di `isBozza`: il dialog dei prezzi bundle (`openBundleDialog`) da `prezzi_bundle_blocco_*`, l'azione `periodicita-kit` da `periodicita_kit_blocco_*`, l'azione `variazione` da `variazione_blocco_*`, tutte della versione; «Rettifica» della riga da `rettifica_blocco_*` (§12.5.5: nel campo `tooltip`). Dopo, `isBozza` non ha più lettori nel drawer: si ritira, e con lui l'import di `STATO_VERSIONE_LISTINO` se non resta altro |
 
 **Richieste al team BE (elenco chiuso).** Chi cambia per primo: il DB; poi BE e FE insieme. ⚠️ Col giro applicato il
@@ -2403,3 +2406,62 @@ BE-L3 va fatto insieme all'apply.
 | BE-L4 | `backend/apps/core/services/error_policies_generated.py`, `backend/apps/core/services/error_messages_fallback.py` | rigenerare: i quattro codici nuovi, e `E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA` ritirato (D-GUARD-MUTI) |
 | BE-L5 | `vendite/tests/db/test_prezzo_riga_commessa_db.py`, `vendite/tests/db/test_provenienza_prezzo_dal_gate_db.py`, `test_listino_kit_periodicita_db.py`, `test_listino_uom_compatibile_db.py`, `test_righe_erogazione_obbligatoria_db.py`, `test_ricerca_liste_db.py`, `catalogo/tests/db/test_chiusura_legame_prezzi_db.py`, `test_listini_create_db.py` | test sul DB vero. `test_prezzo_riga_commessa_db.py`: l'UPDATE diretto della riga propagata (riga ~259) ora dà `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`; la propagazione si prova col verbo. `test_provenienza_prezzo_dal_gate_db.py` (`_rettificabile`): un UPDATE diretto non passa più; si chiede alla check `script.fn_check_listino_riga_rettificabile` o al verbo. Gli altri sei aggiungono righe, componenti o kit a una versione già attiva: da rieseguire, perché le righe si scrivono prima dell'attivazione |
 | BE-L6 | `docs/it/backend/vendite/manual/api_listini.md` | la rettifica controllata (§ «Audit obbligatorio» e le regole) rimanda al verbo DB; le righe di una versione si scrivono solo in bozza |
+
+### 6.29 Dal BE/FE del giro 6f-ter — una `reason_key` con due significati (2026-11-15)
+
+**La richiesta (BE/FE, 2026-11-15, su FE-L1).** `vendite.listini.azione_reason.versione_non_in_bozza` esce da due
+check che dicono due cose diverse: `script.fn_check_versione_listino_eliminabile` (non si elimina una versione che non
+è in bozza: è stata usata per i prezzi) e, dal `20261115-65`, `script.fn_check_listino_riga_scrivibile` (fuori dalla
+bozza non si scrivono righe, prezzi dei componenti, periodicità del kit, né si applica la variazione). Il FE ha già la
+chiave, col testo dell'eliminabile: sul pulsante «Aggiungi riga» o «Modifica» spento comparirebbe la frase
+dell'eliminazione, senza nessun errore. FE-L1 del §6.28 la elencava come nuova: non lo è. Proposta: una chiave propria
+per la scrivibile, `…righe_non_in_bozza`; restano com'erano la chiave dell'eliminabile, il motivo
+`VERSIONE_NON_IN_BOZZA` e il codice `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`.
+
+**La verifica DB (2026-11-15, sulla doc auto-generata rigenerata dopo il `-65`).** Confermato. Il `-65` ha riusato il
+letterale dell'eliminabile (`20261028-36`) senza cercarlo. È la regola del 2 letta al contrario: lo stesso testo con
+due significati non è una copia, e va separato. Le due superfici (`vendite.vw_listini_versioni_azioni`,
+`vendite.vw_listini_righe_azioni`) prendono la chiave dalla check e non la riscrivono: basta cambiare la check, e i
+guard non leggono la chiave. Nessun pgTAP se ne accorgeva: `vendite/test-listino-riga-scrivibile-v1` asserisce `reason`
+e `codice`, mai `reason_key`. Nel BE la chiave della scrivibile non ha lettori;
+`vendite/tests/db/test_listino_versione_modello_db.py:236` legge quella dell'eliminabile, che non cambia.
+
+Le altre chiavi del listino emesse da più check: solo `versione_chiusa` (scrivibile e rettificabile), che in tutte e
+due dice la stessa cosa (la versione è la storia dei prezzi, non si cambia niente): resta una chiave sola. Ma il testo
+chiesto in FE-L1 del §6.27 («non si aggiunge, non si modifica e non si elimina niente») è stato scritto prima della
+rettifica, e deve coprire anche il pulsante «Rettifica».
+
+**Il giro 6f-quater (via di Tid del 2026-11-15, fatto lo stesso giorno).**
+
+* `20_code/script/20261115-78`:
+  `script.fn_check_listino_riga_scrivibile` col motivo 2 su `vendite.listini.azione_reason.righe_non_in_bozza`, e il
+  COMMENT con la chiave nuova; il resto del corpo invariato, preso dal catalogo.
+* pgTAP `vendite/test-listino-riga-scrivibile-v1`: un test in più, la chiave letta dalla superficie che vede il FE
+  (`aggiunta_riga_blocco_reason_key` e `modifica_blocco_reason_key` di una ATTIVA) è `righe_non_in_bozza`, e diversa da
+  `eliminazione_blocco_reason_key` della stessa versione. È il controesempio del BE/FE.
+* La pagina `script/manual/fn_check_listino_riga_scrivibile` (la riga delle `reason_key`).
+* BE: niente.
+
+**La prova (scratch `zeroerp_ruoli`, 2026-11-15).** Estratto del `-78` per intero in `ROLLBACK`, catalogo
+identico dopo. `vendite/test-listino-riga-scrivibile-v1`: senza l'estratto 11 ok e 1 rosso, il test 12, cioè il
+controesempio del BE/FE; con l'estratto 12 ok. Regressione su chi legge la check, le due superfici o la chiave
+dell'eliminabile (`script/test-rubinetto-primo-motivo-v1`, `vendite/test-listino-versione-al-modello-v1`,
+`vendite/test-fn-chiudi-clona-versione-listino-v1`, `vendite/test-fn-elimina-versione-listino-v1`,
+`vendite/test-listino-rettifica-riga-v1`): stesso esito, tutti verdi.
+
+**Chi cambia per primo: il DB**, come chiede il BE/FE. Fino all'apply la scrivibile emette la chiave dell'eliminabile,
+che il FE ha già: `check-i18n-keys` non segnala niente su questa chiave. Dopo l'apply e la doc rigenerata è rosso finché
+il FE non aggiunge `righe_non_in_bozza`, nello stesso giro di FE-L1.
+
+**FE-L1, nella forma corretta** (sostituisce l'elenco del §6.28): cinque chiavi nuove in `frontend/src/locales/it.json`
+ed `en.json`, sotto `vendite.listini.azione_reason`:
+
+| Chiave | Che cosa dice |
+| --- | --- |
+| `versione_chiusa` | la versione è chiusa, è la storia dei prezzi: non si cambia niente (vale per aggiunta, modifica, eliminazione e rettifica) |
+| `riga_propagata` | il prezzo della riga è già stato usato da un documento: per cambiarlo si fa una versione nuova |
+| `righe_non_in_bozza` | la versione non è in bozza: per correggere il prezzo di una riga non ancora usata si fa la rettifica, per il resto si clona |
+| `versione_in_bozza` | in bozza la riga si modifica, non si rettifica |
+| `non_in_vigore` | la versione non è in vigore oggi: si clona |
+
+`versione_non_in_bozza` resta col testo che ha (l'eliminazione).
