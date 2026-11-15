@@ -13,7 +13,7 @@
 --   (Tid, 2026-11-14), giro 2. ChangeSet 20261114-60 … -68; codici e frasi in
 --   config/codici_errore.csv e config/messaggi_errore.csv.
 --
--- Elenco test (plan 17):
+-- Elenco test (plan 19):
 --   struttura
 --    1) il guard e' montato su soggetti, BEFORE UPDATE con WHEN (per funzione)
 --    2) il guard dei titoli al cambio e il suo lettore sono ritirati
@@ -35,6 +35,9 @@
 --   16) ... ma svuotarla e' dell'amministratore: E_SOGGETTO_ID_FISCALE_IMMUTABILE
 --   il predicato degli indirizzi
 --   17) fn_tipo_indirizzo_ammesso_per_natura sui valori del seed e sul fallback permissivo
+--   il soggetto che manca (20261115-41)
+--   18) un soggetto che non c'e': E_SOGGETTO_NOT_FOUND (NON_TROVATO)
+--   19) il soggetto non passato (NULL): E_PARAMETRO_INVALIDO
 --
 -- ⭐ Il 9-11 costruisce il caso: il seed non ha due nature della stessa
 --   famiglia di cui una senza P.IVA fra le persone giuridiche, ma il modello la
@@ -58,7 +61,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(17);
+SELECT plan(19);
 
 -- ============================================================
 -- Struttura
@@ -242,6 +245,23 @@ SELECT results_eq(
            (SELECT pg_senza_piva FROM _ref)),
     $$VALUES (false), (true), (true), (true)$$,
     '17) sede legale: il privato no, la ditta si''; senza natura o senza matrice, libero');
+
+-- ============================================================
+-- Il soggetto che manca: due condizioni, due codici (20261115-41)
+-- ============================================================
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        'SELECT anagrafiche.fn_check_cambio_natura_soggetto(%L::uuid, %s, NULL, ''N'', ''N'')',
+        gen_random_uuid(), (SELECT pr FROM _ref))),
+    'E_SOGGETTO_NOT_FOUND',
+    '18) un soggetto che non c''e'': E_SOGGETTO_NOT_FOUND, non il parametro invalido');
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        'SELECT anagrafiche.fn_check_cambio_natura_soggetto(NULL::uuid, %s, NULL, ''N'', ''N'')',
+        (SELECT pr FROM _ref))),
+    'E_PARAMETRO_INVALIDO',
+    '19) il soggetto non passato: E_PARAMETRO_INVALIDO');
 
 SELECT * FROM finish();
 

@@ -47,10 +47,10 @@ BEGIN
 
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
-            'database', 'anagrafiche.fn_check_cambio_natura_soggetto', 'E_PARAMETRO_INVALIDO',
-            jsonb_build_object('parametro', 'p_soggetto_id', 'valore', p_soggetto_id),
+            'database', 'anagrafiche.fn_check_cambio_natura_soggetto', 'E_SOGGETTO_NOT_FOUND',
+            jsonb_build_object('soggetto_id', p_soggetto_id),
             NULL::uuid,
-            'il soggetto non esiste');
+            p_soggetto_id::text);
     END IF;
 
     -- Nessun cambio, nessun motivo.
@@ -216,7 +216,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_check_cambio_natura_soggetto(p_soggetto_id uuid, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_cliente_pa character, p_split_payment character)
-IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura). Natura nuova NULL: solo i titoli vigenti (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL o inesistente: E_PARAMETRO_INVALIDO. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
+IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura). Natura nuova NULL: solo i titoli vigenti (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
 ```
 
 </div>
