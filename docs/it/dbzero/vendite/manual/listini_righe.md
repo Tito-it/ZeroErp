@@ -8,7 +8,7 @@
 > • [catalogo.articoli](/dbzero/catalogo/tabelle/articoli)  
 > • [catalogo.unita_misura](/dbzero/catalogo/tabelle/unita_misura)  
 >
-> **Ultimo aggiornamento**: 10 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 ### 🎯 Scopo Principale
 La tabella `vendite.listini_righe` contiene i prezzi elementari per articolo/UOM,
@@ -43,13 +43,16 @@ specifico rispetto al contesto operativo.
   qui: la sua periodicità sta in [vendite.listini_kit](/dbzero/vendite/manual/listini_kit), e la
   sede che le legge tutte e due è
   [vendite.fn_listino_periodicita_articolo](/dbzero/vendite/manual/fn_listino_periodicita_articolo).
-* ⭐ **Una quota fissa a canone non resta senza periodicità fuori dalla bozza** (rev 2026-10-31,
-  decisione di Tid): toglierla su una versione attiva è rifiutato da
-  [vendite.trgfn_listini_righe_guard_periodicita_quota_fissa](/dbzero/vendite/funzioni/trgfn_listini_righe_guard_periodicita_quota_fissa)
-  (`E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA`, sul campo). Cambiarla con un'altra resta una
-  rettifica, come il prezzo. È l'altra metà del controllo all'attivazione
+* ⭐ **Le righe si scrivono solo in bozza**: in una versione attiva o chiusa non si aggiungono, non
+  si modificano e non si eliminano
+  ([vendite.trgfn_listini_righe_guard_stato](/dbzero/vendite/manual/trgfn_listini_righe_guard_stato)).
+  Fuori dalla bozza c'è una sola scrittura, la **rettifica** del prezzo di una riga della versione in
+  vigore, col motivo
+  ([vendite.fn_rettifica_riga_listino](/dbzero/vendite/manual/fn_rettifica_riga_listino)): la
+  traccia sta in `meta.rettifiche_controllate[]`. Per questo una quota fissa a canone, che senza
+  periodicità non si attiva
   ([script.fn_check_versione_listino_attivabile](/dbzero/script/manual/fn_check_versione_listino_attivabile),
-  motivo 3): senza, la quota la perdeva dopo.
+  motivo 3), dopo l'attivazione non la perde.
 * ⭐ **L'unità di un prezzo si converte per tutto il periodo della versione** (rev 2026-11-10,
   decisione di Tid): in ogni giorno da `valido_dal` a `valido_al` della versione (senza fine se
   vuota), l'unità della riga deve avere un fattore per l'articolo, cioè la base, una mappatura o una

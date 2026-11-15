@@ -47,8 +47,10 @@ SELECT plan(13);
 CREATE TEMP TABLE tmp_ade_mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('adesione');
 
+-- Dal 20261115-65 le righe si scrivono solo in bozza: la versione nasce in bozza,
+-- prende le righe del test e si attiva dal verbo.
 CREATE TEMP TABLE tmp_ade_listino AS
-SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ade_mondo), 'adesione');
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ade_mondo), 'adesione', p_in_bozza => true);
 
 CREATE TEMP TABLE tmp_ade_art AS
 SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-ADE-' || v.sigla,
@@ -65,6 +67,7 @@ DO $fx$ BEGIN
         (SELECT listino_versione_id FROM tmp_ade_listino),
         ARRAY[pg_temp.art('A'), pg_temp.art('B')], 100);
 END $fx$;
+SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', (SELECT listino_versione_id FROM tmp_ade_listino), 'ATTIVA');
 
 CREATE TEMP TABLE tmp_ade_ctr AS
 SELECT k.contratto_id AS id

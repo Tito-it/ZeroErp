@@ -5,8 +5,10 @@
 > 👀 **Vedi anche**
 >
 > [script.fn_check_listino_riga_scrivibile](/dbzero/script/manual/fn_check_listino_riga_scrivibile) — la regola ·
-> [vendite.vw_listini_versioni_azioni](/dbzero/vendite/manual/vw_listini_versioni_azioni) — la riga nuova ·
-> [vendite.vw_listini_righe_azioni](/dbzero/vendite/manual/vw_listini_righe_azioni) — la riga che c'è ·
+> [script.fn_check_listino_riga_rettificabile](/dbzero/script/manual/fn_check_listino_riga_rettificabile) — la rettifica ·
+> [vendite.fn_rettifica_riga_listino](/dbzero/vendite/manual/fn_rettifica_riga_listino) — il verbo della rettifica ·
+> [vendite.vw_listini_versioni_azioni](/dbzero/vendite/manual/vw_listini_versioni_azioni) ·
+> [vendite.vw_listini_righe_azioni](/dbzero/vendite/manual/vw_listini_righe_azioni) ·
 > [config.azioni_riga](/dbzero/config/manual/azioni_riga) ·
 > [config.stati_doc_listino_versioni](/dbzero/config/manual/stati_doc_listino_versioni)
 
@@ -14,8 +16,8 @@
 
 ### 🎯 Scopo Principale
 
-Il guard delle righe di listino secondo lo stato della versione: rifiuta la scrittura di una riga
-che la versione non ammette. **La regola non sta qui**: sta in
+Il guard delle righe di listino secondo lo stato della versione: **le righe si scrivono solo in
+bozza**. La regola non sta qui: sta in
 [`script.fn_check_listino_riga_scrivibile`](/dbzero/script/manual/fn_check_listino_riga_scrivibile),
 e il guard ne solleva il primo motivo (`script.fn_raise_primo_motivo_se_presente`). Le stesse
 risposte le danno le superfici che il frontend legge, quindi il pulsante e l'errore non possono
@@ -28,51 +30,47 @@ dire due cose diverse (linee guida SQL §12.5.2).
 * **Tipo**: `BEFORE INSERT OR UPDATE OR DELETE`, per riga, su `vendite.listini_righe`
 * **Nome trigger**: `trg_listini_righe_a10_guard_stato_ins_upd_dlt`
 * **Fase**: `_a10_` (guard)
-* Sull'INSERT la domanda è la riga nuova della versione (`NEW.listino_versione_id`); su UPDATE e
-  DELETE la riga che c'è (`OLD`).
 
 ---
 
 ### Che cosa ammette
 
-| Versione | Riga nuova | Riga che c'è |
+| Versione | Riga nuova, modifica, eliminazione | Rettifica del prezzo (dal verbo) |
 | --- | --- | --- |
-| in bozza (lo stato `iniziale` del vocabolario) | sì | sì |
-| `ATTIVA` | sì: è una rettifica | sì, finché il suo prezzo non è stato usato da un documento (`E_RIGA_LISTINO_PROPAGATA`) |
+| in bozza (lo stato `iniziale` del vocabolario) | sì | no: si modifica (`E_RIGA_LISTINO_RETTIFICA_IN_BOZZA`) |
+| `ATTIVA`, in vigore oggi | no (`E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`) | sì, finché il prezzo non è stato usato (`E_RIGA_LISTINO_PROPAGATA`) |
+| `ATTIVA`, non ancora iniziata o già finita | no (`E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`) | no (`E_RIGA_LISTINO_RETTIFICA_NON_IN_VIGORE`) |
 | `CHIUSA` | no (`E_RIGA_LISTINO_VERSIONE_CHIUSA`) | no (`E_RIGA_LISTINO_VERSIONE_CHIUSA`) |
 
-Una riga è **propagata** quando la cita (`listino_riga_id`) una riga di commessa, un'attività
-fatturabile, o una riga principale o un componente di preventivo, ordine, contratto, DDT od
-offerta, anche in bozza: le dodici tabelle stanno nella check. Per cambiare il prezzo di una riga
-propagata si fa una versione nuova del listino.
+### La porta della rettifica
+
+La sola scrittura di una riga fuori dalla bozza è la rettifica, che passa dal verbo
+[`vendite.fn_rettifica_riga_listino`](/dbzero/vendite/manual/fn_rettifica_riga_listino) (motivo
+obbligatorio, traccia in `meta`). Il verbo apre la porta per una riga (variabile di transazione
+`zeroerp.listino_riga_rettifica` = id della riga); il guard la onora solo dal proprietario della
+tabella, e solo per un UPDATE che cambia il prezzo e `meta`. Lì risponde
+[`script.fn_check_listino_riga_rettificabile`](/dbzero/script/manual/fn_check_listino_riga_rettificabile).
+Una porta aperta che cambia altro ricade sulla regola di sempre. È la stessa forma della porta di
+`valido_al` di una versione attiva.
 
 ---
 
 ### Il verbo nel registro
 
-Le righe di listino si scrivono direttamente (il backend fa `INSERT`, `UPDATE`, `DELETE`), e non
-c'è una funzione che esegua l'azione: chi la rifiuta è questo guard. Per questo è il `verbo` delle
-azioni `AGGIUNGI_RIGA_LISTINO` e `MODIFICA_RIGA_LISTINO` in
-[`config.azioni_riga`](/dbzero/config/manual/azioni_riga), e il presidio del registro verifica che
-chiami la check.
-
----
-
-### Codici errore
-
-| Codice | Quando |
-| --- | --- |
-| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | una riga nuova, una modifica o un'eliminazione in una versione CHIUSA |
-| `E_RIGA_LISTINO_PROPAGATA` | la modifica o l'eliminazione, fuori dalla bozza, di una riga il cui prezzo è stato usato |
+Le righe si aggiungono, si modificano e si eliminano direttamente (il backend fa `INSERT`,
+`UPDATE`, `DELETE`), anche in massa con la variazione percentuale: chi le rifiuta è questo guard.
+Per questo è il `verbo` delle azioni `AGGIUNGI_RIGA_LISTINO`, `MODIFICA_RIGA_LISTINO` e
+`VARIA_PREZZI_LISTINO` in [`config.azioni_riga`](/dbzero/config/manual/azioni_riga). La variazione
+su una versione non in bozza si ferma alla prima riga e non scrive niente.
 
 ---
 
 ### Test
 
-* `db/pgtap/vendite/test-listino-riga-scrivibile-v1.sql` — la check, le due superfici e il guard
+* `db/pgtap/vendite/test-listino-riga-scrivibile-v1.sql` — la check, le superfici e i tre guard
   rispondono uguale, con la marca `iniziale` spostata.
-* `db/pgtap/vendite/test-provenienza-prezzo-push-v1.sql` (test 13) — le dieci tabelle dei
-  documenti nella check.
+* `db/pgtap/vendite/test-listino-rettifica-riga-v1.sql` — il verbo, la porta, la superficie della
+  rettifica.
 
 ---
 

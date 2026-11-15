@@ -1,6 +1,6 @@
 # Guida — Gestione Listini e Pricing
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA
 >
@@ -71,9 +71,8 @@ Un listino contiene:
     la prende con un'adesione.
 
   Una **quota fissa a canone** (tipologia di quota fissa, che si eroga a canone) deve avere la
-  periodicità: senza, la versione non si attiva (sotto), e fuori dalla bozza non la si può
-  togliere (`E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA`); cambiarla con un'altra resta una
-  rettifica, come il prezzo. Resta una strada sola per una quota senza periodicità su una
+  periodicità: senza, la versione non si attiva (sotto), e dopo l'attivazione la riga non si tocca
+  più (sotto, «Che cosa si cambia in ogni stato»), quindi non la perde. Resta una strada sola per una quota senza periodicità su una
   versione in uso: il catalogo che cambia dopo l'attivazione (la tipologia dell'articolo, o la sua
   erogazione). Allora la quota non si addebita, e i contratti del listino compaiono nel Backlog
   come anomalia. Come il contratto addebita, lo spiega la
@@ -117,9 +116,21 @@ e lo stato lo cambiano solo due operazioni del database.
   della chiusura per scadenza ([vendite.fn_chiudi_versioni_listino_scadute](/dbzero/vendite/funzioni/fn_chiudi_versioni_listino_scadute)).
   Fra la scadenza e il passaggio del job la versione è ATTIVA con la chiusura programmata.
 
-Che cosa si cambia in ogni stato: in **bozza** tutto, e la versione si può eliminare; di una versione
-**attiva** solo la fine validità; di una **chiusa** niente. Una versione nasce sempre in bozza.
-Per cambiare i prezzi di una versione in uso si crea una versione nuova (anche clonandola) e la si attiva.
+Che cosa si cambia in ogni stato: in **bozza** tutto (righe, prezzi dei componenti, periodicità dei
+kit, variazione percentuale), e la versione si può eliminare; di una versione **attiva** solo la fine
+validità, e nessuna riga (`E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`); di una **chiusa** niente. Una
+versione nasce sempre in bozza. Per cambiare i prezzi di una versione in uso si crea una versione nuova
+(anche clonandola) e la si attiva.
+
+**L'eccezione: la rettifica.** Un prezzo sbagliato di una riga del listino **in vigore oggi**, che
+nessun documento ha ancora usato, si corregge senza fare una versione nuova: col verbo
+[vendite.fn_rettifica_riga_listino](/dbzero/vendite/manual/fn_rettifica_riga_listino), che cambia il
+solo prezzo, chiede il motivo e ne lascia la traccia nella riga. È l'unica scrittura di una riga fuori
+dalla bozza; quando non si può (in bozza, versione chiusa o non in vigore, riga già usata) lo dice il
+motivo del pulsante. Ogni pulsante della versione e delle righe si accende dal motivo che il database
+mette nelle due superfici delle azioni
+([versione](/dbzero/vendite/manual/vw_listini_versioni_azioni),
+[righe](/dbzero/vendite/manual/vw_listini_righe_azioni)).
 Il clone ([vendite.fn_clona_versione_listino](/dbzero/vendite/manual/fn_clona_versione_listino)) copia
 righe con la loro periodicità, componenti e kit; l'eliminazione di una bozza
 ([vendite.fn_elimina_versione_listino](/dbzero/vendite/manual/fn_elimina_versione_listino)) li porta via
@@ -601,7 +612,8 @@ Il database rafforza la determinismo con vincoli espliciti (non è "responsabili
 | `uq_listini_righe_key_attiva`                 | `listini_righe`             | Una sola riga attiva per (versione, articolo, uom)                            |
 | `uq_listini_kit_versione_articolo`            | `listini_kit`               | Un kit compare una volta per versione                                         |
 | `vendite.trgfn_listini_kit_guard`             | trigger                     | Il kit sul listino si scrive solo in bozza, e solo per un composito           |
-| `vendite.trgfn_listini_righe_guard_periodicita_quota_fissa` | trigger       | Fuori dalla bozza una quota fissa a canone non resta senza periodicità        |
+| `script.fn_check_listino_riga_scrivibile` (guard di righe, componenti e kit) | check + trigger | Le righe, i prezzi dei componenti e i kit di una versione si scrivono solo in bozza |
+| `vendite.fn_rettifica_riga_listino` (porta del guard delle righe) | verbo + trigger | Fuori dalla bozza solo la rettifica del prezzo, col motivo, sulla versione in vigore |
 | `script.fn_check_articolo_riga` (guard `script.trgfn_righe_guard_articolo_ammesso`) | check + trigger | Articolo e listino della stessa tipologia; niente solo componente; il kit coi componenti (dal 2026-10-13) |
 | `trgfn_contratti_modalita_c_righe_complete`   | trigger                     | Modalità C: attivazione blocca se righe incomplete                            |
 | `script.fn_check_articolo_riga` (guard su `promo_articoli`) | check + trigger | Nessuna promo su un articolo solo componente (dal 2026-10-14) |
@@ -624,8 +636,9 @@ Nessun fallback silenzioso. Ogni scenario non risolvibile produce un errore stru
 | `E_ARTICOLO_TIPOLOGIA_INCOMPATIBILE`      | Articolo in listino di tipologia diversa                                                                                                   |
 | `E_LISTINO_KIT_NON_COMPOSITO`             | Periodicità di kit su un articolo che non è composito: la sua periodicità sta sulla riga di listino                                        |
 | `E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA` | Attivazione di una versione con una quota fissa a canone (riga o kit) senza periodicità                                           |
-| `E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA` | Tolta la periodicità a una quota fissa a canone su una versione non in bozza                                                               |
-| `E_RIGA_LISTINO_VERSIONE_CHIUSA`          | Componenti o kit scritti su una versione non in bozza                                                                                      |
+| `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`    | Righe, componenti o kit scritti su una versione attiva                                                                                     |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA`          | Righe, componenti o kit scritti su una versione chiusa                                                                                     |
+| `E_RIGA_LISTINO_RETTIFICA_*`, `E_RIGA_LISTINO_PROPAGATA` | La rettifica non si fa: in bozza, versione non in vigore, motivo mancante, riga già usata da un documento                  |
 | `E_PREZZO_OVERRIDE_NON_AUTORIZZATO`       | L1: override prezzo non autorizzato                                                                                                        |
 | `E_VENDITE_PRICING_FAILED`                | Errore generico pricing (envelope, dettaglio in `detail`)                                                                                  |
 | `E_BOM_MODIFICA_VIETATA`                  | Tentata modifica/eliminazione campo struttura BoM. Risolvere con pattern chiudi+inserisci nuova versione (vedi §5.3)                       |
