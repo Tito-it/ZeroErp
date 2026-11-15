@@ -18,7 +18,11 @@ import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useLookup } from '../../core/composables/useLookup'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { lookupFormeGiuridiche } from '../../core/apiCore'
-import { lookupProvince } from '../api/anagrafiche'
+import { lookupProvince, getMotiviCambioNatura, deleteSoggettoDatiSocietari } from '../api/anagrafiche'
+import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useDebouncedAction } from '../../core/composables/useDebouncedAction'
+import { motivoBloccoRiga, bloccoAttivo } from '../../core/utils/bloccoMotivo'
+import { campiDaMotivi, fraseMotivo } from '../composables/cambioNatura'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
@@ -34,8 +38,10 @@ import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
+const { confirmAction } = useConfirmAction()
 const isReadonly = useInjectReadonly()
 const store = useSoggettiStore()
 const { execute, loading, campiErrati } = useApiHandler()
@@ -92,15 +98,81 @@ const ruoliAssegnati = ref([])
 
 // Fase 6 B3+B4: meta-info edit dal backend (tipi modificabili e campi
 // immutabili). Niente piu' regole ricostruite client-side.
-// Sentinel null = "non popolato" (create mode); array = popolato dal
-// backend sul detail (anche [] valido). Distinzione necessaria per il
-// fallback compat in SoggettoForm.
-const tipiModificabiliIds = ref(null)
+// Le nature proponibili in modifica, dal DB (K-3): `null` in creazione.
+const natureProponibili = ref(null)
 const nonEditableFields = ref(null)
 // In modifica: la natura com'era all'apertura (la PATCH la manda solo se
 // cambia) e se il soggetto ha gia' la riga dei dati societari.
 const tipoCaricatoId = ref(null)
 const haDatiSocietari = ref(false)
+// La terna di «Elimina i dati societari» dal dettaglio (K-5, famiglia 1 di
+// api.md §Capability di riga): `can_elimina_dati_societari` + motivo.
+const capabilityElimina = ref({})
+const PREFISSO_ELIMINA = 'can_elimina_dati_societari'
+const capabilityEliminaDa = (data) => Object.fromEntries(
+  ['', '_reason', '_reason_key', '_dettaglio'].map(s => [PREFISSO_ELIMINA + s, data?.[PREFISSO_ELIMINA + s] ?? null]),
+)
+
+// ── I motivi del cambio di natura (K-4/K-7 di brief-db-cambio-natura-soggetto)
+// ⭐ TUTTI i motivi per cui la natura scelta non passerebbe, coi valori che il
+//    form sta per mandare: l'endpoint chiama la stessa check del guard. Il
+//    rifiuto del PATCH ne porta solo il primo (l'elenco non viaggia
+//    nell'eccezione del DB), quindi l'elenco si chiede qui.
+// ⚠️ Si chiede solo in modifica e solo se la natura e' cambiata: con la natura
+//    di partenza la check non ha niente da dire.
+const motiviCambio = ref([])
+// ⚠️ La richiesta dei motivi e' fallita: l'elenco vuoto NON vuol dire «il
+//    cambio passa», e lo si dice (decisione di Tid, 2026-11-15). Il guard al
+//    salvataggio resta la difesa: rifiuta col primo motivo.
+const motiviNonVerificati = ref(false)
+const motiviFv = useFetchVersion()
+async function caricaMotiviCambio() {
+  const f = soggetto.form
+  if (!isEdit.value || !props.itemId || !f.tipo_soggetto_dettaglio_id
+    || f.tipo_soggetto_dettaglio_id === tipoCaricatoId.value) {
+    motiviFv.invalidate()
+    motiviCambio.value = []
+    motiviNonVerificati.value = false
+    return
+  }
+  const mia = motiviFv.tag()
+  const corpo = {
+    tipo_soggetto_dettaglio_id: f.tipo_soggetto_dettaglio_id,
+    partita_iva: f.partita_iva?.trim() || null,
+  }
+  // I flag solo se valorizzati, come nel PATCH: assenti = il valore salvato.
+  if (f.cliente_pa) corpo.cliente_pa = f.cliente_pa
+  if (f.split_payment) corpo.split_payment = f.split_payment
+  try {
+    const res = await getMotiviCambioNatura(props.itemId, corpo)
+    if (!motiviFv.isCurrent(mia)) return
+    motiviCambio.value = res?.data?.data?.motivi ?? []
+    motiviNonVerificati.value = false
+  } catch {
+    if (!motiviFv.isCurrent(mia)) return
+    motiviCambio.value = []
+    motiviNonVerificati.value = true
+  }
+}
+const { run: caricaMotiviPresto, flush: caricaMotiviOra, cancel: annullaMotivi } =
+  useDebouncedAction(caricaMotiviCambio, { detailed: true })
+const frasiMotivi = computed(() => motiviCambio.value.map(m => fraseMotivo(t, te, m)))
+// I campi della riga che i motivi chiedono di correggere: si mostrano e si
+// accendono anche se la natura scelta non li prevede (K-6: niente piu' flag
+// portato a `N` di nascosto, lo porta l'operatore).
+const campiMotivi = computed(() => campiDaMotivi(motiviCambio.value))
+const mostraClientePa = computed(() =>
+  soggetto.showClientePa.value || campiMotivi.value.has('cliente_pa'))
+const mostraSplitPayment = computed(() =>
+  soggetto.showSplitPayment.value || campiMotivi.value.has('split_payment'))
+// ⚠️ Anche la P.IVA: verso una natura senza P.IVA il campo sparirebbe
+//    (`piva_obbligatoria`), mentre il motivo chiede proprio di svuotarlo — e il
+//    PATCH rimanderebbe il valore che non si vede.
+const mostraPartitaIva = computed(() =>
+  soggetto.showPartitaIva.value || campiMotivi.value.has('partita_iva'))
+// La P.IVA indicata da un motivo si accende nel form come un campo errato.
+const campiErratiForm = computed(() => [...campiErrati.value, ...campiMotivi.value])
+const campoInvalido = (campo) => campiErrati.value.includes(campo) || campiMotivi.value.has(campo)
 
 // Drawer indirizzi, contatti e conti bancari (edit mode)
 const indirizziDrawerVisible = ref(false)
@@ -258,7 +330,10 @@ function populateFromDetail(data) {
   ruoliAssegnati.value = data.ruoli || []
   // Meta-info edit (Fase 6 B3+B4): sempre array dopo populate (anche
   // []), distingue dal sentinel null usato in create mode.
-  tipiModificabiliIds.value = data.tipi_modificabili_ids ?? null
+  natureProponibili.value = data.nature_proponibili ?? []
+  capabilityElimina.value = capabilityEliminaDa(data)
+  motiviCambio.value = []
+  motiviNonVerificati.value = false
   nonEditableFields.value = data.non_editable_fields ?? []
   titoliIvaRiepilogo.value = data.titoli_iva || []
   // Indirizzi, contatti e conti bancari riepilogo
@@ -305,7 +380,7 @@ async function onContiBancariSaved() {
 // Carica dati quando il drawer si apre.
 // Quando si chiude, invalida versioni async per scartare risposte in volo.
 watch(() => props.visible, async (val) => {
-  if (!val) { fgFv.invalidate(); return }
+  if (!val) { fgFv.invalidate(); motiviFv.invalidate(); annullaMotivi(); return }
 
   if (isEdit.value && props.itemId) {
     try {
@@ -323,8 +398,10 @@ watch(() => props.visible, async (val) => {
     datiSocietari.reset()
     comuneNascitaItem.value = null
     ruoliAssegnati.value = []
-    // Reset sentinel a null in create — fallback compat in SoggettoForm
-    tipiModificabiliIds.value = null
+    natureProponibili.value = null
+    capabilityElimina.value = {}
+    motiviCambio.value = []
+    motiviNonVerificati.value = false
     nonEditableFields.value = null
     tipoCaricatoId.value = null
     haDatiSocietari.value = false
@@ -350,6 +427,68 @@ watch(() => props.visible, async (val) => {
   await nextTick()
   fissa()
 })
+
+// I motivi seguono cio' che la check legge: natura, P.IVA e flag del form.
+watch(
+  () => [
+    soggetto.form.tipo_soggetto_dettaglio_id, soggetto.form.partita_iva,
+    soggetto.form.cliente_pa, soggetto.form.split_payment,
+  ],
+  () => { if (props.visible && isEdit.value) caricaMotiviPresto() },
+)
+
+// ── «Elimina i dati societari» (K-5/K-8): la strada per una natura che non li
+//    prevede, separata dal cambio. Spenta col motivo quando la natura attuale
+//    li richiede; la riga eliminata resta nello storico.
+const eliminaSpenta = computed(() =>
+  bloccoAttivo(capabilityElimina.value, PREFISSO_ELIMINA, PREFISSO_ELIMINA))
+const motivoElimina = computed(() =>
+  motivoBloccoRiga(t, te, capabilityElimina.value, PREFISSO_ELIMINA))
+// ⚠️ La sezione si mostra anche quando la natura SCELTA non prevede i dati
+//    societari ma il soggetto li ha: e' proprio lì che servono da togliere.
+const mostraSezioneDatiSocietari = computed(() =>
+  soggetto.showDatiSocietari.value || (isEdit.value && haDatiSocietari.value))
+
+function chiediEliminaDatiSocietari() {
+  confirmAction({
+    header: t('anagrafiche.soggetti.elimina_dati_societari'),
+    message: t('anagrafiche.soggetti.elimina_dati_societari_conferma'),
+    danger: true,
+    onAccept: eliminaDatiSocietari,
+  })
+}
+
+async function eliminaDatiSocietari() {
+  if (!props.itemId) return
+  const result = await execute(
+    () => deleteSoggettoDatiSocietari(props.itemId),
+    { successMessage: t('anagrafiche.soggetti.dati_societari_eliminati') },
+  )
+  if (result === null) return
+  // Si rilegge il dettaglio: la sezione, la sua capability e le nature
+  // proponibili cambiano tutte insieme. ⚠️ Niente populate: perderebbe le
+  // modifiche non salvate del form (la natura scelta compresa), e qui si
+  // aggiornano solo i pezzi che l'eliminazione cambia.
+  // L'eliminazione e' gia' salvata: se il form non aveva altre modifiche, la
+  // sezione svuotata non deve farlo sembrare «modificato» alla chiusura.
+  const eraModificato = modificato.value
+  try {
+    const data = await store.fetchDetail(props.itemId)
+    haDatiSocietari.value = !!data.dati_societari
+    if (!data.dati_societari) {
+      datiSocietari.reset()
+      formaDelDettaglio.value = null
+    }
+    natureProponibili.value = data.nature_proponibili ?? []
+    capabilityElimina.value = capabilityEliminaDa(data)
+    if (!eraModificato) {
+      await nextTick()
+      fissa()
+    }
+  } catch { /* il dettaglio si rilegge alla prossima apertura */ }
+  emit('saved')
+  caricaMotiviOra()
+}
 
 // Scopo: Validazione aggregata di tutti i building block.
 const canSave = computed(() => {
@@ -391,12 +530,13 @@ async function handleSave() {
     // ⛔ Si spediscono SOLO se valorizzati: un flag che il dettaglio non ha
     //    portato resta `null`, e mandarlo scriverebbe un valore che nessuno ha
     //    letto ne' scelto. Chiave assente = colonna non toccata.
-    // ⭐ Un flag che la natura NON ammette (campo nascosto) parte 'N': e' la
-    //    regola del DB (A-3, «chi cambia natura porta il flag a N nella stessa
-    //    scrittura»), non un valore inventato. Un 'S' rimasto da prima del
-    //    guard verrebbe altrimenti rifiutato su un campo che non si vede.
-    if (f.split_payment) payload.split_payment = soggetto.showSplitPayment.value ? f.split_payment : 'N'
-    if (f.cliente_pa) payload.cliente_pa = soggetto.showClientePa.value ? f.cliente_pa : 'N'
+    // ⛔ Il valore che l'operatore vede, mai uno scelto di nascosto (K-6 di
+    //    brief-db-cambio-natura-soggetto, 2026-11-15). Fino a quel giorno un
+    //    flag che la natura non ammette partiva 'N' in silenzio: era la
+    //    «pulizia» che il modello non fa piu'. Se il DB rifiuta col motivo del
+    //    flag, il campo si mostra (`mostraClientePa`) e lo porta a No lui.
+    if (f.split_payment) payload.split_payment = f.split_payment
+    if (f.cliente_pa) payload.cliente_pa = f.cliente_pa
     // La natura, solo se cambiata: i guard la confrontano con flag, forma e
     // titoli IVA (brief-db-dati-fiscali-e-societari-del-soggetto §8.3).
     if (f.tipo_soggetto_dettaglio_id !== tipoCaricatoId.value) {
@@ -420,6 +560,9 @@ async function handleSave() {
     if (result !== null) {
       emit('saved')
       emit('update:visible', false)
+    } else if (payload.tipo_soggetto_dettaglio_id != null) {
+      // Il rifiuto porta il primo motivo: l'elenco intero si rilegge subito.
+      caricaMotiviOra()
     }
   } else {
     const payload = {
@@ -490,19 +633,32 @@ async function handleSave() {
     <!-- Sezione: Dati soggetto -->
     <SoggettoForm
       :form="soggetto.form"
-      :campi-errati="campiErrati"
+      :campi-errati="campiErratiForm"
       :tipi-soggetto="soggetto.tipiSoggetto"
       :is-p-f="soggetto.isPF.value"
       :show-sesso="soggetto.showSesso.value"
       :require-sesso="soggetto.requireSesso.value"
-      :show-partita-iva="soggetto.showPartitaIva.value"
+      :show-partita-iva="mostraPartitaIva"
       :is-edit="isEdit"
       :disabled="false"
       :tipi-ammessi-ids="tipiAmmessiIds"
-      :tipi-modificabili-ids="tipiModificabiliIds"
+      :nature-proponibili="natureProponibili"
       :non-editable-fields="nonEditableFields"
       :comune-nascita-item="comuneNascitaItem"
     />
+
+    <!-- I motivi del cambio di natura, TUTTI (K-7): la stessa check del guard,
+         coi valori del form. Si tolgono a mano; quelli su un campo della riga
+         lo accendono qui sotto. -->
+    <Message v-if="isEdit && motiviNonVerificati" severity="warn" :closable="false">
+      {{ t('anagrafiche.soggetti.cambio_natura_motivi_non_verificati') }}
+    </Message>
+    <Message v-else-if="isEdit && frasiMotivi.length" severity="warn" :closable="false">
+      <div>{{ t('anagrafiche.soggetti.cambio_natura_motivi_titolo') }}</div>
+      <ul class="mt-025">
+        <li v-for="(frase, i) in frasiMotivi" :key="i">{{ frase }}</li>
+      </ul>
+    </Message>
 
     <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
     <template v-if="!isEdit">
@@ -569,11 +725,17 @@ async function handleSave() {
     </template>
 
     <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
-    <template v-if="soggetto.showDatiSocietari.value">
+    <template v-if="mostraSezioneDatiSocietari">
       <div class="app-drawer-section">
         <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
       </div>
+      <!-- La natura scelta non li prevede, ma il soggetto li ha: si dice, e
+           si offre di eliminarli (il cambio non li toglie da solo). -->
+      <div v-if="!soggetto.showDatiSocietari.value" class="app-text-muted">
+        {{ t('anagrafiche.soggetti.dati_societari_non_previsti') }}
+      </div>
       <DatiSocietariForm
+        v-else
         :form="datiSocietari.form"
         :campi-errati="campiErrati"
         :forme-giuridiche="formeGiuridicheOpzioni"
@@ -585,6 +747,19 @@ async function handleSave() {
         :required="soggetto.requireDatiSocietari.value"
         :disabled="false"
       />
+      <div v-if="isEdit && haDatiSocietari && !isReadonly">
+        <Button
+          :label="t('anagrafiche.soggetti.elimina_dati_societari')"
+          :icon="MANAGE_ICONS.DELETE"
+          text
+          size="small"
+          severity="danger"
+          class="app-escape mt-025"
+          :disabled="eliminaSpenta || loading"
+          @click="chiediEliminaDatiSocietari"
+        />
+        <small v-if="eliminaSpenta" class="app-field-hint">{{ motivoElimina }}</small>
+      </div>
     </template>
 
     <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
@@ -596,23 +771,26 @@ async function handleSave() {
     <!-- ⭐ Dal 2026-10-10 i due campi seguono la natura (`cliente_pa_ammesso`,
          `split_payment_ammesso`): la sezione c'e' solo se ne resta almeno uno
          (un privato o una ditta individuale non ne hanno nessuno). -->
-    <template v-if="isEdit && (soggetto.showClientePa.value || soggetto.showSplitPayment.value)">
+    <!-- ⚠️ Dal 2026-11-15 un campo si mostra anche quando la natura non lo
+         prevede ma un motivo del cambio lo indica (K-6): e' l'operatore a
+         portarlo a No, non il drawer di nascosto. -->
+    <template v-if="isEdit && (mostraClientePa || mostraSplitPayment)">
       <div class="app-drawer-section">
         <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
       </div>
       <div class="form-grid-2col">
-        <div v-if="soggetto.showClientePa.value" class="form-field">
+        <div v-if="mostraClientePa" class="form-field">
           <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
           <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
             option-label="label" option-value="value"
-            :invalid="campiErrati.includes('cliente_pa')"
+            :invalid="campoInvalido('cliente_pa')"
             :disabled="isReadonly" />
         </div>
-        <div v-if="soggetto.showSplitPayment.value" class="form-field">
+        <div v-if="mostraSplitPayment" class="form-field">
           <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
           <Select v-model="soggetto.form.split_payment" :options="paOptions"
             option-label="label" option-value="value"
-            :invalid="campiErrati.includes('split_payment')"
+            :invalid="campoInvalido('split_payment')"
             :disabled="isReadonly" />
         </div>
       </div>

@@ -102,6 +102,12 @@ _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
+# Il corpo dei motivi del cambio di natura: la natura proposta (obbligatoria) e
+# i tre campi della riga che la check legge. Gli stessi nomi del PATCH.
+_MOTIVI_CAMBIO_NATURA_KEYS: frozenset[str] = frozenset({
+    "tipo_soggetto_dettaglio_id", "partita_iva", "cliente_pa", "split_payment",
+})
+
 
 # Scopo: UN indirizzo nella forma che le madri del DB ricevono
 #        (`fn_crea_indirizzo_soggetto`, `fn_crea_indirizzi_ruolo`, e attraverso
@@ -216,7 +222,28 @@ class SoggettiService:
             soggetto_id,
         )
         soggetto["non_editable_fields"] = self._compute_non_editable_fields(soggetto)
+        # Le nature proponibili in modifica, dalla regola del DB (K-3 di
+        # brief-db-cambio-natura-soggetto): tutte, le non ammesse col motivo.
+        soggetto["nature_proponibili"] = self._repo.nature_proponibili(soggetto_id)
+        soggetto.update(self._capability_elimina_dati_societari(soggetto_id))
         return soggetto
+
+    # Scopo: La terna dell'azione «Elimina i dati societari» (famiglia 1 di
+    #        api.md §Capability di riga): il flag, il codice del primo motivo,
+    #        la sua chiave i18n e i parametri con nome della frase.
+    # ⛔ Il backend TRASPORTA: il motivo e' quello della check che il verbo
+    #    solleva (`fn_check_elimina_dati_societari`), mai ricalcolato qui.
+    # ⚠️ Con niente da eliminare la check risponde `[]`: l'azione e' «ammessa»
+    #    e la sezione vuota la nasconde da se' (non c'e' niente su cui farla).
+    def _capability_elimina_dati_societari(self, soggetto_id: str) -> dict[str, Any]:
+        motivi = self._repo.check_elimina_dati_societari(soggetto_id)
+        primo = motivi[0] if motivi else None
+        return {
+            "can_elimina_dati_societari": primo is None,
+            "can_elimina_dati_societari_reason": primo.get("codice") if primo else None,
+            "can_elimina_dati_societari_reason_key": primo.get("reason_key") if primo else None,
+            "can_elimina_dati_societari_dettaglio": primo.get("dettaglio") if primo else None,
+        }
 
     # Scopo: Computa la lista dei campi non modificabili per il soggetto in
     #        edit, tutta dal DB: il BB `compute_non_editable_fields` con il
@@ -347,6 +374,57 @@ class SoggettiService:
                     default_message=_MSG_REA_DUPLICATA,
                 )
         return {"updated": True}
+
+    # Scopo: I motivi per cui il soggetto non passerebbe alla natura proposta,
+    #        TUTTI e in ordine (K-4 di brief-db-cambio-natura-soggetto). Il
+    #        rifiuto del PATCH porta solo il primo: l'elenco completo non
+    #        viaggia nell'eccezione del DB (sta nel contesto di
+    #        `dbops.error_log`), e il drawer lo chiede qui (decisione di Tid,
+    #        2026-11-15: endpoint dei motivi, come `magazzino/righe/motivi/`).
+    # ⭐ E' la STESSA check del guard (`fn_check_cambio_natura_soggetto`), coi
+    #    valori proposti: cio' che si mostra e cio' che si rifiuta non possono
+    #    divergere.
+    # ⚠️ P.IVA e flag si leggono per PRESENZA, come nel PATCH: chiave assente =
+    #    il valore salvato, perche' e' quello che il guard vedrebbe se il
+    #    salvataggio non lo tocca.
+    def motivi_cambio_natura(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        _V.validate_allowed_keys(
+            payload, allowed=_MOTIVI_CAMBIO_NATURA_KEYS,
+            message="Payload dei motivi del cambio di natura non valido.",
+        )
+        dati = self._normalizza_flag_fiscali(payload)
+        tipo_id = _V.require_positive_int(dati, "tipo_soggetto_dettaglio_id")
+        # ⛔ Una natura inesistente la check la lascia passare (`[]`: «parla la
+        #    FK» del PATCH). Qui non c'e' una FK che parli, e `[]` direbbe «il
+        #    cambio passa» per un id che non esiste: si rifiuta col campo.
+        ErrorManager.require(
+            self._repo.get_natura_by_tipo_id(tipo_id) is not None,
+            code=E_ANAG_VALIDAZIONE, message="Tipo soggetto non valido.",
+            context={"field": "tipo_soggetto_dettaglio_id", "tipo_soggetto_dettaglio_id": tipo_id},
+        )
+        salvato = require_found(self._repo.get_soggetto(soggetto_id), "Soggetto non trovato.")
+        proposto = {
+            k: (dati[k] if k in dati else salvato.get(k))
+            for k in ("partita_iva", "cliente_pa", "split_payment")
+        }
+        motivi = self._repo.check_cambio_natura(
+            soggetto_id, tipo_soggetto_dettaglio_id=tipo_id, **proposto,
+        )
+        return {"motivi": motivi}
+
+    # Scopo: Elimina a mano i dati societari del soggetto (D-7 di
+    #        brief-db-cambio-natura-soggetto): la strada per una ditta che
+    #        diventa privato, separata dal cambio di natura. Il verbo del DB
+    #        rifiuta se la natura attuale li richiede
+    #        (`E_DATI_SOCIETARI_NON_ELIMINABILI`, 409).
+    #        Risultato: `{"eliminati": bool}`, falso = non c'era niente.
+    def elimina_dati_societari(self, soggetto_id: str) -> dict[str, Any]:
+        from django.db import transaction
+
+        self._require_soggetto_exists(soggetto_id)
+        with transaction.atomic():
+            eliminati = self._repo.elimina_dati_societari(soggetto_id)
+        return {"eliminati": eliminati}
 
     # Scopo: Valida la sezione `dati_societari` della PATCH e della creazione
     #        (contratto: un oggetto con le sole chiavi del verbo) e ne

@@ -58,6 +58,8 @@ from apps.anagrafiche.api.views_province import ProvinceDetailView, ProvinceLook
 from apps.anagrafiche.api.views_regioni import RegioniDetailView, RegioniLookupView, RegioniView
 from apps.anagrafiche.api.views_soggetti import (
     GeneraCFView,
+    SoggettoCambioNaturaMotiviView,
+    SoggettoDatiSocietariView,
     ValidaCFPIVAView,
     SoggettiContattiDetailView,
     SoggettiContattiView,
@@ -188,6 +190,8 @@ urlpatterns = [
     path("soggetti-ruoli/lookup-by-id/", SoggettiRuoliLookupByIdView.as_view(), name="anagrafiche-soggetti-ruoli-lookup-by-id"),
     path("soggetti/", SoggettiView.as_view(), name="anagrafiche-soggetti-list"),
     path("soggetti/<str:soggetto_id>/", SoggettiDetailView.as_view(), name="anagrafiche-soggetti-detail"),
+    path("soggetti/<str:soggetto_id>/cambio-natura/motivi/", SoggettoCambioNaturaMotiviView.as_view(), name="anagrafiche-soggetti-cambio-natura-motivi"),
+    path("soggetti/<str:soggetto_id>/dati-societari/", SoggettoDatiSocietariView.as_view(), name="anagrafiche-soggetti-dati-societari"),
     path("soggetti/<str:soggetto_id>/contatti/", SoggettiContattiView.as_view(), name="anagrafiche-soggetti-contatti"),
     path("soggetti/<str:soggetto_id>/contatti/<int:contatto_id>/", SoggettiContattiDetailView.as_view(), name="anagrafiche-soggetti-contatti-detail"),
     path("soggetti/<str:soggetto_id>/indirizzi/", SoggettiIndirizziView.as_view(), name="anagrafiche-soggetti-indirizzi"),

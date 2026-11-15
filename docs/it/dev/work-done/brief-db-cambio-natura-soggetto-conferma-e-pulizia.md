@@ -1,41 +1,41 @@
 # Brief DB — Cambio di natura del soggetto: conferma della perdita e pulizia dei dati non congrui
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-15
 
 ⚠️ **Il modello è cambiato il 2026-11-14 (§0, D-5 e D-6 di Tid):** il cambio di natura **non pulisce
 niente**. Rifiuta ed elenca i motivi, e il giro lo fa l'operatore a mano. Il titolo del file («conferma
 della perdita e pulizia») è quello d'origine e non si rinomina, per non rompere i rimandi.
 
-**Riparte: il BE/FE** con la richiesta del §6.0 (K-1 … K-8). Il DB è fatto: giri 1, 2 e 3 applicati e
-verdi. ⛔ K-1 (le dodici chiavi i18n) **sblocca il commit DB**, che `check-i18n-keys` rifiuta finché
-mancano.
+**Riparte: nessuno — brief chiuso e archiviato il 2026-11-15.** DB fatto e committato (giri 1-3,
+`da62f3a1d`); BE/FE fatto (K-1 … K-8, §6.0-bis), rivisto e provato in app da Tid. Resta il solo
+commit del lato BE/FE.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | FE | La chiave i18n `config.tipi_entita.ricevuta` in `it.json` e `en.json` | §0, «Richiesta al FE» | — |
+| 1 | ✅ FE | La chiave i18n `config.tipi_entita.ricevuta` in `it.json` e `en.json` (2026-11-15) | §0, «Richiesta al FE» | — |
 | 2 | Tid | ✅ Giro 1 applicato, pgTAP verdi (2026-11-14) | — | — |
 | 3 | Tid | ✅ pgTAP del giro 2 verdi come applicazione (2026-11-14) | — | — |
-| 3-bis | FE | Le dieci chiavi `cambio_natura_blocco` del giro 2 | §0, «Giro 2, fatto» | — |
+| 3-bis | ✅ FE | Le dieci chiavi `cambio_natura_blocco` del giro 2 (2026-11-15) | §0, «Giro 2, fatto» | — |
 | 3-ter | Tid | ✅ Giro 3 applicato, pgTAP verdi (2026-11-14) | — | — |
 | 3-quater | DB | ✅ Richiesta BE/FE scritta (§6.0) | — | — |
-| 4 | BE/FE | Le nature in modifica dalla regola DB, il pulsante o la natura spenti con i motivi, via il «flag nascosto a `N`» | §0 | 3 |
-| 5 | DB | Archiviazione in `work-done/` | — | 4 |
+| 4 | ✅ BE/FE | Le nature in modifica dalla regola DB, il pulsante o la natura spenti con i motivi, via il «flag nascosto a `N`» (2026-11-15, §6.0-bis) | §0 | 3 |
+| 5 | ✅ Tid | Archiviazione in `work-done/` (2026-11-15, su richiesta di Tid, dalla sessione BE) | — | 4 |
 
-Decisioni aperte di Tid: nessuna. Lavoro fatto da committare: i giri 1-3 (tredici changeSet, quattro
-CSV, tre pgTAP nuovi e tre riscritti) e questo brief; il commit aspetta le chiavi i18n del FE (K-1).
+Decisioni aperte di Tid: nessuna. Debito: nessuno. Lavoro fatto da committare: il lato BE/FE
+(§6.0-bis) e questo brief archiviato; i giri DB sono nel commit `da62f3a1d`.
 
 **Brief vicini verificati (2026-11-14):** nessuno sugli stessi oggetti.
-[brief-db-fornitore-privato-indirizzi](brief-db-fornitore-privato-indirizzi.md) tocca gli indirizzi
+[brief-db-fornitore-privato-indirizzi](../work-in-progress/brief-db-fornitore-privato-indirizzi.md) tocca gli indirizzi
 obbligatori del **ruolo** `FO`, non il cambio di natura; i residui del brief dati fiscali (registro dei
 residui aperti) sono complementari e non si sovrappongono.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-11.
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE in §6.
 > **Origine:** revisione del lato BE/FE di
-> [brief-db-dati-fiscali-e-societari-del-soggetto](../work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md)
+> [brief-db-dati-fiscali-e-societari-del-soggetto](brief-db-dati-fiscali-e-societari-del-soggetto.md)
 > (§9), e la decisione di Tid del 2026-10-11: «andrebbe richiesta la conferma di perdita dati e
 > poi si puliscono quelli non congrui».
-> **Stato:** 🔵 da fare. ⚠️ Modello rivisto da Tid il 2026-11-14 (§0): le decisioni di pulizia del
+> **Stato:** ✅ chiuso il 2026-11-15. ⚠️ Modello rivisto da Tid il 2026-11-14 (§0): le decisioni di pulizia del
 > §3 (D-0, D-1, D-3, D-4) e i §4.2-4.3, §5, §6 sono **superati**. Nessuna domanda aperta.
 
 ## 0. Il modello rivisto (Tid, 2026-11-14) — ⭐ si parte da qui
@@ -422,6 +422,37 @@ motivi, e l'operatore li toglie a mano. Ciò che il BE/FE deve fare, in elenco c
 (`E_SOGGETTO_ID_FISCALE_IMMUTABILE`); con documenti intestati il cambio non si fa per nessuno (D-6).
 I pezzi di §6 qui sotto restano come storia.
 
+### 6.0-bis Esito BE/FE (sessione BE, 2026-11-15)
+
+K-1 … K-8 fatti, da provare in app e da committare. Una sola deviazione dalla lettera, decisa da Tid:
+
+* **K-4 — l'elenco dei motivi non arriva dal rifiuto, ma da un endpoint.** Il contesto che
+  `script.fn_raise_primo_motivo_se_presente` compone (con `motivi`) finisce in `dbops.error_log`, non
+  nell'eccezione: PostgreSQL consegna al BE codice, messaggio, campo e bersaglio, e l'envelope d'errore
+  non ha un canale per una lista. *Decisione di Tid (2026-11-15):* `POST
+  soggetti/<id>/cambio-natura/motivi/` (lettura in POST come `valida-cf-piva`, per non mettere la P.IVA
+  nell'URL), che chiama `fn_check_cambio_natura_soggetto` coi valori proposti — chiave assente = il
+  valore salvato. Il PATCH resta un `UPDATE` diretto giudicato dal guard; il drawer chiede i motivi al
+  cambio della natura e dopo un rifiuto. Stesso schema di `magazzino/righe/motivi/`.
+* **K-3:** `get_soggetto` porta `nature_proponibili` (da `fn_nature_proponibili_soggetto`);
+  `tipi_modificabili_ids` è ritirata con il ripiego sulla natura del form. Nella tendina una natura è
+  **spenta** solo se ha un motivo che non si toglie dal form; i motivi su `partita_iva`, `cliente_pa`,
+  `split_payment` la lasciano scegliere e accendono il campo.
+* **K-5/K-8:** `DELETE soggetti/<id>/dati-societari/` sul verbo; nel dettaglio la terna
+  `can_elimina_dati_societari` (+ `_reason`, `_reason_key`, `_dettaglio`, famiglia 1 di api.md). La
+  sezione dei dati societari resta visibile quando la natura scelta non li prevede ma il soggetto li ha.
+* **K-2:** policy rigenerate (sette codici, nessuna classe spostata) e i sette messaggi di ripiego.
+* Prove: `apps/anagrafiche/tests/db/test_cambio_natura_soggetto_db.py` (7, DB vero),
+  `frontend/src/anagrafiche/composables/cambioNatura.spec.js` (10).
+* *Revisione (2026-11-15):* l'endpoint dei motivi rifiuta una natura inesistente (400 col campo):
+  la check risponde `[]` («parla la FK» del PATCH), che lì avrebbe detto «il cambio passa». Nel
+  drawer il campo P.IVA si mostra anche quando la natura scelta non ne ha ma un motivo lo indica
+  (come i flag, K-6); e un motivo su un campo che chi agisce non può scrivere (`non_editable_fields`:
+  la P.IVA la svuota solo un amministratore) spegne la natura come gli altri. Se la richiesta dei
+  motivi fallisce, il drawer lo dice invece di mostrare un elenco vuoto (decisione di Tid,
+  2026-11-15); l'avviso alle altre tab dopo l'eliminazione dei dati societari resta com'è per tutte
+  le sotto-risorse del soggetto (decisione di Tid, 2026-11-15).
+
 > ⚠️ *Superate il 2026-11-14 (§0):* niente `conferma_pulizia` e niente dialog di conferma. Al loro
 > posto: le nature in modifica dalla regola DB dei cambi ammessi, i motivi mostrati all'operatore, e il
 > «flag nascosto a `N`» che sparisce. Il dettaglio si riscrive quando il DB è fatto.
@@ -557,3 +588,4 @@ I pezzi di §6 qui sotto restano come storia.
 | 2026-11-14 | Giro 3 scritto: `20261114-69` (check e verbo), codice `E_DATI_SOCIETARI_NON_ELIMINABILI` (frase 1490), `test-fn-elimina-dati-societari-v1.sql`. Sullo scratch 10/12: il 5 aspetta la frase dal CSV (atteso); il 10 ha trovato che lo storico scrive solo con `storicizza = true`: aperta Q-10, corretto D-7. Da applicare dopo Q-10. |
 | 2026-11-14 | Q-10 decisa (D-12). Il verbo non può accendere il flag (il guard del tipo soggetto rifiuta l'UPDATE della riga incongrua): la tabella entra nel registro dello storico (`-70`, `-71`). Trovato: il CSV del registro non è un mirror. Giro 3 provato, 13/14 (il 14° aspetta la frase). Da applicare. |
 | 2026-11-14 | Tid: giro 3 applicato, pgTAP verdi. Scritta la richiesta BE/FE (§6.0, K-1 … K-8). Il lavoro DB del brief è completo. |
+| 2026-11-15 | Sessione BE: K-1 … K-8 fatti (§6.0-bis), con la decisione di Tid sull'endpoint dei motivi (K-4). Revisione: natura inesistente rifiutata dall'endpoint, P.IVA visibile quando un motivo la indica, campi bloccati che spengono la natura, avviso se i motivi non si leggono. Prova in app di Tid riuscita. Brief chiuso e archiviato su richiesta di Tid; nessun debito. |
