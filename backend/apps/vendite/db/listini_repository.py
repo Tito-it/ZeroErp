@@ -1014,7 +1014,7 @@ class ListiniRepository:
         *,
         dry_run: bool = False,
     ) -> tuple[int, list[dict[str, Any]]]:
-        params = {
+        params: dict[str, Any] = {
             "ver_id": versione_id,
             "pct": variazione_pct,
             "dec": arrotondamento_decimali,

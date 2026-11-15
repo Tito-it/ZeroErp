@@ -1,6 +1,6 @@
 # Qualità di backend e frontend — indicatori e lezioni
 
-> **Ultima rilettura**: 23 ottobre 2026
+> **Ultima rilettura**: 15 novembre 2026 (la precedente: 23 ottobre 2026)
 >
 > **Destinatari**: chi sviluppa su backend o frontend, e chi ogni tanto si chiede *«stiamo
 > lavorando bene?»* e vuole una risposta che non sia un'impressione.
@@ -79,41 +79,65 @@ Lo script legge **solo** il repo (niente DB, niente rete, un paio di secondi). `
 guard e la suite hanno già un cancello in CI: qui si legge ciò che quei cancelli lasciano nei
 registri, non si rilanciano.
 
-La colonna «23-10» è la lettura di quel giorno. Si **sovrascrive** a ogni rilettura: la storia
+La colonna «15-11» è la lettura di quel giorno. Si **sovrascrive** a ogni rilettura: la storia
 sta in git.
 
 ### Frontend
 
-| Indicatore | Verso | Chi lo presidia | 23-10 |
+| Indicatore | Verso | Chi lo presidia | 15-11 |
 | --- | --- | --- | --- |
-| file `.spec.js` / col DOM | ↑ | `vitest` in `ci-frontend` | 140 / 53 |
-| guard in CI (`guard:*`) | ↑ quando nasce una regola | `npm run guards` | 13 |
-| `DataTable` grezze / senza motivazione | ↓ | `check-datatable-baseline.mjs`, a cricchetto | 28 / 9 |
-| agganci al DOM di PrimeVue (`.p-*`, `data-pc-*`) fuori dalle sedi / file | ↓ | `check-classi-interne-baseline.mjs`, a cricchetto (dal 2026-11-14) | — |
+| file `.spec.js` / col DOM | ↑ | `vitest` in `ci-frontend` | 184 / 75 |
+| guard in CI (`guard:*`) | ↑ quando nasce una regola | `npm run guards` | 15 |
+| `DataTable` grezze / senza motivazione | ↓ | `check-datatable-baseline.mjs`, a cricchetto | 17 / 0 |
+| agganci al DOM di PrimeVue (`.p-*`, `data-pc-*`) fuori dalle sedi / file | ↓ | `check-classi-interne-baseline.mjs`, a cricchetto (dal 2026-11-14) | 13 / 9 |
 | filtri di lista scritti a mano | = 0 | `check-filtri-lista.mjs` | 0 |
-| file con `<ListaConfigurabile>` / `<DrawerTabLista>` | colore: dice quanto è usato il BB | — | 75 / 24 |
+| file con `<ListaConfigurabile>` / `<DrawerTabLista>` | colore: dice quanto è usato il BB | — | 77 / 27 |
 | `axios` fuori da `core/api.js` · `v-html` · `console.log` | = 0 | `check-api-componenti.mjs`, lint | 0 · 0 · 0 |
-| chiavi i18n / in una sola lingua | = 0 la seconda | `check_i18n_keys.py`, pre-commit e CI | 5.819 / 0 |
-| `.vue` / con `useI18n` | colore | — | 458 / 375 |
+| chiavi i18n / in una sola lingua | = 0 la seconda | `check_i18n_keys.py`, pre-commit e CI | 5.971 / 0 |
+| `.vue` / con `useI18n` | colore | — | 465 / 382 |
 
 ### Backend
 
-| Indicatore | Verso | Chi lo presidia | 23-10 |
+| Indicatore | Verso | Chi lo presidia | 15-11 |
 | --- | --- | --- | --- |
 | rilievi `mypy` nel registro | = 0 | `check_mypy_baseline.py` in `ci-validate` | 0 |
-| codici errore a catalogo / ritirati / vivi | colore; lo zero che conta è quello del test | `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | 1.126 / 120 / 1.006 |
-| messaggi d'errore `it` / `en` | ↑ la seconda | — (il catalogo a monte è monolingue) | 1.120 / 2 |
-| view su `DomainAPIView` / `AdminAPIView` / `APIView` nudo | `APIView` nudo = solo pre-autenticazione | revisione | 505 / 89 / 8 |
+| codici errore a catalogo / ritirati / vivi | colore; lo zero che conta è quello del test | `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` | 1.236 / 131 / 1.105 |
+| messaggi d'errore `it` / `en` | ↑ la seconda | — (il catalogo a monte è monolingue) | 1.230 / 4 |
+| view su `DomainAPIView` / `AdminAPIView` / `APIView` nudo | `APIView` nudo = solo pre-autenticazione | revisione | 508 / 90 / 8 |
 | sottoclassi di `PortaleAPIView` / `ShopAPIView` | cresce col cantiere portali | — | 1 / 0 |
-| righe `skip_area_check = True` | si **legge**, non si conta | `test_skip_area_check_registro.py` | 74 |
-| `def` con `# Scopo:` sopra / `def` | ↑ fino all'uguale | — ⚠️ nessun presidio | 3.978 / 4.593 |
-| file di test / con mock / sul DB vero | ↑ il terzo | `ZEROERP_TEST_DB_E2E=1` in CI | 662 / 393 / 145 |
-| smoke non-verdi noti / smoke | ↓ il primo | `smoke-baseline.sh`, ogni notte (`smoke_notturno`) | 2 / 51 |
+| righe `skip_area_check = True` | si **legge**, non si conta | `test_skip_area_check_registro.py` | 75 |
+| `def` con `# Scopo:` sopra / `def` | ↑ fino all'uguale | — ⚠️ nessun presidio | 4.051 / 4.675 |
+| file di test / con mock / sul DB vero | ↑ il terzo | `ZEROERP_TEST_DB_E2E=1` in CI | 731 / 413 / 195 |
+| smoke non-verdi noti / smoke | ↓ il primo | `smoke-baseline.sh`, ogni notte (`smoke_notturno`) | 0 / 52 |
 
 ⚠️ **`# Scopo:`, il 2026-10-23.** La lettura zero scriveva «99%» (3.809 su 3.815, il 09-09):
 contava i commenti nel file, compresi quelli sulle classi. Contando per `def`, come chiede
 [api.md](api.md) («prima di ogni `def`»), sono **3.978 su 4.593**. Non è un peggioramento: è
-la prima misura giusta. È anche l'unico indicatore della tabella senza presidio.
+la prima misura giusta. È anche l'unico indicatore della tabella senza presidio. Il
+2026-11-15 sono **4.051 su 4.675** (86,7%, fermo): degli 82 `def` nuovi, 9 sono nati senza.
+
+⚠️ **`skip_area_check`, il 2026-11-15.** Il solo nato dal 23-10 è `LookupAzioniRigaView`
+([views_lookup.py](../../../backend/apps/core/api/views_lookup.py), 2026-10-27): serve il
+registro `config.azioni_riga` alle liste di ogni documento. È configurazione, non dato di
+business, e il motivo è scritto nella docstring.
+
+### Fuori dallo script: la copertura della doc API
+
+Lo script legge solo file; questa misura chiede l'URLconf, quindi Django avviato (non il DB):
+
+```bash
+cd backend && ./manage-env.sh copertura_doc_api              # per area
+cd backend && ./manage-env.sh copertura_doc_api --dettaglio  # le rotte scoperte, una per una
+```
+
+| Indicatore | Verso | Chi lo presidia | 15-11 |
+| --- | --- | --- | --- |
+| rotte documentate / rotte · scoperte · fantasmi | = 0 le ultime due | ⚠️ nessun cancello: `test_copertura_doc_api.py` prova la **misura**, non lo zero | 727 / 731 · 4 · 0 |
+
+⚠️ **Il 2026-11-15.** Le quattro rotte scoperte sono tutte di `anagrafiche`, nate coi due giri
+BE/FE dello stesso giorno (copia indirizzo, dati societari, motivi del cambio natura). La
+scorecard del 23-10 scriveva «presidiata (722/722)»: il presidio c'è, ma sulla correttezza del
+conto. Che il conto resti a zero non lo impedisce niente.
 
 ### Che cosa non si misura, e perché
 
@@ -127,26 +151,26 @@ la prima misura giusta. È anche l'unico indicatore della tabella senza presidio
 
 ---
 
-## 3. La scorecard pesata — rilettura del 2026-10-23
+## 3. La scorecard pesata — rilettura del 2026-11-15
 
 Il **peso** è la conseguenza di un difetto nell'area. Un voto che si muove dice il suo perché;
-uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura precedente.
+uno fermo dice che cosa lo tiene fermo. «Era» è il voto della rilettura precedente (2026-10-23).
 
 | Area | Peso | Voto | Era | Che cosa lo tiene dov'è |
 | --- | --- | --- | --- | --- |
-| Catena di verifica — frontend | 🔴 alto | **7,5** | 7 | Cancello in CI, test di componente diventati la norma, `npm audit`. Manca la prova del percorso a video (end-to-end) e una misura di copertura |
-| Analisi statica — backend | 🔴 alto | **8,5** | 6,5 | `ruff` e `mypy` a registro zero con cancello. `E`/`B` di `ruff` spenti per scelta scritta, `mypy` non `strict` |
-| Catena di verifica — backend | 🔴 alto | **8,5** | 8 | Cancello duro, `check --deploy` completo, smoke ogni notte, test sul DB vero in crescita. Suite in maggioranza mockata; gli smoke non sono un cancello prima del merge |
-| Contratto API pubblicato | 🟠 medio | **9,5** | 9 | Schema OpenAPI a zero rilievi con cricchetto; copertura della doc API presidiata (722/722). Aperti al team DB i tre difetti dell'idempotenza forte ([brief](work-done/brief-be-verifica-documentazione-api.md) §D5-D7) |
-| Contratto d'errore — lato backend | 🟠 medio | **9** | 9 | Zero codici vivi senza ripiego. Un codice con la classe sbagliata e la `soluzione` che non arriva per gli errori sollevati in Python (stesso brief, §D1 e §D4) |
+| Catena di verifica — frontend | 🔴 alto | **8** | 7,5 | Cancello in CI, `npm audit`; i test di componente sono saliti a 184 (75 col DOM), i guard a 15. Manca la prova del percorso a video (end-to-end) e una misura di copertura |
+| Analisi statica — backend | 🔴 alto | **8,5** | 8,5 | `ruff` e `mypy` a registro zero con cancello. `E`/`B` di `ruff` spenti per scelta scritta, `mypy` non `strict` |
+| Catena di verifica — backend | 🔴 alto | **8,5** | 8,5 | Cancello duro, `check --deploy` completo, smoke ogni notte e tutti verdi, test sul DB vero da 145 a 195. Suite in maggioranza mockata; gli smoke non sono un cancello prima del merge |
+| Contratto API pubblicato | 🟠 medio | **9** | 9,5 | Schema OpenAPI a zero rilievi con cricchetto; i difetti dell'idempotenza forte sono chiusi ([brief](work-done/brief-be-verifica-documentazione-api.md) §D5-D7). Scende perché la copertura della doc API è a 727/731 e nessun cancello la tiene a zero (§2, «Fuori dallo script») |
+| Contratto d'errore — lato backend | 🟠 medio | **9** | 9 | Zero codici vivi senza ripiego; la classe sbagliata di §D1 è chiusa. La `soluzione` del catalogo non arriva per gli errori sollevati in Python: scelta di disegno BE ancora aperta (stesso brief, §D4) |
 | Contratto d'errore — arrivo a video | 🟠 medio | **8** | 8 | `fields`, `targets`, `hint` a video. `notify.error` a mano resta fuori |
-| Perimetro e permessi (applicativo) | 🟠 medio | **8** | 7,5 | Catena unica, fail-closed; letture con lo skip lette una per una. Il controllo nel corpo è invisibile al presidio; la chiave d'idempotenza non è legata a utente ed endpoint |
+| Perimetro e permessi (applicativo) | 🟠 medio | **8,5** | 8 | Catena unica, fail-closed; letture con lo skip lette una per una (l'unico nuovo, §2, è giusto). La chiave d'idempotenza è legata a utente ed endpoint (§D7). Il controllo nel corpo resta invisibile al presidio |
 | Correttezza dei contratti di lista | 🟠 medio | **8** | 8 | `troncato` presidiato sul DB vero. Nessun cancello sui `count: len()` senza `LIMIT` |
 | Simmetria del dominio | 🟠 medio | **non votata** | — | BE/FE di `acquisti`/`magazzino` indietro sul DB è l'ordine di costruzione scelto, non un difetto. Si presidia la regola: *ogni decisione su `vendite` vale per `acquisti`* |
-| Building block — frontend | 🟡 basso | **9** | 9 | Un solo punto HTTP, 13 guard. Le `DataTable` senza motivazione aspettano decisioni nel [piano PrimeVue 5](work-in-progress/piano-migrazione-primevue-5.md) |
-| Multilingua | 🟡 basso | **9** | 9 | Parità delle chiavi presidiata. Il catalogo dei messaggi a monte è monolingue |
-| Gestione del debito | 🟡 basso | **8,5** | 8 | Ogni registro ha un verso; quello degli smoke è sceso davvero. Le `DataTable` ferme dal 06-10; `# Scopo:` senza presidio |
-| Documentazione di contesto | 🟡 basso | **9** | 9 | Copertura della doc API presidiata. Un numero di questo stesso documento era sbagliato per metodo (`# Scopo:`, §2) |
+| Building block — frontend | 🟡 basso | **9** | 9 | Un solo punto HTTP, 15 guard; le `DataTable` senza motivazione sono a zero. Nuovo registro a cricchetto degli agganci al DOM di PrimeVue (13 in 9 file), legato al [piano PrimeVue 5](work-in-progress/piano-migrazione-primevue-5.md) |
+| Multilingua | 🟡 basso | **9** | 9 | Parità delle chiavi presidiata. Il catalogo dei messaggi a monte è monolingue (4 messaggi `en` su 1.230) |
+| Gestione del debito | 🟡 basso | **9** | 8,5 | Ogni registro ha un verso, e due sono arrivati in fondo: `DataTable` senza motivazione e smoke non-verdi a zero. `# Scopo:` resta senza presidio e non sale |
+| Documentazione di contesto | 🟡 basso | **8,5** | 9 | Questo documento diceva «copertura presidiata» per un presidio che prova il conto, non lo zero; quattro rotte nuove sono nate senza pagina |
 
 ---
 
