@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from django.db import connection, transaction
@@ -237,7 +237,14 @@ class DateConsegnaRigheDbTests(unittest.TestCase):
                     cur.execute("SELECT * FROM dbops.fn_pgtap_crea_preventivo('date consegna righe db')")
                     prev = row_to_dict(cur)
                     assert prev is not None
-                    scritta = date(2026, 11, 15)
+                    # ⚠️ Le date partono dalla DATA DEL PREVENTIVO, che il builder
+                    #    prende dalla data operativa: una data fissa diventa
+                    #    «anteriore al documento» appena il calendario la supera
+                    #    (E_DOC_RIGA_DATA_CONSEGNA_ANTERIORE, CI del 2026-11-15).
+                    cur.execute("SELECT data FROM vendite.preventivi WHERE id = %s",
+                                [prev["preventivo_id"]])
+                    data_doc = cur.fetchone()[0]
+                    scritta = data_doc
                     righe = []
                     for nr, data_richiesta in ((1, None), (2, scritta)):
                         cur.execute("""
@@ -249,7 +256,7 @@ class DateConsegnaRigheDbTests(unittest.TestCase):
                         """, [prev["preventivo_id"], mondo["articolo_id"], f"Riga {nr}",
                               mondo["iva_id"], nr, _META, data_richiesta])
                         righe.append(cur.fetchone()[0])
-                    nuova = date(2026, 11, 20)
+                    nuova = data_doc + timedelta(days=5)
                     esito = PreventiviRepository().scrivi_data_consegna(
                         prev["preventivo_id"], _RICHIESTA, nuova, solo_vuote=True,
                     )
