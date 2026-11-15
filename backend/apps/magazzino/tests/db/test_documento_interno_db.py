@@ -421,7 +421,7 @@ class DocumentoInternoDbTests(unittest.TestCase):
                 "stato_codice", "available_actions", "can_change_state",
                 "can_edit_testata", "can_edit_righe", "can_delete",
                 "can_registra", "can_registra_reason", "can_registra_reason_key",
-                "stato_info_key",
+                "can_registra_reason_valori", "stato_info_key",
             })
             self.assertEqual(set(caps["available_actions"][0]), {
                 "key", "target_state", "label_key",
