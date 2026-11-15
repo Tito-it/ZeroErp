@@ -30,6 +30,7 @@
 #   3. test_componente_di_kit_prende_il_prezzo_del_kit
 #   4. test_riallinea_rende_propagata_la_riga_di_listino
 #   5. test_porta_batch_scrive_la_riga_di_listino
+#   6. test_la_superficie_delle_righe_dice_quello_del_guard
 #
 # ⭐ 4-5 (brief-db-riga-listino-propagata-dalla-commessa §5, 2026-10-09): la
 #    riga di listino che ha dato il prezzo si scrive sulla riga di commessa, e
@@ -51,7 +52,11 @@ from apps.vendite.services.commesse_service import (
     fn_sblocca_prezzo,
     fn_variazione_prezzo_eccezionale,
 )
-from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
+from apps.vendite.services.listini_service import (
+    fn_list_righe,
+    fn_list_versioni,
+    fn_rettifica_controllata_riga,
+)
 
 # Il prezzo con cui la riga arriva dal push, prima di ogni riallineamento.
 _PREZZO_PUSH = Decimal("10")
@@ -325,3 +330,46 @@ class PrezzoRigaCommessaDbTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             self._rettifica()
         self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")
+
+    # 6. Le due superfici della scrittura delle righe (D-LIST (a),
+    #    brief-db-stati-documento-dal-vocabolario §6.27) arrivano fino al
+    #    service col motivo del guard: la riga di V2 si modifica finche'
+    #    nessuno la cita, e dopo il riallineamento porta RIGA_PROPAGATA, lo
+    #    stesso codice con cui il guard rifiuta (test 4). Il kit non ha una
+    #    riga di listino: nessun motivo di riga. V2 ATTIVA accetta righe nuove
+    #    (la rettifica); V1, scaduta nel 2020 e chiusa dal job delle scadenze
+    #    (`dbops.fn_pgtap_porta_a_stato` lo chiama), no. ⚠️ E' la giuntura
+    #    col DB (nomi delle colonne e join sulla vista), non la regola: quella
+    #    la prova il pgTAP `vendite/test-listino-riga-scrivibile-v1`.
+    def test_la_superficie_delle_righe_dice_quello_del_guard(self) -> None:
+        def righe() -> dict:
+            return {r["row_key"]: r for r in fn_list_righe(self.listino, self.v2)[0]}
+
+        def versione(versione_id: int) -> dict:
+            return {v["id"]: v for v in fn_list_versioni(self.listino)[0]}[versione_id]
+
+        prima = righe()
+        self.assertIsNone(prima[str(self.riga_v2)]["modifica_blocco_reason"])
+        kit = [r for r in prima.values() if r["is_composito"]]
+        self.assertEqual(len(kit), 1)
+        self.assertIsNone(kit[0]["modifica_blocco_reason"])
+
+        fn_riallinea_prezzo(self.commessa, self.attivita, {"conferma_versione_diversa": True})
+        dopo = righe()[str(self.riga_v2)]
+        self.assertEqual(dopo["modifica_blocco_reason"], "RIGA_PROPAGATA")
+        self.assertEqual(
+            dopo["modifica_blocco_reason_key"], "vendite.listini.azione_reason.riga_propagata",
+        )
+
+        self.assertIsNone(versione(self.v2)["aggiunta_riga_blocco_reason"])
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass, %s, 'CHIUSA')",
+                [self.v1],
+            )
+        v1 = versione(self.v1)
+        self.assertEqual(v1["stato"], "CHIUSA")
+        self.assertEqual(v1["aggiunta_riga_blocco_reason"], "VERSIONE_CHIUSA")
+        self.assertEqual(
+            v1["aggiunta_riga_blocco_reason_key"], "vendite.listini.azione_reason.versione_chiusa",
+        )

@@ -3464,7 +3464,9 @@
         "versione_non_attiva": "Only an active version can be closed: change a draft's dates instead; a closed version no longer changes.",
         "fine_nel_passato": "The end cannot be before today: choose today or a future date.",
         "clone_prima_della_sorgente": "The new version cannot start before the version it is copied from.",
-        "uom_non_convertibile": "A price is in a unit that, on a day of the period, does not convert for the item: add the conversion, or redo that price in another unit, before activating it."
+        "uom_non_convertibile": "A price is in a unit that, on a day of the period, does not convert for the item: add the conversion, or redo that price in another unit, before activating it.",
+        "versione_chiusa": "The version is closed: prices cannot be added, changed or deleted.",
+        "riga_propagata": "The price has already been used by a document: to change it, create a new version of the price list."
       },
       "elimina_versione": "Delete version",
       "versione_eliminata": "Version deleted",
