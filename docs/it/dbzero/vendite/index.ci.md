@@ -318,6 +318,7 @@ search:
 - [fn_sync_fatture_log_critical_lotto](manual/fn_sync_fatture_log_critical_lotto.md) — (latest review 20-02-2026)   La funzione **`vendite.fn_sync_fatture_log_critical_lotto()`** sincronizza in modo set-based:
 - [fn_sync_lotto_fatture_stato](manual/fn_sync_lotto_fatture_stato.md) — (latest review 30-01-2026)   La funzione **`vendite.fn_sync_lotto_fatture_stato()`** allinea lo stato documentale delle fatture collegate a un lotto.
 - [fn_upsert_commessa_attivita](manual/fn_upsert_commessa_attivita.md) — Scrive, o riscrive, una riga di `vendite.commesse_attivita` sulla chiave `(commessa_id, segment_key)`: è la porta da cui il lavoro entra in commessa, dal push di un documento, dalla porta degli oneri o da una rettifica. Restituisce l'id della riga e se è nata ora o è stata aggiornata.
+- [fn_varia_prezzi_versione_listino](manual/fn_varia_prezzi_versione_listino.md)
 - [fn_versioni_listino_da_chiudere](manual/fn_versioni_listino_da_chiudere.md)
 - [trgfn_attivita_fattore_alla_data](manual/trgfn_attivita_fattore_alla_data.md) — Un'attività senza fattore, di commessa o fatturabile, prende quello **alla data dell'attività**, non 1. Il fattore scritto è la fotografia (copiato da un documento sorgente, dalla riga che si rettifica, dall'attività di commessa che si emette) e si rispetta.
 - [trgfn_attivita_fatturabili_guard_ba_coerenza](manual/trgfn_attivita_fatturabili_guard_ba_coerenza.md) — (latest review 10-09-2026)

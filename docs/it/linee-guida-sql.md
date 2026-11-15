@@ -3567,6 +3567,15 @@ che la rifiuta: chiama la `fn_check` e ne solleva il primo motivo, e il presidio
 identico (le righe di listino, `vendite.trgfn_listini_righe_guard_stato`, decisione di Tid del
 2026-11-15).
 
+⛔ **Il guard fa da verbo solo per un'azione che tocca sempre una riga** (un'aggiunta, la modifica
+o l'eliminazione di una riga data). Un gesto su un insieme («varia i prezzi della versione», «togli
+i componenti del kit») può non prendere nessuna riga, e allora il guard non scatta: il pulsante
+dice «vietato», la scrittura risponde «fatto, zero righe», e una scrittura successiva (una
+traccia nella testata) cade su un altro guard con un altro codice. La regola dipende dai dati. Un
+gesto così ha un **verbo** che chiede la `fn_check` per il padre prima di toccare le righe, e
+nell'anteprima come nel gesto vero (`vendite.fn_varia_prezzi_versione_listino`, richiesta del BE
+del 2026-11-15).
+
 ⛔ **Una colonna di blocco composta dal backend non si iscrive**: il presidio non
 può verificarla. Il motivo per riga sta in una **vista DB**, e il backend la legge
 (decisione di Tid del 2026-10-27, Q-F5). La prima riga del registro è «togli dal

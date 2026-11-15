@@ -1,6 +1,6 @@
 # ZeroERP
 
-> **Ultimo aggiornamento**: 2 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 
 **ERP open-source per aziende italiane, progettato con approccio DB-first e sviluppo concentrico.**
 
@@ -13,7 +13,7 @@ L'obiettivo e` ridurre la complessita` superflua mantenendo rigore su dati, rego
 
 > **Sviluppo attivo — DB, backend e frontend operativi su core, anagrafiche, catalogo, ciclo attivo completo (preventivi, offerte, contratti, ordini, DDT, resi, fatture, commesse), pratiche, documenti e presentazione configurabile. Non ancora rilasciato per produzione.**
 >
-> *Ultima revisione: **31 ottobre 2026**.*
+> *Ultima revisione: **15 novembre 2026**.*
 >
 > La fotografia dettagliata, lo stato per componente e la roadmap sono mantenuti in
 > un'unica fonte: la [Mappa Concentrica](./mappa-concentrica.md) (stato per anello +
@@ -97,14 +97,17 @@ Scelte architetturali:
 
 ## Stack Tecnologico
 
-| Componente         | Tecnologia                      |
-| ------------------ | ------------------------------- |
-| Database           | PostgreSQL 18                   |
-| Versioning DB      | Liquibase 5                     |
-| Backend            | Django 6.01 + DRF               |
-| Linguaggio backend | Python 3.14                     |
-| Frontend           | Vue 3.5, Vite 7, PrimeVue 4.5, Pinia 3 |
-| Tooling docs/dev   | Zensical + preprocess docs, pre-commit, Docker |
+| Componente         | Tecnologia                                                   | La versione si legge da                         |
+| ------------------ | ------------------------------------------------------------ | ----------------------------------------------- |
+| Database           | PostgreSQL, con PostGIS, pgTAP, pgAgent, plpgsql_check       | i workflow di CI (`.github/workflows/`)         |
+| Versioning DB      | Liquibase Community (Java 17)                                | [workflow Liquibase](./liquibase-setup-workflow.md) |
+| Backend            | Django + Django REST Framework, Redis come cache, WeasyPrint per i PDF | `backend/requirements.in`                 |
+| Linguaggio backend | Python                                                       | `.python-version`                               |
+| Frontend           | Vue 3, Vite, PrimeVue, Pinia                                 | `frontend/package.json` (Node in `engines.node`) |
+| Tooling docs/dev   | Zensical + preprocess docs, pre-commit, Docker               | `requirements.txt` in radice                    |
+
+⛔ I numeri di versione non si ricopiano qui: un numero scritto in due posti ne ha sempre uno
+stantio, e quello senza presidio è il documento.
 
 ---
 
@@ -158,19 +161,19 @@ datata è nel suo [changelog](./dev/mappa-concentrica-changelog.md).
 - **Autenticazione**: completa (JWT, multi-veste, email, token monouso, reset/invito/cambio password)
 - **Permessi**: tre livelli — area funzionale, oggetto, azione di processo — con **RLS operatori attiva** a scope emittente fiscale
 - **Anagrafiche**: soggetti e ruoli, indirizzi, contatti, conti bancari, risorse umane, emittenti fiscali, billing account, **titoli IVA del soggetto** con registro movimenti append-only
-- **Catalogo**: articoli, unità di misura e conversioni, distinte base, note
+- **Catalogo**: articoli, unità di misura e conversioni, distinte base, note — la distinta e il fattore di conversione hanno la loro **storia**, e un articolo si **ritira** con una data invece di sparire
 - **Presentazione configurabile**: liste personalizzabili per profilo/emittente/utente e **dashboard home** a card KPI
 
 **Processi**
 
 - **Ciclo attivo completo**: preventivi, offerte commerciali, contratti, ordini, DDT, **resi**, fatture e **note di credito** — DB + backend + frontend, con la numerazione governata dal registro e l'IVA di riga decisa da un risolutore
-- **Un modello per tutti i documenti di vendita**: ogni cambio di stato passa da un verbo del database, si emette da un solo punto, un documento nasce nel suo stato iniziale — le regole stanno in [una guida](./guide/modello-documento-di-vendita.md), e tutti i documenti, fattura e listino compresi, la seguono
+- **Un modello per tutti i documenti di vendita**: ogni cambio di stato passa da un verbo del database, si emette da un solo punto, un documento nasce nel suo stato iniziale, il significato di uno stato si legge dal vocabolario — le regole stanno in [una guida](./guide/modello-documento-di-vendita.md), e tutti i documenti, fattura e listino compresi, la seguono
 - **Contratti a canone**: una riga di contratto si addebita una tantum o a periodi (mensile, trimestrale…), con il recupero degli arretrati e lo storno quando la fine si sposta
 - **Fatturazione**: pipeline batch a corsie, lotti, **cockpit da cui si agisce** (fattura adesso, rendi definitive, stampa massiva), tre lenti di lettura
-- **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA
+- **Commesse**: multi-sorgente, quantità immutabili dopo la fatturazione, oneri manuali con la propria IVA; gli oneri (trasporto, spese) viaggiano anche come righe di ordine e bolla
 - **Motore pratiche**: operativo e **validato dal primo consumatore reale** (pratica PREVENTIVI); il secondo è ciò che ne promuoverà le astrazioni a contratti
 - **Motore documentale**: template versionati, asset per emittente, PDF, con tre percorsi di stampa distinti
-- **Genealogia dei documenti**: da dove viene e dove è andato ogni documento del ciclo
+- **Genealogia dei documenti**: da dove viene e dove è andato ogni documento del ciclo, con **una** grammatica della provenienza per tutte le righe che «nascono da»
 - **Magazzino**: la bolla scarica e il reso ricarica la merce, con il registro di magazzino come servizio che non conosce i suoi consumatori
 
 **Aree aperte**

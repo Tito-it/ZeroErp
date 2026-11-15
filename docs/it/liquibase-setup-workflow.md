@@ -1,6 +1,6 @@
 # Liquibase — struttura e workflow (v2)
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Destinatari**: chi scrive changeSet per il database di ZeroERP
 >
@@ -25,13 +25,14 @@ binario nudo.
 ## 1. Prerequisiti
 
 * Java 17 e Liquibase 5 Community. Il binario sta in `tools/liquibase/current/` e il driver JDBC
-  in `tools/liquibase/jdbc/`, versionati nel repository: nel `PATH` non c'è nessun `liquibase`.
-* Il wrapper **`scripts/liquibase5.sh`**: aggancia il driver e, prima di `update`/`validate`,
+  in `tools/liquibase/jdbc/`. ⚠️ `tools/` **non** è nel repository: li installa
+  `scripts/installa-liquibase.sh`, nelle versioni fissate in `scripts/liquibase-versioni.env`, con
+  la verifica dello SHA-256. Nel `PATH` non c'è nessun `liquibase`.
+* Il wrapper **`scripts/liquibase5.sh`**: aggancia il driver della versione fissata e, prima di `update`/`validate`,
   rigenera la timeline `changelog-autogen.yaml`. Lo usa il `makefile`.
-* Un aggiornamento di Liquibase tocca quattro punti nello stesso giro: la cartella
-  `tools/liquibase/<versione>/`, il collegamento `tools/liquibase/current`, la chiave `version:` del
-  passo `setup-liquibase` in `ci.yaml` e in `ci-validate.yaml`, e l'intestazione di
-  `scripts/ci-local.sh`.
+* Un aggiornamento di Liquibase **o del driver** si fa in un punto solo: versione e SHA-256 in
+  `scripts/liquibase-versioni.env`, poi `scripts/installa-liquibase.sh` su ogni macchina. I due
+  workflow (`ci.yaml`, `ci-validate.yaml`) leggono lo stesso file, e verificano anche il driver.
 * Un database con i **ruoli di sistema** già creati da `scripts/sql/provision_zeroerp.sql`: il
   migratore è `zeroerp_owner`, proprietario di tutti gli oggetti.
 

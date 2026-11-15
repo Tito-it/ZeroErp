@@ -1,6 +1,6 @@
 # Playbook operativo (SOLO COMANDI)
 
-> **Ultimo aggiornamento**: 26 settembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Destinatari**: chi crea da zero un CT `backend-*` come `backend-dev`.
 >
@@ -86,7 +86,9 @@ systemctl enable --now nginx redis-server
 
 Python si installa con **pyenv**, alla versione scritta in `.python-version` del
 repository: la distribuzione non la porta. Il render PDF (WeasyPrint) vuole
-anche le sue librerie di sistema: vedi la documentazione di WeasyPrint.
+anche le sue librerie di sistema: sono quelle del blocco `apt-get install` del `Dockerfile` (fra cui
+`libharfbuzz-subset0`, senza la quale ogni stampa avvisa che il subsetting dei font sta per non
+essere più supportato), e si installano con `apt install`. L'elenco vale lì: non si ricopia qui.
 
 ## 4) Codice e ambiente Python
 

@@ -46,8 +46,11 @@ e dice un'altra cosa.
   dettaglio e nei valori del messaggio, **non nella regola**.
 * Una versione che non si legge non si giudica (elenco vuoto): parlano la chiave esterna e la
   policy della tabella che si scrive.
-* La chiamano i tre guard (righe, componenti, kit), che ne sollevano il primo motivo, e le
-  superfici della versione e delle righe: una regola, più letture.
+* La chiamano i tre guard (righe, componenti, kit), che ne sollevano il primo motivo, il verbo
+  della variazione percentuale
+  ([`vendite.fn_varia_prezzi_versione_listino`](/dbzero/vendite/manual/fn_varia_prezzi_versione_listino)),
+  che la chiede per la versione, senza riga, perché il gesto vale anche quando non prende righe, e
+  le superfici della versione e delle righe: una regola, più letture.
 
 ### Perché
 

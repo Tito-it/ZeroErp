@@ -124,10 +124,16 @@ jobs:
 
  # Dicembre 2025 passaggio a Liquibase 5 Community
    # Versione Liquibase 5 (Community)       
+      # ⭐ Versioni di Liquibase e del driver: fonte unica scripts/liquibase-versioni.env,
+      # la stessa che legge scripts/installa-liquibase.sh. ⛔ Non si scrivono qui.
+      - name: Versioni di Liquibase e del driver
+        id: lbver
+        run: grep -E '^(LIQUIBASE|PGJDBC)_(VERSION|SHA256)=' scripts/liquibase-versioni.env >> "$GITHUB_OUTPUT"
+
       - name: Setup Liquibase 5 (oss)
         uses: liquibase/setup-liquibase@v3.0.0
         with:
-          version: '5.0.4'
+          version: ${{ steps.lbver.outputs.LIQUIBASE_VERSION }}
           edition: 'oss'
 
    # Istalla il driver PostgreSQL       
@@ -139,7 +145,8 @@ jobs:
           LB_HOME="${LIQUIBASE_HOME:-$(dirname "$(readlink -f "$(command -v liquibase)")")}"
           mkdir -p "$LB_HOME/lib"
           curl -fsSL -o "$LB_HOME/lib/postgresql.jar" \
-            https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.4/postgresql-42.7.4.jar
+            "https://repo1.maven.org/maven2/org/postgresql/postgresql/${{ steps.lbver.outputs.PGJDBC_VERSION }}/postgresql-${{ steps.lbver.outputs.PGJDBC_VERSION }}.jar"
+          echo "${{ steps.lbver.outputs.PGJDBC_SHA256 }}  $LB_HOME/lib/postgresql.jar" | sha256sum -c -
           liquibase --version
  # Dicembre 2025 fine passaggio a Liquibase 5 Community
       

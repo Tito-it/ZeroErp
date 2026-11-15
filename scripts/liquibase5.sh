@@ -26,13 +26,25 @@ for a in "$@"; do
   esac
 done
 
+# ⭐ Il driver è quello della versione fissata in scripts/liquibase-versioni.env:
+# il primo `postgresql-*.jar` in ordine alfabetico sceglierebbe 42.7.10 prima di
+# 42.7.14. Se manca, si ripiega sul primo trovato e lo si dice.
 if [[ $has_classpath_arg -eq 0 && -n "$git_root" ]]; then
-  shopt -s nullglob
-  for pgjdbc in "$git_root"/tools/liquibase/jdbc/postgresql-*.jar; do
-    LB5_EXTRA_ARGS+=("--classpath=$pgjdbc")
-    break
-  done
-  shopt -u nullglob
+  pgjdbc_fissato=""
+  if [[ -f "$git_root/scripts/liquibase-versioni.env" ]]; then
+    pgjdbc_fissato="$(sed -n 's/^PGJDBC_VERSION=//p' "$git_root/scripts/liquibase-versioni.env")"
+  fi
+  if [[ -n "$pgjdbc_fissato" && -f "$git_root/tools/liquibase/jdbc/postgresql-$pgjdbc_fissato.jar" ]]; then
+    LB5_EXTRA_ARGS+=("--classpath=$git_root/tools/liquibase/jdbc/postgresql-$pgjdbc_fissato.jar")
+  else
+    shopt -s nullglob
+    for pgjdbc in "$git_root"/tools/liquibase/jdbc/postgresql-*.jar; do
+      echo "⚠️ driver $pgjdbc_fissato non installato, uso $(basename "$pgjdbc"): lancia scripts/installa-liquibase.sh" >&2
+      LB5_EXTRA_ARGS+=("--classpath=$pgjdbc")
+      break
+    done
+    shopt -u nullglob
+  fi
 fi
 
 # comando liquibase (primo argomento non --*)
