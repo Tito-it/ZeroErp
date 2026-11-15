@@ -340,6 +340,8 @@ Campi dal modello del documento (giro 12, brief-modello-documento-vendita §16,
 | `attivazione_blocco_reason` · `attivazione_blocco_reason_key` | perche' «Attiva» e' spento (codice macchina e chiave i18n del primo motivo di `script.fn_check_versione_listino_attivabile`, la stessa con cui il verbo rifiuta), da `vendite.vw_listini_versioni_azioni`; `null` = niente lo vieta. Sono le colonne che il registro `config.azioni_riga` dichiara per `ATTIVA_VERSIONE_LISTINO` |
 | `eliminazione_blocco_reason` · `eliminazione_blocco_reason_key` | perche' «Elimina» e' spento (`VERSIONE_NON_IN_BOZZA`, `VERSIONE_CITATA`: il primo motivo di `script.fn_check_versione_listino_eliminabile`), dalla stessa vista; registro `ELIMINA_VERSIONE_LISTINO` (§16.13, 2026-10-29) |
 | `chiusura_blocco_reason` · `chiusura_blocco_reason_key` | perche' «Chiudi» e' spento (`VERSIONE_NON_ATTIVA`: il primo motivo di `script.fn_check_versione_listino_chiudibile`, senza data), dalla stessa vista; registro `CHIUDI_VERSIONE_LISTINO` (§16.16, 2026-10-29). «Clona» non ha colonne: si clona da qualunque stato |
+| `aggiunta_riga_blocco_reason` · `_key` | perche' non si aggiunge una riga: il primo motivo di `script.fn_check_listino_riga_scrivibile` senza riga (`VERSIONE_NON_IN_BOZZA`, `VERSIONE_CHIUSA`), la stessa check che il guard delle righe solleva; registro `AGGIUNGI_RIGA_LISTINO` (brief-db-stati-documento-dal-vocabolario §6.27, 2026-11-15) |
+| `variazione_blocco_reason` · `_key` · `prezzi_bundle_blocco_reason` · `_key` · `periodicita_kit_blocco_reason` · `_key` | la stessa check per la variazione percentuale (§8), i prezzi dei componenti di un kit (§4bis) e la sua periodicita'; registro `VARIA_PREZZI_LISTINO`, `PREZZI_BUNDLE_LISTINO`, `PERIODICITA_KIT_LISTINO` (§6.28, 2026-11-15). Fuori dalla bozza niente di questo si scrive |
 | `chiusura_programmata` | la versione e' ATTIVA con `valido_al` scritto: il job la porta a CHIUSA quando la fine passa. Fra la fine e il job resta ATTIVA, e si mostra cosi' |
 
 ### 3.2 Crea versione
@@ -623,6 +625,18 @@ Le righe sono arricchite con campi display:
 - `articolo_codice`, `articolo_descrizione`
 - `uom_codice`, `uom_descrizione`
 
+e coi motivi delle azioni di riga, da `vendite.vw_listini_righe_azioni`
+(brief-db-stati-documento-dal-vocabolario §6.27, §6.28; `null` = il gesto e'
+ammesso; sul composito, che non ha una riga di listino, sempre `null`: i suoi
+prezzi li dice `prezzi_bundle_blocco_*` della versione):
+
+| Campo | Cosa dice |
+|---|---|
+| `modifica_blocco_reason` · `_key` | perche' la riga non si modifica ne' si elimina (§4.3, §4.4): `VERSIONE_NON_IN_BOZZA`, `VERSIONE_CHIUSA` (`script.fn_check_listino_riga_scrivibile`); registro `MODIFICA_RIGA_LISTINO` |
+| `rettifica_blocco_reason` · `_key` | perche' la riga non si rettifica (§9): `VERSIONE_IN_BOZZA`, `VERSIONE_CHIUSA`, `NON_IN_VIGORE`, `RIGA_PROPAGATA` (`script.fn_check_listino_riga_rettificabile`); registro `RETTIFICA_RIGA_LISTINO` |
+
+I motivi si calcolano per le sole righe della pagina.
+
 Query param: `attivo` (bool), `limit` / `offset` (default `25`, max `200`),
 `order_by` (`articolo_descrizione` default, `articolo_codice`, `uom_codice`,
 `prezzo`, `iva_aliquota`, `attivo`), `order_dir`. Envelope paginato standard.
@@ -673,17 +687,18 @@ Campi ammessi: `prezzo`, `meta`, `attivo`. Ogni altra chiave (anche
 
 #### Regole specifiche
 
-- **Immutabilita` per stato versione (guard fail-fast)**: `POST`, `PATCH` e `DELETE`
-  riga sono ammessi **solo** se la versione padre e` in stato `BOZZA`. Su versioni
-  `ATTIVA` o `CHIUSA` il backend rifiuta con `400 E_VENDITE_VALIDATION` prima di
-  toccare il DB. Razionale: i prezzi delle versioni operative sono gia` snapshot
-  in `commesse_attivita`/`attivita_fatturabili` e ogni modifica creerebbe drift
-  con i documenti gia` emessi. Per cambiare prezzi su un periodo gia` attivo, si
-  crea una nuova versione (clone + edit + activate).
-- Il backend valida pre-flight:
-  - articolo attivo
-  - UoM attiva
-  - compatibilita` articolo/UoM: UoM base articolo oppure UoM operativa attiva
+- **Le righe si scrivono solo in bozza** (sviluppo-listini-v3 §6.3): `POST`, `PATCH`
+  e `DELETE` su una versione `ATTIVA` o `CHIUSA` li rifiuta il guard DB
+  `vendite.trgfn_listini_righe_guard_stato` col primo motivo di
+  `script.fn_check_listino_riga_scrivibile`: `409 E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`
+  o `409 E_RIGA_LISTINO_VERSIONE_CHIUSA`. Il backend non guarda lo stato: scrive e
+  porta il rifiuto (dal 2026-11-15, giro 6f-ter; prima una copia Python rispondeva
+  `400 E_VENDITE_VALIDATION`). Il prezzo di una riga di una versione in uso si
+  corregge con la rettifica (§9); per il resto si clona la versione (clone + edit
+  + activate). Il FE spegne i gesti da `aggiunta_riga_blocco_*` e
+  `modifica_blocco_*`.
+- Articolo, unita' e compatibilita' articolo/UoM per tutto il periodo della
+  versione li giudica il DB (BE22).
 - L'unicita` della combinazione attiva (`versione + articolo + uom`) e` demandata al DB (`uq_listini_righe_key_attiva` → `409 E_VENDITE_DUPLICATO`).
 
 ---
@@ -797,7 +812,7 @@ applicativo. Se > 0 il FE puo' mostrare un avviso all'operatore.
 
 #### Regole salva bundle
 
-- **Solo versione BOZZA**: il guard `_assert_versione_bozza_for_riga_op` rifiuta UPDATE su versioni ATTIVA/CHIUSA. Defense-in-depth col trigger DB `_immutabilita_v5` (codice `E_RIGA_LISTINO_VERSIONE_CHIUSA`, 409).
+- **Solo versione in bozza**: lo dice il trigger DB `trgfn_listini_righe_comp_guard_immutabilita_v5` col primo motivo di `script.fn_check_listino_riga_scrivibile` (`409 E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`, `409 E_RIGA_LISTINO_VERSIONE_CHIUSA`), anche per la sola disattivazione (`attivo`). Il backend non ha piu' una copia (ritirata il 2026-11-15, giro 6f-ter). Il FE spegne il dialog da `prezzi_bundle_blocco_*` della versione.
 - **Strategia tabula rasa idempotente**: il repo prima soft-disattiva (`attivo=FALSE`) tutte le righe attive correnti per la coppia (versione, padre), poi inserisce le nuove. Garantisce stato esatto senza diff complesso. Transazione atomica.
 - **Validita' = intersezione `versione ∩ BoM`** (PG18, calcolata su `valido_dal`/`valido_al` con `GREATEST`/`LEAST`): la colonna `validita` daterange e' STORED generated. Se l'intersezione e' vuota, la riga e' ignorata con warning + conteggio in `skipped_no_overlap` (evita errore SQL `range lower > upper`). La temporal FK `fk_listrighe_comp_articoli_comp_temporal` garantisce a livello DB il contenimento riga ⊆ BoM.
 - **Skip prezzo null**: righe con `prezzo == NULL` vengono ignorate (= "non gestito a bundle"; il resolver fa fallback STADIO 1 standalone). Confermare con tutti i prezzi NULL = svuotare il composito (= "elimina composito" lato UI).
@@ -817,7 +832,7 @@ applicativo. Se > 0 il FE puo' mostrare un avviso all'operatore.
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/bundle/{padre_id}/` |
 
 Equivale al salvataggio con `rows: []`: soft-disattiva tutti i prezzi bundle del
-composito nella versione. Solo versione BOZZA (stesso guard), idempotente (`0`
+composito nella versione. Solo versione in bozza (stesso guard), idempotente (`0`
 disattivati su un composito senza prezzi). Risposta `{ "disattivati": <n>,
 "inseriti": 0 }`.
 
@@ -825,16 +840,17 @@ disattivati su un composito senza prezzi). Risposta `{ "disattivati": <n>,
 
 | Codice | HTTP | Sorgente |
 | --- | --- | --- |
-| `E_VENDITE_VALIDATION` | 400 | service (BOZZA-only guard, rows non lista, articolo_padre_id vuoto, versione senza valido_dal) |
+| `E_VENDITE_VALIDATION` | 400 | service (rows non lista, articolo_padre_id vuoto, versione senza valido_dal) |
+| `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` | 409 | trigger DB immutabilita' v5: la versione non e' in bozza (giro 6f-ter, 2026-11-15) |
 | `E_VENDITE_DUPLICATO` | 409 | UNIQUE `uq_listini_righe_key_attiva` (riga prezzo gia' esistente) |
 | `E_VENDITE_LISTINO_RIGA_COMP_OVERLAP` | 409 | EXCLUDE gist parziale `ex_listini_righe_comp_no_overlap` (ripristino enforcement 2026-06-02, migration `20260602-01`): due righe bundle **attive** sovrapposte sullo stesso `(versione, padre, componente)`. Pattern simmetrico a `E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP` |
-| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | trigger DB immutabilita' v5 (rev 2026-05-13) |
+| `E_RIGA_LISTINO_VERSIONE_CHIUSA` | 409 | trigger DB immutabilita' v5: la versione e' CHIUSA |
 | `E_LISTINO_RIGA_COMP_BOM_INCOERENTE` | 400 | temporal FK PG18 `fk_listrighe_comp_articoli_comp_temporal` + guard residuo coerenza BoM |
 
 Il service cattura `IntegrityError` e `DatabaseError`:
 
 - `IntegrityError` → `_translate_integrity_error` via `map_integrity_error` (mappa UNIQUE/FK/CHECK + temporal FK BoM con codice parlante).
-- `DatabaseError` P0001 → `_raise_bundle_db_error` (helper interno) preserva codici trigger (`E_RIGA_LISTINO_VERSIONE_CHIUSA`, `E_LISTINO_RIGA_COMP_BOM_INCOERENTE`).
+- `DatabaseError` P0001 → `_raise_bundle_db_error` (helper interno) preserva codici trigger (`E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`, `E_RIGA_LISTINO_VERSIONE_CHIUSA`, `E_LISTINO_RIGA_COMP_BOM_INCOERENTE`).
 
 ---
 
@@ -902,7 +918,8 @@ caso del successore contiguo (`valido_dal = valido_al + 1`), che fino al
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/applica-variazione/` |
 
 Applica una variazione percentuale ai prezzi di tutte le righe attive di una versione
-BOZZA. Supporta `dry_run` per preview e filtro opzionale per articoli.
+in bozza (N8a: «clone + variazione + attiva»). Supporta `dry_run` per preview e filtro
+opzionale per articoli.
 
 ### Body JSON
 
@@ -949,7 +966,11 @@ BOZZA. Supporta `dry_run` per preview e filtro opzionale per articoli.
 
 ### Regole specifiche
 
-- Guard BOZZA: rifiuta con 400 su versioni ATTIVA o CHIUSA.
+- **Solo in bozza**: lo dice il guard di stato delle righe, sulla prima riga che
+  l'UPDATE tocca, e l'istruzione salta intera (`409 E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`
+  / `E_RIGA_LISTINO_VERSIONE_CHIUSA`). ⭐ Anche il `dry_run` rifiuta cosi': calcola i
+  prezzi, poi fa l'UPDATE vero in un savepoint annullato (come l'anteprima
+  dell'attivazione). Il FE spegne il gesto da `variazione_blocco_*` della versione.
 - Guard range: `-99 <= variazione <= 1000`. Fuori range → 400.
 - **Arrotondamento composto**: ogni applicazione e` atomica con arrotondamento immediato.
   Due variazioni successive (+3% poi +2%) producono risultati diversi da una singola +5.06%.
@@ -959,7 +980,8 @@ BOZZA. Supporta `dry_run` per preview e filtro opzionale per articoli.
 
 ### Errori tipici
 
-- `400` `E_VENDITE_VALIDATION`: versione non BOZZA, percentuale fuori range, arrotondamento fuori range
+- `400` `E_VENDITE_VALIDATION`: percentuale fuori range, arrotondamento fuori range
+- `409` `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA` / `E_RIGA_LISTINO_VERSIONE_CHIUSA` (dal guard DB): la versione non e' in bozza
 
 ---
 
@@ -970,17 +992,16 @@ BOZZA. Supporta `dry_run` per preview e filtro opzionale per articoli.
 | **Metodo** | `PATCH` |
 | **URL** | `/api/v1/vendite/listini/{listino_id}/versioni/{ver_id}/righe/{riga_id}/rettifica-controllata/` |
 
-Consente la modifica del prezzo di una riga di una versione **non BOZZA** e
-**operativa oggi** (`valido_dal ≤ oggi ≤ valido_al`, o `valido_al` aperto) solo se
-la riga **non e` mai stata propagata** in `commesse_attivita` o `attivita_fatturabili`.
-Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
+Corregge, col motivo, il prezzo di una riga del listino **in uso**: e' l'unica
+scrittura di una riga fuori dalla bozza (sviluppo-listini-v3 N6). Caso d'uso:
+errore di battitura su una riga che nessun documento ha ancora usato.
 
 ### Body JSON
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `prezzo` | decimal | Si | Nuovo prezzo, `> 0` |
-| `motivo` | string | Si | Motivazione obbligatoria, max 500 caratteri |
+| `prezzo` | decimal | Si | Nuovo prezzo, `>= 0` (il CHECK della tabella) |
+| `motivo` | string | Si | Motivazione, al piu' 500 caratteri (lo giudica il verbo) |
 
 ### Risposta (200)
 
@@ -995,27 +1016,34 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
 }
 ```
 
+I due prezzi escono dal valore salvato, alla scala della colonna.
+
 ### Regole specifiche
 
-- **Endpoint dedicato** separato dal PATCH ordinario della riga. L'operazione
-  eccezionale deve essere esplicita, non mascherata dal PATCH standard.
-- **Una sede sola per la regola «propagata»**: il trigger DB
-  `vendite.trgfn_listini_righe_guard_stato`. Il service prende il lock
-  `FOR UPDATE` sulla riga, rilegge prezzo e `meta` sotto il lock e scrive; se il
-  guard rifiuta, porta al chiamante il codice del DB. ⛔ Nessun controllo di
-  propagazione in Python (ritirato il 2026-10-09 con `E_VENDITE_RIGA_GIA_PROPAGATA`:
-  ripeteva la regola del guard con un codice suo).
-- **Audit obbligatorio** in `riga.meta.rettifiche_controllate[]`.
-- Che cosa vuol dire «propagata» lo dice il guard (doc auto-generata di
-  `vendite.trgfn_listini_righe_guard_stato`), non questa pagina.
-- Se la riga e` stata propagata → errore `409 E_RIGA_LISTINO_PROPAGATA`.
-  Soluzione: clonare la versione (O1).
+- **Le regole sono del verbo DB** `vendite.fn_rettifica_riga_listino(riga,
+  prezzo, motivo)` (giro 6f-ter, brief-db-stati-documento-dal-vocabolario §6.28,
+  2026-11-15): la riga sotto `FOR UPDATE` nel perimetro; il primo motivo di
+  `script.fn_check_listino_riga_rettificabile`; il motivo obbligatorio; il prezzo
+  e la traccia in `riga.meta.rettifiche_controllate[]` (data, operatore, prezzo
+  di prima e nuovo, motivo), da una porta che il guard delle righe onora solo per
+  il prezzo e `meta`. Fuori dalla porta una riga fuori dalla bozza non si scrive.
+- Il backend legge la forma del corpo (`prezzo` numerico, `motivo` stringa) e
+  porta il rifiuto del verbo col suo codice. ⛔ Ritirate il 2026-11-15 le copie
+  Python: «non in bozza», «operativa oggi» dalle date, il prezzo `> 0`, il motivo
+  e la sua lunghezza, il lock e la scrittura di `meta`.
+- **Endpoint dedicato**, separato dal PATCH ordinario: l'operazione eccezionale e'
+  esplicita, e il PATCH su una versione in uso e' rifiutato (§4).
+- Il FE spegne «Rettifica» da `rettifica_blocco_*` della riga (§4.1).
 
 ### Errori tipici
 
-- `400` `E_VENDITE_VALIDATION`: versione in BOZZA (si usa il PATCH ordinario), versione non operativa oggi, prezzo non valido, motivo mancante o troppo lungo
-- `409` `E_RIGA_LISTINO_PROPAGATA` (dal guard DB): riga usata in almeno una commessa/fatturabile
-- `409` `E_RIGA_LISTINO_VERSIONE_CHIUSA` (dal guard DB): la versione e' CHIUSA
+- `400` `E_VENDITE_VALIDATION`: prezzo mancante o non numerico, motivo non stringa
+- `400` `E_RIGA_LISTINO_RETTIFICA_MOTIVO_OBBLIGATORIO`: motivo mancante, vuoto o oltre 500 caratteri (campo `motivo`)
+- `409` `E_RIGA_LISTINO_RETTIFICA_IN_BOZZA`: in bozza la riga si modifica (§4.3), non si rettifica
+- `409` `E_RIGA_LISTINO_RETTIFICA_NON_IN_VIGORE`: la versione non e' quella in vigore oggi (si clona)
+- `409` `E_RIGA_LISTINO_VERSIONE_CHIUSA`: la versione e' CHIUSA
+- `409` `E_RIGA_LISTINO_PROPAGATA`: la riga e' citata da un documento (si clona, O1)
+- `404` `E_VENDITE_LISTINO_RIGA_NOT_FOUND`: riga inesistente o fuori perimetro
 
 ---
 
@@ -1030,7 +1058,8 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
   - `E_VENDITE_LISTINO_NOT_FOUND` (404)
   - `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` (404)
   - `E_VENDITE_LISTINO_RIGA_NOT_FOUND` (404)
-  - `E_RIGA_LISTINO_PROPAGATA` (409, dal guard DB) — rettifica controllata N6
+  - `E_RIGA_LISTINO_PROPAGATA` (409, dal verbo DB) — rettifica controllata N6
+  - `E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA`, `E_RIGA_LISTINO_VERSIONE_CHIUSA` (409, dai guard DB) — scritture fuori dalla bozza
   - `E_VENDITE_VALIDATION` (400) — validazione generica
 
 ## Dipendenze DB
@@ -1061,7 +1090,8 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
 - **Post-refactor 2026-04-09**: il campo `priorita` e` stato droppato da `listini_versioni` e
   `listini_associazioni` (migration `20260409-04/-05`). Nessun endpoint lo accetta piu`.
 - **Sprint B-v3 (2026-04-12)**: aggiunti endpoint alert scadenze (N2), variazione % massa (N8a),
-  rettifica controllata (N6). La rettifica N6 attende trigger DB defense-in-depth (`dev/db-tid`).
+  rettifica controllata (N6). Dal 2026-11-15 (giro 6f-ter) la rettifica N6 è il verbo DB
+  `vendite.fn_rettifica_riga_listino` (§9), e le scritture fuori dalla bozza le rifiutano i guard DB.
 - **Sprint v4 (2026-04-13/14)**: rimosso il campo legacy `dominio` (enum UTILITY/COMMERCIO).
   Ogni listino ha ora due colonne NOT NULL: `utility_id` (FK `config.utilities`; id=5
   utility Base per il commercio) e `tipologia_id` (FK `config.listini_tipologie`).

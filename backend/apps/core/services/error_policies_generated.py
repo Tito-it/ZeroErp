@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1232, di cui 130 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1236, di cui 131 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1078,7 +1078,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_LISTINO_CON_STORIA_NON_SPEGNIBILE": "CONFLITTO_STATO",
     # Guard vendite.trgfn_listini_kit_guard (BEFORE INSERT OR UPDATE su vendite.listini_kit; 2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.7, L12, D-2-bis di Tid): la periodicita' di un kit sul listino si scrive solo per un articolo composito. La periodicita' di un articolo semplice sta sulla sua riga di listino (vendite.listini_righe.periodicita). Nel contesto il campo (articolo_padre_id), l'articolo e la versione.
     "E_LISTINO_KIT_NON_COMPOSITO": "DATO_ERRATO",
-    # Guard vendite.trgfn_listini_righe_guard_periodicita_quota_fissa (BEFORE UPDATE OF periodicita su vendite.listini_righe; 2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.10, decisione di Tid): fuori dalla bozza la riga di una quota fissa a canone (vendite.fn_articolo_quota_fissa_a_canone) non resta senza periodicita'. Cambiarla con un'altra resta una rettifica. Chiude il buco del controllo all'attivazione (E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA). Nel contesto il campo (periodicita), la riga, la versione e il suo stato.
+    # RITIRATO il 2026-11-15 (brief-db-stati-documento-dal-vocabolario §6.28, D-GUARD-MUTI decisa (a) da Tid): lo sollevava vendite.trgfn_listini_righe_guard_periodicita_quota_fissa, che fermava la periodicita' tolta a una quota fissa a canone fuori dalla bozza. Dal 20261115-65 fuori dalla bozza non si scrive niente (E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA), e la rettifica cambia solo il prezzo: il guard e' ritirato col 20261115-74. Prima: Guard vendite.trgfn_listini_righe_guard_periodicita_quota_fissa (BEFORE UPDATE OF periodicita su vendite.listini_righe; 2026-10-31, brief-db-contratto-righe-periodiche-in-commessa §7.10, decisione di Tid): fuori dalla bozza la riga di una quota fissa a canone (vendite.fn_articolo_quota_fissa_a_canone) non resta senza periodicita'. Cambiarla con un'altra resta una rettifica. Chiude il buco del controllo all'attivazione (E_LISTINO_VERSIONE_QUOTA_FISSA_SENZA_PERIODICITA). Nel contesto il campo (periodicita), la riga, la versione e il suo stato.
+    # ⚠️ RITIRATO il 2026-11-15
     "E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA": "CONFLITTO_STATO",
     # Trigger DB guard coerenza BoM su listini_righe_componenti: blocca · prezzi bundle riferiti a componenti non presenti nella BoM corrente · del padre composito (o fuori dal range di validità della BoM).
     "E_LISTINO_RIGA_COMP_BOM_INCOERENTE": "DATO_ERRATO",
@@ -1676,8 +1677,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RIGA_ESCLUSIONE_CON_DATI": "DATO_ERRATO",
     "E_RIGA_GIA_FATTURATA": "CONFLITTO_STATO",
     "E_RIGA_LISTINO_PROPAGATA": "CONFLITTO_STATO",
+    # Motivo VERSIONE_IN_BOZZA di script.fn_check_listino_riga_rettificabile, sollevato da vendite.fn_rettifica_riga_listino: in bozza la riga si modifica direttamente; la rettifica corregge la versione in vigore. Brief: brief-db-stati-documento-dal-vocabolario §6.28.
+    "E_RIGA_LISTINO_RETTIFICA_IN_BOZZA": "CONFLITTO_STATO",
+    # vendite.fn_rettifica_riga_listino: il motivo della rettifica manca, e' vuoto o supera i 500 caratteri. Il motivo resta nella storia della riga (meta.rettifiche_controllate[]). Brief: brief-db-stati-documento-dal-vocabolario §6.28.
+    "E_RIGA_LISTINO_RETTIFICA_MOTIVO_OBBLIGATORIO": "DATO_ERRATO",
+    # Motivo NON_IN_VIGORE di script.fn_check_listino_riga_rettificabile, sollevato da vendite.fn_rettifica_riga_listino: la versione ATTIVA non e' quella in vigore alla data operativa (vendite.fn_listino_versione_in_vigore), perche' non e' ancora iniziata o e' gia' finita. Si clona. Brief: brief-db-stati-documento-dal-vocabolario §6.28.
+    "E_RIGA_LISTINO_RETTIFICA_NON_IN_VIGORE": "CONFLITTO_STATO",
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
+    # Motivo VERSIONE_NON_IN_BOZZA di script.fn_check_listino_riga_scrivibile, sollevato dai guard delle righe di listino (vendite.trgfn_listini_righe_guard_stato), dei prezzi dei componenti (vendite.trgfn_listini_righe_comp_guard_immutabilita_v5) e del kit (vendite.trgfn_listini_kit_guard): la versione non e' in bozza e non e' CHIUSA, e fuori dalla bozza non si aggiunge, non si modifica e non si elimina niente (sviluppo-listini-v3 §6.3, 2026-04-12). Il prezzo di una riga non ancora usata si corregge col verbo vendite.fn_rettifica_riga_listino. Brief: brief-db-stati-documento-dal-vocabolario §6.28.
+    "E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA": "CONFLITTO_STATO",
     # Motivo 2 di script.fn_check_articolo_riga per ORDINE_VENDITA e DDT_VENDITA (2026-10-13, brief-db-articoli-ammessi-per-documento D-1 e D-2 di Tid): l'articolo della riga ha una natura che non va in ordine (config.nature_vendita.destinazione_tipo diversa da ORDINE_VENDITA). Ordine e bolla portano merce e articoli-onere (rev 2026-11-03, 20261103-17, brief-db-addebito-trasporto-ordine §8.1; predicato script.fn_natura_e_merce): un servizio che non e' un onere va in commessa (una tantum) o in contratto (ricorrente). La natura giudicata e' quella della riga (congelata, A-4), altrimenti quella dell'articolo. Sollevato da script.trgfn_righe_guard_articolo_ammesso. I VALORI: codice dell'articolo, descrizione della natura; campo articolo_id.
     "E_RIGA_NATURA_NON_AMMESSA": "DATO_ERRATO",
     # La natura di vendita di una riga di preventivo, ordine o bolla (natura_vendita_id) non si scrive a mano: la scrive il DB (script.trgfn_righe_natura_vendita) alla nascita della riga e quando cambia l'articolo (2026-10-13, brief-db-articoli-ammessi-per-documento A-4). Lo solleva il lock di colonna generato da dbops.automation_lock_columns (trigger _a10_lock_columns_upd), che parla prima del BB. Sostituisce E_PREV_RIGA_NATURA_IMMUTABILE, che valeva solo per il preventivo. CONFLITTO_STATO: il valore nuovo puo' essere una natura valida, e' la riga che non lo ammette. Il segnaposto e' il nome della colonna (lo riempie trgfn_lock_columns).
@@ -2234,6 +2243,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_INVALID_SNAPSHOT",
         "E_ISTANZA_UTILITY_SENZA_UTILITY",
         "E_KIT_QUANTITA_DISOMOGENEE",
+        "E_LISTINO_QUOTA_FISSA_PERIODICITA_FERMA",
         "E_LISTINO_VERSIONE_CHIUSA_DATE_IMMUTABILI",
         "E_NUMERAZIONE_IMMUTABILE",
         "E_OFFERTA_EMITTENTE_BA_INCOERENTE",

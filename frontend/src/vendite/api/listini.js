@@ -104,6 +104,12 @@ export function deleteRiga(listinoId, verId, rigaId) {
   return api.delete(`${BASE}/${listinoId}/versioni/${verId}/righe/${rigaId}/`)
 }
 
+// La «Rettifica» di una riga del listino in uso (N6): prezzo e motivo, il verbo
+// DB `vendite.fn_rettifica_riga_listino` decide (giro 6f-ter).
+export function rettificaRiga(listinoId, verId, rigaId, payload) {
+  return api.patch(`${BASE}/${listinoId}/versioni/${verId}/righe/${rigaId}/rettifica-controllata/`, payload)
+}
+
 // --- Test resolver prezzi v5 ---
 // Endpoint diagnostico del resolver pricing v5: risolve il prezzo attraverso
 // i 3 stadi (PROMO/CONTRATTO/CATEGORIA). Richiede tutti i parametri positivi

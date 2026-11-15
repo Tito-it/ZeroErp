@@ -72,7 +72,12 @@ _FIXTURE: tuple[str, ...] = (
     #    `trgfn_listini_righe_guard_tipologia` rifiuta un articolo senza, e su
     #    un articolo usato la tipologia non cambia piu' (guard A-10). Per
     #    questo il listino nasce prima dell'articolo.
-    "CREATE TEMP TABLE _lst AS SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'ricerca')",
+    # ⛔ La versione nasce in BOZZA (`p_in_bozza`): le righe si scrivono solo
+    #    li' (giro 6f-ter, brief-db-stati-documento-dal-vocabolario §6.28). Si
+    #    attiva dal verbo dopo la riga: i documenti sotto vogliono il listino
+    #    in vigore.
+    "CREATE TEMP TABLE _lst AS SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM _mondo), 'ricerca',"
+    " p_in_bozza => TRUE)",
     "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RVART-' || %(sfx)s, false,"
     " p_listino_tipologia_id => (SELECT tipologia_id FROM _lst)) AS articolo_id",
     """
@@ -96,6 +101,8 @@ _FIXTURE: tuple[str, ...] = (
     )
     SELECT id AS riga_id FROM ins
     """,
+    "SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni'::regclass,"
+    " (SELECT listino_versione_id FROM _lst), 'ATTIVA')",
     # ── Promo ──────────────────────────────────────────────────────────────
     # ⚠️ `valido_dal` da domani: il guard data-driven rifiuta una promo che
     #    nasce gia' iniziata.

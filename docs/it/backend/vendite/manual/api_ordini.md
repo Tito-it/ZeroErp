@@ -377,7 +377,15 @@ due **date di consegna**. PATCH: le stesse senza `articolo_id` e
 `componenti_overrides`. **`iva_id` non c'è** (dal 2026-08-31 l'aliquota la decide
 il risolutore): inviato, come ogni chiave fuori contratto, è un 400
 `E_ORD_VALIDAZIONE` (2026-10-20: prima era scartato in silenzio). «Solo DRAFT»
-è il BB `richiedi_righe_in_bozza` → 409 `E_RIGA_DOC_NON_BOZZA`. La doppia quantità operativa/base segue il
+è il BB `richiedi_righe_in_bozza` → 409 `E_RIGA_DOC_NON_BOZZA`.
+⛔ **`uom_operativa_id` è obbligatorio per un articolo non composito, anche col
+prezzo scritto a mano** (dal 2026-11-15, gate della provenienza del prezzo,
+`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`): il prezzo
+della riga passa sempre dal gate, che lo chiede al listino o ne verifica i
+limiti L1/L2, e il listino risponde per unità. Senza → 400 `E_ORD_VALIDAZIONE`
+sul campo `uom_operativa_id`. Nella PATCH che cambia il prezzo vale l'unità
+della riga, se non se ne manda un'altra. Il padre di un kit ne è fuori: il suo
+prezzo è la somma dei figli. La doppia quantità operativa/base segue il
 pattern standard (input con priorità all'operativa; `quantita` base derivata dal
 trigger `trgfn_qta_from_operativa`). I totali testata sono ricalcolati da trigger DB.
 

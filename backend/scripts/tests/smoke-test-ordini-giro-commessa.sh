@@ -182,8 +182,12 @@ STATO=$(json_get "$LAST_BODY" "data.stato_codice_interno")
 
 # --- 3. Riga merce ---
 echo ""; echo "-- 3. Aggiungi riga merce --"
+# `uom_operativa_id`: anche col prezzo a mano il gate lo confronta col listino,
+# per unita' (dal 2026-11-15). ⚠️ EXTRACTED si azzera: una riga rifiutata
+# lasciava in `riga_id` il numero dell'ordine estratto al passo prima.
+EXTRACTED=""
 do_curl POST "/api/v1/vendite/ordini/${ORDINE_ID}/righe/" \
-    "{\"articolo_id\": \"$ARTICOLO_ID\", \"descrizione\": \"Riga merce smoke giro commessa\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
+    "{\"articolo_id\": \"$ARTICOLO_ID\", \"uom_operativa_id\": $ARTICOLO_UOM_ID, \"descrizione\": \"Riga merce smoke giro commessa\", \"qta_operativa\": \"5\", \"prezzo_unitario\": \"80.00\"}"
 check "POST aggiungi riga" 200 "data.riga_id" || true
 RIGA_ID="$EXTRACTED"; log_info "riga_id = $RIGA_ID"
 

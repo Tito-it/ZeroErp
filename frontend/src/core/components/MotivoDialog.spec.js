@@ -13,13 +13,15 @@
 //   1) obbligatorio: senza motivo il pulsante d'azione e' spento
 //   2) `conferma` porta il motivo ripulito degli spazi; vuoto → null
 //   3) ⭐ alla riapertura il motivo riparte vuoto (mai residui del giro prima)
+//   4) ⭐ `altriCampi` entra nella fotografia: cambiato solo lui, uscire chiede
 // ------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import MotivoDialog from './MotivoDialog.vue'
+import AppDialog from './AppDialog.vue'
 import { monta } from '../../../test/montaggio'
 
 const DialogFinto = defineComponent({
@@ -74,5 +76,19 @@ describe('MotivoDialog', () => {
     await w.setProps({ visible: false })
     await w.setProps({ visible: true })
     expect(w.find('textarea').element.value).toBe('')
+  })
+
+  it('4) altriCampi entra nella fotografia: cambiato solo lui, uscire chiede', async () => {
+    const prezzo = ref(10)
+    const w = montaMotivo({ altriCampi: () => ({ prezzo: prezzo.value }) })
+    await nextTick()
+    await nextTick()
+    const esci = w.findComponent(AppDialog).props('confermaUscita')
+    let chiuso = 0
+    esci(() => { chiuso += 1 })
+    expect(chiuso).toBe(1) // niente di cambiato: si esce subito
+    prezzo.value = 12
+    esci(() => { chiuso += 1 })
+    expect(chiuso).toBe(1) // il prezzo cambiato: si chiede, non si esce
   })
 })

@@ -420,15 +420,14 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             conditions.append("v.valido_dal <= %s::date")
             params.append(data_a)
         # Filtro scadenza mese: contratti il cui ultimo giorno di validita'
-        # (`valido_al`) cade nel mese indicato (formato YYYY-MM).
+        # (`valido_al`) cade nel mese indicato (formato YYYY-MM, validato dal
+        # service). Il mese di un giorno e' il BB `script.fn_mese_di`, non un
+        # intervallo ricostruito qui (brief-db-mese-di-un-giorno, R-BE-2).
+        # `valido_al` NULL (validita' aperta): `fn_mese_di(NULL)` e' NULL e il
+        # confronto scarta la riga.
         if scadenza_mese is not None:
-            conditions.append(
-                "(v.valido_al IS NOT NULL"
-                " AND v.valido_al >= %s::date"
-                " AND v.valido_al < (%s::date + interval '1 month')::date)"
-            )
-            primo_mese = f"{scadenza_mese}-01"
-            params.extend([primo_mese, primo_mese])
+            conditions.append("script.fn_mese_di(v.valido_al) = %s::date")
+            params.append(f"{scadenza_mese}-01")
         add_ricerca_full_condition(conditions, params, search, _RICERCA_CONTRATTI)
 
         # Scope emittente (defense-in-depth applicativa). La vista
