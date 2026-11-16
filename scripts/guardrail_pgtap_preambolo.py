@@ -112,7 +112,7 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 # 2026-11-09: 110 -> 109. db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql
 #   riscritto (brief-db-revisione-catalogo, giro 1): il padre solo componente ora
 #   pretende E_ARTICOLO_NON_COMPOSITO, e il kit che diventa solo componente il CHECK.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 109
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 108
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

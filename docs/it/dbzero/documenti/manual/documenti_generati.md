@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.documenti_generati`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -109,8 +109,9 @@ la regola dei suoi passaggi.
 
 ### ⭐ Una stampa non tiene accesi i suoi padri
 
-La stampa è storia, non un figlio vivo. Le sue chiavi verso il modello, la versione, il tipo di output, il tipo
-di sorgente e l'azienda sono eccezioni della regola ATTIVO (`dbops.automazione_attivo_eccezioni`): un modello,
+La stampa è storia, non un figlio vivo. Le sue chiavi verso il modello, la versione, il tipo di sorgente e
+l'azienda sono eccezioni della regola ATTIVO (`dbops.automazione_attivo_eccezioni`); il tipo di output è un
+vocabolario senza `attivo`, che non si spegne. Un modello,
 una versione o un'azienda che hanno stampato si spengono come gli altri, e spegnere i propri modelli di un tipo
 riporta l'azienda allo standard. Per la stessa ragione la regola ATTIVO non chiede che quei padri siano accesi
 quando la stampa nasce: lo decide la risoluzione.

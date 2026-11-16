@@ -1,0 +1,45 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE DI TRADUZIONE DEI QUATTRO VOCABOLARI STORICI E' OBBLIGATORIA
+#   etichetta_key NOT NULL su tipi_documento_output, tipi_file_documento,
+#   tipi_asset_documento, render_engine_documento.
+#
+#   La colonna nasce nullable in 00_schema/documenti/20261115-91 e la scrive il
+#   mirror del CSV (80_data/20260429-58): il NOT NULL
+#   arriva dopo tutto 80_data (linee-guida-sql §11.2, «una colonna aggiunta a
+#   un CSV»). Una riga senza chiave ferma qui il migrate, col nome della tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261115-97-alter-vocabolari-documenti-etichetta-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261115-97-alter-vocabolari-documenti-etichetta-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        etichetta_key obbligatoria sui quattro vocabolari storici di documenti, dopo il seed.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.tipi_documento_output   ALTER COLUMN etichetta_key SET NOT NULL;
+              ALTER TABLE documenti.tipi_file_documento     ALTER COLUMN etichetta_key SET NOT NULL;
+              ALTER TABLE documenti.tipi_asset_documento    ALTER COLUMN etichetta_key SET NOT NULL;
+              ALTER TABLE documenti.render_engine_documento ALTER COLUMN etichetta_key SET NOT NULL;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.tipi_documento_output   ALTER COLUMN etichetta_key DROP NOT NULL;
+              ALTER TABLE documenti.tipi_file_documento     ALTER COLUMN etichetta_key DROP NOT NULL;
+              ALTER TABLE documenti.tipi_asset_documento    ALTER COLUMN etichetta_key DROP NOT NULL;
+              ALTER TABLE documenti.render_engine_documento ALTER COLUMN etichetta_key DROP NOT NULL;

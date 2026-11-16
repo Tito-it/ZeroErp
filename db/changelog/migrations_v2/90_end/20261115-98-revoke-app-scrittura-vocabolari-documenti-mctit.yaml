@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DEI VOCABOLARI DI documenti E DEI FORMATI DI FILE
+#   A zeroerp_app solo SELECT su:
+#     documenti.tipi_documento_output, documenti.tipi_file_documento,
+#     documenti.tipi_asset_documento, documenti.render_engine_documento,
+#     documenti.formati_template, documenti.formati_pagina,
+#     documenti.orientamenti_pagina, config.formati_file,
+#     documenti.tipi_asset_documento_formati, documenti.tipi_file_documento_formati
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Q10 (Tid 2026-11-14): i vocabolari li possiede il CSV, come
+#   config.aree_funzionali e ui.misure_pagina. Un valore e' cio' che il codice
+#   sa usare (un motore, un tipo di file, un formato): una riga scritta
+#   dall'applicazione sarebbe un valore che nessun codice onora. Censito il
+#   2026-11-14: nessuno li scrive; config.tabelle_gestibili li ha lookup si',
+#   pannello no.
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet (subito su dev);
+#   · v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco «POSTURA DICHIARATA» di scripts/sql/provision_zeroerp.sql.
+#   Le tiene allineate db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261115-98-revoke-app-scrittura-vocabolari-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20261115-98-revoke-app-scrittura-vocabolari-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta dei vocabolari di documenti e dei formati di file: a zeroerp_app SELECT soltanto
+        (li scrive il mirror del CSV). Postura resa stabile dal loop 20260205-41 e dal
+        provisioning.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta dei vocabolari di documenti.';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'documenti.tipi_documento_output',
+                      'documenti.tipi_file_documento',
+                      'documenti.tipi_asset_documento',
+                      'documenti.render_engine_documento',
+                      'documenti.formati_template',
+                      'documenti.formati_pagina',
+                      'documenti.orientamenti_pagina',
+                      'config.formati_file',
+                      'documenti.tipi_asset_documento_formati',
+                      'documenti.tipi_file_documento_formati'
+                  ] LOOP
+                      EXECUTE format('GRANT SELECT ON TABLE %s TO zeroerp_app', v_tabella);
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+                  documenti.tipi_documento_output, documenti.tipi_file_documento,
+                  documenti.tipi_asset_documento, documenti.render_engine_documento,
+                  documenti.formati_template, documenti.formati_pagina,
+                  documenti.orientamenti_pagina, config.formati_file,
+                  documenti.tipi_asset_documento_formati, documenti.tipi_file_documento_formati
+                  TO zeroerp_app;

@@ -20,7 +20,7 @@
 --   7) la versione che ha stampato si spegne
 --   8) il modello che ha stampato si spegne
 --   9) ... e la risoluzione per l'azienda torna allo standard
---  10) il tipo di file che ha un file si spegne
+--  10) il tipo di file non ha un interruttore: la stampa non tiene acceso niente
 --   Il building block «rifiuta sempre»
 --  11) senza argomenti: E_TABELLA_OP_NON_CONSENTITA
 --  12) col codice e le colonne: la frase porta i valori, la data in GG/MM/AAAA
@@ -32,7 +32,7 @@
 --  - provare sui casi COSTRUITI le regole del giro: un'azienda nuova, un suo
 --    modello predefinito con la versione pubblicata, una stampa di un suo
 --    preventivo. Nessuna riga di dbdev entra come soggetto.
---  - ⚠️ 7-10 chiedono che il motore ATTIVO abbia gia' tolto i trigger delle FK
+--  - ⚠️ 7-9 chiedono che il motore ATTIVO abbia gia' tolto i trigger delle FK
 --    a registro (dbops.fn_run_automations_attivo, o il job serale): su un
 --    database aggiornato e non ancora ripassato dal motore sono rossi, come il
 --    test 9 di test-automazione-attivo-eccezioni-v1.
@@ -199,10 +199,10 @@ SELECT is(
   '9) ... e l''azienda torna allo standard');
 
 -- 10
-SELECT lives_ok(
-  format('UPDATE documenti.tipi_file_documento SET attivo = false WHERE id = %s',
-         (SELECT pdf FROM _k)),
-  '10) il tipo di file che ha un file si spegne');
+-- Dal giro dei vocabolari il tipo di file non ha attivo: un tipo c'e' o non c'e',
+-- e nasce o si ritira con un changeSet. Non resta nessuna coppia ATTIVO.
+SELECT hasnt_column('documenti', 'tipi_file_documento', 'attivo',
+  '10) il tipo di file non ha un interruttore: la stampa non tiene acceso niente');
 
 -- ============================================================
 -- Il building block «rifiuta sempre»

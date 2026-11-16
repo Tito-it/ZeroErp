@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE CHE IL GIRO DEI VOCABOLARI LASCIA SENZA OGGETTO
+#   documenti.tipi_asset_documento          ALTRO
+#   dbops.automazione_attivo_eccezioni      le tre FK verso tipi_documento_output
+#                                           e tipi_file_documento
+#   dbops.storico_scope_policy              i quattro vocabolari storici
+#   Tolte anche dai CSV: il mirror loadUpdateData non cancella.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   ALTRO (D15, Q8b): attivo nel seed, ma ogni caricamento era rifiutato dal
+#   backend; senza formati abbinati non ha uso. Nessuna risorsa ne ha il tipo
+#   (dbdev, 2026-11-16; da zero la tabella delle risorse e' vuota), e la FK
+#   RESTRICT lo dice se una ne nasce.
+#   Le eccezioni ATTIVO: dal 20261115-91 i padri non hanno attivo, e il motore
+#   non genera la coppia; un'eccezione senza coppia e' un registro che mente.
+#   Lo storico: tabelle e trigger tolti dal 20261115-91; la riga del perimetro
+#   dello storico nominerebbe una tabella che non c'e'.
+#   Va dopo il mirror dei vocabolari (20260429-58), che non riscrive ALTRO.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261115-96-delete-vocabolari-documenti-righe-senza-oggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261115-96-delete-vocabolari-documenti-righe-senza-oggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Via il tipo di risorsa ALTRO, le tre eccezioni ATTIVO verso tipi_documento_output e
+        tipi_file_documento, e le quattro righe del perimetro dello storico dei vocabolari di
+        documenti. Tolte anche dai CSV.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: automazione_attivo_eccezioni
+        - tableExists:
+            schemaName: dbops
+            tableName: storico_scope_policy
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM documenti.tipi_asset_documento t
+               WHERE t.codice_interno = 'ALTRO';
+
+              DELETE FROM dbops.automazione_attivo_eccezioni e
+               WHERE (e.schema_figlia, e.tabella_figlia, e.colonna_fk) IN (
+                         ('vendite',   'fatture_stampa_coda',     'tipo_documento_output_id'),
+                         ('documenti', 'documenti_generati',      'tipo_documento_output_id'),
+                         ('documenti', 'documenti_generati_file', 'file_tipo_id'));
+
+              DELETE FROM dbops.storico_scope_policy p
+               WHERE p.schema_tabella = 'documenti'
+                 AND p.nome_tabella IN ('tipi_documento_output', 'tipi_file_documento',
+                                        'tipi_asset_documento', 'render_engine_documento');
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Le righe tornano dai CSV di prima (git) col loro mirror; attivo, la coppia
+              -- ATTIVO e lo storico solo col rollback del 20261115-91.
+              SELECT 1;

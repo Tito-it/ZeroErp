@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I FORMATI DI FILE E QUELLI CHE OGNI TIPO AMMETTE
+#   config.formati_file                      PNG, JPEG, SVG, WEBP, GIF, PDF, CSS
+#   documenti.tipi_asset_documento_formati   le liste del servizio delle risorse
+#   documenti.tipi_file_documento_formati    il PDF della stampa; PDF, JPEG, PNG
+#                                            per gli allegati
+#
+# ⭐ Gli insiemi sono quelli del backend il 2026-11-16, ne' uno di piu' ne' uno di
+#   meno: il giro sposta la sede, non cambia le regole. LOGO e IMMAGINE: PNG,
+#   JPEG, SVG, WEBP, GIF; FIRMA: senza GIF; PDF: PDF; CSS: CSS.
+# ⚠️ Mirror loadUpdateData, runOnChange: un valore si cambia nel CSV, mai con un
+#   UPDATE a parte (linee-guida-sql 11.2). Chiave: id, fisso nei CSV. Gli
+#   abbinamenti nominano gli id dei tipi (CSV di 20260429-58, che viene prima) e
+#   dei formati (primo loader di questo changeSet). Un abbinamento tolto dal CSV
+#   non si cancella da solo: porta il suo DELETE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261115-95-seed-formati-file-e-tipi-formati-ammessi-mctit.yaml
+
+  - changeSet:
+      id: 20261115-95-seed-formati-file-e-tipi-formati-ammessi
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di config.formati_file e degli abbinamenti dei formati ai tipi di risorsa e ai tipi
+        di file della stampa. Mirror loadUpdateData.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: formati_file
+        - tableExists:
+            schemaName: documenti
+            tableName: tipi_asset_documento_formati
+        - tableExists:
+            schemaName: documenti
+            tableName: tipi_file_documento_formati
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/formati_file.csv
+            tableName: formati_file
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: codice_interno, type: STRING }
+              - column: { name: codice, type: STRING }
+              - column: { name: descrizione, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
+              - column: { name: mime_type, type: STRING }
+              - column: { name: estensione, type: STRING }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/documenti/tipi_asset_documento_formati.csv
+            tableName: tipi_asset_documento_formati
+            schemaName: documenti
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: asset_tipo_id, type: NUMERIC }
+              - column: { name: formato_file_id, type: NUMERIC }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/documenti/tipi_file_documento_formati.csv
+            tableName: tipi_file_documento_formati
+            schemaName: documenti
+            separator: ","
+            encoding: UTF-8
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: file_tipo_id, type: NUMERIC }
+              - column: { name: formato_file_id, type: NUMERIC }

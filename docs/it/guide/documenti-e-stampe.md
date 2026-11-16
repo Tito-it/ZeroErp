@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -63,6 +63,11 @@ vendita, fattura di vendita.
 Lo stesso tipo può avere modelli diversi per aziende diverse. E la stessa sorgente può produrre
 più tipi: una fattura, per esempio, potrebbe avere anche un allegato con un tipo suo.
 
+I tipi di documento, come gli altri elenchi fissi del modulo (tipi di asset e di file, motori,
+formati della sorgente e della pagina, formati di file), sono ciò che il sistema sa usare: non si
+configurano dall'interfaccia e non si spengono. Una voce nuova arriva con un aggiornamento del
+sistema, insieme al codice che la sa trattare.
+
 ### 2.2 Modello (template)
 
 Il modello è la **definizione del layout** di un tipo di documento per una sorgente di dati (il
@@ -107,6 +112,10 @@ Gli asset sono gli elementi grafici di un'azienda: logo, carta intestata, firma,
 versione li richiama per codice, e il motore li cerca **fra gli asset dell'azienda del
 documento**. Un asset che manca ferma la stampa, invece di produrre un PDF senza logo. Per questo i
 modelli standard non richiamano asset.
+
+Ogni tipo di asset ammette solo alcuni formati di file: un logo è un'immagine (PNG, JPEG, SVG, WebP,
+GIF), un foglio di stile è un CSS. Il database rifiuta un asset in un formato che il suo tipo non
+ammette; lo stesso vale per gli allegati di un documento generato (PDF, JPEG, PNG).
 
 Il file di un asset non si sostituisce e l'asset non si cancella: la ristampa di un documento già
 generato ritrova così, per codice, lo stesso file di allora. Il codice è unico per azienda e non ha
@@ -317,6 +326,8 @@ configura o genera.
 | Un documento generato non si cancella e non cambia | Il database rifiuta la cancellazione del record, dei suoi eventi e del suo file, e ogni modifica dello snapshot |
 | Ogni documento generato ha il suo PDF | Il database rifiuta, a fine operazione, un documento generato senza il PDF principale |
 | Il PDF prodotto è verificabile | L'hash del file è conservato col record |
+| Un asset o un allegato è in un formato che il suo tipo ammette | Il database confronta il formato dichiarato con i formati abbinati al tipo |
+| Gli elenchi fissi del modulo non si cambiano dall'interfaccia | L'applicazione li legge soltanto: una voce nuova arriva con il codice che la usa |
 | Un modello, una versione o un'azienda che hanno stampato si possono spegnere | Le stampe sono storia: non tengono accesi i loro padri, e un'azienda che spegne i suoi modelli torna allo standard |
 
 ---
@@ -338,13 +349,15 @@ documenti/
 ├── formati_pagina                     — A4, A3, LETTER
 ├── orientamenti_pagina                — PORTRAIT, LANDSCAPE
 ├── formati_template                   — il formato del contenuto di una versione
+├── tipi_asset_documento_formati       — i formati di file che ogni tipo di asset ammette
+├── tipi_file_documento_formati        — i formati di file che ogni tipo di file ammette
 ├── vw_template_versioni_stampabili    — i modelli che possono stampare oggi
 ├── vw_template_risoluzione_emittente  — per ogni azienda e documento, con che cosa si stampa
 └── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard
 ```
 
-I parametri dello storage (provider, bucket, limiti) sono in `config.parameters` con prefisso
-`documenti_*`.
+I formati di file (tipo MIME ed estensione) sono il vocabolario `config.formati_file`. I parametri
+dello storage (provider, bucket, limiti) sono in `config.parameters` con prefisso `documenti_*`.
 
 ---
 

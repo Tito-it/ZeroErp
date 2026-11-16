@@ -565,6 +565,22 @@ FROM (VALUES ('dbops.credenziali_di_prova'), ('dbops.soggetti_di_prova')) AS t(n
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ I VOCABOLARI DI documenti E I FORMATI DI FILE (dal 2026-11-16): brief
+--   brief-db-revisione-documenti, Q10. Li possiede il CSV: un valore nasce col
+--   codice che lo sa usare. Stesso elenco di `v_tabelle_sola_lettura_app` nel
+--   loop 20260205-41 e del forward 90_end/20261115-98;
+--   `db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql` lo dice se non
+--   lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('documenti.tipi_documento_output'), ('documenti.tipi_file_documento'),
+             ('documenti.tipi_asset_documento'), ('documenti.render_engine_documento'),
+             ('documenti.formati_template'), ('documenti.formati_pagina'),
+             ('documenti.orientamenti_pagina'), ('config.formati_file'),
+             ('documenti.tipi_asset_documento_formati'),
+             ('documenti.tipi_file_documento_formati')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

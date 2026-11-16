@@ -1,0 +1,271 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I SETTE VOCABOLARI DI documenti HANNO UNA FORMA SOLA
+#   tipi_documento_output, tipi_file_documento, tipi_asset_documento,
+#   render_engine_documento: entrano etichetta_key e ordine; escono attivo,
+#   meta, storicizza e lo storico (trigger z90 e tabella storico.<t>).
+#   formati_template, formati_pagina, orientamenti_pagina: descrizione
+#   obbligatoria e non vuota, codice non vuoto.
+#   COMMENT al presente di tabelle e colonne dei sette.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D16 (Q14, Tid 2026-11-16): due forme per la stessa specie di tabella. I
+#   valori sono cio' che il codice sa usare (un motore, un tipo di file, un
+#   formato di pagina), non una configurazione: nascono e si ritirano con un
+#   changeSet, insieme al codice. E' il ragionamento con cui i tre della
+#   versione sono nati senza attivo (2026-10-04). Le parole a video vengono
+#   dalla chiave di traduzione, come per i tre.
+#   I meta non hanno lettori (D15). Lo storico di un vocabolario che l'app non
+#   scrive (Q10, giro stesso) registrerebbe solo i changeSet.
+#
+# -- ORDINE ---------------------------------------------------------------
+#   1. I trigger ATTIVO verso e dai quattro: il block del padre e' montato
+#      UPDATE OF attivo e ferma il DROP COLUMN; il require del figlio
+#      leggerebbe una colonna che non c'e' piu' (42703). Si cercano per
+#      funzione e argomenti, non per nome; to_regproc perche' da zero le
+#      funzioni ATTIVO (20_code) nascono dopo questo changeSet, e i trigger
+#      non ci sono ancora (ci_apply).
+#   2. Lo storico: il trigger z90 prima della tabella.
+#   3. Le colonne. etichetta_key nasce nullable: i valori li scrive il mirror
+#      del CSV (80_data/20260429-58), il NOT NULL arriva in 90_end
+#      (linee-guida-sql §11.2, «una colonna aggiunta a un CSV»).
+#
+# -- CHI LEGGE LE COLONNE CHE ESCONO (censito 2026-11-16) -------------------
+#   DB: nessuna vista, nessuna funzione (fn_risolvi_template_applicabile legge
+#   la sola descrizione del tipo). pgTAP: test-documenti-lookup,
+#   -seed-idempotenti, -storico-disabled, -stampa-e-storia-v1, riscritti nel
+#   giro. BE: get_tipo_asset e get_tipo_file_documento_by_codice leggono
+#   attivo; le lookup generiche dei quattro filtrano attivo e rendono
+#   descrizione (richieste nel brief).
+#   Fatto di dbdev (2026-11-16): nessuna vista dipende dai sette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261115-91-alter-vocabolari-documenti-una-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261115-91-alter-vocabolari-documenti-una-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I sette vocabolari di documenti hanno una forma sola: codice_interno, codice,
+        descrizione, etichetta_key, ordine, audit e tx_id. I quattro storici perdono attivo, meta,
+        storicizza e lo storico.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- 1. I trigger ATTIVO verso e dai quattro storici.
+              DO $attivo$
+              DECLARE
+                  v_trigger record;
+              BEGIN
+                  FOR v_trigger IN
+                      SELECT t.tgname, t.tgrelid::regclass AS tabella
+                        FROM pg_catalog.pg_trigger t
+                       WHERE NOT t.tgisinternal
+                         AND t.tgfoid IN (pg_catalog.to_regproc('dbops.trgfn_prevent_deactivate_if_children'),
+                                          pg_catalog.to_regproc('dbops.trgfn_child_requires_active_parent'))
+                         AND (   t.tgrelid IN ('documenti.tipi_documento_output'::regclass,
+                                               'documenti.tipi_file_documento'::regclass,
+                                               'documenti.tipi_asset_documento'::regclass,
+                                               'documenti.render_engine_documento'::regclass)
+                              OR (    t.tgfoid = pg_catalog.to_regproc('dbops.trgfn_child_requires_active_parent')
+                                  AND (pg_catalog.string_to_array(pg_catalog.encode(t.tgargs, 'escape'), '\000'))[1] = 'documenti'
+                                  AND (pg_catalog.string_to_array(pg_catalog.encode(t.tgargs, 'escape'), '\000'))[2]
+                                      IN ('tipi_documento_output', 'tipi_file_documento',
+                                          'tipi_asset_documento', 'render_engine_documento')))
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON %s', v_trigger.tgname, v_trigger.tabella);
+                  END LOOP;
+              END
+              $attivo$;
+
+              -- 2. Lo storico.
+              DROP TRIGGER IF EXISTS trg_tipi_documento_output_z90_storico_upd_dlt   ON documenti.tipi_documento_output;
+              DROP TRIGGER IF EXISTS trg_tipi_file_documento_z90_storico_upd_dlt     ON documenti.tipi_file_documento;
+              DROP TRIGGER IF EXISTS trg_tipi_asset_documento_z90_storico_upd_dlt    ON documenti.tipi_asset_documento;
+              DROP TRIGGER IF EXISTS trg_render_engine_documento_z90_storico_upd_dlt ON documenti.render_engine_documento;
+              DROP TABLE IF EXISTS storico.tipi_documento_output;
+              DROP TABLE IF EXISTS storico.tipi_file_documento;
+              DROP TABLE IF EXISTS storico.tipi_asset_documento;
+              DROP TABLE IF EXISTS storico.render_engine_documento;
+
+              -- 3. Le colonne dei quattro storici.
+              ALTER TABLE documenti.tipi_documento_output
+                  ADD COLUMN etichetta_key varchar(120),
+                  ADD COLUMN ordine smallint,
+                  DROP COLUMN attivo,
+                  DROP COLUMN meta,
+                  DROP COLUMN storicizza;
+              ALTER TABLE documenti.tipi_file_documento
+                  ADD COLUMN etichetta_key varchar(120),
+                  ADD COLUMN ordine smallint,
+                  DROP COLUMN attivo,
+                  DROP COLUMN meta,
+                  DROP COLUMN storicizza;
+              ALTER TABLE documenti.tipi_asset_documento
+                  ADD COLUMN etichetta_key varchar(120),
+                  ADD COLUMN ordine smallint,
+                  DROP COLUMN attivo,
+                  DROP COLUMN meta,
+                  DROP COLUMN storicizza;
+              ALTER TABLE documenti.render_engine_documento
+                  ADD COLUMN etichetta_key varchar(120),
+                  ADD COLUMN ordine smallint,
+                  DROP COLUMN attivo,
+                  DROP COLUMN meta,
+                  DROP COLUMN storicizza;
+
+              -- 4. Le regole che i tre della versione non avevano.
+              ALTER TABLE documenti.formati_template
+                  ALTER COLUMN descrizione SET NOT NULL,
+                  ADD CONSTRAINT chk_formati_template_codice_non_vuoto
+                      CHECK (btrim(codice) <> ''),
+                  ADD CONSTRAINT chk_formati_template_descrizione_non_vuota
+                      CHECK (btrim(descrizione) <> '');
+              ALTER TABLE documenti.formati_pagina
+                  ALTER COLUMN descrizione SET NOT NULL,
+                  ADD CONSTRAINT chk_formati_pagina_codice_non_vuoto
+                      CHECK (btrim(codice) <> ''),
+                  ADD CONSTRAINT chk_formati_pagina_descrizione_non_vuota
+                      CHECK (btrim(descrizione) <> '');
+              ALTER TABLE documenti.orientamenti_pagina
+                  ALTER COLUMN descrizione SET NOT NULL,
+                  ADD CONSTRAINT chk_orientamenti_pagina_codice_non_vuoto
+                      CHECK (btrim(codice) <> ''),
+                  ADD CONSTRAINT chk_orientamenti_pagina_descrizione_non_vuota
+                      CHECK (btrim(descrizione) <> '');
+
+              -- 5. COMMENT.
+              COMMENT ON TABLE documenti.tipi_documento_output IS
+                  'I tipi di documento che il modulo stampa (preventivo, contratto, offerta, ordine, DDT, fattura di vendita). Ogni modello e ogni stampa dichiarano il loro. Un tipo nuovo nasce con un changeSet insieme al builder che ne prepara i dati; l''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.tipi_file_documento IS
+                  'I tipi di file di una stampa: il PDF principale (PDF_FINALE) e gli allegati (ALLEGATO). Ogni tipo dichiara i formati di file che ammette in documenti.tipi_file_documento_formati. Un tipo nuovo nasce con un changeSet; l''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.tipi_asset_documento IS
+                  'I tipi di risorsa che un''azienda carica per i suoi modelli (logo, firma, immagine, PDF, foglio di stile). Ogni tipo dichiara i formati di file che ammette in documenti.tipi_asset_documento_formati. Un tipo nuovo nasce con un changeSet; l''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.render_engine_documento IS
+                  'I motori che rendono una versione di modello in PDF. Un motore e'' codice: la riga nasce con il changeSet che accompagna il codice che lo sa usare. L''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.formati_template IS
+                  'I formati della sorgente di una versione di modello (HTML, HTML con blocchi Markdown): i valori ammessi di documenti.template_documenti_versioni.formato_template, legata per FK a codice_interno. Un formato nuovo nasce con il motore che lo sa trattare; l''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.formati_pagina IS
+                  'I formati di pagina del PDF (A4, A3, Letter): i valori ammessi di documenti.template_documenti_versioni.page_format, legata per FK a codice_interno. Il codice e'' la parola CSS che il render passa a @page. L''applicazione li legge soltanto.';
+              COMMENT ON TABLE documenti.orientamenti_pagina IS
+                  'Gli orientamenti di pagina del PDF (verticale, orizzontale): i valori ammessi di documenti.template_documenti_versioni.page_orientation, legata per FK a codice_interno. Il codice e'' la parola CSS che il render passa a @page. L''applicazione li legge soltanto.';
+
+              COMMENT ON COLUMN documenti.tipi_documento_output.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.codice IS
+                  'Codice leggibile del tipo.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.tipi_documento_output.<codice_interno minuscolo>).';
+              COMMENT ON COLUMN documenti.tipi_documento_output.ordine IS
+                  'Ordine di presentazione nella tendina. Non ha semantica.';
+
+              COMMENT ON COLUMN documenti.tipi_file_documento.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.codice IS
+                  'Codice leggibile del tipo.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.tipi_file_documento.<codice_interno minuscolo>).';
+              COMMENT ON COLUMN documenti.tipi_file_documento.ordine IS
+                  'Ordine di presentazione nella tendina. Non ha semantica.';
+
+              COMMENT ON COLUMN documenti.tipi_asset_documento.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.codice IS
+                  'Codice leggibile del tipo.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.tipi_asset_documento.<codice_interno minuscolo>).';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.ordine IS
+                  'Ordine di presentazione nella tendina. Non ha semantica.';
+
+              COMMENT ON COLUMN documenti.render_engine_documento.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): il valore che il servizio di render riconosce.';
+              COMMENT ON COLUMN documenti.render_engine_documento.codice IS
+                  'Codice leggibile del motore.';
+              COMMENT ON COLUMN documenti.render_engine_documento.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.render_engine_documento.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.render_engine_documento.<codice_interno minuscolo>).';
+              COMMENT ON COLUMN documenti.render_engine_documento.ordine IS
+                  'Ordine di presentazione nella tendina. Non ha semantica.';
+
+              COMMENT ON COLUMN documenti.formati_template.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): la colonna puntata dalla FK e il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.formati_template.codice IS
+                  'Codice leggibile del formato.';
+              COMMENT ON COLUMN documenti.formati_template.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.formati_template.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.formati_template.<codice_interno minuscolo>).';
+
+              COMMENT ON COLUMN documenti.formati_pagina.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): la colonna puntata dalla FK e il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.formati_pagina.codice IS
+                  'Codice leggibile del formato.';
+              COMMENT ON COLUMN documenti.formati_pagina.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.formati_pagina.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.formati_pagina.<codice_interno minuscolo>).';
+
+              COMMENT ON COLUMN documenti.orientamenti_pagina.codice_interno IS
+                  'Chiave naturale stabile, immutabile (script.trgfn_lock_columns): la colonna puntata dalla FK e il valore su cui la logica confronta.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.codice IS
+                  'Codice leggibile dell''orientamento.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.descrizione IS
+                  'Descrizione per chi legge il catalogo; a video si usa etichetta_key.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.etichetta_key IS
+                  'Chiave di traduzione dell''etichetta a video (documenti.orientamenti_pagina.<codice_interno minuscolo>).';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Riporta le colonne, non i valori ne' lo storico: i trigger ATTIVO e lo
+              -- storico li rigenera la passata ci_apply successiva.
+              ALTER TABLE documenti.formati_template
+                  DROP CONSTRAINT IF EXISTS chk_formati_template_codice_non_vuoto,
+                  DROP CONSTRAINT IF EXISTS chk_formati_template_descrizione_non_vuota,
+                  ALTER COLUMN descrizione DROP NOT NULL;
+              ALTER TABLE documenti.formati_pagina
+                  DROP CONSTRAINT IF EXISTS chk_formati_pagina_codice_non_vuoto,
+                  DROP CONSTRAINT IF EXISTS chk_formati_pagina_descrizione_non_vuota,
+                  ALTER COLUMN descrizione DROP NOT NULL;
+              ALTER TABLE documenti.orientamenti_pagina
+                  DROP CONSTRAINT IF EXISTS chk_orientamenti_pagina_codice_non_vuoto,
+                  DROP CONSTRAINT IF EXISTS chk_orientamenti_pagina_descrizione_non_vuota,
+                  ALTER COLUMN descrizione DROP NOT NULL;
+              ALTER TABLE documenti.tipi_documento_output
+                  DROP COLUMN IF EXISTS etichetta_key, DROP COLUMN IF EXISTS ordine,
+                  ADD COLUMN attivo boolean NOT NULL DEFAULT true,
+                  ADD COLUMN meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  ADD COLUMN storicizza boolean NOT NULL DEFAULT true;
+              ALTER TABLE documenti.tipi_file_documento
+                  DROP COLUMN IF EXISTS etichetta_key, DROP COLUMN IF EXISTS ordine,
+                  ADD COLUMN attivo boolean NOT NULL DEFAULT true,
+                  ADD COLUMN meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  ADD COLUMN storicizza boolean NOT NULL DEFAULT true;
+              ALTER TABLE documenti.tipi_asset_documento
+                  DROP COLUMN IF EXISTS etichetta_key, DROP COLUMN IF EXISTS ordine,
+                  ADD COLUMN attivo boolean NOT NULL DEFAULT true,
+                  ADD COLUMN meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  ADD COLUMN storicizza boolean NOT NULL DEFAULT true;
+              ALTER TABLE documenti.render_engine_documento
+                  DROP COLUMN IF EXISTS etichetta_key, DROP COLUMN IF EXISTS ordine,
+                  ADD COLUMN attivo boolean NOT NULL DEFAULT true,
+                  ADD COLUMN meta jsonb NOT NULL DEFAULT '{}'::jsonb,
+                  ADD COLUMN storicizza boolean NOT NULL DEFAULT true;

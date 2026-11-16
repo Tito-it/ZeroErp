@@ -120,11 +120,11 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 -- ⚠️ `ORDER BY` su ogni `LIMIT 1`: senza, si scommette su quale riga esce.
 CREATE TEMP TABLE _catalogo AS
 SELECT (SELECT t.id FROM documenti.tipi_documento_output t
-         WHERE t.attivo ORDER BY t.id LIMIT 1)              AS tipo_output_id,
+         ORDER BY t.id LIMIT 1)                             AS tipo_output_id,
        (SELECT r.id FROM documenti.render_engine_documento r
-         WHERE r.attivo ORDER BY r.id LIMIT 1)              AS render_engine_id,
+         ORDER BY r.id LIMIT 1)                             AS render_engine_id,
        (SELECT f.id FROM documenti.tipi_file_documento f
-         WHERE f.attivo ORDER BY f.id LIMIT 1)              AS file_tipo_id,
+         ORDER BY f.id LIMIT 1)                             AS file_tipo_id,
        (SELECT s.id FROM config.sorgenti s
          WHERE s.codice_interno = 'FATTURA' AND s.attivo)   AS sorgente_tipo_id;
 

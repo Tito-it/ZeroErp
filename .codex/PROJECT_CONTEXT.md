@@ -251,8 +251,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   proposta da analizzare, cinque decisioni di Tid.
 - 📝 **Revisione dello schema `documenti`** (`work-in-progress/brief-db-revisione-documenti.md`): giro 0 (la doc)
   fatto il 2026-11-14, con le dodici decisioni. Giro 1 («le stampe sono storia», `20261115-82 … -90`) scritto e
-  applicato il 2026-11-16, pgTAP verdi (§11): restano la decisione Q13 e le ricadute BE (BE3, BE7, BE9, BE10).
-  Poi i giri 2-5, col via di Tid.
+  applicato il 2026-11-16, pgTAP verdi (§11); ricadute BE BE3, BE7, BE9, BE10. Giro 2 («i vocabolari»,
+  `20261115-91 … -98`: forma unica, sola lettura, formati di file nel DB; `-99` per il sync dello storico) applicato
+  il 2026-11-16, pgTAP verdi (§12): il BE da ora si rompe sui lettori di `attivo` (BE11), e FE1 (21 chiavi i18n) va
+  prima del merge. Poi i giri 3-5; Q13 nel giro 4.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

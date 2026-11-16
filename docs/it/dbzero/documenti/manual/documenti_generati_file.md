@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.documenti_generati_file`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -57,11 +57,13 @@ Lo storico standard è spento, come sulla stampa: il file non cambia.
 
 ---
 
-### Il tipo di file si spegne anche se è stato usato
+### Il formato lo ammette il tipo
 
-Un file è storia come la sua stampa: la sua chiave verso `tipi_file_documento` è un'eccezione della regola ATTIVO
-(`dbops.automazione_attivo_eccezioni`). Un tipo di file che ha avuto dei file si spegne; un tipo spento non tiene
-fermi gli allegati di una stampa vecchia.
+Un file nasce solo in un formato che il suo tipo ammette
+([tipi_file_documento_formati](/dbzero/documenti/tabelle/tipi_file_documento_formati)): il PDF
+principale è un PDF, un allegato un PDF, un JPEG o un PNG
+([trgfn_guard_formato_ammesso](/dbzero/documenti/funzioni/trgfn_guard_formato_ammesso)). Il tipo di
+file è un vocabolario senza `attivo`: c'è o non c'è, e non lo tiene acceso nessun file.
 
 ---
 
@@ -75,7 +77,8 @@ file delle stampe delle aziende del suo perimetro.
 ### Codici errore
 
 * `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE` — si è cercato di cambiare il file o il suo ruolo;
-* `E_FILE_DOCUMENTO_DELETE_VIETATA` — si è cercato di cancellare il file.
+* `E_FILE_DOCUMENTO_DELETE_VIETATA` — si è cercato di cancellare il file;
+* `E_DOCUMENTI_FORMATO_NON_AMMESSO` — il formato non è ammesso dal tipo di file.
 
 ---
 

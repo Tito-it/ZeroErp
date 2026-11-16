@@ -1,11 +1,12 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-16
+## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 2 applicato)
 
-**Riparte: Tid**, con il commit del giro 1, la decisione Q13 (§11.4) e il via al giro 2. Il giro 1
-(`20261115-82 … -90`) è applicato e i suoi pgTAP sono verdi (Tid, 2026-11-16): §11. Il team BE può partire con le
-ricadute del giro 1 (§11.6). Il giro 0 (la documentazione) è fatto e committato; le dodici decisioni sono prese
-(2026-11-14).
+**Riparte: Tid**, col commit del giro 2 e il passaggio al team BE/FE (§12.6); poi la sessione DB col giro 3, al via
+di Tid. Il giro 2 («i vocabolari», `20261115-91 … -98`, più il `-99` del sync) è applicato il 2026-11-16: `ci_apply`
+passato dopo il `-99` (§12.5-bis), pgTAP verdi, doc auto-generata rigenerata (§12). Q13-Q15 e la segnalazione di
+§9 sono decise (2026-11-16). Il giro 1 è applicato e committato (§11). ⛔ Il backend da ora si rompe sui lettori di
+`attivo` (BE11): il passaggio al team va con il commit; FE1 (le 21 chiavi i18n) prima del merge su `Tito-dev`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,14 +19,19 @@ ricadute del giro 1 (§11.6). Il giro 0 (la documentazione) è fatto e committat
 | 7 | ✅ Tid | Il via al giro 1 (2026-11-15), numeri dal primo libero | §2 | 3 |
 | 8 | ✅ sessione DB | Giro 1 scritto: nove changeSet, quattro CSV, un pgTAP nuovo, nove riscritti, pagine `manual/` e guida | §11 | 7 |
 | 9 | ✅ Tid | Giro 1 applicato, pgTAP verdi (2026-11-16); doc auto-generata rigenerata | §11.5 | 8 |
-| 10 | Tid | Q13: la nascita di una stampa da un padre spento | §11.4 | — |
+| 10 | ✅ Tid | Q13 (nel giro 4), Q14, Q15, §9 (brief a parte, dopo) — 2026-11-16 | §7, §9 | — |
 | 11 | team BE | BE3, BE7 e le nuove BE9, BE10 del giro 1 — sbloccate | §6, §11.6 | 9 ✅ |
-| 12 | sessione DB | I giri 2-5, uno alla volta, col via di Tid; il prossimo è il 2 (i vocabolari) | §2 | 9 ✅, via di Tid |
-| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 12 |
+| 12 | ✅ sessione DB | Giro 2 scritto: otto changeSet, undici CSV, un pgTAP nuovo, sei riscritti, pagine `manual/` e guida | §12 | 10 |
+| 14 | ✅ Tid | Giro 2 applicato col `-99` (2026-11-16): `ci_apply` passato, pgTAP verdi, doc auto-generata rigenerata | §12.5, §12.5-bis | 12 |
+| 17 | Tid | Il commit del giro 2 e il passaggio al team BE/FE | §12.1, §12.6 | 14 ✅ |
+| 15 | team BE/FE | BE5, BE11-BE14 — sbloccate, BE11 subito (il backend è rotto); FE1 prima del merge | §12.6 | 14 ✅ |
+| 16 | sessione DB | I giri 3-5, uno alla volta, col via di Tid (nel 4 anche Q13) | §2 | 14 |
+| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 16 |
 
-**Decisioni aperte di Tid:** Q13 (§11.4). **Da committare:** il giro 1 (§11.1: i changeSet, i CSV, i pgTAP, le
-pagine `manual/` toccate e le cinque tolte, la guida), questo brief. **Segnalazione fuori perimetro**, da decidere se e
-dove: §9.
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 2 (§12.1: i changeSet `-91 … -99`, i CSV, il loop
+di `ci_apply`, il provisioning, la soglia del cancello pgTAP, i pgTAP con `maintenance/test-storicizza-set-potatura`,
+le pagine `manual/` toccate, nuove e tolte, la doc auto-generata rigenerata, la guida), questo brief,
+`PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -59,9 +65,9 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 | Giro | Classe | Contenuto | Ricadute BE/FE | Perché insieme |
 | --- | --- | --- | --- | --- |
 | 1 ✅ applicato il 2026-11-16 (§11) | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
-| 2 | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
+| 2 ✍️ scritto, da applicare (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
 | 3 | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
-| 4 | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
+| 4 | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
 | 5 | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2 (e BE1, se non già fatto) | Quello che nessun giro precedente ha già aperto |
 
 Fuori dai giri: lo script di Q11 (§3.6), a mano su dbdev. Chiusi senza modifiche: D6, D14, D17 (§3.3).
@@ -318,6 +324,9 @@ Da girare al team quando il giro DB corrispondente è applicato, salvo BE1.
 | Q10 ✅ | I sette vocabolari | **Sola lettura per l'app**, nella lista `v_tabelle_sola_lettura_app` (§11.8), come `config.aree_funzionali` (D-P9, 2026-09-28). Verificato: `lookup = true`, `pannello = false`, nessuno li scrive | Solo i tre della versione: lascia aperto il motore inesistente (Q8a) |
 | Q11 ✅ | `storicizza` su dbdev | **A mano**, sulle sette tabelle registrate (esteso dalla sessione: anche modelli, versioni, asset) | Un changeSet: codice per un problema di dati |
 | Q12 ✅ | L'ordine dei giri | **Come in §2**: le stampe e il BB nel giro 1 | Il BB in un giro a parte |
+| Q13 ✅ (2026-11-16) | La nascita di una stampa da un padre spento (§11.4) | **(b) nel giro 4**: la coerenza alla nascita chiede anche la stampabilità, con la regola della risoluzione, non ricopiata | (a) resta così: solo il backend decide che cosa si stampa. (b) nel giro 2: tocca una funzione che il giro 4 riapre |
+| Q14 ✅ (2026-11-16) | D16: la forma unica dei sette vocabolari | **La forma dei tre della versione** (`config.esposizioni_componente`): `codice_interno`, `codice`, `descrizione`, `etichetta_key`, `ordine`, audit, `tx_id`. I quattro storici perdono `attivo`, `meta`, `storicizza` e lo storico; un valore nasce o si ritira con un changeSet, insieme al codice che lo sa usare (ragionamento del 2026-10-04, `work-done/brief-db-vocabolari-versione-template.md`) | `attivo` a tutti: contraddice il 2026-10-04 e fa nascere la regola ATTIVO sulle versioni. Il minimo comune: restano due forme |
+| Q15 ✅ (2026-11-16) | D15: la sede dei formati di file | **Un vocabolario dei formati** (MIME ed estensione) e l'abbinamento ai tipi che li ammettono: i tipi di asset e i tipi di file della stampa. Le liste del backend sono tre (asset, allegati della stampa, allegati email) e le estensioni due: le due di `documenti` escono, quella delle email resta fuori perimetro | Una colonna lista sul tipo di asset: chiude una lista su tre, le estensioni restano nel backend |
 
 ## 8. Giro 0 — la documentazione, 2026-11-14 (fatto)
 
@@ -373,6 +382,9 @@ lanciata. La doc auto-generata è rigenerata dopo il giro 0 (verificato il 2026-
 e funzioni nuove includono la loro pagina, e `documenti/index.md` ha le descrizioni nuove, senza marcatori.
 
 ## 9. Fuori perimetro — segnalazione per Tid
+
+✅ **Deciso da Tid il 2026-11-16:** un brief a parte (`dbops`/`script`), dopo i giri di `documenti`. Qui resta la
+segnalazione.
 
 **La porta di `script.trgfn_lock_columns` la apre ogni sessione.** Trovato il 2026-11-14 verificando la Q9a.
 `zeroerp.allow_lock_columns_override` è una variabile di sessione: chiunque la imposti a `on`, applicazione compresa,
@@ -451,7 +463,7 @@ delle funzioni ritirate. Guida `documenti-e-stampe` §11, le garanzie.
 * Il proprietario di stampa e file non ha `FORCE ROW LEVEL SECURITY`: la lettura `SECURITY DEFINER` del guard
   vede il file.
 
-### 11.4 ⛔ Q13 — decisione aperta di Tid: la nascita da un padre spento
+### 11.4 Q13 — la nascita da un padre spento (✅ decisa il 2026-11-16: (b), nel giro 4)
 
 **Fatto.** L'eccezione ATTIVO (Q1) toglie **sia** il block sul padre **sia** il require sul figlio: per quelle FK
 il motore non genera nessuno dei due. Quindi, dopo il giro 1, il database non chiede più che modello, versione,
@@ -502,3 +514,120 @@ Oltre a BE3 e BE7 di §6:
 | BE10 | `backend/apps/core/services/error_policies_generated.py` (rigenerato), `error_messages_fallback.py` | I codici nuovi `E_FILE_DOCUMENTO_DELETE_VIETATA` (`CONFLITTO_STATO`) e `E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE` (`TECNICO`), e le note riscritte di cinque codici. Il fallback di `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` (`:448`) dice «la tabella e' append-only per audit»: si allinea se il fallback ricopia il catalogo |
 
 Il servizio di stampa non cambia: scrive già stampa e PDF nella stessa transazione, e non cancella file.
+
+## 12. Giro 2 — i vocabolari (scritto il 2026-11-16, da applicare)
+
+Via di Tid il 2026-11-16 («procediamo con lo sviluppo»), con le decisioni Q13-Q15 (§7). Numeri dal primo libero.
+
+### 12.1 Che cosa è scritto
+
+| ChangeSet | Che cosa | Difetti |
+| --- | --- | --- |
+| `20261115-91` (`00_schema/documenti`) | I quattro vocabolari storici prendono la forma dei tre della versione: entrano `etichetta_key` (nullable fino al `-97`) e `ordine`; escono `attivo`, `meta`, `storicizza`, lo storico (trigger `z90` e `storico.<t>`) e i trigger ATTIVO verso e da loro, cercati per funzione e argomenti. I tre della versione: `descrizione` obbligatoria e non vuota, `codice` non vuoto. COMMENT di tabelle e colonne dei sette al presente | D16, M §4.2-§4.3 |
+| `-92` (`00_schema/config`) | `config.formati_file`: un tipo MIME (unico, minuscolo) con la sua estensione, nella forma dei vocabolari | D15 |
+| `-93` (`00_schema/documenti`) | `tipi_asset_documento_formati` e `tipi_file_documento_formati`: tipo × formato, una UNIQUE per coppia, l'indice sul formato | D15 |
+| `-94` (`20_code/documenti`) | `documenti.trgfn_guard_formato_ammesso`, montata su `template_asset` e `documenti_generati_file` (`…_a10_tipo_ammette_formato_ins_upd`, dopo `protect_file`): il formato dichiarato è abbinato al tipo (`E_DOCUMENTI_FORMATO_NON_AMMESSO`, nuovo, `DATO_ERRATO`) | D15 |
+| `-95` (`80_data/changelog`) | Mirror di `config.formati_file` e dei due abbinamenti: le liste del backend, né una di più né una di meno | D15 |
+| `-96` (`80_data/changelog`) | Via `ALTRO`, le tre eccezioni ATTIVO verso tipi di documento e di file (coda di stampa delle fatture, stampa, file), le quattro righe dello storico in `storico_scope_policy` | D15, D16 |
+| `-97` (`90_end`) | `etichetta_key` `NOT NULL` sui quattro, dopo il seed (linee-guida-sql §11.2) | D16 |
+| `-98` (`90_end`) | Sola lettura per `zeroerp_app` sui sette vocabolari, i formati e i due abbinamenti; con le altre due sedi: la lista del loop `ci_apply/20260205-41` e il blocco «POSTURA DICHIARATA» di `scripts/sql/provision_zeroerp.sql` | Q10 |
+
+**CSV**: i quattro storici riscritti nella forma nuova (l'intestazione cambia: tutte le righe), «Fattura vendita»
+maiuscola, `ALTRO` tolto; nuovi `config/formati_file.csv`, `documenti/tipi_asset_documento_formati.csv`,
+`documenti/tipi_file_documento_formati.csv`; il mirror `20260429-58` cambia le colonne; `config/codici_errore.csv` e
+`messaggi_errore.csv` (id 1504); `dbops/automazione_attivo_eccezioni.csv` −3, `dbops/storico_scope_policy.csv` −4.
+**Script**: `scripts/guardrail_pgtap_preambolo.py`, soglia 109 → 108 (il debito è calato).
+
+**pgTAP**: nuovo `documenti/test-documenti-vocabolari-forma-v1.sql` (20 test: la forma, le etichette, nessuno
+storico e nessun ATTIVO, gli abbinamenti, la postura nelle tre sedi, il controllo del formato su risorsa e allegato,
+il cambio di tipo, `protect_file` che parla per primo). Riscritti: `test-documenti-lookup` (5-8 asseriscono la
+UNIQUE invece di un `INSERT`, che come applicazione darebbe 42501; il 13 asserisce la sola lettura; `ALTRO` fuori),
+`-seed-idempotenti`, `-storico-disabled` (il 10 ora vuole lo storico assente), `-tipo-ordine-vendita` (il 2 sulla
+chiave di traduzione), `-stampa-e-storia-v1` (il 10: il tipo di file non ha `attivo`),
+`rls/test-rls-documenti-satelliti` (il catalogo senza filtro su `attivo`).
+
+**Doc**: le pagine `manual/` dei sette vocabolari, di `template_asset`, `documenti_generati_file`,
+`documenti_generati` e del registro delle eccezioni; nuove `config/manual/formati_file`,
+`documenti/manual/tipi_asset_documento_formati`, `tipi_file_documento_formati`, `trgfn_guard_formato_ammesso`;
+**tolte** le quattro `storico/manual/` dei vocabolari. Guida `documenti-e-stampe` §2.1, §2.4, §11, §12.
+
+### 12.2 Che cosa è cambiato rispetto al censimento
+
+* **I formati in `config`, non in `documenti`.** Le liste del backend sono tre (risorse, allegati della stampa,
+  allegati email) e le estensioni due (Q15): il formato è un vocabolario di dominio condiviso. Gli abbinamenti
+  stanno accanto ai tipi che li ammettono. Gli allegati email restano fuori perimetro (§12.6).
+* **Anche i file della stampa hanno i loro formati.** D15 nominava solo le risorse; la seconda lista del backend
+  (`_MIME_WHITELIST_ALLEGATO`) è la stessa regola sul vocabolario `tipi_file_documento`, aperto in questo giro.
+* **Il controllo viene dopo `protect_file`.** Il formato non cambia dopo la nascita (su entrambe le tabelle), il
+  tipo di una risorsa sì: il trigger è anche `UPDATE OF`, e il nome lo ordina dopo l'immutabilità, che parla prima
+  (linee-guida-trigger, «la fase»).
+* **Le eccezioni ATTIVO del giro 1 verso tipi di documento e di file escono**: senza `attivo` sul padre la coppia
+  non nasce. Con loro esce quella della coda di stampa delle fatture.
+* **Le lunghezze non si uniformano.** `codice` e `codice_interno` sono `varchar(80)` nei quattro storici e
+  `varchar(40)` nei tre della versione, `descrizione` `text` contro `varchar(255)`: allargare una colonna puntata da
+  una FK e montata in un `UPDATE OF` costa più di quanto dice. La forma unica è delle colonne e delle regole.
+
+### 12.3 Fatti datati (dbdev, 2026-11-16)
+
+* Due risorse: un `LOGO` in `image/png`, un `PDF` in `application/pdf`; nessuna `ALTRO`. I file delle stampe sono
+  tutti `application/pdf` (1666 principali, 3 allegati). Il controllo giudica le scritture, non le righe che ci
+  sono.
+* Nessuna vista dipende dai sette vocabolari; nessuna funzione legge `attivo`, `meta` o `storicizza` dei quattro.
+
+### 12.4 Le prove (scratch, owner, estratto in `ROLLBACK`)
+
+Con la simulazione dei CSV fra `-94` e `-96`. Il test nuovo 19 su 20; `test-documenti-lookup` 13 su 14. I due
+rossi sono il 13 di entrambi: asseriscono il `42501` dell'applicazione, e da owner la scrittura passa (o risponde il
+lucchetto del codice). Verdi: `-seed-idempotenti`, `-storico-disabled`, `-stampa-e-storia-v1`,
+`-tipo-ordine-vendita`, `rls/test-rls-documenti-satelliti`, `-template-asset`, `-generati-file`,
+`-vocabolari-versione-v1`; i presidi `comment-al-presente`, `riferimenti-morti`, `security-definer-search-path`,
+`catalogo-messaggi-errore-completo`, `codici-errore-identita`, `trigger-attivo-orfani`, `storico-scope-policy`,
+`rls-perimetro-scoperto`, `automazione-attivo-eccezioni`, `stati-check-scrittori`, `vw-codici-errore-motivo-nominato`,
+`builder-pgtap-vincoli-immediate`. `registri-append-only-postura` ha 4 rossi sullo scratch prima e dopo
+l'estratto, gli stessi. Cancelli statici della CI verdi; `prossimo_changeset --doppi` pulito.
+
+⚠️ **`scripts/check_i18n_keys.py` è rosso, ed è atteso**: le 21 chiavi nuove (`etichetta_key` dei quattro e dei
+formati) non sono nei locale. Le aggiunge il frontend nello stesso giro, prima del merge su `Tito-dev` (§12.6, FE1).
+
+### 12.5 Per l'apply (Tid)
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply. Il `-91` toglie da sé i trigger ATTIVO e lo storico dei quattro: non serve il motore.
+3. I pgTAP come applicazione: il nuovo, i sei riscritti (§12.1) e i presidi di §12.4.
+4. La doc auto-generata rigenerata: nascono le schede delle tre tabelle nuove e della funzione, vanno via le
+   quattro di `storico`. ⚠️ Fino alla rigenerazione le schede di `storico` includono pagine `manual/` che non ci
+   sono più: la build della doc si rompe lì, come nel giro 1.
+5. ⛔ **Il backend si rompe all'apply** sui due lettori di `attivo` (BE11 qui sotto): non è in produzione, le
+   rotture BE sono ammesse, ma il passaggio al team va insieme all'apply.
+
+### 12.5-bis ⛔ All'apply: `ci_apply` fermo su `apply_storicizza_weekly` (2026-11-16), corretto col `-99`
+
+**Il fatto.** Il migrate è passato (29 changeSet); la passata `ci_apply` si è fermata al `20260926-10`:
+`apply_storicizza_weekly` non ha lasciato una riga riuscita. Il `-91` ha tolto `storicizza` dai quattro vocabolari,
+ma le loro righe derivate restavano in `config.storico_set_storicizza`: il sync potava solo il nome che non risolve,
+non la tabella viva che ritira la colonna. L'apply falliva l'`ALTER … SET DEFAULT` su quattro tabelle, quattro scarti,
+`ok = false`. Lo stesso su dbdev e sullo scratch (le quattro righe, lette il 2026-11-16).
+
+**La correzione è nel modello, non nelle quattro righe.** Ritirare `storicizza` da una tabella viva è legittimo (il
+precedente è il `20260501-08` sulla stampa): `20261115-99` (`20_code/maintenance`) fa potare al sync anche la riga
+derivata la cui tabella non ha più la colonna. Restano fuori, come prima, la colonna senza `DEFAULT` (la ripara
+l'apply) e le righe manuali (le segnala l'apply). `maintenance/test-storicizza-set-potatura.sql` riceve la quinta
+causa: il test 1 (l'invariante, che ora guarda la colonna e non solo il nome) e il test 8, costruito. Sullo scratch:
+senza 6 su 8, con l'estratto e la passata del sync 8 su 8.
+
+**Esito (2026-11-16, Tid):** `-99` applicato, `ci_apply` passato (il sync, processo 100, ha potato le quattro righe
+prima dell'apply, 110), pgTAP verdi.
+
+### 12.6 Richieste al team BE/FE (dopo l'apply; FE1 prima del merge)
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE5 | `backend/apps/documenti/services/template_asset_admin_service.py:53-88` (`_MIME_WHITELIST_PER_TIPO`, `_MIME_EXT_FALLBACK`), `:370-400` | Le due mappe escono: formati ed estensioni si leggono da `documenti.tipi_asset_documento_formati` ⨝ `config.formati_file`. Il form può mostrare i formati ammessi. Il controllo dei byte resta; il rifiuto del formato dichiarato arriva dal DB (`E_DOCUMENTI_FORMATO_NON_AMMESSO`) |
+| BE11 | `backend/apps/documenti/db/documenti_repository.py:1205-1221` (`get_tipo_asset`), `:1408-1420` (`get_tipo_file_documento_by_codice`); `template_asset_admin_service.py:352-365`; `document_generation_service.py:294-300`, `:1405` | ⛔ Leggono `attivo`, che non c'è più: la query fallisce. Il controllo «tipo non attivo» esce: un tipo c'è o non c'è |
+| BE12 | `backend/apps/documenti/services/document_generation_service.py:109-123` (`_MIME_WHITELIST_ALLEGATO`, `_MIME_EXT_FALLBACK_ALLEGATO`), `:1373-1381` | Come BE5, da `documenti.tipi_file_documento_formati`; il messaggio «Ammessi: PDF, JPEG, PNG» si compone dalla lista |
+| BE13 | `backend/apps/core/db/dbops_repository.py:160-185` (`_LOOKUP_SPECIALIZZATE`); `frontend/src/config/components/TemplateAssetSearchTable.vue:51`, `TemplateAssetDrawer.vue:277`, `TemplateDocumentoDrawer.vue:419`, `TemplateDocumentiSearchTable.vue:58`, `TemplateVersioneDrawer.vue:244`; `backend/apps/core/tests/db/test_lookup_codici_pagina_oltre.py` | I quattro storici entrano fra le lookup specializzate come i tre della versione (`extra_col: etichetta_key`, `has_attivo: False`): la lookup generica filtra su `attivo`. Le cinque tendine passano a `useLookupEtichettato`, come quelle della versione |
+| BE14 | `error_policies_generated.py` (rigenerato), `error_messages_fallback.py` | Il codice nuovo `E_DOCUMENTI_FORMATO_NON_AMMESSO` (`DATO_ERRATO`) |
+| FE1 | `frontend/src/locales/it.json`, `en.json` | ⛔ Le 21 chiavi: `config.formati_file.{png,jpeg,svg,webp,gif,pdf,css}`, `documenti.tipi_asset_documento.{logo,firma,immagine,pdf,css}`, `documenti.tipi_file_documento.{pdf_finale,allegato}`, `documenti.tipi_documento_output.{preventivo,contratto,offerta_commerciale,ordine_vendita,ddt_vendita,fattura_vendita}`, `documenti.render_engine_documento.weasyprint`. Senza, `check_i18n_keys` è rosso in CI |
+
+**Fuori perimetro, segnalato**: `backend/apps/core/services/email_outbox_service.py:62` (`ALLOWED_MIME_TYPES`) è la
+terza lista dei formati; può abbinarsi a `config.formati_file` quando un giro delle email lo apre.
