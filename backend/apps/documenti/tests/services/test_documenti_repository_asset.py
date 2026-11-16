@@ -176,9 +176,11 @@ class DocumentiRepositoryListAssetTests(TestCase):
         )
 
     # 1-bis. Il filtro `utilizzabili` usa la STESSA condizione con cui il
-    #        render risolve `asset:` (la prova che le due letture concordano
-    #        sul DB vero e' in tests/db/test_asset_per_render_db); assente =
-    #        nessun filtro.
+    #        render risolve `asset:`, e la condizione chiede alla vista del DB
+    #        `documenti.vw_template_asset_utilizzabili` (sede unica della
+    #        regola): nessuna colonna dell'asset si giudica qui. La prova che
+    #        le due letture concordano sul DB vero e' in
+    #        tests/db/test_asset_per_render_db; assente = nessun filtro.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_list_asset_utilizzabili_usa_la_condizione_del_render(self, mocked_factory) -> None:
         from apps.documenti.db.documenti_repository import _ASSET_UTILIZZABILE_OGGI
@@ -201,9 +203,12 @@ class DocumentiRepositoryListAssetTests(TestCase):
                     )
                 sql, _ = cursor.execute.call_args_list[0].args
                 if atteso is None:
-                    self.assertNotIn("validita", sql)
+                    self.assertNotIn("vw_template_asset_utilizzabili", sql)
                 else:
                     self.assertIn(atteso, sql)
+                    self.assertIn("documenti.vw_template_asset_utilizzabili", sql)
+                # La regola non si ricopia: nessuna colonna di validita'.
+                self.assertNotIn("validita", sql)
 
     # 2. scope emittente passa lista ANY(%s) con i soli id whitelisted.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")

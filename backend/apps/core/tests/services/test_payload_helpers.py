@@ -845,15 +845,15 @@ class TestMapIntegrityError(TestCase):
 
     def test_map_integrity_error_check_match(self):
         exc = IntegrityError(
-            'new row violates check constraint "chk_template_documenti_versioni_valido_dal_pubblicata"'
+            'new row violates check constraint "chk_template_documenti_versioni_valido_dal_fuori_bozza"'
         )
         with self.assertRaises(ServiceError) as ctx:
             map_integrity_error(
                 exc,
                 check_constraints={
-                    "chk_template_documenti_versioni_valido_dal_pubblicata": (
+                    "chk_template_documenti_versioni_valido_dal_fuori_bozza": (
                         "E_DOCUMENTI_VALIDATION",
-                        "Una versione PUBBLICATA deve avere valido_dal valorizzato.",
+                        "Una versione fuori bozza deve avere valido_dal valorizzato.",
                     ),
                 },
                 fallback_code="E_FALLBACK",
@@ -861,7 +861,7 @@ class TestMapIntegrityError(TestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         self.assertEqual(
             ctx.exception.message,
-            "Una versione PUBBLICATA deve avere valido_dal valorizzato.",
+            "Una versione fuori bozza deve avere valido_dal valorizzato.",
         )
 
     def test_map_integrity_error_fallback(self):

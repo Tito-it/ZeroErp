@@ -502,6 +502,10 @@ standard.
     pubblicazione).
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted in payload override.
 - `404` `E_DOCUMENTI_NOT_FOUND`: source inesistente o fuori scope.
+- `409` `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`: nello stesso istante un'altra
+  scrittura ha preso il numero `MAX+1` sullo stesso template; la copia non è
+  nata, si ripete. Lo traduce il verbo DB `fn_crea_bozza_da_versione` (prima
+  arrivava come `IntegrityError` sulla UNIQUE del numero).
 
 ### 11. Pubblica versione (Tranche F)
 
@@ -511,8 +515,10 @@ standard.
 - Path: `/api/v1/documenti/templates/<int:template_id>/versioni/<int:versione_id>/pubblica/`
 - Permesso azione: `documenti_template_manage` (`post_permission`)
 - Body JSON:
-  - `valido_dal`* (date ISO) — obbligatorio per la transizione (vincolo
-    DB `chk_template_documenti_versioni_valido_dal_pubblicata`).
+  - `valido_dal`* (date ISO) — obbligatorio per la transizione: il service
+    lo chiede prima del verbo (`E_DOCUMENTI_VALIDATION`). Il DB lo pretende
+    per ogni stato fuori bozza (`chk_template_documenti_versioni_valido_dal_fuori_bozza`),
+    ma dal backend il vincolo non si raggiunge e non ha voce nella mappa.
   - `valido_al` (date ISO, nullable) — se valorizzato deve essere `>= valido_dal`
     (lo giudica il database, non il service: vedi sotto).
 
@@ -550,6 +556,10 @@ standard.
   da sola il giorno prima. Codice dedicato 409, armonizzato con
   gli altri overlap (`E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP`);
   prima ricadeva nel generico `E_DOCUMENTI_VALIDATION` (400).
+- `409` `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA`: la bozza è spenta
+  (`attivo = false`). Pubblicata non stamperebbe e chiuderebbe la versione che
+  stampa oggi: si riaccende, poi si pubblica. Lo dice il verbo DB, prima di
+  chiudere qualunque altra versione; la versione resta BOZZA.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
 
 #### Auto-close versione precedente
@@ -725,6 +735,10 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` | 403 | scrittura su un modello standard o su una sua versione (trigger `trgfn_template_standard_guard_sola_lettura`) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare una versione `PUBBLICATA` o `OBSOLETA`, stato compreso (Tranche F; OBSOLETA dal `20261114-04`). Trigger DB A1 + service guard |
+| `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA` | 409 | pubblicazione di una bozza spenta (`fn_pubblica_template_documento_versione`) |
+| `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` | 409 | clone di una versione col numero `MAX+1` preso nello stesso istante da un'altra scrittura (`fn_crea_bozza_da_versione`): si ripete |
+| `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` | 500 | una versione nasce fuori bozza o ne esce senza il verbo di pubblicazione (`trgfn_template_documenti_versioni_protect_pubblicata`). Il backend crea solo bozze e pubblica dal verbo: se arriva, è rotto il chiamante |
+| `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` | 500 | copia di una versione in un template di un altro documento (`fn_crea_bozza_da_versione`). Il clone copia nello stesso template, «personalizza» nel modello della stessa coppia: se arriva, è rotto il chiamante |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
 
 Codici Fase A `E_DOCUMENTI_*` registrati in `apps.core.services.error_policies`

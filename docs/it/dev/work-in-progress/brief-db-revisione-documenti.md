@@ -28,10 +28,10 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 16 | ✅ sessione DB | Giro 3 scritto: quattro changeSet, quattro codici errore, un pgTAP nuovo, otto riscritti, pagine `manual/` e guida | §13 | 14 |
 | 18 | ✅ Tid | Giro 3 applicato (2026-11-16): pgTAP verdi, doc auto-generata rigenerata | §13.5 | 16 |
 | 21 | ✅ Tid | Il commit del giro 3 (`3367e5146e`) | §13.1 | 18 ✅ |
-| 19 | team BE | BE15, BE16 del giro 3 — sbloccate, nessuna rottura; BE4 verificata | §13.6 | 18 ✅ |
+| 19 | ✅ team BE | BE15, BE16 del giro 3 — fatte (non committate), BE4 verificata | §13.6, §14.8 | 18 ✅ |
 | 22 | ✅ sessione DB | Giro 4 scritto: cinque changeSet, le note di sette codici, un pgTAP nuovo, quattro riscritti, pagine `manual/` e guida | §14 | 21 ✅ |
 | 23 | Tid | `/verifica-db`, l'apply del giro 4, i pgTAP, la doc auto-generata, il commit | §14.5 | 22 |
-| 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — dopo l'apply, nessuna rottura | §14.6 | 23 |
+| 24 | ✅ team BE/FE | BE6, BE6-bis, BE17 del giro 4 — fatte (non committate); due richieste nuove al team DB | §14.6, §14.8 | 23 |
 | 20 | sessione DB | Il giro 5, col via di Tid | §2 | 23 |
 | 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
 
@@ -890,3 +890,27 @@ e che vista e funzione nuove ricevano i privilegi dal loop di `ci_apply` (linee-
   con l'estratto senza `-08` 36 su 38, rossi proprio 37 e 38.
 * Corrette due frasi: la testata del pgTAP nuovo contava l'11 fra i casi corretti dal giro (era già rifiutato); la
   pagina di `fn_template_motivo_non_stampabile` non nominava le versioni scadute fra i casi di `NESSUNA_VERSIONE_VALIDA`.
+
+### 14.8 Esito BE/FE (sessione BE, 2026-11-17)
+
+* **BE6** — `_ASSET_UTILIZZABILE_OGGI` è un `EXISTS` su `documenti.vw_template_asset_utilizzabili`, letto dal render
+  (`get_asset_per_render`) e, con `NOT`, dal filtro `utilizzabili` della lista: la regola non ha più una copia BE.
+  Il test della stringa vuole la vista e nessuna colonna `validita`.
+* **BE6-bis** — `STANDARD_NON_STAMPA` nella colonna «Allineamento allo standard» e nel drawer: colore `warn`, le due
+  chiavi i18n.
+* **BE15, BE16, BE17** — Policy rigenerate; ripieghi senza `%s` per i quattro codici del giro 3, frasi nuove di
+  `E_DOCUMENTI_GENERATO_COERENZA` e `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE`; la voce del vincolo
+  `…_valido_dal_pubblicata` esce dalla mappa (dal backend non si raggiunge). Le due fixture DB che stampavano da una
+  bozza pubblicano dal verbo (`pubblica_per_stampare`, `documenti/tests/db/_stampa.py`).
+* **Rilettura (`/verifica`, 2026-11-17)** — 372 test sul DB vero (`documenti`, `vendite`) verdi. Corretti tre commenti
+  stantii di `template_versioni_admin_service.py`. Due richieste al team DB:
+  * **R1 — il numero della versione ha due sedi.** `create_versione` lo calcola nel backend
+    (`next_versione_num`, `MAX + 1`) e, se due scritture lo prendono insieme, la UNIQUE arriva come 400
+    `E_DOCUMENTI_VALIDATION` «race condition: riprovare»; la copia lo calcola nel DB (`fn_crea_bozza_da_versione`)
+    e lo stesso fatto è 409 `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`. Stesso caso, due regole e due codici. Si
+    chiede la sede DB anche per la nascita di una bozza nuova (un verbo, o il numero assegnato dal DB), col codice
+    della copia e la sua nota allargata a chi lo solleva; il backend ritira `next_versione_num` e la voce della
+    UNIQUE in `_UNIQUE_CONSTRAINTS`.
+  * **R2 — la causa di `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` è stantia** (`messaggi_errore.csv`): dice ancora
+    «una versione pubblicata, attiva e valida oggi» e «la sua versione pubblicata è spenta». Dal 2026-11-14 stampa
+    anche una OBSOLETA ancora in vigore (M6: «in vigore»).

@@ -817,9 +817,13 @@ export function statoVesteSeverity(codice) {
 // e' giallo: funziona, ma senza l'evoluzione. ORIGINE_NON_DICHIARATA (un
 // modello scritto da zero, o una copia di prima del 2026-10-20) cade sul
 // ripiego neutro: non c'e' niente da confrontare.
+// STANDARD_NON_STAMPA e' giallo: lo standard di riferimento manca, e' spento o
+// oggi non stampa (giro 4 di brief-db-revisione-documenti, D5). La copia stampa,
+// ma non c'e' piu' un riferimento con cui dire se e' indietro: va guardato.
 export const STATO_SCARTO_TEMPLATE_MAP = {
   ALLINEATA: 'success',
   STANDARD_AVANTI: 'warn',
+  STANDARD_NON_STAMPA: 'warn',
   CONTESTO_SUPERATO: 'danger',
 }
 

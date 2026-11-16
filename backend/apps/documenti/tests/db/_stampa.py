@@ -20,6 +20,14 @@
 #        in un formato che il suo tipo non ammette
 #        (E_DOCUMENTI_FORMATO_NON_AMMESSO). Regola del 2, ok Tid 2026-11-16:
 #        era la stessa query in tre test sul DB vero.
+#
+#        `pubblica_per_stampare`: una stampa nasce solo dalla versione con cui
+#        il suo modello stampa oggi (giro 4, Q13: la coerenza alla nascita
+#        chiede la stampabilita' a `documenti.fn_template_motivo_non_stampabile`,
+#        `E_DOCUMENTI_GENERATO_COERENZA` col motivo nel contesto). Una bozza non
+#        stampa: si pubblica dal verbo, come il servizio, con inizio alla data
+#        operativa. Regola del 2: i due test che stampano da una versione
+#        scritta a mano.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -55,3 +63,20 @@ def tipo_asset_che_ammette(cur: Any, mime: str) -> int:
     if riga is None:
         raise AssertionError(f"nessun tipo di risorsa ammette {mime!r}: il seed degli abbinamenti manca")
     return int(riga[0])
+
+
+# Scopo: Pubblica la bozza `versione_id` dal verbo DB, attraverso il
+#        repository (lo stesso binding per nome del servizio), con inizio alla
+#        data operativa: da quel momento e' la versione in uso del suo modello
+#        e una stampa puo' nascere da lei. `versione_contesto` e' la forma dei
+#        dati che la bozza dichiara di leggere.
+def pubblica_per_stampare(cur: Any, versione_id: int, *, versione_contesto: int = 1) -> None:
+    from apps.documenti.db.documenti_repository import DocumentiRepository
+
+    cur.execute("SELECT script.fn_data_operativa()")
+    oggi = cur.fetchone()[0]
+    pubblicata = DocumentiRepository().pubblica_versione(
+        versione_id, valido_dal=oggi, valido_al=None, versione_contesto=versione_contesto,
+    )
+    if not pubblicata:
+        raise AssertionError(f"la versione {versione_id} non si e' pubblicata: la stampa non puo' nascere")
