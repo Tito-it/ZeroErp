@@ -30,14 +30,18 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    create/update versione con `meta`/`context_schema` dict (500 fino al
    2026-09-26) e corpo del template con spazi ai bordi CONSERVATI; poi il
    clone del service, che ripassa il jsonb letto dal DB come testo JSON.
+2-bis) ScrittureDinamicheDocumentiDbTests.test_asset_formato_non_ammesso_e_un_400
+   una risorsa in un formato che il tipo non ammette: il DB la rifiuta e
+   l'API la traduce in 400 E_DOCUMENTI_FORMATO_NON_AMMESSO (non un 500).
 """
 from __future__ import annotations
 
 import unittest
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, tipo_asset_che_ammette
 
 # ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
 #    2026-11-07): una stampa cita un documento che esiste, e il guard unico
@@ -65,6 +69,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
 
         for passo in _FIXTURE:
             cur.execute(passo)
+        giudica_la_stampa_al_commit(cur)
         cur.execute("SELECT emittente_fiscale_id FROM _mondo")
         emittente = cur.fetchone()[0]
         cur.execute("SELECT id FROM documenti.tipi_documento_output ORDER BY id LIMIT 1")
@@ -120,8 +125,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
         try:
             with transaction.atomic(), connection.cursor() as cur:
                 repo, emittente, _ = self._template(cur)
-                cur.execute("SELECT id FROM documenti.tipi_asset_documento WHERE attivo ORDER BY id LIMIT 1")
-                asset_tipo = cur.fetchone()[0]
+                asset_tipo = tipo_asset_che_ammette(cur, "image/png")
                 asset_id = repo.create_asset({
                     "codice": "SCRDINAST",
                     "codice_interno": "SCRDINAST",
@@ -149,6 +153,49 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
         except Annulla:
             pass
 
+    # 2-bis. Una risorsa in un formato che il suo tipo non ammette: il service
+    #        non controlla piu' il formato (BE5, 2026-11-16) e si affida al DB,
+    #        quindi il contratto «400 E_DOCUMENTI_FORMATO_NON_AMMESSO» si prova
+    #        qui, dalla scrittura vera fino alla traduzione dell'API. Un 500
+    #        sarebbe la regressione silenziosa.
+    def test_asset_formato_non_ammesso_e_un_400(self):
+        from apps.core.services.error_translator import ErrorTranslator
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                repo, emittente, _ = self._template(cur)
+                # Una coppia (tipo, formato) che il vocabolario NON abbina.
+                cur.execute(
+                    "SELECT t.id, ff.mime_type"
+                    "  FROM documenti.tipi_asset_documento t"
+                    "  CROSS JOIN config.formati_file ff"
+                    " WHERE NOT EXISTS (SELECT 1 FROM documenti.tipi_asset_documento_formati ab"
+                    "                    WHERE ab.asset_tipo_id = t.id"
+                    "                      AND ab.formato_file_id = ff.id)"
+                    " ORDER BY t.id, ff.id LIMIT 1"
+                )
+                asset_tipo, mime = cur.fetchone()
+                with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
+                    repo.create_asset({
+                        "codice": "SCRDINFMT",
+                        "codice_interno": "SCRDINFMT",
+                        "descrizione": "Asset in un formato non ammesso",
+                        "asset_tipo_id": asset_tipo,
+                        "mime_type": mime,
+                        "file_name": "risorsa",
+                        "file_size_bytes": 10,
+                        "storage_key": f"assets/{emittente}/{'b' * 64}.bin",
+                        "sha256": "b" * 64,
+                        "emittente_fiscale_id": emittente,
+                        "attivo": True,
+                    })
+                api_error = ErrorTranslator.to_api_error(ctx.exception)
+                self.assertEqual(api_error.code, "E_DOCUMENTI_FORMATO_NON_AMMESSO")
+                self.assertEqual(ErrorTranslator.get_http_status(api_error), 400)
+                raise Annulla
+        except Annulla:
+            pass
+
     # 3. Documento generato + file + evento: RETURNING id, uid e jsonb oggetto.
     def test_documento_generato_file_evento(self):
         try:
@@ -161,7 +208,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                 )
                 tipo_output, sorgente = cur.fetchone()
                 cur.execute(
-                    "SELECT id FROM documenti.render_engine_documento WHERE attivo ORDER BY id LIMIT 1"
+                    "SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1"
                 )
                 engine = cur.fetchone()[0]
                 versione_id = repo.create_versione({
@@ -254,7 +301,7 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 repo, _, template_id = self._template(cur)
                 cur.execute(
-                    "SELECT id FROM documenti.render_engine_documento WHERE attivo ORDER BY id LIMIT 1"
+                    "SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1"
                 )
                 engine = cur.fetchone()[0]
                 versione_id = repo.create_versione({

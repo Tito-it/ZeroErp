@@ -436,20 +436,28 @@ class DocumentiRepositoryUpdateAssetMetadatiTests(TestCase):
 
 
 class DocumentiRepositoryGetTipoAssetTests(TestCase):
-    """Test get_tipo_asset: lookup tipo asset per validazione MIME service-side."""
+    """Test get_tipo_asset: il tipo asset coi formati che ammette (dal DB)."""
 
     # 11. row esistente -> dict normalizzato; row assente -> None.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
     def test_get_tipo_asset_returns_dict_or_none(self, mocked_factory) -> None:
         # Caso row presente.
-        cursor_ok = _mk_cursor(fetchone_results=[(3, "LOGO", True)])
+        formati = [{"mime_type": "image/png", "estensione": "png",
+                    "etichetta_key": "config.formati_file.png"}]
+        cursor_ok = _mk_cursor(
+            fetchone_results=[(3, "LOGO", formati)],
+            descriptions=[_columns("id", "codice_interno", "formati")],
+        )
         mocked_factory.return_value = cursor_ok
 
         row = DocumentiRepository().get_tipo_asset(3)
-        self.assertEqual(row, {"id": 3, "codice_interno": "LOGO", "attivo": True})
+        self.assertEqual(row, {"id": 3, "codice_interno": "LOGO", "formati": formati})
         sql, params = cursor_ok.execute.call_args_list[0].args
         self.assertIn("FROM documenti.tipi_asset_documento", sql)
-        self.assertIn("WHERE id = %s", sql)
+        self.assertIn("WHERE t.id = %s", sql)
+        # I formati vengono dal BB, non da una join scritta qui.
+        self.assertIn("documenti.tipi_asset_documento_formati", sql)
+        self.assertNotIn("attivo", sql)
         self.assertEqual(params, [3])
 
         # Caso row assente.

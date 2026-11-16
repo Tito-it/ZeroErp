@@ -5829,6 +5829,28 @@
     "orientamenti_pagina": {
       "portrait": "Verticale",
       "landscape": "Orizzontale"
+    },
+    "tipi_asset_documento": {
+      "logo": "Logo",
+      "firma": "Firma",
+      "immagine": "Immagine",
+      "pdf": "PDF",
+      "css": "Foglio di stile (CSS)"
+    },
+    "tipi_file_documento": {
+      "pdf_finale": "PDF della stampa",
+      "allegato": "Allegato"
+    },
+    "tipi_documento_output": {
+      "preventivo": "Preventivo",
+      "contratto": "Contratto",
+      "offerta_commerciale": "Offerta commerciale",
+      "ordine_vendita": "Ordine di vendita",
+      "ddt_vendita": "DDT di vendita",
+      "fattura_vendita": "Fattura di vendita"
+    },
+    "render_engine_documento": {
+      "weasyprint": "WeasyPrint"
     }
   },
   "config": {
@@ -5957,7 +5979,7 @@
         "download_error": "Impossibile scaricare il file asset.",
         "file_count": "File allegati: {count}",
         "field_file": "File",
-        "field_file_hint": "Max 25 MB. Tipo MIME deve corrispondere al tipo asset selezionato.",
+        "field_file_hint": "Il formato del file deve essere fra quelli ammessi dal tipo scelto.",
         "field_codice": "Codice",
         "field_codice_interno": "Codice interno",
         "field_descrizione": "Descrizione",
@@ -5970,7 +5992,9 @@
         "col_tipo": "Tipo",
         "col_mime": "MIME",
         "col_file_name": "Nome file",
-        "col_size": "Dimensione"
+        "col_size": "Dimensione",
+        "formati_ammessi": "Formati ammessi: {formati}",
+        "max_file_mb": "Dimensione massima: {mb} MB"
       }
     },
     "impostazioni": {
@@ -6074,6 +6098,15 @@
       "pipeline_error": "Giro di fatturazione interrotto per errore",
       "pipeline_started": "Giro di fatturazione avviato",
       "step_completed": "Passo completato"
+    },
+    "formati_file": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "svg": "SVG",
+      "webp": "WebP",
+      "gif": "GIF",
+      "pdf": "PDF",
+      "css": "CSS"
     }
   },
   "lista_config": {

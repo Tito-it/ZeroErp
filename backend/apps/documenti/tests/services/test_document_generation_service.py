@@ -22,10 +22,10 @@
 #         - render fail (eccezione): propagato senza INSERT (Decisione 32);
 #         - render output vuoto -> E_DOCUMENTI_RENDER_FAILED;
 #         - file_name_pattern con variabile mancante -> RENDER_FAILED parlante;
-#         - lookup tipo_file PDF_FINALE assente / non attivo -> VALIDATION;
+#         - lookup tipo_file PDF_FINALE assente -> VALIDATION;
 #         - IntegrityError sul progressivo -> mappato;
 #         - storage.write fail -> atomic rollback, no cleanup;
-#         - commit fail post-write -> cleanup STORAGE_ORPHAN best-effort.
+#         - commit fail post-write -> cancellazione best-effort del file orfano.
 #
 # Indice test (0..N):
 #   0. genera_documento_happy_path_pipeline_completa
@@ -46,7 +46,7 @@
 #  11. genera_documento_render_pdf_empty_raises
 #  12. genera_documento_file_name_pattern_var_mancante_raises
 #  13. genera_documento_tipo_file_pdf_finale_mancante_raises
-#  14. genera_documento_tipo_file_pdf_finale_non_attivo_raises
+#  14. (ritirato il 2026-11-16: il tipo file non ha piu' `attivo`)
 #  15. genera_documento_integrity_error_progressivo_mapped
 #  16. genera_documento_storage_write_fail_no_cleanup
 #  17. genera_documento_commit_fail_storage_orphan_cleanup
@@ -118,6 +118,20 @@ class _CommitFailingAtomic:
 
 
 # Argomenti default per `genera_documento`.
+
+# I formati come li porta `get_tipo_file_documento_by_codice` (BB
+# `sql_formati_ammessi`): PDF_FINALE solo PDF, ALLEGATO PDF e PNG.
+_FORMATI_PDF_FINALE: list[dict[str, str]] = [
+    {"mime_type": "application/pdf", "estensione": "pdf",
+     "etichetta_key": "config.formati_file.pdf"},
+]
+_FORMATI_ALLEGATO: list[dict[str, str]] = [
+    {"mime_type": "application/pdf", "estensione": "pdf",
+     "etichetta_key": "config.formati_file.pdf"},
+    {"mime_type": "image/png", "estensione": "png",
+     "etichetta_key": "config.formati_file.png"},
+]
+
 _GENERA_DEFAULT: dict[str, Any] = {
     "emittente_fiscale_id": 11,
     "sorgente_tipo_id": 10,
@@ -146,7 +160,7 @@ class GeneraDocumentoHappyPathTests(SimpleTestCase):
                 "create_documento_generato": (99, "0190a000-0000-0000-0000-000000000001"),
                 "create_documento_generato_file": 123,
                 "emit_evento_documento": 7,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "filesystem:documenti/11/abc.pdf"},
         )
@@ -287,7 +301,7 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "fs:x"},
         )
@@ -318,7 +332,7 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "fs:x"},
         )
@@ -388,7 +402,7 @@ class GeneraDocumentoResolveTemplateTests(SimpleTestCase):
                 "create_documento_generato": (99, "uid-x"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "fs:x"},
         )
@@ -607,26 +621,6 @@ class GeneraDocumentoTipoFileTests(SimpleTestCase):
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
 
-    # 14. tipo PDF_FINALE presente ma non attivo -> rifiutato.
-    def test_genera_documento_tipo_file_pdf_finale_non_attivo_raises(self) -> None:
-        template = template_row()
-        versione = versione_row()
-        svc, repo, _, storage = service_with_mocks(
-            repo_methods={
-                **risolto(template),
-                "get_versione": versione,
-                "get_tipo_file_documento_by_codice": {
-                    "id": 2, "codice": "PDF_FINALE", "attivo": False,
-                },
-            },
-        )
-        with patch_scope(None), patch_get_builder({"numero": 1}), patch_render():
-            with self.assertRaises(ServiceError) as ctx:
-                svc.genera_documento(make_user(), **_GENERA_DEFAULT)
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.create_documento_generato.assert_not_called()
-        storage.write.assert_not_called()
-
 
 # =====================================================================
 # Integrity error + storage cleanup
@@ -646,7 +640,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                 "get_versione": versione,
                 "next_progressivo_sorgente": 1,
                 "get_tipo_file_documento_by_codice": {
-                    "id": 2, "codice": "PDF_FINALE", "attivo": True,
+                    "id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE,
                 },
             },
         )
@@ -676,7 +670,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
                 "get_tipo_file_documento_by_codice": {
-                    "id": 2, "codice": "PDF_FINALE", "attivo": True,
+                    "id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE,
                 },
             },
         )
@@ -704,7 +698,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
                 "get_tipo_file_documento_by_codice": {
-                    "id": 2, "codice": "PDF_FINALE", "attivo": True,
+                    "id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE,
                 },
             },
             storage_methods={"write": "fs:x"},
@@ -745,7 +739,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                     "create_documento_generato_file": 1,
                     "emit_evento_documento": 1,
                     "get_tipo_file_documento_by_codice": {
-                        "id": 2, "codice": "PDF_FINALE", "attivo": True,
+                        "id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE,
                     },
                 },
                 storage_methods={"write": "fs:x"},
@@ -807,7 +801,7 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
                 "get_tipo_file_documento_by_codice": {
-                    "id": 2, "codice": "PDF_FINALE", "attivo": True,
+                    "id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE,
                 },
             },
             storage_methods={"write": "fs:abc", "delete": True},
@@ -829,8 +823,8 @@ class GeneraDocumentoTransactionalTests(SimpleTestCase):
 #        che generano documento con allegati.
 def _tipo_file_lookup(codice: str) -> dict[str, Any] | None:
     return {
-        "PDF_FINALE": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
-        "ALLEGATO": {"id": 9, "codice": "ALLEGATO", "attivo": True},
+        "PDF_FINALE": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
+        "ALLEGATO": {"id": 9, "codice": "ALLEGATO", "formati": _FORMATI_ALLEGATO},
     }.get(codice)
 
 
@@ -891,10 +885,12 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
         self.assertEqual(result["allegati"][0]["file_name"], "condizioni.pdf")
         self.assertEqual(result["allegati"][0]["ordinamento"], 2)
 
-    # 22. allegato con MIME non ammesso -> VALIDATION fail-fast (pre-render,
-    #     pre-DB). Nessuna chiamata a template/render/INSERT.
+    # 22. allegato con MIME non fra i formati del tipo ALLEGATO (letti dal
+    #     DB) -> VALIDATION fail-fast (pre-render). Il messaggio elenca i
+    #     formati della lista letta, non una frase scritta a mano.
     def test_genera_documento_allegato_mime_non_ammesso_raises(self) -> None:
         svc, repo, _, storage = service_with_mocks()
+        repo.get_tipo_file_documento_by_codice.side_effect = _tipo_file_lookup
         _mock_params(svc)
         allegati = [{
             "file_bytes": b"testo",
@@ -904,6 +900,7 @@ class GeneraDocumentoAllegatiTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.genera_documento(make_user(), allegati=allegati, **_GENERA_DEFAULT)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        self.assertIn("Ammessi: PDF, PNG.", ctx.exception.message)
         repo.risolvi_template_applicabile.assert_not_called()
         repo.create_documento_generato.assert_not_called()
         storage.write.assert_not_called()
@@ -1045,7 +1042,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
                 "create_documento_generato": (99, "uid-sys"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "fs:sys"},
         )
@@ -1109,7 +1106,7 @@ class GeneraDocumentoContestoSistemaTests(SimpleTestCase):
                 "create_documento_generato": (99, "uid-sys"),
                 "create_documento_generato_file": 1,
                 "emit_evento_documento": 1,
-                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+                "get_tipo_file_documento_by_codice": {"id": 2, "codice": "PDF_FINALE", "formati": _FORMATI_PDF_FINALE},
             },
             storage_methods={"write": "fs:sys"},
         )

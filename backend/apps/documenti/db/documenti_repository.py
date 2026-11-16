@@ -25,9 +25,11 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
+    row_to_dict,
     rows_to_list,
     sql_order_clause,
 )
+from apps.core.db.formati_file import sql_formati_ammessi
 from apps.core.db.sql_write_helpers import (
     execute_dynamic_insert,
     execute_dynamic_update,
@@ -354,6 +356,7 @@ _ASSET_PROJECTION = """
     a.asset_tipo_id,
     tad.codice            AS asset_tipo_codice,
     tad.descrizione       AS asset_tipo_descrizione,
+    tad.etichetta_key     AS asset_tipo_etichetta_key,
     a.mime_type,
     a.file_name,
     a.file_size_bytes,
@@ -424,6 +427,7 @@ _TEMPLATES_PROJECTION = """
     t.tipo_documento_output_id,
     tdo.codice           AS tipo_documento_output_codice,
     tdo.descrizione      AS tipo_documento_output_descrizione,
+    tdo.etichetta_key    AS tipo_documento_output_etichetta_key,
     t.sorgente_tipo_id,
     s.codice             AS sorgente_tipo_codice,
     s.descrizione        AS sorgente_tipo_descrizione,
@@ -671,6 +675,7 @@ class DocumentiRepository:
                    s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
                    r.tipo_documento_output_id,
                    tdo.descrizione               AS tipo_documento_output_descrizione,
+                   tdo.etichetta_key             AS tipo_documento_output_etichetta_key,
                    r.sorgente_tipo_id,
                    so.descrizione                AS sorgente_tipo_descrizione,
                    r.esito,
@@ -1202,23 +1207,26 @@ class DocumentiRepository:
         )
         return int(riga["id"])
 
-    # Scopo: Lookup tipo asset (id, codice_interno, attivo). Usato dal
-    #        service admin per validare MIME contro whitelist Python
-    #        per `codice_interno`. Ritorna None se id inesistente.
+    # Scopo: Il tipo di una risorsa per id: `{id, codice_interno, formati}`,
+    #        coi formati che ammette (BB `sql_formati_ammessi`, lista
+    #        `[{mime_type, estensione, etichetta_key}]`). Il service ne prende
+    #        l'estensione del file; il formato lo giudica il DB alla nascita
+    #        della risorsa (`E_DOCUMENTI_FORMATO_NON_AMMESSO`).
+    #        ⚠️ Niente `attivo` dal 2026-11-16 (giro 2 di
+    #        brief-db-revisione-documenti, D16): un tipo c'e' o non c'e'.
+    # Risultato: dict, o None se l'id non esiste.
     def get_tipo_asset(self, asset_tipo_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id, codice_interno, attivo
-                  FROM documenti.tipi_asset_documento
-                 WHERE id = %s
-                """,
+                f"""
+                SELECT t.id, t.codice_interno,
+                       {sql_formati_ammessi("documenti.tipi_asset_documento")} AS formati
+                  FROM documenti.tipi_asset_documento t
+                 WHERE t.id = %s
+                """,  # noqa: S608 — frammento costante del BB sql_formati_ammessi, valori come parametri
                 [int(asset_tipo_id)],
             )
-            row = cursor.fetchone()
-        if row is None:
-            return None
-        return {"id": int(row[0]), "codice_interno": str(row[1]), "attivo": bool(row[2])}
+            return row_to_dict(cursor)
 
     # Scopo: UPDATE asset sui soli campi metadati editabili (no file).
     #        Il trigger DB A4 (protect_file) blocca comunque qualsiasi
@@ -1404,22 +1412,25 @@ class DocumentiRepository:
     #        ottenere l'`id` da passare a
     #        `create_documento_generato_file.file_tipo_id` senza hardcodare ID
     #        numerici (memoria feedback_no_hardcoded_ids).
+    #        Restituisce `{id, codice, formati}`: i formati che il tipo
+    #        ammette (BB `sql_formati_ammessi`), che il servizio della stampa
+    #        controlla sugli allegati prima del render.
+    #        ⚠️ Niente `attivo` dal 2026-11-16 (giro 2 di
+    #        brief-db-revisione-documenti, D16): un tipo c'e' o non c'e'.
     def get_tipo_file_documento_by_codice(
         self, codice: str
     ) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id, codice, attivo
-                  FROM documenti.tipi_file_documento
-                 WHERE codice_interno = %s
-                """,
+                f"""
+                SELECT t.id, t.codice,
+                       {sql_formati_ammessi("documenti.tipi_file_documento")} AS formati
+                  FROM documenti.tipi_file_documento t
+                 WHERE t.codice_interno = %s
+                """,  # noqa: S608 — frammento costante del BB sql_formati_ammessi, valori come parametri
                 [codice],
             )
-            row = cursor.fetchone()
-        if row is None:
-            return None
-        return {"id": int(row[0]), "codice": str(row[1]), "attivo": bool(row[2])}
+            return row_to_dict(cursor)
 
     # =================================================================
     # Lista documenti generati per sorgente (Tranche K). Il lookup della

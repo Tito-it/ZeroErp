@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1237, di cui 131 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1240, di cui 131 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -726,15 +726,19 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_TERMINALE_CON_USCITA_MANUALE": "DATO_ERRATO",
     # script.fn_get_stato_testata_documento, script.fn_get_testata_id_di_riga (dal 2026-10-05, il lettore riga -> testata), vendite.trgfn_doc_guard_delete_solo_bozza e (dal 2026-09-22, attraverso i lettori) vendite.trgfn_doc_righe_lock_fuori_bozza: · il guard ha ricevuto un tipo di documento che non gestisce, o e' stato montato · su una tabella che non conosce. Nasce il 2026-08-26. · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un · chiamante rotto o un trigger montato male, e chi ha fatto la richiesta non · puo' farci niente. · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una · sede (D11 di brief-db-be-classe-codici-errore). La famiglia giusta e' quella · di E_RUOLO_APPLICATIVO_NON_GESTITO e E_PROFILO_ACCESSO_TIPO_NON_GESTITO — un · valore di enum che il guard non riconosce, con il valore nel messaggio. · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' · nessun campo da accendere.
     "E_DOC_TIPO_NON_GESTITO": "TECNICO",
-    # Sollevati dai trigger DB Fase A · (trgfn_template_asset_block_delete, trgfn_template_asset_protect_file).
+    # Lo solleva il trigger del DELETE di documenti.template_asset, sul building block script.trgfn_prevent_modification_generic.
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_DENIED": "NON_PERMESSO",
+    # Lo solleva documenti.trgfn_guard_formato_ammesso alla nascita di una risorsa dei modelli o di un file della stampa: il tipo MIME dichiarato non e' abbinato al tipo (documenti.tipi_asset_documento_formati, documenti.tipi_file_documento_formati).
+    "E_DOCUMENTI_FORMATO_NON_AMMESSO": "DATO_ERRATO",
     # Coerenza referenziale del payload (template versione / tipo output / · sorgente / emittente discordanti): e' l'input a essere incoerente -> 400.
     "E_DOCUMENTI_GENERATO_COERENZA": "DATO_ERRATO",
     # Registrati il 2026-08-05. Le quattro guard che li sollevano esistevano · gia', ma chiamavano `fn_log_and_raise_error` senza valori variadici: · una funzione VARIADIC text[] non e' chiamabile con zero argomenti · variadici, quindi morivano su 42883 «la funzione non esiste» invece di · sollevare il codice (bonifica riferimenti morti F8, changeSet · 20260805-02). Il blocco c'era lo stesso — un errore qualunque blocca — · ma il codice non arrivava mai qui: 409/400 al posto di un 400 generico. · Stesso status dei fratelli su `template_asset`/`template_documenti_versioni`.
     "E_DOCUMENTI_GENERATO_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_GENERATO_FILE_IMMUTABILE": "CONFLITTO_STATO",
+    # Constraint trigger differito su documenti.documenti_generati: al commit la stampa nata non ha il suo file principale. Il servizio scrive stampa e file nella stessa transazione: e' un suo difetto, non un dato dell'operatore, quindi 500.
+    "E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE": "TECNICO",
     "E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_NOT_FOUND": "NON_TROVATO",
     # documenti.fn_personalizza_template_standard (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6): si personalizza solo un modello standard (D-2); il modello indicato e' gia' di un emittente. Valori: codice del modello.
@@ -853,8 +857,9 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_EVENT_LOG_ENTITY_TYPE_IGNOTO": "TECNICO",
     # vendite.trgfn_event_log_deriva_scope: l'entita' citata dall'evento non esiste, · quindi non c'e' modo di dire DI CHI sia la riga e il giornale la rifiuta. · TECNICO e non DATO_ERRATO: nessuna persona compila entity_type/entity_id in · un form, li mette il codice che scrive il diario — solo un chiamante rotto · ci arriva. ⚠️ E' l'UNICO caso in cui il diario rifiuta: un emittente · disattivato o un documento annullato si registrano lo stesso (D-12).
     "E_EVENT_LOG_SCOPE_NON_RISOLTO": "TECNICO",
-    # Sollevati dai trigger DB trgfn_documenti_generati_eventi_a10_*.
+    # Lo solleva il trigger del DELETE di documenti.documenti_generati_eventi, sul building block script.trgfn_prevent_modification_generic.
     "E_EVENTO_DOCUMENTO_DELETE_VIETATA": "CONFLITTO_STATO",
+    # Lo solleva il trigger dell'UPDATE di documenti.documenti_generati_eventi, sul building block script.trgfn_prevent_modification_generic.
     "E_EVENTO_DOCUMENTO_UPDATE_VIETATA": "CONFLITTO_STATO",
     # vendite.trgfn_famiglie_documento_guard_struttura: le colonne che dicono DOVE vive il documento (colonna_numero, colonna_billing_account, colonna_serie; dal 2026-10-20 la tabella e' quella della sorgente, cioe' l'identita' della famiglia, e schema_tabella/nome_tabella sono ritirate: brief-db-grammatica-unica-documenti 2c) non si cambiano su una famiglia che ha gia' dei registri. Il caso peggiore e' colonna_serie portata a NULL: script.fn_check_registro_serie_ammessa cambia risposta e i registri che una serie ce l'hanno restano con un secchio del contatore che il documento non sa piu' distinguere. Il predicato e' 'esiste almeno un registro', non 'esiste un documento numerato': un registro gia' nato porta dentro di se' i default di questa famiglia. codice_interno NON e' in questo elenco: lo presidia il lock automatico (script.trgfn_lock_columns, E_CODICE_NON_MODIFICABILE) e due presidi sulla stessa colonna con due messaggi diversi sono la cosa da non fare. Il nome segue la famiglia gia' a catalogo, E_COMMESSA_CHIAVE_IMMUTABILE. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.5.
     "E_FAMIGLIA_DOCUMENTO_CHIAVE_IMMUTABILE": "CONFLITTO_STATO",
@@ -911,6 +916,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_FATTURE_PLAFOND_CONSUMATO": "CONFLITTO_STATO",
     # script.fn_check_fatture_con_rettifiche + il guard in · vendite.fn_cleanup_fatture_by_ids. Su una riga di fattura e' gia' stato · registrato un accredito, e disfare la fattura toglierebbe il SECONDO · TETTO di quell'accredito (20260818-27 punto 2) e il DatiFattureCollegate · della TD04. CONFLITTO_STATO e non NON_PERMESSO: il diritto c'e', e' la · situazione a non consentirlo — tolto l'accredito · (fn_annulla_accredito_riga_reso) l'operazione passa. ⚠️ Il gemello · E_LOTTO_FATTURE_NUMERATE NON copre questo caso: l'accredito si registra · PRIMA della numerazione, perche' e' ancorato alla coda dei resi.
     "E_FATTURE_RIGHE_RETTIFICATE": "CONFLITTO_STATO",
+    # Lo solleva il trigger del DELETE di documenti.documenti_generati_file, sul building block script.trgfn_prevent_modification_generic: senza il PDF principale la stampa non si scarica e non si ristampa, e l'hash conservato non verifica piu' niente.
+    "E_FILE_DOCUMENTO_DELETE_VIETATA": "CONFLITTO_STATO",
     # <- FLUSSI_COMPETENZA_MANCANTE  (vivo)
     "E_FLUSSI_COMPETENZA_MANCANTE": "NON_PERMESSO",
     "E_FLUSSI_ESITO_NON_AMMESSO": "DATO_ERRATO",
@@ -1858,7 +1865,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_STRADARIO_NON_TROVATO": "DATO_ERRATO",
     # dbops.fn_admin_merge_stradario: la via di origine o di destinazione e' soppressa (config.stradario.obsoleto_dal), cioe' gia' fusa in un'altra. Una via soppressa non si fonde piu': come origine non ha piu' niente da spostare, come destinazione porterebbe gli indirizzi su una via che non si sceglie. DATO_ERRATO: e' l'id indicato da chi lancia la fusione. I VALORI sono l'id e la data della soppressione; il campo viaggia nel contesto.
     "E_STRADARIO_SOPPRESSO": "DATO_ERRATO",
-    # script.trgfn_prevent_modification_generic: solleva sempre — oggi · monta su transaction_ids per bloccare UPDATE/DELETE. L'operazione · non e' dell'operatore in nessuno stato.
+    # Il codice di script.trgfn_prevent_modification_generic quando il montaggio non ne dichiara uno suo (dbops.transaction_ids). L'operazione non e' dell'operatore in nessuno stato.
     "E_TABELLA_OP_NON_CONSENTITA": "NON_PERMESSO",
     "E_TASK": "DATO_ERRATO",
     "E_TASK_FATTURA": "DATO_ERRATO",
@@ -1910,7 +1917,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA": "TECNICO",
     # anagrafiche.fn_consuma_plafond_titolo_iva_righe invocata con un parametro assente o non valido, oppure su un titolo che non esiste, oppure con righe che non si possono consumare (di un'altra fattura, parti di plafond, rettifiche, un kit passato a meta', una riga NULL o ripetuta: brief-db-bom-flag-quantita-e-kit-in-fattura §13). TECNICO e non DATO_ERRATO perche' questo errore non lo puo' produrre una persona: lo produce un chiamante rotto, e chi ha fatto la richiesta non puo' farci niente - ne discende che nel contesto NON va la chiave `campo`, perche' su un 500 non c'e' nessun campo da accendere. ⭐ E' l'unico caso in cui il VARIADIC nomina un PARAMETRO invece di un valore che una persona riconosce: il lettore e' uno sviluppatore, e il nome del parametro e' l'informazione utile. ⛔ Non si riusa E_PARAMETRO_INVALIDO, che e' un debito e non una sede (AGENTS.md, «Sollevare un errore: tre canali»). Piano: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D15-bis.
     "E_TITOLO_IVA_CONSUMO_NON_INVOCABILE": "TECNICO",
-    # Il registro dei movimenti di plafond IVA e' APPEND-ONLY per progetto: una riga scritta non si modifica e non si cancella (anagrafiche.trgfn_stiva_movimenti_append_only, BEFORE UPDATE OR DELETE). Si corregge con un CONTRO-MOVIMENTO di segno opposto, che lascia a video l'errore, la correzione e la data di entrambi. Decisione di Tid del 2026-08-30: prima era una promessa che il backend manteneva, e l'argomento del brief ci poggiava sopra. ⛔ Vieta ENTRAMBE le operazioni e non solo il DELETE: un UPDATE riscrive la storia IN SILENZIO, perche' l'accumulatore ricalcola e il totale resta "giusto" - nessuno vede che un importo e' cambiato. CONFLITTO_STATO e non DATO_ERRATO: non c'e' un campo da correggere, e' la natura del registro che non lo consente - ne discende che nel contesto non va la chiave `campo`. ⚠️ Con I5 la pulizia della fattura dovra' passare: o un'apertura dichiarata via GUC, o (preferibile) storna invece di cancellare. Piano: brief-db-titoli-iva-movimenti-annullo, B-1.
+    # Il registro dei movimenti di plafond IVA e' APPEND-ONLY per progetto: una riga scritta non si modifica e non si cancella (trigger BEFORE UPDATE OR DELETE sul building block script.trgfn_prevent_modification_generic). Si corregge con un CONTRO-MOVIMENTO di segno opposto, che lascia a video l'errore, la correzione e la data di entrambi. Decisione di Tid del 2026-08-30: prima era una promessa che il backend manteneva, e l'argomento del brief ci poggiava sopra. ⛔ Vieta ENTRAMBE le operazioni e non solo il DELETE: un UPDATE riscrive la storia IN SILENZIO, perche' l'accumulatore ricalcola e il totale resta "giusto" - nessuno vede che un importo e' cambiato. CONFLITTO_STATO e non DATO_ERRATO: non c'e' un campo da correggere, e' la natura del registro che non lo consente - ne discende che nel contesto non va la chiave `campo`. ⚠️ Con I5 la pulizia della fattura dovra' passare: o un'apertura dichiarata via GUC, o (preferibile) storna invece di cancellare. Piano: brief-db-titoli-iva-movimenti-annullo, B-1.
     "E_TITOLO_IVA_MOVIMENTO_IMMUTABILE": "CONFLITTO_STATO",
     # Guard anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto (20261010-92): un titolo IVA vigente di un tipo che la natura del soggetto non ammette (anagrafiche.fn_titolo_iva_ammesso, matrice config.tipi_titolo_iva_tipi_soggetto_dettaglio; nessuna riga = non ammesso). DATO_ERRATO: il tipo lo sceglie una persona nel form, campo tipo_titolo_iva_id. VARIADIC: descrizione del tipo di titolo, descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).
     "E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO": "DATO_ERRATO",

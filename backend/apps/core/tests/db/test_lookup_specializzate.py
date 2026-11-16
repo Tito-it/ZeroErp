@@ -19,9 +19,14 @@
 #   3. [DB vero] ogni rel specializzata e' anche nel lookup della lista a DB
 #      (`config.tabelle_gestibili.lookup`): fuori lista non si raggiunge, e
 #      sarebbe una riga di config morta
-#   4. [DB vero] ogni rel specializzata risponde: la colonna extra c'e', il
-#      contratto generico e' intero, e su `config.registri_giornale`
-#      `etichetta_key` e' nel namespace del catalogo e `attivo` e' NULL
+#   4. [DB vero] ogni rel specializzata risponde: la colonna extra (e le
+#      `altre_colonne`) c'e', il contratto generico e' intero, e su
+#      `config.registri_giornale` `etichetta_key` e' nel namespace del
+#      catalogo e `attivo` e' NULL
+#   5. [DB vero] i tipi di risorsa e di file della stampa portano i FORMATI
+#      ammessi come lista `[{mime_type, estensione, etichetta_key}]` (BB
+#      `sql_formati_ammessi`, 2026-11-16), con l'etichetta nel namespace di
+#      `config.formati_file`
 # ------------------------------------------------------------
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -106,7 +111,11 @@ class LookupSpecializzateDbTests(TestCase):
                 self.assertIsInstance(totale, int, rel)
                 _leggi(rel, search="a", includi_obsoleti=False, limit=1)
                 for riga in righe:
-                    self.assertEqual(set(riga), _CONTRATTO | {spec["extra_col"]}, rel)
+                    self.assertEqual(
+                        set(riga),
+                        _CONTRATTO | {spec["extra_col"]} | set(spec.get("altre_colonne", {})),
+                        rel,
+                    )
             # Il catalogo dei registri: seminato, con l'indirizzo i18n del DB.
             righe, totale = _leggi("config.registri_giornale", limit=50)
             transaction.set_rollback(True)
@@ -117,3 +126,20 @@ class LookupSpecializzateDbTests(TestCase):
                 riga["etichetta_key"],
                 f"config.registri_giornale.{riga['codice_interno'].lower()}",
             )
+
+    # 5. I formati ammessi viaggiano con il tipo, come lista di oggetti.
+    def test_tipi_documento_portano_i_formati(self) -> None:
+        for rel in ("documenti.tipi_asset_documento", "documenti.tipi_file_documento"):
+            with self.subTest(rel=rel):
+                righe, _ = _leggi(rel, limit=50)
+                self.assertGreater(len(righe), 0, f"{rel} vuota: il seed manca")
+                for riga in righe:
+                    self.assertIsNone(riga["attivo"], rel)
+                    self.assertIsInstance(riga["formati"], list, rel)
+                    for formato in riga["formati"]:
+                        self.assertEqual(
+                            set(formato), {"mime_type", "estensione", "etichetta_key"}, rel,
+                        )
+                        self.assertTrue(
+                            formato["etichetta_key"].startswith("config.formati_file."), rel,
+                        )
