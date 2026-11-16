@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PERCHE' UN MODELLO OGGI NON STAMPA: UNA SEDE SOLA
+#   documenti.fn_template_motivo_non_stampabile (nuova)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La domanda «questo modello oggi puo' stampare, e con questa versione?»
+#   serve a due lettori:
+#   * la risoluzione col modello indicato (fn_risolvi_template_applicabile),
+#     che oggi la compone sul posto (vista delle stampabili + modello acceso);
+#   * la coerenza alla nascita della stampa (Q13 della revisione di documenti,
+#     2026-11-16): dal giro 1 le stampe non chiedono piu' ai padri di essere
+#     accesi (eccezioni ATTIVO), e nessuno verificava piu' che la stampa nasca
+#     dalla versione con cui il modello stampa oggi.
+#   Alla seconda occorrenza la regola si estrae: un building block gemello di
+#   fn_template_motivo_non_coerente (che dice se il modello va bene per il
+#   documento), che dice perche' oggi non stampa. «Puo' stampare» resta in
+#   vw_template_versioni_stampabili: la funzione la legge, non la ricopia.
+#   Il COMMENT della vista elenca il lettore nuovo.
+#
+# -- I MOTIVI --------------------------------------------------------------
+#   NULL (stampa), MODELLO_INESISTENTE, MODELLO_SPENTO, NESSUNA_VERSIONE_VALIDA,
+#   VERSIONE_NON_IN_USO (solo con la versione indicata: il modello stampa, ma
+#   con un'altra). I primi tre sono quelli che la risoluzione dava gia'.
+#
+# -- CHI LA CHIAMA ---------------------------------------------------------
+#   fn_risolvi_template_applicabile (20261116-06),
+#   trgfn_documenti_generati_check_coerenza (20261116-07).
+#   pgTAP: test-documenti-risoluzione-scarto-asset-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-05-create-fn-template-motivo-non-stampabile-mctit.yaml
+
+  - changeSet:
+      id: 20261116-05-create-fn-template-motivo-non-stampabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il building block che dice perche' un modello oggi non stampa (o non stampa con la
+        versione indicata), letto dalla risoluzione e dalla coerenza della stampa.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.fn_template_motivo_non_stampabile(
+                  p_template_documento_id documenti.template_documenti.id%TYPE,
+                  p_template_versione_id  documenti.template_documenti_versioni.id%TYPE DEFAULT NULL)
+              RETURNS text
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                SELECT CASE
+                         WHEN t.id IS NULL THEN 'MODELLO_INESISTENTE'
+                         WHEN NOT t.attivo THEN 'MODELLO_SPENTO'
+                         WHEN s.template_versione_id IS NULL THEN 'NESSUNA_VERSIONE_VALIDA'
+                         WHEN fn_template_motivo_non_stampabile.p_template_versione_id IS NOT NULL
+                          AND s.template_versione_id <> fn_template_motivo_non_stampabile.p_template_versione_id
+                           THEN 'VERSIONE_NON_IN_USO'
+                         ELSE NULL
+                       END
+                  FROM (SELECT 1) base
+                  LEFT JOIN documenti.template_documenti t
+                         ON t.id = fn_template_motivo_non_stampabile.p_template_documento_id
+                  LEFT JOIN documenti.vw_template_versioni_stampabili s
+                         ON s.template_documento_id = t.id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION documenti.fn_template_motivo_non_stampabile(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti_versioni.id%TYPE) IS
+                  'Il modello oggi puo'' stampare, e con la versione indicata? NULL se si; altrimenti il motivo, nell''ordine: MODELLO_INESISTENTE, MODELLO_SPENTO (il modello e'' disattivato), NESSUNA_VERSIONE_VALIDA (nessuna versione fuori bozza, attiva e valida alla data operativa), VERSIONE_NON_IN_USO (solo con p_template_versione_id: il modello stampa, ma con un''altra versione). «Puo'' stampare» e'' documenti.vw_template_versioni_stampabili, letta e non ricopiata. Sede unica della regola: la leggono documenti.fn_risolvi_template_applicabile (il modello indicato, prima del render) e documenti.trgfn_documenti_generati_check_coerenza (la nascita della stampa).';
+
+              COMMENT ON VIEW documenti.vw_template_versioni_stampabili IS
+                  'I modelli che possono stampare oggi, una riga per modello con la versione con cui stampa: modello attivo, versione attiva fuori bozza (PUBBLICATA o OBSOLETA) e valida alla data operativa. La validita'' decide, lo stato separa le versioni operative dalla BOZZA: una versione OBSOLETA, superata da una pubblicazione successiva, stampa fino all''ultimo giorno della sua validita'', cioe'' fino alla vigilia della nuova. Sede unica del predicato «puo'' stampare»: la leggono documenti.fn_template_motivo_non_stampabile, documenti.fn_risolvi_template_applicabile, documenti.fn_template_esito_risoluzione, documenti.fn_personalizza_template_standard e documenti.vw_template_personalizzati_scarto. Una riga per modello per costruzione: ex_template_documenti_versioni_no_overlap_pubblicata, esteso alle OBSOLETE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS documenti.fn_template_motivo_non_stampabile(bigint, bigint);
+              COMMENT ON VIEW documenti.vw_template_versioni_stampabili IS
+                  'I modelli che possono stampare oggi, una riga per modello con la versione con cui stampa: modello attivo, versione attiva fuori bozza (PUBBLICATA o OBSOLETA) e valida alla data operativa. La validita'' decide, lo stato separa le versioni operative dalla BOZZA: una versione OBSOLETA, superata da una pubblicazione successiva, stampa fino all''ultimo giorno della sua validita'', cioe'' fino alla vigilia della nuova. Sede unica del predicato «puo'' stampare»: la leggono documenti.fn_risolvi_template_applicabile (anche per il modello indicato), documenti.fn_template_esito_risoluzione, documenti.fn_personalizza_template_standard e documenti.vw_template_personalizzati_scarto. Una riga per modello per costruzione: ex_template_documenti_versioni_no_overlap_pubblicata, esteso alle OBSOLETE.';

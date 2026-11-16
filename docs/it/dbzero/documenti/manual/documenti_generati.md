@@ -61,8 +61,9 @@ il documento intero.
 
 Alla nascita tre controlli guardano la stessa riga da tre lati:
 
-* **il modello va bene per il documento**: la versione appartiene al modello indicato, e il modello ha la stessa
-  sorgente, lo stesso tipo di output e la stessa azienda della stampa, oppure è un modello standard
+* **il modello va bene per il documento, e stampa con quella versione**: la versione appartiene al modello
+  indicato; il modello ha la stessa sorgente, lo stesso tipo di output e la stessa azienda della stampa, oppure è
+  un modello standard; ed è acceso, con quella versione in vigore oggi
   (`trgfn_documenti_generati_check_coerenza`);
 * **i dati hanno la forma che la versione legge**: la forma dichiarata dal contesto congelato è quella della
   versione usata (`trgfn_documenti_generati_guard_versione_contesto`);
@@ -73,7 +74,9 @@ sorgente, tipo o azienda, la stampa vecchia non è sbagliata: è la fotografia d
 colonne che decidevano la coerenza le tiene ferme lo snapshot.
 
 Quale modello e quale versione possono stampare oggi lo decide la risoluzione, prima del render
-(`documenti.fn_risolvi_template_applicabile`): un modello spento o senza versione valida non viene scelto.
+(`documenti.fn_risolvi_template_applicabile`), e la coerenza lo richiede alla nascita con la stessa regola
+(`documenti.fn_template_motivo_non_stampabile`): una stampa non nasce da un modello spento, da una bozza o da una
+versione già superata, anche se i suoi padri si possono spegnere dopo.
 
 ---
 
@@ -128,17 +131,14 @@ appartengono.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Una stampa nata da un modello spento la ferma solo il servizio.** Il database non chiede che modello,
-  versione, tipo e azienda siano accesi quando la stampa nasce: lo garantisce la risoluzione che il servizio fa
-  prima del render. Un `INSERT` diretto con un modello spento passa la coerenza.
-* **Le stampe nate prima del controllo del PDF principale** non sono state giudicate: il controllo guarda le
-  nascite, non le righe già scritte.
+* **Le stampe nate prima del controllo del PDF principale, o di quello della versione in uso,** non sono state
+  giudicate: i controlli guardano le nascite, non le righe già scritte.
 
 ---
 
 ### Codici errore
 
-* `E_DOCUMENTI_GENERATO_COERENZA` — il modello o la versione non vanno bene per la stampa;
+* `E_DOCUMENTI_GENERATO_COERENZA` — il modello o la versione non vanno bene per la stampa, o oggi non stampano;
 * `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` — la forma dei dati;
 * `E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE` — si è cercato di cambiare lo snapshot;
 * `E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE` — a fine transazione la stampa nata non ha il suo PDF
@@ -155,6 +155,8 @@ appartengono.
   coerenza solo alla nascita, i padri che si spengono, il rifiuto sempre attivo;
 * `db/pgtap/documenti/test-sorgente-documenti-generati-v1.sql` — la provenienza e il guard unico;
 * `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — la forma dei dati;
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — la stampa nasce solo dalla versione in
+  uso;
 * `db/pgtap/documenti/test-documenti-storico-disabled.sql` — lo storico spento;
 * `db/pgtap/rls/test-rls-documenti-satelliti.sql` — il perimetro di file ed eventi.
 
@@ -174,6 +176,7 @@ appartengono.
 * 2026-11-15 — lo stato perde `ARCHIVIATO` e `ANNULLATO`, che nessuno scriveva; la coerenza si giudica solo alla
   nascita; `id` entra nello snapshot; ogni stampa nuova deve avere il suo PDF principale; le chiavi verso i
   padri diventano eccezioni della regola ATTIVO; il rifiuto della cancellazione passa al building block comune.
+* 2026-11-16 — la coerenza chiede anche che il modello stampi oggi con la versione della stampa.
 
 ---
 

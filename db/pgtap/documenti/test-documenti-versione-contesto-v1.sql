@@ -84,7 +84,8 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- ⚠️ In un'istruzione separata dal padre (guida pgTAP, «Padre e figlio»).
--- V1 legge la forma 1, V2 la forma 2. BOZZA: il patto non guarda lo stato.
+-- V1 legge la forma 1, V2 la forma 2. Nascono in BOZZA: il patto della forma non
+-- guarda lo stato. La V1 si pubblica prima delle stampe (9-13).
 CREATE TEMP TABLE tmp_dvc_v AS
 WITH ins AS (
     INSERT INTO documenti.template_documenti_versioni (
@@ -153,6 +154,12 @@ SELECT throws_like(
 -- ============================================================
 -- 9-13) Il trigger sulle stampe
 -- ============================================================
+-- ⚠️ Una stampa nasce dalla versione con cui il modello stampa oggi (coerenza
+--   alla nascita, 20261116-07): la V1 esce di bozza dal verbo, in vigore dal
+--   2026-01-01. Una bozza non stampa piu'.
+SELECT documenti.fn_pubblica_template_documento_versione(
+    (SELECT id FROM tmp_dvc_v WHERE versione = 1), DATE '2026-01-01', 1, NULL);
+
 -- Una stampa della V1 (forma 1). Il contesto e' l'unica cosa che varia fra i
 -- casi: la funzione di comodo lo riceve e compone il resto della riga.
 CREATE TEMP TABLE tmp_dvc_seq (n integer);
@@ -213,7 +220,8 @@ SELECT throws_like(
 
 SELECT throws_like(
     $q$SELECT pg_temp.fn_dvc_stampa('{"tot": 1}'::jsonb, 999999999)$q$,
-    '%Incoerenza referenziale%',
+    -- La frase della coerenza copre anche la stampabilita' (20261116-07).
+    '%La stampa non si registra: il modello o la versione indicati non vanno bene%',
     '13) tipo output incoerente E contesto senza forma: parla la coerenza, che viene prima'
 );
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `documenti.fn_template_motivo_non_coerente`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 >
 > * [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile) — la chiede per il modello indicato, prima del render
 > * [documenti.trgfn_documenti_generati_check_coerenza](/dbzero/documenti/funzioni/trgfn_documenti_generati_check_coerenza) — la chiede alla scrittura del documento generato
+> * [documenti.fn_template_motivo_non_stampabile](/dbzero/documenti/funzioni/fn_template_motivo_non_stampabile) — la domanda gemella: il modello oggi stampa?
 >
 > Guide:
 >
@@ -53,6 +54,8 @@ modello che la porta della stampa accetta non viene poi rifiutato alla registraz
 
 * `db/pgtap/documenti/test-documenti-template-porta-unica-v1.sql` — i tre motivi attraverso la porta
   della stampa, l'id che non è un modello, e lo stesso motivo letto dal trigger di coerenza.
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — `SORGENTE` e `TIPO` chiesti
+  direttamente.
 
 ---
 

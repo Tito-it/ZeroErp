@@ -120,6 +120,9 @@ Ogni tipo di asset ammette solo alcuni formati di file: un logo è un'immagine (
 GIF), un foglio di stile è un CSS. Il database rifiuta un asset in un formato che il suo tipo non
 ammette; lo stesso vale per gli allegati di un documento generato (PDF, JPEG, PNG).
 
+Una stampa nuova usa solo gli asset **utilizzabili oggi**: accesi e validi alla data di oggi
+dell'azienda. La regola sta in un posto solo del database.
+
 Il file di un asset non si sostituisce e l'asset non si cancella: la ristampa di un documento già
 generato ritrova così, per codice, lo stesso file di allora. Il codice è unico per azienda e non ha
 una validità nel tempo: un logo nuovo è un asset nuovo con un codice nuovo, e le versioni che
@@ -175,7 +178,7 @@ sceglie, **si verifica**, con la stessa funzione:
 | Caso | Che cosa dice | Chi rimedia |
 |---|---|---|
 | Modelli suoi pubblicati, nessuno predefinito | l'azienda ha modelli suoi, ma nessuno è predefinito | l'operatore: segna un predefinito |
-| Nessun modello, nemmeno lo standard | nessun modello di stampa per il documento | l'assistenza: manca lo standard |
+| Nessun modello, nemmeno lo standard | nessun modello di stampa per il documento (senza tipo indicato, il documento si nomina con la sorgente) | l'assistenza: manca lo standard |
 | Tipo non indicato su una sorgente con più tipi | il documento produce più tipi | chi ha chiamato la stampa: indicare il tipo |
 | Modello indicato spento o senza versione valida | il modello oggi non può stampare, e perché | l'operatore: lo riattiva o pubblica una versione |
 | Modello indicato non adatto | il modello non è adatto a questo documento, e perché | l'operatore: sceglie un altro modello |
@@ -221,6 +224,10 @@ deriva:
 | `STANDARD_AVANTI` | lo standard è andato avanti: la copia funziona, ma non ha l'evoluzione |
 | `CONTESTO_SUPERATO` | la copia legge una forma dei dati più vecchia: alla stampa si fermerà |
 | `ORIGINE_NON_DICHIARATA` | il modello non dice da dove deriva: si confronta solo la forma dei dati, con lo standard predefinito |
+| `STANDARD_NON_STAMPA` | lo standard con cui confrontarla manca, è spento o oggi non stampa: non c'è niente da confrontare |
+
+Una copia resta nello scarto anche quando il suo standard non stampa: non si ripiega su un altro
+standard, che non sarebbe quello copiato.
 
 ---
 
@@ -322,7 +329,7 @@ configura o genera.
 | Un PDF si ricollega sempre al modello e alla versione usati | Sono registrati nel documento generato |
 | Il layout di una versione pubblicata non cambia | Le colonne della versione sono bloccate dal database una volta pubblicata |
 | Una versione si pubblica solo con «Pubblica» | Il database rifiuta una versione che nasce pubblicata o che lo diventa senza la pubblicazione, e una versione spenta pubblicata |
-| Un documento si stampa solo con un modello che può stampare | La regola sta in un punto solo del database, letto da tutta la stampa |
+| Un documento si stampa solo con un modello che può stampare | La regola sta in un punto solo del database, letto da tutta la stampa e di nuovo alla registrazione del documento generato, che nasce solo dalla versione in uso oggi |
 | Un modello di un'azienda non stampa i documenti di un'altra | Lo verifica il database prima del render e alla scrittura del documento generato |
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
 | Uno standard non si modifica dall'interfaccia | Il database rifiuta la scrittura a chi non è il proprietario delle tabelle |
@@ -333,6 +340,7 @@ configura o genera.
 | Un asset o un allegato è in un formato che il suo tipo ammette | Il database confronta il formato dichiarato con i formati abbinati al tipo |
 | Gli elenchi fissi del modulo non si cambiano dall'interfaccia | L'applicazione li legge soltanto: una voce nuova arriva con il codice che la usa |
 | Un modello, una versione o un'azienda che hanno stampato si possono spegnere | Le stampe sono storia: non tengono accesi i loro padri, e un'azienda che spegne i suoi modelli torna allo standard |
+| Un asset si usa solo se è utilizzabile oggi | La regola «acceso e valido oggi» ha una sede nel database |
 
 ---
 
@@ -357,7 +365,8 @@ documenti/
 ├── tipi_file_documento_formati        — i formati di file che ogni tipo di file ammette
 ├── vw_template_versioni_stampabili    — i modelli che possono stampare oggi
 ├── vw_template_risoluzione_emittente  — per ogni azienda e documento, con che cosa si stampa
-└── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard
+├── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard
+└── vw_template_asset_utilizzabili     — gli asset che si possono usare oggi
 ```
 
 I formati di file (tipo MIME ed estensione) sono il vocabolario `config.formati_file`. I parametri

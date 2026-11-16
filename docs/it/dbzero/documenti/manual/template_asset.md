@@ -10,6 +10,10 @@
 > * [documenti.tipi_asset_documento_formati](/dbzero/documenti/tabelle/tipi_asset_documento_formati) — i formati che ogni tipo ammette
 > * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'azienda a cui l'asset appartiene
 >
+> Approfondimento viste:
+>
+> * [documenti.vw_template_asset_utilizzabili](/dbzero/documenti/views/vw_template_asset_utilizzabili) — gli asset che si possono usare oggi
+>
 > Approfondimento funzioni:
 >
 > * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — un asset non si cancella
@@ -69,7 +73,10 @@ carica due volte, nemmeno con due ruoli diversi. Due aziende possono avere lo st
 ### Attivo e valido: che cosa la stampa può usare
 
 Una stampa nuova e l'anteprima usano solo gli asset attivi e validi oggi; la ristampa fedele usa
-l'asset di allora comunque. `validita` è l'intervallo generato da `valido_dal` e `valido_al`, estremi
+l'asset di allora comunque. La regola «utilizzabile oggi» sta in un posto solo, la vista
+[vw_template_asset_utilizzabili](/dbzero/documenti/views/vw_template_asset_utilizzabili), per il
+render e per il filtro degli asset utilizzabili della lista (il backend ripete ancora la condizione:
+lo dice la pagina della vista). `validita` è l'intervallo generato da `valido_dal` e `valido_al`, estremi
 compresi, e l'ordine delle date lo verifica il guard comune. Un asset si ritira chiudendo la validità
 o spegnendolo.
 
@@ -98,12 +105,6 @@ controllare i byte del file.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* «Attivo e valido oggi» per un asset non ha una sede nel database: lo scrive il backend.
-
----
-
 ### Codici errore
 
 * `E_DOCUMENTI_ASSET_DELETE_BLOCKED` — cancellazione di un asset.
@@ -122,6 +123,8 @@ controllare i byte del file.
   bloccata, file immutabile, meta modificabile.
 * `db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql` — il formato ammesso dal tipo, alla
   nascita e al cambio di tipo.
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — utilizzabile l'asset acceso e
+  valido oggi, non quello spento né quello che vale da domani.
 
 ---
 
@@ -129,7 +132,8 @@ controllare i byte del file.
 
 * 2026-04-29 — nasce la tabella.
 * 2026-05-14 — `validita` diventa una colonna generata.
-* 2026-11-16 — il formato ammesso dal tipo passa dal backend al database.
+* 2026-11-16 — il formato ammesso dal tipo passa dal backend al database, e la regola «utilizzabile
+  oggi» ha la sua vista.
 
 ---
 

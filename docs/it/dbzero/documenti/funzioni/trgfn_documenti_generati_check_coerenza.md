@@ -16,28 +16,23 @@ CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo:
---   Valida la coerenza referenziale del documento generato.
+-- Scopo: alla nascita di una stampa, i suoi riferimenti stanno
+--   insieme e il modello puo' stampare con quella versione.
 --
--- Regole:
---   1. template_versione_id.template_documento_id ==
---      template_documento_id
---   2-4. il modello va bene per il documento: stessa sorgente,
---      stesso tipo di output, e lo stesso emittente OPPURE il
---      modello e' standard. La regola e' del BB
---      documenti.fn_template_motivo_non_coerente (rev
---      20261021-06, brief-db-modelli-documento-standard §10.3
---      K-4): la stessa domanda che la risoluzione fa sul modello
---      indicato prima del render.
+-- Regole, nell'ordine:
+--   1. la versione appartiene al modello indicato;
+--   2. il modello va bene per il documento: stessa sorgente,
+--      stesso tipo di output, e la stessa azienda oppure un
+--      modello standard (fn_template_motivo_non_coerente);
+--   3. il modello stampa oggi, e proprio con questa versione
+--      (fn_template_motivo_non_stampabile).
+--   Le regole 2 e 3 sono le stesse che la risoluzione applica
+--   prima del render.
 --
--- Se una di queste fallisce il record nasce inconsistente,
--- rendendo inaffidabile l'audit tramite context_json snapshot.
---
--- Errore:
---   E_DOCUMENTI_GENERATO_COERENZA
+-- Errore: E_DOCUMENTI_GENERATO_COERENZA, col motivo nel contesto.
 DECLARE
   v_tv_template_id documenti.template_documenti_versioni.template_documento_id%TYPE;
-  -- tipo esplicito: il motivo del BB, non una colonna
+  -- tipo esplicito: il motivo dei BB, non una colonna
   v_motivo         text;
 BEGIN
   SELECT v.template_documento_id
@@ -50,6 +45,7 @@ BEGIN
       'documenti', 'trgfn_documenti_generati_check_coerenza',
       'E_DOCUMENTI_GENERATO_COERENZA',
       jsonb_build_object(
+        'motivo', 'VERSIONE_DI_ALTRO_MODELLO',
         'template_versione_id', NEW.template_versione_id,
         'template_documento_id_atteso', v_tv_template_id,
         'template_documento_id_fornito', NEW.template_documento_id
@@ -79,12 +75,29 @@ BEGIN
     );
   END IF;
 
+  v_motivo := documenti.fn_template_motivo_non_stampabile(
+      NEW.template_documento_id, NEW.template_versione_id);
+
+  IF v_motivo IS NOT NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'documenti', 'trgfn_documenti_generati_check_coerenza',
+      'E_DOCUMENTI_GENERATO_COERENZA',
+      jsonb_build_object(
+        'template_documento_id', NEW.template_documento_id,
+        'template_versione_id', NEW.template_versione_id,
+        'motivo', v_motivo
+      ),
+      NULL::uuid,
+      VARIADIC ARRAY[]::text[]
+    );
+  END IF;
+
   RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza()
-IS 'Giudica, alla nascita di una stampa, che i suoi riferimenti stiano insieme: la versione appartiene al modello indicato, e il modello va bene per il documento (stessa sorgente, stesso tipo di output, stessa azienda oppure modello standard), con la regola di documenti.fn_template_motivo_non_coerente, la stessa che la risoluzione applica prima del render. Solleva E_DOCUMENTI_GENERATO_COERENZA, col motivo per nome nel contesto. Un cambio successivo del modello non tocca le stampe gia'' fatte.';
+IS 'Giudica, alla nascita di una stampa, che i suoi riferimenti stiano insieme e che il modello possa stampare: la versione appartiene al modello indicato (motivo VERSIONE_DI_ALTRO_MODELLO); il modello va bene per il documento, stessa sorgente, stesso tipo di output, stessa azienda oppure modello standard (motivi SORGENTE, TIPO, EMITTENTE, MODELLO_INESISTENTE: documenti.fn_template_motivo_non_coerente); il modello stampa oggi, e proprio con la versione della stampa (motivi MODELLO_SPENTO, NESSUNA_VERSIONE_VALIDA, VERSIONE_NON_IN_USO: documenti.fn_template_motivo_non_stampabile). Sono le regole che la risoluzione applica prima del render. Solleva E_DOCUMENTI_GENERATO_COERENZA, col motivo per nome nel contesto. Montata solo su INSERT: un cambio successivo del modello, o il suo spegnimento, non tocca le stampe gia'' fatte.';
 ```
 
 </div>

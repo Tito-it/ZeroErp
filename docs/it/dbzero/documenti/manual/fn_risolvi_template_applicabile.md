@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `documenti.fn_risolvi_template_applicabile`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -18,6 +18,7 @@
 >
 > * [documenti.fn_template_esito_risoluzione](/dbzero/documenti/funzioni/fn_template_esito_risoluzione) — la regola dei due livelli
 > * [documenti.fn_template_motivo_non_coerente](/dbzero/documenti/funzioni/fn_template_motivo_non_coerente) — se il modello indicato va bene per il documento
+> * [documenti.fn_template_motivo_non_stampabile](/dbzero/documenti/funzioni/fn_template_motivo_non_stampabile) — perché il modello indicato oggi non stampa
 > * [documenti.fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard) — passa da qui per sapere da quale versione parte una copia
 >
 > Guide:
@@ -94,13 +95,13 @@ altro tipo non conta.
 2. **È adatto al documento?** Lo dice `fn_template_motivo_non_coerente`: stessa sorgente, stesso tipo
    (se indicato), stessa azienda oppure standard. Se no, `E_DOCUMENTI_TEMPLATE_NON_COERENTE` con il
    motivo (`SORGENTE`, `TIPO`, `EMITTENTE`).
-3. **Può stampare oggi?** Se no, `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` con il motivo: `MODELLO_SPENTO`
-   se il modello è disattivato, `NESSUNA_VERSIONE_VALIDA` se è attivo ma non ha una versione valida
-   oggi.
+3. **Può stampare oggi?** Lo dice `fn_template_motivo_non_stampabile`. Se no,
+   `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` con il motivo: `MODELLO_SPENTO` se il modello è disattivato,
+   `NESSUNA_VERSIONE_VALIDA` se è attivo ma non ha una versione in vigore oggi.
 4. Livello `INDICATO`, con la versione.
 
-È la stessa regola che il trigger di coerenza applica alla scrittura del documento generato, detta
-prima del render. Uno standard indicato è sempre adatto, anche per un'azienda che ha modelli suoi: la
+Le domande 2 e 3 sono le stesse che il trigger di coerenza fa alla nascita della stampa, dette prima
+del render: un modello che la porta accetta non viene poi rifiutato alla registrazione. Uno standard indicato è sempre adatto, anche per un'azienda che ha modelli suoi: la
 regola dei due livelli vale per la scelta, non per una scelta già fatta da chi stampa.
 
 ---
@@ -114,11 +115,11 @@ gli standard servono a tutti.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Come le frasi nominano il documento
 
-* **Il tipo omesso su una sorgente senza modelli che stampano.** La deduzione non trova nessun tipo,
-  la regola dei due livelli risponde `NON_RISOLTO`, e il messaggio di `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`
-  nomina il documento come «?», perché il valore che porta è la descrizione del tipo, che non c'è.
+`E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO` e `E_DOCUMENTI_TEMPLATE_NON_RISOLTO` nominano il documento con
+il suo tipo. Quando il tipo non è indicato e non si deduce, perché la sorgente non ha nessun modello che
+stampa, lo nominano con la sorgente: la sua descrizione, o il codice se la descrizione manca.
 
 ---
 
@@ -144,6 +145,8 @@ gli standard servono a tutti.
   la vista della lista.
 * `db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql` — fra la pubblicazione di
   una versione futura e la sua partenza stampa ancora la versione superata.
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — la frase senza tipo nomina la
+  sorgente; `NON_RISOLTO` uguale nella vista della lista e nella stampa; il modello indicato spento.
 
 ---
 
@@ -155,6 +158,9 @@ gli standard servono a tutti.
   delle versioni stampabili.
 * 2026-11-14 — per la vista una versione superata da una pubblicazione con partenza futura stampa fino
   alla vigilia della nuova.
+* 2026-11-16 — senza tipo, le frasi nominano il documento con la sorgente: prima dicevano «?». Il
+  motivo per cui il modello indicato non stampa viene da `fn_template_motivo_non_stampabile`, la regola
+  che la stampa rilegge alla nascita.
 
 ---
 

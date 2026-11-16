@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COPIA RESTA NELLO SCARTO ANCHE QUANDO LO STANDARD NON STAMPA
+#   documenti.vw_template_personalizzati_scarto
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Lo standard di riferimento entrava con un join interno sulle versioni che
+#   stampano oggi. Se lo standard da cui la copia deriva e' spento, o non ha
+#   una versione in vigore, la copia spariva dalla vista, e la lista «Modelli
+#   documento» la mostrava senza stato. Lo stesso per una copia senza origine
+#   dichiarata, se la coppia (tipo, sorgente) non ha uno standard predefinito
+#   che stampa.
+#   Q4 di Tid (2026-11-14): lo stato esplicito STANDARD_NON_STAMPA, e la copia
+#   resta in vista. Scartato il ripiego sul predefinito: puo' essere uno
+#   standard diverso da quello copiato. D5 della revisione di documenti.
+#
+# -- LA FORMA --------------------------------------------------------------
+#   CREATE OR REPLACE VIEW: stesse colonne, stesso ordine, stessi tipi.
+#   * Lo standard di riferimento si sceglie come prima (quello d'origine, o il
+#     predefinito standard acceso della coppia), poi si cerca fra quelli che
+#     stampano con un join esterno.
+#   * standard_template_documento_id e' lo standard di riferimento anche
+#     quando non stampa; le colonne della sua versione sono NULL.
+#   * STANDARD_NON_STAMPA viene prima degli altri stati: senza la versione
+#     dello standard non c'e' niente da confrontare.
+#   La copia deve sempre stampare lei: lo scarto e' di un modello in uso.
+#   security_invoker ripetuto (linee-guida-sql §13.7). COMMENT al presente.
+#
+#   Corpo dalla doc auto-generata (ultimo changeSet sull'oggetto prima di
+#   questo: 20261021-12).
+#
+# -- CHI LA LEGGE (censito 2026-11-16) -------------------------------------
+#   BE: la lista «Modelli documento» (documenti_repository, stato_scarto, in
+#   LEFT JOIN). FE: severity.js e le chiavi i18n degli stati (lo stato nuovo
+#   e' una ricaduta, BE6-bis). pgTAP: test-documenti-template-standard-v1,
+#   -personalizza-v1, il nuovo test-documenti-risoluzione-scarto-asset-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-08-update-vw-template-personalizzati-scarto-standard-non-stampa-mctit.yaml
+
+  - changeSet:
+      id: 20261116-08-update-vw-template-personalizzati-scarto-standard-non-stampa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una copia il cui standard di riferimento non stampa resta nello scarto con lo stato
+        STANDARD_NON_STAMPA, invece di sparire dalla vista.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW documenti.vw_template_personalizzati_scarto
+                  WITH (security_invoker = true) AS
+              SELECT c.id AS template_documento_id,
+                     c.emittente_fiscale_id,
+                     c.tipo_documento_output_id,
+                     c.sorgente_tipo_id,
+                     c.codice,
+                     c.is_default,
+                     cv.id AS versione_id,
+                     cv.versione,
+                     cv.versione_contesto,
+                     orig.derivata_da_versione_id,
+                     ov.versione AS standard_versione_origine,
+                     rifm.template_documento_id AS standard_template_documento_id,
+                     sv.id AS standard_versione_id,
+                     sv.versione AS standard_versione,
+                     sv.versione_contesto AS standard_versione_contesto,
+                     CASE
+                         WHEN sv.id IS NULL THEN 'STANDARD_NON_STAMPA'::text
+                         WHEN cv.versione_contesto < sv.versione_contesto THEN 'CONTESTO_SUPERATO'::text
+                         WHEN orig.derivata_da_versione_id IS NULL THEN 'ORIGINE_NON_DICHIARATA'::text
+                         WHEN orig.derivata_da_versione_id = sv.id THEN 'ALLINEATA'::text
+                         ELSE 'STANDARD_AVANTI'::text
+                     END AS stato
+                FROM documenti.template_documenti c
+                JOIN documenti.vw_template_versioni_stampabili cs
+                  ON cs.template_documento_id = c.id
+                JOIN documenti.template_documenti_versioni cv
+                  ON cv.id = cs.template_versione_id
+                LEFT JOIN LATERAL (
+                     SELECT v.derivata_da_versione_id
+                       FROM documenti.template_documenti_versioni v
+                      WHERE v.template_documento_id = c.id
+                        AND v.versione <= cv.versione
+                        AND v.derivata_da_versione_id IS NOT NULL
+                      ORDER BY v.versione DESC
+                      LIMIT 1) orig ON true
+                LEFT JOIN documenti.template_documenti_versioni ov
+                  ON ov.id = orig.derivata_da_versione_id
+                LEFT JOIN LATERAL (
+                     SELECT COALESCE(ov.template_documento_id,
+                                     (SELECT d.id
+                                        FROM documenti.template_documenti d
+                                       WHERE d.standard
+                                         AND d.attivo
+                                         AND d.is_default
+                                         AND d.tipo_documento_output_id = c.tipo_documento_output_id
+                                         AND d.sorgente_tipo_id = c.sorgente_tipo_id)) AS template_documento_id
+                     ) rifm ON true
+                LEFT JOIN documenti.vw_template_versioni_stampabili rif
+                  ON rif.standard
+                 AND rif.template_documento_id = rifm.template_documento_id
+                LEFT JOIN documenti.template_documenti_versioni sv
+                  ON sv.id = rif.template_versione_id
+               WHERE NOT c.standard
+                 AND c.attivo;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON VIEW documenti.vw_template_personalizzati_scarto IS
+                  'Per ogni modello d''emittente attivo che stampa oggi: quanto la versione con cui stampa e'' rimasta indietro rispetto allo standard di riferimento, cioe'' quello da cui la copia deriva (derivata_da_versione_id) o, senza origine dichiarata, il predefinito standard acceso della coppia (tipo, sorgente), sulla versione con cui quello standard stampa oggi. Le versioni sono quelle di documenti.vw_template_versioni_stampabili, la stessa definizione da cui parte documenti.fn_personalizza_template_standard. stato, nell''ordine: STANDARD_NON_STAMPA (lo standard di riferimento manca, e'' spento o oggi non ha una versione in vigore: non c''e'' niente da confrontare, e le colonne della sua versione sono NULL), CONTESTO_SUPERATO (la copia legge una forma dei dati piu'' vecchia di quella dello standard, che i changeSet tengono al passo col builder: si rompera'' alla stampa), ORIGINE_NON_DICHIARATA (nessuna versione dichiara derivata_da_versione_id), ALLINEATA, STANDARD_AVANTI. standard_template_documento_id e'' lo standard di riferimento anche quando non stampa. L''origine si eredita dalla versione piu'' recente che la dichiara, fino a quella in uso. La legge la lista Modelli documento.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La vista di prima (la copia sparisce se lo standard non stampa)
+              -- la rimette il changeSet 20261021-12, rilanciato.
+              SELECT 1;

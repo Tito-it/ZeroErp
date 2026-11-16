@@ -17,7 +17,7 @@
 --   5) il suo modello stampabile: INDICATO, con la versione
 --   6) lo standard, indicato da un emittente qualunque: INDICATO, con la versione dello standard
 --   7) un modello spento: NON_STAMPABILE, «è disattivato»
---   8) un modello con la sola bozza: NON_STAMPABILE, «non ha una versione pubblicata valida oggi»
+--   8) un modello con la sola bozza: NON_STAMPABILE, «non ha una versione in vigore oggi»
 --   9) il modello di un'altra azienda: NON_COERENTE, «è di un'altra azienda»
 --  10) un modello di un altro tipo: NON_COERENTE, «produce un altro tipo di documento»
 --  11) un modello di un'altra sorgente: NON_COERENTE, «è per un'altra sorgente»
@@ -185,7 +185,8 @@ SELECT throws_like(
 SELECT throws_like(
   $$SELECT * FROM _k, documenti.fn_risolvi_template_applicabile(
       _k.sorg, _k.e1, _k.tipo, (SELECT id FROM _id WHERE codice_interno = 'pgtap-pu-m3'))$$,
-  '%oggi non può stampare: non ha una versione pubblicata valida oggi%',
+  -- La frase dice «in vigore» (20261116-06): stampa anche una OBSOLETA nella sua validita'.
+  '%oggi non può stampare: non ha una versione in vigore oggi%',
   '8) un modello con la sola bozza: NON_STAMPABILE');
 
 SELECT throws_like(
@@ -224,7 +225,8 @@ SELECT throws_like(
            'Doc', 'doc.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
            repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
       FROM _k k, _id i WHERE i.codice_interno = 'pgtap-pu-n1'$$,
-  '%Incoerenza referenziale%',
+  -- La frase della coerenza copre anche la stampabilita' (20261116-07).
+  '%La stampa non si registra: il modello o la versione indicati non vanno bene%',
   '13) un documento di E1 reso col modello di E2: E_DOCUMENTI_GENERATO_COERENZA');
 
 SELECT is(
