@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_asset`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — un asset non si cancella
 > * [documenti.trgfn_template_asset_protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file) — il file di un asset non cambia
 > * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — l'azienda presa dalla sessione
 >
@@ -47,8 +47,8 @@ versione.
 
 * Il file di un asset non cambia: chiave nello storage, impronta, peso, tipo e nome sono quelli del
   caricamento ([protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file)).
-* Un asset non si cancella mai
-  ([block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete)).
+* Un asset non si cancella mai, da nessun ruolo (il rifiuto sempre attivo di
+  [trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)).
 
 Insieme fanno dell'asset un'istantanea stabile: la ristampa fedele di un documento ritrova il file di
 allora, anche se oggi l'asset è scaduto o spento.

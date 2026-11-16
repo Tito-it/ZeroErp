@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.tipi_documento_output`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -50,20 +50,11 @@ tendine, e non nel pannello di configurazione.
 
 ### Spegnere un tipo
 
-`attivo = false` impedisce che un tipo nuovo entri in un modello o in una stampa. Un tipo non si spegne
-finché un modello attivo lo usa, né finché una stampa registrata lo nomina. La coda di stampa delle
-fatture è esclusa dal controllo: è una coda di lavoro, e se il tipo può stampare lo decide la
-risoluzione quando la coda si svuota.
+`attivo = false` impedisce che un tipo nuovo entri in un modello. Un tipo non si spegne finché un modello
+attivo lo usa. Le stampe registrate e la coda di stampa delle fatture sono escluse dal controllo: una
+stampa è storia, la coda è lavoro, e se il tipo può stampare lo decide la risoluzione del modello.
 
 Le modifiche sono storicizzate in `storico.tipi_documento_output`.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Un tipo già stampato non si spegne più.** La stampa registrata non ha un proprio `attivo`, quindi
-  per il controllo ogni stampa è un figlio vivo: basta un documento generato perché il tipo resti
-  acceso per sempre, anche se nessun modello lo usa più.
 
 ---
 

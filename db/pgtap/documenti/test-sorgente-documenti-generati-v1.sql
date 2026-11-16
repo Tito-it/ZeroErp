@@ -26,7 +26,7 @@
 --   10) tutte e due le chiavi: E_SORG_CHIAVE_NON_CONFORME (il guard parla prima del CHECK)
 --   LO SNAPSHOT
 --   11) la stampa spostata su un altro preventivo: E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
---   12) lo stato si cambia ancora
+--   12) meta, fuori dallo snapshot, si cambia ancora (lo stato ha un valore solo)
 --   LA CANCELLAZIONE (BLOCCA)
 --   13) il preventivo stampato non si cancella: E_SORG_ORIGINE_REFERENZIATA
 --   14) ... e l'ordine stampato nemmeno
@@ -135,10 +135,14 @@ SELECT s.codice_interno AS sorgente, t.id AS template_id, tv.id AS versione_id,
   JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id;
 
 -- La stampa di un documento: le colonne dello snapshot dal modello del tipo,
--- la chiave e il numero dal test. Ritorna l'istruzione, per pg_temp.esito.
+-- la chiave e il numero dal test; il PDF principale lo scrive
+-- dbops.fn_pgtap_stampa_con_pdf (senza, la stampa non si registra). Ritorna
+-- l'istruzione, per dbops.fn_pgtap_codice_errore.
 CREATE FUNCTION pg_temp.stampa(p_sorgente text, p_id bigint, p_uid uuid, p_progressivo integer)
 RETURNS text LANGUAGE sql AS $f$
   SELECT format(
+    'SELECT dbops.fn_pgtap_stampa_con_pdf(%L)',
+    format(
     'INSERT INTO documenti.documenti_generati (
         tipo_documento_output_id, template_documento_id, template_versione_id,
         sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
@@ -151,7 +155,7 @@ RETURNS text LANGUAGE sql AS $f$
             (SELECT emittente_fiscale_id FROM _pv WHERE k = ''A'')
        FROM _tpl t WHERE t.sorgente = %L',
     coalesce(p_id::text, 'NULL'), coalesce(quote_literal(p_uid::text) || '::uuid', 'NULL'),
-    p_progressivo, p_sorgente)
+    p_progressivo, p_sorgente))
 $f$;
 
 -- ============================================================
@@ -201,11 +205,11 @@ SELECT is(dbops.fn_pgtap_codice_errore(format(
   '11) la stampa spostata su un altro preventivo: lo snapshot non cambia');
 
 SELECT is(dbops.fn_pgtap_codice_errore(format(
-    'UPDATE documenti.documenti_generati SET stato = ''ARCHIVIATO''
+    'UPDATE documenti.documenti_generati SET meta = ''{"nota": "pgtap"}''::jsonb
       WHERE sorgente_uid = %L::uuid AND progressivo_sorgente = 2',
     (SELECT preventivo_uid FROM _pv WHERE k = 'A'))),
   NULL,
-  '12) lo stato fuori dallo snapshot si cambia ancora');
+  '12) meta, fuori dallo snapshot, si cambia ancora');
 
 -- ============================================================
 -- LA CANCELLAZIONE (BLOCCA)

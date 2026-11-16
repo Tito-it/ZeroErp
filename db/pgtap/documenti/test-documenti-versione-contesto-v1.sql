@@ -164,22 +164,27 @@ DECLARE
     v_n integer;
 BEGIN
     UPDATE tmp_dvc_seq SET n = n + 1 RETURNING n INTO v_n;
-    INSERT INTO documenti.documenti_generati (
-        tipo_documento_output_id, template_documento_id, template_versione_id,
-        sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
-        titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
-        emittente_fiscale_id
-    )
-    SELECT coalesce(p_tipo_output_id, c.tipo_output_id),
-           (SELECT id FROM tmp_dvc_template),
-           (SELECT id FROM tmp_dvc_v WHERE versione = 1),
-           c.sorgente_id,
-           (SELECT preventivo_uid FROM _dg_src), NULL, v_n,
-           'Stampa pgTAP ' || v_n, 'pgtap-dvc-' || v_n || '.pdf',
-           p_contesto,
-           repeat('1', 64), repeat('2', 64), repeat('3', 64),
-           c.emittente_id
-      FROM tmp_dvc_ctx c;
+    -- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf):
+    --   senza, non si registra (guard differito, che IMMEDIATE fa scattare a fine
+    --   istruzione).
+    PERFORM dbops.fn_pgtap_stampa_con_pdf(format($i$
+        INSERT INTO documenti.documenti_generati (
+            tipo_documento_output_id, template_documento_id, template_versione_id,
+            sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
+            titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
+            emittente_fiscale_id
+        )
+        SELECT coalesce(%s::bigint, c.tipo_output_id),
+               (SELECT id FROM tmp_dvc_template),
+               (SELECT id FROM tmp_dvc_v WHERE versione = 1),
+               c.sorgente_id,
+               (SELECT preventivo_uid FROM _dg_src), NULL, %s,
+               'Stampa pgTAP ' || %s, 'pgtap-dvc-' || %s || '.pdf',
+               %L::jsonb,
+               repeat('1', 64), repeat('2', 64), repeat('3', 64),
+               c.emittente_id
+          FROM tmp_dvc_ctx c$i$,
+        coalesce(p_tipo_output_id::text, 'NULL'), v_n, v_n, v_n, p_contesto::text));
 END
 $f$;
 

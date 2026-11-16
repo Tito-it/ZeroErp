@@ -1,0 +1,130 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA STAMPA, I SUOI EVENTI, IL SUO FILE E L'ASSET: «RIFIUTA SEMPRE» DAL BB
+#   trg_documenti_generati_a10_block_delete_dlt          (stampa, DELETE)
+#   trg_documenti_generati_eventi_a10_block_delete_dlt   (eventi, DELETE)
+#   trg_documenti_generati_eventi_a10_block_update_upd   (eventi, UPDATE)
+#   trg_template_asset_a10_block_delete_dlt              (asset, DELETE)
+#   trg_documenti_generati_file_a10_block_delete_dlt     (file, DELETE) — nuovo
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D18 (Q9b, Tid 2026-11-14): le quattro funzioni di `documenti` che vietano
+#   sempre un'operazione erano la stessa funzione con codice e contesto
+#   diversi. Si rimontano su script.trgfn_prevent_modification_generic, che dal
+#   20261115-82 riceve il codice, e le quattro copie si ritirano qui. I codici
+#   non cambiano; nessuno dei quattro messaggi ha segnaposto, quindi il
+#   montaggio porta solo il codice.
+#   D20 (Q7): il file di una stampa si cancellava (nessun trigger sul DELETE,
+#   privilegio di zeroerp_app, policy ALL): cancellando il PDF principale la
+#   stampa perdeva il suo file e l'hash conservato non verificava piu' niente.
+#   Il rifiuto nasce gia' sul BB, con un codice suo, E_FILE_DOCUMENTO_DELETE_VIETATA
+#   (CSV dei codici e dei messaggi, 80_data). Nessun servizio cancella un file
+#   (cercato in backend/apps il 2026-11-15).
+#
+# -- MONTAGGI STORICI (dai changelog, 2026-11-15) -----------------------------
+#   Ogni trigger ha avuto un solo nome (20260501-03/-04, 20260503-07/-08,
+#   rimontati per nome dal 20260805-02): DROP + CREATE per nome rimonta l'unico
+#   montaggio. Il trigger del file e' nuovo. La fase resta a10: sull'asset
+#   parla prima dello storico z90, come oggi.
+#   Il DROP FUNCTION viene dopo i rimontaggi: nessun trigger le usa piu'.
+#   Nessun seed ne' funzione del database cancella queste tabelle (le funzioni
+#   di pulizia della fattura non le toccano).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261115-83-update-rifiuti-della-stampa-sul-bb-e-file-non-si-cancella-mctit.yaml
+
+  - changeSet:
+      id: 20261115-83-update-rifiuti-della-stampa-sul-bb-e-file-non-si-cancella
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I rifiuti sempre attivi di stampa, eventi e asset passano dal building block
+        script.trgfn_prevent_modification_generic col loro codice, e le quattro funzioni proprie
+        si ritirano. Il file di una stampa non si cancella (E_FILE_DOCUMENTO_DELETE_VIETATA).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_prevent_modification_generic'
+                 AND p.prosrc LIKE '%TG_ARGV[0]%'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La stampa
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_block_delete_dlt
+                  ON documenti.documenti_generati;
+              CREATE TRIGGER trg_documenti_generati_a10_block_delete_dlt
+                  BEFORE DELETE ON documenti.documenti_generati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_DOCUMENTI_GENERATO_DELETE_BLOCKED');
+              COMMENT ON TRIGGER trg_documenti_generati_a10_block_delete_dlt ON documenti.documenti_generati IS
+                'Una stampa non si cancella, da nessun ruolo: e'' la storia di un documento emesso (E_DOCUMENTI_GENERATO_DELETE_BLOCKED).';
+
+              -- Gli eventi della stampa
+              DROP TRIGGER IF EXISTS trg_documenti_generati_eventi_a10_block_delete_dlt
+                  ON documenti.documenti_generati_eventi;
+              CREATE TRIGGER trg_documenti_generati_eventi_a10_block_delete_dlt
+                  BEFORE DELETE ON documenti.documenti_generati_eventi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_EVENTO_DOCUMENTO_DELETE_VIETATA');
+              COMMENT ON TRIGGER trg_documenti_generati_eventi_a10_block_delete_dlt ON documenti.documenti_generati_eventi IS
+                'Un evento della stampa non si cancella: la cronologia si corregge con un evento nuovo (E_EVENTO_DOCUMENTO_DELETE_VIETATA).';
+
+              DROP TRIGGER IF EXISTS trg_documenti_generati_eventi_a10_block_update_upd
+                  ON documenti.documenti_generati_eventi;
+              CREATE TRIGGER trg_documenti_generati_eventi_a10_block_update_upd
+                  BEFORE UPDATE ON documenti.documenti_generati_eventi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_EVENTO_DOCUMENTO_UPDATE_VIETATA');
+              COMMENT ON TRIGGER trg_documenti_generati_eventi_a10_block_update_upd ON documenti.documenti_generati_eventi IS
+                'Un evento della stampa non si modifica, in nessuna colonna: la cronologia si corregge con un evento nuovo (E_EVENTO_DOCUMENTO_UPDATE_VIETATA).';
+
+              -- Il file della stampa
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_a10_block_delete_dlt
+                  ON documenti.documenti_generati_file;
+              CREATE TRIGGER trg_documenti_generati_file_a10_block_delete_dlt
+                  BEFORE DELETE ON documenti.documenti_generati_file
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_FILE_DOCUMENTO_DELETE_VIETATA');
+              COMMENT ON TRIGGER trg_documenti_generati_file_a10_block_delete_dlt ON documenti.documenti_generati_file IS
+                'Il file di una stampa non si cancella, da nessun ruolo: senza il suo PDF la stampa non si scarica e non si ristampa, e l''hash conservato non verifica piu'' niente (E_FILE_DOCUMENTO_DELETE_VIETATA).';
+
+              -- L'asset
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_block_delete_dlt
+                  ON documenti.template_asset;
+              CREATE TRIGGER trg_template_asset_a10_block_delete_dlt
+                  BEFORE DELETE ON documenti.template_asset
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_DOCUMENTI_ASSET_DELETE_BLOCKED');
+              COMMENT ON TRIGGER trg_template_asset_a10_block_delete_dlt ON documenti.template_asset IS
+                'Un asset non si cancella: lo stesso codice interno indica sempre gli stessi byte, ed e'' su questo che si regge la ristampa fedele. Si chiude con valido_al o si spegne (E_DOCUMENTI_ASSET_DELETE_BLOCKED).';
+
+              -- Le quattro copie ritirate
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_block_delete();
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_eventi_block_delete();
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_eventi_block_update();
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_asset_block_delete();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Il rollback toglie il rifiuto del file; le quattro funzioni ritirate
+              -- non si ricreano da qui (il corpo si prende dalla doc auto-generata in
+              -- un changeSet nuovo): i quattro montaggi restano sul BB, che solleva
+              -- gli stessi codici.
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_a10_block_delete_dlt
+                  ON documenti.documenti_generati_file;

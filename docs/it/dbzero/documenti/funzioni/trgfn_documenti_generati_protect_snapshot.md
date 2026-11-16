@@ -17,30 +17,33 @@ CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo:
---   Blocca l'UPDATE di campi snapshot su un documento generato.
+--   Blocca l'UPDATE dei campi snapshot di una stampa.
 --
 -- Regole:
 --   Campi immutabili (snapshot):
+--     - id, uid
 --     - tipo_documento_output_id, template_documento_id,
 --       template_versione_id, sorgente_tipo_id, sorgente_id,
 --       sorgente_uid, sorgente_riga, progressivo_sorgente,
 --       emittente_fiscale_id
 --     - context_json, context_hash, template_hash, pdf_hash
---     - titolo, nome_file, uid
+--     - titolo, nome_file
 --     - generato_at, generato_da_user_id
---   Campi modificabili:
---     - stato, meta
+--   Campo libero: meta. Lo stato ha un solo valore
+--   (chk_documenti_generati_stato).
 --
---   Il documento rappresenta un'istantanea di generazione.
---   Se cambia il template, il tipo documento, la sorgente,
---   il context o i dati, quell'istantanea è corrotta.
---   ⚠️ Le due chiavi della sorgente (sorgente_id, sorgente_uid) e la
---      riga possono essere NULL: si confrontano con IS DISTINCT FROM.
+--   La stampa e' l'istantanea di una generazione: se cambiano il
+--   modello, il tipo, la sorgente, i dati o l'identita' della riga,
+--   l'istantanea non e' piu' quella.
+--   ⚠️ Le due chiavi della sorgente (sorgente_id, sorgente_uid), la
+--      riga e l'utente possono essere NULL: si confrontano con
+--      IS DISTINCT FROM.
 --
 -- Errore:
 --   E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
 BEGIN
-  IF  (NEW.tipo_documento_output_id      != OLD.tipo_documento_output_id      OR
+  IF  (NEW.id                            != OLD.id                            OR
+       NEW.tipo_documento_output_id      != OLD.tipo_documento_output_id      OR
        NEW.template_documento_id         != OLD.template_documento_id         OR
        NEW.template_versione_id          != OLD.template_versione_id          OR
        NEW.sorgente_tipo_id              != OLD.sorgente_tipo_id              OR
@@ -74,7 +77,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()
-IS 'Guard A7: blocca UPDATE su snapshot. Documento generato = istantanea immutabile di generazione. Solo stato e meta modificabili. La sorgente fa parte dello snapshot con tutte e due le chiavi (sorgente_id, sorgente_uid) e la riga, confrontate con IS DISTINCT FROM perche'' possono essere NULL.';
+IS 'Tiene ferma la fotografia di una stampa: identita'' (id, uid), modello e versione, tipo, sorgente con le sue due chiavi e la riga, azienda, dati e hash, titolo, nome del file, chi e quando l''ha generata. Resta libero solo meta; lo stato ha un valore solo. Le colonne che possono essere NULL si confrontano con IS DISTINCT FROM. Solleva E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE, da qualunque ruolo: non ha porte.';
 ```
 
 </div>

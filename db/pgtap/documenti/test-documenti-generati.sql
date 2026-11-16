@@ -18,7 +18,7 @@
 --  6) A5: DELETE fisico documenti_generati bloccato
 --  7) A7: UPDATE context_json bloccato
 --  8) A7: UPDATE template_versione_id bloccato
---  9) A7: UPDATE stato (non protetto) ammesso
+--  9) Lo stato ha il solo valore GENERATO: ARCHIVIATO rifiutato dal CHECK
 -- 10) A7: UPDATE meta (non protetto) ammesso
 -- ⚠️ Dal 2026-09-30 ogni contesto porta _meta.context_version e la versione
 --    versione_contesto (brief-db-documenti-versione-contesto-template): senza,
@@ -102,23 +102,27 @@ SELECT ok(
 
 -- ============================================================
 -- 2) Insert documento generato coerente
+--    ⚠️ Col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): una stampa
+--    senza principale non si registra (guard differito, che IMMEDIATE fa
+--    scattare a fine istruzione).
 -- ============================================================
-INSERT INTO documenti.documenti_generati (
-  tipo_documento_output_id, template_documento_id, template_versione_id,
-  sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
-  titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
-  emittente_fiscale_id
-)
-SELECT
-  (SELECT tipo_output_id FROM tmp_dg_ctx),
-  (SELECT id FROM tmp_dg_template),
-  (SELECT id FROM tmp_dg_versione),
-  (SELECT sorgente_id FROM tmp_dg_ctx),
-  (SELECT preventivo_uid FROM _dg_src), NULL, 1,
-  'Doc 1', 'doc1.pdf',
-  '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
-  repeat('1', 64), repeat('2', 64), repeat('3', 64),
-  (SELECT emittente_id FROM tmp_dg_ctx);
+SELECT dbops.fn_pgtap_stampa_con_pdf($i$
+  INSERT INTO documenti.documenti_generati (
+    tipo_documento_output_id, template_documento_id, template_versione_id,
+    sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
+    titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
+    emittente_fiscale_id
+  )
+  SELECT
+    (SELECT tipo_output_id FROM tmp_dg_ctx),
+    (SELECT id FROM tmp_dg_template),
+    (SELECT id FROM tmp_dg_versione),
+    (SELECT sorgente_id FROM tmp_dg_ctx),
+    (SELECT preventivo_uid FROM _dg_src), NULL, 1,
+    'Doc 1', 'doc1.pdf',
+    '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
+    repeat('1', 64), repeat('2', 64), repeat('3', 64),
+    (SELECT emittente_id FROM tmp_dg_ctx)$i$);
 
 SELECT is(
   (SELECT COUNT(*)::int FROM documenti.documenti_generati
@@ -253,16 +257,15 @@ SELECT throws_ok(
   'A7: UPDATE template_versione_id bloccato'
 );
 
--- 9) A7: UPDATE stato (campo non protetto) ammesso
-UPDATE documenti.documenti_generati
-   SET stato = 'ARCHIVIATO'
- WHERE template_versione_id = (SELECT id FROM tmp_dg_versione);
-
-SELECT is(
-  (SELECT stato FROM documenti.documenti_generati
-    WHERE template_versione_id = (SELECT id FROM tmp_dg_versione)),
-  'ARCHIVIATO',
-  'A7: UPDATE stato (GENERATO -> ARCHIVIATO) ammesso'
+-- 9) Lo stato ha il solo valore GENERATO: ARCHIVIATO e ANNULLATO sono
+--    ritirati (nessuno li scriveva), e il CHECK li rifiuta.
+SELECT throws_ok(
+  $$UPDATE documenti.documenti_generati
+       SET stato = 'ARCHIVIATO'
+     WHERE template_versione_id = (SELECT id FROM tmp_dg_versione)$$,
+  '23514',
+  NULL,
+  'Lo stato ARCHIVIATO non esiste piu'': il CHECK lo rifiuta'
 );
 
 -- 10) A7: UPDATE meta (campo non protetto) ammesso

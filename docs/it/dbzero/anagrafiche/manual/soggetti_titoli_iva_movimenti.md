@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_titoli_iva_movimenti`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo padre ·
@@ -112,7 +114,8 @@ non si cancella: **si spegne**.
 ## ⛔ Il registro è «solo aggiunte», e dal 2026-08-31 lo impone il database
 
 Una riga scritta **non si modifica e non si cancella**:
-[`trgfn_stiva_movimenti_append_only`](/dbzero/anagrafiche/funzioni/trgfn_stiva_movimenti_append_only)
+il trigger `trg_stiva_movimenti_a10_append_only_upd_dlt`, montato sul rifiuto sempre attivo
+[`script.trgfn_prevent_modification_generic`](/dbzero/script/funzioni/trgfn_prevent_modification_generic),
 rifiuta `UPDATE` e `DELETE` con `E_TITOLO_IVA_MOVIMENTO_IMMUTABILE`.
 
 ⚠️ **Prima era una promessa, non una regola.** Il disegno di `D5` poggiava su

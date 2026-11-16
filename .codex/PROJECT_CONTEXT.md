@@ -250,8 +250,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - 📝 **Revisione dello schema `documenti`** (`work-in-progress/brief-db-revisione-documenti.md`): giro 0 (la doc)
-  scritto il 2026-11-14; difetti censiti e le dodici decisioni prese lo stesso giorno. Cinque giri da fare (§2),
-  non iniziati: aspetta il via di Tid al giro 1.
+  fatto il 2026-11-14, con le dodici decisioni. Giro 1 («le stampe sono storia», `20261115-82 … -90`) scritto e
+  applicato il 2026-11-16, pgTAP verdi (§11): restano la decisione Q13 e le ricadute BE (BE3, BE7, BE9, BE10).
+  Poi i giri 2-5, col via di Tid.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

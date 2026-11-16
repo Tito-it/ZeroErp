@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_asset_protect_file`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — un asset non si cancella
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
 >
 > Guide:

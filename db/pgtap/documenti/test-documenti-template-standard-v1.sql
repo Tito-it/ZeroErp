@@ -397,16 +397,19 @@ SELECT throws_like(
 -- ============================================================
 -- Coerenza del documento generato
 -- ============================================================
+-- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
+--   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
 SELECT lives_ok(
-  $$INSERT INTO documenti.documenti_generati (
+  $$SELECT dbops.fn_pgtap_stampa_con_pdf($i$
+      INSERT INTO documenti.documenti_generati (
         tipo_documento_output_id, template_documento_id, template_versione_id,
         sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
         titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
         emittente_fiscale_id)
-    SELECT k.tipo, s.s1, sv.v2, k.sorg, (SELECT preventivo_uid FROM _dg_src), NULL, 1,
-           'Doc std', 'doc-std.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
-           repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
-      FROM _k k, _s s, _sv sv$$,
+      SELECT k.tipo, s.s1, sv.v2, k.sorg, (SELECT preventivo_uid FROM _dg_src), NULL, 1,
+             'Doc std', 'doc-std.pdf', '{"_meta": {"context_version": 2}}'::jsonb,
+             repeat('1', 64), repeat('2', 64), repeat('3', 64), k.e1
+        FROM _k k, _s s, _sv sv$i$)$$,
   '24) un documento di E1 reso con lo standard passa la coerenza');
 
 -- Un modello di E2 con la sua versione: E1 non lo puo' usare.

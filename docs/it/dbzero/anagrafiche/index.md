@@ -222,7 +222,6 @@ search:
 - [trgfn_soggetti_titoli_iva_guard_tipo_soggetto](funzioni/trgfn_soggetti_titoli_iva_guard_tipo_soggetto.md)
 - [trgfn_soggetti_titoli_iva_movimenti_accumulatore](funzioni/trgfn_soggetti_titoli_iva_movimenti_accumulatore.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_valida_cf_piva_dispatch](funzioni/trgfn_soggetti_valida_cf_piva_dispatch.md) — (latest review 29-12-25) La trigger function **`anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch()`** viene eseguita **`BEFORE INSERT OR UPDATE`** sulla tabella **`anagrafiche.soggetti`** e instrada la validazione di codice fiscale e partita IVA in base allo Stato e al dettaglio di soggetto.
-- [trgfn_stiva_movimenti_append_only](funzioni/trgfn_stiva_movimenti_append_only.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [trgfn_stiva_movimenti_guard_annullo](funzioni/trgfn_stiva_movimenti_guard_annullo.md) — (rev 2026-08-31 — funzione nata il 2026-08-31)
 - [trgfn_vettori_gen_codice](funzioni/trgfn_vettori_gen_codice.md) — (rev 2026-08-21 — **funzione nata il 2026-08-21**)
 - [trgfn_vettori_guard_ruolo_vettore](funzioni/trgfn_vettori_guard_ruolo_vettore.md) — (rev 2026-08-21)

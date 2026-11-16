@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.tipi_file_documento`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,17 +35,9 @@ bloccato dopo l'inserimento; `codice` e `descrizione` sono le etichette; `meta` 
 
 ### Spegnere un tipo
 
-`attivo = false` impedisce che un file nuovo nasca con quel tipo. Un tipo non si spegne finché un file
-lo nomina. Le modifiche sono storicizzate in `storico.tipi_file_documento`. La tabella è nel lookup
+Un tipo di file si spegne anche se è stato usato: il file di una stampa è storia, e la sua chiave verso
+il tipo è un'eccezione della regola ATTIVO (`dbops.automazione_attivo_eccezioni`). Le modifiche sono storicizzate in `storico.tipi_file_documento`. La tabella è nel lookup
 generico e non nel pannello di configurazione.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Un tipo già usato non si spegne più.** Il file di una stampa non ha un proprio `attivo`, quindi per
-  il controllo ogni file conservato è un figlio vivo: basta un file perché il tipo resti acceso per
-  sempre.
 
 ---
 

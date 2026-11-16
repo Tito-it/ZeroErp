@@ -70,7 +70,6 @@
 | trg_sorgenti_a10_ddt_block_deact_upd_fcb9b2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_ddt_righe_block_deact_upd_5972b2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_ddt_righe_block_deact_upd_5f0c30 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt_righe', 'sorgente_tipo_id', 'id', 'attivo')` |
-| trg_sorgenti_a10_documenti_generati_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_eventi_assets_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'eventi_assets', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_fatture_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatture', 'sorgente_tipo_id', 'id', 'attivo')` |
 | trg_sorgenti_a10_inventari_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('magazzino', 'inventari', 'sorgente_tipo_id', 'id', 'attivo')` |

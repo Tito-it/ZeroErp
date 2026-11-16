@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -314,8 +314,10 @@ configura o genera.
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
 | Uno standard non si modifica dall'interfaccia | Il database rifiuta la scrittura a chi non è il proprietario delle tabelle |
 | Il file di un asset non cambia e l'asset non sparisce | Il database rifiuta la sostituzione del file e la cancellazione |
-| Un documento generato non si cancella | Il database rifiuta la cancellazione del record e dei suoi eventi |
+| Un documento generato non si cancella e non cambia | Il database rifiuta la cancellazione del record, dei suoi eventi e del suo file, e ogni modifica dello snapshot |
+| Ogni documento generato ha il suo PDF | Il database rifiuta, a fine operazione, un documento generato senza il PDF principale |
 | Il PDF prodotto è verificabile | L'hash del file è conservato col record |
+| Un modello, una versione o un'azienda che hanno stampato si possono spegnere | Le stampe sono storia: non tengono accesi i loro padri, e un'azienda che spegne i suoi modelli torna allo standard |
 
 ---
 

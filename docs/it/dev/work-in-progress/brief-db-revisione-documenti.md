@@ -1,10 +1,11 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-16
 
-**Riparte: Tid**, col via al giro 1 e il range dei numeri. Il giro 0 (la documentazione) è fatto; i difetti sono
-censiti; le dodici decisioni sono prese (2026-11-14). **Nessun giro di sviluppo è iniziato**: nessun changeSet, nessun
-pgTAP scritto.
+**Riparte: Tid**, con il commit del giro 1, la decisione Q13 (§11.4) e il via al giro 2. Il giro 1
+(`20261115-82 … -90`) è applicato e i suoi pgTAP sono verdi (Tid, 2026-11-16): §11. Il team BE può partire con le
+ricadute del giro 1 (§11.6). Il giro 0 (la documentazione) è fatto e committato; le dodici decisioni sono prese
+(2026-11-14).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -14,12 +15,17 @@ pgTAP scritto.
 | 4 | ✅ Tid | Doc auto-generata rigenerata: le 5 pagine nuove sono nelle schede, l'indice ha le descrizioni nuove (verificato il 2026-11-14) | §8.3 | 1 |
 | 5 | Tid | Lanciare a mano su dbdev lo script di Q11 (quando vuole: non dipende dai giri) | [sql-una-tantum-storicizza-documenti-dbdev.sql](sql-una-tantum-storicizza-documenti-dbdev.sql) | 3 |
 | 6 | ✅ team BE | BE1, subito: il testo dell'overlap delle versioni è stantio — riscritto il 2026-11-15 | §6 | — |
-| 7 | Tid | Il via al giro 1, col range dei numeri | §2 | 3 |
-| 8 | sessione DB | Giri 1-5, uno alla volta: changeSet, pgTAP, COMMENT, pagine `manual/`; l'apply è di Tid | §2 | 7 |
-| 9 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 8 |
+| 7 | ✅ Tid | Il via al giro 1 (2026-11-15), numeri dal primo libero | §2 | 3 |
+| 8 | ✅ sessione DB | Giro 1 scritto: nove changeSet, quattro CSV, un pgTAP nuovo, nove riscritti, pagine `manual/` e guida | §11 | 7 |
+| 9 | ✅ Tid | Giro 1 applicato, pgTAP verdi (2026-11-16); doc auto-generata rigenerata | §11.5 | 8 |
+| 10 | Tid | Q13: la nascita di una stampa da un padre spento | §11.4 | — |
+| 11 | team BE | BE3, BE7 e le nuove BE9, BE10 del giro 1 — sbloccate | §6, §11.6 | 9 ✅ |
+| 12 | sessione DB | I giri 2-5, uno alla volta, col via di Tid; il prossimo è il 2 (i vocabolari) | §2 | 9 ✅, via di Tid |
+| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 12 |
 
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 0 (36 pagine `manual/`, la guida, la doc
-auto-generata dello schema), questo brief, lo script di Q11, la riga di `.codex/PROJECT_CONTEXT.md`. **Segnalazione fuori perimetro**, da decidere se e dove: §9.
+**Decisioni aperte di Tid:** Q13 (§11.4). **Da committare:** il giro 1 (§11.1: i changeSet, i CSV, i pgTAP, le
+pagine `manual/` toccate e le cinque tolte, la guida), questo brief. **Segnalazione fuori perimetro**, da decidere se e
+dove: §9.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -52,7 +58,7 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 
 | Giro | Classe | Contenuto | Ricadute BE/FE | Perché insieme |
 | --- | --- | --- | --- | --- |
-| 1 | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
+| 1 ✅ applicato il 2026-11-16 (§11) | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
 | 2 | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
 | 3 | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
 | 4 | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
@@ -73,6 +79,10 @@ Forma compatta: **fatto** · **correzione decisa** · **presidio**. Le classi so
 | **A** | D1 | — |
 | **B** | D2, D3, D4, D5, D7, D8, D9, D10, D20 | D6 |
 | **C** | D11, D12, D13, D15, D16, D18, D19 | D14, D17 |
+
+⚠️ **Dal 2026-11-15 D1, D2, D7, D8, D10, D11, D12, D18, D20 sono scritti nel giro 1** (§11), non ancora applicati.
+Le sezioni qui sotto restano come censimento; la correzione effettiva, con quello che è cambiato rispetto a qui
+(il BB di D18 esisteva già), sta in §11.2.
 
 ### 3.1 Classe A
 
@@ -378,3 +388,117 @@ un brief (`dbops`/`script`) o lasciarla com'è.
   «⚠️ Che cosa oggi non copre» del difetto chiuso.
 * I pgTAP nuovi costruiscono i propri soggetti: nessuno itera su ciò che c'è.
 * Il brief va in `work-done/` quando i giri sono applicati e le ricadute BE chiuse o passate a un brief BE.
+
+## 11. Giro 1 — le stampe sono storia (scritto il 2026-11-15, applicato il 2026-11-16)
+
+### 11.1 Che cosa è scritto
+
+| ChangeSet | Che cosa | Difetti |
+| --- | --- | --- |
+| `20261115-82` (`20_code/script`) | `script.trgfn_prevent_modification_generic` riceve dal montaggio il codice (`TG_ARGV[0]`) e le colonne della riga per la frase (le `date` in GG/MM/AAAA); senza argomenti resta `E_TABELLA_OP_NON_CONSENTITA` | D18 |
+| `-83` (`20_code/documenti`) | I quattro rifiuti di stampa, eventi e asset rimontati sul BB col loro codice; il `DELETE` del file rifiutato (`E_FILE_DOCUMENTO_DELETE_VIETATA`, nuovo); le quattro funzioni proprie ritirate | D18, D20 |
+| `-84` (`20_code/anagrafiche`) | Il registro dei movimenti di plafond IVA sul BB (stesso codice, stessa frase); `anagrafiche.trgfn_stiva_movimenti_append_only` ritirata | D18 |
+| `-85` (`00_schema/documenti`) | `chk_documenti_generati_stato` solo `GENERATO`; `STORAGE_ORPHAN` fuori dal CHECK degli eventi; COMMENT di stato, eventi e file al presente | D7, D11, M1, M2 |
+| `-86` (`20_code/documenti`) | `check_coerenza` solo `BEFORE INSERT` (trigger `…_check_coerenza_ins`); COMMENT al presente | D2 |
+| `-87` (`20_code/documenti`) | `protect_snapshot` confronta anche `id`; COMMENT al presente | D12 |
+| `-88` (`20_code/documenti`) | `trgfn_documenti_generati_guard_file_principale`, constraint trigger differito `AFTER INSERT`, `SECURITY DEFINER`: a fine transazione la stampa ha il suo principale (`E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE`, nuovo, `TECNICO`) | D10 |
+| `-89` (`20_code/dbops`) | `dbops.fn_pgtap_stampa_con_pdf`: la fixture che registra una stampa col suo PDF (§11.3) | — |
+| `-90` (`80_data/changelog`) | Via da `dbops.stati_check_dichiarazioni` le righe ANNULLATO e ARCHIVIATO della stampa (sarebbero `DEBITO_ESTINTO`) | D7 |
+
+**CSV** (mirror `runOnChange` di `80_data`): `dbops/automazione_attivo_eccezioni.csv` +7 righe (le cinque FK della
+stampa, `documenti_generati_file.file_tipo_id`, `template_documenti_versioni.derivata_da_versione_id`: D1, D8);
+`config/codici_errore.csv` e `messaggi_errore.csv` (i due codici nuovi, id 1502-1503; le note e i testi che citavano
+le funzioni ritirate, `STORAGE_ORPHAN` e gli stati ARCHIVIATO/ANNULLATO: M5, M7 e le soluzioni false);
+`dbops/stati_check_dichiarazioni.csv` −2 righe.
+
+**pgTAP**: nuovo `documenti/test-documenti-stampa-e-storia-v1.sql` (15 test, soggetti costruiti: un'azienda nuova,
+il suo modello predefinito, una stampa). Riscritti perché il giro ne cambia il contratto: `test-documenti-generati`
+(il 9 ora prova che ARCHIVIATO è rifiutato), `-generati-file`, `-generati-eventi` (il 4 ora prova che STORAGE_ORPHAN
+è rifiutato), `-versione-contesto-v1`, `-template-standard-v1`, `test-sorgente-documenti-generati-v1` (il 12 su
+`meta`), `rls/test-rls-documenti-satelliti`, `anagrafiche/test-stiva-movimenti-annullo-v1` (il test 0 cerca il
+montaggio sul BB).
+
+**Doc**: le pagine `manual/` di stampa, file, eventi, asset, modelli, versioni, tipi di output e di file,
+`check_coerenza`, `protect_snapshot`, `protect_file` dell'asset, il BB in `script` (riscritta da capo: era in
+formato vecchio, con SQL e un corpo falso), il registro delle eccezioni, le due pagine del plafond IVA; nuove
+`trgfn_documenti_generati_guard_file_principale` e `dbops/manual/fn_pgtap_stampa_con_pdf`; **tolte** le cinque
+delle funzioni ritirate. Guida `documenti-e-stampe` §11, le garanzie.
+
+### 11.2 Che cosa è cambiato rispetto al censimento
+
+* **Il BB «rifiuta sempre» c'era già.** `script.trgfn_prevent_modification_generic`, montato su
+  `dbops.transaction_ids`, senza argomenti e con un codice solo. Il censimento di D18 proponeva un BB nuovo: si è
+  esteso quello (un secondo accanto al primo sarebbe stata la terza versione della stessa regola). Il primo
+  argomento del log passa da `'database'` allo schema della tabella; le chiavi del contesto diventano `tabella`,
+  `operazione`, `id` (nessun lettore delle vecchie nel BE né nei pgTAP).
+* **Fuori schema, una copia sola.** `anagrafiche.trgfn_stiva_movimenti_append_only` dice la stessa cosa e si
+  ritira; la sua frase porta tipo e data del movimento, e per questo il BB riceve anche le colonne.
+  `vendite.trgfn_event_log_append_only` resta: ha la porta di manutenzione e la retention, è un guard proprio.
+  Cercati su dbdev il 2026-11-15 tutti i trigger function che sollevano senza condizioni: nessun'altra copia
+  (`internal.trgfn_block_project_metadata` è fuori dagli schemi applicativi, con un `RAISE` nudo: non toccata).
+* **Stampa e file in una CTE sola non funzionano da applicazione.** La policy del file risolve l'azienda dalla
+  stampa (`script.fn_resolve_emittente_fiscale_id('documento_generato', …)`), che nella snapshot della CTE non c'è
+  ancora: il file sarebbe negato. Le fixture passano da `dbops.fn_pgtap_stampa_con_pdf` (due istruzioni, come il
+  servizio, nella finestra differita del solo guard nuovo). Vicolo cieco provato e scartato.
+* **Il registro del presidio C1 portava ANNULLATO e ARCHIVIATO** come esenti: usciti dal CHECK sono debito
+  estinto (`-90`). `STORAGE_ORPHAN` nel registro non c'era.
+
+### 11.3 Fatti datati (dbdev, 2026-11-15)
+
+* 135 stampe non hanno un file principale. Il guard giudica le nascite, non la popolazione: non le tocca, e
+  la scheda della stampa lo dice fra i limiti. Nessuna stampa fuori GENERATO, nessun evento STORAGE_ORPHAN: i due
+  CHECK nuovi passano.
+* Il proprietario di stampa e file non ha `FORCE ROW LEVEL SECURITY`: la lettura `SECURITY DEFINER` del guard
+  vede il file.
+
+### 11.4 ⛔ Q13 — decisione aperta di Tid: la nascita da un padre spento
+
+**Fatto.** L'eccezione ATTIVO (Q1) toglie **sia** il block sul padre **sia** il require sul figlio: per quelle FK
+il motore non genera nessuno dei due. Quindi, dopo il giro 1, il database non chiede più che modello, versione,
+tipo di output, sorgente e azienda siano accesi **quando la stampa nasce**. Lo garantisce solo la risoluzione del
+servizio prima del render (`fn_risolvi_template_applicabile`, che sceglie solo versioni stampabili). Il censimento
+di D1 diceva «i controlli dal lato della stampa scattano solo alla nascita» come se restassero: non restano.
+
+**Strade.**
+
+* **(a) Resta così** (la forma di `fatture_stampa_coda`): «che cosa può stampare lo decide la risoluzione». Un
+  `INSERT` diretto da un modello spento passa la coerenza. Già scritto nelle pagine fra i limiti.
+* **(b) La coerenza alla nascita chiede anche la stampabilità**: `check_coerenza`, che dal giro 1 gira solo
+  all'`INSERT`, verifica che la versione sia stampabile per l'azienda alla data (la stessa domanda della
+  risoluzione, da un BB, non ricopiata). Costo: un changeSet nel giro 1 o nel 4 (che riapre la risoluzione), e la
+  domanda su che cosa conta come «alla data» per una stampa.
+
+**Raccomandazione della sessione:** (b), nel giro 4 insieme alla risoluzione. È la protezione da un backend che
+sbaglia, e la regola esiste già in un posto solo.
+
+### 11.5 Per l'apply (Tid)
+
+✅ **Fatto il 2026-11-16:** Tid ha applicato il giro e lanciato i pgTAP, verdi; la doc auto-generata è rigenerata (le
+schede delle cinque funzioni ritirate sono tolte, nascono quelle del guard e della fixture). Resta il commit. I passi,
+per la storia:
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply. Dopo, sui database già vivi, i trigger ATTIVO delle sette FK si tolgono al giro successivo del motore
+   (job serale); per averli subito: `SELECT dbops.fn_ritira_attivo_eccezioni();`. Fino ad allora i test 7-10 del
+   pgTAP nuovo e il 9 di `test-automazione-attivo-eccezioni-v1` sono rossi.
+3. I pgTAP come applicazione: i nove del giro (§11.1) più `dbops/test-stati-check-scrittori-v1`. Provati sullo
+   scratch con l'estratto in `ROLLBACK`, da owner, tutti verdi tranne il 16 di `test-documenti-generati-eventi`
+   (asserisce il `42501` della RLS: da owner è rosso per costruzione). Verdi anche i presidi trasversali
+   (`comment-al-presente`, `riferimenti-morti`, `security-definer-search-path`, `catalogo-messaggi-errore`,
+   `builder-pgtap-vincoli-immediate`, `codici-errore-identita`, `trigger-attivo-orfani`) e i cancelli statici della
+   CI.
+4. La doc auto-generata rigenerata: le schede delle cinque funzioni ritirate vanno via, e quella della funzione
+   nuova nasce. ⚠️ Fino alla rigenerazione le cinque schede vecchie includono pagine `manual/` che non ci sono più:
+   la build della doc si rompe lì.
+
+### 11.6 Richieste al team BE (sbloccate dal 2026-11-16)
+
+Oltre a BE3 e BE7 di §6:
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE7 (in più) | `frontend/src/documenti/components/DocumentiGeneratiSorgenteList.vue:105-106` | Il badge di ARCHIVIATO e ANNULLATO esce: lo stato è solo GENERATO |
+| BE9 | `docs/it/dev/backend/catalogo-building-block-backend.md:1368-1369`, poi `python3 scripts/gen_indice_bb.py` | Le due righe di `E_EVENTO_DOCUMENTO_*_VIETATA` nominano funzioni ritirate: il trigger è ora sul BB `script.trgfn_prevent_modification_generic` |
+| BE10 | `backend/apps/core/services/error_policies_generated.py` (rigenerato), `error_messages_fallback.py` | I codici nuovi `E_FILE_DOCUMENTO_DELETE_VIETATA` (`CONFLITTO_STATO`) e `E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE` (`TECNICO`), e le note riscritte di cinque codici. Il fallback di `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` (`:448`) dice «la tabella e' append-only per audit»: si allinea se il fallback ricopia il catalogo |
+
+Il servizio di stampa non cambia: scrive già stampa e PDF nella stessa transazione, e non cancella file.

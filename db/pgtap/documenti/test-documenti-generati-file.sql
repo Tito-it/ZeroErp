@@ -85,7 +85,10 @@ WITH ins_v AS (
 )
 SELECT id INTO TEMP TABLE tmp_dgf_versione FROM ins_v;
 
-WITH ins_d AS (
+-- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
+--   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
+CREATE TEMP TABLE tmp_dgf_doc AS
+SELECT dbops.fn_pgtap_stampa_con_pdf($i$
   INSERT INTO documenti.documenti_generati (
     tipo_documento_output_id, template_documento_id, template_versione_id,
     sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
@@ -101,24 +104,11 @@ WITH ins_d AS (
     'Doc file', 'doc-file.pdf',
     '{"y": 1, "_meta": {"context_version": 1}}'::jsonb,
     repeat('1', 64), repeat('2', 64), repeat('3', 64),
-    (SELECT emittente_id FROM tmp_dgf_ctx)
-  RETURNING id
-)
-SELECT id INTO TEMP TABLE tmp_dgf_doc FROM ins_d;
+    (SELECT emittente_id FROM tmp_dgf_ctx)$i$) AS id;
 
-WITH ins_f AS (
-  INSERT INTO documenti.documenti_generati_file (
-    documento_generato_id, file_tipo_id, mime_type, file_name,
-    file_size_bytes, storage_key, sha256, ordinamento, is_principale
-  )
-  SELECT (SELECT id FROM tmp_dgf_doc),
-         (SELECT file_tipo_id FROM tmp_dgf_ctx),
-         'application/pdf', 'finale.pdf',
-         5120, 's3://bucket/pgtap/finale.pdf',
-         repeat('f', 64), 1, true
-  RETURNING id
-)
-SELECT id INTO TEMP TABLE tmp_dgf_file FROM ins_f;
+CREATE TEMP TABLE tmp_dgf_file AS
+SELECT f.id FROM documenti.documenti_generati_file f
+ WHERE f.documento_generato_id = (SELECT id FROM tmp_dgf_doc) AND f.is_principale;
 
 -- 1) Pre-condizione
 SELECT ok(

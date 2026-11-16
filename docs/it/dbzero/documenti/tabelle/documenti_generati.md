@@ -72,27 +72,17 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_documenti_generati_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_block_delete()` |
-| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
-| trg_documenti_generati_a10_check_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
-| trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_documenti_generati_a10_emittenti_fiscali_require_att_e49311 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
+| trg_documenti_generati_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_DOCUMENTI_GENERATO_DELETE_BLOCKED')` |
+| trg_documenti_generati_a10_check_coerenza_ins | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza()` |
 | trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_documenti_generati_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
-| trg_documenti_generati_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_documenti_generati_a10_guard_file_principale_ins | AFTER | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_file_principale()` |
 | trg_documenti_generati_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
+| trg_documenti_generati_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_documenti_generati_a10_guard_versione_contesto_ins | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto()` |
 | trg_documenti_generati_a10_protect_snapshot_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_protect_snapshot()` |
-| trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_documenti_generati_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_documenti_generati_a10_template_documenti_require_at_e5973a | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
-| trg_documenti_generati_a10_template_documenti_require_at_e5973a | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
-| trg_documenti_generati_a10_template_documenti_versioni_r_2d8913 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'template_versione_id', 'id')` |
-| trg_documenti_generati_a10_template_documenti_versioni_r_2d8913 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti_versioni', 'attivo', 'template_versione_id', 'id')` |
-| trg_documenti_generati_a10_tipi_documento_output_require_e76386 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_documento_output', 'attivo', 'tipo_documento_output_id', 'id')` |
-| trg_documenti_generati_a10_tipi_documento_output_require_e76386 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_documento_output', 'attivo', 'tipo_documento_output_id', 'id')` |
-| trg_documenti_generati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_documenti_generati_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

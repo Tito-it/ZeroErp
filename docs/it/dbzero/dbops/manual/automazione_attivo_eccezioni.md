@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -60,6 +60,8 @@ legittimo il legame avrebbe impedito.
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | La mappatura di un'unità operativa è **storia**, come una nota: si chiude con `valido_al`, e dal primo giorno in vigore non si spegne più (`catalogo.trgfn_uom_guard_storia`). Col block, un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; col require, una mappatura di un articolo spento non si scriverebbe. L'articolo si spegne e si riaccende con le sue mappature intatte; una riga di documento su un articolo spento la fermano già i require del documento verso l'articolo |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | La conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai. L'unità si spegne e si riaccende con le sue conversioni intatte |
 | `catalogo.note_articoli.target_id`, `catalogo.note_articoli_componenti.target_id` | La nota di un'anagrafica **annota** l'oggetto, non lo tiene in vita. La partizione non ha `attivo`: col block ogni nota conterebbe come figlia attiva e l'articolo non si spegnerebbe; col require una nota su un articolo spento non si scriverebbe. L'articolo si spegne e si riaccende con le sue note intatte. Il legame di distinta non si spegne (si chiude con `valido_al` e resta attivo), e un legame chiuso si annota ancora. Le note vanno via col padre solo se lo si cancella (`ON DELETE CASCADE`) |
+| `documenti.documenti_generati.template_documento_id`, `.template_versione_id`, `.tipo_documento_output_id`, `.sorgente_tipo_id`, `.emittente_fiscale_id`; `documenti.documenti_generati_file.file_tipo_id` | La stampa e il suo file sono **storia**: la fotografia del modello, della versione, del tipo, della sorgente e dell'azienda del momento dell'emissione, e non si cancellano. Col block, un modello, una versione, un tipo o un'azienda che hanno stampato non si spegnerebbero più; col require, ogni modifica di una stampa chiederebbe padri ancora accesi. Che cosa può stampare oggi lo decide la risoluzione del modello prima del render |
+| `documenti.template_documenti_versioni.derivata_da_versione_id` | L'origine di una copia è la sua **provenienza**, non un padre vivo: una versione dello standard da cui deriva una copia si ritira lo stesso. Che cosa fare di una copia il cui standard non stampa lo dice la vista dello scarto |
 
 ---
 
