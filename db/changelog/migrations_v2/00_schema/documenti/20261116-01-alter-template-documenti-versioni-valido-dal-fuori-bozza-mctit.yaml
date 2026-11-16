@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA VERSIONE FUORI BOZZA HA SEMPRE UNA DATA D'INIZIO
+#   documenti.template_documenti_versioni
+#   chk_template_documenti_versioni_valido_dal_pubblicata  (esce)
+#   chk_template_documenti_versioni_valido_dal_fuori_bozza (entra)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il CHECK pretendeva valido_dal dalla sola PUBBLICATA. Una OBSOLETA senza
+#   inizio vale da -infinity: la sua validita' copre ogni giorno prima della
+#   fine, e il vincolo di non sovrapposizione la confronta su quel periodo.
+#   Ogni stato fuori bozza ha una data d'inizio: la pubblicazione la fissa, la
+#   chiusura la conserva. Decisione di Tid del 2026-11-14 (Q3 della revisione
+#   di documenti).
+#   Il nome dice la regola nuova: il vincolo si toglie e si ricrea, non si
+#   rinomina (il nome vecchio diceva «pubblicata»).
+#
+# -- CHI LEGGE IL NOME (censito 2026-11-16) --------------------------------
+#   DB: nessuna funzione, nessuna vista. BE: la mappa _CHECK_CONSTRAINTS di
+#   template_versioni_admin_service.py e il suo test (richiesta al team nel
+#   brief). Dopo il giro il BE non arriva piu' al vincolo: l'INSERT fuori
+#   bozza lo ferma prima il guard, e la pubblicazione chiede valido_dal.
+#   Fatto di dbdev (2026-11-16): nessuna versione fuori bozza senza
+#   valido_dal; l'ADD CONSTRAINT valida le righe esistenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261116-01-alter-template-documenti-versioni-valido-dal-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261116-01-alter-template-documenti-versioni-valido-dal-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una versione di template fuori bozza (PUBBLICATA o OBSOLETA) ha sempre la data d'inizio:
+        il CHECK su valido_dal passa dalla sola PUBBLICATA a ogni stato fuori bozza.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_valido_dal_pubblicata;
+
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT chk_template_documenti_versioni_valido_dal_fuori_bozza
+                  CHECK (stato = 'BOZZA' OR valido_dal IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_template_documenti_versioni_valido_dal_fuori_bozza
+                  ON documenti.template_documenti_versioni IS
+                  'Una versione fuori bozza (PUBBLICATA o OBSOLETA) ha la data d''inizio: senza, la sua validita'' partirebbe da -infinity. La bozza puo'' non averla: la fissa la pubblicazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.template_documenti_versioni
+                  DROP CONSTRAINT IF EXISTS chk_template_documenti_versioni_valido_dal_fuori_bozza;
+              ALTER TABLE documenti.template_documenti_versioni
+                  ADD CONSTRAINT chk_template_documenti_versioni_valido_dal_pubblicata
+                  CHECK (stato <> 'PUBBLICATA' OR valido_dal IS NOT NULL);

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_documenti_versioni`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,20 +49,31 @@ nuova non cancella le precedenti: restano per la ristampa e per l'audit.
 ### Tre stati: bozza, pubblicata, obsoleta
 
 * **`BOZZA`**: in preparazione. Si modifica liberamente e non stampa.
-* **`PUBBLICATA`**: si usa per stampare nel suo periodo di validità. Ha sempre una data di inizio.
+* **`PUBBLICATA`**: si usa per stampare nel suo periodo di validità.
 * **`OBSOLETA`**: superata da una pubblicazione successiva, chiusa al giorno prima della nuova.
   Stampa ancora fino all'ultimo giorno della sua validità.
+
+Fuori bozza una versione ha sempre una data di inizio
+(`chk_template_documenti_versioni_valido_dal_fuori_bozza`): senza, la sua validità partirebbe «da
+sempre».
+
+⛔ **Si nasce in bozza, se ne esce pubblicando.** Una versione non nasce pubblicata né obsoleta, e
+una bozza non diventa pubblicata con un UPDATE dello stato: lo stato fuori bozza lo scrive solo
+[fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione),
+che controlla la forma dei dati e chiude la versione precedente. Una bozza spenta non si pubblica. Il
+seed e i changeSet, che girano come proprietario della tabella, scrivono lo stato senza il verbo: è
+così che nasce uno standard.
 
 ⛔ **Fuori bozza la versione non cambia.** Una versione pubblicata o obsoleta non si modifica, e il
 suo stato non torna indietro: corpo, motore, pagina, margini, date, forma dei dati, modello, numero e
 stato sono quelli della pubblicazione. Per cambiare il layout si crea una bozza nuova e la si
 pubblica. Restano liberi solo `titolo`, `meta` e `attivo`. L'unica scrittura ammessa è la chiusura
-che fa la pubblicazione della versione successiva
-([protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata)).
+che fa la pubblicazione della versione successiva. Le due regole stanno nel guard dello stato,
+[protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata).
 
-Si pubblica con
-[fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione),
-che chiude e rende obsolete le versioni pubblicate che la nuova supera, nella stessa transazione.
+Una versione, in qualunque stato, si copia in una bozza nuova con
+[fn_crea_bozza_da_versione](/dbzero/documenti/funzioni/fn_crea_bozza_da_versione), solo in un modello
+dello stesso documento.
 
 ---
 
@@ -148,19 +159,10 @@ versioni dello standard non si cancellano dall'applicazione.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Si può pubblicare senza la pubblicazione.** La protezione scatta solo quando la versione è già
-  fuori bozza: un UPDATE che porta una bozza a `PUBBLICATA`, o un INSERT che la fa nascere
-  `PUBBLICATA` o `OBSOLETA`, passa senza il controllo della forma dei dati e senza la chiusura della
-  precedente. Il vincolo di non sovrapposizione resta, e la forma la ricontrolla la stampa.
-* `chk_template_documenti_versioni_valido_dal_pubblicata` pretende la data di inizio solo da una
-  `PUBBLICATA`: una versione che nasce `OBSOLETA` senza inizio vale «da sempre».
-
----
-
 ### Codici errore
 
+* `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` (`TECNICO`) — una versione che nasce fuori bozza, o ne
+  esce senza la pubblicazione.
 * `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` — modifica di una versione fuori bozza, o della sua
   origine.
 * `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` — cancellazione di una versione fuori bozza o già usata.
@@ -174,6 +176,8 @@ versioni dello standard non si cancellano dall'applicazione.
 
 ### Test
 
+* `db/pgtap/documenti/test-documenti-pubblicazione-e-copia-v1.sql` — la data di inizio fuori bozza;
+  si nasce in bozza e se ne esce solo pubblicando; la bozza spenta; la copia.
 * `db/pgtap/documenti/test-documenti-template-versioni.sql` — validità generata, non
   sovrapposizione, immutabilità fuori bozza, cancellazione, forma dei dati in bozza.
 * `db/pgtap/documenti/test-fn-pubblica-template-documento-versione-v1.sql` — pubblicazione,
@@ -194,6 +198,10 @@ versioni dello standard non si cancellano dall'applicazione.
 * 2026-11-14 — il vincolo di non sovrapposizione e la stampabilità comprendono le `OBSOLETA`, che da
   allora non si modificano e non tornano in bozza.
 * 2026-11-15 — una versione si spegne anche se ha stampato o se una copia ne deriva.
+* 2026-11-16 — lo stato fuori bozza lo scrive solo la pubblicazione: fino ad allora un UPDATE dello
+  stato, o una versione nata pubblicata od obsoleta, saltava il controllo della forma dei dati e la
+  chiusura. La data di inizio diventa obbligatoria per ogni stato fuori bozza (prima solo per la
+  pubblicata: un'obsoleta senza inizio valeva «da sempre»).
 
 ---
 

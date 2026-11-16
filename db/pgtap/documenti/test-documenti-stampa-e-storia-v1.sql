@@ -88,12 +88,16 @@ WITH v AS (
   INSERT INTO documenti.template_documenti_versioni (
       template_documento_id, versione, stato, titolo, html_template,
       render_engine_id, valido_dal, valido_al, versione_contesto)
-  SELECT (SELECT id FROM _m), 1, 'PUBBLICATA', 'storia v1', '<html>storia</html>',
+  SELECT (SELECT id FROM _m), 1, 'BOZZA', 'storia v1', '<html>storia</html>',
          render, DATE '2026-01-01', NULL, 1
     FROM _k
   RETURNING id
 )
 SELECT id FROM v;
+
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+SELECT documenti.fn_pubblica_template_documento_versione((SELECT id FROM _v), DATE '2026-01-01', 1, NULL);
 
 -- L'INSERT della stampa, senza RETURNING: il test 1 lo esegue nudo, l'helper
 -- dbops.fn_pgtap_stampa_con_pdf col suo PDF.

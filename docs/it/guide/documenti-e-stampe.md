@@ -93,10 +93,13 @@ Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS ve
 | `PUBBLICATA` | Usabile per generare documenti, dalla sua data di validità |
 | `OBSOLETA` | Superata da una pubblicazione successiva: stampa ancora fino all'ultimo giorno della sua validità |
 
-Una versione pubblicata **non cambia più**, nemmeno quando diventa obsoleta, e non torna in bozza:
-per cambiare il layout si crea una versione nuova. Per
-lo stesso modello le versioni attive fuori bozza non si sovrappongono nel tempo. Pubblicando una
-versione nuova, la precedente si chiude il giorno prima e diventa obsoleta.
+Una versione nasce in bozza, e **ne esce solo con «Pubblica»**: è la pubblicazione che controlla la
+forma dei dati e chiude la versione precedente. Una versione spenta non si pubblica: non stamperebbe,
+e chiuderebbe quella che stampa. Una versione pubblicata **non cambia più**, nemmeno quando diventa
+obsoleta, e non torna in bozza: per cambiare il layout si crea una versione nuova, anche copiando
+una versione esistente dello stesso documento. Per lo stesso modello le versioni attive fuori bozza
+non si sovrappongono nel tempo. Pubblicando una versione nuova, la precedente si chiude il giorno
+prima e diventa obsoleta.
 
 **Che cosa stampa lo decidono le date, non lo stato.** Se la versione nuova parte da una data
 futura, fino al giorno prima si stampa ancora con la precedente, e dal giorno di partenza con la
@@ -318,6 +321,7 @@ configura o genera.
 |---|---|
 | Un PDF si ricollega sempre al modello e alla versione usati | Sono registrati nel documento generato |
 | Il layout di una versione pubblicata non cambia | Le colonne della versione sono bloccate dal database una volta pubblicata |
+| Una versione si pubblica solo con «Pubblica» | Il database rifiuta una versione che nasce pubblicata o che lo diventa senza la pubblicazione, e una versione spenta pubblicata |
 | Un documento si stampa solo con un modello che può stampare | La regola sta in un punto solo del database, letto da tutta la stampa |
 | Un modello di un'azienda non stampa i documenti di un'altra | Lo verifica il database prima del render e alla scrittura del documento generato |
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
