@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_documenti_generati_check_coerenza`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -24,8 +24,8 @@
 
 ### 🎯 Scopo Principale
 
-Trigger function `BEFORE INSERT OR UPDATE` su `documenti.documenti_generati` che rifiuta una stampa incoerente con
-il suo modello: la versione deve essere di quel modello, e il modello deve andare bene per il documento stampato.
+Trigger function `BEFORE INSERT` su `documenti.documenti_generati` che rifiuta una stampa incoerente con il suo
+modello: la versione deve essere di quel modello, e il modello deve andare bene per il documento stampato.
 
 La stampa ricopia sorgente, tipo di output e azienda, perché lo snapshot deve reggere anche se il modello cambia
 dopo. Ricopiare apre la strada all'incoerenza: una stampa che dice di essere nata da un modello che non poteva
@@ -47,6 +47,16 @@ riga.
 
 ---
 
+### ⭐ Si giudica alla nascita, e solo lì
+
+La coerenza è una domanda sul momento in cui la stampa nasce, e lì si fa, sul modello com'è allora. Dopo, le
+colonne della stampa che la decidono le tiene ferme lo snapshot
+(`documenti.trgfn_documenti_generati_protect_snapshot`), e il modello può cambiare sorgente, tipo o azienda
+senza toccare le stampe già fatte: una stampa vecchia resta modificabile nel suo `meta`. Il modello non porta
+nessun lucchetto per questo.
+
+---
+
 ### Che cosa dice il rifiuto
 
 Per la prima domanda il contesto porta il modello atteso e quello fornito. Per la seconda porta il **motivo** per
@@ -55,15 +65,6 @@ nell'ordine della regola (sorgente, tipo, azienda).
 
 Fra i controlli sull'inserimento questo parla per primo: su una stampa incoerente e anche fuori forma, la frase
 giusta è quella della coerenza, non quella della forma dei dati.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Gira anche sulla modifica, e legge il modello di oggi.** Su una stampa le colonne che il controllo confronta
-  sono ferme dopo l'inserimento, quindi sull'`UPDATE` non c'è niente di nuovo da verificare. Ma il controllo
-  rilegge sorgente, tipo e azienda del modello come sono adesso, e quelle colonne del modello non sono bloccate: se
-  cambiano dopo la stampa, ogni modifica della stampa vecchia (anche di `stato` o di `meta`) viene rifiutata.
 
 ---
 
@@ -80,7 +81,9 @@ giusta è quella della coerenza, non quella della forma dei dati.
 * `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — il modello standard va bene per ogni azienda,
   quello di un'altra azienda no;
 * `db/pgtap/documenti/test-documenti-template-porta-unica-v1.sql` — la stessa regola vista dalla risoluzione;
-* `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — l'ordine dei controlli.
+* `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — l'ordine dei controlli;
+* `db/pgtap/documenti/test-documenti-stampa-e-storia-v1.sql` — cambiato il modello dopo la stampa, la stampa
+  vecchia si modifica ancora.
 
 ---
 
@@ -90,6 +93,8 @@ giusta è quella della coerenza, non quella della forma dei dati.
 * 2026-10-20 — un modello standard va bene per la stampa di qualunque azienda.
 * 2026-10-21 — la seconda domanda passa alla regola comune con la risoluzione del modello, e il rifiuto dice il
   motivo per nome.
+* 2026-11-15 — il controllo gira solo alla nascita: prima girava anche sulla modifica, e rifiutava ogni modifica
+  di una stampa vecchia quando il suo modello era cambiato.
 
 ---
 

@@ -7,17 +7,23 @@
 --  1) Seed PREVENTIVO presente in tipi_documento_output
 --  2) Seed WEASYPRINT presente in render_engine_documento
 --  3) Seed PDF_FINALE presente in tipi_file_documento
---  4) Seed asset base (LOGO, FIRMA, IMMAGINE, PDF, CSS, ALTRO) presente
---  5) Unique codice_interno su tipi_documento_output (duplicato bloccato)
---  6) Unique codice_interno su tipi_asset_documento (duplicato bloccato)
---  7) Unique codice_interno su tipi_file_documento (duplicato bloccato)
---  8) Unique codice_interno su render_engine_documento (duplicato bloccato)
+--  4) Seed asset base (LOGO, FIRMA, IMMAGINE, PDF, CSS) presente, ALTRO ritirato
+--  5) Unique codice_interno su tipi_documento_output
+--  6) Unique codice_interno su tipi_asset_documento
+--  7) Unique codice_interno su tipi_file_documento
+--  8) Unique codice_interno su render_engine_documento
 --  9) Lock columns: trigger su tipi_documento_output presente
 -- 10) Lock columns: trigger su tipi_asset_documento presente
 -- 11) Lock columns: trigger su tipi_file_documento presente
 -- 12) Lock columns: trigger su render_engine_documento presente
--- 13) Lock effettivo: UPDATE codice_interno su PREVENTIVO bloccato
--- 14) Codice_interno raw seed coerente con CSV (unicita' applicata su 6 asset)
+-- 13) L'applicazione non riscrive il codice: il vocabolario e' in sola lettura (42501)
+-- 14) Codice_interno raw seed coerente con CSV (unicita' applicata sui 5 asset)
+--
+-- ⚠️ 5-8 e 13: dal giro dei vocabolari (2026-11-16) l'applicazione li legge
+--   soltanto. Il duplicato non si prova piu' con un INSERT, che come
+--   applicazione risponderebbe 42501 e sarebbe verde per il motivo sbagliato:
+--   si asserisce il vincolo. La postura intera sta in
+--   test-documenti-vocabolari-forma-v1.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -59,39 +65,19 @@ SELECT is(
   (SELECT count(*)::int
      FROM documenti.tipi_asset_documento
     WHERE codice_interno IN ('LOGO','FIRMA','IMMAGINE','PDF','CSS','ALTRO')),
-  6,
-  'Seed asset base (LOGO,FIRMA,IMMAGINE,PDF,CSS,ALTRO) presente'
+  5,
+  'Seed asset base (LOGO,FIRMA,IMMAGINE,PDF,CSS) presente, ALTRO ritirato'
 );
 
--- 5..8) Unique codice_interno: tentativo di insert duplicato deve fallire
-SELECT throws_ok(
-  $$INSERT INTO documenti.tipi_documento_output(codice, codice_interno, descrizione, attivo)
-    VALUES ('PREVENTIVO_DUP', 'PREVENTIVO', 'dup', true)$$,
-  '23505',
-  NULL,
-  'Unique codice_interno su tipi_documento_output (duplicato bloccato)'
-);
-SELECT throws_ok(
-  $$INSERT INTO documenti.tipi_asset_documento(codice, codice_interno, descrizione, attivo)
-    VALUES ('LOGO_DUP', 'LOGO', 'dup', true)$$,
-  '23505',
-  NULL,
-  'Unique codice_interno su tipi_asset_documento (duplicato bloccato)'
-);
-SELECT throws_ok(
-  $$INSERT INTO documenti.tipi_file_documento(codice, codice_interno, descrizione, attivo)
-    VALUES ('PDF_FINALE_DUP', 'PDF_FINALE', 'dup', true)$$,
-  '23505',
-  NULL,
-  'Unique codice_interno su tipi_file_documento (duplicato bloccato)'
-);
-SELECT throws_ok(
-  $$INSERT INTO documenti.render_engine_documento(codice, codice_interno, descrizione, attivo)
-    VALUES ('WEASYPRINT_DUP', 'WEASYPRINT', 'dup', true)$$,
-  '23505',
-  NULL,
-  'Unique codice_interno su render_engine_documento (duplicato bloccato)'
-);
+-- 5..8) Unique codice_interno
+SELECT col_is_unique('documenti', 'tipi_documento_output', ARRAY['codice_interno'],
+  'Unique codice_interno su tipi_documento_output');
+SELECT col_is_unique('documenti', 'tipi_asset_documento', ARRAY['codice_interno'],
+  'Unique codice_interno su tipi_asset_documento');
+SELECT col_is_unique('documenti', 'tipi_file_documento', ARRAY['codice_interno'],
+  'Unique codice_interno su tipi_file_documento');
+SELECT col_is_unique('documenti', 'render_engine_documento', ARRAY['codice_interno'],
+  'Unique codice_interno su render_engine_documento');
 
 -- 9..12) Trigger LOCK_COLUMNS provisionato dall'automazione standard
 SELECT ok(
@@ -143,14 +129,14 @@ SELECT ok(
   'Lock columns: trigger su render_engine_documento presente'
 );
 
--- 13) Lock effettivo: tentativo UPDATE codice_interno su seed PREVENTIVO deve fallire
+-- 13) L'applicazione non riscrive il codice: il vocabolario e' in sola lettura
 SELECT throws_ok(
   $$UPDATE documenti.tipi_documento_output
        SET codice_interno = 'PREVENTIVO_MOD'
      WHERE codice_interno = 'PREVENTIVO'$$,
+  '42501',
   NULL,
-  NULL,
-  'Lock effettivo: UPDATE codice_interno su PREVENTIVO bloccato'
+  'L''applicazione non riscrive il codice di PREVENTIVO: sola lettura'
 );
 
 -- 14) Coerenza seed asset: assenza duplicati codice_interno

@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA STAMPA: GLI STATI E L'EVENTO CHE NESSUNO SCRIVE ESCONO DAL VOCABOLARIO
+#   chk_documenti_generati_stato                (solo GENERATO)
+#   chk_documenti_generati_eventi_evento_tipo   (senza STORAGE_ORPHAN)
+#   COMMENT di documenti_generati.stato, documenti_generati_eventi (tabella ed
+#   evento_tipo), documenti_generati_file (tabella e is_principale)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D7 (Q6, Tid 2026-11-14): il CHECK ammetteva ARCHIVIATO e ANNULLATO, ma
+#   nessuna funzione e nessun servizio li scrivono, e senza un verbo un UPDATE
+#   diretto riportava una stampa annullata a GENERATO. Si ritirano: la colonna
+#   resta col solo GENERATO. L'annullo di una stampa nascera' col suo verbo
+#   quando un processo lo chiedera'.
+#   D11 (Q6): STORAGE_ORPHAN non lo puo' scrivere nessuno. Il file orfano nasce
+#   proprio quando la stampa non esiste, e documento_generato_id e' NOT NULL:
+#   il BE lo registra solo nel log.
+#   M1, M2: i COMMENT dicevano tre eventi e «un solo PDF_FINALE»; si riscrivono
+#   al presente.
+#
+# -- CHI SCRIVE (censito 2026-11-15) ------------------------------------------
+#   Le due colonne le scrive solo il BE (document_generation_service: lo stato
+#   dal default, gli eventi GENERATO, SCARICATO, ALLEGATO_AGGIUNTO,
+#   RISTAMPA_FEDELE); nessun seed di 80_data scrive queste tabelle; le fixture
+#   pgTAP scrivono GENERATO e gli eventi rimasti. Ricaduta BE7: i commenti e il
+#   badge che nominano i valori ritirati.
+#   Fatto di dbdev (2026-11-15): nessuna stampa fuori GENERATO, nessun evento
+#   STORAGE_ORPHAN; da zero le tabelle sono vuote. I due CHECK nascono in
+#   00_schema (20260429-56, 20260503-06, rifatti fino al 20260803-05): nessun
+#   MARK_RAN a monte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261115-85-alter-stampa-stati-ed-evento-senza-scrittore-ritirati-mctit.yaml
+
+  - changeSet:
+      id: 20261115-85-alter-stampa-stati-ed-evento-senza-scrittore-ritirati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La stampa ha il solo stato GENERATO; l'evento STORAGE_ORPHAN esce dal vocabolario degli
+        eventi. COMMENT al presente di stato, eventi e file della stampa.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_stato;
+              ALTER TABLE documenti.documenti_generati
+                  ADD CONSTRAINT chk_documenti_generati_stato
+                  CHECK (stato = 'GENERATO');
+
+              ALTER TABLE documenti.documenti_generati_eventi
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_eventi_evento_tipo;
+              ALTER TABLE documenti.documenti_generati_eventi
+                  ADD CONSTRAINT chk_documenti_generati_eventi_evento_tipo
+                  CHECK (evento_tipo IN (
+                      'GENERATO',
+                      'SCARICATO',
+                      'ALLEGATO_AGGIUNTO',
+                      'RISTAMPA_FEDELE'
+                  ));
+
+              COMMENT ON COLUMN documenti.documenti_generati.stato IS
+                'Lo stato della stampa: il solo GENERATO (chk_documenti_generati_stato). Una stampa non si annulla e non si archivia: un annullo, quando servira'', nascera'' col suo verbo.';
+
+              COMMENT ON CONSTRAINT chk_documenti_generati_stato ON documenti.documenti_generati IS
+                'La stampa ha un solo stato, GENERATO: nessun verbo ne scrive un altro.';
+
+              COMMENT ON TABLE documenti.documenti_generati_eventi IS
+                'La cronologia di una stampa: quando e'' nata, scaricata, ristampata dallo snapshot, quando le si e'' aggiunto un allegato. Un evento non si modifica e non si cancella (trigger sul building block script.trgfn_prevent_modification_generic): si corregge registrandone uno nuovo, con esito KO o WARN.';
+
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.evento_tipo IS
+                'Il tipo di evento, dal vocabolario chiuso di chk_documenti_generati_eventi_evento_tipo: GENERATO (la stampa nasce), SCARICATO, ALLEGATO_AGGIUNTO (un file accessorio aggiunto dopo l''emissione), RISTAMPA_FEDELE (il PDF riprodotto dallo snapshot congelato: non e'' un''emissione, non crea una stampa). Un file orfano nello storage non ha una stampa a cui appartenere: non e'' un evento, sta nel log.';
+
+              COMMENT ON CONSTRAINT chk_documenti_generati_eventi_evento_tipo ON documenti.documenti_generati_eventi IS
+                'Il vocabolario degli eventi della stampa: GENERATO, SCARICATO, ALLEGATO_AGGIUNTO, RISTAMPA_FEDELE.';
+
+              COMMENT ON TABLE documenti.documenti_generati_file IS
+                'I file di una stampa: il PDF principale, scritto con la stampa, e gli allegati aggiunti dopo. Un file non si cancella e i suoi dati di salvataggio non cambiano (si modificano solo meta e ordinamento).';
+
+              COMMENT ON COLUMN documenti.documenti_generati_file.is_principale IS
+                'Vero per il file principale della stampa, il PDF che si scarica e si ristampa: al piu'' uno per stampa (uq_documenti_generati_file_principale). Gli allegati hanno false. Non cambia dopo il salvataggio.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE documenti.documenti_generati
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_stato;
+              ALTER TABLE documenti.documenti_generati
+                  ADD CONSTRAINT chk_documenti_generati_stato
+                  CHECK (stato IN ('GENERATO', 'ARCHIVIATO', 'ANNULLATO'));
+              ALTER TABLE documenti.documenti_generati_eventi
+                  DROP CONSTRAINT IF EXISTS chk_documenti_generati_eventi_evento_tipo;
+              ALTER TABLE documenti.documenti_generati_eventi
+                  ADD CONSTRAINT chk_documenti_generati_eventi_evento_tipo
+                  CHECK (evento_tipo IN ('GENERATO', 'SCARICATO', 'STORAGE_ORPHAN',
+                                         'ALLEGATO_AGGIUNTO', 'RISTAMPA_FEDELE'));

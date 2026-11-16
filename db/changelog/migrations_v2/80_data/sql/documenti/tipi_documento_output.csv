@@ -1,7 +1,7 @@
-id,codice,codice_interno,descrizione,attivo,meta,storicizza,data_insert,user_insert,data_update,user_update,tx_id
-1,PREVENTIVO,PREVENTIVO,Preventivo,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-2,CONTRATTO,CONTRATTO,Contratto,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-3,OFFERTA_COMMERCIALE,OFFERTA_COMMERCIALE,Offerta commerciale,true,{},"true",2026-05-26 00:00:00,titodb,2026-05-26 00:00:00,titodb,NULL
-4,ORDINE_VENDITA,ORDINE_VENDITA,Ordine vendita,true,{},"true",2026-06-04 00:00:00,titodb,2026-06-04 00:00:00,titodb,NULL
-5,DDT_VENDITA,DDT_VENDITA,DDT vendita,true,{},"true",2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL
-6,FATTURA_VENDITA,FATTURA_VENDITA,fattura vendita,true,{},"true",2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL
+id,codice,codice_interno,descrizione,etichetta_key,ordine,data_insert,user_insert,data_update,user_update,tx_id
+1,PREVENTIVO,PREVENTIVO,Preventivo,documenti.tipi_documento_output.preventivo,10,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+2,CONTRATTO,CONTRATTO,Contratto,documenti.tipi_documento_output.contratto,20,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+3,OFFERTA_COMMERCIALE,OFFERTA_COMMERCIALE,Offerta commerciale,documenti.tipi_documento_output.offerta_commerciale,30,2026-05-26 00:00:00,titodb,2026-05-26 00:00:00,titodb,NULL
+4,ORDINE_VENDITA,ORDINE_VENDITA,Ordine vendita,documenti.tipi_documento_output.ordine_vendita,40,2026-06-04 00:00:00,titodb,2026-06-04 00:00:00,titodb,NULL
+5,DDT_VENDITA,DDT_VENDITA,DDT vendita,documenti.tipi_documento_output.ddt_vendita,50,2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL
+6,FATTURA_VENDITA,FATTURA_VENDITA,Fattura vendita,documenti.tipi_documento_output.fattura_vendita,60,2026-07-10 00:00:00,titodb,2026-07-10 00:00:00,titodb,NULL

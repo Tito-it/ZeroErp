@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_titoli_iva_movimenti_accumulatore`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 Approfondimento tabelle:
@@ -34,7 +36,8 @@ altro.
 > ## ⛔ Rev 2026-08-31 — due dei tre eventi sono IRRAGGIUNGIBILI
 >
 > Dal 2026-08-31 il registro è **«solo aggiunte» per progetto**:
-> [`trgfn_stiva_movimenti_append_only`](/dbzero/anagrafiche/funzioni/trgfn_stiva_movimenti_append_only)
+> il trigger `trg_stiva_movimenti_a10_append_only_upd_dlt`, montato sul rifiuto sempre attivo
+> [`script.trgfn_prevent_modification_generic`](/dbzero/script/funzioni/trgfn_prevent_modification_generic),
 > rifiuta ogni `UPDATE` e ogni `DELETE`. Quindi di questo trigger, **oggi, gira
 > solo il ramo `INSERT`**.
 >

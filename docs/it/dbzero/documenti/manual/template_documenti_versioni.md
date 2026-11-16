@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_documenti_versioni`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -134,6 +134,10 @@ Vuota vuol dire versione scritta da zero, oppure versione successiva della stess
 l'origine dalla più recente che la dichiara. La legge
 [vw_template_personalizzati_scarto](/dbzero/documenti/views/vw_template_personalizzati_scarto).
 
+L'origine è la provenienza della copia, non un padre vivo: la sua chiave è un'eccezione della regola ATTIVO
+(`dbops.automazione_attivo_eccezioni`). Una versione dello standard da cui deriva una copia si spegne lo
+stesso, e così una versione che ha stampato: le stampe sono storia.
+
 ---
 
 ### Cancellare una versione
@@ -150,8 +154,6 @@ versioni dello standard non si cancellano dall'applicazione.
   fuori bozza: un UPDATE che porta una bozza a `PUBBLICATA`, o un INSERT che la fa nascere
   `PUBBLICATA` o `OBSOLETA`, passa senza il controllo della forma dei dati e senza la chiusura della
   precedente. Il vincolo di non sovrapposizione resta, e la forma la ricontrolla la stampa.
-* **Una versione usata non si spegne più**, e una versione da cui una copia è derivata neppure: le
-  stampe e le copie contano come figli vivi (vedi la pagina del modello).
 * `chk_template_documenti_versioni_valido_dal_pubblicata` pretende la data di inizio solo da una
   `PUBBLICATA`: una versione che nasce `OBSOLETA` senza inizio vale «da sempre».
 
@@ -191,6 +193,7 @@ versioni dello standard non si cancellano dall'applicazione.
 * 2026-10-20 — nasce `derivata_da_versione_id`.
 * 2026-11-14 — il vincolo di non sovrapposizione e la stampabilità comprendono le `OBSOLETA`, che da
   allora non si modificano e non tornano in bozza.
+* 2026-11-15 — una versione si spegne anche se ha stampato o se una copia ne deriva.
 
 ---
 

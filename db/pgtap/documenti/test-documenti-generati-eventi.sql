@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.documenti_generati_eventi
---   - INSERT eventi ammessi (GENERATO/SCARICATO/STORAGE_ORPHAN/RISTAMPA_FEDELE)
+--   - INSERT eventi ammessi (GENERATO/SCARICATO/RISTAMPA_FEDELE); STORAGE_ORPHAN ritirato
 --   - CHECK evento_tipo (set chiuso v1: ANTEPRIMA, RENDER_KO rifiutati)
 --   - CHECK esito (OK/KO/WARN)
 --   - CHECK messaggio non-vuoto / detail jsonb object
@@ -16,7 +16,7 @@
 --  1) Setup: documento generato di riferimento creato
 --  2) INSERT evento GENERATO esito=OK passa
 --  3) INSERT evento SCARICATO con messaggio passa
---  4) INSERT evento STORAGE_ORPHAN user_id=NULL esito=KO passa
+--  4) CHECK evento_tipo: STORAGE_ORPHAN non e' piu' un evento (il file orfano sta nel log)
 --  5) CHECK evento_tipo: ANTEPRIMA non ammesso in v1 (Decisione 30)
 --  6) CHECK evento_tipo: RENDER_KO non ammesso (set chiuso)
 --  7) CHECK esito: valore non in (OK,KO,WARN) rifiutato
@@ -98,7 +98,10 @@ WITH ins_v AS (
 )
 SELECT id INTO TEMP TABLE tmp_dge_versione FROM ins_v;
 
-WITH ins_dg AS (
+-- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
+--   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
+CREATE TEMP TABLE tmp_dge_doc AS
+SELECT dbops.fn_pgtap_stampa_con_pdf($i$
   INSERT INTO documenti.documenti_generati (
     tipo_documento_output_id, template_documento_id, template_versione_id,
     sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
@@ -114,10 +117,7 @@ WITH ins_dg AS (
     'Doc per eventi', 'doc-evt.pdf',
     '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
     repeat('1', 64), repeat('2', 64), repeat('3', 64),
-    (SELECT emittente_id FROM tmp_dge_ctx)
-  RETURNING id
-)
-SELECT id INTO TEMP TABLE tmp_dge_doc FROM ins_dg;
+    (SELECT emittente_id FROM tmp_dge_ctx)$i$) AS id;
 
 -- 1) Pre-condizione setup
 SELECT ok(
@@ -160,23 +160,19 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) INSERT evento STORAGE_ORPHAN user_id NULL esito=KO
+-- 4) CHECK evento_tipo: STORAGE_ORPHAN ritirato. Il file orfano nasce quando la
+--    stampa non esiste, e documento_generato_id e' NOT NULL: nessuno poteva
+--    scriverlo. Il BE lo registra nel log.
 -- ============================================================
-INSERT INTO documenti.documenti_generati_eventi (
-  documento_generato_id, evento_tipo, esito, user_id, messaggio, detail
-)
-SELECT (SELECT id FROM tmp_dge_doc), 'STORAGE_ORPHAN', 'KO',
-       NULL, 'File orfano post-fail commit',
-       jsonb_build_object('storage_key', 's3://bucket/orphan.pdf');
-
-SELECT is(
-  (SELECT COUNT(*)::int FROM documenti.documenti_generati_eventi
-    WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
-      AND evento_tipo = 'STORAGE_ORPHAN'
-      AND esito = 'KO'
-      AND user_id IS NULL),
-  1,
-  'INSERT evento STORAGE_ORPHAN user_id=NULL esito=KO passa'
+SELECT throws_ok(
+  $$INSERT INTO documenti.documenti_generati_eventi (
+      documento_generato_id, evento_tipo, esito, user_id, messaggio
+    )
+    SELECT (SELECT id FROM tmp_dge_doc), 'STORAGE_ORPHAN', 'KO',
+           NULL, 'File orfano post-fail commit'$$,
+  '23514',
+  NULL,
+  'CHECK evento_tipo: STORAGE_ORPHAN non e'' piu'' un evento'
 );
 
 -- ============================================================

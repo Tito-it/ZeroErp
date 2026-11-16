@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lookup dei tipi file persistiti per un documento generato.
+> I tipi di file di una stampa: il PDF principale (PDF_FINALE) e gli allegati (ALLEGATO). Ogni tipo dichiara i formati di file che ammette in documenti.tipi_file_documento_formati. Un tipo nuovo nasce con un changeSet; l'applicazione li legge soltanto.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,14 +12,13 @@
 | codice | character varying(80) | NO |  |
 | codice_interno | character varying(80) | NO |  |
 | descrizione | text | NO |  |
-| attivo | boolean | NO | true |
-| meta | jsonb | NO | '{}'::jsonb |
-| storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| etichetta_key | character varying(120) | NO |  |
+| ordine | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -41,7 +40,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_tipi_file_documento_a10_documenti_generati_file_bloc_670ad3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'documenti_generati_file', 'file_tipo_id', 'id', 'attivo')` |
 | trg_tipi_file_documento_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_file_documento_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_tipi_file_documento_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
@@ -49,8 +47,6 @@
 | trg_tipi_file_documento_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_file_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_tipi_file_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_tipi_file_documento_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_file_documento_id')` |
-| trg_tipi_file_documento_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_file_documento_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

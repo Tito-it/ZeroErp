@@ -1,2 +1,2 @@
-id,codice,codice_interno,descrizione,attivo,meta,storicizza,data_insert,user_insert,data_update,user_update,tx_id
-1,WEASYPRINT,WEASYPRINT,WeasyPrint,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+id,codice,codice_interno,descrizione,etichetta_key,ordine,data_insert,user_insert,data_update,user_update,tx_id
+1,WEASYPRINT,WEASYPRINT,WeasyPrint,documenti.render_engine_documento.weasyprint,10,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL

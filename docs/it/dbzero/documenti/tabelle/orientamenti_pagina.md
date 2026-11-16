@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Orientamenti di pagina del PDF (PORTRAIT, LANDSCAPE): i valori ammessi di documenti.template_documenti_versioni.page_orientation, legata per FK a codice_interno. Si legge, non si configura: niente attivo. Brief: brief-db-vocabolari-versione-template.
+> Gli orientamenti di pagina del PDF (verticale, orizzontale): i valori ammessi di documenti.template_documenti_versioni.page_orientation, legata per FK a codice_interno. Il codice e' la parola CSS che il render passa a @page. L'applicazione li legge soltanto.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | codice_interno | character varying(40) | NO |  |
 | codice | character varying(40) | NO |  |
-| descrizione | character varying(255) | YES |  |
+| descrizione | character varying(255) | NO |  |
 | etichetta_key | character varying(120) | NO |  |
 | ordine | smallint | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
@@ -24,6 +24,8 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_orientamenti_pagina_codice_interno_non_vuoto |  |
+| CHECK | chk_orientamenti_pagina_codice_non_vuoto |  |
+| CHECK | chk_orientamenti_pagina_descrizione_non_vuota |  |
 | PRIMARY KEY | pk_orientamenti_pagina | id |
 | UNIQUE | uq_orientamenti_pagina_codice | codice |
 | UNIQUE | uq_orientamenti_pagina_codice_interno | codice_interno |

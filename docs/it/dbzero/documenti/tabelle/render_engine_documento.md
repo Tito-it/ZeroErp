@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lookup dei render engine PDF ammessi dal backend documentale.
+> I motori che rendono una versione di modello in PDF. Un motore e' codice: la riga nasce con il changeSet che accompagna il codice che lo sa usare. L'applicazione li legge soltanto.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,14 +12,13 @@
 | codice | character varying(80) | NO |  |
 | codice_interno | character varying(80) | NO |  |
 | descrizione | text | NO |  |
-| attivo | boolean | NO | true |
-| meta | jsonb | NO | '{}'::jsonb |
-| storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| etichetta_key | character varying(120) | NO |  |
+| ordine | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -42,15 +41,12 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_render_engine_documento_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_render_engine_documento_a10_template_documenti_versi_fdf637 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_documenti_versioni', 'render_engine_id', 'id', 'attivo')` |
 | trg_render_engine_documento_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_render_engine_documento_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_render_engine_documento_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_render_engine_documento_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_render_engine_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_render_engine_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_render_engine_documento_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('render_engine_documento_id')` |
-| trg_render_engine_documento_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('render_engine_documento_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

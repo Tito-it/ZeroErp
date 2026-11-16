@@ -7,7 +7,8 @@
 --  1) Conteggio righe lookup tipi_documento_output >= 1 (PREVENTIVO seed)
 --  2) Conteggio righe lookup render_engine_documento >= 1 (WEASYPRINT seed)
 --  3) Conteggio righe lookup tipi_file_documento >= 1 (PDF_FINALE seed)
---  4) Conteggio righe lookup tipi_asset_documento >= 6 (LOGO,FIRMA,...)
+--  4) Conteggio righe lookup tipi_asset_documento >= 5 (LOGO,FIRMA,IMMAGINE,PDF,CSS;
+--     ALTRO e' ritirato)
 --  5) Nessun duplicato di codice_interno su tipi_documento_output
 --  6) Nessun duplicato di codice_interno su render_engine_documento
 --  7) Nessun duplicato di codice_interno su tipi_file_documento
@@ -53,8 +54,8 @@ SELECT cmp_ok(
 );
 SELECT cmp_ok(
   (SELECT COUNT(*) FROM documenti.tipi_asset_documento)::int,
-  '>=', 6,
-  'Seed tipi_asset_documento: 6 righe attese (LOGO,FIRMA,IMMAGINE,PDF,CSS,ALTRO)'
+  '>=', 5,
+  'Seed tipi_asset_documento: almeno 5 righe (LOGO,FIRMA,IMMAGINE,PDF,CSS)'
 );
 
 -- 5..8) Idempotenza seed: nessun duplicato codice_interno

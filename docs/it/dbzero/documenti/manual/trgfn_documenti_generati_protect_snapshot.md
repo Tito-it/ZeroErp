@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_documenti_generati_protect_snapshot`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [documenti.trgfn_documenti_generati_block_delete](/dbzero/documenti/funzioni/trgfn_documenti_generati_block_delete) — il blocco della cancellazione
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — il blocco della cancellazione
 > * [documenti.trgfn_documenti_generati_check_coerenza](/dbzero/documenti/funzioni/trgfn_documenti_generati_check_coerenza) — la coerenza col modello
 > * [documenti.trgfn_documenti_generati_file_protect_file](/dbzero/documenti/funzioni/trgfn_documenti_generati_file_protect_file) — la stessa protezione sul file
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto
@@ -24,7 +24,7 @@
 ### 🎯 Scopo Principale
 
 Trigger function `BEFORE UPDATE` su `documenti.documenti_generati` che rifiuta la modifica di qualunque campo dello
-snapshot di una stampa: dopo l'inserimento cambiano solo `stato` e `meta`.
+snapshot di una stampa: dopo l'inserimento cambia solo `meta`.
 
 Una stampa è l'istantanea del momento in cui il documento è stato prodotto: il contesto, le impronte, il modello e
 la versione, la provenienza, l'azienda, chi e quando. Cambiarne un pezzo la renderebbe un'altra stampa, e l'audit
@@ -36,7 +36,8 @@ della generazione non sarebbe più riproducibile.
 
 Il trigger confronta tutti i campi dello snapshot: il modello, la versione e il tipo di output, la provenienza
 (tipo, le due chiavi del documento, la riga, il progressivo), l'azienda, il contesto e le tre impronte, il titolo e
-il nome del file, l'`uid`, il momento e l'autore della generazione. Se uno solo è cambiato rifiuta; altrimenti
+il nome del file, l'identità della riga (`id` e `uid`), il momento e l'autore della generazione. Lo stato non è
+nell'elenco perché ha un valore solo, e il suo `CHECK` lo tiene fermo. Se uno solo è cambiato rifiuta; altrimenti
 l'`UPDATE` passa, e con lui i campi di audit.
 
 ⚠️ **I campi che possono essere vuoti si confrontano con `IS DISTINCT FROM`.** Le due chiavi del documento (se ne
@@ -48,10 +49,10 @@ colonne da tenere allineato con la regola.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### ⭐ Un blocco proprio, non il registro dei lucchetti
 
-* **L'`id` non è fra i campi confrontati.** Un cambio dell'`id` si propaga ai file e agli eventi, che lo rifiutano
-  con i loro blocchi; su una stampa senza file né eventi, però, passa.
+I lucchetti di colonna di `dbops.automation_lock_columns` hanno una porta che una sessione può aprire per
+correggere un refuso. La prova di una stampa non ne ha: il blocco è un trigger suo, che vale per ogni ruolo.
 
 ---
 
@@ -64,7 +65,8 @@ colonne da tenere allineato con la regola.
 
 ### Test
 
-* `db/pgtap/documenti/test-documenti-generati.sql` — contesto e versione rifiutati, `stato` e `meta` ammessi;
+* `db/pgtap/documenti/test-documenti-generati.sql` — contesto e versione rifiutati, `meta` ammesso;
+* `db/pgtap/documenti/test-documenti-stampa-e-storia-v1.sql` — l'`id` rifiutato;
 * `db/pgtap/documenti/test-sorgente-documenti-generati-v1.sql` — la stampa spostata su un altro documento,
   rifiutata.
 
@@ -75,6 +77,7 @@ colonne da tenere allineato con la regola.
 * 2026-05-01 — nasce il blocco.
 * 2026-11-07 — lo snapshot comprende anche `sorgente_id`, la chiave dei documenti a chiave `id`; `sorgente_uid`,
   prima la chiave in testo di ogni tipo, diventa `uuid` e nullable, perché del documento se ne valorizza una sola.
+* 2026-11-15 — entra l'`id`: su una stampa senza file né eventi il suo cambio passava.
 
 ---
 

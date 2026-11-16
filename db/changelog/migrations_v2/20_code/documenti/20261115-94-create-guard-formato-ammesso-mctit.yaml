@@ -1,0 +1,156 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RISORSA E UN FILE DELLA STAMPA NASCONO IN UN FORMATO AMMESSO DAL TIPO
+#   documenti.trgfn_guard_formato_ammesso()
+#   trg_template_asset_a10_tipo_ammette_formato_ins_upd
+#   trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D15 (Q8b, Q15): il formato ammesso per tipo era una regola del solo
+#   backend. Il database controlla il tipo MIME dichiarato quando la riga
+#   nasce o cambia tipo o formato; il backend legge la stessa lista da
+#   documenti.tipi_asset_documento_formati e .tipi_file_documento_formati e
+#   continua a controllare i byte.
+#   Una funzione sola per le due tabelle: la regola e' la stessa («il formato
+#   e' abbinato al tipo»), cambia solo da quale abbinamento si legge.
+#
+# -- IL NOME DEL TRIGGER ----------------------------------------------------
+#   Il formato non cambia dopo la nascita (protect_file, su entrambe), il tipo
+#   della risorsa si': il trigger e' montato anche UPDATE OF. Il nome
+#   «a10_tipo_ammette_formato» ordina dopo «a10_protect_file»: su un cambio di
+#   formato parla prima l'immutabilita' (linee-guida-trigger, «la fase»).
+#
+# -- CHI SCRIVE (censito 2026-11-16) ----------------------------------------
+#   template_asset: il servizio delle risorse (upload). documenti_generati_file:
+#   il servizio di stampa (il PDF, application/pdf, e gli allegati PDF, JPEG,
+#   PNG) e la fixture dbops.fn_pgtap_stampa_con_pdf (application/pdf). Il
+#   seed degli abbinamenti (80_data/20261115-95) ammette esattamente le liste
+#   del backend.
+#   Fatto di dbdev (2026-11-16): una risorsa image/png di tipo LOGO, una
+#   application/pdf di tipo PDF; i file delle stampe sono tutti
+#   application/pdf. Il controllo giudica le scritture, non le righe che ci
+#   sono.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261115-94-create-guard-formato-ammesso-mctit.yaml
+
+  - changeSet:
+      id: 20261115-94-create-guard-formato-ammesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una risorsa dei modelli e un file della stampa nascono solo in un formato abbinato al loro
+        tipo (E_DOCUMENTI_FORMATO_NON_AMMESSO).
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_guard_formato_ammesso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Una risorsa dei modelli (template_asset) e un file della stampa
+              --   (documenti_generati_file) hanno un tipo MIME abbinato al loro tipo.
+              --
+              -- Regole:
+              --   - l'abbinamento si legge da documenti.tipi_asset_documento_formati
+              --     o da documenti.tipi_file_documento_formati, secondo la tabella;
+              --   - il tipo MIME si confronta minuscolo: il vocabolario lo tiene
+              --     minuscolo, e un tipo MIME non distingue le maiuscole;
+              --   - scatta alla nascita e quando cambiano tipo o formato.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_FORMATO_NON_AMMESSO (nome del file, formato, tipo)
+              DECLARE
+                -- Il codice di due vocabolari diversi, secondo la tabella: testo.
+                v_tipo     text;
+                v_ammesso  boolean;
+              BEGIN
+                IF TG_TABLE_NAME = 'template_asset' THEN
+                  SELECT t.codice,
+                         EXISTS (SELECT 1
+                                   FROM documenti.tipi_asset_documento_formati af
+                                   JOIN config.formati_file ff ON ff.id = af.formato_file_id
+                                  WHERE af.asset_tipo_id = t.id
+                                    AND ff.mime_type = lower(NEW.mime_type))
+                    INTO v_tipo, v_ammesso
+                    FROM documenti.tipi_asset_documento t
+                   WHERE t.id = NEW.asset_tipo_id;
+                ELSIF TG_TABLE_NAME = 'documenti_generati_file' THEN
+                  SELECT t.codice,
+                         EXISTS (SELECT 1
+                                   FROM documenti.tipi_file_documento_formati ff_t
+                                   JOIN config.formati_file ff ON ff.id = ff_t.formato_file_id
+                                  WHERE ff_t.file_tipo_id = t.id
+                                    AND ff.mime_type = lower(NEW.mime_type))
+                    INTO v_tipo, v_ammesso
+                    FROM documenti.tipi_file_documento t
+                   WHERE t.id = NEW.file_tipo_id;
+                ELSE
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_guard_formato_ammesso',
+                    'E_TRIGGER_ARGOMENTI_INVALIDI',
+                    jsonb_build_object('tabella', TG_TABLE_NAME, 'trigger', TG_NAME),
+                    NULL,
+                    format('%s montato su %s, che non ha un abbinamento di formati', TG_NAME, TG_TABLE_NAME)
+                  );
+                END IF;
+
+                -- Un tipo che non esiste lo rifiuta la FK, dopo questo trigger.
+                IF v_tipo IS NOT NULL AND NOT v_ammesso THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_guard_formato_ammesso',
+                    'E_DOCUMENTI_FORMATO_NON_AMMESSO',
+                    jsonb_build_object(
+                      'tabella', TG_TABLE_NAME,
+                      'id', NEW.id,
+                      'mime_type', NEW.mime_type,
+                      'tipo', v_tipo
+                    ),
+                    NEW.tx_id,
+                    NEW.file_name, NEW.mime_type, v_tipo
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_guard_formato_ammesso() IS
+                'Una risorsa dei modelli e un file della stampa hanno un tipo MIME abbinato al loro tipo, in documenti.tipi_asset_documento_formati o documenti.tipi_file_documento_formati secondo la tabella (E_DOCUMENTI_FORMATO_NON_AMMESSO). Il tipo MIME si confronta minuscolo. Scatta alla nascita e quando cambiano tipo o formato.';
+
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_tipo_ammette_formato_ins_upd
+                  ON documenti.template_asset;
+              CREATE TRIGGER trg_template_asset_a10_tipo_ammette_formato_ins_upd
+                  BEFORE INSERT OR UPDATE OF asset_tipo_id, mime_type ON documenti.template_asset
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso();
+              COMMENT ON TRIGGER trg_template_asset_a10_tipo_ammette_formato_ins_upd ON documenti.template_asset IS
+                'La risorsa ha un formato che il suo tipo ammette.';
+
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd
+                  ON documenti.documenti_generati_file;
+              CREATE TRIGGER trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd
+                  BEFORE INSERT OR UPDATE OF file_tipo_id, mime_type ON documenti.documenti_generati_file
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso();
+              COMMENT ON TRIGGER trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd ON documenti.documenti_generati_file IS
+                'Il file della stampa ha un formato che il suo tipo ammette.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd
+                  ON documenti.documenti_generati_file;
+              DROP TRIGGER IF EXISTS trg_template_asset_a10_tipo_ammette_formato_ins_upd
+                  ON documenti.template_asset;
+              DROP FUNCTION IF EXISTS documenti.trgfn_guard_formato_ammesso();

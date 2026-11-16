@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA STAMPA NASCE COL SUO PDF PRINCIPALE
+#   documenti.trgfn_documenti_generati_guard_file_principale   (nuova)
+#   trg_documenti_generati_a10_guard_file_principale_ins       (CONSTRAINT
+#     TRIGGER, DEFERRABLE INITIALLY DEFERRED, AFTER INSERT)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D10 (Q7, Tid 2026-11-14): il DB chiedeva «al piu' un principale»
+#   (uq_documenti_generati_file_principale) ma non «almeno uno»: che la stampa
+#   avesse il suo PDF lo garantiva solo il servizio, scrivendo stampa e file
+#   nella stessa transazione. Ora lo giudica il DB a fine transazione.
+#   Basta il controllo alla nascita della stampa: il file non si cancella
+#   (20261115-83, D20) e protect_file tiene fermi documento_generato_id e
+#   is_principale.
+#   Fatto di dbdev (2026-11-15): 135 stampe senza file principale, nate prima
+#   di questo guard. Non le giudica: guarda le nascite, non la popolazione.
+#
+# -- LA LETTURA FUORI DAL PERIMETRO -----------------------------------------
+#   Il guard decide su una riga correlata (il file) e scatta al commit: non la
+#   legge sotto la row level security di chi chiude la transazione (linee guida
+#   trigger, «BEFORE e AFTER»). La trigger function e' SECURITY DEFINER del
+#   proprietario, con search_path fisso, e legge solo i file della stampa che
+#   nasce. Il proprietario delle due tabelle non ha FORCE ROW LEVEL SECURITY.
+#
+# -- CHI SCRIVE STAMPE (censito 2026-11-15) ----------------------------------
+#   Nel database nessuna funzione ne' seed. Il BE
+#   (documenti_repository) scrive stampa e principale nella stessa transazione.
+#   Le fixture pgTAP girano con SET CONSTRAINTS ALL IMMEDIATE: il trigger scatta
+#   a fine istruzione, e una stampa costruita senza il file nella stessa
+#   istruzione e' una riga che il modello non ammette piu'. Si riscrivono nello
+#   stesso giro (stampa e file in un'istruzione sola, con una CTE). Il test
+#   Django test_ricerca_liste_db annulla la transazione: il guard non scatta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261115-88-create-guard-stampa-con-file-principale-mctit.yaml
+
+  - changeSet:
+      id: 20261115-88-create-guard-stampa-con-file-principale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        A fine transazione ogni stampa nata ha il suo file principale
+        (E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE): constraint trigger differito su
+        documenti_generati, letto fuori dalla row security.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_documenti_generati_guard_file_principale()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pg_temp
+              AS $function$
+              -- Scopo:
+              --   A fine transazione una stampa nata ha il suo file principale, il
+              --   PDF che si scarica e si ristampa.
+              --
+              -- Regole:
+              --   - scatta al commit (constraint trigger differito), dopo che il
+              --     servizio ha scritto stampa e file;
+              --   - giudica la nascita: il file non si cancella e il flag
+              --     is_principale non cambia, quindi dopo non serve altro;
+              --   - legge il file da proprietario, fuori dalla row security di chi
+              --     chiude la transazione, e solo per la stampa che nasce.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE
+              BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                      FROM documenti.documenti_generati_file f
+                     WHERE f.documento_generato_id = NEW.id
+                       AND f.is_principale IS TRUE
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_documenti_generati_guard_file_principale',
+                    'E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE',
+                    jsonb_build_object(
+                      'documento_generato_id', NEW.id,
+                      'uid', NEW.uid::text
+                    ),
+                    NEW.tx_id,
+                    NEW.nome_file
+                  );
+                END IF;
+                RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_guard_file_principale() IS
+                'A fine transazione una stampa nata ha il suo file principale (E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE, col nome del file nella frase). Giudica la nascita: il file non si cancella e is_principale non cambia. SECURITY DEFINER con search_path fisso: legge il file fuori dalla row security di chi chiude la transazione, solo per la stampa che nasce.';
+
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_guard_file_principale_ins
+                  ON documenti.documenti_generati;
+              CREATE CONSTRAINT TRIGGER trg_documenti_generati_a10_guard_file_principale_ins
+                  AFTER INSERT ON documenti.documenti_generati
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_documenti_generati_guard_file_principale();
+
+              COMMENT ON TRIGGER trg_documenti_generati_a10_guard_file_principale_ins ON documenti.documenti_generati IS
+                'Al commit, la stampa nata nella transazione ha il suo file principale. Differito: il servizio scrive la stampa e poi il file.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_guard_file_principale_ins
+                  ON documenti.documenti_generati;
+              DROP FUNCTION IF EXISTS documenti.trgfn_documenti_generati_guard_file_principale();

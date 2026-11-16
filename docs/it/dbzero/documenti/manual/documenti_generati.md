@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.documenti_generati`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,7 +17,8 @@
 > * [documenti.trgfn_documenti_generati_check_coerenza](/dbzero/documenti/funzioni/trgfn_documenti_generati_check_coerenza) — il modello va bene per il documento
 > * [documenti.trgfn_documenti_generati_guard_versione_contesto](/dbzero/documenti/funzioni/trgfn_documenti_generati_guard_versione_contesto) — i dati hanno la forma che la versione legge
 > * [documenti.trgfn_documenti_generati_protect_snapshot](/dbzero/documenti/funzioni/trgfn_documenti_generati_protect_snapshot) — la stampa non cambia dopo
-> * [documenti.trgfn_documenti_generati_block_delete](/dbzero/documenti/funzioni/trgfn_documenti_generati_block_delete) — la stampa non si cancella
+> * [documenti.trgfn_documenti_generati_guard_file_principale](/dbzero/documenti/funzioni/trgfn_documenti_generati_guard_file_principale) — la stampa nasce col suo PDF principale
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — la stampa non si cancella
 > * [script.trgfn_guard_sorgente](/dbzero/script/funzioni/trgfn_guard_sorgente) — il guard unico della provenienza
 > * [script.fn_sorgente_chiave](/dbzero/script/funzioni/fn_sorgente_chiave) — la coppia di chiavi da scrivere
 >
@@ -58,7 +59,7 @@ il documento intero.
 
 ### Una stampa si registra solo se è coerente con il suo modello
 
-All'inserimento tre controlli guardano la stessa riga da tre lati:
+Alla nascita tre controlli guardano la stessa riga da tre lati:
 
 * **il modello va bene per il documento**: la versione appartiene al modello indicato, e il modello ha la stessa
   sorgente, lo stesso tipo di output e la stessa azienda della stampa, oppure è un modello standard
@@ -67,28 +68,53 @@ All'inserimento tre controlli guardano la stessa riga da tre lati:
   versione usata (`trgfn_documenti_generati_guard_versione_contesto`);
 * **l'azienda è nel perimetro di chi scrive** (`script.trgfn_guard_emittente_scope`).
 
-Il modello, la versione, il tipo di output, il tipo di sorgente e l'azienda devono essere attivi quando la
-stampa nasce: lo verificano a fine transazione i controlli generati dalla regola ATTIVO.
+La coerenza si giudica **solo alla nascita**, sul modello com'è in quel momento. Se dopo il modello cambia
+sorgente, tipo o azienda, la stampa vecchia non è sbagliata: è la fotografia di allora, e sull'`UPDATE` le
+colonne che decidevano la coerenza le tiene ferme lo snapshot.
+
+Quale modello e quale versione possono stampare oggi lo decide la risoluzione, prima del render
+(`documenti.fn_risolvi_template_applicabile`): un modello spento o senza versione valida non viene scelto.
+
+---
+
+### ⭐ Una stampa nasce col suo PDF principale
+
+A fine transazione ogni stampa nata ha il suo file principale, il PDF che si scarica e si ristampa
+(`trgfn_documenti_generati_guard_file_principale`, differito: il servizio scrive prima la stampa e poi il
+file). Basta il controllo alla nascita: il file non si cancella e il flag del principale non cambia. Il
+controllo legge il file fuori dalla row security di chi chiude la transazione.
 
 ---
 
 ### ⭐ La stampa non cambia e non si cancella
 
-Dopo l'inserimento cambiano solo `stato` e `meta`: ogni altro campo dello snapshot è fermo
-(`trgfn_documenti_generati_protect_snapshot`), e la riga non si cancella mai
-(`trgfn_documenti_generati_block_delete`). Le impronte (`context_hash`, `template_hash`, `pdf_hash`) sono
+Dopo l'inserimento cambia solo `meta`: ogni altro campo dello snapshot è fermo, `id` e `uid` compresi
+(`trgfn_documenti_generati_protect_snapshot`), e la riga non si cancella mai, da nessun ruolo (il rifiuto
+sempre attivo di `script.trgfn_prevent_modification_generic`). Le impronte (`context_hash`, `template_hash`, `pdf_hash`) sono
 SHA-256 di 64 caratteri, e permettono di verificare che il PDF conservato sia quello prodotto.
 
 Per questo lo storico standard su questa tabella è spento: la tabella è essa stessa il registro, e lo storico
-ripeterebbe solo `stato` e `meta`. Ciò che succede alla stampa dopo (scaricamenti, allegati aggiunti,
+ripeterebbe solo `meta`. Ciò che succede alla stampa dopo (scaricamenti, allegati aggiunti,
 ristampe fedeli) sta in `documenti_generati_eventi`; i file in `documenti_generati_file`.
 
 ---
 
-### Lo stato
+### Lo stato ha un valore solo
 
-`stato` ammette `GENERATO` (il valore con cui la stampa nasce), `ARCHIVIATO` e `ANNULLATO`, con un `CHECK`. Lo
-stato è l'unico modo previsto per chiudere la vita di una stampa, perché la riga non si cancella.
+`stato` vale sempre `GENERATO`, il valore con cui la stampa nasce (`chk_documenti_generati_stato`). Una
+stampa non si annulla e non si archivia: un annullo, quando un processo lo chiederà, nascerà col suo verbo e con
+la regola dei suoi passaggi.
+
+---
+
+### ⭐ Una stampa non tiene accesi i suoi padri
+
+La stampa è storia, non un figlio vivo. Le sue chiavi verso il modello, la versione, il tipo di sorgente e
+l'azienda sono eccezioni della regola ATTIVO (`dbops.automazione_attivo_eccezioni`); il tipo di output è un
+vocabolario senza `attivo`, che non si spegne. Un modello,
+una versione o un'azienda che hanno stampato si spengono come gli altri, e spegnere i propri modelli di un tipo
+riporta l'azienda allo standard. Per la stessa ragione la regola ATTIVO non chiede che quei padri siano accesi
+quando la stampa nasce: lo decide la risoluzione.
 
 ---
 
@@ -102,18 +128,11 @@ appartengono.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Nessuno cambia lo stato.** Né il database né il backend hanno una strada che porti una stampa ad
-  `ARCHIVIATO` o ad `ANNULLATO`: oggi ogni stampa resta `GENERATO`. Il `CHECK` ammette i tre valori, ma non c'è
-  una regola sui passaggi: un `UPDATE` diretto può riportare una stampa annullata a `GENERATO`.
-* **La coerenza col modello si ricontrolla anche a ogni modifica, sul modello di oggi.** Il controllo gira anche
-  sull'`UPDATE` di `stato` e `meta`, e legge sorgente, tipo e azienda del modello come sono adesso. Quelle
-  colonne del modello non sono bloccate: se cambiano dopo la stampa, la stampa vecchia non accetta più nemmeno
-  un cambio di `meta`.
-* **Una stampa non si spegne, e tiene acceso il modello.** La tabella non ha `attivo`, quindi ogni stampa conta
-  come figlio vivo per i blocchi della regola ATTIVO: un modello, una versione, un tipo di output, un tipo di
-  sorgente o un'azienda che hanno anche una sola stampa non si possono più disattivare. I controlli dal lato
-  della stampa, invece, scattano solo quando nasce o quando cambia la chiave, che è ferma: la stampa non ha
-  bisogno che il padre resti acceso dopo.
+* **Una stampa nata da un modello spento la ferma solo il servizio.** Il database non chiede che modello,
+  versione, tipo e azienda siano accesi quando la stampa nasce: lo garantisce la risoluzione che il servizio fa
+  prima del render. Un `INSERT` diretto con un modello spento passa la coerenza.
+* **Le stampe nate prima del controllo del PDF principale** non sono state giudicate: il controllo guarda le
+  nascite, non le righe già scritte.
 
 ---
 
@@ -122,13 +141,18 @@ appartengono.
 * `E_DOCUMENTI_GENERATO_COERENZA` — il modello o la versione non vanno bene per la stampa;
 * `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA`, `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` — la forma dei dati;
 * `E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE` — si è cercato di cambiare lo snapshot;
+* `E_DOCUMENTI_GENERATO_SENZA_FILE_PRINCIPALE` — a fine transazione la stampa nata non ha il suo PDF
+  principale: è un difetto di chi scrive, non un dato dell'operatore;
 * `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` — si è cercato di cancellare la stampa.
 
 ---
 
 ### Test
 
-* `db/pgtap/documenti/test-documenti-generati.sql` — coerenza, numerazione, cancellazione, snapshot;
+* `db/pgtap/documenti/test-documenti-generati.sql` — coerenza, numerazione, cancellazione, snapshot, lo stato
+  con un valore solo;
+* `db/pgtap/documenti/test-documenti-stampa-e-storia-v1.sql` — il PDF principale, l'`id` nello snapshot, la
+  coerenza solo alla nascita, i padri che si spengono, il rifiuto sempre attivo;
 * `db/pgtap/documenti/test-sorgente-documenti-generati-v1.sql` — la provenienza e il guard unico;
 * `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — la forma dei dati;
 * `db/pgtap/documenti/test-documenti-storico-disabled.sql` — lo storico spento;
@@ -147,6 +171,9 @@ appartengono.
   modello comune: `sorgente_id` per i tipi a chiave `id`, `sorgente_uid` (ora `uuid`, nullable) per preventivo e
   offerta, una sola delle due; il guard unico; l'unicità del progressivo anche su `sorgente_id`, che entra nello
   snapshot.
+* 2026-11-15 — lo stato perde `ARCHIVIATO` e `ANNULLATO`, che nessuno scriveva; la coerenza si giudica solo alla
+  nascita; `id` entra nello snapshot; ogni stampa nuova deve avere il suo PDF principale; le chiavi verso i
+  padri diventano eccezioni della regola ATTIVO; il rifiuto della cancellazione passa al building block comune.
 
 ---
 

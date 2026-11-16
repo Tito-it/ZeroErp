@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Timeline append-only degli eventi del ciclo vita documento (Decisioni 30/31/72). Eventi v1: GENERATO, SCARICATO, STORAGE_ORPHAN.
+> La cronologia di una stampa: quando e' nata, scaricata, ristampata dallo snapshot, quando le si e' aggiunto un allegato. Un evento non si modifica e non si cancella (trigger sul building block script.trgfn_prevent_modification_generic): si corregge registrandone uno nuovo, con esito KO o WARN.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -45,8 +45,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_documenti_generati_eventi_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_delete()` |
-| trg_documenti_generati_eventi_a10_block_update_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_eventi_block_update()` |
+| trg_documenti_generati_eventi_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_EVENTO_DOCUMENTO_DELETE_VIETATA')` |
+| trg_documenti_generati_eventi_a10_block_update_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_EVENTO_DOCUMENTO_UPDATE_VIETATA')` |
 | trg_documenti_generati_eventi_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_eventi_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_eventi_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

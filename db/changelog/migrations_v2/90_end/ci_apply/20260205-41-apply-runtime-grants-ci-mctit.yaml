@@ -309,7 +309,20 @@ databaseChangeLog:
                   -- ⭐ Dal 2026-10-18 le ETICHETTE DI PROVA: le scrive solo il verbo
                   --   dei dati di sviluppo (brief-db-processi-accensione-per-ambiente, R-4).
                   'dbops.credenziali_di_prova',
-                  'dbops.soggetti_di_prova'
+                  'dbops.soggetti_di_prova',
+                  -- ⭐ Dal 2026-11-16 i VOCABOLARI DI documenti e i FORMATI DI FILE: li
+                  --   possiede il CSV, un valore nasce col codice che lo sa usare
+                  --   (brief-db-revisione-documenti, Q10). Forward 90_end/20261115-98.
+                  'documenti.tipi_documento_output',
+                  'documenti.tipi_file_documento',
+                  'documenti.tipi_asset_documento',
+                  'documenti.render_engine_documento',
+                  'documenti.formati_template',
+                  'documenti.formati_pagina',
+                  'documenti.orientamenti_pagina',
+                  'config.formati_file',
+                  'documenti.tipi_asset_documento_formati',
+                  'documenti.tipi_file_documento_formati'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

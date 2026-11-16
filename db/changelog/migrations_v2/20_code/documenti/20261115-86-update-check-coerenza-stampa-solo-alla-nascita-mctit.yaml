@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COERENZA DELLA STAMPA SI GIUDICA ALLA NASCITA
+#   trg_documenti_generati_a10_check_coerenza_ins  (era _ins_upd)
+#   COMMENT di documenti.trgfn_documenti_generati_check_coerenza
+#
+# -- PERCHE' --------------------------------------------------------------
+#   D2 (Q2, Tid 2026-11-14): il trigger era BEFORE INSERT OR UPDATE e rileggeva
+#   il modello come e' adesso (sorgente, tipo, azienda). Del modello e' bloccato
+#   solo `standard`: cambiata una di quelle colonne dopo la stampa, ogni UPDATE
+#   della stampa vecchia, anche del solo `meta`, moriva su
+#   E_DOCUMENTI_GENERATO_COERENZA. La stampa e' una fotografia del momento in
+#   cui e' nata: la coerenza si giudica li', e sull'UPDATE le colonne che la
+#   decidono le tiene ferme protect_snapshot. Nessun lock sul modello.
+#
+# -- IL CORPO NON CAMBIA ------------------------------------------------------
+#   Legge solo NEW: vale identico all'INSERT. Si riscrive il solo COMMENT, che
+#   portava marcatori e id di changeSet (linee-guida-sql §5d). Il trigger ha
+#   avuto un solo nome (20260501-05, rimontato per nome dal 20260805-02): si
+#   toglie quello e, per la rilettura, anche il nome nuovo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261115-86-update-check-coerenza-stampa-solo-alla-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20261115-86-update-check-coerenza-stampa-solo-alla-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il controllo di coerenza della stampa col suo modello scatta solo all'INSERT: sull'UPDATE
+        quelle colonne le tiene ferme protect_snapshot, e un cambio successivo del modello non
+        rende piu' immodificabile la stampa vecchia.
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_check_coerenza_ins_upd
+                  ON documenti.documenti_generati;
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_check_coerenza_ins
+                  ON documenti.documenti_generati;
+              CREATE TRIGGER trg_documenti_generati_a10_check_coerenza_ins
+                  BEFORE INSERT ON documenti.documenti_generati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza();
+
+              COMMENT ON TRIGGER trg_documenti_generati_a10_check_coerenza_ins ON documenti.documenti_generati IS
+                'Alla nascita della stampa: la versione e'' del modello indicato, e il modello va bene per il documento. Dopo, le colonne che lo decidono le tiene ferme trg_documenti_generati_a10_protect_snapshot_upd.';
+
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_check_coerenza() IS
+                'Giudica, alla nascita di una stampa, che i suoi riferimenti stiano insieme: la versione appartiene al modello indicato, e il modello va bene per il documento (stessa sorgente, stesso tipo di output, stessa azienda oppure modello standard), con la regola di documenti.fn_template_motivo_non_coerente, la stessa che la risoluzione applica prima del render. Solleva E_DOCUMENTI_GENERATO_COERENZA, col motivo per nome nel contesto. Un cambio successivo del modello non tocca le stampe gia'' fatte.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_documenti_generati_a10_check_coerenza_ins
+                  ON documenti.documenti_generati;
+              CREATE TRIGGER trg_documenti_generati_a10_check_coerenza_ins_upd
+                  BEFORE INSERT OR UPDATE ON documenti.documenti_generati
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_documenti_generati_check_coerenza();

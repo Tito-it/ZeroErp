@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_documenti`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 15 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -90,20 +90,11 @@ copia è rimasta indietro lo dice
 
 ### Attivo e spento
 
-Un modello spento non stampa e non conta nella risoluzione. Un modello si spegne solo se non ha
-versioni attive e nessuna stampa lo cita (i trigger generati del framework ATTIVO). Per accendere
-un modello servono attivi il suo tipo di documento, la sua sorgente e la sua azienda.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Un modello che ha stampato non si spegne più.** `documenti.documenti_generati` non ha la
-  colonna `attivo`, quindi per il blocco della disattivazione ogni stampa è un figlio vivo, e una
-  stampa non si cancella. Lo stesso vale per le versioni usate: e un modello con una versione attiva
-  non si spegne. Il rifiuto (`E_ATTIVO_BLOCK_CHILDREN_EXIST`) suggerisce di togliere le stampe, cosa
-  impossibile: un modello d'azienda usato una volta resta acceso per sempre, e con lui la sua
-  candidatura nella risoluzione.
+Un modello spento non stampa e non conta nella risoluzione: spegnere i propri modelli di un tipo
+riporta l'azienda allo standard. Un modello si spegne solo se non ha versioni attive (i trigger
+generati del framework ATTIVO). Le stampe non lo tengono acceso: sono storia, e la loro chiave verso
+il modello è un'eccezione della regola (`dbops.automazione_attivo_eccezioni`). Per accendere un
+modello servono attivi il suo tipo di documento, la sua sorgente e la sua azienda.
 
 ---
 

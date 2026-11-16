@@ -12,14 +12,16 @@
 -- Test: la potatura del set di storicizzazione (R-12)
 -- Brief: brief-db-storicizzazione-bersagli-spariti.md §2.1 e §2.2
 --
--- Elenco test (plan 7):
---  1) ⭐ l'invariante: nessuna riga DERIVATA senza referente
+-- Elenco test (plan 8):
+--  1) ⭐ l'invariante: nessuna riga DERIVATA la cui tabella non ha la colonna
+--     storicizza (sparita, o colonna ritirata)
 --  2) ⛔ COSTRUITO: una riga derivata che punta a niente viene POTATA
 --  3) ⛔ COSTRUITO: una riga MANUALE che punta a niente NON viene potata
 --  4) ⚠️ una tabella VIVA che ha perso il DEFAULT non viene potata
 --  5) ✅ il sync continua ad AGGIUNGERE cio' che la derivazione produce
 --  6) ⭐ l'apply non muore su una riga stantia: la salta e finisce il giro
 --  7) ⚠️ i nomi del set sono tutti schema-qualificati
+--  8) ⛔ COSTRUITO: una tabella viva che RITIRA la colonna viene potata
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ PERCHE' QUESTO FILE ESISTE.
@@ -29,6 +31,10 @@
 --   da solo** — mezza sincronizzazione.
 --   ⇒ Togliere le tre righe sarebbe stato il tampone. Questi test fissano il
 --     meccanismo, cosi' la prossima tabella ritirata non rifa' lo stesso guasto.
+--   ⚠️ Il 2026-11-16 lo ha rifatto una COLONNA ritirata: quattro vocabolari di
+--     documenti hanno perso `storicizza` con un DROP COLUMN, il sync li teneva
+--     (la tabella c'era) e l'apply contava quattro scarti. E' la causa 5 qui
+--     sotto, e il test 8.
 --
 -- ⛔ I TEST 2, 3 e 4 SONO TRE RISPOSTE DIVERSE ALLA STESSA DOMANDA, e vanno
 --   letti insieme. «La riga non e' piu' prodotta dalla derivazione» ha tre
@@ -39,6 +45,9 @@
 --     4. la tabella c'e' ma ha perso il DEFAULT         → ⛔ non si pota: e' il
 --        caso transitorio che `apply_storicizza_weekly` ripara, e potarlo
 --        spegnerebbe la storicizzazione di una tabella viva
+--     5. la tabella c'e' ma ha RITIRATO la colonna      → si pota: la
+--        derivazione non la produrra' piu', e l'apply non ha niente da
+--        riparare (test 8)
 --   ⚠️ Provare solo il 2 lascerebbe passare una potatura che cancella troppo —
 --   e cancellerebbe **in silenzio**, che e' il difetto da cui si parte.
 -- ------------------------------------------------------------
@@ -49,7 +58,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- ============================================================
 -- 1. L'invariante
@@ -59,9 +68,13 @@ SELECT plan(7);
 --   un fatto da guardare, non un difetto del meccanismo — il test 3 dice
 --   perche'.
 SELECT is_empty(
-    $$SELECT table_name FROM config.storico_set_storicizza
-       WHERE NOT insert_manuale AND to_regclass(table_name) IS NULL$$,
-    '1. nessuna riga derivata del set punta a un oggetto inesistente'
+    $$SELECT s.table_name FROM config.storico_set_storicizza s
+       WHERE NOT s.insert_manuale
+         AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                          WHERE a.attrelid = to_regclass(s.table_name)
+                            AND a.attname = 'storicizza'
+                            AND NOT a.attisdropped)$$,
+    '1. nessuna riga derivata del set punta a una tabella senza la colonna storicizza'
 );
 
 -- ============================================================
@@ -158,6 +171,26 @@ SELECT is_empty(
     $$SELECT table_name FROM config.storico_set_storicizza
        WHERE table_name NOT LIKE '%.%'$$,
     '7. ogni nome del set e'' schema-qualificato'
+);
+
+-- ============================================================
+-- 8. ⛔ La colonna ritirata da una tabella viva
+-- ============================================================
+-- La tabella resta, la colonna no: la derivazione non la produrra' piu', e
+-- l'apply fallirebbe a ogni corsa su un ALTER senza colonna. Diverso dal
+-- test 4, dove la colonna c'e' e manca solo il DEFAULT.
+DO $ritirata$
+BEGIN
+    ALTER TABLE dbops.pgtap_storicizza_prova DROP COLUMN storicizza;
+END
+$ritirata$;
+
+CALL maintenance.proc_sync_storico_set_storicizza();
+
+SELECT is_empty(
+    $$SELECT table_name FROM config.storico_set_storicizza
+       WHERE table_name = 'dbops.pgtap_storicizza_prova'$$,
+    '8. una tabella viva che ritira la colonna storicizza viene potata'
 );
 
 SELECT * FROM finish();

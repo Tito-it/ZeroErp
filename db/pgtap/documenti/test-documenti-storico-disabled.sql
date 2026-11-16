@@ -5,7 +5,8 @@
 --   - tabelle storico assenti
 --   - colonna storicizza assente sulle 2 tabelle (segnale framework)
 --   - trigger storico assenti
---   - storico ATTIVO per le altre tabelle del modulo (template, asset, lookup)
+--   - storico ATTIVO per modelli, versioni e asset; i vocabolari non hanno
+--     storico: li scrive solo il changeSet, e l'app li legge soltanto
 -- ------------------------------------------------------------
 -- Indice test (1..10):
 --  1) Tabella storico.documenti_generati assente
@@ -17,7 +18,7 @@
 --  7) Tabella storico.template_documenti presente (storico attivo)
 --  8) Tabella storico.template_documenti_versioni presente (storico attivo)
 --  9) Tabella storico.template_asset presente (storico attivo)
--- 10) Tabella storico.tipi_documento_output presente (storico attivo lookup)
+-- 10) Tabella storico.tipi_documento_output assente (un vocabolario non ha storico)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -111,8 +112,8 @@ SELECT ok(
   'B: tabella storico.template_asset presente (storico attivo)'
 );
 SELECT ok(
-  to_regclass('storico.tipi_documento_output') IS NOT NULL,
-  'B: tabella storico.tipi_documento_output presente (storico attivo lookup)'
+  to_regclass('storico.tipi_documento_output') IS NULL,
+  'B: tabella storico.tipi_documento_output assente (un vocabolario non ha storico)'
 );
 
 SELECT * FROM finish();

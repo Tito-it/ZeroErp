@@ -1,0 +1,8 @@
+id,codice_interno,codice,descrizione,etichetta_key,ordine,mime_type,estensione
+1,PNG,PNG,Immagine PNG,config.formati_file.png,10,image/png,png
+2,JPEG,JPEG,Immagine JPEG,config.formati_file.jpeg,20,image/jpeg,jpg
+3,SVG,SVG,Immagine vettoriale SVG,config.formati_file.svg,30,image/svg+xml,svg
+4,WEBP,WEBP,Immagine WebP,config.formati_file.webp,40,image/webp,webp
+5,GIF,GIF,Immagine GIF,config.formati_file.gif,50,image/gif,gif
+6,PDF,PDF,Documento PDF,config.formati_file.pdf,60,application/pdf,pdf
+7,CSS,CSS,Foglio di stile CSS,config.formati_file.css,70,text/css,css

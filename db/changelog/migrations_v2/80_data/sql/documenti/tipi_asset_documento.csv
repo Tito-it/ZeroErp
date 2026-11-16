@@ -1,7 +1,6 @@
-id,codice,codice_interno,descrizione,attivo,meta,storicizza,data_insert,user_insert,data_update,user_update,tx_id
-1,LOGO,LOGO,Logo,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-2,FIRMA,FIRMA,Firma,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-3,IMMAGINE,IMMAGINE,Immagine,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-4,PDF,PDF,PDF,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-5,CSS,CSS,CSS,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
-6,ALTRO,ALTRO,Altro,true,{},"true",2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+id,codice,codice_interno,descrizione,etichetta_key,ordine,data_insert,user_insert,data_update,user_update,tx_id
+1,LOGO,LOGO,Logo,documenti.tipi_asset_documento.logo,10,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+2,FIRMA,FIRMA,Firma,documenti.tipi_asset_documento.firma,20,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+3,IMMAGINE,IMMAGINE,Immagine,documenti.tipi_asset_documento.immagine,30,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+4,PDF,PDF,PDF,documenti.tipi_asset_documento.pdf,40,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
+5,CSS,CSS,CSS,documenti.tipi_asset_documento.css,50,2026-04-29 00:00:00,titodb,2026-04-29 00:00:00,titodb,NULL
