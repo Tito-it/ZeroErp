@@ -320,12 +320,16 @@ WITH v AS (
   INSERT INTO documenti.template_documenti_versioni (
       template_documento_id, versione, stato, titolo, html_template,
       render_engine_id, valido_dal, valido_al, versione_contesto)
-  SELECT (SELECT id FROM _m), 1, 'PUBBLICATA', 'formati v1', '<html>formati</html>',
+  SELECT (SELECT id FROM _m), 1, 'BOZZA', 'formati v1', '<html>formati</html>',
          render, DATE '2026-01-01', NULL, 1
     FROM _k
   RETURNING id
 )
 SELECT id FROM v;
+
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+SELECT documenti.fn_pubblica_template_documento_versione((SELECT id FROM _v), DATE '2026-01-01', 1, NULL);
 
 CREATE TEMP TABLE _s ON COMMIT DROP AS
 SELECT dbops.fn_pgtap_stampa_con_pdf(format($i$

@@ -123,7 +123,7 @@ WITH t AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
     render_engine_id, valido_dal, valido_al, versione_contesto)
-  SELECT t.id, 1, 'PUBBLICATA', 'v1', '<html>v1</html>',
+  SELECT t.id, 1, 'BOZZA', 'v1', '<html>v1</html>',
          (SELECT r.id FROM documenti.render_engine_documento r WHERE r.codice_interno = 'WEASYPRINT'),
          DATE '2026-01-01', DATE '2099-12-31', 1
     FROM t
@@ -133,6 +133,11 @@ SELECT s.codice_interno AS sorgente, t.id AS template_id, tv.id AS versione_id,
        t.tipo_documento_output_id AS tipo_output_id, t.sorgente_tipo_id
   FROM t JOIN tv ON tv.template_documento_id = t.id
   JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id;
+
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+SELECT documenti.fn_pubblica_template_documento_versione(x.versione_id, DATE '2026-01-01', 1, DATE '2099-12-31')
+  FROM _tpl x ORDER BY x.versione_id;
 
 -- La stampa di un documento: le colonne dello snapshot dal modello del tipo,
 -- la chiave e il numero dal test; il PDF principale lo scrive

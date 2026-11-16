@@ -1,12 +1,12 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 2 applicato, BE/FE fatte)
+## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 3 applicato)
 
-**Riparte: Tid**, col commit del giro 2 e il passaggio al team BE/FE (§12.6); poi la sessione DB col giro 3, al via
-di Tid. Il giro 2 («i vocabolari», `20261115-91 … -98`, più il `-99` del sync) è applicato il 2026-11-16: `ci_apply`
-passato dopo il `-99` (§12.5-bis), pgTAP verdi, doc auto-generata rigenerata (§12). Q13-Q15 e la segnalazione di
-§9 sono decise (2026-11-16). Il giro 1 è applicato e committato (§11). ⛔ Il backend da ora si rompe sui lettori di
-`attivo` (BE11): il passaggio al team va con il commit; FE1 (le 21 chiavi i18n) prima del merge su `Tito-dev`.
+**Riparte: Tid**, col commit del giro 3 («la pubblicazione», `20261116-01 … -04`), applicato il 2026-11-16 con i
+pgTAP verdi e la doc auto-generata rigenerata (§13.5); poi la sessione DB, col giro 4 al via di Tid. I giri 1 e 2
+sono applicati e committati (§11, §12; il giro 2 in `2fc00ffd1e`). Il team BE/FE ha le ricadute del giro 2 (§12.6:
+⛔ il backend si rompe sui lettori di `attivo`, BE11; FE1, le 21 chiavi i18n, prima del merge su `Tito-dev`) e
+quelle del giro 3, sbloccate e non bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (2026-11-16).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,15 +23,17 @@ passato dopo il `-99` (§12.5-bis), pgTAP verdi, doc auto-generata rigenerata (�
 | 11 | ✅ team BE | BE3, BE7, BE9, BE10 del giro 1 — fatte il 2026-11-16 (BE3: nessun blocco nel form; il DB ferma lo spegnimento solo con versioni attive, «figli prima») | §6, §11.6, §12.7 | 9 ✅ |
 | 12 | ✅ sessione DB | Giro 2 scritto: otto changeSet, undici CSV, un pgTAP nuovo, sei riscritti, pagine `manual/` e guida | §12 | 10 |
 | 14 | ✅ Tid | Giro 2 applicato col `-99` (2026-11-16): `ci_apply` passato, pgTAP verdi, doc auto-generata rigenerata | §12.5, §12.5-bis | 12 |
-| 17 | Tid | Il commit del giro 2 e il passaggio al team BE/FE | §12.1, §12.6 | 14 ✅ |
-| 15 | ✅ team BE/FE | BE5, BE11-BE14 e FE1 — fatte il 2026-11-16, da committare su `dev/backend-tid` | §12.6, §12.7 | 14 ✅ |
-| 16 | sessione DB | I giri 3-5, uno alla volta, col via di Tid (nel 4 anche Q13) | §2 | 14 |
-| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 16 |
+| 17 | ✅ Tid | Il commit del giro 2 (`2fc00ffd1e`); il passaggio al team BE/FE | §12.1, §12.6 | 14 ✅ |
+| 15 | team BE/FE | BE5, BE11-BE14 — sbloccate, BE11 subito (il backend è rotto); FE1 prima del merge | §12.6 | 14 ✅ |
+| 16 | ✅ sessione DB | Giro 3 scritto: quattro changeSet, quattro codici errore, un pgTAP nuovo, otto riscritti, pagine `manual/` e guida | §13 | 14 |
+| 18 | ✅ Tid | Giro 3 applicato (2026-11-16): pgTAP verdi, doc auto-generata rigenerata | §13.5 | 16 |
+| 21 | Tid | Il commit del giro 3 | §13.1 | 18 ✅ |
+| 19 | team BE | BE15, BE16 del giro 3 — sbloccate, nessuna rottura; BE4 verificata | §13.6 | 18 ✅ |
+| 20 | sessione DB | I giri 4 e 5, uno alla volta, col via di Tid (nel 4 anche Q13) | §2 | 21 |
+| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
 
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 2 (§12.1: i changeSet `-91 … -99`, i CSV, il loop
-di `ci_apply`, il provisioning, la soglia del cancello pgTAP, i pgTAP con `maintenance/test-storicizza-set-potatura`,
-le pagine `manual/` toccate, nuove e tolte, la doc auto-generata rigenerata, la guida), questo brief,
-`PROJECT_CONTEXT.md`.
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 3 (§13.1: quattro changeSet, i due CSV degli
+errori, il pgTAP nuovo e gli otto riscritti, le pagine `manual/` e la guida, la doc auto-generata rigenerata), questo brief, `PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -65,8 +67,8 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 | Giro | Classe | Contenuto | Ricadute BE/FE | Perché insieme |
 | --- | --- | --- | --- | --- |
 | 1 ✅ applicato il 2026-11-16 (§11) | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
-| 2 ✍️ scritto, da applicare (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
-| 3 | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
+| 2 ✅ applicato il 2026-11-16 (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
+| 3 ✅ applicato il 2026-11-16 (§13) | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
 | 4 | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
 | 5 | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2 (e BE1, se non già fatto) | Quello che nessun giro precedente ha già aperto |
 
@@ -86,7 +88,8 @@ Forma compatta: **fatto** · **correzione decisa** · **presidio**. Le classi so
 | **B** | D2, D3, D4, D5, D7, D8, D9, D10, D20 | D6 |
 | **C** | D11, D12, D13, D15, D16, D18, D19 | D14, D17 |
 
-⚠️ **Dal 2026-11-15 D1, D2, D7, D8, D10, D11, D12, D18, D20 sono scritti nel giro 1** (§11), non ancora applicati.
+⚠️ **Dal 2026-11-15 D1, D2, D7, D8, D10, D11, D12, D18, D20 sono scritti nel giro 1** (§11), applicati il
+2026-11-16; D15 e D16 nel giro 2 (§12), applicati il 2026-11-16; D3, D4 e D13 nel giro 3 (§13), applicati il 2026-11-16.
 Le sezioni qui sotto restano come censimento; la correzione effettiva, con quello che è cambiato rispetto a qui
 (il BB di D18 esisteva già), sta in §11.2.
 
@@ -302,7 +305,7 @@ Da girare al team quando il giro DB corrispondente è applicato, salvo BE1.
 | BE3 | 1 | Con D1 chiuso, spegnere un modello che ha stampato riesce: verificare che il form non lo pre-blocchi |
 | BE7 | 1 | D7/D11: gli stati e l'evento ritirati escono dal servizio (`document_generation_service.py:89` ha anche un commento «seed Fase A»; i commenti su `STORAGE_ORPHAN` a `:25`, `:420`, `:825`, `:1463`, `storage/base.py:33`, `template_asset_admin_service.py:265` diventano «file orfano, solo nel log»); il badge di `DocumentiGeneratiSorgenteList.vue:104` resta col solo `GENERATO` |
 | BE5 | 2 | D15: `_MIME_WHITELIST_PER_TIPO` (`template_asset_admin_service.py:53-75`) si ritira, la lista si legge dal vocabolario dei tipi di asset; il form può mostrare i formati ammessi; `ALTRO` esce dalla tendina. `_ENGINE_WHITELIST` (`render_service.py:54`) resta |
-| BE4 | 3 | D3: l'applicazione non scrive più uno stato fuori bozza: verificare che nessun servizio lo faccia fuori da `fn_pubblica_template_documento_versione` |
+| BE4 ✅ | 3 | D3: l'applicazione non scrive più uno stato fuori bozza: verificare che nessun servizio lo faccia fuori da `fn_pubblica_template_documento_versione`. **Verificato dalla sessione DB il 2026-11-16** (§13.6): niente da fare |
 | BE6 | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB |
 | BE6-bis | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n |
 | BE2 | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida» |
@@ -515,7 +518,7 @@ Oltre a BE3 e BE7 di §6:
 
 Il servizio di stampa non cambia: scrive già stampa e PDF nella stessa transazione, e non cancella file.
 
-## 12. Giro 2 — i vocabolari (scritto il 2026-11-16, da applicare)
+## 12. Giro 2 — i vocabolari (scritto e applicato il 2026-11-16)
 
 Via di Tid il 2026-11-16 («procediamo con lo sviluppo»), con le decisioni Q13-Q15 (§7). Numeri dal primo libero.
 
@@ -664,3 +667,102 @@ terza lista dei formati; può abbinarsi a `config.formati_file` quando un giro d
   * `useLookupEtichettato` con `campoCodice: 'id'` ripiegava sull'id (un numero a video) quando la chiave manca
     dai locales: ora ripiega sul `codice` della riga. Presidio delle cinque tendine:
     `config/components/TemplateTendineVocabolari.spec.js`.
+## 13. Giro 3 — la pubblicazione (scritto e applicato il 2026-11-16)
+
+Via di Tid il 2026-11-16 («ok procedi giro 3»). Decisione di riferimento: Q3 (§7). Numeri dal primo libero.
+
+### 13.1 Che cosa è scritto
+
+| ChangeSet | Che cosa | Difetti |
+| --- | --- | --- |
+| `20261116-01` (`00_schema/documenti`) | `chk_template_documenti_versioni_valido_dal_pubblicata` esce, entra `chk_template_documenti_versioni_valido_dal_fuori_bozza`: la data d'inizio è obbligatoria per ogni stato fuori bozza. Col suo COMMENT | D3 |
+| `-02` (`20_code/documenti`) | `trgfn_template_documenti_versioni_protect_pubblicata` guarda anche la bozza: una versione nasce in BOZZA (`INSERT`), ne esce solo a porta del verbo aperta e nella forma della pubblicazione (le sole date cambiate), fuori bozza non si modifica come prima. Il proprietario della tabella (seed, changeSet, `script.fn_is_proprietario_tabella`) scrive lo stato senza porta. Codice nuovo `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` (`TECNICO`). Il trigger, tolto per funzione e ricreato, diventa `…_a05_protect_pubblicata_ins_upd`: monta l'`INSERT`, e in `a05` l'immutabilità parla prima del guard comune delle date | D3, M §4.3 |
+| `-03` (`20_code/documenti`) | `fn_pubblica_template_documento_versione`: la porta vale per le due scritture del verbo e prende il suo nome, `zeroerp.allow_template_versione_pubblicazione_override` (prima `…_chiusura_override`), e si richiude anche in errore; una bozza spenta non si pubblica (`E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA`, `CONFLITTO_STATO`, la frase dice numero e template). COMMENT al presente | D3, D4, M §4.3 |
+| `-04` (`20_code/documenti`) | `fn_crea_bozza_da_versione`: la destinazione è un modello dello stesso documento, con la regola di `fn_template_motivo_non_coerente` (`E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO`, `TECNICO`); il modello che non esiste è `E_PARAMETRO_INVALIDO` invece del 23503; il numero conteso è `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` (`CONFLITTO_STATO`) invece del 23505 grezzo. COMMENT e commento del corpo senza brief | D13, M §4.3 |
+
+**CSV**: `config/codici_errore.csv` e `messaggi_errore.csv`, i quattro codici nuovi (id 1505-1508); la nota di
+`E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` riscritta al presente (aveva «Fase A», «Guard A1», un id di changeSet).
+
+**pgTAP**: nuovo `documenti/test-documenti-pubblicazione-e-copia-v1.sql` (27 test: la forma, si nasce in bozza e se
+ne esce solo pubblicando, la porta, la fase, la bozza spenta, i rifiuti della pubblicazione mai provati, la copia).
+Riscritti, perché girando come applicazione facevano nascere una versione PUBBLICATA o la pubblicavano con un
+UPDATE: le fixture di `test-documenti-generati`, `-generati-eventi`, `-generati-file`,
+`test-sorgente-documenti-generati-v1`, `-vocabolari-forma-v1`, `-stampa-e-storia-v1` (bozza, poi il verbo);
+`test-documenti-template-versioni` (le pubblicazioni dal verbo; il 3 prova la sovrapposizione con lo stesso inizio);
+`test-fn-pubblica-template-documento-versione-v1` (il 17 arriva al vincolo da una pubblicazione dentro una
+OBSOLETA, invece che da un INSERT di una OBSOLETA; 21 e 23 con la porta col nome nuovo).
+
+**Doc**: le pagine `manual/` di `protect_pubblicata` (riscritta), `fn_pubblica_template_documento_versione`,
+`fn_crea_bozza_da_versione`, `template_documenti_versioni`; guida `documenti-e-stampe` §2.3 e §11.
+
+### 13.2 Che cosa è cambiato rispetto al censimento
+
+* **Il proprietario passa senza porta.** Q3 diceva «il seed dello standard, scritto dall'owner, passa». Oggi tutti
+  i seed pubblicano dal verbo; passa senza porta chi costruisce standard da owner, cioè tre pgTAP
+  (`test-documenti-template-standard-v1`, `-personalizza-v1`, `-template-porta-unica-v1`, `pgtap-runner: owner`).
+  Il riconoscimento è lo stesso del guard di sola lettura dello standard. L'immutabilità fuori bozza vale anche per
+  il proprietario, come prima.
+* **Una porta, col nome del verbo.** Q3 riusava la porta della chiusura; il nome diceva «chiusura» e avrebbe
+  mentito sulla pubblicazione. Nessun lettore fuori dal DB e dai pgTAP.
+* **La fase passa ad `a05`.** Trovato scrivendo: in `a10` il guard comune delle date (`a10_date_validita`) veniva
+  prima, e su una PUBBLICATA con le date invertite la frase mandava a correggere una data che non si può cambiare
+  (test 11 del file nuovo, rosso prima).
+* **D13 e l'origine dichiarata.** Il controllo «stesso documento» vale per ogni copia, non solo senza origine; con
+  l'origine dichiarata resta in più il guard della derivazione. Non si chiede che l'origine dichiarata sia la
+  versione copiata: la copia di una copia può dichiarare lo standard da cui viene il contenuto.
+* **La gara sul numero non si costruisce** in una sessione sola: il pgTAP fissa il patto fra il verbo e il nome del
+  vincolo che riconosce. La seconda sede della numerazione (`next_versione_num` del servizio, per la versione nuova
+  scritta da zero) resta il residuo già dichiarato (§3.5).
+* **I casi di §5 sulla pubblicazione** (i tre rifiuti mai provati, lo stesso inizio, la retrodatazione dentro
+  un'OBSOLETA) e i rami `E_PARAMETRO_INVALIDO` della copia sono ora costruiti.
+
+### 13.3 Fatti datati (dbdev, 2026-11-16)
+
+* Versioni: 5 bozze, 18 pubblicate, 46 obsolete, tutte accese; nessuna fuori bozza senza `valido_dal`: l'`ADD
+  CONSTRAINT` del `-01` valida.
+* Il trigger di `protect_pubblicata` ha un solo montaggio (`…_a10_protect_pubblicata_upd`).
+* Dopo l'apply: i quattro changeSet sono nel `databasechangelog`, il montaggio è uno solo
+  (`…_a05_protect_pubblicata_ins_upd`).
+
+### 13.4 Le prove (scratch, owner, estratto in `ROLLBACK`)
+
+⚠️ Lo scratch gira da owner, e l'owner non può assumere `zeroerp_app`: da owner il guard nuovo lascia passare per
+costruzione. Per i test che girano come applicazione la prova ridefinisce, dentro la transazione ritirata,
+`script.fn_is_proprietario_tabella` perché dica «no» sulla sola tabella delle versioni; i tre test da owner girano
+così come sono. Con la simulazione dei quattro codici errore.
+
+* Il test nuovo: senza l'estratto 8 su 27, con l'estratto 27 su 27 (i rossi senza, spiegati in testata).
+* Invariati senza e con l'estratto: gli altri 21 pgTAP di `documenti`, `config/test-grammatica-etichetta-sorgenti-v1`,
+  `rls/test-rls-documenti-satelliti`. `test-fn-pubblica-template-documento-versione-v1` 22 → 23 su 23 (il 21 vuole
+  la porta col nome nuovo). Rossi uguali nelle due corse, da owner: `-generati-eventi` 1, `-lookup` 1,
+  `-template-standard-app-v1` 4, `-vocabolari-forma-v1` 1 (perimetro e privilegi dell'applicazione).
+* Presidi verdi senza e con: `builder-pgtap-vincoli-immediate`, `comment-al-presente`, `riferimenti-morti`,
+  `security-definer-search-path`, `stati-check-scrittori`, `vw-codici-errore-motivo-nominato`,
+  `vw-codici-errore-valore-atteso`, `codici-errore-identita`, `costanti-catalogo-citate-dal-codice`,
+  `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`, `vw-funzioni-check-codici-sotto-jit`.
+* Cancelli statici della CI verdi; `prossimo_changeset --doppi` pulito. `check_i18n_keys` rosso con le stesse 21
+  chiavi del giro 2 (FE1): il giro 3 non ne aggiunge.
+
+### 13.5 Per l'apply (Tid)
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply; poi `ci_apply` come sempre.
+3. I pgTAP come applicazione: il nuovo, gli otto riscritti (§13.1), i tre da owner e i presidi di §13.4.
+4. La doc auto-generata rigenerata: le schede delle tre funzioni e della tabella (COMMENT e vincolo nuovi).
+5. Il backend **non** si rompe: non scrive stati fuori bozza (BE4) e non legge il nome della porta.
+
+✅ **Fatto da Tid il 2026-11-16**: l'apply e i pgTAP verdi. La doc auto-generata è rigenerata: le schede delle tre
+funzioni portano la porta e il trigger nuovi, quella della tabella il vincolo `…_valido_dal_fuori_bozza`, la
+scheda della copia `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` (verificato dalla sessione DB). Resta il commit.
+
+### 13.6 Richieste al team BE (sbloccate il 2026-11-16)
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE4 ✅ | — | Verificata dalla sessione DB: `create_versione` fissa `BOZZA`, `VERSIONE_UPDATE_COLUMNS` non ha `stato`, la pubblicazione chiama il verbo; i test BE con versioni pubblicate sono mock. Niente da fare |
+| BE15 | `backend/apps/documenti/services/template_versioni_admin_service.py:161-164` (`_CHECK_CONSTRAINTS`); `backend/apps/core/tests/services/test_payload_helpers.py:848-854`; `docs/it/backend/documenti/manual/api_documenti_templates.md:509` | Il vincolo si chiama `chk_template_documenti_versioni_valido_dal_fuori_bozza` e vale per ogni stato fuori bozza. Dal backend non si raggiunge più (l'`INSERT` fuori bozza lo ferma prima il guard, la pubblicazione chiede `valido_dal`): la voce si rinomina o esce |
+| BE16 | `error_policies_generated.py` (rigenerato), `error_messages_fallback.py` | I quattro codici nuovi: `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` e `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` (`TECNICO`), `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA` e `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` (`CONFLITTO_STATO`); la nota di `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` riscritta |
+
+Facoltativo, non bloccante: il frontend può spegnere «Pubblica» su una bozza spenta, invece di aspettare il 409. Il
+clone nello stesso modello (`clone_versione`) riceve ora il numero conteso come `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`
+e non più come `IntegrityError`; la mappa `_UNIQUE_CONSTRAINTS` resta per `create_versione`.

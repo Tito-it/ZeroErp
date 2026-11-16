@@ -99,12 +99,16 @@ SELECT is(
 -- ============================================================
 -- Pubblico la v1 e verifico anti-overlap
 -- ============================================================
-UPDATE documenti.template_documenti_versioni
-   SET stato = 'PUBBLICATA'
- WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-   AND versione = 1;
+-- ⚠️ Una versione esce dalla bozza solo dal verbo della pubblicazione (guard
+--   dello stato, 20261116-02): le pubblicazioni del test lo percorrono.
+SELECT documenti.fn_pubblica_template_documento_versione(
+  (SELECT id FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template) AND versione = 1),
+  DATE '2026-01-01', 1, DATE '2026-06-30');
 
--- 3) Anti-overlap: una seconda v2 PUBBLICATA con range sovrapposto deve fallire
+-- 3) Anti-overlap: una v2 che parte lo stesso giorno della v1 pubblicata. La
+--    pubblicazione chiude solo le versioni che iniziano PRIMA: qui la
+--    sovrapposizione resta, e la ferma il vincolo.
 INSERT INTO documenti.template_documenti_versioni (
   template_documento_id, versione, stato, titolo, html_template,
   render_engine_id, valido_dal, valido_al, versione_contesto
@@ -115,10 +119,10 @@ SELECT (SELECT id FROM tmp_tdv_template),
        DATE '2026-04-01', DATE '2026-09-30', 1;
 
 SELECT throws_ok(
-  $$UPDATE documenti.template_documenti_versioni
-       SET stato = 'PUBBLICATA'
-     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-       AND versione = 2$$,
+  $$SELECT documenti.fn_pubblica_template_documento_versione(
+      (SELECT id FROM documenti.template_documenti_versioni
+        WHERE template_documento_id = (SELECT id FROM tmp_tdv_template) AND versione = 2),
+      DATE '2026-01-01', 1, DATE '2026-09-30')$$,
   '23P01',
   NULL,
   'Anti-overlap: PUBBLICATA con range sovrapposto bloccata'
@@ -134,10 +138,10 @@ SELECT (SELECT id FROM tmp_tdv_template),
        (SELECT render_id FROM tmp_tdv_ctx),
        DATE '2026-07-01', DATE '2026-12-31', 1;
 
-UPDATE documenti.template_documenti_versioni
-   SET stato = 'PUBBLICATA'
- WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-   AND versione = 3;
+SELECT documenti.fn_pubblica_template_documento_versione(
+  (SELECT id FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template) AND versione = 3),
+  DATE '2026-07-01', 1, DATE '2026-12-31');
 
 SELECT is(
   (SELECT stato FROM documenti.template_documenti_versioni
