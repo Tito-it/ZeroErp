@@ -22,8 +22,9 @@
 #         8. transazione atomica: INSERT documento_generato +
 #            documento_generato_file + evento `GENERATO` + storage.write
 #            dentro lo stesso `with`;
-#         9. cleanup STORAGE_ORPHAN best-effort se il commit fallisce
-#            post-write (file scritto, record DB rolled back).
+#         9. se il commit fallisce post-write (file scritto, record DB
+#            rolled back) i file si cancellano best-effort: file orfano,
+#            solo nel log.
 #
 #        Decisioni di design rilevate:
 #         - render PRIMA del DB (Decisione 32: render fail = niente record,
@@ -48,6 +49,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
 from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.db.formati_file import estensione_del_formato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.parameter_service import ParameterService
@@ -86,14 +88,14 @@ E_TEMPLATE_NON_RISOLTO = "E_DOCUMENTI_TEMPLATE_NON_RISOLTO"
 # (`script.fn_sorgente_chiave`), registrato nella policy generata.
 E_SORG_NOT_FOUND = "E_SORG_NOT_FOUND"
 
-# Codice del tipo file usato in v1 (seed `tipi_file_documento` Fase A).
+# Codice del tipo file del PDF principale (seed `tipi_file_documento`).
 # Memoria feedback_no_hardcoded_ids: lookup per codice, non ID numerici.
 _CODICE_TIPO_FILE_PDF_FINALE = "PDF_FINALE"
 
 # Codice tipo file per gli allegati caricati dall'utente sul documento
 # generato (file secondari, `is_principale=false`). Seed DB dedicato
-# (brief 2026-05-27): senza il tipo file ALLEGATO attivo l'INSERT fallisce
-# sul guard `trgfn_child_requires_active_parent`.
+# (brief 2026-05-27); i formati che ammette stanno nel DB
+# (`documenti.tipi_file_documento_formati`).
 _CODICE_TIPO_FILE_ALLEGATO = "ALLEGATO"
 
 # Tipo evento della ristampa fedele (percorso 3). Distinto da `GENERATO`
@@ -106,21 +108,10 @@ _EVENTO_RISTAMPA_FEDELE = "RISTAMPA_FEDELE"
 # MIME canonical del file principale generato in v1.
 _MIME_PDF = "application/pdf"
 
-# Whitelist MIME ammessi per gli allegati (decisione 2026-05-27 con Tid:
-# PDF + immagini). Allineata al pattern asset (`template_asset_admin_service`):
-# nessun upload generico libero.
-_MIME_WHITELIST_ALLEGATO: frozenset[str] = frozenset({
-    "application/pdf",
-    "image/jpeg",
-    "image/png",
-})
-
-# Fallback estensione per MIME allegato (usato se file_name senza estensione).
-_MIME_EXT_FALLBACK_ALLEGATO: dict[str, str] = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg",
-    "image/png": "png",
-}
+# ⚠️ `_MIME_WHITELIST_ALLEGATO` e `_MIME_EXT_FALLBACK_ALLEGATO` sono uscite il
+#    2026-11-16 (BE12 di brief-db-revisione-documenti): i formati ammessi
+#    dal tipo ALLEGATO si leggono dal DB col tipo (`get_tipo_file_documento_by_codice`,
+#    BB `sql_formati_ammessi`), e il DB li giudica di nuovo all'INSERT.
 
 # Parametro `config.parameters` per il limite size di un singolo allegato.
 _PARAM_ALLEGATO_MAX_MB = "documenti_allegato_upload_max_mb"
@@ -218,10 +209,13 @@ class DocumentGenerationService:
             self._v.guard_positive_int(sorgente_riga, field="sorgente_riga")
 
         # 0-bis) valida+prepara gli allegati PRIMA del render (fail-fast su
-        #        MIME/size: niente render sprecato se un allegato e' invalido).
-        #        Lista vuota se nessun allegato: persist solo del principale.
+        #        formato/size: niente render sprecato se un allegato e'
+        #        invalido). Il tipo ALLEGATO, coi formati che ammette, si legge
+        #        solo se ci sono allegati. Lista vuota se nessun allegato:
+        #        persist solo del principale.
+        tipo_allegato = self._resolve_tipo_allegato() if allegati else None
         allegati_prep = self._valida_e_prepara_allegati(
-            allegati, emittente_fiscale_id,
+            allegati, emittente_fiscale_id, tipo_allegato,
         )
 
         # 1) autorizzazione: path web deriva lo scope dallo user (auth guard
@@ -295,19 +289,18 @@ class DocumentGenerationService:
             _CODICE_TIPO_FILE_PDF_FINALE
         )
         ErrorManager.require(
-            tipo_file is not None and tipo_file.get("attivo"),
+            tipo_file is not None,
             code=E_VALIDATION,
-            message="Tipo file 'PDF_FINALE' non configurato o non attivo.",
+            message="Tipo file 'PDF_FINALE' non configurato.",
         )
         assert tipo_file is not None
         tipo_file_id = tipo_file["id"]
 
-        # 8-bis) lookup tipo_file ALLEGATO solo se ci sono allegati (no ID
-        #        hardcoded). Risolto fuori dalla transazione: errore parlante
-        #        prima di INSERT/storage.
-        tipo_allegato_id: int | None = None
-        if allegati_prep:
-            tipo_allegato_id = self._resolve_tipo_allegato_id()
+        # 8-bis) il tipo_file ALLEGATO e' gia' letto al passo 0-bis (solo se
+        #        ci sono allegati): qui se ne prende l'id.
+        tipo_allegato_id: int | None = (
+            int(tipo_allegato["id"]) if tipo_allegato is not None and allegati_prep else None
+        )
 
         # 9) sequenza atomica: INSERT 3 record + storage.write
         progressivo = self._repo.next_progressivo_sorgente(
@@ -416,9 +409,8 @@ class DocumentGenerationService:
 
                 # Da questo punto in poi: l'uscita dal `with` fa il commit;
                 # se il commit fallisce, i file sono gia' su disk -> cleanup
-                # nel finally. Il record DB risulta rolled back, l'evento
-                # STORAGE_ORPHAN non e' linkabile (FK NOT NULL su
-                # documento_generato_id) -> log warning + cleanup file.
+                # nel finally. Il record DB risulta rolled back: il file
+                # orfano resta solo nel log (warning) e si cancella.
                 need_cleanup = True
             need_cleanup = False  # commit OK
         finally:
@@ -818,11 +810,13 @@ class DocumentGenerationService:
     #        consente — la regola di stato vive lato dominio). Pipeline:
     #         1. guard id + auth + scope emittente;
     #         2. lookup documento (404 unificato no leak);
-    #         3. valida+prepara allegati (MIME/size) usando l'emittente del
+    #         3. legge il tipo ALLEGATO coi suoi formati, poi valida+prepara
+    #            gli allegati (formato/size) usando l'emittente del
     #            documento per lo storage_key;
     #         4. transazione atomica: INSERT righe file secondarie + storage
     #            write, ordinamento progressivo dopo i file esistenti;
-    #         5. cleanup STORAGE_ORPHAN best-effort se il commit fallisce.
+    #         5. se il commit fallisce, cancella best-effort i file scritti
+    #            (file orfani, solo nel log).
     #        Ritorna l'elenco degli allegati persistiti (id + nome + size).
     def aggiungi_allegati(
         self,
@@ -847,13 +841,16 @@ class DocumentGenerationService:
         assert documento is not None
 
         emittente_fiscale_id = int(documento["emittente_fiscale_id"])
-        prepared = self._valida_e_prepara_allegati(allegati, emittente_fiscale_id)
+        tipo_allegato = self._resolve_tipo_allegato()
+        prepared = self._valida_e_prepara_allegati(
+            allegati, emittente_fiscale_id, tipo_allegato,
+        )
         ErrorManager.require(
             len(prepared) > 0,
             code=E_VALIDATION,
             message="Nessun allegato valido da aggiungere.",
         )
-        tipo_allegato_id = self._resolve_tipo_allegato_id()
+        tipo_allegato_id = int(tipo_allegato["id"])
 
         storage = self._storage_factory()
         written_uris: list[str] = []
@@ -1345,7 +1342,9 @@ class DocumentGenerationService:
     #        e' un dict `{file_bytes, mime_type, file_name}` (il view estrae
     #        i bytes da request.FILES). Controlli fail-fast:
     #         - file non vuoto;
-    #         - MIME ∈ whitelist (PDF/jpeg/png);
+    #         - MIME fra i formati del tipo ALLEGATO (`tipo_allegato["formati"]`,
+    #           letti dal DB): e' la stessa regola che il DB applica
+    #           all'INSERT, detta PRIMA del render;
     #         - size <= `documenti_allegato_upload_max_mb`.
     #        Ritorna lista di record pronti per il persist (sha256 +
     #        storage_key deterministici, file_name sanitizzato). Lista vuota
@@ -1354,9 +1353,13 @@ class DocumentGenerationService:
         self,
         allegati: list[dict[str, Any]] | None,
         emittente_fiscale_id: int,
+        tipo_allegato: dict[str, Any] | None,
     ) -> list[dict[str, Any]]:
         if not allegati:
             return []
+        assert tipo_allegato is not None
+        formati: list[dict[str, Any]] = list(tipo_allegato.get("formati") or [])
+        mime_ammessi = {f["mime_type"] for f in formati}
         max_mb = self._params.get_parameter_int(_PARAM_ALLEGATO_MAX_MB)
         max_bytes = max_mb * 1024 * 1024
         prepared: list[dict[str, Any]] = []
@@ -1370,12 +1373,13 @@ class DocumentGenerationService:
                     message="Allegato vuoto o non leggibile.",
                     detail=f"allegato_index={idx} file_name={name!r}",
                 )
-            if mime not in _MIME_WHITELIST_ALLEGATO:
+            if mime not in mime_ammessi:
+                ammessi = ", ".join(f["estensione"].upper() for f in formati)
                 ErrorManager.raise_error(
                     code=E_VALIDATION,
                     message=(
                         "Tipo file allegato non ammesso. "
-                        "Ammessi: PDF, JPEG, PNG."
+                        f"Ammessi: {ammessi or 'nessuno'}."
                     ),
                     detail=f"allegato_index={idx} mime={mime!r}",
                 )
@@ -1388,7 +1392,7 @@ class DocumentGenerationService:
                 )
             file_bytes_immutable = bytes(file_bytes)
             sha = self._sha256_bytes(file_bytes_immutable)
-            ext = self._resolve_extension_allegato(name, mime)
+            ext = self._resolve_extension_allegato(name, mime, formati)
             prepared.append({
                 "file_bytes": file_bytes_immutable,
                 "mime_type": mime,
@@ -1399,19 +1403,21 @@ class DocumentGenerationService:
             })
         return prepared
 
-    # Scopo: Risolve l'id del tipo file ALLEGATO (lookup per codice, no ID
-    #        hardcoded). Errore parlante se il seed manca o e' disattivato.
-    def _resolve_tipo_allegato_id(self) -> int:
+    # Scopo: Il tipo file ALLEGATO (lookup per codice, no ID hardcoded):
+    #        `{id, codice, formati}`. Errore parlante se il seed manca.
+    #        ⚠️ Niente controllo «non attivo» dal 2026-11-16 (BE11): il
+    #        vocabolario non ha `attivo`, un tipo c'e' o non c'e'.
+    def _resolve_tipo_allegato(self) -> dict[str, Any]:
         tipo = self._repo.get_tipo_file_documento_by_codice(
             _CODICE_TIPO_FILE_ALLEGATO,
         )
         ErrorManager.require(
-            tipo is not None and tipo.get("attivo"),
+            tipo is not None,
             code=E_VALIDATION,
-            message="Tipo file 'ALLEGATO' non configurato o non attivo.",
+            message="Tipo file 'ALLEGATO' non configurato.",
         )
         assert tipo is not None
-        return int(tipo["id"])
+        return tipo
 
     # Scopo: INSERT righe file secondarie + storage write per gli allegati,
     #        dentro una transazione gia' aperta dal caller. Accumula gli
@@ -1460,7 +1466,7 @@ class DocumentGenerationService:
         return persistiti
 
     # Scopo: Cleanup best-effort dei file storage scritti quando il commit DB
-    #        fallisce (STORAGE_ORPHAN). Non solleva: logga e prosegue per non
+    #        fallisce (file orfano, solo nel log). Non solleva: logga e prosegue per non
     #        mascherare l'eccezione originale del commit.
     def _cleanup_storage_orphans(
         self,
@@ -1483,14 +1489,16 @@ class DocumentGenerationService:
                     uri, pdf_hash,
                 )
 
-    # Scopo: Estensione lower-case dell'allegato dal file_name; fallback al
-    #        MIME se l'estensione manca o non e' plausibile.
-    def _resolve_extension_allegato(self, file_name: str, mime: str) -> str:
+    # Scopo: Estensione lower-case dell'allegato dal file_name; ripiego
+    #        sull'estensione del formato (dal DB) se manca o non e' plausibile.
+    def _resolve_extension_allegato(
+        self, file_name: str, mime: str, formati: list[dict[str, Any]],
+    ) -> str:
         _, ext = os.path.splitext(file_name or "")
         ext = ext.lstrip(".").lower().strip()
         if ext and ext.isalnum() and len(ext) <= 10:
             return ext
-        return _MIME_EXT_FALLBACK_ALLEGATO.get(mime, "bin")
+        return estensione_del_formato(formati, mime) or "bin"
 
     # Scopo: Sanitizza il nome file allegato: basename (no path traversal) +
     #        troncamento alla lunghezza massima. Fallback se vuoto.

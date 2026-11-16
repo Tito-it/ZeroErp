@@ -32,7 +32,6 @@ import { parseIsoDate } from '../../core/utils/date'
 import { payloadVersione } from '../utils/templateVersionePayload'
 import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import AppDrawer from '../../core/components/AppDrawer.vue'
-import LookupSelect from '../../core/components/LookupSelect.vue'
 import TemplateAssetRiferimenti from './TemplateAssetRiferimenti.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -71,6 +70,11 @@ const { opzioni: formatOptions } = useLookupEtichettato(
 )
 const { opzioni: orientationOptions } = useLookupEtichettato(
   { rel: 'documenti.orientamenti_pagina' }, { campoCodice: 'codice_interno' },
+)
+// Il motore di stampa, nella stessa forma dal 2026-11-16 (BE13 di
+// brief-db-revisione-documenti): il valore e' l'id della FK `render_engine_id`.
+const { opzioni: renderEngineOptions } = useLookupEtichettato(
+  { rel: 'documenti.render_engine_documento' }, { campoCodice: 'id' },
 )
 
 // Lo stato della versione letta: solo una BOZZA si modifica.
@@ -239,10 +243,13 @@ const azione = computed(() => {
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.versioni.field_render_engine') }} *</label>
-          <LookupSelect
+          <Select
             v-model="form.render_engine_id"
-            rel="documenti.render_engine_documento"
+            :options="renderEngineOptions"
+            option-label="label"
+            option-value="value"
             :placeholder="t('config.modelli_documenti.versioni.field_render_engine_placeholder')"
+            fluid
           />
         </div>
         <div class="form-field">

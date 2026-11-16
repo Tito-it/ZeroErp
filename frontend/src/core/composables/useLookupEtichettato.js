@@ -40,7 +40,8 @@ import { labelOrCode } from '../utils/i18nLabel'
  * @param {Object} opzioni
  * @param {string} opzioni.campoCodice - il campo che porta il codice della
  *   riga: `codice` (default) o `codice_interno` — la chiave STABILE del
- *   lookup generico, quella che il backend valida.
+ *   lookup generico, quella che il backend valida —, oppure `id` quando la
+ *   tendina scrive una FK sull'id (i vocabolari dei modelli di stampa).
  * @param {string} opzioni.campoEtichettaKey - il campo con l'indirizzo i18n
  *   (default `etichetta_key`)
  * @param {string|Function|import('vue').Ref} opzioni.tutti - l'etichetta
@@ -81,10 +82,16 @@ export function useLookupEtichettato(sorgente, {
   //        chiave dichiarata dal DB; il codice grezzo se la riga non c'e'
   //        (fail-visible). Reattiva al locale perche' `t`/`te` sono quelli
   //        del componente che monta.
+  // ⛔ Il ripiego e' un CODICE, mai un id (2026-11-16): con `campoCodice:
+  //    'id'` (le tendine sulle FK dei vocabolari dei modelli di stampa) una
+  //    chiave assente dai locales mostrava il numero della riga, che non dice
+  //    niente a nessuno. La riga c'e', quindi il suo `codice` si legge.
   function etichetta(codice) {
     if (codice == null) return ''
     const riga = perCodice.value.get(codice)
-    return riga ? labelOrCode(t, te, riga[campoEtichettaKey], codice) : codice
+    if (!riga) return codice
+    const ripiego = campoCodice === 'id' ? (riga.codice ?? codice) : codice
+    return labelOrCode(t, te, riga[campoEtichettaKey], ripiego)
   }
 
   // Scopo: risolve l'etichetta «tutti» in ogni forma ammessa.

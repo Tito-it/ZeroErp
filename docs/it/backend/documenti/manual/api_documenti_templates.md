@@ -120,8 +120,9 @@ stata verificata alla stampa. Brief:
         "is_default": true,
         "attivo": true,
         "tipo_documento_output_id": 1,
-        "tipo_documento_output_codice": "PDF_FINALE",
-        "tipo_documento_output_descrizione": "PDF finale",
+        "tipo_documento_output_codice": "PREVENTIVO",
+        "tipo_documento_output_descrizione": "Preventivo",
+        "tipo_documento_output_etichetta_key": "documenti.tipi_documento_output.preventivo",
         "sorgente_tipo_id": 10,
         "sorgente_tipo_codice": "PREVENTIVO",
         "sorgente_tipo_descrizione": "Preventivo vendita",
@@ -142,6 +143,11 @@ stata verificata alla stampa. Brief:
 
 Su un modello standard `emittente_fiscale_id`, `emittente_fiscale_codice` ed
 `emittente_ragione_sociale` sono `null`.
+
+`tipo_documento_output_etichetta_key` (dal 2026-11-16) è l'indirizzo i18n che il
+vocabolario dichiara: la lista lo traduce, come le tendine del tipo di documento.
+`tipo_documento_output_descrizione` resta per l'ordinamento e l'export. La
+risoluzione per emittente (`GET /api/v1/documenti/templates/risoluzione/`) porta la stessa coppia.
 
 - `400`: parametri non validi (query param int malformato, `order_by` fuori whitelist)
 - `401`: JWT mancante o non valido
@@ -784,7 +790,7 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). ⚠️ dal 2026-09-27 `page`/`page_size` non sono letti; lo schema OpenAPI li dichiara ancora |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). Ogni riga porta il tipo come `asset_tipo_codice`, `asset_tipo_descrizione` e, dal 2026-11-16, `asset_tipo_etichetta_key` (l'indirizzo i18n che la lista traduce). ⚠️ dal 2026-09-27 `page`/`page_size` non sono letti; lo schema OpenAPI li dichiara ancora |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |

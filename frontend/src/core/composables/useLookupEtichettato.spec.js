@@ -83,6 +83,19 @@ describe('useLookupEtichettato', () => {
     expect(perInterno.etichetta('X')).toBe('X')
   })
 
+  it('col valore sull\'id il ripiego e\' il CODICE della riga, mai il numero', () => {
+    const perId = useLookupEtichettato({ chiave: 'c', fetcher: vi.fn() }, { campoCodice: 'id' })
+    cache.get('c').value = [
+      { id: 4, codice: 'LOTTO', etichetta_key: 'config.tipi_entita.lotto' },
+      { id: 9, codice: 'NUOVO', etichetta_key: 'config.tipi_entita.nuovo' },
+    ]
+    expect(perId.etichetta(4)).toBe('Lotto')
+    expect(perId.etichetta(9)).toBe('NUOVO')
+    expect(perId.opzioni.value[1]).toEqual({ value: 9, label: 'NUOVO' })
+    // Un id che non e' fra le righe non ha un codice da leggere: resta com'e'.
+    expect(perId.etichetta(99)).toBe(99)
+  })
+
   it('le opzioni: la voce «tutti» in testa solo se chiesta, poi il catalogo etichettato', () => {
     const senza = useLookupEtichettato(SORGENTE_K, { campoCodice: 'codice_interno' })
     cache.get('k').value = REGISTRI

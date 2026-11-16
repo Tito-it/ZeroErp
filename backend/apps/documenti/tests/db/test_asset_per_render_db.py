@@ -33,6 +33,7 @@ import unittest
 from django.db import connection
 
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.documenti.tests.db._stampa import tipo_asset_che_ammette
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -55,8 +56,7 @@ class AssetPerRenderDbTests(unittest.TestCase):
     # Scopo: crea un asset attivo e valido oggi, con `codice` diverso da
     #        `codice_interno`; torna il suo id.
     def _crea_asset(self, cur, repo, emittente: int, impronta: str) -> int:
-        cur.execute("SELECT id FROM documenti.tipi_asset_documento WHERE attivo ORDER BY id LIMIT 1")
-        asset_tipo = cur.fetchone()[0]
+        asset_tipo = tipo_asset_che_ammette(cur, "image/png")
         return repo.create_asset({
             "codice": "LOGO_ETICHETTA",
             "codice_interno": "RENDERLOGO",

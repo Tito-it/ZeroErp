@@ -423,17 +423,24 @@ class GetTipoFileDocumentoByCodiceTests(TestCase):
     def test_get_tipo_file_documento_by_codice_returns_dict_or_none(
         self, mocked_factory
     ) -> None:
-        cursor_ok = _mk_cursor(fetchone_results=[(2, "PDF_FINALE", True)])
+        formati = [{"mime_type": "application/pdf", "estensione": "pdf",
+                    "etichetta_key": "config.formati_file.pdf"}]
+        cursor_ok = _mk_cursor(
+            fetchone_results=[(2, "PDF_FINALE", formati)],
+            descriptions=[_columns("id", "codice", "formati")],
+        )
         mocked_factory.return_value = cursor_ok
         row = DocumentiRepository().get_tipo_file_documento_by_codice(
             "PDF_FINALE",
         )
         self.assertEqual(
-            row, {"id": 2, "codice": "PDF_FINALE", "attivo": True},
+            row, {"id": 2, "codice": "PDF_FINALE", "formati": formati},
         )
         sql, params = cursor_ok.execute.call_args_list[0].args
         self.assertIn("FROM documenti.tipi_file_documento", sql)
-        self.assertIn("WHERE codice_interno = %s", sql)
+        self.assertIn("WHERE t.codice_interno = %s", sql)
+        self.assertIn("documenti.tipi_file_documento_formati", sql)
+        self.assertNotIn("attivo", sql)
         self.assertEqual(params, ["PDF_FINALE"])
 
         cursor_none = _mk_cursor(fetchone_results=[None])
