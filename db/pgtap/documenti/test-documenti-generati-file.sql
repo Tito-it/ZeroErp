@@ -78,12 +78,17 @@ WITH ins_v AS (
     render_engine_id, valido_dal, valido_al, versione_contesto
   )
   SELECT (SELECT id FROM tmp_dgf_template),
-         1, 'PUBBLICATA', 'v1', '<html>v1</html>',
+         1, 'BOZZA', 'v1', '<html>v1</html>',
          (SELECT render_id FROM tmp_dgf_ctx),
          DATE '2026-01-01', DATE '2026-12-31', 1
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dgf_versione FROM ins_v;
+
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+SELECT documenti.fn_pubblica_template_documento_versione(
+  (SELECT id FROM tmp_dgf_versione), DATE '2026-01-01', 1, DATE '2026-12-31');
 
 -- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
 --   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
