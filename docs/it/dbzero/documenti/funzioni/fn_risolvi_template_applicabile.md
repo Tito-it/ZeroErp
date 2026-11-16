@@ -19,15 +19,15 @@ CREATE OR REPLACE FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_
 AS $function$
 -- Scopo: il modello e la versione con cui si stampa un documento
 --   della sorgente p_sorgente_tipo_id dell'emittente
---   p_emittente_fiscale_id. La porta unica (rev 20261021-09,
---   brief-db-modelli-documento-standard §10.3 K-2):
---   * senza p_template_documento_id: strada B (§4.1 Q-2), il
---     modello lo sceglie la regola dei due livelli
---     (fn_template_esito_risoluzione);
---   * con p_template_documento_id: il modello indicato si verifica,
---     coerenza col documento (fn_template_motivo_non_coerente) e
---     stampabilita' oggi (vw_template_versioni_stampabili).
---   «Puo' stampare» sta nella vista, una volta sola.
+--   p_emittente_fiscale_id. La porta unica:
+--   * senza p_template_documento_id il modello lo sceglie la
+--     regola dei due livelli (fn_template_esito_risoluzione);
+--   * con p_template_documento_id il modello indicato si
+--     verifica: coerenza col documento
+--     (fn_template_motivo_non_coerente) e stampabilita' oggi
+--     (fn_template_motivo_non_stampabile).
+--   «Puo' stampare» sta in vw_template_versioni_stampabili, una
+--   volta sola.
 DECLARE
     v_tipo         documenti.template_documenti.tipo_documento_output_id%TYPE;
     -- tipo esplicito: conteggi e motivi, non colonne
@@ -35,11 +35,12 @@ DECLARE
     v_motivo       text;
     v_esito        text;
     v_n_propri     integer;
+    -- tipo esplicito: il nome del documento viene dal tipo o,
+    -- senza tipo, dalla sorgente (due colonne di tipo diverso)
+    v_documento    text;
     v_template_id  documenti.template_documenti.id%TYPE;
     v_versione_id  documenti.template_documenti_versioni.id%TYPE;
-    v_attivo       documenti.template_documenti.attivo%TYPE;
     v_codice       documenti.template_documenti.codice%TYPE;
-    v_tipo_nome    documenti.tipi_documento_output.descrizione%TYPE;
     v_sorgente     config.sorgenti.codice_interno%TYPE;
 BEGIN
     -- 0) Argomenti: solo un chiamante rotto li manda male.
@@ -91,7 +92,7 @@ BEGIN
                 'p_template_documento_id (non e'' un modello)');
         END IF;
 
-        SELECT t.codice, t.attivo INTO v_codice, v_attivo
+        SELECT t.codice INTO v_codice
           FROM documenti.template_documenti t
          WHERE t.id = p_template_documento_id;
 
@@ -114,13 +115,9 @@ BEGIN
                 END);
         END IF;
 
-        SELECT s.template_versione_id INTO v_versione_id
-          FROM documenti.vw_template_versioni_stampabili s
-         WHERE s.template_documento_id = p_template_documento_id;
+        v_motivo := documenti.fn_template_motivo_non_stampabile(p_template_documento_id);
 
-        IF v_versione_id IS NULL THEN
-            v_motivo := CASE WHEN v_attivo THEN 'NESSUNA_VERSIONE_VALIDA'
-                             ELSE 'MODELLO_SPENTO' END;
+        IF v_motivo IS NOT NULL THEN
             PERFORM script.fn_log_and_raise_error(
                 'documenti', 'fn_risolvi_template_applicabile',
                 'E_DOCUMENTI_TEMPLATE_NON_STAMPABILE',
@@ -131,9 +128,13 @@ BEGIN
                 v_codice::text,
                 CASE v_motivo
                   WHEN 'MODELLO_SPENTO' THEN 'è disattivato'
-                  ELSE 'non ha una versione pubblicata valida oggi'
+                  ELSE 'non ha una versione in vigore oggi'
                 END);
         END IF;
+
+        SELECT s.template_versione_id INTO v_versione_id
+          FROM documenti.vw_template_versioni_stampabili s
+         WHERE s.template_documento_id = p_template_documento_id;
 
         template_documento_id := p_template_documento_id;
         livello := 'INDICATO';
@@ -171,10 +172,16 @@ BEGIN
         END IF;
     END IF;
 
+    -- Il nome del documento per le frasi: il tipo, se c'e'; senza
+    -- tipo (nessun modello stampabile da cui dedurlo), la sorgente.
     IF v_tipo IS NOT NULL THEN
-        SELECT o.descrizione INTO v_tipo_nome
+        SELECT o.descrizione INTO v_documento
           FROM documenti.tipi_documento_output o
          WHERE o.id = v_tipo;
+    ELSE
+        SELECT coalesce(so.descrizione::text, so.codice_interno::text) INTO v_documento
+          FROM config.sorgenti so
+         WHERE so.id = p_sorgente_tipo_id;
     END IF;
 
     -- 2) L'esito dei due livelli: la regola e' del BB. Qui si
@@ -194,7 +201,7 @@ BEGIN
                 'emittente_fiscale_id',     p_emittente_fiscale_id,
                 'modelli_stampabili',       v_n_propri),
             NULL::uuid,
-            coalesce(v_tipo_nome::text, '?'));
+            coalesce(v_documento, p_sorgente_tipo_id::text));
     END IF;
 
     IF v_esito = 'NON_RISOLTO' THEN
@@ -206,7 +213,7 @@ BEGIN
                 'sorgente_tipo_id',         p_sorgente_tipo_id,
                 'emittente_fiscale_id',     p_emittente_fiscale_id),
             NULL::uuid,
-            coalesce(v_tipo_nome::text, '?'));
+            coalesce(v_documento, p_sorgente_tipo_id::text));
     END IF;
 
     template_documento_id := v_template_id;
@@ -217,7 +224,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_risolvi_template_applicabile(p_sorgente_tipo_id bigint, p_emittente_fiscale_id bigint, p_tipo_documento_output_id bigint, p_template_documento_id bigint)
-IS 'La porta unica: il modello e la versione con cui si stampa un documento (2026-10-21, brief-db-modelli-documento-standard §10.3 K-2, D-4 di Tid). Senza p_template_documento_id: strada B (§4.1 Q-2), l''esito di documenti.fn_template_esito_risoluzione; livello EMITTENTE (il suo predefinito stampabile) o STANDARD (il predefinito standard stampabile); E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO se l''emittente ha modelli suoi stampabili ma nessuno predefinito (lo standard non entra), E_DOCUMENTI_TEMPLATE_NON_RISOLTO se non stampa nemmeno lo standard. Tipo di output facoltativo: si deduce solo se fra i modelli stampabili della sorgente utilizzabili dall''emittente ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO. Con p_template_documento_id: il modello indicato si verifica, livello INDICATO; E_DOCUMENTI_TEMPLATE_NON_COERENTE se non e'' adatto al documento (motivo SORGENTE, TIPO, EMITTENTE: documenti.fn_template_motivo_non_coerente), E_DOCUMENTI_TEMPLATE_NON_STAMPABILE se oggi non puo'' stampare (motivo MODELLO_SPENTO, NESSUNA_VERSIONE_VALIDA). «Puo'' stampare» = documenti.vw_template_versioni_stampabili. Argomenti rotti, o un id che non e'' un modello: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello, template_versione_id).';
+IS 'La porta unica: il modello e la versione con cui si stampa un documento. Senza p_template_documento_id, l''esito di documenti.fn_template_esito_risoluzione: livello EMITTENTE (il suo predefinito che stampa) o STANDARD (il predefinito standard che stampa); E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO se l''emittente ha modelli suoi che stampano ma nessuno predefinito (lo standard non entra), E_DOCUMENTI_TEMPLATE_NON_RISOLTO se non stampa nemmeno lo standard. Il tipo di documento e'' facoltativo: si deduce solo se fra i modelli che stampano della sorgente, utilizzabili dall''emittente, ce n''e'' uno solo, altrimenti E_DOCUMENTI_TEMPLATE_AMBIGUO; senza tipo, le frasi nominano il documento con la sorgente. Con p_template_documento_id il modello indicato si verifica, livello INDICATO: E_DOCUMENTI_TEMPLATE_NON_COERENTE se non e'' adatto al documento (motivo SORGENTE, TIPO, EMITTENTE: documenti.fn_template_motivo_non_coerente), E_DOCUMENTI_TEMPLATE_NON_STAMPABILE se oggi non puo'' stampare (motivo MODELLO_SPENTO, NESSUNA_VERSIONE_VALIDA: documenti.fn_template_motivo_non_stampabile). «Puo'' stampare» e'' documenti.vw_template_versioni_stampabili. Argomenti rotti, o un id che non e'' un modello: E_DOCUMENTI_RISOLVI_TEMPLATE_INPUT_INVALIDO. L''emittente e'' quello del documento, gia'' letto sotto RLS dal chiamante: niente scope qui. Restituisce una riga (template_documento_id, livello, template_versione_id).';
 ```
 
 </div>

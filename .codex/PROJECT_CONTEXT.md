@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-15.
+> Ultima revisione: 2026-11-16.
 
 ## Identità del Progetto
 
@@ -255,9 +255,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `20261115-91 … -98`: forma unica, sola lettura, formati di file nel DB; `-99` per il sync dello storico) applicato
   il 2026-11-16, pgTAP verdi (§12): il BE da ora si rompe sui lettori di `attivo` (BE11), e FE1 (21 chiavi i18n) va
   prima del merge. Giro 3 («la pubblicazione», `20261116-01 … -04`: lo stato fuori bozza solo dal verbo, la bozza
-  spenta, i controlli della copia) applicato il 2026-11-16, pgTAP verdi (§13): da committare; BE15 e BE16 sbloccate,
-  nessuna rottura BE.
-  Poi i giri 4 e 5; Q13 nel giro 4.
+  spenta, i controlli della copia) applicato e committato il 2026-11-16 (§13); BE15 e BE16 sbloccate, nessuna rottura
+  BE. Giro 4 («risoluzione, scarto, asset», `20261116-05 … -09`: la stampa nasce dalla versione in uso (Q13), lo
+  scarto con `STANDARD_NON_STAMPA`, il «?» tolto, le risorse utilizzabili in una vista) scritto il 2026-11-16 e
+  provato sullo scratch (§14): da verificare, applicare e committare; poi BE6, BE6-bis, BE17. Poi il giro 5.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

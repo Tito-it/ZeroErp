@@ -159,6 +159,12 @@ WITH v AS (
 SELECT t.lato, v.id AS versione_id, v.template_documento_id AS template_id
   FROM v JOIN _template t ON t.template_id = v.template_documento_id;
 
+-- ⚠️ Una stampa nasce dalla versione con cui il modello stampa oggi (coerenza
+--   alla nascita, 20261116-07): le versioni escono di bozza dal verbo, in
+--   vigore dal 2026-01-01.
+SELECT documenti.fn_pubblica_template_documento_versione(v.versione_id, DATE '2026-01-01', 1, NULL)
+  FROM _versioni v;
+
 -- ⚠️ I quattro campi devono COMBACIARE con quelli del template: lo pretende
 --   `trgfn_documenti_generati_check_coerenza` (versione -> template, tipo
 --   output, sorgente, emittente). Un solo campo fuori posto e il documento non

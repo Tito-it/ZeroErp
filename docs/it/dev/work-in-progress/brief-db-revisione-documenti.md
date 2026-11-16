@@ -1,12 +1,12 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 3 applicato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 4 scritto)
 
-**Riparte: Tid**, col commit del giro 3 («la pubblicazione», `20261116-01 … -04`), applicato il 2026-11-16 con i
-pgTAP verdi e la doc auto-generata rigenerata (§13.5); poi la sessione DB, col giro 4 al via di Tid. I giri 1 e 2
-sono applicati e committati (§11, §12; il giro 2 in `2fc00ffd1e`). Il team BE/FE ha le ricadute del giro 2 (§12.6:
-⛔ il backend si rompe sui lettori di `attivo`, BE11; FE1, le 21 chiavi i18n, prima del merge su `Tito-dev`) e
-quelle del giro 3, sbloccate e non bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (2026-11-16).
+**Riparte: Tid**, con `/verifica-db` e l'apply del giro 4 («risoluzione, scarto, asset»: D5, D9, D19, Q13;
+`20261116-05 … -09`), scritto il 2026-11-16 e provato sullo scratch (§14). I giri 1, 2 e 3 sono applicati e
+committati (§11, §12, §13; il giro 3 in `3367e5146e`). Il team BE/FE ha le ricadute del giro 2 (§12.6: ⛔ il backend si rompe sui lettori di
+`attivo`, BE11; FE1, le 21 chiavi i18n, prima del merge su `Tito-dev`) e quelle del giro 3, sbloccate e non
+bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (2026-11-16).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -27,13 +27,16 @@ quelle del giro 3, sbloccate e non bloccanti (§13.6: BE15, BE16). Q13-Q15 e la 
 | 15 | team BE/FE | BE5, BE11-BE14 — sbloccate, BE11 subito (il backend è rotto); FE1 prima del merge | §12.6 | 14 ✅ |
 | 16 | ✅ sessione DB | Giro 3 scritto: quattro changeSet, quattro codici errore, un pgTAP nuovo, otto riscritti, pagine `manual/` e guida | §13 | 14 |
 | 18 | ✅ Tid | Giro 3 applicato (2026-11-16): pgTAP verdi, doc auto-generata rigenerata | §13.5 | 16 |
-| 21 | Tid | Il commit del giro 3 | §13.1 | 18 ✅ |
+| 21 | ✅ Tid | Il commit del giro 3 (`3367e5146e`) | §13.1 | 18 ✅ |
 | 19 | team BE | BE15, BE16 del giro 3 — sbloccate, nessuna rottura; BE4 verificata | §13.6 | 18 ✅ |
-| 20 | sessione DB | I giri 4 e 5, uno alla volta, col via di Tid (nel 4 anche Q13) | §2 | 21 |
+| 22 | ✅ sessione DB | Giro 4 scritto: cinque changeSet, le note di sette codici, un pgTAP nuovo, quattro riscritti, pagine `manual/` e guida | §14 | 21 ✅ |
+| 23 | Tid | `/verifica-db`, l'apply del giro 4, i pgTAP, la doc auto-generata, il commit | §14.5 | 22 |
+| 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — dopo l'apply, nessuna rottura | §14.6 | 23 |
+| 20 | sessione DB | Il giro 5, col via di Tid | §2 | 23 |
 | 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
 
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 3 (§13.1: quattro changeSet, i due CSV degli
-errori, il pgTAP nuovo e gli otto riscritti, le pagine `manual/` e la guida, la doc auto-generata rigenerata), questo brief, `PROJECT_CONTEXT.md`.
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 4 (§14.1: cinque changeSet, i due CSV degli
+errori, il pgTAP nuovo e i quattro riscritti, le pagine `manual/` e la guida), questo brief, `PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -69,7 +72,7 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 | 1 ✅ applicato il 2026-11-16 (§11) | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
 | 2 ✅ applicato il 2026-11-16 (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
 | 3 ✅ applicato il 2026-11-16 (§13) | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
-| 4 | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
+| 4 ✍️ scritto il 2026-11-16 (§14) | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
 | 5 | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2 (e BE1, se non già fatto) | Quello che nessun giro precedente ha già aperto |
 
 Fuori dai giri: lo script di Q11 (§3.6), a mano su dbdev. Chiusi senza modifiche: D6, D14, D17 (§3.3).
@@ -89,7 +92,8 @@ Forma compatta: **fatto** · **correzione decisa** · **presidio**. Le classi so
 | **C** | D11, D12, D13, D15, D16, D18, D19 | D14, D17 |
 
 ⚠️ **Dal 2026-11-15 D1, D2, D7, D8, D10, D11, D12, D18, D20 sono scritti nel giro 1** (§11), applicati il
-2026-11-16; D15 e D16 nel giro 2 (§12), applicati il 2026-11-16; D3, D4 e D13 nel giro 3 (§13), applicati il 2026-11-16.
+2026-11-16; D15 e D16 nel giro 2 (§12), applicati il 2026-11-16; D3, D4 e D13 nel giro 3 (§13), applicati il 2026-11-16;
+D5, D9, D19 e Q13 nel giro 4 (§14), scritti il 2026-11-16.
 Le sezioni qui sotto restano come censimento; la correzione effettiva, con quello che è cambiato rispetto a qui
 (il BB di D18 esisteva già), sta in §11.2.
 
@@ -306,8 +310,9 @@ Da girare al team quando il giro DB corrispondente è applicato, salvo BE1.
 | BE7 | 1 | D7/D11: gli stati e l'evento ritirati escono dal servizio (`document_generation_service.py:89` ha anche un commento «seed Fase A»; i commenti su `STORAGE_ORPHAN` a `:25`, `:420`, `:825`, `:1463`, `storage/base.py:33`, `template_asset_admin_service.py:265` diventano «file orfano, solo nel log»); il badge di `DocumentiGeneratiSorgenteList.vue:104` resta col solo `GENERATO` |
 | BE5 | 2 | D15: `_MIME_WHITELIST_PER_TIPO` (`template_asset_admin_service.py:53-75`) si ritira, la lista si legge dal vocabolario dei tipi di asset; il form può mostrare i formati ammessi; `ALTRO` esce dalla tendina. `_ENGINE_WHITELIST` (`render_service.py:54`) resta |
 | BE4 ✅ | 3 | D3: l'applicazione non scrive più uno stato fuori bozza: verificare che nessun servizio lo faccia fuori da `fn_pubblica_template_documento_versione`. **Verificato dalla sessione DB il 2026-11-16** (§13.6): niente da fare |
-| BE6 | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB |
-| BE6-bis | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n |
+| BE6 | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB. Percorso intero in §14.6 |
+| BE6-bis | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n. Percorso intero in §14.6 |
+| BE17 | 4 | Note e fallback dei codici della risoluzione e della coerenza (§14.6) |
 | BE2 | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida» |
 | BE8 | — | `template_service.py:36`, `_STATI_VERSIONE_VALIDI`, ricopia gli stati della versione: da verificare se serve, o se si leggono dal DB |
 
@@ -734,3 +739,122 @@ scheda della copia `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` (verificato dalla sessi
 Facoltativo, non bloccante: il frontend può spegnere «Pubblica» su una bozza spenta, invece di aspettare il 409. Il
 clone nello stesso modello (`clone_versione`) riceve ora il numero conteso come `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`
 e non più come `IntegrityError`; la mappa `_UNIQUE_CONSTRAINTS` resta per `create_versione`.
+
+## 14. Giro 4 — risoluzione, scarto, asset (scritto il 2026-11-16)
+
+Via di Tid il 2026-11-16 («riprendi le attività del documento», dopo il commit del giro 3). Decisioni di
+riferimento: Q4 e Q13 (§7). Numeri dal primo libero.
+
+### 14.1 Che cosa è scritto
+
+| ChangeSet | Che cosa | Difetti |
+| --- | --- | --- |
+| `20261116-05` (`20_code/documenti`) | `documenti.fn_template_motivo_non_stampabile(modello, versione DEFAULT NULL)`, `BEGIN ATOMIC`: perché il modello oggi non stampa (`MODELLO_INESISTENTE`, `MODELLO_SPENTO`, `NESSUNA_VERSIONE_VALIDA`, `VERSIONE_NON_IN_USO`), letto da `vw_template_versioni_stampabili` e non ricopiato. Gemello di `fn_template_motivo_non_coerente`. Il COMMENT della vista delle stampabili elenca il lettore nuovo | Q13 (regola del 2) |
+| `-06` (`20_code/documenti`) | `fn_risolvi_template_applicabile`: senza tipo, le frasi nominano il documento con la sorgente (descrizione, o codice) invece di «?»; il modello indicato chiede il motivo al BB; la frase di `NESSUNA_VERSIONE_VALIDA` dice «in vigore». Commento e COMMENT al presente; firma `%TYPE` come nel `20261021-09` | D9, M6, M §4.3 |
+| `-07` (`20_code/documenti`) | `trgfn_documenti_generati_check_coerenza`: la terza domanda, il modello stampa oggi con la versione della stampa (il BB con la versione). Stesso codice, `E_DOCUMENTI_GENERATO_COERENZA`, col motivo nel contesto; la prima domanda prende anche lei un motivo, `VERSIONE_DI_ALTRO_MODELLO`. Commento e COMMENT al presente | Q13, M §4.3 |
+| `-08` (`20_code/documenti`) | `vw_template_personalizzati_scarto`: lo standard di riferimento si sceglie come prima e si cerca fra quelli che stampano con un join esterno; lo stato `STANDARD_NON_STAMPA` viene per primo; `standard_template_documento_id` nomina lo standard anche quando non stampa. Stesse colonne; COMMENT al presente | D5, M §4.3 |
+| `-09` (`20_code/documenti`) | `documenti.vw_template_asset_utilizzabili`, `security_invoker`: le risorse accese e valide alla data operativa, con id, azienda, tipo, codice interno | D19 |
+
+**CSV**: `config/codici_errore.csv`, le note dei sei codici della risoluzione e di `E_DOCUMENTI_GENERATO_COERENZA`
+riscritte al presente (via brief, «rev», sigle; M6: «in vigore» al posto di «PUBBLICATA»; i motivi nuovi);
+`messaggi_errore.csv`, messaggio, causa e soluzione di `E_DOCUMENTI_GENERATO_COERENZA` (la frase dice anche
+«oggi non stampano»). Nessun codice nuovo.
+
+**pgTAP**: nuovo `documenti/test-documenti-risoluzione-scarto-asset-v1.sql` (26 test, soggetti costruiti: un'azienda
+nuova, tre suoi modelli, tre risorse; anche i casi di §5 sulla risoluzione: `NON_RISOLTO` nella vista e nella stampa,
+i motivi `SORGENTE` e `TIPO` chiesti direttamente, la versione di un altro modello). Riscritti: `test-documenti-versione-contesto-v1`
+e `rls/test-rls-documenti-satelliti` (stampavano da una bozza: la versione si pubblica dal verbo prima delle stampe);
+`test-documenti-template-porta-unica-v1` (l'8 sulla frase «in vigore», il 13 sulla frase nuova della coerenza);
+`test-documenti-template-standard-v1` (il 25 sulla frase nuova della coerenza; 37-38 aggiunti dalla revisione,
+§14.7: lo standard d'origine, o il predefinito della coppia, che non stampa più).
+
+**Doc**: pagine `manual/` nuove `fn_template_motivo_non_stampabile`, `vw_template_asset_utilizzabili`; riscritte
+`fn_risolvi_template_applicabile` (tolto il limite del «?»), `trgfn_documenti_generati_check_coerenza`,
+`vw_template_personalizzati_scarto` (tolto il limite dello standard che non stampa), `vw_template_versioni_stampabili`,
+`fn_template_motivo_non_coerente`, `template_asset` (tolto il limite «nessuna sede DB»), `documenti_generati` (tolto il
+limite Q13). Guida `documenti-e-stampe` §2.4, §3.4, §4.3, §11, §12.
+
+### 14.2 Che cosa è cambiato rispetto al censimento
+
+* **Q13 ha estratto un BB.** La risoluzione componeva «perché il modello indicato non stampa» sul posto (vista +
+  modello acceso); la coerenza della stampa è la seconda occorrenza. Il BB è gemello di
+  `fn_template_motivo_non_coerente`, e la frase per l'operatore resta una sola, nella risoluzione: il trigger,
+  come per le altre sue regole, mette solo il motivo nel contesto. Nessun codice nuovo.
+* **«Alla data» (la domanda di §11.4)**: è la data operativa al momento dell'`INSERT`, la stessa che la
+  risoluzione usa un istante prima. La versione deve essere proprio quella in uso, non una qualunque valida in
+  passato: una stampa nuova da una versione superata è il caso che Q13 chiude. La ristampa fedele non scrive
+  stampe (rilegge la vecchia), e non passa di qui.
+* **Sorgente e azienda non si guardano.** La risoluzione non le guarda, e la stampa segue il suo documento, che
+  esiste (lo verifica il guard della sorgente). Le eccezioni ATTIVO del giro 1 restano intere.
+* **Il trigger resta `SECURITY INVOKER`.** Modelli e versioni non hanno sicurezza di riga (letto sullo scratch il
+  2026-11-16, `relrowsecurity = false`; la stampa sì): non c'è una riga correlata che chi scrive non vede.
+* **D19 è una vista, come la regola gemella delle versioni.** Il backend la legge con un join nel render e con
+  `EXISTS`/`NOT EXISTS` nel filtro della lista (BE6). Fino a BE6 la regola ha due copie: lo dice la pagina della vista.
+* **D5: niente ripiego**, come deciso (Q4). Senza standard di riferimento, `standard_template_documento_id` è NULL;
+  con uno standard d'origine spento, lo nomina.
+* **Due fixture stampavano da una bozza** («il patto della forma non guarda lo stato»): con Q13 la stampa nasce
+  solo dalla versione in uso, e le fixture pubblicano dal verbo prima.
+
+### 14.3 Fatti datati (scratch, 2026-11-16)
+
+* `relrowsecurity`: `documenti_generati` sì; `template_documenti`, `template_documenti_versioni`, `template_asset` no.
+* Gli standard di seed sono dei sei documenti di vendita, ciascuno col tipo della sua sorgente (changeSet di
+  `80_data`): il pgTAP costruisce le coppie senza standard su (CONTRATTO, PREVENTIVO) e sulla sorgente
+  `ORDINE_ACQUISTO`.
+
+### 14.4 Le prove (scratch, owner, estratto in `ROLLBACK`)
+
+Con la simulazione del messaggio riscritto di `E_DOCUMENTI_GENERATO_COERENZA` (un changeSet di prova fuori dal repo).
+
+* Il test nuovo: senza l'estratto si interrompe al 4 (il BB non esiste), con l'estratto 26 su 26.
+* I quattro riscritti, senza → con: `-template-porta-unica-v1` 15 → 17 su 17, `-template-standard-v1` 35 → 36 su 36
+  (38 dopo la revisione, §14.7), `-versione-contesto-v1` 14 → 15 su 15 (i rossi senza sono le frasi nuove), `rls/test-rls-documenti-satelliti`
+  13 su 13 in entrambe. Prima della riscrittura, con l'estratto, i due che stampavano da una bozza erano rossi
+  (`-versione-contesto-v1` 11 su 15, `rls/…-satelliti` interrotto): il caso che Q13 chiude.
+* Invariati senza e con: gli altri 19 pgTAP di `documenti`, `config/test-grammatica-etichetta-sorgenti-v1`,
+  `config/test-fk-auth-user-ponte-django-v1`, `dbops/test-sorgenti-struttura-v1`,
+  `script/test-trgfn-default-emittente-fiscale-v1`, `vendite/test-registri-per-emittente-v1` (anche loro scrivono
+  stampe). Rossi uguali nelle due corse, da owner: `-generati-eventi` 1, `-lookup` 1, `-template-standard-app-v1` 5,
+  `-vocabolari-forma-v1` 1, `-pubblicazione-e-copia-v1` 8 (senza la ridefinizione del proprietario usata nel giro 3).
+* Presidi verdi senza e con: `comment-al-presente` (`dbops`, `catalogo`), `riferimenti-morti`,
+  `security-definer-search-path`, `codici-errore-identita`, `costanti-catalogo-citate-dal-codice`,
+  `builder-pgtap-vincoli-immediate`, `stati-check-scrittori`, `vw-codici-errore-motivo-nominato`,
+  `vw-codici-errore-valore-atteso`, `rls-perimetro-scoperto`, `rls-viste-security-invoker`,
+  `catalogo-messaggi-errore-completo`, `rubinetto-primo-motivo`.
+* Cancelli statici della CI verdi (il `forme_changeset` ha fermato una prima stesura della risoluzione senza
+  `%TYPE`: corretta); `prossimo_changeset --doppi` pulito. Catalogo identico prima e dopo ogni prova.
+
+### 14.5 Per l'apply (Tid)
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply; poi `ci_apply` come sempre. Nessun trigger nuovo, nessun montaggio cambiato.
+3. I pgTAP: il nuovo, i quattro riscritti (§14.1) e i presidi di §14.4.
+4. La doc auto-generata rigenerata: nascono le schede di `fn_template_motivo_non_stampabile` e di
+   `vw_template_asset_utilizzabili`; cambiano quelle di risoluzione, coerenza, scarto e stampabili (COMMENT).
+5. Il backend **non** si rompe: nessuna colonna tolta, nessun codice nuovo. Una stampa da una versione che non è
+   quella in uso ora è rifiutata, ma il servizio la sceglie dalla risoluzione un istante prima.
+
+### 14.6 Richieste al team BE/FE (dopo l'apply)
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE6 | `backend/apps/documenti/db/documenti_repository.py:404` (`_ASSET_UTILIZZABILE_OGGI`), `:1086-1093` (filtro `utilizzabili` della lista), `:1142-1162` (`get_asset_per_render`); `backend/apps/documenti/tests/services/test_documenti_repository_asset.py:184-188` | La condizione esce: il render legge `documenti.vw_template_asset_utilizzabili` (join su `template_asset_id`), la lista con `EXISTS` / `NOT EXISTS` sulla vista. Il test che confronta la stringa si riscrive sulla vista |
+| BE6-bis | `frontend/src/locales/it.json:5854-5862` e `en.json` (blocco `config.modelli_documenti.scarto`); `frontend/src/core/utils/severity.js:810-824` (`STATO_SCARTO_TEMPLATE_MAP`); `backend/apps/documenti/db/documenti_repository.py:450-453` (il commento elenca gli stati) | Lo stato nuovo `STANDARD_NON_STAMPA` della colonna «Allineamento allo standard»: le due chiavi (`STANDARD_NON_STAMPA`, `_hint`: «Lo standard con cui confrontarla manca, è spento o oggi non stampa») e il colore (proposta: `warn`) |
+| BE17 | `backend/apps/core/services/error_policies_generated.py` (rigenerato), `error_messages_fallback.py:447`, `:460-461` | Le note riscritte dei sei codici della risoluzione e di `E_DOCUMENTI_GENERATO_COERENZA`. I fallback: `E_DOCUMENTI_GENERATO_COERENZA` dice anche che il modello oggi non stampa; `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` dice «in vigore» invece di «pubblicata valida» |
+
+Il servizio di stampa non cambia: sceglie modello e versione dalla risoluzione e li scrive un istante dopo.
+
+### 14.7 Revisione del giro 4 (`/verifica`, 2026-11-16)
+
+Letti i cinque changeSet contro la doc auto-generata (corpi di risoluzione, coerenza e scarto: cambiano solo le
+righe dichiarate), i CSV, il pgTAP nuovo e i quattro riscritti, le pagine `manual/` e la guida; verificato che il
+servizio di stampa scriva la versione restituita dalla risoluzione (`document_generation_service._resolve_template`)
+e che vista e funzione nuove ricevano i privilegi dal loop di `ci_apply` (linee-guida-sql §11.8).
+
+* **Corretto — il caso principale di D5 non aveva un test.** Il pgTAP nuovo prova solo la coppia senza standard
+  (`standard_template_documento_id` NULL); lo standard d'origine che smette di stampare, e la colonna che lo nomina
+  comunque, no. Aggiunti 37-38 a `test-documenti-template-standard-v1` (runner owner: spegne la v2 dello standard).
+  Prova sullo scratch con la simulazione del messaggio: senza l'estratto 35 su 38, con l'estratto intero 38 su 38;
+  con l'estratto senza `-08` 36 su 38, rossi proprio 37 e 38.
+* Corrette due frasi: la testata del pgTAP nuovo contava l'11 fra i casi corretti dal giro (era già rifiutato); la
+  pagina di `fn_template_motivo_non_stampabile` non nominava le versioni scadute fra i casi di `NESSUNA_VERSIONE_VALIDA`.

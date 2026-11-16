@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RISORSE UTILIZZABILI OGGI HANNO UNA SEDE NEL DATABASE
+#   documenti.vw_template_asset_utilizzabili (nuova)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   «Una risorsa (logo, firma, immagine) si usa se e' accesa e valida alla data
+#   operativa» viveva solo nel backend, in una condizione SQL scritta come
+#   stringa (_ASSET_UTILIZZABILE_OGGI di documenti_repository) e letta da due
+#   punti: il render, che cerca la risorsa citata dal modello, e il filtro
+#   «utilizzabili» della lista delle risorse. Una regola di business senza sede
+#   nel database. D19 della revisione di documenti (2026-11-14).
+#   La forma e' quella della regola gemella sulle versioni,
+#   documenti.vw_template_versioni_stampabili: una vista security_invoker, una
+#   riga per risorsa utilizzabile. Il backend la legge (BE6): il render con un
+#   join, la lista con EXISTS / NOT EXISTS.
+#
+# -- LA FORMA --------------------------------------------------------------
+#   Colonne: l'id della risorsa e le tre chiavi con cui la cercano i lettori
+#   (azienda, tipo, codice interno). Il resto si legge dalla tabella.
+#   security_invoker, come le altre viste dello schema: la tabella si legge coi
+#   privilegi di chi interroga. I privilegi li da' il loop dei grant.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-09-create-vw-template-asset-utilizzabili-mctit.yaml
+
+  - changeSet:
+      id: 20261116-09-create-vw-template-asset-utilizzabili
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La vista delle risorse dei modelli utilizzabili oggi (accese e valide alla data operativa):
+        la sede della regola che il backend teneva in una stringa SQL.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW documenti.vw_template_asset_utilizzabili
+                  WITH (security_invoker = true) AS
+              SELECT a.id AS template_asset_id,
+                     a.emittente_fiscale_id,
+                     a.asset_tipo_id,
+                     a.codice_interno
+                FROM documenti.template_asset a
+               WHERE a.attivo
+                 AND a.validita @> (SELECT script.fn_data_operativa());
+
+              COMMENT ON VIEW documenti.vw_template_asset_utilizzabili IS
+                  'Le risorse dei modelli (loghi, firme, immagini, PDF, fogli di stile) che si possono usare oggi: accese e valide alla data operativa. Una riga per risorsa, con le chiavi con cui la si cerca: azienda, tipo, codice interno. Sede unica della regola «utilizzabile oggi», per il render, che cerca la risorsa citata dal modello, e per il filtro delle risorse utilizzabili della lista. Si legge con i privilegi di chi interroga (security_invoker).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS documenti.vw_template_asset_utilizzabili;

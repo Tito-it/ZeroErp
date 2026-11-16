@@ -5,7 +5,7 @@
 -- pgTAP test per Zero ERP
 -- Test: il modello di documento STANDARD (brief-db-modelli-documento-standard §4.1)
 -- ------------------------------------------------------------
--- Elenco test (plan 36):
+-- Elenco test (plan 38):
 --  Struttura (Q-1)
 --   1) template_documenti.standard NOT NULL
 --   2) CHECK standard = (emittente NULL) presente, con quella definizione
@@ -51,6 +51,9 @@
 --  35) l'origine si eredita dalla versione precedente che la dichiara -> ALLINEATA
 --  Versione restituita (P-2)
 --  36) due versioni pubblicate, una sola valida oggi: la funzione restituisce quella
+--  Lo standard di riferimento che non stampa (D5, 20261116-08)
+--  37) la copia che ne deriva resta nello scarto: STANDARD_NON_STAMPA, e lo nomina
+--  38) la copia senza origine, col predefinito della coppia che non stampa: idem
 --
 -- Scopo:
 --  - provare sui casi COSTRUITI (non sulle righe di dbdev) il modello standard:
@@ -85,7 +88,7 @@ SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg standard', 'DRAF
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(36);
+SELECT plan(38);
 
 -- ============================================================
 -- Fixture
@@ -437,7 +440,8 @@ SELECT throws_like(
       FROM _k k
       JOIN documenti.template_documenti t ON t.codice_interno = 'pgtap-e2-2'
       JOIN documenti.template_documenti_versioni v ON v.template_documento_id = t.id$$,
-  '%Incoerenza referenziale nel documento generato%',
+  -- La frase della coerenza copre anche la stampabilita' (20261116-07).
+  '%La stampa non si registra: il modello o la versione indicati non vanno bene%',
   '25) un documento di E1 col modello di E2 resta rifiutato');
 
 -- ============================================================
@@ -570,6 +574,33 @@ SELECT is(
      JOIN documenti.template_documenti_versioni v ON v.template_documento_id = t.id
     WHERE t.codice_interno = 'pgtap-e4-1' AND v.versione = 2),
   '36) due versioni pubblicate, una sola valida oggi: la funzione restituisce quella');
+
+-- ============================================================
+-- Lo standard di riferimento che non stampa (D5)
+-- ============================================================
+-- Si spegne la v2 dello standard: la v1 e' chiusa al 2026-06-30, e lo standard
+-- resta acceso e predefinito ma oggi non stampa. L'origine non e' un padre vivo
+-- (eccezione ATTIVO di derivata_da_versione_id): la v2 si spegne anche con le
+-- copie che ne derivano. Prima di 20261116-08 le due copie sparivano dalla vista.
+UPDATE documenti.template_documenti_versioni SET attivo = false WHERE id = (SELECT v2 FROM _sv);
+
+-- 37
+SELECT is(
+  (SELECT row(s.stato, s.standard_template_documento_id, s.standard_versione_id)::text
+     FROM documenti.vw_template_personalizzati_scarto s
+     JOIN documenti.template_documenti t ON t.id = s.template_documento_id
+    WHERE t.codice_interno = 'pgtap-c-allineata'),
+  (SELECT row('STANDARD_NON_STAMPA', s1, NULL::bigint)::text FROM _s),
+  '37) lo standard d''origine non stampa: la copia resta, STANDARD_NON_STAMPA, e lo nomina');
+
+-- 38
+SELECT is(
+  (SELECT row(s.stato, s.standard_template_documento_id, s.standard_versione_id)::text
+     FROM documenti.vw_template_personalizzati_scarto s
+     JOIN documenti.template_documenti t ON t.id = s.template_documento_id
+    WHERE t.codice_interno = 'pgtap-c-nondich'),
+  (SELECT row('STANDARD_NON_STAMPA', s1, NULL::bigint)::text FROM _s),
+  '38) senza origine, il predefinito della coppia non stampa: STANDARD_NON_STAMPA, e lo nomina');
 
 SELECT * FROM finish();
 ROLLBACK;
