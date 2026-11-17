@@ -147,8 +147,14 @@ SELECT ok(
         LIKE '%fn_indirizzi_obbligatori_ruolo(%'
     AND pg_get_functiondef('anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(integer, bigint, integer, date)'::regprocedure)
         !~ '(FROM|JOIN)\s+(config\.)?tipi_ruolo_tipi_indirizzo\M'
+    -- rev 2026-11-17 (giro 5, 20261116-41): il guard arriva al requisito
+    --   attraverso i mancanti del ruolo (fn_indirizzi_obbligatori_mancanti_ruolo).
     AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid)'::regprocedure)
-        LIKE '%anagrafiche.fn_indirizzi_obbligatori_ruolo(%'
+        LIKE '%anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(%'
+    -- ⚠️ BEGIN ATOMIC: pg_get_functiondef stampa i nomi rispetto al search_path
+    --   di chi legge (linee-guida-sql §5c); col runner lo schema non c'e'.
+    AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(bigint, bigint, date)'::regprocedure)
+        LIKE '%fn_indirizzi_obbligatori_ruolo(%'
     AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(bigint, uuid)'::regprocedure)
         !~ '(FROM|JOIN)\s+(config\.)?tipi_ruolo_tipi_indirizzo\M'
     AND pg_get_functiondef('dbops.fn_pgtap_crea_soggetto_ruolo(uuid, character varying, integer)'::regprocedure)

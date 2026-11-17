@@ -402,6 +402,18 @@ fatturazione di un cliente, da sola, no: l'errore dice che cosa manca, per nome
 | ruolo | [`fn_guard_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_ruolo) | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` |
 | soggetto | [`fn_guard_indirizzi_obbligatori_soggetto`](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto) | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` |
 
+**Il cambio di natura porta con sé gli indirizzi.** Una natura nuova può chiedere un indirizzo che quella di prima
+vietava: l'operatore non lo può aggiungere prima del cambio, e il cambio da solo sarebbe rifiutato. Per questo gli
+indirizzi che la natura nuova chiede si danno **nello stesso salvataggio** del cambio, e si scrivono dopo la natura.
+Quali sono lo dice [`fn_indirizzi_obbligatori_mancanti`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti):
+dato il soggetto e la natura proposta, gli indirizzi obbligatori che mancherebbero, prima sul soggetto e poi su ogni
+suo ruolo, ognuno col suo ripiego. È la stessa domanda che si fanno i due controlli
+([`fn_indirizzi_obbligatori_mancanti_soggetto`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto),
+[`fn_indirizzi_obbligatori_mancanti_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_ruolo)):
+ciò che il form chiede è ciò che il salvataggio pretende. Gli indirizzi che la natura nuova **vieta**, invece, si
+tolgono prima del cambio (sono motivi di
+[`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
+
 Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti.
 
 ## Ciclo di vita
@@ -732,6 +744,8 @@ Il modulo è coperto dal test `db/pgtap/anagrafiche/test-indirizzi-fallback.sql`
 Gli indirizzi obbligatori (R9) li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql`:
 il requisito sulla natura col ripiego, il rifiuto alla cancellazione e al cambio di tipo sui due layer, la
 sostituzione nella stessa transazione, il cambio di natura.
+Gli indirizzi che una natura proposta chiede li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql`,
+fino al salvataggio che cambia la natura e scrive gli indirizzi nella stessa transazione.
 
 ---
 

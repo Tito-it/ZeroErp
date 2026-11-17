@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA MANCA A UN RUOLO, SU UNA NATURA DATA
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(ruolo, natura, giorno)
+#     -> TABLE(tipo_indirizzo_id, ripiego_tipo_indirizzo_id)
+#   Brief: brief-db-fornitore-privato-indirizzi §12.5, giro 5.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   «Quali obbligatori mancano a questo ruolo» lo chiedono due lettori: il
+#   guard degli obbligatori del ruolo, sulla natura di oggi del soggetto, e
+#   il form del cambio di natura, sulla natura proposta (-43), che deve
+#   sapere quali indirizzi chiedere prima di salvare. Regola del 2: la
+#   domanda sta qui, e il guard la legge (-41).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   I requisiti del ruolo (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul
+#   suo tipo di ruolo e sulla natura PASSATA, non su quella del soggetto) che
+#   nessun indirizzo del ruolo soddisfa: ne' del tipo richiesto ne' del
+#   ripiego, istanze comprese. Ordinati per tipo richiesto: il primo e'
+#   quello che il guard nomina. Ruolo che non esiste: nessuna riga. Natura
+#   NULL: la natura non conta, come nel requisito.
+#   BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER: le tabelle lette non sono
+#   sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-39-create-fn-indirizzi-obbligatori-mancanti-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261116-39-create-fn-indirizzi-obbligatori-mancanti-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gli indirizzi obbligatori che mancano a un ruolo, su una natura data (quella di oggi o
+        quella proposta da un cambio): li leggono il guard e il form del cambio di natura.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                  p_soggetto_ruolo_id          anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_oggi                       config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS TABLE(
+                  tipo_indirizzo_id         config.tipi_ruolo_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  ripiego_tipo_indirizzo_id config.tipi_ruolo_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT o.tipo_indirizzo_id, o.ripiego_tipo_indirizzo_id
+                    FROM anagrafiche.soggetti_ruoli sr
+                   CROSS JOIN LATERAL anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                             sr.tipo_ruolo_id, p_tipo_soggetto_dettaglio_id, p_oggi) o
+                   WHERE sr.id = p_soggetto_ruolo_id
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.indirizzi i
+                            WHERE i.soggetto_ruolo_id = sr.id
+                              AND (i.tipo_indirizzo_id = o.tipo_indirizzo_id
+                                   OR i.tipo_indirizzo_id = o.ripiego_tipo_indirizzo_id))
+                   ORDER BY o.tipo_indirizzo_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un ruolo su una natura data, il giorno dato: i requisiti del ruolo (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura passata, non su quella del soggetto) che nessun indirizzo del ruolo (anagrafiche.indirizzi, istanze comprese) soddisfa, col tipo richiesto e il ripiego che lo sostituisce. Ordinati per tipo richiesto. Ruolo che non esiste: nessuna riga. Natura NULL: la natura non conta. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE);
