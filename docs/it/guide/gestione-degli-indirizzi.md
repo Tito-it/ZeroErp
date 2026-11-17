@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -405,7 +405,7 @@ fatturazione di un cliente, da sola, no: l'errore dice che cosa manca, per nome
 **Il cambio di natura porta con sé gli indirizzi.** Una natura nuova può chiedere un indirizzo che quella di prima
 vietava: l'operatore non lo può aggiungere prima del cambio, e il cambio da solo sarebbe rifiutato. Per questo gli
 indirizzi che la natura nuova chiede si danno **nello stesso salvataggio** del cambio, e si scrivono dopo la natura.
-Quali sono lo dice [`fn_indirizzi_obbligatori_mancanti`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti):
+Quali sono lo dice [`fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli):
 dato il soggetto e la natura proposta, gli indirizzi obbligatori che mancherebbero, prima sul soggetto e poi su ogni
 suo ruolo, ognuno col suo ripiego. È la stessa domanda che si fanno i due controlli
 ([`fn_indirizzi_obbligatori_mancanti_soggetto`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto),

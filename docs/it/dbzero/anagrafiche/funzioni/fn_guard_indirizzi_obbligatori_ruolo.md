@@ -44,17 +44,11 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT o.tipo_indirizzo_id, o.ripiego_tipo_indirizzo_id
+    SELECT m.tipo_indirizzo_id, m.ripiego_tipo_indirizzo_id
       INTO v_tipo_id, v_ripiego_id
-      FROM anagrafiche.fn_indirizzi_obbligatori_ruolo(
-               v_tipo_ruolo_id, v_natura_id, script.fn_data_operativa()) o
-     WHERE NOT EXISTS (
-             SELECT 1
-               FROM anagrafiche.indirizzi i
-              WHERE i.soggetto_ruolo_id = p_soggetto_ruolo_id
-                AND (i.tipo_indirizzo_id = o.tipo_indirizzo_id
-                     OR i.tipo_indirizzo_id = o.ripiego_tipo_indirizzo_id))
-     ORDER BY o.tipo_indirizzo_id
+      FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+               p_soggetto_ruolo_id, v_natura_id, script.fn_data_operativa()) m
+     ORDER BY m.tipo_indirizzo_id
      LIMIT 1;
 
     IF NOT FOUND THEN
@@ -83,7 +77,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(p_soggetto_ruolo_id bigint, p_tx_id uuid)
-IS 'Guard: il ruolo deve avere, fra i suoi indirizzi (anagrafiche.indirizzi, istanze comprese), ogni tipo che il requisito del ruolo chiede (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura del soggetto, il giorno di script.fn_data_operativa()), oppure il suo ripiego. Al primo mancante, per tipo richiesto, E_INDIRIZZO_OBBLIGATORIO_MANCANTE coi valori della frase nell''ordine tipo di ruolo e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Ruolo che non esiste (cancellato nella stessa transazione): tace. Id NULL o non positivo: E_SCRIPT_CHIAMATA_NON_VALIDA. Il tx_id va al log dell''errore. Sede unica del controllo del layer RUOLO: la chiamano i constraint trigger differiti di anagrafiche.soggetti_ruoli (anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required), di anagrafiche.indirizzi (anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo) e di anagrafiche.soggetti al cambio di natura (anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli). Gemello di anagrafiche.fn_guard_indirizzi_obbligatori_soggetto, il layer SOGGETTO. SECURITY INVOKER.';
+IS 'Guard: il ruolo deve avere, fra i suoi indirizzi (anagrafiche.indirizzi, istanze comprese), ogni tipo che il requisito del ruolo chiede (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura del soggetto, il giorno di script.fn_data_operativa()), oppure il suo ripiego: i mancanti li dice anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo, sulla natura del soggetto. Al primo mancante, per tipo richiesto, E_INDIRIZZO_OBBLIGATORIO_MANCANTE coi valori della frase nell''ordine tipo di ruolo e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Ruolo che non esiste (cancellato nella stessa transazione): tace. Id NULL o non positivo: E_SCRIPT_CHIAMATA_NON_VALIDA. Il tx_id va al log dell''errore. Sede unica del controllo del layer RUOLO: la chiamano i constraint trigger differiti di anagrafiche.soggetti_ruoli (anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required), di anagrafiche.indirizzi (anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo) e di anagrafiche.soggetti al cambio di natura (anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli). Gemello di anagrafiche.fn_guard_indirizzi_obbligatori_soggetto, il layer SOGGETTO. SECURITY INVOKER.';
 ```
 
 </div>

@@ -1,24 +1,26 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-17 (progetto consolidato al §15, decisioni prese, niente costruito)
+## ⏭️ Chi riparte — aggiornato al 2026-11-18 (progetto al §15 corretto dal §16, decisioni prese, niente costruito)
 
-**Riparte: Tid**, che dà il via al giro 1. Per costruire si legge **solo il §15**. I §4-§14 sono la storia di come
-ci si è arrivati: le prime stesure, l'analisi critica e la verifica. Restano per non ripercorrere le stesse strade,
-e dove dicono altro vale il §15.
+**Riparte: Tid**, che dà il via al giro 1 (Q17 e Q18 decise il 2026-11-18, §16.6). Per costruire si leggono **il §15 e il §16**:
+il §16 corregge il §15 sul segno «nata dal seed» (decisione A, revoca di D5), e dove i due dicono altro vale il §16.
+I §4-§14 sono la storia di come ci si è arrivati: le prime stesure, l'analisi critica e la verifica. Restano per non
+ripercorrere le stesse strade.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Il problema, la storia delle decisioni, la prima stesura, l'analisi critica, la porta, la verifica | §1-§14 | — |
 | 2 | ✅ sessione DB e Tid | Il progetto consolidato, con le decisioni Q10, Q11, D1-D9 | §15 | 1 |
-| 3 | Tid | Il via al giro 1 | — | 2 |
-| 4 | sessione DB | Le verifiche V2, V5, V6, V6-bis, V7, V8, V10 | §15.9 | 3 |
-| 5 | sessione DB | Il giro 1 | §15.8 | 4 |
+| 2-bis | ✅ sessione DB e Tid | La seconda analisi critica: il segno «nata dal seed» passa al registro (decisione A) | §16 | 2 |
+| 3 | Tid | ✅ Q17 e Q18 (2026-11-18); resta il via al giro 1 | §16.6 | 2-bis |
+| 4 | sessione DB | Le verifiche V2, V5, V6, V6-bis, V7, V8, V10, V11 | §15.9, §16.4 | 3 |
+| 5 | sessione DB | Il giro 1 | §15.8 con le correzioni di §16.3 | 4 |
 | 6 | Tid | `/verifica-db`, l'apply, i pgTAP, la doc auto-generata, il commit | — | 5 |
 | 7 | team BE/FE | Le ricadute R1-R5 | §15.12 | 6 |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6, 7 |
 
-**Decisioni aperte di Tid:** nessuna, resta solo il via (§15.10). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8
-(il titolo). **Da committare:** questo brief e il rimando nel registro dei residui.
+**Decisioni aperte di Tid:** nessuna, resta il via (Q17 e Q18 decise il 2026-11-18, §16.6). Da approvare dopo V10: la classificazione delle colonne di `email_template` (§15.4). Rinviate fuori dal
+giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** questo brief e il rimando nel registro dei residui.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -575,6 +577,9 @@ non sul conteggio: senza una tabella che la usa, non c'è un caso da costruire n
 > **Questa è la sola sezione da leggere per costruire.** Tiene insieme il modello (§3), le correzioni dell'analisi
 > critica (§12), la porta di servizio (§13), la verifica del piano (§14) e le decisioni di Tid del 2026-11-17
 > (§15.10). Dove i §4-§14 dicono altro, vale questa.
+>
+> ⚠️ **Corretta dal §16 (2026-11-17)** sul segno «nata dal seed»: regole 6-8, §15.2, §15.3, §15.6, §15.7, D5,
+> D5-bis, R2 e R4. L'elenco puntuale è al §16.3; dove i due dicono altro, vale il §16.
 
 Fatti letti dalla struttura per scriverla:
 
@@ -582,7 +587,8 @@ Fatti letti dalla struttura per scriverla:
   senza confronto con `OLD`, e `user_insert` all'`INSERT`, che poi non riscrive più. Ci scrive lo username Django
   (`app.jwt_user`) se c'è, altrimenti il ruolo (`CURRENT_USER`);
 - i trigger delle due tabelle. Su `email_account` scattano `a10_*_block_deact` (due), `a10_lock_columns`
-  (`codice_interno`), `a15_codice_maiuscolo` e l'audit. Su `email_template` l'audit c'è solo all'`INSERT`;
+  (`codice_interno`), `a15_codice_maiuscolo` e l'audit. ~~Su `email_template` l'audit c'è solo all'`INSERT`~~
+  ⚠️ corretto il 2026-11-17 (§16.5): su `email_template` l'audit c'è all'`INSERT` **e** all'`UPDATE`;
 - `dbops.fn_sessione_del_migratore()`, `script.fn_is_proprietario_tabella`, `anagrafiche.fn_crea_auth_user`,
   `script.fn_categoria_accesso`, `dbops.vw_credenziali_da_sanare`;
 - `email_repository.py` e `email_views.py`: l'app crea e cancella account e template suoi, cambia il `codice` del
@@ -617,12 +623,16 @@ Fatti letti dalla struttura per scriverla:
    chiamato dall'app, un job.
 5. **Una riga è personalizzata** quando l'installazione ha cambiato almeno una colonna dell'installazione
    (`NEW IS DISTINCT FROM OLD` su quelle colonne). Resta personalizzata anche dopo una bonifica fatta con la porta.
-6. **Una riga è nata dal seed** se il suo `user_insert` è `'SEED'` (caricata dal CSV prima che esistesse l'audit,
+6. ⚠️ **Revocata dal §16.2 (2026-11-17):** «nata dal seed» si legge dal registro, e `user_insert` si legge una volta
+   sola, all'iscrizione della tabella. Testo di prima:
+   **Una riga è nata dal seed** se il suo `user_insert` è `'SEED'` (caricata dal CSV prima che esistesse l'audit,
    come su un database nuovo), oppure se è il nome di un ruolo del migratore (caricata dal migrate con l'audit
    acceso). Vale sulle righe che esistono già, senza bonifiche.
 7. **Una riga nata dal seed non si cancella**: si spegne (`attivo = false`). Le righe create dall'installazione si
    cancellano come oggi.
-8. **Gli username dell'app e i ruoli del database sono disgiunti.** Nessuna credenziale può chiamarsi `SEED` o
+8. ⚠️ **Ridimensionata da Q17 (§16.6, Tid 2026-11-18):** resta solo il motivo `NOME_DI_RUOLO_DB` del presidio in
+   `vw_credenziali_da_sanare`; il divieto in `fn_crea_auth_user` non nasce. Testo di prima:
+   **Gli username dell'app e i ruoli del database sono disgiunti.** Nessuna credenziale può chiamarsi `SEED` o
    come un ruolo di `pg_roles`, senza distinguere maiuscole e minuscole. Vale per tutte e tre le categorie di
    accesso (`OPERATORE`, `ALTRO`, `SISTEMA`): la regola 6 si regge su questa.
 9. **La porta di manutenzione** (`zeroerp.allow_*`) si apre solo dalla sessione del migratore e lascia una
@@ -668,7 +678,8 @@ dell'installazione) e quando, l'ultimo passaggio dalla porta e da chi. Una tabel
 Serve a tre cose: la diagnosi «righe in cui il CSV porta un valore diverso» (la funzione di divergenze della
 regola la legge da qui), la traccia della porta e, in un giro futuro, il «ripristina il valore di fabbrica» (Q7).
 
-«Nata dal seed» non si registra: si legge da `user_insert` (regola 6).
+~~«Nata dal seed» non si registra: si legge da `user_insert` (regola 6).~~ ⚠️ Revocato dal §16.2 (2026-11-17): il
+registro tiene **solo le righe nate dal seed**, e la presenza della riga nel registro è il segno.
 
 ### 15.4 La dichiarazione di una tabella
 
@@ -761,8 +772,8 @@ nel test, e l'installazione si simula come fanno i test di `fn_sessione_del_migr
    `DELETE` di una riga dell'installazione: passa.
 7. La porta accesa dall'installazione resta chiusa. Accesa dal migratore si apre, la riga resta personalizzata e
    il passaggio è registrato.
-8. Username `SEED`, o uguale a un ruolo con maiuscole diverse: `fn_crea_auth_user` rifiuta; una collisione
-   costruita a mano esce dal presidio.
+8. ⚠️ Corretto da Q17 (2026-11-18): niente rifiuto in `fn_crea_auth_user`. Una collisione costruita a mano
+   (username `SEED`, o uguale a un ruolo con maiuscole diverse) esce dal presidio.
 9. Blocco per riga: su una riga personalizzata il software non cambia nessuna colonna non libera; su una
    riga intatta la aggiorna tutta.
 10. Blocco per colonna: una colonna aggiunta alla tabella di prova e non classificata esce dalle divergenze, e il runner lascia il
@@ -779,9 +790,9 @@ i test esistenti non lo costruiscono, si dichiara con uno `skip()` motivato.
 4. Il registro `dbops.seed_righe`.
 5. La funzione trigger, la regola d'automazione (runner, divergenze con le colonne non classificate, la riga nel
    catalogo dei presidi) e le due righe di §15.4.
-6. Il divieto in `fn_crea_auth_user` e il motivo `NOME_DI_RUOLO_DB` del presidio.
+6. Il motivo `NOME_DI_RUOLO_DB` del presidio. ⚠️ Il divieto in `fn_crea_auth_user` non nasce (Q17, 2026-11-18).
 7. I codici d'errore nuovi nel catalogo: `DELETE` di una riga di seed, colonna del software cambiata
-   dall'installazione, username vietato.
+   dall'installazione. ⚠️ Lo username vietato esce (Q17, 2026-11-18): i codici sono due.
 8. I pgTAP di §15.7.
 9. La documentazione: `linee-guida-sql.md` §11.7 (la terza specie, le colonne, la regola d'ingresso),
    `automazione-db.md`, `gestione-mail.md` e le pagine `manual/` dei building block, con il significato di
@@ -816,12 +827,13 @@ V3 e V4 non servono più: V3 per la regola 4, V4 per la regola 7.
 | D2 | Blocco per **colonna**: ogni colonna è dell'installazione o del software. `email_template` entra; il `codice` delle righe di seed non si cambia più | 2026-11-17 | Q5, Q12, §6 limite 1 |
 | D3 | Chi scrive si riconosce dal ruolo (sessione del migratore), non da `app.jwt_user` | 2026-11-17 | Q4, Q15 |
 | D4 | Il trigger scatta per primo; su queste tabelle `user_update` dice «l'ultimo che ci è passato sopra» | 2026-11-17 | Q14 |
-| D5 | «Nata dal seed» si legge da `user_insert` | 2026-11-17 | Q6, Q16 |
-| D5-bis | Username e ruoli del DB disgiunti: divieto in `fn_crea_auth_user` e presidio in `vw_credenziali_da_sanare` | 2026-11-17 | il limite di D5 |
+| D5 | ⚠️ **Revocata da D10 (2026-11-17).** «Nata dal seed» si legge da `user_insert` | 2026-11-17 | Q6, Q16 |
+| D5-bis | ⚠️ **Ridimensionata da Q17 (§16.6, 2026-11-18):** resta solo il presidio. Username e ruoli del DB disgiunti: divieto in `fn_crea_auth_user` e presidio in `vw_credenziali_da_sanare` | 2026-11-17 | il limite di D5 |
 | D6 | Dopo una bonifica con la porta la riga resta dell'installazione | 2026-11-17 | Q9 |
 | D7 | Si stringono solo le porte di manutenzione, con un building block che registra | 2026-11-17 | Q13 |
 | D8 | Nel blocco per colonna si elencano tutte e due le classi; una colonna non classificata è un presidio a zero e ferma la rigenerazione del trigger | 2026-11-17 | — |
 | D9 | **Di default il blocco è per riga** (colonne non dichiarate); il blocco per colonna è l'eccezione per le righe miste. `email_account` per riga, `email_template` per colonna | 2026-11-17 | ridimensiona D2 |
+| D10 | **«Nata dal seed» si registra** nel registro dal trigger, all'`INSERT` della sessione del migratore; le righe che esistono già le segna il runner all'iscrizione della tabella; una riga senza segno è dell'installazione (§16.2). Scartata la toppa su `user_insert` (§16.7) | 2026-11-17 | revoca D5 |
 
 Decise dalla forma: Q2 (il registro), Q3 (`WARNING` più la diagnosi del registro). Rinviate: Q7 (il ripristino) e
 Q8 (il titolo).
@@ -853,9 +865,133 @@ Sostituiscono il §11.
 | # | Che cosa | Dove |
 | --- | --- | --- |
 | R1 | Sulle righe nate dal seed «elimina» diventa «disattiva». Le righe create dall'installazione restano cancellabili | drawer degli account mail e dei template |
-| R2 | I tre codici d'errore nuovi nella tassonomia (api.md §Tassonomia errori) | backend |
+| R2 | I tre codici d'errore nuovi nella tassonomia (api.md §Tassonomia errori). ⚠️ Corretta da Q17 (2026-11-18): lo username vietato esce, i codici sono due | backend |
 | R3 | Sulle righe di seed del template il `codice` e `variabili_disponibili` non si modificano: il campo è spento, col motivo | drawer dei template |
-| R4 | Un validatore Django dello username con la regola 8, per `createsuperuser` e l'admin | backend |
+| R4 | Un validatore Django dello username con la regola 8, per `createsuperuser` e l'admin. ⚠️ **Ritirata da Q17 (2026-11-18):** non serve | backend |
 | R5 | Facoltativo, dopo Q7: un segno «personalizzata» sulla riga e il «ripristina» | frontend |
 
 L'elenco chiuso dei file lo scrive la sessione DB nel brief quando passa la richiesta al team, dopo l'apply.
+
+## 16. Il segno «nata dal seed» sta nel registro (decisione A, 2026-11-17)
+
+> **Da dove viene.** Una seconda analisi critica del §15, fatta il 2026-11-17 sul corpo di
+> `script.trgfn_audit_data_user_generic`, su quello di `dbops.fn_sessione_del_migratore()` e sui trigger delle due
+> tabelle (doc auto-generata). Ha trovato che la regola 6 (D5) non regge. Tid ha scelto la strada A, il segno nel
+> registro, e ha scartato la toppa su `user_insert` (§16.7). Questa sezione corregge il §15: dove i due dicono altro,
+> vale questa.
+
+### 16.1 Perché la regola 6 non regge
+
+La regola 7 («una riga nata dal seed non si cancella») si regge sul testo di `user_insert`, cioè su un'informazione
+scritta nella riga stessa. I difetti sono quattro, e vengono tutti da lì:
+
+1. **`user_insert` si riscrive.** L'audit lo imposta solo all'`INSERT`: su un `UPDATE` lascia passare il valore che
+   arriva. Il §15.1, regola 3, mette le colonne d'audit fra quelle libere, che nessuno protegge. Un `UPDATE … SET
+   user_insert = 'mario'` dall'app rende cancellabile `SISTEMA`; `SET user_insert = 'SEED'` rende intoccabile una
+   riga dell'installazione.
+2. **La domanda sul ruolo va in errore.** Su una riga dell'installazione `user_insert` è uno username Django.
+   `pg_has_role('mario', …)` non risponde `false`: alza «role does not exist». Ogni `DELETE` di un account creato
+   dall'utente fallirebbe.
+3. **L'audit guarda `CURRENT_USER`, la regola 4 `session_user`.** Senza `app.jwt_user`, una riga inserita da un verbo
+   `SECURITY DEFINER` chiamato da un job o da un comando ha `user_insert = zeroerp_owner`, un ruolo del migratore, e
+   diventerebbe «nata dal seed». Due criteri diversi per la stessa domanda.
+4. **Il significato dipende dai ruoli di oggi.** Un ruolo tolto o rinominato, o un dump/restore su un cluster con
+   nomi diversi, toglie la protezione alla riga. La regola 8 (username e ruoli disgiunti, con R4) serviva solo a
+   reggere la regola 6.
+
+Uno in più, indipendente dal segno: **una riga creata dall'installazione è «intatta»**, perché la personalizzazione
+nasce solo da un `UPDATE` (regola 5). Un `UPDATE` del software senza porta, per esempio una bonifica, la riscriverebbe
+(§15.2, riga «il software, riga intatta: passa»).
+
+### 16.2 La decisione: il segno nel registro
+
+1. **Il registro tiene solo le righe nate dal seed.** `dbops.seed_righe` (§15.3) ha una riga per `(tabella, riga_id)`
+   per ogni riga nata dal seed. La presenza della riga nel registro **è** il segno. Le colonne della
+   personalizzazione, dei valori scartati e della porta restano come al §15.3.
+2. **Il trigger segna la riga quando nasce.** `script.trgfn_seed_primo_impianto()` diventa `BEFORE INSERT OR UPDATE
+   OR DELETE`. All'`INSERT`, se `dbops.fn_sessione_del_migratore()` è vero, registra la riga. Lo stesso criterio della
+   regola 4, `session_user`: un verbo `DEFINER` chiamato dall'app non segna niente.
+3. **Le righe che esistono già le segna il runner, una volta.** Il trigger nasce al `ci_apply`, dopo che il mirror
+   ha caricato il CSV (§14.7), quindi il segno all'`INSERT` da solo non basta. Quando il runner **crea** il trigger
+   su una tabella (non quando lo rigenera), registra le righe presenti con `user_insert = 'SEED'` o con il nome di
+   un ruolo del migratore. È l'unica lettura di `user_insert`, ed è la risposta a Q16. Su un database nuovo, a quel
+   momento ci sono solo le righe del CSV, con `user_insert = 'SEED'` perché anche l'audit nasce al `ci_apply`.
+4. **Una riga senza segno è dell'installazione.** Il trigger la tratta come personalizzata: il software non la
+   riscrive senza porta, e l'installazione la cancella come oggi.
+5. **Il registro si scrive solo dal trigger.** La funzione trigger è `SECURITY DEFINER` (owner `zeroerp_owner`,
+   `search_path` fissato) e l'app non riceve nessun `GRANT` su `dbops.seed_righe`. Una funzione trigger non si
+   chiama direttamente, quindi l'app non può falsificare il registro. Dentro il trigger `session_user` riconosce
+   ancora chi scrive; nessuna regola usa `current_user`.
+6. **`dbops.fn_ruolo_del_migratore(p_ruolo name)` resta** (§15.6), per il runner e per
+   `fn_sessione_del_migratore`. Cerca prima il nome in `pg_roles`: un nome che non è un ruolo vale `false`, non va in
+   errore.
+
+Che cosa chiude: il punto 1 (`user_insert` torna a essere solo audit), il 2 (nessuna domanda sui ruoli a ogni
+`DELETE`), il 3 (si guarda la sessione), il 4 (il segno non dipende dai nomi dei ruoli) e la riga intatta
+dell'installazione. Il costo: una scrittura nel registro all'`INSERT` del migratore, e un passaggio del runner
+all'iscrizione di ogni tabella.
+
+**Limite dichiarato.** Se la regola di una tabella si spegne e si riaccende, il runner ricrea il trigger e rifà la
+lettura di `user_insert` sulle righe nate nel frattempo, con i difetti del §16.1 per quell'unico passaggio.
+
+### 16.3 Che cosa cambia nel §15
+
+| Dove | Prima | Ora |
+| --- | --- | --- |
+| §15.1, regola 6 | «nata dal seed» si legge da `user_insert` | si legge dal registro (§16.2) |
+| §15.1, regola 8 | si regge la regola 6 | resta solo il presidio (Q17) |
+| §15.2, eventi | `BEFORE UPDATE OR DELETE` | `BEFORE INSERT OR UPDATE OR DELETE`; riga nuova: «`INSERT`, il software: registra la riga come nata dal seed; l'installazione: passa» |
+| §15.2, «il software, riga intatta» | passa su ogni riga intatta | passa solo su una riga nata dal seed e intatta; una riga senza segno è dell'installazione |
+| §15.3 | «nata dal seed non si registra» | il registro tiene solo le righe nate dal seed; scritto solo dal trigger `DEFINER` |
+| §15.4 | — | il runner, alla creazione del trigger, segna le righe presenti (§16.2, punto 3) |
+| §15.6 | `fn_ruolo_del_migratore` con `pg_has_role` | prima la ricerca in `pg_roles` (§16.2, punto 6); solo il presidio, niente divieto (Q17) |
+| §15.7, caso 6 | `DELETE` rifiutato con `user_insert = 'SEED'` o col nome del migratore | `DELETE` rifiutato su una riga segnata nel registro |
+| §15.7, casi nuovi | — | (a) l'app che fa `UPDATE … user_insert` non sblocca niente; (b) una riga inserita da un verbo `DEFINER` chiamato dall'app è dell'installazione; (c) il runner segna le righe esistenti una volta, e alla rigenerazione non ripassa; (d) una riga dell'installazione mai modificata non la riscrive un `UPDATE` del software senza porta; (e) `fn_ruolo_del_migratore` su un nome che non è un ruolo: `false`, nessun errore |
+| §15.8, giro 1 | punto 6 (divieto e presidio), punto 7 (tre codici) | solo il presidio, due codici (Q17) |
+| §15.2, `UPDATE` del software in `SOLO_INSERIMENTO` | valori scartati nel registro e `WARNING` | salto muto, tabella fuori dalla diagnosi (Q18) |
+| §15.7, caso 2 | la riga che c'è non cambia | e il registro non riceve valori scartati, nessun `WARNING` (Q18) |
+| §15.10 | D5 | revocata da D10 |
+
+### 16.4 Verifica nuova
+
+| # | Che cosa | Stato |
+| --- | --- | --- |
+| V11 | Che cosa chiede `linee-guida-sql.md` a una funzione trigger `SECURITY DEFINER` (proprietario, `search_path`, `REVOKE` da `PUBLIC`), e se il progetto ne ha già una da prendere a modello | da fare |
+
+### 16.5 Altri punti dell'analisi del 2026-11-17
+
+1. **Un fatto corretto.** Il §15 diceva che su `email_template` l'audit c'è solo all'`INSERT`. La doc auto-generata
+   lo dà anche all'`UPDATE` (`trg_email_template_audit_data_user_upd`). Il limite 1 del §15.11 vale anche per i
+   template.
+2. **`SOLO_INSERIMENTO` fa rumore.** Ogni riga di seed conta come personalizzata: a ogni ritocco del CSV il trigger
+   scrive i valori scartati nel registro e alza un `WARNING`, e la diagnosi delle divergenze resta piena per
+   `SISTEMA`. Se la diagnosi diventa un presidio a zero, è rosso per sempre. ✅ Q18, decisa il 2026-11-18: salto muto.
+3. **Il §11.2 non vale più su queste tabelle.** Il CSV non spegne una riga personalizzata, e in `SOLO_INSERIMENTO`
+   nessuna riga di seed: `attivo` è una colonna dell'installazione. Una riga di seed si ritira solo con la porta. Va
+   scritto nei limiti (§15.11) e in `linee-guida-sql.md` §11.7.
+4. **La chiave primaria fuori dagli elenchi.** Nel blocco per colonna di `email_template` (§15.4), `id` non sta in
+   nessuno dei due elenchi: per D8 sarebbe una colonna non classificata. La PK si esclude per regola, come le colonne
+   libere.
+5. **Il registro orfano.** Il `DELETE` forward-only fatto con la porta (§15.2) toglie anche la riga del registro.
+6. **Il nome della porta del seed** (`zeroerp.allow_…`) si fissa nel giro 1.
+
+Verificato e che regge: l'ordine `a00` (i nomi veri sono `trg_<tabella>_a10_…` e `trg_<tabella>_audit_…`, quindi
+`trg_<tabella>_a00_…` scatta per primo), `RETURN NEW` con le colonne rimesse da `OLD` (il blocco `DO` del mirror non
+va in chiave duplicata), la strada scartata «carica solo se la tabella è vuota».
+
+### 16.6 Le decisioni di Tid
+
+✅ **Q17 e Q18 decise da Tid il 2026-11-18, come proposto.** Per Q17 vale la prima strada, solo il presidio; l'alternativa
+(togliere anche il presidio) è scartata.
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| Q17 | Che cosa resta della regola 8 (username e ruoli disgiunti), ora che la regola 6 non si regge più su di lei | ✅ **Decisa:** resta solo il motivo `NOME_DI_RUOLO_DB` del presidio in `vw_credenziali_da_sanare`, perché una collisione conta solo all'iscrizione di una tabella (§16.2, punto 3). Escono il divieto in `fn_crea_auth_user`, il suo codice d'errore e R4. In alternativa si toglie anche il presidio e si scrive il limite: una collisione presente all'iscrizione fa «di seed» una riga dell'installazione, cioè l'errore va dalla parte sicura |
+| Q18 | In `SOLO_INSERIMENTO` il salto del software scrive nel registro e alza il `WARNING`? (§16.5, punto 2) | ✅ **Decisa:** no. In `SOLO_INSERIMENTO` il salto è il comportamento atteso. Niente valori scartati, niente `WARNING`, e la tabella fuori dalla diagnosi delle divergenze |
+
+### 16.7 Strada scartata: la toppa su `user_insert` (Tid, 2026-11-17)
+
+Tenere D5 e correggere i sintomi: il trigger `a00` tiene fermo `user_insert`, e `fn_ruolo_del_migratore` cerca prima
+in `pg_roles`. Chiude i punti 1 e 2 del §16.1, ma lascia aperti il 3 (`CURRENT_USER` dentro un verbo `DEFINER`) e il 4
+(il significato che dipende dai ruoli), e tiene la regola 8 con R4 come vincolo fra domini. Scartata: corregge i
+sintomi e lascia la causa, cioè un segno scritto dove l'app può scrivere.

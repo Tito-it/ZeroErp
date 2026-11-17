@@ -7,12 +7,12 @@
 -- cosa manca» che leggono anche i guard. Il cambio di natura porta con se'
 -- gli indirizzi nello stesso salvataggio (Tid, 2026-11-17).
 --   Brief: brief-db-fornitore-privato-indirizzi §12.5, giro 5.
---   ChangeSet 20261116-39 … -43.
+--   ChangeSet 20261116-39 … -43; il nome della lettura dal 20261116-44 (§13.3).
 --
 -- Elenco test (plan 11):
 --   presidi
 --    1) i guard leggono i building block dei mancanti; la lettura li compone
---    2) una firma sola per nome
+--    2) una firma sola per nome, e il nome di script non ha omonimi in anagrafiche
 --   la lettura (righe costruite: consegna obbligatoria per il fornitore e
 --   vietata al privato; corrispondenza obbligatoria per la ditta)
 --    3) natura di oggi, soggetto completo: niente
@@ -77,7 +77,7 @@ CREATE FUNCTION pg_temp.mancanti(
 RETURNS text LANGUAGE sql AS $f$  -- un testo composto, non il riflesso di una colonna
     SELECT COALESCE(string_agg(COALESCE(tr.codice_interno, 'S') || ':' || t.codice_interno
                                || '>' || COALESCE(r.codice_interno, '-'), ',' ORDER BY m.n), '')
-      FROM anagrafiche.fn_indirizzi_obbligatori_mancanti(p_soggetto, p_natura)
+      FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(p_soggetto, p_natura)
            WITH ORDINALITY AS m(soggetto_ruolo_id, tipo_ruolo_id, tipo_indirizzo_id, ripiego_tipo_indirizzo_id, n)
       JOIN config.tipi_indirizzi t ON t.id = m.tipo_indirizzo_id
       LEFT JOIN config.tipi_indirizzi r ON r.id = m.ripiego_tipo_indirizzo_id
@@ -130,9 +130,9 @@ SELECT ok(
         LIKE '%anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(%'
     AND pg_get_functiondef('anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(uuid, uuid)'::regprocedure)
         !~ '(FROM|JOIN)\s+(config\.)?tipi_soggetto_dettaglio_tipi_indirizzo\M'
-    AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti(uuid, bigint)'::regprocedure)
+    AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(uuid, bigint)'::regprocedure)
         LIKE '%fn_indirizzi_obbligatori_mancanti_ruolo(%'
-    AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti(uuid, bigint)'::regprocedure)
+    AND pg_get_functiondef('anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(uuid, bigint)'::regprocedure)
         LIKE '%fn_indirizzi_obbligatori_mancanti_soggetto(%',
     '1) i guard leggono i building block dei mancanti, e la lettura del form li compone');
 
@@ -142,11 +142,12 @@ SELECT is(
       WHERE p.pronamespace = 'anagrafiche'::regnamespace
         AND p.proname IN ('fn_indirizzi_obbligatori_mancanti',
                           'fn_indirizzi_obbligatori_mancanti_ruolo',
-                          'fn_indirizzi_obbligatori_mancanti_soggetto')),
-    ARRAY['fn_indirizzi_obbligatori_mancanti/2',
-          'fn_indirizzi_obbligatori_mancanti_ruolo/3',
-          'fn_indirizzi_obbligatori_mancanti_soggetto/3'],
-    '2) una firma sola per nome');
+                          'fn_indirizzi_obbligatori_mancanti_soggetto',
+                          'fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli')),
+    ARRAY['fn_indirizzi_obbligatori_mancanti_ruolo/3',
+          'fn_indirizzi_obbligatori_mancanti_soggetto/3',
+          'fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli/2'],
+    '2) una firma sola per nome, e il nome di script non ha omonimi in anagrafiche');
 
 -- ============================================================
 -- 3-7) La lettura

@@ -10,7 +10,7 @@
 --   1) Trovato il ruolo CLIENTE in config.tipi_ruoli
 --   2) Trovata l'utility di test in config.utilities
 --   2-bis) Riferimenti risolti per codice: tipo soggetto e stato
---   3) Inserito il soggetto (persona fisica privata, tipo PR)
+--   3) Creato il soggetto (persona fisica privata, tipo PR), dal builder
 --   4) Assegnato il ruolo cliente via script.fn_get_or_create_soggetto_ruolo
 --   5) Inserita l'istanza utility (fittizia)
 --   6) Inserito il billing account per quell'istanza
@@ -72,22 +72,12 @@ SET CONSTRAINTS ALL DEFERRED;
 SELECT plan(8);
 
 -- =========================================================
--- Costanti di test (CF finto ma sintatticamente valido; la P.IVA non serve:
--- il tipo PR non la richiede)
+-- Costanti di test (CF e P.IVA li sceglie il builder del soggetto)
 -- =========================================================
 -- ⚠️ Niente id numerici indovinati: si risolve tutto per codice_interno.
 -- Era la fragilita' di fondo di questo file — vedi il tipo soggetto qui sotto.
--- ⚠️ CF PROPRIO, diverso da quello storico. Il codice fiscale e' validato
---   con l'algoritmo vero (script.fn_valida_codice_fiscale calcola il carattere
---   di controllo), quindi non e' una stringa qualsiasi: questo e' generato e
---   verificato. E' DIVERSO da quello storico di proposito — quel soggetto
---   esiste ancora in tabella, lasciato da quando questo file committava, ed e'
---   letto da altri tre pgTAP. Riusarlo qui darebbe una violazione di
---   uq_soggetto_idstato_id_fiscale_univoco; cancellarlo romperebbe loro.
---   Un test si crea i propri dati e non contende quelli di un altro.
 CREATE TEMP TABLE tmp_costanti_cc AS
-SELECT 'PGTPCL00A01H501Y'::text AS cf_test,
-       'CL'::varchar            AS codice_ruolo_cliente,  -- tipi_ruoli.codice_interno
+SELECT 'CL'::varchar            AS codice_ruolo_cliente,  -- tipi_ruoli.codice_interno
        -- ⚠️ BASE e non GAS: GAS/ENERGIA/IDRICO hanno richiede_pdp = true e il
        --   guard pretende un punto di prelievo sul cliente. Questo file
        --   costruisce la CATENA cliente, non collauda le regole di una
@@ -146,57 +136,31 @@ SELECT is(
 -- ---------------------------------------------------------
 -- 3) Soggetto (persona fisica)
 -- ---------------------------------------------------------
+-- ⚠️ Rev 2026-11-17 (brief-db-fornitore-privato-indirizzi §10.3): il privato
+--   lo costruisce dbops.fn_pgtap_crea_soggetto_pf, gia' completo di contatto
+--   e indirizzi obbligatori, dalle madri del dominio. Prima c'erano un INSERT
+--   diretto su anagrafiche.soggetti, il contatto e gli indirizzi scritti a
+--   mano (RES + DOMFISC, coi tipi elencati dal file): una seconda strada che
+--   ricopiava la matrice della natura invece di leggerla. Qui il soggetto e'
+--   il veicolo della catena, non l'oggetto del test. Il codice fiscale e'
+--   libero (lo sceglie il builder): non contende piu' quello di nessuno.
+--   Il builder esce coi vincoli IMMEDIATE: la saga del ruolo, che segue,
+--   riapre la finestra.
 CREATE TEMP TABLE tmp_soggetto AS
-WITH ins AS (
-    INSERT INTO anagrafiche.soggetti (
-        ragione_sociale, cognome, nome, sesso, stato_id,
-        codice_fiscale, tipo_soggetto_dettaglio_id, storicizza, attivo
-    )
-    SELECT NULL, 'Pgtap', 'Cliente Test', 'M',
-           r.stato_id,
-           k.cf_test,
-           r.tipo_soggetto_dettaglio_id,
-           TRUE, TRUE
-      FROM tmp_costanti_cc k, tmp_rif_cc r
-    RETURNING id, codice
-)
-SELECT id, codice FROM ins;
+SELECT dbops.fn_pgtap_crea_soggetto_pf(
+           p_cognome                    := 'Pgtap',
+           p_nome                       := 'Cliente Test',
+           p_tipo_soggetto_dettaglio_id := r.tipo_soggetto_dettaglio_id,
+           p_stato_id                   := r.stato_id) AS id
+  FROM tmp_rif_cc r;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_soggetto),
     1,
-    'Inserito esattamente 1 soggetto di test (PF)'
+    'Creato esattamente 1 soggetto di test (PF), dal builder'
 );
 
--- Contatto minimo: soddisfa il constraint sui soggetti.
-INSERT INTO anagrafiche.contatti (
-    tipo_contatto_id, soggetto_id, nominativo, email,
-    is_default, default_context
-)
-SELECT 1, s.id, 'Referente pgTAP create-cliente',
-       'pgtap.create-cliente@example.com', TRUE, 'soggetto'
-  FROM tmp_soggetto s;
-
--- Indirizzi obbligatori del soggetto.
--- ⚠️ config.tipi_soggetto_dettaglio_tipi_indirizzo pretende, per il tipo PR,
---   RES + DOMFISC + FATT — ma FATT ha fallback su DOMFISC, quindi due bastano.
---   Il guard e' un constraint trigger DEFERRABLE
---   (trgfn_soggetti_guard_indirizzi_required): non scatta all'INSERT, scatta
---   al SET CONSTRAINTS in fondo al file — grazie alla finestra DEFERRED aperta
---   in testa, non per default. Un soggetto senza i suoi indirizzi
---   obbligatori non e' un soggetto valido, quindi la fixture li deve creare.
---   Forma libera: la vuole il guard anagrafiche.trgfn_indirizzi_guard_forma_libera,
---   che la sceglie dallo stato (rev 2026-10-18: l'Italia vuole comune e CAP
---   del catalogo; li da' dbops.fn_pgtap_indirizzo_libero_forma).
-INSERT INTO anagrafiche.indirizzi_soggetti (
-    soggetto_id, tipo_indirizzo_id,
-    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code
-)
-SELECT s.id, ti.id,
-       'Via pgTAP create-cliente 1', r.stato_id, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
-  FROM tmp_soggetto s, tmp_rif_cc r, config.tipi_indirizzi ti,
-       dbops.fn_pgtap_indirizzo_libero_forma(r.stato_id) f
- WHERE ti.codice_interno IN ('RES', 'DOMFISC');
+SET CONSTRAINTS ALL DEFERRED;
 
 -- ---------------------------------------------------------
 -- 4) Ruolo cliente sul soggetto (via funzione di dominio)

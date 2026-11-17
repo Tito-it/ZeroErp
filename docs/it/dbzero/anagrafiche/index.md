@@ -101,6 +101,9 @@ search:
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
 - [fn_id_fiscale_bloccato](funzioni/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
+- [fn_indirizzi_obbligatori_mancanti_ruolo](funzioni/fn_indirizzi_obbligatori_mancanti_ruolo.md)
+- [fn_indirizzi_obbligatori_mancanti_soggetto](funzioni/fn_indirizzi_obbligatori_mancanti_soggetto.md)
+- [fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli](funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.md)
 - [fn_indirizzi_obbligatori_ruolo](funzioni/fn_indirizzi_obbligatori_ruolo.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_da_riga](funzioni/fn_indirizzo_elemento_da_riga.md)
