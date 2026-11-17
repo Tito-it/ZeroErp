@@ -7,7 +7,6 @@
 --   sorgente_uid uuid (tipi a chiave uid), una serie sola di versioni per
 --   documento, il guard unico la valida e blocca la cancellazione del documento
 --   stampato. La coda tiene la fattura nella sola sorgente_id, FK vera.
--- ChangeSet: 20261108-14 … -21
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1 (S-4, S-6, S-9, D-3, V-6)
 -- ------------------------------------------------------------
 -- Indice test (plan 18):

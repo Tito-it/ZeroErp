@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI FUNZIONI, VISTE E TRIGGER DI documenti, AL PRESENTE
+#   Giro 5 della revisione dello schema (pulizia e metadati).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   - Riscritti (linee-guida-sql §5d: via date, nomi di brief, sigle e i
+#     «Guard An»): fn_guard_versione_contesto, fn_personalizza_template_standard,
+#     fn_template_esito_risoluzione, fn_template_motivo_non_coerente (che
+#     nominava le «regole 2-4» della coerenza, numerate prima del giro 4),
+#     quattro trigger function, la vista della risoluzione e il trigger del
+#     default dell'emittente dei modelli. Il COMMENT della trigger function
+#     della risorsa e' nel 20261116-12, che ne riscrive il corpo.
+#   - Nuovi: le colonne che le viste calcolano (una colonna copiata dalla
+#     tabella ha il COMMENT della tabella) e gli otto trigger scritti a mano
+#     sulle trigger function dello schema. I trigger delle automazioni (audit,
+#     tx_id, storico, lock, ATTIVO, maiuscolo) non ne hanno, come negli altri
+#     schemi.
+#   Nessun comportamento cambia. Le firme dei COMMENT ON FUNCTION sono
+#   ancorate a %TYPE, come le dichiarazioni.
+#
+#   Rollback: i COMMENT di prima (NULL dove non c'erano), letti dal catalogo
+#   di dbdev il 2026-11-17.
+#   Brief: brief-db-revisione-documenti, giro 5 (§15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-14-comment-funzioni-viste-trigger-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20261116-14-comment-funzioni-viste-trigger-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti: i COMMENT di funzioni, viste e trigger al presente; le colonne calcolate delle viste e i trigger scritti a mano che non ne avevano.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'documenti' AND p.proname = 'fn_template_motivo_non_stampabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION documenti.fn_guard_versione_contesto(
+                  documenti.template_documenti_versioni.id%TYPE,
+                  documenti.template_documenti_versioni.versione_contesto%TYPE) IS
+                  'Il patto fra una versione di template e la forma dei dati che legge: solleva E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO) se template_documenti_versioni.versione_contesto non e'' p_versione_contesto, cioe'' la forma che i dati hanno (_meta.context_version del contesto, o la costante del builder). E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) se il chiamante non passa la versione o la forma; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c''e'' (o non e'' nel perimetro di chi legge: INVOKER). La chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. Una BOZZA si controlla solo quando si pubblica o si stampa: in bozza la forma si cambia, anche verso una che il builder non produce ancora.';
+              COMMENT ON FUNCTION documenti.fn_personalizza_template_standard(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.codice%TYPE,
+                  documenti.template_documenti.codice_interno%TYPE,
+                  documenti.template_documenti.descrizione%TYPE,
+                  documenti.template_documenti.is_default%TYPE) IS
+                  '«Personalizza»: crea il modello di un emittente da uno standard e la sua bozza v1, copiata (documenti.fn_crea_bozza_da_versione) dalla versione con cui lo standard stampa oggi, chiesta a documenti.fn_risolvi_template_applicabile col modello indicato, con derivata_da_versione_id = quella versione. Solo da uno standard (E_DOCUMENTI_PERSONALIZZA_NON_STANDARD), che stampi oggi (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE). Nasce predefinita se l''emittente non ha gia'' un suo predefinito attivo per la coppia, salvo p_is_default; codice, codice_interno e descrizione dello standard se non indicati. Funzione madre: tutto o niente. Il perimetro dell''emittente lo applica il chiamante. Restituisce l''id del modello nuovo.';
+              COMMENT ON FUNCTION documenti.fn_template_esito_risoluzione(
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE) IS
+                  'L''esito della risoluzione a due livelli per (emittente, tipo, sorgente), sui modelli che possono stampare (documenti.vw_template_versioni_stampabili): EMITTENTE (il suo predefinito stampabile), SENZA_PREDEFINITO (ha modelli suoi stampabili, nessuno predefinito: lo standard non entra), STANDARD (il predefinito standard stampabile), NON_RISOLTO. Con modello, versione e numero dei modelli suoi stampabili. Sempre una riga. Sede unica della regola: la leggono documenti.fn_risolvi_template_applicabile e documenti.vw_template_risoluzione_emittente.';
+              COMMENT ON FUNCTION documenti.fn_template_motivo_non_coerente(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE) IS
+                  'Il modello va bene per il documento? NULL se si; altrimenti il motivo, nell''ordine: MODELLO_INESISTENTE, SORGENTE, TIPO (solo se il tipo e'' indicato), EMITTENTE (un modello di un altro emittente che non e'' standard). Sede unica della regola: la leggono documenti.trgfn_documenti_generati_check_coerenza (la stampa nasce da un modello che va bene per il suo documento) e documenti.fn_risolvi_template_applicabile (il modello indicato, prima del render). Se il modello oggi stampa lo dice la gemella documenti.fn_template_motivo_non_stampabile.';
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_file_protect_file() IS
+                  'Tiene fermi i dati di salvataggio di un file della stampa: la stampa, il tipo, il tipo MIME, il nome, il peso, la chiave nello storage, l''impronta e is_principale (E_DOCUMENTI_GENERATO_FILE_IMMUTABILE). Restano liberi meta e ordinamento. Le colonne confrontate sono tutte NOT NULL.';
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto() IS
+                  'Guard sull''INSERT di documenti.documenti_generati: la forma dichiarata dal contesto congelato (context_json -> _meta -> context_version, un intero JSON; altrimenti NULL = non dichiarata) deve essere quella che la versione di template legge. Delega a documenti.fn_guard_versione_contesto (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA / _NON_VERIFICABILE). Solo INSERT: il contesto e la versione di una stampa non cambiano dopo (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_block_delete() IS
+                  'Si cancella solo una versione in BOZZA che nessuna stampa ha usato (E_DOCUMENTI_VERSIONE_DELETE_BLOCKED): PUBBLICATA e OBSOLETA restano per la ristampa e per l''audit, e una versione citata da una stampa resta per la ristampa fedele. Il secondo rifiuto ripete la FK RESTRICT della stampa per dare il codice parlante: conta le stampe che chi cancella vede, e quelle fuori dal suo perimetro le ferma la FK.';
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da() IS
+                  'Guard BEFORE INSERT/UPDATE OF derivata_da_versione_id, template_documento_id su documenti.template_documenti_versioni. L''origine di una copia personalizzata e'' una versione di un modello standard con lo stesso tipo di documento e la stessa sorgente, e la versione che la porta non e'' di uno standard -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO: la scrive l''azione «personalizza»). Fuori dalla bozza l''origine non cambia -> E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (la colonna non e'' nell''elenco di documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON FUNCTION documenti.trgfn_template_standard_guard_sola_lettura() IS
+                  'Guard BEFORE INSERT/UPDATE/DELETE su documenti.template_documenti e documenti.template_documenti_versioni: il modello standard (colonna standard) e le sue versioni si scrivono solo dal proprietario della tabella (script.fn_is_proprietario_tabella: il seed e i changeSet). Dall''applicazione si leggono, e chi vuole un modello diverso lo personalizza per il suo emittente. Su UPDATE conta la riga di prima e quella di dopo; sulle versioni conta il modello padre di prima e di dopo. Rifiuto E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (NON_PERMESSO; valori: codice del modello). Fase a05: parla prima degli altri guard e del default dell''emittente.';
+              COMMENT ON VIEW documenti.vw_template_risoluzione_emittente IS
+                  'Per ogni emittente e ogni coppia (tipo di documento, sorgente) con almeno un modello standard o di quell''emittente, in qualunque stato: l''esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), il modello, la versione e quanti modelli suoi possono stampare. La regola e'' documenti.fn_template_esito_risoluzione, la stessa della stampa: la vista aggiunge solo le righe. Porta anche le aziende spente: il filtro lo mette chi legge. Lettura della lista Modelli documento.';
+              COMMENT ON COLUMN documenti.vw_template_versioni_stampabili.template_versione_id IS
+                  'La versione con cui il modello stampa oggi: accesa, fuori bozza e valida alla data operativa; una sola per modello (ex_template_documenti_versioni_no_overlap_pubblicata).';
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.esito IS
+                  'L''esito della risoluzione per l''azienda e la coppia: EMITTENTE, SENZA_PREDEFINITO, STANDARD o NON_RISOLTO (documenti.fn_template_esito_risoluzione).';
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.template_documento_id IS
+                  'Il modello con cui si stampa: il predefinito dell''azienda (EMITTENTE) o quello standard (STANDARD); NULL con SENZA_PREDEFINITO e NON_RISOLTO.';
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.template_versione_id IS
+                  'La versione con cui quel modello stampa oggi; NULL quando il modello e'' NULL.';
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.modelli_stampabili IS
+                  'Quanti modelli dell''azienda per la coppia possono stampare oggi, predefiniti o no; gli standard non contano.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.versione_id IS
+                  'La versione con cui la copia stampa oggi (documenti.vw_template_versioni_stampabili); versione e versione_contesto sono le sue.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.derivata_da_versione_id IS
+                  'L''origine della copia: dichiarata dalla versione in uso o, se non la dichiara, ereditata dalla piu'' recente che la dichiara fino a quella. NULL = nessuna la dichiara.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_origine IS
+                  'Il numero della versione dello standard da cui la copia deriva; NULL senza origine.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_template_documento_id IS
+                  'Lo standard di riferimento: quello della versione d''origine o, senza origine, il predefinito standard acceso della coppia (tipo, sorgente). Lo nomina anche quando non stampa; NULL se la coppia non ha uno standard di riferimento.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_id IS
+                  'La versione con cui lo standard di riferimento stampa oggi; NULL se oggi non stampa.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione IS
+                  'Il numero di quella versione dello standard.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_contesto IS
+                  'La forma dei dati che quella versione dello standard legge: i changeSet la tengono al passo col builder.';
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.stato IS
+                  'Quanto la copia e'' rimasta indietro, nell''ordine: STANDARD_NON_STAMPA, CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA, ALLINEATA, STANDARD_AVANTI. Il significato di ciascuno e'' nel COMMENT della vista.';
+              COMMENT ON TRIGGER trg_documenti_generati_a10_protect_snapshot_upd ON documenti.documenti_generati IS
+                  'Dopo la nascita la stampa non cambia: resta libero solo meta (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON TRIGGER trg_documenti_generati_a10_guard_versione_contesto_ins ON documenti.documenti_generati IS
+                  'Alla nascita della stampa, la forma dei dati congelati e'' quella che la versione legge (documenti.fn_guard_versione_contesto).';
+              COMMENT ON TRIGGER trg_documenti_generati_file_a10_protect_file_upd ON documenti.documenti_generati_file IS
+                  'I dati di salvataggio di un file della stampa non cambiano: restano liberi meta e ordinamento.';
+              COMMENT ON TRIGGER trg_template_asset_a10_protect_file_upd ON documenti.template_asset IS
+                  'Il file di una risorsa non cambia: un file nuovo e'' una risorsa nuova, con un codice interno nuovo.';
+              COMMENT ON TRIGGER trg_template_documenti_a05_guard_standard_ins_upd_dlt ON documenti.template_documenti IS
+                  'Il modello standard si scrive solo dal proprietario della tabella (seed, changeSet). Fase a05: parla prima degli altri guard e del default dell''emittente.';
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt ON documenti.template_documenti_versioni IS
+                  'Le versioni di un modello standard si scrivono solo dal proprietario della tabella (seed, changeSet). Fase a05: parla prima degli altri guard.';
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_block_delete_protected_dlt ON documenti.template_documenti_versioni IS
+                  'Si cancella solo una bozza che nessuna stampa ha usato (documenti.trgfn_template_documenti_versioni_block_delete).';
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd ON documenti.template_documenti_versioni IS
+                  'L''origine di una copia e'' una versione di uno standard dello stesso documento, e cambia solo in bozza (documenti.trgfn_template_documenti_versioni_guard_derivata_da).';
+              COMMENT ON TRIGGER trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti IS
+                  'Emittente di default dalla sessione per un modello d''operatore (script.trgfn_default_emittente_fiscale, SOLLEVA). Il modello standard lo salta: non ha emittente e nasce dal seed, senza sessione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION documenti.fn_guard_versione_contesto(
+                  documenti.template_documenti_versioni.id%TYPE,
+                  documenti.template_documenti_versioni.versione_contesto%TYPE) IS
+                  'Il patto fra una versione di template e la forma dei dati che legge: solleva E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO) se template_documenti_versioni.versione_contesto non e'' p_versione_contesto, cioe'' la forma che i dati hanno (_meta.context_version del contesto, o la costante del builder). E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) se il chiamante non passa la versione o la forma; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c''e'' (o non e'' nel perimetro di chi legge: INVOKER). La chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. Una BOZZA si controlla solo quando si pubblica o si stampa (D-C4). Brief: brief-db-documenti-versione-contesto-template.';
+              COMMENT ON FUNCTION documenti.fn_personalizza_template_standard(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.codice%TYPE,
+                  documenti.template_documenti.codice_interno%TYPE,
+                  documenti.template_documenti.descrizione%TYPE,
+                  documenti.template_documenti.is_default%TYPE) IS
+                  '«Personalizza» (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6; D-2, D-6, D-9 di Tid): crea il modello di un emittente da uno standard e la sua bozza v1, copiata (fn_crea_bozza_da_versione) dalla versione con cui lo standard stampa oggi, chiesta a fn_risolvi_template_applicabile col modello indicato, con derivata_da_versione_id = quella versione. Solo da uno standard (E_DOCUMENTI_PERSONALIZZA_NON_STANDARD), che stampi oggi (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE). Nasce predefinita se l''emittente non ha gia'' un suo predefinito attivo per la coppia, salvo p_is_default; codice, codice_interno e descrizione dello standard se non indicati. Funzione madre: tutto o niente. Il perimetro dell''emittente lo applica il chiamante. Restituisce l''id del modello nuovo.';
+              COMMENT ON FUNCTION documenti.fn_template_esito_risoluzione(
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE) IS
+                  'L''esito della risoluzione a due livelli per (emittente, tipo, sorgente), sui modelli che possono stampare (vw_template_versioni_stampabili) (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5; strada B di §4.1 Q-2): EMITTENTE (il suo predefinito stampabile), SENZA_PREDEFINITO (ha modelli suoi stampabili, nessuno predefinito: lo standard non entra), STANDARD (il predefinito standard stampabile), NON_RISOLTO. Con modello, versione e numero dei modelli suoi stampabili. Sempre una riga. Sede unica della regola: la leggono fn_risolvi_template_applicabile e vw_template_risoluzione_emittente.';
+              COMMENT ON FUNCTION documenti.fn_template_motivo_non_coerente(
+                  documenti.template_documenti.id%TYPE,
+                  documenti.template_documenti.sorgente_tipo_id%TYPE,
+                  documenti.template_documenti.emittente_fiscale_id%TYPE,
+                  documenti.template_documenti.tipo_documento_output_id%TYPE) IS
+                  'Il modello va bene per il documento? (2026-10-21, brief-db-modelli-documento-standard §10.3 K-4). NULL se si; altrimenti il motivo, nell''ordine: MODELLO_INESISTENTE, SORGENTE, TIPO (solo se il tipo e'' indicato), EMITTENTE (un modello di un altro emittente che non e'' standard). Sede unica della regola: la leggono trgfn_documenti_generati_check_coerenza (regole 2-4) e fn_risolvi_template_applicabile (il modello indicato, prima del render).';
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_file_protect_file() IS
+                  'Guard A7-bis: blocca UPDATE su file. File generato = istantanea immutabile di salvataggio. Solo meta/ordinamento modificabili.';
+              COMMENT ON FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto() IS
+                  'Guard sull''INSERT di documenti.documenti_generati: la forma dichiarata dal contesto congelato (context_json -> _meta -> context_version, un intero JSON; altrimenti NULL = non dichiarata) deve essere quella che la versione di template legge. Delega a documenti.fn_guard_versione_contesto (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA / _NON_VERIFICABILE). Solo INSERT: il contesto e la versione di una stampa non cambiano dopo (protect_snapshot). Brief: brief-db-documenti-versione-contesto-template.';
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_block_delete() IS
+                  'Guard A2: blocca DELETE su versioni PUBBLICATA/OBSOLETA o gia'' usate da documenti generati.';
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da() IS
+                  'Guard BEFORE INSERT/UPDATE OF derivata_da_versione_id, template_documento_id su documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-5). L''origine di una copia personalizzata e'' una versione di un modello standard con lo stesso tipo di documento e la stessa sorgente, e la versione che la porta non e'' di uno standard -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO: la scrive l''azione «personalizza»). Fuori dalla bozza l''origine non cambia -> E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (la colonna non e'' nell''elenco di trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON FUNCTION documenti.trgfn_template_standard_guard_sola_lettura() IS
+                  'Guard BEFORE INSERT/UPDATE/DELETE su documenti.template_documenti e documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard D-2): il modello standard (colonna standard) e le sue versioni si scrivono solo dal proprietario della tabella (script.fn_is_proprietario_tabella: il seed e i changeSet). Dall''applicazione si leggono, e chi vuole un modello diverso lo personalizza per il suo emittente. Su UPDATE conta la riga di prima e quella di dopo; sulle versioni conta il modello padre di prima e di dopo. Rifiuto E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA (NON_PERMESSO; valori: codice del modello). Fase a05: parla prima degli altri guard e del default dell''emittente.';
+              COMMENT ON VIEW documenti.vw_template_risoluzione_emittente IS
+                  'Per ogni emittente e ogni coppia (tipo di documento, sorgente) con almeno un modello standard o di quell''emittente, in qualunque stato: l''esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), il modello, la versione e quanti modelli suoi possono stampare (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5). La regola e'' documenti.fn_template_esito_risoluzione, la stessa della stampa: la vista aggiunge solo le righe. Lettura della lista Modelli documento.';
+              COMMENT ON COLUMN documenti.vw_template_versioni_stampabili.template_versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.esito IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.template_documento_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.template_versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_risoluzione_emittente.modelli_stampabili IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.derivata_da_versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_origine IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_template_documento_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.standard_versione_contesto IS
+                  NULL;
+              COMMENT ON COLUMN documenti.vw_template_personalizzati_scarto.stato IS
+                  NULL;
+              COMMENT ON TRIGGER trg_documenti_generati_a10_protect_snapshot_upd ON documenti.documenti_generati IS
+                  NULL;
+              COMMENT ON TRIGGER trg_documenti_generati_a10_guard_versione_contesto_ins ON documenti.documenti_generati IS
+                  NULL;
+              COMMENT ON TRIGGER trg_documenti_generati_file_a10_protect_file_upd ON documenti.documenti_generati_file IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_asset_a10_protect_file_upd ON documenti.template_asset IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_documenti_a05_guard_standard_ins_upd_dlt ON documenti.template_documenti IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt ON documenti.template_documenti_versioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_block_delete_protected_dlt ON documenti.template_documenti_versioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd ON documenti.template_documenti_versioni IS
+                  NULL;
+              COMMENT ON TRIGGER trg_template_documenti_a10_default_emittente_ins ON documenti.template_documenti IS
+                  'Emittente di default dalla sessione per un modello d''operatore (script.trgfn_default_emittente_fiscale, SOLLEVA). Il modello standard lo salta: non ha emittente e nasce dal seed, senza sessione. Brief: brief-db-modelli-documento-standard §4.1 Q-1.';

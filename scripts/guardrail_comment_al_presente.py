@@ -16,7 +16,8 @@
 #   dopo e manda chi legge a cercare documenti di lavoro. Il debito che c'e'
 #   gia' si riscrive per famiglia, quando un lavoro riapre gli oggetti; questo
 #   cancello ferma quello NUOVO in tutto il database, senza un registro del
-#   pregresso. Per dbops e maintenance il database vivo lo guarda il pgTAP
+#   pregresso. Sul database vivo, per gli schemi la cui famiglia e' riscritta
+#   (l'elenco sta nel file), lo guarda il pgTAP
 #   db/pgtap/dbops/test-comment-al-presente-v1, con le stesse quattro marche.
 #
 # COME FUNZIONA. Cammina i changelog di migrations_v2 dal changeSet

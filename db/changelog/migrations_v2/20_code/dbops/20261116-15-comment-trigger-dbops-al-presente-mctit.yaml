@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI OTTO TRIGGER DI dbops, SENZA IL NOME DI UN BRIEF
+#
+# -- PERCHE' --------------------------------------------------------------
+#   pg_identify_object da' schema NULL per un trigger, e il presidio dei
+#   COMMENT sul vivo filtrava sullo schema: i trigger gli sfuggivano. Il
+#   presidio ora li vede (dbops/test-comment-al-presente-v1), e otto COMMENT
+#   di trigger di dbops portavano il nome di un brief («Brief: …», «Piano: …»).
+#   Si toglie solo quella frase: il resto del testo e' quello di prima.
+#   Nessun comportamento cambia.
+#
+#   Rollback: i COMMENT di prima, letti dal catalogo di dbdev il 2026-11-17.
+#   Brief: brief-db-revisione-documenti, giro 5 (§15, scelta Q18).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261116-15-comment-trigger-dbops-al-presente-mctit.yaml
+
+  - changeSet:
+      id: 20261116-15-comment-trigger-dbops-al-presente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops: i COMMENT di otto trigger senza il nome di un brief.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid IN (to_regclass('dbops.processi_accensione'), to_regclass('dbops.soggetti_di_prova'), to_regclass('dbops.credenziali_di_prova'), to_regclass('dbops.installazione'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TRIGGER trg_processi_accensione_a10_guard_ins_upd ON dbops.processi_accensione IS
+                  'Niente scelta a mano su un processo senza sveglia, niente spegnimento di un non spegnibile, motivo obbligatorio.';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_ins_upd_dlt ON dbops.soggetti_di_prova IS
+                  'L''etichetta di un soggetto di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_soggetti_di_prova_a05_guard_trn.';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_trn ON dbops.soggetti_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE).';
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_ins_upd_dlt ON dbops.credenziali_di_prova IS
+                  'L''etichetta di una credenziale di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_credenziali_di_prova_a05_guard_trn.';
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_trn ON dbops.credenziali_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE).';
+              COMMENT ON TRIGGER trg_coda_lavori_a10_archiviazione_upd ON dbops.coda_lavori IS
+                  'Fase _a10_ (verifica/blocco): rifiuta l''archiviazione di una riga VIVA e riabbassa la bandiera quando una riga archiviata torna viva. ⭐ La clausola WHEN tiene fuori la corsia del worker — claim, marca esito e reaper scrivono `stato` su ogni riga, e senza filtro questo trigger girerebbe su tutte per servire un caso che riguarda solo le archiviate. ⭐ Quattro colonne in UPDATE OF e non due: con `archiviato_il` e `archiviato_da` nell''elenco, la funzione le ripristina e diventano immutabili finche'' la riga resta archiviata. ⚠️ `_a10_` precede audit e tx_id nell''ordine lessicografico dei BEFORE ROW.';
+              COMMENT ON TRIGGER trg_installazione_a05_guard_immutabile_trn ON dbops.installazione IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_AMBIENTE_IMMUTABILE).';
+              COMMENT ON TRIGGER trg_installazione_a05_guard_immutabile_upd_dlt ON dbops.installazione IS
+                  'L''ambiente non cambia e non si cancella (E_AMBIENTE_IMMUTABILE). Gemello di istruzione: trg_installazione_a05_guard_immutabile_trn.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TRIGGER trg_processi_accensione_a10_guard_ins_upd ON dbops.processi_accensione IS
+                  'Niente scelta a mano su un processo senza sveglia, niente spegnimento di un non spegnibile, motivo obbligatorio. Brief: brief-db-processi-accensione-per-ambiente.';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_ins_upd_dlt ON dbops.soggetti_di_prova IS
+                  'L''etichetta di un soggetto di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_soggetti_di_prova_a05_guard_trn. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_soggetti_di_prova_a05_guard_trn ON dbops.soggetti_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_ins_upd_dlt ON dbops.credenziali_di_prova IS
+                  'L''etichetta di una credenziale di prova: nasce solo in SVILUPPO (E_DATI_DI_SVILUPPO_IN_PRODUZIONE), non cambia e non si toglie (E_ETICHETTA_DI_PROVA_IMMUTABILE). Gemello di istruzione: trg_credenziali_di_prova_a05_guard_trn. Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_credenziali_di_prova_a05_guard_trn ON dbops.credenziali_di_prova IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_ETICHETTA_DI_PROVA_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente (R-4).';
+              COMMENT ON TRIGGER trg_coda_lavori_a10_archiviazione_upd ON dbops.coda_lavori IS
+                  'Fase _a10_ (verifica/blocco): rifiuta l''archiviazione di una riga VIVA e riabbassa la bandiera quando una riga archiviata torna viva. ⭐ La clausola WHEN tiene fuori la corsia del worker — claim, marca esito e reaper scrivono `stato` su ogni riga, e senza filtro questo trigger girerebbe su tutte per servire un caso che riguarda solo le archiviate. ⭐ Quattro colonne in UPDATE OF e non due: con `archiviato_il` e `archiviato_da` nell''elenco, la funzione le ripristina e diventano immutabili finche'' la riga resta archiviata. ⚠️ `_a10_` precede audit e tx_id nell''ordine lessicografico dei BEFORE ROW. Piano: brief-db-archiviazione-righe-code.';
+              COMMENT ON TRIGGER trg_installazione_a05_guard_immutabile_trn ON dbops.installazione IS
+                  'Il TRUNCATE non attraversa i trigger di riga: lo rifiuta questo (E_AMBIENTE_IMMUTABILE). Brief: brief-db-processi-accensione-per-ambiente.';
+              COMMENT ON TRIGGER trg_installazione_a05_guard_immutabile_upd_dlt ON dbops.installazione IS
+                  'L''ambiente non cambia e non si cancella (E_AMBIENTE_IMMUTABILE). Gemello di istruzione: trg_installazione_a05_guard_immutabile_trn. Brief: brief-db-processi-accensione-per-ambiente.';

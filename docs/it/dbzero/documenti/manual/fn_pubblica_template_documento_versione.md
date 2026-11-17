@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `documenti.fn_pubblica_template_documento_versione`
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -73,9 +73,10 @@ Non chiude:
 * una versione che comincia lo stesso giorno della nuova o dopo.
 
 Negli ultimi due casi, se i periodi si toccano, la pubblicazione viola il vincolo di non
-sovrapposizione (23P01) e il backend la traduce in `E_DOCUMENTI_VERSIONE_OVERLAP`: una versione nuova
-comincia dopo l'inizio della più recente già in vigore. Succede con lo stesso inizio di una versione
-pubblicata, e con un inizio dentro il periodo di una obsoleta.
+sovrapposizione, e la funzione la rende col suo codice, `E_DOCUMENTI_VERSIONE_OVERLAP`: una versione
+nuova comincia dopo l'inizio della più recente già in vigore. Succede con lo stesso inizio di una
+versione pubblicata, con un inizio dentro il periodo di una obsoleta e con due pubblicazioni dello
+stesso modello nello stesso istante. Un'altra violazione d'esclusione esce com'è.
 
 ---
 
@@ -126,6 +127,8 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
 * `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` — la versione legge una forma dei dati diversa da quella
   passata.
 * `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` — forma dei dati non passata; di classe tecnica.
+* `E_DOCUMENTI_VERSIONE_OVERLAP` (`CONFLITTO_STATO`) — la versione nuova si sovrapporrebbe a una
+  versione fuori bozza che la chiusura non risolve; il rimedio è un'altra data d'inizio.
 * `E_DATA_AL_MINORE_DAL` — la fine precede l'inizio; lo solleva il guard comune delle date.
 * `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` — dall'applicazione, su una versione di uno standard.
 
@@ -157,6 +160,8 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
   prende il nome del verbo (prima `…_chiusura_override`), e si richiude anche in errore. Una bozza
   spenta non si pubblica più: fino ad allora diventava pubblicata, non stampava, e chiudeva la
   versione che stampava.
+* 2026-11-17 — la sovrapposizione con una versione fuori bozza esce col codice della funzione,
+  `E_DOCUMENTI_VERSIONE_OVERLAP`: prima usciva il 23P01 del vincolo, e il codice lo dava il backend.
 
 ---
 

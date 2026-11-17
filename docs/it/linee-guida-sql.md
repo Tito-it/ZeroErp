@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -583,9 +583,20 @@ un marcatore di revisione (`rev`), l'id di un changeSet, l'hash di un commit.
 * `scripts/guardrail_comment_al_presente.py`, in CI: un `COMMENT ON … IS '…'` dei changeSet nuovi
   (dal `20261111-18`) non le porta, in nessuno schema. Ferma il debito **nuovo**; il pregresso non
   blocca. Un'eccezione vera si dichiara in testa al file: `# comment-al-presente: ammesso — <perché>`.
-* `db/pgtap/dbops/test-comment-al-presente-v1.sql`, sul database vivo: nessun COMMENT di `dbops` e
-  `maintenance`, né quelli che `dbops.fn_storico_arma_scope` scrive sulle shadow di `storico`, le
-  porta. Gli altri schemi entrano nel perimetro quando la loro famiglia è stata riscritta.
+* `db/pgtap/dbops/test-comment-al-presente-v1.sql`, sul database vivo: nessun COMMENT degli schemi
+  la cui famiglia è riscritta (`dbops`, `maintenance`, `catalogo`, `documenti`), degli oggetti fuori
+  schema riscritti con loro, né di quelli che `dbops.fn_storico_arma_scope` scrive sulle shadow di
+  `storico`, le porta. Uno schema entra nella lista del file quando la sua famiglia è riscritta: il
+  presidio è uno, col perimetro in elenco, non un file per schema. ⚠️ Lo schema di un trigger e di una
+  policy si legge dalla sua tabella: `pg_identify_object` dà `schema` NULL a tutti e due, e un filtro
+  su quella colonna non li vede.
+
+⛔ **Un COMMENT scritto in una fase tardiva vince, su un database nuovo.** `70_dati_sistema`,
+`80_data`, `85_pgagent` e `90_end` girano dopo tutto `00_schema` e `20_code`: su un database
+costruito da zero (la CI) un `COMMENT ON` scritto lì riscrive di nuovo il testo vecchio sopra la
+riscrittura fatta in `00_schema` o `20_code`, e il presidio è rosso solo in CI. Su un database già
+vivo no, perché il changeSet tardivo è girato prima. Prima di riscrivere un COMMENT si cerca se una
+fase tardiva lo scrive; se sì, la riscrittura va in un changeSet di quella fase, che venga dopo.
 
 Date, sigle di decisione e misure non entrano nei presidi: possono stare in una frase lecita, e un
 presidio che sbaglia insegna a ignorarlo. Si leggono a mano quando si riscrive.

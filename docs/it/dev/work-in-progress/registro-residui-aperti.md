@@ -242,7 +242,9 @@
   `vendite.famiglie_documento` lo riscrive a ogni migrate, come già la
   `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
   decidere col team DB se il mirror debba smettere di riscrivere le colonne che
-  l'operatore può cambiare
+  l'operatore può cambiare. ⏭️ Dal 2026-11-17 il tema generale sta in
+  [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md)
+  (§7, Q5)
 - **Righe di listino: la gamba dei compositi bundle non è provata sul DB**
   (BE, stessa origine, §13.3 g): la ricerca libera di `vendite.listini_righe`
   è una condizione sola sulla CTE `unione`, ma

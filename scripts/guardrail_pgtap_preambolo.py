@@ -112,7 +112,11 @@ RADICE = pathlib.Path(__file__).resolve().parent.parent / "db" / "pgtap"
 # 2026-11-09: 110 -> 109. db/pgtap/catalogo/test-articoli-componenti-solo-componente.sql
 #   riscritto (brief-db-revisione-catalogo, giro 1): il padre solo componente ora
 #   pretende E_ARTICOLO_NON_COMPOSITO, e il kit che diventa solo componente il CHECK.
-SOGLIA_THROWS_SENZA_DISCRIMINANTE = 108
+# 2026-11-17: 108 -> 93. I pgTAP di documenti (brief-db-revisione-documenti,
+#   giro 5): stampa, file, eventi, risorse e versioni asseriscono il codice o il
+#   vincolo che rifiuta (dbops.fn_pgtap_codice_errore). Il 108 del giro 2 non era
+#   stato annotato qui.
+SOGLIA_THROWS_SENZA_DISCRIMINANTE = 93
 
 RX_BEGIN = re.compile(r"^\s*BEGIN\s*;", re.M)
 RX_SETC = re.compile(r"SET\s+CONSTRAINTS\s+ALL\s+IMMEDIATE", re.I)

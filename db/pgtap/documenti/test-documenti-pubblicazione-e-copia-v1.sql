@@ -34,7 +34,8 @@
 --  16) valido_dal NULL -> E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO
 --  17) versione inesistente -> E_DOCUMENTI_VERSIONE_NOT_FOUND
 --  18) una PUBBLICATA non si ripubblica -> E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO
---  19) lo stesso inizio di una pubblicata: la chiusura non lo risolve -> 23P01
+--  19) lo stesso inizio di una pubblicata: la chiusura non lo risolve ->
+--      E_DOCUMENTI_VERSIONE_OVERLAP, dal verbo
 --   La copia
 --  20) in un modello di un altro tipo -> E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO
 --  21) in un modello di un'altra sorgente -> E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO
@@ -278,13 +279,13 @@ SELECT throws_like(
     '18) una PUBBLICATA non si ripubblica: E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO');
 
 -- La chiusura prende solo le pubblicate che iniziano PRIMA: lo stesso inizio
--- resta una sovrapposizione, e la ferma il vincolo.
-SELECT throws_ok(
-    format($q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-01-01', 1, NULL)$q$,
-           (SELECT id FROM _v WHERE versione = 2)),
-    '23P01',
-    NULL,
-    '19) lo stesso inizio della V1 pubblicata: la chiusura non lo risolve, il vincolo si');
+-- resta una sovrapposizione, la ferma il vincolo e il verbo la dice col suo codice.
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format(
+        $q$SELECT documenti.fn_pubblica_template_documento_versione(%s, DATE '2026-01-01', 1, NULL)$q$,
+        (SELECT id FROM _v WHERE versione = 2))),
+    'E_DOCUMENTI_VERSIONE_OVERLAP',
+    '19) lo stesso inizio della V1 pubblicata: la chiusura non lo risolve, E_DOCUMENTI_VERSIONE_OVERLAP');
 
 -- ============================================================
 -- 20-27) La copia

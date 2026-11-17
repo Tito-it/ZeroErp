@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL FILE DI UNA RISORSA DICE QUALI CAMPI SONO LIBERI
+#   documenti.trgfn_template_asset_protect_file
+#
+# -- PERCHE' --------------------------------------------------------------
+#   M4 della revisione di documenti: il commento del corpo diceva «campi
+#   modificabili: meta, validita (via valido_al)». Sono liberi anche codice,
+#   descrizione, il tipo, attivo e tutte e due le date; codice_interno lo
+#   blocca il lucchetto di colonna (script.trgfn_lock_columns). Il COMMENT
+#   portava «Guard A4». Si riscrivono tutti e due; il confronto non cambia.
+#   Le cinque colonne confrontate sono NOT NULL: il `!=` basta.
+#
+# -- IL CORPO ---------------------------------------------------------------
+#   Dal catalogo (ultimo changeSet 20260805-02): cambia solo il commento in
+#   testa al corpo. Firma, LANGUAGE, volatilita', SECURITY INVOKER invariati,
+#   nessuna clausola SET/COST/ROWS. Il trigger non cambia. Il GRANT EXECUTE
+#   all'app viene dal loop dei grant di ci_apply, come prima.
+#   Brief: brief-db-revisione-documenti, giro 5 (§15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-12-update-trgfn-template-asset-protect-file-campi-liberi-mctit.yaml
+
+  - changeSet:
+      id: 20261116-12-update-trgfn-template-asset-protect-file-campi-liberi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard del file di una risorsa dei modelli: commento del corpo e COMMENT dicono quali
+        campi restano liberi. Il confronto non cambia.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Il file di una risorsa dei modelli non cambia: e' cosi' che lo stesso
+              --   codice interno indica sempre gli stessi byte, e la ristampa fedele
+              --   ritrova il file di allora.
+              --
+              -- Regole:
+              --   Fermi: storage_key, sha256, file_size_bytes, mime_type, file_name.
+              --   Liberi: codice, descrizione, il tipo (se ammette il formato:
+              --   documenti.trgfn_guard_formato_ammesso), attivo, valido_dal,
+              --   valido_al, meta. codice_interno lo blocca script.trgfn_lock_columns.
+              --   Le cinque colonne ferme sono NOT NULL: il confronto con != basta.
+              --   Un file diverso e' una risorsa nuova, con un codice interno nuovo.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.storage_key    != OLD.storage_key    OR
+                     NEW.sha256         != OLD.sha256         OR
+                     NEW.file_size_bytes != OLD.file_size_bytes OR
+                     NEW.mime_type      != OLD.mime_type      OR
+                     NEW.file_name      != OLD.file_name) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_asset_protect_file',
+                    'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_asset_id', OLD.id,
+                      'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                      'codice_interno', OLD.codice_interno
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file() IS
+                  'Il file di una risorsa dei modelli non cambia: chiave nello storage, impronta, peso, tipo MIME e nome sono quelli del caricamento (E_DOCUMENTI_ASSET_FILE_IMMUTABILE). Restano liberi codice, descrizione, il tipo (se ammette il formato), attivo, le date e meta; codice_interno lo blocca script.trgfn_lock_columns. Un file diverso e'' una risorsa nuova, con un codice interno nuovo: lo stesso codice indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il rollback rimette il COMMENT di prima; il corpo di prima ha lo stesso
+              -- confronto e cambia solo nel commento, quindi resta il nuovo.
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file() IS
+                  'Guard A4: blocca UPDATE su file asset. Una volta salvato il file, storage_key/hash/nome diventano immutabili.';
