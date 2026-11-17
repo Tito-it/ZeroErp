@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -85,7 +85,10 @@ massimo un predefinito attivo, e uno solo anche fra gli standard. Il database ri
 
 ### 2.3 Versione
 
-Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS veri.
+Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS veri. Le versioni sono
+numerate da 1, e il numero lo dà il sistema quando la versione nasce, scritta da zero o copiata: due
+versioni create nello stesso momento sullo stesso modello prendono due numeri diversi, senza errori.
+Il numero non cambia più.
 
 | Stato | Significato |
 |---|---|
@@ -123,8 +126,9 @@ ammette; lo stesso vale per gli allegati di un documento generato (PDF, JPEG, PN
 Una stampa nuova usa solo gli asset **utilizzabili oggi**: accesi e validi alla data di oggi
 dell'azienda. La regola sta in un posto solo del database.
 
-Il file di un asset non si sostituisce e l'asset non si cancella: la ristampa di un documento già
-generato ritrova così, per codice, lo stesso file di allora. Il codice è unico per azienda e non ha
+Il file di un asset non si sostituisce, l'asset non passa a un'altra azienda e non si cancella: la
+ristampa di un documento già generato ritrova così, per codice, lo stesso file di allora. Per usare
+lo stesso file in un'altra azienda lo si carica come asset nuovo di quell'azienda. Il codice è unico per azienda e non ha
 una validità nel tempo: un logo nuovo è un asset nuovo con un codice nuovo, e le versioni che
 devono usarlo sono versioni nuove del modello.
 
@@ -333,7 +337,8 @@ configura o genera.
 | Un modello di un'azienda non stampa i documenti di un'altra | Lo verifica il database prima del render e alla scrittura del documento generato |
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
 | Uno standard non si modifica dall'interfaccia | Il database rifiuta la scrittura a chi non è il proprietario delle tabelle |
-| Il file di un asset non cambia e l'asset non sparisce | Il database rifiuta la sostituzione del file e la cancellazione |
+| Il file di un asset non cambia, l'asset non cambia azienda e non sparisce | Il database rifiuta la sostituzione del file, il cambio d'azienda e la cancellazione |
+| Il numero di una versione lo dà il sistema | Il database lo assegna alla nascita, in fila per modello, e non lo lascia cambiare |
 | Un documento generato non si cancella e non cambia | Il database rifiuta la cancellazione del record, dei suoi eventi e del suo file, e ogni modifica dello snapshot |
 | Ogni documento generato ha il suo PDF | Il database rifiuta, a fine operazione, un documento generato senza il PDF principale |
 | Il PDF prodotto è verificabile | L'hash del file è conservato col record |

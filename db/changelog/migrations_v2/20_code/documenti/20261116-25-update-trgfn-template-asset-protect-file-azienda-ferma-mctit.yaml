@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA RISORSA DEI MODELLI NON CAMBIA AZIENDA
+#   documenti.trgfn_template_asset_protect_file (commento del corpo, COMMENT)
+#   documenti.template_asset (COMMENT della tabella e di emittente_fiscale_id)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Segnalato da /verifica-db sul giro 5 (2026-11-17): il COMMENT e il
+#   commento del corpo del 20261116-12 elencano i campi liberi della risorsa
+#   e tacciono emittente_fiscale_id e storicizza. Nessun lucchetto teneva
+#   ferma l'azienda: un UPDATE spostava la risorsa in un'altra azienda, entro
+#   la row level security. Una versione di modello cita la risorsa col codice
+#   interno, cercato fra quelle dell'azienda del documento: spostata, la
+#   ristampa fedele di una stampa di prima non la ritrova piu', e un'altra
+#   azienda si trova una risorsa col file di qualcun altro.
+#   Decisione di Tid del 2026-11-17: l'azienda e' ferma. emittente_fiscale_id
+#   entra in dbops.automation_lock_columns (riga di questo giro) con un codice
+#   suo, E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE, la cui frase dice che cosa
+#   fare al posto del cambio (linee-guida-trigger, «Una FK di appartenenza»):
+#   il lucchetto lo genera ci_apply, qui nessun DDL su di lui (§11.5).
+#   Qui si riscrivono i testi: storicizza resta libera, ed e' nominata.
+#
+# -- IL CORPO ---------------------------------------------------------------
+#   Dal 20261116-12, verificato uguale al vivo il 2026-11-17: cambia solo il
+#   commento in testa al corpo. Firma, LANGUAGE, volatilita', SECURITY
+#   INVOKER invariati, nessuna clausola SET/COST/ROWS. Il trigger non cambia.
+#
+# -- CHI SCRIVE LA COLONNA (censito 2026-11-17) -----------------------------
+#   La nascita: script.trgfn_default_emittente_fiscale dalla sessione, o il
+#   valore del servizio. Nessun UPDATE: ASSET_UPDATE_COLUMNS del backend non
+#   la contiene, nessuna funzione del database e nessun seed la riscrive.
+#   Brief: brief-db-revisione-documenti, giro 6 (§16).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-25-update-trgfn-template-asset-protect-file-azienda-ferma-mctit.yaml
+
+  - changeSet:
+      id: 20261116-25-update-trgfn-template-asset-protect-file-azienda-ferma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Una risorsa dei modelli non cambia azienda: i testi del guard del file, della tabella e
+        della colonna lo dicono, e nominano storicizza fra i campi liberi.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Il file di una risorsa dei modelli non cambia: e' cosi' che lo stesso
+              --   codice interno indica sempre gli stessi byte, e la ristampa fedele
+              --   ritrova il file di allora.
+              --
+              -- Regole:
+              --   Fermi: storage_key, sha256, file_size_bytes, mime_type, file_name.
+              --   Liberi: codice, descrizione, il tipo (se ammette il formato:
+              --   documenti.trgfn_guard_formato_ammesso), attivo, valido_dal,
+              --   valido_al, meta, storicizza. codice_interno e l'azienda
+              --   (emittente_fiscale_id) li blocca script.trgfn_lock_columns.
+              --   Le cinque colonne ferme sono NOT NULL: il confronto con != basta.
+              --   Un file diverso e' una risorsa nuova, con un codice interno nuovo.
+              --
+              -- Errore:
+              --   E_DOCUMENTI_ASSET_FILE_IMMUTABILE
+              BEGIN
+                IF  (NEW.storage_key    != OLD.storage_key    OR
+                     NEW.sha256         != OLD.sha256         OR
+                     NEW.file_size_bytes != OLD.file_size_bytes OR
+                     NEW.mime_type      != OLD.mime_type      OR
+                     NEW.file_name      != OLD.file_name) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_asset_protect_file',
+                    'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_asset_id', OLD.id,
+                      'emittente_fiscale_id', OLD.emittente_fiscale_id,
+                      'codice_interno', OLD.codice_interno
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file() IS
+                  'Il file di una risorsa dei modelli non cambia: chiave nello storage, impronta, peso, tipo MIME e nome sono quelli del caricamento (E_DOCUMENTI_ASSET_FILE_IMMUTABILE). Restano liberi codice, descrizione, il tipo (se ammette il formato), attivo, le date, meta e storicizza; codice_interno e l''azienda (emittente_fiscale_id) li blocca script.trgfn_lock_columns. Un file diverso e'' una risorsa nuova, con un codice interno nuovo: lo stesso codice indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora.';
+
+              COMMENT ON TABLE documenti.template_asset IS
+                  'Le risorse grafiche di un''azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell''azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file), la risorsa non cambia azienda (E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE) e non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte della stessa azienda, ed e'' cosi'' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.';
+
+              COMMENT ON COLUMN documenti.template_asset.emittente_fiscale_id IS
+                  'L''azienda della risorsa (anagrafiche.emittenti_fiscali); se non e'' indicata la prende dalla sessione (script.trgfn_default_emittente_fiscale). Dopo la nascita non cambia (lucchetto di colonna, E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE): per un''altra azienda si carica una risorsa nuova. Una risorsa accesa vuole l''azienda accesa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima ha lo stesso confronto e cambia solo nel commento,
+              -- quindi resta il nuovo; tornano i tre COMMENT di prima.
+              COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file() IS
+                  'Il file di una risorsa dei modelli non cambia: chiave nello storage, impronta, peso, tipo MIME e nome sono quelli del caricamento (E_DOCUMENTI_ASSET_FILE_IMMUTABILE). Restano liberi codice, descrizione, il tipo (se ammette il formato), attivo, le date e meta; codice_interno lo blocca script.trgfn_lock_columns. Un file diverso e'' una risorsa nuova, con un codice interno nuovo: lo stesso codice indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora.';
+
+              COMMENT ON TABLE documenti.template_asset IS
+                  'Le risorse grafiche di un''azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell''azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file) e la risorsa non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.';
+
+              COMMENT ON COLUMN documenti.template_asset.emittente_fiscale_id IS
+                  'L''azienda della risorsa (anagrafiche.emittenti_fiscali); se non e'' indicata la prende dalla sessione (script.trgfn_default_emittente_fiscale). Una risorsa accesa vuole l''azienda accesa.';

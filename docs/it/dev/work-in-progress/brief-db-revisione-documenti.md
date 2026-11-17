@@ -1,9 +1,12 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-17 (giro 5 applicato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-17 (giro 6 applicato, pgTAP verdi)
 
-**Riparte: Tid** col commit di BE2, BE18, BE19 e BE8 (§15.10, fatte), la doc auto-generata del
-giro 5 e la decisione su `emittente_fiscale_id` della risorsa (§15.5). Il giro 5 («pulizia e metadati»: Q16-Q19;
+**Riparte: Tid** con la doc auto-generata del giro 6 e il commit (riga 34), e **il team BE** con BE20-BE23 (§16.6,
+nessuna rottura, sbloccate). Il giro 6 (§16: il numero della versione dal database, l'azienda della risorsa ferma,
+`20261116-23 … -25`) è applicato il 2026-11-17 con `ci_apply` e i pgTAP verdi (§16.5). Poi l'archiviazione (riga
+28). Il resto è fatto e committato: le ricadute BE del giro 5 e BE8 in `52eac53667`
+(§15.10), la doc auto-generata del giro 5 in `9a6db84d2b`, lo script di Q11 lanciato su dbdev. Il giro 5 («pulizia e metadati»: Q16-Q19;
 `20261116-10 … -16`) è verificato da `/verifica-db`, applicato il 2026-11-17 con i pgTAP verdi e committato (§15);
 l'arrivo è verificato dalla sessione BE il 2026-11-17 (§15.9: nessuna rottura). Il giro 4 («risoluzione, scarto,
 asset»: D5, D9, D19, Q13; `20261116-05 … -09`) è applicato il 2026-11-16 con i pgTAP verdi e committato in
@@ -39,16 +42,18 @@ la segnalazione di §9 sono decise (2026-11-16).
 | 20 | ✅ sessione DB | Giro 5 scritto: sette changeSet, quattro CSV, il presidio dei COMMENT unico (la copia di `catalogo` tolta), dieci pgTAP riscritti, linee guida §5d e pagine `manual/` | §15 | 23 ✅ |
 | 25 | ✅ Tid | Le scelte Q16-Q19 del giro 5 (2026-11-17) | §15.3 | — |
 | 26 | ✅ Tid | Giro 5: `/verifica-db` (le policy nel presidio, §15.5), apply e pgTAP verdi (2026-11-17), commit | §15.7 | 20 |
-| 29 | Tid | La doc auto-generata del giro 5 (le schede delle 15 tabelle, delle viste, delle funzioni riscritte, dei trigger di `dbops`, le due policy) | §15.7 | 26 ✅ |
-| 27 | ✅ team BE | BE2, BE18, BE19 del giro 5 — fatte il 2026-11-17 (non committate) | §15.8, §15.10 | 26 ✅ |
-| 30 | Tid / team DB | R1 del BE: la sede unica del numero della versione nuova (oggi residuo del registro, §3.5; nessun giro lo apre) | §14.8, §15.9 | — |
+| 29 | ✅ Tid | La doc auto-generata del giro 5 (le schede delle 15 tabelle, delle viste, delle funzioni riscritte, dei trigger di `dbops`, le due policy): rigenerata in `9a6db84d2b` | §15.7 | 26 ✅ |
+| 27 | ✅ team BE | BE2, BE18, BE19 del giro 5 — fatte e committate il 2026-11-17 (`52eac53667`) | §15.8, §15.10 | 26 ✅ |
+| 30 | ✅ sessione DB | R1 del BE (Tid, 2026-11-17: nel DB) — giro 6 scritto: il numero lo assegna un trigger, in fila per modello; `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` ritirato (scelta di Tid nel giro) | §16 | — |
 | 13 | ✅ team BE | Le altre ricadute di §6 — fatte; BE8 il 2026-11-17 (§15.10) | §6, §15.10 | 26 ✅ |
-| 28 | chi chiude | Archiviazione in `work-done/`, con le ricadute BE chiuse o passate a un brief BE | §10 | 26, 27 |
+| 31 | ✅ sessione DB | `emittente_fiscale_id` della risorsa (Tid, 2026-11-17: fermo) — giro 6 scritto: lucchetto di colonna con `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`, testi del `-12` riallineati | §16 | — |
+| 32 | ✅ Tid | Giro 6 applicato (2026-11-17): `ci_apply` (i due lucchetti generati, verificato su dbdev), pgTAP verdi | §16.5 | 30, 31 |
+| 34 | Tid | Giro 6: la doc auto-generata (le schede di `template_documenti_versioni` e `template_asset`, delle due funzioni riscritte e della nuova, che entra nell'indice) e il commit | §16.5 | 32 ✅ |
+| 33 | team BE | BE20-BE23 del giro 6 — sbloccate: `next_versione_num` ritirato, policy e fallback, doc dell'API, fixture da verificare | §16.6 | 32 ✅ |
+| 28 | chi chiude | Archiviazione in `work-done/`, con le ricadute BE chiuse o passate a un brief BE. Con BE20 fatto si toglie dal registro dei residui (e da PROJECT_CONTEXT) la voce «la numerazione della versione nuova» | §10 | 32, 33 |
 
-**Decisioni aperte di Tid:** `emittente_fiscale_id` della risorsa, libero o fermo (§15.5, non blocca l'apply); R1,
-se la numerazione della versione nuova apre un giro DB o resta nel registro (§15.9). **Da committare:** questo brief
-(correzioni della sessione BE del 2026-11-17: il blocco doppio lasciato dal merge, le righe 15, 19, 24, la §14.8
-rimessa al suo posto, §15.9) le ricadute BE del giro 5 e BE8 (§15.10).
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 6 (§16.1: tre changeSet, tre CSV, un pgTAP nuovo e
+due riscritti, le pagine `manual/` e la guida), questo brief e `PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -85,7 +90,8 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 | 2 ✅ applicato il 2026-11-16 (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
 | 3 ✅ applicato il 2026-11-16 (§13) | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
 | 4 ✅ applicato il 2026-11-16 (§14) | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
-| 5 ✍️ scritto il 2026-11-17 (§15) | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2, BE18, BE19 | Quello che nessun giro precedente ha già aperto |
+| 5 ✅ applicato il 2026-11-17 (§15) | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2, BE18, BE19 | Quello che nessun giro precedente ha già aperto |
+| 6 ✅ applicato il 2026-11-17 (§16) | B | **Il numero della versione e l'azienda della risorsa.** R1 del BE: una sede sola del numero, nel DB; l'azienda della risorsa ferma (§15.5) | BE20-BE23 | Due decisioni di Tid nate dopo il giro 5 |
 
 Fuori dai giri: lo script di Q11 (§3.6), a mano su dbdev. Chiusi senza modifiche: D6, D14, D17 (§3.3).
 
@@ -1220,3 +1226,96 @@ Verificato su dbdev, non sugli YAML (la doc auto-generata del giro 5 non è anco
   l'`enum`. Test: specchio sul DB, `test_template_service` 6, `test_documenti_api` 5-ter; tutti e tre rossi col
   codice di prima. Se un giro DB facesse dello stato un vocabolario a tabella, lo specchio esce e il filtro passa a
   `richiedi_codice_a_vocabolario`.
+
+## 16. Giro 6 — il numero della versione e l'azienda della risorsa (scritto e applicato il 2026-11-17)
+
+Via di Tid il 2026-11-17 («procedi»), dopo le decisioni della stessa giornata: R1 (§14.8, §15.9) nel DB,
+`emittente_fiscale_id` della risorsa fermo (§15.5). Scelta di Tid nel giro: il codice della gara sul numero
+**si ritira** (le nascite si mettono in fila, la gara non c'è più).
+
+### 16.1 Che cosa è scritto
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `-23` (`20_code/documenti`) | `documenti.trgfn_template_documenti_versioni_assegna_numero`, nuova, montata `BEFORE INSERT` in fase `a04` (`trg_template_documenti_versioni_a04_assegna_numero_ins`): il numero di una versione nuova è il successivo all'ultimo del modello, sotto `pg_advisory_xact_lock` per modello (linee-guida-sql §5b) preso prima di leggere il massimo. Un numero passato da chi non è il proprietario si sostituisce (come la natura di vendita di una riga); il proprietario (seed degli standard) tiene il suo. COMMENT di funzione, trigger, colonna `versione` e vincolo `uq_template_documenti_versioni_template_versione` |
+| `-24` (`20_code/documenti`) | `fn_crea_bozza_da_versione`: l'INSERT non nomina il numero; escono il `MAX + 1` e il blocco che traduceva il 23505 in `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`. Corpo dal `20261116-04`, verificato uguale al vivo; il rollback rimette quel corpo |
+| `-25` (`20_code/documenti`) | `trgfn_template_asset_protect_file`: commento del corpo e COMMENT nominano l'azienda fra i campi fermi (lucchetto) e `storicizza` fra i liberi; COMMENT di `template_asset` e di `emittente_fiscale_id` |
+| `dbops/automation_lock_columns.csv` | Due righe: `template_documenti_versioni.versione` (`E_CODICE_NON_MODIFICABILE`), `template_asset.emittente_fiscale_id` (`E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`). I lucchetti li genera `ci_apply` |
+| `config/codici_errore.csv`, `messaggi_errore.csv` | `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` ritirato (`obsoleto_dal` 2026-11-17, il messaggio resta per `error_log`); nuovo `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE` (`CONFLITTO_STATO`, messaggio 1510): un codice suo, come vuole linee-guida-trigger per una colonna d'appartenenza, perché la frase di `E_EMITTENTE_NON_MODIFICABILE` parla degli operatori |
+| pgTAP | Nuovo `documenti/test-documenti-numero-versione-v1` (13). Riscritti: `-pubblicazione-e-copia-v1` (il 27: la copia non numera da sé), `-template-asset` (18: l'azienda ferma, 19: `storicizza` libero) |
+| Doc | `manual/` nuova `trgfn_template_documenti_versioni_assegna_numero`; riscritte `fn_crea_bozza_da_versione`, `template_documenti_versioni`, `template_asset`, `trgfn_template_asset_protect_file`; guida `documenti-e-stampe` |
+
+### 16.2 Le scelte del giro
+
+* **Un trigger, non un verbo di nascita.** La regola vale per ogni strada che scrive la tabella; un verbo
+  lascerebbe l'`INSERT` diretto con un numero suo. È la forma «colonna derivata» delle linee guida dei trigger:
+  la derivazione alla nascita e il lucchetto di colonna per l'`UPDATE`.
+* **Il numero dell'applicazione si sostituisce, non si rifiuta.** Precedente: `script.trgfn_righe_natura_vendita`.
+  Così nessuna rottura per il backend che oggi lo manda.
+* **Fase `a04`.** I rifiuti `a05` (guard dello stato, sola lettura dello standard) citano il numero nella frase:
+  chi legge gira dopo chi risolve. `a04` è un numero libero nella zona `a`, non una fase nuova.
+* **Il lock al posto della traduzione.** In `READ COMMITTED` la seconda nascita aspetta e legge il massimo
+  dopo il commit della prima: nessuna gara, nessun «riprova». Il vincolo resta difesa a valle (in
+  `REPEATABLE READ` rifiuta).
+
+### 16.3 Fatti datati (2026-11-17)
+
+* Censiti gli scrittori: la copia (e per lei `fn_personalizza_template_standard`), i seed degli standard in
+  `80_data` (da proprietario, numeri espliciti che restano), il backend (`create_versione`), le fixture pgTAP
+  (numeri da 1 in ordine: ricevono gli stessi numeri). Nessuno scrive `versione` in `UPDATE`
+  (`VERSIONE_UPDATE_COLUMNS` non la contiene) né `template_asset.emittente_fiscale_id` dopo la nascita
+  (`ASSET_UPDATE_COLUMNS` non la contiene).
+* Nessun COMMENT di una fase tardiva riscrive gli oggetti del giro (§5d).
+
+### 16.4 Le prove (scratch, owner, estratto in `ROLLBACK`)
+
+* Estratto `-23 … -25` più un changeSet di sola prova (scratchpad) con le righe nuove dei registri e
+  `dbops.fn_run_automations_lock_columns`, che all'apply gira in `ci_apply`.
+* ⚠️ Sullo scratch la prova gira da proprietario, che il trigger esenta: nelle copie di `-numero-versione-v1`
+  e `-pubblicazione-e-copia-v1` `script.fn_is_proprietario_tabella` è ridefinita per rispondere false sulle
+  versioni (come al giro 3). L'esito come applicazione arriva dopo l'apply.
+* `-numero-versione-v1`: senza l'estratto si ferma al 4 (il numero assente viola il NOT NULL); con, 13 su 13.
+  Mutazione senza i registri: rossi l'11 (il lucchetto) e il 12 (il ritiro). `-pubblicazione-e-copia-v1`
+  26 → 27 su 27 (il 27). `-template-asset` 18 → 19 su 19 (il 18).
+* Tutti i 25 pgTAP di `documenti` e i presidi `riferimenti-morti`, `security-definer-search-path`,
+  `catalogo-messaggi-errore-completo`, `codici-errore-identita`, `vw-codici-errore-motivo-nominato`,
+  `vw-codici-errore-valore-atteso`, `stati-check-scrittori`, `costanti-catalogo-citate-dal-codice`,
+  `builder-pgtap-vincoli-immediate`, `rls-perimetro-scoperto`, `rubinetto-primo-motivo`,
+  `registri-append-only-postura`, `comment-al-presente`, `rls-documenti-satelliti`,
+  `trgfn-default-emittente-fiscale`, `lock-columns-convergenza`, `non-editable-fields-dal-lock-vivo`,
+  `fn-non-editable-fields-conditional`: uguali senza e con, tranne i tre corretti. Rossi uguali nelle due
+  corse, da owner: gli stessi dei giri 2-5 (`-generati-eventi` 1, `-lookup` 1, `-vocabolari-forma-v1` 1,
+  `-template-standard-app-v1` 5, `registri-append-only-postura` 4).
+* Cancelli statici verdi (`guardrail_comment_al_presente`, `_forme_changeset`, `_sql_letterali`,
+  `_run_on_change`, `_ddl_su_trigger_automazione`, `_pgtap_preambolo`); `prossimo_changeset --doppi`
+  pulito; catalogo identico prima e dopo ogni prova.
+
+### 16.5 Per l'apply (Tid) — ✅ applicato il 2026-11-17, pgTAP verdi
+
+✅ **Fatto da Tid il 2026-11-17**: apply, `ci_apply` e pgTAP verdi. Verificato su dbdev dalla sessione DB: il
+trigger `trg_template_documenti_versioni_a04_assegna_numero_ins` montato; i lucchetti generati,
+`trg_template_documenti_versioni_a10_lock_columns_upd` su `versione` e
+`trg_template_asset_a10_lock_columns_upd` su `codice_interno, emittente_fiscale_id`;
+`E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` con `obsoleto_dal` 2026-11-17, `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`
+a catalogo. Restano la doc auto-generata (il punto 4) e il commit.
+
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply, poi `ci_apply`: genera i due lucchetti dalle righe nuove di `automation_lock_columns`.
+3. I pgTAP: `-numero-versione-v1`, `-pubblicazione-e-copia-v1`, `-template-asset`, e lo schema `documenti`.
+4. La doc auto-generata: schede di `template_documenti_versioni`, `template_asset`, delle due funzioni
+   riscritte e della nuova (che entra nell'indice), dei trigger.
+5. Il backend **non** si rompe: il numero che `create_versione` manda si sostituisce con lo stesso valore
+   (MAX + 1), e nessuno scrive le due colonne bloccate.
+
+### 16.6 Richieste al team BE (sbloccate dal 2026-11-17, nessuna rottura)
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE20 | `backend/apps/documenti/services/template_versioni_admin_service.py` (`create_versione` :198-230, `_UNIQUE_CONSTRAINTS` :102-106, il commento :350); `backend/apps/documenti/db/documenti_repository.py` (`next_versione_num` :856-868); i test `test_template_versioni_admin_service.py` (1, e l'`assert_not_called` :410) e `test_documenti_repository.py` (13) | Il numero lo assegna il DB: `create_versione` non lo calcola e non lo manda (l'INSERT senza `versione`, il numero si rilegge dalla riga creata); `next_versione_num` si ritira, con la voce di `uq_template_documenti_versioni_template_versione` in `_UNIQUE_CONSTRAINTS` (la gara non c'è più). I test sul calcolo si riscrivono sul numero che arriva dal DB |
+| BE21 | `backend/apps/core/services/error_policies_generated.py` (rigenerato), `error_messages_fallback.py` :481 | `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` ritirato: esce dal fallback (e dalla policy, se il generatore salta i ritirati). Nuovo `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE` (`CONFLITTO_STATO`): policy rigenerata e ripiego col messaggio del catalogo |
+| BE22 | `docs/it/backend/documenti/manual/api_documenti_templates.md` :507, :740 | Il 409 della gara sul clone non esiste più; il numero di una versione nuova (creazione e clone) lo assegna il database |
+| BE23 | `backend/apps/documenti/tests/db/test_scritture_dinamiche_db.py`, `test_ricerca_liste_db.py` | Da verificare: le fixture che inseriscono versioni con un numero esplicito ricevono il successivo del modello, non il numero scritto. Se un test conta su un numero fuori sequenza, va riscritto |
+
+Il form: `versione` e `template_asset.emittente_fiscale_id` risultano non modificabili da
+`dbops.vw_non_editable_fields` dopo `ci_apply`; nessuno dei due è oggi un campo del form.

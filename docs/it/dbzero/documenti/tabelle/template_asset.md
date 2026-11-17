@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le risorse grafiche di un'azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell'azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file) e la risorsa non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte, ed e' cosi' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.
+> Le risorse grafiche di un'azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell'azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file), la risorsa non cambia azienda (E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE) e non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte della stessa azienda, ed e' cosi' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -64,12 +64,12 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_template_asset_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_DOCUMENTI_ASSET_DELETE_BLOCKED')` |
-| trg_template_asset_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_asset_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
+| trg_template_asset_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_asset_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_template_asset_a10_emittenti_fiscali_require_attivo_1ac740 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_template_asset_a10_emittenti_fiscali_require_attivo_1ac740 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
-| trg_template_asset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_template_asset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE', 'emittente_fiscale_id', 'E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE')` |
 | trg_template_asset_a10_protect_file_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_asset_protect_file()` |
 | trg_template_asset_a10_tipo_ammette_formato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
 | trg_template_asset_a10_tipo_ammette_formato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |

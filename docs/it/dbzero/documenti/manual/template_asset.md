@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_asset`
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,17 +49,22 @@ versione.
 
 ---
 
-### ⛔ Un asset non cambia file e non si cancella
+### ⛔ Un asset non cambia file né azienda, e non si cancella
 
 * Il file di un asset non cambia: chiave nello storage, impronta, peso, tipo e nome sono quelli del
   caricamento ([protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file)).
+* Un asset resta dell'azienda per cui è stato caricato (`emittente_fiscale_id`, lucchetto di colonna,
+  `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`). Una versione lo cerca fra gli asset dell'azienda del
+  documento: spostato, la ristampa di una stampa di prima non lo ritroverebbe, e l'altra azienda si
+  troverebbe un asset col file di qualcun altro. Per un'altra azienda si carica un asset nuovo.
 * Un asset non si cancella mai, da nessun ruolo (il rifiuto sempre attivo di
   [trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)).
 
 Insieme fanno dell'asset un'istantanea stabile: la ristampa fedele di un documento ritrova il file di
 allora, anche se oggi l'asset è scaduto o spento.
 
-Restano modificabili descrizione, codice, meta, attivo e le date.
+Restano modificabili descrizione, codice, il tipo (se ammette il formato), meta, attivo, le date e
+`storicizza`.
 
 ---
 
@@ -110,6 +115,7 @@ controllare i byte del file.
 * `E_DOCUMENTI_ASSET_DELETE_BLOCKED` — cancellazione di un asset.
 * `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` — modifica del file di un asset.
 * `E_CODICE_NON_MODIFICABILE` — modifica del codice interno.
+* `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE` — modifica dell'azienda.
 * `E_DOCUMENTI_FORMATO_NON_AMMESSO` — formato che il tipo dell'asset non ammette.
 * `E_DATA_AL_MINORE_DAL` — fine che precede l'inizio.
 * Le unicità (codice, codice interno, impronta) arrivano come violazione di vincolo, e il backend le
@@ -120,7 +126,7 @@ controllare i byte del file.
 ### Test
 
 * `db/pgtap/documenti/test-documenti-template-asset.sql` — unicità dell'impronta, cancellazione
-  bloccata, file immutabile, meta modificabile.
+  bloccata, file, codice interno e azienda fermi, i campi liberi.
 * `db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql` — il formato ammesso dal tipo, alla
   nascita e al cambio di tipo.
 * `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — utilizzabile l'asset acceso e
@@ -134,6 +140,7 @@ controllare i byte del file.
 * 2026-05-14 — `validita` diventa una colonna generata.
 * 2026-11-16 — il formato ammesso dal tipo passa dal backend al database, e la regola «utilizzabile
   oggi» ha la sua vista.
+* 2026-11-17 — l'azienda di un asset è ferma: fino ad allora un UPDATE la spostava in un'altra.
 
 ---
 
