@@ -48,9 +48,14 @@ export function lookupTipiIndirizzoNatura(tipoSoggettoDettaglioId) {
   )
 }
 
-export function lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice) {
+// --- Il ruolo da assegnare: `soggettoId` e' il soggetto a cui si assegna,
+//     `null` finche' non e' scelto (la natura non conta). Col soggetto, i tipi
+//     che la sua natura non ammette tornano `ammesso=false` (R-1 di
+//     brief-db-fornitore-privato-indirizzi, 2026-11-17). ---
+export function lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice, soggettoId = null) {
   return api.get(
-    `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/indirizzi/`
+    `${BASE}/lookup/tipi-ruolo/${tipoRuoloCodice}/indirizzi/`,
+    soggettoId ? { params: { soggetto_id: soggettoId } } : undefined
   )
 }
 

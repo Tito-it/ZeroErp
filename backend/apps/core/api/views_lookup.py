@@ -21,6 +21,7 @@ from apps.core.api.payload_validators import (
     parse_list_params,
     qp_int_strict,
     qp_str,
+    qp_uuid_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
@@ -100,13 +101,26 @@ class LookupTipiIndirizzoTipoRuoloView(DomainAPIView):
     skip_area_check = True
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="soggetto_id", type=str, required=False,
+                description="Il soggetto (uuid) a cui il ruolo si assegna. Assente finche' "
+                            "non e' scelto: la natura non conta. Con il soggetto, i tipi "
+                            "che la sua natura non ammette tornano `ammesso=false`.",
+            ),
+        ],
         responses={200: risposta_lookup("TipiIndirizzoTipoRuoloResponse")},
     )
     # Scopo: Il picker dei tipi di indirizzo dell'assegnazione di un ruolo
-    #        (crea cliente, crea fornitore), sul tipo di ruolo
-    #        (`fn_tipi_indirizzo_proponibili_tipo_ruolo`).
+    #        (crea cliente, crea fornitore), sul tipo di ruolo e sul soggetto
+    #        a cui si assegna (`fn_tipi_indirizzo_proponibili_tipo_ruolo`).
+    #        `soggetto_id` non uuid: 400 (un `%s::uuid` su una stringa
+    #        qualunque sarebbe un 500).
     def get(self, request: Request, tipo_ruolo_codice: str) -> JsonResponse:
-        results = LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo(tipo_ruolo_codice)
+        soggetto_id = qp_uuid_optional(request.query_params.get("soggetto_id"), "soggetto_id")
+        results = LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo(
+            tipo_ruolo_codice, soggetto_id,
+        )
         return success_response({"results": results})
 
 

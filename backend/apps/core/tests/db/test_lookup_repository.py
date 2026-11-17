@@ -112,7 +112,7 @@ class TestTipiIndirizzoProponibili(TestCase):
             "soggetto": ("fn_tipi_indirizzo_proponibili_soggetto", ("019d-uuid",)),
             "natura": ("fn_tipi_indirizzo_proponibili_natura", (3,)),
             "ruolo": ("fn_tipi_indirizzo_proponibili_ruolo", (50, None)),
-            "tipo_ruolo": ("fn_tipi_indirizzo_proponibili_tipo_ruolo", (2,)),
+            "tipo_ruolo": ("fn_tipi_indirizzo_proponibili_tipo_ruolo", (2, None)),
         }
         for contesto, (funzione, args) in casi.items():
             with self.subTest(contesto=contesto):

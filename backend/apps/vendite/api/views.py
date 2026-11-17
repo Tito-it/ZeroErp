@@ -41,6 +41,7 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
+    qp_uuid_optional,
 )
 from apps.core.api.openapi_params import parametri_finestra, descrizione_order_by
 from apps.vendite.db.vendite_repository import (
@@ -1535,7 +1536,7 @@ def _filtri_giornale(qp) -> dict[str, Any]:
         valori = [v.strip().upper() for v in (raw or "").split(",") if v.strip()]
         return valori or None
 
-    filo = optional_uuid({"filo": qp_str(qp.get("filo"))}, "filo")
+    filo = qp_uuid_optional(qp.get("filo"), "filo")
     return {
         "gravita": _csv(qp.get("gravita")),
         "registri": _csv(qp.get("registro")),

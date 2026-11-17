@@ -171,6 +171,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CAMBIO_NATURA_CON_DATI_SOCIETARI": "Il tipo soggetto scelto non ha dati societari: vanno eliminati prima del cambio.",
     "E_CAMBIO_NATURA_CON_DOCUMENTI": "Il soggetto compare gia' in un documento: il cambio gli toglierebbe o gli darebbe la partita IVA, e non si puo' fare.",
     "E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI": "Il tipo soggetto scelto non ammette alcuni indirizzi del soggetto: vanno eliminati prima del cambio.",
+    "E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI": "Il tipo soggetto scelto non ammette alcuni indirizzi di un ruolo del soggetto: vanno eliminati dal ruolo prima del cambio.",
     "E_CAMBIO_NATURA_PIVA_NON_APPLICABILE": "Il tipo soggetto scelto non ha partita IVA: va svuotata prima del cambio (lo puo' fare solo un amministratore).",
     "E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI": "Il tipo soggetto scelto non ammette titoli IVA in vigore presentati ad altre aziende: deve chiuderli un amministratore.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",

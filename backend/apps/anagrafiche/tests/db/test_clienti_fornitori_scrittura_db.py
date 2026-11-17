@@ -24,6 +24,11 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    Cliente: stato AT e data di attivazione di oggi dalla madre, garanzia al DEFAULT.
 2) ScritturaClientiFornitoriDbTests.test_fornitore_nasce_ve
    stato VE dalla madre, opzionali assenti al DEFAULT, `note` scritta, codice generato.
+3) ScritturaClientiFornitoriDbTests.test_fornitore_privato_coi_soli_obbligatori_della_natura
+   un privato diventa fornitore dal flusso Fornitori con i soli indirizzi che il picker del
+   ruolo da assegnare, letto col soggetto, segna obbligatori (la fatturazione, non la sede
+   legale): i guard differiti, richiusi, non rifiutano (R-4 di
+   brief-db-fornitore-privato-indirizzi, 2026-11-17).
 """
 from __future__ import annotations
 
@@ -142,6 +147,62 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 self.assertIsNone(rating)
                 self.assertTrue(codice)  # dal sistema_codici: la chiave e' stata omessa
                 self.assertEqual(sr_id, esito["soggetto_ruolo_id"])
+                raise Annulla
+        except Annulla:
+            pass
+
+    # 3. Il fornitore privato (brief-db-fornitore-privato-indirizzi, R-4): gli
+    #    indirizzi del ruolo sono quelli che il picker, col soggetto, segna
+    #    obbligatori; nessun tipo e' scritto a mano. ⚠️ Il builder richiude la
+    #    sua finestra: la saga del fornitore apre la propria, e
+    #    `SET CONSTRAINTS ALL IMMEDIATE` fa giudicare i guard differiti
+    #    (gli obbligatori del ruolo) prima dell'annullo.
+    def test_fornitore_privato_coi_soli_obbligatori_della_natura(self):
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        from apps.core.db.lookup_repository import LookupRepository
+
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                apri_contesto_operatore(cur)
+                cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pf('Fornitore privato scrfor')")
+                soggetto_id = str(cur.fetchone()[0])
+                cur.execute(
+                    "SELECT id FROM config.stati WHERE NOT catalogo_comuni_completo ORDER BY id LIMIT 1"
+                )
+                stato = cur.fetchone()
+                if stato is None:
+                    self.skipTest("Nessuno stato senza catalogo dei comuni.")
+                obbligatori = sorted(
+                    r["codice_interno"]
+                    for r in LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo("FO", soggetto_id)
+                    if r["obbligatorio"]
+                )
+                self.assertTrue(obbligatori, "il ruolo FO del privato non chiede nessun indirizzo")
+
+                cur.execute("SET CONSTRAINTS ALL DEFERRED")
+                esito = FornitoriService().crea_fornitore({
+                    "soggetto_id": soggetto_id,
+                    "indirizzi": [
+                        {
+                            "tipo_indirizzo_codice_interno": tipo, "indirizzo_libero": "Via privato 1",
+                            "stato_id": int(stato[0]), "locality": "Prova", "postal_code": "PR1",
+                        }
+                        for tipo in obbligatori
+                    ],
+                })
+                cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
+                cur.execute(
+                    """
+                    SELECT ti.codice_interno
+                      FROM anagrafiche.indirizzi i
+                      JOIN config.tipi_indirizzi ti ON ti.id = i.tipo_indirizzo_id
+                     WHERE i.soggetto_ruolo_id = %s
+                     ORDER BY ti.codice_interno
+                    """,
+                    [esito["soggetto_ruolo_id"]],
+                )
+                self.assertEqual(obbligatori, [r[0] for r in cur.fetchall()])
                 raise Annulla
         except Annulla:
             pass

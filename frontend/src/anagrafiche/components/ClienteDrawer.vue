@@ -122,6 +122,10 @@ const detail = ref(null) // dati extra solo per visualizzazione
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
+// Il picker degli indirizzi del ruolo si rilegge quando il soggetto e' scelto:
+// la sua natura decide ammessi e obbligatori. ⚠️ Dopo `soggettoSelezionato`:
+// `watch` valuta il getter subito (TDZ).
+indirizzo.seguiSoggettoDelRuolo(TIPO_RUOLO.CLIENTE, () => soggettoSelezionato.value?.id)
 
 // Modifiche non salvate (BB useDrawerFormPreserve): il form, il soggetto
 // scelto in creazione, e contatto e indirizzo inline (il Salva della creazione
@@ -263,7 +267,8 @@ watch(() => props.visible, async (val) => {
     if (utilityDefaultId.value) {
       form.value.utility_id = utilityDefaultId.value
     }
-    indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
+    // La matrice degli indirizzi del ruolo CL si legge alla scelta del
+    // soggetto (`seguiSoggettoDelRuolo`): prima la sezione non c'e'.
   }
   // Fotografia dopo il popolamento completo (dettaglio o default + utility di default).
   fissa()

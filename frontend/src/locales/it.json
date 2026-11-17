@@ -6372,6 +6372,7 @@
         "titoli_iva_altri_emittenti": "La natura scelta non ammette {titoli} titoli IVA in vigore presentati ad altre aziende, che da qui non si vedono: deve chiuderli un amministratore, o l'azienda che li ha ricevuti.",
         "dati_societari": "La natura scelta non ha dati societari: vanno eliminati prima del cambio.",
         "indirizzi": "La natura scelta non ammette {indirizzi} indirizzi del soggetto: vanno eliminati prima del cambio.",
+        "indirizzi_ruolo": "La natura scelta non ammette {indirizzi} indirizzi del ruolo {ruolo}: vanno eliminati dal ruolo prima del cambio.",
         "senza_natura_con_titoli_iva": "Il soggetto ha titoli IVA in vigore, e senza una natura non li può avere: si sceglie la natura, oppure si chiudono prima i titoli."
       },
       "dati_societari_elimina_blocco": {
