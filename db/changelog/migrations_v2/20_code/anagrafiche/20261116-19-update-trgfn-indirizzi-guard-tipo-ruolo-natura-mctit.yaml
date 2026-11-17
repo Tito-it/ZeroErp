@@ -1,0 +1,166 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEGLI INDIRIZZI DEL RUOLO GUARDA ANCHE LA NATURA DEL SOGGETTO
+#   anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo() -> trigger
+#   (montata da trg_indirizzi_a10_guard_tipo_ruolo_tipi_indirizzo_ins_upd,
+#    BEFORE INSERT OR UPDATE OF tipo_indirizzo_id ON anagrafiche.indirizzi)
+#   Brief: brief-db-fornitore-privato-indirizzi §3.2, §4.2, giro 1.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Sul layer SOGGETTO il tipo di indirizzo lo giudica la natura
+#   (trgfn_indirizzi_soggetti_guard_tipo_indirizzo); sul layer RUOLO solo la
+#   matrice del ruolo. Un privato poteva quindi avere sul ruolo una sede
+#   legale, il dato che sul soggetto il DB rifiuta: un varco aperto per
+#   qualunque ruolo (§3.2).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Dopo il ramo del tipo di ruolo, quello della natura del soggetto del
+#   ruolo, col predicato anagrafiche.fn_tipo_indirizzo_ammesso_per_natura
+#   (lo stesso del guard del soggetto: natura NULL o senza matrice = libero).
+#   Codice E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, quello del guard del
+#   soggetto: la regola e la frase («Il tipo soggetto %s non prevede
+#   l'indirizzo «%s».») sono le stesse, cambia solo il layer, che il contesto
+#   dice (soggetto_ruolo_id). L'ordine dei due rifiuti e' quello dei motivi
+#   della check della madre (-18): prima il ruolo, poi la natura.
+#   ⭐ Il contratto col BE non cambia: il codice esiste ed e' gia' a policy.
+#
+# ── CHE COSA NON CAMBIA ─────────────────────────────────────────
+#   Il montaggio: nessun DDL sul trigger (eventi, fase, nome). La natura del
+#   soggetto di un ruolo cambia solo dal soggetto (soggetti_ruoli.soggetto_id
+#   e' lucchettato), e quel cambio lo giudica il cambio di natura (-21).
+#   ⚠️ Un UPDATE di indirizzi.soggetto_ruolo_id non fa scattare il trigger
+#   (UPDATE OF tipo_indirizzo_id), oggi come per il ramo del ruolo: la colonna
+#   non e' fra quelle che il BE scrive; resta segnalato nel brief (§9.5).
+#   Nessuna tabella letta e' sotto RLS (soggetti_ruoli, soggetti, matrici).
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────
+#   20261114-93, l'ultimo YAML, verificato UGUALE al prosrc vivo il
+#   2026-11-17. Attributi vivi: VOLATILE, INVOKER, proconfig vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-19-update-trgfn-indirizzi-guard-tipo-ruolo-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261116-19-update-trgfn-indirizzi-guard-tipo-ruolo-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard degli indirizzi del ruolo rifiuta anche il tipo che la natura del soggetto
+        del ruolo non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                v_natura_id     anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_ruolo_nome    config.tipi_ruoli.descrizione%TYPE;
+                v_natura_nome   config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                v_tipo_nome     config.tipi_indirizzi.descrizione%TYPE;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_ruolo_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Il tipo di ruolo e la natura del soggetto, dal ruolo
+                SELECT sr.tipo_ruolo_id, s.tipo_soggetto_dettaglio_id
+                  INTO v_tipo_ruolo_id, v_natura_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                  JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                 WHERE sr.id = NEW.soggetto_ruolo_id;
+
+                -- I predicati sono quelli che legge anche la check del tipo
+                -- sul ruolo (fn_check_tipo_indirizzo_ruolo_su_contesto), nello
+                -- stesso ordine dei suoi motivi: prima il tipo di ruolo, poi la
+                -- natura. Tipo di ruolo o natura NULL, o senza matrice:
+                -- indirizzi liberi per quella regola; altrimenti la coppia deve
+                -- essere in matrice, attiva e valida oggi.
+                IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                           v_tipo_ruolo_id, NEW.tipo_indirizzo_id,
+                           script.fn_data_operativa()) THEN
+                  -- La frase vuole cio' che l'operatore riconosce: le
+                  -- descrizioni. Gli id restano nel contesto.
+                  SELECT tr.descrizione INTO v_ruolo_nome
+                    FROM config.tipi_ruoli tr
+                   WHERE tr.id = v_tipo_ruolo_id;
+                  SELECT ti.descrizione INTO v_tipo_nome
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.id = NEW.tipo_indirizzo_id;
+
+                  -- Codice PROPRIO di questo layer, distinto da quello del
+                  -- guard sugli indirizzi di SOGGETTO, che legge un'altra
+                  -- matrice.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                    'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'campo',             'tipo_indirizzo_id',
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_ruolo_id',     v_tipo_ruolo_id,
+                      'soggetto_ruolo_id', NEW.soggetto_ruolo_id),
+                    NEW.tx_id,
+                    COALESCE(v_ruolo_nome, v_tipo_ruolo_id::text),
+                    COALESCE(v_tipo_nome, NEW.tipo_indirizzo_id::text));
+                END IF;
+
+                -- La natura del soggetto del ruolo: la stessa regola del guard
+                -- sugli indirizzi di SOGGETTO, e lo stesso codice, perche' la
+                -- matrice letta e' la sua.
+                IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                           v_natura_id, NEW.tipo_indirizzo_id,
+                           script.fn_data_operativa()) THEN
+                  SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura_nome
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = v_natura_id;
+                  SELECT ti.descrizione INTO v_tipo_nome
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.id = NEW.tipo_indirizzo_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                    'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'campo',                      'tipo_indirizzo_id',
+                      'tipo_indirizzo_id',          NEW.tipo_indirizzo_id,
+                      'tipo_soggetto_dettaglio_id', v_natura_id,
+                      'soggetto_ruolo_id',          NEW.soggetto_ruolo_id),
+                    NEW.tx_id,
+                    COALESCE(v_natura_nome, v_natura_id::text),
+                    COALESCE(v_tipo_nome, NEW.tipo_indirizzo_id::text));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+              IS 'Guard sugli indirizzi di RUOLO (anagrafiche.indirizzi), quando si scrive un indirizzo, con due regole nell''ordine dei motivi di anagrafiche.fn_check_tipo_indirizzo_ruolo (giorno: script.fn_data_operativa()). Il tipo di indirizzo deve essere ammesso dal tipo di ruolo del soggetto_ruolo, col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo; altrimenti E_TIPO_INDIRIZZO_NON_PERMESSO, coi valori della frase nell''ordine tipo di ruolo e tipo di indirizzo. Poi deve essere ammesso dalla natura del soggetto del ruolo, col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_natura, la regola del guard del layer SOGGETTO; altrimenti E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, coi valori natura e tipo di indirizzo. Valori per descrizione, gli id nel contesto, campo tipo_indirizzo_id. Fallback permissivo per ciascuna regola quando il tipo di ruolo o la natura non hanno nessuna riga di matrice, o sono NULL. Le madri singolari lo anticipano con anagrafiche.fn_check_tipo_indirizzo_ruolo, sugli stessi predicati e con gli stessi valori: questo guard resta il presidio di ogni altra strada. ⛔ Da NON confondere con anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo, il guard del layer SOGGETTO, che legge solo la matrice della natura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261114-93; si torna indietro con un changeSet nuovo.
+              SELECT 1;

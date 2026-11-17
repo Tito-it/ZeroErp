@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «QUESTO TIPO E' OBBLIGATORIO PER QUESTO RUOLO, SU UN SOGGETTO DI QUESTA NATURA?»
+#   anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(tipo ruolo, natura, tipo, giorno) -> boolean
+#   Brief: brief-db-fornitore-privato-indirizzi §8.2 (punti 2-3), giro 1.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   «Obbligatorio per il ruolo, oggi» era scritto in tre posti con la stessa
+#   espressione (riga obbligatoria della matrice del ruolo + il predicato del
+#   ruolo): l'auto-clone di anagrafiche.fn_crea_indirizzi_ruolo e i due picker
+#   anagrafiche.fn_tipi_indirizzo_proponibili_ruolo / _tipo_ruolo. Il giro gli
+#   aggiunge la natura del soggetto: un tipo che la natura non ammette non e'
+#   un obbligatorio da copiare ne' da proporre come tale, perche' nessuna
+#   scrittura lo accetterebbe (il guard del ruolo, -19). Tre copie di una
+#   regola piu' grande: regola del 2, si estrae qui e i tre la leggono
+#   (-18 i picker, -20 la plurale).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Vero se, il giorno dato:
+#     * la matrice del tipo di ruolo ha la riga (ruolo, tipo) obbligatoria;
+#     * il tipo di ruolo ammette il tipo (anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo:
+#       riga attiva e valida);
+#     * la natura ammette il tipo (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura).
+#   Natura NULL: la natura non conta (soggetto senza natura, o non ancora
+#   scelto), come nel predicato della natura. Le prime due condizioni sono
+#   quelle che i tre lettori scrivevano: per loro, a natura ammessa, la
+#   risposta non cambia.
+#   ⚠️ Non e' il requisito del guard degli obbligatori
+#   (trgfn_soggetti_ruoli_guard_indirizzi_required), che resta com'e' fino al
+#   giro 4 del brief, dove il controllo degli obbligatori prende una sede sola.
+#   BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER. Le matrici non sono sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-17-create-fn-tipo-indirizzo-obbligatorio-per-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261116-17-create-fn-tipo-indirizzo-obbligatorio-per-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il building block «tipo di indirizzo obbligatorio per il ruolo, su un soggetto di
+        questa natura, oggi», letto dall'auto-clone e dai due picker del ruolo.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                  p_tipo_ruolo_id              anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_tipo_indirizzo_id          anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  p_oggi                       config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (SELECT 1
+                                   FROM config.tipi_ruolo_tipi_indirizzo m
+                                  WHERE m.tipo_ruolo_id = p_tipo_ruolo_id
+                                    AND m.tipo_indirizzo_id = p_tipo_indirizzo_id
+                                    AND m.obbligatorio)
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                             p_tipo_ruolo_id, p_tipo_indirizzo_id, p_oggi)
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             p_tipo_soggetto_dettaglio_id, p_tipo_indirizzo_id, p_oggi);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Vero se il tipo di indirizzo e'' obbligatorio per il tipo di ruolo, su un soggetto della natura data, il giorno dato: la riga (ruolo, tipo) di config.tipi_ruolo_tipi_indirizzo e'' obbligatoria, il tipo di ruolo ammette il tipo (anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo) e la natura lo ammette (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura). Un tipo che la natura non ammette non e'' obbligatorio: nessuna scrittura lo accetterebbe. Natura NULL: la natura non conta. Lo leggono la copia degli obbligatori di anagrafiche.fn_crea_indirizzi_ruolo e la colonna obbligatorio dei picker anagrafiche.fn_tipi_indirizzo_proponibili_ruolo e anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo. Non e'' il requisito del guard anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(integer, bigint, integer, date);

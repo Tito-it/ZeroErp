@@ -77,8 +77,30 @@ SELECT plan(10);
 --    la partita IVA del soggetto e' «libera ADESSO».
 --    ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
 -- =========================================================
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-19): la residenza
+--   e' un indirizzo di PERSONA. La societa' del builder _pg non la ammette (matrice
+--   config.tipi_soggetto_dettaglio_tipi_indirizzo), e da quel changeSet il guard
+--   degli indirizzi del ruolo guarda anche la natura del soggetto: la residenza sul
+--   ruolo di una societa' era un dato che il modello non ammette. Il veicolo diventa
+--   un privato (PR), coi suoi obbligatori sul soggetto, nella finestra differita.
+SET CONSTRAINTS ALL DEFERRED;
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente RES/DOMFISC pgTAP') AS soggetto_id;
+SELECT anagrafiche.fn_crea_soggetto_pf(
+           p_cognome := 'Res Domfisc', p_nome := 'Privato', p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
+           p_email := 'pgtap.res.domfisc@example.com', p_sesso := 'M',
+           p_tipo_soggetto_dettaglio_id := (SELECT d.id FROM config.tipi_soggetto_dettaglio d
+                                             WHERE d.codice_interno = 'PR')) AS soggetto_id;
+SELECT anagrafiche.fn_crea_indirizzi_soggetto(
+           t.soggetto_id,
+           jsonb_build_array(jsonb_build_object(
+               'tipo_indirizzo_codice_interno', 'RES',
+               'indirizzo_libero',              'Via Res Domfisc pgTAP 1',
+               'stato_id',                      script.fn_stato_id_da_iso2('IT'))
+               || (SELECT jsonb_strip_nulls(to_jsonb(frm))
+                     FROM dbops.fn_pgtap_indirizzo_libero_forma(script.fn_stato_id_da_iso2('IT')) frm)),
+           true)
+  FROM tmp_soggetto_test t;
+SET CONSTRAINTS ALL IMMEDIATE;
 
 CREATE TEMP TABLE tmp_ruolo_test_id AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS soggetto_ruolo_id

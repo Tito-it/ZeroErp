@@ -57,6 +57,18 @@ EXCEPTION WHEN SQLSTATE 'P0001' THEN
     RETURN v_c;
 END $$;
 
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi §8.3-bis, la (C)): nel seed il
+--   fornitore ha un solo obbligatorio (FATT), e con uno solo la copia degli
+--   obbligatori non si esercita (il test passerebbe per sottrazione). Il secondo
+--   (POSTA, che la societa' del test ammette) lo scrive il test, prima di leggerli.
+DELETE FROM config.tipi_ruolo_tipi_indirizzo
+ WHERE tipo_ruolo_id = (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'FO')
+   AND tipo_indirizzo_id = (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'POSTA');
+INSERT INTO config.tipi_ruolo_tipi_indirizzo (id, tipo_ruolo_id, tipo_indirizzo_id, obbligatorio, attivo)
+SELECT (SELECT COALESCE(max(m.id), 0) + 1 FROM config.tipi_ruolo_tipi_indirizzo m), tr.id, ti.id, true, true
+  FROM config.tipi_ruoli tr, config.tipi_indirizzi ti
+ WHERE tr.codice_interno = 'FO' AND ti.codice_interno = 'POSTA';
+
 -- I tipi obbligatori del fornitore, dalla matrice.
 CREATE TEMP TABLE t_obbl AS
 SELECT trti.tipo_indirizzo_id

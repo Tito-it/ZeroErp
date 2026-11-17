@@ -1,6 +1,6 @@
 ## 📘 Documentazione Funzione – `anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -11,6 +11,7 @@
 > [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
 > [`config.tipi_indirizzi`](/dbzero/config/tabelle/tipi_indirizzi)
 > [`config.tipi_ruolo_tipi_indirizzo`](/dbzero/config/tabelle/tipi_ruolo_tipi_indirizzo)
+> [`config.tipi_soggetto_dettaglio_tipi_indirizzo`](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo)
 >
 **Funzioni / trigger di supporto:**
 >
@@ -40,7 +41,21 @@ La funzione implementa una logica **adattiva**:
 * Se invece **il `tipo_ruolo` ha una matrice definita**
   ➜ si accettano **solo** i `tipo_indirizzo_id` **esplicitamente configurati**, attivi e nel range di validità.
 
+Poi guarda la **natura del soggetto** del ruolo (`soggetti.tipo_soggetto_dettaglio_id`): il tipo
+di indirizzo deve essere ammesso anche dalla matrice della natura,
+[`config.tipi_soggetto_dettaglio_tipi_indirizzo`](/dbzero/config/tabelle/tipi_soggetto_dettaglio_tipi_indirizzo),
+con la stessa regola del guard degli indirizzi del soggetto. Un privato non ha una sede legale:
+non la può avere né sul soggetto né su un suo ruolo.
+
 In caso di violazione, la funzione richiama **`script.fn_log_and_raise_error`** e blocca l’operazione, garantendo che il dato rispetti la configurazione di dominio.
+
+| Regola violata | Codice | Frase |
+| --- | --- | --- |
+| il tipo di ruolo non ammette il tipo | `E_TIPO_INDIRIZZO_NON_PERMESSO` | «Il ruolo … non prevede l'indirizzo «…».» |
+| la natura del soggetto non ammette il tipo | `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` | «Il tipo soggetto … non prevede l'indirizzo «…».» |
+
+Il secondo codice è quello del guard del soggetto: la regola e la matrice sono le stesse, e il
+contesto dice il layer (`soggetto_ruolo_id`).
 
 ---
 
@@ -115,8 +130,21 @@ Essendo una trigger function, non ha parametri espliciti. Utilizza:
 * nessuna riga di matrice per il tipo di ruolo → indirizzi “liberi”, ammesso;
 * altrimenti → ammesso solo se c'è una riga attiva e valida per la coppia.
 
-Lo stesso predicato lo leggono la check del tipo sul ruolo (che le madri chiamano prima di
-scrivere) e la plurale, per gli obbligatori da copiare.
+5️⃣ Chiede al predicato della natura,
+[`fn_tipo_indirizzo_ammesso_per_natura`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_natura),
+sulla natura del soggetto del ruolo, con la stessa regola: natura NULL o senza matrice → ammesso.
+
+I due predicati li legge anche la check del tipo sul ruolo
+([`fn_check_tipo_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo)),
+che le madri chiamano prima di scrivere, nello stesso ordine: prima il ruolo, poi la natura. Gli
+obbligatori da copiare li dice
+[`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo),
+che compone gli stessi due.
+
+⚠️ Il trigger scatta quando si scrive il **tipo** (`INSERT`, `UPDATE OF tipo_indirizzo_id`). La
+natura del soggetto cambia dal soggetto, e quel cambio lo giudica
+[`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto):
+un indirizzo del ruolo che la natura nuova non ammette ferma il cambio.
 
 📍 Se nessuna riga valida trovata → chiamata a `script.fn_log_and_raise_error(...)` + `RAISE EXCEPTION`.
 
@@ -131,6 +159,8 @@ scrivere) e la plurale, per gli obbligatori da copiare.
 #### ❌ Esempio non valido
 
 * `tipo_ruolo = GE`, `tipo_indirizzo = RES` → non previsto → errore bloccante
+* `tipo_ruolo = FO`, `tipo_indirizzo = SEDELEG`, soggetto privato (`PR`) → il ruolo lo ammette,
+  la natura no → `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`
 
 #### ✔ Esempio senza matrice
 
@@ -159,7 +189,7 @@ scrivere) e la plurale, per gli obbligatori da copiare.
 
 ---
 
-📅 *Aggiornato: 30/11/2025*
+📅 *Aggiornato: 17/11/2026*
 
 {% include-markdown "signature-core.md" %}
  

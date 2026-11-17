@@ -17,16 +17,17 @@ CREATE OR REPLACE FUNCTION documenti.trgfn_template_asset_protect_file()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo:
---   Blocca la modifica di colonne file su asset.
+--   Il file di una risorsa dei modelli non cambia: e' cosi' che lo stesso
+--   codice interno indica sempre gli stessi byte, e la ristampa fedele
+--   ritrova il file di allora.
 --
 -- Regole:
---   Campi immutabili (file specifics):
---     - storage_key, sha256, file_size_bytes, mime_type, file_name
---   Campi modificabili:
---     - meta, validita (via valido_al)
---
---   Il file (e il suo hash) non si modificano mai.
---   Se serve un file diverso si crea un nuovo asset.
+--   Fermi: storage_key, sha256, file_size_bytes, mime_type, file_name.
+--   Liberi: codice, descrizione, il tipo (se ammette il formato:
+--   documenti.trgfn_guard_formato_ammesso), attivo, valido_dal,
+--   valido_al, meta. codice_interno lo blocca script.trgfn_lock_columns.
+--   Le cinque colonne ferme sono NOT NULL: il confronto con != basta.
+--   Un file diverso e' una risorsa nuova, con un codice interno nuovo.
 --
 -- Errore:
 --   E_DOCUMENTI_ASSET_FILE_IMMUTABILE
@@ -53,7 +54,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_template_asset_protect_file()
-IS 'Guard A4: blocca UPDATE su file asset. Una volta salvato il file, storage_key/hash/nome diventano immutabili.';
+IS 'Il file di una risorsa dei modelli non cambia: chiave nello storage, impronta, peso, tipo MIME e nome sono quelli del caricamento (E_DOCUMENTI_ASSET_FILE_IMMUTABILE). Restano liberi codice, descrizione, il tipo (se ammette il formato), attivo, le date e meta; codice_interno lo blocca script.trgfn_lock_columns. Un file diverso e'' una risorsa nuova, con un codice interno nuovo: lo stesso codice indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora.';
 ```
 
 </div>

@@ -249,20 +249,20 @@ SELECT throws_like(
     '%manca il comune%',
     '19) Italia senza comune via madre: E_INDIRIZZO_LIBERO_INCOMPLETO');
 
--- 20) La madre del ruolo: un tipo che la matrice del CL ammette e che il
---     ruolo non ha ancora (scelto una volta, ordine per id).
+-- 20) La madre del ruolo: un tipo che il ruolo ammette e non ha ancora
+--     (scelto una volta, ordine per id).
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-18/-19): il tipo
+--   si legge dal picker del ruolo, che chiama la check della madre, non dalla sola
+--   matrice del CL: da li' usciva RES, che la natura della societa' del test non
+--   ammette, e il guard del ruolo ora guarda anche la natura.
 CREATE TEMP TABLE _r ON COMMIT DROP AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(soggetto_id, 'CL', it_id) AS ruolo_id FROM _f;
 ALTER TABLE _r ADD COLUMN tipo_id integer;
 UPDATE _r SET tipo_id = (
-    SELECT m.tipo_indirizzo_id
-      FROM config.tipi_ruolo_tipi_indirizzo m
-      JOIN config.tipi_ruoli tr ON tr.id = m.tipo_ruolo_id
-     WHERE tr.codice_interno = 'CL' AND m.attivo
-       AND NOT EXISTS (SELECT 1 FROM anagrafiche.indirizzi i
-                        WHERE i.soggetto_ruolo_id = _r.ruolo_id
-                          AND i.tipo_indirizzo_id = m.tipo_indirizzo_id)
-     ORDER BY m.tipo_indirizzo_id
+    SELECT p.tipo_indirizzo_id
+      FROM anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(_r.ruolo_id, NULL) p
+     WHERE p.ammesso
+     ORDER BY p.tipo_indirizzo_id
      LIMIT 1);
 SELECT CASE WHEN (SELECT tipo_id FROM _r) IS NULL
     THEN skip('20) la matrice del CL non ha un tipo libero: niente da provare sul ruolo', 1)

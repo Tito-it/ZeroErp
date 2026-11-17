@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Contenitore logico dei template documentali per output, sorgente ed emittente.
+> Il modello di stampa: che cosa si produce (il tipo di documento), da quale documento (la sorgente) e per quale azienda; il contenuto sta nelle versioni (documenti.template_documenti_versioni). Un modello e' di un'azienda, oppure standard: del sistema, senza azienda, scritto solo dal proprietario della tabella e valido per l'azienda che non ha modelli suoi capaci di stampare. Con quale modello si stampa lo decide documenti.fn_risolvi_template_applicabile. Spento non stampa e non conta nella risoluzione; si spegne solo senza versioni accese, e le stampe non lo tengono acceso.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

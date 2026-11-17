@@ -123,6 +123,7 @@ search:
 - [fn_tipi_indirizzo_proponibili_tipo_ruolo](funzioni/fn_tipi_indirizzo_proponibili_tipo_ruolo.md)
 - [fn_tipo_indirizzo_ammesso_per_natura](funzioni/fn_tipo_indirizzo_ammesso_per_natura.md)
 - [fn_tipo_indirizzo_ammesso_per_ruolo](funzioni/fn_tipo_indirizzo_ammesso_per_ruolo.md)
+- [fn_tipo_indirizzo_obbligatorio_per_ruolo](funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo.md)
 - [fn_titoli_iva_non_ammessi](funzioni/fn_titoli_iva_non_ammessi.md)
 - [fn_titoli_iva_non_ammessi_conta](funzioni/fn_titoli_iva_non_ammessi_conta.md)
 - [fn_titolo_iva_ammesso](funzioni/fn_titolo_iva_ammesso.md)

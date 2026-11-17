@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Per ogni emittente e ogni coppia (tipo di documento, sorgente) con almeno un modello standard o di quell'emittente, in qualunque stato: l'esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), il modello, la versione e quanti modelli suoi possono stampare (2026-10-21, brief-db-modelli-documento-standard §10.3 K-5). La regola e' documenti.fn_template_esito_risoluzione, la stessa della stampa: la vista aggiunge solo le righe. Lettura della lista Modelli documento.
+> Per ogni emittente e ogni coppia (tipo di documento, sorgente) con almeno un modello standard o di quell'emittente, in qualunque stato: l'esito della risoluzione (EMITTENTE, SENZA_PREDEFINITO, STANDARD, NON_RISOLTO), il modello, la versione e quanti modelli suoi possono stampare. La regola e' documenti.fn_template_esito_risoluzione, la stessa della stampa: la vista aggiunge solo le righe. Porta anche le aziende spente: il filtro lo mette chi legge. Lettura della lista Modelli documento.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=true` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
