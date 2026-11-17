@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLE DUE LETTURE «CHE COSA MANCA» NOMINANO LA LETTURA DEL FORM
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(ruolo, natura, giorno)
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(soggetto, natura, giorno)
+#   Brief: brief-db-fornitore-privato-indirizzi §14 (giro 6, 2026-11-18).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il 20261116-44 ha dato alla lettura del form il nome
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli. I COMMENT
+#   del 20261116-39 e -40 dicono chi li legge, e nominavano ancora il nome di
+#   prima, che e' quello di script.fn_indirizzi_obbligatori_mancanti (un'altra
+#   funzione). Cambia solo il nome citato; corpo e firma non si toccano.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-45-update-comment-fn-indirizzi-obbligatori-mancanti-ruolo-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261116-45-update-comment-fn-indirizzi-obbligatori-mancanti-ruolo-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I COMMENT di fn_indirizzi_obbligatori_mancanti_ruolo e _soggetto nominano la lettura del form
+        col suo nome, fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un ruolo su una natura data, il giorno dato: i requisiti del ruolo (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura passata, non su quella del soggetto) che nessun indirizzo del ruolo (anagrafiche.indirizzi, istanze comprese) soddisfa, col tipo richiesto e il ripiego che lo sostituisce. Ordinati per tipo richiesto. Ruolo che non esiste: nessuna riga. Natura NULL: la natura non conta. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto. STABLE, SECURITY INVOKER.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un soggetto su una natura data, il giorno dato: le righe obbligatorie di config.tipi_soggetto_dettaglio_tipi_indirizzo per la natura passata (non quella del soggetto), attive e valide (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), per cui il soggetto non ha in anagrafiche.indirizzi_soggetti un indirizzo ne'' del tipo ne'' del ripiego della riga; col tipo richiesto e il ripiego. Ordinate per tipo. Soggetto che non esiste, o natura NULL: nessuna riga. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un ruolo su una natura data, il giorno dato: i requisiti del ruolo (anagrafiche.fn_indirizzi_obbligatori_ruolo, sul tipo di ruolo e sulla natura passata, non su quella del soggetto) che nessun indirizzo del ruolo (anagrafiche.indirizzi, istanze comprese) soddisfa, col tipo richiesto e il ripiego che lo sostituisce. Ordinati per tipo richiesto. Ruolo che non esiste: nessuna riga. Natura NULL: la natura non conta. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto. STABLE, SECURITY INVOKER.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un soggetto su una natura data, il giorno dato: le righe obbligatorie di config.tipi_soggetto_dettaglio_tipi_indirizzo per la natura passata (non quella del soggetto), attive e valide (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), per cui il soggetto non ha in anagrafiche.indirizzi_soggetti un indirizzo ne'' del tipo ne'' del ripiego della riga; col tipo richiesto e il ripiego. Ordinate per tipo. Soggetto che non esiste, o natura NULL: nessuna riga. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo. STABLE, SECURITY INVOKER.';

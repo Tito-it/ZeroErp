@@ -413,6 +413,11 @@ e funzioni nuove includono la loro pagina, e `documenti/index.md` ha le descrizi
 ✅ **Deciso da Tid il 2026-11-16:** un brief a parte (`dbops`/`script`), dopo i giri di `documenti`. Qui resta la
 segnalazione.
 
+> ⚠️ **Aggiornato il 2026-11-17 (Tid):** il brief a parte non c'è più. La porta si tratta in
+> [brief-db-seed-primo-impianto-non-si-riscrive](../work-in-progress/brief-db-seed-primo-impianto-non-si-riscrive.md), §13,
+> che costruiva un trigger nuovo con la stessa porta. Lì il tema è allargato a tutte le porte
+> `zeroerp.allow_*_override` dei trigger d'automazione, non alla sola `trgfn_lock_columns`.
+
 **La porta di `script.trgfn_lock_columns` la apre ogni sessione.** Trovato il 2026-11-14 verificando la Q9a.
 `zeroerp.allow_lock_columns_override` è una variabile di sessione: chiunque la imposti a `on`, applicazione compresa,
 salta ogni blocco di colonna registrato in `dbops.automation_lock_columns`, in tutti gli schemi. È nata come «uscita

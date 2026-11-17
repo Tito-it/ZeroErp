@@ -110,6 +110,12 @@ SELECT is(
 -- =========================================================
 -- Pulizia pre-test
 -- =========================================================
+-- ⚠️ Rev 2026-11-17 (giro 4 di brief-db-fornitore-privato-indirizzi): la
+--   pulizia toglie la fatturazione, l'obbligatorio del cliente, che il builder
+--   ha scritto; il DOMFISC del 4) lo sostituisce (e' il ripiego). Il ruolo e'
+--   completo solo a 4) fatto: la finestra dei differiti si apre qui e si
+--   richiude dopo il 4), dove il guard degli obbligatori giudica.
+SET CONSTRAINTS ALL DEFERRED;
 DELETE FROM anagrafiche.indirizzi i
 USING tmp_ctx g
 WHERE i.soggetto_ruolo_id = g.soggetto_ruolo_id
@@ -156,6 +162,10 @@ SELECT is(
     1,
     '4) DOMFISC generico (istanza NULL) inserito'
 );
+
+-- Il ruolo ha di nuovo un obbligatorio (il ripiego): si richiude la finestra
+-- aperta dalla pulizia, e il guard degli obbligatori giudica qui.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- =========================================================
 -- 5) Inserimento FATT per istanza specifica
@@ -316,6 +326,10 @@ SELECT ok(
 -- =========================================================
 -- 14) Pulizia post-test: rimuove indirizzi di test
 -- =========================================================
+-- ⚠️ Rev 2026-11-17: la pulizia lascia il ruolo senza obbligatorio, e il guard
+--   lo rifiuterebbe. Si apre la finestra dei differiti e non si richiude: la
+--   transazione finisce in ROLLBACK, e qui non c'e' una regola da provare.
+SET CONSTRAINTS ALL DEFERRED;
 DELETE FROM anagrafiche.indirizzi i
 USING tmp_ctx g
 WHERE i.soggetto_ruolo_id = g.soggetto_ruolo_id

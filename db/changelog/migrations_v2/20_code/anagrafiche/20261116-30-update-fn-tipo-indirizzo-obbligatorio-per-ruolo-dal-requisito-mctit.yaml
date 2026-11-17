@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «OBBLIGATORIO PER IL RUOLO» SI LEGGE DAL REQUISITO
+#   anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(tipo ruolo, natura, tipo, giorno) -> boolean
+#   Brief: brief-db-fornitore-privato-indirizzi §9.5, giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   La funzione scriveva la sua regola (riga obbligatoria, ammessa dal ruolo e
+#   dalla natura), e il guard degli obbligatori un'altra. Il requisito ora ha
+#   una sede sola, anagrafiche.fn_indirizzi_obbligatori_ruolo (-29): un tipo
+#   e' obbligatorio se e' uno dei tipi che il requisito chiede.
+#
+# ── COSA CAMBIA PER I LETTORI ───────────────────────────────────
+#   A natura che ammette il tipo della riga, niente. A natura che lo vieta e
+#   ammette il ripiego, il ripiego diventa obbligatorio (Tid, 2026-11-17):
+#   l'auto-clone di anagrafiche.fn_crea_indirizzi_ruolo lo copia, e i due
+#   picker del ruolo lo segnano obbligatorio. I lettori non cambiano: la
+#   firma e' la stessa.
+#
+# ── DA DOVE VIENE ───────────────────────────────────────────────
+#   Firma e attributi dal vivo (doc auto-generata, rigenerata dopo
+#   20261116-17): STABLE, INVOKER, BEGIN ATOMIC. Cambia solo il corpo:
+#   CREATE OR REPLACE, i BEGIN ATOMIC che la leggono restano legati all'OID.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-30-update-fn-tipo-indirizzo-obbligatorio-per-ruolo-dal-requisito-mctit.yaml
+
+  - changeSet:
+      id: 20261116-30-update-fn-tipo-indirizzo-obbligatorio-per-ruolo-dal-requisito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Un tipo e' obbligatorio per il ruolo se il requisito del ruolo, sulla natura del
+        soggetto, lo chiede (anagrafiche.fn_indirizzi_obbligatori_ruolo): il ripiego vale.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                  p_tipo_ruolo_id              anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_tipo_indirizzo_id          anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  p_oggi                       config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (SELECT 1
+                                   FROM anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                                            p_tipo_ruolo_id, p_tipo_soggetto_dettaglio_id, p_oggi) o
+                                  WHERE o.tipo_indirizzo_id = p_tipo_indirizzo_id);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Vero se il tipo di indirizzo e'' obbligatorio per il tipo di ruolo, su un soggetto della natura data, il giorno dato: e'' uno dei tipi che il requisito del ruolo chiede (anagrafiche.fn_indirizzi_obbligatori_ruolo). Il tipo di una riga obbligatoria che la natura ammette e'' obbligatorio; se la natura non lo ammette, e'' obbligatorio il ripiego della riga, quando il ruolo e la natura lo ammettono. Natura NULL: la natura non conta. Lo leggono la copia degli obbligatori di anagrafiche.fn_crea_indirizzi_ruolo e la colonna obbligatorio dei picker anagrafiche.fn_tipi_indirizzo_proponibili_ruolo e anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo: copiano e propongono cio'' che i guard degli obbligatori pretendono. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261116-17; si torna indietro con un changeSet nuovo.
+              SELECT 1;

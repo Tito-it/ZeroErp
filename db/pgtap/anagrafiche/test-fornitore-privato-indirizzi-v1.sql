@@ -55,10 +55,9 @@
 --    delle nature, e il 5) ne asserisce il contratto deciso (la (C)).
 --  - i rifiuti si asseriscono sul CODICE (dbops.fn_pgtap_codice_errore); la
 --    frase solo dove parla il guard da una strada che salta la madre.
--- ⛔ NON PROVATO, e dichiarato: con un obbligatorio che la natura non ammette
---   il guard degli obbligatori del ruolo (trgfn_soggetti_ruoli_guard_indirizzi_required)
---   pretende ancora il tipo; resta al giro 4 del brief. Il 19) lo evita: scrive
---   sul ruolo gia' nato e gia' giudicato (1), dove quel guard non scatta.
+-- Il requisito degli obbligatori sulla natura (il ripiego, il guard alla
+--   cancellazione) lo prova test-indirizzi-obbligatori-ripiego-e-cancellazione-v1
+--   (giro 4 del brief, 20261116-29 … -38).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -350,6 +349,13 @@ SELECT is(
         AND i.tipo_indirizzo_id = pg_temp.tipo('SEDEOP')),
     1,
     '20) sulla societa'': lo stesso obbligatorio si copia');
+
+-- La riga SEDEOP torna facoltativa: serviva ai 6-7 e ai 19-20. Dal giro 4
+-- (20261116-35) cancellare un indirizzo del ruolo ricontrolla gli
+-- obbligatori, e il 24 toglie la sede legale dal ruolo della ditta, che la
+-- sede operativa obbligatoria non l'ha mai avuta (la riga e' nata dopo il
+-- ruolo).
+SELECT pg_temp.matrice_ruolo((SELECT fo FROM _ref), 'SEDEOP', false);
 
 -- ============================================================
 -- 21-24) Il cambio di natura (D-4): la ditta fornitore diventa privato

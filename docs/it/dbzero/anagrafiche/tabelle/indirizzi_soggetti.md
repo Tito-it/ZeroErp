@@ -52,6 +52,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()` |
+| trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()` |
 | trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
 | trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
 | trg_indirizzi_soggetti_a10_indirizzi_dettaglio_require_a_a86562 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
@@ -62,8 +64,8 @@
 | trg_indirizzi_soggetti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_indirizzi_soggetti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_indirizzi_soggetti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_indirizzi_soggetti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()` |
 | trg_indirizzi_soggetti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()` |
+| trg_indirizzi_soggetti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_base_normalize()` |
 | trg_indirizzi_soggetti_sync_geoloc_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()` |
 | trg_indirizzi_soggetti_sync_geoloc_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_sync_geoloc()` |
 | trg_indirizzi_soggetti_z10_guard_forma_libera_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_guard_forma_libera()` |

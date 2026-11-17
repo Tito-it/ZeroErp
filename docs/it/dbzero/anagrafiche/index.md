@@ -94,17 +94,24 @@ search:
 - [fn_guard_clienti_chiave_unica_di](funzioni/fn_guard_clienti_chiave_unica_di.md)
 - [fn_guard_clienti_chiave_unica_gestore_globale](funzioni/fn_guard_clienti_chiave_unica_gestore_globale.md)
 - [fn_guard_fornitore_attivo](funzioni/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
+- [fn_guard_indirizzi_obbligatori_ruolo](funzioni/fn_guard_indirizzi_obbligatori_ruolo.md)
+- [fn_guard_indirizzi_obbligatori_soggetto](funzioni/fn_guard_indirizzi_obbligatori_soggetto.md)
 - [fn_guard_istanza_ba_emittente](funzioni/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ba_gestore_globale](funzioni/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
 - [fn_guard_istanza_ha_ba](funzioni/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
 - [fn_id_fiscale_bloccato](funzioni/fn_id_fiscale_bloccato.md) — La regola **«CF e P.IVA già scritti non si cambiano»**, in un posto solo.
 - [fn_indirizzi_con_obbligatori](funzioni/fn_indirizzi_con_obbligatori.md)
+- [fn_indirizzi_obbligatori_mancanti_ruolo](funzioni/fn_indirizzi_obbligatori_mancanti_ruolo.md)
+- [fn_indirizzi_obbligatori_mancanti_soggetto](funzioni/fn_indirizzi_obbligatori_mancanti_soggetto.md)
+- [fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli](funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli.md)
+- [fn_indirizzi_obbligatori_ruolo](funzioni/fn_indirizzi_obbligatori_ruolo.md)
 - [fn_indirizzo_elemento](funzioni/fn_indirizzo_elemento.md) — (18-10-2026 — decisione D-4 di Tid, richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11)
 - [fn_indirizzo_elemento_da_riga](funzioni/fn_indirizzo_elemento_da_riga.md)
 - [fn_indirizzo_elemento_dettaglio](funzioni/fn_indirizzo_elemento_dettaglio.md) — (18-10-2026 — decisione D-4 di Tid)
 - [fn_istanza_di_altro_soggetto](funzioni/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_nature_proponibili_soggetto](funzioni/fn_nature_proponibili_soggetto.md)
+- [fn_nomi_tipo_indirizzo_richiesto](funzioni/fn_nomi_tipo_indirizzo_richiesto.md)
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_parametri_importo_utility](funzioni/fn_parametri_importo_utility.md)
 - [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
@@ -180,7 +187,9 @@ search:
 - [trgfn_indirizzi_dettaglio_normalize](funzioni/trgfn_indirizzi_dettaglio_normalize.md) — (latest review 28-12-25) Normalizzare i campi dell'indirizzo dettaglio per garantire coerenza su via, civico e indirizzo completo prima di INSERT/UPDATE.
 - [trgfn_indirizzi_dettaglio_protect_update](funzioni/trgfn_indirizzi_dettaglio_protect_update.md) — (latest review 02-02-26) Impedire la modifica manuale di `stradario_id` su `anagrafiche.indirizzi_dettaglio` per garantire una riclassificazione coerente e tracciata.
 - [trgfn_indirizzi_guard_forma_libera](funzioni/trgfn_indirizzi_guard_forma_libera.md) — (18-10-2026 — richiesta del backend in `brief-db-processi-accensione-per-ambiente` §6.11, decisioni D-2 e D-3 di Tid)
+- [trgfn_indirizzi_guard_obbligatori_ruolo](funzioni/trgfn_indirizzi_guard_obbligatori_ruolo.md)
 - [trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo.md) — (latest review 30-11-25) La funzione **`anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`** è una **trigger function di tipo “guard”** che:
+- [trgfn_indirizzi_soggetti_guard_obbligatori_soggetto](funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto.md)
 - [trgfn_indirizzi_soggetti_guard_tipo_indirizzo](funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo.md) — (latest review 28-12-25) Garantire che il **tipo indirizzo** associato a un soggetto sia coerente con la **matrice di abilitazione** definita per il suo tipo soggetto dettaglio.
 - [trgfn_indirizzi_sync_geoloc](funzioni/trgfn_indirizzi_sync_geoloc.md) — Ogni volta che viene inserito o aggiornato un record in `anagrafiche.indirizzi` o `anagrafiche.indirizzi_soggetti`, se è impostato `indirizzo_dettaglio_id`, la funzione recupera dal dettaglio civico la coordinata geografica (`civic_geoloc`) e la copia in `NEW.geoloc`. In questo modo il dato di geolocalizzazione rimane sempre allineato con la fonte di verità civica.
 - [trgfn_istanze_dati_precontrattuali_protect_update](funzioni/trgfn_istanze_dati_precontrattuali_protect_update.md) — (latest review 20-01-26) La funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` impedisce la modifica o cancellazione dei dati precontrattuali quando sono gia` stati **congelati** in `vendite.contratti_utilities`.
@@ -209,13 +218,14 @@ search:
 - [trgfn_soggetti_guard_dati_societari_required](funzioni/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_forma_giuridica_natura](funzioni/trgfn_soggetti_guard_forma_giuridica_natura.md)
 - [trgfn_soggetti_guard_id_fiscale_immutabile](funzioni/trgfn_soggetti_guard_id_fiscale_immutabile.md) — La funzione **`anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`** è una **trigger function di tipo "guard"** su [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti).
-- [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+- [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — > **Ultimo aggiornamento**: 17 novembre 2026
+- [trgfn_soggetti_guard_obbligatori_ruoli](funzioni/trgfn_soggetti_guard_obbligatori_ruoli.md)
 - [trgfn_soggetti_guard_regime_pa](funzioni/trgfn_soggetti_guard_regime_pa.md)
 - [trgfn_soggetti_guard_sesso_policy](funzioni/trgfn_soggetti_guard_sesso_policy.md)
 - [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — (latest review 28-12-25) * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_normalize](funzioni/trgfn_soggetti_normalize.md) — (latest review 28-12-25) * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
-- [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
+- [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — > **Ultimo aggiornamento**: 17 novembre 2026
 - [trgfn_soggetti_ruoli_guard_natura_ammessa](funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_titoli_iva_ambiti_guard](funzioni/trgfn_soggetti_titoli_iva_ambiti_guard.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_titoli_iva_guard_ambito](funzioni/trgfn_soggetti_titoli_iva_guard_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)

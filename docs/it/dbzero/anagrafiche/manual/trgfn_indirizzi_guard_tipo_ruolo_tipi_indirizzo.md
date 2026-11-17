@@ -139,7 +139,9 @@ I due predicati li legge anche la check del tipo sul ruolo
 che le madri chiamano prima di scrivere, nello stesso ordine: prima il ruolo, poi la natura. Gli
 obbligatori da copiare li dice
 [`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo),
-che compone gli stessi due.
+che legge il requisito del ruolo
+([`fn_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_ruolo)), costruito
+sugli stessi due: al posto di un tipo che la natura vieta, il suo ripiego.
 
 ⚠️ Il trigger scatta quando si scrive il **tipo** (`INSERT`, `UPDATE OF tipo_indirizzo_id`). La
 natura del soggetto cambia dal soggetto, e quel cambio lo giudica

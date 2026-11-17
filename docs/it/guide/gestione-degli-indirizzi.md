@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -322,7 +322,7 @@ Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `ti
 
 Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono ammessi (adozione progressiva). Se ha almeno una riga, sono ammessi solo quelli elencati come attivi e in periodo di validità.
 
-Lo stesso trigger guarda poi la **natura del soggetto** del ruolo, con la regola di [R6](#r6-validazione-tipo-indirizzo-per-soggetto) e lo stesso codice (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`): un indirizzo che il soggetto non potrebbe avere non lo può avere nemmeno un suo ruolo. Gli indirizzi **obbligatori** di un ruolo da copiare alla nascita sono quelli che il ruolo chiede e che il ruolo e la natura ammettono ([`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo)). Il cliente e il fornitore chiedono sul ruolo la sola fatturazione: l'indirizzo fiscale (sede legale per una società, domicilio fiscale per una persona fisica) è un dato del soggetto, dove la natura lo rende obbligatorio, e un documento lo trova con la [cascata](#policy-di-risoluzione-masterfallback).
+Lo stesso trigger guarda poi la **natura del soggetto** del ruolo, con la regola di [R6](#r6-validazione-tipo-indirizzo-per-soggetto) e lo stesso codice (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`): un indirizzo che il soggetto non potrebbe avere non lo può avere nemmeno un suo ruolo. Gli indirizzi **obbligatori** di un ruolo dipendono anche dalla natura del soggetto: la regola è in [R9](#r9-gli-indirizzi-obbligatori). Il cliente e il fornitore chiedono sul ruolo la sola fatturazione: l'indirizzo fiscale (sede legale per una società, domicilio fiscale per una persona fisica) è un dato del soggetto, dove la natura lo rende obbligatorio, e un documento lo trova con la [cascata](#policy-di-risoluzione-masterfallback).
 
 Quando un soggetto cambia natura, un indirizzo di un suo ruolo che la natura nuova non ammette ferma il cambio, come un indirizzo del soggetto: l'operatore lo elimina e riprova ([`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
 
@@ -358,6 +358,63 @@ I trigger di normalizzazione (`trgfn_indirizzi_dettaglio_normalize` e `trgfn_ind
 * In modalità libera, i testi vuoti diventano NULL (una località di soli spazi non è una località) e lo `stato_id` non detto diventa lo **stato proposto**: il parametro `STATO_PROPOSTO_ISO2`, letto da [`script.fn_stato_proposto_id`](/dbzero/script/funzioni/fn_stato_proposto_id). È una proposta (si può cambiare per utente, per gruppo, per azienda attiva o per sessione); se manca, o indica più di uno stato, il sistema si ferma invece di indovinare
 
 ---
+
+### R9 — Gli indirizzi obbligatori
+
+La matrice di un tipo di ruolo (`config.tipi_ruolo_tipi_indirizzo`) e quella di una natura
+(`config.tipi_soggetto_dettaglio_tipi_indirizzo`) dicono quali tipi sono **obbligatori**, ognuno con un eventuale
+**ripiego**: un altro tipo che lo sostituisce. Un ruolo o un soggetto deve avere, per ogni riga obbligatoria
+attiva e valida oggi, un indirizzo del tipo o del ripiego.
+
+Sul **ruolo** conta anche la natura del soggetto, perché un ruolo non può avere un tipo che il suo soggetto non
+potrebbe avere ([R5](#r5-validazione-tipo-indirizzo-per-ruolo)):
+
+| La natura del soggetto… | Il ruolo deve avere |
+| --- | --- |
+| ammette il tipo della riga | il tipo, oppure il suo ripiego (se il ruolo e la natura lo ammettono) |
+| non ammette il tipo, ammette il ripiego | il ripiego |
+| non ammette né il tipo né il ripiego | niente, per quella riga |
+
+Esempio: se il ruolo fornitore chiedesse la sede legale col ripiego del domicilio fiscale, a un fornitore privato
+si chiederebbe il domicilio fiscale.
+
+Il requisito del ruolo sta in un posto solo,
+[`fn_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_ruolo), e lo leggono
+tutti: la copia degli obbligatori quando il ruolo nasce, la colonna «obbligatorio» dei picker del ruolo
+([`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo))
+e il controllo. Ciò che il form propone come obbligatorio è ciò che il salvataggio pretende.
+
+**Quando si controlla.** A fine transazione, ogni volta che il requisito può smettere di essere rispettato:
+
+* quando si scrive il ruolo o il soggetto;
+* quando si cancella un indirizzo, o se ne cambia il tipo o il titolare: si giudica il ruolo o il soggetto da cui
+  l'indirizzo è uscito;
+* quando cambia la natura del soggetto: si giudicano tutti i suoi ruoli, perché la natura nuova può chiedere un
+  tipo che quella di prima non chiedeva.
+
+Sostituire un indirizzo obbligatorio (cancellarlo e scriverne un altro) passa, se le due operazioni stanno nella
+stessa transazione; cancellare un ruolo o un soggetto insieme ai suoi indirizzi passa. Cancellare l'unica
+fatturazione di un cliente, da sola, no: l'errore dice che cosa manca, per nome
+(«Il ruolo Cliente richiede l'indirizzo «Fatturazione» / «Domicilio Fiscale».»).
+
+| Layer | Controllo | Codice |
+| --- | --- | --- |
+| ruolo | [`fn_guard_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_ruolo) | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` |
+| soggetto | [`fn_guard_indirizzi_obbligatori_soggetto`](/dbzero/anagrafiche/funzioni/fn_guard_indirizzi_obbligatori_soggetto) | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` |
+
+**Il cambio di natura porta con sé gli indirizzi.** Una natura nuova può chiedere un indirizzo che quella di prima
+vietava: l'operatore non lo può aggiungere prima del cambio, e il cambio da solo sarebbe rifiutato. Per questo gli
+indirizzi che la natura nuova chiede si danno **nello stesso salvataggio** del cambio, e si scrivono dopo la natura.
+Quali sono lo dice [`fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli):
+dato il soggetto e la natura proposta, gli indirizzi obbligatori che mancherebbero, prima sul soggetto e poi su ogni
+suo ruolo, ognuno col suo ripiego. È la stessa domanda che si fanno i due controlli
+([`fn_indirizzi_obbligatori_mancanti_soggetto`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_soggetto),
+[`fn_indirizzi_obbligatori_mancanti_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_mancanti_ruolo)):
+ciò che il form chiede è ciò che il salvataggio pretende. Gli indirizzi che la natura nuova **vieta**, invece, si
+tolgono prima del cambio (sono motivi di
+[`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
+
+Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti.
 
 ## Ciclo di vita
 
@@ -444,6 +501,11 @@ Le helper di lettura storica:
 | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------------------------------------------------ |
 | [`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) | `indirizzi`                       | Valida tipo indirizzo contro matrice ruolo (R5)              |
 | [`trgfn_indirizzi_soggetti_guard_tipo_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_tipo_indirizzo)     | `indirizzi_soggetti`              | Valida tipo indirizzo contro matrice soggetto (R6)           |
+| [`trgfn_soggetti_ruoli_guard_indirizzi_required`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required) | `soggetti_ruoli` | Il ruolo scritto ha i suoi obbligatori, a fine transazione (R9) |
+| [`trgfn_soggetti_guard_indirizzi_required`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_indirizzi_required) | `soggetti` | Il soggetto scritto ha i suoi obbligatori, a fine transazione (R9) |
+| [`trgfn_indirizzi_guard_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_obbligatori_ruolo) | `indirizzi` | Cancellato o cambiato un indirizzo, il ruolo di prima ha ancora i suoi obbligatori (R9) |
+| [`trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto) | `indirizzi_soggetti` | Cancellato o cambiato un indirizzo, il soggetto di prima ha ancora i suoi obbligatori (R9) |
+| [`trgfn_soggetti_guard_obbligatori_ruoli`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_obbligatori_ruoli) | `soggetti` | Cambiata la natura, ogni ruolo del soggetto ha i suoi obbligatori (R9) |
 | [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)                           | `indirizzi`, `indirizzi_soggetti` | La forma dell'indirizzo libero, decisa dallo stato (R3). Gira dopo la normalizzazione |
 | [`trgfn_indirizzi_dettaglio_protect_update`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)               | `indirizzi_dettaglio`             | Blocca modifica manuale di `stradario_id` (R4)               |
 | [`trgfn_indirizzi_dettaglio_guard_chiave`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave)                   | `indirizzi_dettaglio`             | La chiave del civico: civico > 0, dettaglio con lettere o cifre, nessun doppione in modifica (R7). Gira dopo la normalizzazione |
@@ -678,6 +740,12 @@ Il modulo è coperto dal test `db/pgtap/anagrafiche/test-indirizzi-fallback.sql`
 * Coerenza tra funzioni di lettura e viste resolved
 * Correttezza del campo `source` (RUOLO/SOGGETTO) in `vw_indirizzi_resolved_all`
 * Cardinalita: `vw_indirizzi_resolved_all` = `vw_indirizzi_resolved_ruolo` + `vw_indirizzi_resolved_soggetto`
+
+Gli indirizzi obbligatori (R9) li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-ripiego-e-cancellazione-v1.sql`:
+il requisito sulla natura col ripiego, il rifiuto alla cancellazione e al cambio di tipo sui due layer, la
+sostituzione nella stessa transazione, il cambio di natura.
+Gli indirizzi che una natura proposta chiede li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql`,
+fino al salvataggio che cambia la natura e scrive gli indirizzi nella stessa transazione.
 
 ---
 

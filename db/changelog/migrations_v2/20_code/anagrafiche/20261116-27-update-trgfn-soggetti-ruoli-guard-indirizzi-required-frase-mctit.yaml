@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'OBBLIGATORIO MANCANTE DEL RUOLO NOMINA IL RUOLO E IL TIPO
+#   anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required() -> trigger
+#   (constraint trigger DEFERRABLE INITIALLY DEFERRED su
+#    anagrafiche.soggetti_ruoli, AFTER INSERT OR UPDATE)
+#   Brief: brief-db-fornitore-privato-indirizzi §4.3, §8.2 (6), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   La frase di E_INDIRIZZO_OBBLIGATORIO_MANCANTE era «Indirizzo obbligatorio
+#   mancante per soggetto 85214 per tipo ruolo 1, fallback id 8»: id al posto
+#   dei nomi, e due segnaposti falsi («soggetto» riceveva l'id del
+#   soggetto_ruolo, «fallback id» il tipo RICHIESTO).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Solo i valori della frase: due, il tipo di ruolo per descrizione e il
+#   tipo richiesto col suo ripiego, per descrizione
+#   (anagrafiche.fn_nomi_tipo_indirizzo_richiesto, -26). La frase nuova a
+#   catalogo (messaggi_errore.csv, id 116): «Il ruolo %s richiede
+#   l'indirizzo %s.», gemella di E_TIPO_INDIRIZZO_NON_PERMESSO. Gli id
+#   restano nel contesto, senza 'campo': nessun campo del form e' in
+#   errore, manca una riga.
+#   ⭐ Il codice NON cambia: resta quello del layer RUOLO, come
+#   E_TIPO_INDIRIZZO_NON_PERMESSO. Il layer SOGGETTO prende il suo (-28).
+#   Il contratto col BE non cambia su questo lato.
+#
+# ── CHE COSA NON CAMBIA ─────────────────────────────────────────
+#   La regola (matrice, finestra di validita', ripiego) e il montaggio:
+#   nessun DDL sul trigger. Il requisito che ignora la natura resta al giro 4
+#   del brief (§9.5).
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────
+#   Doc auto-generata (rigenerata dopo 20261009-44, l'ultimo changeSet che
+#   l'ha riscritta). Attributi vivi: VOLATILE, INVOKER, proconfig vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-27-update-trgfn-soggetti-ruoli-guard-indirizzi-required-frase-mctit.yaml
+
+  - changeSet:
+      id: 20261116-27-update-trgfn-soggetti-ruoli-guard-indirizzi-required-frase
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'indirizzo obbligatorio mancante del ruolo si dice col nome del ruolo e del tipo
+        richiesto (col ripiego), non con gli id.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := script.fn_data_operativa();
+                v_missing    record;
+                v_ruolo_nome config.tipi_ruoli.descrizione%TYPE;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.tipo_ruolo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel ruolo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_ruolo_tipi_indirizzo m
+                   WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_ruolo_tipi_indirizzo m
+                 WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi i
+                      WHERE i.soggetto_ruolo_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  SELECT tr.descrizione INTO v_ruolo_nome
+                    FROM config.tipi_ruoli tr
+                   WHERE tr.id = NEW.tipo_ruolo_id;
+
+                  -- Valori per descrizione, nell'ordine della frase: il
+                  -- ruolo, poi il tipo richiesto col suo ripiego. Gli id
+                  -- stanno nel contesto.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_ruoli_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_ruolo_id', NEW.id,
+                      'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    COALESCE(v_ruolo_nome, NEW.tipo_ruolo_id::text),
+                    COALESCE(anagrafiche.fn_nomi_tipo_indirizzo_richiesto(
+                                 v_missing.tipo_indirizzo_id,
+                                 v_missing.fallback_tipo_indirizzo_id),
+                             v_missing.tipo_indirizzo_id::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+              IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti_ruoli: il ruolo deve avere, fra i suoi indirizzi (anagrafiche.indirizzi), ogni tipo che config.tipi_ruolo_tipi_indirizzo dichiara obbligatorio per il suo tipo di ruolo, attivo e valido il giorno di script.fn_data_operativa(), oppure il ripiego della riga (fallback_tipo_indirizzo_id). Tipo di ruolo NULL o senza nessuna riga di matrice: libero. Al primo obbligatorio mancante E_INDIRIZZO_OBBLIGATORIO_MANCANTE, coi valori della frase nell''ordine tipo di ruolo e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Il requisito non guarda la natura del soggetto. ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_guard_indirizzi_required, il gemello del layer SOGGETTO, che legge la matrice della natura e ha un codice suo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261009-44; si torna indietro con un changeSet nuovo.
+              SELECT 1;
