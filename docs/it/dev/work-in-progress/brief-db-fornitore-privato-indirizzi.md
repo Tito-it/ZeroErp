@@ -2,11 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-18
 
-**Riparte: Tid con il `20261116-45` (riga 8-i: i COMMENT delle due sorelle col nome nuovo), da applicare con la doc
-auto-generata, poi il commit del giro 6; il team BE/FE con R-5 (riga 7-b, §11.3), R-6 (riga 8-b, §12.4) e R-7 (riga
-8-f, §13.4), tutte sbloccate.** Il giro 6 (§14, Tid 2026-11-18): la lettura del form prende il nome
-`fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`, e tre pgTAP costruiscono il privato col builder; il `-44` è
-applicato su dbdev il 2026-11-18, pgTAP verdi, doc auto-generata rigenerata; il giro non è committato. Il giro 5
+**Riparte: il team BE/FE con R-5 (riga 7-b, §11.3), R-6 (riga 8-b, §12.4), R-7 (riga 8-f, §13.4) e R-8 (riga 10-b,
+§15.4), tutte sbloccate. Poi l'archiviazione (riga 9). Il lato DB è finito.**
+Il giro 7 (§15, Tid 2026-11-18): il titolare di un indirizzo è identità, due lucchetti di colonna; l'upsert fuori
+transazione di `test-soggetti-ruoli-indirizzi-required` tolto; applicato su dbdev il 2026-11-18, pgTAP verdi, doc
+auto-generata rigenerata, e committato (2026-11-18). Il giro 6 (§14: la lettura del
+form prende il nome `fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`, tre pgTAP sul builder, i COMMENT delle
+sorelle) è applicato su dbdev, pgTAP verdi, doc rigenerata, e committato (`120312f74e`, 2026-11-18). Il giro 5
 (`20261116-39 … -43`: gli indirizzi che una natura proposta chiede, per il form del cambio di natura; il cambio li
 porta con sé, scritti dal backend nella stessa transazione) è applicato su dbdev il 2026-11-17, pgTAP verdi, e
 committato. Il giro 4 (`20261116-29 …
@@ -45,11 +47,16 @@ Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 | 8-f | BE/FE | R-7: il cambio di natura porta gli indirizzi mancanti, nella stessa transazione (col nome del giro 6) | §13.4 | 8-h ✅ |
 | 8-g | team DB | ✅ giro 6 scritto e provato in `ROLLBACK` (2026-11-18): la rinomina della lettura (`20261116-44`) e i tre pgTAP sul builder del privato | §14 | — |
 | 8-h | Tid | ✅ `20261116-44` applicato su dbdev, i quattro pgTAP del §14.2 verdi, doc auto-generata dei giri 5 e 6 rigenerata (2026-11-18) | §14.2 | 8-g |
-| 8-i | Tid | `20261116-45` (i COMMENT di `_ruolo` e `_soggetto`, §14.4) da applicare su dbdev, doc auto-generata, poi il commit del giro 6 | §14.4 | 8-h |
-| 9 | chi chiude | archiviazione in `work-done/` | — | tutti |
+| 8-i | Tid | ✅ `20261116-45` (i COMMENT di `_ruolo` e `_soggetto`, §14.4) applicato su dbdev, pgTAP verdi, doc auto-generata, commit del giro 6 (`120312f74e`, 2026-11-18) | §14.4 | 8-h |
+| 10 | team DB | ✅ giro 7 scritto e provato in `ROLLBACK` (2026-11-18): i lucchetti del titolare dell'indirizzo, l'upsert del pgTAP, il §7 marcato | §15 | 8-i |
+| 10-a | Tid | ✅ i tre CSV (`automation_lock_columns`, `codici_errore`, `messaggi_errore`) e `20261116-46` applicati su dbdev, `test-indirizzi-titolare-immutabile-v1` e `test-soggetti-ruoli-indirizzi-required` verdi, doc auto-generata rigenerata (2026-11-18) | §15.3 | 10 |
+| 10-b | BE/FE | R-8: la policy e il ripiego dei due codici nuovi | §15.4 | 10-a ✅ |
+| 10-c | team DB | ✅ commit del giro 7 (2026-11-18) | §15 | 10-a |
+| 9 | chi chiude | archiviazione in `work-done/`: nessun residuo da portare in un brief nuovo (§15.5) | — | tutti |
 
-Decisioni aperte di Tid: nessuna. Decise il 2026-11-18 (giro 6, §14): l'omonimo si rinomina subito (§13.3), e i tre
-pgTAP passano sul builder (§10.3). Il giro 6 non è committato: `-44` applicato, `-45` da applicare. Il via al giro 5 è dato (§12.5). Decisi il 2026-11-17: il requisito sulla natura (§9.5, vale il
+Decisioni aperte di Tid: nessuna. Decise il 2026-11-18: l'omonimo si rinomina subito (§13.3), i tre pgTAP passano
+sul builder (§10.3), e `soggetto_ruolo_id` di un indirizzo è identità (§9.5, giro 7). Il giro 6 è committato
+(`120312f74e`); anche il giro 7 (2026-11-18). Il via al giro 5 è dato (§12.5). Decisi il 2026-11-17: il requisito sulla natura (§9.5, vale il
 ripiego) e che il cambio di natura con gli indirizzi si fa (§12.5, risposta A). Le due proposte della verifica del 2026-11-17 sono decise (§9.5): la fixture del
 ruolo nel giro 4, il builder del privato per i pgTAP subito, come giro a sé (riga 7-bis). I giri 1 e 2, i pgTAP, la
 doc e questo brief sono committati (`9a6db84d2b`, 2026-11-17); il giro 7-bis (§10) è applicato, verde e committato (`8311f9a078`, 2026-11-17). Il giro 3 (§11) è applicato, verde e committato (2026-11-17). Il giro 5 (§13) è applicato, verde e committato (2026-11-17); la sua doc auto-generata è da rigenerare. Il giro 4 (§12) è applicato, verde e committato
@@ -69,7 +76,7 @@ in una sede, le check, i picker, gli obbligatori della plurale) e
 > **Stato:** 🟡 giri 1, 2 e 7-bis applicati e committati (2026-11-17, §9, §10); R-1 … R-4 del BE/FE committati
 > (2026-11-17); giro 3 applicato, verde e committato (2026-11-17, §11); R-5 al BE; giro 4 applicato, verde e committato (2026-11-17,
 > §12); R-6 al BE; giro 5 applicato, verde e committato (2026-11-17, §13); R-7 al BE/FE; giro 6 provato, da applicare
-> (2026-11-18, §14), `-44` applicato e verde, `-45` da applicare.
+> (2026-11-18, §14), applicato, verde e committato; giro 7 applicato, verde e committato (2026-11-18, §15); R-5 … R-8 al BE/FE.
 >
 > ⚠️ **Oggetti cambiati sotto questo brief (team DB, 2026-11-15).** Con il giro 1 di
 > [brief-db-copia-indirizzo-soggetto](../work-done/brief-db-copia-indirizzo-soggetto.md) (§5.1,
@@ -258,6 +265,9 @@ passiva (cantiere acquisti, oggi col solo modello, e `contabilita` vuoto) servir
 
 Nessun brief aperto lo prevede oggi: va annotato fra le decisioni aperte del cantiere acquisti
 (PROJECT_CONTEXT), non risolto qui.
+
+⭐ **Parte dello sviluppo acquisti** (2026-11-18): non è debito di questo brief, resta qui all'archiviazione. Il
+rimando sta nella voce `acquisti` di PROJECT_CONTEXT.
 
 ## 8. Riverifica sullo stato di sviluppo (team DB, 2026-11-16)
 
@@ -532,6 +542,8 @@ cliente × fatturazione su un privato, che la natura ammette. I `BEGIN ATOMIC` s
   scattare il guard (`UPDATE OF tipo_indirizzo_id`), né per il ruolo né per la natura. Il BE non scrive quella
   colonna (`INDIRIZZO_RUOLO_UPDATE_COLS`); se è identità, la forma è un lucchetto
   (`dbops.automation_lock_columns`, linee-guida-trigger § `UPDATE OF`). Decide Tid se e dove.
+  ✅ *Decisa da Tid il 2026-11-18:* è identità, lucchetto, in questo brief (giro 7, §15), insieme al gemello del
+  layer soggetto (`indirizzi_soggetti.soggetto_id`).
 * **Verifica del 2026-11-17, una quarta copia di «obbligatorio per il ruolo».** La fixture
   `dbops.fn_pgtap_crea_soggetto_ruolo` sceglie il primo indirizzo da passare alla plurale con la sua query sulla
   matrice (`attivo AND obbligatorio`, senza la finestra di validità e senza la natura). Su un ruolo con un
@@ -969,3 +981,83 @@ il `ROLLBACK`, `test-indirizzi-obbligatori-mancanti-v1` 11 / 0, guardrail static
 
 Dopo il `-45`, nel repository il nome vecchio resta solo nella storia (questo brief, gli YAML del `-39`, `-40`,
 `-43`) e in `script`, dove è il nome dell'altra funzione.
+
+## 15. Giro 7, il titolare dell'indirizzo non cambia (team DB, 2026-11-18)
+
+Le due chiusure proposte il 2026-11-18 prima dell'archiviazione, col via di Tid lo stesso giorno: il lucchetto del
+§9.5 («`soggetto_ruolo_id` è identità», Tid) e l'upsert fuori transazione del §14.2.
+
+### 15.1 Che cosa
+
+| Pezzo | File |
+| --- | --- |
+| Due righe del registro dei lock: `indirizzi.soggetto_ruolo_id` e `indirizzi_soggetti.soggetto_id` | `80_data/sql/dbops/automation_lock_columns.csv` |
+| Due codici `CONFLITTO_STATO`, uno per livello: `E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE`, `E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE`, con le frasi (id 1512, 1513) | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` |
+| Il runner dei lock su `anagrafiche`, subito (su dbdev il job dei lock è serale) | `90_end/20261116-46-provision-lock-indirizzi-titolare` |
+| pgTAP nuovo (5 asserzioni) | `db/pgtap/anagrafiche/test-indirizzi-titolare-immutabile-v1.sql` |
+| L'indirizzo del ruolo del caso 2 in forma libera; via stradario e upsert | `test-soggetti-ruoli-indirizzi-required` |
+| Guida *Gestione degli indirizzi*: R10 | `docs/it/guide/gestione-degli-indirizzi.md` |
+
+**Le scelte fatte scrivendo:**
+
+* **Il gemello del layer soggetto entra nello stesso giro.** Il §9.5 nominava il solo indirizzo di ruolo; il
+  difetto è identico su `indirizzi_soggetti.soggetto_id`: il guard del tipo è `UPDATE OF tipo_indirizzo_id`, e un
+  indirizzo spostato su un altro soggetto non sarebbe giudicato sulla natura nuova. Stessa regola, stesso
+  significato: chiudere un livello solo sarebbe un'asimmetria.
+* **Il lucchetto, non un ramo del guard** (linee-guida-trigger, «una FK di appartenenza»): il caso modello è
+  `soggetti_ruoli.soggetto_id` (`20261019-86`). Il trigger lo monta il runner, il registro lo governa.
+* **Nessuno scrive le due colonne dopo la nascita**: il backend non le ha fra le colonne modificabili
+  (`INDIRIZZO_RUOLO_UPDATE_COLS`; per il soggetto non c'è un `UPDATE`), e nessuna funzione del database fa un
+  `UPDATE` su `indirizzi` o `indirizzi_soggetti` (letto da `pg_get_functiondef` su dbdev, 2026-11-18). Nessun seed di
+  `80_data` o `90_end` le aggiorna. `dbops.fn_lock_columns_divergenze('AUTO', ARRAY['anagrafiche'])` su dbdev,
+  2026-11-18: nessuna divergenza, quindi il runner monta i due lucchetti e non tocca altro.
+* **Chi parla per primo.** Il lucchetto ha il nome del template del framework (`…_a10_lock_columns_upd`), e fra i due
+  `a10` di `indirizzi` parla prima `trg_indirizzi_a10_guard_istanza_ins_upd`: un indirizzo che porta un'istanza,
+  spostato sul ruolo di un altro soggetto, è rifiutato con `E_ISTANZA_ALTRO_SOGGETTO` (il test 8 di
+  `test-istanza-dello-stesso-soggetto-v1` resta com'è). Le linee guida vorrebbero l'immutabilità per prima (fase
+  `a05`); il nome del lucchetto lo decide il template, uguale per tutte le tabelle, e il rifiuto c'è comunque. È lo
+  stesso ordine del caso modello sul ruolo.
+* **L'upsert del pgTAP non si sposta dentro i casi: si toglie.** L'indirizzo del ruolo si scrive in forma libera,
+  come gli altri pgTAP: nessuna scrittura su `indirizzi_dettaglio`, tabella condivisa.
+
+### 15.2 Il caso costruito
+
+Due privati dal builder, ciascuno col ruolo cliente e i suoi indirizzi (`fn_pgtap_crea_soggetto_ruolo`).
+L'indirizzo di ruolo di A spostato sul ruolo di B: rifiutato col codice del ruolo; riscritto sul ruolo di A: passa.
+L'indirizzo del soggetto A spostato su B: rifiutato col codice del soggetto; riscritto su A: passa.
+
+### 15.3 La prova
+
+`scripts/prova_changeset.py` sullo scratch `zeroerp_ruoli`, 2026-11-18. Le righe dei tre CSV non le carica lo
+script: entrano da un changeSet di prova nello scratchpad (`INSERT` delle stesse righe), in testa al `-46`.
+Catalogo identico dopo il `ROLLBACK`. Guardrail statici verdi (forme, letterali, COMMENT al presente, runOnChange,
+preCondition, timestamp, DDL sui trigger generati, GRANT ai ruoli batch; preambolo pgTAP).
+
+| pgTAP | Senza → con l'estratto |
+| --- | --- |
+| `test-indirizzi-titolare-immutabile-v1` (nuovo) | 2 / 3 → 5 / 0 (senza il lucchetto passano solo i due «riscrivere lo stesso») |
+| `test-soggetti-ruoli-indirizzi-required` | ⚠️ lo script non lo lancia (una transazione per caso). Provato il solo caso 2, quello toccato, in una copia a transazione unica nello scratchpad: 4 / 0. Il file intero lo dice la corsa di Tid |
+| regressione: `test-istanza-dello-stesso-soggetto-v1`, `test-indirizzo-libero-due-forme-v1`, `test-indirizzi-obbligatori-ripiego-e-cancellazione-v1`, `test-fornitore-privato-indirizzi-v1`, `test-cambio-natura-soggetto-v1`, `test-indirizzi-obbligatori-mancanti-v1`, `test-fn-pgtap-crea-soggetto-pf-v1`, `create-cliente`, `test-fn-update-cliente-v1`, `test-copia-indirizzo-v1` | invariati, verdi |
+| presidi: `dbops/test-lock-columns-convergenza`, `test-non-editable-fields-dal-lock-vivo-v1`, `test-codice-errore-conforme-v1`, `test-vw-codici-errore-motivo-nominato`, `test-registri-automazioni-nomi-non-vuoti-v1`, `test-marcatori-automazione-senza-esecutore-v1`, `test-block-attivo-si-ritira-v1`, `test-delete-block-*`; `config/test-codici-errore-obsoleto-dal`, `test-messaggi-errore-causa-soluzione-non-vuote-v1` | invariati, verdi |
+
+✅ *Corsa di Tid, 2026-11-18:* i tre CSV e il `-46` applicati su dbdev, `test-indirizzi-titolare-immutabile-v1` e
+`test-soggetti-ruoli-indirizzi-required` (il file intero) verdi, doc auto-generata rigenerata.
+
+⚠️ Le `preCondition` del `-46` lo script le legge prima delle righe di prova (attese 2, trovate 0 sullo scratch):
+all'apply vero `80_data` gira prima di `90_end`. ⚠️ La prova gira da owner. ⚠️ Gli id 1512 e 1513 di
+`messaggi_errore.csv` erano liberi alla scrittura (2026-11-18, massimo 1511); con un'altra sessione DB aperta, vanno
+riletti prima dell'apply.
+
+### 15.4 Richiesta a BE/FE (elenco chiuso)
+
+* **R-8 (BE)**, dopo l'applicazione del giro 7: rigenerare `error_policies_generated.py` (`manage.py
+  genera_error_policies`): i due codici nuovi, `CONFLITTO_STATO`; e i loro ripieghi in `error_messages_fallback.py`,
+  accanto a quello di `E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` (lo pretende `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`).
+  Proposte: «Un indirizzo appartiene per sempre al suo ruolo: se è sul ruolo sbagliato si elimina e si ricrea.» e
+  «Un indirizzo appartiene per sempre al suo soggetto: se è sul soggetto sbagliato si elimina e si ricrea.» Nessun
+  percorso del BE scrive le due colonne: nessun'altra modifica.
+
+### 15.5 Che cosa resta all'archiviazione
+
+Niente da portare in un brief nuovo: il §7 è sviluppo acquisti (marcato lì), il §9.5 è chiuso da questo giro,
+l'upsert del §14.2 pure. Restano R-5 … R-8 del BE/FE.

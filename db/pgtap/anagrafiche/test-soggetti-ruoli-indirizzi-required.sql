@@ -83,34 +83,12 @@ SELECT ok(
     ) = 1,
     'Esiste almeno una regola obbligatoria attiva in config.tipi_ruolo_tipi_indirizzo'
   );
-CREATE TEMP TABLE tmp_stradario_test AS
-SELECT id
-FROM config.stradario
-ORDER BY id
-LIMIT 1;
-CREATE TEMP TABLE tmp_indirizzo_dettaglio_test AS WITH upsert AS (
-  INSERT INTO anagrafiche.indirizzi_dettaglio (
-      stradario_id,
-      civico,
-      via_norm,
-      civico_norm,
-      attivo,
-      storicizza
-    )
-  SELECT s.id,
-    1,
-    'VIA TEST RUOLO REQUIRED',
-    '1',
-    TRUE,
-    FALSE
-  FROM tmp_stradario_test s ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno) DO
-  UPDATE
-  SET data_update = now(),
-    user_update = CURRENT_USER
-  RETURNING id
-)
-SELECT id
-FROM upsert;
+-- Rev 2026-11-18 (brief-db-fornitore-privato-indirizzi §15): via lo stradario
+--   e l'upsert su anagrafiche.indirizzi_dettaglio che stavano qui. Erano fuori
+--   da ogni transazione, quindi COMMITTAVANO: una riga del dettaglio creata, o
+--   una esistente riscritta (ON CONFLICT DO UPDATE), a ogni corsa. L'indirizzo
+--   del ruolo del caso 2 si scrive ora in forma libera, nella forma che lo
+--   stato pretende (dbops.fn_pgtap_indirizzo_libero_forma), come gli altri pgTAP.
 -- =========================================================
 -- Caso 1: ruolo senza indirizzo obbligatorio -> blocco deferred
 -- =========================================================
@@ -187,16 +165,18 @@ FROM ins_role;
 INSERT INTO anagrafiche.indirizzi (
     soggetto_ruolo_id,
     tipo_indirizzo_id,
-    indirizzo_dettaglio_id,
+    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code,
     storicizza
   )
 SELECT r.id,
   rr.tipo_indirizzo_id,
-  d.id,
+  'Via pgTAP ruolo required 1', sg.stato_id, f.comune_id, f.codice_postale_id, f.locality, f.postal_code,
   FALSE
 FROM tmp_ruolo_ok r
   JOIN tmp_regola_ruolo_required rr ON TRUE
-  JOIN tmp_indirizzo_dettaglio_test d ON TRUE;
+  JOIN tmp_soggetto_ruolo_ok so ON TRUE
+  JOIN anagrafiche.soggetti sg ON sg.id = so.id
+  CROSS JOIN LATERAL dbops.fn_pgtap_indirizzo_libero_forma(sg.stato_id) f;
 SELECT lives_ok(
     $$
     SET CONSTRAINTS ALL IMMEDIATE;

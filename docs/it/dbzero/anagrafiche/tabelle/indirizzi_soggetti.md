@@ -54,10 +54,11 @@
 |------|--------|--------|--------|
 | trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()` |
 | trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()` |
-| trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
 | trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
-| trg_indirizzi_soggetti_a10_indirizzi_dettaglio_require_a_a86562 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
+| trg_indirizzi_soggetti_a10_guard_tipo_indirizzo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()` |
 | trg_indirizzi_soggetti_a10_indirizzi_dettaglio_require_a_a86562 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
+| trg_indirizzi_soggetti_a10_indirizzi_dettaglio_require_a_a86562 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
+| trg_indirizzi_soggetti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('soggetto_id', 'E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE')` |
 | trg_indirizzi_soggetti_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_indirizzi_soggetti_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_indirizzi_soggetti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

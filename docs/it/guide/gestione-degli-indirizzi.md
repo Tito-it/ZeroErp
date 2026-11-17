@@ -416,6 +416,20 @@ tolgono prima del cambio (sono motivi di
 
 Un cambio della matrice non rigiudica i ruoli e i soggetti già scritti.
 
+### R10 — Un indirizzo resta del suo titolare
+
+Un indirizzo di ruolo appartiene al ruolo su cui è nato, e un indirizzo del soggetto al suo soggetto: il titolare
+non si cambia. I tipi ammessi e gli obbligatori (R5, R6, R9) si giudicano sul titolare; un indirizzo spostato su
+un altro sfuggirebbe a quei controlli, e il titolare di partenza perderebbe un indirizzo senza che nessuno lo
+verifichi. Un indirizzo creato sul titolare sbagliato **si elimina e si ricrea** su quello giusto: la cancellazione
+passa dal controllo degli obbligatori (R9).
+
+Lo impediscono due lucchetti di colonna del
+[framework di automazione](/guide/automazione-db), con un codice per livello:
+`E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE` e `E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE`. Quando l'indirizzo di ruolo
+porta un'istanza di fornitura, a rifiutare lo spostamento verso il ruolo di un altro soggetto è prima il controllo
+dell'istanza (`E_ISTANZA_ALTRO_SOGGETTO`).
+
 ## Ciclo di vita
 
 ### Inserimento di un indirizzo normalizzato
@@ -506,6 +520,7 @@ Le helper di lettura storica:
 | [`trgfn_indirizzi_guard_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_obbligatori_ruolo) | `indirizzi` | Cancellato o cambiato un indirizzo, il ruolo di prima ha ancora i suoi obbligatori (R9) |
 | [`trgfn_indirizzi_soggetti_guard_obbligatori_soggetto`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_soggetti_guard_obbligatori_soggetto) | `indirizzi_soggetti` | Cancellato o cambiato un indirizzo, il soggetto di prima ha ancora i suoi obbligatori (R9) |
 | [`trgfn_soggetti_guard_obbligatori_ruoli`](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_obbligatori_ruoli) | `soggetti` | Cambiata la natura, ogni ruolo del soggetto ha i suoi obbligatori (R9) |
+| `script.trgfn_lock_columns` (lucchetto di colonna, dal registro) | `indirizzi`, `indirizzi_soggetti` | Il titolare dell'indirizzo non cambia (R10) |
 | [`trgfn_indirizzi_guard_forma_libera`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_forma_libera)                           | `indirizzi`, `indirizzi_soggetti` | La forma dell'indirizzo libero, decisa dallo stato (R3). Gira dopo la normalizzazione |
 | [`trgfn_indirizzi_dettaglio_protect_update`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_protect_update)               | `indirizzi_dettaglio`             | Blocca modifica manuale di `stradario_id` (R4)               |
 | [`trgfn_indirizzi_dettaglio_guard_chiave`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_guard_chiave)                   | `indirizzi_dettaglio`             | La chiave del civico: civico > 0, dettaglio con lettere o cifre, nessun doppione in modifica (R7). Gira dopo la normalizzazione |
@@ -746,6 +761,7 @@ il requisito sulla natura col ripiego, il rifiuto alla cancellazione e al cambio
 sostituzione nella stessa transazione, il cambio di natura.
 Gli indirizzi che una natura proposta chiede li prova `db/pgtap/anagrafiche/test-indirizzi-obbligatori-mancanti-v1.sql`,
 fino al salvataggio che cambia la natura e scrive gli indirizzi nella stessa transazione.
+Il titolare che non cambia (R10) lo prova `db/pgtap/anagrafiche/test-indirizzi-titolare-immutabile-v1.sql`.
 
 ---
 
