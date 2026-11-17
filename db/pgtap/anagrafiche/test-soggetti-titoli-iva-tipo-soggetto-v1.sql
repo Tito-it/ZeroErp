@@ -200,32 +200,21 @@ SELECT lives_ok(
 -- RLS. Il contesto cambia qui, prima di ogni persona fisica incompleta:
 -- fn_pgtap_set_contesto_operatore esce IMMEDIATE, e i guard differiti di
 -- soggetti scatterebbero sulle fixture ancora a meta'. Il privato di questo
--- caso nasce quindi COMPLETO (gli indirizzi che la sua natura pretende, come
--- fa il builder delle societa'), con l'agevolazione presentata all'emittente
--- dell'operatore di default; poi si passa all'operatore di un ALTRO
--- emittente, che resta il contesto del resto del file.
+-- caso nasce quindi COMPLETO, dal builder delle persone fisiche (gli indirizzi
+-- che la sua natura pretende, dalle madri; la finestra differita la richiude
+-- lui), con l'agevolazione presentata all'emittente dell'operatore di
+-- default; poi si passa all'operatore di un ALTRO emittente, che resta il
+-- contesto del resto del file.
+-- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, riga 7-bis, 20261116-22):
+--   gli indirizzi si scrivevano con un INSERT accanto alla madre; ora li
+--   scrive il builder dbops.fn_pgtap_crea_soggetto_pf.
 -- ============================================================
 CREATE TEMP TABLE _pr2 AS
-SELECT anagrafiche.fn_crea_soggetto_pf(
-           p_cognome := 'Titoli', p_nome := 'Altrove', p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-           p_email := 'pgtap.titoli.pr2@example.com', p_sesso := 'M',
-           p_tipo_soggetto_dettaglio_id := (SELECT pr FROM _ref)) AS id;
-
--- rev 2026-10-18: i campi della forma dallo stato (Italia: comune e CAP del catalogo)
-INSERT INTO anagrafiche.indirizzi_soggetti (
-    soggetto_id, tipo_indirizzo_id, indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code)
-SELECT (SELECT id FROM _pr2), m.tipo_indirizzo_id, 'Via pgTAP 2', 1, f.comune_id, f.codice_postale_id, f.locality, f.postal_code
-  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
- CROSS JOIN dbops.fn_pgtap_indirizzo_libero_forma(1) f
- WHERE m.tipo_soggetto_dettaglio_id = (SELECT pr FROM _ref)
-   AND m.attivo AND m.obbligatorio;
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Titoli', 'Altrove', (SELECT pr FROM _ref)) AS id;
 
 DO $tit$ BEGIN
     EXECUTE pg_temp.titolo_sql((SELECT id FROM _pr2), (SELECT agevolata FROM _ref), NULL);
 END $tit$;
-
--- La saga del privato e' completa: i differiti si verificano qui.
-SET CONSTRAINTS ALL IMMEDIATE;
 
 CREATE TEMP TABLE _op2 AS SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _op2)); END $ctx$;
