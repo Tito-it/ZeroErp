@@ -45,8 +45,12 @@ AS $function$
 --     a porta aperta ammette solo queste due forme. La porta si apre
 --     dopo la scelta delle versioni e si richiude prima di uscire,
 --     anche in errore;
---   - il vincolo EXCLUDE resta il guardrail finale contro overlap
---     residui o race concorrenti.
+--   - una sovrapposizione che la chiusura non risolve (lo stesso inizio di
+--     una versione fuori bozza, un inizio dentro una OBSOLETA, una
+--     pubblicazione concorrente) la ferma il vincolo
+--     ex_template_documenti_versioni_no_overlap_pubblicata: il verbo la
+--     rende col suo codice, E_DOCUMENTI_VERSIONE_OVERLAP. Un'altra
+--     violazione d'esclusione si rilancia com'e'.
 DECLARE
     v_template_id  documenti.template_documenti_versioni.template_documento_id%TYPE;
     v_stato        documenti.template_documenti_versioni.stato%TYPE;
@@ -57,6 +61,8 @@ DECLARE
     v_closed_ids   bigint[] := ARRAY[]::bigint[];
     -- un conteggio: nessuna colonna di cui sia il riflesso
     v_closed_count integer  := 0;
+    -- il nome del vincolo violato, dalla diagnostica dell'errore
+    v_vincolo      text;
 BEGIN
     IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -208,9 +214,29 @@ BEGIN
         END IF;
 
         PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
-    EXCEPTION WHEN OTHERS THEN
-        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
-        RAISE;
+    EXCEPTION
+        WHEN exclusion_violation THEN
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
+            IF v_vincolo IS DISTINCT FROM 'ex_template_documenti_versioni_no_overlap_pubblicata' THEN
+                RAISE;
+            END IF;
+            PERFORM script.fn_log_and_raise_error(
+                'documenti',
+                'fn_pubblica_template_documento_versione',
+                'E_DOCUMENTI_VERSIONE_OVERLAP',
+                jsonb_build_object(
+                    'versione_id',           p_versione_id,
+                    'template_documento_id', v_template_id,
+                    'valido_dal',            p_valido_dal,
+                    'valido_al',             p_valido_al
+                ),
+                NULL::uuid,
+                VARIADIC ARRAY[]::text[]
+            );
+        WHEN OTHERS THEN
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            RAISE;
     END;
 
     versione_id           := p_versione_id;
@@ -221,7 +247,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
-IS 'Pubblica una versione template BOZZA, ed e'' l''unica strada per cui una versione esce dalla bozza. Nella stessa transazione chiude le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). Le due scritture passano sotto la porta zeroerp.allow_template_versione_pubblicazione_override, che il guard dello stato (documenti.trgfn_template_documenti_versioni_protect_pubblicata) chiede e che il verbo richiude prima di uscire, anche in errore. Rifiuti: parametri mancanti (E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO), versione inesistente (E_DOCUMENTI_VERSIONE_NOT_FOUND), non in bozza (E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO), bozza spenta (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA: non stamperebbe, e chiuderebbe la versione che stampa). p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL); una sovrapposizione che la chiusura non risolve (stesso inizio di una versione fuori bozza, inizio dentro una OBSOLETA) la ferma il vincolo ex_template_documenti_versioni_no_overlap_pubblicata (23P01).';
+IS 'Pubblica una versione template BOZZA, ed e'' l''unica strada per cui una versione esce dalla bozza. Nella stessa transazione chiude le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). Le due scritture passano sotto la porta zeroerp.allow_template_versione_pubblicazione_override, che il guard dello stato (documenti.trgfn_template_documenti_versioni_protect_pubblicata) chiede e che il verbo richiude prima di uscire, anche in errore. Rifiuti: parametri mancanti (E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO), versione inesistente (E_DOCUMENTI_VERSIONE_NOT_FOUND), non in bozza (E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO), bozza spenta (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA: non stamperebbe, e chiuderebbe la versione che stampa). p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL); una sovrapposizione che la chiusura non risolve (stesso inizio di una versione fuori bozza, inizio dentro una OBSOLETA, una pubblicazione concorrente) la ferma il vincolo ex_template_documenti_versioni_no_overlap_pubblicata, e il verbo la rende col suo codice (E_DOCUMENTI_VERSIONE_OVERLAP).';
 ```
 
 </div>

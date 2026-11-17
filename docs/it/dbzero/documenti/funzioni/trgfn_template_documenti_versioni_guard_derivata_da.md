@@ -89,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()
-IS 'Guard BEFORE INSERT/UPDATE OF derivata_da_versione_id, template_documento_id su documenti.template_documenti_versioni (2026-10-20, brief-db-modelli-documento-standard §4.1 Q-5). L''origine di una copia personalizzata e'' una versione di un modello standard con lo stesso tipo di documento e la stessa sorgente, e la versione che la porta non e'' di uno standard -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO: la scrive l''azione «personalizza»). Fuori dalla bozza l''origine non cambia -> E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (la colonna non e'' nell''elenco di trgfn_template_documenti_versioni_protect_pubblicata).';
+IS 'Guard BEFORE INSERT/UPDATE OF derivata_da_versione_id, template_documento_id su documenti.template_documenti_versioni. L''origine di una copia personalizzata e'' una versione di un modello standard con lo stesso tipo di documento e la stessa sorgente, e la versione che la porta non e'' di uno standard -> E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA (TECNICO: la scrive l''azione «personalizza»). Fuori dalla bozza l''origine non cambia -> E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (la colonna non e'' nell''elenco di documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
 ```
 
 </div>

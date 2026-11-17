@@ -1,29 +1,29 @@
 # Brief DB — Il privato può essere fornitore, senza inventarsi una sede legale
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-16
+## ⏭️ Chi riparte — aggiornato al 2026-11-17
 
-**Riparte: team DB, col giro 1, al via di Tid.** Tutte le decisioni sono prese (2026-11-16): la (C), D-4
-(stesso trattamento di Q-3), D-5 (nessuna riga da trattare), F-1 (giro 4, qui). La (C) è confermata (2026-11-16, §8.3-bis): il fornitore come il cliente,
-sul ruolo solo `FATT` obbligatorio. D-1 revocata, D-2 e D-3 senza oggetto. Il brief è stato riverificato sul catalogo di dbdev
-(§8): il caso e i due difetti reggono, ma la proposta (A) da sola non basta e il §4.2 tocca più sedi di quelle
-scritte. Nessun changeSet scritto.
+**Riparte: il team BE/FE, con R-1 … R-4 (§9.4); R-2 per primo, perché il commit DB lo aspetta.** I giri 1 e 2
+(`20261116-17 … -21` e tre CSV) sono applicati su dbdev il 2026-11-17, con i pgTAP del §9.2 verdi (Tid); il
+censimento di D-5, ripetuto prima dell'applicazione, ha dato zero righe. Da quel momento il BE è rotto sul picker
+del ruolo da assegnare (R-1). Poi il team DB: rigenerare la doc auto-generata e committare, quindi i giri 3 e 4.
+Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | team DB | ✅ riverifica sullo stato di sviluppo (2026-11-16) | §8.1-8.2 | — |
 | 2 | Tid | ✅ le decisioni: la (C), D-4, D-5, F-1 (2026-11-16) | §8.3, §8.3-bis, §8.4 | 1 |
-| 3 | team DB | censimento degli indirizzi di ruolo non ammessi dalla natura del soggetto (sola lettura): ✅ fatto il 2026-11-16, zero righe; si ripete prima dell'applicazione del giro 1 | §8.3 D-5 | 2 |
-| 4 | team DB | giro 1: CSV della matrice `FO` (riga 13 non obbligatoria, §8.3-bis), guard del §4.2, motivo nella check del ruolo, auto-clone filtrato per natura; `manual/fn_crea_fornitore.md` e guida degli indirizzi | §4.2, §8.2, §8.3-bis | 2, 3 |
-| 5 | Tid | giro 1 applicato, pgTAP | §5 | 4 |
-| 6 | team DB | giro 2: motivo nel cambio di natura, picker del tipo di ruolo con la natura | §8.2 (4, 3) | 5 |
-| 7 | BE/FE | il picker del tipo di ruolo con la natura (percorso al §6) | §6 | 6 |
-| 8 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 2 |
-| 8-bis | team DB | giro 4: gli obbligatori ricontrollati alla cancellazione e al cambio di tipo (F-1) | §8.4 | 5 |
-| 9 | BE/FE | il fornitore privato provato sul DB vero | §6 | 5 |
-| 10 | chi chiude | archiviazione in `work-done/` | — | tutti |
+| 3 | team DB | ✅ censimento degli indirizzi di ruolo non ammessi dalla natura (2026-11-16, zero righe); ✅ ripetuto prima dell'applicazione (2026-11-17, zero righe su 687) | §8.3 D-5, §9.3 | 2 |
+| 4 | team DB | ✅ giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17): BB degli obbligatori, check e picker del ruolo con la natura, guard, auto-clone, cambio di natura, CSV, pgTAP, doc | §9 | 2, 3 |
+| 5 | Tid | ✅ giri 1 e 2 applicati su dbdev, pgTAP del §9.2 verdi (2026-11-17) | §9.2 | 4 |
+| 5-bis | team DB | ⏳ doc auto-generata rigenerata, poi commit DB (dopo R-2) | §9.1 | 5, R-2 |
+| 6 | BE/FE | R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero | §9.4 | 5 (R-2 prima del commit DB) |
+| 7 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 5 |
+| 8 | team DB | giro 4: gli obbligatori ricontrollati alla cancellazione e al cambio di tipo (F-1), con la natura (§9.5) | §8.4, §9.5 | 5 |
+| 9 | chi chiude | archiviazione in `work-done/` | — | tutti |
 
-Decisioni aperte di Tid: nessuna. Prese il 2026-11-16: la (C), D-4, D-5, F-1. Lavoro fatto da committare: questo aggiornamento del
-brief.
+Decisioni aperte di Tid: le due proposte della verifica del 2026-11-17 (§9.5: la fixture del ruolo nel giro 4, il
+builder del privato per i pgTAP). Lavoro fatto e applicato, da committare: i giri 1 e 2 (§9.1), i pgTAP (§9.2), la doc
+(§9.1) e questo brief; il commit DB aspetta R-2 (il pre-commit `check-i18n-keys`, dopo la rigenerazione della doc).
 
 **Brief vicini verificati (2026-11-16):** nessun brief aperto sugli stessi oggetti. Due chiusi il 2026-11-15
 li hanno toccati e qui si **leggono**, non si rifanno:
@@ -36,7 +36,7 @@ in una sede, le check, i picker, gli obbligatori della plurale) e
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE in §6.
 > **Origine:** smoke `smoke-test-soggetti.sh` (assegnazione ruoli) e la domanda di Tid
 > «un'azienda può comprare da un privato?» del 2026-10-09.
-> **Stato:** 🔵 da fare.
+> **Stato:** 🟡 giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17, §9), da applicare; giri 3 e 4 da fare.
 >
 > ⚠️ **Oggetti cambiati sotto questo brief (team DB, 2026-11-15).** Con il giro 1 di
 > [brief-db-copia-indirizzo-soggetto](../work-done/brief-db-copia-indirizzo-soggetto.md) (§5.1,
@@ -205,6 +205,8 @@ Aggiunti dalla riverifica del 2026-11-16 (§8.2), la forma esatta dipende da D-1
   145 e 178); test `backend/apps/anagrafiche/tests/db/test_tipi_indirizzo_proponibili_db.py` (221, 228) e
   `backend/apps/core/tests/db/test_lookup_repository.py` (115). Il DB resta allineato alla firma di oggi finché
   il BE non è pronto: chi cambia per primo si decide al giro 2.
+  ⚠️ *2026-11-17:* deciso al giro 2: cambia prima il DB (rotture BE ammesse), e il parametro è il **soggetto**,
+  non la natura (§9.1). La richiesta, con le altre, è al §9.4.
 
 ## 7. Fuori perimetro: il documento passivo del fornitore privato
 
@@ -213,7 +215,10 @@ passiva (cantiere acquisti, oggi col solo modello, e `contabilita` vuoto) servir
 
 * la registrazione manuale del documento come **ricevuta o nota compenso**, non come fattura;
 * il calcolo della ritenuta d'acconto e del netto da pagare (i dati del fornitore ci sono già);
-* la scadenza del versamento F24 e i dati per la Certificazione Unica.
+* la scadenza del versamento F24 e i dati per la Certificazione Unica;
+* *(2026-11-16, dalla (C) del §8.3-bis)* l'obbligo «il documento ha l'indirizzo fiscale del fornitore»
+  sta nel **documento** d'acquisto, come per la fattura di vendita: sede legale o domicilio fiscale, trovati
+  con la cascata ruolo → soggetto (`script.fn_resolve_indirizzo_documento`). Il ruolo non lo chiede più.
 
 Nessun brief aperto lo prevede oggi: va annotato fra le decisioni aperte del cantiere acquisti
 (PROJECT_CONTEXT), non risolto qui.
@@ -354,3 +359,129 @@ qui; se ne parla solo se Tid lo vuole.
   pgTAP: eliminare l'unico `FATT` di un ruolo `CL` → rifiuto; eliminarlo quando c'è il ripiego → accettato;
   cambiare il tipo dell'unico obbligatorio → rifiuto; eliminare la sede legale di una società sul soggetto →
   rifiuto; eliminare il ruolo con i suoi indirizzi → accettato; lo stesso sul layer soggetto.
+
+## 9. Giri 1 e 2, fatti (team DB, 2026-11-17)
+
+Scritti insieme, al via di Tid del 2026-11-17: il picker del ruolo da assegnare (giro 2) cambia firma nello
+stesso changeSet della check (giro 1), perché è `BEGIN ATOMIC` e dipende da lei.
+
+### 9.1 Che cosa
+
+| Pezzo | File (`20_code/anagrafiche/`, salvo dove detto) |
+| --- | --- |
+| BB `fn_tipo_indirizzo_obbligatorio_per_ruolo(tipo ruolo, natura, tipo, giorno)`: riga obbligatoria della matrice del ruolo, ammessa dal ruolo e dalla natura; `BEGIN ATOMIC` | `20261116-17-create-fn-tipo-indirizzo-obbligatorio-per-ruolo` |
+| `fn_check_tipo_indirizzo_ruolo_su_contesto` con la natura in coda (terzo motivo, `TIPO_NON_AMMESSO_DALLA_NATURA`); la firma completa la legge dal soggetto del ruolo; i due picker del ruolo la leggono, e quello sul tipo di ruolo riceve il **soggetto** (giro 2) | `20261116-18-update-fn-check-tipo-indirizzo-ruolo-con-la-natura` |
+| `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`: il ramo della natura, dopo quello del ruolo | `20261116-19-update-trgfn-indirizzi-guard-tipo-ruolo-natura` |
+| `fn_crea_indirizzi_ruolo`: gli obbligatori da copiare dal BB, sulla natura del soggetto | `20261116-20-update-fn-crea-indirizzi-ruolo-obbligatori-per-natura` |
+| `fn_check_cambio_natura_soggetto`: il motivo 9, gli indirizzi dei ruoli (D-4, giro 2) | `20261116-21-update-fn-check-cambio-natura-soggetto-indirizzi-ruolo` |
+| La (C): riga 13 (`FO` × `SEDELEG`) `obbligatorio = f` | `80_data/sql/config/tipi_ruolo_tipi_indirizzo.csv` |
+| `E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI` (`CONFLITTO_STATO`), frase id 1509; la nota di `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` dice il secondo layer | `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` |
+| Il pgTAP del cantiere (24 asserzioni) | `db/pgtap/anagrafiche/test-fornitore-privato-indirizzi-v1.sql` |
+| Pagine `manual/` del guard, della plurale e di `fn_crea_fornitore`; guida *Gestione degli indirizzi* (§ Indirizzo per ruolo, matrice in context ruolo, R5; due ancore morte verso R5 e R6 corrette) | `docs/it/dbzero/anagrafiche/manual/`, `docs/it/guide/` |
+
+**Le scelte fatte scrivendo:**
+
+* **Il BB nasce per la regola del 2.** «Obbligatorio per il ruolo, oggi» era scritto tre volte (l'auto-clone e i
+  due picker); con la natura sarebbero state tre copie di una regola più grande. Ora lo leggono tutti e tre.
+* **La natura nella check è in coda e senza default** (linee-guida-sql §5f): il comportamento di prima, la natura
+  ignorata, è il difetto. Il motivo è lo **stesso** della check del soggetto (codice, `reason`, `reason_key`,
+  valori): nessuna chiave i18n nuova per lui.
+* **Il picker sul tipo di ruolo riceve il soggetto, non la natura.** Il drawer lo carica all'apertura, prima che
+  l'operatore scelga il soggetto (`FornitoreDrawer.vue` 135, `ClienteDrawer.vue` 266): `NULL` = soggetto non
+  ancora scelto, la natura non conta; un soggetto che non esiste dà nessuna riga, come un tipo di ruolo che non
+  esiste. Senza default anche lui (§5f), quindi il BE si rompe finché non lo passa (R-1).
+* **Il guard usa il codice del guard del soggetto**, `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`: la regola e la
+  matrice sono quelle, il contesto dice il layer. Nessun DDL sul trigger.
+* **Il cambio di natura ha un codice suo**, gemello di `E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI`, come i due layer
+  dei guard del tipo; il dettaglio porta `indirizzi` e `ruolo` per la frase del FE (R-2).
+* `SECURITY INVOKER` ora esplicito sulle funzioni riscritte. Corpi dagli ultimi YAML (`20261114-87`, `-91`, `-93`,
+  `-95`, `-97`, `20261115-41`, `-61`), verificati uguali al `prosrc` vivo; firme ancorate.
+
+### 9.2 La prova
+
+`scripts/prova_changeset.py` sullo scratch `zeroerp_ruoli`, 2026-11-17: estratto dei cinque changeSet più
+l'effetto dei tre CSV (un changeSet di sola prova nello scratchpad, fuori dal repo, perché il `loadUpdateData`
+non si estrae), eseguito per intero, catalogo identico dopo il `ROLLBACK`. Guardrail statici verdi (forme,
+letterali, COMMENT al presente, runOnChange, preCondition, DDL sui trigger generati, timestamp).
+
+| pgTAP | Senza l'estratto | Con l'estratto |
+| --- | --- | --- |
+| `test-fornitore-privato-indirizzi-v1` (nuovo) | interrotto | 24 ok / 0 |
+| `test-check-tipo-indirizzo-v1`, `test-tipi-indirizzo-proponibili-v1` (riscritti: la firma nuova) | rossi / interrotti | 34 / 0, 25 / 0 |
+| `test-fn-crea-indirizzi-ruolo-v1`, `test-fn-crea-fornitore-v1` (riscritti: §9.3) | verdi | 18 / 0, 16 / 0 |
+| `test_indirizzi_unique_res`, `create-gestore-indirizzo-res-domfisc`, `test-indirizzo-libero-due-forme-v1` (riscritti: §9.3) | verdi | 6 / 0, 10 / 0, 28 / 0 |
+| `test-copia-indirizzo-v1`, `test-indirizzi-fallback`, `test-indirizzi-istanza-cascata`, `test-indirizzi-singolare-e-plurale-v1`, `test-istanza-dello-stesso-soggetto-v1`, `test-soggetti-ruoli-guard-natura-ammessa`, `test-cambio-natura-soggetto-v1`, `test-fn-elimina-dati-societari-v1`, `test-fn-crea-cliente-v1`, `create-cliente`, `create-gestore-indirizzo-res`, `script/test-rubinetto-primo-motivo-v1`, `dbops/test-punti-canale-campo-v1`, `vendite/test-indirizzi-documento-seguono-cliente-v1`, `vendite/test-snapshot-indirizzi-lotto-v1` | verdi | invariati |
+| `vendite/test-snapshot-indirizzi-fattura-v1` | 15 / **1** | 15 / **1**: rosso preesistente, non di qui |
+
+⚠️ **Limiti dichiarati.** La prova gira da owner: le tabelle lette dai guard (`indirizzi`, `soggetti_ruoli`,
+`soggetti`, le matrici) non sono sotto RLS, ma l'esito come applicazione arriva dai pgTAP di Tid.
+`test-soggetti-ruoli-indirizzi-required` lo script non lo lancia (due righe `BEGIN;`); legge la regola
+cliente × fatturazione su un privato, che la natura ammette. I `BEGIN ATOMIC` stanno da soli nel loro `sql:`
+(guardrail verde), non provati attraverso il driver.
+
+### 9.3 Controesempi trovati provando (fatti)
+
+* **Quattro fixture scrivevano un indirizzo che il modello non ammette**: una **residenza** sul ruolo cliente di
+  una **società di capitali** (`test-fn-crea-indirizzi-ruolo-v1`, `test_indirizzi_unique_res`,
+  `create-gestore-indirizzo-res-domfisc`, `test-indirizzo-libero-due-forme-v1`). Sceglievano i tipi dalla sola
+  matrice del ruolo: è il varco del §3.2, e il guard nuovo li ferma. Corretti cambiando il veicolo, non la regola
+  provata: dove il tipo è un mezzo lo dà il picker del ruolo; dove la residenza è il soggetto del test il
+  soggetto diventa un privato, nato dalle madri.
+* **Due test sarebbero diventati verdi per sottrazione**: con la (C) il fornitore ha un solo obbligatorio, e la
+  copia degli obbligatori non si esercitava più (`test-fn-crea-indirizzi-ruolo-v1` 2-3,
+  `test-fn-crea-fornitore-v1` 7). Il secondo obbligatorio lo scrive ora il test.
+* Il censimento di D-5 si **ripete prima dell'applicazione** (la query del 2026-11-16: indirizzi di ruolo il cui
+  tipo `fn_tipo_indirizzo_ammesso_per_natura` non ammette per la natura del soggetto). Il guard non rilegge le
+  righe che ci sono: una riga che lo viola resterebbe, e il cambio di natura del suo soggetto si fermerebbe sul
+  motivo 9.
+
+### 9.4 Richieste a BE/FE (elenco chiuso)
+
+* **R-1 (BE + FE)** — `anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(tipo ruolo, soggetto)`: il secondo
+  argomento è il soggetto a cui il ruolo si assegna (`uuid`), `NULL` finché non è scelto. Fino al cambio la
+  rotta `lookup/tipi-ruolo/<codice>/indirizzi/` risponde errore (la funzione a un argomento non c'è più). Il
+  percorso intero è al §6: `useIndirizzoSoggettoForm.js` (161, `loadMatriceRuolo`) e i due drawer che la chiamano
+  all'apertura (`FornitoreDrawer.vue` 135, `ClienteDrawer.vue` 266), che la **ricaricano** quando il soggetto è
+  scelto; `apiCore.js` 51; `urls_v1.py` 134; `views_lookup.py` (`LookupTipiIndirizzoTipoRuoloView`);
+  `lookup_repository.py` 145 e 178; i test `test_tipi_indirizzo_proponibili_db.py` (221, 228) e
+  `test_lookup_repository.py` (115).
+* **R-2 (FE, prima del commit DB)** — la chiave `anagrafiche.soggetti.cambio_natura_blocco.indirizzi_ruolo` in
+  `it.json` ed `en.json`, coi parametri del dettaglio `{indirizzi}` e `{ruolo}`. Proposta: «La natura scelta non
+  ammette {indirizzi} indirizzi del ruolo {ruolo}: vanno eliminati dal ruolo prima del cambio.» Il pre-commit
+  `check-i18n-keys` la pretende appena la doc auto-generata è rigenerata.
+* **R-3 (BE)** — la policy di `E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI` (`CONFLITTO_STATO`): rigenerare
+  `error_policies_generated.py`; e il suo ripiego senza segnaposto in `error_messages_fallback.py`, accanto a
+  quello del gemello `E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI` (lo pretende
+  `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, api.md § ripiego). Proposta: «Il tipo soggetto scelto non
+  ammette alcuni indirizzi di un ruolo del soggetto: vanno eliminati dal ruolo prima del cambio.» `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` arriva ora anche dalle scritture
+  sul ruolo (`RuoloIndirizziView`, `create_indirizzi_ruolo`), con lo stesso campo `tipo_indirizzo_id`: la policy
+  c'è già.
+* **R-4 (BE)** — il primo punto del §6: un test che crea un fornitore privato dal flusso Fornitori sul DB vero,
+  con la sola fatturazione sul ruolo.
+
+### 9.5 Debito e note per i giri dopo
+
+* **Giro 4: il requisito degli obbligatori ignora la natura.** `trgfn_soggetti_ruoli_guard_indirizzi_required`
+  pretende ogni riga obbligatoria della matrice del ruolo, anche un tipo che la natura del soggetto vieta: un
+  requisito che nessuna scrittura può soddisfare. Nel seed di oggi non succede (fatto datato: dopo la (C) i
+  ruoli con un obbligatorio non ammesso da una loro natura ammessa sono zero); il modello lo ammette, e il pgTAP
+  del cantiere lo costruisce (SEDEOP obbligatorio per `FO`, 6-7 e 19). La sede unica degli obbligatori del giro 4
+  legge `fn_tipo_indirizzo_obbligatorio_per_ruolo`, con la stessa regola dell'auto-clone; resta da decidere con
+  Tid che cosa vale il ripiego di una riga che la natura vieta.
+* **Segnalato, senza proposta di cantiere:** un `UPDATE` di `anagrafiche.indirizzi.soggetto_ruolo_id` non fa
+  scattare il guard (`UPDATE OF tipo_indirizzo_id`), né per il ruolo né per la natura. Il BE non scrive quella
+  colonna (`INDIRIZZO_RUOLO_UPDATE_COLS`); se è identità, la forma è un lucchetto
+  (`dbops.automation_lock_columns`, linee-guida-trigger § `UPDATE OF`). Decide Tid se e dove.
+* **Verifica del 2026-11-17, una quarta copia di «obbligatorio per il ruolo».** La fixture
+  `dbops.fn_pgtap_crea_soggetto_ruolo` sceglie il primo indirizzo da passare alla plurale con la sua query sulla
+  matrice (`attivo AND obbligatorio`, senza la finestra di validità e senza la natura). Su un ruolo con un
+  obbligatorio che la natura del soggetto vieta passerebbe proprio quel tipo, e il guard del ruolo lo rifiuterebbe.
+  Oggi non pesa: lo stesso ruolo non si chiude comunque finché il requisito degli obbligatori ignora la natura (il
+  primo punto). Proposta: entra nel giro 4, con la fixture che legge `fn_tipo_indirizzo_obbligatorio_per_ruolo`
+  sulla natura del soggetto, in un changeSet suo.
+* **Verifica del 2026-11-17, il privato dei pgTAP scritto tre volte.** `test_indirizzi_unique_res`,
+  `create-gestore-indirizzo-res-domfisc` e `test-fornitore-privato-indirizzi-v1` creano un privato con la
+  residenza con lo stesso blocco (madre `fn_crea_soggetto_pf` + `fn_crea_indirizzi_soggetto`, nella finestra
+  differita). Il gemello della società c'è (`dbops.fn_pgtap_crea_soggetto_pg`), quello della persona fisica no.
+  Proposta: un builder `dbops.fn_pgtap_crea_soggetto_pf` e le tre copie ritirate nello stesso giro. È un
+  building block nuovo: decide Tid se e quando.

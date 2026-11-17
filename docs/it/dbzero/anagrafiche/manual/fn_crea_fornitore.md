@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_fornitore()`
 
+> **Ultimo aggiornamento**: 17 novembre 2026
+
 > 👀 **Vedi anche**
 >
 > [anagrafiche.fornitori](/dbzero/anagrafiche/manual/fornitori) ·
@@ -29,7 +31,9 @@ fornitori), i pgTAP e il provisioning dei dati di sviluppo.
 * **Il contatto**: facoltativo. Se c'è, valgono le regole del contatto
   (nominativo e tipo obbligatori).
 * **Gli indirizzi**: un elenco, anche vuoto. Basta il primo: gli altri tipi
-  obbligatori per un fornitore (sede legale, fatturazione) si copiano da lui.
+  obbligatori per un fornitore (oggi la fatturazione, come per il cliente) si
+  copiano da lui. La sede legale sul ruolo è facoltativa: l'indirizzo fiscale sta
+  sul soggetto, e un privato fornitore non ne ha una.
   Se il ruolo esisteva già, i tipi che ha non si riscrivono.
 
 ### Quando si controlla la completezza

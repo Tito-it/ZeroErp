@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Versioni renderizzabili del template documentale, con validita temporale e stato di pubblicazione.
+> Le versioni da stampare di un modello: il corpo (HTML, CSS, Markdown), il motore, la pagina, la forma dei dati che legge, lo stato e la validita'. Si nasce in BOZZA e se ne esce solo con documenti.fn_pubblica_template_documento_versione; fuori bozza (PUBBLICATA o OBSOLETA) la versione non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata). Che cosa stampa lo decidono le date, non lo stato (documenti.vw_template_versioni_stampabili): una OBSOLETA stampa fino all'ultimo giorno della sua validita'. Per ogni data, al piu' una versione accesa fuori bozza per modello (ex_template_documenti_versioni_no_overlap_pubblicata). Si cancella solo una bozza che nessuna stampa ha usato.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

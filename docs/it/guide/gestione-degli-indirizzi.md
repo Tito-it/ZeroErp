@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -70,7 +70,7 @@ E il livello più basso: il singolo numero civico su una via. La tabella `anagra
 
 Il campo `indirizzo_normalizzato` viene calcolato automaticamente dal trigger di normalizzazione e produce una stringa leggibile tipo "Via Roma 1, Palazzina A, Int. 3". Questo è il dato che appare nelle viste e nei documenti.
 
-Ogni indirizzo fisico è **una riga sola**, condivisa da tutti i soggetti, i punti di fornitura e i magazzini che lo usano: non possono esistere due righe con la stessa combinazione (stradario, civico, estensione, palazzina, scala, piano, interno), nemmeno quando il civico manca ([R7](#r7--unicita-del-civico)).
+Ogni indirizzo fisico è **una riga sola**, condivisa da tutti i soggetti, i punti di fornitura e i magazzini che lo usano: non possono esistere due righe con la stessa combinazione (stradario, civico, estensione, palazzina, scala, piano, interno), nemmeno quando il civico manca ([R7](#r7-unicita-del-civico)).
 
 ### Indirizzo per ruolo (`anagrafiche.indirizzi`)
 
@@ -82,10 +82,10 @@ indirizzo di fatturazione per il contratto GAS di Corridonia è uno diverso per 
 Civitanova (stessa utility, istanze diverse). Con `istanza_utility_id = NULL` l'indirizzo è generico
 del ruolo e fa da fallback per tutte le istanze che non hanno un override specifico.
 
-I tipi di indirizzo ammessi dipendono dal tipo di ruolo: la matrice `config.tipi_ruolo_tipi_indirizzo` definisce quali tipi sono consentiti per ciascun tipo di ruolo ([R5](#r5--validazione-tipo-indirizzo-per-ruolo)).
+I tipi di indirizzo ammessi dipendono dal tipo di ruolo e dalla natura del soggetto: la matrice `config.tipi_ruolo_tipi_indirizzo` definisce quali tipi sono consentiti per ciascun tipo di ruolo, e un tipo che la natura del soggetto non ammette non si scrive nemmeno sul ruolo ([R5](#r5-validazione-tipo-indirizzo-per-ruolo)). Un privato fornitore, per esempio, non ha una sede legale né sul soggetto né sul ruolo.
 
 Vincolo di unicità: un solo indirizzo per combinazione `(soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id)`,
-gestito con due partial unique index per il trattamento NULL di PostgreSQL ([R2](#r2--unicita-per-tipo)).
+gestito con due partial unique index per il trattamento NULL di PostgreSQL ([R2](#r2-unicita-per-tipo)).
 
 ### Indirizzo per soggetto (`anagrafiche.indirizzi_soggetti`)
 
@@ -93,18 +93,18 @@ E l'indirizzo **identitario**, legato direttamente al soggetto (`soggetto_id`). 
 
 Questi indirizzi sono indipendenti dai ruoli: se una persona è sia cliente che fornitore, la sua residenza esiste una sola volta a livello soggetto.
 
-I tipi ammessi dipendono dalla natura del soggetto (persona fisica, persona giuridica...): la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo` definisce le regole ([R6](#r6--validazione-tipo-indirizzo-per-soggetto)).
+I tipi ammessi dipendono dalla natura del soggetto (persona fisica, persona giuridica...): la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo` definisce le regole ([R6](#r6-validazione-tipo-indirizzo-per-soggetto)).
 
-Vincolo di unicità: un solo indirizzo per tipo per soggetto (`UNIQUE (soggetto_id, tipo_indirizzo_id)` — [R2](#r2--unicita-per-tipo)).
+Vincolo di unicità: un solo indirizzo per tipo per soggetto (`UNIQUE (soggetto_id, tipo_indirizzo_id)` — [R2](#r2-unicita-per-tipo)).
 
 ### Modalità normalizzata vs libera
 
 Entrambe le tabelle indirizzo (ruolo e soggetto) supportano due modalità:
 
 * **Normalizzata** (preferita): il campo `indirizzo_dettaglio_id` punta a un civico in `indirizzi_dettaglio`. Si ottiene geolocalizzazione, gerarchia completa e deduplicazione.
-* **Libera** (eccezione): il campo `indirizzo_libero` contiene la via scritta a mano, con lo stato e, secondo lo stato, il comune e il CAP scelti dall'elenco oppure la località e il codice postale (`postal_code`). Serve per gli indirizzi esteri, per le vie che lo stradario non ha ancora e per le importazioni da altri sistemi. Le due forme sono in [R3](#r3--completezza-indirizzo-libero).
+* **Libera** (eccezione): il campo `indirizzo_libero` contiene la via scritta a mano, con lo stato e, secondo lo stato, il comune e il CAP scelti dall'elenco oppure la località e il codice postale (`postal_code`). Serve per gli indirizzi esteri, per le vie che lo stradario non ha ancora e per le importazioni da altri sistemi. Le due forme sono in [R3](#r3-completezza-indirizzo-libero).
 
-Le due modalità sono **mutualmente esclusive**: un indirizzo è normalizzato oppure libero, mai entrambi ([R1](#r1--xor-normalizzatolibero)).
+Le due modalità sono **mutualmente esclusive**: un indirizzo è normalizzato oppure libero, mai entrambi ([R1](#r1-xor-normalizzatolibero)).
 
 ### Tipi indirizzo
 
@@ -263,8 +263,9 @@ In context soggetto i tipi ammessi vengono dalla matrice `config.tipi_soggetto_d
 (filtrata per tipo soggetto dettaglio: PF, PG, ENTE).
 
 In context ruolo i tipi ammessi vengono dalla matrice `config.tipi_ruolo_tipi_indirizzo`
-(filtrata per tipo ruolo: CLIENTE, FORNITORE, ecc.). Il trigger guard
-`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` valida al salvataggio.
+(filtrata per tipo ruolo: CLIENTE, FORNITORE, ecc.) e dalla matrice della natura del
+soggetto del ruolo. Il trigger guard `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`
+valida al salvataggio, con tutte e due.
 
 I tipi già creati per l'istanza corrente sono disabilitati nella barra tab del form
 (icona lucchetto, non selezionabili) per evitare errori di duplicazione.
@@ -321,6 +322,10 @@ Il trigger `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo` verifica che il `ti
 
 Regola: se la matrice non ha righe per quel tipo di ruolo, tutti i tipi sono ammessi (adozione progressiva). Se ha almeno una riga, sono ammessi solo quelli elencati come attivi e in periodo di validità.
 
+Lo stesso trigger guarda poi la **natura del soggetto** del ruolo, con la regola di [R6](#r6-validazione-tipo-indirizzo-per-soggetto) e lo stesso codice (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO`): un indirizzo che il soggetto non potrebbe avere non lo può avere nemmeno un suo ruolo. Gli indirizzi **obbligatori** di un ruolo da copiare alla nascita sono quelli che il ruolo chiede e che il ruolo e la natura ammettono ([`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo)). Il cliente e il fornitore chiedono sul ruolo la sola fatturazione: l'indirizzo fiscale (sede legale per una società, domicilio fiscale per una persona fisica) è un dato del soggetto, dove la natura lo rende obbligatorio, e un documento lo trova con la [cascata](#policy-di-risoluzione-masterfallback).
+
+Quando un soggetto cambia natura, un indirizzo di un suo ruolo che la natura nuova non ammette ferma il cambio, come un indirizzo del soggetto: l'operatore lo elimina e riprova ([`fn_check_cambio_natura_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto)).
+
 ### R6 — Validazione tipo indirizzo per soggetto
 
 Il trigger `trgfn_indirizzi_soggetti_guard_tipo_indirizzo` verifica che il `tipo_indirizzo_id` sia ammesso per il tipo di soggetto dettaglio, consultando la matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
@@ -333,7 +338,7 @@ I tipi che un form propone li dà il database, con la stessa regola che poi giud
 
 L'indice `uq_indirizzi_dettaglio_norm_v2` su `indirizzi_dettaglio` garantisce che non esistano duplicati dello stesso civico: la combinazione (`stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`) deve essere unica. L'indice è `NULLS NOT DISTINCT`: un campo vuoto è un valore della chiave, quindi due indirizzi senza numero civico (SNC) con lo stesso dettaglio sono lo stesso indirizzo ([linee guida SQL §8.4-bis](/linee-guida-sql#84-bis-indici-unique-con-colonne-nullable)).
 
-La chiave si confronta sui valori **come li salva** la normalizzazione ([R8](#r8--normalizzazione-automatica)): `a` e `A`, un interno con o senza spazi, un'estensione con o senza `/` sono la stessa cosa.
+La chiave si confronta sui valori **come li salva** la normalizzazione ([R8](#r8-normalizzazione-automatica)): `a` e `A`, un interno con o senza spazi, un'estensione con o senza `/` sono la stessa cosa.
 
 * **Senza numero civico** si dice lasciando vuoto il civico: è l'unico modo. Un civico `0` o negativo è rifiutato.
 * **Estensione, palazzina, scala, piano e interno** devono contenere almeno una lettera o una cifra: un valore fatto solo di segni (`/`, `-`, `.`) è rifiutato. `-1` (piano interrato) o `BIS` vanno bene.

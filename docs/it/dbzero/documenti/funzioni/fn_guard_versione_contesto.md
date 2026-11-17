@@ -78,7 +78,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_guard_versione_contesto(p_template_versione_id bigint, p_versione_contesto integer)
-IS 'Il patto fra una versione di template e la forma dei dati che legge: solleva E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO) se template_documenti_versioni.versione_contesto non e'' p_versione_contesto, cioe'' la forma che i dati hanno (_meta.context_version del contesto, o la costante del builder). E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) se il chiamante non passa la versione o la forma; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c''e'' (o non e'' nel perimetro di chi legge: INVOKER). La chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. Una BOZZA si controlla solo quando si pubblica o si stampa (D-C4). Brief: brief-db-documenti-versione-contesto-template.';
+IS 'Il patto fra una versione di template e la forma dei dati che legge: solleva E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA (CONFLITTO_STATO) se template_documenti_versioni.versione_contesto non e'' p_versione_contesto, cioe'' la forma che i dati hanno (_meta.context_version del contesto, o la costante del builder). E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE (TECNICO) se il chiamante non passa la versione o la forma; E_DOCUMENTI_VERSIONE_NOT_FOUND se la versione non c''e'' (o non e'' nel perimetro di chi legge: INVOKER). La chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. Una BOZZA si controlla solo quando si pubblica o si stampa: in bozza la forma si cambia, anche verso una che il builder non produce ancora.';
 ```
 
 </div>

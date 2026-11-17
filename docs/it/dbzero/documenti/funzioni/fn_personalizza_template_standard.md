@@ -101,7 +101,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_personalizza_template_standard(p_template_standard_id bigint, p_emittente_fiscale_id bigint, p_codice character varying, p_codice_interno character varying, p_descrizione text, p_is_default boolean)
-IS '«Personalizza» (2026-10-21, brief-db-modelli-documento-standard §10.3 K-6; D-2, D-6, D-9 di Tid): crea il modello di un emittente da uno standard e la sua bozza v1, copiata (fn_crea_bozza_da_versione) dalla versione con cui lo standard stampa oggi, chiesta a fn_risolvi_template_applicabile col modello indicato, con derivata_da_versione_id = quella versione. Solo da uno standard (E_DOCUMENTI_PERSONALIZZA_NON_STANDARD), che stampi oggi (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE). Nasce predefinita se l''emittente non ha gia'' un suo predefinito attivo per la coppia, salvo p_is_default; codice, codice_interno e descrizione dello standard se non indicati. Funzione madre: tutto o niente. Il perimetro dell''emittente lo applica il chiamante. Restituisce l''id del modello nuovo.';
+IS '«Personalizza»: crea il modello di un emittente da uno standard e la sua bozza v1, copiata (documenti.fn_crea_bozza_da_versione) dalla versione con cui lo standard stampa oggi, chiesta a documenti.fn_risolvi_template_applicabile col modello indicato, con derivata_da_versione_id = quella versione. Solo da uno standard (E_DOCUMENTI_PERSONALIZZA_NON_STANDARD), che stampi oggi (E_DOCUMENTI_TEMPLATE_NON_STAMPABILE). Nasce predefinita se l''emittente non ha gia'' un suo predefinito attivo per la coppia, salvo p_is_default; codice, codice_interno e descrizione dello standard se non indicati. Funzione madre: tutto o niente. Il perimetro dell''emittente lo applica il chiamante. Restituisce l''id del modello nuovo.';
 ```
 
 </div>

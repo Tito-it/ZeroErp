@@ -30,6 +30,9 @@ DECLARE
     v_tit_tutti    integer;
     v_ind_n        integer;
     v_ind_tipo     config.tipi_indirizzi.descrizione%TYPE;
+    v_indr_n       integer;  -- conteggio: nessuna colonna di cui sia il riflesso
+    v_indr_tipo    config.tipi_indirizzi.descrizione%TYPE;
+    v_indr_ruolo   config.tipi_ruoli.descrizione%TYPE;
     v_dettaglio    jsonb;
 BEGIN
     IF p_soggetto_id IS NULL THEN
@@ -211,12 +214,41 @@ BEGIN
             'valori',     jsonb_build_array(v_nuova_nome, v_ind_tipo, v_ind_n::text));
     END IF;
 
+    -- ---- 9. gli indirizzi dei ruoli, di un tipo che la natura non ammette
+    --   La regola e' quella del guard degli indirizzi del ruolo
+    --   (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo): il ruolo
+    --   non porta un tipo che la natura del soggetto vieta. Il primo
+    --   per tipo e per riga nomina il tipo e il suo ruolo.
+    SELECT count(*)::integer,
+           (array_agg(ti.descrizione ORDER BY ti.id, i.id))[1],
+           (array_agg(tr.descrizione ORDER BY ti.id, i.id))[1]
+      INTO v_indr_n, v_indr_tipo, v_indr_ruolo
+      FROM anagrafiche.indirizzi i
+      JOIN anagrafiche.soggetti_ruoli sr ON sr.id = i.soggetto_ruolo_id
+      JOIN config.tipi_ruoli tr          ON tr.id = sr.tipo_ruolo_id
+      JOIN config.tipi_indirizzi ti      ON ti.id = i.tipo_indirizzo_id
+     WHERE sr.soggetto_id = p_soggetto_id
+       AND NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                   p_tipo_soggetto_dettaglio_id, i.tipo_indirizzo_id,
+                   script.fn_data_operativa());
+
+    IF v_indr_n > 0 THEN
+        v_motivi := v_motivi || jsonb_build_object(
+            'codice',     'E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI',
+            'reason',     'INDIRIZZI_RUOLO',
+            'reason_key', 'anagrafiche.soggetti.cambio_natura_blocco.indirizzi_ruolo',
+            'dettaglio',  v_dettaglio || jsonb_build_object(
+                              'indirizzi', v_indr_n, 'ruolo', v_indr_ruolo),
+            'valori',     jsonb_build_array(v_nuova_nome, v_indr_tipo,
+                                            v_indr_ruolo, v_indr_n::text));
+    END IF;
+
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_check_cambio_natura_soggetto(p_soggetto_id uuid, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text, p_cliente_pa character, p_split_payment character)
-IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura). Natura nuova NULL: solo i titoli vigenti (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
+IS 'I motivi per cui il soggetto non puo'' passare alla natura di dettaglio data: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se il cambio si puo'' fare o se la natura non cambia. Il cambio non pulisce niente: i motivi si tolgono a mano. In ordine: un''altra macro-tipologia (E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA, da solo); l''identita'' fiscale che cambia (P.IVA che nasce o sparisce) con il soggetto in un documento, in qualunque ruolo (E_CAMBIO_NATURA_CON_DOCUMENTI, anagrafiche.fn_soggetto_primo_documento); la P.IVA proposta su una natura che non ne ha (E_CAMBIO_NATURA_PIVA_NON_APPLICABILE); cliente_pa e split_payment proposti a S e non ammessi (E_CLIENTE_PA_NON_AMMESSO, E_SPLIT_PAYMENT_NON_AMMESSO, anagrafiche.fn_regime_pa_campo_non_ammesso); titoli IVA vigenti non ammessi visibili a chi agisce (E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI) e non visibili, di altri emittenti (E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI); la riga di dati societari su una natura senza dati societari (E_CAMBIO_NATURA_CON_DATI_SOCIETARI); indirizzi del soggetto di un tipo non ammesso (E_CAMBIO_NATURA_INDIRIZZI_NON_AMMESSI, anagrafiche.fn_tipo_indirizzo_ammesso_per_natura); indirizzi dei ruoli del soggetto di un tipo non ammesso, con lo stesso predicato (E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI, la regola del guard anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo; valori: natura, tipo e ruolo del primo, quanti). Natura nuova NULL: solo i titoli vigenti (E_DATO_FISCALE_SENZA_TIPO_SOGGETTO). P.IVA e flag sono i valori proposti; la natura vecchia e'' quella salvata. Forma giuridica, sesso e indirizzi obbligatori non sono motivi: li giudicano i guard dello stato finale. SECURITY INVOKER: i titoli visibili sono quelli della RLS di chi chiama. Soggetto NULL: E_PARAMETRO_INVALIDO; inesistente: E_SOGGETTO_NOT_FOUND. La leggono anagrafiche.trgfn_soggetti_guard_cambio_natura e anagrafiche.fn_nature_proponibili_soggetto.';
 ```
 
 </div>

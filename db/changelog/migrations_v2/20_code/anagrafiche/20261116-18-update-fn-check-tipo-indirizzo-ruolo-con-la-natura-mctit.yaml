@@ -1,0 +1,413 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI INDIRIZZI DEL RUOLO RISPETTANO LA NATURA DEL SOGGETTO: LA CHECK E I PICKER
+#   anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(tipo ruolo, tipi presenti, tipo, oggi, ruolo, natura) -> jsonb
+#   anagrafiche.fn_check_tipo_indirizzo_ruolo(ruolo, istanza, tipo) -> jsonb
+#   anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(ruolo, istanza) -> TABLE
+#   anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(tipo ruolo, soggetto) -> TABLE
+#   Brief: brief-db-fornitore-privato-indirizzi §4.2, §8.2 (punto 3), giri 1 e 2.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il tipo di un indirizzo del SOGGETTO lo giudica la natura; quello di un
+#   indirizzo del RUOLO solo la matrice del ruolo. Un privato poteva quindi
+#   avere sul ruolo una sede legale, che sul soggetto il DB rifiuta (§3.2). Il
+#   guard del ruolo prende il ramo della natura (-19); la check della madre
+#   singolare e i picker che la leggono prendono il motivo gemello, perche'
+#   picker e madre dicano la stessa cosa del guard (§12.6).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   * _su_contesto: parametro nuovo IN CODA, la natura del soggetto, SENZA
+#     default (§5f: il comportamento di prima, la natura ignorata, e' il
+#     difetto). Terzo motivo, dopo i due di prima:
+#       3. TIPO_NON_AMMESSO_DALLA_NATURA  E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO
+#     con lo stesso reason, reason_key e valori (natura, tipo) del motivo
+#     gemello della check del soggetto: nessuna chiave i18n nuova. Natura
+#     NULL: nessun motivo (il predicato della natura). Il dettaglio porta
+#     anche tipo_soggetto_dettaglio_id.
+#   * la firma completa legge la natura dal soggetto del ruolo e la passa.
+#   * picker sul ruolo: la natura dal soggetto del ruolo; la colonna
+#     obbligatorio dal BB anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo (-17).
+#   * picker sul tipo di ruolo (giro 2): parametro nuovo IN CODA, il soggetto
+#     a cui il ruolo si assegna, SENZA default per la stessa ragione; NULL =
+#     soggetto non ancora scelto, la natura non conta. Un soggetto non NULL
+#     che non esiste: nessuna riga, come per il tipo di ruolo (Q-2 del brief
+#     della copia). Obbligatorio dal BB.
+#
+# ── LA FORMA DEL CHANGESET ──────────────────────────────────────
+#   La firma di _su_contesto cambia: DROP + CREATE (§5f). I due picker sono
+#   BEGIN ATOMIC e dipendono da lei (pg_depend): si tolgono prima e si
+#   ricreano dopo, nello stesso changeSet; la firma di quello sul tipo di
+#   ruolo cambia comunque. Ogni BEGIN ATOMIC sta da solo nel suo sql:, il
+#   COMMENT nel successivo (§5c). Nessun altro oggetto dipende da loro:
+#   anagrafiche.fn_check_copia_indirizzo_ruolo (plpgsql) chiama il picker sul
+#   ruolo per nome e non cambia.
+#   Attributi vivi (letti il 2026-11-17): STABLE, INVOKER, procost 100,
+#   prorows 0 (le check) / 1000 (i picker), proconfig vuoto. SECURITY INVOKER
+#   ora esplicito. Le grant a zeroerp_app le ridà il loop dei grant di 90_end.
+#
+# ── DA DOVE VENGONO I CORPI ─────────────────────────────────────
+#   20261114-95 (_su_contesto), 20261114-87 (la firma completa), 20261114-97
+#   (picker sul ruolo), 20261115-61 (picker sul tipo di ruolo): ultimi YAML
+#   di ciascuna, corpi plpgsql verificati UGUALI al prosrc vivo il 2026-11-17.
+#
+# ── CHI NE RISENTE ──────────────────────────────────────────────
+#   ⛔ Il BE: LookupRepository.list_tipi_indirizzo_proponibili_tipo_ruolo
+#   chiama il picker con un argomento solo e si rompe finche' non passa il
+#   soggetto (richiesta nel §6 del brief, con il percorso intero).
+#   pgTAP riscritti nello stesso giro: test-check-tipo-indirizzo-v1 (22, 32:
+#   la natura in coda), test-tipi-indirizzo-proponibili-v1 (presidio 2 e le
+#   chiamate al picker sul tipo di ruolo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-18-update-fn-check-tipo-indirizzo-ruolo-con-la-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261116-18-update-fn-check-tipo-indirizzo-ruolo-con-la-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La check del tipo di indirizzo sul ruolo giudica anche la natura del soggetto; i due
+        picker del ruolo la leggono, e quello sul tipo di ruolo riceve il soggetto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.indirizzi.istanza_utility_id%TYPE);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  integer[],
+                  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE);
+
+              CREATE FUNCTION anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                  p_tipo_ruolo_id              anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  p_tipi_presenti              integer[],  -- array: %TYPE[] non esiste
+                  p_tipo_indirizzo_id          anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  p_oggi                       config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE,
+                  p_soggetto_ruolo_id          anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  c_chi         CONSTANT text := 'anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto';
+                  v_motivi      jsonb := '[]'::jsonb;
+                  v_tipo_nome   config.tipi_indirizzi.descrizione%TYPE;
+                  v_ruolo_nome  config.tipi_ruoli.descrizione%TYPE;
+                  v_natura_nome config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_dettaglio   jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui il tipo di indirizzo non si puo'
+                  --   scrivere su un ruolo con questo contesto: il tipo di
+                  --   ruolo, i tipi che la chiave (ruolo, istanza) ha gia' e
+                  --   la natura del soggetto del ruolo. [] = ammesso.
+                  --
+                  -- Regole:
+                  --   - l'ordine dell'array e' il contratto: la madre solleva
+                  --     il primo (§12.5.2);
+                  --   - i predicati sono quelli del guard
+                  --     (fn_tipo_indirizzo_ammesso_per_ruolo e
+                  --     fn_tipo_indirizzo_ammesso_per_natura), sul giorno
+                  --     passato dal chiamante;
+                  --   - ruolo NULL: il ruolo non esiste ancora (picker
+                  --     all'assegnazione); conta solo per il dettaglio;
+                  --   - natura NULL: soggetto senza natura o non ancora
+                  --     scelto; la natura non da' motivi.
+                  -- =========================================================
+                  IF p_tipo_indirizzo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_tipo_indirizzo_id'),
+                          NULL::uuid,
+                          c_chi,
+                          'manca il tipo di indirizzo');
+                  END IF;
+
+                  IF p_oggi IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_oggi'),
+                          NULL::uuid,
+                          c_chi,
+                          'manca il giorno');
+                  END IF;
+
+                  SELECT ti.descrizione INTO v_tipo_nome
+                    FROM config.tipi_indirizzi ti
+                   WHERE ti.id = p_tipo_indirizzo_id;
+                  v_tipo_nome := COALESCE(v_tipo_nome, p_tipo_indirizzo_id::text);
+
+                  v_dettaglio := jsonb_build_object(
+                      'tipo_indirizzo_id',          p_tipo_indirizzo_id,
+                      'tipo_ruolo_id',              p_tipo_ruolo_id,
+                      'soggetto_ruolo_id',          p_soggetto_ruolo_id,
+                      'tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id);
+
+                  -- ---- 1. la chiave (ruolo, istanza) ha gia' quel tipo ----
+                  IF p_tipo_indirizzo_id = ANY (COALESCE(p_tipi_presenti, '{}'::integer[])) THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE',
+                          'reason',     'TIPO_GIA_PRESENTE',
+                          'reason_key', 'anagrafiche.indirizzi.tipo_blocco.gia_presente',
+                          'dettaglio',  v_dettaglio,
+                          'valori',     jsonb_build_array(v_tipo_nome));
+                  END IF;
+
+                  -- ---- 2. il tipo di ruolo non ammette il tipo ------------
+                  IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                             p_tipo_ruolo_id, p_tipo_indirizzo_id, p_oggi) THEN
+                      SELECT tr.descrizione INTO v_ruolo_nome
+                        FROM config.tipi_ruoli tr
+                       WHERE tr.id = p_tipo_ruolo_id;
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                          'reason',     'TIPO_NON_AMMESSO_DAL_RUOLO',
+                          'reason_key', 'anagrafiche.indirizzi.tipo_blocco.non_ammesso_dal_ruolo',
+                          'dettaglio',  v_dettaglio,
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_ruolo_nome, p_tipo_ruolo_id::text),
+                                            v_tipo_nome));
+                  END IF;
+
+                  -- ---- 3. la natura del soggetto non ammette il tipo ------
+                  IF NOT anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             p_tipo_soggetto_dettaglio_id, p_tipo_indirizzo_id, p_oggi) THEN
+                      SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura_nome
+                        FROM config.tipi_soggetto_dettaglio tsd
+                       WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
+                          'reason',     'TIPO_NON_AMMESSO_DALLA_NATURA',
+                          'reason_key', 'anagrafiche.indirizzi.tipo_blocco.non_ammesso_dalla_natura',
+                          'dettaglio',  v_dettaglio,
+                          'valori',     jsonb_build_array(
+                                            COALESCE(v_natura_nome, p_tipo_soggetto_dettaglio_id::text),
+                                            v_tipo_nome));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  integer[],
+                  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE,
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              IS 'I motivi per cui un tipo di indirizzo non si puo'' scrivere su un ruolo, dato il contesto: il tipo di ruolo, i tipi che la chiave (ruolo, istanza) ha gia'', il giorno e la natura del soggetto del ruolo. Check pura: array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se ammesso. In ordine: il tipo gia'' presente (TIPO_GIA_PRESENTE, E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE, chiave anagrafiche.indirizzi.tipo_blocco.gia_presente; valori: il tipo); il tipo che il tipo di ruolo non ammette (TIPO_NON_AMMESSO_DAL_RUOLO, E_TIPO_INDIRIZZO_NON_PERMESSO, chiave anagrafiche.indirizzi.tipo_blocco.non_ammesso_dal_ruolo; valori: il tipo di ruolo e il tipo), col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo; il tipo che la natura del soggetto non ammette (TIPO_NON_AMMESSO_DALLA_NATURA, E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO, chiave anagrafiche.indirizzi.tipo_blocco.non_ammesso_dalla_natura; valori: la natura e il tipo), col predicato di anagrafiche.fn_tipo_indirizzo_ammesso_per_natura, lo stesso motivo della check del soggetto. I tipi presenti arrivano gia'' filtrati per la chiave con l''istanza. Il ruolo serve solo al dettaglio: NULL quando il ruolo non esiste ancora. Natura NULL: la natura non da'' motivi. Tipo o giorno mancanti: E_SCRIPT_CHIAMATA_NON_VALIDA. La compone anagrafiche.fn_check_tipo_indirizzo_ruolo, che legge il contesto dal ruolo salvato. Gemella di anagrafiche.fn_check_tipo_indirizzo_soggetto_su_contesto.';
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_tipo_indirizzo_ruolo(
+                  p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_istanza_utility_id anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                  p_tipo_indirizzo_id  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  c_chi        CONSTANT text := 'anagrafiche.fn_check_tipo_indirizzo_ruolo';
+                  v_tipo_ruolo anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                  v_natura     anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                  v_motivi     jsonb;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui il tipo di indirizzo non si puo'
+                  --   scrivere sul ruolo salvato, sul ruolo stesso (istanza
+                  --   NULL) o su una sua istanza. Legge il contesto e lo
+                  --   passa alla meta' sui motivi; il giorno e'
+                  --   script.fn_data_operativa(), quello del guard.
+                  --
+                  -- Regole:
+                  --   - i tipi presenti si leggono sulla chiave dei due indici
+                  --     (istanza IS NOT DISTINCT FROM quella data): un tipo
+                  --     del ruolo non blocca la stessa istanza, e viceversa;
+                  --   - la natura e' quella del soggetto del ruolo.
+                  -- =========================================================
+                  IF p_soggetto_ruolo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_soggetto_ruolo_id'),
+                          NULL::uuid,
+                          c_chi,
+                          'manca il ruolo');
+                  END IF;
+
+                  SELECT sr.tipo_ruolo_id, s.tipo_soggetto_dettaglio_id
+                    INTO v_tipo_ruolo, v_natura
+                    FROM anagrafiche.soggetti_ruoli sr
+                    JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                   WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SOGGETTO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('soggetto_ruolo_id', p_soggetto_ruolo_id),
+                          NULL::uuid,
+                          p_soggetto_ruolo_id::text);
+                  END IF;
+
+                  -- ⚠️ La delega si scrive come assegnazione (:=): e' la forma che
+                  --   dbops.vw_funzioni_check_codici sa leggere per legare i codici.
+                  v_motivi := anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                      v_tipo_ruolo,
+                      ARRAY(SELECT i.tipo_indirizzo_id
+                              FROM anagrafiche.indirizzi i
+                             WHERE i.soggetto_ruolo_id = p_soggetto_ruolo_id
+                               AND i.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id),
+                      p_tipo_indirizzo_id,
+                      script.fn_data_operativa(),
+                      p_soggetto_ruolo_id,
+                      v_natura);
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_tipo_indirizzo_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                  anagrafiche.indirizzi.tipo_indirizzo_id%TYPE)
+              IS 'I motivi per cui il tipo di indirizzo non si puo'' scrivere sul ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza: legge il tipo di ruolo, la natura del soggetto del ruolo e i tipi che la chiave (ruolo, istanza) ha gia'' (la chiave di uq_indirizzi_ruolo_tipo_no_istanza e uq_indirizzi_ruolo_istanza_tipo) e li passa a anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, col giorno di script.fn_data_operativa(). Array ordinato di motivi, [] se ammesso: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO), il tipo che la natura del soggetto non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Ruolo mancante E_SCRIPT_CHIAMATA_NON_VALIDA, inesistente E_SOGGETTO_RUOLO_NON_TROVATO. SECURITY INVOKER. La chiama anagrafiche.fn_crea_indirizzo_ruolo, che solleva il primo motivo prima di scrivere. Gemella di anagrafiche.fn_check_tipo_indirizzo_soggetto.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(
+                  p_soggetto_ruolo_id  anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_istanza_utility_id anagrafiche.indirizzi.istanza_utility_id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_ruolo_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                             ctx.tipo_ruolo, ctx.natura, ti.id, script.fn_data_operativa()),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM (SELECT sr.id,
+                                 sr.tipo_ruolo_id AS tipo_ruolo,
+                                 s.tipo_soggetto_dettaglio_id AS natura,
+                                 ARRAY(SELECT i.tipo_indirizzo_id
+                                         FROM anagrafiche.indirizzi i
+                                        WHERE i.soggetto_ruolo_id = sr.id
+                                          AND i.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id) AS presenti
+                            FROM anagrafiche.soggetti_ruoli sr
+                            JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                           WHERE sr.id = p_soggetto_ruolo_id) ctx
+                    CROSS JOIN config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                                    ctx.tipo_ruolo, ctx.presenti, ti.id,
+                                    script.fn_data_operativa(), ctx.id, ctx.natura) AS motivi) c
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE,
+                  anagrafiche.indirizzi.istanza_utility_id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per il ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo sul tipo di ruolo e sulla natura del soggetto, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: il tipo di ruolo, la natura del soggetto del ruolo e i tipi che la chiave (ruolo, istanza) ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_ruolo solleva: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO), il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). L''istanza non ha default: NULL vuol dire il ruolo. Prima gli ammessi, poi gli altri, per codice interno. Ruolo inesistente: nessuna riga. SECURITY INVOKER. Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_soggetto.';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  p_tipo_ruolo_id anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  p_soggetto_id   anagrafiche.soggetti.id%TYPE)
+              RETURNS TABLE (
+                  tipo_indirizzo_id config.tipi_indirizzi.id%TYPE,
+                  obbligatorio      config.tipi_ruolo_tipi_indirizzo.obbligatorio%TYPE,
+                  ammesso           boolean,  -- esito della check: nessuna colonna
+                  motivo_codice     text,     -- dal primo motivo, un jsonb
+                  reason            text,
+                  reason_key        text,
+                  reason_valori     jsonb,
+                  motivi            jsonb)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT ti.id,
+                         anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(
+                             p_tipo_ruolo_id, ctx.natura, ti.id, script.fn_data_operativa()),
+                         jsonb_array_length(c.motivi) = 0,
+                         c.motivi -> 0 ->> 'codice',
+                         c.motivi -> 0 ->> 'reason',
+                         c.motivi -> 0 ->> 'reason_key',
+                         COALESCE(c.motivi -> 0 -> 'valori', '[]'::jsonb),
+                         c.motivi
+                    FROM (SELECT (SELECT s.tipo_soggetto_dettaglio_id
+                                    FROM anagrafiche.soggetti s
+                                   WHERE s.id = p_soggetto_id) AS natura) ctx
+                    CROSS JOIN config.tipi_indirizzi ti
+                    CROSS JOIN LATERAL (
+                         SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
+                                    p_tipo_ruolo_id, '{}'::integer[], ti.id,
+                                    script.fn_data_operativa(), NULL::bigint, ctx.natura) AS motivi) c
+                   WHERE (p_tipo_ruolo_id IS NULL
+                          OR EXISTS (SELECT 1
+                                       FROM config.tipi_ruoli tr
+                                      WHERE tr.id = p_tipo_ruolo_id))
+                     AND (p_soggetto_id IS NULL
+                          OR EXISTS (SELECT 1
+                                       FROM anagrafiche.soggetti s
+                                      WHERE s.id = p_soggetto_id))
+                   ORDER BY jsonb_array_length(c.motivi) = 0 DESC, ti.codice_interno;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  anagrafiche.soggetti.id%TYPE)
+              IS 'Il picker dei tipi di indirizzo per un ruolo che non esiste ancora, sul tipo di ruolo dell''assegnazione e sul soggetto a cui il ruolo si assegna: una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo sul tipo di ruolo e sulla natura del soggetto, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Legge la stessa check della madre singolare, anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, senza tipi presenti: i motivi possibili sono il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO) e il tipo che la natura del soggetto non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Il soggetto non ha default: NULL vuol dire soggetto non ancora scelto, e la natura non conta. Tipo di ruolo NULL o senza matrice: il ruolo non da'' motivi, come per il guard. Tipo di ruolo o soggetto non NULL che non esistono: nessuna riga, come anagrafiche.fn_tipi_indirizzo_proponibili_ruolo per un ruolo che non c''e''. Prima gli ammessi, poi gli altri, per codice interno. Giorno: script.fn_data_operativa(). SECURITY INVOKER. Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_natura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Le firme precedenti e i loro corpi sono in 20261114-87, -95, -97 e 20261115-61;
+              -- si torna indietro con un changeSet nuovo.
+              SELECT 1;

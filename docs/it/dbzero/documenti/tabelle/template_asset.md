@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo degli asset documentali riusabili per emittente fiscale.
+> Le risorse grafiche di un'azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell'azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file) e la risorsa non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte, ed e' cosi' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

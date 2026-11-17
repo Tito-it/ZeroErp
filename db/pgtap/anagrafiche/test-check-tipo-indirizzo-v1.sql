@@ -8,6 +8,10 @@
 --   Brief: brief-db-copia-indirizzo-soggetto §4.1, §4.2, §4.6, giro 1
 --   (D-1, D-3, D-4 di Tid, 2026-11-15). ChangeSet 20261114-84 … -95; codici
 --   e frasi in config/codici_errore.csv e config/messaggi_errore.csv.
+--   Rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-18, -20): la
+--   meta' sul contesto del ruolo prende la natura in coda (qui NULL: la natura
+--   non conta), la plurale del ruolo legge il building block degli obbligatori
+--   (presidio 4). La natura sul ruolo la prova test-fornitore-privato-indirizzi-v1.
 --
 -- Elenco test (plan 34):
 --   presidi «la regola sta in un posto solo»
@@ -194,8 +198,11 @@ SELECT ok(
 SELECT ok(
     pg_get_functiondef('anagrafiche.fn_crea_indirizzi_soggetto(uuid, jsonb, boolean)'::regprocedure)
         LIKE '%anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(%'
+    -- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-20): la plurale
+    --   del ruolo legge gli obbligatori dal building block che compone il predicato
+    --   del ruolo con quello della natura.
     AND pg_get_functiondef('anagrafiche.fn_crea_indirizzi_ruolo(bigint, jsonb)'::regprocedure)
-        LIKE '%anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(%',
+        LIKE '%anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(%',
     '4) le due plurali leggono gli obbligatori col predicato');
 
 -- ============================================================
@@ -342,7 +349,8 @@ SELECT is(
 SELECT is(
     pg_temp.codici(anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
         (SELECT tipo_ruolo FROM _f), ARRAY[pg_temp.tipo('CON')], pg_temp.tipo('CON'),
-        script.fn_data_operativa(), NULL)),
+        -- natura NULL: la natura non da' motivi (20261116-18)
+        script.fn_data_operativa(), NULL, NULL)),
     ARRAY['E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE', 'E_TIPO_INDIRIZZO_NON_PERMESSO'],
     '22) la check del ruolo sul contesto: presente e scaduto, i due motivi nell''ordine');
 
@@ -439,7 +447,7 @@ SELECT is(
 
 SELECT is(
     anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(
-        (SELECT tipo_ruolo FROM _f), '{}', pg_temp.tipo('CON'), script.fn_data_operativa(), NULL)
+        (SELECT tipo_ruolo FROM _f), '{}', pg_temp.tipo('CON'), script.fn_data_operativa(), NULL, NULL)
         -> 0 -> 'valori',
     (SELECT jsonb_build_array(ruolo, tipo) FROM _nomi),
     '32) i valori del motivo sul ruolo: il tipo di ruolo e il tipo, per descrizione');

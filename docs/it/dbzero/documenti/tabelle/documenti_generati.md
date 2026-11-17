@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Registro storico delle generazioni persistite del motore documentale.
+> Il registro delle stampe emesse dal motore documentale: una riga per documento prodotto, con i dati congelati, le impronte di dati, template e PDF, il modello e la versione con cui e' nata e il documento da cui viene. E' storia: dopo la nascita cambia solo meta (documenti.trgfn_documenti_generati_protect_snapshot) e la riga non si cancella (E_DOCUMENTI_GENERATO_DELETE_BLOCKED). Alla nascita il modello va bene per il documento e stampa oggi con quella versione (documenti.trgfn_documenti_generati_check_coerenza), i dati hanno la forma che la versione legge (documenti.trgfn_documenti_generati_guard_versione_contesto), e a fine transazione la stampa ha il suo PDF principale (documenti.trgfn_documenti_generati_guard_file_principale). I file stanno in documenti.documenti_generati_file, la cronologia in documenti.documenti_generati_eventi. Un operatore vede e scrive le stampe delle aziende del suo perimetro.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
