@@ -397,14 +397,19 @@ _RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "de
 _RICERCA_DOCUMENTI_SORGENTE = RicercaFull("documenti.documenti_sorgente", ("titolo", "nome_file"))
 _RICERCA_TEMPLATE_VERSIONI = RicercaFull("documenti.template_versioni", ("titolo",))
 
-# Quando un asset e' UTILIZZABILE nel render di oggi: attivo e valido oggi.
-# ⭐ Una condizione sola, letta da due punti (regola del 2): la risoluzione di
+# Quando un asset e' UTILIZZABILE nel render di oggi: lo dice il DB, nella
+# vista `documenti.vw_template_asset_utilizzabili` (accesa e valida alla data
+# operativa; sede unica della regola dal giro 4 di brief-db-revisione-documenti,
+# D19). Qui la regola non si scrive: si chiede alla vista se l'asset `a` c'e'.
+# ⭐ Una condizione sola, letta da due punti: la risoluzione di
 #    `asset:<codice_interno>` nel render (`get_asset_per_render`) e il filtro
 #    `utilizzabili` della lista, con cui l'editor dei template mostra gli asset
 #    da richiamare. Se le due divergessero, l'editor proporrebbe un asset che
-#    il render rifiuta. La validita' si legge dalla colonna generata
-#    `validita`, mai ricalcolata da `valido_dal`/`valido_al`.
-_ASSET_UTILIZZABILE_OGGI = "(a.attivo AND a.validita @> (SELECT script.fn_data_operativa()))"
+#    il render rifiuta.
+_ASSET_UTILIZZABILE_OGGI = (
+    "EXISTS (SELECT 1 FROM documenti.vw_template_asset_utilizzabili u"
+    " WHERE u.template_asset_id = a.id)"
+)
 
 _ASSET_FROM = """
     FROM documenti.template_asset a
@@ -453,7 +458,9 @@ _TEMPLATES_PROJECTION_DETAIL = (
 #    toglierebbe da ogni lettura senza nessun errore.
 # ⭐ «Allineamento allo standard» (`stato_scarto`, colonna della lista 24, K-9)
 #    e' la lettura del DB `vw_template_personalizzati_scarto` (K-10): ALLINEATA,
-#    STANDARD_AVANTI, CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA. In LEFT JOIN:
+#    STANDARD_AVANTI, CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA,
+#    STANDARD_NON_STAMPA (lo standard di riferimento manca, e' spento o oggi non
+#    stampa: la copia resta in vista con questo stato). In LEFT JOIN:
 #    la vista ha una riga solo per il modello d'emittente attivo che stampa
 #    oggi, e lo standard non ne ha (NULL = non e' una copia da confrontare).
 #    Il BE non ricalcola niente: la regola e' della vista.
@@ -1144,8 +1151,8 @@ class DocumentiRepository:
     #        attivi e validi oggi; la ristampa fedele passa False, perche'
     #        l'asset e' immutabile e non si cancella, e quello di allora resta
     #        quello giusto anche se oggi e' scaduto (decisione Tid 2026-10-01).
-    #        «Attivo e valido oggi» e' `_ASSET_UTILIZZABILE_OGGI`, la stessa
-    #        condizione del filtro `utilizzabili` della lista.
+    #        «Utilizzabile oggi» e' `_ASSET_UTILIZZABILE_OGGI`, la vista del DB,
+    #        la stessa condizione del filtro `utilizzabili` della lista.
     def get_asset_per_render(
         self,
         emittente_fiscale_id: int,

@@ -5881,7 +5881,9 @@
         "CONTESTO_SUPERATO": "Forma dei dati superata",
         "CONTESTO_SUPERATO_hint": "La copia legge una forma dei dati più vecchia di quella del modello standard: alla stampa si fermerà. Va ripartita dallo standard o aggiornata.",
         "ORIGINE_NON_DICHIARATA": "Origine non dichiarata",
-        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati."
+        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati.",
+        "STANDARD_NON_STAMPA": "Standard che non stampa",
+        "STANDARD_NON_STAMPA_hint": "Lo standard con cui confrontarla manca, è spento o oggi non stampa: non c'è niente con cui confrontare la copia."
       },
       "personalizza": {
         "action": "Personalizza",

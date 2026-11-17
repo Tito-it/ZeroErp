@@ -41,7 +41,11 @@ import unittest
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
-from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, tipo_asset_che_ammette
+from apps.documenti.tests.db._stampa import (
+    giudica_la_stampa_al_commit,
+    pubblica_per_stampare,
+    tipo_asset_che_ammette,
+)
 
 # ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
 #    2026-11-07): una stampa cita un documento che esiste, e il guard unico
@@ -221,6 +225,8 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     # NOT NULL senza default dal 20260930-16.
                     "versione_contesto": 1,
                 })
+                # Una stampa nasce dalla versione in uso del modello (Q13).
+                pubblica_per_stampare(cur, versione_id)
                 documento_id, uid = repo.create_documento_generato({
                     "tipo_documento_output_id": tipo_output,
                     "template_documento_id": template_id,

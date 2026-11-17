@@ -38,7 +38,7 @@ from apps.core.tests.db_e2e import (
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
-from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit
+from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, pubblica_per_stampare
 
 # ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
 #    2026-11-07): una stampa cita un documento che esiste, e il guard unico
@@ -175,6 +175,8 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                     [template],
                 )
                 versione = cur.fetchone()[0]
+                # Una stampa nasce dalla versione in uso del modello (Q13).
+                pubblica_per_stampare(cur, versione)
                 cur.execute(
                     """
                     INSERT INTO documenti.documenti_generati

@@ -5881,7 +5881,9 @@
         "CONTESTO_SUPERATO": "Data shape outdated",
         "CONTESTO_SUPERATO_hint": "The copy reads an older data shape than the standard template: printing will stop. Start again from the standard or update it.",
         "ORIGINE_NON_DICHIARATA": "Origin not declared",
-        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared."
+        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared.",
+        "STANDARD_NON_STAMPA": "Standard not printing",
+        "STANDARD_NON_STAMPA_hint": "The standard to compare it with is missing, switched off or does not print today: there is nothing to compare the copy with."
       },
       "personalizza": {
         "action": "Customize",

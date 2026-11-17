@@ -13,7 +13,9 @@
 #          con le sostituzioni del payload)
 #        - pubblica_versione (transizione atomica BOZZA -> PUBBLICATA con
 #          valido_dal NOT NULL guard; EXCLUDE GiST DB blocca overlap con
-#          altre PUBBLICATE attive — errore parlante via mapper; la forma
+#          le altre versioni attive pubblicate o superate (OBSOLETA) —
+#          errore parlante via mapper; una bozza spenta la rifiuta il verbo
+#          (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA); la forma
 #          dei dati del builder del template passa al verbo DB, che rifiuta
 #          una versione che ne legge un'altra)
 #
@@ -158,10 +160,11 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         E_VALIDATION,
         "Il titolo della versione non puo' essere vuoto.",
     ),
-    "chk_template_documenti_versioni_valido_dal_pubblicata": (
-        E_VALIDATION,
-        "Una versione PUBBLICATA deve avere valido_dal valorizzato.",
-    ),
+    # `chk_template_documenti_versioni_valido_dal_fuori_bozza` (data d'inizio
+    # obbligatoria fuori bozza) non ha voce: l'applicazione non lo raggiunge.
+    # Una versione nasce in BOZZA (`create_versione`, `clone_versione`), lo
+    # stato non è fra le colonne modificabili, e la pubblicazione chiede
+    # `valido_dal` prima del verbo.
     "chk_template_documenti_versioni_versione_contesto_pos": (
         E_VALIDATION,
         "La forma dei dati letta dalla versione deve essere un intero positivo.",
@@ -170,10 +173,11 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 }
 
 
-# Mapping codici sollevati da fn_log_and_raise_error nei trigger A1/A2.
-# `map_integrity_error` non lo intercetta direttamente (sono RAISE di P0001,
-# non IntegrityError), ma una guard service-side tradurra' in errori puliti.
-# Qui mantengo solo la mappa applicativa per documentazione.
+# I codici che trigger e verbi DB sollevano con `fn_log_and_raise_error`
+# (P0001: E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE, _PUBBLICA_SPENTA,
+# _NUMERO_CONCORRENTE, _STATO_FUORI_VERBO, E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO)
+# non passano dalle mappe qui sopra, che leggono solo i nomi dei vincoli
+# (IntegrityError): arrivano gia' col loro codice e li traduce la policy.
 
 
 class TemplateVersioniAdminService:
@@ -416,12 +420,12 @@ class TemplateVersioniAdminService:
     # Pubblica versione (BOZZA -> PUBBLICATA atomic)
     # =================================================================
 
-    # Scopo: Transizione atomica BOZZA -> PUBBLICATA. Richiede valido_dal
-    #        non NULL. Il DB rifiuta overlap di range con altre PUBBLICATE
-    #        attive (EXCLUDE GiST). Il service esegue UPDATE ATOMIC con
-    #        WHERE stato='BOZZA' (idempotente per design: una seconda
-    #        chiamata su versione gia' pubblicata torna 404 per "non in
-    #        BOZZA" piuttosto che modificare lo stato).
+    # Scopo: Transizione atomica BOZZA -> PUBBLICATA dal verbo DB
+    #        `fn_pubblica_template_documento_versione`. Richiede valido_dal
+    #        non NULL. Il DB rifiuta l'overlap di range con le altre versioni
+    #        attive pubblicate o superate (EXCLUDE GiST) e una bozza spenta.
+    #        Una seconda chiamata su una versione gia' fuori bozza si ferma
+    #        qui, con E_DOCUMENTI_VALIDATION, senza toccare lo stato.
     def pubblica_versione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
