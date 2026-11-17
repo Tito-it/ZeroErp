@@ -2,11 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-17
 
-**Riparte: il team DB col giro 3 (riga 7), e in parallelo il team BE/FE con R-1 … R-4 (§9.4).** Il builder del
+**Riparte: il team DB col giro 3 (riga 7).** R-1 … R-4 (§9.4) sono fatti dal team BE/FE il 2026-11-17,
+da committare: il picker del ruolo da assegnare non è più rotto, e la chiave di R-2 c'è. Il builder del
 privato (`20261116-22`, §10) è applicato su dbdev il 2026-11-17, pgTAP del §10.2 verdi; da committare. I giri 1
 e 2 (`20261116-17 … -21` e tre CSV) sono applicati su dbdev e committati (`9a6db84d2b`) il 2026-11-17, coi pgTAP del §9.2 verdi; il censimento di D-5, ripetuto prima dell'applicazione, ha
-dato zero righe. Il BE è rotto sul picker del ruolo da assegnare (R-1). La doc auto-generata si rigenera dopo R-2:
-prima, il pre-commit `check-i18n-keys` la rifiuterebbe. Poi i giri 3 e 4.
+dato zero righe. Poi i giri 3 e 4.
 Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,7 +17,7 @@ Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 | 4 | team DB | ✅ giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17): BB degli obbligatori, check e picker del ruolo con la natura, guard, auto-clone, cambio di natura, CSV, pgTAP, doc | §9 | 2, 3 |
 | 5 | Tid | ✅ giri 1 e 2 applicati su dbdev, pgTAP del §9.2 verdi (2026-11-17) | §9.2 | 4 |
 | 5-bis | team DB | ✅ commit DB dei giri 1 e 2 (`9a6db84d2b`, 2026-11-17) | §9.1 | 5 |
-| 6 | BE/FE | R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero | §9.4 | 5 (R-2 prima della rigenerazione della doc) |
+| 6 | BE/FE | ✅ R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero (2026-11-17, da committare) | §9.4 | 5 |
 | 7 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 5 |
 | 7-bis | team DB | ✅ il builder `dbops.fn_pgtap_crea_soggetto_pf` (`20261116-22`), le cinque copie ritirate, pgTAP e doc, provati in `ROLLBACK` (2026-11-17) | §10 | — |
 | 7-bis-a | Tid | ✅ `20261116-22` applicato su dbdev, i sei pgTAP del §10.2 verdi (2026-11-17) | §10.2 | 7-bis |
@@ -463,6 +463,26 @@ cliente × fatturazione su un privato, che la natura ammette. I `BEGIN ATOMIC` s
   c'è già.
 * **R-4 (BE)** — il primo punto del §6: un test che crea un fornitore privato dal flusso Fornitori sul DB vero,
   con la sola fatturazione sul ruolo.
+
+✅ *Fatte dal team BE/FE il 2026-11-17* (da committare):
+
+* **R-1** — la rotta prende `?soggetto_id=<uuid>` facoltativo (assente: `NULL`; non uuid: 400
+  `E_VALIDATION_INPUT`), e il repository lo passa come secondo argomento. Il FE lo manda dal composable
+  (`loadMatriceRuolo(tipo, soggetto)`) e i due drawer rileggono il picker a ogni soggetto scelto
+  (`seguiSoggettoDelRuolo`), con il guard anti-race `useFetchVersion`: una lettura vecchia senza soggetto non
+  sovrascrive quella nuova. Test: `test_lookup_tipi_indirizzo_tipo_ruolo_api.py` (nuovo), tre casi nuovi in
+  `test_tipi_indirizzo_proponibili_db.py` (la natura spegne col motivo, gli obbligatori sono ammessi, soggetto
+  inesistente), quattro nella spec del composable (anche: una lettura partita prima del `reset()` non
+  ripopola la matrice svuotata).
+* **R-1, seguito della revisione** (2026-11-17, ok Tid): la matrice del ruolo da assegnare si legge **solo** a
+  soggetto scelto (la sezione indirizzi della creazione compare col soggetto), e la lettura all'apertura del
+  drawer è tolta: era doppia e mai a video. La `?soggetto_id` si legge col BB nuovo `qp_uuid_optional`, che ha
+  sostituito altre tre copie dello stesso giro di `optional_uuid` su query string.
+* **R-2** — la chiave in `it.json` ed `en.json`, con la frase proposta; `check_i18n_keys.py` pulito.
+* **R-3** — policy rigenerata (il diff porta solo i due codici di questo brief: DB e git allineati) e ripiego
+  accanto al gemello.
+* **R-4** — `test_clienti_fornitori_scrittura_db.py`, caso 3: il privato dal builder, il fornitore dal
+  service con i soli indirizzi che il picker col soggetto segna obbligatori, i guard differiti richiusi.
 
 ### 9.5 Debito e note per i giri dopo
 

@@ -24,7 +24,6 @@ from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
-    optional_uuid,
     pagina_da_query,
     paginated_envelope,
     parse_list_params,
@@ -32,6 +31,7 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
+    qp_uuid_optional,
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
@@ -814,7 +814,7 @@ _PARAMS_FILTRI_ERROR_LOG = [
 #        (400 se non lo e' — un `%s::uuid` su una stringa qualunque sarebbe
 #        un 500), testi strip. Una sede per la lista e per l'export.
 def _filtri_error_log(qp) -> dict[str, Any]:
-    tx_id = optional_uuid({"tx_id": qp_str(qp.get("tx_id"))}, "tx_id")
+    tx_id = qp_uuid_optional(qp.get("tx_id"), "tx_id")
     data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
     data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
     return {

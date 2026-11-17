@@ -6372,6 +6372,7 @@
         "titoli_iva_altri_emittenti": "The chosen nature does not allow {titoli} VAT exemption declarations in force with other companies, not visible from here: an administrator, or the company that received them, must close them.",
         "dati_societari": "The chosen nature has no company data: delete it before the change.",
         "indirizzi": "The chosen nature does not allow {indirizzi} addresses of the party: delete them before the change.",
+        "indirizzi_ruolo": "The chosen nature does not allow {indirizzi} addresses of the {ruolo} role: delete them from the role before the change.",
         "senza_natura_con_titoli_iva": "The party has VAT exemption declarations in force and cannot have them without a legal nature: choose a nature, or close the declarations first."
       },
       "dati_societari_elimina_blocco": {

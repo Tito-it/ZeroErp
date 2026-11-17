@@ -11,7 +11,8 @@
 // Note: si mockano i lookup: qui si prova il payload, non l'API.
 // ------------------------------------------------------------
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ref, nextTick } from 'vue'
 
 vi.mock('../../core/composables/useLookup', async () => {
   const { ref } = await import('vue')
@@ -31,6 +32,7 @@ vi.mock('../../core/apiCore', () => ({
 }))
 
 const { useIndirizzoSoggettoForm } = await import('./useIndirizzoSoggettoForm')
+const { lookupTipiIndirizzoTipoRuolo } = await import('../../core/apiCore')
 
 const MATRICE = [
   { codice_interno: 'RES', descrizione: 'Residenza', obbligatorio: true },
@@ -76,5 +78,75 @@ describe('useIndirizzoSoggettoForm — solo i tipi ammessi dal picker', () => {
     const s = useIndirizzoSoggettoForm()
     s.setMatrice([{ codice_interno: 'RES', descrizione: 'Residenza', obbligatorio: true }])
     expect(s.form.tipo_indirizzo_codice_interno).toBe('RES')
+  })
+})
+
+// Scopo: Il picker del ruolo da assegnare porta il soggetto scelto (R-1 di
+//        brief-db-fornitore-privato-indirizzi, 2026-11-17): la natura del
+//        soggetto decide ammessi e obbligatori, quindi alla scelta si rilegge;
+//        e una lettura vecchia (senza soggetto) arrivata dopo non vince.
+describe('useIndirizzoSoggettoForm — il ruolo da assegnare segue il soggetto', () => {
+  const risposta = (righe) => ({ data: { data: { results: righe } } })
+  const SENZA = [{ codice_interno: 'SEDELEG', descrizione: 'Sede legale', obbligatorio: true, ammesso: true }]
+  const COL_PRIVATO = [
+    { codice_interno: 'SEDELEG', descrizione: 'Sede legale', obbligatorio: false, ammesso: false },
+    { codice_interno: 'FATT', descrizione: 'Fatturazione', obbligatorio: true, ammesso: true },
+  ]
+
+  beforeEach(() => { lookupTipiIndirizzoTipoRuolo.mockReset() })
+
+  it('il soggetto arriva al lookup, `null` finche\' non e\' scelto', async () => {
+    lookupTipiIndirizzoTipoRuolo.mockResolvedValue(risposta([]))
+    const s = useIndirizzoSoggettoForm()
+    await s.loadMatriceRuolo('FO')
+    await s.loadMatriceRuolo('FO', 'sogg-1')
+    expect(lookupTipiIndirizzoTipoRuolo.mock.calls).toEqual([['FO', null], ['FO', 'sogg-1']])
+  })
+
+  it('scelto il soggetto, il picker si rilegge con lui', async () => {
+    lookupTipiIndirizzoTipoRuolo.mockResolvedValue(risposta(COL_PRIVATO))
+    const s = useIndirizzoSoggettoForm()
+    const soggetto = ref(null)
+    s.seguiSoggettoDelRuolo('FO', () => soggetto.value?.id)
+    soggetto.value = { id: 'sogg-1' }
+    await nextTick()
+    await Promise.resolve()
+    expect(lookupTipiIndirizzoTipoRuolo).toHaveBeenCalledWith('FO', 'sogg-1')
+    expect(s.tipiStato.value.map((t) => t.codice_interno)).toEqual(['FATT'])
+  })
+
+  it('soggetto tolto (o riportato a null dal reset): nessuna lettura', async () => {
+    lookupTipiIndirizzoTipoRuolo.mockResolvedValue(risposta(COL_PRIVATO))
+    const s = useIndirizzoSoggettoForm()
+    const soggetto = ref({ id: 'sogg-1' })
+    s.seguiSoggettoDelRuolo('FO', () => soggetto.value?.id)
+    soggetto.value = null
+    await nextTick()
+    expect(lookupTipiIndirizzoTipoRuolo).not.toHaveBeenCalled()
+  })
+
+  it('la lettura senza soggetto che arriva dopo non sovrascrive quella col soggetto', async () => {
+    let rispondiVecchia
+    lookupTipiIndirizzoTipoRuolo
+      .mockImplementationOnce(() => new Promise((r) => { rispondiVecchia = r }))
+      .mockResolvedValueOnce(risposta(COL_PRIVATO))
+    const s = useIndirizzoSoggettoForm()
+    const vecchia = s.loadMatriceRuolo('FO')
+    await s.loadMatriceRuolo('FO', 'sogg-1')
+    rispondiVecchia(risposta(SENZA))
+    await vecchia
+    expect(s.form.tipo_indirizzo_codice_interno).toBe('FATT')
+  })
+
+  it('una lettura partita prima del reset non ripopola la matrice svuotata', async () => {
+    let rispondi
+    lookupTipiIndirizzoTipoRuolo.mockImplementationOnce(() => new Promise((r) => { rispondi = r }))
+    const s = useIndirizzoSoggettoForm()
+    const inVolo = s.loadMatriceRuolo('FO')
+    s.reset()
+    rispondi(risposta(COL_PRIVATO))
+    await inVolo
+    expect(s.tipiStato.value).toEqual([])
+    expect(s.form.tipo_indirizzo_codice_interno).toBeNull()
   })
 })

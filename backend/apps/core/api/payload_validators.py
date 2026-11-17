@@ -176,6 +176,25 @@ def qp_iso_date_optional(raw: str | None, name: str) -> date | None:
         raise ValueError(f"{name}_invalid") from exc
 
 
+# Scopo: Uuid OPZIONALE da query string: None se assente o vuoto; l'uuid
+#        canonico (minuscolo) altrimenti, ValueError(f"{name}_invalid") se
+#        malformato — un `%s::uuid` su una stringa qualunque sarebbe un 500.
+#        Simmetrico a qp_int_optional. Estratto 2026-11-17 (regola del 2, ok
+#        Tid): unifica 4 copie di `optional_uuid({"x": qp_str(qp.get("x"))}, "x")`.
+# ⛔ Non e' `optional_uuid` (il PAYLOAD): quello prende 0/"0" per NULL, per
+#    compatibilita' coi form; in query string "0" e' un valore sbagliato.
+def qp_uuid_optional(raw: str | None, name: str) -> str | None:
+    if raw is None:
+        return None
+    cleaned = raw.strip()
+    if cleaned == "":
+        return None
+    try:
+        return str(UUID(cleaned))
+    except ValueError as exc:
+        raise ValueError(f"{name}_invalid") from exc
+
+
 # Scopo: Normalizza parametro stringa da query string (strip + None se vuoto).
 def qp_str(raw: str | None) -> str | None:
     if raw is None:
