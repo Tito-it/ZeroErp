@@ -168,6 +168,12 @@ SELECT b.billing_account_id, d.cliente_soggetto_ruolo_id,
 --   test-snapshot-indirizzi-fattura-v1, che prima si otteneva SCEGLIENDO un
 --   ruolo senza indirizzi). Il SEDELEG del soggetto non e' un tipo ammesso
 --   in ambito FATTURA: resta.
+-- ⚠️ Rev 2026-11-17 (giro 4 di brief-db-fornitore-privato-indirizzi): togliere
+--   il FATT generico lascia il ruolo senza obbligatorio finche' il test non
+--   scrive il FATT della prima istanza (sotto), che lo soddisfa: il guard degli
+--   obbligatori, che dal giro 4 scatta anche alla cancellazione, giudica a
+--   finestra richiusa, dopo quell'INSERT.
+SET CONSTRAINTS ALL DEFERRED;
 DELETE FROM anagrafiche.indirizzi i
  USING tmp_ba_sil b
  WHERE b.rn = 1
@@ -217,6 +223,7 @@ SELECT b.soggetto_ruolo_id, ti.fatt_id, b.istanza_utility_id,
        'Via Lotto pgTAP 1', bs.stato_id, (dbops.fn_pgtap_indirizzo_libero_forma(bs.stato_id)).*  -- rev 2026-10-18: la forma dello stato
   FROM tmp_ba_sil b, tmp_ti_sil ti, tmp_base_sil bs
  WHERE b.rn = 1;
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ============================================================
 -- Lotto, fatture, ponte

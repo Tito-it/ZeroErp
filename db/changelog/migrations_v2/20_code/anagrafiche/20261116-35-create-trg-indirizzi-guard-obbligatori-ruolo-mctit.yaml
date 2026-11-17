@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CANCELLARE O CAMBIARE UN INDIRIZZO NON LASCIA IL RUOLO SENZA OBBLIGATORIO
+#   anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo() -> trigger
+#   trg_indirizzi_a10_guard_obbligatori_ruolo_upd_dlt
+#     CONSTRAINT TRIGGER AFTER UPDATE OR DELETE ON anagrafiche.indirizzi
+#     DEFERRABLE INITIALLY DEFERRED
+#   Brief: brief-db-fornitore-privato-indirizzi §8.4 (F-1, Tid 2026-11-16), giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Gli obbligatori del ruolo si controllavano solo quando si scrive il ruolo.
+#   L'app cancella gli indirizzi del ruolo con un DELETE suo
+#   (delete_indirizzo_ruolo) e ne cambia il tipo con un UPDATE
+#   (INDIRIZZO_RUOLO_UPDATE_COLS): togliere la fatturazione, o cambiarle il
+#   tipo, lasciava il ruolo senza il suo obbligatorio, senza errore.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   * Differito: la regola si giudica a transazione finita. Sostituire un
+#     indirizzo (cancella e riscrivi) e cancellare un ruolo coi suoi
+#     indirizzi (la FK verso il ruolo e' NO ACTION: prima gli indirizzi)
+#     passano.
+#   * Giudica il ruolo di PRIMA (OLD.soggetto_ruolo_id): e' quello che puo'
+#     perdere l'obbligatorio. Un UPDATE che non tocca ne' il tipo ne' il ruolo
+#     non chiede niente. L'istanza non conta: il requisito conta gli indirizzi
+#     del ruolo, istanze comprese.
+#   * Il controllo e' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (-31):
+#     la stessa regola del ruolo che nasce. Il ruolo che non c'e' piu' tace.
+#   * UPDATE senza OF e confronto nel corpo (linee-guida-trigger § UPDATE OF):
+#     la domanda e' «il valore e' cambiato?», e un WHEN che legge NEW non sta
+#     su un trigger che scatta anche al DELETE.
+#   * Nessun tx_id: chi cancella non ne porta uno nella riga.
+#   Il codice e' quello che esiste (E_INDIRIZZO_OBBLIGATORIO_MANCANTE): nessun
+#   codice nuovo.
+#   Nome sotto i 63 caratteri; nessuna dipendenza dai trigger generati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-35-create-trg-indirizzi-guard-obbligatori-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261116-35-create-trg-indirizzi-guard-obbligatori-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Alla cancellazione di un indirizzo del ruolo, o al cambio del suo tipo o del suo
+        ruolo, il ruolo di prima si ricontrolla a fine transazione: non resta senza obbligatorio.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.soggetto_ruolo_id IS NOT DISTINCT FROM NEW.soggetto_ruolo_id
+                     AND OLD.tipo_indirizzo_id IS NOT DISTINCT FROM NEW.tipo_indirizzo_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  PERFORM anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(OLD.soggetto_ruolo_id, NULL::uuid);
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo()
+              IS 'Constraint trigger DEFERRABLE su anagrafiche.indirizzi, AFTER UPDATE OR DELETE: quando si cancella un indirizzo del ruolo, o se ne cambia il tipo o il ruolo, il ruolo di prima (OLD.soggetto_ruolo_id) deve avere ancora i suoi indirizzi obbligatori, a fine transazione. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (E_INDIRIZZO_OBBLIGATORIO_MANCANTE); un ruolo cancellato nella stessa transazione tace. Un UPDATE che non cambia ne'' il tipo ne'' il ruolo non chiede niente. Gemello di anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto, il layer SOGGETTO.';
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_a10_guard_obbligatori_ruolo_upd_dlt
+                  ON anagrafiche.indirizzi;
+              CREATE CONSTRAINT TRIGGER trg_indirizzi_a10_guard_obbligatori_ruolo_upd_dlt
+                  AFTER UPDATE OR DELETE ON anagrafiche.indirizzi
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo();
+
+              COMMENT ON TRIGGER trg_indirizzi_a10_guard_obbligatori_ruolo_upd_dlt ON anagrafiche.indirizzi IS
+                'Al commit, il ruolo da cui un indirizzo e'' stato tolto (cancellato, o cambiato di tipo o di ruolo) ha ancora i suoi indirizzi obbligatori. Differito: sostituire un indirizzo, o cancellare il ruolo coi suoi indirizzi, passa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_indirizzi_a10_guard_obbligatori_ruolo_upd_dlt
+                  ON anagrafiche.indirizzi;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo();

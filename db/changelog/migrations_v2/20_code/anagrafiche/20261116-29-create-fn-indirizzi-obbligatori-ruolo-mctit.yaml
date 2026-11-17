@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA DEVE AVERE UN RUOLO, SU UN SOGGETTO DI QUESTA NATURA
+#   anagrafiche.fn_indirizzi_obbligatori_ruolo(tipo ruolo, natura, giorno)
+#     -> TABLE(tipo_indirizzo_id, ripiego_tipo_indirizzo_id)
+#   Brief: brief-db-fornitore-privato-indirizzi §8.4 (F-1), §9.5, giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il requisito degli obbligatori del ruolo era scritto due volte, con due
+#   regole diverse: il guard del ruolo pretendeva ogni riga obbligatoria della
+#   matrice, anche un tipo che la natura del soggetto vieta (un requisito che
+#   nessuna scrittura soddisfa); fn_tipo_indirizzo_obbligatorio_per_ruolo
+#   (auto-clone e picker) la saltava intera, ripiego compreso. Il giro 4 porta
+#   il controllo anche alla cancellazione e al cambio di tipo (F-1): una terza
+#   sede. Regola del 2: il requisito sta qui, e lo leggono tutti.
+#
+# ── LA REGOLA (Tid, 2026-11-17: «vale il ripiego») ──────────────
+#   Per ogni riga obbligatoria della matrice del tipo di ruolo, attiva e valida
+#   il giorno dato (anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo sul tipo
+#   della riga):
+#     * il tipo e' ammesso dalla natura: si chiede il tipo; il ripiego vale se
+#       il ruolo e la natura lo ammettono;
+#     * il tipo non e' ammesso dalla natura, il ripiego si': si chiede il
+#       ripiego, da solo;
+#     * nessuno dei due e' ammesso: la riga non chiede niente.
+#   Un ripiego che il ruolo o la natura non ammettono non conta: un indirizzo
+#   di quel tipo, sul ruolo, nessuna scrittura lo accetta. Natura NULL: la
+#   natura non conta (soggetto senza natura, o non ancora scelto).
+#   ⭐ Revoca, per la natura, la regola di 20261116-17 («un tipo che la natura
+#   non ammette non e' obbligatorio», ripiego compreso), che era la D-2 senza
+#   la parte del ripiego dopo la (C) del 2026-11-16: torna la D-2 come Tid
+#   l'aveva decisa il 2026-11-16 («sul ripiego, se il ripiego e' ammesso dalla
+#   natura e dal ruolo; altrimenti il tipo si salta»).
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Una riga per requisito, nell'ordine del tipo richiesto: chi cerca il
+#   primo mancante lo trova sempre lo stesso. BEGIN ATOMIC (§5c), STABLE,
+#   SECURITY INVOKER: le matrici non sono sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-29-create-fn-indirizzi-obbligatori-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261116-29-create-fn-indirizzi-obbligatori-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il requisito degli indirizzi obbligatori di un ruolo, sulla natura del soggetto: il tipo
+        della riga se la natura lo ammette, altrimenti il suo ripiego (Tid, 2026-11-17).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                  p_tipo_ruolo_id              anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_oggi                       config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS TABLE(
+                  tipo_indirizzo_id         config.tipi_ruolo_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  ripiego_tipo_indirizzo_id config.tipi_ruolo_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT CASE WHEN r.tipo_ok THEN r.tipo ELSE r.ripiego END,
+                         CASE WHEN r.tipo_ok AND r.ripiego_ok THEN r.ripiego END
+                    FROM (SELECT m.tipo_indirizzo_id          AS tipo,
+                                 m.fallback_tipo_indirizzo_id AS ripiego,
+                                 anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                                     p_tipo_soggetto_dettaglio_id, m.tipo_indirizzo_id, p_oggi) AS tipo_ok,
+                                 (m.fallback_tipo_indirizzo_id IS NOT NULL
+                                  AND m.fallback_tipo_indirizzo_id <> m.tipo_indirizzo_id
+                                  AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                                          p_tipo_ruolo_id, m.fallback_tipo_indirizzo_id, p_oggi)
+                                  AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                                          p_tipo_soggetto_dettaglio_id, m.fallback_tipo_indirizzo_id, p_oggi)) AS ripiego_ok
+                            FROM config.tipi_ruolo_tipi_indirizzo m
+                           WHERE m.tipo_ruolo_id = p_tipo_ruolo_id
+                             AND m.obbligatorio
+                             AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo(
+                                     p_tipo_ruolo_id, m.tipo_indirizzo_id, p_oggi)) r
+                   WHERE r.tipo_ok OR r.ripiego_ok
+                   ORDER BY 1;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Il requisito degli indirizzi obbligatori di un ruolo, per il tipo di ruolo, sulla natura del soggetto, il giorno dato: una riga per ogni riga obbligatoria di config.tipi_ruolo_tipi_indirizzo attiva e valida (anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo), col tipo richiesto (tipo_indirizzo_id) e il ripiego che lo sostituisce (ripiego_tipo_indirizzo_id). Se la natura ammette il tipo della riga (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), si chiede il tipo, col ripiego della riga se il ruolo e la natura lo ammettono, altrimenti senza; se la natura non lo ammette e ammette il ripiego, si chiede il ripiego, da solo; se non ammette nessuno dei due, la riga non chiede niente. Natura NULL: la natura non conta. Ordinato per tipo richiesto. Sede unica del requisito del layer RUOLO: la leggono anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo (auto-clone e picker), anagrafiche.fn_guard_indirizzi_obbligatori_ruolo (i guard) e la fixture dbops.fn_pgtap_crea_soggetto_ruolo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_ruolo_tipi_indirizzo.valido_dal%TYPE);

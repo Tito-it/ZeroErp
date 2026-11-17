@@ -161,6 +161,17 @@ SELECT throws_like(
     (SELECT format('Il ruolo %s richiede l''indirizzo «%s».', fo_nome, pg_temp.nome('SPED')) FROM _ref),
     '6) la frase nomina il ruolo e il tipo, senza ripiego');
 
+-- ⚠️ Rev 2026-11-17 (giro 4 del brief, la regola «vale il ripiego»): un ripiego
+--   conta, e la frase lo nomina, solo se il ruolo e la natura lo ammettono. Il
+--   fornitore non ammetteva la consegna: la riga facoltativa la ammette (la
+--   societa' la ammette gia').
+INSERT INTO config.tipi_ruolo_tipi_indirizzo
+       (id, tipo_ruolo_id, tipo_indirizzo_id, obbligatorio, attivo)
+SELECT (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_ruolo_tipi_indirizzo),
+       r.fo, pg_temp.tipo('CON'), false, true
+  FROM _ref r
+ WHERE NOT EXISTS (SELECT 1 FROM config.tipi_ruolo_tipi_indirizzo m
+                    WHERE m.tipo_ruolo_id = r.fo AND m.tipo_indirizzo_id = pg_temp.tipo('CON'));
 SELECT pg_temp.obbligatorio_ruolo((SELECT fo FROM _ref), 'SPED', 'CON');
 
 SELECT throws_like(
