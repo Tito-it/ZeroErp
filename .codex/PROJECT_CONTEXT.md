@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-16.
+> Ultima revisione: 2026-11-17.
 
 ## Identità del Progetto
 
@@ -257,8 +257,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   prima del merge. Giro 3 («la pubblicazione», `20261116-01 … -04`: lo stato fuori bozza solo dal verbo, la bozza
   spenta, i controlli della copia) applicato e committato il 2026-11-16 (§13); BE15 e BE16 sbloccate, nessuna rottura
   BE. Giro 4 («risoluzione, scarto, asset», `20261116-05 … -09`: la stampa nasce dalla versione in uso (Q13), lo
-  scarto con `STANDARD_NON_STAMPA`, il «?» tolto, le risorse utilizzabili in una vista) scritto il 2026-11-16 e
-  provato sullo scratch (§14): da verificare, applicare e committare; poi BE6, BE6-bis, BE17. Poi il giro 5.
+  scarto con `STANDARD_NON_STAMPA`, il «?» tolto, le risorse utilizzabili in una vista) applicato e committato il
+  2026-11-16 (§14, `90eb95a09a`), pgTAP verdi; BE6, BE6-bis, BE17 sbloccate, nessuna rottura BE. Giro 5 («pulizia e
+  metadati», `20261116-10 … -16`: i COMMENT dello schema al presente e completi, la sovrapposizione col codice del
+  verbo, il presidio dei COMMENT unico che vede anche trigger e policy, i pgTAP deboli) applicato e committato il
+  2026-11-17 (§15), pgTAP verdi; BE2, BE18, BE19 sbloccate, nessuna rottura BE. Resta la doc auto-generata del giro.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

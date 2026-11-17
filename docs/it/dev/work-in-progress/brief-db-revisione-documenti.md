@@ -1,10 +1,13 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-16 (giro 4 scritto)
+## ⏭️ Chi riparte — aggiornato al 2026-11-17 (giro 5 applicato)
 
-**Riparte: Tid**, con `/verifica-db` e l'apply del giro 4 («risoluzione, scarto, asset»: D5, D9, D19, Q13;
-`20261116-05 … -09`), scritto il 2026-11-16 e provato sullo scratch (§14). I giri 1, 2 e 3 sono applicati e
-committati (§11, §12, §13; il giro 3 in `3367e5146e`). Il team BE/FE ha le ricadute del giro 2 (§12.6: ⛔ il backend si rompe sui lettori di
+**Riparte: il team BE** con BE2, BE18, BE19 del giro 5 (§15.8, nessuna rottura), e **Tid** con la doc auto-generata del
+giro 5 e la decisione su `emittente_fiscale_id` della risorsa (§15.5). Il giro 5 («pulizia e metadati»: Q16-Q19;
+`20261116-10 … -16`) è verificato da `/verifica-db`, applicato il 2026-11-17 con i pgTAP verdi e committato (§15). In parallelo il team BE/FE ha BE6, BE6-bis e BE17 del giro 4
+(§14.6, nessuna rottura). Il giro 4 («risoluzione, scarto, asset»: D5, D9, D19, Q13; `20261116-05 … -09`) è applicato il
+2026-11-16 con i pgTAP verdi e committato in `90eb95a09a`, con la doc auto-generata rigenerata. I giri 1, 2 e 3 sono
+applicati e committati (§11, §12, §13; il giro 3 in `3367e5146e`). Il team BE/FE ha le ricadute del giro 2 (§12.6: ⛔ il backend si rompe sui lettori di
 `attivo`, BE11; FE1, le 21 chiavi i18n, prima del merge su `Tito-dev`) e quelle del giro 3, sbloccate e non
 bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (2026-11-16).
 
@@ -30,13 +33,18 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 21 | ✅ Tid | Il commit del giro 3 (`3367e5146e`) | §13.1 | 18 ✅ |
 | 19 | team BE | BE15, BE16 del giro 3 — sbloccate, nessuna rottura; BE4 verificata | §13.6 | 18 ✅ |
 | 22 | ✅ sessione DB | Giro 4 scritto: cinque changeSet, le note di sette codici, un pgTAP nuovo, quattro riscritti, pagine `manual/` e guida | §14 | 21 ✅ |
-| 23 | Tid | `/verifica-db`, l'apply del giro 4, i pgTAP, la doc auto-generata, il commit | §14.5 | 22 |
-| 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — dopo l'apply, nessuna rottura | §14.6 | 23 |
-| 20 | sessione DB | Il giro 5, col via di Tid | §2 | 23 |
-| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
+| 23 | ✅ Tid | Giro 4 verificato (§14.7), applicato (2026-11-16), pgTAP verdi, doc auto-generata, commit `90eb95a09a` | §14.5 | 22 |
+| 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — sbloccate, nessuna rottura | §14.6 | 23 ✅ |
+| 20 | ✅ sessione DB | Giro 5 scritto: sette changeSet, quattro CSV, il presidio dei COMMENT unico (la copia di `catalogo` tolta), dieci pgTAP riscritti, linee guida §5d e pagine `manual/` | §15 | 23 ✅ |
+| 25 | ✅ Tid | Le scelte Q16-Q19 del giro 5 (2026-11-17) | §15.3 | — |
+| 26 | ✅ Tid | Giro 5: `/verifica-db` (le policy nel presidio, §15.5), apply e pgTAP verdi (2026-11-17), commit | §15.7 | 20 |
+| 29 | Tid | La doc auto-generata del giro 5 (le schede delle 15 tabelle, delle viste, delle funzioni riscritte, dei trigger di `dbops`, le due policy) | §15.7 | 26 ✅ |
+| 27 | team BE | BE2, BE18, BE19 del giro 5 — sbloccate, nessuna rottura | §15.8 | 26 ✅ |
+| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 26 |
+| 28 | chi chiude | Archiviazione in `work-done/`, con le ricadute BE chiuse o passate a un brief BE | §10 | 26, 27 |
 
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 4 (§14.1: cinque changeSet, i due CSV degli
-errori, il pgTAP nuovo e i quattro riscritti, le pagine `manual/` e la guida), questo brief, `PROJECT_CONTEXT.md`.
+**Decisioni aperte di Tid:** `emittente_fiscale_id` della risorsa, libero o fermo (§15.5, non blocca l'apply). **Da committare:** niente: il giro 5 è committato col brief, `PROJECT_CONTEXT.md` e
+`migliorie-generali-da-test-valutazione.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -72,8 +80,8 @@ COMMENT e pagine `manual/` riallineati; poi l'apply di Tid e il via al giro dopo
 | 1 ✅ applicato il 2026-11-16 (§11) | A + B + C | **Le stampe sono storia.** D1 + D8 (eccezioni ATTIVO), D2 (coerenza solo alla nascita), D10 + D20 (PDF obbligatorio e non cancellabile), D12 (`id` nello snapshot), D7 + D11 (ritiro di stati ed evento senza scrittore), D18 (il BB «rifiuta sempre» in `script`, con il ritiro di tutte le copie, anche fuori schema) | BE3, BE7 | Le tre tabelle della stampa, la regola ATTIVO verso di esse, i «rifiuta sempre»: il trigger del file (D20) nasce già sul BB |
 | 2 ✅ applicato il 2026-11-16 (§12) | B + C | **I vocabolari.** Sola lettura per l'app (Q10), i formati di file nel DB e `ALTRO` ritirato (D15), una forma sola (D16) | BE5 | Le sette tabelle di lookup |
 | 3 ✅ applicato il 2026-11-16 (§13) | B | **La pubblicazione.** Fuori bozza solo da «Pubblica» (D3), niente pubblicazione di una bozza spenta (D4), i controlli della copia (D13) | BE4 | `fn_pubblica_template_documento_versione`, `protect_pubblicata`, `fn_crea_bozza_da_versione` |
-| 4 ✍️ scritto il 2026-11-16 (§14) | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
-| 5 | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2 (e BE1, se non già fatto) | Quello che nessun giro precedente ha già aperto |
+| 4 ✅ applicato il 2026-11-16 (§14) | B + C | **Risoluzione, scarto, asset.** Lo stato `STANDARD_NON_STAMPA` (D5), il «?» nel messaggio (D9), «asset utilizzabile oggi» nel DB (D19), la stampabilità alla nascita della stampa (Q13) | BE6, BE6-bis | Le viste della risoluzione e dello scarto, `template_asset` |
+| 5 ✍️ scritto il 2026-11-17 (§15) | C | **Pulizia.** I metadati di §4 e i codici errore di §3.4, i pgTAP deboli di §5 | BE2, BE18, BE19 | Quello che nessun giro precedente ha già aperto |
 
 Fuori dai giri: lo script di Q11 (§3.6), a mano su dbdev. Chiusi senza modifiche: D6, D14, D17 (§3.3).
 
@@ -93,7 +101,7 @@ Forma compatta: **fatto** · **correzione decisa** · **presidio**. Le classi so
 
 ⚠️ **Dal 2026-11-15 D1, D2, D7, D8, D10, D11, D12, D18, D20 sono scritti nel giro 1** (§11), applicati il
 2026-11-16; D15 e D16 nel giro 2 (§12), applicati il 2026-11-16; D3, D4 e D13 nel giro 3 (§13), applicati il 2026-11-16;
-D5, D9, D19 e Q13 nel giro 4 (§14), scritti il 2026-11-16.
+D5, D9, D19 e Q13 nel giro 4 (§14), applicati il 2026-11-16.
 Le sezioni qui sotto restano come censimento; la correzione effettiva, con quello che è cambiato rispetto a qui
 (il BB di D18 esisteva già), sta in §11.2.
 
@@ -313,7 +321,7 @@ Da girare al team quando il giro DB corrispondente è applicato, salvo BE1.
 | BE6 | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB. Percorso intero in §14.6 |
 | BE6-bis | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n. Percorso intero in §14.6 |
 | BE17 | 4 | Note e fallback dei codici della risoluzione e della coerenza (§14.6) |
-| BE2 | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida» |
+| BE2 | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida». Percorso intero in §15.8, con BE18 e BE19 |
 | BE8 | — | `template_service.py:36`, `_STATI_VERSIONE_VALIDI`, ricopia gli stati della versione: da verificare se serve, o se si leggono dal DB |
 
 ## 7. Le decisioni di Tid — tutte prese il 2026-11-14
@@ -740,7 +748,7 @@ Facoltativo, non bloccante: il frontend può spegnere «Pubblica» su una bozza 
 clone nello stesso modello (`clone_versione`) riceve ora il numero conteso come `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`
 e non più come `IntegrityError`; la mappa `_UNIQUE_CONSTRAINTS` resta per `create_versione`.
 
-## 14. Giro 4 — risoluzione, scarto, asset (scritto il 2026-11-16)
+## 14. Giro 4 — risoluzione, scarto, asset (applicato il 2026-11-16)
 
 Via di Tid il 2026-11-16 («riprendi le attività del documento», dopo il commit del giro 3). Decisioni di
 riferimento: Q4 e Q13 (§7). Numeri dal primo libero.
@@ -826,6 +834,8 @@ Con la simulazione del messaggio riscritto di `E_DOCUMENTI_GENERATO_COERENZA` (u
 
 ### 14.5 Per l'apply (Tid)
 
+✅ **Fatto il 2026-11-16**: verifica (§14.7), apply, pgTAP verdi, doc auto-generata rigenerata, commit `90eb95a09a`.
+
 1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
 2. L'apply; poi `ci_apply` come sempre. Nessun trigger nuovo, nessun montaggio cambiato.
 3. I pgTAP: il nuovo, i quattro riscritti (§14.1) e i presidi di §14.4.
@@ -834,7 +844,7 @@ Con la simulazione del messaggio riscritto di `E_DOCUMENTI_GENERATO_COERENZA` (u
 5. Il backend **non** si rompe: nessuna colonna tolta, nessun codice nuovo. Una stampa da una versione che non è
    quella in uso ora è rifiutata, ma il servizio la sceglie dalla risoluzione un istante prima.
 
-### 14.6 Richieste al team BE/FE (dopo l'apply)
+### 14.6 Richieste al team BE/FE (sbloccate dal 2026-11-16)
 
 | # | File | Che cosa |
 | --- | --- | --- |
@@ -858,3 +868,243 @@ e che vista e funzione nuove ricevano i privilegi dal loop di `ci_apply` (linee-
   con l'estratto senza `-08` 36 su 38, rossi proprio 37 e 38.
 * Corrette due frasi: la testata del pgTAP nuovo contava l'11 fra i casi corretti dal giro (era già rifiutato); la
   pagina di `fn_template_motivo_non_stampabile` non nominava le versioni scadute fra i casi di `NESSUNA_VERSIONE_VALIDA`.
+
+## 15. Giro 5 — pulizia e metadati: il censimento sul vivo, 2026-11-16
+
+Via di Tid il 2026-11-16 («riparti per questa attività il giro 5»). §3.4, §4 e §5 sono del 2026-11-14: i giri 1-4
+ne hanno chiuso una parte. Qui l'elenco riletto su dbdev (`obj_description`, `col_description`,
+`pg_get_functiondef`, `config.codici_errore`, `config.messaggi_errore`, i pgTAP), dopo l'apply del giro 4.
+
+### 15.1 Già chiuso dai giri precedenti
+
+* **M1, M2, M5, M7** (giro 1), **M6** nelle note dei codici (giro 4). **M3** è senza oggetto: il `block_delete`
+  dell'asset è ritirato, il rifiuto sta sul BB (giro 1).
+* Le tabelle e le viste nate o riscritte nei giri 1-4 hanno COMMENT al presente: i sette vocabolari, i due
+  abbinamenti, stampa-eventi-file, `vw_template_asset_utilizzabili`, `vw_template_personalizzati_scarto`,
+  `vw_template_versioni_stampabili`; così i COMMENT delle funzioni riscritte (risoluzione, coerenza, copia,
+  pubblicazione, `protect_pubblicata`, `protect_snapshot`, il BB dei motivi).
+* §5: la versione di un altro modello, i motivi `SORGENTE` e `TIPO`, `NON_RISOLTO` nella vista e nella stampa (giro 4);
+  i rifiuti della pubblicazione, lo stesso inizio, la retrodatazione, i rami `E_PARAMETRO_INVALIDO` della copia
+  (giro 3). **I blocchi di spegnimento dei vocabolari** sono senza oggetto: nessun vocabolario ha più `attivo`
+  (giro 2).
+* `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE`: la nota è al presente (giro 3) e il messaggio dice già «nemmeno
+  quando è superata».
+
+### 15.2 L'elenco chiuso del giro 5
+
+**A. COMMENT che dicono il falso o cronaca** (§4.1, §4.3), riletti il 2026-11-16:
+
+| Oggetto | Che cosa porta |
+| --- | --- |
+| funzioni `fn_personalizza_template_standard`, `fn_template_esito_risoluzione`, `fn_template_motivo_non_coerente` | data, brief, sigle (`§10.3 K-n`, `D-n`, `Q-2`) |
+| funzioni `fn_guard_versione_contesto`, `trgfn_documenti_generati_guard_versione_contesto` | brief, `D-C4` |
+| colonne `documenti_generati_eventi.user_id`, `.detail` | citano `STORAGE_ORPHAN`, ritirato nel giro 1 (trovate il 17-11, scrivendo) |
+| trigger function `trgfn_documenti_generati_file_protect_file`, `trgfn_template_asset_protect_file`, `trgfn_template_documenti_versioni_block_delete` | «Guard A7-bis», «Guard A4», «Guard A2»; quella dell'asset tace `codice`, `descrizione`, `attivo` fra i campi liberi (M4) |
+| trigger function `trgfn_template_documenti_versioni_guard_derivata_da`, `trgfn_template_standard_guard_sola_lettura` | data, brief, sigle |
+| vista `vw_template_risoluzione_emittente` | data, brief, `§10.3 K-5` |
+| colonne `template_asset.validita`, `template_documenti_versioni.validita` | «rev 2026-05-14» |
+| colonne `template_documenti.standard`, `template_documenti_versioni.derivata_da_versione_id`, `.formato_template`, `.page_format`, `.page_orientation`, `.versione_contesto` | brief, sigle |
+| vincoli `chk_template_documenti_standard_senza_emittente`, `uq_template_documenti_id_tipo_sorgente` | brief, sigle, data |
+| trigger `trg_template_documenti_a10_default_emittente_ins` | brief |
+| COMMENT di tabella `documenti_generati`, `template_asset`, `template_documenti`, `template_documenti_versioni` | veri ma di una riga, generici: si riscrivono interi, come i vocabolari del giro 2 |
+| **corpo** di `trgfn_template_asset_protect_file` | «Campi modificabili: meta, validita»: è M4, dice il falso, e si riapre. La cronaca negli altri corpi («per futuro Fase B» in `protect_file` del file, le date nei commenti) resta: §4.3, non si apre un `CREATE OR REPLACE` per un commento |
+
+**B. Senza COMMENT** (§4.2), contati sul vivo il 2026-11-16 (fatto datato): 162 colonne di tabella su 220 (le
+sei di audit dei vocabolari, quasi tutte quelle di stampa, file, eventi, asset, modelli, versioni), 34 colonne
+delle quattro viste, 61 CHECK su 67, 20 UNIQUE su 26, 24 FK su 25; 8 trigger scritti a mano sulle trigger function
+dello schema (`protect_file` ×2, `protect_snapshot`, `guard_versione_contesto`, `block_delete_protected`,
+`guard_derivata_da`, i due `guard_standard`). I trigger delle automazioni (audit, `tx_id`, storico, lock, ATTIVO,
+`codice_maiuscolo`) non hanno COMMENT in nessuno schema.
+
+**C. Codici errore** (§3.4, §4.3), riletti il 2026-11-16:
+
+* **Note con cronaca**: `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` (una storia del 2026-08-05 con un id di changeSet: non
+  dice che cosa il codice è), `E_DOCUMENTI_VERSIONE_OVERLAP` (id di changeSet, date, «refactor»),
+  `E_DOCUMENTI_PERSONALIZZA_NON_STANDARD`, `_TEMPLATE_DERIVAZIONE_INVALIDA`, `_TEMPLATE_STANDARD_SOLA_LETTURA`,
+  `_VERSIONE_CONTESTO_DIVERSA`, `_VERSIONE_CONTESTO_NON_VERIFICABILE`, `_VALORE_NUMERICO_NON_FINITO` (brief, date,
+  sigle). Finiscono nei commenti di `error_policies_generated.py` (BE2).
+* **Messaggi che danno un rimedio impossibile o dicono il falso**:
+  * `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED`, soluzione: «per disattivare una versione usata, contrassegnarla come
+    OBSOLETA». Dal giro 3 lo stato lo scrive solo la pubblicazione: il rimedio è spegnerla, o pubblicarne una nuova;
+  * `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`, `_NON_STAMPABILE`, `_SENZA_PREDEFINITO`, causa e soluzione: «versione
+    pubblicata» (M6 sulle frasi: stampa anche la superata nella sua validità; il giro 4 ha corretto solo le note);
+  * `E_DOCUMENTI_GENERATO_DELETE_BLOCKED`, `E_EVENTO_DOCUMENTO_DELETE_VIETATA`, `_UPDATE_VIETATA`: «append-only»,
+    «timeline», una soluzione scritta in SQL (`INSERT … esito='KO'`);
+  * `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`: «i documenti riferiscono», «cambiar file»; nessun documento punta a una
+    risorsa (§8.2), la ristampa la ritrova dal codice interno.
+* **I nomi** (§3.4): `E_DOCUMENTI_GENERATO_DELETE_BLOCKED`, `E_DOCUMENTI_ASSET_DELETE_BLOCKED`,
+  `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` in inglese accanto a `E_EVENTO_DOCUMENTO_*_VIETATA` e
+  `E_FILE_DOCUMENTO_DELETE_VIETATA` (giro 1): due prefissi e due lingue per la stessa famiglia. Decisione Q16.
+* **`E_DOCUMENTI_VERSIONE_OVERLAP` lo emette solo il backend**, traducendo il 23P01 per nome del vincolo
+  (`template_versioni_admin_service.py:108`). Il vincolo lo raggiunge una sola strada scritta dall'applicazione,
+  la pubblicazione (fuori bozza la versione non si modifica, giro 3). Decisione Q17.
+
+**D. Fuori schema** (§4.3): la nota di `dbops.automazione_overlap` sulle versioni («refactor-overlap-v2 fase2»,
+id, data) e quella di `dbops.automation_lock_columns` su `template_documenti.standard` (brief, data). Tutte e due
+in un CSV con mirror `runOnChange`: si correggono lì (linee-guida-sql §11.2).
+
+**E. pgTAP deboli** (§5), riletti il 2026-11-16:
+
+* **Iterano su ciò che c'è:** `test-documenti-generati` 4 (l'altra azienda pescata, `999999` in mancanza);
+  `test-documenti-template-asset` 3 («skip soft») e la fixture «primo emittente attivo»;
+  `test-documenti-template-standard-app-v1` 3-6 (lo standard preso dal seed, skip senza);
+  `test-documenti-seed-idempotenti` 1-10 (conteggi `>= N`, duplicati su colonne già UNIQUE).
+* **`throws_ok` senza codice** (accettano qualunque errore: pgTAP guide, «Un errore si asserisce»), 14:
+  `-generati` 142, 235, 246, 256; `-generati-eventi` 251, 264; `-generati-file` 198, 208; `-template-asset` 136,
+  147, 157; `-template-versioni` 157, 168, 227 (il DELETE di una pubblicata). Non erano nel censimento del 14.
+* **Casi non costruiti** rimasti: `protect_snapshot` sui passaggi NULL ↔ valore (`sorgente_riga`,
+  `generato_da_user_id`); `protect_file` della stampa oltre `storage_key` e `is_principale`; la risorsa: `mime_type`,
+  `file_name`, `file_size_bytes`, il cambio ammesso di `codice`, `descrizione` e date, il lock di `codice_interno`;
+  le versioni: il DELETE di un'OBSOLETA e di una bozza usata da una stampa.
+* **Header con id di changeSet**: `test-documenti-versione-contesto-v1` (sei id), `test-sorgente-documenti-generati-v1`
+  (un intervallo). Il nome del brief in testata resta: è la forma di tutti i pgTAP.
+
+**F. Il presidio dei COMMENT.** `documenti` entra nel presidio sul vivo (linee-guida-sql §5d: la famiglia è
+riscritta). ⚠️ **Trovato censendo:** `pg_identify_object` dà `schema` NULL per i trigger, e i due presidi che ci
+sono filtrano su `i.schema` (`dbops/test-comment-al-presente-v1`, `catalogo/test-comment-al-presente-catalogo-v1`):
+**non vedono i COMMENT dei trigger**. Su dbdev, oggi, otto trigger di `dbops` portano il nome di un brief
+(`trg_processi_accensione_a10_guard_ins_upd`, i due di `soggetti_di_prova`, i due di `credenziali_di_prova`, i due
+di `installazione`, `trg_coda_lavori_a10_archiviazione_upd`; il censimento del 16-11 ne contava sette, corretto il
+17-11). E il presidio di `catalogo` è già una copia di quello di `dbops`: un terzo file per
+`documenti` sarebbe la terza (regola del 2). Decisione Q18.
+
+**G. Ricadute BE** (quando il giro è applicato): BE2 (rigenerare `error_policies_generated.py` dopo le note), i
+fallback dei messaggi riscritti; con Q17 (a), la traduzione del 23P01 esce dal servizio. BE8
+(`template_service.py:36`) verificato il 2026-11-16: valida il filtro `stato` di una lista, una copia del CHECK
+della versione nel BE. Resta del team BE: lo stato non è un vocabolario che si possa leggere.
+
+### 15.3 Le scelte (Tid)
+
+✅ **Tid, 2026-11-17: le quattro proposte** (Q16 restano, Q17 il verbo, Q18 un presidio solo, Q19 come `catalogo`
+più i vincoli che dicono una regola).
+
+| # | Domanda | Proposta | Alternativa |
+| --- | --- | --- | --- |
+| Q16 | I nomi della famiglia «non si cancella / non si modifica» | **Restano**; si riscrivono messaggi e note. Come la scelta 4 di `catalogo` (2026-11-11): un nome nuovo cambia il contratto col BE per una frase che resta vera | Una famiglia sola (`E_DOCUMENTI_<OGGETTO>_<OP>_VIETATA`), i vecchi ritirati con `obsoleto_dal`; BE e i pgTAP da riallineare |
+| Q17 | `E_DOCUMENTI_VERSIONE_OVERLAP`, oggi solo nel BE | **Lo solleva il verbo**: `fn_pubblica_template_documento_versione` riconosce il 23P01 del suo vincolo, come la copia col numero conteso (D13, giro 3); la traduzione esce dal BE | Resta nel BE, la nota del codice lo dice |
+| Q18 | Il presidio dei COMMENT | **Uno solo, col perimetro in elenco**: `dbops/test-comment-al-presente-v1` vede anche i trigger, prende `catalogo` (la copia si ritira) e `documenti`; gli otto COMMENT di `dbops` si riscrivono in questo giro | Un file per `documenti` che vede i trigger; i due esistenti e gli otto di `dbops` nel brief `dbops`/`script` di §9 |
+| Q19 | Quanti COMMENT nuovi | **Come `catalogo`** (le colonne delle tabelle, le sole colonne calcolate delle viste, i trigger scritti a mano) **più i CHECK e le UNIQUE che dicono una regola** non scritta nel nome (non `_non_vuoto`, `_obj`, `_len`, le FK, le chiavi primarie) | Solo come `catalogo` |
+
+### 15.4 Che cosa è scritto (2026-11-17)
+
+| ChangeSet | Che cosa | Voci |
+| --- | --- | --- |
+| `20261116-10` (`00_schema/documenti`) | 175 COMMENT: ogni colonna delle 15 tabelle che non ne aveva uno (audit compreso), le otto con marche, `user_id` e `detail` degli eventi, i COMMENT di tabella di stampa, risorse, modelli e versioni, le due policy di file ed eventi delle stampe (§15.5) | A, B |
+| `-11` (`00_schema/documenti`) | I COMMENT dei vincoli che dicono una regola (gli esiti degli eventi, gli stati della versione, l'ordine e il principale dei file, le tre unicità delle risorse, il numero della versione); due riscritti | A, B (Q19) |
+| `-12` (`20_code/documenti`) | `trgfn_template_asset_protect_file`: il commento del corpo e il COMMENT dicono quali campi sono liberi; il confronto non cambia | M4 |
+| `-13` (`20_code/documenti`) | `fn_pubblica_template_documento_versione`: il 23P01 del suo vincolo esce come `E_DOCUMENTI_VERSIONE_OVERLAP`, ogni altra esclusione si rilancia; COMMENT al presente. Rollback: il `20261116-03` | C (Q17) |
+| `-14` (`20_code/documenti`) | 32 COMMENT: nove funzioni (le firme ancorate a `%TYPE`), la vista della risoluzione, le colonne calcolate delle tre viste, otto trigger scritti a mano e quello del default dell'emittente | A, B |
+| `-15` (`20_code/dbops`) | Gli otto COMMENT di trigger di `dbops` senza il nome di un brief | F (Q18) |
+| `-16` (`80_data/changelog`) | I COMMENT di `formato_template`, `page_format`, `page_orientation`, dopo il `20261004-22` che li scrive (§15.5) | A |
+
+Il rollback dei changeSet di soli COMMENT è il testo di prima, letto dal catalogo di dbdev il 2026-11-17 da un
+generatore (scratchpad della sessione): niente ricopiato a mano.
+
+**CSV** (mirror `runOnChange` di `80_data`): `config/codici_errore.csv`, le note di otto codici al presente;
+`config/messaggi_errore.csv`, nove righe (il rimedio impossibile della versione, «pubblicata» nelle cause della
+risoluzione, «append-only» e le soluzioni in SQL degli eventi, la stampa e la risorsa, la causa della
+sovrapposizione); `dbops/automazione_overlap.csv` e `dbops/automation_lock_columns.csv`, le due note fuori schema.
+Nessun codice nuovo, nessun codice ritirato (Q16).
+
+**pgTAP.** Il presidio unico `dbops/test-comment-al-presente-v1` (plan 8: lo schema di trigger e policy dalla loro
+tabella, il perimetro in elenco, `catalogo` e `documenti` dentro, il 7 e l'8 tengono fermi trigger e policy); **tolto**
+`catalogo/test-comment-al-presente-catalogo-v1`, che era la sua copia. Riscritti: `test-documenti-generati` (13:
+l'azienda dal preventivo, i codici, lo snapshot da e verso NULL), `-generati-file` (15: i codici e i vincoli per
+nome, le sei colonne ferme che mancavano, `ordinamento` libero), `-generati-eventi` (i due codici),
+`-template-asset` (17: due aziende costruite, le tre unicità, le cinque colonne ferme, il codice interno, i campi
+liberi), `-template-versioni` (12: i codici, la sovrapposizione dal verbo, il DELETE di un'OBSOLETA),
+`-template-standard-app-v1` (8: il seed dello standard si asserisce, non si salta), `-seed-idempotenti` (gli
+elenchi esatti del seed e le UNIQUE dichiarate), `-pubblicazione-e-copia-v1` (il 19) e
+`test-fn-pubblica-template-documento-versione-v1` (il 17) sul codice del verbo, `-lookup` (via il 14, coperto dal
+seed); testate senza id di changeSet in `-versione-contesto-v1` e `test-sorgente-documenti-generati-v1`.
+**Script:** `guardrail_pgtap_preambolo.py`, soglia dei `throws_ok` senza discriminante 108 → 93;
+`guardrail_comment_al_presente.py`, il commento che descrive il presidio sul vivo.
+
+**Doc:** `linee-guida-sql.md` §5d (il presidio unico col perimetro in elenco, lo schema del trigger, la trappola
+delle fasi tardive); pagine `manual/` di `fn_pubblica_template_documento_versione`, `template_documenti_versioni`,
+`trgfn_template_asset_protect_file`, `dbops/fn_storico_arma_scope` (il test del presidio è il 6).
+
+### 15.5 Che cosa è cambiato rispetto al censimento
+
+* **La trappola delle fasi tardive, seconda volta.** I COMMENT di `formato_template`, `page_format` e
+  `page_orientation` li scrive anche `80_data/20261004-22`. Su un database costruito da zero un `COMMENT ON` di
+  `80_data` gira dopo `00_schema`: la riscrittura nel `-10` avrebbe perso, e il presidio sarebbe stato rosso solo in
+  CI. È il caso del `20261114-98` di `catalogo`. Censite tutte le istruzioni `COMMENT ON` di `70_dati_sistema`,
+  `80_data`, `85_pgagent`, `90_end` sugli oggetti del giro: l'unico caso. Le tre stanno nel `-16`, e la regola è ora
+  in `linee-guida-sql` §5d.
+* **Tre pgTAP scadevano il 31-12-2026.** `-generati`, `-generati-file`, `-generati-eventi` pubblicavano la versione
+  fino al 2026-12-31: dal giro 4 una stampa nasce solo dalla versione in uso, e dal 1° gennaio i tre file sarebbero
+  stati rossi senza che niente fosse cambiato. Ora la versione vale da trenta giorni prima della data operativa, senza
+  fine.
+* **Il presidio vede i trigger, e i trigger di `dbops` erano otto** (§15.2 F).
+* **E le policy (`/verifica-db`, 2026-11-17).** `pg_identify_object` dà `schema` NULL anche a una policy, e il
+  presidio, corretto per i trigger, non ne leggeva nessuna. Due policy di `documenti` portavano l'id di un changeSet
+  («Slice 20260910-31..34»): `rls_documenti_generati_eventi_ef_whitelist`, `rls_documenti_generati_file_ef_whitelist`.
+  Riscritte nel `-10` (nascono in `00_schema`, `20260910-32`; nessuna fase tardiva le riscrive); il presidio prende lo
+  schema della policy dalla sua tabella, e l'8 lo tiene fermo. Senza l'estratto il 4 le vede, con l'estratto è verde.
+* **I `throws_ok` senza discriminante erano 14** in `documenti`, non nel censimento del 14-11; il guardrail ne conta
+  15 calati (93).
+* **Due prove che passavano per coincidenza.** Il 14 nuovo di `-generati-file` cambiava l'impronta con il valore che
+  la fixture del PDF già scrive (`repeat('f', 64)`), e passava senza che il guard parlasse: ora l'impronta nuova è
+  derivata dalla vecchia. Il 7 del presidio, nella prima stesura, confrontava il perimetro con sé stesso: ora chiede
+  che i trigger di `dbops` e `documenti` ci siano.
+* **Non costruiti, dichiarati in testata:** il passaggio NULL → valore di `sorgente_riga` (parla prima
+  `guard_sorgente`, che rifiuta una riga che non è del documento; lo snapshot la confronta con lo stesso
+  `IS DISTINCT FROM` di `generato_da_user_id`, provato); il DELETE di una bozza usata da una stampa (dal giro 4 una
+  stampa nasce solo dalla versione in uso: il ramo resta per le stampe di prima).
+* **Fuori perimetro, segnalato:** `work-in-progress/migliorie-generali-da-test-valutazione.md` (§3 D7, riga 1 del
+  suo «Chi riparte») nomina `catalogo/test-comment-al-presente-catalogo-v1` come la regressione che tiene rossa la
+  CI dall'11-11, con la causa «non letta». La causa la scrive la testata del `20261114-98` (un COMMENT di `80_data`
+  che vinceva da zero), e il file non c'è più: il suo perimetro è nel presidio di `dbops`. Il documento è
+  aggiornato il 2026-11-17 (testata, §3 D7, la lista della catena); la riga si chiude alla prima corsa verde della
+  CI dopo questo giro.
+* **Segnalato da `/verifica-db` (2026-11-17), da decidere (Tid):** il COMMENT e il commento del corpo del `-12`
+  elencano i campi liberi della risorsa e tacciono `emittente_fiscale_id` (nessun lock, nessun guard: un `UPDATE` sposta
+  la risorsa in un'altra azienda, entro la RLS) e `storicizza`. O l'elenco li nomina, o lo spostamento va chiuso (un lock
+  di colonna, lavoro nuovo). Il rollback del `-12` rimette il solo COMMENT, non il commento del corpo (il confronto è
+  identico): dichiarato nella testata.
+* **La cronaca nei corpi resta** (§4.3): «per futuro Fase B» in `protect_file` del file, le date nei commenti delle
+  funzioni della risoluzione. Si toglie quando un giro riapre quei corpi.
+
+### 15.6 Le prove (scratch, owner, estratto in `ROLLBACK`)
+
+* Tutti i 24 pgTAP di `documenti`, `rls/test-rls-documenti-satelliti`, `config/test-grammatica-etichetta-sorgenti-v1`,
+  `vendite/test-registri-per-emittente-v1`, `script/test-trgfn-default-emittente-fiscale-v1` e i presidi
+  `riferimenti-morti`, `security-definer-search-path`, `catalogo-messaggi-errore-completo`, `codici-errore-identita`,
+  `vw-codici-errore-motivo-nominato`, `vw-codici-errore-valore-atteso`, `stati-check-scrittori`,
+  `costanti-catalogo-citate-dal-codice`, `builder-pgtap-vincoli-immediate`, `rls-perimetro-scoperto`,
+  `rubinetto-primo-motivo`, `registri-append-only-postura`: uguali senza e con l'estratto, tranne quelli che il giro
+  corregge. `-template-versioni` 11 → 12 su 12 (il 3), `test-fn-pubblica-…` 22 → 23 su 23 (il 17), il presidio dei
+  COMMENT 5 → 8 su 8 (senza: il 2, brief nei trigger di `dbops` e nelle colonne; il 3, le due `validita`; il 4, le due
+  policy). Riprovato da `/verifica-db` il 2026-11-17 coi quattordici pgTAP modificati: stessi esiti.
+* Rossi uguali nelle due corse, da owner: `-generati-eventi` 1, `-lookup` 1, `-vocabolari-forma-v1` 1,
+  `-template-standard-app-v1` 5, `-pubblicazione-e-copia-v1` 8, `registri-append-only-postura` 4 (gli stessi dei
+  giri 2-4). Con `script.fn_is_proprietario_tabella` ridefinita sulle tabelle in esame, in una copia del test:
+  `-pubblicazione-e-copia-v1` 26 → 27 su 27 (il 19), `-template-standard-app-v1` 8 su 8.
+* Dopo l'estratto: nessuna colonna di tabella di `documenti` e nessun trigger scritto a mano senza COMMENT.
+  Forward e rollback dei sei changeSet di COMMENT nella stessa transazione: l'impronta di `pg_description` cambia col
+  forward e torna quella di partenza col rollback.
+* Cancelli statici della CI verdi (anche `guardrail_comment_al_presente` sui sette file); `prossimo_changeset
+  --doppi` pulito. Catalogo identico prima e dopo ogni prova.
+* ⚠️ La prova non carica i CSV (`loadUpdateData`): note e messaggi nuovi si vedono solo dopo l'apply.
+
+### 15.7 Per l'apply (Tid) — ✅ applicato il 2026-11-17, pgTAP verdi
+
+1. `/verifica-db` in una sessione nuova, sul lavoro non committato.
+2. L'apply; poi `ci_apply` come sempre. Nessun trigger nuovo, nessun montaggio cambiato.
+3. I pgTAP: i riscritti di §15.4, il presidio `dbops/test-comment-al-presente-v1`, i presidi di §15.6.
+   `catalogo/test-comment-al-presente-catalogo-v1` non c'è più: il suo perimetro è nel presidio di `dbops`.
+4. La doc auto-generata rigenerata: cambiano le schede delle 15 tabelle, delle quattro viste, delle funzioni
+   riscritte e dei trigger di `dbops` (i COMMENT).
+5. Il backend **non** si rompe: la pubblicazione che si sovrappone riceve ora `E_DOCUMENTI_VERSIONE_OVERLAP` dal
+   DB, lo stesso codice che il servizio dava traducendo il 23P01; nessun codice nuovo né ritirato.
+
+### 15.8 Richieste al team BE (dopo l'apply, nessuna rottura)
+
+| # | File | Che cosa |
+| --- | --- | --- |
+| BE2 | `backend/apps/core/services/error_policies_generated.py` (rigenerato) | Le note riscritte di otto codici (§15.4): `E_DOCUMENTI_GENERATO_DELETE_BLOCKED`, `_VERSIONE_OVERLAP`, `_VERSIONE_CONTESTO_DIVERSA`, `_VERSIONE_CONTESTO_NON_VERIFICABILE`, `_VALORE_NUMERICO_NON_FINITO`, `_TEMPLATE_STANDARD_SOLA_LETTURA`, `_TEMPLATE_DERIVAZIONE_INVALIDA`, `_PERSONALIZZA_NON_STANDARD` |
+| BE18 | `backend/apps/documenti/services/template_versioni_admin_service.py:105-114` (la voce `ex_template_documenti_versioni_no_overlap_pubblicata` di `_UNIQUE_CONSTRAINTS`); `backend/apps/documenti/tests/services/test_template_versioni_admin_service.py:500-516`; `docs/it/backend/documenti/manual/api_documenti_templates.md:536-545`, `:718` | La traduzione del 23P01 è irraggiungibile: la sovrapposizione arriva dal verbo come `E_DOCUMENTI_VERSIONE_OVERLAP`. La voce esce; il test che simula l'`IntegrityError` si riscrive sul codice che arriva dal DB; la doc dell'API dice che lo solleva la pubblicazione |
+| BE19 | `backend/apps/core/services/error_messages_fallback.py:445`, `:448`, `:470`, `:540`, `:541` | Se il fallback ricopia il catalogo: i messaggi riscritti di `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`, `_GENERATO_DELETE_BLOCKED`, `_VERSIONE_DELETE_BLOCKED` (non dice più «contrassegnarla come OBSOLETA») e dei due `E_EVENTO_DOCUMENTO_*_VIETATA` (senza «append-only») |
+
+BE8 resta del team BE (§15.2 G).

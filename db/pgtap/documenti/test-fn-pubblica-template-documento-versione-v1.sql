@@ -377,13 +377,12 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
-SELECT throws_ok(
-    format($q$SELECT documenti.fn_pubblica_template_documento_versione(
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format($q$SELECT documenti.fn_pubblica_template_documento_versione(
                   %s, script.fn_data_operativa(), 1, script.fn_data_operativa())$q$,
-           (SELECT id FROM tmp_ptv_b3)),
-    '23P01',
-    NULL,
-    '17) B: la B3 che vale oggi, dentro la V1 OBSOLETA, viola il vincolo: per ogni data, una sola versione stampabile'
+           (SELECT id FROM tmp_ptv_b3))),
+    'E_DOCUMENTI_VERSIONE_OVERLAP',
+    '17) B: la B3 che vale oggi, dentro la V1 OBSOLETA, viola il vincolo: E_DOCUMENTI_VERSIONE_OVERLAP, dal verbo'
 );
 
 -- ============================================================

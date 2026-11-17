@@ -1,6 +1,6 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-14
+## ⏭️ Chi riparte — aggiornato al 2026-11-17
 
 **Riparte: il team DB** sulla CI di `Tito-dev`, che dal 2026-11-11 è **rossa a ogni corsa della
 suite** (§3 D7, «La CI di `Tito-dev` dall'11-11»); poi i 21 rossi noti e il brief di Q-2. **Tid**
@@ -8,7 +8,7 @@ ha le decisioni che tengono ferme D18, D7 e D31.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team DB | D7: la regressione `catalogo/test-comment-al-presente-catalogo-v1` (`ASSERZIONE`), rossa in CI a ogni corsa dall'11-11 e verde su dbdev | §3 D7 | — |
+| 1 | team DB | D7: la regressione `catalogo/test-comment-al-presente-catalogo-v1` (`ASSERZIONE`), rossa in CI a ogni corsa dall'11-11 e verde su dbdev. ✍️ Causa letta e corretta dal `20261114-98`; il file è tolto il 2026-11-17 (giro 5 di `brief-db-revisione-documenti`), il perimetro è in `dbops/test-comment-al-presente-v1`. Si chiude alla prima corsa verde della suite dopo l'apply di quel giro | §3 D7 | l'apply del giro 5 |
 | 2 | Tid | committare la riga di contesto di `config/test-stati-raggiungibili-v1` (già nell'albero di `dev/db-tid`): senza, il «Guardrail preambolo pgTAP» tiene rosso `e10c71f1d` (merge della PR #114) | §3 D7 | — |
 | 3 | Tid | `pgtap-baseline-ci-rientrati.sh 43577800656`: toglie il rientrato `vendite/test-documento-trattenuto-da-lotto-v1` (22 → 21); la regressione la segnala e non la registra. Il log della corsa scade in pochi giorni | §3 D7 | — |
 | 4 | team DB | D7: i 21 rossi noti della CI (16 `ASSERZIONE`, 5 `ERRORE_FIXTURE`), uno per uno | §3 D7 | — |
@@ -246,6 +246,13 @@ ma da quel giorno nessuna corsa della suite è verde:
   ogni merge di `dev/db-tid` su `Tito-dev` porta la CI rossa. La causa non è letta qui: il runner
   della CI stampa solo il nome del file, e quale dei cinque test cade (e su quale `COMMENT`) si vede
   rilanciandolo sullo scratch ricostruito.
+  ✍️ *Aggiornato il 2026-11-17.* La causa la scrive la testata del `20261114-98`: il COMMENT di
+  `catalogo.articoli.modo_approvvigionamento_id` lo riscriveva `80_data/20260913-11`, che su un
+  database ricostruito da zero gira dopo `00_schema` e rimetteva il testo vecchio (asserzioni 2 e 4).
+  Il `-98` lo riscrive dopo, in `80_data`. Il file non c'è più: il giro 5 di
+  `brief-db-revisione-documenti` (§15) ha portato `catalogo` nel presidio unico
+  `dbops/test-comment-al-presente-v1`, che ora vede anche i trigger e le policy. La trappola delle fasi tardive è
+  scritta in `linee-guida-sql` §5d. Resta da vedere la prima corsa verde della suite dopo l'apply.
 * Il rientrato non è stato tolto: la corsa è del 14-11 mattina, e il log scade.
 * All'ultimo merge (`e10c71f1d`, PR #114) la suite non è nemmeno partita: il «Guardrail preambolo
   pgTAP» è rosso su `config/test-stati-raggiungibili-v1` senza la riga di contesto. La correzione è
@@ -277,7 +284,8 @@ lasciato
 §5, §7, §9, §11):
 
 * 🔴 **prima di tutto, la regressione** `test-comment-al-presente-catalogo-v1` (sopra): finché c'è,
-  la CI non dice niente dei rossi nuovi;
+  la CI non dice niente dei rossi nuovi. ✍️ Corretta dal `20261114-98`, file tolto il 2026-11-17: si
+  chiude alla prima corsa verde;
 * ⏳ **i rossi noti della CI**, uno per uno: **22** a registro al 14-11, **21** tolto il rientrato —
   16 `ASSERZIONE` (fra cui i file su identità digitali e `auth_user`, il caso dei «due mondi» di
   `django` in CI, e la famiglia 5 del lotto 4 in `vendite`) e 5 `ERRORE_FIXTURE`
@@ -614,7 +622,8 @@ rossi noti.
 ### 🔴 La catena
 
 * [ ] **D7, la CI di `Tito-dev`** — rossa a ogni corsa della suite dall'11-11: la regressione
-      `catalogo/test-comment-al-presente-catalogo-v1`, il rientrato da togliere
+      `catalogo/test-comment-al-presente-catalogo-v1` (✍️ corretta dal `20261114-98`, file tolto il
+      2026-11-17: si chiude alla prima corsa verde), il rientrato da togliere
       (`vendite/test-documento-trattenuto-da-lotto-v1`) e la riga di contesto di
       `config/test-stati-raggiungibili-v1` da committare (§3 D7, «La CI di `Tito-dev`
       dall'11-11»).

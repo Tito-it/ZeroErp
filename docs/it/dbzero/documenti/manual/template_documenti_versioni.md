@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_documenti_versioni`
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -97,7 +97,8 @@ vuol dire «senza limite» da quel lato. L'ordine delle due date lo verifica il 
 Due versioni attive fuori bozza dello stesso modello non si sovrappongono nel tempo
 (`ex_template_documenti_versioni_no_overlap_pubblicata`): le bozze e le versioni spente restano fuori
 dal vincolo. Il predicato è dichiarato anche nel registro `dbops.automazione_overlap`, da cui il
-framework ricrea il vincolo. Il backend traduce la violazione per nome in `E_DOCUMENTI_VERSIONE_OVERLAP`.
+framework ricrea il vincolo. L'unica strada dell'applicazione verso il vincolo è la pubblicazione,
+che rende la violazione col suo codice, `E_DOCUMENTI_VERSIONE_OVERLAP`.
 
 ---
 
@@ -166,6 +167,8 @@ versioni dello standard non si cancellano dall'applicazione.
 * `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` — modifica di una versione fuori bozza, o della sua
   origine.
 * `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` — cancellazione di una versione fuori bozza o già usata.
+* `E_DOCUMENTI_VERSIONE_OVERLAP` — una pubblicazione che si sovrappone a una versione fuori bozza
+  (dalla pubblicazione).
 * `E_DOCUMENTI_TEMPLATE_DERIVAZIONE_INVALIDA` — origine che non è una versione dello standard dello
   stesso documento.
 * `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` — scrittura dall'applicazione su una versione dello

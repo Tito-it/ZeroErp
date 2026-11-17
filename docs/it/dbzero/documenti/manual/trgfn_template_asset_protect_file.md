@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_asset_protect_file`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,8 +36,8 @@ asset nuovo.
 
 La regola vale da subito, anche per un asset che nessun template ha ancora usato.
 
-Restano liberi descrizione, codice, meta, attivo e le date: spegnere l'asset o chiuderne la validità
-è il modo di ritirarlo. Il codice interno non cambia per un'altra ragione (il lock di colonna).
+Restano liberi descrizione, codice, il tipo (se ammette il formato del file), meta, attivo e le
+date: spegnere l'asset o chiuderne la validità è il modo di ritirarlo. Il codice interno non cambia per un'altra ragione (il lock di colonna).
 
 Il trigger scatta su ogni UPDATE e confronta le cinque colonne nel corpo: tutte e cinque sono
 obbligatorie, quindi il confronto non incontra valori vuoti.
@@ -53,8 +53,9 @@ obbligatorie, quindi il confronto non incontra valori vuoti.
 
 ### Test
 
-* `db/pgtap/documenti/test-documenti-template-asset.sql` — cambiare la chiave nello storage o
-  l'impronta è rifiutato; cambiare `meta` passa.
+* `db/pgtap/documenti/test-documenti-template-asset.sql` — ognuna delle cinque colonne del file è
+  ferma, anche su un asset spento; il codice interno lo ferma il lock; codice, descrizione, date,
+  attivo e `meta` sono liberi.
 
 ---
 

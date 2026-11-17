@@ -2,7 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-16
 
-**Riparte: Tid, con D-5 e F-1** (D-4 decisa: stesso trattamento di Q-3). La (C) è confermata (2026-11-16, §8.3-bis): il fornitore come il cliente,
+**Riparte: team DB, col giro 1, al via di Tid.** Tutte le decisioni sono prese (2026-11-16): la (C), D-4
+(stesso trattamento di Q-3), D-5 (nessuna riga da trattare), F-1 (giro 4, qui). La (C) è confermata (2026-11-16, §8.3-bis): il fornitore come il cliente,
 sul ruolo solo `FATT` obbligatorio. D-1 revocata, D-2 e D-3 senza oggetto. Il brief è stato riverificato sul catalogo di dbdev
 (§8): il caso e i due difetti reggono, ma la proposta (A) da sola non basta e il §4.2 tocca più sedi di quelle
 scritte. Nessun changeSet scritto.
@@ -10,17 +11,18 @@ scritte. Nessun changeSet scritto.
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | team DB | ✅ riverifica sullo stato di sviluppo (2026-11-16) | §8.1-8.2 | — |
-| 2 | Tid | le decisioni D-1 … D-5, e se F-1 entra qui | §8.3, §8.4 | 1 |
-| 3 | team DB | censimento degli indirizzi di ruolo non ammessi dalla natura del soggetto (sola lettura) | §4.2, §8.3 D-5 | 2 |
+| 2 | Tid | ✅ le decisioni: la (C), D-4, D-5, F-1 (2026-11-16) | §8.3, §8.3-bis, §8.4 | 1 |
+| 3 | team DB | censimento degli indirizzi di ruolo non ammessi dalla natura del soggetto (sola lettura): ✅ fatto il 2026-11-16, zero righe; si ripete prima dell'applicazione del giro 1 | §8.3 D-5 | 2 |
 | 4 | team DB | giro 1: CSV della matrice `FO` (riga 13 non obbligatoria, §8.3-bis), guard del §4.2, motivo nella check del ruolo, auto-clone filtrato per natura; `manual/fn_crea_fornitore.md` e guida degli indirizzi | §4.2, §8.2, §8.3-bis | 2, 3 |
 | 5 | Tid | giro 1 applicato, pgTAP | §5 | 4 |
 | 6 | team DB | giro 2: motivo nel cambio di natura, picker del tipo di ruolo con la natura | §8.2 (4, 3) | 5 |
 | 7 | BE/FE | il picker del tipo di ruolo con la natura (percorso al §6) | §6 | 6 |
 | 8 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 2 |
+| 8-bis | team DB | giro 4: gli obbligatori ricontrollati alla cancellazione e al cambio di tipo (F-1) | §8.4 | 5 |
 | 9 | BE/FE | il fornitore privato provato sul DB vero | §6 | 5 |
 | 10 | chi chiude | archiviazione in `work-done/` | — | tutti |
 
-Decisioni aperte di Tid: D-5 (§8.3), F-1 (§8.4). Prese: la (C), D-4 (2026-11-16). Lavoro fatto da committare: questo aggiornamento del
+Decisioni aperte di Tid: nessuna. Prese il 2026-11-16: la (C), D-4, D-5, F-1. Lavoro fatto da committare: questo aggiornamento del
 brief.
 
 **Brief vicini verificati (2026-11-16):** nessun brief aperto sugli stessi oggetti. Due chiusi il 2026-11-15
@@ -292,6 +294,8 @@ fatti di **struttura**, non conteggi.
   indirizzi di ruolo visibili):* **nessuna** riga di ruolo ha un tipo che la natura del soggetto non ammette, e
   nessun soggetto `PR` ha oggi il ruolo `FO`. Fatto datato: non decide niente sul guard, che serve comunque
   (§3.2), e va rifatto subito prima di applicare il giro 1.
+  ✅ *Chiusa da Tid il 2026-11-16:* nessuna riga da trattare. Il censimento si ripete prima dell'applicazione del
+  giro 1: una riga comparsa nel frattempo riapre D-5.
 
 ### 8.3-bis La proposta (C), speculare al cliente — ✅ confermata da Tid il 2026-11-16
 
@@ -338,3 +342,15 @@ qui; se ne parla solo se Tid lo vuole.
   l'app ha il `DELETE` su tutte e due (il BE cancella in `soggetti_repository.py`). Cancellare dopo la sede
   legale, o cambiarne il tipo, lascia il titolare senza obbligatorio. Decide Tid se entra qui o va nel registro
   dei residui aperti.
+  Verificato il 2026-11-16: il BE cancella con un `DELETE` suo (`delete_indirizzo_ruolo`,
+  `delete_indirizzo_soggetto` in `soggetti_repository.py`) e `tipo_indirizzo_id` è fra le colonne modificabili
+  (`INDIRIZZO_RUOLO_UPDATE_COLS`). Il percorso di D-4 («elimina l'indirizzo non ammesso e riprova») passa di qui.
+  ✅ *Decisa da Tid il 2026-11-16:* entra **qui, come giro 4**, separato dai primi tre. Forma proposta: alla
+  cancellazione di un indirizzo, o al cambio del suo tipo o del titolare, il DB ricontrolla gli obbligatori del
+  titolare a fine transazione (constraint trigger differito su `anagrafiche.indirizzi` e
+  `anagrafiche.indirizzi_soggetti`), con `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`; tace se il titolare stesso non c'è
+  più (cancellazione del soggetto o del ruolo). Il controllo degli obbligatori ha una sede sola, che leggono il
+  guard del titolare e quello nuovo (regola del 2). Nessuna modifica BE: il codice esiste già.
+  pgTAP: eliminare l'unico `FATT` di un ruolo `CL` → rifiuto; eliminarlo quando c'è il ripiego → accettato;
+  cambiare il tipo dell'unico obbligatorio → rifiuto; eliminare la sede legale di una società sul soggetto →
+  rifiuto; eliminare il ruolo con i suoi indirizzi → accettato; lo stesso sul layer soggetto.

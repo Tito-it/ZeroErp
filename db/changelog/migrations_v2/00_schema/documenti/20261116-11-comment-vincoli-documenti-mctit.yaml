@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI VINCOLI DI documenti CHE DICONO UNA REGOLA
+#   Giro 5 della revisione dello schema (pulizia e metadati, scelta Q19).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Un vincolo il cui nome dice tutto (_non_vuoto, _obj, _len, _pos, le FK,
+#   le chiavi primarie) resta senza COMMENT. Lo prendono quelli che fanno
+#   valere una regola che il nome non dice: gli esiti degli eventi, gli stati
+#   della versione, l'ordine e il principale dei file della stampa, le tre
+#   unicita' delle risorse, il numero della versione. Riscritti i due che
+#   portavano un brief e una data (chk_template_documenti_standard_senza_emittente,
+#   uq_template_documenti_id_tipo_sorgente). Nessun comportamento cambia.
+#
+#   Rollback: i COMMENT di prima (NULL dove non c'erano), letti dal catalogo
+#   di dbdev il 2026-11-17.
+#   Brief: brief-db-revisione-documenti, giro 5 (§15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261116-11-comment-vincoli-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20261116-11-comment-vincoli-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti: i COMMENT dei vincoli che dicono una regola non scritta nel nome; due riscritti al presente.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class WHERE oid = to_regclass('documenti.uq_documenti_generati_file_principale')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_documenti_generati_eventi_esito ON documenti.documenti_generati_eventi IS
+                  'L''esito di un evento della stampa: OK, KO o WARN. Una correzione si registra come evento nuovo, con esito KO o WARN.';
+              COMMENT ON CONSTRAINT chk_template_documenti_versioni_stato ON documenti.template_documenti_versioni IS
+                  'Gli stati di una versione: BOZZA, PUBBLICATA, OBSOLETA. Si nasce in BOZZA; gli altri due li scrive solo documenti.fn_pubblica_template_documento_versione (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON CONSTRAINT uq_documenti_generati_file_doc_tipo_ord ON documenti.documenti_generati_file IS
+                  'L''ordine dei file di una stampa: per ogni stampa e tipo di file, ogni numero d''ordine una volta sola.';
+              COMMENT ON INDEX documenti.uq_documenti_generati_file_principale IS
+                  'Al piu'' un file principale per stampa. Che ce ne sia uno lo chiede, a fine transazione, documenti.trgfn_documenti_generati_guard_file_principale.';
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_codice ON documenti.template_asset IS
+                  'Il codice leggibile di una risorsa e'' unico per azienda.';
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_codice_interno ON documenti.template_asset IS
+                  'Il codice interno di una risorsa e'' unico per azienda, senza tener conto delle date: lo stesso codice indica sempre gli stessi byte, e due risorse con lo stesso codice in periodi diversi non sono ammesse.';
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_sha256 ON documenti.template_asset IS
+                  'Lo stesso file si carica una volta sola per azienda, anche con due tipi diversi; due aziende possono avere lo stesso file.';
+              COMMENT ON CONSTRAINT uq_template_documenti_versioni_template_versione ON documenti.template_documenti_versioni IS
+                  'Il numero di una versione e'' unico nel suo modello. Una copia che lo trova preso nello stesso istante riceve E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE (documenti.fn_crea_bozza_da_versione).';
+              COMMENT ON CONSTRAINT chk_template_documenti_standard_senza_emittente ON documenti.template_documenti IS
+                  'Il modello standard non ha azienda, e solo lo standard puo'' non averla.';
+              COMMENT ON CONSTRAINT uq_template_documenti_id_tipo_sorgente ON documenti.template_documenti IS
+                  'Sovrainsieme della chiave primaria: non restringe niente. E'' il bersaglio della FK composta fk_fatture_stampa_coda_template_documento, che lega il modello indicato da una riga della coda di stampa delle fatture al tipo di documento e alla sorgente della riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_documenti_generati_eventi_esito ON documenti.documenti_generati_eventi IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_template_documenti_versioni_stato ON documenti.template_documenti_versioni IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_documenti_generati_file_doc_tipo_ord ON documenti.documenti_generati_file IS
+                  NULL;
+              COMMENT ON INDEX documenti.uq_documenti_generati_file_principale IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_codice ON documenti.template_asset IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_codice_interno ON documenti.template_asset IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_template_asset_emittente_sha256 ON documenti.template_asset IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_template_documenti_versioni_template_versione ON documenti.template_documenti_versioni IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_template_documenti_standard_senza_emittente ON documenti.template_documenti IS
+                  'Il modello standard non ha emittente, e solo lo standard puo'' non averlo. Brief: brief-db-modelli-documento-standard §4.1 Q-1.';
+              COMMENT ON CONSTRAINT uq_template_documenti_id_tipo_sorgente ON documenti.template_documenti IS
+                  'Sovrainsieme della chiave primaria: non restringe niente. E'' il bersaglio della FK composta fk_fatture_stampa_coda_template_documento, che lega l''override della coda di stampa al tipo di documento e alla sorgente della riga (brief-db-modelli-documento-standard §9.2 Q-3, 2026-10-20).';

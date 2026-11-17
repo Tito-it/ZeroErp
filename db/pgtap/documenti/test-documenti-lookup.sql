@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 -- Test: lookup documenti — unique codice/codice_interno + lock + seed idempotenti
 -- ------------------------------------------------------------
--- Indice test (1..14):
+-- Indice test (1..13):
 --  1) Seed PREVENTIVO presente in tipi_documento_output
 --  2) Seed WEASYPRINT presente in render_engine_documento
 --  3) Seed PDF_FINALE presente in tipi_file_documento
@@ -17,7 +17,6 @@
 -- 11) Lock columns: trigger su tipi_file_documento presente
 -- 12) Lock columns: trigger su render_engine_documento presente
 -- 13) L'applicazione non riscrive il codice: il vocabolario e' in sola lettura (42501)
--- 14) Codice_interno raw seed coerente con CSV (unicita' applicata sui 5 asset)
 --
 -- ⚠️ 5-8 e 13: dal giro dei vocabolari (2026-11-16) l'applicazione li legge
 --   soltanto. Il duplicato non si prova piu' con un INSERT, che come
@@ -43,7 +42,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(13);
 
 -- 1..4) Seed presenti
 SELECT ok(
@@ -139,17 +138,9 @@ SELECT throws_ok(
   'L''applicazione non riscrive il codice di PREVENTIVO: sola lettura'
 );
 
--- 14) Coerenza seed asset: assenza duplicati codice_interno
-SELECT is(
-  (SELECT count(*)::int FROM (
-     SELECT codice_interno
-       FROM documenti.tipi_asset_documento
-      GROUP BY codice_interno
-     HAVING count(*) > 1
-   ) dup),
-  0,
-  'Seed asset documenti: nessun codice_interno duplicato'
-);
+-- Il seed dei tipi di risorsa, per intero, e l'unicita' del codice interno
+-- dichiarata dal vincolo li asserisce test-documenti-seed-idempotenti (4, 8):
+-- contare qui i duplicati di una colonna UNIQUE non provava niente.
 
 SELECT * FROM finish();
 ROLLBACK;

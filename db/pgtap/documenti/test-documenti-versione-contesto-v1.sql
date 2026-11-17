@@ -4,12 +4,11 @@
 --
 -- Test: il patto fra una versione di template e la forma dei dati che legge.
 -- Oggetti:
---   documenti.template_documenti_versioni.versione_contesto      (20260930-14/-16)
---   documenti.fn_guard_versione_contesto                          (20260930-18)
---   documenti.trgfn_documenti_generati_guard_versione_contesto    (20260930-19)
---   trg_documenti_generati_a10_guard_versione_contesto_ins        (20260930-20)
--- La pubblicazione (20260930-21) e l'immutabilita' da PUBBLICATA (20260930-17)
--- hanno i loro test: test-fn-pubblica-template-documento-versione-v1 (8-11) e
+--   documenti.template_documenti_versioni.versione_contesto
+--   documenti.fn_guard_versione_contesto
+--   documenti.trgfn_documenti_generati_guard_versione_contesto
+--   trg_documenti_generati_a10_guard_versione_contesto_ins
+-- La pubblicazione e l'immutabilita' fuori bozza hanno i loro test: test-fn-pubblica-template-documento-versione-v1 (8-11) e
 -- test-documenti-template-versioni (10-11).
 -- Brief: brief-db-documenti-versione-contesto-template.md
 --

@@ -2,19 +2,26 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.documenti_generati_file
---   - guard A7-bis (immutabilita' file)
---   - C: indice parziale uq_documenti_generati_file_principale
---   - C: vincolo unique (documento_generato_id, file_tipo_id, ordinamento)
+--   - i dati di salvataggio di un file non cambiano (protect_file)
+--   - al piu' un principale per stampa (uq_documenti_generati_file_principale)
+--   - l'ordine per stampa e tipo (uq_documenti_generati_file_doc_tipo_ord)
 -- ------------------------------------------------------------
--- Indice test (1..8):
---  1) Setup: documento generato con un file principale
---  2) Un secondo file con is_principale=true sullo stesso documento bloccato
---  3) Un secondo file con is_principale=false sullo stesso documento ammesso
---  4) Stesso (doc, file_tipo, ordinamento) bloccato
---  5) Stesso (doc, file_tipo) con ordinamento diverso ammesso
---  6) A7-bis: UPDATE storage_key bloccato
---  7) A7-bis: UPDATE is_principale bloccato
---  8) A7-bis: UPDATE meta (non protetto) ammesso
+-- Indice test (1..15):
+--  1) Setup: una stampa col suo file principale
+--  2) Un secondo principale sulla stessa stampa: uq_documenti_generati_file_principale
+--  3) Un secondo file non principale sulla stessa stampa: ammesso
+--  4) Stesso (stampa, tipo, ordinamento): uq_documenti_generati_file_doc_tipo_ord
+--  5) Stesso (stampa, tipo) con ordinamento diverso: ammesso
+--  6) storage_key non cambia: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE
+--  7) is_principale non cambia: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE
+--  8) meta e' libero
+--  9-14) non cambiano nemmeno la stampa, il tipo, il tipo MIME, il nome, il peso
+--        e l'impronta: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE
+-- 15) ordinamento e' libero
+-- ⚠️ Il cambio di tipo MIME e di tipo di file lo giudicherebbe anche il guard del
+--    formato (a10_tipo_ammette_formato), che viene dopo (a10_protect_file):
+--    parla protect_file, ed e' il codice atteso. Una stampa che non c'e'
+--    (2147483647) la fermerebbe la FK, che si giudica dopo i trigger BEFORE.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -38,18 +45,18 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
 --   documento stampato esista, e la chiave di un preventivo e' il suo uid.
 CREATE TEMP TABLE _dg_src AS
-SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg file', 'DRAFT') p;
+SELECT p.preventivo_uid, p.emittente_fiscale_id
+  FROM dbops.fn_pgtap_crea_preventivo('dg file', 'DRAFT') p;
 
 
-SELECT plan(8);
+SELECT plan(15);
 
 -- ============================================================
 -- Setup: documento generato + file principale
 -- ============================================================
 CREATE TEMP TABLE tmp_dgf_ctx AS
 SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)               AS emittente_id,
+  (SELECT emittente_fiscale_id FROM _dg_src)                     AS emittente_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO')                       AS sorgente_id,
   (SELECT t.id FROM documenti.tipi_documento_output t
@@ -57,7 +64,9 @@ SELECT
   (SELECT r.id FROM documenti.render_engine_documento r
     WHERE r.codice_interno = 'WEASYPRINT')                       AS render_id,
   (SELECT f.id FROM documenti.tipi_file_documento f
-    WHERE f.codice_interno = 'PDF_FINALE')                       AS file_tipo_id;
+    WHERE f.codice_interno = 'PDF_FINALE')                       AS file_tipo_id,
+  (SELECT f.id FROM documenti.tipi_file_documento f
+    WHERE f.codice_interno = 'ALLEGATO')                         AS allegato_tipo_id;
 
 WITH ins_t AS (
   INSERT INTO documenti.template_documenti (
@@ -67,7 +76,7 @@ WITH ins_t AS (
   )
   SELECT tipo_output_id, 'PGTAP-DGF', 'PGTAP_DGF', 'Template per file',
          sorgente_id, 'pgtap.builder', emittente_id, false, true
-    FROM tmp_dgf_ctx WHERE emittente_id IS NOT NULL
+    FROM tmp_dgf_ctx
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dgf_template FROM ins_t;
@@ -75,20 +84,20 @@ SELECT id INTO TEMP TABLE tmp_dgf_template FROM ins_t;
 WITH ins_v AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
-    render_engine_id, valido_dal, valido_al, versione_contesto
+    render_engine_id, versione_contesto
   )
   SELECT (SELECT id FROM tmp_dgf_template),
          1, 'BOZZA', 'v1', '<html>v1</html>',
-         (SELECT render_id FROM tmp_dgf_ctx),
-         DATE '2026-01-01', DATE '2026-12-31', 1
+         (SELECT render_id FROM tmp_dgf_ctx), 1
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dgf_versione FROM ins_v;
 
 -- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
---   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+--   pubblicazione: la fixture lo percorre. La versione vale da una data passata
+--   e non scade: la stampa nasce solo dalla versione in uso alla data operativa.
 SELECT documenti.fn_pubblica_template_documento_versione(
-  (SELECT id FROM tmp_dgf_versione), DATE '2026-01-01', 1, DATE '2026-12-31');
+  (SELECT id FROM tmp_dgf_versione), script.fn_data_operativa() - 30, 1, NULL);
 
 -- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
 --   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
@@ -125,8 +134,8 @@ SELECT ok(
 -- 2) C: secondo file is_principale=true sullo stesso documento bloccato
 --    (indice parziale uq_documenti_generati_file_principale)
 -- ============================================================
-SELECT throws_ok(
-  $$INSERT INTO documenti.documenti_generati_file (
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$INSERT INTO documenti.documenti_generati_file (
       documento_generato_id, file_tipo_id, mime_type, file_name,
       file_size_bytes, storage_key, sha256, ordinamento, is_principale
     )
@@ -134,10 +143,9 @@ SELECT throws_ok(
            (SELECT file_tipo_id FROM tmp_dgf_ctx),
            'application/pdf', 'altro.pdf',
            5120, 's3://bucket/pgtap/altro.pdf',
-           repeat('e', 64), 2, true$$,
-  '23505',
-  NULL,
-  'C: secondo file is_principale=true sullo stesso documento bloccato'
+           repeat('e', 64), 2, true$$),
+  'uq_documenti_generati_file_principale',
+  '2) un secondo principale sulla stessa stampa: uq_documenti_generati_file_principale'
 );
 
 -- ============================================================
@@ -164,8 +172,8 @@ SELECT is(
 -- ============================================================
 -- 4) C: stesso (doc, file_tipo, ordinamento) bloccato
 -- ============================================================
-SELECT throws_ok(
-  $$INSERT INTO documenti.documenti_generati_file (
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$INSERT INTO documenti.documenti_generati_file (
       documento_generato_id, file_tipo_id, mime_type, file_name,
       file_size_bytes, storage_key, sha256, ordinamento, is_principale
     )
@@ -173,10 +181,9 @@ SELECT throws_ok(
            (SELECT file_tipo_id FROM tmp_dgf_ctx),
            'application/pdf', 'altro2.pdf',
            1024, 's3://bucket/pgtap/altro2.pdf',
-           repeat('c', 64), 1, false$$,
-  '23505',
-  NULL,
-  'C: stesso (doc, file_tipo, ordinamento) bloccato (uq_doc_tipo_ord)'
+           repeat('c', 64), 1, false$$),
+  'uq_documenti_generati_file_doc_tipo_ord',
+  '4) stesso (stampa, tipo, ordinamento): uq_documenti_generati_file_doc_tipo_ord'
 );
 
 -- ============================================================
@@ -193,28 +200,26 @@ SELECT is(
 );
 
 -- ============================================================
--- 6) A7-bis: UPDATE storage_key bloccato
+-- 6) storage_key non cambia
 -- ============================================================
-SELECT throws_ok(
-  $$UPDATE documenti.documenti_generati_file
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.documenti_generati_file
        SET storage_key = 's3://hack/finale.pdf'
-     WHERE id = (SELECT id FROM tmp_dgf_file)$$,
-  NULL,
-  NULL,
-  'A7-bis: UPDATE storage_key bloccato'
+     WHERE id = (SELECT id FROM tmp_dgf_file)$$),
+  'E_DOCUMENTI_GENERATO_FILE_IMMUTABILE',
+  '6) storage_key non cambia: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE'
 );
 
--- 7) A7-bis: UPDATE is_principale bloccato
-SELECT throws_ok(
-  $$UPDATE documenti.documenti_generati_file
+-- 7) is_principale non cambia
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.documenti_generati_file
        SET is_principale = false
-     WHERE id = (SELECT id FROM tmp_dgf_file)$$,
-  NULL,
-  NULL,
-  'A7-bis: UPDATE is_principale bloccato'
+     WHERE id = (SELECT id FROM tmp_dgf_file)$$),
+  'E_DOCUMENTI_GENERATO_FILE_IMMUTABILE',
+  '7) is_principale non cambia: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE'
 );
 
--- 8) A7-bis: UPDATE meta (non protetto) ammesso
+-- 8) meta e' libero
 UPDATE documenti.documenti_generati_file
    SET meta = '{"checked": true}'::jsonb
  WHERE id = (SELECT id FROM tmp_dgf_file);
@@ -223,7 +228,36 @@ SELECT is(
   (SELECT meta->>'checked' FROM documenti.documenti_generati_file
     WHERE id = (SELECT id FROM tmp_dgf_file)),
   'true',
-  'A7-bis: UPDATE meta (non protetto) ammesso'
+  '8) meta e'' libero'
+);
+
+-- 9-14) gli altri dati di salvataggio
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE documenti.documenti_generati_file SET %s WHERE id = %s',
+    c.set_clause, (SELECT id FROM tmp_dgf_file))),
+  'E_DOCUMENTI_GENERATO_FILE_IMMUTABILE',
+  c.n || ') ' || c.colonna || ' non cambia: E_DOCUMENTI_GENERATO_FILE_IMMUTABILE')
+  FROM (VALUES
+    (9,  'documento_generato_id', 'documento_generato_id = 2147483647'),
+    (10, 'file_tipo_id',          format('file_tipo_id = %s', (SELECT allegato_tipo_id FROM tmp_dgf_ctx))),
+    (11, 'mime_type',             'mime_type = ''image/png'''),
+    (12, 'file_name',             'file_name = ''altro-nome.pdf'''),
+    (13, 'file_size_bytes',       'file_size_bytes = file_size_bytes + 1'),
+    (14, 'sha256',                'sha256 = md5(sha256) || md5(sha256)')
+  ) AS c(n, colonna, set_clause)
+ ORDER BY c.n;
+
+-- 15) ordinamento e' libero
+UPDATE documenti.documenti_generati_file
+   SET ordinamento = 99
+ WHERE id = (SELECT id FROM tmp_dgf_file);
+
+SELECT is(
+  (SELECT ordinamento FROM documenti.documenti_generati_file
+    WHERE id = (SELECT id FROM tmp_dgf_file)),
+  99,
+  '15) ordinamento e'' libero'
 );
 
 SELECT * FROM finish();

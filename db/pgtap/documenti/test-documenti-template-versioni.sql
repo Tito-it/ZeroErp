@@ -2,25 +2,29 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.template_documenti_versioni
---   - anti-overlap PUBBLICATA (EXCLUDE gist)
---   - guard A1 (immutabilita' PUBBLICATA)
---   - guard A2 (delete block PUBBLICATA/OBSOLETA/usata)
---   - daterange validita auto-calcolata da trigger
+--   - la non sovrapposizione delle versioni fuori bozza, col codice del verbo
+--   - fuori bozza la versione non cambia (protect_pubblicata)
+--   - quali versioni si cancellano (block_delete)
+--   - la validita' generata dalle date
 -- ------------------------------------------------------------
--- Indice test (1..11):
---  1) Setup: emittente fiscale disponibile, template di base creato
---  2) Validita' calcolata automaticamente (colonna generata)
---  3) Anti-overlap: due PUBBLICATA attive con range sovrapposti bloccate
---  4) Anti-overlap: range disgiunto ammesso
---  5) Guard A1: UPDATE html_template su PUBBLICATA bloccato
---  6) Guard A1: UPDATE valido_dal su PUBBLICATA bloccato
---  7) Guard A1: UPDATE meta (campo non protetto) ammesso anche su PUBBLICATA
---  8) Guard A2: DELETE su PUBBLICATA bloccato
---  9) Guard A2: DELETE su BOZZA non usata ammesso
--- 10) Guard A1: UPDATE versione_contesto su PUBBLICATA bloccato (20260930-17)
--- 11) versione_contesto si cambia su una BOZZA (D-C4)
+-- Indice test (1..12):
+--  1) Setup: il modello dell'azienda della sessione
+--  2) Validita' calcolata dalle date (colonna generata)
+--  3) Una pubblicazione che si sovrappone a una versione fuori bozza:
+--     E_DOCUMENTI_VERSIONE_OVERLAP, dal verbo
+--  4) Una pubblicazione su un periodo disgiunto: ammessa
+--  5) html_template di una PUBBLICATA non cambia: E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+--  6) valido_dal di una PUBBLICATA non cambia: E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+--  7) meta e' libero anche su una PUBBLICATA
+--  8) DELETE di una PUBBLICATA: E_DOCUMENTI_VERSIONE_DELETE_BLOCKED
+--  9) DELETE di una BOZZA che nessuna stampa ha usato: ammesso
+-- 10) versione_contesto di una PUBBLICATA non cambia: E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE
+-- 11) versione_contesto si cambia su una BOZZA, anche verso una forma non ancora prodotta
+-- 12) DELETE di una OBSOLETA: E_DOCUMENTI_VERSIONE_DELETE_BLOCKED
 --     (10-11 girano prima di 8-9: il 9 cancella la BOZZA che serve all'11)
--- Brief versione_contesto: brief-db-documenti-versione-contesto-template.md
+-- ⚠️ Il ramo «bozza usata da una stampa» di block_delete non si costruisce: una
+--    stampa nasce solo dalla versione in uso (documenti.fn_template_motivo_non_stampabile),
+--    e il ramo resta per le stampe nate prima di quella regola.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -40,15 +44,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(12);
 
 -- ============================================================
 -- Setup contesto + template di base
 -- ============================================================
 CREATE TEMP TABLE tmp_tdv_ctx AS
 SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)                      AS emittente_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO')                              AS sorgente_id,
   (SELECT t.id FROM documenti.tipi_documento_output t
@@ -59,21 +61,22 @@ SELECT
 WITH ins AS (
   INSERT INTO documenti.template_documenti (
     tipo_documento_output_id, codice, codice_interno, descrizione,
-    sorgente_tipo_id, context_builder_code, emittente_fiscale_id,
-    is_default, attivo
+    sorgente_tipo_id, context_builder_code, is_default, attivo
   )
   SELECT tipo_output_id, 'PGTAP-TDV', 'PGTAP_TDV', 'Template per test versioni',
-         sorgente_id, 'pgtap.builder', emittente_id, false, true
+         sorgente_id, 'pgtap.builder', false, true
     FROM tmp_tdv_ctx
-   WHERE emittente_id IS NOT NULL
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_tdv_template FROM ins;
 
--- 1) Pre-condizione: template creato (e quindi emittente disponibile)
+-- 1) Pre-condizione: il modello nasce con l'azienda della sessione
+--    (script.trgfn_default_emittente_fiscale)
 SELECT ok(
-  (SELECT COUNT(*) > 0 FROM tmp_tdv_template),
-  'Setup: emittente fiscale disponibile, template di base creato'
+  (SELECT t.emittente_fiscale_id IS NOT NULL
+     FROM documenti.template_documenti t
+    WHERE t.id = (SELECT id FROM tmp_tdv_template)),
+  '1) il modello nasce con l''azienda della sessione'
 );
 
 -- ============================================================
@@ -118,14 +121,13 @@ SELECT (SELECT id FROM tmp_tdv_template),
        (SELECT render_id FROM tmp_tdv_ctx),
        DATE '2026-04-01', DATE '2026-09-30', 1;
 
-SELECT throws_ok(
-  $$SELECT documenti.fn_pubblica_template_documento_versione(
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$SELECT documenti.fn_pubblica_template_documento_versione(
       (SELECT id FROM documenti.template_documenti_versioni
         WHERE template_documento_id = (SELECT id FROM tmp_tdv_template) AND versione = 2),
-      DATE '2026-01-01', 1, DATE '2026-09-30')$$,
-  '23P01',
-  NULL,
-  'Anti-overlap: PUBBLICATA con range sovrapposto bloccata'
+      DATE '2026-01-01', 1, DATE '2026-09-30')$$),
+  'E_DOCUMENTI_VERSIONE_OVERLAP',
+  '3) la sovrapposizione con una versione fuori bozza: E_DOCUMENTI_VERSIONE_OVERLAP, dal verbo'
 );
 
 -- 4) Anti-overlap: range disgiunto ammesso
@@ -152,27 +154,25 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) Guard A1: immutabilita' PUBBLICATA su html_template
+-- 5) Fuori bozza html_template non cambia
 -- ============================================================
-SELECT throws_ok(
-  $$UPDATE documenti.template_documenti_versioni
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.template_documenti_versioni
        SET html_template = '<html>HACK</html>'
      WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-       AND versione = 1$$,
-  NULL,
-  NULL,
-  'A1: UPDATE html_template su PUBBLICATA bloccato'
+       AND versione = 1$$),
+  'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+  '5) html_template di una PUBBLICATA non cambia'
 );
 
--- 6) Guard A1: UPDATE valido_dal su PUBBLICATA bloccato
-SELECT throws_ok(
-  $$UPDATE documenti.template_documenti_versioni
+-- 6) valido_dal di una PUBBLICATA non cambia
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.template_documenti_versioni
        SET valido_dal = DATE '2025-01-01'
      WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-       AND versione = 1$$,
-  NULL,
-  NULL,
-  'A1: UPDATE valido_dal su PUBBLICATA bloccato'
+       AND versione = 1$$),
+  'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+  '6) valido_dal di una PUBBLICATA non cambia'
 );
 
 -- 7) UPDATE meta (campo non in elenco protetto) ammesso anche su PUBBLICATA
@@ -187,7 +187,7 @@ SELECT is(
     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
       AND versione = 1),
   'true',
-  'A1: UPDATE meta (non protetto) ammesso anche su PUBBLICATA'
+  '7) meta e'' libero anche su una PUBBLICATA'
 );
 
 -- ============================================================
@@ -195,19 +195,19 @@ SELECT is(
 -- ============================================================
 -- ⚠️ Prima del test 8/9: il 9 cancella la v2, che qui serve come BOZZA.
 -- 10) Su una PUBBLICATA la forma non si cambia: aggirerebbe il controllo fatto
---     alla pubblicazione. throws_like sulla frase del Guard A1, non un NULL
---     generico: il rifiuto deve venire da lui, non da un CHECK.
-SELECT throws_like(
-  $$UPDATE documenti.template_documenti_versioni
+--     alla pubblicazione. Il codice dice che il rifiuto viene dal guard dello
+--     stato, non da un CHECK.
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.template_documenti_versioni
        SET versione_contesto = 2
      WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-       AND versione = 1$$,
-  '%versione pubblicata%non puo''%modificata%',
-  'A1: UPDATE versione_contesto su PUBBLICATA bloccato (20260930-17)'
+       AND versione = 1$$),
+  'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+  '10) versione_contesto di una PUBBLICATA non cambia'
 );
 
 -- 11) Su una BOZZA si': e' cosi' che si prepara la versione per la forma
---     successiva (D-C4), anche una forma che il builder non produce ancora.
+--     successiva, anche una forma che il builder non produce ancora.
 UPDATE documenti.template_documenti_versioni
    SET versione_contesto = 7
  WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
@@ -218,22 +218,21 @@ SELECT is(
     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
       AND versione = 2),
   7,
-  'D-C4: su una BOZZA versione_contesto si cambia, anche verso una forma non ancora prodotta'
+  '11) su una BOZZA versione_contesto si cambia, anche verso una forma non ancora prodotta'
 );
 
 -- ============================================================
--- 8) Guard A2: DELETE su PUBBLICATA bloccato
+-- 8) DELETE di una PUBBLICATA
 -- ============================================================
-SELECT throws_ok(
-  $$DELETE FROM documenti.template_documenti_versioni
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$DELETE FROM documenti.template_documenti_versioni
      WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
-       AND versione = 1$$,
-  NULL,
-  NULL,
-  'A2: DELETE su versione PUBBLICATA bloccato'
+       AND versione = 1$$),
+  'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+  '8) una PUBBLICATA non si cancella: E_DOCUMENTI_VERSIONE_DELETE_BLOCKED'
 );
 
--- 9) Guard A2: DELETE su BOZZA non usata ammesso
+-- 9) DELETE di una BOZZA che nessuna stampa ha usato
 DELETE FROM documenti.template_documenti_versioni
  WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
    AND versione = 2;
@@ -244,7 +243,33 @@ SELECT ok(
      WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
        AND versione = 2
   ),
-  'A2: DELETE su BOZZA non usata ammesso'
+  '9) una BOZZA che nessuna stampa ha usato si cancella'
+);
+
+-- ============================================================
+-- 12) DELETE di una OBSOLETA
+--     La v4 parte dentro la v3: pubblicandola, la v3 diventa OBSOLETA, chiusa
+--     al giorno prima.
+-- ============================================================
+INSERT INTO documenti.template_documenti_versioni (
+  template_documento_id, versione, stato, titolo, html_template,
+  render_engine_id, versione_contesto
+)
+SELECT (SELECT id FROM tmp_tdv_template),
+       4, 'BOZZA', 'v4', '<html>v4</html>',
+       (SELECT render_id FROM tmp_tdv_ctx), 1;
+
+SELECT documenti.fn_pubblica_template_documento_versione(
+  (SELECT id FROM documenti.template_documenti_versioni
+    WHERE template_documento_id = (SELECT id FROM tmp_tdv_template) AND versione = 4),
+  DATE '2026-10-01', 1, NULL);
+
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$DELETE FROM documenti.template_documenti_versioni
+     WHERE template_documento_id = (SELECT id FROM tmp_tdv_template)
+       AND versione = 3 AND stato = 'OBSOLETA'$$),
+  'E_DOCUMENTI_VERSIONE_DELETE_BLOCKED',
+  '12) una OBSOLETA non si cancella: E_DOCUMENTI_VERSIONE_DELETE_BLOCKED'
 );
 
 SELECT * FROM finish();
