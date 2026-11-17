@@ -27,6 +27,7 @@ from apps.core.api.payload_validators import (
     parse_list_params,
     qp_bool_optional,
     qp_int_optional,
+    qp_str_upper,
 )
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.success_responses import success_response
@@ -38,7 +39,7 @@ from apps.documenti.services.template_admin_service import TemplateAdminService
 from apps.documenti.services.template_asset_admin_service import (
     TemplateAssetAdminService,
 )
-from apps.documenti.services.template_service import TemplateService
+from apps.documenti.services.template_service import STATI_VERSIONE, TemplateService
 from apps.documenti.services.template_versioni_admin_service import (
     TemplateVersioniAdminService,
 )
@@ -394,7 +395,11 @@ class ApiTemplateVersioniList(DomainAPIView):
         parameters=[
             param_ricerca_full(),
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="stato", type=str, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(
+                name="stato", type=str, location=OpenApiParameter.QUERY, required=False,
+                enum=list(STATI_VERSIONE),
+                description="Stato della versione; maiuscole o minuscole. Fuori elenco: 400 E_DOCUMENTI_VALIDATION.",
+            ),
             OpenApiParameter(
                 name="emittente_fiscale_id", type=int, location=OpenApiParameter.QUERY,
                 required=False,
@@ -423,7 +428,6 @@ class ApiTemplateVersioniList(DomainAPIView):
     #        `order_by`/`order_dir` sulla whitelist del repository, `search`
     #        dal catalogo, envelope `paginated_envelope`.
     def get(self, request: Request, template_id: int) -> JsonResponse:
-        stato = request.query_params.get("stato")
         # ⚠️ `default_order=""` e non "versione": senza `order_by` deve
         #    decidere il repository (`versione DESC`, la piu' recente in cima,
         #    come il preset). Una chiave qui arriverebbe senza verso e
@@ -433,7 +437,7 @@ class ApiTemplateVersioniList(DomainAPIView):
             request.user,
             int(template_id),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
-            stato=stato.strip().upper() if stato else None,
+            stato=qp_str_upper(request.query_params.get("stato")),
             search=p["search"],
             order_by=p["order_by"],
             order_dir=p["order_dir"],

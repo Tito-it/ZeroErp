@@ -144,6 +144,11 @@ class TemplateServiceVersioniTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             service.list_versioni(_make_user(), 42, stato="INESISTENTE")
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
+        # Parametro di query: il nome nel context, mai come `field` (BB
+        # `validate_enum_param`, 2026-11-17, BE8).
+        self.assertEqual(ctx.exception.context.get("parametro"), "stato")
+        self.assertNotIn("field", ctx.exception.context)
+        repo.list_versioni.assert_not_called()
 
     # 7. get_versione: template visibile + versione None -> 404 sulla versione.
     @patch(

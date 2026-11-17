@@ -12,9 +12,9 @@
 #        - clone_versione (la copia la fa il DB, `fn_crea_bozza_da_versione`,
 #          con le sostituzioni del payload)
 #        - pubblica_versione (transizione atomica BOZZA -> PUBBLICATA con
-#          valido_dal NOT NULL guard; EXCLUDE GiST DB blocca overlap con
-#          le altre versioni attive pubblicate o superate (OBSOLETA) —
-#          errore parlante via mapper; una bozza spenta la rifiuta il verbo
+#          valido_dal NOT NULL guard; il verbo DB rifiuta la sovrapposizione
+#          con le altre versioni attive pubblicate o superate (OBSOLETA)
+#          col suo codice, E_DOCUMENTI_VERSIONE_OVERLAP, e una bozza spenta
 #          (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA); la forma
 #          dei dati del builder del template passa al verbo DB, che rifiuta
 #          una versione che ne legge un'altra)
@@ -40,6 +40,7 @@ from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
@@ -53,7 +54,6 @@ E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_VERSIONE_PUBBLICATA_IMMUTABILE = "E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE"
 E_VERSIONE_DELETE_BLOCKED = "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED"
-E_VERSIONE_OVERLAP = "E_DOCUMENTI_VERSIONE_OVERLAP"
 
 # Chiavi ammesse in payload create versione (no `versione`/`stato` —
 # calcolati dal service; no `template_documento_id` — dal path).
@@ -104,16 +104,11 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         E_VALIDATION,
         "Numero versione gia' presente per il template (race condition: riprovare).",
     ),
-    # Codice overlap dedicato (409) — simmetrico a E_VENDITE_PROMO_OVERLAP /
-    # E_VENDITE_LISTINO_VERSIONE_OVERLAP. Testo allineato a error_policies
-    # (error_translator preferisce ServiceError.message su policy.user_message).
-    "ex_template_documenti_versioni_no_overlap_pubblicata": (
-        E_VERSIONE_OVERLAP,
-        "Le date di validita' si sovrappongono con un'altra versione "
-        "pubblicata o obsoleta del template. Scegli una data d'inizio "
-        "successiva a quella della versione piu' recente: la precedente "
-        "si chiude da sola.",
-    ),
+    # ⛔ Niente voce per `ex_template_documenti_versioni_no_overlap_pubblicata`:
+    #    il vincolo vale sulle versioni fuori bozza, e l'unica scrittura che le
+    #    raggiunge e' il verbo di pubblicazione, che rende il 23P01 col suo
+    #    codice (E_DOCUMENTI_VERSIONE_OVERLAP, dal 2026-11-17). Una voce qui non
+    #    scatterebbe mai e terrebbe una seconda copia della frase.
 }
 
 
@@ -297,8 +292,11 @@ class TemplateVersioniAdminService:
     # Scopo: Elimina fisicamente una versione BOZZA. Il trigger DB A2
     #        e' la difesa finale: se OLD.stato in ('PUBBLICATA','OBSOLETA')
     #        o se ci sono documenti_generati collegati, IntegrityError
-    #        -> E_DOCUMENTI_VERSIONE_DELETE_BLOCKED. Pre-check stato lato
-    #        service per messaggio piu' parlante prima del DB.
+    #        -> E_DOCUMENTI_VERSIONE_DELETE_BLOCKED. Il pre-check sullo stato
+    #        evita il giro al DB e solleva lo stesso codice con la frase del
+    #        catalogo: una frase scritta qui vincerebbe sulla policy
+    #        (`ErrorTranslator._apply_policy`) e direbbe la regola in un
+    #        secondo modo.
     def delete_versione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -310,7 +308,7 @@ class TemplateVersioniAdminService:
         if existing["stato"] != "BOZZA":
             ErrorManager.raise_error(
                 code=E_VERSIONE_DELETE_BLOCKED,
-                message="Solo versioni in stato BOZZA possono essere eliminate.",
+                message=ErrorPolicyRegistry.resolve(E_VERSIONE_DELETE_BLOCKED).user_message,
                 detail=f"stato_corrente={existing['stato']!r}",
             )
 
@@ -422,8 +420,9 @@ class TemplateVersioniAdminService:
 
     # Scopo: Transizione atomica BOZZA -> PUBBLICATA dal verbo DB
     #        `fn_pubblica_template_documento_versione`. Richiede valido_dal
-    #        non NULL. Il DB rifiuta l'overlap di range con le altre versioni
-    #        attive pubblicate o superate (EXCLUDE GiST) e una bozza spenta.
+    #        non NULL. Il verbo rifiuta la sovrapposizione con le altre
+    #        versioni attive pubblicate o superate (E_DOCUMENTI_VERSIONE_OVERLAP)
+    #        e una bozza spenta.
     #        Una seconda chiamata su una versione gia' fuori bozza si ferma
     #        qui, con E_DOCUMENTI_VALIDATION, senza toccare lo stato.
     def pubblica_versione(

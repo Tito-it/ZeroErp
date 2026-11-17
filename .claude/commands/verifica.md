@@ -84,6 +84,8 @@ come richiesta al team DB; nessun ripiego lato BE/FE nell'attesa.
   (ciò che aspetta l'ok di Tid o del team DB), **non verificato** (ciò che non
   hai potuto provare). Se non hai trovato niente, dillo in una riga e di' cosa
   hai guardato.
-- La sessione finisce con la revisione. Se Tid chiede lavoro nuovo (un altro
-  push del DB, un altro brief), ricordagli che conviene una sessione nuova: la
-  prossima revisione deve arrivare a mente fredda.
+- La frase sulla sessione nuova si scrive **solo** se Tid chiede, nella stessa
+  chat, lavoro nuovo che poi andrà rivisto (un altro push del DB, un altro
+  brief): chi l'ha scritto non lo rivede a mente fredda. Per seguiti della
+  revisione e domande si resta qui, senza la frase: ricaricare il contesto di
+  progetto costa token e non dà niente.

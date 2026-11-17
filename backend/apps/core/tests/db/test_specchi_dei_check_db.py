@@ -30,6 +30,7 @@ from __future__ import annotations
 from unittest import TestCase
 
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
+from apps.documenti.services.template_service import STATI_VERSIONE
 from apps.pagamenti.services.pagamenti_service import ORIGINI_VENDITA_CONTABILE
 from apps.vendite.db.commesse_repository import (
     STATI_APPROVAZIONE_ATTIVITA,
@@ -45,6 +46,7 @@ _SPECCHI: tuple[tuple[str, str, frozenset[str] | tuple[str, ...]], ...] = (
     ("vendite.commesse_attivita", "chk_commesse_attivita_stato_approvazione", STATI_APPROVAZIONE_ATTIVITA),
     ("vendite.commesse_attivita", "chk_commesse_attivita_tipo_movimento", TIPO_MOVIMENTO_VALUES),
     ("pagamenti.vendite_contabili", "chk_vendite_contabili_origine", ORIGINI_VENDITA_CONTABILE),
+    ("documenti.template_documenti_versioni", "chk_template_documenti_versioni_stato", STATI_VERSIONE),
     # La fase: lo stesso CHECK su ogni tabella di stati documento.
     *(
         (f"config.stati_doc_{t}", f"chk_stati_doc_{t}_fase", FASI_DOCUMENTO)

@@ -21,14 +21,15 @@
 #   4. update_pubblicata_rejected_at_service
 #   5. update_bozza_happy_path
 #   6. update_empty_payload_rejected
-#   7. delete_pubblicata_rejected_at_service
+#   7. delete_pubblicata_rejected_at_service (frase del catalogo, 2026-11-17)
 #   8. delete_bozza_happy_path
 #   9. clone_overrides_titolo_and_resets_dates
 #  10. pubblica_requires_valido_dal
 #  11. pubblica_delega_ordine_date_al_db
 #  12. pubblica_bozza_happy_path
 #  13. pubblica_already_pubblicata_rejected_at_service
-#  14. pubblica_overlap_mappato_a_codice_dedicato
+#  14. (ritirato il 2026-11-17: la sovrapposizione la rende il verbo DB,
+#      provata sul DB vero in documenti/tests/db/test_versione_contesto_db 4)
 #  15. create_senza_forma_dei_dati_rifiutata (2026-09-30)
 #  16. update_bozza_cambia_la_forma_dei_dati (2026-09-30)
 #  17. clone_copia_la_forma_dei_dati (2026-09-30)
@@ -68,6 +69,7 @@ def _patch_transaction_atomic():
         side_effect=_no_op_atomic,
     )
 
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.service_errors import ServiceError
 from apps.documenti.services.context_builders import (
     get_builder_del_template as _get_builder_vero,
@@ -359,6 +361,13 @@ class TemplateVersioniAdminServiceDeleteTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.delete_versione(_make_user(), 1, 11)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED")
+        # La frase e' quella del catalogo (policy), non una del service:
+        # il message del ServiceError vince sulla policy, e una seconda frase
+        # direbbe la stessa regola in un altro modo (2026-11-17).
+        self.assertEqual(
+            ctx.exception.message,
+            ErrorPolicyRegistry.resolve("E_DOCUMENTI_VERSIONE_DELETE_BLOCKED").user_message,
+        )
         repo.delete_versione.assert_not_called()
 
     # 8. BOZZA: delete OK.
@@ -495,26 +504,6 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.pubblica_versione.assert_not_called()
-
-    # 14. EXCLUDE parziale ripristinato 2026-06-02 (migration 20260602-05):
-    #     overlap fra versioni PUBBLICATE attive -> codice 409 dedicato
-    #     E_DOCUMENTI_VERSIONE_OVERLAP (armonizzazione, prima era E_DOCUMENTI_VALIDATION).
-    def test_pubblica_overlap_mappato_a_codice_dedicato(self) -> None:
-        svc, repo, _ = _service_with_mocks(
-            reader_methods={
-                "get_versione": dict(_BOZZA_VERSIONE), "get_template": _TEMPLATE,
-            },
-        )
-        repo.pubblica_versione.side_effect = IntegrityError(
-            'conflicting key value violates exclusion constraint '
-            '"ex_template_documenti_versioni_no_overlap_pubblicata"'
-        )
-        with self.assertRaises(ServiceError) as ctx:
-            svc.pubblica_versione(
-                _make_user(), 1, 11, {"valido_dal": "2026-06-01"}
-            )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_OVERLAP")
-        self.assertIn("sovrappongono", (ctx.exception.message or "").lower())
 
     # 18. La forma che arriva al verbo e' quella del builder DEL TEMPLATE
     #     (risolto dal suo `context_builder_code`), non quella dichiarata
