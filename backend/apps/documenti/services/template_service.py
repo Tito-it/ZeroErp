@@ -20,6 +20,7 @@ from PIL import Image, ImageOps
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.list_helpers import validate_enum_param
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.documenti.db.documenti_repository import DocumentiRepository
@@ -32,8 +33,13 @@ E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 # mostra in 2rem: 128 px restano nitidi anche su uno schermo ad alta densita'.
 LATO_MINIATURA = 128
 
-# Set CHECK chiuso v1 — coerente con DDL template_documenti_versioni.
-_STATI_VERSIONE_VALIDI: frozenset[str] = frozenset({"BOZZA", "PUBBLICATA", "OBSOLETA"})
+# Gli stati di una versione: lo SPECCHIO del CHECK
+# `chk_template_documenti_versioni_stato`, per rifiutare con un 400 il filtro
+# `stato` della lista prima della query (senza, un valore ignoto finirebbe nel
+# WHERE e la lista risponderebbe `200 []`). Il vocabolario e' un CHECK, non una
+# tabella: si specchia e lo specchio e' iscritto nel registro
+# `core/tests/db/test_specchi_dei_check_db.py`, che lo confronta col DB.
+STATI_VERSIONE: tuple[str, ...] = ("BOZZA", "PUBBLICATA", "OBSOLETA")
 
 
 class TemplateService:
@@ -147,12 +153,13 @@ class TemplateService:
         offset: int = 0,
     ) -> dict[str, Any]:
         self.get_template(user, template_id)  # 404 se fuori scope
-        if stato is not None and stato not in _STATI_VERSIONE_VALIDI:
-            ErrorManager.raise_error(
-                code="E_DOCUMENTI_VALIDATION",
-                message=f"Stato versione non valido: '{stato}'.",
-                detail=f"ammessi={sorted(_STATI_VERSIONE_VALIDI)!r}",
-            )
+        validate_enum_param(
+            stato,
+            allowed=STATI_VERSIONE,
+            param_name="stato",
+            error_code=E_VALIDATION,
+            function_name="documenti.template_service.list_versioni",
+        )
         rows, total = self._repo.list_versioni(
             template_id, attivo=attivo, stato=stato, search=search,
             order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,

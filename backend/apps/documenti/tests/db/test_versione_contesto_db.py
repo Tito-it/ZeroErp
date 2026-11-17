@@ -30,6 +30,11 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 3) VersioneContestoDbTests.test_vocabolari_della_versione
    i codici dei tre vocabolari si salvano; un valore che il vocabolario non
    ha e' un 400 E_DOCUMENTI_VALIDATION col campo, per ciascuna delle tre FK.
+4) VersioneContestoDbTests.test_pubblicazione_che_si_sovrappone
+   una seconda bozza pubblicata dallo stesso giorno della prima e' un 409
+   E_DOCUMENTI_VERSIONE_OVERLAP dal verbo (non piu' il 23P01 tradotto dal
+   service), con la frase del catalogo; la bozza resta BOZZA e la prima
+   resta PUBBLICATA.
 """
 from __future__ import annotations
 
@@ -210,6 +215,47 @@ class VersioneContestoDbTests(unittest.TestCase):
                         self.assertEqual(api.code, "E_DOCUMENTI_VALIDATION")
                         self.assertEqual(ErrorTranslator.get_http_status(api), 400)
                         self.assertEqual(tuple(api.fields or ()), (campo,))
+                raise Annulla
+        except Annulla:
+            pass
+
+    # 4. La sovrapposizione che la chiusura non risolve (stesso inizio di una
+    #    versione fuori bozza): dal 2026-11-17 la rende il verbo col suo codice
+    #    (brief-db-revisione-documenti §15, Q17). Il service non ha piu' una
+    #    voce per il vincolo: se il verbo smettesse di riconoscerlo, qui
+    #    arriverebbe il ripiego E_DOCUMENTI_VALIDATION, e il test lo vede.
+    def test_pubblicazione_che_si_sovrappone(self):
+        from apps.documenti.services.context_builders import get_builder
+        from apps.documenti.services.template_versioni_admin_service import (
+            TemplateVersioniAdminService,
+        )
+
+        forma = get_builder(_BUILDER).CONTEXT_VERSION
+        svc = TemplateVersioniAdminService()
+        try:
+            with transaction.atomic(), connection.cursor() as cur:
+                user, template, prima = self._bozza(cur, forma)
+                tid = template["id"]
+                payload = {"valido_dal": oggi_aziendale().isoformat()}
+                svc.pubblica_versione(user, tid, prima["id"], dict(payload))
+
+                seconda = svc.create_versione(user, tid, {
+                    "titolo": "Seconda", "html_template": "<p>y</p>",
+                    "render_engine_id": prima["render_engine_id"],
+                    "versione_contesto": forma,
+                })
+                api = self._rifiuto(
+                    lambda: svc.pubblica_versione(user, tid, seconda["id"], dict(payload))
+                )
+                self.assertEqual(api.code, "E_DOCUMENTI_VERSIONE_OVERLAP")
+                self.assertEqual(ErrorTranslator.get_http_status(api), 409)
+                self.assertIn("sovrappongono", api.message)
+                self.assertEqual(
+                    svc._reader.get_versione(user, tid, seconda["id"])["stato"], "BOZZA",
+                )
+                self.assertEqual(
+                    svc._reader.get_versione(user, tid, prima["id"])["stato"], "PUBBLICATA",
+                )
                 raise Annulla
         except Annulla:
             pass

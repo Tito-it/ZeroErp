@@ -2,14 +2,15 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-17 (giro 5 applicato)
 
-**Riparte: il team BE** con BE2, BE18, BE19 del giro 5 (§15.8, nessuna rottura), e **Tid** con la doc auto-generata del
+**Riparte: Tid** col commit di BE2, BE18, BE19 e BE8 (§15.10, fatte), la doc auto-generata del
 giro 5 e la decisione su `emittente_fiscale_id` della risorsa (§15.5). Il giro 5 («pulizia e metadati»: Q16-Q19;
-`20261116-10 … -16`) è verificato da `/verifica-db`, applicato il 2026-11-17 con i pgTAP verdi e committato (§15). In parallelo il team BE/FE ha BE6, BE6-bis e BE17 del giro 4
-(§14.6, nessuna rottura). Il giro 4 («risoluzione, scarto, asset»: D5, D9, D19, Q13; `20261116-05 … -09`) è applicato il
-2026-11-16 con i pgTAP verdi e committato in `90eb95a09a`, con la doc auto-generata rigenerata. I giri 1, 2 e 3 sono
-applicati e committati (§11, §12, §13; il giro 3 in `3367e5146e`). Il team BE/FE ha le ricadute del giro 2 (§12.6: ⛔ il backend si rompe sui lettori di
-`attivo`, BE11; FE1, le 21 chiavi i18n, prima del merge su `Tito-dev`) e quelle del giro 3, sbloccate e non
-bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (2026-11-16).
+`20261116-10 … -16`) è verificato da `/verifica-db`, applicato il 2026-11-17 con i pgTAP verdi e committato (§15);
+l'arrivo è verificato dalla sessione BE il 2026-11-17 (§15.9: nessuna rottura). Il giro 4 («risoluzione, scarto,
+asset»: D5, D9, D19, Q13; `20261116-05 … -09`) è applicato il 2026-11-16 con i pgTAP verdi e committato in
+`90eb95a09a`, con la doc auto-generata rigenerata. I giri 1, 2 e 3 sono applicati e committati (§11, §12, §13; il giro
+3 in `3367e5146e`). Le ricadute BE/FE dei giri 1-4 sono fatte e committate (§11.6, §12.7, §14.8; giri 3 e 4 in
+`36fca6d3a`). Delle due richieste del BE al team DB (§14.8), R2 è chiusa dal giro 5 e R1 è aperta (§15.9). Q13-Q15 e
+la segnalazione di §9 sono decise (2026-11-16).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -27,31 +28,27 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 12 | ✅ sessione DB | Giro 2 scritto: otto changeSet, undici CSV, un pgTAP nuovo, sei riscritti, pagine `manual/` e guida | §12 | 10 |
 | 14 | ✅ Tid | Giro 2 applicato col `-99` (2026-11-16): `ci_apply` passato, pgTAP verdi, doc auto-generata rigenerata | §12.5, §12.5-bis | 12 |
 | 17 | ✅ Tid | Il commit del giro 2 (`2fc00ffd1e`); il passaggio al team BE/FE | §12.1, §12.6 | 14 ✅ |
-| 15 | team BE/FE | BE5, BE11-BE14 — sbloccate, BE11 subito (il backend è rotto); FE1 prima del merge | §12.6 | 14 ✅ |
+| 15 | ✅ team BE/FE | BE5, BE11-BE14 e FE1 — fatte il 2026-11-16 | §12.6, §12.7 | 14 ✅ |
 | 16 | ✅ sessione DB | Giro 3 scritto: quattro changeSet, quattro codici errore, un pgTAP nuovo, otto riscritti, pagine `manual/` e guida | §13 | 14 |
 | 18 | ✅ Tid | Giro 3 applicato (2026-11-16): pgTAP verdi, doc auto-generata rigenerata | §13.5 | 16 |
 | 21 | ✅ Tid | Il commit del giro 3 (`3367e5146e`) | §13.1 | 18 ✅ |
-| 19 | ✅ team BE | BE15, BE16 del giro 3 — fatte (non committate), BE4 verificata | §13.6, §14.8 | 18 ✅ |
+| 19 | ✅ team BE | BE15, BE16 del giro 3 — fatte e committate (`36fca6d3a`), BE4 verificata | §13.6, §14.8 | 18 ✅ |
 | 22 | ✅ sessione DB | Giro 4 scritto: cinque changeSet, le note di sette codici, un pgTAP nuovo, quattro riscritti, pagine `manual/` e guida | §14 | 21 ✅ |
 | 23 | ✅ Tid | Giro 4 verificato (§14.7), applicato (2026-11-16), pgTAP verdi, doc auto-generata, commit `90eb95a09a` | §14.5 | 22 |
-| 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — sbloccate, nessuna rottura | §14.6 | 23 ✅ |
+| 24 | ✅ team BE/FE | BE6, BE6-bis, BE17 del giro 4 — fatte e committate (`36fca6d3a`); due richieste al team DB, R1 e R2 | §14.6, §14.8 | 23 ✅ |
 | 20 | ✅ sessione DB | Giro 5 scritto: sette changeSet, quattro CSV, il presidio dei COMMENT unico (la copia di `catalogo` tolta), dieci pgTAP riscritti, linee guida §5d e pagine `manual/` | §15 | 23 ✅ |
 | 25 | ✅ Tid | Le scelte Q16-Q19 del giro 5 (2026-11-17) | §15.3 | — |
 | 26 | ✅ Tid | Giro 5: `/verifica-db` (le policy nel presidio, §15.5), apply e pgTAP verdi (2026-11-17), commit | §15.7 | 20 |
 | 29 | Tid | La doc auto-generata del giro 5 (le schede delle 15 tabelle, delle viste, delle funzioni riscritte, dei trigger di `dbops`, le due policy) | §15.7 | 26 ✅ |
-| 27 | team BE | BE2, BE18, BE19 del giro 5 — sbloccate, nessuna rottura | §15.8 | 26 ✅ |
-| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 26 |
+| 27 | ✅ team BE | BE2, BE18, BE19 del giro 5 — fatte il 2026-11-17 (non committate) | §15.8, §15.10 | 26 ✅ |
+| 30 | Tid / team DB | R1 del BE: la sede unica del numero della versione nuova (oggi residuo del registro, §3.5; nessun giro lo apre) | §14.8, §15.9 | — |
+| 13 | ✅ team BE | Le altre ricadute di §6 — fatte; BE8 il 2026-11-17 (§15.10) | §6, §15.10 | 26 ✅ |
 | 28 | chi chiude | Archiviazione in `work-done/`, con le ricadute BE chiuse o passate a un brief BE | §10 | 26, 27 |
 
-**Decisioni aperte di Tid:** `emittente_fiscale_id` della risorsa, libero o fermo (§15.5, non blocca l'apply). **Da committare:** niente: il giro 5 è committato col brief, `PROJECT_CONTEXT.md` e
-`migliorie-generali-da-test-valutazione.md`.
-| 23 | Tid | `/verifica-db`, l'apply del giro 4, i pgTAP, la doc auto-generata, il commit | §14.5 | 22 |
-| 24 | ✅ team BE/FE | BE6, BE6-bis, BE17 del giro 4 — fatte (non committate); due richieste nuove al team DB | §14.6, §14.8 | 23 |
-| 20 | sessione DB | Il giro 5, col via di Tid | §2 | 23 |
-| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
-
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 4 (§14.1: cinque changeSet, i due CSV degli
-errori, il pgTAP nuovo e i quattro riscritti, le pagine `manual/` e la guida), questo brief, `PROJECT_CONTEXT.md`.
+**Decisioni aperte di Tid:** `emittente_fiscale_id` della risorsa, libero o fermo (§15.5, non blocca l'apply); R1,
+se la numerazione della versione nuova apre un giro DB o resta nel registro (§15.9). **Da committare:** questo brief
+(correzioni della sessione BE del 2026-11-17: il blocco doppio lasciato dal merge, le righe 15, 19, 24, la §14.8
+rimessa al suo posto, §15.9) le ricadute BE del giro 5 e BE8 (§15.10).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -320,16 +317,16 @@ Da girare al team quando il giro DB corrispondente è applicato, salvo BE1.
 
 | # | Giro | Che cosa |
 | --- | --- | --- |
-| BE1 | subito | `template_versioni_admin_service.py:108-113`: il testo dell'overlap («un'altra versione PUBBLICATA attiva … Chiudi quella esistente prima») è stantio dal 2026-11-14: contano anche le OBSOLETA, e il rimedio è una data d'inizio dopo la più recente (la precedente si chiude da sola). Il vincolo ha ancora il nome `ex_template_documenti_versioni_no_overlap_pubblicata`, quindi la traduzione aggancia; il translator preferisce `ServiceError.message`: l'utente vede il testo vecchio |
-| BE3 | 1 | Con D1 chiuso, spegnere un modello che ha stampato riesce: verificare che il form non lo pre-blocchi |
-| BE7 | 1 | D7/D11: gli stati e l'evento ritirati escono dal servizio (`document_generation_service.py:89` ha anche un commento «seed Fase A»; i commenti su `STORAGE_ORPHAN` a `:25`, `:420`, `:825`, `:1463`, `storage/base.py:33`, `template_asset_admin_service.py:265` diventano «file orfano, solo nel log»); il badge di `DocumentiGeneratiSorgenteList.vue:104` resta col solo `GENERATO` |
-| BE5 | 2 | D15: `_MIME_WHITELIST_PER_TIPO` (`template_asset_admin_service.py:53-75`) si ritira, la lista si legge dal vocabolario dei tipi di asset; il form può mostrare i formati ammessi; `ALTRO` esce dalla tendina. `_ENGINE_WHITELIST` (`render_service.py:54`) resta |
+| BE1 ✅ | subito | `template_versioni_admin_service.py:108-113`: il testo dell'overlap («un'altra versione PUBBLICATA attiva … Chiudi quella esistente prima») è stantio dal 2026-11-14: contano anche le OBSOLETA, e il rimedio è una data d'inizio dopo la più recente (la precedente si chiude da sola). Il vincolo ha ancora il nome `ex_template_documenti_versioni_no_overlap_pubblicata`, quindi la traduzione aggancia; il translator preferisce `ServiceError.message`: l'utente vede il testo vecchio |
+| BE3 ✅ | 1 | Con D1 chiuso, spegnere un modello che ha stampato riesce: verificare che il form non lo pre-blocchi |
+| BE7 ✅ | 1 | D7/D11: gli stati e l'evento ritirati escono dal servizio (`document_generation_service.py:89` ha anche un commento «seed Fase A»; i commenti su `STORAGE_ORPHAN` a `:25`, `:420`, `:825`, `:1463`, `storage/base.py:33`, `template_asset_admin_service.py:265` diventano «file orfano, solo nel log»); il badge di `DocumentiGeneratiSorgenteList.vue:104` resta col solo `GENERATO` |
+| BE5 ✅ | 2 | D15: `_MIME_WHITELIST_PER_TIPO` (`template_asset_admin_service.py:53-75`) si ritira, la lista si legge dal vocabolario dei tipi di asset; il form può mostrare i formati ammessi; `ALTRO` esce dalla tendina. `_ENGINE_WHITELIST` (`render_service.py:54`) resta |
 | BE4 ✅ | 3 | D3: l'applicazione non scrive più uno stato fuori bozza: verificare che nessun servizio lo faccia fuori da `fn_pubblica_template_documento_versione`. **Verificato dalla sessione DB il 2026-11-16** (§13.6): niente da fare |
-| BE6 | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB. Percorso intero in §14.6 |
-| BE6-bis | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n. Percorso intero in §14.6 |
-| BE17 | 4 | Note e fallback dei codici della risoluzione e della coerenza (§14.6) |
-| BE2 | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida». Percorso intero in §15.8, con BE18 e BE19 |
-| BE8 | — | `template_service.py:36`, `_STATI_VERSIONE_VALIDI`, ricopia gli stati della versione: da verificare se serve, o se si leggono dal DB |
+| BE6 ✅ | 4 | D19: `_ASSET_UTILIZZABILE_OGGI` (`documenti_repository.py:404`) legge la sede DB. Percorso intero in §14.6 |
+| BE6-bis ✅ | 4 | D5: lo stato nuovo `STANDARD_NON_STAMPA` della vista dello scarto, nella lista «Modelli documento» e nell'i18n. Percorso intero in §14.6 |
+| BE17 ✅ | 4 | Note e fallback dei codici della risoluzione e della coerenza (§14.6) |
+| BE2 ✅ | 5 | `error_policies_generated.py`: rigenerare dopo la pulizia delle descrizioni (§4.3); oggi i commenti portano brief, «Fase A», id e «PUBBLICATA, attiva e valida». Percorso intero in §15.8, con BE18 e BE19 |
+| BE8 ✅ | — | `template_service.py:36`, `_STATI_VERSIONE_VALIDI`, ricopia gli stati della versione: da verificare se serve, o se si leggono dal DB |
 
 ## 7. Le decisioni di Tid — tutte prese il 2026-11-14
 
@@ -908,6 +905,30 @@ e che vista e funzione nuove ricevano i privilegi dal loop di `ci_apply` (linee-
 * Corrette due frasi: la testata del pgTAP nuovo contava l'11 fra i casi corretti dal giro (era già rifiutato); la
   pagina di `fn_template_motivo_non_stampabile` non nominava le versioni scadute fra i casi di `NESSUNA_VERSIONE_VALIDA`.
 
+### 14.8 Esito BE/FE (sessione BE, 2026-11-17)
+
+* **BE6** — `_ASSET_UTILIZZABILE_OGGI` è un `EXISTS` su `documenti.vw_template_asset_utilizzabili`, letto dal render
+  (`get_asset_per_render`) e, con `NOT`, dal filtro `utilizzabili` della lista: la regola non ha più una copia BE.
+  Il test della stringa vuole la vista e nessuna colonna `validita`.
+* **BE6-bis** — `STANDARD_NON_STAMPA` nella colonna «Allineamento allo standard» e nel drawer: colore `warn`, le due
+  chiavi i18n.
+* **BE15, BE16, BE17** — Policy rigenerate; ripieghi senza `%s` per i quattro codici del giro 3, frasi nuove di
+  `E_DOCUMENTI_GENERATO_COERENZA` e `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE`; la voce del vincolo
+  `…_valido_dal_pubblicata` esce dalla mappa (dal backend non si raggiunge). Le due fixture DB che stampavano da una
+  bozza pubblicano dal verbo (`pubblica_per_stampare`, `documenti/tests/db/_stampa.py`).
+* **Rilettura (`/verifica`, 2026-11-17)** — 372 test sul DB vero (`documenti`, `vendite`) verdi. Corretti tre commenti
+  stantii di `template_versioni_admin_service.py`. Due richieste al team DB:
+  * **R1 — il numero della versione ha due sedi.** `create_versione` lo calcola nel backend
+    (`next_versione_num`, `MAX + 1`) e, se due scritture lo prendono insieme, la UNIQUE arriva come 400
+    `E_DOCUMENTI_VALIDATION` «race condition: riprovare»; la copia lo calcola nel DB (`fn_crea_bozza_da_versione`)
+    e lo stesso fatto è 409 `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`. Stesso caso, due regole e due codici. Si
+    chiede la sede DB anche per la nascita di una bozza nuova (un verbo, o il numero assegnato dal DB), col codice
+    della copia e la sua nota allargata a chi lo solleva; il backend ritira `next_versione_num` e la voce della
+    UNIQUE in `_UNIQUE_CONSTRAINTS`.
+  * **R2 — la causa di `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` è stantia** (`messaggi_errore.csv`): dice ancora
+    «una versione pubblicata, attiva e valida oggi» e «la sua versione pubblicata è spenta». Dal 2026-11-14 stampa
+    anche una OBSOLETA ancora in vigore (M6: «in vigore»).
+
 ## 15. Giro 5 — pulizia e metadati: il censimento sul vivo, 2026-11-16
 
 Via di Tid il 2026-11-16 («riparti per questa attività il giro 5»). §3.4, §4 e §5 sono del 2026-11-14: i giri 1-4
@@ -1143,30 +1164,59 @@ delle fasi tardive); pagine `manual/` di `fn_pubblica_template_documento_version
 | # | File | Che cosa |
 | --- | --- | --- |
 | BE2 | `backend/apps/core/services/error_policies_generated.py` (rigenerato) | Le note riscritte di otto codici (§15.4): `E_DOCUMENTI_GENERATO_DELETE_BLOCKED`, `_VERSIONE_OVERLAP`, `_VERSIONE_CONTESTO_DIVERSA`, `_VERSIONE_CONTESTO_NON_VERIFICABILE`, `_VALORE_NUMERICO_NON_FINITO`, `_TEMPLATE_STANDARD_SOLA_LETTURA`, `_TEMPLATE_DERIVAZIONE_INVALIDA`, `_PERSONALIZZA_NON_STANDARD` |
-| BE18 | `backend/apps/documenti/services/template_versioni_admin_service.py:105-114` (la voce `ex_template_documenti_versioni_no_overlap_pubblicata` di `_UNIQUE_CONSTRAINTS`); `backend/apps/documenti/tests/services/test_template_versioni_admin_service.py:500-516`; `docs/it/backend/documenti/manual/api_documenti_templates.md:536-545`, `:718` | La traduzione del 23P01 è irraggiungibile: la sovrapposizione arriva dal verbo come `E_DOCUMENTI_VERSIONE_OVERLAP`. La voce esce; il test che simula l'`IntegrityError` si riscrive sul codice che arriva dal DB; la doc dell'API dice che lo solleva la pubblicazione |
-| BE19 | `backend/apps/core/services/error_messages_fallback.py:445`, `:448`, `:470`, `:540`, `:541` | Se il fallback ricopia il catalogo: i messaggi riscritti di `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`, `_GENERATO_DELETE_BLOCKED`, `_VERSIONE_DELETE_BLOCKED` (non dice più «contrassegnarla come OBSOLETA») e dei due `E_EVENTO_DOCUMENTO_*_VIETATA` (senza «append-only») |
+| BE18 | `backend/apps/documenti/services/template_versioni_admin_service.py:107-116` (la voce `ex_template_documenti_versioni_no_overlap_pubblicata` di `_UNIQUE_CONSTRAINTS`); `backend/apps/documenti/tests/services/test_template_versioni_admin_service.py:500-516`; `docs/it/backend/documenti/manual/api_documenti_templates.md:548-557`, `:652-660`, `:734` | La traduzione del 23P01 è irraggiungibile: la sovrapposizione arriva dal verbo come `E_DOCUMENTI_VERSIONE_OVERLAP`. La voce esce; il test che simula l'`IntegrityError` si riscrive sul codice che arriva dal DB; la doc dell'API dice che lo solleva la pubblicazione |
+| BE19 | `backend/apps/core/services/error_messages_fallback.py:445`, `:450`, `:473`, `:548`, `:549` | Se il fallback ricopia il catalogo: i messaggi riscritti di `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`, `_GENERATO_DELETE_BLOCKED`, `_VERSIONE_DELETE_BLOCKED` (non dice più «contrassegnarla come OBSOLETA») e dei due `E_EVENTO_DOCUMENTO_*_VIETATA` (senza «append-only») |
 
-BE8 resta del team BE (§15.2 G).
-### 14.8 Esito BE/FE (sessione BE, 2026-11-17)
+BE8, rimasta del team BE (§15.2 G), è fatta il 2026-11-17 (§15.10).
 
-* **BE6** — `_ASSET_UTILIZZABILE_OGGI` è un `EXISTS` su `documenti.vw_template_asset_utilizzabili`, letto dal render
-  (`get_asset_per_render`) e, con `NOT`, dal filtro `utilizzabili` della lista: la regola non ha più una copia BE.
-  Il test della stringa vuole la vista e nessuna colonna `validita`.
-* **BE6-bis** — `STANDARD_NON_STAMPA` nella colonna «Allineamento allo standard» e nel drawer: colore `warn`, le due
-  chiavi i18n.
-* **BE15, BE16, BE17** — Policy rigenerate; ripieghi senza `%s` per i quattro codici del giro 3, frasi nuove di
-  `E_DOCUMENTI_GENERATO_COERENZA` e `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE`; la voce del vincolo
-  `…_valido_dal_pubblicata` esce dalla mappa (dal backend non si raggiunge). Le due fixture DB che stampavano da una
-  bozza pubblicano dal verbo (`pubblica_per_stampare`, `documenti/tests/db/_stampa.py`).
-* **Rilettura (`/verifica`, 2026-11-17)** — 372 test sul DB vero (`documenti`, `vendite`) verdi. Corretti tre commenti
-  stantii di `template_versioni_admin_service.py`. Due richieste al team DB:
-  * **R1 — il numero della versione ha due sedi.** `create_versione` lo calcola nel backend
-    (`next_versione_num`, `MAX + 1`) e, se due scritture lo prendono insieme, la UNIQUE arriva come 400
-    `E_DOCUMENTI_VALIDATION` «race condition: riprovare»; la copia lo calcola nel DB (`fn_crea_bozza_da_versione`)
-    e lo stesso fatto è 409 `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`. Stesso caso, due regole e due codici. Si
-    chiede la sede DB anche per la nascita di una bozza nuova (un verbo, o il numero assegnato dal DB), col codice
-    della copia e la sua nota allargata a chi lo solleva; il backend ritira `next_versione_num` e la voce della
-    UNIQUE in `_UNIQUE_CONSTRAINTS`.
-  * **R2 — la causa di `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` è stantia** (`messaggi_errore.csv`): dice ancora
-    «una versione pubblicata, attiva e valida oggi» e «la sua versione pubblicata è spenta». Dal 2026-11-14 stampa
-    anche una OBSOLETA ancora in vigore (M6: «in vigore»).
+### 15.9 Arrivo del giro 5 sul BE (sessione BE, 2026-11-17)
+
+Verificato su dbdev, non sugli YAML (la doc auto-generata del giro 5 non è ancora rigenerata, riga 29):
+
+* **Applicato:** i sette changeSet `20261116-10 … -16` in `databasechangelog` (2026-11-17); il corpo di
+  `fn_pubblica_template_documento_versione` riconosce il 23P01 e solleva `E_DOCUMENTI_VERSIONE_OVERLAP`.
+* **Nessuna rottura:** il codice esisteva già, con policy `CONFLITTO_STATO` in `error_policies_generated.py` e un
+  ripiego uguale al catalogo; nessuna funzione rinominata, nessuna colonna tolta, nessun codice nuovo. Il BE riceve
+  dal verbo lo stesso codice e lo stesso stato HTTP che dava traducendo il 23P01.
+* **BE19 serve davvero:** i ripieghi dei cinque codici ricopiano ancora i testi vecchi («append-only», «timeline»,
+  «stato non BOZZA», «Crea un nuovo asset»). I numeri di riga di §15.8 sono quelli di oggi (scivolati da `36fca6d3a`).
+* **BE2:** la policy si rigenera col DB allineato a git (il giro 5 è committato con i CSV).
+* **BE18:** oltre alla voce della mappa e al test, la doc dell'API descrive l'overlap in tre punti (`:548-557`,
+  `:652-660`, `:734`): tutti e tre dicono che è il vincolo, non il verbo.
+* **R2 chiusa** dal giro 5: la causa di `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` su dbdev dice «una versione attiva in
+  vigore oggi: pubblicata, oppure superata ma non ancora scaduta».
+* **R1 aperta:** il giro 5 non la tocca, e §13.2 la lascia al residuo del registro (§3.5,
+  `registro-residui-aperti.md`). La versione nuova scritta da zero prende ancora il numero da `next_versione_num`
+  (`MAX + 1`, 400 `E_DOCUMENTI_VALIDATION` sulla gara) e la copia dal DB (409
+  `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`). Decisione di Tid: un giro DB, o il residuo resta.
+
+### 15.10 Esito BE (sessione BE, 2026-11-17)
+
+* **BE18** — La voce di `ex_template_documenti_versioni_no_overlap_pubblicata` esce da `_UNIQUE_CONSTRAINTS`, con
+  la costante `E_VERSIONE_OVERLAP` che la usava sola; i commenti del servizio dicono che la sovrapposizione la
+  rende il verbo. Il test che simulava l'`IntegrityError` è ritirato: al suo posto
+  `documenti/tests/db/test_versione_contesto_db` 4, sul DB vero, pubblica due versioni dallo stesso giorno e vuole
+  409 `E_DOCUMENTI_VERSIONE_OVERLAP` con la frase del catalogo, la seconda in BOZZA e la prima PUBBLICATA. Se il
+  verbo smettesse di riconoscere il vincolo, arriverebbe il ripiego `E_DOCUMENTI_VALIDATION` e il test lo vede. La
+  doc dell'API (`api_documenti_templates.md`, i tre punti) dice che il codice lo solleva il verbo.
+* **BE19** — I ripieghi dei cinque codici sono i messaggi del catalogo letti su dbdev (nessuno ha `%s`).
+* **BE2** — Policy rigenerate col catalogo uguale a git: cambiano i soli commenti degli otto codici di §15.8,
+  nessuna classe.
+* **Prove** — `apps.documenti` e `apps.core` con `ZEROERP_TEST_DB_E2E=1`: 2436 test verdi.
+* **Rilettura (`/verifica`, 2026-11-17)** — `delete_versione` rifiutava una versione fuori bozza con una frase sua
+  («Solo versioni in stato BOZZA possono essere eliminate.»), che vinceva sul catalogo e rendeva vano BE19 su quel
+  ramo: ora solleva `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` con la frase del catalogo
+  (`ErrorPolicyRegistry.resolve(…).user_message`), e il test 7 del servizio la vuole (rosso con la frase di prima).
+  Con `ZEROERP_TEST_DB_E2E=1`, `apps.documenti` e `apps.core`: 2436 test, due rossi non di questo brief — dbdev ha
+  il codice `E_CAMBIO_NATURA_INDIRIZZI_RUOLO_NON_AMMESSI` (brief-db-fornitore-privato-indirizzi) che il CSV in git
+  non ha ancora: policy e guardrail si allineano quando quel giro è committato, non si rigenera col DB avanti.
+  Il commento di `error_ui_overrides.py:285` parla ancora di «guard append-only»: vero, lasciato.
+* **BE8** (2026-11-17) — Lo specchio serve: senza, un filtro `stato` ignoto finirebbe nel `WHERE` e la lista delle
+  versioni risponderebbe `200 []`. Lo `stato` è un CHECK (`chk_template_documenti_versioni_stato`), non una tabella,
+  quindi resta lo specchio, come vuole il catalogo BB: `STATI_VERSIONE` in `template_service.py`, controllo dal BB
+  `validate_enum_param` (parametro nel `context`, mai `field`) al posto del controllo scritto a mano, e iscrizione
+  nel registro `core/tests/db/test_specchi_dei_check_db.py`, che lo confronta col CHECK sul DB. La view legge il
+  filtro con `qp_str_upper` (prima uno `stato` di soli spazi diventava `""` e un 400); lo schema OpenAPI dichiara
+  l'`enum`. Test: specchio sul DB, `test_template_service` 6, `test_documenti_api` 5-ter; tutti e tre rossi col
+  codice di prima. Se un giro DB facesse dello stato un vocabolario a tabella, lo specchio esce e il filtro passa a
+  `richiedi_codice_a_vocabolario`.
