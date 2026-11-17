@@ -63,9 +63,6 @@
     i parametri di sistema li farebbe leggere come override; la forma proposta sono due campi
     «effettivo» da `anagrafiche.fn_parametri_importo_utility` e una colonna FE accanto. Da decidere,
     di Tid;
-  - **la numerazione della versione nuova** di un template: la versione scritta da zero la numera il
-    BE (`next_versione_num`, MAX+1), la copia la numera il DB (`fn_crea_bozza_da_versione`). Due sedi
-    dello stesso numero; si chiude con un verbo DB per la versione nuova. Brief nuovo se Tid vuole;
   - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
     pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
 - **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),

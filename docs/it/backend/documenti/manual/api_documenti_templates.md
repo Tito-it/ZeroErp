@@ -417,12 +417,14 @@ standard.
 #### Output
 
 - `200`: dettaglio della versione creata (stesso shape di "Dettaglio versione").
-  - `versione`: numero calcolato come `MAX(versione)+1` per il template.
+  - `versione`: il numero lo assegna il database alla nascita, il successivo
+    all'ultimo del template (trigger `trgfn_template_documenti_versioni_assegna_numero`,
+    in fila per template: due creazioni contemporanee prendono due numeri). Non
+    si manda: `versione` non è una chiave ammessa nel payload.
   - `stato`: sempre `BOZZA` su create.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted, campo richiesto
   mancante (anche `versione_contesto`, col campo), `formato_template`/`page_format`/
-  `page_orientation` fuori vocabolario (FK, col campo), margine negativo, race su
-  `uq_template_documenti_versioni_template_versione` (riprovare).
+  `page_orientation` fuori vocabolario (FK, col campo), margine negativo.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template inesistente o fuori scope.
 
 ### 8. Aggiorna versione BOZZA (Tranche F)
@@ -499,15 +501,11 @@ standard.
     `page_orientation`, `margin_*`, `context_schema`, `versione_contesto`
     (il corpo è lo stesso, quindi legge le stesse chiavi; per preparare la
     forma successiva la si cambia sulla bozza). (`meta` se non overrideato.)
-  - Default forzati: `stato='BOZZA'`, `versione=MAX+1`, `valido_dal=NULL`,
-    `valido_al=NULL` (le date di una nuova bozza si fissano alla
-    pubblicazione).
+  - Default forzati: `stato='BOZZA'`, `valido_dal=NULL`, `valido_al=NULL`
+    (le date di una nuova bozza si fissano alla pubblicazione). Il numero
+    `versione` lo assegna il database, come alla creazione.
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted in payload override.
 - `404` `E_DOCUMENTI_NOT_FOUND`: source inesistente o fuori scope.
-- `409` `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`: nello stesso istante un'altra
-  scrittura ha preso il numero `MAX+1` sullo stesso template; la copia non è
-  nata, si ripete. Lo traduce il verbo DB `fn_crea_bozza_da_versione` (prima
-  arrivava come `IntegrityError` sulla UNIQUE del numero).
 
 ### 11. Pubblica versione (Tranche F)
 
@@ -645,10 +643,12 @@ scritta a mano, con un flag «registrato» anch'esso a mano. Il registro e' di p
     e' eseguita solo dalla funzione DB di pubblicazione quando una nuova
     versione successiva sostituisce la precedente; fino al suo `valido_al`
     la versione OBSOLETA stampa ancora.
-- **Numero versione calcolato**: `MAX(versione)+1` su `template_documento_id`.
-  Race condition rara: due chiamate concorrenti calcolano lo stesso numero
-  -> il vincolo unique `uq_template_documenti_versioni_template_versione`
-  blocca il secondo INSERT, errore parlante invita al retry.
+- **Numero versione dal database**: ogni versione nuova (creazione, clone,
+  «personalizza») riceve il successivo all'ultimo del suo template dal trigger
+  `trgfn_template_documenti_versioni_assegna_numero`, sotto un lock di
+  transazione per template: le nascite contemporanee si mettono in fila e non
+  c'è gara da ripetere. Dopo la nascita il numero è fermo (lucchetto di
+  colonna, `E_CODICE_NON_MODIFICABILE`).
 - **Pubblicazione e overlap**: il comando `pubblica/` delega alla funzione DB
   `documenti.fn_pubblica_template_documento_versione(...)`. La funzione blocca
   le versioni dello stesso template, chiude a `nuovo.valido_dal - 1` le
@@ -737,7 +737,6 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 | `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` | 403 | scrittura su un modello standard o su una sua versione (trigger `trgfn_template_standard_guard_sola_lettura`) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare una versione `PUBBLICATA` o `OBSOLETA`, stato compreso (Tranche F; OBSOLETA dal `20261114-04`). Trigger DB A1 + service guard |
 | `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA` | 409 | pubblicazione di una bozza spenta (`fn_pubblica_template_documento_versione`) |
-| `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` | 409 | clone di una versione col numero `MAX+1` preso nello stesso istante da un'altra scrittura (`fn_crea_bozza_da_versione`): si ripete |
 | `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` | 500 | una versione nasce fuori bozza o ne esce senza il verbo di pubblicazione (`trgfn_template_documenti_versioni_protect_pubblicata`). Il backend crea solo bozze e pubblica dal verbo: se arriva, è rotto il chiamante |
 | `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` | 500 | copia di una versione in un template di un altro documento (`fn_crea_bozza_da_versione`). Il clone copia nello stesso template, «personalizza» nel modello della stessa coppia: se arriva, è rotto il chiamante |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |

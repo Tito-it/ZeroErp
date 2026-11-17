@@ -70,8 +70,8 @@ export function getTemplateVersione(templateId, versioneId) {
   return api.get(`${BASE}/${templateId}/versioni/${versioneId}/`)
 }
 
-// Scopo: Crea nuova versione BOZZA. Numero versione calcolato server-side
-//        (`MAX+1`); il client non lo passa.
+// Scopo: Crea nuova versione BOZZA. Il numero versione lo assegna il
+//        database (il successivo all'ultimo del template); il client non lo passa.
 // ⚠️ `params` in QUERY: la view della creazione e' la stessa della lista
 //    (`documenti.template_versioni`), e il cancello di perimetro emittente
 //    vale per ogni suo metodo — l'emittente del template viaggia qui.

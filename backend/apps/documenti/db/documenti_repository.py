@@ -136,14 +136,14 @@ TEMPLATE_UPDATE_COLUMNS: tuple[str, ...] = (
 
 
 # Whitelist colonne ammesse in INSERT su template_documenti_versioni.
-# `versione` calcolata dal service (next_versione_num, per la versione nuova:
-# la copia la numera il DB), `stato` sempre
+# `versione` non c'e': il numero di ogni versione nuova lo assegna il DB
+# (trigger `trgfn_template_documenti_versioni_assegna_numero`, dal 2026-11-17;
+# il lucchetto di colonna lo ferma dopo la nascita). `stato` sempre
 # 'BOZZA' su create (transizione PUBBLICATA passa solo dal comando dedicato
 # pubblica_versione). `validita` e' STORED generated column (PG 18) da
 # `valido_dal`/`valido_al`, non scrivibile.
 VERSIONE_CREATE_COLUMNS: tuple[str, ...] = (
     "template_documento_id",
-    "versione",
     "stato",
     "titolo",
     "formato_template",
@@ -842,30 +842,6 @@ class DocumentiRepository:
     # =================================================================
     # Mutazioni versione template (Tranche F)
     # =================================================================
-
-    # Scopo: Calcola il prossimo numero di versione disponibile per un
-    #        template, per la versione NUOVA scritta da zero (`create_versione`).
-    #        Usa MAX(versione) + 1 con COALESCE per il primo inserimento.
-    # ⚠️ E' la seconda sede della numerazione: la copia di una versione la
-    #    numera il DB (`fn_crea_bozza_da_versione`). Residuo dichiarato al
-    #    team DB (brief-db-modelli-documento-standard §11), finche' anche la
-    #    versione nuova non ha un verbo del DB. Il vincolo UNIQUE (template_documento_id, versione)
-    #        e' la garanzia finale: se due chiamate concorrenti calcolano
-    #        lo stesso numero, l'INSERT del secondo solleva IntegrityError
-    #        che il service mappa in errore parlante (rare race condition).
-    def next_versione_num(self, template_documento_id: int) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COALESCE(MAX(versione), 0) + 1
-                  FROM documenti.template_documenti_versioni
-                 WHERE template_documento_id = %s
-                """,
-                [int(template_documento_id)],
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
 
     # Scopo: «Personalizza» (brief-db-modelli-documento-standard §10.3 K-6):
     #        la funzione madre del DB crea il modello dell'emittente da uno

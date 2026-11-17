@@ -249,23 +249,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dell'amministratore che rifiutano le credenziali di sistema).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
-- 📝 **Revisione dello schema `documenti`** (`work-in-progress/brief-db-revisione-documenti.md`): giro 0 (la doc)
-  fatto il 2026-11-14, con le dodici decisioni. Giro 1 («le stampe sono storia», `20261115-82 … -90`) scritto e
-  applicato il 2026-11-16, pgTAP verdi (§11); ricadute BE BE3, BE7, BE9, BE10. Giro 2 («i vocabolari»,
-  `20261115-91 … -98`: forma unica, sola lettura, formati di file nel DB; `-99` per il sync dello storico) applicato
-  il 2026-11-16, pgTAP verdi (§12): il BE da ora si rompe sui lettori di `attivo` (BE11), e FE1 (21 chiavi i18n) va
-  prima del merge. Giro 3 («la pubblicazione», `20261116-01 … -04`: lo stato fuori bozza solo dal verbo, la bozza
-  spenta, i controlli della copia) applicato e committato il 2026-11-16 (§13); BE15 e BE16 sbloccate, nessuna rottura
-  BE. Giro 4 («risoluzione, scarto, asset», `20261116-05 … -09`: la stampa nasce dalla versione in uso (Q13), lo
-  scarto con `STANDARD_NON_STAMPA`, il «?» tolto, le risorse utilizzabili in una vista) applicato e committato il
-  2026-11-16 (§14, `90eb95a09a`), pgTAP verdi; BE6, BE6-bis, BE17 sbloccate, nessuna rottura BE. Giro 5 («pulizia e
-  metadati», `20261116-10 … -16`: i COMMENT dello schema al presente e completi, la sovrapposizione col codice del
-  verbo, il presidio dei COMMENT unico che vede anche trigger e policy, i pgTAP deboli) applicato e committato il
-  2026-11-17 (§15), pgTAP verdi, doc auto-generata rigenerata; BE2, BE18, BE19 e BE8 fatte e committate. Giro 6
-  («il numero della versione e l'azienda della risorsa», `20261116-23 … -25`: il numero di ogni versione nuova lo
-  assegna un trigger, in fila per modello, e `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` è ritirato; l'azienda della
-  risorsa ferma con `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`) applicato il 2026-11-17 (§16), pgTAP verdi; restano
-  la doc auto-generata e il commit. BE20-BE23 sbloccate, nessuna rottura BE.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
@@ -296,7 +279,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Residui di `work-done/brief-db-scadenza-preventivi.md`**: `validita_al` dice due cose; il verbo di chiusura del listino
 - **Residui di `work-done/brief-modello-documento-vendita.md`**: i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili; due rami del preventivo senza strada dall'interfaccia; `DocumentoDrawerHost` tace sul drawer che non si carica
 - **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`**: il reset del rifiuto sta solo nel BE del preventivo; la riga `test-preventivi-approvazione-prezzo.sql`
-- **Residui di `work-done/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; la numerazione della versione nuova; `vendite.fatture.utility_id NOT NULL`
+- **Residui di `work-done/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; `vendite.fatture.utility_id NOT NULL`
 - **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`**: errori lato client senza SQLSTATE; `SMOKE_GIRO_FALLITO`; `error_detail` con la riga `CONTEXT:`; il `%TYPE` mancato del giro 1
 - **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`**: D-4, che cosa registra il titolo IVA `COOPERATIVA`; censimento dei titoli IVA fuori regola; `SGT-0000121` con `cliente_pa = 'S'`; `anagrafiche.fornitori.split_payment`
 - **La commessa vuota lasciata dal push batch** [DB + BE]
