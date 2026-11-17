@@ -15,7 +15,9 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
+
+> **Ultimo aggiornamento**: 17 novembre 2026
+
 Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
 
 Se per il tipo ruolo sono presenti righe di matrice con `obbligatorio = true`, la funzione controlla l'esistenza di almeno un indirizzo (anche tramite fallback) per ciascun tipo richiesto.
@@ -45,8 +47,17 @@ Se per il tipo ruolo sono presenti righe di matrice con `obbligatorio = true`, l
 | ------------------------------------- | ---------------------------------------------- |
 | **E_INDIRIZZO_OBBLIGATORIO_MANCANTE** | Manca un indirizzo richiesto per il tipo ruolo |
 
-Gli errori sono prodotti tramite:
-`script.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, NEW.tx_id, ...)`.
+La frase nomina il ruolo e il tipo richiesto, col suo ripiego se la riga ne ha uno, per descrizione:
+«Il ruolo Fornitore richiede l'indirizzo «Fatturazione».». I nomi dei tipi li compone
+[anagrafiche.fn_nomi_tipo_indirizzo_richiesto](/dbzero/anagrafiche/funzioni/fn_nomi_tipo_indirizzo_richiesto);
+gli id (ruolo del soggetto, tipo di ruolo, tipo richiesto, ripiego) stanno nel contesto dell'errore.
+
+⛔ Il codice è **del layer ruolo**. Il gemello del soggetto,
+[trgfn_soggetti_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_indirizzi_required),
+legge la matrice della natura e solleva `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO`.
+
+⚠️ Il requisito **non guarda la natura** del soggetto del ruolo: una riga obbligatoria che la natura
+non ammette resta pretesa, e nessuna scrittura può soddisfarla.
 
 ---
 
@@ -69,7 +80,7 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_ruoli_def_guard_indirizzi_required_aft_in
 
 * La matrice e' opzionale: se non esiste per il tipo ruolo, il controllo non scatta.
 * Il fallback consente di soddisfare l'obbligo con un tipo indirizzo alternativo configurato.
-* La validita' temporale e' valutata su `current_date`.
+* La validita' temporale e' valutata sul giorno aziendale, `script.fn_data_operativa()`.
 
 ---
 

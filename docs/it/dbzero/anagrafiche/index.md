@@ -105,6 +105,7 @@ search:
 - [fn_istanza_di_altro_soggetto](funzioni/fn_istanza_di_altro_soggetto.md) — (19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid, `brief-db-processi-accensione-per-ambiente` §6.17)
 - [fn_lookup_utilities_per_ba](funzioni/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_nature_proponibili_soggetto](funzioni/fn_nature_proponibili_soggetto.md)
+- [fn_nomi_tipo_indirizzo_richiesto](funzioni/fn_nomi_tipo_indirizzo_richiesto.md)
 - [fn_notify_cambio_reparto](funzioni/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_parametri_importo_utility](funzioni/fn_parametri_importo_utility.md)
 - [fn_provisiona_dati_di_sviluppo](funzioni/fn_provisiona_dati_di_sviluppo.md)
@@ -209,13 +210,13 @@ search:
 - [trgfn_soggetti_guard_dati_societari_required](funzioni/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_forma_giuridica_natura](funzioni/trgfn_soggetti_guard_forma_giuridica_natura.md)
 - [trgfn_soggetti_guard_id_fiscale_immutabile](funzioni/trgfn_soggetti_guard_id_fiscale_immutabile.md) — La funzione **`anagrafiche.trgfn_soggetti_guard_id_fiscale_immutabile`** è una **trigger function di tipo "guard"** su [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti).
-- [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+- [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — > **Ultimo aggiornamento**: 17 novembre 2026
 - [trgfn_soggetti_guard_regime_pa](funzioni/trgfn_soggetti_guard_regime_pa.md)
 - [trgfn_soggetti_guard_sesso_policy](funzioni/trgfn_soggetti_guard_sesso_policy.md)
 - [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — (latest review 28-12-25) * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_normalize](funzioni/trgfn_soggetti_normalize.md) — (latest review 28-12-25) * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:
-- [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un **ruolo soggetto** abbia tutti i tipi di indirizzo **obbligatori** definiti nella matrice `config.tipi_ruolo_tipi_indirizzo`.
+- [trgfn_soggetti_ruoli_guard_indirizzi_required](funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required.md) — > **Ultimo aggiornamento**: 17 novembre 2026
 - [trgfn_soggetti_ruoli_guard_natura_ammessa](funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_titoli_iva_ambiti_guard](funzioni/trgfn_soggetti_titoli_iva_ambiti_guard.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
 - [trgfn_soggetti_titoli_iva_guard_ambito](funzioni/trgfn_soggetti_titoli_iva_guard_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)

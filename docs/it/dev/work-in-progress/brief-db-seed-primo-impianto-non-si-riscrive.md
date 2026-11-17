@@ -2,27 +2,33 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-17 (brief scritto, analisi critica fatta, niente costruito)
 
-**Riparte: Tid**, che rilegge il modello (§3), il meccanismo (§4, §5) **corretto dall'analisi critica (§12)** e
-prende le decisioni Q1-Q11 (§9). Finché non dà il via non si scrive niente.
+**Riparte: Tid**, che rilegge il modello (§3), il meccanismo (§4, §5) **corretto dall'analisi critica (§12)**, la
+porta di servizio comune a tutti i trigger d'automazione (§13, fusa qui il 2026-11-17) e prende le decisioni aperte
+(§9; Q10 e Q11 decise il 2026-11-17). Finché non dà il via non si scrive niente.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Il problema, la storia delle decisioni e il meccanismo proposto | §1-§7 | — |
 | 1-bis | ✅ sessione DB | Analisi critica: V1 fatta (smentisce `RETURN NULL`), `DELETE_BLOCK` per tabella non basta, marcatore e diagnosi da rifare | §12 | 1 |
-| 2 | Tid | Rilettura a mente lucida e decisioni Q1-Q11 | §9, §12 | 1-bis |
-| 3 | sessione DB | Le verifiche V2-V5, prima di scrivere | §8 | 2 |
+| 1-ter | ✅ sessione DB | La porta di servizio (`zeroerp.allow_*_override`) che ogni sessione apre: fusa qui dal brief sulla porta di `trgfn_lock_columns`, cancellato da Tid | §13 | 1-bis |
+| 2 | Tid | Rilettura a mente lucida e decisioni Q1-Q9, Q12, Q13 | §9, §12, §13 | 1-ter |
+| 3 | sessione DB | Le verifiche V2-V7, prima di scrivere | §8, §13.5 | 2 |
 | 4 | sessione DB | Giro 1: la colonna marcatore, la regola d'automazione, il trigger, il blocco del `DELETE`, i pgTAP, §11.7 delle linee guida | §10 | 3 |
 | 5 | Tid | `/verifica-db`, l'apply, i pgTAP, la doc auto-generata, il commit | — | 4 |
 | 6 | team BE/FE | Le ricadute R1-R3 | §11 | 5 |
 | 7 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 5, 6 |
 
-**Decisioni aperte di Tid:** Q1-Q11 (§9). **Da committare:** questo brief e il rimando nel registro dei residui.
+**Decisioni aperte di Tid:** Q1-Q9, Q12, Q13 (§9). Decise il 2026-11-17: Q10 (marca solo un cambio di
+configurazione), Q11 (`email_account`: basta «inserisci se manca»). **Da committare:** questo brief e il rimando nel registro dei residui.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
 `brief-db-revisione-documenti`, `brief-db-provenienza-prezzo-segue-il-prezzo` e
 `brief-incassi-riconciliazione-rate-promemoria` riguardano i loro CSV, non il meccanismo. Il registro
 dei residui ha il caso di `famiglie_documento` (§7), e da lì rimanda a questo brief.
+⚠️ Aggiornato il 2026-11-17: il brief della sessione BE «La porta di `script.trgfn_lock_columns` la apre ogni
+sessione» toccava lo stesso oggetto della proposta (il bypass a variabile di sessione dei trigger d'automazione).
+Tid l'ha cancellato e l'ha fuso qui: §13. La segnalazione d'origine è al §9 di `brief-db-revisione-documenti`.
 
 ---
 
@@ -110,6 +116,9 @@ nome è da decidere (Q2).
 
 ### 4.3 Chi è l'«app» e chi è il «migrate»
 
+> ⚠️ **Il bypass si corregge con §13 (2026-11-17).** Lo «stampo di `DELETE_BLOCK`» è una variabile di sessione
+> che anche l'app può accendere. Il bypass del trigger nuovo passa dal building block comune di §13.3.
+
 - **App:** la stessa fonte dell'audit, cioè `app.jwt_user` valorizzato. Il middleware Django lo imposta per
   l'utente reale. Si riusa il criterio che esiste già: non se ne inventa un secondo.
 - **Migrate:** tutto ciò che non è l'app. Il trigger salta la riga personalizzata **salvo** un GUC di bypass
@@ -177,7 +186,7 @@ Si valutano sul criterio di §3, non su quante righe abbiano oggi.
 
 | Tabella | Esito proposto | Perché |
 | --- | --- | --- |
-| `config.email_account` | **entra** | A parte `codice`/`codice_interno` (`SISTEMA`, che il codice cerca e che non cambia), la riga è tutta configurazione dell'installazione: host, porta, TLS/SSL, credenziali, mittente, risposta |
+| `config.email_account` | **entra, solo inserimento** (Q11, Tid 2026-11-17) | Il CSV crea la riga `SISTEMA` se manca e poi non la aggiorna più, toccata o no: i suoi valori sono segnaposto che il software non ha ragione di correggere (§12.11). A parte `codice`/`codice_interno` (`SISTEMA`, che il codice cerca e che non cambia), la riga è tutta configurazione dell'installazione: host, porta, TLS/SSL, credenziali, mittente, risposta |
 | `config.email_template` | **da valutare** (Q5) | I testi delle mail sono contenuto che l'installazione adatta. Va letto se il codice legge colonne del template come regole (segnaposto, codice) |
 | `vendite.famiglie_documento` | **da valutare** (Q5) | L'operatore cambia il `codice` dal CRUD, ma la riga porta regole del software (formato, colonna serie, regole fiscali, anno nel numero) che il CSV deve poter cambiare. Il blocco per riga fermerebbe anche quelle: qui serve probabilmente un'altra forma, per esempio il `codice` fuori dal mirror con `type: SKIP` |
 
@@ -208,12 +217,15 @@ scrivono. Ogni tabella trovata riceve una specie dichiarata.
 | Q7 | Un'azione «ripristina il valore di fabbrica» (§6, limite 3) | Non nel giro 1: si apre se l'interfaccia la chiede. Con il valore scartato salvato (§12.4) diventa semplice |
 | Q8 | Il titolo di questo brief | — |
 | Q9 | Che cosa fa il bypass al marcatore: dopo una bonifica voluta la riga torna a seguire il CSV, o resta dell'installazione? (§12.6) | Resta dell'installazione: la bonifica corregge un valore, non restituisce la riga al software |
-| Q10 | Quale scrittura dell'app marca la riga: ogni `UPDATE`, o solo quello che cambia colonne di configurazione? (§12.7) | Solo `NEW IS DISTINCT FROM OLD` sulle colonne di configurazione; `meta` e le colonne d'audit fuori |
-| Q11 | Su `email_account` serve «aggiorna finché è intatta», o basta «inserisci se manca»? (§12.11) | La specie si argomenta su `email_template`; per `email_account` decide Tid |
+| Q10 | Quale scrittura dell'app marca la riga: ogni `UPDATE`, o solo quello che cambia colonne di configurazione? (§12.7) | ✅ **Decisa (Tid, 2026-11-17), come proposto:** solo `NEW IS DISTINCT FROM OLD` sulle colonne di configurazione; `meta` e le colonne d'audit fuori dal confronto. Quali colonne sono «di configurazione» si dichiara per tabella, nella regola d'automazione |
+| Q11 | Su `email_account` serve «aggiorna finché è intatta», o basta «inserisci se manca»? (§12.11) | ✅ **Decisa (Tid, 2026-11-17): basta «inserisci se manca».** La specie di primo impianto si argomenta su `email_template`. La forma è Q12 |
+| Q12 | Come si ottiene «inserisci se manca» su `email_account`, visto che il mirror `20260329-60` (`runOnChange`) non si modifica (§12.12) | Una modalità della stessa regola d'automazione: «solo inserimento», in cui il trigger salta **ogni** `UPDATE` del migrate sulla tabella, marcata o no |
+| Q13 | La porta di servizio dei trigger d'automazione: resta, si stringe, si stringe e si registra, si chiude? (§13) | **Si stringe e si registra**, in un building block solo per tutte le porte (§13.3) |
 
 ## 10. Il giro 1 (dopo il via)
 
-1. V2-V5 (§8), con gli esiti scritti qui (V1 fatta: §12.1).
+1. V2-V5 (§8) e V6-V7 (§13.5), con gli esiti scritti qui (V1 fatta: §12.1).
+1-bis. La porta di servizio comune (§13.6), prima del trigger nuovo che la usa.
 2. La regola d'automazione nuova: funzione trigger generica, runner convergente, funzione di divergenze, la
    riga in `automation_rules_tbl`, la pagina `manual/`.
 3. La colonna marcatore sulle tabelle che entrano (Q5).
@@ -346,3 +358,97 @@ compito «aggiorna finché è intatta» non porta niente: basterebbe «inserisci
 dove il software **migliora il contenuto** e il miglioramento deve arrivare a chi non l'ha toccato, come i testi
 di `email_template`. Il brief giustifica il meccanismo intero con l'unico esempio in cui metà del meccanismo non
 serve: l'argomento va scritto sul caso che lo regge (Q11).
+
+✅ **Decisione di Tid (2026-11-17), Q11:** su `email_account` basta «inserisci se manca». La specie di primo
+impianto, con il suo «aggiorna finché è intatta», si argomenta su `email_template`. Q10 decisa lo stesso
+giorno, come proposta in §12.7.
+
+### 12.12 La forma di «inserisci se manca» per una tabella con un mirror già esistente (Q12)
+
+Il mirror `20260329-60` è `loadUpdateData` in `runOnChange`, ed è già mergiato: non si modifica (AGENTS,
+«Mai modificare un changelog già mergiato»). Il suo `UPDATE` partirà quindi a ogni ritocco del CSV, e va
+fermato dal DB, come per le righe personalizzate.
+
+Proposta: la regola d'automazione della specie ha una **modalità** per tabella.
+
+| Modalità | Il trigger, su un `UPDATE` del migrate | Tabelle |
+| --- | --- | --- |
+| **aggiorna finché è intatta** | `RETURN OLD` solo se la riga è marcata | `email_template`, se entra (Q5) |
+| **solo inserimento** | `RETURN OLD` sempre: la riga si crea e non si riscrive più | `email_account` |
+
+Così è un trigger solo, con un argomento, e non due meccanismi. Il bypass (§4.3) vale per tutte e due le
+modalità. Il blocco del `DELETE` sulla riga nata dal seed (§12.2) serve anche in «solo inserimento»: la riga
+`SISTEMA` cancellata dall'interfaccia tornerebbe al primo ritocco del CSV, con i segnaposto. In questa modalità
+il marcatore non serve al salto; resta utile alla diagnosi e a Q7.
+
+## 13. La porta di servizio dei trigger d'automazione (fusa qui il 2026-11-17)
+
+> **Da dove viene.** La sessione BE ne aveva scritto un brief a parte, «La porta di `script.trgfn_lock_columns`
+> la apre ogni sessione», chiudendo `brief-db-revisione-documenti` (§9 di quel brief: trovata il 2026-11-14
+> verificando la Q9a; Tid il 2026-11-16 aveva deciso «un brief a parte, dopo i giri di `documenti`»). Il
+> 2026-11-17 Tid l'ha cancellato e ha deciso di trattarlo qui, perché il §4.3 di questo brief costruiva un
+> trigger nuovo con la stessa porta.
+
+### 13.1 Il caso
+
+I trigger d'automazione hanno una porta di servizio: se la sessione accende una variabile
+`zeroerp.allow_*_override`, il trigger lascia passare senza controlli. È nata come uscita dichiarata per la
+manutenzione (correggere un refuso su un codice appena creato, una bonifica forward-only di §11.2).
+
+Ma è una variabile di **sessione**: chiunque la imposti, applicazione compresa, salta il blocco. Il modello dei
+permessi dichiara di proteggere da un backend che **sbaglia**, non da uno manomesso
+(`architettura-permessi-e-autorizzazioni.md` §7.4-7.5). Una porta aperta di proposito non è un errore del
+backend, ma un `SET` di troppo in un servizio la attraversa senza rumore: nessun errore, nessuna traccia.
+
+### 13.2 Non è una porta sola
+
+Il brief d'origine parlava di `script.trgfn_lock_columns`. La stessa forma, `current_setting(<chiave>, true) =
+'on'`, sta anche in `script.trgfn_delete_block_by_guc` (la chiave è l'argomento del trigger, una per tabella), e
+il trigger nuovo di questo brief la avrebbe presa da lì. Le chiavi citate a git oggi (2026-11-17, fatto datato,
+non ancora censito per sede): `allow_lock_columns_override`, `allow_user_emittente_delete_override`,
+`allow_template_versione_pubblicazione_override`, `allow_template_versione_chiusura_override`,
+`allow_contabile_riga_delete_override`, `allow_delete_logs`.
+
+Il difetto è **uno**, nella forma della porta, non in un trigger. Per la regola del 2 la correzione è un
+building block solo, e i controlli scritti in ciascuna funzione si ritirano nello stesso giro.
+
+### 13.3 La proposta: la porta si stringe e si registra
+
+Un building block in `script`, per esempio `script.fn_porta_servizio_aperta(p_chiave text) RETURNS boolean`,
+che tutti i trigger chiamano al posto del loro `current_setting`:
+
+1. **la porta non si apre per l'applicazione.** Vale `true` solo se la variabile è `on` **e** la sessione non è
+   quella dell'app. Si guarda `session_user`, non `current_user`: dentro un verbo `SECURITY DEFINER`
+   `current_user` è il proprietario, e l'app passerebbe. Il migrate, il proprietario e il DBA restano liberi
+   come oggi;
+2. **ogni passaggio lascia una traccia**: chiave, tabella, `id` della riga, operazione, `session_user`, istante.
+   Per la porta del trigger del seed la traccia sta nel registro di §12.3 («riscritta col bypass»); per le altre
+   nel diario che sceglie V7.
+
+Il trigger del seed (§4.3) e il blocco del `DELETE` sulle righe nate dal seed (§12.2) usano lo stesso building
+block: nessuna porta nuova con una forma sua.
+
+### 13.4 Le strade scartate
+
+| Strada | Perché no |
+| --- | --- |
+| **resta com'è**, dichiarata come limite | È proprio il difetto: un `SET` sbagliato del backend passa in silenzio. «Chi può fare `SET` può anche altro» vale per un backend manomesso, che il modello non copre; non per uno che sbaglia, che copre |
+| **si stringe, senza registrare** | Ferma l'app, ma un passaggio voluto dal migrate su una riga di un cliente non lascia traccia: dopo una bonifica non si sa che cosa è stato forzato |
+| **si chiude**: `ALTER TABLE … DISABLE TRIGGER` del proprietario, nella transazione | ⛔ I trigger sono generati da `ci_apply`: §11.5 vieta DDL su di loro nei changeSet. E il trigger spento ferma **tutti** i suoi controlli, non solo quello da forzare |
+
+### 13.5 Verifiche prima di scrivere
+
+| # | Che cosa | Perché |
+| --- | --- | --- |
+| V6 | **Il censimento di chi accende ogni porta**, per sede (changeSet, pgTAP, funzioni, backend) e **con quale ruolo di sessione** | Per ogni scrittore si deve sapere se la porta stretta lo lascia passare. ⚠️ Un pgTAP che accende la porta girando col ruolo dell'app diventa rosso: si capisce se sta provando la porta o la usa per costruire i dati, e si corregge |
+| V6-bis | Come si riconosce «la sessione dell'app»: il ruolo di login del backend (`DB_USER`) è `zeroerp_app` o un suo membro? | Decide se il test è `session_user = …` o `pg_has_role(session_user, 'zeroerp_app', 'MEMBER')`. Va letto anche sullo scratch (`zeroerp_ruoli`) e in CI |
+| V7 | Dove sta la traccia dei passaggi fuori dal seed: una tabella esistente di `dbops` o una nuova | Per volume: un trigger di riga registra una riga per ogni riga forzata; una bonifica larga ne scrive molte |
+
+### 13.6 Che cosa entra nel giro 1
+
+Il building block, i tre trigger che lo usano (`trgfn_lock_columns`, `trgfn_delete_block_by_guc` e il trigger
+nuovo del seed), i pgTAP che **costruiscono** i due casi (porta accesa dalla sessione dell'app: rifiutata; porta
+accesa dal proprietario: passa e lascia la traccia), e le pagine `manual/` dei building block. Le porte di
+`documenti` (`allow_template_versione_*`) passano dal building block se il censimento V6 le trova nella stessa
+forma; se sono controlli scritti dentro un verbo, entrano come seconda occorrenza e si ritirano nello stesso
+giro.

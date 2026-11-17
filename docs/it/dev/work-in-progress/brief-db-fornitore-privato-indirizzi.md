@@ -2,11 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-17
 
-**Riparte: il team DB col giro 3 (riga 7).** R-1 … R-4 (§9.4) sono fatti dal team BE/FE il 2026-11-17,
-da committare: il picker del ruolo da assegnare non è più rotto, e la chiave di R-2 c'è. Il builder del
-privato (`20261116-22`, §10) è applicato su dbdev il 2026-11-17, pgTAP del §10.2 verdi; da committare. I giri 1
+**Riparte: il team BE/FE con R-5 (riga 7-b, §11.3), e il team DB col giro 4 (riga 8), dopo la decisione di Tid sul §9.5.**
+Il giro 3 è applicato su dbdev il 2026-11-17, pgTAP del §11.2 verdi, doc auto-generata rigenerata, e committato. R-1 … R-4 (§9.4) sono fatti dal team BE/FE e committati
+(`0664df90c3`, PR #155, 2026-11-17): il picker del ruolo da assegnare non è più rotto, e la chiave di R-2 c'è; la
+doc auto-generata è rigenerata. Il builder del privato (`20261116-22`, §10) è applicato su dbdev e committato
+(`8311f9a078`) il 2026-11-17, pgTAP del §10.2 verdi. I giri 1
 e 2 (`20261116-17 … -21` e tre CSV) sono applicati su dbdev e committati (`9a6db84d2b`) il 2026-11-17, coi pgTAP del §9.2 verdi; il censimento di D-5, ripetuto prima dell'applicazione, ha
-dato zero righe. Poi i giri 3 e 4.
+dato zero righe. Poi il giro 4.
 Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -17,18 +19,21 @@ Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 | 4 | team DB | ✅ giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17): BB degli obbligatori, check e picker del ruolo con la natura, guard, auto-clone, cambio di natura, CSV, pgTAP, doc | §9 | 2, 3 |
 | 5 | Tid | ✅ giri 1 e 2 applicati su dbdev, pgTAP del §9.2 verdi (2026-11-17) | §9.2 | 4 |
 | 5-bis | team DB | ✅ commit DB dei giri 1 e 2 (`9a6db84d2b`, 2026-11-17) | §9.1 | 5 |
-| 6 | BE/FE | ✅ R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero (2026-11-17, da committare) | §9.4 | 5 |
-| 7 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 5 |
+| 6 | BE/FE | ✅ R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero (2026-11-17, committate in `0664df90c3`) | §9.4 | 5 |
+| 7 | team DB | ✅ giro 3: le frasi dell'obbligatorio mancante per nome, un codice per layer (`20261116-26 … -28`, due CSV, pgTAP, doc), provato in `ROLLBACK` (2026-11-17) | §11 | 5 |
+| 7-a | Tid | ✅ `20261116-26 … -28` e i due CSV applicati su dbdev, pgTAP del §11.2 verdi (2026-11-17) | §11.2 | 7 |
+| 7-b | BE/FE | R-5: policy rigenerata col codice nuovo, ripiego dei due messaggi | §11.3 | 7-a |
+| 7-c | team DB | ✅ commit del giro 3, con la doc auto-generata (2026-11-17) | §11 | 7-a |
 | 7-bis | team DB | ✅ il builder `dbops.fn_pgtap_crea_soggetto_pf` (`20261116-22`), le cinque copie ritirate, pgTAP e doc, provati in `ROLLBACK` (2026-11-17) | §10 | — |
 | 7-bis-a | Tid | ✅ `20261116-22` applicato su dbdev, i sei pgTAP del §10.2 verdi (2026-11-17) | §10.2 | 7-bis |
-| 7-bis-b | team DB | commit del giro 7-bis, quando Tid lo chiede | §10 | 7-bis-a |
+| 7-bis-b | team DB | ✅ commit del giro 7-bis (`8311f9a078`, 2026-11-17) | §10 | 7-bis-a |
 | 8 | team DB | giro 4: gli obbligatori ricontrollati alla cancellazione e al cambio di tipo (F-1), con la natura (§9.5) | §8.4, §9.5 | 5 |
 | 9 | chi chiude | archiviazione in `work-done/` | — | tutti |
 
 Decisioni aperte di Tid: una, senza fretta (§10.3): se portare sul builder i tre pgTAP che costruiscono il privato
 con un `INSERT` diretto su `anagrafiche.soggetti`. Le due proposte della verifica del 2026-11-17 sono decise (§9.5): la fixture del
 ruolo nel giro 4, il builder del privato per i pgTAP subito, come giro a sé (riga 7-bis). I giri 1 e 2, i pgTAP, la
-doc e questo brief sono committati (`9a6db84d2b`, 2026-11-17); il giro 7-bis (§10) è applicato e verde (2026-11-17), da committare.
+doc e questo brief sono committati (`9a6db84d2b`, 2026-11-17); il giro 7-bis (§10) è applicato, verde e committato (`8311f9a078`, 2026-11-17). Il giro 3 (§11) è applicato, verde e committato (2026-11-17).
 
 **Brief vicini verificati (2026-11-16):** nessun brief aperto sugli stessi oggetti. Due chiusi il 2026-11-15
 li hanno toccati e qui si **leggono**, non si rifanno:
@@ -41,7 +46,8 @@ in una sede, le check, i picker, gli obbligatori della plurale) e
 > **A chi:** team DB (`dev/db-tid`); richieste a BE/FE in §6.
 > **Origine:** smoke `smoke-test-soggetti.sh` (assegnazione ruoli) e la domanda di Tid
 > «un'azienda può comprare da un privato?» del 2026-10-09.
-> **Stato:** 🟡 giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17, §9), da applicare; giri 3 e 4 da fare.
+> **Stato:** 🟡 giri 1, 2 e 7-bis applicati e committati (2026-11-17, §9, §10); R-1 … R-4 del BE/FE committati
+> (2026-11-17); giro 3 applicato, verde e committato (2026-11-17, §11); R-5 al BE; giro 4 da fare.
 >
 > ⚠️ **Oggetti cambiati sotto questo brief (team DB, 2026-11-15).** Con il giro 1 di
 > [brief-db-copia-indirizzo-soggetto](../work-done/brief-db-copia-indirizzo-soggetto.md) (§5.1,
@@ -155,6 +161,9 @@ indirizzi di ruolo non ammessi per il dettaglio del soggetto. Sono dati di svilu
 correggono d'ufficio: cosa farne lo si decide con Tid, guardandoli.
 
 ### 4.3 Il messaggio di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`
+
+> ✅ *2026-11-17:* fatto nel giro 3, §11: la frase nomina ruolo (o natura) e tipo richiesto col ripiego, e il
+> layer soggetto ha un codice suo.
 
 > ⚠️ *2026-11-16:* la parte su `E_TIPO_INDIRIZZO_NON_PERMESSO` è **già fatta**: la frase (id 108) è «Il ruolo %s
 > non prevede l'indirizzo «%s».», con le descrizioni, e gli id stanno nel contesto. Resta
@@ -464,7 +473,7 @@ cliente × fatturazione su un privato, che la natura ammette. I `BEGIN ATOMIC` s
 * **R-4 (BE)** — il primo punto del §6: un test che crea un fornitore privato dal flusso Fornitori sul DB vero,
   con la sola fatturazione sul ruolo.
 
-✅ *Fatte dal team BE/FE il 2026-11-17* (da committare):
+✅ *Fatte dal team BE/FE il 2026-11-17* (committate in `0664df90c3`, PR #155):
 
 * **R-1** — la rotta prende `?soggetto_id=<uuid>` facoltativo (assente: `NULL`; non uuid: 400
   `E_VALIDATION_INPUT`), e il repository lo passa come secondo argomento. Il FE lo manda dal composable
@@ -582,3 +591,68 @@ test»:
 `test-soggetti-ruoli-indirizzi-required` (oltre ai test dei guard sulla riga, dove l'`INSERT` è l'oggetto). È lo
 stesso difetto che il gemello ha chiuso per la società il 2026-11-08 (D63 di brief-db-revisione-dbops). Se
 portarli sul builder, e quando, decide Tid.
+
+## 11. Giro 3, le frasi dell'obbligatorio mancante (team DB, 2026-11-17)
+
+### 11.1 Che cosa
+
+| Pezzo | File |
+| --- | --- |
+| `anagrafiche.fn_nomi_tipo_indirizzo_richiesto(tipo, ripiego)`: i nomi del tipo richiesto e del suo ripiego, per descrizione, fra caporali e separati da ` / ` (`«Sede Legale» / «Domicilio Fiscale»`); `BEGIN ATOMIC` | `20_code/anagrafiche/20261116-26-create-fn-nomi-tipo-indirizzo-richiesto` |
+| Il guard del ruolo: stesso codice, valori per nome (ruolo, tipi) | `20261116-27-update-trgfn-soggetti-ruoli-guard-indirizzi-required-frase` |
+| Il guard del soggetto: **codice nuovo** `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO`, valori per nome (natura, tipi) | `20261116-28-update-trgfn-soggetti-guard-indirizzi-required-codice-proprio` |
+| Frasi: id 116 riscritta, «Il ruolo %s richiede l'indirizzo %s.»; id 1511 nuova, «Il tipo soggetto %s richiede l'indirizzo %s.», con causa e soluzione | `80_data/sql/config/messaggi_errore.csv` |
+| Il codice nuovo (`DATO_ERRATO`) e la nota di quello del ruolo | `80_data/sql/config/codici_errore.csv` |
+| pgTAP nuovo (10 asserzioni) | `db/pgtap/anagrafiche/test-indirizzo-obbligatorio-mancante-frase-v1.sql` |
+| Le due pagine `manual/` dei guard (errori, frase, gemello, data operativa al posto di `current_date`) | `docs/it/dbzero/anagrafiche/manual/` |
+
+**Le scelte fatte scrivendo:**
+
+* **Un codice per layer**, la strada che il §8.2 (6) lasciava aperta. Le matrici sono due e chi rimedia corregge
+  configurazioni diverse: è la stessa ragione per cui il tipo non ammesso ha già due codici
+  (`E_TIPO_INDIRIZZO_NON_PERMESSO` del ruolo, `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` del soggetto). Il
+  codice storico resta al **ruolo**, come nel gemello: il BE lo confronta già sul flusso Fornitori (smoke,
+  `test_assegna_ruolo_indirizzi_db`), e il lato soggetto nessun call-site BE lo nomina (censito il 2026-11-17).
+* **Il ripiego entra nella frase** come secondo nome dello stesso valore, `«A» / «B»`: una congiunzione italiana
+  («o») composta nel plpgsql non sarebbe traducibile, e il separatore vale in ogni lingua. Il valore lo
+  compongono due guard con la stessa regola: alla seconda copia, il building block (regola del 2).
+* **Nessun `campo` nel contesto**: non c'è un campo del form in errore, manca una riga.
+* La regola dei due guard non cambia (matrice, validità, ripiego) e il montaggio nemmeno. Il requisito del ruolo
+  che ignora la natura resta al giro 4 (§9.5).
+
+### 11.2 La prova
+
+`scripts/prova_changeset.py` sullo scratch `zeroerp_ruoli`, 2026-11-17: i tre changeSet più un estratto di sola
+prova con le quattro righe dei due CSV (lo script non esegue i loader), catalogo identico dopo il `ROLLBACK`.
+Guardrail statici verdi (forme, letterali, COMMENT al presente, runOnChange, preCondition, timestamp, DDL sui
+trigger generati, GRANT ai ruoli batch, v1 congelato; preambolo pgTAP); segnaposti e unicità degli id dei messaggi
+controllati.
+
+| pgTAP | Senza → con l'estratto |
+| --- | --- |
+| `test-indirizzo-obbligatorio-mancante-frase-v1` (nuovo) | interrotto → 10 / 0 |
+| `test-fornitore-privato-indirizzi-v1`, `test-fn-pgtap-crea-soggetto-pf-v1`, `test-check-tipo-indirizzo-v1` | 24 / 0, 9 / 0, 34 / 0, invariati |
+| `script/test-catalogo-messaggi-errore-completo`, `script/test-rubinetto-primo-motivo-v1`, `dbops/test-codice-errore-conforme-v1`, `config/test-codici-errore-identita` | invariati, verdi |
+| `dbops/test-comment-al-presente-v1`, `test-corpo-funzione-senza-commenti-v1`, `test-riferimenti-morti-v1`, `test-security-definer-search-path-v1` | invariati, verdi |
+
+Nessun pgTAP asseriva la frase vecchia (cercati per funzione, per codice e per testo: solo commenti che la
+citano come storia).
+
+⚠️ **Limite dichiarato:** la prova gira da owner, e i messaggi vengono dall'estratto di prova, non dal loader del
+CSV: l'esito vero lo dà la corsa di Tid dopo l'applicazione.
+✅ *Corsa di Tid, 2026-11-17:* `20261116-26 … -28` e i due CSV applicati su dbdev, i pgTAP del §11.2 verdi
+(compreso il nuovo, coi messaggi dal loader vero). La doc auto-generata dei due guard è rigenerata.
+
+### 11.3 Richiesta a BE/FE (elenco chiuso)
+
+* **R-5 (BE)** — sbloccata il 2026-11-17 (giro 3 applicato):
+  1. rigenerare `backend/apps/core/services/error_policies_generated.py`: entra
+     `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` (`DATO_ERRATO`), e cambia la nota di
+     `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`;
+  2. in `backend/apps/core/services/error_messages_fallback.py` il ripiego di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`
+     dice «per questo tipo soggetto», ma il codice ora è solo del ruolo: «Manca un indirizzo obbligatorio per il
+     ruolo.»; e la voce nuova, accanto, per `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO`: «Manca un
+     indirizzo obbligatorio per il tipo soggetto.».
+
+  Nessun'altra ricaduta: il codice del ruolo, che smoke e `test_assegna_ruolo_indirizzi_db` confrontano, non
+  cambia; nessun file in `frontend/src` nomina i due codici.

@@ -15,7 +15,9 @@
 
 ---
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
+
+> **Ultimo aggiornamento**: 17 novembre 2026
+
 Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
 
 Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligatorio = true`, la funzione controlla l'esistenza di almeno un indirizzo (anche tramite fallback) per ciascun tipo obbligatorio.
@@ -41,12 +43,20 @@ Se per il tipo soggetto dettaglio sono presenti righe di matrice con `obbligator
 
 ### 🚨 Errori Gestiti
 
-| Codice errore                         | Quando si verifica                                |
-| ------------------------------------- | ------------------------------------------------- |
-| **E_INDIRIZZO_OBBLIGATORIO_MANCANTE** | Manca un indirizzo richiesto per il tipo soggetto |
+| Codice errore                                       | Quando si verifica                                |
+| --------------------------------------------------- | ------------------------------------------------- |
+| **E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO** | Manca un indirizzo richiesto per il tipo soggetto |
 
-Gli errori sono prodotti tramite:
-`script.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, NEW.tx_id, ...)`.
+La frase nomina la natura e il tipo richiesto, col suo ripiego se la riga ne ha uno, per descrizione:
+«Il tipo soggetto Persona Fisica - Privato richiede l'indirizzo «Fatturazione» / «Domicilio Fiscale».». I nomi dei tipi li
+compone [anagrafiche.fn_nomi_tipo_indirizzo_richiesto](/dbzero/anagrafiche/funzioni/fn_nomi_tipo_indirizzo_richiesto);
+gli id (soggetto, natura, tipo richiesto, ripiego) stanno nel contesto dell'errore.
+
+⛔ Il codice è **del layer soggetto**. Il gemello del ruolo,
+[trgfn_soggetti_ruoli_guard_indirizzi_required](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_indirizzi_required),
+legge un'altra matrice e solleva `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`: chi rimedia corregge una
+configurazione diversa, come per il tipo non ammesso (`E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` contro
+`E_TIPO_INDIRIZZO_NON_PERMESSO`).
 
 ---
 
@@ -69,7 +79,7 @@ CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_indirizzi_required_aft_ins_upd
 
 * La matrice e' opzionale: se non esiste per il tipo soggetto dettaglio, il controllo non scatta.
 * Il fallback consente di soddisfare l'obbligo con un tipo indirizzo alternativo configurato.
-* La validita' temporale e' valutata su `current_date`.
+* La validita' temporale e' valutata sul giorno aziendale, `script.fn_data_operativa()`.
 
 ---
 

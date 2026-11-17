@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I NOMI DEL TIPO DI INDIRIZZO RICHIESTO, COL SUO RIPIEGO
+#   anagrafiche.fn_nomi_tipo_indirizzo_richiesto(tipo, ripiego) -> text
+#   Brief: brief-db-fornitore-privato-indirizzi §4.3, §8.2 (6), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   I due guard degli obbligatori (soggetto e ruolo) dicono all'operatore
+#   quale indirizzo manca. Una riga di matrice obbligatoria si soddisfa col
+#   suo tipo o col suo ripiego (fallback_tipo_indirizzo_id): la frase deve
+#   nominare tutti e due, per descrizione. Il valore lo compongono due
+#   chiamanti con la stessa regola: alla seconda copia, un building block
+#   (regola del 2).
+#
+# ── COSA FA ─────────────────────────────────────────────────────
+#   '«Sede legale»' oppure '«Sede legale» / «Domicilio fiscale»': ogni tipo
+#   fra caporali, nell'ordine tipo -> ripiego, separati da ' / ' (nessuna
+#   congiunzione italiana composta nel codice). Ripiego NULL o uguale al
+#   tipo: il solo tipo. Le descrizioni sono quelle del catalogo
+#   (config.tipi_indirizzi.descrizione, NOT NULL). Un id che il catalogo non
+#   ha non compare; se nessuno dei due c'e', NULL: il chiamante ripiega
+#   sull'id.
+#   BEGIN ATOMIC (linee-guida-sql §5c): legge un catalogo, la dipendenza sta
+#   in pg_depend. ⚠️ Da solo nel suo sql:, il COMMENT nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-26-create-fn-nomi-tipo-indirizzo-richiesto-mctit.yaml
+
+  - changeSet:
+      id: 20261116-26-create-fn-nomi-tipo-indirizzo-richiesto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il building block che nomina il tipo di indirizzo richiesto e il suo ripiego, per
+        descrizione: il valore della frase dei due guard degli obbligatori.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_nomi_tipo_indirizzo_richiesto(
+                  p_tipo_indirizzo_id          config.tipi_indirizzi.id%TYPE,
+                  p_fallback_tipo_indirizzo_id config.tipi_indirizzi.id%TYPE)
+              RETURNS text
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT string_agg('«' || ti.descrizione || '»', ' / ' ORDER BY x.ord)
+                    FROM unnest(ARRAY[p_tipo_indirizzo_id, p_fallback_tipo_indirizzo_id])
+                         WITH ORDINALITY AS x(id, ord)
+                    JOIN config.tipi_indirizzi ti ON ti.id = x.id
+                   WHERE x.ord = 1
+                      OR x.id IS DISTINCT FROM p_tipo_indirizzo_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_nomi_tipo_indirizzo_richiesto(
+                  config.tipi_indirizzi.id%TYPE,
+                  config.tipi_indirizzi.id%TYPE)
+              IS 'I nomi di un tipo di indirizzo richiesto e del suo ripiego, come li legge l''operatore: ogni descrizione di config.tipi_indirizzi fra caporali, nell''ordine tipo e ripiego, separate da '' / '' («Sede legale» / «Domicilio fiscale»). Ripiego NULL o uguale al tipo: il solo tipo. Un id assente dal catalogo non compare; nessuno dei due presente: NULL. E'' il valore della frase di E_INDIRIZZO_OBBLIGATORIO_MANCANTE (anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required) e di E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO (anagrafiche.trgfn_soggetti_guard_indirizzi_required). STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_nomi_tipo_indirizzo_richiesto(integer, integer);

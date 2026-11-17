@@ -20,6 +20,7 @@ DECLARE
   v_has_matrix boolean;
   v_today      date := script.fn_data_operativa();
   v_missing    record;
+  v_ruolo_nome config.tipi_ruoli.descrizione%TYPE;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RETURN OLD;
@@ -62,6 +63,13 @@ BEGIN
    LIMIT 1;
 
   IF FOUND THEN
+    SELECT tr.descrizione INTO v_ruolo_nome
+      FROM config.tipi_ruoli tr
+     WHERE tr.id = NEW.tipo_ruolo_id;
+
+    -- Valori per descrizione, nell'ordine della frase: il
+    -- ruolo, poi il tipo richiesto col suo ripiego. Gli id
+    -- stanno nel contesto.
     PERFORM script.fn_log_and_raise_error(
       'database',
       'trgfn_soggetti_ruoli_guard_indirizzi_required',
@@ -73,9 +81,11 @@ BEGIN
         'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
       ),
       NEW.tx_id,
-      NEW.id::text,
-      'tipo ruolo' , NEW.tipo_ruolo_id::text,
-      v_missing.tipo_indirizzo_id::text
+      COALESCE(v_ruolo_nome, NEW.tipo_ruolo_id::text),
+      COALESCE(anagrafiche.fn_nomi_tipo_indirizzo_richiesto(
+                   v_missing.tipo_indirizzo_id,
+                   v_missing.fallback_tipo_indirizzo_id),
+               v_missing.tipo_indirizzo_id::text)
     );
   END IF;
 
@@ -84,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
-IS 'Constraint trigger DEFERRABLE: per soggetti_ruoli verifica presenza indirizzi obbligatori da config.tipi_ruolo_tipi_indirizzo. Se matrice assente -> libero.';
+IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti_ruoli: il ruolo deve avere, fra i suoi indirizzi (anagrafiche.indirizzi), ogni tipo che config.tipi_ruolo_tipi_indirizzo dichiara obbligatorio per il suo tipo di ruolo, attivo e valido il giorno di script.fn_data_operativa(), oppure il ripiego della riga (fallback_tipo_indirizzo_id). Tipo di ruolo NULL o senza nessuna riga di matrice: libero. Al primo obbligatorio mancante E_INDIRIZZO_OBBLIGATORIO_MANCANTE, coi valori della frase nell''ordine tipo di ruolo e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Il requisito non guarda la natura del soggetto. ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_guard_indirizzi_required, il gemello del layer SOGGETTO, che legge la matrice della natura e ha un codice suo.';
 ```
 
 </div>
