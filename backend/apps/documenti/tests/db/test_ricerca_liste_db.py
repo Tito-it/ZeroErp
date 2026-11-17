@@ -38,6 +38,7 @@ from apps.core.tests.db_e2e import (
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
+from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, pubblica_per_stampare
 
 # ⭐ Il mondo è un PREVENTIVO vero (giro D.1 di brief-db-sorgente-documento-e-riga,
 #    2026-11-07): una stampa cita un documento che esiste, e il guard unico
@@ -143,6 +144,9 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 for passo in _FIXTURE:
                     cur.execute(passo)
+                # La stampa qui sotto nasce senza PDF: la transazione si
+                # annulla, il controllo del commit non arriva mai.
+                giudica_la_stampa_al_commit(cur)
                 cur.execute("SELECT emittente_fiscale_id, preventivo_uid::text FROM _mondo")
                 emittente, sorgente_uid = cur.fetchone()
                 cur.execute(
@@ -171,6 +175,8 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                     [template],
                 )
                 versione = cur.fetchone()[0]
+                # Una stampa nasce dalla versione in uso del modello (Q13).
+                pubblica_per_stampare(cur, versione)
                 cur.execute(
                     """
                     INSERT INTO documenti.documenti_generati

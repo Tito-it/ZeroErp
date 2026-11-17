@@ -23,7 +23,7 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 8 | ✅ sessione DB | Giro 1 scritto: nove changeSet, quattro CSV, un pgTAP nuovo, nove riscritti, pagine `manual/` e guida | §11 | 7 |
 | 9 | ✅ Tid | Giro 1 applicato, pgTAP verdi (2026-11-16); doc auto-generata rigenerata | §11.5 | 8 |
 | 10 | ✅ Tid | Q13 (nel giro 4), Q14, Q15, §9 (brief a parte, dopo) — 2026-11-16 | §7, §9 | — |
-| 11 | team BE | BE3, BE7 e le nuove BE9, BE10 del giro 1 — sbloccate | §6, §11.6 | 9 ✅ |
+| 11 | ✅ team BE | BE3, BE7, BE9, BE10 del giro 1 — fatte il 2026-11-16 (BE3: nessun blocco nel form; il DB ferma lo spegnimento solo con versioni attive, «figli prima») | §6, §11.6, §12.7 | 9 ✅ |
 | 12 | ✅ sessione DB | Giro 2 scritto: otto changeSet, undici CSV, un pgTAP nuovo, sei riscritti, pagine `manual/` e guida | §12 | 10 |
 | 14 | ✅ Tid | Giro 2 applicato col `-99` (2026-11-16): `ci_apply` passato, pgTAP verdi, doc auto-generata rigenerata | §12.5, §12.5-bis | 12 |
 | 17 | ✅ Tid | Il commit del giro 2 (`2fc00ffd1e`); il passaggio al team BE/FE | §12.1, §12.6 | 14 ✅ |
@@ -31,7 +31,7 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 16 | ✅ sessione DB | Giro 3 scritto: quattro changeSet, quattro codici errore, un pgTAP nuovo, otto riscritti, pagine `manual/` e guida | §13 | 14 |
 | 18 | ✅ Tid | Giro 3 applicato (2026-11-16): pgTAP verdi, doc auto-generata rigenerata | §13.5 | 16 |
 | 21 | ✅ Tid | Il commit del giro 3 (`3367e5146e`) | §13.1 | 18 ✅ |
-| 19 | team BE | BE15, BE16 del giro 3 — sbloccate, nessuna rottura; BE4 verificata | §13.6 | 18 ✅ |
+| 19 | ✅ team BE | BE15, BE16 del giro 3 — fatte (non committate), BE4 verificata | §13.6, §14.8 | 18 ✅ |
 | 22 | ✅ sessione DB | Giro 4 scritto: cinque changeSet, le note di sette codici, un pgTAP nuovo, quattro riscritti, pagine `manual/` e guida | §14 | 21 ✅ |
 | 23 | ✅ Tid | Giro 4 verificato (§14.7), applicato (2026-11-16), pgTAP verdi, doc auto-generata, commit `90eb95a09a` | §14.5 | 22 |
 | 24 | team BE/FE | BE6, BE6-bis, BE17 del giro 4 — sbloccate, nessuna rottura | §14.6 | 23 ✅ |
@@ -45,6 +45,13 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 
 **Decisioni aperte di Tid:** `emittente_fiscale_id` della risorsa, libero o fermo (§15.5, non blocca l'apply). **Da committare:** niente: il giro 5 è committato col brief, `PROJECT_CONTEXT.md` e
 `migliorie-generali-da-test-valutazione.md`.
+| 23 | Tid | `/verifica-db`, l'apply del giro 4, i pgTAP, la doc auto-generata, il commit | §14.5 | 22 |
+| 24 | ✅ team BE/FE | BE6, BE6-bis, BE17 del giro 4 — fatte (non committate); due richieste nuove al team DB | §14.6, §14.8 | 23 |
+| 20 | sessione DB | Il giro 5, col via di Tid | §2 | 23 |
+| 13 | team BE | Le altre ricadute di §6, quando il giro DB corrispondente è applicato | §6 | 20 |
+
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 4 (§14.1: cinque changeSet, i due CSV degli
+errori, il pgTAP nuovo e i quattro riscritti, le pagine `manual/` e la guida), questo brief, `PROJECT_CONTEXT.md`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -648,6 +655,38 @@ prima dell'apply, 110), pgTAP verdi.
 **Fuori perimetro, segnalato**: `backend/apps/core/services/email_outbox_service.py:62` (`ALLOWED_MIME_TYPES`) è la
 terza lista dei formati; può abbinarsi a `config.formati_file` quando un giro delle email lo apre.
 
+
+### 12.7 Esito BE/FE (sessione BE, 2026-11-16)
+
+* **BE11, BE5, BE12** — Nuovo BB `apps/core/db/formati_file.py`: `sql_formati_ammessi` (la join abbinamento ⨝
+  `config.formati_file` come lista jsonb) ed `estensione_del_formato`. Lo usano `get_tipo_asset`,
+  `get_tipo_file_documento_by_codice` e la lookup specializzata. Le quattro mappe Python sono ritirate. La risorsa
+  non ha più un controllo del formato in Python: la rifiuta il DB, che arriva all'API come 400 col messaggio del
+  catalogo (provato su dbdev). Gli allegati della stampa restano controllati **prima del render**, sulla lista letta
+  dal DB, e il messaggio «Ammessi: …» si compone da quella lista.
+* **BE13** — I quattro vocabolari entrano nelle lookup specializzate (`has_attivo: False`). Tipo di risorsa e tipo di
+  file portano anche `formati`: lo handler accetta ora `altre_colonne`. Le cinque tendine passano a
+  `useLookupEtichettato`, e il drawer della risorsa mostra i formati ammessi e li usa come `accept`.
+* **BE10, BE14** — Policy rigenerate (DB allineato a git), messaggi di ripiego per i tre codici nuovi. Il ripiego di
+  `E_DOCUMENTI_GENERATO_DELETE_BLOCKED` resta com'è: ricopia il catalogo, che dice ancora «append-only per audit».
+* **BE7, BE9, FE1** — Fatte. ⚠️ Fatto datato (dbdev, 2026-11-16): le fixture `dbops.fn_pgtap_*` chiudono con
+  `SET CONSTRAINTS ALL IMMEDIATE`, quindi il controllo del PDF principale (D20) scattava sull'INSERT della stampa
+  nei quattro test BE che stampano dopo una fixture. In produzione nessun percorso rende i vincoli immediati
+  (verificato su `pg_proc`). I test riportano quel vincolo a differito col BB di test
+  `documenti/tests/db/_stampa.py`.
+* **Rilettura (`/verifica`, 2026-11-16)** — Con l'ok di Tid:
+  * il rifiuto del formato di una risorsa è provato sul DB vero fino alla traduzione dell'API (400
+    `E_DOCUMENTI_FORMATO_NON_AMMESSO`, `test_scritture_dinamiche_db` 2-bis);
+  * la query «un tipo di risorsa che ammette un formato», ricopiata in tre test DB, è ora
+    `tipo_asset_che_ammette` in `documenti/tests/db/_stampa.py`;
+  * le liste dei modelli e delle risorse e il pannello della risoluzione mostrano il tipo con la stessa etichetta
+    delle tendine: il BE porta `tipo_documento_output_etichetta_key` e `asset_tipo_etichetta_key`, la
+    `descrizione` resta per ordinamento ed export;
+  * il drawer della risorsa dice di nuovo il limite di dimensione, letto dal parametro
+    `documenti_asset_upload_max_mb`;
+  * `useLookupEtichettato` con `campoCodice: 'id'` ripiegava sull'id (un numero a video) quando la chiave manca
+    dai locales: ora ripiega sul `codice` della riga. Presidio delle cinque tendine:
+    `config/components/TemplateTendineVocabolari.spec.js`.
 ## 13. Giro 3 — la pubblicazione (scritto e applicato il 2026-11-16)
 
 Via di Tid il 2026-11-16 («ok procedi giro 3»). Decisione di riferimento: Q3 (§7). Numeri dal primo libero.
@@ -1108,3 +1147,26 @@ delle fasi tardive); pagine `manual/` di `fn_pubblica_template_documento_version
 | BE19 | `backend/apps/core/services/error_messages_fallback.py:445`, `:448`, `:470`, `:540`, `:541` | Se il fallback ricopia il catalogo: i messaggi riscritti di `E_DOCUMENTI_ASSET_FILE_IMMUTABILE`, `_GENERATO_DELETE_BLOCKED`, `_VERSIONE_DELETE_BLOCKED` (non dice più «contrassegnarla come OBSOLETA») e dei due `E_EVENTO_DOCUMENTO_*_VIETATA` (senza «append-only») |
 
 BE8 resta del team BE (§15.2 G).
+### 14.8 Esito BE/FE (sessione BE, 2026-11-17)
+
+* **BE6** — `_ASSET_UTILIZZABILE_OGGI` è un `EXISTS` su `documenti.vw_template_asset_utilizzabili`, letto dal render
+  (`get_asset_per_render`) e, con `NOT`, dal filtro `utilizzabili` della lista: la regola non ha più una copia BE.
+  Il test della stringa vuole la vista e nessuna colonna `validita`.
+* **BE6-bis** — `STANDARD_NON_STAMPA` nella colonna «Allineamento allo standard» e nel drawer: colore `warn`, le due
+  chiavi i18n.
+* **BE15, BE16, BE17** — Policy rigenerate; ripieghi senza `%s` per i quattro codici del giro 3, frasi nuove di
+  `E_DOCUMENTI_GENERATO_COERENZA` e `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE`; la voce del vincolo
+  `…_valido_dal_pubblicata` esce dalla mappa (dal backend non si raggiunge). Le due fixture DB che stampavano da una
+  bozza pubblicano dal verbo (`pubblica_per_stampare`, `documenti/tests/db/_stampa.py`).
+* **Rilettura (`/verifica`, 2026-11-17)** — 372 test sul DB vero (`documenti`, `vendite`) verdi. Corretti tre commenti
+  stantii di `template_versioni_admin_service.py`. Due richieste al team DB:
+  * **R1 — il numero della versione ha due sedi.** `create_versione` lo calcola nel backend
+    (`next_versione_num`, `MAX + 1`) e, se due scritture lo prendono insieme, la UNIQUE arriva come 400
+    `E_DOCUMENTI_VALIDATION` «race condition: riprovare»; la copia lo calcola nel DB (`fn_crea_bozza_da_versione`)
+    e lo stesso fatto è 409 `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`. Stesso caso, due regole e due codici. Si
+    chiede la sede DB anche per la nascita di una bozza nuova (un verbo, o il numero assegnato dal DB), col codice
+    della copia e la sua nota allargata a chi lo solleva; il backend ritira `next_versione_num` e la voce della
+    UNIQUE in `_UNIQUE_CONSTRAINTS`.
+  * **R2 — la causa di `E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` è stantia** (`messaggi_errore.csv`): dice ancora
+    «una versione pubblicata, attiva e valida oggi» e «la sua versione pubblicata è spenta». Dal 2026-11-14 stampa
+    anche una OBSOLETA ancora in vigore (M6: «in vigore»).

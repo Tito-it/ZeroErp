@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from typing import Any, NoReturn
 from uuid import UUID
@@ -1562,19 +1562,23 @@ def fn_rettifica_controllata_riga(
 
 # --- N8a: Variazione percentuale massa su versione BOZZA ---
 
-_VARIAZIONE_PCT_MIN = Decimal("-99")
-_VARIAZIONE_PCT_MAX = Decimal("1000")
-_ARROT_DECIMALI_MIN = 0
-_ARROT_DECIMALI_MAX = 10
+# Il default dei decimali quando il corpo non li porta. Gli INTERVALLI
+# (percentuale -99 … 1000, decimali 0 … 10) li dice il verbo,
+# E_LISTINO_VARIAZIONE_FUORI_INTERVALLO col campo nel canale COLUMN (BE-L7).
 _ARROT_DECIMALI_DEFAULT = 4
 
 
-# Scopo: Applica una variazione percentuale ai prezzi delle righe attive di una versione
-#        in bozza (sviluppo-listini-v3 N8a). Con dry_run=True restituisce la
-#        preview senza applicare modifiche. Qui la forma: range percentuale
-#        ammesso, arrotondamento 0-10. «Solo in bozza» lo dice il guard di stato
-#        delle righe (giro 6f-ter, BE-L1), sul gesto e sulla sua anteprima; la
-#        superficie e' `variazione_blocco_*` della versione.
+# Scopo: La variazione percentuale dei prezzi delle righe attive di una versione
+#        (sviluppo-listini-v3 N8a), col verbo `vendite.fn_varia_prezzi_versione_listino`
+#        chiamato UNA volta: `dry_run` = anteprima, altrimenti il gesto. Qui solo
+#        la FORMA del corpo e il default dei decimali.
+# ⚠️ Il resto e' del verbo (BE-L7, 2026-11-15): «solo in bozza» lo dice la
+#    versione anche a righe zero e in anteprima (E_RIGA_LISTINO_VERSIONE_NON_IN_BOZZA,
+#    E_RIGA_LISTINO_VERSIONE_CHIUSA), gli intervalli, il perimetro, e la traccia in
+#    `meta.variazioni_percentuali[]`. Prima il backend la scriveva a mano dopo un
+#    UPDATE suo: a righe zero l'UPDATE non faceva scattare il guard delle righe, e
+#    la traccia cadeva su E_LISTINO_VERSIONE_CAMPO_NON_MODIFICABILE.
+# ⚠️ `filtro_articoli`: assente o `null` = tutte le righe attive, `[]` = nessuna.
 def fn_applica_variazione_percentuale(
     listino_id: int,
     versione_id: int,
@@ -1582,24 +1586,12 @@ def fn_applica_variazione_percentuale(
 ) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_applica_variazione_percentuale"
 
-    versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
+    # La versione e' di QUESTO listino: il verbo riceve solo la versione.
+    _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
 
-    # --- Parsing e validazione payload ---
+    # --- Parsing del payload (solo la forma) ---
     variazione_pct = _V.require_decimal(
         payload, "variazione_percentuale", function_name=function_name,
-    )
-
-    ErrorManager.require(
-        _VARIAZIONE_PCT_MIN <= variazione_pct <= _VARIAZIONE_PCT_MAX,
-        code="E_VENDITE_VALIDATION",
-        message="Variazione percentuale fuori dal range ammesso.",
-        detail=(
-            f"variazione_percentuale deve essere tra {_VARIAZIONE_PCT_MIN} e "
-            f"{_VARIAZIONE_PCT_MAX}. Ricevuto: {variazione_pct}."
-        ),
-        context={"variazione_percentuale": str(variazione_pct)},
-        function_name=function_name,
-        log_to_db=True,
     )
 
     raw_dec = payload.get("arrotondamento_decimali", _ARROT_DECIMALI_DEFAULT)
@@ -1615,19 +1607,6 @@ def fn_applica_variazione_percentuale(
             log_to_db=True,
         )
     assert isinstance(arrotondamento_decimali, int)
-
-    ErrorManager.require(
-        _ARROT_DECIMALI_MIN <= arrotondamento_decimali <= _ARROT_DECIMALI_MAX,
-        code="E_VENDITE_VALIDATION",
-        message="Arrotondamento decimali fuori dal range ammesso.",
-        detail=(
-            f"arrotondamento_decimali deve essere tra {_ARROT_DECIMALI_MIN} e "
-            f"{_ARROT_DECIMALI_MAX}. Ricevuto: {arrotondamento_decimali}."
-        ),
-        context={"arrotondamento_decimali": arrotondamento_decimali},
-        function_name=function_name,
-        log_to_db=True,
-    )
 
     # --- Filtro articoli (opzionale) ---
     raw_filtro = payload.get("filtro_articoli")
@@ -1658,71 +1637,30 @@ def fn_applica_variazione_percentuale(
     # Dal BB: con `bool(...)` la stringa "false" valeva True.
     dry_run = _V.optional_bool(payload, "dry_run") is True
 
-    # --- Esecuzione ---
-    repository = ListiniRepository()
-    filtro_str = [str(a) for a in filtro_articoli] if filtro_articoli else None
-
-    contesto_errore = {"listino_id": listino_id, "versione_id": versione_id}
-    if dry_run:
-        try:
-            count, preview = repository.applica_variazione_percentuale(
-                versione_id=versione_id,
-                variazione_pct=str(variazione_pct),
-                arrotondamento_decimali=arrotondamento_decimali,
-                filtro_articoli=filtro_str,
-                dry_run=True,
-            )
-        except DatabaseError as exc:
-            _rifiuto_del_db(
-                exc, message="Variazione dei prezzi non ammessa.",
-                context=contesto_errore, function_name=function_name,
-            )
-        return {
-            "dry_run": True,
-            "righe_coinvolte": count,
-            "preview": preview,
-            "variazione_percentuale": str(variazione_pct),
-            "arrotondamento_decimali": arrotondamento_decimali,
-        }
-
+    # --- Il verbo, una volta ---
     try:
         with transaction.atomic():
-            count, _ = repository.applica_variazione_percentuale(
-                versione_id=versione_id,
-                variazione_pct=str(variazione_pct),
-                arrotondamento_decimali=arrotondamento_decimali,
-                filtro_articoli=filtro_str,
-                dry_run=False,
-            )
-            # Audit sulla meta della versione
-            meta_versione = _V.optional_meta(
-                versione, "meta", function_name="listini_service.fn_applica_variazione_percentuale"
-            ) or {}
-            variazioni_pct = list(meta_versione.get("variazioni_percentuali", []))
-            variazioni_pct.append({
-                "data": datetime.now(timezone.utc).isoformat(),
-                "variazione_percentuale": str(variazione_pct),
-                "arrotondamento_decimali": arrotondamento_decimali,
-                "righe_aggiornate": count,
-                "filtro_articoli": filtro_str,
-            })
-            meta_versione["variazioni_percentuali"] = variazioni_pct
-            repository.update_versione(
-                listino_id=listino_id,
-                versione_id=versione_id,
-                data={"meta": meta_versione},
+            righe = ListiniRepository().varia_prezzi_versione(
+                versione_id,
+                variazione_pct,
+                arrotondamento_decimali,
+                filtro_articoli,
+                dry_run=dry_run,
             )
     except DatabaseError as exc:
         _rifiuto_del_db(
             exc, message="Variazione dei prezzi non ammessa.",
-            context=contesto_errore, function_name=function_name,
+            context={"listino_id": listino_id, "versione_id": versione_id},
+            function_name=function_name,
         )
 
-    return {
-        "righe_aggiornate": count,
+    esito: dict[str, Any] = {
         "variazione_percentuale": str(variazione_pct),
         "arrotondamento_decimali": arrotondamento_decimali,
     }
+    if dry_run:
+        return {"dry_run": True, "righe_coinvolte": len(righe), "preview": righe, **esito}
+    return {"righe_aggiornate": len(righe), **esito}
 
 
 # ══════════════════════════════════════════════════════════════════════

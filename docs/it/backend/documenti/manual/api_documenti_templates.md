@@ -120,8 +120,9 @@ stata verificata alla stampa. Brief:
         "is_default": true,
         "attivo": true,
         "tipo_documento_output_id": 1,
-        "tipo_documento_output_codice": "PDF_FINALE",
-        "tipo_documento_output_descrizione": "PDF finale",
+        "tipo_documento_output_codice": "PREVENTIVO",
+        "tipo_documento_output_descrizione": "Preventivo",
+        "tipo_documento_output_etichetta_key": "documenti.tipi_documento_output.preventivo",
         "sorgente_tipo_id": 10,
         "sorgente_tipo_codice": "PREVENTIVO",
         "sorgente_tipo_descrizione": "Preventivo vendita",
@@ -142,6 +143,11 @@ stata verificata alla stampa. Brief:
 
 Su un modello standard `emittente_fiscale_id`, `emittente_fiscale_codice` ed
 `emittente_ragione_sociale` sono `null`.
+
+`tipo_documento_output_etichetta_key` (dal 2026-11-16) è l'indirizzo i18n che il
+vocabolario dichiara: la lista lo traduce, come le tendine del tipo di documento.
+`tipo_documento_output_descrizione` resta per l'ordinamento e l'export. La
+risoluzione per emittente (`GET /api/v1/documenti/templates/risoluzione/`) porta la stessa coppia.
 
 - `400`: parametri non validi (query param int malformato, `order_by` fuori whitelist)
 - `401`: JWT mancante o non valido
@@ -496,6 +502,10 @@ standard.
     pubblicazione).
 - `400` `E_DOCUMENTI_VALIDATION`: chiave non whitelisted in payload override.
 - `404` `E_DOCUMENTI_NOT_FOUND`: source inesistente o fuori scope.
+- `409` `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE`: nello stesso istante un'altra
+  scrittura ha preso il numero `MAX+1` sullo stesso template; la copia non è
+  nata, si ripete. Lo traduce il verbo DB `fn_crea_bozza_da_versione` (prima
+  arrivava come `IntegrityError` sulla UNIQUE del numero).
 
 ### 11. Pubblica versione (Tranche F)
 
@@ -505,8 +515,10 @@ standard.
 - Path: `/api/v1/documenti/templates/<int:template_id>/versioni/<int:versione_id>/pubblica/`
 - Permesso azione: `documenti_template_manage` (`post_permission`)
 - Body JSON:
-  - `valido_dal`* (date ISO) — obbligatorio per la transizione (vincolo
-    DB `chk_template_documenti_versioni_valido_dal_pubblicata`).
+  - `valido_dal`* (date ISO) — obbligatorio per la transizione: il service
+    lo chiede prima del verbo (`E_DOCUMENTI_VALIDATION`). Il DB lo pretende
+    per ogni stato fuori bozza (`chk_template_documenti_versioni_valido_dal_fuori_bozza`),
+    ma dal backend il vincolo non si raggiunge e non ha voce nella mappa.
   - `valido_al` (date ISO, nullable) — se valorizzato deve essere `>= valido_dal`
     (lo giudica il database, non il service: vedi sotto).
 
@@ -544,6 +556,10 @@ standard.
   da sola il giorno prima. Codice dedicato 409, armonizzato con
   gli altri overlap (`E_VENDITE_PROMO_OVERLAP` / `E_VENDITE_LISTINO_VERSIONE_OVERLAP`);
   prima ricadeva nel generico `E_DOCUMENTI_VALIDATION` (400).
+- `409` `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA`: la bozza è spenta
+  (`attivo = false`). Pubblicata non stamperebbe e chiuderebbe la versione che
+  stampa oggi: si riaccende, poi si pubblica. Lo dice il verbo DB, prima di
+  chiudere qualunque altra versione; la versione resta BOZZA.
 - `404` `E_DOCUMENTI_NOT_FOUND`: template/versione inesistente o fuori scope.
 
 #### Auto-close versione precedente
@@ -719,6 +735,10 @@ Vedi Decisione 75 in `sviluppo-documenti.md` §10.
 | `E_DOCUMENTI_NOT_FOUND` | 404 | template/versione inesistente o fuori scope emittente (no leak) |
 | `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` | 403 | scrittura su un modello standard o su una sua versione (trigger `trgfn_template_standard_guard_sola_lettura`) |
 | `E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE` | 409 | tentativo di modificare una versione `PUBBLICATA` o `OBSOLETA`, stato compreso (Tranche F; OBSOLETA dal `20261114-04`). Trigger DB A1 + service guard |
+| `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA` | 409 | pubblicazione di una bozza spenta (`fn_pubblica_template_documento_versione`) |
+| `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` | 409 | clone di una versione col numero `MAX+1` preso nello stesso istante da un'altra scrittura (`fn_crea_bozza_da_versione`): si ripete |
+| `E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO` | 500 | una versione nasce fuori bozza o ne esce senza il verbo di pubblicazione (`trgfn_template_documenti_versioni_protect_pubblicata`). Il backend crea solo bozze e pubblica dal verbo: se arriva, è rotto il chiamante |
+| `E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO` | 500 | copia di una versione in un template di un altro documento (`fn_crea_bozza_da_versione`). Il clone copia nello stesso template, «personalizza» nel modello della stessa coppia: se arriva, è rotto il chiamante |
 | `E_DOCUMENTI_VERSIONE_DELETE_BLOCKED` | 409 | tentativo di eliminare versione non-BOZZA o gia' usata da documenti generati (Tranche F). Trigger DB A2 + service guard |
 
 Codici Fase A `E_DOCUMENTI_*` registrati in `apps.core.services.error_policies`
@@ -784,7 +804,7 @@ cambia, e le ristampe di ieri devono continuare a mostrare quello di ieri.
 
 | | |
 |---|---|
-| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). ⚠️ dal 2026-09-27 `page`/`page_size` non sono letti; lo schema OpenAPI li dichiara ancora |
+| **Lista** | `GET /api/v1/documenti/asset/` — `search`, `attivo`, `asset_tipo_id`, `emittente_fiscale_id`, `utilizzabili`, `limit` (default 25, max 200), `offset`, `order_by` (whitelist `ASSET_ORDER_COLUMNS`, default `codice`; fuori whitelist `400`), `order_dir` (assente: `asc`, le date `desc`). Ogni riga porta il tipo come `asset_tipo_codice`, `asset_tipo_descrizione` e, dal 2026-11-16, `asset_tipo_etichetta_key` (l'indirizzo i18n che la lista traduce). ⚠️ dal 2026-09-27 `page`/`page_size` non sono letti; lo schema OpenAPI li dichiara ancora |
 | **Upload** | `POST /api/v1/documenti/asset/` — **multipart**: campo `file` piu' l'anagrafica (`codice`, `codice_interno`, `descrizione`, `asset_tipo_id`, `emittente_fiscale_id`, `valido_dal`…). I metadati si possono passare come campi form singoli **oppure** come JSON nel campo `metadati`: la view accetta entrambe le forme |
 | **Dettaglio / aggiorna** | `GET` `PATCH /api/v1/documenti/asset/{asset_id}/` — la `PATCH` tocca i **metadati**, non il binario |
 | **Download** | `GET /api/v1/documenti/asset/{asset_id}/file/` — il file originale, come `attachment` |

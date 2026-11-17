@@ -30,7 +30,7 @@ class DocumentStorage(ABC):
     - `read/delete/exists` accettano lo storage_uri ritornato da write.
     - `delete` e' **best-effort**: se il file non esiste ritorna False
       senza sollevare. Le operazioni di cleanup post-fail commit non
-      devono propagare errori (Decisione 72 + evento STORAGE_ORPHAN).
+      devono propagare errori (Decisione 72): il file orfano resta solo nel log.
     - le chiavi logiche (`key`) NON devono contenere path traversal
       (`..`, leading `/`); la validazione e' a cura dell'implementazione.
 

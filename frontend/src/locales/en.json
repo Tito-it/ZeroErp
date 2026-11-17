@@ -5829,6 +5829,28 @@
     "orientamenti_pagina": {
       "portrait": "Portrait",
       "landscape": "Landscape"
+    },
+    "tipi_asset_documento": {
+      "logo": "Logo",
+      "firma": "Signature",
+      "immagine": "Image",
+      "pdf": "PDF",
+      "css": "Stylesheet (CSS)"
+    },
+    "tipi_file_documento": {
+      "pdf_finale": "Print PDF",
+      "allegato": "Attachment"
+    },
+    "tipi_documento_output": {
+      "preventivo": "Quote",
+      "contratto": "Contract",
+      "offerta_commerciale": "Commercial offer",
+      "ordine_vendita": "Sales order",
+      "ddt_vendita": "Sales delivery note",
+      "fattura_vendita": "Sales invoice"
+    },
+    "render_engine_documento": {
+      "weasyprint": "WeasyPrint"
     }
   },
   "config": {
@@ -5859,7 +5881,9 @@
         "CONTESTO_SUPERATO": "Data shape outdated",
         "CONTESTO_SUPERATO_hint": "The copy reads an older data shape than the standard template: printing will stop. Start again from the standard or update it.",
         "ORIGINE_NON_DICHIARATA": "Origin not declared",
-        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared."
+        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared.",
+        "STANDARD_NON_STAMPA": "Standard not printing",
+        "STANDARD_NON_STAMPA_hint": "The standard to compare it with is missing, switched off or does not print today: there is nothing to compare the copy with."
       },
       "personalizza": {
         "action": "Customize",
@@ -5957,7 +5981,7 @@
         "download_error": "Unable to download the asset file.",
         "file_count": "Attached files: {count}",
         "field_file": "File",
-        "field_file_hint": "Max 25 MB. MIME type must match the selected asset type.",
+        "field_file_hint": "The file format must be one of those allowed by the selected type.",
         "field_codice": "Code",
         "field_codice_interno": "Internal code",
         "field_descrizione": "Description",
@@ -5970,7 +5994,9 @@
         "col_tipo": "Type",
         "col_mime": "MIME",
         "col_file_name": "File name",
-        "col_size": "Size"
+        "col_size": "Size",
+        "formati_ammessi": "Allowed formats: {formati}",
+        "max_file_mb": "Maximum size: {mb} MB"
       }
     },
     "impostazioni": {
@@ -6074,6 +6100,15 @@
       "pipeline_error": "Invoicing run stopped by an error",
       "pipeline_started": "Invoicing run started",
       "step_completed": "Step completed"
+    },
+    "formati_file": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "svg": "SVG",
+      "webp": "WebP",
+      "gif": "GIF",
+      "pdf": "PDF",
+      "css": "CSS"
     }
   },
   "lista_config": {

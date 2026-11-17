@@ -25,9 +25,11 @@ from apps.core.db._helpers import (
     RicercaFull,
     add_ricerca_full_condition,
     fetch_paged_with_total,
+    row_to_dict,
     rows_to_list,
     sql_order_clause,
 )
+from apps.core.db.formati_file import sql_formati_ammessi
 from apps.core.db.sql_write_helpers import (
     execute_dynamic_insert,
     execute_dynamic_update,
@@ -354,6 +356,7 @@ _ASSET_PROJECTION = """
     a.asset_tipo_id,
     tad.codice            AS asset_tipo_codice,
     tad.descrizione       AS asset_tipo_descrizione,
+    tad.etichetta_key     AS asset_tipo_etichetta_key,
     a.mime_type,
     a.file_name,
     a.file_size_bytes,
@@ -394,14 +397,19 @@ _RICERCA_TEMPLATE_ASSET = RicercaFull("documenti.template_asset", ("codice", "de
 _RICERCA_DOCUMENTI_SORGENTE = RicercaFull("documenti.documenti_sorgente", ("titolo", "nome_file"))
 _RICERCA_TEMPLATE_VERSIONI = RicercaFull("documenti.template_versioni", ("titolo",))
 
-# Quando un asset e' UTILIZZABILE nel render di oggi: attivo e valido oggi.
-# ⭐ Una condizione sola, letta da due punti (regola del 2): la risoluzione di
+# Quando un asset e' UTILIZZABILE nel render di oggi: lo dice il DB, nella
+# vista `documenti.vw_template_asset_utilizzabili` (accesa e valida alla data
+# operativa; sede unica della regola dal giro 4 di brief-db-revisione-documenti,
+# D19). Qui la regola non si scrive: si chiede alla vista se l'asset `a` c'e'.
+# ⭐ Una condizione sola, letta da due punti: la risoluzione di
 #    `asset:<codice_interno>` nel render (`get_asset_per_render`) e il filtro
 #    `utilizzabili` della lista, con cui l'editor dei template mostra gli asset
 #    da richiamare. Se le due divergessero, l'editor proporrebbe un asset che
-#    il render rifiuta. La validita' si legge dalla colonna generata
-#    `validita`, mai ricalcolata da `valido_dal`/`valido_al`.
-_ASSET_UTILIZZABILE_OGGI = "(a.attivo AND a.validita @> (SELECT script.fn_data_operativa()))"
+#    il render rifiuta.
+_ASSET_UTILIZZABILE_OGGI = (
+    "EXISTS (SELECT 1 FROM documenti.vw_template_asset_utilizzabili u"
+    " WHERE u.template_asset_id = a.id)"
+)
 
 _ASSET_FROM = """
     FROM documenti.template_asset a
@@ -424,6 +432,7 @@ _TEMPLATES_PROJECTION = """
     t.tipo_documento_output_id,
     tdo.codice           AS tipo_documento_output_codice,
     tdo.descrizione      AS tipo_documento_output_descrizione,
+    tdo.etichetta_key    AS tipo_documento_output_etichetta_key,
     t.sorgente_tipo_id,
     s.codice             AS sorgente_tipo_codice,
     s.descrizione        AS sorgente_tipo_descrizione,
@@ -449,7 +458,9 @@ _TEMPLATES_PROJECTION_DETAIL = (
 #    toglierebbe da ogni lettura senza nessun errore.
 # ⭐ «Allineamento allo standard» (`stato_scarto`, colonna della lista 24, K-9)
 #    e' la lettura del DB `vw_template_personalizzati_scarto` (K-10): ALLINEATA,
-#    STANDARD_AVANTI, CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA. In LEFT JOIN:
+#    STANDARD_AVANTI, CONTESTO_SUPERATO, ORIGINE_NON_DICHIARATA,
+#    STANDARD_NON_STAMPA (lo standard di riferimento manca, e' spento o oggi non
+#    stampa: la copia resta in vista con questo stato). In LEFT JOIN:
 #    la vista ha una riga solo per il modello d'emittente attivo che stampa
 #    oggi, e lo standard non ne ha (NULL = non e' una copia da confrontare).
 #    Il BE non ricalcola niente: la regola e' della vista.
@@ -671,6 +682,7 @@ class DocumentiRepository:
                    s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
                    r.tipo_documento_output_id,
                    tdo.descrizione               AS tipo_documento_output_descrizione,
+                   tdo.etichetta_key             AS tipo_documento_output_etichetta_key,
                    r.sorgente_tipo_id,
                    so.descrizione                AS sorgente_tipo_descrizione,
                    r.esito,
@@ -1139,8 +1151,8 @@ class DocumentiRepository:
     #        attivi e validi oggi; la ristampa fedele passa False, perche'
     #        l'asset e' immutabile e non si cancella, e quello di allora resta
     #        quello giusto anche se oggi e' scaduto (decisione Tid 2026-10-01).
-    #        «Attivo e valido oggi» e' `_ASSET_UTILIZZABILE_OGGI`, la stessa
-    #        condizione del filtro `utilizzabili` della lista.
+    #        «Utilizzabile oggi» e' `_ASSET_UTILIZZABILE_OGGI`, la vista del DB,
+    #        la stessa condizione del filtro `utilizzabili` della lista.
     def get_asset_per_render(
         self,
         emittente_fiscale_id: int,
@@ -1202,23 +1214,26 @@ class DocumentiRepository:
         )
         return int(riga["id"])
 
-    # Scopo: Lookup tipo asset (id, codice_interno, attivo). Usato dal
-    #        service admin per validare MIME contro whitelist Python
-    #        per `codice_interno`. Ritorna None se id inesistente.
+    # Scopo: Il tipo di una risorsa per id: `{id, codice_interno, formati}`,
+    #        coi formati che ammette (BB `sql_formati_ammessi`, lista
+    #        `[{mime_type, estensione, etichetta_key}]`). Il service ne prende
+    #        l'estensione del file; il formato lo giudica il DB alla nascita
+    #        della risorsa (`E_DOCUMENTI_FORMATO_NON_AMMESSO`).
+    #        ⚠️ Niente `attivo` dal 2026-11-16 (giro 2 di
+    #        brief-db-revisione-documenti, D16): un tipo c'e' o non c'e'.
+    # Risultato: dict, o None se l'id non esiste.
     def get_tipo_asset(self, asset_tipo_id: int) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id, codice_interno, attivo
-                  FROM documenti.tipi_asset_documento
-                 WHERE id = %s
-                """,
+                f"""
+                SELECT t.id, t.codice_interno,
+                       {sql_formati_ammessi("documenti.tipi_asset_documento")} AS formati
+                  FROM documenti.tipi_asset_documento t
+                 WHERE t.id = %s
+                """,  # noqa: S608 — frammento costante del BB sql_formati_ammessi, valori come parametri
                 [int(asset_tipo_id)],
             )
-            row = cursor.fetchone()
-        if row is None:
-            return None
-        return {"id": int(row[0]), "codice_interno": str(row[1]), "attivo": bool(row[2])}
+            return row_to_dict(cursor)
 
     # Scopo: UPDATE asset sui soli campi metadati editabili (no file).
     #        Il trigger DB A4 (protect_file) blocca comunque qualsiasi
@@ -1404,22 +1419,25 @@ class DocumentiRepository:
     #        ottenere l'`id` da passare a
     #        `create_documento_generato_file.file_tipo_id` senza hardcodare ID
     #        numerici (memoria feedback_no_hardcoded_ids).
+    #        Restituisce `{id, codice, formati}`: i formati che il tipo
+    #        ammette (BB `sql_formati_ammessi`), che il servizio della stampa
+    #        controlla sugli allegati prima del render.
+    #        ⚠️ Niente `attivo` dal 2026-11-16 (giro 2 di
+    #        brief-db-revisione-documenti, D16): un tipo c'e' o non c'e'.
     def get_tipo_file_documento_by_codice(
         self, codice: str
     ) -> dict[str, Any] | None:
         with connection.cursor() as cursor:
             cursor.execute(
-                """
-                SELECT id, codice, attivo
-                  FROM documenti.tipi_file_documento
-                 WHERE codice_interno = %s
-                """,
+                f"""
+                SELECT t.id, t.codice,
+                       {sql_formati_ammessi("documenti.tipi_file_documento")} AS formati
+                  FROM documenti.tipi_file_documento t
+                 WHERE t.codice_interno = %s
+                """,  # noqa: S608 — frammento costante del BB sql_formati_ammessi, valori come parametri
                 [codice],
             )
-            row = cursor.fetchone()
-        if row is None:
-            return None
-        return {"id": int(row[0]), "codice": str(row[1]), "attivo": bool(row[2])}
+            return row_to_dict(cursor)
 
     # =================================================================
     # Lista documenti generati per sorgente (Tranche K). Il lookup della

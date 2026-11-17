@@ -21,7 +21,9 @@ import { downloadBlob } from '../../core/utils/download'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramInt } from '../../core/utils/parameterCast'
 import AppDrawer from '../../core/components/AppDrawer.vue'
-import LookupSelect from '../../core/components/LookupSelect.vue'
+import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
+import { labelOrCode } from '../../core/utils/i18nLabel'
+import Select from 'primevue/select'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
@@ -30,7 +32,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import FileUpload from 'primevue/fileupload'
 import Message from 'primevue/message'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useTemplateAssetDocumentiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
@@ -46,6 +48,29 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Il tipo di risorsa con l'etichetta che il DB dichiara riga per riga, e i
+// FORMATI che ammette (`formati: [{mime_type, estensione, etichetta_key}]`,
+// dalla lookup specializzata — BE5/BE13 di brief-db-revisione-documenti).
+// Il valore e' l'id della FK `asset_tipo_id`.
+// ⚠️ I formati si MOSTRANO e diventano l'`accept` del selettore: il rifiuto
+//    resta del DB (E_DOCUMENTI_FORMATO_NON_AMMESSO), qui non si ricopia la
+//    regola.
+const {
+  opzioni: tipoAssetOptions, items: tipiAsset,
+} = useLookupEtichettato(
+  { rel: 'documenti.tipi_asset_documento' }, { campoCodice: 'id' },
+)
+const formatiDelTipo = computed(() => {
+  const tipo = (tipiAsset.value || []).find((r) => r.id === form.value.asset_tipo_id)
+  return tipo?.formati ?? []
+})
+const formatiAmmessiTesto = computed(() => formatiDelTipo.value
+  .map((f) => labelOrCode(t, te, f.etichetta_key, f.estensione))
+  .join(', '))
+// Senza tipo scelto il selettore non restringe: decide il DB.
+const acceptFormati = computed(() =>
+  formatiDelTipo.value.map((f) => f.mime_type).join(',') || undefined)
 const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 
 const form = ref(emptyForm())
@@ -63,10 +88,12 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalva
 // controllo anticipato: decide il backend, col suo errore.
 const { defaults: paramUpload, load: caricaParamUpload } =
   useParameterDefaults(['documenti_asset_upload_max_mb'])
-const maxFileBytes = computed(() => {
-  const mb = paramInt(paramUpload.value.documenti_asset_upload_max_mb, null)
-  return mb === null ? undefined : mb * 1024 * 1024
-})
+// Lo stesso parametro, in MB, per il suggerimento sotto il file: il limite
+// si legge prima di scegliere il file, non solo nel rifiuto.
+const maxFileMb = computed(() =>
+  paramInt(paramUpload.value.documenti_asset_upload_max_mb, null))
+const maxFileBytes = computed(() =>
+  (maxFileMb.value === null ? undefined : maxFileMb.value * 1024 * 1024))
 const downloadLoading = ref(false)
 
 function emptyForm() {
@@ -272,11 +299,14 @@ async function handleSave() {
       </div>
       <div class="form-field">
         <label>{{ t('config.modelli_documenti.asset.field_tipo') }} *</label>
-        <LookupSelect
+        <Select
           v-model="form.asset_tipo_id"
-          rel="documenti.tipi_asset_documento"
+          :options="tipoAssetOptions"
+          option-label="label"
+          option-value="value"
           :placeholder="t('config.modelli_documenti.asset.filter_tipo')"
           :disabled="isEdit || isReadOnlyEffective"
+          fluid
         />
         <small v-if="isEdit" class="app-text-muted">
           {{ t('config.modelli_documenti.asset.field_tipo_immutable_hint') }}
@@ -323,6 +353,7 @@ async function handleSave() {
             :auto="false"
             :multiple="false"
             :max-file-size="maxFileBytes"
+            :accept="acceptFormati"
             :choose-label="t('config.modelli_documenti.asset.choose_file')"
             :customUpload="true"
             @select="onFileSelect"
@@ -332,8 +363,14 @@ async function handleSave() {
           <small v-if="selectedFile" class="app-text-muted">
             {{ selectedFile.name }} ({{ Math.round(selectedFile.size / 1024) }} KB)
           </small>
-          <small class="app-text-muted">
+          <small v-if="formatiAmmessiTesto" class="app-text-muted">
+            {{ t('config.modelli_documenti.asset.formati_ammessi', { formati: formatiAmmessiTesto }) }}
+          </small>
+          <small v-else class="app-text-muted">
             {{ t('config.modelli_documenti.asset.field_file_hint') }}
+          </small>
+          <small v-if="maxFileMb !== null" class="app-text-muted">
+            {{ t('config.modelli_documenti.asset.max_file_mb', { mb: maxFileMb }) }}
           </small>
         </div>
       </template>

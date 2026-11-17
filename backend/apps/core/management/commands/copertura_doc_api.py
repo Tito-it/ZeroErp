@@ -67,7 +67,15 @@
 #            per intero e il suo segnaposto e' un IDENTIFICATIVO, non un
 #            dominio — da qui i due segnaposto `{}` e `{*}`.
 #
-#        Presidio: `apps/core/tests/test_copertura_doc_api.py`.
+#        ⚠️ E UNA DECIMA (2026-11-15), trovata provando il cancello nel verso
+#        rosso: una rotta del ruolo senza pagina risultava coperta dal pezzo
+#        di un esempio assoluto del soggetto, spezzato ai puntini (vedi
+#        `fuori_dagli_assoluti` in `leggi_citazioni`). Ancora il verso
+#        permissivo.
+#
+#        Presidio: `apps/core/tests/test_copertura_doc_api.py` (la MISURA, su
+#        casi costruiti). Cancello: `apps/core/tests/test_copertura_doc_api_cancello.py`
+#        (dal 2026-11-15: scoperte e fantasmi a zero, sulla doc vera).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -75,6 +83,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -231,8 +240,17 @@ def leggi_citazioni() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
                 norma(x) for x in ASSOLUTA.findall(riga) if not FILE_SORGENTE.search(x)
             }
             # (coda, troncata): `…/export/` e' troncata, `/export/` no.
+            # ⛔ Trappola 10 (2026-11-15): le relative si cercano FUORI dai
+            #    path assoluti della riga. Un esempio assoluto con i puntini
+            #    (`…/soggetti/a1b2-.../indirizzi/1/copia/`) si spezzava al
+            #    `.`, e il pezzo dopo (`/indirizzi/1/copia/`), letto come coda
+            #    (trappola 5), copriva ogni rotta che finisce cosi': anche
+            #    `ruoli/{}/indirizzi/{}/copia`, che nessuna pagina nominava. Il
+            #    verso permissivo. L'assoluto e' gia' contato per intero sopra.
+            fuori_dagli_assoluti = ASSOLUTA.sub(" ", riga)
             relative = [
-                (x.lstrip("…"), x.startswith("…")) for x in RELATIVA.findall(riga)
+                (x.lstrip("…"), x.startswith("…"))
+                for x in RELATIVA.findall(fuori_dagli_assoluti)
                 if not x.startswith("/api") and not FILE_SORGENTE.search(x)
             ]
             # Trappola 7: la stessa cosa, ma scritta senza lo slash iniziale
@@ -396,6 +414,58 @@ def matcher_servita(rotte: dict[str, Any]) -> Callable[[str], bool]:
     return servita
 
 
+# Scopo: la misura di un'area: le sue rotte, quali sono coperte, quali
+#        scoperte, e i path che la doc dell'area nomina senza una rotta.
+@dataclass(frozen=True)
+class MisuraArea:
+    area: str
+    rotte: dict[str, tuple[str, list[str]]]
+    coperte: frozenset[str]
+    scoperte: tuple[str, ...]
+    fantasmi: tuple[str, ...]
+
+
+# Scopo: la misura INTERA, area per area, nell'ordine alfabetico. Sta fuori da
+#        `handle` perche' ha due consumatori: il comando, che la stampa, e il
+#        CANCELLO (`test_copertura_doc_api_cancello.py`), che la vuole a zero.
+#        Un calcolo copiato nel test misurerebbe una cosa diversa dal comando
+#        che si lancia a mano il giorno in cui una trappola nuova entra qui.
+#        Ritorna anche le citazioni assolute: dicono DOVE sta un fantasma.
+def misura(
+    aree_richieste: list[str] | None = None,
+) -> tuple[list[MisuraArea], dict[str, set[str]]]:
+    rotte = leggi_rotte()
+    doc_tutte, doc_assolute = leggi_citazioni()
+    coperta = matcher_copertura(doc_tutte, doc_assolute)
+    servita = matcher_servita(rotte)
+
+    aree = sorted({
+        p.strip("/").split("/")[2] for p in rotte if p.startswith("/api/v1/")
+    })
+    if aree_richieste:
+        aree = [a for a in aree if a in aree_richieste]
+
+    fuori: list[MisuraArea] = []
+    for area in aree:
+        pref = f"/api/v1/{area}/"
+        sue = {p: v for p, v in rotte.items() if p.startswith(pref)}
+        if not sue:
+            continue
+        coperte = frozenset(p for p in sue if coperta(p))
+        fuori.append(MisuraArea(
+            area=area,
+            rotte=sue,
+            coperte=coperte,
+            scoperte=tuple(sorted(set(sue) - coperte)),
+            fantasmi=tuple(sorted(
+                p for p in doc_assolute
+                if p.startswith(pref) and not servita(p)
+                and len(p.strip("/").split("/")) > 3
+            )),
+        ))
+    return fuori, doc_assolute
+
+
 class Command(ComandoAziendale):
     help = "Copertura della documentazione API: rotte scoperte e path fantasma."
 
@@ -410,49 +480,28 @@ class Command(ComandoAziendale):
         )
 
     def handle(self, *args: Any, **opts: Any) -> None:
-        rotte = leggi_rotte()
-        doc_tutte, doc_assolute = leggi_citazioni()
-        coperta = matcher_copertura(doc_tutte, doc_assolute)
-
-        servita = matcher_servita(rotte)
-
         aree_richieste = [a.strip() for a in opts["aree"].split(",") if a.strip()]
-        aree = sorted({
-            p.strip("/").split("/")[2] for p in rotte if p.startswith("/api/v1/")
-        })
-        if aree_richieste:
-            aree = [a for a in aree if a in aree_richieste]
+        misure, doc_assolute = misura(aree_richieste)
 
         self.stdout.write(
             f"{'area':16}{'rotte':>7}{'documentate':>14}{'scoperte':>10}{'fantasmi':>10}"
         )
         tot_r = tot_d = tot_f = 0
-        for area in aree:
-            pref = f"/api/v1/{area}/"
-            sue = {p: v for p, v in rotte.items() if p.startswith(pref)}
-            if not sue:
-                continue
-            coperte = {p for p in sue if coperta(p)}
-            scoperte = sorted(set(sue) - coperte)
-            fantasmi = sorted(
-                p for p in doc_assolute
-                if p.startswith(pref) and not servita(p)
-                and len(p.strip("/").split("/")) > 3
-            )
-            tot_r += len(sue)
-            tot_d += len(coperte)
-            tot_f += len(fantasmi)
-            pct = 100 * len(coperte) // len(sue)
+        for m in misure:
+            tot_r += len(m.rotte)
+            tot_d += len(m.coperte)
+            tot_f += len(m.fantasmi)
+            pct = 100 * len(m.coperte) // len(m.rotte)
             self.stdout.write(
-                f"{area:16}{len(sue):>7}{len(coperte):>9} ({pct:>3}%)"
-                f"{len(scoperte):>10}{len(fantasmi):>10}"
+                f"{m.area:16}{len(m.rotte):>7}{len(m.coperte):>9} ({pct:>3}%)"
+                f"{len(m.scoperte):>10}{len(m.fantasmi):>10}"
             )
             if not opts["dettaglio"]:
                 continue
-            for p in scoperte:
-                reale, metodi = sue[p]
+            for p in m.scoperte:
+                reale, metodi = m.rotte[p]
                 self.stdout.write(f"    SCOPERTA  {','.join(metodi) or '?':<18} {reale}")
-            for p in fantasmi:
+            for p in m.fantasmi:
                 dove = ", ".join(sorted(doc_assolute[p]))
                 self.stdout.write(f"    FANTASMA  {p}   <- {dove}")
 

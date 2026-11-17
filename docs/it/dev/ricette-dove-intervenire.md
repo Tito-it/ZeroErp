@@ -155,8 +155,8 @@ Quando serve un nuovo tipo di documento/processo che segue la forma standard del
      `./manage-env.sh genera_error_policies`.
    - Test unitari (`SimpleTestCase`) più quelli sul DB vero (`richiedi_db_provvisto`) per la
      giuntura con le funzioni del database.
-   - Ogni rotta nuova ha la sua pagina in `docs/it/backend/<dominio>/manual/`, e la copertura
-     è controllata (`core/tests/test_copertura_doc_api.py`).
+   - Ogni rotta nuova ha la sua pagina in `docs/it/backend/<dominio>/manual/`: senza, la CI è
+     rossa (`core/tests/test_copertura_doc_api_cancello.py`, dal 2026-11-15).
 
    Vedi le [linee guida API](/dev/api) («Checklist nuovo endpoint») e il
    [Catalogo Building Block backend](/dev/backend/catalogo-building-block-backend).

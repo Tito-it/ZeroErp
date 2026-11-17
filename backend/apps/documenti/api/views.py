@@ -227,6 +227,7 @@ class ApiTemplateRisoluzione(DomainAPIView):
                                         "emittente_ragione_sociale": serializers.CharField(allow_null=True),
                                         "tipo_documento_output_id": serializers.IntegerField(),
                                         "tipo_documento_output_descrizione": serializers.CharField(),
+                                        "tipo_documento_output_etichetta_key": serializers.CharField(),
                                         "sorgente_tipo_id": serializers.IntegerField(),
                                         "sorgente_tipo_descrizione": serializers.CharField(),
                                         "esito": serializers.ChoiceField(choices=[

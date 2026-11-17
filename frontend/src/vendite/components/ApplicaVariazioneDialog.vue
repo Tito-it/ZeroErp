@@ -138,11 +138,11 @@ const fotografia = useFotografiaDialog(() => ({ variazionePct: variazionePct.val
       </Message>
 
       <DataTable :value="preview" :loading="loading" striped-rows class="app-datatable"
-        scrollable scroll-height="300px" data-key="riga_id">
+        scrollable scroll-height="300px" data-key="listino_riga_id">
         <Column field="articolo_codice" :header="t('vendite.listini.col_articolo')" style="width: 130px;" />
         <Column field="articolo_descrizione" :header="t('catalogo.col_descrizione')" style="min-width: 180px;" />
-        <Column field="prezzo_attuale" :header="t('vendite.listini.variazione_pct_prezzo_attuale')" style="width: 130px;" />
-        <Column field="prezzo_calcolato" :header="t('vendite.listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
+        <Column field="prezzo_precedente" :header="t('vendite.listini.variazione_pct_prezzo_attuale')" style="width: 130px;" />
+        <Column field="prezzo_nuovo" :header="t('vendite.listini.variazione_pct_prezzo_nuovo')" style="width: 130px;" />
       </DataTable>
     </template>
 

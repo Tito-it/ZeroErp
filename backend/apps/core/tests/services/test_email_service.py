@@ -39,8 +39,21 @@ Indice test eseguiti:
 19) test_la_mail_parte_con_gli_allegati
 20) test_un_allegato_che_non_si_legge_ferma_l_invio
 21) test_il_rilancio_rilegge_gli_allegati_dal_log
+
+⭐ CredenzialiRifiutateTests — il rifiuto che il server nasconde chiudendo
+   (2026-11-17). Gmail risponde 535 al primo metodo di autenticazione e chiude
+   la connessione al secondo: `smtplib` lasciava uscire la chiusura, e il
+   giornale e il drawer dicevano «Connection unexpectedly closed». Server SMTP
+   FINTO su socket locale, che si comporta come Gmail: senza un server vero il
+   difetto non si vede (un mock di `login` non attraversa `smtplib`).
+22) test_il_test_connessione_dice_credenziali_rifiutate
+23) test_l_invio_scrive_sul_log_credenziali_rifiutate
+24) test_su_gmail_il_messaggio_indica_la_password_per_le_app
+25) test_una_chiusura_senza_rifiuto_resta_una_chiusura
 """
 
+import socket
+import threading
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -50,6 +63,7 @@ from apps.core.services.email_service import (
     CANALE_SMTP,
     SMTP_PLACEHOLDER_HOST,
     EmailDispatchService,
+    descrivi_errore_smtp,
     smtp_non_configurato,
 )
 from apps.core.services.service_errors import ServiceError
@@ -485,3 +499,99 @@ class AutoreEAllegatiTests(TestCase):
             )
         repo.list_allegati_by_log.assert_called_once_with(99)
         self.assertEqual(smtp.call_args[0][-1], allegati)
+
+
+# Scopo: Un server SMTP minimo su 127.0.0.1, in un thread, che risponde come
+#        Gmail a una password sbagliata: `535` ad AUTH PLAIN, chiusura ad
+#        AUTH LOGIN. Con `rifiuta=False` chiude gia' al primo AUTH, senza
+#        rifiuto: e' il caso di una caduta vera.
+class _ServerSmtpFinto:
+
+    def __init__(self, *, rifiuta: bool = True) -> None:
+        self._rifiuta = rifiuta
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(1)
+        self.porta = self._sock.getsockname()[1]
+        self._thread = threading.Thread(target=self._servi, daemon=True)
+        self._thread.start()
+
+    def _servi(self) -> None:
+        conn, _ = self._sock.accept()
+        with conn, conn.makefile("rb") as righe:
+            conn.sendall(b"220 finto ESMTP\r\n")
+            for riga in righe:
+                comando = riga.decode().strip().upper()
+                if comando.startswith(("EHLO", "HELO")):
+                    conn.sendall(b"250-finto\r\n250 AUTH LOGIN PLAIN\r\n")
+                elif comando.startswith("AUTH PLAIN") and self._rifiuta:
+                    conn.sendall(
+                        b"535-5.7.8 Username and Password not accepted.\r\n"
+                        b"535 5.7.8 BadCredentials - gsmtp\r\n"
+                    )
+                else:
+                    return  # chiude: AUTH LOGIN, o qualsiasi altra cosa
+
+    def chiudi(self) -> None:
+        self._thread.join(timeout=5)
+        self._sock.close()
+
+
+class CredenzialiRifiutateTests(TestCase):
+
+    _RIFIUTO = "Credenziali SMTP rifiutate dal server (535 5.7.8 Username and Password not accepted."
+
+    def _account(self, porta: int, host: str = "127.0.0.1") -> dict:
+        return {
+            "id": 1, "codice": "SISTEMA", "smtp_host": host, "smtp_port": porta,
+            "smtp_use_tls": False, "smtp_use_ssl": False,
+            "smtp_username": "u@azienda.test", "smtp_password_encrypted": "cifrata",
+            "email_from": "u@azienda.test", "email_reply_to": None,
+        }
+
+    def _prova_connessione(self, server: _ServerSmtpFinto, MockRepo, mock_settings) -> str:
+        mock_settings.DEBUG = False
+        MockRepo.return_value.get_account_with_password.return_value = self._account(server.porta)
+        with patch("apps.core.services.email_service.crypto_service.decrypt", return_value="pw"):
+            esito = EmailDispatchService().test_connection(1)
+        server.chiudi()
+        self.assertFalse(esito["success"])
+        return esito["message"]
+
+    # 22. Il drawer: prima «Errore SMTP: Connection unexpectedly closed».
+    @patch(_SETTINGS)
+    @patch(_REPO, autospec=True)
+    def test_il_test_connessione_dice_credenziali_rifiutate(self, MockRepo, mock_settings):
+        messaggio = self._prova_connessione(_ServerSmtpFinto(), MockRepo, mock_settings)
+        self.assertTrue(messaggio.startswith(self._RIFIUTO), messaggio)
+        self.assertNotIn("Connection unexpectedly closed", messaggio)
+
+    # 23. Il giornale delle email: lo stesso rifiuto su `email_log.errore`.
+    @patch(_REPO, autospec=True)
+    def test_l_invio_scrive_sul_log_credenziali_rifiutate(self, MockRepo):
+        server = _ServerSmtpFinto()
+        with patch("apps.core.services.email_service.crypto_service.decrypt", return_value="pw"):
+            esito = EmailDispatchService()._send_smtp(
+                self._account(server.porta), "a@cliente.test", None, "o",
+                "<p>x</p>", "x", 99, "SISTEMA",
+            )
+        server.chiudi()
+        self.assertFalse(esito)
+        kwargs = MockRepo.return_value.update_log_stato.call_args.kwargs
+        self.assertTrue(kwargs["errore"].startswith(self._RIFIUTO), kwargs["errore"])
+
+    # 24. Il suggerimento su Gmail c'e' solo su Gmail: altrove sarebbe rumore.
+    def test_su_gmail_il_messaggio_indica_la_password_per_le_app(self):
+        import smtplib
+        exc = smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted.")
+        self.assertIn("password per le app", descrivi_errore_smtp(exc, self._account(587, "smtp.gmail.com")))
+        self.assertNotIn("password per le app", descrivi_errore_smtp(exc, self._account(587, "smtp.azienda.test")))
+
+    # 25. ⚠️ Il rimedio non trasforma ogni chiusura in «password sbagliata»:
+    #     senza un rifiuto prima, la chiusura resta quello che e'.
+    @patch(_SETTINGS)
+    @patch(_REPO, autospec=True)
+    def test_una_chiusura_senza_rifiuto_resta_una_chiusura(self, MockRepo, mock_settings):
+        messaggio = self._prova_connessione(_ServerSmtpFinto(rifiuta=False), MockRepo, mock_settings)
+        self.assertIn("Connection unexpectedly closed", messaggio)
+        self.assertNotIn("Credenziali", messaggio)

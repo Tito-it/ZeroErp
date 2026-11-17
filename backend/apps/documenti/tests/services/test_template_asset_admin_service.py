@@ -7,13 +7,14 @@
 #        PermissionResolver. Verifica:
 #        - upload: validazione payload (chiavi extra, campi mancanti,
 #          file_name vuoto, file_bytes vuoto, oversize), scope emittente
-#          (admin globale, in/out scope, anon), risoluzione tipo asset,
-#          MIME whitelist per ciascun codice_interno (LOGO/IMMAGINE/FIRMA/
-#          PDF/CSS/ALTRO), tipo asset inesistente o non attivo, dedup via
+#          (admin globale, in/out scope, anon), risoluzione tipo asset
+#          coi formati letti dal DB (inesistente -> rifiuto; il formato
+#          lo giudica il DB all'INSERT, il service non lo ricopia),
+#          estensione di ripiego dal formato, dedup via
 #          IntegrityError uq_template_asset_emittente_sha256 mappata a
 #          messaggio applicativo, valido_al < valido_dal delegato al DB,
 #          storage_key derivata `assets/<emittente>/<sha>.<ext>`, sequenza
-#          INSERT -> write -> commit, cleanup STORAGE_ORPHAN su commit
+#          INSERT -> write -> commit, cancellazione del file orfano su commit
 #          fallito post-write (best-effort, non maschera l'eccezione);
 #        - update: validazione id positivo, propagazione 404 dal reader,
 #          rifiuto immutabili file (storage_key/sha256/file_size/mime/file_name)
@@ -32,10 +33,10 @@
 #   6. upload_file_bytes_vuoto_raises
 #   7. upload_file_oversize_raises_with_param_limit
 #   8. upload_tipo_asset_inesistente_raises
-#   9. upload_tipo_asset_non_attivo_raises
-#  10. upload_tipo_asset_altro_non_ammesso
-#  11. upload_mime_fuori_whitelist_per_tipo_raises
-#  12. upload_mime_ammesso_per_ogni_tipo_whitelisted
+#   9. upload_estensione_di_ripiego_dal_formato_del_db
+#  10. upload_formato_non_ammesso_lo_rifiuta_il_db_senza_scrivere_il_file
+#  11. upload_formato_fuori_lista_non_e_rifiutato_dal_service
+#  12. upload_mime_ammesso_per_ogni_tipo
 #  13. upload_file_name_vuoto_raises
 #  14. upload_dedup_sha256_integrity_error_mapped
 #  15. upload_delega_ordine_date_al_db
@@ -60,7 +61,7 @@ from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
@@ -85,7 +86,7 @@ def _patch_transaction_atomic_noop():
 
 
 # Scopo: Context manager custom che simula un commit DB fallito al
-#        `__exit__` per esercitare il cleanup STORAGE_ORPHAN.
+#        `__exit__` per esercitare la cancellazione del file orfano.
 class _CommitFailingAtomic:
     def __enter__(self):
         return self
@@ -148,8 +149,21 @@ def _service_with_mocks(
     return svc, repo, reader, storage, params
 
 
-def _tipo_asset_row(codice: str, *, attivo: bool = True) -> dict[str, Any]:
-    return {"id": 1, "codice_interno": codice, "attivo": attivo}
+# I formati come li porta `get_tipo_asset` (BB `sql_formati_ammessi`).
+def _formato(mime: str, estensione: str) -> dict[str, str]:
+    return {
+        "mime_type": mime, "estensione": estensione,
+        "etichetta_key": f"config.formati_file.{estensione}",
+    }
+
+
+def _tipo_asset_row(
+    codice: str, *, formati: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": 1, "codice_interno": codice,
+        "formati": formati if formati is not None else [_formato("image/png", "png")],
+    }
 
 
 # =====================================================================
@@ -414,7 +428,7 @@ class TemplateAssetAdminServiceUploadPayloadTests(SimpleTestCase):
 
 
 class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
-    """Upload: risoluzione tipo asset + MIME whitelist."""
+    """Upload: tipo asset coi formati del DB; il formato lo giudica il DB."""
 
     # 8. tipo asset inesistente -> E_DOCUMENTI_VALIDATION.
     @patch(
@@ -436,92 +450,111 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.create_asset.assert_not_called()
 
-    # 9. tipo asset esistente ma non attivo -> E_DOCUMENTI_VALIDATION.
+    # 9. file_name senza estensione -> l'estensione e' quella del formato
+    #    letto dal DB (non piu' una mappa Python).
     @patch(
         "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
-    def test_upload_tipo_asset_non_attivo_raises(self, _mock_scope) -> None:
+    def test_upload_estensione_di_ripiego_dal_formato_del_db(self, _mock_scope) -> None:
         svc, repo, _, _, _ = _service_with_mocks(
-            repo_methods={"get_tipo_asset": _tipo_asset_row("LOGO", attivo=False)},
+            repo_methods={
+                "create_asset": 1,
+                "get_tipo_asset": _tipo_asset_row(
+                    "FIRMA", formati=[_formato("image/svg+xml", "svg")],
+                ),
+            },
+            reader_methods={"get_asset": {"id": 1}},
+            storage_methods={"write": "file:///x"},
         )
-        with self.assertRaises(ServiceError) as ctx:
+        with _patch_transaction_atomic_noop():
             svc.upload_asset(
                 _make_user(),
                 dict(_VALID_UPLOAD_METADATI),
                 _FILE_BYTES_PNG,
-                _MIME_PNG,
-                _FNAME_PNG,
+                "image/svg+xml",
+                "firma",
             )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        repo.create_asset.assert_not_called()
+        data = repo.create_asset.call_args.args[0]
+        self.assertTrue(data["storage_key"].endswith(".svg"), data["storage_key"])
 
-    # 10. ALTRO non e' in whitelist v1 -> upload rifiutato esplicitamente.
+    # 10. formato che il tipo non ammette: lo rifiuta il DB all'INSERT
+    #     (E_DOCUMENTI_FORMATO_NON_AMMESSO). L'errore esce com'e' e il file
+    #     non si scrive.
     @patch(
         "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
-    def test_upload_tipo_asset_altro_non_ammesso(self, _mock_scope) -> None:
-        svc, repo, _, _, _ = _service_with_mocks(
-            repo_methods={"get_tipo_asset": _tipo_asset_row("ALTRO")},
+    def test_upload_formato_non_ammesso_lo_rifiuta_il_db_senza_scrivere_il_file(
+        self, _mock_scope
+    ) -> None:
+        svc, repo, _, storage, _ = _service_with_mocks(
+            repo_methods={"get_tipo_asset": _tipo_asset_row("LOGO")},
         )
-        with self.assertRaises(ServiceError) as ctx:
+        repo.create_asset.side_effect = DatabaseError(
+            "E_DOCUMENTI_FORMATO_NON_AMMESSO"
+        )
+        with _patch_transaction_atomic_noop(), self.assertRaises(DatabaseError):
+            svc.upload_asset(
+                _make_user(),
+                dict(_VALID_UPLOAD_METADATI),
+                _FILE_BYTES_PNG,
+                "application/pdf",
+                "x.pdf",
+            )
+        storage.write.assert_not_called()
+
+    # 11. un MIME fuori dalla lista del tipo arriva al DB: il service non
+    #     ricopia la regola (la regola e' del DB). Senza estensione nel nome
+    #     il ripiego e' `bin`.
+    @patch(
+        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
+        return_value=None,
+    )
+    def test_upload_formato_fuori_lista_non_e_rifiutato_dal_service(
+        self, _mock_scope
+    ) -> None:
+        svc, repo, _, _, _ = _service_with_mocks(
+            repo_methods={"create_asset": 1, "get_tipo_asset": _tipo_asset_row("LOGO")},
+            reader_methods={"get_asset": {"id": 1}},
+            storage_methods={"write": "file:///x"},
+        )
+        with _patch_transaction_atomic_noop():
             svc.upload_asset(
                 _make_user(),
                 dict(_VALID_UPLOAD_METADATI),
                 _FILE_BYTES_PNG,
                 "application/octet-stream",
-                "blob.bin",
+                "blob",
             )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("ALTRO", ctx.exception.message)
-        repo.create_asset.assert_not_called()
+        data = repo.create_asset.call_args.args[0]
+        self.assertEqual(data["mime_type"], "application/octet-stream")
+        self.assertTrue(data["storage_key"].endswith(".bin"), data["storage_key"])
 
-    # 11. MIME fuori whitelist per tipo (PDF su LOGO) -> rifiutato.
+    # 12. MIME ammesso per ciascun tipo (LOGO/IMMAGINE/FIRMA/PDF/CSS).
     @patch(
         "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
     )
-    def test_upload_mime_fuori_whitelist_per_tipo_raises(
+    def test_upload_mime_ammesso_per_ogni_tipo(
         self, _mock_scope
     ) -> None:
-        svc, repo, _, _, _ = _service_with_mocks(
-            repo_methods={"get_tipo_asset": _tipo_asset_row("LOGO")},
-        )
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upload_asset(
-                _make_user(),
-                dict(_VALID_UPLOAD_METADATI),
-                _FILE_BYTES_PNG,
-                "application/pdf",  # PDF non ammesso su LOGO
-                "x.pdf",
-            )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
-        self.assertIn("MIME", ctx.exception.message)
-        repo.create_asset.assert_not_called()
-
-    # 12. MIME ammesso per ciascun tipo whitelisted (LOGO/IMMAGINE/FIRMA/PDF/CSS).
-    @patch(
-        "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
-        return_value=None,
-    )
-    def test_upload_mime_ammesso_per_ogni_tipo_whitelisted(
-        self, _mock_scope
-    ) -> None:
-        # Coppie (codice_interno, mime, file_name) ammesse.
+        # Coppie (codice_interno, mime, file_name, estensione) ammesse.
         casi = [
-            ("LOGO", "image/png", "logo.png"),
-            ("IMMAGINE", "image/jpeg", "img.jpg"),
-            ("FIRMA", "image/svg+xml", "firma.svg"),
-            ("PDF", "application/pdf", "doc.pdf"),
-            ("CSS", "text/css", "stile.css"),
+            ("LOGO", "image/png", "logo.png", "png"),
+            ("IMMAGINE", "image/jpeg", "img.jpg", "jpg"),
+            ("FIRMA", "image/svg+xml", "firma.svg", "svg"),
+            ("PDF", "application/pdf", "doc.pdf", "pdf"),
+            ("CSS", "text/css", "stile.css", "css"),
         ]
-        for codice, mime, fname in casi:
+        for codice, mime, fname, ext in casi:
             with self.subTest(codice=codice, mime=mime):
                 svc, repo, _, storage, _ = _service_with_mocks(
                     repo_methods={
                         "create_asset": 1,
-                        "get_tipo_asset": _tipo_asset_row(codice),
+                        "get_tipo_asset": _tipo_asset_row(
+                            codice, formati=[_formato(mime, ext)],
+                        ),
                     },
                     reader_methods={"get_asset": {"id": 1}},
                     storage_methods={"write": "file:///x"},
@@ -540,7 +573,7 @@ class TemplateAssetAdminServiceUploadTipoAssetTests(SimpleTestCase):
 
 
 class TemplateAssetAdminServiceUploadIntegrityTests(SimpleTestCase):
-    """Upload: dedup naturale + cleanup STORAGE_ORPHAN."""
+    """Upload: dedup naturale + cancellazione del file orfano."""
 
     # 14. dedup naturale: IntegrityError sha256 -> mappata a messaggio parlante.
     @patch(
@@ -572,7 +605,7 @@ class TemplateAssetAdminServiceUploadIntegrityTests(SimpleTestCase):
         # IntegrityError esce dal try interno).
         storage.write.assert_not_called()
 
-    # 16. commit DB fallisce post-write -> cleanup STORAGE_ORPHAN best-effort.
+    # 16. commit DB fallisce post-write -> cancellazione del file orfano best-effort.
     @patch(
         "apps.documenti.services._scope.PermissionResolver.get_emittenti_pk_ids",
         return_value=None,
