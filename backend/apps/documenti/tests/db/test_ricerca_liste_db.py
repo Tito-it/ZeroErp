@@ -165,9 +165,9 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                 cur.execute(
                     """
                     INSERT INTO documenti.template_documenti_versioni
-                           (template_documento_id, versione, titolo, html_template,
+                           (template_documento_id, titolo, html_template,
                             render_engine_id, versione_contesto)
-                    VALUES (%s, 1, 'Versione rictitver', '<p></p>',
+                    VALUES (%s, 'Versione rictitver', '<p></p>',
                             (SELECT id FROM documenti.render_engine_documento ORDER BY id LIMIT 1),
                             1)
                     RETURNING id

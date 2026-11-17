@@ -217,7 +217,6 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                 engine = cur.fetchone()[0]
                 versione_id = repo.create_versione({
                     "template_documento_id": template_id,
-                    "versione": 1,
                     "stato": "BOZZA",
                     "titolo": "v1",
                     "html_template": "<p>x</p>",
@@ -312,7 +311,6 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                 engine = cur.fetchone()[0]
                 versione_id = repo.create_versione({
                     "template_documento_id": template_id,
-                    "versione": 1,
                     "stato": "BOZZA",
                     "titolo": "  v1  ",
                     "html_template": html,

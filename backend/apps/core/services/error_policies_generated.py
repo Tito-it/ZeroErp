@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1245, di cui 131 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1246, di cui 132 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -730,6 +730,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_TIPO_NON_GESTITO": "TECNICO",
     # Lo solleva il trigger del DELETE di documenti.template_asset, sul building block script.trgfn_prevent_modification_generic.
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "CONFLITTO_STATO",
+    # Lo solleva il lucchetto di colonna di documenti.template_asset.emittente_fiscale_id (dbops.automation_lock_columns, trigger _a10_lock_columns_upd su script.trgfn_lock_columns): una risorsa dei modelli non cambia azienda. Il backend non scrive la colonna dopo la nascita e il form la vede non modificabile (dbops.vw_non_editable_fields). CONFLITTO_STATO: l'azienda nuova puo' essere valida, e' la risorsa che non la ammette. Il valore che trgfn_lock_columns passa (il nome della colonna) la frase non lo usa.
+    "E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "CONFLITTO_STATO",
     # Lo solleva documenti.fn_crea_bozza_da_versione: il modello di destinazione non e' dello stesso documento della versione copiata (sorgente o tipo diversi, con la regola di documenti.fn_template_motivo_non_coerente). Il clone del backend copia nello stesso modello e «personalizza» nel modello nuovo della stessa coppia: se arriva, e' rotto il chiamante.
     "E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO": "TECNICO",
@@ -775,7 +777,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE": "TECNICO",
     "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED": "CONFLITTO_STATO",
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "NON_TROVATO",
-    # Lo solleva documenti.fn_crea_bozza_da_versione quando il numero MAX + 1 della versione nuova lo ha preso, nello stesso momento, un'altra scrittura sullo stesso modello (uq_template_documenti_versioni_template_versione). La copia non e' nata: si riprova.
+    # RITIRATO il 2026-11-17: nessuno lo solleva. Lo sollevava documenti.fn_crea_bozza_da_versione quando il numero MAX + 1 della copia lo prendeva, nello stesso momento, un'altra scrittura sullo stesso modello. Il numero di ogni versione nuova lo assegna ora il database, in fila per modello su un lock di transazione (documenti.trgfn_template_documenti_versioni_assegna_numero): due nascite contemporanee prendono due numeri, e la gara non c'e' piu'. La riga resta per le occorrenze in dbops.error_log.
+    # ⚠️ RITIRATO il 2026-11-17
     "E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE": "CONFLITTO_STATO",
     # Lo solleva documenti.fn_pubblica_template_documento_versione quando la pubblicazione urta il vincolo ex_template_documenti_versioni_no_overlap_pubblicata: due versioni accese fuori bozza (PUBBLICATA o OBSOLETA) dello stesso modello si sovrapporrebbero, e la chiusura della precedente non lo risolve (lo stesso inizio di una versione fuori bozza, un inizio dentro una OBSOLETA, una pubblicazione concorrente). Una OBSOLETA stampa fino alla fine della sua validita'. CONFLITTO_STATO: il rimedio e' un'altra data d'inizio.
     "E_DOCUMENTI_VERSIONE_OVERLAP": "CONFLITTO_STATO",
@@ -2256,6 +2259,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DDT_STATO_SOLO_DA_VERBO",
         "E_DDT_STATO_TRANSIZIONE",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
+        "E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE",
         "E_DRYRUN_CREATE_TRIGGER",
         "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
         "E_FONTE_QUANTITA_NON_VALIDA",

@@ -1,11 +1,11 @@
 # Brief DB — Revisione dello schema `documenti`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-17 (giro 6 applicato, pgTAP verdi)
+## ⏭️ Chi riparte — aggiornato al 2026-11-17 (✅ chiuso e archiviato)
 
-**Riparte: Tid** con la doc auto-generata del giro 6 e il commit (riga 34), e **il team BE** con BE20-BE23 (§16.6,
-nessuna rottura, sbloccate). Il giro 6 (§16: il numero della versione dal database, l'azienda della risorsa ferma,
-`20261116-23 … -25`) è applicato il 2026-11-17 con `ci_apply` e i pgTAP verdi (§16.5). Poi l'archiviazione (riga
-28). Il resto è fatto e committato: le ricadute BE del giro 5 e BE8 in `52eac53667`
+**Riparte: nessuno.** Il brief è chiuso il 2026-11-17: i sei giri sono applicati e committati, le ricadute BE
+chiuse (BE20-BE23 al §16.7), il brief in `work-done/`. Resta da committare il lavoro BE del §16.7. Il giro 6 (§16: il numero della versione dal database, l'azienda della risorsa ferma,
+`20261116-23 … -25`) è applicato il 2026-11-17 con `ci_apply` e i pgTAP verdi (§16.5), e committato con la doc
+auto-generata in `5172bacdf`. Il resto è fatto e committato: le ricadute BE del giro 5 e BE8 in `52eac53667`
 (§15.10), la doc auto-generata del giro 5 in `9a6db84d2b`, lo script di Q11 lanciato su dbdev. Il giro 5 («pulizia e metadati»: Q16-Q19;
 `20261116-10 … -16`) è verificato da `/verifica-db`, applicato il 2026-11-17 con i pgTAP verdi e committato (§15);
 l'arrivo è verificato dalla sessione BE il 2026-11-17 (§15.9: nessuna rottura). Il giro 4 («risoluzione, scarto,
@@ -48,12 +48,13 @@ la segnalazione di §9 sono decise (2026-11-16).
 | 13 | ✅ team BE | Le altre ricadute di §6 — fatte; BE8 il 2026-11-17 (§15.10) | §6, §15.10 | 26 ✅ |
 | 31 | ✅ sessione DB | `emittente_fiscale_id` della risorsa (Tid, 2026-11-17: fermo) — giro 6 scritto: lucchetto di colonna con `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`, testi del `-12` riallineati | §16 | — |
 | 32 | ✅ Tid | Giro 6 applicato (2026-11-17): `ci_apply` (i due lucchetti generati, verificato su dbdev), pgTAP verdi | §16.5 | 30, 31 |
-| 34 | Tid | Giro 6: la doc auto-generata (le schede di `template_documenti_versioni` e `template_asset`, delle due funzioni riscritte e della nuova, che entra nell'indice) e il commit | §16.5 | 32 ✅ |
-| 33 | team BE | BE20-BE23 del giro 6 — sbloccate: `next_versione_num` ritirato, policy e fallback, doc dell'API, fixture da verificare | §16.6 | 32 ✅ |
-| 28 | chi chiude | Archiviazione in `work-done/`, con le ricadute BE chiuse o passate a un brief BE. Con BE20 fatto si toglie dal registro dei residui (e da PROJECT_CONTEXT) la voce «la numerazione della versione nuova» | §10 | 32, 33 |
+| 34 | ✅ Tid | Giro 6: la doc auto-generata e il commit (`5172bacdf`) | §16.5 | 32 ✅ |
+| 33 | ✅ sessione BE | BE20-BE23 del giro 6 — fatte il 2026-11-17: `next_versione_num` ritirato, policy e ripiego, doc dell'API, fixture riallineate; test verdi | §16.7 | 32 ✅ |
+| 28 | ✅ sessione BE | Archiviazione in `work-done/` (2026-11-17). Tolta dal registro dei residui e da PROJECT_CONTEXT la voce «la numerazione della versione nuova» | §10, §16.7 | 32, 33 ✅ |
 
-**Decisioni aperte di Tid:** nessuna. **Da committare:** il giro 6 (§16.1: tre changeSet, tre CSV, un pgTAP nuovo e
-due riscritti, le pagine `manual/` e la guida), questo brief e `PROJECT_CONTEXT.md`.
+**Decisioni aperte di Tid:** nessuna. **Da committare:** il lavoro
+BE del §16.7, questo brief archiviato, il registro dei residui, `PROJECT_CONTEXT.md` e le
+due mappe.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-14. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `documenti` chiesta da Tid: allinearla allo standard e
@@ -1319,3 +1320,17 @@ a catalogo. Restano la doc auto-generata (il punto 4) e il commit.
 
 Il form: `versione` e `template_asset.emittente_fiscale_id` risultano non modificabili da
 `dbops.vw_non_editable_fields` dopo `ci_apply`; nessuno dei due è oggi un campo del form.
+
+### 16.7 Esito BE (sessione BE, 2026-11-17)
+
+| # | Fatto | Dove |
+| --- | --- | --- |
+| BE20 | `create_versione` non calcola e non manda il numero: lo assegna il trigger, e arriva rileggendo la riga creata. `next_versione_num` ritirato; `versione` esce da `VERSIONE_CREATE_COLUMNS` (chi la passa ha un `RuntimeError`, nessuna SQL parte). Escono anche le voci `uq_template_documenti_versioni_template_versione` (la gara) e `chk_template_documenti_versioni_versione_pos` (l'applicazione non scrive più il numero, quindi non raggiunge il CHECK: è la regola del file, come `valido_dal_fuori_bozza`); un commento dice perché. Test riscritti: service 1 (`create_happy_path_numero_dal_db`: nessun numero nel dict, numero dalla rilettura), repository 13 (`create_versione_numero_fuori_whitelist`) e 14 (8 parametri), l'`assert_not_called` del clone tolto | `template_versioni_admin_service.py`, `documenti_repository.py`, i due test |
+| BE21 | Policy rigenerate con `genera_error_policies` (`--check` pulito, nessuna classe cambiata): `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE` entra (`CONFLITTO_STATO`), `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` resta e risolve, marcato ritirato. Ripiego: il ritirato esce, il nuovo entra con la frase del catalogo (che non ha `%s`) | `error_policies_generated.py`, `error_messages_fallback.py` |
+| BE22 | Tolto il 409 della gara (clone e tabella dei codici); creazione, clone e il paragrafo «Numero versione» dicono che il numero lo assegna il database, in fila per template, e che dopo la nascita è fermo | `api_documenti_templates.md` |
+| BE23 | Le due fixture di `test_scritture_dinamiche_db` passavano `"versione": 1` al repository, che ora lo rifiuta: tolto. L'`INSERT` diretto di `test_ricerca_liste_db` non scrive più il numero. Nessun test contava su un numero fuori sequenza: il clone si aspetta ancora 2 dopo l'1 | i due test DB |
+| — | Allineati anche la voce `TemplateVersioniAdminService` del catalogo BB backend (via la riga di `next_versione_num`, il mapping descritto com'è oggi; indice rigenerato) e il commento di `createTemplateVersione` nel frontend | catalogo e indice BB, `templateDocumenti.js` |
+
+**Test:** `apps.documenti` e i presidi degli errori, 366 verdi (13 saltati senza DB); con `ZEROERP_TEST_DB_E2E=1`
+i 53 test DB di `documenti` e dei presidi, verdi su dbdev, più i 17 del ripiego. `ruff` non è nella venv locale:
+lo passa il pre-commit.

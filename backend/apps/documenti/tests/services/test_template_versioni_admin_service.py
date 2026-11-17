@@ -15,7 +15,7 @@
 #
 # Indice test (0..N):
 #   0. create_404_if_template_invisible
-#   1. create_happy_path_calculates_next_versione_num
+#   1. create_happy_path_numero_dal_db (2026-11-17: il numero lo assegna il DB)
 #   2. create_payload_extra_keys_rejected
 #   3. create_missing_required_field_rejected
 #   4. update_pubblicata_rejected_at_service
@@ -165,10 +165,11 @@ class TemplateVersioniAdminServiceCreateTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.create_versione.assert_not_called()
 
-    # 1. happy path: calcola next_versione_num e usa BOZZA come stato.
-    def test_create_happy_path_calculates_next_versione_num(self) -> None:
+    # 1. happy path: stato BOZZA, nessun numero mandato; il numero e' quello
+    #    della riga riletta (lo assegna il DB, 2026-11-17, BE20).
+    def test_create_happy_path_numero_dal_db(self) -> None:
         svc, repo, reader = _service_with_mocks(
-            repo_methods={"next_versione_num": 5, "create_versione": 50},
+            repo_methods={"create_versione": 50},
             reader_methods={
                 "get_template": {"id": 1},
                 "get_versione": {"id": 50, "versione": 5},
@@ -176,11 +177,11 @@ class TemplateVersioniAdminServiceCreateTests(SimpleTestCase):
         )
         result = svc.create_versione(_make_user(), 1, dict(_VALID_VERSIONE_PAYLOAD))
         self.assertEqual(result["versione"], 5)
-        repo.next_versione_num.assert_called_once_with(1)
-        # Verifica il dict passato al repo: stato=BOZZA, versione=5.
+        self.assertEqual(reader.get_versione.call_args.args[1:], (1, 50))
+        # Il dict passato al repo: stato=BOZZA, e il numero non c'e'.
         data = repo.create_versione.call_args.args[0]
         self.assertEqual(data["stato"], "BOZZA")
-        self.assertEqual(data["versione"], 5)
+        self.assertNotIn("versione", data)
         self.assertEqual(data["template_documento_id"], 1)
         self.assertEqual(data["versione_contesto"], 2)
 
@@ -407,7 +408,6 @@ class TemplateVersioniAdminServiceCloneTests(SimpleTestCase):
             valido_dal=None, valido_al=None, attivo=None, meta=None,
         )
         repo.create_versione.assert_not_called()
-        repo.next_versione_num.assert_not_called()
         # La versione restituita e' la nuova, riletta nel suo template.
         self.assertEqual(reader.get_versione.call_args.args[1:], (1, 70))
 

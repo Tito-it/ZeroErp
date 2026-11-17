@@ -443,6 +443,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: il documento puo' usare solo un listino della sua azienda emittente.",
     "E_DOC_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: il documento puo' usare solo un listino della sua utility.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",
+    "E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE": "Una risorsa grafica resta dell'azienda per cui e' stata caricata, e non si sposta in un'altra.",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "Il file di una risorsa non si cambia dopo il caricamento.",
     "E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO": "La versione non si copia in questo template: e' di un documento diverso.",
     "E_DOCUMENTI_DENIED": "Operazione documentale non consentita.",
@@ -479,7 +480,6 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO": "La versione template non e' in uno stato pubblicabile.",
     # Il catalogo porta i numeri e il nome del template (`%s`); qui le frasi
     # senza argomenti.
-    "E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE": "La copia non e' stata creata: nello stesso momento il template ha ricevuto un'altra versione con lo stesso numero. Ripetere la copia.",
     "E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA": "La versione del template non si pubblica: e' spenta. Riaccenderla, poi pubblicarla.",
     "E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO": "La versione non cambia stato cosi': una versione di template nasce in bozza e ne esce solo con la pubblicazione.",
     "E_DOC_COMPONENTE_BOM_NON_VALIDA": "Riga BoM non valida alla data del documento.",

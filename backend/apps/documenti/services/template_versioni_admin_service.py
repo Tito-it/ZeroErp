@@ -100,10 +100,12 @@ _PUBBLICA_KEYS: frozenset[str] = frozenset({
 
 # Mapping vincoli DB -> codici applicativi parlanti.
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
-    "uq_template_documenti_versioni_template_versione": (
-        E_VALIDATION,
-        "Numero versione gia' presente per il template (race condition: riprovare).",
-    ),
+    # ⛔ Niente voce per `uq_template_documenti_versioni_template_versione`
+    #    (dal 2026-11-17, brief-db-revisione-documenti §16, BE20): il numero di
+    #    ogni versione nuova lo assegna il trigger
+    #    `trgfn_template_documenti_versioni_assegna_numero`, in fila per
+    #    modello su un lock di transazione. Due nascite contemporanee prendono
+    #    due numeri: la gara che la voce traduceva non c'e' piu'.
     # ⛔ Niente voce per `ex_template_documenti_versioni_no_overlap_pubblicata`:
     #    il vincolo vale sulle versioni fuori bozza, e l'unica scrittura che le
     #    raggiunge e' il verbo di pubblicazione, che rende il 23P01 col suo
@@ -139,10 +141,6 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str, str]] = {
 
 # Mapping CHECK constraint del DDL -> codici applicativi (frammento case-insensitive).
 _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
-    "chk_template_documenti_versioni_versione_pos": (
-        E_VALIDATION,
-        "Il numero versione deve essere positivo.",
-    ),
     "chk_template_documenti_versioni_stato": (
         E_VALIDATION,
         "Stato versione non valido.",
@@ -155,6 +153,8 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         E_VALIDATION,
         "Il titolo della versione non puo' essere vuoto.",
     ),
+    # `chk_template_documenti_versioni_versione_pos` non ha voce: il numero
+    # non lo scrive l'applicazione, lo assegna il DB (dal 2026-11-17).
     # `chk_template_documenti_versioni_valido_dal_fuori_bozza` (data d'inizio
     # obbligatoria fuori bozza) non ha voce: l'applicazione non lo raggiunge.
     # Una versione nasce in BOZZA (`create_versione`, `clone_versione`), lo
@@ -170,7 +170,7 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
 
 # I codici che trigger e verbi DB sollevano con `fn_log_and_raise_error`
 # (P0001: E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE, _PUBBLICA_SPENTA,
-# _NUMERO_CONCORRENTE, _STATO_FUORI_VERBO, E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO)
+# _STATO_FUORI_VERBO, E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO)
 # non passano dalle mappe qui sopra, che leggono solo i nomi dei vincoli
 # (IntegrityError): arrivano gia' col loro codice e li traduce la policy.
 
@@ -191,10 +191,15 @@ class TemplateVersioniAdminService:
     # Create versione (sempre BOZZA)
     # =================================================================
 
-    # Scopo: Crea una nuova versione BOZZA per un template. Il numero
-    #        versione e' calcolato come MAX(versione)+1 nello stesso
-    #        template; lo stato e' fissato a 'BOZZA' (transizione a
-    #        PUBBLICATA passa solo da pubblica_versione).
+    # Scopo: Crea una nuova versione BOZZA per un template. Lo stato e'
+    #        fissato a 'BOZZA' (transizione a PUBBLICATA passa solo da
+    #        pubblica_versione). Il numero non si manda: lo assegna il DB alla
+    #        nascita (il successivo all'ultimo del modello, trigger
+    #        `trgfn_template_documenti_versioni_assegna_numero`) e arriva con
+    #        la rilettura della riga creata.
+    # ⛔ Fino al 2026-11-17 lo calcolava qui `next_versione_num` (MAX + 1):
+    #    seconda sede della numerazione accanto alla copia del DB, con la gara
+    #    tradotta dal vincolo unique (brief-db-revisione-documenti §16, BE20).
     def create_versione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -212,7 +217,6 @@ class TemplateVersioniAdminService:
         data = self._build_create_data(payload)
         data["template_documento_id"] = int(template_id)
         data["stato"] = "BOZZA"
-        data["versione"] = self._repo.next_versione_num(template_id)
 
         try:
             new_id = self._repo.create_versione(data)
@@ -224,10 +228,7 @@ class TemplateVersioniAdminService:
                 check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_VALIDATION,
                 fallback_message="Violazione vincolo DB su versione template.",
-                context={
-                    "template_documento_id": template_id,
-                    "versione": data["versione"],
-                },
+                context={"template_documento_id": template_id},
             )
 
         return self._reader.get_versione(user, template_id, new_id)
@@ -346,8 +347,8 @@ class TemplateVersioniAdminService:
     #        e il perimetro (la versione d'origine si legge dentro lo scope,
     #        legata al suo template).
     # ⛔ Fino al 2026-10-21 l'elenco dei campi stava qui (`dati_bozza_copiata`,
-    #    usato anche da «personalizza») e il numero lo calcolava
-    #    `next_versione_num`: con «personalizza» nel DB, sarebbero stati due.
+    #    usato anche da «personalizza»): con «personalizza» nel DB, sarebbero
+    #    stati due. Il numero di ogni versione nuova lo assegna il DB.
     def clone_versione(
         self,
         user: AbstractBaseUser | AnonymousUser | None,

@@ -30,7 +30,8 @@
 #  10. update_template_returns_true_on_success
 #  11. update_template_returns_false_on_empty_data_no_sql
 #  12. update_template_immutabile_rifiutata
-#  13. next_versione_num_uses_coalesce_max
+#  13. create_versione_numero_fuori_whitelist (2026-11-17: il numero lo
+#      assegna il DB; fino ad allora next_versione_num_uses_coalesce_max)
 #  14. create_versione_inserts_only_whitelisted_columns
 #  14-bis. create_versione_chiave_fuori_whitelist_rifiutata
 #  15. update_versione_returns_true_on_success
@@ -456,18 +457,18 @@ class DocumentiRepositoryUpdateTemplateTests(TestCase):
 
 
 class DocumentiRepositoryVersioneMutationsTests(TestCase):
-    # 13. next_versione_num: SELECT COALESCE(MAX(versione), 0) + 1.
+    # 13. ⛔ Il numero della versione non lo scrive l'applicazione (2026-11-17,
+    #     brief-db-revisione-documenti §16, BE20): lo assegna il DB alla
+    #     nascita. `versione` e' fuori dalla whitelist di INSERT: chi la
+    #     passa ha un RuntimeError, e nessuna SQL parte.
     @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_next_versione_num_uses_coalesce_max(self, mocked_factory) -> None:
-        cursor = _mk_cursor(fetchone_results=[(5,)])
-        mocked_factory.return_value = cursor
-
-        result = DocumentiRepository().next_versione_num(42)
-        self.assertEqual(result, 5)
-        sql, params = cursor.execute.call_args_list[0].args
-        self.assertIn("COALESCE(MAX(versione), 0) + 1", sql)
-        self.assertIn("template_documento_id = %s", sql)
-        self.assertEqual(params, [42])
+    def test_create_versione_numero_fuori_whitelist(self, mocked_factory) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            DocumentiRepository().create_versione(
+                {"template_documento_id": 1, "versione": 5, "titolo": "v5"}
+            )
+        self.assertIn("versione", str(ctx.exception))
+        mocked_factory.assert_not_called()
 
     # 14. create_versione (BB, 2026-09-26): RETURNING id, `meta`/
     #     `context_schema` dict serializzati `::jsonb`, corpo del template NON
@@ -483,7 +484,6 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
 
         data = {
             "template_documento_id": 1,
-            "versione": 5,
             "stato": "BOZZA",
             "titolo": "v5",
             "html_template": "  <pre>\n  x\n</pre>\n",
@@ -497,7 +497,7 @@ class DocumentiRepositoryVersioneMutationsTests(TestCase):
         sql, params = cursor.execute.call_args_list[0].args
         self.assertIn("INSERT INTO documenti.template_documenti_versioni", sql)
         self.assertIn("RETURNING id", sql)
-        self.assertEqual(len(params), 9)
+        self.assertEqual(len(params), 8)
         self.assertEqual(sql.count("%s::jsonb"), 2)
         self.assertIn("  <pre>\n  x\n</pre>\n", params)
         self.assertIn('{"type": "object"}', params)
