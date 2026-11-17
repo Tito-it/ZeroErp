@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_soggetto_ruolo`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -53,7 +53,8 @@ finestra dei vincoli differiti e la richiude prima di uscire.
 
 Le scritture nella stessa istruzione condividono la stessa fotografia del database: una
 policy che risolve il perimetro dal soggetto padre non lo troverebbe, e negherebbe. Il
-soggetto si crea con [fn_pgtap_crea_soggetto_pg](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pg),
+soggetto si crea con [fn_pgtap_crea_soggetto_pg](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pg)
+o [fn_pgtap_crea_soggetto_pf](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pf),
 il ruolo con questa fixture, in un'istruzione successiva. È anche la ragione per cui sono due
 funzioni e non una con un parametro in più: la separazione è obbligatoria, e due funzioni la
 rendono evidente.

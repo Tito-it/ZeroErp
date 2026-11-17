@@ -47,10 +47,11 @@
 --   24) tolta la sede legale dal ruolo, il cambio non ha piu' motivi
 --
 -- Scopo:
---  - ogni ramo si COSTRUISCE: i soggetti nascono dalle madri (fn_crea_soggetto_pf,
---    fn_crea_fornitore) e dai builder; la riga obbligatoria che la natura del
---    privato non ammette (SEDEOP per FO) la scrive il test (regola zero: niente
---    si appoggia alle righe di oggi). Il seed serve come catalogo dei tipi e
+--  - ogni ramo si COSTRUISCE: i soggetti nascono dai builder
+--    (fn_pgtap_crea_soggetto_pf e _pg, sulle madri), i fornitori dalla madre
+--    fn_crea_fornitore; la riga obbligatoria che la natura del privato non
+--    ammette (SEDEOP per FO) la scrive il test (regola zero: niente si
+--    appoggia alle righe di oggi). Il seed serve come catalogo dei tipi e
 --    delle nature, e il 5) ne asserisce il contratto deciso (la (C)).
 --  - i rifiuti si asseriscono sul CODICE (dbops.fn_pgtap_codice_errore); la
 --    frase solo dove parla il guard da una strada che salta la madre.
@@ -131,28 +132,17 @@ SELECT (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'FO') AS fo,
        (SELECT descrizione FROM config.tipi_indirizzi WHERE codice_interno = 'SEDELEG') AS sedeleg_nome,
        (SELECT descrizione FROM config.tipi_ruoli WHERE codice_interno = 'FO') AS fo_nome;
 
--- La societa' (builder) e, nella finestra differita, il privato e la ditta
--- individuale con i loro obbligatori sul soggetto (dalla plurale, che li copia).
+-- La societa', il privato e la ditta individuale, completi coi loro obbligatori
+-- sul soggetto: dai due builder, che li costruiscono dalle madri e richiudono
+-- da se' la finestra differita (rev 2026-11-17, riga 7-bis, 20261116-22).
 CREATE TEMP TABLE _s ON COMMIT DROP AS
 SELECT dbops.fn_pgtap_crea_soggetto_pg('pgTAP fornitore privato societa''') AS sc,
-       NULL::uuid AS pr, NULL::uuid AS di;
+       dbops.fn_pgtap_crea_soggetto_pf('Fornitore', 'Privato', pg_temp.natura('PR')) AS pr,
+       dbops.fn_pgtap_crea_soggetto_pf('Fornitore', 'Ditta', pg_temp.natura('DI')) AS di;
 
+-- I ruoli nascono nella finestra differita: il guard degli obbligatori del
+-- ruolo giudica alla richiusura (1).
 SET CONSTRAINTS ALL DEFERRED;
-
-UPDATE _s SET pr = anagrafiche.fn_crea_soggetto_pf(
-           p_cognome := 'Fornitore', p_nome := 'Privato', p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-           p_email := 'pgtap.fornitore.privato@example.com', p_sesso := 'M',
-           p_tipo_soggetto_dettaglio_id := pg_temp.natura('PR'));
-UPDATE _s SET di = anagrafiche.fn_crea_soggetto_pf(
-           p_cognome := 'Fornitore', p_nome := 'Ditta', p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-           p_email := 'pgtap.fornitore.ditta@example.com', p_sesso := 'M',
-           p_tipo_soggetto_dettaglio_id := pg_temp.natura('DI'),
-           p_partita_iva := dbops.fn_pgtap_piva_libera());
-
-SELECT anagrafiche.fn_crea_indirizzi_soggetto(
-           s.pr, jsonb_build_array(pg_temp.el('RES', 'Via Privato pgTAP 1')), true) FROM _s s;
-SELECT anagrafiche.fn_crea_indirizzi_soggetto(
-           s.di, jsonb_build_array(pg_temp.el('DOMFISC', 'Via Ditta pgTAP 1')), true) FROM _s s;
 
 -- I tre fornitori, dal verbo del flusso Fornitori: il privato con la sola
 -- fatturazione, la ditta con fatturazione e sede legale, la societa' con la

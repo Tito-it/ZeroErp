@@ -83,25 +83,12 @@ SELECT
 --   config.tipi_soggetto_dettaglio_tipi_indirizzo), e da quel changeSet il guard
 --   degli indirizzi del ruolo guarda anche la natura del soggetto: la residenza sul
 --   ruolo di una societa' era un dato che il modello non ammette. Il veicolo diventa
---   un privato (PR), coi suoi obbligatori sul soggetto, nella finestra differita.
-SET CONSTRAINTS ALL DEFERRED;
+--   un privato (PR), coi suoi obbligatori sul soggetto.
+-- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, riga 7-bis, 20261116-22): il
+--   privato lo costruisce il builder dbops.fn_pgtap_crea_soggetto_pf, dalle madri; la
+--   residenza e' fra i suoi obbligatori. Apre e richiude da se' la finestra differita.
 CREATE TEMP TABLE tmp_soggetto_unique AS
-SELECT anagrafiche.fn_crea_soggetto_pf(
-           p_cognome := 'Unique Res', p_nome := 'Privato', p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-           p_email := 'pgtap.unique.res@example.com', p_sesso := 'M',
-           p_tipo_soggetto_dettaglio_id := (SELECT d.id FROM config.tipi_soggetto_dettaglio d
-                                             WHERE d.codice_interno = 'PR')) AS soggetto_id;
-SELECT anagrafiche.fn_crea_indirizzi_soggetto(
-           t.soggetto_id,
-           jsonb_build_array(jsonb_build_object(
-               'tipo_indirizzo_codice_interno', 'RES',
-               'indirizzo_libero',              'Via Unique Res pgTAP 1',
-               'stato_id',                      script.fn_stato_id_da_iso2('IT'))
-               || (SELECT jsonb_strip_nulls(to_jsonb(frm))
-                     FROM dbops.fn_pgtap_indirizzo_libero_forma(script.fn_stato_id_da_iso2('IT')) frm)),
-           true)
-  FROM tmp_soggetto_unique t;
-SET CONSTRAINTS ALL IMMEDIATE;
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Unique Res', 'Privato') AS soggetto_id;
 
 CREATE TEMP TABLE tmp_ruolo_unique_id AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS soggetto_ruolo_id

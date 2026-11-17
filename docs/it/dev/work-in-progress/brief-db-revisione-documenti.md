@@ -17,7 +17,7 @@ bloccanti (§13.6: BE15, BE16). Q13-Q15 e la segnalazione di §9 sono decise (20
 | 2 | ✅ sessione DB | Censimento in sola lettura: difetti, metadati, pgTAP, ricadute BE | §3-§6 | — |
 | 3 | ✅ Tid | Le decisioni Q1-Q12 | §7 | 2 |
 | 4 | ✅ Tid | Doc auto-generata rigenerata: le 5 pagine nuove sono nelle schede, l'indice ha le descrizioni nuove (verificato il 2026-11-14) | §8.3 | 1 |
-| 5 | Tid | Lanciare a mano su dbdev lo script di Q11 (quando vuole: non dipende dai giri) | [sql-una-tantum-storicizza-documenti-dbdev.sql](sql-una-tantum-storicizza-documenti-dbdev.sql) | 3 |
+| 5 | ✅ Tid | Lo script di Q11 lanciato a mano su dbdev il 2026-11-17 (riscritto in SQL puro per pgAdmin, sulle tre tabelle che dopo Q14 hanno ancora `storicizza`): 10 modelli, 40 versioni, 1 asset, nessuna riga rimasta a `false` | [sql-una-tantum-storicizza-documenti-dbdev.sql](sql-una-tantum-storicizza-documenti-dbdev.sql) | 3 |
 | 6 | ✅ team BE | BE1, subito: il testo dell'overlap delle versioni è stantio — riscritto il 2026-11-15 | §6 | — |
 | 7 | ✅ Tid | Il via al giro 1 (2026-11-15), numeri dal primo libero | §2 | 3 |
 | 8 | ✅ sessione DB | Giro 1 scritto: nove changeSet, quattro CSV, un pgTAP nuovo, nove riscritti, pagine `manual/` e guida | §11 | 7 |

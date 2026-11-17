@@ -2,10 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-17
 
-**Riparte: il team BE/FE, con R-1 … R-4 (§9.4); R-2 per primo, perché il commit DB lo aspetta.** I giri 1 e 2
-(`20261116-17 … -21` e tre CSV) sono applicati su dbdev il 2026-11-17, con i pgTAP del §9.2 verdi (Tid); il
-censimento di D-5, ripetuto prima dell'applicazione, ha dato zero righe. Da quel momento il BE è rotto sul picker
-del ruolo da assegnare (R-1). Poi il team DB: rigenerare la doc auto-generata e committare, quindi i giri 3 e 4.
+**Riparte: il team DB col giro 3 (riga 7), e in parallelo il team BE/FE con R-1 … R-4 (§9.4).** Il builder del
+privato (`20261116-22`, §10) è applicato su dbdev il 2026-11-17, pgTAP del §10.2 verdi; da committare. I giri 1
+e 2 (`20261116-17 … -21` e tre CSV) sono applicati su dbdev e committati (`9a6db84d2b`) il 2026-11-17, coi pgTAP del §9.2 verdi; il censimento di D-5, ripetuto prima dell'applicazione, ha
+dato zero righe. Il BE è rotto sul picker del ruolo da assegnare (R-1). La doc auto-generata si rigenera dopo R-2:
+prima, il pre-commit `check-i18n-keys` la rifiuterebbe. Poi i giri 3 e 4.
 Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 
 | # | Chi | Che cosa | Dove | Aspetta |
@@ -15,15 +16,19 @@ Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 | 3 | team DB | ✅ censimento degli indirizzi di ruolo non ammessi dalla natura (2026-11-16, zero righe); ✅ ripetuto prima dell'applicazione (2026-11-17, zero righe su 687) | §8.3 D-5, §9.3 | 2 |
 | 4 | team DB | ✅ giri 1 e 2 scritti e provati in `ROLLBACK` (2026-11-17): BB degli obbligatori, check e picker del ruolo con la natura, guard, auto-clone, cambio di natura, CSV, pgTAP, doc | §9 | 2, 3 |
 | 5 | Tid | ✅ giri 1 e 2 applicati su dbdev, pgTAP del §9.2 verdi (2026-11-17) | §9.2 | 4 |
-| 5-bis | team DB | ⏳ doc auto-generata rigenerata, poi commit DB (dopo R-2) | §9.1 | 5, R-2 |
-| 6 | BE/FE | R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero | §9.4 | 5 (R-2 prima del commit DB) |
+| 5-bis | team DB | ✅ commit DB dei giri 1 e 2 (`9a6db84d2b`, 2026-11-17) | §9.1 | 5 |
+| 6 | BE/FE | R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero | §9.4 | 5 (R-2 prima della rigenerazione della doc) |
 | 7 | team DB | giro 3: la frase di `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` per i due chiamanti | §4.3, §8.2 (6) | 5 |
+| 7-bis | team DB | ✅ il builder `dbops.fn_pgtap_crea_soggetto_pf` (`20261116-22`), le cinque copie ritirate, pgTAP e doc, provati in `ROLLBACK` (2026-11-17) | §10 | — |
+| 7-bis-a | Tid | ✅ `20261116-22` applicato su dbdev, i sei pgTAP del §10.2 verdi (2026-11-17) | §10.2 | 7-bis |
+| 7-bis-b | team DB | commit del giro 7-bis, quando Tid lo chiede | §10 | 7-bis-a |
 | 8 | team DB | giro 4: gli obbligatori ricontrollati alla cancellazione e al cambio di tipo (F-1), con la natura (§9.5) | §8.4, §9.5 | 5 |
 | 9 | chi chiude | archiviazione in `work-done/` | — | tutti |
 
-Decisioni aperte di Tid: le due proposte della verifica del 2026-11-17 (§9.5: la fixture del ruolo nel giro 4, il
-builder del privato per i pgTAP). Lavoro fatto e applicato, da committare: i giri 1 e 2 (§9.1), i pgTAP (§9.2), la doc
-(§9.1) e questo brief; il commit DB aspetta R-2 (il pre-commit `check-i18n-keys`, dopo la rigenerazione della doc).
+Decisioni aperte di Tid: una, senza fretta (§10.3): se portare sul builder i tre pgTAP che costruiscono il privato
+con un `INSERT` diretto su `anagrafiche.soggetti`. Le due proposte della verifica del 2026-11-17 sono decise (§9.5): la fixture del
+ruolo nel giro 4, il builder del privato per i pgTAP subito, come giro a sé (riga 7-bis). I giri 1 e 2, i pgTAP, la
+doc e questo brief sono committati (`9a6db84d2b`, 2026-11-17); il giro 7-bis (§10) è applicato e verde (2026-11-17), da committare.
 
 **Brief vicini verificati (2026-11-16):** nessun brief aperto sugli stessi oggetti. Due chiusi il 2026-11-15
 li hanno toccati e qui si **leggono**, non si rifanno:
@@ -479,9 +484,81 @@ cliente × fatturazione su un privato, che la natura ammette. I `BEGIN ATOMIC` s
   Oggi non pesa: lo stesso ruolo non si chiude comunque finché il requisito degli obbligatori ignora la natura (il
   primo punto). Proposta: entra nel giro 4, con la fixture che legge `fn_tipo_indirizzo_obbligatorio_per_ruolo`
   sulla natura del soggetto, in un changeSet suo.
+  ✅ *Decisa da Tid il 2026-11-17:* nel giro 4.
 * **Verifica del 2026-11-17, il privato dei pgTAP scritto tre volte.** `test_indirizzi_unique_res`,
   `create-gestore-indirizzo-res-domfisc` e `test-fornitore-privato-indirizzi-v1` creano un privato con la
   residenza con lo stesso blocco (madre `fn_crea_soggetto_pf` + `fn_crea_indirizzi_soggetto`, nella finestra
   differita). Il gemello della società c'è (`dbops.fn_pgtap_crea_soggetto_pg`), quello della persona fisica no.
   Proposta: un builder `dbops.fn_pgtap_crea_soggetto_pf` e le tre copie ritirate nello stesso giro. È un
   building block nuovo: decide Tid se e quando.
+  ✅ *Decisa da Tid il 2026-11-17:* sì, subito, come giro a sé prima del 3 (riga 7-bis). Il builder nasce
+  sulle madri, come il gemello della società, e i tre pgTAP lo usano nello stesso giro.
+  ✅ *Fatto il 2026-11-17* (§10): il censimento ha trovato **cinque** copie, non tre.
+
+## 10. Giro 7-bis, il builder del privato (team DB, 2026-11-17)
+
+### 10.1 Che cosa
+
+| Pezzo | File |
+| --- | --- |
+| `dbops.fn_pgtap_crea_soggetto_pf(cognome, nome, natura, stato, partita IVA)`: gemello di `fn_pgtap_crea_soggetto_pg`, dalle madri `fn_crea_soggetto_pf` e `fn_crea_indirizzi_soggetto`; apre e richiude la finestra differita | `20_code/dbops/20261116-22-create-fn-pgtap-crea-soggetto-pf` |
+| Il presidio del builder (9 asserzioni) | `db/pgtap/anagrafiche/test-fn-pgtap-crea-soggetto-pf-v1.sql` |
+| Le cinque copie ritirate (§10.3) | i cinque pgTAP |
+| Pagina `manual/` nuova; quella del gemello e quella del ruolo rimandano al builder; la tabella delle fixture della guida pgTAP ha la riga della persona fisica | `docs/it/dbzero/dbops/manual/`, `docs/it/guide/pgtap-come-si-scrive-un-test.md` |
+
+**Le scelte fatte scrivendo:**
+
+* **I valori li decide la natura, come nel gemello.** Senza natura, il privato (PR) dello stato. Sesso se la
+  natura lo prevede (`sesso_policy` diversa da `NONE`); partita IVA quella del test o, se la natura la pretende,
+  una libera; codice fiscale libero; indirizzi dal primo tipo obbligatorio della matrice della natura, copiato
+  dalla madre sugli altri.
+* **Dati societari solo se la natura li pretende (`REQUIRED`)**, non anche se li ammette come fa il gemello: per
+  una persona fisica sono facoltativi o vietati, e la fixture costruisce il soggetto minimo che il modello
+  ammette. Una ditta individuale nasce senza; il caso `REQUIRED` su una natura PF il seed non lo ha, e il pgTAP
+  lo costruisce (7).
+* **Firma ancorata** (`%TYPE` su ogni argomento e sul ritorno): è una funzione nuova, nessuna identità da
+  conservare (il gemello tiene `integer` sulla natura per non cambiare la sua).
+
+### 10.2 La prova
+
+`scripts/prova_changeset.py` sullo scratch `zeroerp_ruoli`, 2026-11-17: estratto eseguito per intero, catalogo
+identico dopo il `ROLLBACK`. Guardrail statici verdi (forme, letterali, COMMENT al presente, runOnChange,
+preCondition, timestamp, DDL sui trigger generati, GRANT ai ruoli batch; preambolo pgTAP).
+
+| pgTAP | Con l'estratto |
+| --- | --- |
+| `test-fn-pgtap-crea-soggetto-pf-v1` (nuovo) | 9 / 0 |
+| `test_indirizzi_unique_res`, `create-gestore-indirizzo-res-domfisc`, `test-fornitore-privato-indirizzi-v1`, `test-risorse-umane` (riscritti) | 6 / 0, 10 / 0, 24 / 0, 8 / 0 |
+| `test-soggetti-titoli-iva-tipo-soggetto-v1` (riscritto) | 19 / **2**: il 14 e il 15, di perimetro RLS (da owner rossi per costruzione); la versione committata, sullo stesso scratch, ha anche lei 19 / 2 |
+| `dbops/test-builder-pgtap-vincoli-immediate-v1`, `dbops/test-riferimenti-morti-v1`, `test-comment-al-presente-v1`, `test-corpo-funzione-senza-commenti-v1`, `test-security-definer-search-path-v1` (presidi trasversali) | invariati, verdi |
+
+⚠️ **Limite dichiarato:** la prova gira da owner; il 14 e il 15 di `titoli-iva` li dice solo la corsa di Tid.
+✅ *Corsa di Tid, 2026-11-17:* `20261116-22` applicato su dbdev, i sei pgTAP verdi, compresi il 14 e il 15 di
+`titoli-iva`.
+
+### 10.3 Il censimento delle copie
+
+La verifica ne aveva contate tre; cercando i pgTAP che chiamano `anagrafiche.fn_crea_soggetto_pf` ne sono uscite
+**cinque** con lo stesso significato, «un privato (o una ditta) valido, coi suoi obbligatori, come veicolo del
+test»:
+
+* `test_indirizzi_unique_res`, `create-gestore-indirizzo-res-domfisc`, `test-fornitore-privato-indirizzi-v1` —
+  le tre della verifica (madre + plurale nella finestra);
+* `test-risorse-umane` — madre + **singolare**, due chiamate (RES, DOMFISC);
+* `test-soggetti-titoli-iva-tipo-soggetto-v1` (`_pr2`) — madre + un **`INSERT`** diretto su
+  `anagrafiche.indirizzi_soggetti`, accanto alla madre degli indirizzi.
+
+**Non sono copie, e restano** (il significato è un altro):
+
+* i pgTAP **della madre** e dei suoi guard (`test-fn-crea-soggetto-pf`, `test-soggetti-sesso-policy-v1`,
+  `test-dati-societari-alla-nascita-v1`, `script/test-fn-guard-soggetto-pf-pura` e simili): la chiamata alla
+  madre è l'oggetto del test;
+* i soggetti **incompleti** di una finestra che il file non richiude (`test-cambio-natura-soggetto-v1` e
+  `test-fn-elimina-dati-societari-v1`, la ditta senza indirizzi; `test-soggetti-regime-pa-v1`,
+  `test-soggetti-titoli-iva-tipo-soggetto-v1` `_pr`): il test giudica la riga appena nata, non un soggetto finito.
+
+**Segnalato, senza proposta di cantiere:** una seconda strada costruisce il privato veicolo del test con un `INSERT` diretto su
+`anagrafiche.soggetti`, accanto alla madre: `create-cliente`, `test-fn-update-cliente-v1`,
+`test-soggetti-ruoli-indirizzi-required` (oltre ai test dei guard sulla riga, dove l'`INSERT` è l'oggetto). È lo
+stesso difetto che il gemello ha chiuso per la società il 2026-11-08 (D63 di brief-db-revisione-dbops). Se
+portarli sul builder, e quando, decide Tid.
