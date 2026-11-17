@@ -44,8 +44,8 @@
 --  24) destinazione NULL -> E_PARAMETRO_INVALIDO
 --  25) origine che non esiste -> E_PARAMETRO_INVALIDO
 --  26) nello stesso modello: una BOZZA col numero successivo
---  27) il vincolo che il verbo traduce in E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE
---      esiste col nome che il verbo cerca
+--  27) la copia non numera da se': il corpo non legge il massimo e non intercetta
+--      il vincolo del numero (lo assegna il trigger della tabella)
 --
 -- ⭐ Senza i changeSet 20261116-01 … -04 (prova sullo scratch, 2026-11-16) sono
 --   verdi 8 su 27. Rossi: 1-2 (il CHECK della sola PUBBLICATA); 3-11 (il guard
@@ -54,10 +54,12 @@
 --   20-22 e 27 (la copia passava, il modello inesistente era un 23503). 12 e 19
 --   a cascata: senza il guard il 7 pubblica la V2 con un UPDATE, e la V2 non e'
 --   piu' una bozza.
--- ⚠️ La gara vera sul numero (27) non si costruisce in una sessione sola: due
---   copie concorrenti vogliono due transazioni. Si fissa il patto fra il verbo e
---   il vincolo che riconosce per nome: un vincolo rinominato rende rosso il test
---   prima che il verbo torni a dare il 23505 grezzo.
+-- ⚠️ Il 27 e' riscritto col giro 6 (20261116-24): fino ad allora fissava il
+--   patto fra la copia e il vincolo che traduceva in
+--   E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE. Il numero lo assegna ora il trigger
+--   documenti.trgfn_template_documenti_versioni_assegna_numero, in fila per
+--   modello, e il codice e' ritirato: il 27 vuole che la copia non abbia una
+--   seconda numerazione. La numerazione la prova test-documenti-numero-versione-v1.
 -- ⚠️ Gira come applicazione. Il proprietario della tabella scrive lo stato senza
 --   porta: lo provano i pgTAP che girano da owner e costruiscono standard
 --   pubblicati e obsoleti (test-documenti-template-standard-v1,
@@ -336,15 +338,18 @@ SELECT is(
     '4=BOZZA/<p>v1</p>',
     '26) nello stesso modello: una BOZZA col numero successivo e il corpo della V1');
 
-SELECT ok(
-    (SELECT count(*) = 1 FROM pg_constraint c
-      WHERE c.conrelid = 'documenti.template_documenti_versioni'::regclass
-        AND c.conname = 'uq_template_documenti_versioni_template_versione'
-        AND c.contype = 'u')
-    AND (SELECT p.prosrc LIKE '%''uq_template_documenti_versioni_template_versione''%'
-                     AND p.prosrc LIKE '%E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE%'
-           FROM pg_proc p WHERE p.oid = 'documenti.fn_crea_bozza_da_versione'::regproc),
-    '27) il vincolo che il verbo traduce in E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE esiste col nome che cerca');
+-- Il corpo, in minuscolo: nessuna lettura del massimo, nessun nome del vincolo,
+-- nessun codice della gara.
+SELECT is(
+    (SELECT array_remove(ARRAY[
+                CASE WHEN lower(p.prosrc) LIKE '%max(%versione%' THEN 'max' END,
+                CASE WHEN lower(p.prosrc) LIKE '%uq_template_documenti_versioni_template_versione%' THEN 'vincolo' END,
+                CASE WHEN lower(p.prosrc) LIKE '%unique_violation%' THEN 'unique_violation' END,
+                CASE WHEN p.prosrc LIKE '%E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE%' THEN 'codice' END],
+            NULL)
+       FROM pg_proc p WHERE p.oid = 'documenti.fn_crea_bozza_da_versione'::regproc),
+    ARRAY[]::text[],
+    '27) la copia non numera da se'': il numero lo assegna il trigger della tabella');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL NUMERO DI UNA VERSIONE DI TEMPLATE LO ASSEGNA IL DATABASE
+#   documenti.trgfn_template_documenti_versioni_assegna_numero (nuova)
+#   trg_template_documenti_versioni_a04_assegna_numero_ins (nuovo)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il numero di una versione nuova aveva due sedi: la versione scritta da
+#   zero lo prendeva dal servizio del backend (MAX + 1 letto prima
+#   dell'INSERT), la copia da documenti.fn_crea_bozza_da_versione (MAX + 1
+#   dentro il verbo). Stessa regola scritta due volte, e due esiti per lo
+#   stesso fatto quando due scritture chiedevano lo stesso numero: un 400 dal
+#   servizio, un 409 dalla copia. Decisione di Tid del 2026-11-17 (R1 della
+#   sessione BE): la sede e' il database, per ogni strada.
+#
+# -- LA REGOLA -------------------------------------------------------------
+#   BEFORE INSERT, per riga: il numero e' il successivo all'ultimo del
+#   modello. Chi non e' il proprietario della tabella non lo sceglie: un
+#   valore passato si sostituisce, come la natura di vendita di una riga
+#   (script.trgfn_righe_natura_vendita). Il proprietario (seed e changeSet
+#   degli standard, che scrivono numeri espliciti in 80_data) tiene il suo,
+#   come per lo stato in trgfn_template_documenti_versioni_protect_pubblicata;
+#   senza numero lo riceve come tutti.
+#   Le nascite nello stesso modello si mettono in fila su un lock di
+#   transazione per modello (linee-guida-sql §5b, forma a due argomenti),
+#   preso prima di leggere il massimo: la chiave copre tutta la lettura. In
+#   READ COMMITTED, il livello dell'applicazione, la seconda nascita aspetta
+#   la prima e legge il massimo dopo il suo commit: due numeri diversi, nessun
+#   errore. Il vincolo uq_template_documenti_versioni_template_versione resta
+#   la difesa a valle (in REPEATABLE READ la lettura non vede la riga della
+#   prima, e il vincolo rifiuta).
+#   Un INSERT di piu' righe le numera in fila: la lettura del trigger vede le
+#   righe gia' inserite dalla stessa istruzione.
+#   Il cambio del numero dopo la nascita lo ferma il lucchetto di colonna
+#   (dbops.automation_lock_columns, riga di questo giro, E_CODICE_NON_MODIFICABILE),
+#   generato da ci_apply: qui nessun DDL su di lui (§11.5).
+#
+# -- LA FASE ---------------------------------------------------------------
+#   a04, nella zona a: i due rifiuti a05 della tabella
+#   (trgfn_template_documenti_versioni_protect_pubblicata e
+#   trgfn_template_standard_guard_sola_lettura) citano il numero nel contesto
+#   e nella frase, e chi legge una colonna gira dopo chi la risolve
+#   (linee-guida-trigger, «La fase»). Il lock lo prende anche una scrittura
+#   che a05 poi rifiuta: costa un'attesa breve, non un esito diverso.
+#
+# -- CHI SCRIVE LA TABELLA (censito 2026-11-17) -----------------------------
+#   DB: documenti.fn_crea_bozza_da_versione (riscritta nel -24 senza numero),
+#   per lei fn_personalizza_template_standard. 80_data: i seed degli standard
+#   (20260804-61, 20260816-01, 20261020-13 … -17, 20261020-25), da
+#   proprietario e con numeri espliciti, che restano. BE: create_versione col
+#   numero di next_versione_num, che si ritira (richiesta al team BE nel
+#   brief). pgTAP: le fixture scrivono numeri espliciti da applicazione, in
+#   ordine da 1: ricevono gli stessi numeri.
+#   Il GRANT EXECUTE all'app viene dal loop dei grant di ci_apply.
+#   Brief: brief-db-revisione-documenti, giro 6 (§16).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-23-create-trgfn-template-documenti-versioni-assegna-numero-mctit.yaml
+
+  - changeSet:
+      id: 20261116-23-create-trgfn-template-documenti-versioni-assegna-numero
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il numero di una versione di template nuova lo assegna il database (MAX + 1 del modello,
+        in fila per modello): sede unica per la versione scritta da zero e per la copia.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_assegna_numero()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Il numero di una versione nuova: il successivo all'ultimo del
+              --   suo modello. Sede unica della numerazione, per la versione
+              --   scritta da zero e per la copia (documenti.fn_crea_bozza_da_versione).
+              --
+              -- Regole:
+              --   - chi non e' il proprietario della tabella non sceglie il
+              --     numero: un valore passato si sostituisce;
+              --   - il proprietario (seed, changeSet) che scrive un numero lo
+              --     tiene: e' come nascono gli standard;
+              --   - le nascite nello stesso modello si mettono in fila su un lock
+              --     di transazione per modello, preso prima di leggere il
+              --     massimo: due nascite contemporanee prendono due numeri. Il
+              --     vincolo uq_template_documenti_versioni_template_versione
+              --     resta la difesa a valle.
+              --   Il numero dopo la nascita non cambia: lo ferma il lucchetto di
+              --   colonna (script.trgfn_lock_columns).
+              BEGIN
+                IF NEW.versione IS NOT NULL
+                   AND script.fn_is_proprietario_tabella(TG_RELID) THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Spazio dei nomi: la colonna numerata; perimetro: il modello.
+                PERFORM pg_advisory_xact_lock(
+                    hashtext('documenti.template_documenti_versioni.versione'),
+                    hashtext(NEW.template_documento_id::text));
+
+                SELECT COALESCE(max(v.versione), 0) + 1
+                  INTO NEW.versione
+                  FROM documenti.template_documenti_versioni v
+                 WHERE v.template_documento_id = NEW.template_documento_id;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_assegna_numero() IS
+                  'Il numero di una versione di template nuova: il successivo all''ultimo del suo modello. E'' la sede unica della numerazione, per la versione scritta da zero e per la copia (documenti.fn_crea_bozza_da_versione). Chi non e'' il proprietario della tabella non sceglie il numero: un valore passato si sostituisce. Il proprietario (seed, changeSet) che scrive un numero lo tiene, come nascono gli standard. Le nascite nello stesso modello si mettono in fila su un lock di transazione per modello, preso prima di leggere il massimo: due nascite contemporanee prendono due numeri diversi, e il vincolo uq_template_documenti_versioni_template_versione resta la difesa a valle. Dopo la nascita il numero non cambia: lo ferma il lucchetto di colonna (E_CODICE_NON_MODIFICABILE).';
+
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a04_assegna_numero_ins
+                  ON documenti.template_documenti_versioni;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a04_assegna_numero_ins
+                  BEFORE INSERT ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_assegna_numero();
+
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a04_assegna_numero_ins
+                  ON documenti.template_documenti_versioni IS
+                  'La versione nuova riceve il numero dal database (documenti.trgfn_template_documenti_versioni_assegna_numero). Fase a04: prima dei rifiuti a05 della tabella, che citano il numero.';
+
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione IS
+                  'Il numero della versione nel suo modello, da 1 (chk_template_documenti_versioni_versione_pos), unico per modello (uq_template_documenti_versioni_template_versione). Lo assegna il database alla nascita, il successivo all''ultimo del modello (documenti.trgfn_template_documenti_versioni_assegna_numero); poi non cambia (lucchetto di colonna, E_CODICE_NON_MODIFICABILE).';
+
+              COMMENT ON CONSTRAINT uq_template_documenti_versioni_template_versione
+                  ON documenti.template_documenti_versioni IS
+                  'Il numero di una versione e'' unico nel suo modello. Il numero lo assegna il database, in fila per modello (documenti.trgfn_template_documenti_versioni_assegna_numero): il vincolo e'' la difesa a valle.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a04_assegna_numero_ins
+                  ON documenti.template_documenti_versioni;
+              DROP FUNCTION IF EXISTS documenti.trgfn_template_documenti_versioni_assegna_numero();
+
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione IS
+                  'Il numero della versione nel suo modello, da 1 (chk_template_documenti_versioni_versione_pos), unico per modello (uq_template_documenti_versioni_template_versione). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+
+              COMMENT ON CONSTRAINT uq_template_documenti_versioni_template_versione
+                  ON documenti.template_documenti_versioni IS
+                  'Il numero di una versione e'' unico nel suo modello. Una copia che lo trova preso nello stesso istante riceve E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE (documenti.fn_crea_bozza_da_versione).';

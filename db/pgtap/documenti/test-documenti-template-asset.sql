@@ -4,10 +4,11 @@
 -- Test: documenti.template_asset
 --   - lo stesso file una volta sola per azienda (uq_template_asset_emittente_sha256)
 --   - una risorsa non si cancella
---   - il file non cambia (protect_file), il codice interno nemmeno (lock di colonna)
---   - i campi liberi: codice, descrizione, date, attivo, meta
+--   - il file non cambia (protect_file), il codice interno e l'azienda nemmeno
+--     (lock di colonna)
+--   - i campi liberi: codice, descrizione, date, attivo, meta, storicizza
 -- ------------------------------------------------------------
--- Indice test (1..17):
+-- Indice test (1..19):
 --  1) Setup: una risorsa nasce con l'azienda della sessione
 --  2) Stessa azienda, stessa impronta: uq_template_asset_emittente_sha256
 --  3) Stessa impronta per un'altra azienda: ammessa
@@ -22,6 +23,12 @@
 -- 15) le date sono libere: valido_al si chiude
 -- 16) attivo e' libero: la risorsa si spegne
 -- 17) ... e una risorsa spenta il file non lo cambia lo stesso
+-- 18) l'azienda non cambia: E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE
+-- 19) storicizza e' libero
+-- ⚠️ 18-19 nascono col giro 6 di brief-db-revisione-documenti (2026-11-17): il
+--    lucchetto dell'azienda lo genera ci_apply dalla riga di
+--    dbops.automation_lock_columns. Prima del giro il 18 era rosso: l'UPDATE
+--    spostava la risorsa nell'altra azienda.
 -- ⚠️ Le due aziende si costruiscono (dbops.fn_pgtap_crea_emittente_operatore):
 --    il caso «un'altra azienda» non si pesca fra quelle che ci sono.
 -- ⚠️ Il cambio del tipo MIME lo giudicherebbe anche il guard del formato
@@ -50,7 +57,7 @@ DO $ctx$ BEGIN
   PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _e));
 END $ctx$;
 
-SELECT plan(17);
+SELECT plan(19);
 
 -- ============================================================
 -- Setup: la risorsa di base, con l'azienda della sessione
@@ -224,6 +231,28 @@ SELECT is(
      WHERE id = (SELECT id FROM tmp_ta_asset)$$),
   'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
   '17) spenta, la risorsa non cambia file lo stesso'
+);
+
+-- ============================================================
+-- 18-19) L'azienda e' ferma, storicizza e' libera
+-- ============================================================
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE documenti.template_asset SET emittente_fiscale_id = %s WHERE id = %s',
+    (SELECT emittente_fiscale_id FROM _e2), (SELECT id FROM tmp_ta_asset))),
+  'E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE',
+  '18) l''azienda non cambia: E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE'
+);
+
+UPDATE documenti.template_asset
+   SET storicizza = false
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT storicizza FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  false,
+  '19) storicizza e'' libero'
 );
 
 SELECT * FROM finish();

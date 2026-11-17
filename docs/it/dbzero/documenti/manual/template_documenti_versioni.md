@@ -22,6 +22,7 @@
 >
 > * [documenti.fn_pubblica_template_documento_versione](/dbzero/documenti/funzioni/fn_pubblica_template_documento_versione) — la pubblicazione
 > * [documenti.fn_crea_bozza_da_versione](/dbzero/documenti/funzioni/fn_crea_bozza_da_versione) — la copia di una versione in una bozza
+> * [documenti.trgfn_template_documenti_versioni_assegna_numero](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_assegna_numero) — il numero di una versione nuova
 > * [documenti.fn_guard_versione_contesto](/dbzero/documenti/funzioni/fn_guard_versione_contesto) — il patto sulla forma dei dati
 > * [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata) — fuori bozza la versione non cambia
 > * [documenti.trgfn_template_documenti_versioni_block_delete](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_block_delete) — quali versioni si cancellano
@@ -43,6 +44,13 @@ lo stato e il periodo di validità.
 
 Un modello ha più versioni nel tempo, numerate da 1 (`versione`, unica per modello). Una versione
 nuova non cancella le precedenti: restano per la ristampa e per l'audit.
+
+Il numero lo assegna il database alla nascita, il successivo all'ultimo del modello, sia alla
+versione scritta da zero sia alla copia
+([trgfn_template_documenti_versioni_assegna_numero](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_assegna_numero)).
+Un numero mandato dall'applicazione si sostituisce; due versioni che nascono insieme nello stesso
+modello si mettono in fila e prendono due numeri. Dopo la nascita il numero non cambia, in nessuno
+stato (lucchetto di colonna, `E_CODICE_NON_MODIFICABILE`).
 
 ---
 
@@ -188,6 +196,8 @@ versioni dello standard non si cancellano dall'applicazione.
 * `db/pgtap/documenti/test-documenti-versione-contesto-v1.sql` — il patto sulla forma dei dati.
 * `db/pgtap/documenti/test-documenti-vocabolari-versione-v1.sql` — i tre vocabolari della pagina.
 * `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — l'origine di una copia.
+* `db/pgtap/documenti/test-documenti-numero-versione-v1.sql` — il numero assegnato dal database,
+  in fila per modello, e fermo dopo la nascita.
 
 ---
 
@@ -205,6 +215,9 @@ versioni dello standard non si cancellano dall'applicazione.
   stato, o una versione nata pubblicata od obsoleta, saltava il controllo della forma dei dati e la
   chiusura. La data di inizio diventa obbligatoria per ogni stato fuori bozza (prima solo per la
   pubblicata: un'obsoleta senza inizio valeva «da sempre»).
+* 2026-11-17 — il numero di una versione nuova lo assegna il database, per ogni strada; prima lo
+  calcolavano il backend per la versione scritta da zero e la funzione della copia per la copia. Dopo
+  la nascita il numero non cambia nemmeno in bozza.
 
 ---
 

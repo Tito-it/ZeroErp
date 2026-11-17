@@ -261,7 +261,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   2026-11-16 (§14, `90eb95a09a`), pgTAP verdi; BE6, BE6-bis, BE17 sbloccate, nessuna rottura BE. Giro 5 («pulizia e
   metadati», `20261116-10 … -16`: i COMMENT dello schema al presente e completi, la sovrapposizione col codice del
   verbo, il presidio dei COMMENT unico che vede anche trigger e policy, i pgTAP deboli) applicato e committato il
-  2026-11-17 (§15), pgTAP verdi; BE2, BE18, BE19 sbloccate, nessuna rottura BE. Resta la doc auto-generata del giro.
+  2026-11-17 (§15), pgTAP verdi, doc auto-generata rigenerata; BE2, BE18, BE19 e BE8 fatte e committate. Giro 6
+  («il numero della versione e l'azienda della risorsa», `20261116-23 … -25`: il numero di ogni versione nuova lo
+  assegna un trigger, in fila per modello, e `E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE` è ritirato; l'azienda della
+  risorsa ferma con `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`) applicato il 2026-11-17 (§16), pgTAP verdi; restano
+  la doc auto-generata e il commit. BE20-BE23 sbloccate, nessuna rottura BE.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il

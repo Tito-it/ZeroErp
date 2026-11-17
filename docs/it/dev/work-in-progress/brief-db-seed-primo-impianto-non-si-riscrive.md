@@ -1,21 +1,22 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-17 (brief scritto, niente costruito)
+## ⏭️ Chi riparte — aggiornato al 2026-11-17 (brief scritto, analisi critica fatta, niente costruito)
 
-**Riparte: Tid**, che rilegge il modello (§3), il meccanismo (§4, §5) e prende le decisioni Q1-Q7 (§9).
-Finché non dà il via non si scrive niente.
+**Riparte: Tid**, che rilegge il modello (§3), il meccanismo (§4, §5) **corretto dall'analisi critica (§12)** e
+prende le decisioni Q1-Q11 (§9). Finché non dà il via non si scrive niente.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Il problema, la storia delle decisioni e il meccanismo proposto | §1-§7 | — |
-| 2 | Tid | Rilettura a mente lucida e decisioni Q1-Q7 | §9 | 1 |
-| 3 | sessione DB | Le verifiche V1-V4, prima di scrivere | §8 | 2 |
+| 1-bis | ✅ sessione DB | Analisi critica: V1 fatta (smentisce `RETURN NULL`), `DELETE_BLOCK` per tabella non basta, marcatore e diagnosi da rifare | §12 | 1 |
+| 2 | Tid | Rilettura a mente lucida e decisioni Q1-Q11 | §9, §12 | 1-bis |
+| 3 | sessione DB | Le verifiche V2-V5, prima di scrivere | §8 | 2 |
 | 4 | sessione DB | Giro 1: la colonna marcatore, la regola d'automazione, il trigger, il blocco del `DELETE`, i pgTAP, §11.7 delle linee guida | §10 | 3 |
 | 5 | Tid | `/verifica-db`, l'apply, i pgTAP, la doc auto-generata, il commit | — | 4 |
 | 6 | team BE/FE | Le ricadute R1-R3 | §11 | 5 |
 | 7 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 5, 6 |
 
-**Decisioni aperte di Tid:** Q1-Q7 (§9). **Da committare:** questo brief e il rimando nel registro dei residui.
+**Decisioni aperte di Tid:** Q1-Q11 (§9). **Da committare:** questo brief e il rimando nel registro dei residui.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -77,6 +78,9 @@ il blocco per riga è sbagliato (§6, limite 1), e la tabella si tratta a parte 
 
 ### 4.1 L'idea
 
+> ⚠️ **Superato in parte da §12.1 (2026-11-17).** `RETURN NULL` non salta la riga: fa fallire il migrate. Il
+> trigger deve restituire `OLD`, e allora l'ordine rispetto all'audit conta.
+
 Un trigger `BEFORE UPDATE` sulle tabelle dichiarate:
 
 - se la scrittura arriva dal **migrate** e la riga è **personalizzata**, la salta (`RETURN NULL`): la riga
@@ -97,6 +101,9 @@ altrimenti con `CURRENT_USER`. Il primo migrate che ripassa sul CSV sostituisce 
 migrate. E `CURRENT_USER` è anche quello di un job, di un `psql` del DBA o di uno script: non distingue il
 software dall'installazione.
 
+> ⚠️ **Da rivedere con §12.3 e §12.7 (2026-11-17):** la colonna per tabella contraddice il §4.5 («senza DDL
+> scritto a mano»), e qualunque scrittura dell'app marcherebbe la riga, anche il test SMTP.
+
 La proposta: una colonna per tabella dichiarata, per esempio `personalizzata_il timestamptz` (`NULL` = come il
 seed l'ha lasciata), accesa dal trigger e mai dal CSV. Il CSV non la porta, quindi il mirror non la tocca. Il
 nome è da decidere (Q2).
@@ -114,6 +121,9 @@ nome è da decidere (Q2).
 
 ### 4.4 Il salto non è silenzioso
 
+> ⚠️ **Da rivedere con §12.4 e §12.5 (2026-11-17):** la vista «che il CSV vorrebbe diverse» non si può
+> costruire senza salvare il valore scartato, e il `NOTICE` probabilmente Liquibase non lo mostra.
+
 In sviluppo cambi il CSV, lanci il migrate e la riga non cambia. Senza un segnale sembra un guasto. Il trigger
 emette un `NOTICE` con tabella e chiave della riga saltata, e la riga resta leggibile in una vista di diagnosi
 («righe personalizzate che il CSV vorrebbe diverse»), sullo stampo delle `fn_*_divergenze` delle automazioni.
@@ -128,6 +138,10 @@ senza DDL scritto a mano. ⚠️ Il trigger nasce dal `ci_apply`, quindi vale §
 su di lui nei changeSet.
 
 ## 5. La cancellazione: la riga si rende obsoleta, non si cancella
+
+> ⚠️ **Superato in parte da §12.2 (2026-11-17).** `DELETE_BLOCK` blocca la tabella intera, ma su
+> `email_account` e `email_template` l'app crea e cancella righe sue. Il blocco va per riga: solo le righe nate
+> dal seed.
 
 Se l'interfaccia cancella una riga di primo impianto, il mirror la **reinserisce** al migrate successivo, perché
 per lui è una riga che manca. Quindi su queste tabelle il `DELETE` dall'app non deve esistere. La riga si
@@ -175,27 +189,31 @@ scrivono. Ogni tabella trovata riceve una specie dichiarata.
 
 | # | Che cosa | Perché |
 | --- | --- | --- |
-| V1 | Che SQL genera `loadUpdateData` su PostgreSQL (`INSERT … ON CONFLICT DO UPDATE` oppure `UPDATE` + `INSERT`) | In entrambi i casi un `BEFORE UPDATE` scatta e `RETURN NULL` salta la riga. Va provato, non dedotto, su una tabella di prova in `ROLLBACK` |
-| V2 | Che il trigger di audit e quello nuovo non si disturbino | Con `RETURN NULL` l'ordine dei trigger `BEFORE` (alfabetico) non conta per il salto. Conta per la marcatura, che deve leggere `app.jwt_user` come l'audit |
+| V1 | ✅ **Fatta il 2026-11-17 (§12.1).** Che SQL genera `loadUpdateData` su PostgreSQL | `UPDATE` e poi `IF not found THEN INSERT`, in un blocco `DO` (letto in `InsertOrUpdateGeneratorPostgres` di `tools/liquibase/5.0.4`). ⛔ L'ipotesi «in entrambi i casi `RETURN NULL` salta la riga» è **smentita**: va provato su una tabella di prova in `ROLLBACK` che `RETURN OLD` non produca l'`INSERT` |
+| V2 | Che il trigger di audit e quello nuovo non si disturbino | ⚠️ Corretta da §12.1: con `RETURN OLD` l'ordine dei trigger `BEFORE` (alfabetico) **conta**. Il trigger nuovo scatta dopo l'audit, così ne butta via le modifiche. Si guardano anche i trigger `AFTER UPDATE` (storico), che vedrebbero un aggiornamento senza cambiamenti |
 | V3 | Chi scrive oggi queste tabelle senza `app.jwt_user`: job, funzioni di dominio, provisioning | Verrebbero trattati come il migrate (§4.3) |
-| V4 | Che `DELETE_BLOCK` copra il caso così com'è, compreso il bypass del `DELETE` forward-only di §11.2 | Riuso del building block senza variarlo |
+| V4 | ⚠️ Esito anticipato da §12.2: `DELETE_BLOCK` **non** copre il caso così com'è | Blocca ogni riga della tabella. Resta da verificare il bypass del `DELETE` forward-only di §11.2 sulla forma per riga |
+| V5 | Se Liquibase mostra i `NOTICE` di PostgreSQL nell'output del migrate (§12.5) | Se non li mostra, Q3 decade e il segnale è solo la diagnosi |
 
 ## 9. Decisioni aperte di Tid
 
 | # | Domanda | Proposta |
 | --- | --- | --- |
 | Q1 | Il modello delle tre specie (§3), con la regola «chi ha toccato la riga per ultimo decide» | Sì: completa §11.7 e riprende la B della D-P9 come regola generale |
-| Q2 | Il marcatore: nome e tipo della colonna (§4.2) | `personalizzata_il timestamptz`: dice anche quando, ed è leggibile dalla diagnosi |
-| Q3 | Il segnale del salto: `NOTICE`, vista di diagnosi o entrambi (§4.4) | Entrambi: il `NOTICE` per chi lancia il migrate, la vista per chi controlla dopo |
+| Q2 | Il marcatore: nome e tipo della colonna (§4.2). ⚠️ Prima la sede: colonna per tabella o registro centrale (§12.3) | Registro centrale in `dbops` (§12.3); se Tid sceglie la colonna, `personalizzata_il timestamptz` |
+| Q3 | Il segnale del salto: `NOTICE`, vista di diagnosi o entrambi (§4.4) | ⚠️ Dopo V5: la vista, che legge il valore scartato (§12.4); il `NOTICE` solo se Liquibase lo mostra |
 | Q4 | Un job senza `app.jwt_user` che scrive una riga di primo impianto: marca o no? (§4.3) | Da decidere dopo V3 |
 | Q5 | `email_template` e `famiglie_documento`: entrano, o hanno un'altra forma? (§7) | `email_account` subito; le altre due dopo la lettura del codice che le usa |
-| Q6 | Il blocco del `DELETE`: `DELETE_BLOCK`, privilegio o entrambi (§5) | `DELETE_BLOCK` (regola del 2); il privilegio solo se si vuole la difesa in più |
-| Q7 | Un'azione «ripristina il valore di fabbrica» (§6, limite 3) | Non nel giro 1: si apre se l'interfaccia la chiede |
+| Q6 | Il blocco del `DELETE`: `DELETE_BLOCK`, privilegio o entrambi (§5) | ⚠️ Corretta da §12.2: nessuna delle due così com'è, perché bloccano anche le righe dell'installazione. Blocco **per riga**, sulle sole righe nate dal seed |
+| Q7 | Un'azione «ripristina il valore di fabbrica» (§6, limite 3) | Non nel giro 1: si apre se l'interfaccia la chiede. Con il valore scartato salvato (§12.4) diventa semplice |
 | Q8 | Il titolo di questo brief | — |
+| Q9 | Che cosa fa il bypass al marcatore: dopo una bonifica voluta la riga torna a seguire il CSV, o resta dell'installazione? (§12.6) | Resta dell'installazione: la bonifica corregge un valore, non restituisce la riga al software |
+| Q10 | Quale scrittura dell'app marca la riga: ogni `UPDATE`, o solo quello che cambia colonne di configurazione? (§12.7) | Solo `NEW IS DISTINCT FROM OLD` sulle colonne di configurazione; `meta` e le colonne d'audit fuori |
+| Q11 | Su `email_account` serve «aggiorna finché è intatta», o basta «inserisci se manca»? (§12.11) | La specie si argomenta su `email_template`; per `email_account` decide Tid |
 
 ## 10. Il giro 1 (dopo il via)
 
-1. V1-V4 (§8), con gli esiti scritti qui.
+1. V2-V5 (§8), con gli esiti scritti qui (V1 fatta: §12.1).
 2. La regola d'automazione nuova: funzione trigger generica, runner convergente, funzione di divergenze, la
    riga in `automation_rules_tbl`, la pagina `manual/`.
 3. La colonna marcatore sulle tabelle che entrano (Q5).
@@ -213,3 +231,118 @@ scrivono. Ogni tabella trovata riceve una specie dichiarata.
 | R1 | Sulle tabelle di primo impianto, «elimina» diventa «disattiva»: il DB rifiuta il `DELETE` | pannello config, drawer degli account mail; l'elenco chiuso dei file si scrive dopo Q5 |
 | R2 | Il codice d'errore del rifiuto entra nella tassonomia (api.md §Tassonomia errori) | backend |
 | R3 | Facoltativo, dopo Q7: un segno «personalizzata» sulla riga e l'eventuale «ripristina» | frontend |
+
+⚠️ R1 è da riscrivere dopo §12.2: «elimina» diventa «disattiva» **solo sulle righe nate dal seed**. Gli account
+e i template creati dall'installazione restano cancellabili.
+
+## 12. Analisi critica (2026-11-17)
+
+Una rilettura del §4-§7 sul codice e sul DDL. Il modello delle tre specie (§3) regge. Il meccanismo, così come
+è scritto, no: i punti 12.1 e 12.2 lo bloccano, i punti 12.3-12.6 sono incoerenze da risolvere prima di
+scrivere, gli altri vanno precisati.
+
+### 12.1 🔴 `RETURN NULL` fa fallire il migrate (V1)
+
+Letto in `InsertOrUpdateGeneratorPostgres` del jar in uso (`tools/liquibase/5.0.4`): su PostgreSQL
+`loadUpdateData` non genera `ON CONFLICT`, ma per ogni riga del CSV
+
+```sql
+DO $$ BEGIN UPDATE …; IF not found THEN INSERT …; END IF; END $$
+```
+
+Con `RETURN NULL` l'`UPDATE` non tocca righe, `not found` è vero, e l'`INSERT` con lo stesso `id` esce in chiave
+duplicata. Il changeSet ha `failOnError: true`: il migrate si ferma.
+
+La forma che regge è **`RETURN OLD`**: l'`UPDATE` riesce e riscrive i valori di prima, quindi `found` è vero e
+l'`INSERT` non parte. Ha due conseguenze:
+
+- l'ordine dei trigger `BEFORE` (alfabetico) **conta**. Il trigger nuovo deve scattare **dopo** l'audit, così
+  restituendo `OLD` ne butta via le modifiche. Se scattasse prima, l'audit riceverebbe `OLD` come `NEW` e
+  scriverebbe `user_update` = ruolo del migrate su una riga che non è cambiata. Il nome del trigger fa parte
+  del progetto;
+- i trigger `AFTER UPDATE` (storico, se la tabella ne ha) vedono comunque un aggiornamento, senza
+  cambiamenti. Va visto se scrivono una riga di storia vuota.
+
+La prova si fa con `scripts/prova_changeset.py`, su una tabella di prova, simulando il blocco `DO`.
+
+### 12.2 🔴 `DELETE_BLOCK` blocca la tabella, non le righe del seed (§5, Q6)
+
+`script.trgfn_delete_block_by_guc` rifiuta ogni `DELETE` senza bypass. Su `config.email_account` l'app **crea e
+cancella** account suoi (quelli per reparto: `INSERT` e `DELETE` in `backend/apps/core/db/email_repository.py`),
+e lo stesso fa su `config.email_template`. La tabella tiene righe di due specie: il seed (`SISTEMA`) e quelle
+dell'installazione. Con la strada a non si cancellerebbe più nemmeno un account creato dall'utente; la strada b
+(privilegio) ha lo stesso difetto.
+
+Serve un blocco **per riga**: si rifiuta il `DELETE` della sola riga nata dal seed. Quel segno oggi non c'è:
+`user_insert = 'SEED'` del CSV non sopravvive, perché l'audit all'`INSERT` lo sostituisce con `CURRENT_USER`
+(la stessa ragione per cui §4.2 ha scartato `user_update`). Lo accende lo stesso trigger, all'`INSERT` senza
+`app.jwt_user`.
+
+⛔ Il building block `DELETE_BLOCK` quindi **non si riusa così com'è**: la regola del 2 invocata in Q6 non
+regge. Si sceglie fra una variante per riga di `DELETE_BLOCK` e il blocco dentro la funzione trigger nuova (la
+riga di seed ha già il trigger della specie: è la stessa regola, una sede).
+
+### 12.3 🟠 Colonna per tabella contro «senza DDL scritto a mano» (§4.2 contro §4.5)
+
+Il §4.5 vuole che una tabella entri con una riga di CSV. Il marcatore come colonna chiede invece un changeSet
+in `00_schema` per ogni tabella che entra. Due strade:
+
+- accettare il DDL per tabella, e correggere il §4.5;
+- un **registro centrale** in `dbops` (tabella, `id` della riga, nata dal seed, personalizzata il, valore
+  proposto dal CSV). Tiene insieme il marcatore, il segno di §12.2 e il valore di §12.4, e la tabella entra
+  davvero con una riga di CSV. Il costo: una lettura in più nel trigger, e un'FK che non si può dichiarare.
+
+Proposta: il registro. Decide Tid (Q2).
+
+### 12.4 🟠 La vista «righe che il CSV vorrebbe diverse» non si costruisce (§4.4)
+
+Il DB non legge il CSV. Le `fn_*_divergenze` delle automazioni confrontano due cose che stanno tutte e due nel
+DB; qui la seconda non c'è. La vista si può fare solo se il trigger, quando salta, **salva il `NEW` scartato**
+(`to_jsonb(NEW)`, nel registro di §12.3 o in una colonna). Con quello si hanno la diagnosi, il confronto
+colonna per colonna e la base del «ripristina» di Q7.
+
+### 12.5 🟠 Il `NOTICE` probabilmente non arriva a nessuno (Q3)
+
+Liquibase non stampa di default gli avvisi che il driver JDBC raccoglie. Non è verificato: è V5. Se si
+conferma, il segnale del salto è solo la vista di §12.4.
+
+### 12.6 🟠 «Chi ha toccato per ultimo decide» non è la regola del trigger (§3)
+
+Il meccanismo dice «una volta personalizzata, per sempre», salvo spegnere il marcatore. E non dice che cosa fa
+il bypass al marcatore: dopo una bonifica voluta, la riga torna a seguire il CSV o resta dell'installazione? È
+Q9. Il §3 va riscritto sulla regola vera: «una riga che l'installazione ha modificato è sua, finché non viene
+restituita al software».
+
+### 12.7 🟡 Ogni scrittura dell'app marca la riga
+
+Anche quelle che non sono configurazione. Premere «Testa connessione» marca `SISTEMA`:
+`update_account_last_test` scrive l'esito in `meta`. Lo stesso un salvataggio che non cambia niente. Proposta
+(Q10): si marca solo se `NEW IS DISTINCT FROM OLD` sulle colonne di configurazione, con `meta` e le colonne
+d'audit fuori dal confronto.
+
+### 12.8 🟡 Che cosa vuol dire «c'è `app.jwt_user`» (V3, Q4)
+
+Il backend imposta la GUC **a livello di sessione** (`set_config(…, false)` in
+`backend/apps/core/api/jwt_audit_authentication.py`). Per il lato migrate non è un rischio: ha una connessione
+sua e la GUC lì non c'è. Per il lato «è l'app», invece, la GUC dice «questa connessione è passata da una
+richiesta autenticata», non «questa scrittura l'ha fatta un utente». V3 lo guarda insieme ai comandi che
+scrivono fuori da una richiesta (`send_pending_emails`).
+
+### 12.9 🟡 La D-P9 (§2)
+
+La B della D-P9 era «togliere colonne dal mirror». Questo brief raggiunge lo stesso scopo (il CSV come valore
+iniziale, non come padrone) con un altro meccanismo, il trigger. Riprende lo **scopo** della B, non la B.
+
+### 12.10 🟡 Il dato di dbdev
+
+La riga `SISTEMA` di dbdev è già stata sovrascritta (§1). Si ripristina a mano dall'interfaccia **dopo**
+l'apply del giro 1: così la marca il trigger. Ripristinata prima, il primo ritocco del CSV la riscrive.
+
+### 12.11 🟡 Su quale tabella si argomenta la specie
+
+Il CSV di `email_account` porta segnaposto (`smtp.example.com`, `CONFIGURARE_PASSWORD_CRITTOGRAFATA`) che
+ogni installazione deve sostituire e che il software non ha ragione di correggere. Per quella tabella il
+compito «aggiorna finché è intatta» non porta niente: basterebbe «inserisci se manca». Quel compito ha senso
+dove il software **migliora il contenuto** e il miglioramento deve arrivare a chi non l'ha toccato, come i testi
+di `email_template`. Il brief giustifica il meccanismo intero con l'unico esempio in cui metà del meccanismo non
+serve: l'argomento va scritto sul caso che lo regge (Q11).
