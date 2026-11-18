@@ -250,12 +250,17 @@ SELECT lives_ok(
 --   la regola della base (vale anche per un INSERT): qui lo si prova con l'override
 --   di manutenzione del lock acceso, che throws_ok annulla insieme all'errore. Il
 --   rifiuto del lock lo prova catalogo/test-uom-storia-v1.
-SELECT throws_ok(
-    $$ SET LOCAL zeroerp.allow_lock_columns_override = 'on';
-       UPDATE catalogo.articoli_uom_operativa SET factor_to_base = 2
-        WHERE articolo_id = (SELECT b FROM _t_art) AND is_base $$,
-    '23514', NULL,
-    '19) riga base con fattore diverso da 1: rifiutata dal CHECK (anche senza il lock)');
+-- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la porta
+--   del lock si apre solo per la sessione del migratore, e questo test gira come
+--   app: il lock parla sempre prima del CHECK sull'UPDATE. Il CHECK presidia le
+--   strade che il trigger non percorre, e si asserisce sulla sua ESISTENZA
+--   (linee-guida-trigger, «Un BEFORE ROW parla prima dei vincoli della tabella»).
+SELECT ok(
+    EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c
+             WHERE c.conrelid = 'catalogo.articoli_uom_operativa'::regclass
+               AND c.conname = 'chk_articoli_uom_operativa_base_fissa'
+               AND pg_get_constraintdef(c.oid) ~ 'factor_to_base = \(1\)'),
+    '19) la riga base ha fattore 1: il CHECK c''e'' (sull''UPDATE parla prima il lock)');
 
 SELECT throws_like(
     $$ UPDATE catalogo.articoli_uom_operativa SET uom_id = (SELECT kg FROM _t_u)

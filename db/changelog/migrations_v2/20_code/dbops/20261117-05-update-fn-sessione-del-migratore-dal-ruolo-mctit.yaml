@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_sessione_del_migratore(): la domanda sul ruolo passa a
+#   dbops.fn_ruolo_del_migratore (20261117-04), fatta su session_user. Il
+#   comportamento non cambia: session_user e' sempre un ruolo che esiste.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.6).
+#
+# Attributi vivi (pg_proc su dbdev, 2026-11-18), ripetuti: LANGUAGE sql,
+#   STABLE, INVOKER, nessun SET, owner zeroerp_owner. Il corpo vivo si legge
+#   da pg_get_functiondef, non dagli YAML.
+# ⚠️ Corpo SQL non atomico, come prima: la chiama anche
+#   dbops.fn_sync_functions_owner, DEFINER di postgres con search_path stretto,
+#   e la funzione chiamata e' scritta col suo schema.
+# ⚠️ db/pgtap/dbops/test-sec-functions-owner-riservato-v1.sql (asserzione 12)
+#   legge nel corpo `pg_has_role(session_user`: si adegua nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261117-05-update-fn-sessione-del-migratore-dal-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261117-05-update-fn-sessione-del-migratore-dal-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_sessione_del_migratore(): chiama dbops.fn_ruolo_del_migratore(session_user). Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_sessione_del_migratore()')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_ruolo_del_migratore(text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sessione_del_migratore()
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dire se la sessione e' di chi amministra il database
+                  --   (il migratore o un superuser), letto dal ruolo di LOGIN.
+                  -- ⛔ session_user: dentro una DEFINER current_user e' il
+                  --    proprietario. Fail-closed: la domanda sul ruolo risponde
+                  --    false, mai NULL.
+                  SELECT dbops.fn_ruolo_del_migratore(session_user::text);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sessione_del_migratore() IS
+                  'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' un ruolo del migratore secondo dbops.fn_ruolo_del_migratore: membro del proprietario dello schema dbops, in ogni ambiente, o superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed, non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto), script.fn_blocca_credenziale, script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server), script.fn_porta_manutenzione_aperta (le porte di manutenzione) e script.trgfn_seed_primo_impianto (chi scrive una tabella del seed di primo impianto). INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_sessione_del_migratore()
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dire se la sessione e' di chi amministra il database
+                  --   (il migratore o un superuser), letto dal ruolo di LOGIN.
+                  -- ⛔ session_user: dentro una DEFINER current_user e' il
+                  --    proprietario. Fail-closed: NULL vale false.
+                  SELECT COALESCE(
+                             pg_catalog.pg_has_role(
+                                 session_user,
+                                 (SELECT n.nspowner FROM pg_catalog.pg_namespace n WHERE n.nspname = 'dbops'),
+                                 'MEMBER')
+                          OR (SELECT a.rolsuper FROM pg_catalog.pg_roles a WHERE a.rolname = session_user),
+                             false);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_sessione_del_migratore() IS
+                  'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' membro del proprietario dello schema dbops (il migratore, in ogni ambiente) o un superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed (NULL = false), non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto), script.fn_blocca_credenziale e script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server). INVOKER, STABLE.';

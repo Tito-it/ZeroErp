@@ -14,7 +14,7 @@
 -- 8) Sync critical dopo disabilitazione log
 -- 9) Resolve termini fallback su TP_1RATA
 -- 10) Resolve termini errore su attivita_id non valido
--- 11) Cleanup completato
+-- 11) Cleanup completato — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -34,7 +34,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(13);
 
 -- ============================================================
 -- 0) Costanti e riferimenti minimi
@@ -358,32 +358,13 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-
-DELETE FROM vendite.fatture_log
-WHERE fattura_id = (SELECT id FROM tmp_fattura_fu);
-
-DELETE FROM vendite.fatture_fondi_fattura
-WHERE fattura_id = (SELECT id FROM tmp_fattura_fu);
-
-UPDATE vendite.fatture
-SET storicizza = false
-WHERE id = (SELECT id FROM tmp_fattura_fu);
-
-DELETE FROM vendite.fatture
-WHERE id = (SELECT id FROM tmp_fattura_fu);
-
-DELETE FROM config.termini_pagamento
-WHERE id IN (
-  SELECT t.id
-  FROM tmp_tp_default_fu t
-  WHERE t.created_by_test IS TRUE
-);
-
-SELECT ok(true, 'Cleanup completato');
-
 SELECT * FROM finish();
 
 ROLLBACK;

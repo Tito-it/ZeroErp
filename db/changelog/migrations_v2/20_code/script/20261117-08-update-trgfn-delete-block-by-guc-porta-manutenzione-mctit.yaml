@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_delete_block_by_guc: la porta (la GUC dell'argomento del trigger,
+#   oggi zeroerp.maintenance_ruoli_delete) passa da
+#   script.fn_porta_manutenzione_aperta (20261117-06).
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.5, §16.9)
+#
+# Che cosa cambia: la porta si apre solo per la sessione del migratore, e ogni
+#   riga cancellata dalla porta lascia una riga nel diario. Per l'applicazione
+#   il DELETE resta rifiutato anche con la GUC accesa.
+# Corpo vivo letto da pg_get_functiondef su dbdev il 2026-11-18. Attributi vivi:
+#   INVOKER, VOLATILE, nessun SET, owner zeroerp_owner. Il COMMENT vivo citava
+#   ERRORE_PARAMETRI, che il corpo non solleva piu': si riscrive al presente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261117-08-update-trgfn-delete-block-by-guc-porta-manutenzione-mctit.yaml
+
+  - changeSet:
+      id: 20261117-08-update-trgfn-delete-block-by-guc-porta-manutenzione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_delete_block_by_guc: la porta di manutenzione passa da
+        script.fn_porta_manutenzione_aperta. Brief: brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_delete_block_by_guc()')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.fn_porta_manutenzione_aperta(text,regclass,text,text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_delete_block_by_guc()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Guard: argomento trigger obbligatorio
+                  IF TG_NARGS < 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA,
+                          TG_NAME,
+                          'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'detail', 'Argomenti trigger mancanti',
+                              'expected', 'guc_key',
+                              'found', TG_NARGS
+                          ),
+                          NULL::uuid,
+                          concat('TG_ARGV[0] (guc_key) mancante per trigger ', TG_NAME)
+                      );
+                  END IF;
+
+                  -- La porta di manutenzione: la GUC dell'argomento, aperta solo per
+                  -- la sessione del migratore, con la riga nel diario.
+                  IF script.fn_porta_manutenzione_aperta(TG_ARGV[0], TG_RELID, TG_OP, OLD.id::text) THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Delete bloccata da policy
+                  PERFORM script.fn_log_and_raise_error(
+                      TG_TABLE_SCHEMA,
+                      TG_NAME,
+                      'E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object(
+                          'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                          'id', OLD.id
+                      ),
+                      NULL::uuid,
+                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      OLD.id::text
+                  );
+
+                  RETURN OLD;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_delete_block_by_guc() IS
+                  'Blocca il DELETE delle tabelle dichiarate in dbops.automation_delete_block (BEFORE DELETE FOR EACH ROW, montato dall''automazione DELETE_BLOCK). TG_ARGV[0] e'' la GUC della porta di manutenzione: apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta), e ogni riga cancellata dalla porta lascia una riga in dbops.porte_manutenzione_passaggi; per l''applicazione il DELETE resta rifiutato anche con la GUC accesa. Errori: E_TRIGGER_ARGOMENTI_INVALIDI (argomento mancante), E_DELETE_NOT_ALLOWED (il DELETE).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_delete_block_by_guc()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Guard: argomento trigger obbligatorio
+                  IF TG_NARGS < 1 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA,
+                          TG_NAME,
+                          'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'detail', 'Argomenti trigger mancanti',
+                              'expected', 'guc_key',
+                              'found', TG_NARGS
+                          ),
+                          NULL::uuid,
+                          concat('TG_ARGV[0] (guc_key) mancante per trigger ', TG_NAME)
+                      );
+                  END IF;
+
+                  -- Se la GUC e' abilitata → consente DELETE
+                  IF current_setting(TG_ARGV[0], true) = 'on' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Delete bloccata da policy
+                  PERFORM script.fn_log_and_raise_error(
+                      TG_TABLE_SCHEMA,
+                      TG_NAME,
+                      'E_DELETE_NOT_ALLOWED',
+                      jsonb_build_object(
+                          'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                          'id', OLD.id
+                      ),
+                      NULL::uuid,
+                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      OLD.id::text
+                  );
+
+                  RETURN OLD;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_delete_block_by_guc() IS
+                  'Blocca DELETE se GUC non abilitata. Errori: ERRORE_PARAMETRI, E_DELETE_NOT_ALLOWED.';

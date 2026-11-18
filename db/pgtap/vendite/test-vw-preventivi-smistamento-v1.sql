@@ -1,5 +1,12 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- ⚠️ rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive, Q21): la
+--   riga a natura NULL (pregresso) e' uscita dalla fixture, e il suo caso (era
+--   il 5, piu' il pregresso nei contatori 1, 7, 8) sta in
+--   test-righe-natura-vendita-legacy-v1, che gira come owner: la riga si
+--   costruisce solo dalla porta del lock, che dal 20261117-07 si apre solo
+--   alla sessione del migratore. Le righe del preventivo sono tre, i numeri
+--   da 6 in giu' scalano di uno.
 -- rev 2026-10-20 (brief-db-grammatica-unica-documenti §13.5-ter, 2e): le chiavi del push col codice della sorgente (PREVENTIVO:, DDT_VENDITA:, ORDINE_VENDITA:, CONTRATTO:, ATTIVITA_CONSUMI:), stessa forma di script.fn_segment_key carattere per carattere.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la destinazione della merce e' ORDINE_VENDITA, il codice della sorgente (era ORDINE).
@@ -11,25 +18,24 @@
 --       vw_preventivi_smistamento_righe (stato_smistamento autorevole,
 --       natura/destinazione, ramo ordine) + vw_preventivi_smistamento
 --       (contatori per ramo). Brief: brief-db-smistamento-preventivi.md B.
---       Fixture: preventivo misto ACCETTATO con 4 righe:
+--       Fixture: preventivo misto ACCETTATO con 3 righe:
 --         merce (push reale a ordine), servizio EMESSO in commessa,
---         servizio residuo, natura NULL (pregresso -> COMMESSA).
+--         servizio residuo.
 --
--- Indice test (0..8):
+-- Indice test (0..7):
 --   0) Precondizioni (refs + nature)
---   1) Vista righe: 4 righe per il preventivo
+--   1) Vista righe: 3 righe per il preventivo
 --   2) Riga merce -> A_ORDINE, destinazione ORDINE, ordine_id/numero valorizzati
 --   3) Riga servizio EMESSA -> IN_COMMESSA
 --   4) Riga servizio residua -> RESIDUA
---   5) Riga natura NULL -> destinazione COMMESSA (pregresso), RESIDUA
---   6) Allineamento predicato col classificatore unico (rev 2026-10-12,
+--   5) Allineamento predicato col classificatore unico (rev 2026-10-12,
 --      20261012-11, brief-db-annullo-a-valle-riapre-a-monte D-5): una ca
---      NON_EMESSA porta la riga IN_COMMESSA (6a); ritirata (ANNULLATA) la
---      riga torna RESIDUA (6b). Prima il test fissava «NON_EMESSA non conta»,
+--      NON_EMESSA porta la riga IN_COMMESSA (5a); ritirata (ANNULLATA) la
+--      riga torna RESIDUA (5b). Prima il test fissava «NON_EMESSA non conta»,
 --      cioe' l'allineamento a un predicato che la vista smistabili non ha piu'
 --      dal 2026-06-28.
---   7) Aggregata: contatori per ramo corretti
---   8) Aggregata: righe_residue = 2 (progress X/Y -> EVASO)
+--   6) Aggregata: contatori per ramo corretti
+--   7) Aggregata: righe_residue = 1 (progress X/Y -> EVASO)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -48,7 +54,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(10);
+SELECT plan(9);
 
 -- ============================================================
 -- 0) Riferimenti minimi + classificazione nature
@@ -96,8 +102,8 @@ SELECT ok(
 );
 
 -- Preventivo MISTO ACCETTATO: merce + servizio (da emettere) + servizio
--- residuo + riga natura NULL (pregresso).
--- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le quattro righe (e la natura NULL), poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
+-- residuo.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le tre righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_vs_prev AS
 SELECT b.preventivo_id AS id, b.preventivo_uid AS uid FROM tmp_vs_b b;
 
@@ -125,34 +131,6 @@ WITH ins AS (
   RETURNING id)
 SELECT * FROM ins;
 
--- Riga "legacy" a natura NULL (serve l'override del lock di colonna, vedi sotto).
-CREATE TEMP TABLE tmp_vs_riga_null AS
-WITH ins AS (
-  INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
-  SELECT p.id, r.art_serv_id, 1.000000, 15.000000, r.iva_id, true
-    FROM tmp_vs_prev p, tmp_vs_refs r
-  RETURNING id)
-SELECT * FROM ins;
--- ⚠️ La natura NON si azzera piu' con un UPDATE diretto: dal 2026-08-21
---   `natura_vendita_id` e' protetta dal lock di colonna
---   `trg_preventivi_righe_a10_lock_columns_upd`
---   (E_PREV_RIGA_NATURA_IMMUTABILE), perche' scriverla a mano staccava la riga
---   dalla classificazione dell'articolo e aggirava il guard MODALITA' A.
---
---   La riga a natura NULL resta pero' uno stato REALE e da verificare: sono le
---   righe legacy nate prima del trigger di ereditarieta' (45 su 197 nel DB di
---   sviluppo al 2026-08-21). Non e' piu' riproducibile passando dall'articolo,
---   perche' `catalogo.articoli.natura_vendita_id` e' NOT NULL: nessun articolo
---   puo' avere natura nulla da cui ereditarla.
---
---   Si usa quindi la porta di manutenzione che `script.trgfn_lock_columns`
---   prevede apposta, e la si RICHIUDE subito: lasciarla aperta renderebbe
---   verdi per sottrazione tutte le asserzioni successive che toccano colonne
---   lockate.
-SET LOCAL zeroerp.allow_lock_columns_override = 'on';
-UPDATE vendite.preventivi_righe SET natura_vendita_id = NULL
- WHERE id = (SELECT id FROM tmp_vs_riga_null);
-SET LOCAL zeroerp.allow_lock_columns_override = 'off';
 DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_vs_prev), 'ACCETTATO'); END $porta$;
 
 -- Push reale del ramo merce: crea ordine + riga ordine (A_ORDINE).
@@ -183,13 +161,13 @@ SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
     p_competenza_al      => DATE '2080-12-31');
 
 -- ============================================================
--- 1) Vista righe: 4 righe per il preventivo
+-- 1) Vista righe: 3 righe per il preventivo
 -- ============================================================
 SELECT is(
   (SELECT count(*)::integer FROM vendite.vw_preventivi_smistamento_righe v
     WHERE v.preventivo_id = (SELECT id FROM tmp_vs_prev)),
-  4,
-  '1. Vista righe: 4 righe attive esposte'
+  3,
+  '1. Vista righe: 3 righe attive esposte'
 );
 
 -- ============================================================
@@ -226,19 +204,7 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) Riga natura NULL -> destinazione COMMESSA (pregresso), RESIDUA
--- ============================================================
-SELECT ok(
-  (SELECT v.destinazione_tipo = 'COMMESSA'
-      AND v.natura_vendita_id IS NULL
-      AND v.stato_smistamento = 'RESIDUA'
-     FROM vendite.vw_preventivi_smistamento_righe v
-    WHERE v.riga_id = (SELECT id FROM tmp_vs_riga_null)),
-  '5. Riga natura NULL: destinazione effettiva COMMESSA (pregresso), RESIDUA'
-);
-
--- ============================================================
--- 6) Allineamento predicato col classificatore unico (D-5)
+-- 5) Allineamento predicato col classificatore unico (D-5)
 -- ============================================================
 CREATE TEMP TABLE tmp_vs_att_residua AS
 SELECT * FROM dbops.fn_pgtap_crea_commessa_attivita(
@@ -269,7 +235,7 @@ SELECT is(
   (SELECT v.stato_smistamento FROM vendite.vw_preventivi_smistamento_righe v
     WHERE v.riga_id = (SELECT id FROM tmp_vs_riga_serv_residua)),
   'IN_COMMESSA',
-  '6a. Attivita NON_EMESSA: la riga e'' IN_COMMESSA (stessa domanda del push: gia'' mandata)'
+  '5a. Attivita NON_EMESSA: la riga e'' IN_COMMESSA (stessa domanda del push: gia'' mandata)'
 );
 
 -- La riga si ritira (come all'annullo della commessa): non occupa piu'.
@@ -281,31 +247,31 @@ SELECT is(
   (SELECT v.stato_smistamento FROM vendite.vw_preventivi_smistamento_righe v
     WHERE v.riga_id = (SELECT id FROM tmp_vs_riga_serv_residua)),
   'RESIDUA',
-  '6b. Attivita ritirata (ANNULLATA): la riga torna RESIDUA'
+  '5b. Attivita ritirata (ANNULLATA): la riga torna RESIDUA'
 );
 
 -- ============================================================
--- 7) Aggregata: contatori per ramo
+-- 6) Aggregata: contatori per ramo
 -- ============================================================
 SELECT ok(
-  (SELECT a.righe_totali = 4
+  (SELECT a.righe_totali = 3
       AND a.righe_merce = 1
-      AND a.righe_servizi = 3
+      AND a.righe_servizi = 2
       AND a.righe_a_ordine = 1
       AND a.righe_in_commessa = 1
      FROM vendite.vw_preventivi_smistamento a
     WHERE a.preventivo_id = (SELECT id FROM tmp_vs_prev)),
-  '7. Aggregata: totali=4, merce=1, servizi=3 (incl. pregresso NULL), a_ordine=1, in_commessa=1'
+  '6. Aggregata: totali=3, merce=1, servizi=2, a_ordine=1, in_commessa=1'
 );
 
 -- ============================================================
--- 8) Aggregata: righe_residue = 2 (progress X/Y -> EVASO)
+-- 7) Aggregata: righe_residue = 1 (progress X/Y -> EVASO)
 -- ============================================================
 SELECT is(
   (SELECT a.righe_residue::integer FROM vendite.vw_preventivi_smistamento a
     WHERE a.preventivo_id = (SELECT id FROM tmp_vs_prev)),
-  2,
-  '8. Aggregata: righe_residue=2 (servizio residuo + pregresso NULL)'
+  1,
+  '7. Aggregata: righe_residue=1 (il servizio residuo)'
 );
 
 SELECT * FROM finish();

@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_ruolo_del_migratore(text): «questo nome e' un ruolo del migratore?»
+#   La domanda che dbops.fn_sessione_del_migratore fa su session_user, estratta
+#   alla seconda occorrenza: il runner del seed di primo impianto la fa su
+#   user_insert, quando iscrive una tabella e segna le righe di seed che ci sono
+#   gia' (regola del 2). Brief: brief-db-seed-primo-impianto-non-si-riscrive
+#   (§15.6, §16.2 punto 6).
+#
+# ⛔ NIENTE pg_has_role SU UN NOME. pg_has_role('mario', …) non risponde false:
+#   alza «role does not exist». user_insert porta quasi sempre uno username
+#   dell'applicazione: il nome si cerca prima in pg_roles, e un nome che non e'
+#   un ruolo vale false.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261117-04-create-fn-ruolo-del-migratore-mctit.yaml
+
+  - changeSet:
+      id: 20261117-04-create-fn-ruolo-del-migratore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_ruolo_del_migratore(text): true se il nome e' un ruolo membro del proprietario dello
+        schema dbops o un superuser; un nome che non e' un ruolo vale false. Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_ruolo_del_migratore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_ruolo_del_migratore(
+                  -- text e non name: il chiamante passa anche user_insert, che e'
+                  -- text e porta quasi sempre uno username dell'applicazione
+                  p_ruolo text)
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              AS $function$
+                  -- Scopo: dire se un nome e' un ruolo di chi amministra il
+                  --   database: membro del proprietario dello schema dbops (il
+                  --   migratore, in ogni ambiente) o superuser.
+                  -- ⛔ Il nome si cerca in pg_roles, non si passa a pg_has_role:
+                  --    su un nome che non e' un ruolo pg_has_role solleva.
+                  -- Fail-closed: NULL, o un nome che non e' un ruolo, vale false.
+                  SELECT COALESCE(
+                             (SELECT pg_catalog.pg_has_role(r.oid, n.nspowner, 'MEMBER') OR r.rolsuper
+                                FROM pg_catalog.pg_roles r
+                               CROSS JOIN pg_catalog.pg_namespace n
+                               WHERE r.rolname = p_ruolo
+                                 AND n.nspname = 'dbops'),
+                             false);
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_ruolo_del_migratore(text) IS
+                  'Un nome e'' un ruolo di chi amministra il database? true se e'' un ruolo membro del proprietario dello schema dbops (il migratore, in ogni ambiente) o un superuser. Il nome si cerca in pg_roles: uno username dell''applicazione, NULL o un ruolo che non esiste valgono false, senza errore. La chiamano dbops.fn_sessione_del_migratore (su session_user) e il runner del seed di primo impianto (su user_insert, quando iscrive una tabella). INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ fn_sessione_del_migratore la chiama da 20261117-05: rollback di quello prima.
+              DROP FUNCTION IF EXISTS dbops.fn_ruolo_del_migratore(text);

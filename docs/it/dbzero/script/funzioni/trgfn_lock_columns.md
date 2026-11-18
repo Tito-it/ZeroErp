@@ -27,11 +27,6 @@ DECLARE
   oldval  text;
   newval  text;
 BEGIN
-  -- 0) GUC override per manutenzione
-  IF current_setting('zeroerp.allow_lock_columns_override', true) = 'on' THEN
-    RETURN NEW;
-  END IF;
-
   -- 1) Se il numero di argomenti non e pari, errore
   IF n_args % 2 <> 0 THEN
     PERFORM script.fn_log_and_raise_error(
@@ -56,6 +51,15 @@ BEGIN
     ) USING OLD, NEW INTO oldval, newval;
 
     IF oldval IS DISTINCT FROM newval THEN
+      -- La porta di manutenzione: si chiede qui, alla prima colonna
+      -- bloccata che cambia, perche' il diario dica che cosa ha forzato.
+      -- Per l'applicazione resta chiusa anche con la GUC accesa.
+      IF script.fn_porta_manutenzione_aperta(
+             'zeroerp.allow_lock_columns_override', TG_RELID, TG_OP,
+             to_jsonb(OLD) ->> 'id') THEN
+        RETURN NEW;
+      END IF;
+
       -- 'campo': la colonna da evidenziare nel form, letta da
       -- script.fn_log_and_raise_error. 'column' resta per chi la legge.
       PERFORM script.fn_log_and_raise_error(
@@ -79,7 +83,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_lock_columns()
-IS 'Impedisce la modifica delle colonne protette. Argomenti a coppie (colonna, codice_messaggio): per ogni colonna cambiata solleva il suo codice, col nome della colonna come valore del messaggio e nel contesto campo (la colonna da evidenziare nel form), column, old_value, new_value. Argomenti dispari -> E_ARGOMENTI_A_COPPIE. I trigger li genera l''automazione LOCK_COLUMNS da dbops.automation_lock_columns; il form legge le colonne bloccate da dbops.vw_non_editable_fields. Override per la manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = ''on''.';
+IS 'Impedisce la modifica delle colonne protette. Argomenti a coppie (colonna, codice_messaggio): per ogni colonna cambiata solleva il suo codice, col nome della colonna come valore del messaggio e nel contesto campo (la colonna da evidenziare nel form), column, old_value, new_value. Argomenti dispari -> E_ARGOMENTI_A_COPPIE. I trigger li genera l''automazione LOCK_COLUMNS da dbops.automation_lock_columns; il form legge le colonne bloccate da dbops.vw_non_editable_fields. Porta di manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = ''on'', che apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta) e lascia una riga in dbops.porte_manutenzione_passaggi per ogni riga forzata; per l''applicazione il lucchetto resta chiuso.';
 ```
 
 </div>

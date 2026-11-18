@@ -20,18 +20,13 @@ AS $function$
     -- Scopo: dire se la sessione e' di chi amministra il database
     --   (il migratore o un superuser), letto dal ruolo di LOGIN.
     -- ⛔ session_user: dentro una DEFINER current_user e' il
-    --    proprietario. Fail-closed: NULL vale false.
-    SELECT COALESCE(
-               pg_catalog.pg_has_role(
-                   session_user,
-                   (SELECT n.nspowner FROM pg_catalog.pg_namespace n WHERE n.nspname = 'dbops'),
-                   'MEMBER')
-            OR (SELECT a.rolsuper FROM pg_catalog.pg_roles a WHERE a.rolname = session_user),
-               false);
+    --    proprietario. Fail-closed: la domanda sul ruolo risponde
+    --    false, mai NULL.
+    SELECT dbops.fn_ruolo_del_migratore(session_user::text);
 $function$
 
 COMMENT ON FUNCTION dbops.fn_sessione_del_migratore()
-IS 'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' membro del proprietario dello schema dbops (il migratore, in ogni ambiente) o un superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed (NULL = false), non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto), script.fn_blocca_credenziale e script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server). INVOKER, STABLE.';
+IS 'La sessione e'' di chi amministra il database? true se il ruolo di LOGIN (session_user) e'' un ruolo del migratore secondo dbops.fn_ruolo_del_migratore: membro del proprietario dello schema dbops, in ogni ambiente, o superuser. session_user e non current_user perche'' dentro una SECURITY DEFINER current_user e'' il proprietario; limite dichiarato: un SET ROLE non cambia session_user. Fail-closed, non solleva: rifiuta il chiamante. La chiamano dbops.fn_sync_functions_owner (RAISE nudo, canale di log protetto), script.fn_blocca_credenziale, script.fn_totp_disabilita_device (lo sblocco del secondo fattore dal server), script.fn_porta_manutenzione_aperta (le porte di manutenzione) e script.trgfn_seed_primo_impianto (chi scrive una tabella del seed di primo impianto). INVOKER, STABLE.';
 ```
 
 </div>

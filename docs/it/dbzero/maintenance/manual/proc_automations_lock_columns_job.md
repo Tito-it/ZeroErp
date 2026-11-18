@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Procedura `maintenance.proc_automations_lock_columns_job`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,6 +21,8 @@
 > * [dbops.fn_run_automations_lock_columns](/dbzero/dbops/funzioni/fn_run_automations_lock_columns) — il primo lavoro: il lock di colonna portato al registro
 > * [dbops.fn_lock_columns_divergenze](/dbzero/dbops/funzioni/fn_lock_columns_divergenze) — lo scarto fra il lock vivo e quello dichiarato, cioè che cosa farebbe un giro
 > * [dbops.fn_run_automations_date_validita](/dbzero/dbops/funzioni/fn_run_automations_date_validita) — il secondo lavoro: il guard delle date di validità
+> * [dbops.fn_run_automations_codice_maiuscolo](/dbzero/dbops/funzioni/fn_run_automations_codice_maiuscolo) — il terzo lavoro: il codice in maiuscolo
+> * [dbops.fn_run_automations_seed_primo_impianto](/dbzero/dbops/funzioni/fn_run_automations_seed_primo_impianto) — il quarto lavoro: il seed di primo impianto
 > * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — la funzione del lock
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — la funzione del guard delle date
 > * [maintenance.fn_run_and_log](/dbzero/maintenance/funzioni/fn_run_and_log) — il giornale da cui passa la chiamata, col lock e il verbale del fallimento
@@ -36,16 +38,17 @@
 
 ### 🎯 Scopo Principale
 
-Il wrapper del processo `automations_lock_columns`: in una sola corsa esegue `dbops.fn_run_automations_lock_columns` e poi
-`dbops.fn_run_automations_date_validita` su tutto l'ambito, passando dal giornale delle esecuzioni
-sotto il codice del processo.
+Il wrapper del processo `automations_lock_columns`: in una sola corsa esegue, in quest'ordine,
+`dbops.fn_run_automations_lock_columns`, `dbops.fn_run_automations_date_validita`,
+`dbops.fn_run_automations_codice_maiuscolo` e `dbops.fn_run_automations_seed_primo_impianto` su
+tutto l'ambito, passando dal giornale delle esecuzioni sotto il codice del processo.
 
 La procedura non aggiunge logica: delega a `maintenance.fn_run_and_log`, che apre la riga
 della corsa in `maintenance.job_run_log`, esegue il runner e chiude la riga con l'esito.
 
 ---
 
-### ⭐ Due automazioni della stessa famiglia, in una corsa
+### ⭐ Quattro automazioni della stessa famiglia, in una corsa
 
 * **Il lock di colonna.** `dbops.fn_run_automations_lock_columns` porta il lock vivo a quello
   dichiarato — `codice_interno`, implicito dove esiste, più le colonne accese di
@@ -56,9 +59,16 @@ della corsa in `maintenance.job_run_log`, esegue il runner e chiude la riga con 
   tabella dell'ambito che ha `valido_dal` e `valido_al` (lo schema `storico` escluso), il guard
   che rifiuta una fine precedente all'inizio. Lo stesso guard gira anche a ogni migrazione, da
   una rete in `90_end`.
+* **Il codice in maiuscolo.** `dbops.fn_run_automations_codice_maiuscolo` monta il trigger che porta
+  in maiuscolo le colonne `codice` dell'ambito, tranne le eccezioni dichiarate.
+* **Il seed di primo impianto.** `dbops.fn_run_automations_seed_primo_impianto` monta, sulle tabelle
+  di `dbops.automazione_seed_primo_impianto`, il trigger che impedisce al CSV di riscrivere ciò che
+  l'installazione ha modificato.
 
-⚠️ Le due istruzioni stanno nella stessa corsa e nella stessa transazione: il giornale ne
-registra una riga sola, e se il lock si ferma il guard delle date quella volta non gira.
+Gli ultimi due girano anche a ogni migrazione, da una rete in `90_end`.
+
+⚠️ Le quattro istruzioni stanno nella stessa corsa e nella stessa transazione: il giornale ne
+registra una riga sola, e se un runner si ferma quelli dopo quella volta non girano.
 
 ---
 
@@ -157,6 +167,9 @@ La procedura non ne solleva di suoi: l'errore è dei runner, e arriva com'è.
 * `E_LOCK_COLUMNS` — il lock non converge: una colonna bloccata che il registro non nomina, o
   un trigger che non si è potuto creare, rigenerare o togliere.
 * `E_DATE_VALIDITA` — il guard delle date non si è potuto montare su una tabella.
+* `E_CODICE_MAIUSCOLO` — il trigger del codice in maiuscolo non converge.
+* `E_SEED_PRIMO_IMPIANTO` — un trigger del seed di primo impianto su una tabella che il registro
+  non nomina, o una tabella iscritta senza `user_insert`.
 
 Un guasto dell'ambiente (connessione, risorse, privilegi, lock) non si traveste: il runner lo
 scrive nel registro errori e lo rilancia col suo SQLSTATE.
@@ -198,6 +211,9 @@ scrive nel registro errori e lo rilancia col suo SQLSTATE.
 * 2026-11-03 — pagina riscritta: lo scopo citava ancora la pulizia dei trigger obsoleti della
   funzione ritirata, e la pagina descriveva un giornale che non esiste (`maintenance.job_log`,
   `start_time`, `status`, `tx_id`) e un orario notturno inventato.
+* 2026-11-17 — la corsa esegue anche il runner del seed di primo impianto
+  (`brief-db-seed-primo-impianto-non-si-riscrive`). La pagina non nominava ancora il runner del
+  codice in maiuscolo, che la corsa esegue già: aggiunto.
 
 ---
 

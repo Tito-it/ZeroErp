@@ -17,31 +17,8 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_bypass_setting text;
-    v_bypass_enabled boolean := false;
-    v_is_superuser boolean := false;
     v_commessa_from_attivita vendite.commesse_attivita.commessa_id%TYPE;
 BEGIN
-    -- Bypass di manutenzione: solo superuser, con la GUC accesa.
-    BEGIN
-        SELECT usesuper INTO v_is_superuser FROM pg_user WHERE usename = current_user;
-    EXCEPTION WHEN OTHERS THEN v_is_superuser := false;
-    END;
-
-    IF v_is_superuser THEN
-        BEGIN
-            v_bypass_setting := current_setting('zeroerp.maintenance_allow_attivita_bypass', true);
-            IF v_bypass_setting IS NOT NULL AND btrim(v_bypass_setting) <> '' THEN
-                v_bypass_enabled := v_bypass_setting::boolean;
-            END IF;
-        EXCEPTION WHEN OTHERS THEN v_bypass_enabled := false;
-        END;
-    END IF;
-
-    IF v_bypass_enabled THEN
-        RETURN NEW;
-    END IF;
-
     -- Una delle due colonne vuota: la rifiuta il NOT NULL, che nomina la colonna.
     IF NEW.commessa_id IS NULL OR NEW.commessa_attivita_id IS NULL THEN
         RETURN NEW;
@@ -50,6 +27,18 @@ BEGIN
     -- La riga di commessa esiste?
     SELECT ca.commessa_id INTO v_commessa_from_attivita
       FROM vendite.commesse_attivita ca WHERE ca.id = NEW.commessa_attivita_id;
+
+    IF v_commessa_from_attivita IS NULL
+       OR v_commessa_from_attivita <> NEW.commessa_id THEN
+        -- La porta di manutenzione: si chiede solo qui, dove il guard
+        -- rifiuterebbe. Aperta solo per la sessione del migratore, con
+        -- la riga nel diario.
+        IF script.fn_porta_manutenzione_aperta(
+               'zeroerp.maintenance_allow_attivita_bypass', TG_RELID, TG_OP,
+               to_jsonb(NEW) ->> 'id') THEN
+            RETURN NEW;
+        END IF;
+    END IF;
 
     IF v_commessa_from_attivita IS NULL THEN
         PERFORM script.fn_log_and_raise_error('vendite', 'trgfn_attivita_fatturabili_guard_commessa', 'E_COMMESSA_ATTIVITA_NON_COERENTE',
@@ -69,7 +58,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_attivita_fatturabili_guard_commessa()
-IS 'Guard BEFORE INSERT OR UPDATE OF commessa_id, commessa_attivita_id su vendite.attivita_fatturabili: la riga di commessa dell''attivita'' (commessa_attivita_id) esiste e appartiene alla commessa dichiarata (commessa_id); altrimenti E_COMMESSA_ATTIVITA_NON_COERENTE. Controlla sempre: non dipende da un parametro. Le due colonne vuote le rifiuta il loro NOT NULL, non il guard. Bypass di manutenzione solo per un superuser con la GUC zeroerp.maintenance_allow_attivita_bypass accesa.';
+IS 'Guard BEFORE INSERT OR UPDATE OF commessa_id, commessa_attivita_id su vendite.attivita_fatturabili: la riga di commessa dell''attivita'' (commessa_attivita_id) esiste e appartiene alla commessa dichiarata (commessa_id); altrimenti E_COMMESSA_ATTIVITA_NON_COERENTE. Controlla sempre: non dipende da un parametro. Le due colonne vuote le rifiuta il loro NOT NULL, non il guard. Porta di manutenzione zeroerp.maintenance_allow_attivita_bypass: apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta), solo dove il guard rifiuterebbe, e lascia la riga in dbops.porte_manutenzione_passaggi.';
 ```
 
 </div>

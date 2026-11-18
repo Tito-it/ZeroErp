@@ -1,8 +1,12 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-18 (progetto al §15 corretto dal §16, decisioni prese, niente costruito)
+## ⏭️ Chi riparte — aggiornato al 2026-11-18 (giro 1 applicato su dbdev, `-01` … `-22`, pgTAP verdi)
 
-**Riparte: Tid**, che dà il via al giro 1 (Q17 e Q18 decise il 2026-11-18, §16.6). Per costruire si leggono **il §15 e il §16**:
+**Riparte: Tid**, con la doc auto-generata da rigenerare una volta: le pagine `manual/` nuove (§16.12) entrano nelle
+pagine generate solo alla rigenerazione. Poi il **team BE/FE**, con le ricadute R1-R3 (§15.12). Il giro 1 è applicato,
+provato e committato (2026-11-18). Poi il team BE/FE, con le ricadute
+R1-R3 (§15.12). Il giro 1, `20261117-01` … `-22`, è applicato su dbdev e i pgTAP sono verdi (Tid, 2026-11-18). Lo stato del giro è al §16.12. Le verifiche sono al §16.8, il censimento
+delle porte al §16.9, Q19 e Q20 decise da Tid il 2026-11-18 (§16.10). Per costruire si leggono **il §15 e il §16**:
 il §16 corregge il §15 sul segno «nata dal seed» (decisione A, revoca di D5), e dove i due dicono altro vale il §16.
 I §4-§14 sono la storia di come ci si è arrivati: le prime stesure, l'analisi critica e la verifica. Restano per non
 ripercorrere le stesse strade.
@@ -12,15 +16,17 @@ ripercorrere le stesse strade.
 | 1 | ✅ sessione DB | Il problema, la storia delle decisioni, la prima stesura, l'analisi critica, la porta, la verifica | §1-§14 | — |
 | 2 | ✅ sessione DB e Tid | Il progetto consolidato, con le decisioni Q10, Q11, D1-D9 | §15 | 1 |
 | 2-bis | ✅ sessione DB e Tid | La seconda analisi critica: il segno «nata dal seed» passa al registro (decisione A) | §16 | 2 |
-| 3 | Tid | ✅ Q17 e Q18 (2026-11-18); resta il via al giro 1 | §16.6 | 2-bis |
-| 4 | sessione DB | Le verifiche V2, V5, V6, V6-bis, V7, V8, V10, V11 | §15.9, §16.4 | 3 |
-| 5 | sessione DB | Il giro 1 | §15.8 con le correzioni di §16.3 | 4 |
-| 6 | Tid | `/verifica-db`, l'apply, i pgTAP, la doc auto-generata, il commit | — | 5 |
-| 7 | team BE/FE | Le ricadute R1-R5 | §15.12 | 6 |
+| 3 | Tid | ✅ Q17 e Q18, ✅ il via al giro 1 (2026-11-18) | §16.6 | 2-bis |
+| 4 | ✅ sessione DB | Le verifiche V2, V5, V6, V6-bis, V8, V10, V11 (V7 dopo Q20) | §16.8, §16.9 | 3 |
+| 4-bis | ✅ Tid | Q19 (le colonne di `email_template`) e Q20 (il perimetro della porta), 2026-11-18 | §16.10 | 4 |
+| 5 | ✅ sessione DB | Il giro 1: changeSet `20261117-01` … `-21`, pgTAP, codici, doc; applicato su dbdev il 2026-11-18 | §16.12 | 4 |
+| 5-bis | ✅ Tid e sessione DB | Q21 e Q22 decise; il `20261117-22`, il file owner dello stato legacy e i tre pgTAP alleggeriti | §16.13 | 5 |
+| 6 | ✅ Tid e sessione DB | L'apply, i pgTAP verdi, la baseline B-7, la doc auto-generata, la riga `SISTEMA`, il commit (2026-11-18) | §16.12 | 5 |
+| 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ⏳ la doc auto-generata rigenerata perché le includa | §16.12 | 6 |
+| 7 | team BE/FE | Le ricadute R1-R3 (R4 ritirata dalla Q17) | §15.12 | 6 |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6, 7 |
 
-**Decisioni aperte di Tid:** nessuna, resta il via (Q17 e Q18 decise il 2026-11-18, §16.6). Da approvare dopo V10: la classificazione delle colonne di `email_template` (§15.4). Rinviate fuori dal
-giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** questo brief e il rimando nel registro dei residui.
+**Decisioni aperte di Tid:** nessuna nel giro 1. Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -948,8 +954,8 @@ lettura di `user_insert` sulle righe nate nel frattempo, con i difetti del §16.
 | §15.7, caso 6 | `DELETE` rifiutato con `user_insert = 'SEED'` o col nome del migratore | `DELETE` rifiutato su una riga segnata nel registro |
 | §15.7, casi nuovi | — | (a) l'app che fa `UPDATE … user_insert` non sblocca niente; (b) una riga inserita da un verbo `DEFINER` chiamato dall'app è dell'installazione; (c) il runner segna le righe esistenti una volta, e alla rigenerazione non ripassa; (d) una riga dell'installazione mai modificata non la riscrive un `UPDATE` del software senza porta; (e) `fn_ruolo_del_migratore` su un nome che non è un ruolo: `false`, nessun errore |
 | §15.8, giro 1 | punto 6 (divieto e presidio), punto 7 (tre codici) | solo il presidio, due codici (Q17) |
-| §15.2, `UPDATE` del software in `SOLO_INSERIMENTO` | valori scartati nel registro e `WARNING` | salto muto, tabella fuori dalla diagnosi (Q18) |
-| §15.7, caso 2 | la riga che c'è non cambia | e il registro non riceve valori scartati, nessun `WARNING` (Q18) |
+| §15.2, `UPDATE` del software in `SOLO_INSERIMENTO` | valori scartati nel registro e `WARNING` | niente valori scartati, tabella fuori dalla diagnosi (Q18); il `WARNING` resta (Q22, §16.13) |
+| §15.7, caso 2 | la riga che c'è non cambia | e il registro non riceve valori scartati (Q18); parte il `WARNING` (Q22) |
 | §15.10 | D5 | revocata da D10 |
 
 ### 16.4 Verifica nuova
@@ -987,7 +993,7 @@ va in chiave duplicata), la strada scartata «carica solo se la tabella è vuota
 | # | Domanda | Proposta |
 | --- | --- | --- |
 | Q17 | Che cosa resta della regola 8 (username e ruoli disgiunti), ora che la regola 6 non si regge più su di lei | ✅ **Decisa:** resta solo il motivo `NOME_DI_RUOLO_DB` del presidio in `vw_credenziali_da_sanare`, perché una collisione conta solo all'iscrizione di una tabella (§16.2, punto 3). Escono il divieto in `fn_crea_auth_user`, il suo codice d'errore e R4. In alternativa si toglie anche il presidio e si scrive il limite: una collisione presente all'iscrizione fa «di seed» una riga dell'installazione, cioè l'errore va dalla parte sicura |
-| Q18 | In `SOLO_INSERIMENTO` il salto del software scrive nel registro e alza il `WARNING`? (§16.5, punto 2) | ✅ **Decisa:** no. In `SOLO_INSERIMENTO` il salto è il comportamento atteso. Niente valori scartati, niente `WARNING`, e la tabella fuori dalla diagnosi delle divergenze |
+| Q18 | In `SOLO_INSERIMENTO` il salto del software scrive nel registro e alza il `WARNING`? (§16.5, punto 2) | ✅ **Decisa:** no. In `SOLO_INSERIMENTO` il salto è il comportamento atteso. Niente valori scartati e la tabella fuori dalla diagnosi delle divergenze. ⚠️ Il «niente `WARNING`» è rivisto dalla Q22 (§16.13): l'avviso resta |
 
 ### 16.7 Strada scartata: la toppa su `user_insert` (Tid, 2026-11-17)
 
@@ -995,3 +1001,251 @@ Tenere D5 e correggere i sintomi: il trigger `a00` tiene fermo `user_insert`, e 
 in `pg_roles`. Chiude i punti 1 e 2 del §16.1, ma lascia aperti il 3 (`CURRENT_USER` dentro un verbo `DEFINER`) e il 4
 (il significato che dipende dai ruoli), e tiene la regola 8 con R4 come vincolo fra domini. Scartata: corregge i
 sintomi e lascia la causa, cioè un segno scritto dove l'app può scrivere.
+
+### 16.8 Le verifiche del giro 1 (2026-11-18)
+
+Tid ha dato il via il 2026-11-18, con i changeSet da `20261117-01`. Esiti, letti sul catalogo di dbdev e dello scratch
+(`zeroerp_ruoli`), sui changelog, sui pgTAP e sul jar di Liquibase in uso:
+
+| # | Esito |
+| --- | --- |
+| V2 | Non si prova a parte: è il caso 3 del §15.7, nel pgTAP. Per costruzione di PostgreSQL i `BEFORE` che vengono dopo `a00` ricevono il `NEW` già rimesso, e l'audit (`trg_<tabella>_audit_…`, dopo `a00` in ordine di nome) timbra solo le sue colonne |
+| V5 | ✅ Letto in `liquibase-core` 5.0.4: l'opzione `liquibase.sql.showSqlWarnings` vale `TRUE` di default, e `JdbcExecutor.showSqlWarnings` passa gli `SQLWarning` del driver al log come `WARNING`. Il `WARNING` del trigger arriva nell'output del migrate; la conferma a video si ha al primo apply |
+| V6 | ✅ Il censimento sta qui sotto, al §16.9 |
+| V6-bis | ✅ `zeroerp_app` non è membro del proprietario di `dbops` (`zeroerp_owner`) né su dbdev né sullo scratch. In CI i test Django girano come `zeroerp_app` (`ci-validate.yaml`, passo «Django tests»); `DB_USER: zeroerp_owner` dell'env del job è quello di Liquibase. Il criterio `fn_sessione_del_migratore()` separa l'app dal migratore in tutti e tre gli ambienti |
+| V7 | Dopo la decisione del §16.10: la traccia delle porte fuori dal seed |
+| V8 | ✅ `test-totp-porta-v1` prova «l'app non è il migratore» girando **come app** (il runner di default): `session_user` non si simula. Ne segue che i casi del software (blocco `DO` del mirror, porta) e quelli dell'installazione stanno in **due file**: uno col runner di default, uno con `pgtap-runner: owner`, il cui motivo è che la scrittura del migratore non è raggiungibile dall'app. ⚠️ `test-sec-functions-owner-riservato-v1` (asserzione 12) cerca nel corpo di `fn_sessione_del_migratore` il testo `pg_has_role(session_user`: riscrivendola sopra `fn_ruolo_del_migratore` diventa rossa, e si adegua nello stesso giro |
+| V10 | ✅ `config.fn_resolve_email_template` cerca la riga per `codice`, `unita_organizzativa_id`, `tipo_prestazione_id` e `lingua` (la stessa `UNIQUE NULLS NOT DISTINCT`), e le nove righe del CSV sono il ripiego di sistema (reparto e prestazione `NULL`, lingua `it`). Se l'installazione sposta una riga di seed su un reparto o su un'altra lingua, il ripiego sparisce come se avesse rinominato il codice: le tre colonne sono **del software**. Classificazione proposta, da approvare (§16.10): software `codice`, `unita_organizzativa_id`, `tipo_prestazione_id`, `lingua`, `variabili_disponibili`; installazione `oggetto`, `corpo_html`, `corpo_testo`, `attivo` |
+| V11 | ✅ Il progetto ha già cinque funzioni trigger `SECURITY DEFINER` con `search_path` fissato (per esempio `vendite.trgfn_doc_guard_delete_solo_bozza`, `script.trgfn_sorgente_in_uscita`). `linee-guida-sql.md` §5 chiede la motivazione scritta e il `search_path` dichiarato nel `CREATE`, mai con `ALTER FUNCTION … SET` (§13.7) |
+
+### 16.9 Il censimento delle porte (V6)
+
+Letto il 2026-11-18 dal corpo vivo delle funzioni su dbdev, dai changelog, dai pgTAP e dal backend. Il backend **non
+apre nessuna porta**. Le porte si dividono così:
+
+**Di verbo** (una funzione la apre per sé e la richiude): `doc_cambio_stato`, `doc_ritira_legami`, `ddt_riconsegna`,
+`ddt_riga_correggi_qta`, `ddt_riga_ritira_legame`, `listino_riga_rettifica`, `listino_versione_fine`,
+`legame_distinta_chiudi`, `articolo_correggi_struttura`, `magazzino_posting_*`,
+`allow_template_versione_pubblicazione_override`, `allow_user_emittente_delete_override`,
+`allow_contabile_riga_delete_override`, `maintenance_reset_lotto_draft` (la apre `vendite.fn_cleanup_fatture_by_ids`),
+`maintenance_indirizzi_dettaglio` (`dbops.fn_admin_merge_stradario`), `maintenance_toponomastica`
+(`maintenance.proc_bump_toponomastica`). Per D7 restano come sono, anche quelle col prefisso `maintenance_`: il nome non
+dice la specie, la dice chi la apre.
+
+**Di manutenzione** (nessuna funzione la apre: solo il migratore a mano e i pgTAP):
+
+| Porta | Chi la legge | pgTAP che la aprono, col runner di default (l'app) |
+| --- | --- | --- |
+| `zeroerp.allow_lock_columns_override` | `script.trgfn_lock_columns`, `script.trgfn_righe_natura_vendita` | 13 |
+| `zeroerp.maintenance_ruoli_delete` (argomento di `DELETE_BLOCK`) | `script.trgfn_delete_block_by_guc` | 1 (`test-fn-disdetta-cliente`) |
+| `zeroerp.maintenance_allow_delete_logs` | `vendite.trgfn_event_log_append_only`, `vendite.trgfn_logs_guard_delete` | 9 |
+| `zeroerp.maintenance_allow_attivita_bypass` | `vendite.trgfn_attivita_fatturabili_guard_commessa` | 0 |
+
+`allow_template_versione_chiusura_override` non ha più lettori nel catalogo vivo.
+
+⚠️ **I pgTAP girano come app, e la porta stretta li fa diventare rossi.** I 23 file aprono la porta per costruire o
+pulire i dati, non per provarla. Ognuno si legge: se apre la porta per pulire (`DELETE` di fixture in un test che
+finisce in `ROLLBACK`), la pulizia si toglie, come è già stato fatto in `create-cliente.sql`; se apre la porta per
+costruire uno stato che l'app non raggiunge, la fixture passa da un verbo o il file dichiara `pgtap-runner: owner` col
+motivo. Le quattro porte e i sei lettori sono **una** regola (§13.2): per la regola del 2 passano tutti dal building
+block nello stesso giro, oppure il giro si divide (§16.10).
+
+### 16.10 Le decisioni prima di scrivere (Tid, 2026-11-18)
+
+✅ **Q19 approvata come proposta; Q20 decisa per la strada A**: tutte e quattro le porte di manutenzione nel giro 1. La
+strada dei due giri 1a/1b è scartata.
+
+| # | Domanda | Proposta |
+| --- | --- | --- |
+| Q19 | Classificazione delle colonne di `email_template` (V10) | Come al V10: software `codice`, `unita_organizzativa_id`, `tipo_prestazione_id`, `lingua`, `variabili_disponibili`; installazione `oggetto`, `corpo_html`, `corpo_testo`, `attivo` |
+| Q20 | Il perimetro della porta stretta nel giro 1 (§16.9) | **Tutte e quattro le porte di manutenzione** nel giro 1, con i sei lettori e i 23 pgTAP adeguati: è un difetto solo, e la regola del 2 vuole le copie ritirate nello stesso giro. In alternativa: giro 1a con il seed, la porta del seed e le due porte di `lock_columns` e `DELETE_BLOCK` (14 pgTAP); giro 1b con le due porte di `vendite` (9 pgTAP). Le due porte di `vendite` restano allora copie dichiarate fino al giro 1b |
+
+### 16.11 Il piano del giro 1 (2026-11-18)
+
+**Lo stampo.** La regola nuova si costruisce come `DELETE_BLOCK` (guida `automazione-db.md` §4.4): un registro proprio
+con una riga per tabella, che porta l'interruttore (`enabled`) e il nome del trigger (`trigger_name`, risolto da
+`dbops.fn_nome_oggetto_dichiarato` col template di default), un
+runner che converge, una funzione di divergenze, la chiamata dentro `maintenance.proc_automations_lock_columns_job`
+(convergenza del rilascio, `ci_ordine` 60, e giro notturno delle 21:10) e una rete `runAlways` in `90_end` che converge
+a ogni migrate. Niente processo nuovo e niente job pgAgent nuovo. La rete di `90_end` fa nascere il trigger **alla
+fine del primo migrate** anche su un database da zero, dopo `80_data`: le righe caricate dal CSV hanno ancora
+`user_insert = 'SEED'` (l'audit nasce al `ci_apply`), e il runner le segna all'iscrizione (§16.2, punto 3).
+
+**V7, la traccia delle porte.** Una sede sola per tutte le porte di manutenzione, quella del seed compresa: una tabella
+nuova `dbops.porte_manutenzione_passaggi` (chiave, tabella, `id` della riga, operazione, `session_user`, istante), scritta
+solo da `script.fn_porta_manutenzione_aperta`. Il §15.3 metteva «l'ultimo passaggio dalla porta» nel registro del seed:
+con una sede sola il registro tiene il segno «nata dal seed», la personalizzazione e i valori scartati, e il passaggio
+si legge dal diario. È la regola del 2 applicata alla traccia.
+
+**I nomi.** La porta del seed: `zeroerp.allow_seed_primo_impianto_override`. Il trigger:
+`trg_{table}_a00_seed_primo_impianto_ins_upd_dlt`. Il registro delle tabelle: `dbops.automazione_seed_primo_impianto`
+(tabella, `solo_inserimento`, `colonne_software`, `colonne_installazione`, `enabled`, motivo). I codici: due per
+l'operatore (`E_SEED_RIGA_NON_CANCELLABILE`, `E_SEED_COLONNA_DEL_SOFTWARE`) e uno tecnico del runner
+(`E_SEED_PRIMO_IMPIANTO`, come `E_DELETE_BLOCK`).
+
+**La postura.** `dbops.seed_righe` e `dbops.porte_manutenzione_passaggi` sono in sola lettura per l'app, nelle tre sedi
+di `linee-guida-sql.md` §11.8 (il changeSet `90_end` che revoca subito, il loop dei grant di `ci_apply`, la fase `post`
+del provisioning), con il loro pgTAP di postura.
+
+| # | Fase | Che cosa |
+| --- | --- | --- |
+| 1 | `00_schema` | `dbops.seed_righe` |
+| 2 | `00_schema` | `dbops.porte_manutenzione_passaggi` |
+| 3 | `00_schema` | `dbops.automazione_seed_primo_impianto` |
+| 4-5 | — | ⚠️ Ritirati il 2026-11-18: la regola non entra in `automation_rules_tbl` (vicolo cieco qui sotto) |
+| 6 | `20_code` | `dbops.fn_ruolo_del_migratore` |
+| 7 | `20_code` | `dbops.fn_sessione_del_migratore` sopra di lei |
+| 8 | `20_code` | `script.fn_porta_manutenzione_aperta` |
+| 9-14 | `20_code` | i sei lettori delle porte di manutenzione (§16.9) passano dal building block |
+| 15 | `20_code` | `dbops.fn_seed_primo_impianto_argomenti`, la grammatica degli argomenti del trigger, letta dal trigger e dalle divergenze |
+| 16 | `20_code` | `script.trgfn_seed_primo_impianto` |
+| 17 | `20_code` | `dbops.fn_seed_primo_impianto_divergenze` |
+| 18 | `20_code` | `dbops.fn_run_automations_seed_primo_impianto` |
+| 19 | `20_code` | `maintenance.proc_automations_lock_columns_job` chiama anche il runner nuovo |
+| 20 | `20_code` | `dbops.vw_credenziali_da_sanare`, motivo `NOME_DI_RUOLO_DB` |
+| 21 | `80_data` | il registro delle tabelle, col suo CSV (le due righe del §15.4 con la classificazione di Q19) |
+| 22 | `80_data` | i CSV esistenti: i tre codici in `codici_errore` e `messaggi_errore`, il presidio in `dbops.presidi` |
+| 23 | `90_end` | la rete che converge a ogni migrate |
+| 24 | `90_end` | la postura delle due tabelle nuove, più il loop di `ci_apply` e il provisioning |
+
+**Vicolo cieco: la riga in `automation_rules_tbl` (2026-11-18).** La prima stesura del piano seguiva `CODICE_MAIUSCOLO`, con
+una riga in `automation_rules_tbl`. Il vocabolario di `rule_type` è un `CHECK` nato in `90_end`
+(`20261109-75`, mergiato) con l'elenco di oggi. Da zero la riga nuova entrerebbe in `80_data` e quel `90_end` la
+rifiuterebbe all'`ADD CONSTRAINT`; su dbdev il vincolo c'è già e la rifiuterebbe in `80_data`. Allargare il vocabolario
+non ha una fase che vada bene in tutti e due i casi (`linee-guida-sql.md` §11.14). `DELETE_BLOCK` e `GUARD utility` non
+hanno riga in `automation_rules_tbl` per la stessa forma: il registro della regola porta già l'interruttore e il nome.
+
+Poi i pgTAP (i due file nuovi del §15.7 con i casi del §16.3, la postura, `test-sec-functions-owner-riservato-v1`
+adeguato, i 23 file del §16.9) e la documentazione (§15.8, punto 9).
+
+### 16.12 Lo stato del giro 1 (2026-11-18)
+
+**Scritti i changeSet `20261117-01` … `-21`** (la numerazione del §16.11 si è stretta: i passi 4-5 sono ritirati, e
+`script.trgfn_righe_natura_vendita` non è un lettore della porta, la nomina solo nei commenti):
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-01` … `-03` | `dbops.seed_righe`, `dbops.porte_manutenzione_passaggi`, `dbops.automazione_seed_primo_impianto` |
+| `-04`, `-05` | `dbops.fn_ruolo_del_migratore`; `dbops.fn_sessione_del_migratore` sopra di lei |
+| `-06` | `script.fn_porta_manutenzione_aperta` |
+| `-07` … `-11` | i cinque lettori delle porte di manutenzione: `script.trgfn_lock_columns`, `script.trgfn_delete_block_by_guc`, `vendite.trgfn_event_log_append_only`, `vendite.trgfn_logs_guard_delete` (la porta di verbo del reset del lotto resta com'è), `vendite.trgfn_attivita_fatturabili_guard_commessa` |
+| `-12` … `-15` | la grammatica degli argomenti, la funzione trigger, le divergenze, il runner |
+| `-16` | `maintenance.proc_automations_lock_columns_job` chiama anche il runner |
+| `-17`, `-18` | `script.fn_credenziali_con_nome_di_ruolo` e il motivo `NOME_DI_RUOLO_DB` della vista |
+| `-19` | il mirror di `dbops.automazione_seed_primo_impianto` (CSV nuovo, due righe) |
+| `-20`, `-21` | la rete di `90_end`; la postura in sola lettura per l'app, con il loop di `ci_apply` e il provisioning |
+
+**Che cosa cambia nei lettori, oltre alla porta stretta.** La porta si chiede nel punto in cui il controllo rifiuterebbe,
+non in testa: il diario registra le righe forzate, non ogni scrittura a GUC accesa. Nei due guard dei log la retention
+si guarda prima della porta (il risultato è lo stesso). «Accesa» vale `on`, `true` o `1` per tutte le porte; il guard
+delle attività accettava anche le altre forme di `::boolean` e solo un superuser, ora la sessione del migratore.
+
+**Provato** con `scripts/prova_changeset.py` sullo scratch, il 2026-11-18: l'estratto di tutti i changeSet SQL gira per
+intero, e dopo il `ROLLBACK` il catalogo è identico. Il `loadUpdateData` del `-19`, che la prova non copre,
+l'ha provato l'apply: le due colonne `text[]` di `email_template` arrivano dal CSV nella forma `{a,b}` come scritte, e
+quelle di `email_account` restano `NULL`.
+
+**Scritti anche (2026-11-18):**
+
+* i codici `E_SEED_RIGA_NON_CANCELLABILE`, `E_SEED_COLONNA_DEL_SOFTWARE` (classe `CONFLITTO_STATO`, senza segnaposto) ed
+  `E_SEED_PRIMO_IMPIANTO` (`TECNICO`, del runner), in coda a `codici_errore.csv` e `messaggi_errore.csv` (id 1514-1516);
+* il terzo motivo nel testo del presidio delle credenziali (`presidi.csv`, `presidi_testi.csv`);
+* i pgTAP nuovi: `config/test-seed-primo-impianto-installazione-v1` (24, come app), `dbops/test-seed-primo-impianto-software-v1`
+  (26, `pgtap-runner: owner`), `dbops/test-seed-primo-impianto-postura-v1` (9, come app);
+* `dbops/test-sec-functions-owner-riservato-v1`, asserzione 12: segue la domanda fino a `fn_ruolo_del_migratore`;
+* la documentazione: `linee-guida-sql.md` §11.7 (tre specie, la specie di primo impianto), `automazione-db.md` §4.9 e «Le
+  porte di manutenzione», `gestione-mail.md` (account e template restano dell'azienda).
+
+**I pgTAP del §16.9: 22 file, non 23** (`create-cliente.sql` nomina la porta solo in un commento):
+
+| Gruppo | File | Che cosa |
+| --- | --- | --- |
+| pulizia dei log prima del `ROLLBACK` | `test-fondi-fattura`, `test-fattura-utils-critical-termini`, `test-fondo-fattura-eseguito`, `test-posta-riga-tardiva-v1`, `test-contabile-validabile-v1`, `test-abbinamento-rata`, `test-fn-posta-contabile` | tolta la pulizia (il `ROLLBACK` basta), e con lei l'`ok(true, 'Cleanup completato')`: il `plan` scende di uno dove c'era |
+| porta del lucchetto accesa «per sicurezza» | `test-billing-account-auto-link-ef`, `test-fn-resolve-emittente-for-user`, `test-fn-check-user-can-create-ba`, `test-trgfn-default-emittente-fiscale-v1`, `test-trgfn-preventivi-default-emittente-e-guard-coerenza`, `test-trgfn-documenti-default-valuta` | tolta la riga: nessuno di questi file scrive una colonna bloccata (letto sugli `UPDATE` contro le 114 tabelle col lucchetto) |
+| provano la porta | `test-articoli-seed-uom-base-lock` (8), `test-event-log-append-only` (5), `test-logs-guard-delete` (4, 7) | come app la GUC accesa non apre più: le asserzioni dicono «rifiutato». Che il migratore apra lo prova il test del lato software |
+| la porta per arrivare al `CHECK` | `test-uom-fattore-e-regole-v1` (19) | il `CHECK` della riga base si asserisce sulla sua esistenza: sull'`UPDATE` parla prima il lucchetto |
+| pulizia con `DELETE_BLOCK` | `test-fn-disdetta-cliente` | tolta la pulizia finale; quella iniziale toglie gli avanzi delle versioni che committavano: su un database nuovo non trova righe, su dbdev gli avanzi eventuali si tolgono una volta a mano, dal migratore |
+| lo stato legacy (Q21) | `test-fn-list-preventivi-da-pushare-natura-aware-v1` (3), `test-vw-preventivi-smistamento-v1` (5, e il pregresso nei contatori 1, 7, 8), `test-righe-natura-vendita-congelata-v1` (15) | la riga a natura `NULL` esce dai tre file, che restano come app; i suoi casi stanno in `vendite/test-righe-natura-vendita-legacy-v1` (5, `pgtap-runner: owner`), con in più il passaggio nel diario delle porte |
+
+**Provato** con `scripts/prova_changeset.py` sullo scratch, con uno YAML d'appoggio fuori dal repo che carica le due righe
+del registro e i tre codici (ciò che fanno all'apply il `-19` e i CSV):
+
+* `test-seed-primo-impianto-software-v1`: 26 su 26;
+* `test-seed-primo-impianto-installazione-v1` e `-postura-v1`, da proprietario: verdi le asserzioni di forma e i rifiuti che
+  valgono per tutti; rosse per costruzione quelle che dipendono da chi scrive (il proprietario è il software). L'esito
+  vero è la corsa come app, dopo l'apply;
+* `test-logs-guard-delete`, `test-event-log-append-only`, `test-articoli-seed-uom-base-lock`, `test-uom-fattore-e-regole-v1`,
+  `test-abbinamento-rata`, `test-sec-functions-owner-riservato-v1`: stessi esiti prima e dopo l'estratto (da proprietario la
+  porta si apre, quindi le asserzioni «come app» sono rosse in tutte e due le corse);
+* `test-fn-disdetta-cliente`: lo script non lo lancia (il file apre con un `DO` prima del `BEGIN`).
+
+**Scostamenti dal §15, dichiarati:**
+
+* il presidio a zero delle divergenze (D8) è il pgTAP (`test-seed-primo-impianto-installazione-v1`, asserzione 3), come
+  per `DELETE_BLOCK`: il catalogo `dbops.presidi` elenca viste, e le divergenze sono una funzione;
+* la traccia della porta del seed sta nel diario comune `dbops.porte_manutenzione_passaggi`, non nel registro (V7, §16.11).
+
+**Applicato su dbdev il 2026-11-18 (Tid), `-01` … `-22`, pgTAP verdi.** Letto sul database dopo l'apply: la rete di `90_end`
+non lascia divergenze (`dbops.fn_seed_primo_impianto_divergenze(NULL)` vuota); il runner ha iscritto le righe di seed già
+presenti, 1 di `email_account` e 9 di `email_template` (`segnata_da = ISCRIZIONE`).
+
+**Dopo l'apply (2026-11-18):**
+
+* ✅ i pgTAP, verdi (Tid);
+* ✅ la doc auto-generata (Tid);
+* ✅ la baseline B-7 (`db/baseline-codici-errore-famiglie.tsv`), misurata come app in sola lettura e senza `--update`,
+  uguale su dbdev e sullo scratch. I tre codici nuovi non entrano: la misura non ne legge famiglie note. Esce
+  `E_DELETE_NOT_ALLOWED` (era `VALORE_ATTESO`, 4 punti): dal `-08` `script.trgfn_delete_block_by_guc` lo alza dopo la
+  porta, non più dentro un `IF` sulla GUC, e la misura non lo classifica. È questo cantiere, non un altro. Dopo, il
+  confronto dà zero accumuli, zero ristretti, zero rientri;
+* ✅ la riga `SISTEMA` di dbdev: non serve ripristinarla. Porta già la configurazione vera, scritta dall'interfaccia il
+  2026-11-17, e in solo inserimento il CSV non la riscrive più, intatta o no. Il §12.10 («ripristinata dopo l'apply, così
+  la marca il trigger») valeva per la forma per riga, prima della Q11.
+* ✅ le pagine `manual/` (2026-11-18), il punto 9 del piano (§15.11), che il giro aveva lasciato indietro:
+  * nuove: `script.fn_porta_manutenzione_aperta`, `script.trgfn_seed_primo_impianto`,
+    `script.fn_credenziali_con_nome_di_ruolo`, `dbops.fn_ruolo_del_migratore`,
+    `dbops.fn_seed_primo_impianto_argomenti`, `dbops.fn_seed_primo_impianto_divergenze`,
+    `dbops.fn_run_automations_seed_primo_impianto`, `dbops.seed_righe`, `dbops.automazione_seed_primo_impianto`,
+    `dbops.porte_manutenzione_passaggi`;
+  * aggiornate: `dbops.fn_sessione_del_migratore`, i cinque lettori della porta (`script.trgfn_lock_columns`,
+    `script.trgfn_delete_block_by_guc`, `vendite.trgfn_event_log_append_only`, `vendite.trgfn_logs_guard_delete`,
+    `vendite.trgfn_attivita_fatturabili_guard_commessa`), `dbops.automation_delete_block`,
+    `maintenance.proc_automations_lock_columns_job`, `dbops.vw_credenziali_da_sanare`, `config.email_account`,
+    `config.email_template`;
+  * debito trovato e pagato: la pagina di `vendite.trgfn_event_log_append_only` descriveva il corpo di prima del
+    2026-08-22 («nessuna porta», «nessun codice»), quella del job non nominava il runner del codice in maiuscolo.
+    Riscritte sul corpo vivo;
+  * ⚠️ la doc auto-generata è stata rigenerata **prima** delle pagine nuove: le pagine generate dei dieci oggetti nuovi
+    non le includono finché non si rigenera.
+
+**Limiti nuovi, dichiarati:**
+
+* chi lancia come migratore un comando che scrive una colonna dell'installazione su una riga di seed in solo inserimento
+  (per esempio `manage.py ricifra_campi_cifrati` con l'utente del migrate invece che con quello del backend) non scrive:
+  dal `-22` lo dice un `WARNING`, non un errore (Q22). Oggi il comando gira con `.env.systemd`, cioè come app;
+* il migratore che con la porta del lucchetto cambia `codice_interno` su una riga in solo inserimento lo vede rimesso
+  da `OLD`: apre anche la porta del seed.
+
+### 16.13 Le decisioni Q21 e Q22 (Tid, 2026-11-18)
+
+✅ **Decise da Tid il 2026-11-18, come proposto.** Il giro 1 era già applicato su dbdev, quindi la Q22 non riscrive il
+`-13`: entra come changeSet nuovo.
+
+* **Q21** — `vendite/test-righe-natura-vendita-legacy-v1` (plan 5, `pgtap-runner: owner`): la natura scritta `NULL`
+  dalla porta, il passaggio nel diario, il push su commessa, la vista righe, l'aggregata. I tre file d'origine restano come
+  app, senza la riga legacy: `-da-pushare-natura-aware-v1` plan 3, `-smistamento-v1` plan 9 (tre righe, contatori scesi),
+  `-congelata-v1` plan 14. Provati sullo scratch da proprietario: 5, 3, 9 e 14 su 14 verdi; la corsa come app dei tre è
+  di Tid;
+* **Q22** — `20_code/script/20261117-22-update-trgfn-seed-primo-impianto-warning-solo-inserimento`: in solo inserimento
+  il salto alza il `WARNING`, senza scrivere il registro; il `COMMENT` della funzione lo dice; il rollback riporta il
+  corpo del `-13`. Provato sullo scratch: l'estratto gira, il catalogo resta identico, e nel test del lato software
+  (26 su 26) il `WARNING` su `config.email_account` compare solo con il `-22`. L'asserzione 9 dice «il registro resta
+  pulito»; `automazione-db.md` §4.9 aggiornata;
+* ✅ applicato su dbdev il 2026-11-18, pgTAP verdi (Tid). ⚠️ La doc auto-generata della funzione (il `COMMENT`) si
+  rigenera con quella del giro.
+
+
+| # | Domanda | Proposta (✅ approvata) |
+| --- | --- | --- |
+| Q21 | Tre pgTAP costruiscono una riga di documento con la natura di vendita `NULL`, lo stato delle righe legacy. L'app non lo raggiunge per nessuna strada (l'`INSERT` la eredita dall'articolo, la colonna è bloccata), e con la porta stretta lo costruisce solo il migratore. Come si prova? | **Si separa**: i casi della riga legacy escono dai tre file e vanno in un file `pgtap-runner: owner` per dominio, col motivo «lo stato si costruisce solo dalla manutenzione»; il resto dei tre file resta come app e continua a esercitare la RLS. Scartato: tutto il file `owner` (si perde la RLS anche sui casi che l'app raggiunge); un helper DEFINER che spegne il lucchetto (darebbe all'app una strada per scrivere la natura) |
+| Q22 | In solo inserimento il salto del software è muto (Q18). Lo è anche per il migratore che scrive a mano, fuori dal mirror, e perde la scrittura senza saperlo | Il `WARNING` resta anche in solo inserimento; restano fuori i valori scartati nel registro e la diagnosi. Il rumore è un avviso nel log del migrate quando il CSV della tabella cambia, cioè di rado |

@@ -52,7 +52,8 @@
 --   12   : la guardia legge session_user e NON pg_has_role(current_user…)
 --          (commenti tolti) — pinna la trappola 1 del brief. Dal 2026-09-29
 --          la domanda sta in dbops.fn_sessione_del_migratore (20260929-08/-09):
---          la sync la chiama, il BB legge session_user
+--          la sync la chiama, il BB legge session_user; dal 2026-11-18 il BB
+--          passa session_user a dbops.fn_ruolo_del_migratore (20261117-04/-05)
 --   13   : la copia di servizio del giro non è rimasta (hasnt_function)
 --
 -- Read-only: tutto dentro BEGIN;/ROLLBACK;. Nessuna riga scritta.
@@ -132,15 +133,23 @@ SELECT cmp_ok((SELECT count(*) FROM dbops.sec_functions_owner), '>', 0::bigint,
 -- ⭐ Dal 2026-09-29 (20260929-08/-09, regola del 2) la domanda sta nel BB
 --    dbops.fn_sessione_del_migratore, che la sync chiama: il presidio segue la
 --    domanda dove e' andata — la sync chiede al BB, e il BB legge session_user.
+-- ⭐ Dal 2026-11-18 (20261117-04/-05, brief-db-seed-primo-impianto-non-si-riscrive)
+--    la domanda sul ruolo sta in dbops.fn_ruolo_del_migratore, che il BB chiama
+--    con session_user: il presidio la segue ancora un passo. Il ruolo si cerca in
+--    pg_roles (un nome che non e' un ruolo vale false) e nessuno dei tre corpi
+--    nomina current_user.
 SELECT ok(
     (SELECT regexp_replace(s.prosrc, '--[^\n]*', '', 'g') ~ 'dbops\.fn_sessione_del_migratore\(\s*\)'
         AND regexp_replace(s.prosrc, '--[^\n]*', '', 'g') !~ 'pg_has_role\(\s*current_user'
-        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') ~ 'pg_has_role\(\s*session_user'
-        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') !~ 'pg_has_role\(\s*current_user'
-       FROM pg_catalog.pg_proc s, pg_catalog.pg_proc b
+        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') ~ 'dbops\.fn_ruolo_del_migratore\(\s*session_user'
+        AND regexp_replace(b.prosrc, '--[^\n]*', '', 'g') !~ 'current_user'
+        AND regexp_replace(r.prosrc, '--[^\n]*', '', 'g') ~ 'pg_roles'
+        AND regexp_replace(r.prosrc, '--[^\n]*', '', 'g') !~ 'current_user'
+       FROM pg_catalog.pg_proc s, pg_catalog.pg_proc b, pg_catalog.pg_proc r
       WHERE s.oid = 'dbops.fn_sync_functions_owner()'::regprocedure
-        AND b.oid = 'dbops.fn_sessione_del_migratore()'::regprocedure),
-    '12. la guardia chiede a fn_sessione_del_migratore, che legge session_user e non current_user — trappola 1');
+        AND b.oid = 'dbops.fn_sessione_del_migratore()'::regprocedure
+        AND r.oid = 'dbops.fn_ruolo_del_migratore(text)'::regprocedure),
+    '12. la guardia chiede a fn_sessione_del_migratore, che passa session_user a fn_ruolo_del_migratore, e nessuno legge current_user — trappola 1');
 
 SELECT hasnt_function('dbops', 'fn_sync_functions_owner_boot',
     '13. la copia di servizio del giro 20260926-11 non è rimasta');

@@ -1,5 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- ⚠️ rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive, Q21): il
+--   caso 15 (dalla porta del lock la natura si scrive) e' uscito in
+--   test-righe-natura-vendita-legacy-v1, che gira come owner: dal 20261117-07
+--   la porta si apre solo alla sessione del migratore.
 -- ⚠️ rev 2026-10-19 (brief-db-grammatica-unica-documenti, lotto 2b, 20261019-87 … -99):
 --   la natura merce ha destinazione ORDINE_VENDITA, il codice della sorgente (era ORDINE).
 -- pgTAP test per Zero ERP
@@ -11,7 +15,7 @@
 -- Brief: brief-db-articoli-ammessi-per-documento (§8.6 A-4, §9.2)
 -- ChangeSet: 20261013-07 -> -14
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 14):
 --  Struttura
 --   1) ordini_righe.natura_vendita_id NOT NULL
 --   2) ddt_righe.natura_vendita_id NOT NULL
@@ -33,9 +37,6 @@
 --  Bolla (modo CHIAMANTE)
 --  13) riga scritta a mano senza natura: quella dell'articolo
 --  14) scriverla a mano: E_RIGA_NATURA_VENDITA_IMMUTABILE (lock di colonna)
---  Porta di manutenzione
---  15) dalla porta del lock (allow_lock_columns_override) la natura si scrive:
---      il BB non la rimette a OLD (20261013-14)
 --
 -- ⚠️ I test 5, 11 e 14 provano il lock di colonna, che e' un trigger GENERATO
 --   da dbops.automation_lock_columns: in CI lo crea ci_apply, su dbdev il giro
@@ -52,7 +53,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(14);
 
 -- ============================================================
 -- Fixture
@@ -230,36 +231,6 @@ SELECT throws_like(
            (SELECT servizio FROM _nat), (SELECT id FROM _dr_man)),
     '%natura di vendita della riga non%',
     '14) bolla: scriverla a mano e'' rifiutato (E_RIGA_NATURA_VENDITA_IMMUTABILE)');
-
--- ============================================================
--- Porta di manutenzione (15)
--- ============================================================
--- ⭐ La regola «non si scrive a mano» sta SOLO nel lock di colonna, con la sua
---   porta (zeroerp.allow_lock_columns_override). Il -08 la richiudeva in
---   silenzio rimettendo OLD a parita' di articolo; tolto dal 20261013-14.
---   La porta serve: la riga di preventivo a natura NULL (pregresso, colonna
---   nullable) si costruisce solo da qui (test-vw-preventivi-smistamento-v1).
---   Preventivo nuovo, in bozza: quello di sopra e' gia' ACCETTATO.
-CREATE TEMP TABLE _prev_porta AS
-SELECT * FROM dbops.fn_pgtap_crea_preventivo('pgTAP natura porta');
-
-CREATE TEMP TABLE _pr_porta AS
-WITH ins AS (
-    INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, iva_id,
-                                          prezzo_unitario, qta_operativa)
-    SELECT (SELECT preventivo_id FROM _prev_porta), (SELECT s FROM _art), (SELECT id FROM _iva),
-           10, 1
-    RETURNING id
-)
-SELECT * FROM ins;
-
-SET LOCAL zeroerp.allow_lock_columns_override = 'on';
-UPDATE vendite.preventivi_righe SET natura_vendita_id = NULL WHERE id = (SELECT id FROM _pr_porta);
-SET LOCAL zeroerp.allow_lock_columns_override = 'off';
-
-SELECT is((SELECT natura_vendita_id FROM vendite.preventivi_righe WHERE id = (SELECT id FROM _pr_porta)),
-          NULL::bigint,
-    '15) preventivo: dalla porta di manutenzione del lock la natura si scrive (il BB non la rimette a OLD)');
 
 SELECT * FROM finish();
 ROLLBACK;

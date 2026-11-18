@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Tabella `config.email_template`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > Vedi anche
 >
 > Approfondimento tabelle:
@@ -61,6 +63,23 @@ Il rendering sostituisce `{{nome}}` con il valore passato dal chiamante. Le vari
 | `RESET_PASSWORD`           | 2    | nome, azienda, link, scadenza_ore                       |
 | `CAMBIO_PASSWORD_CONFERMA` | 1    | nome, azienda, data_cambio                              |
 | `NOTIFICA_GENERICA`        | 1    | oggetto_custom, corpo_custom                            |
+
+---
+
+### ⭐ I testi del seed restano dell'azienda
+
+La tabella è di **primo impianto**, per colonna
+([dbops.automazione_seed_primo_impianto](/dbzero/dbops/tabelle/automazione_seed_primo_impianto)).
+Sulle righe del seed:
+
+* `codice`, reparto, tipo di prestazione, lingua e `variabili_disponibili` sono del software: li
+  aggiorna il CSV, e l'azienda non li cambia (`E_SEED_COLONNA_DEL_SOFTWARE`, con la colonna in
+  `campo`). Il codice li cerca per nome, e le variabili sono quelle che il codice sa riempire;
+* oggetto, corpi e `attivo` sono dell'azienda. Finché non li tocca, un rilascio li migliora; dopo
+  che li ha modificati, il CSV non li riscrive più;
+* una riga del seed non si cancella: `E_SEED_RIGA_NON_CANCELLABILE`. Si spegne (`attivo = false`).
+
+I template che l'azienda crea, per esempio per un reparto, sono suoi in tutte le colonne.
 
 ---
 
