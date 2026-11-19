@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1249, di cui 132 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1252, di cui 132 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1763,6 +1763,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SCRITTURA_IN_LETTURA": "TECNICO",
     "E_SEARCH_NOT_FOUND": "NON_TROVATO",
     "E_SEARCH_VALIDATION": "DATO_ERRATO",
+    # script.trgfn_seed_primo_impianto, Tid 2026-11-17/18 (brief-db-seed-primo-impianto-non-si-riscrive, D8, Q19): sulla riga nata dal seed di una tabella iscritta per colonna, l'installazione non cambia una colonna del software (la chiave con cui il codice cerca la riga, le regole che il codice legge; per config.email_template codice, reparto, tipo di prestazione, lingua, variabili disponibili). Il contesto porta campo = la colonna, per il form. CONFLITTO_STATO come i lucchetti di colonna; nessun segnaposto.
+    "E_SEED_COLONNA_DEL_SOFTWARE": "CONFLITTO_STATO",
+    # Solleva SOLO il runner dbops.fn_run_automations_seed_primo_impianto: un trigger del seed di primo impianto su una tabella che il registro non nomina, una tabella iscritta senza user_insert, o un guasto nella creazione del trigger. Gemello di E_DELETE_BLOCK; nasce in un migrate o nel giro notturno, mai da una richiesta web (brief-db-seed-primo-impianto-non-si-riscrive).
+    "E_SEED_PRIMO_IMPIANTO": "TECNICO",
+    # script.trgfn_seed_primo_impianto, Tid 2026-11-17/18 (brief-db-seed-primo-impianto-non-si-riscrive, regola 7): una riga nata dal seed su una tabella del seed di primo impianto (dbops.automazione_seed_primo_impianto) non si cancella, si spegne (attivo = false). Cancellata, il mirror la reinserirebbe al primo ritocco del CSV, coi valori di esempio. Le righe create dall'installazione si cancellano come prima. CONFLITTO_STATO come gli altri divieti con un gesto alternativo; nessun segnaposto.
+    "E_SEED_RIGA_NON_CANCELLABILE": "CONFLITTO_STATO",
     # <- SEQUENZA_NON_CONFIGURATA  (vivo)
     "E_SEQUENZA_NON_CONFIGURATA": "TECNICO",
     "E_SESSIONE_NOT_FOUND": "NON_TROVATO",
