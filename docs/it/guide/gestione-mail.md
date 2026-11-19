@@ -439,10 +439,10 @@ pratiche ZeroErp via API bidirezionale.
 | Metodo | Endpoint | Scopo |
 | --- | --- | --- |
 | GET/POST | `/api/v1/amm-software/email-accounts/` | Lista e crea account SMTP |
-| GET/PATCH/DELETE | `/api/v1/amm-software/email-accounts/{id}/` | Dettaglio, modifica, elimina |
+| GET/PATCH | `/api/v1/amm-software/email-accounts/{id}/` | Dettaglio e modifica (si spegne con `attivo`: non si elimina) |
 | POST | `/api/v1/amm-software/email-accounts/{id}/test/` | Test connessione SMTP |
 | GET/POST | `/api/v1/amm-software/email-templates/` | Lista e crea template |
-| GET/PATCH/DELETE | `/api/v1/amm-software/email-templates/{id}/` | Dettaglio, modifica, elimina |
+| GET/PATCH | `/api/v1/amm-software/email-templates/{id}/` | Dettaglio e modifica (si spegne con `attivo`: non si elimina) |
 | POST | `/api/v1/amm-software/email-templates/{id}/preview/` | Preview template renderizzato |
 | GET | `/api/v1/amm-software/email-log/` | Consultazione log (admin vede tutto) |
 | GET | `/api/v1/amm-software/email-log/{id}/` | Dettaglio email inviata |
