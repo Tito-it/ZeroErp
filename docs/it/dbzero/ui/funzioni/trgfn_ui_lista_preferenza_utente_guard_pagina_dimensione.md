@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione.md" %}
 # ⚙️ Funzione `trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione`
 
 ```sql

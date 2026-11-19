@@ -1,79 +1,193 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione)
-> [ui.lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna)
-> [ui.lista_colonna_permesso](/dbzero/ui/tabelle/lista_colonna_permesso)
+> Approfondimento tabelle:
 >
-> Funzione:
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la lista a cui la colonna appartiene
+> * [ui.lista_colonna_permesso](/dbzero/ui/tabelle/lista_colonna_permesso) — chi vede la colonna e chi la esporta
+> * [ui.lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna) — la colonna dentro un preset
 >
-> [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
-
-> **Ultimo aggiornamento**: 12 novembre 2026
-
-La tabella **`ui.lista_colonna`** è il **catalogo delle colonne disponibili** per ciascuna lista configurabile. Definisce tutto ciò che una lista può mostrare: tipo dato, comportamento (filtrabile, ordinabile, esportabile), raggruppamento per la modale di personalizzazione e flag di sensibilità per il controllo accesso.
+> Approfondimento viste:
+>
+> * [vendite.vw_documento_lineage_sintesi_colonne](/dbzero/vendite/views/vw_documento_lineage_sintesi_colonne) — le colonne della lineage, ammesse come sorgente su ogni lista
+>
+> Approfondimento funzioni:
+>
+> * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista della lista
+> * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello con cui un utente vede ogni colonna
+> * [ui.fn_lista_colonne_ricerca_full](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full) — le colonne della ricerca libera
+> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — le colonne nella configurazione della schermata
+>
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — colonne, priorità e ritiro dinamico
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Catalogo completo** delle colonne disponibili per ogni lista. Il frontend usa questa tabella per popolare la modale di personalizzazione e per applicare la formattazione corretta (`tipo_dato`, `formato`).
-* **Controllo comportamento**: i flag `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full` determinano quali operazioni sono ammesse su ciascuna colonna, indipendentemente dalla preferenza utente.
-* **Modello di accesso a colonna**: il flag `sensibile` inverte il modello permessi per quella colonna. Quando `FALSE` (default) si usa un modello deny-list (accesso totale salvo restrizioni esplicite); quando `TRUE` si usa allow-list (bloccata di default salvo grant esplicito in `lista_colonna_permesso`).
-* **Validazione sorgente**: `campo_sorgente` è validato dal trigger guard `trgfn_ui_lista_colonna_a10_valida_campo_sorgente` contro `pg_catalog.pg_attribute`, prevenendo errori runtime alla prima apertura della lista.
+`ui.lista_colonna` è il catalogo delle colonne che ogni lista configurabile può mostrare: per
+ciascuna l'etichetta, il campo della vista da cui legge, il tipo di dato e il formato, la posizione
+e la larghezza di partenza, e che cosa se ne può fare (filtrare, ordinare, esportare, cercarci,
+nasconderla).
 
 ---
 
-### Comportamento per `tipo_colonna`
+### Il codice della colonna è la chiave delle preferenze
 
-| Valore | Comportamento |
-|--------|---------------|
-| `identificatore` | Sempre visibile, non nascondibile, fissata di default. Tipicamente la colonna ID o nome dell'entità. |
-| `informazione` | Personalizzabile liberamente dall'operatore (visibile/nascosta, ordine, larghezza). |
-| `azione` | Pulsanti/icone UI. Non esportabile (`campo_sorgente` = NULL), non nascondibile. |
+Una colonna si identifica col suo `codice`, unico nella lista (`uq_ui_lista_colonna_lista_codice`).
+Le preferenze degli utenti e la composizione dei preset la ricordano per codice, nel JSONB della
+configurazione: cambiare il codice di una colonna la fa sparire dalle preferenze salvate, che la
+ritrovano come colonna nuova.
 
 ---
 
-### Colonne chiave
+### Tre tipi di colonna
 
-| Colonna | Scopo |
-|---------|-------|
-| `codice` | Chiave stabile usata nel JSONB delle preferenze (non l'`id`). Cambiarlo invalida tutte le preferenze salvate. |
-| `campo_sorgente` | Nome colonna nella view PostgreSQL. NULL per `tipo_colonna='azione'`. Validato da trigger. |
-| `ordinabile` | Il flag e la whitelist di ordinamento della lista sono **una modifica sola in due file**: si cambiano insieme, e si verifica con `scripts/gen_seed_lista.py --verifica-ordinamento <lista>`. Per le liste ordinate da una funzione del database il controllo legge la whitelist dalla doc auto-generata della funzione, e resta rosso finché la doc non è rigenerata. Nella whitelist un letterale che non è un nome di colonna si scrive in maiuscolo, o il controllo lo prende per una colonna. |
-| `attivo` | Una colonna nuova con `campo_sorgente` valorizzato, su una lista senza `vista_sql`, si semina **spenta**: finché il repository del backend non proietta quella chiave la cella sarebbe vuota, e il test della proiezione (`test_lista_proiezione_campo_sorgente`) rosso. La accende il backend nello stesso commit in cui aggiunge la chiave. Le colonne senza `campo_sorgente` (azioni, calcolate dal frontend) nascono attive. |
-| `gruppo` / `gruppo_ordine` | Raggruppamento nella modale di personalizzazione (es. "Dati anagrafici", "Dati fiscali"). |
-| `sensibile` | `TRUE`: deny-list invertita → blocco default. `FALSE`: accesso pieno salvo restrizioni. |
-| `formato` | Hint di formattazione per il frontend (es. `currency_eur`, `date_short`, `percent_2`, `yesno`). |
-| `larghezza_default` | Larghezza suggerita in pixel. Fa anche da **contributo al packing a somma** del ritiro dinamico (vedi `priorita`). |
-| `priorita` | `SMALLINT NOT NULL DEFAULT 50`. Peso di permanenza per il **ritiro dinamico** delle colonne lato FE. |
+* `identificatore` — sempre visibile e fissata a sinistra: la ragione sociale, il numero del
+  documento.
+* `informazione` — l'operatore la mostra, la nasconde, la sposta e la allarga.
+* `azione` — pulsanti e icone. È sempre visibile e non si esporta: lo impone
+  `chk_ui_lista_colonna_azione_non_esportabile`.
+
+Visibilità e fissaggio di identificatori e azioni li applica la configurazione della schermata
+([fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)), qualunque cosa dicano
+preset e preferenze.
+
+---
+
+### Il campo sorgente esiste nella vista della lista
+
+`campo_sorgente` è il nome della colonna della vista da cui la cella legge. Quando la colonna si
+scrive, [valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
+lo cerca nella vista della lista, nel suo schema; è ammesso anche un nome della sintesi della
+lineage dei documenti, che il backend unisce alle righe della pagina. Il controllo salta per le
+colonne `azione`, per quelle senza sorgente e per le liste senza vista dichiarata.
+
+Una colonna senza sorgente (un'azione, una cella composta dal frontend) ha `campo_sorgente` NULL.
+
+---
 
 ### ⛔ L'assenza è `NULL`, mai la stringa vuota
 
-Su `campo_sorgente`, `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key` un valore
-che manca è `NULL`. Un `CHECK` per colonna (`chk_lista_colonna_<colonna>_non_vuoto/a`) rifiuta la
-stringa vuota, e anche quella di soli spazi. Chi legge scrive quindi `campo_sorgente IS NOT NULL`,
-senza tollerare anche `''`. Nel CSV del seed una cella senza valore porta il token `NULL`: una
-cella lasciata vuota, su una colonna testo, il caricatore la scrive come stringa vuota, che il
-vincolo rifiuta (linee-guida-sql §11.2).
+Su `campo_sorgente`, `etichetta_estesa`, `formato`, `gruppo` ed `etichetta_i18n_key` un valore che
+manca è `NULL`: un CHECK per colonna rifiuta la stringa vuota e quella di soli spazi. Chi legge
+scrive `campo_sorgente IS NOT NULL`, senza tollerare `''`. Nel CSV del seed una cella senza valore
+porta il token `NULL`: una cella lasciata vuota, su una colonna di testo, diventa la stringa vuota,
+che il vincolo rifiuta.
 
 ---
 
-### Ritiro dinamico delle colonne (`priorita`)
+### Che cosa si può fare con la colonna
 
-Quando lo spazio orizzontale non basta (tipicamente all'apertura della sidebar), il componente `<ListaConfigurabile>` **ritira** le colonne meno prioritarie in una riga di espansione invece di attivare la scrollbar — zero dati persi. La logica è un **packing a somma**: ogni colonna contribuisce con la sua `larghezza_default`; quando la somma supera la larghezza del contenitore si ritirano per prime le colonne a `priorita` più bassa, finché la somma rientra. Non c'è soglia per-colonna e non c'è compressione intermedia.
+* `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full` dicono che cosa la lista ammette
+  sulla colonna, qualunque sia la preferenza dell'utente. Valgono `true` i primi tre, `false` la
+  ricerca libera.
+* `sensibile` cambia il verso dei permessi: una colonna sensibile è nascosta a chi non ha un
+  permesso esplicito, le altre sono visibili a chi non ha una restrizione
+  ([lista_colonna_permesso](/dbzero/ui/tabelle/lista_colonna_permesso)).
+* `etichetta_i18n_key` è la chiave di traduzione dell'etichetta; senza, il frontend mostra
+  `etichetta`.
+* `gruppo` e `gruppo_ordine` raggruppano le colonne nel pannello di personalizzazione; `formato`
+  suggerisce al frontend la resa del valore.
 
-* **Più alto = resiste più a lungo.** Default `50` (mid-pack): le liste che non valorizzano `priorita` restano neutre e si ritirano da destra (vedi tiebreaker).
-* **Tiebreaker**: a parità di `priorita` il FE usa `ordine_default` (si ritira prima la colonna più a destra).
-* **Mai ritirate**: `tipo_colonna IN ('identificatore','azione')` e colonne `fissata` hanno priorità implicita infinita lato FE, **indipendente** dal valore stoccato.
-* **Attributo globale di catalogo**: `priorita` **non** è overridabile per preset né per preferenza utente. `fn_resolve_lista_config` la legge **fresca** da `ui.lista_colonna` ad ogni risoluzione, così un cambio amministrativo si propaga a tutti senza reset delle preferenze. È esposta per ogni colonna nell'output della funzione (contratto API).
+⭐ Il flag `ordinabile` e l'elenco delle colonne su cui il backend ammette l'ordinamento sono una
+modifica sola in due posti: si cambiano insieme, e `scripts/gen_seed_lista.py --verifica-ordinamento`
+dice se sono allineati.
 
 ---
 
-### Relazioni
+### Una colonna nuova nasce spenta finché il backend non la proietta
 
-| Tabella | Campo | Scopo |
-|---------|-------|-------|
-| `ui.lista_preset_colonna` | `colonna_id` | Composizione dei preset |
-| `ui.lista_colonna_permesso` | `colonna_id` | Permessi a livello colonna |
+Su una lista senza `vista_sql` le celle le riempie il repository del backend. Una colonna nuova con
+`campo_sorgente` su quella lista si semina spenta, e la accende il backend nello stesso commit in
+cui comincia a proiettare la chiave: accesa prima, la cella sarebbe vuota. Le colonne senza sorgente
+nascono accese.
+
+Una colonna accesa chiede una lista accesa: lo verifica, a fine transazione, la regola ATTIVO verso
+`lista_definizione` (`E_ATTIVO_PADRE_NON_ATTIVO`).
+
+---
+
+### Il ritiro dinamico segue la priorità
+
+Quando la larghezza non basta, il componente di lista del frontend ritira le colonne in una riga di
+espansione invece di far comparire la barra di scorrimento. Ogni colonna pesa la sua
+`larghezza_default`; quando la somma supera lo spazio si ritirano prima le colonne a `priorita` più
+bassa, a parità quella più a destra (`ordine_default`).
+
+* Più alto vuol dire che resiste più a lungo; il default è 50, e `priorita` non è negativa
+  (`chk_ui_lista_colonna_priorita_non_negativa`).
+* Identificatori, azioni e colonne fissate non si ritirano mai, qualunque sia il valore.
+* La priorità è un attributo del catalogo: preset e preferenze non la cambiano, e la configurazione
+  della schermata la rilegge dalla colonna a ogni apertura.
+
+---
+
+### Cancellare una colonna
+
+I permessi della colonna si cancellano con lei (FK con cascata). La presenza in un preset invece la
+blocca: la FK di `lista_preset_colonna` verso la colonna è senza azione, e la cancellazione arriva
+come violazione di vincolo. Le preferenze degli utenti non hanno FK: il backend conta da sé quelle
+che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in tutti e due i casi,
+è spegnere la colonna.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Una colonna `azione` può avere un campo sorgente, e nessuno lo verifica.** Il CHECK chiede solo
+  che l'azione non sia esportabile; il controllo del campo sorgente salta per le azioni. Un'azione
+  con un campo inesistente e `ricercabile_full` acceso entra nelle colonne della ricerca libera, e la
+  ricerca interroga un campo che la vista non ha.
+* **La sintesi della lineage vale per ogni lista.** Un nome della lineage dei documenti passa il
+  controllo su qualunque lista, anche su una che non legge documenti, e il catalogo non sa dire
+  quali colonne stanno nella vista e quali no: chi usa `campo_sorgente` per filtrare, ordinare o
+  cercare interroga la vista anche per quelle. Il guard di `ui` dipende da una vista di `vendite`.
+* **Il codice si cambia.** Nessun lucchetto ferma il `codice` di una colonna, che è la chiave delle
+  preferenze e dei preset; il backend lo ammette fra i campi modificabili.
+* **Le colonne non si riverificano quando la lista cambia vista**, né quando la vista perde una
+  colonna: il controllo scatta solo quando si scrive la colonna. Le vede il presidio pgTAP del
+  catalogo, sulle righe del seed.
+* **Su una lista spenta con la vista non ancora creata, una colonna con sorgente non entra**: il
+  controllo del campo non salta sulle liste spente, a differenza di quello della vista.
+
+---
+
+### Codici errore
+
+* `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo sorgente non è nella vista della lista né nella
+  sintesi della lineage.
+* `E_ATTIVO_PADRE_NON_ATTIVO` — una colonna accesa su una lista spenta, a fine transazione.
+* L'unicità del codice nella lista, i CHECK dei testi non vuoti, dell'azione non esportabile e della
+  priorità, e le FK arrivano come violazione di vincolo, e il backend le traduce per nome.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql` — ogni campo sorgente del catalogo
+  sta nella sua vista o nella sintesi della lineage; un campo che esiste solo nell'omonima di un
+  altro schema è rifiutato.
+* `db/pgtap/ui/test-lista-colonna-testi-non-vuoti-v1.sql` — i cinque CHECK della stringa vuota.
+* `db/pgtap/ui/test-fn-lista-colonne-ricerca-full-v1.sql` — attivo, `ricercabile_full`, `sensibile`
+  e campo sorgente nella ricerca libera.
+* `db/pgtap/vendite/test-colonne-lineage-liste-v1.sql` — le colonne della lineage sulle liste dei
+  documenti.
+
+---
+
+### Note di migrazione
+
+* 2026-05-06 — nasce la tabella.
+* 2026-09-27 — il campo sorgente si cerca nella vista del suo schema, non più per solo nome.
+* 2026-10-11 — è ammesso come sorgente anche un nome della sintesi della lineage, uscito dalle viste
+  di lista.
+* 2026-11-12 — l'assenza di un testo è solo `NULL`: i cinque CHECK della stringa vuota.
+
+---
+
+{% include-markdown "signature-core.md" %}

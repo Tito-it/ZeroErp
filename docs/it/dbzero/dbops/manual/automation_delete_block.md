@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_delete_block`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 19 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -28,9 +28,14 @@ Il registro delle tabelle su cui una cancellazione è **vietata**, salvo che la 
 migratore abbia acceso un interruttore (`guc_key`). Il giro delle automazioni legge il registro e monta su ogni
 tabella il trigger che rifiuta la `DELETE` con `E_DELETE_NOT_ALLOWED`.
 
-Il seed lo usa per le tabelle dei **ruoli** dei soggetti (clienti, fornitori, gestori, vettori…):
-un ruolo non si cancella, si chiude. L'interruttore, per tutte, è
-`zeroerp.maintenance_ruoli_delete`, ed è una porta di manutenzione, non una strada del dominio.
+Il seed lo usa per due famiglie, ognuna con la sua porta di manutenzione (non una strada del
+dominio):
+
+* le tabelle dei **ruoli** dei soggetti (clienti, fornitori, gestori, vettori…): un ruolo non si
+  cancella, si chiude. Porta `zeroerp.maintenance_ruoli_delete`;
+* gli **account e i template di posta** (`config.email_account`, `config.email_template`): si
+  spengono con `attivo`, anche dopo aver spedito. Porta `zeroerp.maintenance_email_delete`; il
+  migratore che ritira un template di seed apre anche quella del seed di primo impianto.
 
 ---
 
@@ -107,6 +112,8 @@ parlare al posto suo.
   seed era in quel caso.
 * 2026-11-17 — l'interruttore apre solo alla sessione del migratore, e ogni riga cancellata resta
   nel diario delle porte (`brief-db-seed-primo-impianto-non-si-riscrive`).
+* 2026-11-19 — righe 9 e 10, account e template di posta: solo disattivazione
+  (`brief-db-seed-primo-impianto-non-si-riscrive` §16.14, Q24).
 
 ---
 

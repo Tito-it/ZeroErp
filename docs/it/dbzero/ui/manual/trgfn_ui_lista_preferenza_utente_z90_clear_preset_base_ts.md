@@ -1,42 +1,76 @@
-# trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts
+## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts`
+
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente) — la tabella su cui è montata
+> * [ui.lista_preset](/dbzero/ui/tabelle/lista_preset) — il preset di base e la sua data del contenuto
+>
+> Approfondimento funzioni:
+>
+> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — calcola il flag «preset aggiornato» da snapshot e «ignora»
+> * [ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts) — la gemella delle dashboard
+
+---
 
 ### 🎯 Scopo Principale
 
-Mantiene la coerenza tra `preset_base_id` e `preset_base_contenuto_aggiornato_il` nella tabella `ui.lista_preferenza_utente`. Quando `preset_base_id` diventa NULL (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto), azzera automaticamente anche `preset_base_contenuto_aggiornato_il`.
+`ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts` azzera lo snapshot della data del
+preset (`preset_base_contenuto_aggiornato_il`) e l'«ignora» (`preset_aggiornato_ignored_at`) di una
+preferenza di lista quando il suo preset di base cambia. Le due date si riferivano al preset di
+prima: con un preset diverso non dicono più niente.
 
-## Schema
+---
 
-`ui`
+### Quando scatta
 
-## Firma
+È un trigger `BEFORE UPDATE OF preset_base_id`, riga per riga, e agisce quando il valore nuovo è
+**diverso** dal vecchio, in qualunque direzione: da un preset a nessuno, da nessuno a un preset, da
+un preset a un altro. Un UPDATE che riscrive lo stesso preset non tocca niente; un INSERT non lo
+attraversa.
 
-```sql
-ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts() RETURNS trigger
-```
+Copre anche la cancellazione del preset: l'`ON DELETE SET NULL` della FK è un UPDATE della colonna,
+e il trigger lo vede. Senza, la preferenza resterebbe con la data di un preset che non c'è più.
 
-## Trigger associato
+Non solleva errori: è una normalizzazione finale.
 
-```sql
-TRIGGER trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd
-  BEFORE UPDATE OF preset_base_id
-  ON ui.lista_preferenza_utente
-  FOR EACH ROW
-```
+---
 
-## Logica
+### ⚠️ Che cosa oggi non copre
 
-| Condizione | Azione |
-|------------|--------|
-| `NEW.preset_base_id IS NULL AND OLD.preset_base_id IS NOT NULL` | `NEW.preset_base_contenuto_aggiornato_il := NULL` |
-| Qualsiasi altra condizione | `RETURN NEW` senza modifiche |
+* **Azzera anche lo snapshot nuovo.** Il trigger non distingue fra «la base è cambiata e nessuno
+  ha scritto lo snapshot» e «la base è cambiata e lo snapshot nuovo arriva nella stessa
+  istruzione». Il salvataggio della preferenza fa la seconda cosa (base e data nuove insieme): il
+  trigger cancella la data appena scritta, e fino al salvataggio successivo il flag «preset
+  aggiornato» non si accende più.
+* **Il preset spento.** Spegnere il preset non cambia `preset_base_id`: il trigger non scatta, e
+  snapshot e «ignora» restano agganciati a un preset che la cascata non usa più.
 
-## Perché è necessario
+---
 
-`preset_base_contenuto_aggiornato_il` è uno snapshot di `lista_preset.contenuto_aggiornato_il` al momento del salvataggio della preferenza. Il frontend confronta questo valore con `lista_preset.contenuto_aggiornato_il` corrente per mostrare il badge "preset aggiornato — vuoi vedere le novità?".
+### Codici errore
 
-Se il preset viene eliminato, la FK `ON DELETE SET NULL` azzera `preset_base_id` ma lascerebbe `preset_base_contenuto_aggiornato_il` con un timestamp relativo a un preset inesistente. Il trigger garantisce che il frontend non mostri mai il badge "preset aggiornato" per un preset eliminato: con `preset_base_id IS NULL`, il confronto non avviene.
+Nessuno.
 
-## Note
+---
 
-- Si attiva su `UPDATE OF preset_base_id`: copertura sia per `ON DELETE SET NULL` (che genera un `UPDATE` interno di PostgreSQL) che per UPDATE diretti.
-- Fase `_z90_`: non è un guard (non solleva errori), è un'azione finale di normalizzazione.
+### Test
+
+* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — la base portata a nessuno:
+  snapshot e «ignora» azzerati, flag spento. Non sono costruiti il passaggio a un altro preset, la
+  cancellazione del preset e il salvataggio che scrive base e snapshot insieme.
+
+---
+
+### Note di migrazione
+
+* 2026-05-11 — nasce col flag «preset aggiornato».
+* 2026-11-08 — lo snapshot si rinomina `preset_base_contenuto_aggiornato_il`, e confronta la data
+  del contenuto del preset invece dell'audit.
+
+---
+
+{% include-markdown "signature-core.md" %}

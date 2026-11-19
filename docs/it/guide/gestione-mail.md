@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 19 novembre 2026
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -106,9 +106,12 @@ Per inviare email realmente, l'amministratore deve configurare un account SMTP v
 
 ⭐ **La configurazione resta quella che hai scritto.** L'account `SISTEMA` il programma
 lo crea una volta sola, all'installazione, e poi non lo tocca più: un aggiornamento del
-programma non riporta i valori di esempio, nemmeno sulla password. L'account `SISTEMA`
-non si elimina (è il ripiego di tutti gli invii): se non serve, si disattiva. Gli account
-per reparto si creano e si eliminano liberamente.
+programma non riporta i valori di esempio, nemmeno sulla password.
+
+⭐ **Un account non si elimina: si disattiva.** Vale per `SISTEMA` (il ripiego di tutti
+gli invii) e per gli account dei reparti, anche dopo che hanno spedito: le mail inviate
+restano nello storico col loro account, e un account spento non viene più scelto per
+gli invii nuovi. Gli account per reparto si creano liberamente.
 
 Da **Amm. Software → Account Email** (solo ADMIN):
 
@@ -240,7 +243,8 @@ corpo, il template è dell'azienda: gli aggiornamenti successivi non lo riscrivo
 Sui template di sistema non si cambiano il codice, la lingua, il reparto, il tipo di
 pratica e le variabili disponibili: sono ciò con cui il programma ritrova il template di
 base. Per un testo diverso per un reparto o per una lingua si crea un override (qui
-sotto). I template di sistema non si eliminano, si disattivano; gli override si eliminano.
+sotto). Un template non si elimina, né di sistema né override: si disattiva, anche dopo
+aver spedito, e un template spento non viene più scelto.
 
 Da **Amm. Software → Template Email** (solo ADMIN):
 

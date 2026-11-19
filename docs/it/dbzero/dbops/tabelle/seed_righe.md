@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/seed_righe.md" %}
 # 📚 Tabella `seed_righe`
 
 > 📝 **Descrizione**

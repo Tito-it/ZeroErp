@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/trgfn_preset_riga_tocca_preset.md" %}
 # ⚙️ Funzione `trgfn_preset_riga_tocca_preset`
 
 ```sql

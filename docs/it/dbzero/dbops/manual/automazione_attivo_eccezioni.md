@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 16 novembre 2026
+> **Ultimo aggiornamento**: 19 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -60,6 +60,8 @@ legittimo il legame avrebbe impedito.
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | La conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai. L'unità si spegne e si riaccende con le sue conversioni intatte |
 | `catalogo.note_articoli.target_id`, `catalogo.note_articoli_componenti.target_id` | La nota di un'anagrafica **annota** l'oggetto, non lo tiene in vita. La partizione non ha `attivo`: col block ogni nota conterebbe come figlia attiva e l'articolo non si spegnerebbe; col require una nota su un articolo spento non si scriverebbe. L'articolo si spegne e si riaccende con le sue note intatte. Il legame di distinta non si spegne (si chiude con `valido_al` e resta attivo), e un legame chiuso si annota ancora. Le note vanno via col padre solo se lo si cancella (`ON DELETE CASCADE`) |
 | `documenti.documenti_generati.template_documento_id`, `.template_versione_id`, `.sorgente_tipo_id`, `.emittente_fiscale_id` | La stampa è **storia**: la fotografia del modello, della versione, della sorgente e dell'azienda del momento dell'emissione, e non si cancella. Col block, un modello, una versione o un'azienda che hanno stampato non si spegnerebbero più; col require, ogni modifica di una stampa chiederebbe padri ancora accesi. Che cosa può stampare oggi lo decide la risoluzione del modello prima del render |
+| `config.email_log.email_account_id` e `.email_template_id` | La mail spedita è **storia**: la fotografia dell'account e del template con cui è partita, e resta. Col block, un account o un template che hanno spedito non si spegnerebbero più, e siccome non si cancellano non ci sarebbe nessun gesto per toglierli dall'uso. Con quale account e template si spedisce lo decidono i risolutori, che leggono solo le righe accese |
+| `config.email_outbox.email_account_id` e `.email_template_id` | La bozza cita l'account e il template con cui è stata composta: è la **provenienza** del testo, non un legame vivo. Col block conterebbe anche la bozza annullata o spedita. L'account di invio si risolve di nuovo alla conferma |
 | `documenti.template_documenti_versioni.derivata_da_versione_id` | L'origine di una copia è la sua **provenienza**, non un padre vivo: una versione dello standard da cui deriva una copia si ritira lo stesso. Che cosa fare di una copia il cui standard non stampa lo dice la vista dello scarto |
 
 ---
@@ -106,6 +108,9 @@ Una riga nuova ha effetto al giro successivo del motore: è lì che i trigger es
 * 2026-11-16 — escono le tre righe verso i tipi di documento e di file (la coda di stampa delle
   fatture, la stampa, il suo file): quei vocabolari non hanno più `attivo`, e la coppia ATTIVO non
   nasce.
+* 2026-11-19 — quattro righe, lo storico della posta: `email_log` ed `email_outbox` verso
+  account e template. Account e template non si cancellano più: si spengono, anche dopo aver
+  spedito (`brief-db-seed-primo-impianto-non-si-riscrive` §16.14, Q24).
 
 ---
 

@@ -210,10 +210,14 @@ SELECT isnt(
 
 -- ============================================================
 -- 9) Livello 2 ha priorita' su livello 3
---    Cancello livello 1 e chiamo con reparto + tipo:
+--    Spengo livello 1 e chiamo con reparto + tipo:
 --    deve trovare livello 2, non livello 3
+--    ⚠️ Spengo, non cancello: dal 2026-11-19 un template non si cancella
+--    (dbops.automation_delete_block, brief-db-seed-primo-impianto-non-si-riscrive
+--    §16.14). Il risolutore legge solo le righe accese.
 -- ============================================================
-DELETE FROM config.email_template
+UPDATE config.email_template
+   SET attivo = false
  WHERE codice = '_PGTAP_TEST_TPL'
    AND unita_organizzativa_id = (SELECT uo_id FROM tmp_tpl_ctx)
    AND tipo_prestazione_id = (SELECT tp_id FROM tmp_tpl_ctx);

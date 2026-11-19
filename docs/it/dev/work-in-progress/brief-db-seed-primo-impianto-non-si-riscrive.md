@@ -1,11 +1,13 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-18 (giro 1 applicato su dbdev, `-01` … `-22`, pgTAP verdi)
+## ⏭️ Chi riparte — aggiornato al 2026-11-20 (giro 2 applicato, pgTAP verdi, doc rigenerata; da committare)
 
-**Riparte: Tid**, con la doc auto-generata da rigenerare una volta: le pagine `manual/` nuove (§16.12) entrano nelle
-pagine generate solo alla rigenerazione. Poi il **team BE/FE**, con le ricadute R1-R3 (§15.12). Il giro 1 è applicato,
-provato e committato (2026-11-18). Poi il team BE/FE, con le ricadute
-R1-R3 (§15.12). Il giro 1, `20261117-01` … `-22`, è applicato su dbdev e i pgTAP sono verdi (Tid, 2026-11-18). Lo stato del giro è al §16.12. Le verifiche sono al §16.8, il censimento
+**Riparte: Tid**, col commit del giro 2. Il giro 2 (`20261117-23` … `-28`) è applicato su dbdev, i pgTAP sono verdi
+(Tid, 2026-11-20) e la doc auto-generata è rigenerata (2026-11-20, con le pagine `manual/` del giro 1 e del giro 2).
+Poi il **team BE/FE**, con R2 subito e il resto ora sbloccato: la richiesta, con l'elenco chiuso dei file, è al
+**§16.14**, che risponde alla domanda del BE «come legge l'app il segno nata dal seed», applica la Q24 (account e
+template si spengono, non si cancellano) e sostituisce R1 e R3 del §15.12.
+Il giro 1, `20261117-01` … `-22`, è applicato su dbdev e i pgTAP sono verdi (Tid, 2026-11-18). Lo stato del giro è al §16.12. Le verifiche sono al §16.8, il censimento
 delle porte al §16.9, Q19 e Q20 decise da Tid il 2026-11-18 (§16.10). Per costruire si leggono **il §15 e il §16**:
 il §16 corregge il §15 sul segno «nata dal seed» (decisione A, revoca di D5), e dove i due dicono altro vale il §16.
 I §4-§14 sono la storia di come ci si è arrivati: le prime stesure, l'analisi critica e la verifica. Restano per non
@@ -22,11 +24,13 @@ ripercorrere le stesse strade.
 | 5 | ✅ sessione DB | Il giro 1: changeSet `20261117-01` … `-21`, pgTAP, codici, doc; applicato su dbdev il 2026-11-18 | §16.12 | 4 |
 | 5-bis | ✅ Tid e sessione DB | Q21 e Q22 decise; il `20261117-22`, il file owner dello stato legacy e i tre pgTAP alleggeriti | §16.13 | 5 |
 | 6 | ✅ Tid e sessione DB | L'apply, i pgTAP verdi, la baseline B-7, la doc auto-generata, la riga `SISTEMA`, il commit (2026-11-18) | §16.12 | 5 |
-| 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ⏳ la doc auto-generata rigenerata perché le includa | §16.12 | 6 |
-| 7 | team BE/FE | Le ricadute R1-R3 (R4 ritirata dalla Q17) | §15.12 | 6 |
-| 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6, 7 |
+| 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ✅ la doc auto-generata rigenerata (2026-11-20) | §16.12 | 6 |
+| 6-ter | ✅ sessione DB e Tid | La domanda del BE e la Q24: le viste del segno, solo disattivazione (giro 2, `20261117-23` … `-28`), pgTAP, pagine `manual/`, guida, provato sullo scratch; ✅ Q23 e Q24 decise (2026-11-19) | §16.14 | 6 |
+| 6-quater | Tid e sessione DB | ✅ L'apply del giro 2 e i pgTAP verdi (Tid), ✅ la doc auto-generata (2026-11-20); ⏳ il commit | §16.14 | 6-ter |
+| 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
+| 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quater, 7 |
 
-**Decisioni aperte di Tid:** nessuna nel giro 1. Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
+**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** il giro 2 (§16.14: sei changeSet, le righe di cinque CSV, un pgTAP nuovo e quattro adeguati, quattro pagine `manual/` nuove e quattro aggiornate, la guida `gestione-mail.md`) e questo brief. **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -866,6 +870,11 @@ Q8 (il titolo).
 
 ### 15.12 Le ricadute BE/FE (dopo l'apply)
 
+> ⚠️ **R1 e R3 superate dal §16.14 (2026-11-19).** R3 nominava due campi: dopo la Q19 le colonne del software dei
+> template sono cinque, e l'elenco non sta nel backend, lo dà la vista del segno. R1 cade con la Q24: account e
+> template non si cancellano più, nemmeno quelli dell'azienda, e la cancellazione esce dal backend. La richiesta da
+> passare al team, con l'elenco chiuso dei file, è al §16.14.
+
 Sostituiscono il §11.
 
 | # | Che cosa | Dove |
@@ -1249,3 +1258,103 @@ presenti, 1 di `email_account` e 9 di `email_template` (`segnata_da = ISCRIZIONE
 | --- | --- | --- |
 | Q21 | Tre pgTAP costruiscono una riga di documento con la natura di vendita `NULL`, lo stato delle righe legacy. L'app non lo raggiunge per nessuna strada (l'`INSERT` la eredita dall'articolo, la colonna è bloccata), e con la porta stretta lo costruisce solo il migratore. Come si prova? | **Si separa**: i casi della riga legacy escono dai tre file e vanno in un file `pgtap-runner: owner` per dominio, col motivo «lo stato si costruisce solo dalla manutenzione»; il resto dei tre file resta come app e continua a esercitare la RLS. Scartato: tutto il file `owner` (si perde la RLS anche sui casi che l'app raggiunge); un helper DEFINER che spegne il lucchetto (darebbe all'app una strada per scrivere la natura) |
 | Q22 | In solo inserimento il salto del software è muto (Q18). Lo è anche per il migratore che scrive a mano, fuori dal mirror, e perde la scrittura senza saperlo | Il `WARNING` resta anche in solo inserimento; restano fuori i valori scartati nel registro e la diagnosi. Il rumore è un avviso nel log del migrate quando il CSV della tabella cambia, cioè di rado |
+
+### 16.14 Come l'app legge «nata dal seed», e solo disattivazione (giro 2, 2026-11-19)
+
+**La domanda del BE (2026-11-19).** «Come legge l'app il segno nata dal seed? Un LEFT JOIN su `dbops.seed_righe` in due
+query, oppure una funzione o una vista del DB, che preferirei per la regola del 2.» Ordine proposto: R2, poi la
+risposta, poi R1 e R3 insieme.
+
+**La risposta: una vista per tabella, che il backend legge accanto alla tabella.** Il LEFT JOIN su `dbops.seed_righe`
+si potrebbe fare (l'app ha `SELECT` dal `-21`), ma ricopia nel backend la chiave del registro (schema e tabella di
+testo, l'id come testo) in quattro query. Soprattutto, a R3 il segno non basta: servono le colonne da spegnere, e dopo
+la Q19 sono cinque, non le due che R3 nominava. Un elenco nel backend ripete il CSV della regola e diverge al primo
+cambio. La vista dà le due cose dalle stesse funzioni che legge il guard.
+
+#### Le decisioni di Tid (2026-11-19)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| Q23 | La forma della risposta: la funzione per riga proposta in chat, o le superfici di riga del §12.5 di linee-guida-sql (il motivo di «elimina» in una vista, iscritta in `config.azioni_riga`) | ✅ La vista. Con la Q24 la parte su «elimina» cade: resta la vista, senza azione di riga |
+| Q24 | Un account o un template dell'installazione che ha già spedito: «elimina» acceso, e il `DELETE` muore sulla FK `NO ACTION` di `email_log` / `email_outbox` | ✅ **Solo disattivazione.** Account e template non si cancellano, nemmeno quelli dell'azienda: si spengono. «La cancellazione potrebbe anche non esistere: l'importante è che sia disattivabile» |
+
+**Che cosa ha scoperto la Q24.** Spegnere non era sempre possibile. La regola ATTIVO genera
+`dbops.trgfn_prevent_deactivate_if_children` su ogni FK verso una tabella con `attivo`: su account e template ce n'erano
+quattro, verso `email_log` ed `email_outbox`. Il log e la coda non hanno `attivo`, quindi conta ogni riga: un account o
+un template che aveva spedito una volta **non si spegneva più** (`E_ATTIVO_BLOCK_CHILDREN_EXIST`), e non si cancellava
+per la FK. Nessun gesto lo toglieva dall'uso. La forma c'è già, ed è la stessa delle stampe (`documenti_generati`,
+eccezioni del 2026-11-14): la mail spedita è **storia**, la bozza è **provenienza**, e la FK si dichiara eccezione in
+`dbops.automazione_attivo_eccezioni`. Il `require` che va via con lei scatta solo quando la riga nasce, e ripete i
+risolutori (`config.fn_resolve_email_account` e `config.fn_resolve_email_template` leggono solo le righe accese).
+
+#### I changeSet
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-23` | `dbops.fn_seed_riga(regclass, text)`: la voce del registro di una riga, nessuna riga = dell'installazione. Estratta dal guard (regola del 2) |
+| `-24` | `dbops.fn_seed_colonne_del_software(regclass)`: le colonne del software dal **montaggio** del trigger, con la grammatica del guard; vuoto, mai `NULL` |
+| `-25` | `script.trgfn_seed_primo_impianto`: la voce del registro da `fn_seed_riga`. Il resto del corpo è identico (rollback = il corpo vivo del `-22`) |
+| `-26` | `config.vw_email_account_seed`: `email_account_id`, `nata_dal_seed`, `campi_del_software` |
+| `-27` | `config.vw_email_template_seed`: `email_template_id` e le stesse due colonne |
+| `-28` (`90_end`) | Provisiona subito su dbdev: `fn_run_automations_delete_block` su `config` e `fn_ritira_attivo_eccezioni()`. Da zero lo fa il `ci_apply` |
+| CSV | `dbops/automation_delete_block_ruoli.csv`, righe 9 e 10: `config.email_account` e `config.email_template`, porta `zeroerp.maintenance_email_delete` |
+| CSV | `dbops/automazione_attivo_eccezioni.csv`, quattro righe: `email_log` ed `email_outbox` verso `email_account_id` ed `email_template_id`, col motivo |
+| CSV | `config/messaggi_errore.csv` e `config/codici_errore.csv`: la soluzione di `E_SEED_RIGA_NON_CANCELLABILE` non promette più che «le righe create dall'azienda si eliminano» |
+
+* **I campi si leggono dal montaggio, non da `dbops.automazione_seed_primo_impianto`.** Il guard rifiuta coi suoi
+  argomenti: la vista legge gli stessi, con la stessa funzione. Il campo è spento esattamente dove il guard rifiuta,
+  anche nella finestra fra il migrate e il `ci_apply` (§14.7). Il nome è `campi_del_software` e non
+  `non_editable_fields` (la forma delle capability dei documenti): la colonna non elenca i campi fermi per altre
+  ragioni, come `codice_interno` degli account (`trgfn_lock_columns`), e un nome generico prometterebbe l'elenco intero.
+* **Le colonne del software valgono per la tabella**: la vista le legge una volta; per riga si chiede solo se la riga
+  è nata dal seed.
+* **Il blocco della `DELETE` è il building block che c'era** (`dbops.automation_delete_block`, §4.4 di
+  `automazione-db.md`): `BEFORE DELETE`, `E_DELETE_NOT_ALLOWED`, porta solo per il migratore. Sulla riga di seed parla
+  prima il guard del seed (`a00` viene prima di `a10`), con `E_SEED_RIGA_NON_CANCELLABILE`. Il migratore che ritira
+  un template di seed apre **due** porte, quella del seed e `zeroerp.maintenance_email_delete`.
+* **Scartato** in questo giro, con la Q24: la check `script.fn_check_seed_riga_eliminabile` e le due righe di
+  `config.azioni_riga` (`ELIMINA_EMAIL_ACCOUNT`, `ELIMINA_EMAIL_TEMPLATE`), scritte e mai applicate. Un'azione che
+  non esiste non ha un motivo per essere spenta.
+
+**Provato** con `scripts/prova_changeset.py` sullo scratch (2026-11-19), con uno YAML d'appoggio fuori dal repo che
+carica le righe dei due registri: l'estratto gira per intero, catalogo identico dopo il `ROLLBACK`.
+
+* `config/test-posta-solo-disattivazione-v1` (nuovo, plan 14, come app): 11 su 14 da proprietario. Il 3, il 5 e il 10
+  sono rossi per costruzione: il template che il proprietario inserisce nasce dal seed. L'esito vero è la corsa come
+  app, dopo l'apply. ⚠️ Sullo scratch `SISTEMA` non ha mail nello storico: il caso della Q24 (si spegne dopo aver
+  spedito) lo prova il test 7 su dbdev, dove ne ha, e lo garantisce il test 2 (nessun trigger ATTIVO verso lo storico);
+* `dbops/test-seed-primo-impianto-software-v1`: 27 su 27 (nuovo il 13: con la sola porta del seed la `DELETE` la
+  ferma il blocco; il ritiro passa dalle due porte);
+* `config/test-fn-resolve-email-template`: 12 su 12 (il test 9 spegne il livello 1 invece di cancellarlo);
+* `config/test-fn-resolve-email-account`: 5 su 7 da proprietario; il 6 e il 7 sono rossi per costruzione (l'`UPDATE` del
+  migratore su una tabella in solo inserimento si scarta). Il file torna a girare **come app**: il fixture cancellava
+  `SISTEMA` e lo ricreava da proprietario, una strada che il giro 1 aveva già chiuso due volte. Ora aggiorna
+  `SISTEMA` e lo spegne coi suoi figli;
+* senza regressioni, stessi esiti prima e dopo: `config/test-seed-primo-impianto-installazione-v1` (gli 11 rossi da
+  proprietario, per costruzione; il 18 ora si aspetta `E_DELETE_NOT_ALLOWED`), `dbops/test-automazione-attivo-eccezioni-v1`
+  9 su 9, `dbops/test-delete-block-convergenza-v1` 18 su 18, `dbops/test-delete-block-audit-v1` 7 su 7,
+  `config/test-azioni-riga-registro-v1` 8 su 8.
+
+**Documentazione:** pagine `manual/` nuove di `dbops.fn_seed_riga`, `dbops.fn_seed_colonne_del_software`,
+`config.vw_email_account_seed`, `config.vw_email_template_seed`; aggiornate `script.trgfn_seed_primo_impianto`,
+`dbops.seed_righe`, `dbops.automazione_attivo_eccezioni` (le righe della posta), `dbops.automation_delete_block` (la
+seconda famiglia); la guida `gestione-mail.md` (account e template si spengono, non si eliminano). La tabella degli
+endpoint della guida la corregge il BE con R1-BE.
+
+#### La richiesta al team BE/FE (sostituisce R1 e R3 del §15.12)
+
+**Chi cambia per primo:** il DB (questo giro, da applicare). R2 non aspetta niente; il resto parte dopo l'apply.
+⚠️ Corretto il 2026-11-19: il frontend **non ha** un pulsante «elimina» né sugli account né sui template (le API di
+`frontend/src/amministrazione/api/amministrazione.js` non chiamano nessuna `DELETE`). La cancellazione esiste solo
+nel backend.
+
+| # | Che cosa | File |
+| --- | --- | --- |
+| R2 | I due codici nella tassonomia: `E_SEED_RIGA_NON_CANCELLABILE` ed `E_SEED_COLONNA_DEL_SOFTWARE`, classe `CONFLITTO_STATO`, senza segnaposti. `E_SEED_PRIMO_IMPIANTO` è del runner (`TECNICO`) e non arriva al backend. Con la rigenerazione dei messaggi arriva la soluzione corretta di `E_SEED_RIGA_NON_CANCELLABILE` | `docs/it/dev/api.md` §Tassonomia errori; i file generati dei messaggi (`backend/apps/core/services/error_messages_fallback.py`) |
+| R1-BE | **Si toglie la cancellazione**: il `DELETE` sul dettaglio dell'account e del template, e i due metodi del repository. Dopo l'apply il DB la rifiuta sempre (`E_DELETE_NOT_ALLOWED`, oppure `E_SEED_RIGA_NON_CANCELLABILE` sulla riga di seed): un endpoint che risponde solo con un errore è un contratto falso | `backend/apps/amm_software/api/email_views.py` (`EmailAccountDetailView.delete`, `EmailTemplateDetailView.delete` e le docstring «DELETE: elimina»); `backend/apps/core/db/email_repository.py` (`delete_account`, `delete_template`); `backend/apps/amm_software/tests/api/test_email_views_fase6.py` (i casi `eliminazione`); `docs/it/backend/core/manual/api_email.md`; `docs/it/guide/gestione-mail.md` §Endpoint API (le due righe `GET/PATCH/DELETE`) |
+| R1-BE-bis | Lista e dettaglio leggono la superficie con un `LEFT JOIN` su `<tabella>_id = id` ed espongono `nata_dal_seed` e `campi_del_software`. Nessun predicato sul registro e nessun elenco di colonne nel backend | `backend/apps/core/db/email_repository.py` (`list_accounts`, `get_account`, `list_templates`, `get_template`); `backend/apps/amm_software/api/email_views.py` (le quattro risposte); `docs/it/backend/core/manual/api_email.md` |
+| R1-BE-ter | Alla conferma di una bozza la mail parte con l'account appena risolto (`account_di_invio`), ma il log scrive l'account della bozza (`email_account_id=outbox["email_account_id"]`). Il log deve dire con quale account la mail è partita: `account["id"]`. Prima il `require` sul log faceva fallire l'invio di una bozza il cui account era stato spento; dal `-28` il log lo accetta e direbbe il falso | `backend/apps/core/services/email_outbox_service.py` (`confirm_and_send`) |
+| R3 | I campi in `campi_del_software` sono spenti nel form, col motivo: il testo lo sceglie il FE (il messaggio di `E_SEED_COLONNA_DEL_SOFTWARE` dice già perché). Sul template di seed oggi sono codice, reparto, tipo di prestazione, lingua e variabili disponibili; sugli account l'elenco è vuoto. Facoltativo: `nata_dal_seed` come segno «di sistema» sulla riga | `frontend/src/amministrazione/components/EmailTemplateDrawer.vue`, `EmailAccountDrawer.vue`; gli store `frontend/src/amministrazione/stores/emailTemplates.js` ed `emailAccounts.js` se tengono la forma della risposta |
+| R-test | Un test del repository: una riga di seed porta il segno e i campi, una riga creata dal test no; un account che ha spedito si spegne | `backend/apps/core/tests/db/` (accanto ai test mail esistenti) |
+
+Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo sceglie il FE.

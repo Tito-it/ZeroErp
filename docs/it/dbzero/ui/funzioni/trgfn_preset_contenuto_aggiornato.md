@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/ui/manual/trgfn_preset_contenuto_aggiornato.md" %}
 # ⚙️ Funzione `trgfn_preset_contenuto_aggiornato`
 
 ```sql

@@ -4,7 +4,8 @@
 --
 -- Test: il seed di primo impianto visto dall'INSTALLAZIONE (l'applicazione).
 --   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.7, §16.3).
---   ChangeSet: 20261117-01 … -21 (registro, porta, trigger, runner, rete, postura).
+--   ChangeSet: 20261117-01 … -21 (registro, porta, trigger, runner, rete, postura);
+--   20261117-28 (solo disattivazione: la DELETE di account e template e' bloccata, §16.14).
 --
 -- Gira come l'applicazione (runner di default): chi scrive si riconosce da
 --   session_user, che non si simula. Il lato del SOFTWARE (il blocco DO del
@@ -35,7 +36,7 @@
 --   15) per l'app la porta e' chiusa, e il diario non cambia
 --   16) il template creato dall'app non e' nato dal seed
 --   17) … l'app gli cambia il codice
---   18) … e lo cancella
+--   18) … ma non lo cancella: E_DELETE_NOT_ALLOWED (solo disattivazione, §16.14)
 --   19) SISTEMA: l'app cambia l'host SMTP
 --   20) SISTEMA: l'app non la cancella
 --   21) l'app che accende la porta del lucchetto non cambia codice_interno
@@ -204,8 +205,11 @@ SELECT is(
 
 SELECT is(
     dbops.fn_pgtap_codice_errore(format($$DELETE FROM config.email_template WHERE id = %s$$, (SELECT id FROM _mio))),
-    NULL,
-    '18) … e lo cancella');
+    -- Dal 2026-11-19 (§16.14) un template non si cancella, nemmeno quello
+    -- dell'installazione: si spegne. Sulla riga di seed parla prima il guard del
+    -- seed (13), qui il blocco della DELETE (dbops.automation_delete_block).
+    'E_DELETE_NOT_ALLOWED',
+    '18) … ma non lo cancella: si spegne (solo disattivazione)');
 
 -- ============================================================
 -- 19-21 SISTEMA, in solo inserimento

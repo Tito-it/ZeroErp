@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_seed_primo_impianto_argomenti.md" %}
 # ⚙️ Funzione `fn_seed_primo_impianto_argomenti`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/fn_ruolo_del_migratore.md" %}
 # ⚙️ Funzione `fn_ruolo_del_migratore`
 
 ```sql
