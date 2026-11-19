@@ -17,6 +17,13 @@
 //   2) ruolo, un tipo ammesso: «Aggiungi» c'e', e i tipi vengono dal picker
 //      della chiave del drawer (l'istanza)
 //   3) soggetto, nessun tipo ammesso: niente «Aggiungi»
+//   4) ruolo, «Cambia» di un indirizzo del ruolo: UNA `PUT`, niente DELETE +
+//      POST. Fino al 2026-11-18 erano due richieste, e la DELETE dell'unico
+//      obbligatorio, giudicata da sola, era rifiutata (giro 4 di
+//      brief-db-fornitore-privato-indirizzi)
+//   5) «Copia come…» sul servizio, di una riga del ruolo: la dialog dice da
+//      dove e che la copia va sul RUOLO (il verbo copia sulla chiave della
+//      sorgente), non sul servizio aperto
 // ------------------------------------------------------------
 
 import { describe, expect, it, vi, beforeEach } from 'vitest'
@@ -34,12 +41,16 @@ const api = vi.hoisted(() => ({
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {}, fullPath: '/anagrafiche/clienti' }),
 }))
+const scritture = vi.hoisted(() => ({
+  createRuoloIndirizzo: vi.fn(),
+  replaceRuoloIndirizzo: vi.fn(),
+  deleteRuoloIndirizzo: vi.fn(),
+}))
 vi.mock('../api/anagrafiche', () => ({
   ...api,
+  ...scritture,
   createSoggettoIndirizzo: vi.fn(),
   replaceSoggettoIndirizzo: vi.fn(),
-  createRuoloIndirizzo: vi.fn(),
-  deleteRuoloIndirizzo: vi.fn(),
   copiaSoggettoIndirizzo: vi.fn(),
   copiaRuoloIndirizzo: vi.fn(),
   lookupStati: vi.fn(async () => ({ data: { data: { results: [] } } })),
@@ -57,7 +68,18 @@ const AppDrawerFinto = defineComponent({
     return () => h('div', [slots.default?.(), slots.footer?.()])
   },
 })
-const Vuoto = defineComponent({ render: () => null })
+// I contorni che il caso 4 aziona: il kebab (le azioni della riga), il form
+// (il `form` condiviso, da compilare) e il footer (il «Salva»).
+const KebabFinto = defineComponent({
+  name: 'RowActionsMenu', props: { row: Object, actions: Array }, render: () => null,
+})
+const FormFinto = defineComponent({
+  name: 'IndirizzoSoggettoForm', props: { form: Object }, render: () => null,
+})
+const FooterFinto = defineComponent({ name: 'FormFooter', emits: ['save'], render: () => null })
+const CopiaFinta = defineComponent({
+  name: 'CopiaIndirizzoDialog', props: { visible: Boolean, origine: Object, destinazione: String }, render: () => null,
+})
 
 const risposta = (data) => ({ data: { data } })
 const TIPO_SPENTO = {
@@ -70,8 +92,8 @@ async function apri(props) {
   const w = monta(IndirizziSoggettoDrawer, { visible: false, ...props }, {
     global: {
       stubs: {
-        AppDrawer: AppDrawerFinto, IndirizzoSoggettoForm: Vuoto,
-        RowActionsMenu: Vuoto, CopiaIndirizzoDialog: Vuoto, FormFooter: Vuoto,
+        AppDrawer: AppDrawerFinto, IndirizzoSoggettoForm: FormFinto,
+        RowActionsMenu: KebabFinto, CopiaIndirizzoDialog: CopiaFinta, FormFooter: FooterFinto,
       },
     },
   })
@@ -107,5 +129,48 @@ describe('IndirizziSoggettoDrawer — «Aggiungi» dal picker dei tipi', () => {
     api.listSoggettoTipiIndirizzo.mockResolvedValue(risposta({ results: [TIPO_SPENTO] }))
     const w = await apri({ soggettoId: '019d-uuid' })
     expect(haAggiungi(w)).toBe(false)
+  })
+
+  it('4) ruolo, «Cambia» di un indirizzo del ruolo: una PUT, niente DELETE + POST', async () => {
+    const riga = {
+      id: 31, fonte: 'ruolo', tipo_indirizzo_codice_interno: 'FATT', tipo_indirizzo_descrizione: 'Fatturazione',
+      indirizzo_libero: 'Via vecchia 1',
+    }
+    api.listRuoloIndirizzi.mockResolvedValue(risposta({ indirizzi_ruolo: [riga], indirizzi_soggetto: [] }))
+    api.listRuoloTipiIndirizzo.mockResolvedValue(risposta({ results: [TIPO_AMMESSO] }))
+    scritture.replaceRuoloIndirizzo.mockResolvedValue(risposta({ id: 32 }))
+    const w = await apri({ context: 'ruolo', soggettoId: 50 })
+
+    w.findComponent(KebabFinto).props('actions').find(a => a.key === 'cambia').command()
+    await flushPromises()
+    w.findComponent(FormFinto).props('form').indirizzo_libero = 'Via nuova 2'
+    w.findComponent(FooterFinto).vm.$emit('save')
+    await flushPromises()
+
+    expect(scritture.replaceRuoloIndirizzo).toHaveBeenCalledTimes(1)
+    const [ruolo, indirizzoId, payload] = scritture.replaceRuoloIndirizzo.mock.calls[0]
+    expect([ruolo, indirizzoId, payload.tipo_indirizzo_codice_interno]).toEqual([50, 31, 'FATT'])
+    expect(scritture.deleteRuoloIndirizzo).not.toHaveBeenCalled()
+    expect(scritture.createRuoloIndirizzo).not.toHaveBeenCalled()
+  })
+
+  it('5) copia di una riga del ruolo, dal servizio: la destinazione e\' il ruolo', async () => {
+    const riga = {
+      id: 41, fonte: 'ruolo', tipo_indirizzo_codice_interno: 'SPED', tipo_indirizzo_descrizione: 'Spedizione',
+      indirizzo_display: 'Via Roma 1, Milano',
+    }
+    api.listRuoloIndirizzi.mockResolvedValue(risposta({ indirizzi_ruolo: [riga], indirizzi_soggetto: [] }))
+    api.listRuoloTipiIndirizzo.mockResolvedValue(risposta({ results: [TIPO_AMMESSO] }))
+    const w = await apri({ context: 'ruolo', soggettoId: 50, istanzaUtilityId: 9 })
+
+    w.findComponent(KebabFinto).props('actions').find(a => a.key === 'copia').command()
+    await flushPromises()
+
+    const dialog = w.findComponent(CopiaFinta)
+    expect(dialog.props('visible')).toBe(true)
+    expect(dialog.props('origine')).toEqual({
+      tipo: 'Spedizione', indirizzo: 'Via Roma 1, Milano', titolare: 'anagrafiche.indirizzi.copia.titolare_ruolo',
+    })
+    expect(dialog.props('destinazione')).toBe('anagrafiche.indirizzi.copia.verso_come_origine')
   })
 })

@@ -693,12 +693,19 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "Indirizzo obbligatorio mancante: impostare l'indirizzo di consegna prima dell'emissione.",
     "E_INDIRIZZO_FATTURA_MANCANTE": "Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate.",
     "E_INDIRIZZO_LIBERO_INCOMPLETO": "Indirizzo incompleto: manca un campo della sua forma (via, stato, e poi comune e CAP oppure la localita').",
-    "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
+    # brief-db-fornitore-privato-indirizzi §11 (2026-11-17): un codice per layer,
+    # ruolo e tipo soggetto leggono due matrici diverse.
+    "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Manca un indirizzo obbligatorio per il ruolo.",
+    "E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO": "Manca un indirizzo obbligatorio per il tipo soggetto.",
     "E_INDIRIZZO_RUOLO_NON_TROVATO": "L'indirizzo da copiare non c'è, o non è di questo ruolo. Riaprire l'elenco degli indirizzi del ruolo e ripetere la copia.",
     "E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE": "Il ruolo ha già un indirizzo di questo tipo. Modificare l'indirizzo che c'è, oppure scegliere un altro tipo.",
+    # brief-db-fornitore-privato-indirizzi §15 (2026-11-18): lucchetti del
+    # titolare, un codice per layer, gemelli di E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE.
+    "E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE": "Un indirizzo appartiene per sempre al suo ruolo: se è sul ruolo sbagliato si elimina e si ricrea.",
     "E_INDIRIZZO_SNAPSHOT_NOT_FOUND": "Indirizzo anagrafico non trovato: ricaricare gli indirizzi del cliente.",
     "E_INDIRIZZO_SOGGETTO_NON_TROVATO": "L'indirizzo da copiare non c'è, o non è di questo soggetto. Riaprire l'elenco degli indirizzi del soggetto e ripetere la copia.",
     "E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE": "Il soggetto ha già un indirizzo di questo tipo. Modificare l'indirizzo che c'è, oppure scegliere un altro tipo.",
+    "E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE": "Un indirizzo appartiene per sempre al suo soggetto: se è sul soggetto sbagliato si elimina e si ricrea.",
     "E_INDIRIZZO_VIA_NON_RISOLTA": "La via scelta non e' completa nell'elenco delle vie: manca il comune, la provincia o il CAP.",
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",

@@ -164,7 +164,7 @@ class RuoloIndirizziView(DomainAPIView):
 
 
 # =================================================================
-# Indirizzo ruolo — dettaglio (PATCH, DELETE)
+# Indirizzo ruolo — dettaglio (PUT, PATCH, DELETE)
 # =================================================================
 
 class RuoloIndirizziTipiView(DomainAPIView):
@@ -217,8 +217,25 @@ class RuoloIndirizziCopiaView(DomainAPIView):
 
 
 class RuoloIndirizziDetailView(DomainAPIView):
-    """PATCH aggiorna, DELETE elimina indirizzo del ruolo."""
+    """PUT sostituisce, PATCH aggiorna, DELETE elimina indirizzo del ruolo."""
     area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="RuoloIndirizzoReplaceReq", fields=campi_indirizzo_madre(
+            istanza_utility_id=serializers.IntegerField(required=False),
+        )),
+        responses={200: inline_serializer(
+            name="RuoloIndirizzoReplaceResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Sostituisce un indirizzo del ruolo (delete vecchio + create nuovo,
+    #        una transazione): la «modifica» del form, gemella del PUT
+    #        dell'indirizzo del soggetto.
+    def put(self, request: Request, soggetto_ruolo_id: int, indirizzo_id: int) -> JsonResponse:
+        return success_response(SoggettiService().replace_indirizzo_ruolo(
+            soggetto_ruolo_id, indirizzo_id, corpo_oggetto(request),
+        ))
 
     @extend_schema(
         request=inline_serializer(name="RuoloIndirizzoUpdateReq", fields={

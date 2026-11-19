@@ -25,7 +25,7 @@ Decisioni aperte di Tid: nessuna. Debito: nessuno. Lavoro fatto da committare: i
 (§6.0-bis) e questo brief archiviato; i giri DB sono nel commit `da62f3a1d`.
 
 **Brief vicini verificati (2026-11-14):** nessuno sugli stessi oggetti.
-[brief-db-fornitore-privato-indirizzi](../work-in-progress/brief-db-fornitore-privato-indirizzi.md) tocca gli indirizzi
+[brief-db-fornitore-privato-indirizzi](brief-db-fornitore-privato-indirizzi.md) tocca gli indirizzi
 obbligatori del **ruolo** `FO`, non il cambio di natura; i residui del brief dati fiscali (registro dei
 residui aperti) sono complementari e non si sovrappongono.
 

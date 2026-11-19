@@ -25,6 +25,13 @@ const props = defineProps({
   tipi: { type: Array, default: () => [] },
   // La descrizione del tipo dell'indirizzo che si copia, per il titolo.
   sorgente: { type: String, default: '' },
+  // Da dove e verso dove (2026-11-18, prova a video di Tid): senza, chi copia
+  // distrattamente non vede di QUALE indirizzo si tratta ne' DOVE finisce la
+  // copia (il ruolo, un servizio, il soggetto). Testi gia' composti dal
+  // chiamante: `origine` = { tipo, indirizzo, titolare }, `destinazione` = il
+  // titolare della copia. Assenti, le due righe non compaiono.
+  origine: { type: Object, default: null },
+  destinazione: { type: String, default: '' },
   loading: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:visible', 'confirm'])
@@ -70,6 +77,20 @@ const header = computed(() => props.sorgente
     @update:visible="(v) => emit('update:visible', v)"
     @save="onSave"
   >
+    <dl v-if="origine || destinazione" class="copia-percorso">
+      <template v-if="origine">
+        <dt>{{ t('anagrafiche.indirizzi.copia.da') }}</dt>
+        <dd data-testid="copia-origine">
+          <strong>{{ origine.tipo }}</strong>
+          <span v-if="origine.indirizzo"> · {{ origine.indirizzo }}</span>
+          <span v-if="origine.titolare" class="copia-titolare"> · {{ origine.titolare }}</span>
+        </dd>
+      </template>
+      <template v-if="destinazione">
+        <dt>{{ t('anagrafiche.indirizzi.copia.verso') }}</dt>
+        <dd data-testid="copia-destinazione">{{ destinazione }}</dd>
+      </template>
+    </dl>
     <p class="copia-spiegazione">{{ t('anagrafiche.indirizzi.copia.spiegazione') }}</p>
     <div class="copia-tipi">
       <div v-for="tipo in tipi" :key="tipo.codice_interno" class="copia-tipo">
@@ -89,6 +110,25 @@ const header = computed(() => props.sorgente
 </template>
 
 <style scoped>
+.copia-percorso {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.copia-percorso dt {
+  color: var(--app-text-muted);
+}
+
+.copia-percorso dd {
+  margin: 0;
+}
+
+.copia-titolare {
+  color: var(--app-text-muted);
+}
+
 .copia-spiegazione {
   margin: 0 0 0.75rem;
 }

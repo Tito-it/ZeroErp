@@ -10,6 +10,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { collegaIndirizzoSoggettoForm } from '../composables/collegaIndirizzoSoggettoForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
@@ -37,6 +38,7 @@ const { execute, loading, campiErrati } = useApiHandler()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 const codiceField = useCodiceField('anagrafiche', 'fornitori')
 
 const props = defineProps({
@@ -408,20 +410,8 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <IndirizzoSoggettoForm
+          v-bind="legameIndirizzo"
           :campi-errati="campiErrati"
-          :form="indirizzo.form"
-          :is-libera="indirizzo.isLibera.value"
-          @update:is-libera="v => indirizzo.isLibera.value = v"
-          :tipi-stato="indirizzo.tipiStato.value"
-          :stati-lookup="indirizzo.statiLookup"
-          :cap-options="indirizzo.capOptions.value"
-          :loading-cap="indirizzo.loadingCap.value"
-          :auto-clone="indirizzo.autoClone.value"
-          @update:auto-clone="v => indirizzo.autoClone.value = v"
-          @switch-tipo="indirizzo.switchTipo"
-          :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-          :address-not-found="indirizzo.addressNotFound.value"
-          :disabled="false"
         />
       </template>
 

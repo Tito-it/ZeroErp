@@ -15,6 +15,8 @@
 //   2) senza una scelta il pulsante e' spento; `confirm` porta i codici
 //      nell'ordine dell'elenco, non in quello dei clic
 //   3) alla riapertura nessun tipo resta scelto
+//   4) «Da» e «Verso»: tipo, indirizzo e titolare della sorgente, e dove va
+//      la copia; senza, le due righe non compaiono
 // ------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -48,7 +50,7 @@ const TIPI = [
 const MESSAGGI = {
   anagrafiche: { indirizzi: {
     tipo_blocco: { gia_presente: 'C\'è già un indirizzo «{0}»' },
-    copia: { conferma: 'Copia' },
+    copia: { conferma: 'Copia', da: 'Da', verso: 'Verso' },
   } },
 }
 
@@ -91,5 +93,16 @@ describe('CopiaIndirizzoDialog', () => {
     await w.setProps({ visible: false })
     await w.setProps({ visible: true })
     expect(salva(w).attributes('disabled')).toBeDefined()
+  })
+
+  it('4) «Da» e «Verso» descrivono sorgente e destinazione', () => {
+    const w = montaCopia({
+      origine: { tipo: 'Spedizione', indirizzo: 'Via Roma 1, Milano', titolare: 'il ruolo' },
+      destinazione: 'il ruolo, dove sta l\'indirizzo di partenza',
+    })
+    expect(w.find('.copia-percorso').exists()).toBe(true)
+    expect(w.find('[data-testid="copia-origine"]').text()).toBe('Spedizione · Via Roma 1, Milano · il ruolo')
+    expect(w.find('[data-testid="copia-destinazione"]').text()).toBe('il ruolo, dove sta l\'indirizzo di partenza')
+    expect(montaCopia().find('.copia-percorso').exists()).toBe(false)
   })
 })

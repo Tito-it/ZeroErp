@@ -6336,7 +6336,14 @@
         "titolo_da": "Copy the «{tipo}» address",
         "spiegazione": "Choose the address types to add with this same address. Disabled types cannot be added: the reason is shown next to them.",
         "conferma": "Copy",
-        "fatta": "Address copied into one more type | Address copied into {n} types"
+        "fatta": "Address copied into one more type | Address copied into {n} types",
+        "da": "From",
+        "verso": "To",
+        "titolare_soggetto": "the party",
+        "titolare_ruolo": "the role",
+        "titolare_servizio": "the {utility} service",
+        "titolare_servizio_generico": "the service",
+        "verso_come_origine": "{titolare}, where the source address is"
       }
     },
     "soggetti": {
@@ -6380,6 +6387,10 @@
       },
       "cambio_natura_motivi_titolo": "The legal nature cannot be changed while these reasons remain:",
       "cambio_natura_motivi_non_verificati": "It was not possible to check whether the legal nature can be changed: on saving, if it cannot, the reason will be shown.",
+      "cambio_natura_indirizzi_titolo": "The chosen nature requires these addresses, which the party or its roles do not have: fill them in here and they are saved together with the change.",
+      "cambio_natura_indirizzi_soggetto": "Party addresses",
+      "cambio_natura_indirizzi_ruolo": "Addresses of the {ruolo} role",
+      "cambio_natura_indirizzo_o_ripiego": "{tipo}, or {ripiego}",
       "elimina_dati_societari": "Delete company data",
       "elimina_dati_societari_conferma": "Delete the party's company data (legal form, REA, share capital, e-invoicing)? It stays in the history, but the party will no longer have it.",
       "dati_societari_eliminati": "Company data deleted.",

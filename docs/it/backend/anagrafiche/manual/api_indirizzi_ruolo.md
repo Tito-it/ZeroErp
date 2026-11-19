@@ -224,11 +224,52 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 |---|---|---|
 | `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori dall'elenco sopra; corpo vuoto (dal 2026-10-20: prima 404) |
 | `E_ANAG_NOT_FOUND` | 404 | Indirizzo inesistente o di un altro ruolo |
+| `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Il cambio di tipo toglie al ruolo un indirizzo obbligatorio, e non c'è il ripiego (giudicato al commit) |
+| `E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE` | 409 | Il ruolo di un indirizzo non cambia: la colonna non è fra quelle del body, il lucchetto resta come presidio |
 
 ### Regole
 
 - Ownership check: `soggetto_ruolo_id` deve corrispondere
 - Solo i campi inviati vengono aggiornati (delta update); le stringhe vuote dei campi nullable valgono `NULL`
+- Il `PATCH` non risolve una via nuova in un dettaglio: per cambiare l'indirizzo fisico con la via e il civico si usa
+  la sostituzione (§3-bis)
+
+---
+
+## 3-bis. Sostituisci indirizzo ruolo
+
+| | |
+|---|---|
+| **Metodo** | `PUT` |
+| **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/{indirizzo_id}/` |
+
+La «modifica» del form: cancella l'indirizzo e scrive il nuovo con la madre
+(`anagrafiche.fn_crea_indirizzo_ruolo`), in **una** transazione. Gemello del `PUT` dell'indirizzo del soggetto
+([api_soggetti.md](api_soggetti.md)).
+
+### Body (JSON)
+
+Lo stesso della creazione (§2), `istanza_utility_id` compreso.
+
+### Risposta (200)
+
+La riga scritta, come la creazione (§2).
+
+### Errori
+
+Quelli della creazione (§2), più:
+
+| Codice | HTTP | Causa |
+|---|---|---|
+| `E_ANAG_NOT_FOUND` | 404 | Indirizzo inesistente o di un altro ruolo |
+| `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Lo stato finale manca di un obbligatorio del ruolo (per esempio il tipo nuovo è un altro) |
+
+### Regole
+
+- Il guard degli obbligatori è differito: giudica lo stato finale al commit, quindi sostituire l'unico indirizzo
+  obbligatorio con uno dello stesso tipo passa
+- ⛔ Non si compone con `DELETE` + `POST` in due richieste: la `DELETE` dell'unico obbligatorio, giudicata da sola,
+  è rifiutata
 
 ---
 
@@ -248,7 +289,8 @@ forma dell'indirizzo libero la giudica il trigger della tabella. Stringhe vuote 
 ### Regole
 
 - Indirizzo inesistente o di un altro ruolo → 404 `E_ANAG_NOT_FOUND`
-
+- L'unico indirizzo di un tipo obbligatorio per il ruolo, senza il ripiego → 400 `E_INDIRIZZO_OBBLIGATORIO_MANCANTE`,
+  al commit. Per cambiarlo si usa la sostituzione (§3-bis)
 - Ownership check: `soggetto_ruolo_id` deve corrispondere
 - Solo indirizzi livello ruolo sono eliminabili (fonte `istanza` o `ruolo`)
 - Indirizzi soggetto (fonte `soggetto`) non sono raggiungibili da questo endpoint
