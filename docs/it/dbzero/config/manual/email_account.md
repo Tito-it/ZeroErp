@@ -1,6 +1,6 @@
 ## Documentazione Concettuale -- Tabella `config.email_account`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 
 > Vedi anche
 >
@@ -27,6 +27,19 @@ Il servizio `EmailDispatchService` risolve l'account da usare per ogni invio con
 2. Se non trovato, usa l'account con codice `SISTEMA` (fallback)
 
 L'account determina il mittente (`email_from`), il reply-to e tutti i parametri di connessione SMTP.
+
+---
+
+### ⭐ La riga del seed resta dell'azienda
+
+La tabella è di **primo impianto**, in solo inserimento
+([dbops.automazione_seed_primo_impianto](/dbzero/dbops/tabelle/automazione_seed_primo_impianto)):
+il CSV crea l'account `SISTEMA` se manca, e poi non lo aggiorna più. I valori del CSV sono
+segnaposto (`smtp.example.com`, la password da configurare): host, credenziali e mittente li scrive
+l'azienda, e un rilascio non li riporta ai valori di esempio.
+
+* L'account `SISTEMA` non si cancella: `E_SEED_RIGA_NON_CANCELLABILE`. Si spegne.
+* Gli account che l'azienda crea per i reparti sono suoi: si scrivono e si cancellano liberamente.
 
 ---
 

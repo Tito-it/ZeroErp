@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automation_delete_block`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -24,8 +24,8 @@
 
 ### 🎯 Scopo Principale
 
-Il registro delle tabelle su cui una cancellazione è **vietata**, salvo che la sessione abbia
-acceso un interruttore (`guc_key`). Il giro delle automazioni legge il registro e monta su ogni
+Il registro delle tabelle su cui una cancellazione è **vietata**, salvo che la sessione del
+migratore abbia acceso un interruttore (`guc_key`). Il giro delle automazioni legge il registro e monta su ogni
 tabella il trigger che rifiuta la `DELETE` con `E_DELETE_NOT_ALLOWED`.
 
 Il seed lo usa per le tabelle dei **ruoli** dei soggetti (clienti, fornitori, gestori, vettori…):
@@ -38,8 +38,10 @@ un ruolo non si cancella, si chiude. L'interruttore, per tutte, è
 
 La chiave naturale è (`schema_name`, `table_name`): una tabella ha una sola regola di blocco.
 
-* `guc_key` — il nome del parametro di sessione che, se vale `on`, lascia passare la
-  cancellazione. Finisce come argomento del trigger.
+* `guc_key` — il nome del parametro di sessione che, acceso da una sessione del migratore, lascia
+  passare la cancellazione
+  ([fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta)). Per
+  l'applicazione non apre niente. Finisce come argomento del trigger.
 * `trigger_name` — il nome del trigger, se non si vuole quello del template
   (`trg_<tabella>_a10_delete_block_dlt`). `NULL` vuol dire template, e la stringa vuota la rifiuta
   il `CHECK` `chk_automation_delete_block_trigger_name_non_vuoto`; il nome lo risolve
@@ -103,6 +105,8 @@ parlare al posto suo.
 * 2026-11-13 — il presidio vede anche la riga accesa su una tabella fuori dall'ambito, che il giro
   saltava senza traccia (residuo di `framework-automazione-db-migliorie` §2.4). Nessuna riga del
   seed era in quel caso.
+* 2026-11-17 — l'interruttore apre solo alla sessione del migratore, e ogni riga cancellata resta
+  nel diario delle porte (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 

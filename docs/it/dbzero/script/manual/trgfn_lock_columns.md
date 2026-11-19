@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `script.trgfn_lock_columns`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -80,10 +80,15 @@ migrazione, e il registro lo dichiara comunque (la regola è nella guida e nella
 
 ### ⚠️ L'override per la manutenzione
 
-Una transazione di manutenzione può modificare le colonne protette accendendo
-`zeroerp.allow_lock_columns_override` al valore `on`, con `SET LOCAL` per non portarlo oltre la
-transazione. Con l'override acceso la funzione lascia passare la riga senza controlli; con il
-GUC assente, o con qualunque altro valore, le colonne restano protette.
+Una transazione di manutenzione **del migratore** può modificare le colonne protette accendendo
+`zeroerp.allow_lock_columns_override` (`on`, `true` o `1`), con `SET LOCAL` per non portarlo oltre la
+transazione. La porta la decide
+[fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta): si apre solo
+alla sessione del migratore, e si chiede alla prima colonna protetta che cambia. La riga passata
+resta nel diario delle porte; un `UPDATE` che non tocca colonne protette non lascia traccia.
+
+⛔ Per l'applicazione la GUC accesa non apre niente: le colonne restano protette. Il controllo degli
+argomenti a coppie gira sempre, anche a porta aperta.
 
 Serve a non dover spegnere e riaccendere il trigger: è la stessa forma dell'override delle
 cancellazioni di `script.trgfn_delete_block_by_guc`.
@@ -116,6 +121,9 @@ cancellazioni di `script.trgfn_delete_block_by_guc`.
 * 2026-03-28 — l'override per la manutenzione `zeroerp.allow_lock_columns_override`.
 * 2026-11-11 — il contesto porta `campo`, la colonna da evidenziare nel form
   (`brief-db-revisione-catalogo`, giro G1-G2).
+* 2026-11-17 — l'override passa da `script.fn_porta_manutenzione_aperta`: solo il migratore lo
+  apre, alla prima colonna protetta che cambia, con la riga nel diario
+  (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 

@@ -118,6 +118,7 @@ search:
 - [fn_crea_utente_tecnico](funzioni/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_credenziale_ha_vesti](funzioni/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](funzioni/fn_credenziali.md)
+- [fn_credenziali_con_nome_di_ruolo](funzioni/fn_credenziali_con_nome_di_ruolo.md)
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_consegna_ammessa](funzioni/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
@@ -250,6 +251,7 @@ search:
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
+- [fn_porta_manutenzione_aperta](funzioni/fn_porta_manutenzione_aperta.md)
 - [fn_predicato_soggetto_ruolo_visibile](funzioni/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
 - [fn_prima_chiave_estranea](funzioni/fn_prima_chiave_estranea.md)
 - [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
@@ -403,6 +405,7 @@ search:
 - [trgfn_righe_guard_periodicita_canone](funzioni/trgfn_righe_guard_periodicita_canone.md) — (funzione nata il 2026-11-01, `20261101-05`; trigger `20261101-06`; CHECK `20261101-04` — brief `brief-db-contratto-righe-periodiche-in-commessa` §6.11, passo 4)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
 - [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
+- [trgfn_seed_primo_impianto](funzioni/trgfn_seed_primo_impianto.md)
 - [trgfn_sorgente_in_uscita](funzioni/trgfn_sorgente_in_uscita.md)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.

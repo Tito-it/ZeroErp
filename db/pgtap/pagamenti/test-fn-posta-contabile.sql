@@ -23,7 +23,7 @@
 -- 17) ⭐ QUARTA MOSSA: sotto una distinta chiusa una riga non diventa pronta
 -- 18) «Niente da registrare» NON e' un errore: e' un esito
 -- 19) Una distinta che non esiste e' rifiutata
--- 20) Assert finale cleanup
+-- 20) Assert finale cleanup — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
 --
 -- Scopo:
 --  - collaudare il changeSet in cui NASCE IL PRIMO MOVIMENTO del progetto:
@@ -70,7 +70,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 --   ROLLBACK) e il file sarebbe verde per sottrazione.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(20);
+SELECT plan(19);
 
 -- ============================================================
 -- Fixture
@@ -381,40 +381,13 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
--- ⚠️ Ordine imposto dalle FK: movimenti -> righe -> testate -> fattura.
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-
-DELETE FROM pagamenti.vendite_movimenti
- WHERE fattura_id = (SELECT id FROM tmp_fattura);
-
--- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
---    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
---    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
---    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
---    ROLLBACK farebbe comunque il lavoro.
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-DELETE FROM pagamenti.vendite_contabili_righe
- WHERE contabile_id IN (SELECT contabile_id FROM tmp_contabile
-                        UNION ALL SELECT contabile_id FROM tmp_contabile_vuota);
-
-DELETE FROM pagamenti.vendite_contabili
- WHERE id IN (SELECT contabile_id FROM tmp_contabile
-              UNION ALL SELECT contabile_id FROM tmp_contabile_vuota);
-
-DELETE FROM vendite.fatture_log
- WHERE fattura_id = (SELECT id FROM tmp_fattura);
-
-UPDATE vendite.fatture
-   SET storicizza = false
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-DELETE FROM vendite.fatture
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-SELECT ok(true, '20) Cleanup completato');
-
 SELECT * FROM finish();
 
 ROLLBACK;

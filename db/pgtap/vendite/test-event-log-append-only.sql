@@ -138,26 +138,23 @@ SELECT CASE
     )
 END;
 
--- 5) La manutenzione straordinaria: stessa leva dei log gemelli.
+-- 5) La porta di manutenzione: per l'applicazione resta chiusa.
+-- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la porta
+--   zeroerp.maintenance_allow_delete_logs si apre solo per la sessione del
+--   migratore (script.fn_porta_manutenzione_aperta). Questo test gira come app:
+--   con la GUC accesa il DELETE della riga viva resta rifiutato.
 DO $guc$ BEGIN
     PERFORM set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
 END $guc$;
-
-CREATE TEMP TABLE _esito_guc AS
-WITH del AS (
-    DELETE FROM vendite.event_log
-     WHERE id = (SELECT id FROM _viva)
-    RETURNING 1
-)
-SELECT count(*)::int AS righe FROM del;
 
 SELECT CASE
     WHEN (SELECT commessa_id FROM _rif) IS NULL
       THEN skip('fixture non costruibile', 1)
     ELSE is(
-        (SELECT righe FROM _esito_guc),
-        1,
-        'DELETE con zeroerp.maintenance_allow_delete_logs: parita'' con i log gemelli'
+        dbops.fn_pgtap_codice_errore(
+            format('DELETE FROM vendite.event_log WHERE id = %s', (SELECT id FROM _viva))),
+        'E_DELETE_NOT_ALLOWED',
+        'DELETE con zeroerp.maintenance_allow_delete_logs accesa dall''app: rifiutato, la porta e'' del migratore'
     )
 END;
 

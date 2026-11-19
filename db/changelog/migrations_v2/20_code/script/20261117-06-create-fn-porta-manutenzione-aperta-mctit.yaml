@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_porta_manutenzione_aperta: la porta di manutenzione, in un posto solo.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§13, §15.5, D7, §16.9)
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   Le porte di manutenzione (zeroerp.allow_lock_columns_override,
+#   zeroerp.maintenance_ruoli_delete, zeroerp.maintenance_allow_delete_logs,
+#   zeroerp.maintenance_allow_attivita_bypass) erano una variabile di SESSIONE
+#   letta nel corpo di ciascun trigger: chiunque la accendesse, l'applicazione
+#   compresa, saltava il blocco, senza errore e senza traccia. Sei copie della
+#   stessa forma, e tre modi diversi di dire «accesa».
+#
+# -- LA REGOLA ----------------------------------------------------------
+#   La porta e' aperta se la GUC e' accesa (on, true o 1, senza maiuscole) E la
+#   sessione e' del migratore (dbops.fn_sessione_del_migratore: session_user,
+#   non current_user, che dentro una DEFINER e' il proprietario). Per
+#   l'applicazione la porta resta chiusa anche con la GUC accesa: il guard
+#   decide come se la GUC non ci fosse.
+#   Ogni apertura lascia una riga in dbops.porte_manutenzione_passaggi.
+#
+# -- CHI LA CHIAMA --------------------------------------------------------
+#   Solo nel punto in cui il controllo RIFIUTEREBBE la riga: la traccia dice
+#   che cosa la porta ha forzato, non ogni scrittura fatta a GUC accesa.
+#   Le porte di VERBO (una funzione le apre per se', §16.9) non passano di qui.
+#
+# -- SECURITY DEFINER ---------------------------------------------------
+#   Scrive il diario, che l'applicazione legge soltanto; lo scrive solo quando
+#   la porta si apre, cioe' per il migratore. Chiamata dall'app con la GUC
+#   accesa risponde false e non scrive niente. search_path stretto: i nomi sono
+#   tutti qualificati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261117-06-create-fn-porta-manutenzione-aperta-mctit.yaml
+
+  - changeSet:
+      id: 20261117-06-create-fn-porta-manutenzione-aperta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_porta_manutenzione_aperta: una porta di manutenzione si apre solo per la sessione del
+        migratore, con la GUC accesa, e lascia una riga nel diario dbops.porte_manutenzione_passaggi.
+        Brief: brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_porta_manutenzione_aperta'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class
+               WHERE oid = to_regclass('dbops.porte_manutenzione_passaggi')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_sessione_del_migratore()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_porta_manutenzione_aperta(
+                  p_chiave     dbops.porte_manutenzione_passaggi.chiave%TYPE,
+                  -- regclass: la tabella del trigger che chiede (TG_RELID); nel
+                  -- diario va come schema e nome, in testo
+                  p_tabella    regclass,
+                  p_operazione dbops.porte_manutenzione_passaggi.operazione%TYPE,
+                  p_riga_id    dbops.porte_manutenzione_passaggi.riga_id%TYPE DEFAULT NULL)
+              RETURNS boolean
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                  v_schema dbops.porte_manutenzione_passaggi.schema_name%TYPE;
+                  v_tabella dbops.porte_manutenzione_passaggi.table_name%TYPE;
+              BEGIN
+                  -- Scopo: dire se la porta di manutenzione p_chiave e' aperta per
+                  --   questa sessione, e se lo e' lasciarne la traccia.
+                  -- Regole:
+                  --   - GUC spenta, assente o di valore diverso da on/true/1: chiusa;
+                  --   - GUC accesa ma sessione che non e' del migratore (l'app,
+                  --     anche dentro una DEFINER): chiusa, in silenzio — il guard
+                  --     decide come se la GUC non ci fosse;
+                  --   - GUC accesa e sessione del migratore: aperta, con una riga nel
+                  --     diario.
+                  IF p_chiave IS NULL OR p_tabella IS NULL OR p_operazione IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_porta_manutenzione_aperta', 'E_GENERICO',
+                          jsonb_build_object(
+                              'detail',     'Parametri obbligatori mancanti',
+                              'chiave',     p_chiave,
+                              'tabella',    p_tabella::text,
+                              'operazione', p_operazione),
+                          NULL::uuid,
+                          'Parametri obbligatori mancanti (chiave, tabella, operazione).');
+                  END IF;
+
+                  IF lower(btrim(COALESCE(current_setting(p_chiave, true), ''))) NOT IN ('on', 'true', '1') THEN
+                      RETURN false;
+                  END IF;
+
+                  IF NOT dbops.fn_sessione_del_migratore() THEN
+                      RETURN false;
+                  END IF;
+
+                  SELECT n.nspname, c.relname
+                    INTO v_schema, v_tabella
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE c.oid = p_tabella;
+
+                  INSERT INTO dbops.porte_manutenzione_passaggi
+                         (chiave, schema_name, table_name, riga_id, operazione, utente_sessione)
+                  VALUES (p_chiave, v_schema, v_tabella, p_riga_id, p_operazione, session_user);
+
+                  RETURN true;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_porta_manutenzione_aperta(text, regclass, text, text) IS
+                  'La porta di manutenzione p_chiave e'' aperta per questa sessione? true solo se la GUC e'' accesa (on, true o 1, senza maiuscole) e la sessione e'' del migratore (dbops.fn_sessione_del_migratore, che legge session_user). Per l''applicazione la porta resta chiusa anche con la GUC accesa, e il guard che la chiede decide come se la GUC non ci fosse. Quando la porta si apre lascia una riga in dbops.porte_manutenzione_passaggi (chiave, tabella, id della riga, operazione, ruolo di login). Si chiama nel punto in cui il controllo rifiuterebbe, cosi'' il diario dice che cosa la porta ha forzato. La chiamano i trigger delle porte di manutenzione: script.trgfn_lock_columns, script.trgfn_delete_block_by_guc, script.trgfn_seed_primo_impianto, vendite.trgfn_event_log_append_only, vendite.trgfn_logs_guard_delete, vendite.trgfn_attivita_fatturabili_guard_commessa. Le porte che una funzione apre per se'' non passano di qui. Parametri obbligatori mancanti: E_GENERICO. SECURITY DEFINER, search_path pg_catalog.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ I lettori la chiamano da 20261117-07 in poi: rollback di quelli prima.
+              DROP FUNCTION IF EXISTS script.fn_porta_manutenzione_aperta(text, regclass, text, text);

@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_credenziali_da_sanare: terzo motivo, NOME_DI_RUOLO_DB — una
+#   credenziale che si chiama come un ruolo del database, o SEED, letta da
+#   script.fn_credenziali_con_nome_di_ruolo (20261117-17).
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.6, Q17)
+#
+# Le colonne non cambiano (auth_user_id, username, motivo): CREATE OR REPLACE.
+#   security_invoker si ripete (linee-guida-sql §13.7). Definizione viva letta
+#   da pg_get_viewdef su dbdev il 2026-11-18, con search_path = pg_catalog.
+# Il testo del presidio (presidi.csv, presidi_testi.csv) si aggiorna nello
+#   stesso giro, in 80_data.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261117-18-update-vw-credenziali-da-sanare-nome-di-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261117-18-update-vw-credenziali-da-sanare-nome-di-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_credenziali_da_sanare: il motivo NOME_DI_RUOLO_DB. Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class
+               WHERE oid = to_regclass('dbops.vw_credenziali_da_sanare')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.fn_credenziali_con_nome_di_ruolo()')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_credenziali_da_sanare
+              WITH (security_invoker = true) AS
+               SELECT a.auth_user_id,
+                  a.username,
+                  'NESSUNA_VESTE'::text AS motivo
+                 FROM anagrafiche.vw_accessi_altri a
+                WHERE a.nessun_accesso
+              UNION ALL
+               SELECT m.auth_user_id,
+                  au.username,
+                  'PERSONA_E_SISTEMA'::text AS motivo
+                 FROM ( SELECT idg.auth_user_id
+                         FROM anagrafiche.identita_digitali idg
+                        GROUP BY idg.auth_user_id
+                       HAVING bool_or(script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica)) AND bool_or(NOT script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica))) m
+                   LEFT JOIN LATERAL script.fn_get_auth_user_stato(m.auth_user_id) au(username, is_active) ON true
+              UNION ALL
+               SELECT c.auth_user_id,
+                  c.username,
+                  'NOME_DI_RUOLO_DB'::text AS motivo
+                 FROM script.fn_credenziali_con_nome_di_ruolo() c(auth_user_id, username);
+
+              COMMENT ON VIEW dbops.vw_credenziali_da_sanare IS
+                  'Presidio ZERO delle credenziali. NESSUNA_VESTE: la credenziale non ha alcuna veste, nemmeno spenta (anagrafiche.vw_accessi_altri.nessun_accesso: una regola sola); una credenziale con sole vesti spente e'' una persona disattivata e non entra. PERSONA_E_SISTEMA: vesti di persona e di macchina sulla stessa credenziale (script.fn_veste_di_sistema), che il guard trgfn_identita_digitali_guard_natura_credenziale rifiuta: escono le righe scritte prima del guard e quelle di una gara fra transazioni. NOME_DI_RUOLO_DB: lo username e'' SEED o il nome di un ruolo del database, senza distinguere maiuscole e minuscole (script.fn_credenziali_con_nome_di_ruolo): quando il seed di primo impianto iscrive una tabella, le righe scritte da quella credenziale sembrerebbero nate dal seed. NESSUNA_VESTE si sana dando una veste alla credenziale o cancellandola (spegnerla in Django non basta: resta una credenziale senza veste); PERSONA_E_SISTEMA separando le due nature su due credenziali; NOME_DI_RUOLO_DB rinominando la credenziale.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Una colonna in meno no, un ramo in meno si': CREATE OR REPLACE basta.
+              CREATE OR REPLACE VIEW dbops.vw_credenziali_da_sanare
+              WITH (security_invoker = true) AS
+               SELECT a.auth_user_id,
+                  a.username,
+                  'NESSUNA_VESTE'::text AS motivo
+                 FROM anagrafiche.vw_accessi_altri a
+                WHERE a.nessun_accesso
+              UNION ALL
+               SELECT m.auth_user_id,
+                  au.username,
+                  'PERSONA_E_SISTEMA'::text AS motivo
+                 FROM ( SELECT idg.auth_user_id
+                         FROM anagrafiche.identita_digitali idg
+                        GROUP BY idg.auth_user_id
+                       HAVING bool_or(script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica)) AND bool_or(NOT script.fn_veste_di_sistema(idg.ruolo_applicativo, idg.tecnica))) m
+                   LEFT JOIN LATERAL script.fn_get_auth_user_stato(m.auth_user_id) au(username, is_active) ON true;
+
+              COMMENT ON VIEW dbops.vw_credenziali_da_sanare IS
+                  'Presidio ZERO delle credenziali. NESSUNA_VESTE: la credenziale non ha alcuna veste, nemmeno spenta (anagrafiche.vw_accessi_altri.nessun_accesso: una regola sola); una credenziale con sole vesti spente e'' una persona disattivata e non entra. PERSONA_E_SISTEMA: vesti di persona e di macchina sulla stessa credenziale (script.fn_veste_di_sistema), che il guard trgfn_identita_digitali_guard_natura_credenziale rifiuta: escono le righe scritte prima del guard e quelle di una gara fra transazioni. NESSUNA_VESTE si sana dando una veste alla credenziale o cancellandola (spegnerla in Django non basta: resta una credenziale senza veste); PERSONA_E_SISTEMA separando le due nature su due credenziali.';

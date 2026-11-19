@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La rete del seed di primo impianto: a ogni migrate converge la regola
+#   SEED_PRIMO_IMPIANTO (dbops.fn_run_automations_seed_primo_impianto) e si
+#   ferma se resta un'azione da fare. Stampo: 90_end/20261104-08 (CODICE_MAIUSCOLO).
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.11)
+#
+# Perche' a ogni migrate: il trigger deve esistere prima che un CSV iscritto
+#   venga ritoccato. Su un database da zero nasce qui, alla fine del primo
+#   migrate, dopo 80_data: le righe caricate dal CSV hanno user_insert = 'SEED'
+#   (l'audit nasce al ci_apply) e il runner le segna all'iscrizione.
+#
+# NON_CLASSIFICATA e SENZA_ID non fermano la rete: il trigger di prima resta e
+#   li segnala il presidio (D8). La fermano le azioni rimaste da fare (CREA,
+#   RIGENERA, TOGLIE) e un trigger fuori dal registro (lo ferma gia' il runner).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261117-20-converge-seed-primo-impianto-mctit.yaml
+
+  - changeSet:
+      id: 20261117-20-converge-seed-primo-impianto
+      author: mctit
+      runAlways: true
+      # Una rete che converge: il corpo puo' cambiare senza che il checksum
+      # debba invalidare i database dove ha gia' girato.
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Converge l'automazione SEED_PRIMO_IMPIANTO a ogni migrate: monta script.trgfn_seed_primo_impianto
+        sulle tabelle di dbops.automazione_seed_primo_impianto, lo rigenera o lo toglie, e si ferma se al
+        termine resta un'azione da fare.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_run_automations_seed_primo_impianto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $convergenza$
+              DECLARE
+                  v_aperte text;
+              BEGIN
+                  PERFORM dbops.fn_run_automations_seed_primo_impianto('AUTO', NULL, false);
+
+                  SELECT string_agg(d.schema_name || '.' || d.table_name || ' (' || d.azione || ')',
+                                    ', ' ORDER BY d.schema_name, d.table_name)
+                    INTO v_aperte
+                    FROM dbops.fn_seed_primo_impianto_divergenze(NULL) AS d
+                   WHERE d.azione IN ('CREA', 'RIGENERA', 'TOGLIE', 'SCONOSCIUTO');
+
+                  IF v_aperte IS NOT NULL THEN
+                      RAISE EXCEPTION
+                        'SEED_PRIMO_IMPIANTO: tabelle col trigger del seed di primo impianto ancora da allineare: %. '
+                        'Controllare dbops.automazione_seed_primo_impianto e l''ambito (dbops.automation_scope).',
+                        v_aperte;
+                  END IF;
+              END
+              $convergenza$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- No-op dichiarato: la rete non ha uno stato «prima» da ripristinare.
+              -- Per togliere il trigger da una tabella si spegne la sua riga in
+              -- dbops.automazione_seed_primo_impianto; il giro dopo lo toglie.
+              SELECT 1;

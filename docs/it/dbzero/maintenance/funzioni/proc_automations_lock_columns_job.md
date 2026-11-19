@@ -18,18 +18,17 @@ CREATE OR REPLACE PROCEDURE maintenance.proc_automations_lock_columns_job()
  SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
 AS $procedure$
   BEGIN
-    -- rev 20260923-46: anche il guard delle date di validita'
-    --   (automazione DATE_VALIDITA), stessa famiglia del lock.
-    -- rev 20260926-05: niente piu' fn_run_automations_drop_lock_trg;
-    --   togliere un lock e' un'azione del runner che converge.
-    -- rev 20261104-05: anche il codice in maiuscolo (automazione
-    --   CODICE_MAIUSCOLO), stessa famiglia.
+    -- La famiglia dei guard di riga: il lucchetto delle colonne, il
+    -- guard delle date di validita' (DATE_VALIDITA), il codice in
+    -- maiuscolo (CODICE_MAIUSCOLO) e il seed di primo impianto
+    -- (SEED_PRIMO_IMPIANTO). Ogni runner converge: crea, rigenera, toglie.
     PERFORM maintenance.fn_run_and_log(
       p_jobname  := 'automations_lock_columns',
       p_stepname := 'run_automations_lock_columns',
       p_sql      := 'SELECT dbops.fn_run_automations_lock_columns(''SCHEDULED'', NULL, false); ' ||
                    'SELECT dbops.fn_run_automations_date_validita(''SCHEDULED'', NULL, false); ' ||
-                   'SELECT dbops.fn_run_automations_codice_maiuscolo(''SCHEDULED'', NULL, false);',
+                   'SELECT dbops.fn_run_automations_codice_maiuscolo(''SCHEDULED'', NULL, false); ' ||
+                   'SELECT dbops.fn_run_automations_seed_primo_impianto(''SCHEDULED'', NULL, false);',
       p_lock_key := hashtext('automations_lock_columns')
     );
   END;

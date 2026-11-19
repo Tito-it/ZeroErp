@@ -20,7 +20,7 @@
 -- 13) La riapertura resta com'era: la MANUALE torna in BOZZA
 -- 14) D20-e: ABBINATA -> DA_ABBINARE e' spenta — rifiutata con la frase della matrice
 -- 15) D20-e: ABBINATA -> SOSPESA resta ammessa
--- 16) Cleanup
+-- 16) Cleanup — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
 --
 -- Scopo:
 --  - presidiare D20-a: VALIDATA = «ogni riga e' stata guardata». Quali stati
@@ -63,7 +63,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture
@@ -317,29 +317,13 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-
-DELETE FROM pagamenti.vendite_contabili_righe
- WHERE contabile_id = (SELECT contabile_id FROM tmp_contabile);
-
-DELETE FROM pagamenti.vendite_contabili
- WHERE id = (SELECT contabile_id FROM tmp_contabile);
-
-DELETE FROM vendite.fatture_log
- WHERE fattura_id = (SELECT id FROM tmp_fattura);
-
-UPDATE vendite.fatture
-   SET storicizza = false
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-DELETE FROM vendite.fatture
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-SELECT ok(true, '16) Cleanup completato');
-
 SELECT * FROM finish();
 
 ROLLBACK;

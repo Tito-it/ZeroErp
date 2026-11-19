@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -103,6 +103,12 @@ Il sistema supporta due modalita':
 
 Il seed iniziale crea un account con codice `SISTEMA` e host placeholder.
 Per inviare email realmente, l'amministratore deve configurare un account SMTP valido.
+
+⭐ **La configurazione resta quella che hai scritto.** L'account `SISTEMA` il programma
+lo crea una volta sola, all'installazione, e poi non lo tocca più: un aggiornamento del
+programma non riporta i valori di esempio, nemmeno sulla password. L'account `SISTEMA`
+non si elimina (è il ripiego di tutti gli invii): se non serve, si disattiva. Gli account
+per reparto si creano e si eliminano liberamente.
 
 Da **Amm. Software → Account Email** (solo ADMIN):
 
@@ -227,6 +233,14 @@ Se una variabile non viene fornita, resta invariata nel testo (es. `{{link}}`
 rimane se `link` non e' tra le variabili).
 
 ### Modificare un template esistente
+
+⭐ **I testi che modifichi restano tuoi.** Finché nessuno tocca un template di sistema,
+un aggiornamento del programma può migliorarne il testo. Appena ne modifichi oggetto o
+corpo, il template è dell'azienda: gli aggiornamenti successivi non lo riscrivono più.
+Sui template di sistema non si cambiano il codice, la lingua, il reparto, il tipo di
+pratica e le variabili disponibili: sono ciò con cui il programma ritrova il template di
+base. Per un testo diverso per un reparto o per una lingua si crea un override (qui
+sotto). I template di sistema non si eliminano, si disattivano; gli override si eliminano.
 
 Da **Amm. Software → Template Email** (solo ADMIN):
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_sessione_del_migratore`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -9,6 +9,9 @@
 > * [dbops.fn_sync_functions_owner](/dbzero/dbops/funzioni/fn_sync_functions_owner) — chiamante: la guardia della sync dei proprietari
 > * [script.fn_totp_disabilita_device](/dbzero/script/funzioni/fn_totp_disabilita_device) — chiamante: lo spegnimento del secondo fattore dal server
 > * [script.fn_blocca_credenziale](/dbzero/script/funzioni/fn_blocca_credenziale) — chiamante: il blocco di una credenziale di sistema, l'uscita d'emergenza
+> * [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta) — chiamante: chi apre le porte di manutenzione
+> * [script.trgfn_seed_primo_impianto](/dbzero/script/funzioni/trgfn_seed_primo_impianto) — chiamante: chi è il software, sulle tabelle del seed di primo impianto
+> * [dbops.fn_ruolo_del_migratore](/dbzero/dbops/funzioni/fn_ruolo_del_migratore) — la regola, su un nome qualunque
 >
 > Guide:
 >
@@ -21,15 +24,17 @@
 Dice se la connessione è di chi amministra il database — il migratore, in qualunque ambiente, o un
 superuser — e non dell'applicazione. Serve alle operazioni che solo lui può fare: allineare i
 proprietari delle funzioni sensibili, spegnere dal server il secondo fattore di una persona,
-bloccare una credenziale di sistema.
+bloccare una credenziale di sistema, aprire una porta di manutenzione. Sulle tabelle del seed di
+primo impianto distingue il software, che scrive dal CSV, dall'installazione.
 
 ---
 
 ### La regola
 
-Vero se il ruolo con cui la connessione è entrata è **membro** del proprietario dello schema
-`dbops`, oppure è un superuser. Si guarda l'appartenenza e non il nome: il migratore ha nomi diversi
-fra sviluppo, CI e produzione, ma possiede sempre lo schema.
+È la domanda di [fn_ruolo_del_migratore](/dbzero/dbops/funzioni/fn_ruolo_del_migratore) posta sul
+ruolo con cui la connessione è entrata: vero se è **membro** del proprietario dello schema `dbops`,
+oppure è un superuser. Si guarda l'appartenenza e non il nome: il migratore ha nomi diversi fra
+sviluppo, CI e produzione, ma possiede sempre lo schema.
 
 * Si legge `session_user`, non il ruolo corrente: dentro una `SECURITY DEFINER` il ruolo corrente
   è il proprietario della funzione, e la risposta sarebbe sempre sì.
@@ -58,6 +63,9 @@ fra sviluppo, CI e produzione, ma possiede sempre lo schema.
 * 2026-09-29 — estratta dal corpo di `dbops.fn_sync_functions_owner` alla seconda occorrenza della
   domanda, lo spegnimento del secondo fattore (`brief-db-secondo-fattore-totp`).
 * 2026-10-03 — la usa anche il blocco di una credenziale di sistema dal server.
+* 2026-11-17 — la regola passa a `dbops.fn_ruolo_del_migratore`, che la pone su un nome qualunque;
+  la usano le porte di manutenzione e il seed di primo impianto
+  (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 

@@ -165,6 +165,15 @@
 #   Forward su dev `90_end/20261011-04`; terza sede il blocco del
 #   provisioning; pgTAP `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql`.
 #
+# ── ⭐ IL SEED DI PRIMO IMPIANTO E LE PORTE DI MANUTENZIONE (dal 2026-11-18) ──
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive, §16.11
+#   `dbops.seed_righe`, `dbops.porte_manutenzione_passaggi` e
+#   `dbops.automazione_seed_primo_impianto` entrano in
+#   `v_tabelle_sola_lettura_app`: i due registri li scrivono solo le DEFINER
+#   del seed e della porta, il terzo il CSV. Forward su dev `90_end/20261117-21`;
+#   terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/dbops/test-seed-primo-impianto-postura-v1.sql`.
+#
 # ── ⭐ L'AMBIENTE DELL'INSTALLAZIONE (dal 2026-10-16) ──────────────────────
 #   Brief: brief-db-processi-accensione-per-ambiente, R-3
 #   `dbops.installazione` entra in `v_tabelle_sola_lettura_app`: l'ambiente lo
@@ -322,7 +331,16 @@ databaseChangeLog:
                   'documenti.orientamenti_pagina',
                   'config.formati_file',
                   'documenti.tipi_asset_documento_formati',
-                  'documenti.tipi_file_documento_formati'
+                  'documenti.tipi_file_documento_formati',
+                  -- ⭐ Dal 2026-11-18 il SEED DI PRIMO IMPIANTO e le PORTE DI
+                  --   MANUTENZIONE: il registro delle righe di seed lo scrive solo il
+                  --   trigger DEFINER, il diario delle porte solo
+                  --   script.fn_porta_manutenzione_aperta, il registro delle tabelle
+                  --   iscritte il CSV (brief-db-seed-primo-impianto-non-si-riscrive).
+                  --   Forward 90_end/20261117-21.
+                  'dbops.seed_righe',
+                  'dbops.porte_manutenzione_passaggi',
+                  'dbops.automazione_seed_primo_impianto'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

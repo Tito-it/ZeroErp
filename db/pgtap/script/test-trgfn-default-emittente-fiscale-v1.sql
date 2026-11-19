@@ -198,7 +198,11 @@ BEGIN
         (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1),
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1));
 END $fix$;
-SET LOCAL zeroerp.allow_lock_columns_override = 'on';
+-- ⛔ Tolta il 2026-11-18 la riga SET LOCAL zeroerp.allow_lock_columns_override = 'on':
+--    il file non scrive colonne bloccate, e dal 2026-11-18 la porta si apre solo per
+--    la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9). Accesa «per sicurezza»
+--    rendeva verdi per sottrazione le asserzioni che toccano un lucchetto.
 
 -- ============================================================
 -- IL COMPORTAMENTO

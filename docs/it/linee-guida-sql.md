@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -2634,7 +2634,17 @@ storia congelata; e riconosce i ruoli dal prefisso `zeroerp_batch_`.
 
 ---
 
-### 11.7 ⛔ In `80_data` convivono due specie di seed: catalogo e macchina
+### 11.7 ⛔ In `80_data` convivono tre specie di seed: catalogo, primo impianto e macchina
+
+| Specie | Chi comanda | Il CSV | L'applicazione |
+| --- | --- | --- | --- |
+| **di catalogo** | il software | riscrive a ogni modifica del file | niente, o solo le colonne che il CSV non porta |
+| **di primo impianto** | il software finché nessuno tocca la riga, poi l'installazione | crea le righe che mancano; aggiorna una riga solo finché l'installazione non l'ha modificata | modifica e spegne (`attivo = false`); non cancella le righe nate dal seed |
+| **di macchina** | l'installazione | nessun seed | tutto, secondo i suoi guard |
+
+Le prime due specie le descrive questa sezione; quella di primo impianto ha il suo
+paragrafo in fondo, [«La specie di primo impianto»](#la-specie-di-primo-impianto).
+
 
 **Il criterio, e sta sul modello.** Un seed è di **catalogo** se il suo contenuto
 è parte del *contratto del software*: vale identico su qualunque installazione, e
@@ -2742,6 +2752,60 @@ colonna non testuale, ma **nessuno è una mina** — in 19 la colonna non è
 dichiarata `STRING` (Liquibase la rende `NULL`), e nei 7 restanti è un
 `data_update` con `defaultValue: "NOW()"`, che la sostituisce prima di arrivare
 al database. Il difetto era nello **strumento**, non nei dati.
+
+#### La specie di primo impianto
+
+**Il caso.** Un mirror `loadUpdateData` in `runOnChange` ricarica ogni colonna di
+ogni riga del CSV appena il file cambia, anche per una ragione solo sintattica.
+Su una tabella che l'installazione configura dall'interfaccia (un account di
+posta, il testo di una mail) il ritocco del CSV cancella la configurazione del
+cliente, password comprese.
+
+**Il criterio d'ingresso, sul modello.** Una tabella è di primo impianto se il
+CSV le dà il valore iniziale e poi la riga la configura l'installazione. Due forme:
+
+* **per riga** (il default): la riga è tutta configurazione dell'installazione,
+  tranne la chiave con cui il codice la cerca, che dev'essere già ferma per conto
+  suo (`codice_interno` con il lucchetto di colonna). Una riga personalizzata non
+  riceve più niente dal CSV, nemmeno una correzione del software;
+* **per colonna**: la riga è mista. Ogni colonna è **del software** (la chiave di
+  ricerca, le regole che il codice legge: il CSV la scrive sempre, e sulla riga
+  nata dal seed l'installazione non la cambia) o **dell'installazione** (il CSV la
+  scrive finché la riga è intatta). Una colonna che non sta in nessuno dei due
+  elenchi è un difetto, e la regola non rigenera il trigger finché qualcuno non la
+  classifica;
+* **solo inserimento**: la forma per riga in cui il CSV crea la riga se manca e
+  poi non la aggiorna più, toccata o no. Serve quando il CSV porta segnaposto che
+  ogni installazione sostituisce (l'host SMTP di esempio).
+
+`meta`, le colonne d'audit e `tx_id` non contano per «personalizzata».
+
+**Il meccanismo.** È una regola del framework delle automazioni
+([Automazione DB §4.9](/guide/automazione-db)): una riga nel registro
+`dbops.automazione_seed_primo_impianto`, dal suo CSV, e il trigger
+`script.trgfn_seed_primo_impianto` lo monta il runner. Chi scrive si riconosce
+dalla sessione: il **software** è la sessione del migratore
+(`dbops.fn_sessione_del_migratore`), tutto il resto è l'installazione. Le righe
+nate dal seed stanno nel registro `dbops.seed_righe`, che l'applicazione legge
+soltanto.
+
+⛔ **Una tabella entra in un rilascio precedente al primo ritocco del suo CSV.** Il
+trigger nasce dopo `80_data`: un CSV ritoccato nello stesso rilascio in cui la
+tabella si iscrive verrebbe ricaricato prima che il trigger esista.
+
+⛔ **Su queste tabelle §11.2 vale a metà.** Il CSV non spegne una riga
+personalizzata, e in solo inserimento non spegne nessuna riga di seed: `attivo` è
+una colonna dell'installazione. Una riga di seed si ritira dal migratore, con la
+porta di manutenzione `zeroerp.allow_seed_primo_impianto_override`, che lascia la
+traccia in `dbops.porte_manutenzione_passaggi`.
+
+⚠️ **Su queste tabelle `user_update` dice «l'ultimo che ci è passato sopra»**, anche
+il migrate su una riga che non ha cambiato: chi l'ha personalizzata lo dice
+`dbops.seed_righe`.
+
+Prima di iscrivere una tabella si legge la struttura e il codice che la usa, e si
+scrive se la riga è tutta dell'installazione o mista, con la classificazione delle
+colonne; la decide Tid.
 
 ---
 

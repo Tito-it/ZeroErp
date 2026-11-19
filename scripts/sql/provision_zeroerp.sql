@@ -581,6 +581,19 @@ FROM (VALUES ('documenti.tipi_documento_output'), ('documenti.tipi_file_document
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ IL SEED DI PRIMO IMPIANTO E LE PORTE DI MANUTENZIONE (dal 2026-11-18): brief
+--   brief-db-seed-primo-impianto-non-si-riscrive, §16.11. Il registro delle righe di
+--   seed lo scrive solo il trigger DEFINER script.trgfn_seed_primo_impianto, il
+--   diario delle porte solo script.fn_porta_manutenzione_aperta, il registro delle
+--   tabelle iscritte il CSV. Stesso elenco di `v_tabelle_sola_lettura_app` nel
+--   loop 20260205-41 e del forward 90_end/20261117-21;
+--   `db/pgtap/dbops/test-seed-primo-impianto-postura-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('dbops.seed_righe'), ('dbops.porte_manutenzione_passaggi'),
+             ('dbops.automazione_seed_primo_impianto')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

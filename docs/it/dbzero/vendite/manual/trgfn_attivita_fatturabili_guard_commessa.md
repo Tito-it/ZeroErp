@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `vendite.trgfn_attivita_fatturabili_guard_commessa`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -41,8 +41,11 @@ dipende da un parametro.
 
 ### ⚠️ Il bypass di manutenzione
 
-Un superuser che accende la GUC `zeroerp.maintenance_allow_attivita_bypass` salta il controllo. È
-una porta per la manutenzione del dato, non per l'applicazione: l'applicazione non è superuser.
+La GUC `zeroerp.maintenance_allow_attivita_bypass`, accesa (`on`, `true` o `1`) da una sessione del
+migratore, lascia passare la riga che il controllo rifiuterebbe
+([fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta)). La porta si
+chiede solo lì, e la riga passata resta nel diario delle porte. È una porta per la manutenzione del
+dato, non per l'applicazione: per l'app la GUC accesa non apre niente.
 
 ---
 
@@ -67,6 +70,9 @@ una porta per la manutenzione del dato, non per l'applicazione: l'applicazione n
   commessa, acceso da un parametro.
 * 2026-11-08 — il parametro `attivita_fatturabili_require_commessa` è ritirato: il guard controlla
   sempre, e i due controlli che ripetevano il NOT NULL sono tolti.
+* 2026-11-17 — la porta passa da `script.fn_porta_manutenzione_aperta`: la apre la sessione del
+  migratore invece di un superuser, accesa vale solo `on`, `true` o `1`, e lascia la riga nel diario
+  (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 
