@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_seed_colonne_del_software: le colonne che su una riga di seed
+#   l'installazione non modifica, lette dal MONTAGGIO del trigger.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.14)
+#
+# Perche' dal montaggio e non da dbops.automazione_seed_primo_impianto: il guard
+#   script.trgfn_seed_primo_impianto rifiuta leggendo i suoi argomenti (TG_ARGV)
+#   con dbops.fn_seed_primo_impianto_argomenti. La superficie che spegne il campo
+#   legge gli stessi argomenti con la stessa grammatica: il campo e' spento
+#   esattamente dove il guard rifiuterebbe, anche nella finestra in cui il
+#   registro e il montaggio divergono (prima del ci_apply). Le divergenze le dice
+#   dbops.fn_seed_primo_impianto_divergenze.
+#
+# Vuoto, mai NULL: per una tabella senza il trigger (o col trigger spento), per
+#   le forme RIGA e SOLO_INSERIMENTO (nessuna colonna del software) e per un
+#   montaggio che non rispetta la grammatica (il guard alza
+#   E_TRIGGER_ARGOMENTI_INVALIDI, e nessun campo e' «del software»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261117-24-create-fn-seed-colonne-del-software-mctit.yaml
+
+  - changeSet:
+      id: 20261117-24-create-fn-seed-colonne-del-software
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_seed_colonne_del_software: le colonne del software di una tabella iscritta al seed di
+        primo impianto, dal montaggio del trigger. Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive (§16.14).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_seed_colonne_del_software'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_seed_colonne_del_software(
+                  -- regclass nudo: la tabella di cui si leggono i trigger, non il
+                  -- riflesso di una colonna
+                  p_tabella regclass)
+              RETURNS dbops.automazione_seed_primo_impianto.colonne_software%TYPE
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(
+                             (SELECT a.colonne_software
+                                FROM pg_catalog.pg_trigger tg
+                                CROSS JOIN LATERAL dbops.fn_seed_primo_impianto_argomenti(
+                                                       dbops.fn_trigger_argomenti(tg.tgargs)) a
+                               WHERE tg.tgrelid = p_tabella
+                                 AND tg.tgfoid = 'script.trgfn_seed_primo_impianto()'::regprocedure
+                                 AND NOT tg.tgisinternal
+                                 AND tg.tgenabled <> 'D'
+                                 AND a.valido
+                               ORDER BY tg.tgname
+                               LIMIT 1),
+                             ARRAY[]::text[]);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_seed_colonne_del_software(regclass) IS
+                  'Le colonne del software della tabella p_tabella: quelle che su una riga nata dal seed l''installazione non modifica (il guard script.trgfn_seed_primo_impianto alza E_SEED_COLONNA_DEL_SOFTWARE). Si leggono dagli argomenti del trigger montato, con la stessa grammatica del guard (dbops.fn_seed_primo_impianto_argomenti): il campo spento e il rifiuto vengono dalla stessa sorgente. Vuoto, mai NULL, per una tabella senza il trigger o col trigger spento, per le forme RIGA e SOLO_INSERIMENTO e per un montaggio fuori grammatica. Vale per la tabella, non per la riga: su una riga dell''installazione nessuna colonna e'' del software (lo dice dbops.fn_seed_riga). La leggono le superfici config.vw_email_account_seed e config.vw_email_template_seed. SECURITY INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- ⚠️ Le due viste la chiamano: rollback di quelle prima.
+              DROP FUNCTION IF EXISTS dbops.fn_seed_colonne_del_software(regclass);

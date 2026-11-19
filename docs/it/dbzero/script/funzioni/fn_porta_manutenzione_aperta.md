@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_porta_manutenzione_aperta.md" %}
 # ⚙️ Funzione `fn_porta_manutenzione_aperta`
 
 ```sql

@@ -178,4 +178,6 @@ search:
 ## 🔍 Views (manuale)
 - [vw_codici_errore](manual/vw_codici_errore.md) — (rev 2026-08-21)
 - [vw_codici_errore_identita](manual/vw_codici_errore_identita.md) — (rev 2026-08-21)
+- [vw_email_account_seed](manual/vw_email_account_seed.md)
 - [vw_email_in_coda](manual/vw_email_in_coda.md) — (latest review 11-09-2026)
+- [vw_email_template_seed](manual/vw_email_template_seed.md)

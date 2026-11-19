@@ -7,7 +7,8 @@
 --
 -- Test: il seed di primo impianto visto dal SOFTWARE.
 --   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.7, §16.3, §16.9).
---   ChangeSet: 20261117-01 … -21.
+--   ChangeSet: 20261117-01 … -21; 20261117-28 (la DELETE di account e template
+--   passa da due porte: quella del seed e quella della cancellazione, §16.14).
 --   Il lato dell'installazione: db/pgtap/config/test-seed-primo-impianto-installazione-v1.sql.
 --
 -- Il blocco DO del mirror si scrive qui com'e' il SQL di loadUpdateData su
@@ -15,7 +16,7 @@
 --   personalizzazione dell'installazione si simula scrivendo il registro da
 --   proprietario: l'app non la puo' fare in una sessione del migratore.
 --
--- Elenco test (plan 26):
+-- Elenco test (plan 27):
 --    1) mirror su una riga di seed intatta: nessun errore
 --    2) … la riga segue il CSV
 --    3) mirror su una riga personalizzata: nessuna chiave duplicata
@@ -30,27 +31,29 @@
 --   10) SOLO_INSERIMENTO: la riga che manca si inserisce
 --   11) … e nasce nel registro, segnata dall'INSERT
 --   12) il migratore senza porta non cancella una riga di seed
---   13) con la porta la cancella
---   14) … e la riga esce dal registro
---   15) … e il diario la registra
---   16) con la porta il migratore riscrive la riga personalizzata
---   17) … che resta personalizzata (D6)
---   18) porta del lucchetto aperta dal migratore: il codice bloccato cambia
---   19) … e il diario la registra
---   20) senza porta il lucchetto rifiuta
---   21) una colonna aggiunta e non classificata: NON_CLASSIFICATA
---   22) … il runner lascia il trigger di prima
---   23) l'iscrizione segna le righe con user_insert SEED o di un ruolo del migratore
---   24) … non quelle di uno username
---   25) la rigenerazione non ripassa dall'iscrizione
---   26) fn_sessione_del_migratore da proprietario: true
+--   13) con la sola porta del seed: E_DELETE_NOT_ALLOWED (la tabella non si
+--       cancella, dbops.automation_delete_block)
+--   14) con le due porte la cancella
+--   15) … e la riga esce dal registro
+--   16) … e il diario la registra
+--   17) con la porta il migratore riscrive la riga personalizzata
+--   18) … che resta personalizzata (D6)
+--   19) porta del lucchetto aperta dal migratore: il codice bloccato cambia
+--   20) … e il diario la registra
+--   21) senza porta il lucchetto rifiuta
+--   22) una colonna aggiunta e non classificata: NON_CLASSIFICATA
+--   23) … il runner lascia il trigger di prima
+--   24) l'iscrizione segna le righe con user_insert SEED o di un ruolo del migratore
+--   25) … non quelle di uno username
+--   26) la rigenerazione non ripassa dall'iscrizione
+--   27) fn_sessione_del_migratore da proprietario: true
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(26);
+SELECT plan(27);
 
 -- ============================================================
 -- 1-2 Riga di seed intatta: segue il CSV
@@ -169,7 +172,7 @@ SELECT is(
     '11) … e nasce nel registro, segnata dall''INSERT del migratore');
 
 -- ============================================================
--- 12-17 La porta del seed, aperta dal migratore
+-- 12-18 La porta del seed, aperta dal migratore
 -- ============================================================
 SELECT is(
     dbops.fn_pgtap_codice_errore($$DELETE FROM config.email_template WHERE id = 7$$),
@@ -178,16 +181,25 @@ SELECT is(
 
 SET LOCAL zeroerp.allow_seed_primo_impianto_override = 'on';
 
+-- Dal 2026-11-19 (§16.14) un template non si cancella: la porta del seed fa
+-- passare il guard del seed, e il blocco della DELETE parla dopo.
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$DELETE FROM config.email_template WHERE id = 7$$),
+    'E_DELETE_NOT_ALLOWED',
+    '13) con la sola porta del seed: rifiutato dal blocco della DELETE');
+
+SET LOCAL zeroerp.maintenance_email_delete = 'on';
+
 SELECT is(
     dbops.fn_pgtap_codice_errore($$DELETE FROM config.email_template WHERE id = 7$$),
     NULL,
-    '13) con la porta la cancella: il DELETE forward-only');
+    '14) con le due porte la cancella: il DELETE forward-only');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.seed_righe s
       WHERE s.schema_name = 'config' AND s.table_name = 'email_template' AND s.riga_id = '7'),
     0,
-    '14) … e la riga esce dal registro');
+    '15) … e la riga esce dal registro');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.porte_manutenzione_passaggi p
@@ -195,12 +207,12 @@ SELECT is(
         AND p.schema_name = 'config' AND p.table_name = 'email_template'
         AND p.riga_id = '7' AND p.operazione = 'DELETE' AND p.utente_sessione = session_user::text),
     1,
-    '15) … e il diario la registra, col ruolo di login');
+    '16) … e il diario la registra, col ruolo di login');
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$UPDATE config.email_template SET corpo_testo = 'Bonifica voluta' WHERE id = 6$$),
     NULL,
-    '16) con la porta il migratore riscrive la riga personalizzata');
+    '17) con la porta il migratore riscrive la riga personalizzata');
 
 SELECT is(
     (SELECT format('%s|%s', t.corpo_testo, (s.personalizzata_il IS NOT NULL)::text)
@@ -208,33 +220,34 @@ SELECT is(
        JOIN dbops.seed_righe s ON s.schema_name = 'config' AND s.table_name = 'email_template' AND s.riga_id = t.id::text
       WHERE t.id = 6),
     'Bonifica voluta|true',
-    '17) … che resta personalizzata');
+    '18) … che resta personalizzata');
 
 RESET zeroerp.allow_seed_primo_impianto_override;
+RESET zeroerp.maintenance_email_delete;
 
 -- ============================================================
--- 18-20 La porta del lucchetto, su una tabella fuori dal seed
+-- 19-21 La porta del lucchetto, su una tabella fuori dal seed
 -- ============================================================
 SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$UPDATE dbops.domini_task SET codice = codice || '_PGTAP' WHERE id = (SELECT min(id) FROM dbops.domini_task)$$),
     NULL,
-    '18) porta del lucchetto aperta dal migratore: il codice bloccato cambia');
+    '19) porta del lucchetto aperta dal migratore: il codice bloccato cambia');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.porte_manutenzione_passaggi p
       WHERE p.chiave = 'zeroerp.allow_lock_columns_override'
         AND p.schema_name = 'dbops' AND p.table_name = 'domini_task' AND p.operazione = 'UPDATE'),
     1,
-    '19) … e il diario la registra');
+    '20) … e il diario la registra');
 
 RESET zeroerp.allow_lock_columns_override;
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$UPDATE dbops.domini_task SET codice = codice || '_DI_NUOVO' WHERE id = (SELECT min(id) FROM dbops.domini_task)$$),
     'E_CODICE_NON_MODIFICABILE',
-    '20) senza porta il lucchetto rifiuta');
+    '21) senza porta il lucchetto rifiuta');
 
 -- ============================================================
 -- 21-22 La colonna non classificata (D8)
@@ -252,7 +265,7 @@ SELECT is(
        FROM dbops.fn_seed_primo_impianto_divergenze(ARRAY['config']) d
       WHERE d.table_name = 'email_template'),
     'NON_CLASSIFICATA|pgtap_colonna_nuova',
-    '21) una colonna aggiunta e non classificata: NON_CLASSIFICATA');
+    '22) una colonna aggiunta e non classificata: NON_CLASSIFICATA');
 
 SELECT dbops.fn_run_automations_seed_primo_impianto('AUTO', ARRAY['config'], false);
 
@@ -262,7 +275,7 @@ SELECT is(
       WHERE tg.tgrelid = 'config.email_template'::regclass
         AND tg.tgfoid = 'script.trgfn_seed_primo_impianto()'::regprocedure),
     (SELECT args FROM _args_prima),
-    '22) … il runner lascia il trigger di prima, che protegge le colonne gia'' dichiarate');
+    '23) … il runner lascia il trigger di prima, che protegge le colonne gia'' dichiarate');
 
 -- ============================================================
 -- 23-25 L'iscrizione di una tabella
@@ -288,13 +301,13 @@ SELECT is(
        FROM dbops.seed_righe s
       WHERE s.schema_name = 'config' AND s.table_name = 'pgtap_seed_iscrizione'),
     '1:ISCRIZIONE,2:ISCRIZIONE',
-    '23) l''iscrizione segna le righe con user_insert SEED o di un ruolo del migratore');
+    '24) l''iscrizione segna le righe con user_insert SEED o di un ruolo del migratore');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.seed_righe s
       WHERE s.schema_name = 'config' AND s.table_name = 'pgtap_seed_iscrizione' AND s.riga_id = '3'),
     0,
-    '24) … non quella di uno username: e'' dell''installazione');
+    '25) … non quella di uno username: e'' dell''installazione');
 
 DELETE FROM dbops.seed_righe
  WHERE schema_name = 'config' AND table_name = 'pgtap_seed_iscrizione' AND riga_id = '1';
@@ -311,7 +324,7 @@ SELECT is(
                    (SELECT count(*) FROM dbops.seed_righe s
                      WHERE s.schema_name = 'config' AND s.table_name = 'pgtap_seed_iscrizione' AND s.riga_id = '1'))),
     'trg_pgtap_seed_iscrizione_a00_rinominato|0',
-    '25) la rigenerazione rinomina il trigger e non ripassa dall''iscrizione');
+    '26) la rigenerazione rinomina il trigger e non ripassa dall''iscrizione');
 
 -- ============================================================
 -- 26 Il proprietario e' il migratore
@@ -319,7 +332,7 @@ SELECT is(
 SELECT is(
     dbops.fn_sessione_del_migratore(),
     true,
-    '26) fn_sessione_del_migratore da proprietario: true');
+    '27) fn_sessione_del_migratore da proprietario: true');
 
 SELECT * FROM finish();
 ROLLBACK;

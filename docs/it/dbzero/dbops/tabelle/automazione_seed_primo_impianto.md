@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/automazione_seed_primo_impianto.md" %}
 # 📚 Tabella `automazione_seed_primo_impianto`
 
 > 📝 **Descrizione**

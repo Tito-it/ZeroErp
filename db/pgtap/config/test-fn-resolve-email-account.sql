@@ -2,16 +2,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- pgtap-runner: owner
--- pgtap-runner-motivo: la fixture CANCELLA le righe seedate di
---   config.email_outbox / email_log per rendere l'account SISTEMA privo di
---   figli (serve al test 7). Dal 2026-09-05 `config.email_outbox` ha la RLS
---   attiva (changeSet 20260905-37) e le sue righe sono di ambito SISTEMA, che
---   la policy riserva al super admin: come applicazione quel DELETE non tocca
---   piu' niente. ⭐ Ed e' giusto cosi' — l'applicazione quelle righe non le
---   cancella. E' una scrittura da owner, e si dichiara invece di indebolire la
---   policy. Verificato leggendo la policy, non dedotto.
---
 -- Test: config.fn_resolve_email_account
 --       Risoluzione account SMTP con fallback reparto -> SISTEMA.
 --
@@ -22,7 +12,8 @@
 --  4) Reparto con account dedicato → ritorna account del reparto
 --  5) Reparto senza account → fallback a SISTEMA
 --  6) Reparto con account inattivo → fallback a SISTEMA
---  7) Account SISTEMA inattivo → ritorna NULL
+--  7) Account SISTEMA inattivo → ritorna NULL (SISTEMA si spegne anche se ha
+--     spedito: lo storico delle mail non tiene acceso l'account, §16.14)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -36,74 +27,56 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: la riga resta perche' il preambolo e' presidiato e
--- perche' la funzione sotto test legge come legge l'applicazione.
--- ⚠️ Ma dal 2026-09-05 il file gira come OWNER (marcatore in testa): la RLS su
--- config.email_outbox e' attiva e la fixture deve cancellare righe che
--- l'applicazione non cancella. ⛔ Quindi questo file NON esercita piu' la RLS,
--- e va detto: chi cerca il collaudo della policy sulle email lo trova in
--- db/pgtap/rls/test-rls-email-outbox-ambito.sql.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
+-- Contesto applicativo: il file gira come l'applicazione (runner di default) e
+-- scrive come scrive l'amministratore.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(7);
 
 -- ============================================================
--- 0. Setup: crea account di test
+-- 0. Setup
 -- ============================================================
 
--- Prendo una UO esistente per i test
+-- Una UO attiva SENZA account: il livello 1 del risolutore e' l'account
+-- REPARTO_TEST che il file crea, non un account che c'era gia'.
 CREATE TEMP TABLE tmp_email_ctx AS
 SELECT uo.id AS uo_id
 FROM config.unita_organizzative uo
 WHERE uo.attivo = true
+  AND NOT EXISTS (SELECT 1 FROM config.email_account ea
+                   WHERE ea.unita_organizzativa_id = uo.id)
 ORDER BY uo.id
 LIMIT 1;
 
--- Ambiente self-contained. Il seed fornisce un account SISTEMA, ma:
---   - codice_interno e' UNIQUE (20260629-05) -> non si puo' inserire un 2o SISTEMA;
---   - il SISTEMA seed ha figli attivi (email_log/email_outbox) e il guard
---     dbops.trgfn_prevent_deactivate_if_children ne impedisce la disattivazione
---     (serve al test 7).
--- Percio' rimuovo il SISTEMA seed + i suoi figli e ricreo un SISTEMA pulito
--- (senza figli, disattivabile). Tutto in transazione: ROLLBACK ripristina.
---
--- ⛔ 2026-09-05 — E QUI IL FILE E' MORTO PER UN GIORNO, in un modo che vale
---   ricordare. Acceso il changeSet `20260905-37` (RLS su config.email_outbox),
---   il DELETE qui sotto ha smesso di cancellare: le righe sono di ambito
---   SISTEMA, e la policy le riserva al super admin.
---   ⚠️ **Un DELETE che non cancella niente non solleva niente.** Il file non e'
---   caduto dove stava il problema: e' caduto due istruzioni piu' in la', sulla
---   FK di `email_account`, nominando una tabella che non c'entrava.
---   ⇒ Il rimedio non e' indebolire la policy ne' saltare la riga: e' dichiarare
---   che questa fixture e' una scrittura da OWNER (marcatore in testa).
---
--- ⛔ 2026-09-25 — I FIGLI SI STACCANO, NON SI CANCELLANO. Dal changeSet
---   `20260925-74` una mail spedita non si elimina (la regola «solo in bozza»,
---   E_DELETE_DOC_NON_BOZZA), e il DELETE qui sotto moriva su ogni database con
---   una mail di sistema gia' partita. Al test serve un account SENZA figli, non
---   figli cancellati: `email_account_id` e' nullable su entrambe le tabelle, e
---   staccarli non tocca la storia di nessuna mail.
-UPDATE config.email_log
-   SET email_account_id = NULL
- WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
-UPDATE config.email_outbox
-   SET email_account_id = NULL
- WHERE email_account_id IN (SELECT id FROM config.email_account WHERE codice_interno = 'SISTEMA');
-DELETE FROM config.email_account
- WHERE codice_interno IN ('SISTEMA', 'REPARTO_TEST');
+-- L'account SISTEMA e' quello del seed, acceso e col suo codice. Si aggiorna,
+-- non si ricrea.
+-- ⛔ 2026-11-19 — FINO A QUI il file cancellava SISTEMA e lo ricreava da OWNER,
+--   dopo averne staccato i figli (email_log, email_outbox): il SISTEMA del seed
+--   aveva spedito, e dbops.trgfn_prevent_deactivate_if_children ne impediva la
+--   disattivazione che serve al test 7. Dal giro 1 del seed di primo impianto
+--   quella strada era chiusa due volte (la DELETE di una riga di seed e'
+--   E_SEED_RIGA_NON_CANCELLABILE, e l'UPDATE del migratore su una tabella in
+--   solo inserimento si scarta), e dal 20261117-28 account e template non si
+--   cancellano piu' (dbops.automation_delete_block). Lo stesso giro toglie il
+--   blocco della disattivazione verso lo storico delle mail
+--   (dbops.automazione_attivo_eccezioni): un account che ha spedito si spegne.
+--   ⇒ Il test 7 lo prova sull'account vero, coi suoi figli, come app.
+--   Brief: brief-db-seed-primo-impianto-non-si-riscrive §16.14.
+UPDATE config.email_account
+   SET codice = 'SISTEMA', attivo = true
+ WHERE codice_interno = 'SISTEMA';
 
--- Account SISTEMA (fallback). codice_interno = chiave immutabile risolta dalla fn.
+-- Un database senza il seed: SISTEMA lo crea l'installazione.
 INSERT INTO config.email_account
     (codice, codice_interno, descrizione, unita_organizzativa_id,
      smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
      smtp_username, smtp_password_encrypted,
      email_from, attivo)
-VALUES
-    ('SISTEMA', 'SISTEMA', 'Account di sistema test', NULL,
-     'smtp.test.local', 587, true, false,
-     'test@test.local', 'encrypted_pwd_test',
-     'noreply@test.local', true);
+SELECT 'SISTEMA', 'SISTEMA', 'Account di sistema test', NULL,
+       'smtp.test.local', 587, true, false,
+       'test@test.local', 'encrypted_pwd_test',
+       'noreply@test.local', true
+ WHERE NOT EXISTS (SELECT 1 FROM config.email_account WHERE codice_interno = 'SISTEMA');
 
 -- Account per il reparto
 INSERT INTO config.email_account

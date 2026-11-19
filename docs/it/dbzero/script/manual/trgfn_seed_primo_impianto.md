@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_seed_primo_impianto()`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 19 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,6 +15,12 @@
 > * [dbops.fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore) — chi è il software
 > * [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta) — la porta di manutenzione
 > * [dbops.fn_run_automations_seed_primo_impianto](/dbzero/dbops/funzioni/fn_run_automations_seed_primo_impianto) — il giro che la monta
+> * [dbops.fn_seed_riga](/dbzero/dbops/funzioni/fn_seed_riga) — la domanda «nata dal seed», sul registro
+> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc) — il blocco della `DELETE` sugli account e sui template, che parla dopo
+>
+> Approfondimento viste:
+>
+> * [config.vw_email_account_seed](/dbzero/config/views/vw_email_account_seed) e [config.vw_email_template_seed](/dbzero/config/views/vw_email_template_seed) — il segno «nata dal seed» per l'interfaccia, dalle stesse funzioni
 >
 > Guide:
 >
@@ -52,7 +58,7 @@ l'applicazione, un verbo `SECURITY DEFINER` chiamato dall'app, un job.
 | installazione | `UPDATE` | di seed | una colonna del software cambiata è `E_SEED_COLONNA_DEL_SOFTWARE`; una dell'installazione cambiata fa la riga personalizzata |
 | installazione | `UPDATE` | dell'installazione | passa |
 | chiunque | `DELETE` | di seed | `E_SEED_RIGA_NON_CANCELLABILE`: la riga si spegne (`attivo = false`) |
-| chiunque | `DELETE` | dell'installazione | passa |
+| chiunque | `DELETE` | dell'installazione | passa (dove la tabella lo consente: account e template di posta non si cancellano) |
 
 * Su una riga **personalizzata** i valori che il CSV avrebbe scritto vanno nel registro
   (`scartati`). In **solo inserimento** no: la riga è dell'installazione per costruzione. Il
@@ -62,6 +68,16 @@ l'applicazione, un verbo `SECURITY DEFINER` chiamato dall'app, un job.
 * ⭐ **Restituisce sempre la riga, mai `NULL`.** Il mirror su PostgreSQL scrive
   `UPDATE …; IF not found THEN INSERT`: un `UPDATE` annullato con `NULL` farebbe partire l'`INSERT`,
   e la chiave andrebbe duplicata. La riga rimessa a posto fa contare l'`UPDATE` come avvenuto.
+* La domanda «nata dal seed» la fa [fn_seed_riga](/dbzero/dbops/funzioni/fn_seed_riga), la stessa
+  che leggono le superfici degli account e dei template. Le colonne del software che rifiuta sono
+  quelle dei suoi argomenti: le superfici le leggono dal montaggio con la stessa grammatica
+  ([fn_seed_colonne_del_software](/dbzero/dbops/funzioni/fn_seed_colonne_del_software)). Il campo
+  spento e il rifiuto rispondono alla stessa domanda.
+* ⚠️ **Su `config.email_account` e `config.email_template` nessuna riga si cancella**
+  (`dbops.automation_delete_block`, dal 2026-11-19): sulla riga di seed parla prima questo trigger
+  (`a00`), sulle altre il blocco (`a10`, `E_DELETE_NOT_ALLOWED`). Il migratore che ritira una riga
+  di seed apre **due** porte: `zeroerp.allow_seed_primo_impianto_override` e
+  `zeroerp.maintenance_email_delete`.
 * ⭐ **Scatta per primo** (fase `a00`): i guard e i lucchetti che vengono dopo vedono i valori
   rimessi, non quelli del CSV.
 
@@ -102,6 +118,8 @@ che la `SECURITY DEFINER` non cambia. `search_path` bloccato su `pg_catalog, pg_
 * `db/pgtap/config/test-seed-primo-impianto-installazione-v1.sql` — il lato dell'installazione, come
   applicazione.
 * `db/pgtap/dbops/test-seed-primo-impianto-postura-v1.sql` — `SECURITY DEFINER` e `search_path`.
+* `db/pgtap/config/test-posta-solo-disattivazione-v1.sql` — sul template di seed parla il guard
+  prima del blocco della `DELETE` (test 6), e le superfici che leggono le sue funzioni.
 
 ---
 
@@ -110,6 +128,7 @@ che la `SECURITY DEFINER` non cambia. `search_path` bloccato su `pg_catalog, pg_
 * 2026-11-17 — nasce (`brief-db-seed-primo-impianto-non-si-riscrive`).
 * 2026-11-18 — in solo inserimento il salto del software alza il `WARNING`, senza scrivere il
   registro (Q22).
+* 2026-11-19 — la voce del registro si legge da `fn_seed_riga` (§16.14 del brief).
 
 ---
 

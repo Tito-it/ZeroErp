@@ -200,6 +200,8 @@ search:
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
 - [vw_codici_postali_lista](views/vw_codici_postali_lista.md)
 - [vw_comuni_lista](views/vw_comuni_lista.md)
+- [vw_email_account_seed](views/vw_email_account_seed.md)
 - [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)
+- [vw_email_template_seed](views/vw_email_template_seed.md)
 - [vw_province_lista](views/vw_province_lista.md)
 - [vw_regioni_lista](views/vw_regioni_lista.md)

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.seed_righe`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 19 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 >
 > * [script.trgfn_seed_primo_impianto](/dbzero/script/funzioni/trgfn_seed_primo_impianto) — scrive il registro, e lo legge a ogni scrittura
 > * [dbops.fn_run_automations_seed_primo_impianto](/dbzero/dbops/funzioni/fn_run_automations_seed_primo_impianto) — iscrive le righe di seed già presenti
+> * [dbops.fn_seed_riga](/dbzero/dbops/funzioni/fn_seed_riga) — la domanda «nata dal seed», per chi legge il registro: il guard e le superfici degli account e dei template
 >
 > Guide:
 >
@@ -79,6 +80,7 @@ righe, toccate o no, e i valori scartati non si scrivono.
 
 * 2026-11-17 — nasce (`brief-db-seed-primo-impianto-non-si-riscrive`). Alla prima corsa del runner
   ha iscritto su dbdev 1 riga di `config.email_account` e 9 di `config.email_template`.
+* 2026-11-19 — chi legge il registro passa da `dbops.fn_seed_riga`, anche il guard (§16.14 del brief).
 
 ---
 

@@ -118,7 +118,7 @@ search:
 - [fn_crea_utente_tecnico](funzioni/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_credenziale_ha_vesti](funzioni/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
 - [fn_credenziali](funzioni/fn_credenziali.md)
-- [fn_credenziali_con_nome_di_ruolo](funzioni/fn_credenziali_con_nome_di_ruolo.md)
+- [fn_credenziali_con_nome_di_ruolo](funzioni/fn_credenziali_con_nome_di_ruolo.md) — Elenca le credenziali dell'applicazione (`django.auth_user`) il cui username è `SEED` o il nome di un ruolo del database, senza distinguere maiuscole e minuscole.
 - [fn_current_identita_context](funzioni/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_consegna_ammessa](funzioni/fn_data_consegna_ammessa.md) — (nata il 2026-10-13, dal collaudo)
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
@@ -251,7 +251,7 @@ search:
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
-- [fn_porta_manutenzione_aperta](funzioni/fn_porta_manutenzione_aperta.md)
+- [fn_porta_manutenzione_aperta](funzioni/fn_porta_manutenzione_aperta.md) — Risponde a una domanda sola: **la porta di manutenzione `p_chiave` è aperta per questa sessione?** Una porta di manutenzione è una GUC che un trigger di protezione riconosce, per lasciar passare a mano una correzione che il dominio rifiuta: una bonifica, un refuso, una cancellazione forward-only. La funzione è il punto unico in cui si decide chi la può aprire e in cui resta la traccia di ciò che ha forzato.
 - [fn_predicato_soggetto_ruolo_visibile](funzioni/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
 - [fn_prima_chiave_estranea](funzioni/fn_prima_chiave_estranea.md)
 - [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
@@ -374,7 +374,7 @@ search:
 - [trgfn_componenti_ricalcola_padre](funzioni/trgfn_componenti_ricalcola_padre.md) — Mantiene il prezzo della riga padre composita CASO A sempre coerente con i prezzi dei suoi componenti. Il prezzo padre è **derivato, non inserito direttamente**: qualsiasi modifica (INSERT, UPDATE, DELETE) a un componente propaga automaticamente il ricalcolo.
 - [trgfn_config_sistema_codici_sync_gen_codice](funzioni/trgfn_config_sistema_codici_sync_gen_codice.md) — La funzione `script.trgfn_config_sistema_codici_sync_gen_codice()` mantiene **sincronizzati** trigger e trigger function per la **generazione automatica dei codici/numero** in base a `config.sistema_codici`.
 - [trgfn_default_emittente_fiscale](funzioni/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
-- [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — La funzione trigger **generica** del blocco delle cancellazioni: rifiuta il `DELETE` di una riga, salvo che la sessione abbia acceso un interruttore di manutenzione (una **GUC**). Il framework la monta sulle tabelle di `dbops.automation_delete_block`, con un trigger `BEFORE DELETE` per riga.
+- [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — La funzione trigger **generica** del blocco delle cancellazioni: rifiuta il `DELETE` di una riga, salvo che la sessione del migratore abbia acceso un interruttore di manutenzione (una **GUC**). Il framework la monta sulle tabelle di `dbops.automation_delete_block`, con un trigger `BEFORE DELETE` per riga.
 - [trgfn_doc_guard_emittente_ba](funzioni/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
 - [trgfn_doc_guard_listino_con_righe](funzioni/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_guard_listino_documento](funzioni/trgfn_doc_guard_listino_documento.md)
@@ -405,7 +405,7 @@ search:
 - [trgfn_righe_guard_periodicita_canone](funzioni/trgfn_righe_guard_periodicita_canone.md) — (funzione nata il 2026-11-01, `20261101-05`; trigger `20261101-06`; CHECK `20261101-04` — brief `brief-db-contratto-righe-periodiche-in-commessa` §6.11, passo 4)
 - [trgfn_righe_guard_quantita_per_fonte](funzioni/trgfn_righe_guard_quantita_per_fonte.md)
 - [trgfn_righe_natura_vendita](funzioni/trgfn_righe_natura_vendita.md) — (latest review 2026-10-13, brief-db-articoli-ammessi-per-documento A-4; `20261013-14`)
-- [trgfn_seed_primo_impianto](funzioni/trgfn_seed_primo_impianto.md)
+- [trgfn_seed_primo_impianto](funzioni/trgfn_seed_primo_impianto.md) — Sulle tabelle del seed di primo impianto il CSV crea la riga, e dopo che l'installazione l'ha modificata **non la riscrive più**. Senza questo trigger un mirror `loadUpdateData` ricaricato per qualunque ritocco del CSV riporterebbe i valori di esempio sulla configurazione del cliente, password compresa.
 - [trgfn_sorgente_in_uscita](funzioni/trgfn_sorgente_in_uscita.md)
 - [trgfn_storico_generic](funzioni/trgfn_storico_generic.md) — (latest review 02-02-26) * **Unificazion- logica**: evitare duplicazioni del codice di storicizzazione in diverse funzioni trigger. * **Flessibilità**: applicabile a qualsiasi tabella storica semplicemente specificando il parametro `TG_ARGV[0]` con il nome della colonna di riferimento. * **Robustezza**: gestione completa degli errori con logging, senza interrompere il flusso DML principale.
 - [trgfn_sync_stato_iso2](funzioni/trgfn_sync_stato_iso2.md) — * **Sincronizzazione automatica** del campo `stato_iso2` all’interno delle tabelle che lo richiedono. * **Garantire coerenza** tra il campo `stato_id` e il relativo `codice_iso2`, estraendolo dinamicamente da `config.stati`.

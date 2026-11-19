@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/script/manual/fn_credenziali_con_nome_di_ruolo.md" %}
 # ⚙️ Funzione `fn_credenziali_con_nome_di_ruolo`
 
 ```sql

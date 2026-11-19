@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/dbops/manual/porte_manutenzione_passaggi.md" %}
 # 📚 Tabella `porte_manutenzione_passaggi`
 
 > 📝 **Descrizione**

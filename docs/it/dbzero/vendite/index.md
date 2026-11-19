@@ -420,7 +420,7 @@ search:
 - [trgfn_doc_snapshot_da_stato](funzioni/trgfn_doc_snapshot_da_stato.md) — Copia sulla riga di un documento **le bandiere booleane del suo stato** (`is_abortito`, `iniziale`…), perché indici e colonne generate non possono leggere un'altra tabella.
 - [trgfn_doc_testata_lock_fuori_bozza](funzioni/trgfn_doc_testata_lock_fuori_bozza.md) — **Alcune colonne della testata di un documento si scelgono solo finché il documento è in bozza.**
 - [trgfn_emittenti_fiscali_provision_registri](funzioni/trgfn_emittenti_fiscali_provision_registri.md)
-- [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md) — (rev 2026-08-21)
+- [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md) — Rende `vendite.event_log` **append-only**: la storia non si modifica e non si cancella, ma ciò che è scaduto si ritira.
 - [trgfn_event_log_deriva_scope](funzioni/trgfn_event_log_deriva_scope.md)
 - [trgfn_famiglie_documento_default_codice](funzioni/trgfn_famiglie_documento_default_codice.md)
 - [trgfn_famiglie_documento_guard_disattivazione](funzioni/trgfn_famiglie_documento_guard_disattivazione.md) — *(rev 2026-09-01 — trigger nato il 2026-09-01)*
