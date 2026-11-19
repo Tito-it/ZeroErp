@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DEL MOTIVO DI RIGA DELLA COPIA SUL RUOLO
+#   anagrafiche.vw_indirizzi_ruolo_azioni, anagrafiche.fn_check_copia_indirizzo_ruolo
+#   Brief: brief-db-copia-indirizzo-destinazione §4.1 B, D-4 decisa (a) da Tid il 2026-11-20.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   La check (20261115-35) diceva NESSUN_TIPO_PROPONIBILE quando il picker della
+#   chiave DELLA SORGENTE non aveva un tipo ammesso, e la vista (20261115-40) lo
+#   portava riga per riga. Con D-1 la copia va sulla chiave del drawer: il
+#   motivo non dipende piu' dalla riga, e' lo stesso per tutte, e una vista per
+#   riga non conosce la chiave del drawer. Lo dice il picker della destinazione,
+#   anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(ruolo, istanza), che spegne
+#   insieme «Aggiungi» e «Copia come…». Nessun chiamante resta: il verbo
+#   anagrafiche.fn_copia_indirizzo_ruolo non la chiama piu' (-30).
+#
+# ── CHE COSA RESTA ──────────────────────────────────────────────────
+#   Il codice E_INDIRIZZO_COPIA_NESSUN_TIPO resta: lo nomina la check del
+#   soggetto (anagrafiche.fn_check_copia_indirizzo_soggetto), invariata, con la
+#   sua vista anagrafiche.vw_indirizzi_soggetti_azioni. La riga
+#   COPIA_INDIRIZZO_RUOLO del registro config.azioni_riga si spegne (attivo = f)
+#   nel CSV: il presidio del registro legge solo le righe attive.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Prima la vista, che dipende dalla check, poi la check, con IF EXISTS. Il
+#   rollback le ricrea col testo del -35 e del -40.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261117-32-drop-vw-indirizzi-ruolo-azioni-e-fn-check-copia-indirizzo-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261117-32-drop-vw-indirizzi-ruolo-azioni-e-fn-check-copia-indirizzo-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira il motivo di riga della copia sul ruolo (la vista di azioni e la check): sulla destinazione lo dice il picker. Brief: brief-db-copia-indirizzo-destinazione, D-4 (a).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW IF EXISTS anagrafiche.vw_indirizzi_ruolo_azioni;
+              DROP FUNCTION IF EXISTS anagrafiche.fn_check_copia_indirizzo_ruolo(anagrafiche.indirizzi.id%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_check_copia_indirizzo_ruolo(
+                  p_indirizzo_id anagrafiche.indirizzi.id%TYPE)
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  c_chi     CONSTANT text := 'anagrafiche.fn_check_copia_indirizzo_ruolo';
+                  v_ruolo   anagrafiche.indirizzi.soggetto_ruolo_id%TYPE;
+                  v_istanza anagrafiche.indirizzi.istanza_utility_id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   I motivi per cui l'indirizzo del ruolo non si puo' copiare
+                  --   in nessun tipo, nel suo ruolo e nella sua istanza.
+                  --   [] = la copia si puo' proporre.
+                  -- =========================================================
+                  IF p_indirizzo_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_indirizzo_id'),
+                          NULL::uuid,
+                          c_chi,
+                          'manca l''indirizzo');
+                  END IF;
+
+                  SELECT i.soggetto_ruolo_id, i.istanza_utility_id
+                    INTO v_ruolo, v_istanza
+                    FROM anagrafiche.indirizzi i
+                   WHERE i.id = p_indirizzo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_INDIRIZZO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('indirizzo_id', p_indirizzo_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  -- ---- nessun tipo in cui copiarlo, sulla chiave della riga -
+                  IF NOT EXISTS (SELECT 1
+                                   FROM anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(v_ruolo, v_istanza) t
+                                  WHERE t.ammesso) THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_INDIRIZZO_COPIA_NESSUN_TIPO',
+                          'reason',     'NESSUN_TIPO_PROPONIBILE',
+                          'reason_key', 'anagrafiche.indirizzi.copia_blocco.nessun_tipo_proponibile',
+                          'dettaglio',  jsonb_build_object(
+                                            'indirizzo_id',       p_indirizzo_id,
+                                            'soggetto_ruolo_id',  v_ruolo,
+                                            'istanza_utility_id', v_istanza),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  RETURN '[]'::jsonb;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_check_copia_indirizzo_ruolo(
+                  anagrafiche.indirizzi.id%TYPE)
+              IS 'Il motivo di riga dell''azione «Copia come…» su un indirizzo del ruolo: check pura, array ordinato di {codice, reason, reason_key, dettaglio, valori}, [] se la copia si puo'' proporre. Un motivo: nessun tipo in cui copiarlo (NESSUN_TIPO_PROPONIBILE, E_INDIRIZZO_COPIA_NESSUN_TIPO, chiave anagrafiche.indirizzi.copia_blocco.nessun_tipo_proponibile, senza valori), quando anagrafiche.fn_tipi_indirizzo_proponibili_ruolo non ha un tipo ammesso sulla chiave (ruolo, istanza) della riga: la copia resta nel ruolo e nell''istanza della sorgente. Indirizzo mancante E_SCRIPT_CHIAMATA_NON_VALIDA, inesistente E_INDIRIZZO_RUOLO_NON_TROVATO. La chiamano il verbo anagrafiche.fn_copia_indirizzo_ruolo, che ne solleva il primo motivo, e la vista di riga anagrafiche.vw_indirizzi_ruolo_azioni. Gemella di anagrafiche.fn_check_copia_indirizzo_soggetto. SECURITY INVOKER.';
+
+              CREATE VIEW anagrafiche.vw_indirizzi_ruolo_azioni
+              WITH (security_invoker = true) AS
+              SELECT i.id            AS indirizzo_id,
+                     i.soggetto_ruolo_id,
+                     i.istanza_utility_id,
+                     -- Il PRIMO motivo: il verbo solleva quello.
+                     chk.motivi -> 0 ->> 'reason'     AS copia_blocco_reason,
+                     chk.motivi -> 0 ->> 'reason_key' AS copia_blocco_reason_key
+                FROM anagrafiche.indirizzi i
+                CROSS JOIN LATERAL (
+                    SELECT anagrafiche.fn_check_copia_indirizzo_ruolo(i.id) AS motivi
+                ) chk;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_ruolo_azioni TO zeroerp_app;
+
+              COMMENT ON VIEW anagrafiche.vw_indirizzi_ruolo_azioni IS
+                  'Le azioni di riga sugli indirizzi del ruolo: una riga per indirizzo (indirizzo_id, soggetto_ruolo_id, istanza_utility_id). copia_blocco_reason / copia_blocco_reason_key: il primo motivo di anagrafiche.fn_check_copia_indirizzo_ruolo, la check che il verbo anagrafiche.fn_copia_indirizzo_ruolo solleva (NULL = la copia si puo'' proporre; l''unico motivo e'' NESSUN_TIPO_PROPONIBILE). E'' la superficie dell''azione COPIA_INDIRIZZO_RUOLO nel registro config.azioni_riga. security_invoker. Si filtra per soggetto_ruolo_id o indirizzo_id; le colonne dell''indirizzo stanno in anagrafiche.vw_indirizzi_resolved_ruolo (stesso indirizzo_id). Le righe della cascata che vengono dal soggetto non sono qui: la loro azione e'' la copia del soggetto, in anagrafiche.vw_indirizzi_soggetti_azioni.';

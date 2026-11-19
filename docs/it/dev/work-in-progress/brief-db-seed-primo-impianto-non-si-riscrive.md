@@ -27,7 +27,8 @@ ripercorrere le stesse strade.
 | 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ✅ la doc auto-generata rigenerata (2026-11-20) | §16.12 | 6 |
 | 6-ter | ✅ sessione DB e Tid | La domanda del BE e la Q24: le viste del segno, solo disattivazione (giro 2, `20261117-23` … `-28`), pgTAP, pagine `manual/`, guida, provato sullo scratch; ✅ Q23 e Q24 decise (2026-11-19) | §16.14 | 6 |
 | 6-quater | Tid e sessione DB | ✅ L'apply del giro 2 e i pgTAP verdi (Tid), ✅ la doc auto-generata (2026-11-20); ⏳ il commit | §16.14 | 6-ter |
-| 7 | ✅ team BE/FE | R2, R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, più l'interruttore `attivo` del template (2026-11-20); ⏳ il commit (Tid). R4 ritirata dalla Q17 | §16.15 | 6-quater |
+| 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
+| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento scritto; ⏳ QU1-QU4 di Tid | §16.15 | 6-quater |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quater, 7 |
 
 **Decisione di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue; aspetta il team DB (§16.16). **Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** il giro 2 (§16.14: sei changeSet, le righe di cinque CSV, un pgTAP nuovo e quattro adeguati, quattro pagine `manual/` nuove e quattro aggiornate, la guida `gestione-mail.md`) e questo brief. **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
@@ -208,6 +209,21 @@ Si valutano sul criterio di §3, non su quante righe abbiano oggi.
 Il censimento completo (ogni mirror `runOnChange` su una tabella che l'app può scrivere) si fa nel giro 1,
 leggendo la **struttura**: GRANT di `zeroerp_app`, `config.tabelle_gestibili.pannello`, endpoint che
 scrivono. Ogni tabella trovata riceve una specie dichiarata.
+
+**Le tabelle di `ui` (richiesta del [brief-db-revisione-ui](brief-db-revisione-ui.md), Q27, Tid 2026-11-20).** Il
+censimento di questo meccanismo è la sede della decisione, e i giri del brief `ui` che toccano i CSV di `ui` partono
+dopo. Sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin:
+
+| Tabella | Che cosa si sa già, dal brief `ui` |
+| --- | --- |
+| `ui.lista_definizione` | `ricerca_min_caratteri` è una regolazione dell'installazione (Q14 del brief `ui`): il mirror la riscrive. `codice`, `vista_sql`, `schema_dati` di una lista certificata, `multi_emittente` e `perimetro_emittente` sono del software (Q14) |
+| `ui.lista_colonna` | `codice` immutabile (Q14 del brief `ui`); le altre colonne si leggono nel censimento |
+| `ui.lista_preset` | La pagina admin scrive i preset; con Q26 del brief `ui` `is_default` esce dalla tabella e dal mirror |
+| `ui.lista_preset_colonna` | La composizione del preset, scritta dalla pagina admin |
+
+Fuori dal censimento: `ui.misure_pagina`, che l'app legge soltanto, e le cinque tabelle di catalogo delle dashboard,
+in sola lettura per l'app dal giro 5 del brief `ui` (Q19), che nessun servizio scrive già oggi. Il censimento, con la
+classificazione proposta e le decisioni QU1-QU4, è al §16.15.
 
 ## 8. Verifiche prima di scrivere
 
@@ -1359,49 +1375,98 @@ nel backend.
 
 Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo sceglie il FE.
 
-### 16.15 L'esito del team BE/FE (2026-11-20)
+### 16.15 Il censimento delle tabelle di `ui` (richiesta del brief `ui`, Q27, 2026-11-20)
 
-✅ **Fatte tutte le richieste del §16.14**, provate sul DB vero (dbdev, come app). Da committare (Tid).
+Chiesto dal [brief-db-revisione-ui](brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
+sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin, e i giri di quel brief che toccano i
+CSV di `ui` partono dopo la loro iscrizione (linee-guida-sql §11.7: una tabella entra in un rilascio precedente al primo
+ritocco del suo CSV). Letti la struttura (doc auto-generata del 2026-11-14) e il codice che le scrive
+(`backend/apps/ui/db/ui_admin_repository.py`: INSERT, UPDATE e DELETE su tutte e quattro). Le domande sono le **QU1-QU4**,
+numerate a parte per non confonderle con le Q di questo brief e di quello di `ui`.
 
-| # | Esito | File |
+**Chi scrive che cosa, oggi.** L'app aggiorna `codice`, `descrizione`, `schema_dati`, `vista_sql`, `note`, `attivo`
+della definizione; tutte le colonne della colonna tranne `lista_id`; `codice`, `descrizione`, `is_default`,
+`pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo` del preset; la composizione la riscrive per intero
+(DELETE + INSERT). Cancella definizioni, colonne e preset.
+
+#### La classificazione proposta (QU1)
+
+Tutte e tre per colonna: la riga è mista. Il criterio per le colonne del software è §11.7: la chiave di ricerca e le
+regole che il codice legge.
+
+| Tabella | Del software | Dell'installazione |
 | --- | --- | --- |
-| R2 | ✅ Policy rigenerate (`genera_error_policies`, `--check` allineato: il catalogo di dbdev coincide con git); i due codici `CONFLITTO_STATO` danno 409, `E_SEED_PRIMO_IMPIANTO` 500. Messaggi di ripiego senza segnaposto per i tre codici. api.md non si tocca: dal 2026-08-07 registrare un codice è dargli la classe a catalogo. `E_SEED_COLONNA_DEL_SOFTWARE` resta col banner di classe, come i lucchetti gemelli: il campo nel form è già spento | `error_policies_generated.py`, `error_messages_fallback.py` |
-| R1-BE | ✅ Tolto il `DELETE` sul dettaglio di account e template (ora 405) e i due metodi del repository; tolti i casi `eliminazione` dal test dei 404 | `email_views.py`, `email_repository.py`, `test_email_views_fase6.py` |
-| R1-BE-bis | ✅ Le quattro letture con `LEFT JOIN config.vw_email_{account,template}_seed` sull'id, `nata_dal_seed` e `campi_del_software` nelle risposte (il `text[]` arriva come lista). Nessun elenco di colonne nel backend | `email_repository.py`, `api_email.md` |
-| R1-BE-ter | ✅ Il log scrive `account["id"]`, l'account con cui la mail parte. Test con due id diversi (con lo stesso id sarebbe verde a vuoto) | `email_outbox_service.py`, `test_email_outbox_service.py` |
-| R3 | ✅ Forma minima (Tid, 2026-11-20): il drawer del template modificava già solo oggetto e corpi, con codice e lingua spenti per tutti, e il frontend non crea template. Ora, sui campi in `campi_del_software` (codice, lingua, variabili: gli altri due il drawer non li mostra), il motivo sotto il campo, e il segno «Template di sistema» su `nata_dal_seed`. Il segno resta nel drawer: in lista servirebbe una colonna a catalogo (`ui.lista_colonna`), lavoro DB, non chiesto. Sull'account niente da spegnere | `EmailTemplateDrawer.vue` (+ `.spec.js`), `it.json`/`en.json` |
-| Q24-FE | ✅ L'interruttore `attivo` nel drawer del template (Tid, 2026-11-20): con la Q24 è l'unico gesto per togliere un template dall'uso, e il drawer non l'aveva. L'account ce l'aveva già | `EmailTemplateDrawer.vue` |
-| R-test | ✅ `test_email_seed_primo_impianto_db` (5 test): segno e campi sulla riga di seed e non su quella creata dal test, in lista e dettaglio; `E_SEED_COLONNA_DEL_SOFTWARE` sul codice di un template di seed; `E_SEED_RIGA_NON_CANCELLABILE` ed `E_DELETE_NOT_ALLOWED` sul `DELETE`; un account con una mail nel log si spegne | `backend/apps/core/tests/db/` |
+| `ui.lista_definizione` | `codice`, `descrizione`, `schema_dati`, `vista_sql`, `multi_emittente`, `perimetro_emittente` | `note`, `attivo`, `ricerca_min_caratteri` |
+| `ui.lista_colonna` | `lista_id`, `codice`, `campo_sorgente`, `tipo_colonna`, `tipo_dato`, `formato`, `filtrabile`, `ordinabile`, `ricercabile_full`, `sensibile`, `etichetta_i18n_key` | `etichetta`, `etichetta_estesa`, `larghezza_default`, `ordine_default`, `allineamento`, `gruppo`, `gruppo_ordine`, `esportabile`, `priorita`, `attivo` |
+| `ui.lista_preset` | `lista_id`, `codice`, `ambito`, `profilo_accesso_id`, `emittente_fiscale_id` (e `is_default` finché Q26 del brief `ui` non lo ritira) | `descrizione`, `pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo`, `contenuto_aggiornato_il` |
 
-**Due chiavi i18n nuove**, contro la riga sopra «nessuna chiave i18n nuova»: il motivo dei campi spenti
-(`amministrazione.email_campo_del_programma`) e il segno (`amministrazione.email_template_di_sistema`). Il testo lo sceglie il
-FE, come chiedeva R3, e una frase a video vuole la sua chiave.
+Le ragioni delle scelte non ovvie:
 
-**Una nota per il team DB, non una richiesta.** Nel piano di `config.vw_email_template_seed` dentro la lista la
-`dbops.fn_seed_riga` compare due volte per riga (SubPlan 1 e 2: una per `nata_dal_seed`, una per il `CASE` di
-`campi_del_software`). Sulle tabelle della posta non pesa (9 righe); da guardare se la stessa forma va su una tabella grande.
+- `filtrabile`, `ordinabile`, `ricercabile_full` sono del software: dipendono dalla vista e dai suoi indici, e una
+  ricerca accesa su un campo senza indice è un problema di prestazioni del software, non una preferenza;
+- `sensibile` è del software: dice la natura del dato. La leva dell'installazione è `ui.lista_colonna_permesso`, che
+  apre o chiude la colonna per profilo;
+- `etichetta_i18n_key` è del software (la chiave della traduzione che il codice porta); `etichetta` è il testo, e
+  l'installazione lo cambia;
+- `contenuto_aggiornato_il` è dell'installazione: la sposta il trigger quando cambia il contenuto, e quando la sposta
+  una scrittura dell'app la riga diventa personalizzata. È ciò che serve a QU2;
+- `descrizione` della definizione è del software (il nome della lista nel catalogo), quella del preset
+  dell'installazione (il nome che l'admin gli dà).
 
-### 16.16 La verifica del giro BE/FE (2026-11-20, sessione di revisione)
+#### La composizione del preset (QU2)
 
-Rivisto il lavoro del §16.15 prima del commit. Verdi dopo le correzioni: i tre moduli di test del backend (54 test,
-quelli sul DB vero compresi), lo spec del drawer, ruff, `genera_error_policies --check`, i controlli i18n e classi morte.
+`ui.lista_preset_colonna` non ha la colonna `id` (la chiave è `preset_id, colonna_id`), e il meccanismo identifica la
+riga da `id`: così com'è non si iscrive. Senza regola, il mirror della composizione riscrive le righe di un preset che
+l'installazione ha personalizzato.
 
-| # | Che cosa | Esito |
-| --- | --- | --- |
-| V-1 | **Lo spento non si riaccendeva.** Le due liste di amministrazione chiamavano il repository col suo default `attivo_only=True`: l'account o il template spento spariva dalla lista, e il drawer con l'interruttore si apre solo da lì. Con la Q24 spegnere è l'unico gesto, e dall'interfaccia era senza ritorno. Per il template il caso nasce in questo giro (l'interruttore è nuovo); per l'account c'era già | ✅ Corretto: le due liste passano `attivo_only=False` (`email_views.py`), test `test_le_liste_admin_portano_anche_le_righe_spente` (rosso col codice di prima), `api_email.md` |
-| V-2 | **Il rilancio batch spedisce da un account spento.** `send_pending_emails` riprende la mail in coda con l'account scritto nel log (`get_account_with_password`, che non guarda `attivo`). Prima del giro 2 il caso non esisteva: un account con una riga nel log non si spegneva. Ora si spegne, e una mail in `RETRY` o `FAILED` ripescabile riparte da lì. La guida dice che un account spento «non viene più scelto per gli invii nuovi»: un nuovo tentativo è un invio nuovo? | ✅ **Deciso da Tid il 2026-11-20: la strada (a).** ⏳ Aspetta il team DB (la richiesta sotto la tabella); il backend parte dopo, senza ripieghi. Le strade erano: (a) il rilancio risolve di nuovo l'account come fa la conferma della bozza, e allora il log deve poter cambiare `email_account_id` (R1-BE-ter: il log dice da dove parte), cosa che per le righe `SISTEMA` passa da `config.fn_chiudi_email_sistema`, quindi una richiesta al team DB; (b) il rilancio chiude la mail `FAILED` col motivo; (c) resta così, e lo si scrive nella guida. Nessun ripiego nel backend nell'attesa |
-| V-3 | Il test del payload del drawer del template (`test_patch_template_payload_del_drawer_passa`) e il commento della `PATCH` dicevano ancora «oggetto e corpi»: il drawer ora manda anche `attivo` | ✅ Allineati; il test prova che `attivo` arriva al repository |
-| V-4 | `test_email_seed_primo_impianto_db` cercava le sue due righe nella prima pagina della lista (`limit=200`): quante righe ha l'installazione decideva se le trovava | ✅ Le cerca per codice |
+- **(a)** La composizione segue il suo preset: un trigger sulla tabella figlia, nella sessione del migratore, non scrive
+  né toglie le righe di un preset personalizzato (`dbops.fn_seed_riga` del preset); l'installazione la scrive
+  liberamente, e la sua scrittura personalizza il preset attraverso `contenuto_aggiornato_il`. Una forma nuova del
+  meccanismo («figlia»), dichiarata nel registro accanto a `RIGA`, `COLONNA` e `SOLO_INSERIMENTO`.
+- **(b)** Una colonna `id` surrogata e la forma per riga: ogni riga della composizione si personalizza da sola, e il
+  DELETE di una riga di seed è rifiutato. Il BE non può più riscrivere la composizione per intero.
 
-**La richiesta al team DB per V-2 (chi cambia per primo: il DB).** Il rilancio deve poter scrivere sul log l'account con
-cui la mail riparte. Per le righe non di sistema il backend lo scrive da sé (`UPDATE` di `config.email_log`); per le righe
-`SISTEMA` l'esito passa da `config.fn_chiudi_email_sistema`, che oggi tocca solo stato, errore, `inviato_at` e tentativi.
-Serve un parametro in più, `p_email_account_id` con default `NULL` (`NULL` = la colonna resta com'è), oppure la forma che
-il team DB preferisce. Poi il backend: `send_pending_emails` risolve l'account con `config.fn_resolve_email_account` sul
-reparto del log quando quello scritto è spento, e passa il nuovo id insieme all'esito.
+**Raccomandata (a)**: la composizione è il contenuto del preset, non una riga con una vita sua, e la personalizzazione si
+legge in un posto solo.
 
-**Il drawer dell'account segue `campi_del_software`** (ok di Tid alla regola del 2, 2026-11-20). Estratto il building block
-`campoDelSoftware` (`frontend/src/core/utils/`, a catalogo): lo leggono il drawer del template e quello dell'account. Ogni
-campo del form che l'elenco nomina è spento col motivo e resta fuori dal PATCH (`senzaCampiFermi`); sull'account c'è anche
-il segno «Account di sistema». Due chiavi i18n nuove (`email_account_di_sistema`, `email_campo_del_programma_account`).
-Sugli account l'elenco di oggi è vuoto: il caso è costruito in `EmailAccountDrawer.spec.js` (4 test, provato per mutazione).
+#### La cancellazione (QU3)
+
+Una riga nata dal seed non si cancella (`E_SEED_RIGA_NON_CANCELLABILE`): si spegne. Oggi l'admin cancella definizioni,
+colonne e preset, anche quelli del seed.
+
+- **(a)** Vale la regola del meccanismo senza eccezioni: le righe di seed si spengono. Ricadute BE/FE: le tre
+  cancellazioni rispondono `E_SEED_RIGA_NON_CANCELLABILE` sulle righe di seed; liste e dettagli espongono
+  `nata_dal_seed` e `campi_del_software` come per la posta (R1-BE-bis, §16.14), e il FE spegne il cestino e i campi
+  del software.
+- **(b)** Un'eccezione per `ui`.
+
+**Raccomandata (a)**. La superficie: due casi (posta e `ui`) fanno la seconda occorrenza, e le viste per tabella del
+§16.14 diventano un building block che le genera o le sostituisce, deciso nel giro.
+
+#### La sovrapposizione con Q14 del brief `ui` (QU4)
+
+Una lista è «certificata» quando ha `multi_emittente = true`, che si accende solo dal seed. Con QU1, sulle righe di seed
+`codice`, `schema_dati`, `vista_sql`, `multi_emittente` e `perimetro_emittente` sono del software, quindi l'app non li
+cambia (`E_SEED_COLONNA_DEL_SOFTWARE`). È quasi la stessa regola di Q14 del brief `ui` («vista e schema dati di una lista
+certificata solo dall'owner», codice immutabile, i due flag nel guard multi-emittente), ma Q14 vale anche sulle righe
+create dall'app.
+
+- **(a)** Q14 resta per ciò che il seed non copre: `codice` immutabile su ogni riga, `multi_emittente` e
+  `perimetro_emittente` solo dal migratore su ogni riga. La regola «vista e schema dati di una lista certificata» si
+  ritira, perché è il seed per colonna.
+- **(b)** Q14 resta intera: sulle righe di seed i due guard rifiutano lo stesso UPDATE con due codici (scatta prima il
+  seed, in fase a00).
+
+**Raccomandata (a)**: due guard per la stessa regola sono la divergenza che la regola del 2 previene.
+
+#### Fuori dal censimento
+
+- `ui.misure_pagina`: l'app la legge soltanto;
+- le cinque tabelle di catalogo delle dashboard: nessun servizio le scrive, e dal giro 5 del brief `ui` sono in sola
+  lettura per l'app (Q19);
+- `ui.lista_colonna_permesso`: non ha un CSV;
+- le due preferenze: non hanno un CSV.
+
+**Dopo le decisioni**, un giro di questo brief con i changeSet del range dato da Tid (`20261119-01` …): le righe del
+registro, la forma «figlia» se QU2 è (a), la superficie per il BE, i pgTAP, e il provisioning dei runner su dbdev come al
+`20261117-28`.

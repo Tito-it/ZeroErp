@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SCRITTURA DELLE COPIE SU UNA CHIAVE DEL RUOLO
+#   anagrafiche.fn_crea_copie_indirizzo_ruolo(ruolo, elemento, istanza, tipi[]) -> bigint[]
+#   Brief: brief-db-copia-indirizzo-destinazione §4, §4.1 (D-1, D-2), giro 1.
+#
+# ── PERCHE' UN BUILDING BLOCK ──────────────────────────────────────
+#   La copia scrive sulla chiave di DESTINAZIONE (D-1), il ruolo (istanza NULL)
+#   o una sua istanza, e le sorgenti sono due: una riga del ruolo
+#   (anagrafiche.fn_copia_indirizzo_ruolo, -30) e una riga del soggetto del
+#   ruolo (anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo, -31). La regola di
+#   scrittura e' la stessa: una riga per tipo, nell'ordine dei tipi, dalla
+#   singolare anagrafiche.fn_crea_indirizzo_ruolo con l'istanza di
+#   destinazione, tutto o niente. Due consumatori: sta qui (regola del 2).
+#
+# ── LE REGOLE ───────────────────────────────────────────────────
+#   * l'elemento arriva senza tipo e senza istanza (quello di
+#     anagrafiche.fn_indirizzo_elemento_da_riga): l'istanza la mette questo BB,
+#     solo se valorizzata, e il tipo uno per giro;
+#   * il giudizio e' tutto della singolare: tipo gia' presente sulla chiave di
+#     destinazione (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), non ammesso dal tipo di
+#     ruolo o dalla natura, inesistente; l'istanza di un altro soggetto la
+#     rifiuta il guard della tabella (E_ISTANZA_ALTRO_SOGGETTO), un'istanza
+#     inesistente la FK. Nessun predicato ricopiato qui;
+#   * la validazione dei parametri del gesto resta nei verbi, che sanno dire
+#     quale parametro manca col proprio nome.
+#   SECURITY INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261117-29-create-fn-crea-copie-indirizzo-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261117-29-create-fn-crea-copie-indirizzo-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Building block dei verbi della copia verso il ruolo: una riga per tipo sulla chiave di
+        destinazione (il ruolo o una sua istanza), dalla madre singolare, tutto o niente.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_copie_indirizzo_ruolo(
+                  p_soggetto_ruolo_id             anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_elemento                      jsonb,  -- l'elemento di fn_indirizzo_elemento_da_riga: nessuna colonna
+                  p_istanza_utility_id            anagrafiche.indirizzi.istanza_utility_id%TYPE,
+                  p_tipi_indirizzo_codice_interno text[])  -- array: %TYPE[] non esiste
+              RETURNS bigint[]  -- gli id delle righe nuove: array, %TYPE[] non esiste
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_el     jsonb;  -- l'elemento con l'istanza: nessuna colonna
+                  v_codice config.tipi_indirizzi.codice_interno%TYPE;
+                  v_ids    bigint[] := '{}';  -- vedi RETURNS
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Scrivere l'elemento in uno o piu' tipi sulla chiave
+                  --   (ruolo, istanza) data. Ritorna gli id nuovi,
+                  --   nell'ordine dei tipi. Tutto o niente.
+                  --
+                  -- Regole:
+                  --   - istanza NULL = il ruolo: la chiave non si scrive;
+                  --   - ogni giudizio e' della singolare e dei guard.
+                  -- =========================================================
+                  v_el := p_elemento
+                          || jsonb_strip_nulls(jsonb_build_object(
+                                 'istanza_utility_id', p_istanza_utility_id));
+
+                  FOREACH v_codice IN ARRAY p_tipi_indirizzo_codice_interno LOOP
+                      v_ids := v_ids || anagrafiche.fn_crea_indirizzo_ruolo(
+                                   p_soggetto_ruolo_id,
+                                   v_el || jsonb_build_object('tipo_indirizzo_codice_interno', v_codice));
+                  END LOOP;
+
+                  RETURN v_ids;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_copie_indirizzo_ruolo(
+                  anagrafiche.soggetti_ruoli.id%TYPE, jsonb,
+                  anagrafiche.indirizzi.istanza_utility_id%TYPE, text[])
+              IS 'Building block dei verbi della copia verso il ruolo (anagrafiche.fn_copia_indirizzo_ruolo e anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo): scrive un elemento di indirizzo, senza tipo e senza istanza (quello di anagrafiche.fn_indirizzo_elemento_da_riga), in uno o piu'' tipi (codici interni, nell''ordine dato) sulla chiave di destinazione: il ruolo (istanza NULL) o una sua istanza. Tutto o niente; ritorna gli id delle righe nuove nello stesso ordine. Ogni riga la scrive la singolare anagrafiche.fn_crea_indirizzo_ruolo, che giudica il tipo sulla chiave di destinazione: tipo inesistente E_TIPO_INDIRIZZO_NON_TROVATO, gia'' presente (anche ripetuto nell''elenco) E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE, non ammesso dal tipo di ruolo E_TIPO_INDIRIZZO_NON_PERMESSO o dalla natura E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO. L''istanza di un altro soggetto la rifiuta il guard della tabella (E_ISTANZA_ALTRO_SOGGETTO). Non valida i parametri: lo fanno i verbi. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: >
+              DROP FUNCTION IF EXISTS anagrafiche.fn_crea_copie_indirizzo_ruolo(
+              anagrafiche.soggetti_ruoli.id%TYPE, jsonb, anagrafiche.indirizzi.istanza_utility_id%TYPE, text[]);

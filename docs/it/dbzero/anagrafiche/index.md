@@ -49,7 +49,6 @@ search:
 - [fn_build_indirizzo_normalizzato](funzioni/fn_build_indirizzo_normalizzato.md) — Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici. E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize` la chiama e assegna i risultati (zero logica nel trigger). La usano anche il «trova o crea» `fn_get_or_create_indirizzo_dettaglio` (cerca coi valori come li salva il trigger) e `script.fn_check_indirizzo_duplicato`. (ultima revisione 25-10-2026: vuoto → NULL, SNC solo col civico NULL)
 - [fn_check_ba_coppia_emittente_omogenea](funzioni/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_cambio_natura_soggetto](funzioni/fn_check_cambio_natura_soggetto.md)
-- [fn_check_copia_indirizzo_ruolo](funzioni/fn_check_copia_indirizzo_ruolo.md)
 - [fn_check_copia_indirizzo_soggetto](funzioni/fn_check_copia_indirizzo_soggetto.md)
 - [fn_check_elimina_dati_societari](funzioni/fn_check_elimina_dati_societari.md)
 - [fn_check_fornitore_attivo](funzioni/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
@@ -63,10 +62,12 @@ search:
 - [fn_consuma_plafond_titolo_iva_righe](funzioni/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_copia_indirizzo_ruolo](funzioni/fn_copia_indirizzo_ruolo.md)
 - [fn_copia_indirizzo_soggetto](funzioni/fn_copia_indirizzo_soggetto.md)
+- [fn_copia_indirizzo_soggetto_su_ruolo](funzioni/fn_copia_indirizzo_soggetto_su_ruolo.md)
 - [fn_crea_auth_user](funzioni/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_billing_account](funzioni/fn_crea_billing_account.md)
 - [fn_crea_cliente](funzioni/fn_crea_cliente.md)
 - [fn_crea_contatto](funzioni/fn_crea_contatto.md)
+- [fn_crea_copie_indirizzo_ruolo](funzioni/fn_crea_copie_indirizzo_ruolo.md)
 - [fn_crea_emittente_fiscale](funzioni/fn_crea_emittente_fiscale.md)
 - [fn_crea_fornitore](funzioni/fn_crea_fornitore.md)
 - [fn_crea_indirizzi_ruolo](funzioni/fn_crea_indirizzi_ruolo.md)
@@ -251,7 +252,6 @@ search:
 - [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md) — (latest review 25-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:
 - [vw_indirizzi_resolved_ruolo](views/vw_indirizzi_resolved_ruolo.md) — (latest review 20‑12‑25) La vista **`anagrafiche.vw_indirizzi_resolved_ruolo`** fornisce una rappresentazione **unificata, pronta all’uso e semanticamente ricca** degli indirizzi associati a uno **specifico ruolo di un soggetto** (es. cliente, fornitore, punto di fornitura).
 - [vw_indirizzi_resolved_soggetto](views/vw_indirizzi_resolved_soggetto.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_soggetto`** fornisce una rappresentazione **normalizzata e pronta all’uso** degli indirizzi **associati direttamente a un soggetto**, indipendentemente dai suoi ruoli.
-- [vw_indirizzi_ruolo_azioni](views/vw_indirizzi_ruolo_azioni.md)
 - [vw_indirizzi_soggetti_azioni](views/vw_indirizzi_soggetti_azioni.md)
 - [vw_istanze_dati_precontrattuali_dettaglio](views/vw_istanze_dati_precontrattuali_dettaglio.md) — (latest review 09-01-26)  La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**. Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 - [vw_istanze_utilities_dettaglio](views/vw_istanze_utilities_dettaglio.md) — (latest review 15-02-26) La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
