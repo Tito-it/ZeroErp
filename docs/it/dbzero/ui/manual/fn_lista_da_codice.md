@@ -1,49 +1,79 @@
-# fn_lista_da_codice
+## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_da_codice`
+
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — il catalogo delle liste
+>
+> Approfondimento funzioni:
+>
+> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge da qui la lista, i due contrassegni dell'azienda e la soglia
+> * [ui.fn_lista_colonne_ricerca_full](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full) — legge da qui la lista della ricerca libera
+>
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — liste attive e spente
+
+---
 
 ### 🎯 Scopo Principale
 
-Restituisce **la riga di una lista configurabile a partire dal suo codice**, se la lista esiste ed è attiva; altrimenti solleva `E_UI_LISTA_NON_TROVATA`. È l'unico punto in cui una lista si cerca per codice: il risolutore della configurazione, la ricerca libera e il backend passano tutti da qui, così la regola «lista assente o spenta» è scritta una volta sola.
+La funzione restituisce la riga di una lista configurabile dato il suo codice, se la lista esiste ed
+è accesa; altrimenti rifiuta con `E_UI_LISTA_NON_TROVATA`. È la sede unica della regola «lista
+assente o spenta»: la configurazione della schermata, la ricerca libera del database e la soglia
+della ricerca del backend passano tutte da qui.
 
-## Schema
+---
 
-`ui`
+### Assente e spenta sono la stessa risposta
 
-## Firma
+Una lista che non esiste e una lista spenta danno lo stesso rifiuto, col codice nella frase: per chi
+apre una schermata le due cose non si distinguono, e una lista spenta non deve rispondere con la
+sua configurazione.
 
-```sql
-ui.fn_lista_da_codice(
-  p_lista_codice ui.lista_definizione.codice%TYPE
-) RETURNS ui.lista_definizione
-```
+---
 
-## Parametri
+### Restituisce la riga intera
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_lista_codice` | `VARCHAR` | Sì | Codice lista (es. `catalogo.unita_misura`) |
+Il risultato ha la forma della tabella: chi la chiama prende i campi che gli servono (l'`id`, i due
+contrassegni dell'azienda, la soglia della ricerca). Si legge come una tabella da cui scegliere le
+colonne; chiamata come valore singolo, restituisce la riga in un campo solo.
 
-## Chi la usa
+---
 
-| Chi | Cosa legge |
-|---|---|
-| [`ui.fn_resolve_lista_config`](/dbzero/ui/funzioni/fn_resolve_lista_config) | `id`, `multi_emittente`, `perimetro_emittente`, `ricerca_min_caratteri` |
-| [`ui.fn_lista_colonne_ricerca_full`](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full) | `id` |
-| la ricerca libera del backend | `ricerca_min_caratteri`, la soglia sotto la quale il termine non filtra |
+### ⚠️ Che cosa oggi non copre
 
-## Casi particolari
+* **Due letture per codice nel backend non passano da qui.** Il repository della configurazione
+  (l'`id` di una lista accesa) e il cancello del perimetro emittente (i due contrassegni) rileggono
+  la tabella con la stessa condizione, scritta a mano: sono due copie della regola, che qui ha la
+  sua sede. Rispondono «niente» invece di rifiutare, e la funzione non ha una forma che lo faccia.
+* **Il codice si confronta così com'è**: maiuscole, minuscole e spazi contano, e un codice `NULL` dà
+  il rifiuto con un codice vuoto nella frase.
 
-- **Lista inesistente o spenta** (`attivo = false`): errore `E_UI_LISTA_NON_TROVATA`, con il codice nella frase.
+---
 
-## Caratteristiche
+### Codici errore
 
-- **STABLE**: non modifica dati.
+* `E_UI_LISTA_NON_TROVATA` — nessuna lista accesa con quel codice.
 
-## Esempio
+---
 
-```sql
--- La soglia della ricerca libera di una lista
-SELECT ricerca_min_caratteri
-  FROM ui.fn_lista_da_codice('catalogo.unita_misura');
-```
+### Test
 
-⚠️ Si legge con `SELECT … FROM`: `SELECT ui.fn_lista_da_codice(...)` restituisce la riga intera come un'unica tupla in un solo campo.
+* `db/pgtap/ui/test-lista-ricerca-min-caratteri-v1.sql` — la funzione esiste ed è STABLE; su liste
+  costruite risponde la soglia dichiarata e quella di default; lista inesistente e lista spenta
+  rifiutate, e lo stesso rifiuto arriva dalla configurazione e dalla ricerca libera.
+
+---
+
+### Note di migrazione
+
+* 2026-09-25 — nasce, e prende il posto delle due copie della lettura per codice nella configurazione
+  della schermata e nella ricerca libera.
+
+---
+
+{% include-markdown "signature-core.md" %}

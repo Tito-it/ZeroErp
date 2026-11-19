@@ -1,69 +1,142 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
-
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione)
-> [ui.lista_preset](/dbzero/ui/tabelle/lista_preset)
+> Approfondimento tabelle:
 >
-> Funzione:
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la lista personalizzata
+> * [ui.lista_preset](/dbzero/ui/tabelle/lista_preset) — il preset di base e la sua data del contenuto
+> * [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) — i codici che la preferenza cita
+> * [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina) — le misure «righe per pagina» ammesse
+> * [ui.dashboard_preferenza_utente](/dbzero/ui/tabelle/dashboard_preferenza_utente) — la gemella delle dashboard
 >
-> [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)
-
-La tabella **`ui.lista_preferenza_utente`** memorizza la **preferenza personale dell'utente** per una lista. Un solo record per coppia `(auth_user, lista)`. La preferenza vale **chiave per chiave**: ciò che l'utente ha scelto prevale sui preset, ciò che non ha scelto segue lo standard.
+> Approfondimento funzioni:
+>
+> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge la preferenza chiave per chiave
+> * [ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts) — azzera snapshot e «ignora» al cambio di base
+> * [ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
+>
+> Guide:
+>
+> * [Configurazione liste](/guide/configurazione-liste) — la personalizzazione dell'operatore
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Personalizzazione individuale**: l'operatore può scegliere quali colonne vedere, in che ordine, con quale larghezza, ordinamento, filtri preimpostati e righe per pagina. Ogni chiave scelta è il livello massimo della cascata **per quella chiave** e prevale su qualsiasi preset.
-* ⭐ **Chiave assente = «come lo standard»** (dal 1-11-2026): la preferenza porta solo le chiavi che l'utente ha scelto. Una chiave assente (o `null`) la risolve [`fn_resolve_lista_config`](/dbzero/ui/funzioni/fn_resolve_lista_config) dal preset di base, o dal catalogo; quindi un cambio del preset arriva anche a chi ha personalizzato altro. Chi salva rimanda solo le chiavi che il resolver dice di `origine` `preferenza`, più quella toccata: rimandare la configurazione risolta per intero trasformerebbe in «scelta» una copia del preset, e la congelerebbe. Una preferenza che resta senza chiavi si **cancella**: vuota direbbe «tutto come lo standard», cioè nessuna preferenza, ma lo snapshot del preset di base accenderebbe il banner del preset aggiornato senza niente da riconciliare.
-* **JSONB per resilienza**: la configurazione è in un unico campo JSONB invece di righe separate per colonna. Questo permette di leggere la preferenza sempre completa in una sola query e di aggiungere futuri attributi (es. vista compatta, raggruppamenti) senza alterare lo schema.
-* **Rilevamento preset obsoleto**: `preset_base_contenuto_aggiornato_il` è uno snapshot di `lista_preset.contenuto_aggiornato_il` al momento del salvataggio. Se `lista_preset.contenuto_aggiornato_il > preset_base_contenuto_aggiornato_il`, il preset su cui si basava la preferenza è stato aggiornato — il frontend può avvisare l'utente con un banner "Configurazione aggiornata disponibile".
+`ui.lista_preferenza_utente` conserva la personalizzazione di una lista fatta da un utente: le
+colonne, l'ordinamento, i filtri e le righe per pagina che ha scelto. Una riga per coppia
+(utente, lista); ciò che l'utente non ha scelto segue lo standard.
 
 ---
 
-### Struttura JSONB `configurazione`
+### ⭐ Una chiave assente vuol dire «come lo standard»
 
-Le chiavi sono quattro, tutte facoltative. Esempio di una preferenza che sceglie colonne e righe per pagina, e lascia ordinamento e filtri al preset:
+`configurazione` porta solo le chiavi che l'utente ha scelto, fra `colonne`, `ordinamento`,
+`filtri` e `pagina_dimensione`. Il resolver le legge una per una: una chiave presente prevale sul
+preset, una chiave assente (o null) viene dal preset di base o dal catalogo. Così un cambio del
+preset arriva anche a chi ha personalizzato altro.
 
-```json
-{
-  "colonne": [
-    {"codice": "ragione_sociale", "ordine": 1, "larghezza": 240, "visibile": true, "fissata": true},
-    {"codice": "partita_iva",     "ordine": 2, "larghezza": 140, "visibile": true, "fissata": false},
-    {"codice": "stato",           "ordine": 3, "larghezza": 100, "visibile": false,"fissata": false}
-  ],
-  "pagina_dimensione": 50
-}
-```
+Chi salva rimanda solo le chiavi che il resolver dice di origine `preferenza`, più quella appena
+toccata: rimandare la configurazione risolta per intero trasformerebbe in «scelta» una copia del
+preset, e la congelerebbe. Una preferenza senza chiavi non si salva: si cancella, e l'utente torna
+allo standard. Le due regole le applica il servizio, non il database.
 
-> I codici colonna referenziano `lista_colonna.codice` (stringa), non l'`id` numerico. Questo protegge da cambi di ID e permette di ignorare silenziosamente colonne disattivate nel catalogo.
-
-> `pagina_dimensione` (dal 30-09-2026) deve essere una misura del catalogo [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina), o mancare (vale lo standard: la misura del preset di base, o il default del catalogo). Una misura fuori catalogo — o un valore che non è un numero intero — viene rifiutata al salvataggio (`trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd`). Una preferenza salvata prima con una misura non più ammessa non rompe niente: la lista risponde lo standard.
+Le colonne sono citate per **codice**, non per id: una colonna spenta o tolta dal catalogo sparisce
+dalla lista risolta senza errore.
 
 ---
 
-### Colonne chiave
+### Lo snapshot del preset di base e il banner «preset aggiornato»
 
-| Colonna | Scopo |
-|---------|-------|
-| `auth_user_id` | Utente proprietario (FK a `django.auth_user` aggiunta in `90_end`) |
-| `preset_base_id` | Preset da cui è partita la personalizzazione (riferimento storico, può diventare NULL) |
-| `preset_base_contenuto_aggiornato_il` | Snapshot per rilevare se il preset padre è stato modificato dopo il salvataggio |
-| `configurazione` | Le scelte dell'utente in JSONB, chiave per chiave (colonne, ordinamento, filtri, paginazione); una chiave assente segue lo standard |
+Al salvataggio il servizio scrive in `preset_base_id` il preset che sta sotto la preferenza, e in
+`preset_base_contenuto_aggiornato_il` la sua data del contenuto di quel momento. Se poi la data
+del preset si sposta, il resolver accende `preset_aggiornato`: il frontend propone di vedere le
+novità. `preset_aggiornato_ignored_at` è il «non mostrarmelo più»: il flag resta spento finché il
+preset non cambia di nuovo dopo quel momento.
+
+Quando `preset_base_id` cambia (anche perché il preset si cancella, con l'`ON DELETE SET NULL`), il
+trigger [z90](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts)
+azzera lo snapshot e l'«ignora».
 
 ---
 
-### Note operative
+### Che cosa il database controlla
 
-* La FK verso `django.auth_user` è aggiunta in `90_end` perché `auth_user` è creata da Django migrate, che gira dopo Liquibase. Pattern identico a `config.parameter_overrides`.
-* Nessun `user_insert`/`user_update`: l'identità dell'utente è già in `auth_user_id` e la preferenza è sempre di proprietà esclusiva dell'utente stesso.
-* On DELETE CASCADE su `auth_user_id`: eliminare l'utente rimuove automaticamente le sue preferenze.
+* `pagina_dimensione`, se c'è, è un intero del catalogo
+  [misure_pagina](/dbzero/ui/tabelle/misure_pagina) (guard alla scrittura). Una preferenza salvata
+  con una misura poi uscita dal catalogo non rompe niente: la lista risponde lo standard.
+* Una preferenza per utente e lista (`uq_ui_lista_preferenza_utente_user_lista`).
+* L'utente cancellato porta via le sue preferenze; la FK verso `django.auth_user` si aggiunge in
+  coda all'installazione, perché la tabella la crea Django dopo Liquibase.
+
+La preferenza è uno stato dell'utente, non un'entità con un ciclo di vita: non ha `attivo`, e le
+FK verso lista e preset sono in eccezione alla regola ATTIVO, così una lista o un preset scelti da
+qualcuno si spengono lo stesso. La preferenza di una lista spenta resta, e torna a valere se la
+lista si riaccende.
+
+Le date: `data_insert` ha il default, `data_update` la scrive il servizio a ogni salvataggio; non
+c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **La forma di `configurazione`.** Il database verifica solo la misura di pagina. Non chiede che
+  sia un oggetto, né che `colonne` sia un elenco di voci con un codice, un ordine e una larghezza
+  interi e due booleani: lo fa solo il servizio. Una voce con un ordine non numerico rende la lista
+  inapribile per quell'utente (il resolver si ferma su un errore di conversione); una voce senza
+  `visibile` esce con la visibilità vuota; un codice ripetuto esce due volte.
+* **Le colonne che non ci sono più.** Una preferenza di colonne i cui codici sono tutti spariti
+  dal catalogo vale ancora come scelta: il resolver aggiunge le colonne del catalogo in coda,
+  nascoste, e la lista parte con le sole colonne identificatore e azione.
+* **Ordinamento e filtri** passano così come sono salvati: possono nominare colonne spente, non
+  ordinabili, non filtrabili o bloccate per l'utente.
+* **Il preset di base può non essere quello vero.** `preset_base_id` lo calcola il servizio con
+  una copia sua della cascata, che non scarta i preset senza colonne accese come fa il resolver; e
+  nessun vincolo chiede che sia un preset della stessa lista.
+* **Il preset di base spento.** Spento il preset, `preset_base_id` continua a puntarlo, e il flag
+  si calcola su di lui e non sul preset che ora sta davvero sotto la preferenza.
+* **Lo snapshot perso al salvataggio.** Quando un salvataggio cambia la base, il servizio scrive
+  la base nuova e la sua data nella stessa istruzione, e il trigger z90 azzera la data appena
+  scritta: fino al salvataggio successivo il banner non si accende più.
+* **Il banner per chiavi che seguono già il preset.** Il flag guarda la data del preset intero:
+  una preferenza di sola misura vede il banner quando il preset cambia l'ordinamento, che le arriva
+  già da solo.
+
+---
+
+### Codici errore
+
+* `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non intera o fuori catalogo.
+* Dal servizio, non dal database: `E_UI_PREFERENZA_VALIDAZIONE` (forma del payload, preferenza
+  vuota), `E_UI_PREFERENZA_NON_TROVATA` («ignora» senza una preferenza), `E_UI_LISTA_NON_TROVATA`.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — chiavi presenti, assenti
+  e null.
+* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — snapshot, «ignora», base
+  azzerata dal trigger.
+* `db/pgtap/ui/test-fn-resolve-lista-config.sql` — la preferenza prevale sui preset.
+* `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura della preferenza nel catalogo.
+* `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — lo snapshot rinominato, le FK in eccezione ATTIVO.
 
 ---
 
 ### Note di migrazione
 
-* 2026-11-08 — lo snapshot `preset_base_data_update` si rinomina `preset_base_contenuto_aggiornato_il`: confronta la data del contenuto del preset, che ha ora una colonna sua (`brief-db-revisione-dbops`, giro 7-bis blocco c). Le due FK verso lista e preset sono in eccezione al guard ATTIVO: la preferenza è uno stato dell'utente.
+* 2026-09-30 — la misura di pagina passa al catalogo delle misure, col guard sulla preferenza.
+* 2026-11-01 — la preferenza vale chiave per chiave; le preferenze salvate prima, che copiavano
+  ordinamento, filtri e misura del preset, sono state ripulite.
+* 2026-11-08 — lo snapshot `preset_base_data_update` si rinomina
+  `preset_base_contenuto_aggiornato_il` e confronta la data del contenuto del preset; le FK verso
+  lista e preset entrano fra le eccezioni ATTIVO.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,45 +1,66 @@
-# trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts
+## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts`
+
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [ui.dashboard_preferenza_utente](/dbzero/ui/tabelle/dashboard_preferenza_utente) — la tabella su cui è montata
+> * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — il preset di base che la preferenza cita
+>
+> Approfondimento funzioni:
+>
+> * [ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts) — la stessa regola sulle preferenze di lista
+> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge la fotografia per il banner
+
+---
 
 ### 🎯 Scopo Principale
 
-Mantiene la coerenza tra `preset_base_id` e i due campi derivati (`preset_base_contenuto_aggiornato_il`, `preset_aggiornato_ignored_at`) nella tabella `ui.dashboard_preferenza_utente`. Quando `preset_base_id` cambia verso qualsiasi valore diverso (NULL o un altro preset), azzera entrambi i campi. Mirror del trigger omologo di [ui.lista_preferenza_utente](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts).
+Quando `preset_base_id` di una preferenza di dashboard cambia, la trigger function azzera la fotografia
+del preset (`preset_base_contenuto_aggiornato_il`) e l'«ignora» del banner
+(`preset_aggiornato_ignored_at`): si riferivano al preset di prima, e il banner non deve accendersi su di
+loro.
 
-## Schema
+---
 
-`ui`
+### Quando scatta
 
-## Firma
+È montata prima dell'UPDATE di `preset_base_id`, riga per riga, e agisce solo se il valore cambia davvero:
+da NULL a un preset, da un preset a NULL, da un preset a un altro. Copre anche la cancellazione del
+preset: la FK porta `preset_base_id` a NULL con un UPDATE, e il trigger scatta. All'INSERT non scatta.
 
-```sql
-ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts() RETURNS trigger
-```
+Non solleva errori: corregge la riga e la lascia passare.
 
-## Trigger associato
+---
 
-```sql
-TRIGGER trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd
-  BEFORE UPDATE OF preset_base_id
-  ON ui.dashboard_preferenza_utente
-  FOR EACH ROW
-```
+### ⚠️ Che cosa oggi non copre
 
-## Logica
+* **Butta anche la fotografia nuova.** Azzera la fotografia ogni volta che il preset cambia, senza guardare
+  se lo stesso UPDATE ne porta una nuova. Il salvataggio del backend è un UPSERT che scrive insieme il preset
+  di base e la sua data: quando il preset è cambiato rispetto al salvataggio di prima, la data appena scritta
+  si perde, e il banner resta spento finché l'utente non salva di nuovo.
+* **È una copia.** Il corpo è identico, riga per riga, a quello della funzione delle preferenze di lista: due
+  sedi per la stessa regola, che possono divergere.
 
-| Condizione | Azione |
-|------------|--------|
-| `NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id` | `NEW.preset_base_contenuto_aggiornato_il := NULL` **e** `NEW.preset_aggiornato_ignored_at := NULL` |
-| Qualsiasi altra condizione | `RETURN NEW` senza modifiche |
+---
 
-`IS DISTINCT FROM` copre tutte le transizioni significative: `NULL → valore`, `valore → NULL`, `valore → valore diverso`.
+### Test
 
-## Perché è necessario
+Nessun test esercita la funzione delle dashboard. Per le liste,
+`db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` porta il preset di base a NULL e
+controlla il banner, che con il preset a NULL è spento comunque: non prova l'azzeramento.
+`db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` scrive la fotografia con un secondo
+UPDATE proprio perché il trigger la toglierebbe.
 
-`preset_base_contenuto_aggiornato_il` è uno snapshot di `dashboard_preset.contenuto_aggiornato_il` al salvataggio della preferenza; `preset_aggiornato_ignored_at` è il tombstone dell'avviso "preset aggiornato" ignorato dall'utente. Entrambi sono relativi al **preset di base referenziato**: quando `preset_base_id` cambia (per `ON DELETE SET NULL` dalla FK o per UPDATE diretto verso un altro preset), quei valori perdono significato.
+---
 
-Azzerarli chiude il contratto col frontend: con `preset_base_id IS NULL` o cambiato, il badge "preset aggiornato" non si basa più su uno snapshot orfano.
+### Note di migrazione
 
-## Note
+* 2026-07-21 — nasce, sul modello di quella delle liste.
+* 2026-11-08 — la fotografia si chiama `preset_base_contenuto_aggiornato_il`.
 
-- Si attiva su `UPDATE OF preset_base_id`: copertura sia per `ON DELETE SET NULL` (che genera un `UPDATE` interno di PostgreSQL) che per UPDATE diretti.
-- Fase `_z90_`: non è un guard (non solleva errori), è un'azione finale di normalizzazione.
-- Differenza rispetto al trigger liste: usa `IS DISTINCT FROM` (non solo `→ NULL`) e azzera **due** campi (include il tombstone `preset_aggiornato_ignored_at`).
+---
+
+{% include-markdown "signature-core.md" %}

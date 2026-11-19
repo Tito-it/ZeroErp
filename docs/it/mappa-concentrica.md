@@ -345,7 +345,7 @@ E' classificato **di servizio** all'interno di Anello 1: il suo end-to-end richi
 
 Con la **dashboard home** `ui` acquisisce la **seconda famiglia di consumatori**: stesso impianto a cascata (sistema → profilo → emittente → utente), stessa forma di risoluzione lato DB (`fn_resolve_dashboard_config` accanto a quella delle liste), stesso filtro sui permessi dell'operatore. È la conferma richiesta dal principio 7 sull'asse "metadato di presentazione": il pattern non è stato inventato per la home, è stato **riusato** perché già decantato dalle liste.
 
-Guida: [configurazione delle liste](guide/configurazione-liste.md); gli sviluppi differiti nella sua [§12](guide/configurazione-liste.md#12-roadmap-funzionalita-in-sviluppo).
+Guida: [configurazione delle liste](guide/configurazione-liste.md); i limiti attuali nella sua [§12](guide/configurazione-liste.md#12-che-cosa-le-liste-oggi-non-fanno).
 
 > ⭐ **PrimeVue: si resta sulla 4.5.5 e si prepara l'uscita** (decisione di Tid).
 > `primevue`, `@primeuix/themes` e `primeicons` erano **MIT** e passano alla

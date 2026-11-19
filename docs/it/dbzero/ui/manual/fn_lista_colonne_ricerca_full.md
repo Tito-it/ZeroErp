@@ -1,69 +1,97 @@
-# fn_lista_colonne_ricerca_full
+## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_colonne_ricerca_full`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) — `ricercabile_full` e il campo sorgente
+>
+> Approfondimento funzioni:
+>
+> * [ui.fn_lista_da_codice](/dbzero/ui/funzioni/fn_lista_da_codice) — la lista dal codice, e il rifiuto se manca
+> * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello di ogni colonna per l'utente
+> * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
+>
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — la ricerca libera
+
+---
 
 ### 🎯 Scopo Principale
 
-Dice **in quali colonne di una lista l'utente che la sta guardando può fare la ricerca libera**, e per ciascuna quale campo della vista interrogare. Il backend la legge a ogni ricerca: così il flag `ricercabile_full` cambiato dal pannello di amministrazione vale subito, e una colonna che l'utente non può vedere non entra mai nella ricerca.
+La funzione dice in quali colonne di una lista l'utente della sessione può fare la ricerca libera, e
+per ciascuna quale campo della vista interrogare. Il backend la legge a ogni ricerca: un
+`ricercabile_full` cambiato dalla pagina tecnica vale subito, e una colonna che l'utente non vede
+non entra mai nella ricerca.
 
-## Schema
+---
 
-`ui`
+### Quali colonne
 
-## Firma
+Tutte quelle che rispettano insieme quattro condizioni:
 
-```sql
-ui.fn_lista_colonne_ricerca_full(
-  p_lista_codice ui.lista_definizione.codice%TYPE
-) RETURNS TABLE (
-  codice         ui.lista_colonna.codice%TYPE,
-  campo_sorgente ui.lista_colonna.campo_sorgente%TYPE
-)
-```
+* la colonna è accesa;
+* `ricercabile_full` è acceso: è la scelta, fatta nel catalogo, di cercarci dentro;
+* ha un campo sorgente, senza il quale non c'è niente da interrogare;
+* il suo livello per l'utente non è `BLOCCATO`. `LETTURA` entra: spegne l'export, non la vista.
 
-## Parametri
+Il livello viene da [fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello), la
+stessa sede da cui lo legge la configurazione della schermata: le due risposte coincidono per
+costruzione. L'ordine è quello di partenza delle colonne, poi il codice.
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|-----------|------|:---:|-------------|
-| `p_lista_codice` | `VARCHAR` | Sì | Codice lista (es. `vendite.preventivi`) |
+---
 
-Utente e veste **non** si passano: si leggono dalla sessione (`app.current_user_id` e [`ui.fn_veste_corrente`](/dbzero/ui/funzioni/fn_veste_corrente)), come li imposta l'autenticazione.
+### Utente e veste vengono dalla sessione
 
-## Quali colonne restituisce
+Non si passano: l'utente è quello del contesto di sessione, la veste quella di
+[fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente), come li imposta l'autenticazione. Senza
+utente in sessione (un comando, un job) nessun permesso si applica: le colonne sensibili escono, le
+altre restano.
 
-Tutte quelle che rispettano **insieme** quattro condizioni:
+La configurazione della schermata invece riceve l'utente come argomento. Che i due coincidano lo
+verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto o di un altro utente
+(`E_UI_CHIAMATA_NON_VALIDA`).
 
-| Condizione | Perché |
-|---|---|
-| colonna attiva | una colonna spenta non esiste per la lista |
-| `ricercabile_full = true` | è la scelta, fatta nel catalogo, di cercarci dentro |
-| `campo_sorgente` valorizzato | senza, non c'è niente da interrogare. Senza sorgente vuol dire `NULL`: la stringa vuota la rifiuta un vincolo della tabella. Il filtro accetta ancora anche `''`, ed è innocuo |
-| livello effettivo diverso da `BLOCCATO` | se l'utente non vede la colonna, non ci cerca. `LETTURA` entra: spegne l'export, non la vista |
+---
 
-Il livello effettivo viene da [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), la stessa sede da cui lo legge `fn_resolve_lista_config`. Le due risposte coincidono per costruzione.
+### ⚠️ Che cosa oggi non copre
 
-## Casi particolari
+* **Il campo sorgente non è sempre un campo della vista.** Su una lista senza vista non è verificato
+  da niente; su un'azione non è verificato; un nome della lineage dei documenti è ammesso senza stare
+  nella vista. La funzione lo restituisce comunque, e la ricerca interroga un campo che può non
+  esserci.
+* **Un utente di sessione che non è un numero** fa fallire la lettura con l'errore grezzo del cast,
+  mentre la veste sbagliata ripiega in silenzio.
+* **Il filtro sul campo sorgente accetta ancora anche la stringa vuota**, che il vincolo della
+  colonna rifiuta da prima: è innocuo, e ripete il vincolo.
 
-- **Nessun utente in sessione** (un comando, un job): nessun grant si applica, quindi le colonne **sensibili escono** e le altre restano.
-- **L'emittente fiscale non entra**: i permessi di colonna sono per profilo d'accesso, non per azienda.
-- **Lista inesistente o spenta**: errore `E_UI_LISTA_NON_TROVATA`, dal building block [`ui.fn_lista_da_codice`](/dbzero/ui/funzioni/fn_lista_da_codice), lo stesso di `fn_resolve_lista_config`.
+---
 
-## Caratteristiche
+### Codici errore
 
-- **STABLE**: non modifica dati.
-- Ordine dei risultati: `ordine_default` della colonna, poi `codice`.
+* `E_UI_LISTA_NON_TROVATA` — lista assente o spenta, da `fn_lista_da_codice`.
 
-## Dipendenze
+---
 
-- `ui.lista_definizione`, `ui.lista_colonna`
-- [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello effettivo di ogni colonna
-- [`ui.fn_veste_corrente`](/dbzero/ui/funzioni/fn_veste_corrente) — la veste dalla sessione
+### Test
 
-## Esempio
+* `db/pgtap/ui/test-fn-lista-colonne-ricerca-full-v1.sql` — le quattro condizioni una per una, i due
+  permessi in conflitto, `LETTURA` che entra, la stessa decisione del risolutore, la veste dalla
+  sessione, l'utente assente, la lista inesistente.
+* `db/pgtap/ui/test-lista-ricerca-min-caratteri-v1.sql` — il rifiuto della lista inesistente arriva da
+  `fn_lista_da_codice`.
 
-```sql
-SELECT codice, campo_sorgente
-  FROM ui.fn_lista_colonne_ricerca_full('vendite.preventivi');
-```
+---
 
-⚠️ Si legge con `SELECT … FROM`: `SELECT ui.fn_lista_colonne_ricerca_full(...)` restituisce ogni riga come un'unica tupla in un solo campo.
+### Note di migrazione
+
+* 2026-09-23 — nasce, su richiesta del team backend, con i due building block del livello e della
+  veste.
+* 2026-09-25 — la lista dal codice la legge `fn_lista_da_codice`.
+
+---
+
+{% include-markdown "signature-core.md" %}

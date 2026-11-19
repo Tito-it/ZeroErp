@@ -1,41 +1,90 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset_widget`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Tabelle correlate:
+> Approfondimento tabelle:
 >
-> [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset)
-> [ui.widget](/dbzero/ui/tabelle/widget)
+> * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — il preset che la riga compone
+> * [ui.widget](/dbzero/ui/tabelle/widget) — il widget proposto
+> * [ui.dashboard_widget](/dbzero/ui/tabelle/dashboard_widget) — il pool della dashboard
+> * [ui.lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna) — il gemello delle liste
 >
-> Funzione:
+> Approfondimento funzioni:
 >
-> [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config)
-
-La tabella **`ui.dashboard_preset_widget`** è la **composizione di un preset dashboard**: quali widget, in che ordine, visibili di default o solo nel pool. Ricalca [ui.lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna).
+> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge i widget del preset di base
+> * [ui.trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset) — una riga cambiata sposta la data del contenuto del preset
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Definisce il contenuto di un preset**: l'insieme dei widget che il preset propone e il loro ordine.
-* **`visibile=FALSE`**: il widget è nel **pool** selezionabile (appare nella personalizzazione) ma non è mostrato di default. Consente preset con molti widget disponibili ma poche card visibili di default.
+`ui.dashboard_preset_widget` è la **composizione di un preset di dashboard**: quali widget propone, in
+che ordine, e quali mostra subito. Una riga per coppia (preset, widget).
 
 ---
 
-### Colonne chiave
+### Visibile o solo disponibile
 
-| Colonna | Scopo |
-|---------|-------|
-| `preset_id` | FK `ui.dashboard_preset` (`ON DELETE CASCADE`) |
-| `widget_id` | FK `ui.widget` (catalogo globale) |
-| `ordine` | Ordine del widget nel preset |
-| `visibile` | `FALSE` = widget nel pool ma non mostrato di default |
+Con `visibile` vero il widget è una card della dashboard; con `visibile` falso il preset lo offre nella
+personalizzazione senza mostrarlo. Così un preset può proporre molti widget e mostrarne pochi.
 
-**PK** `(preset_id, widget_id)`. `preset_id` è leading, quindi la PK copre l'accesso per preset (indice FK dedicato solo su `widget_id`).
+L'ordine è quello di `ordine`. I widget del pool che il preset non nomina la risoluzione li aggiunge in
+coda, invisibili.
 
 ---
 
-### Note operative
+### Una riga cambiata è un preset cambiato
 
-* `ON DELETE CASCADE` da `ui.dashboard_preset`: eliminare un preset elimina le sue righe di composizione.
-* I widget referenziati devono appartenere al pool della dashboard del preset (`ui.dashboard_widget`): vincolo di seed.
+Una riga aggiunta, tolta o cambiata sposta `contenuto_aggiornato_il` del preset
+([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)): è ciò che
+accende il banner «preset aggiornato» a chi era partito da quel preset. Una riscrittura uguale non sposta
+niente; una riga spostata da un preset all'altro tocca tutti e due.
+
+---
+
+### Una parte, non un'entità
+
+La riga non ha `attivo`. Le due FK sono in eccezione alla regola ATTIVO: un preset ha sempre i suoi
+widget, e contarli come figli vivi impedirebbe di spegnerlo; un widget proposto da un preset si spegne lo
+stesso. Spegnere il widget lo toglie dal preset alla risoluzione. Cancellare il preset cancella le sue
+righe; un widget proposto da un preset non si cancella (FK senza azione).
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il widget può non essere nel pool della dashboard.** La FK punta al catalogo globale dei widget, non al
+  pool della dashboard del preset, e nessun guard lo controlla: la risoluzione toglie il widget, ma il
+  preset resta la base.
+* **Un widget spento non cambia la data del contenuto.** Il preset perde una card senza che il banner si
+  accenda.
+* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
+
+---
+
+### Codici errore
+
+La tabella non solleva codici propri. La coppia ripetuta arriva come violazione della chiave primaria.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — i widget del preset riscritti
+  uguali non spostano la data, un widget cambiato sì.
+* `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — i widget del preset di sistema e di ruolo nella
+  risoluzione.
+
+---
+
+### Note di migrazione
+
+* 2026-07-21 — nasce la tabella.
+* 2026-11-08 — una riga cambiata sposta `contenuto_aggiornato_il` del preset, non più `data_update`; le due
+  FK entrano in eccezione alla regola ATTIVO.
+
+---
+
+{% include-markdown "signature-core.md" %}

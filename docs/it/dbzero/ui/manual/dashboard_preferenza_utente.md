@@ -1,73 +1,132 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
-
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Tabelle correlate:
+> Approfondimento tabelle:
 >
-> [ui.dashboard_definizione](/dbzero/ui/tabelle/dashboard_definizione)
-> [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset)
-> [ui.widget](/dbzero/ui/tabelle/widget)
+> * [ui.dashboard_definizione](/dbzero/ui/tabelle/dashboard_definizione) — la dashboard personalizzata
+> * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — il preset da cui l'utente è partito
+> * [ui.widget](/dbzero/ui/tabelle/widget) — i widget che la preferenza cita per codice
+> * [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente) — il gemello delle liste
 >
-> Funzione:
+> Approfondimento funzioni:
 >
-> [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config)
-> [ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts)
-
-La tabella **`ui.dashboard_preferenza_utente`** contiene la **preferenza personale** dell'utente per una dashboard. Un solo record per coppia `(auth_user, dashboard)`. Ricalca [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente).
+> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge la preferenza e la combina con lo standard
+> * [ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts) — azzera la fotografia quando cambia il preset di base
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Override utente, chiave per chiave**: la selezione e l'ordine dei widget scelti dall'utente vincono sul default di ruolo/emittente/sistema. Dal 1-11-2026 la preferenza porta solo le chiavi scelte (`widget`, `dimensione_max`): una chiave assente (o `null`) segue lo standard, e chi salva rimanda solo le chiavi che il resolver dice di `origine` `preferenza`, più quella toccata. Una preferenza senza chiavi si cancella (vuota, lo snapshot del preset accenderebbe il banner senza niente da riconciliare). Vedi [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config).
-* **Configurazione in JSONB**: la preferenza si legge sempre intera ed è resiliente a evoluzioni future della struttura. I codici widget nel JSONB referenziano `ui.widget.codice` (stringa), mai l'`id`: protegge da cambi di ID cross-ambiente e permette di ignorare silenziosamente widget disattivati/rimossi.
-* **Rilevamento preset aggiornato (DEF-2)**: `preset_base_id` + `preset_base_contenuto_aggiornato_il` + `preset_aggiornato_ignored_at` permettono di sapere se il preset di base è cambiato dopo l'ultimo salvataggio dell'utente, per il banner FE "preset aggiornato".
+`ui.dashboard_preferenza_utente` è la **scelta personale di un utente** per una dashboard: quali widget
+vede, in che ordine, e quante card al massimo. Al più una riga per coppia (utente, dashboard).
 
 ---
 
-### Struttura JSONB `configurazione`
+### La preferenza porta solo le chiavi scelte
 
-```json
-{
-  "widget": [
-    {"codice": "resi_da_accreditare", "ordine": 1, "visibile": true},
-    {"codice": "benvenuto", "ordine": 2, "visibile": true}
-  ]
-}
-```
+`configurazione` ha due chiavi, tutte e due facoltative: `widget` (l'elenco dei widget, ciascuno col suo
+codice, l'ordine e se è visibile) e `dimensione_max`. Una chiave assente, o nulla, vuol dire «come lo
+standard»: la funzione di risoluzione la prende dal preset di base o dal catalogo. Chi salva rimanda
+solo le chiavi che la risoluzione dice venire dalla preferenza, più quella toccata. Il backend non
+salva una preferenza senza chiavi: si toglie con la cancellazione.
 
----
+Un widget si cita per `codice`, mai per `id`: l'id cambia da un ambiente all'altro. Un codice che non
+corrisponde più a un widget acceso del pool della dashboard la risoluzione lo salta, senza errore.
 
-### Colonne chiave
-
-| Colonna | Scopo |
-|---------|-------|
-| `auth_user_id` | FK `django.auth_user` (aggiunta in `90_end`: auth_user creata da Django migrate) |
-| `dashboard_id` | FK `ui.dashboard_definizione` |
-| `preset_base_id` | FK `ui.dashboard_preset` (`ON DELETE SET NULL`): preset da cui è partita la personalizzazione |
-| `preset_base_contenuto_aggiornato_il` | Snapshot di `dashboard_preset.contenuto_aggiornato_il` al salvataggio |
-| `preset_aggiornato_ignored_at` | Tombstone: l'utente ha ignorato l'avviso "preset aggiornato" fino a qui |
-| `configurazione` | JSONB, chiavi facoltative: widget (codice, ordine, visibile), dimensione_max; una chiave assente segue lo standard |
-
-**UNIQUE** `(auth_user_id, dashboard_id)`: un solo record per utente/dashboard.
+`dimensione_max` vale solo se è un intero positivo; un valore diverso la risoluzione lo tratta come
+chiave assente.
 
 ---
 
-### Coerenza dei campi derivati
+### La fotografia del preset di base, per il banner «preset aggiornato»
 
-Il trigger [trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts) azzera `preset_base_contenuto_aggiornato_il` e `preset_aggiornato_ignored_at` quando `preset_base_id` cambia (`IS DISTINCT FROM`), impedendo un banner "preset aggiornato" basato su uno snapshot orfano.
+Al salvataggio il backend scrive in `preset_base_id` il preset da cui l'utente è partito, e in
+`preset_base_contenuto_aggiornato_il` la data del suo contenuto in quel momento. Se poi il preset cambia,
+la risoluzione accende `preset_aggiornato`; l'utente lo spegne con «ignora»
+(`preset_aggiornato_ignored_at`), finché il preset non cambia di nuovo.
+
+Quando `preset_base_id` cambia, il trigger
+[z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts)
+azzera la fotografia e l'«ignora», che si riferivano al preset di prima. Un preset cancellato porta
+`preset_base_id` a NULL, e il trigger scatta anche lì.
 
 ---
 
-### Note operative
+### La preferenza non trattiene nessuno
 
-* La FK verso `django.auth_user` è in `90_end` perché `auth_user` è creata da Django migrate, dopo Liquibase (pattern identico a `ui.lista_preferenza_utente`).
-* Il frontend scrive qui al salvataggio della personalizzazione; la lettura passa **sempre** dalla funzione di risoluzione, mai da questa tabella direttamente.
+La preferenza è uno stato dell'utente, non un'entità con un suo ciclo di vita: non ha `attivo`, e le sue
+FK verso la dashboard e verso il preset sono in eccezione alla regola ATTIVO. Una dashboard o un preset
+scelti da un utente si spengono lo stesso; la risoluzione ripiega sul livello successivo. Cancellare
+l'utente cancella le sue preferenze.
+
+---
+
+### Chi la scrive
+
+La scrive solo il backend, con INSERT, UPDATE e DELETE diretti: il salvataggio (un UPSERT sulla coppia
+utente e dashboard), la cancellazione e l'«ignora». La lettura passa dalla funzione di risoluzione; il
+backend legge la riga direttamente solo per il proprio servizio di preferenza.
+
+`data_update` la scrive il backend: la tabella non ha il trigger d'audit né le colonne `user_insert` e
+`user_update`.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il database non controlla la forma della configurazione.** La controlla solo il backend (chiavi
+  ammesse, codice obbligatorio, ordine intero positivo, nessun codice ripetuto, al più 100 widget). Il
+  gemello delle liste ha un guard sulla misura di pagina; qui non c'è niente. Una riga scritta da altri
+  che il backend:
+  * con `widget` che non è un elenco, o con un ordine o un `visibile` che non si convertono, ferma la
+    funzione di risoluzione: la home di quell'utente non si apre più;
+  * con una voce senza codice, spegne in silenzio l'aggiunta dei widget nuovi del pool;
+  * con un codice ripetuto, mostra la stessa card due volte.
+* **Il salvataggio che cambia preset di base perde la fotografia.** Il trigger azzera
+  `preset_base_contenuto_aggiornato_il` ogni volta che `preset_base_id` cambia, anche quando lo stesso
+  UPDATE porta la data nuova: è il caso dell'UPSERT del backend. Dopo quel salvataggio il banner non si
+  accende più finché l'utente non salva di nuovo.
+* **Il preset di base può essere di un'altra dashboard.** Nessun vincolo lega `preset_base_id` alla
+  dashboard della riga.
+* **Il preset di base lo calcola il backend.** Il backend sceglie il preset con una copia propria della
+  cascata, che non coincide con quella della risoluzione: prende il primo preset di default acceso,
+  mentre la risoluzione prende il primo con almeno un widget acceso. Quando i due differiscono, il
+  banner confronta un preset diverso da quello che l'utente vede.
+* **L'applicazione può scrivere qualunque cosa.** Nessuna RLS e nessun verbo: la riga di un utente la
+  può scrivere chiunque abbia i privilegi del ruolo applicativo.
+
+---
+
+### Codici errore
+
+La tabella non solleva codici propri. Una seconda riga per la stessa coppia arriva come violazione di
+`uq_ui_dashboard_preferenza_utente_user_dashboard`; il backend usa l'UPSERT e non la incontra.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — la preferenza per chiave
+  (soli widget, sola dimensione) e il banner che si accende quando il preset cambia.
+* `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — la preferenza che vince sul preset, il widget
+  spento che sparisce anche dalla preferenza.
+* Nessun test costruisce l'«ignora», il trigger di azzeramento né una configurazione malformata.
 
 ---
 
 ### Note di migrazione
 
-* 2026-11-08 — lo snapshot `preset_base_data_update` si rinomina `preset_base_contenuto_aggiornato_il` (`brief-db-revisione-dbops`, giro 7-bis blocco c). Le due FK verso dashboard e preset sono in eccezione al guard ATTIVO.
+* 2026-07-21 — nasce la tabella. La FK verso `django.auth_user` si aggiunge in coda all'installazione,
+  dopo le migrazioni di Django che creano la tabella degli utenti.
+* 2026-11-01 — la preferenza porta solo le chiavi scelte: fino ad allora salvarne una congelava anche
+  l'altra.
+* 2026-11-08 — la fotografia si chiama `preset_base_contenuto_aggiornato_il` e confronta la data del
+  contenuto del preset, non più quella dell'audit; le due FK verso dashboard e preset entrano in
+  eccezione alla regola ATTIVO.
+
+---
+
+{% include-markdown "signature-core.md" %}

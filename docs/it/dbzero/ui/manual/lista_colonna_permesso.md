@@ -1,64 +1,118 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna_permesso`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna)
-> [config.profili_accesso](/dbzero/config/tabelle/profili_accesso)
+> Approfondimento tabelle:
 >
-> Architettura di riferimento:
+> * [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) — la colonna a cui il permesso si applica
+> * [config.profili_accesso](/dbzero/config/tabelle/profili_accesso) — il profilo che riceve il permesso
 >
-> [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni)
+> Approfondimento funzioni:
 >
-> Funzione:
+> * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — la regola che legge questi permessi, sede unica
+> * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili di un utente, con la loro priorità
 >
-> [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)
-
-La tabella **`ui.lista_colonna_permesso`** implementa il **controllo accesso a livello di singola colonna** per profilo di accesso. Estende il sistema permessi esistente senza duplicarlo: usa `config.profili_accesso` e `config.livello_accesso` già in uso negli altri meccanismi di permesso.
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — i permessi di colonna raccontati a chi li imposta
+> * [Architettura permessi e autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — i profili d'accesso
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Permessi granulari per colonna**: permettere che determinate colonne (es. dati personali, margini, condizioni commerciali) siano invisibili o non esportabili per specifici profili di accesso.
-* **Integrazione con il sistema permessi**: riusa `config.profili_accesso` e la risoluzione tramite `fn_get_profili_accesso_applicabili`, evitando logiche duplicate. I profili hanno priorità (AD_HOC=1 prevale su REPARTO=2).
-* **Due modelli distinti per colonna**: il comportamento dipende dal flag `lista_colonna.sensibile`:
-  * `sensibile=FALSE` → **deny-list**: assenza di riga = accesso pieno. Si scrivono solo le restrizioni.
-  * `sensibile=TRUE` → **allow-list**: assenza di riga = bloccata di default. Si scrivono i grant espliciti.
+`ui.lista_colonna_permesso` dice, per una colonna di una lista e un profilo d'accesso, con quale
+livello chi ha quel profilo vede la colonna: tutta, solo a video, o per niente. Serve a tenere
+lontani da certi profili dati personali, margini, condizioni commerciali.
+
+Non ha un sistema di profili suo: usa `config.profili_accesso`, gli stessi degli altri permessi.
 
 ---
 
-### Livelli di accesso (`config.livello_accesso`)
+### Tre livelli
 
-| Valore | Effetto colonna |
-|--------|-----------------|
-| `TUTTO` | Visibile e esportabile |
-| `LETTURA` | Visibile a video, non esportabile |
-| `BLOCCATO` | Nascosta completamente (rimossa dall'output di `fn_resolve_lista_config`) ed esclusa dalla ricerca libera (`fn_lista_colonne_ricerca_full`) |
-
----
-
-### Logica di risoluzione con più profili
-
-Quando un utente ha più profili applicabili (es. profilo AD_HOC + profilo REPARTO) che coprono la stessa colonna, vince:
-
-1. Il profilo con **priorità più bassa** (AD_HOC=1 prevale su REPARTO=2)
-2. A parità di priorità, il **livello più restrittivo** (BLOCCATO > LETTURA > TUTTO)
-
-La regola ha una sede sola, [`ui.fn_lista_colonne_livello`](/dbzero/ui/funzioni/fn_lista_colonne_livello), che la legge per due consumatori: `fn_resolve_lista_config` (quali colonne mostrare) e `fn_lista_colonne_ricerca_full` (in quali colonne cercare).
+* `TUTTO` — la colonna si vede e si esporta.
+* `LETTURA` — la colonna si vede ma non si esporta: la configurazione della schermata le spegne
+  l'export.
+* `BLOCCATO` — la colonna non c'è: esce dalla configurazione della schermata e dalla ricerca libera.
 
 ---
 
-### Relazioni
+### ⭐ Il verso lo decide la colonna
 
-| Tabella | Campo | Scopo |
-|---------|-------|-------|
-| `ui.lista_colonna` | `colonna_id` | Colonna cui si applica il permesso. ON DELETE CASCADE. |
-| `config.profili_accesso` | `profilo_accesso_id` | Profilo che riceve il permesso |
+Una riga di permesso vale per la sua coppia colonna-profilo, e al più una per coppia
+(`uq_ui_lista_colonna_permesso_col_profilo`). Che cosa succede senza riga lo dice `sensibile` della
+colonna:
+
+* colonna non sensibile: senza riga si vede tutto, e le righe scrivono le **restrizioni**;
+* colonna sensibile: senza riga è bloccata, e le righe scrivono le **concessioni**.
 
 ---
 
-### Note operative
+### Con più profili vince il più specifico
 
-* Non creare logica di risoluzione profili duplicata: usare sempre `script.fn_get_profili_accesso_applicabili` come negli altri meccanismi.
-* La FK su `lista_colonna` è `ON DELETE CASCADE`: eliminare una colonna dal catalogo rimuove automaticamente tutti i suoi permessi.
-* Il UNIQUE su `(colonna_id, profilo_accesso_id)` garantisce al massimo un livello per coppia colonna/profilo.
+Un utente può avere più profili che danno un permesso sulla stessa colonna. Vince il profilo più
+specifico (AD_HOC sull'identità, poi REPARTO sull'unità organizzativa, poi PORTALE sulla veste), e a
+parità il livello più restrittivo. La regola ha una sede sola,
+[fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello), che la legge per la
+configurazione della schermata e per la ricerca libera: le due risposte coincidono per costruzione.
+
+L'azienda non entra: i permessi di colonna sono per profilo, non per emittente fiscale.
+
+---
+
+### Una riga di composizione, senza `attivo`
+
+Il permesso è una parte della colonna, non un'entità col suo ciclo di vita: non ha `attivo`, si
+toglie cancellando la riga, e se ne va con la colonna (FK con cascata). Non blocca lo spegnimento
+della colonna né quello del profilo: spegnere un profilo è un gesto del suo dominio, e il permesso
+di un profilo spento semplicemente non si applica, perché il risolutore dei profili non lo
+restituisce.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Senza veste in sessione il permesso più specifico può venire da un'altra veste.** La regola
+  cerca i profili sotto la veste della sessione; se la variabile manca o non è una veste, li cerca
+  sotto tutte le vesti dell'utente. Un utente con due identità (operatore e cliente del portale) e
+  un permesso AD_HOC `TUTTO` su una delle due vede la colonna che un permesso REPARTO `BLOCCATO`
+  gli nasconde come operatore. Il ripiego è voluto per la presentazione
+  ([fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente)), ma qui il livello `BLOCCATO` fa da
+  riservatezza.
+* **Nulla impedisce righe che non dicono niente**: `TUTTO` su una colonna non sensibile, o un
+  permesso su un'azione.
+* **Il `BLOCCATO` nasconde la colonna, non il dato.** La vista della lista porta il valore comunque:
+  che il backend non lo esponga per altre strade (filtri, ordinamenti, export) è affar suo.
+
+---
+
+### Codici errore
+
+Nessun trigger proprio. L'unicità della coppia e le due FK arrivano come violazione di vincolo, e il
+backend le traduce per nome.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-fn-lista-colonne-ricerca-full-v1.sql` — colonna sensibile con e senza permesso,
+  `BLOCCATO`, `LETTURA`, il profilo più specifico che batte il più restrittivo, la veste letta dalla
+  sessione.
+* `db/pgtap/ui/test-fn-resolve-lista-config.sql` — i permessi nella configurazione della schermata.
+
+---
+
+### Note di migrazione
+
+* 2026-05-06 — nasce la tabella.
+* 2026-09-23 — la regola del livello passa dal risolutore della configurazione a
+  `fn_lista_colonne_livello`, condivisa con la ricerca libera.
+* 2026-11-08 — il permesso diventa una riga di composizione per la regola ATTIVO: non blocca più lo
+  spegnimento della colonna né del profilo.
+
+---
+
+{% include-markdown "signature-core.md" %}

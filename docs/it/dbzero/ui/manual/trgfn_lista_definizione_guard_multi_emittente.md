@@ -1,82 +1,107 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `ui.trgfn_lista_definizione_guard_multi_emittente`
+## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_lista_definizione_guard_multi_emittente`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione)
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la tabella che porta il contrassegno
 >
-Approfondimenti views:
+> Approfondimento viste:
 >
-[dbops.vw_liste_multi_emittente_non_certificate](/dbzero/dbops/manual/vw_liste_multi_emittente_non_certificate)
+> * [dbops.vw_liste_multi_emittente_non_certificate](/dbzero/dbops/views/vw_liste_multi_emittente_non_certificate) — le liste che si dicono multi-emittente senza la colonna dell'emittente
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — chi scrive è il proprietario della tabella?
+>
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — il bollino «multi-emittente»
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 18-08-26)
 
-Impedisce che il contrassegno `multi_emittente` di una lista venga acceso
-**dall'applicazione**. Si dichiara solo aggiornando la configurazione, cioe'
-insieme a una migrazione.
+Il trigger impedisce all'applicazione di cambiare il contrassegno `multi_emittente` di una lista: lo
+cambia solo il proprietario della tabella, cioè la migrazione che carica il seed del catalogo.
 
 ---
 
-### Cosa dichiara quel contrassegno
+### Che cosa dichiara il contrassegno
 
-Un si'/no per ogni lista: **«questa schermata sa dire da quale emittente arriva
-ogni riga»**.
+`multi_emittente` dice che la schermata **sa dire da quale azienda arriva ogni riga**. È una
+capacità del software, non una preferenza di chi la usa: si guadagna mostrando l'emittente nelle
+righe, e si dichiara nel seed insieme a quel lavoro, o dopo.
 
-E' una **capacita' del software**, non una preferenza di chi la usa. E una
-capacita' non si dichiara per stanchezza: si guadagna facendo il lavoro che la
-rende vera, cioe' mostrando l'emittente nelle righe.
-
-Se diventasse un interruttore comodo, il primo che lo trova fastidioso lo
-accende — e da quel momento la lista mescola emittenti senza dirlo, con
-l'etichetta «collaudato» addosso. Sarebbe il difetto che il contrassegno doveva
-impedire, aggravato dalla rassicurazione.
+Se fosse un interruttore dell'interfaccia, il primo che trova fastidiosa la scelta dell'azienda lo
+accenderebbe, e la lista mescolerebbe aziende senza dirlo, col bollino «collaudato» addosso.
 
 ---
 
-### Perche' un trigger e non un permesso
+### Che cosa conta come scrittura
 
-Il piano iniziale era togliere all'applicazione il **diritto** di scrivere quella
-colonna: e' la difesa piu' forte, perche' non si aggira scrivendo codice.
+* Alla nascita di una lista, solo un contrassegno acceso: nascere spenta è il default e non dichiara
+  niente.
+* All'UPDATE, ogni cambio di valore, in un verso o nell'altro: anche spegnerlo è rifiutato
+  all'applicazione.
 
-⛔ **Non tiene.** Esiste una procedura che, a ogni aggiornamento del sistema,
-riconsegna all'applicazione un mazzo di permessi completo su ogni tabella. Il
-diritto tolto verrebbe **restituito**.
-
-E cede nel modo peggiore: sull'ambiente di sviluppo la revoca sopravvive fino al
-successivo aggiornamento, quindi **sembra funzionare a lungo**; sul server di
-prova non funziona **mai**, perche' il database viene ricostruito da zero e i
-permessi vengono riconsegnati nello stesso giro.
-
-Un trigger invece non lo tocca nessuno.
+Un UPDATE che non tocca la colonna non fa partire il trigger.
 
 ---
 
-### Come distingue chi puo' da chi non puo'
+### ⭐ Perché un trigger e non un permesso di colonna
 
-Confronta chi sta scrivendo con il **proprietario della tabella**, letto dal
-catalogo di sistema. L'aggiornamento del sistema gira come proprietario e passa;
-l'applicazione no.
+Togliere all'applicazione il diritto di scrivere la colonna sarebbe la difesa più forte, ma non
+tiene: il giro dei permessi che gira a ogni migrazione riconsegna all'applicazione UPDATE su ogni
+tabella dello schema, e la revoca verrebbe restituita. Su dbdev sembrerebbe funzionare fino alla
+migrazione successiva; in CI, dove il database si ricostruisce da zero, non funzionerebbe mai.
 
-⚠️ Il nome del ruolo **non e' scritto a mano**: uno scritto a mano sarebbe giusto
-su questa installazione e falso sulla prossima.
-
-Dal 25-09-2026 la domanda la fa il building block
-[script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella)
-(`20260925-39`): questo guard era la prima copia della regola, e i guard dei
-documenti interni di magazzino sarebbero stati la seconda. Il comportamento non
-cambia; il contesto dell'errore non porta più `owner_atteso`.
-
-⚠️ **Non c'e' nessun interruttore di disattivazione**, e non e' una dimenticanza:
-la condizione e' su *chi sei*, e non c'e' niente da accendere.
+Il trigger chiede se chi scrive è il proprietario della tabella al building block
+[fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella), che lo legge dal
+catalogo: nessun nome di ruolo è scritto a mano. Non c'è un interruttore che lo spenga: la condizione
+è su chi sei, non c'è niente da accendere.
 
 ---
 
-### Il baratto, dichiarato
+### ⚠️ Che cosa oggi non copre
 
-Il trigger sorveglia **una** colonna e non copre quelle future, mentre il
-permesso — sulla carta — le avrebbe coperte tutte. Ma quella copertura **oggi
-non esiste**. Si e' scelta una difesa che tiene su una colonna invece di una che
-sembra coprirle tutte e non ne copre nessuna.
+* **Sorveglia una colonna sola.** È il baratto scelto: una difesa che tiene su una colonna, invece di
+  un permesso che sulla carta le copre tutte e in pratica nessuna.
+* **Non guarda `perimetro_emittente`**, che porta la lista nello stesso stato: una lista con
+  perimetro portata a `false` dall'applicazione si apre senza chiedere l'azienda, come una
+  certificata.
+* **Non guarda codice né vista.** Cambiare `codice`, `vista_sql` o `schema_dati` di una lista
+  certificata sposta la certificazione su un'altra schermata o su un'altra vista, senza che il
+  trigger parta.
+
+---
+
+### Codici errore
+
+* `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` — l'applicazione accende il contrassegno alla nascita, o lo
+  cambia dopo.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql` — gira come applicazione e lo verifica
+  in testa; l'applicazione non accende il contrassegno né crea una lista già accesa.
+* `db/pgtap/ui/test-lista-definizione-perimetro-emittente-v1.sql` — sulla lista globale delle
+  famiglie di documento a rifiutare è il trigger, prima del CHECK di coerenza.
+* `db/pgtap/script/test-fn-is-proprietario-tabella-v1.sql` — l'applicazione che accende o spegne il
+  contrassegno è rifiutata, e il trigger passa dal building block.
+
+---
+
+### Note di migrazione
+
+* 2026-08-18 — nasce, insieme alla colonna; il piano di partenza era un permesso di colonna.
+* 2026-09-25 — la domanda sul proprietario passa al building block `fn_is_proprietario_tabella`; il
+  contesto dell'errore non porta più il proprietario atteso.
+
+---
+
+{% include-markdown "signature-core.md" %}
