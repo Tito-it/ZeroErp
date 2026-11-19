@@ -28,9 +28,10 @@ Indice test eseguiti:
 17) test_create_account_chiave_estranea_rifiutata — POST account fuori contratto → 400, prima scartata
 18) test_create_template_passa — POST template con le chiavi del contratto → create_template
 19) test_create_template_chiave_estranea_rifiutata — POST template fuori contratto → 400
-20) test_account_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, eliminazione, test → E_EMAIL_ACCOUNT_NOT_FOUND
-21) test_template_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, eliminazione, anteprima → E_EMAIL_TEMPLATE_NOT_FOUND
+20) test_account_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, test → E_EMAIL_ACCOUNT_NOT_FOUND
+21) test_template_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, anteprima → E_EMAIL_TEMPLATE_NOT_FOUND
 22) test_log_inesistente_e_404 — dettaglio log → E_EMAIL_LOG_NOT_FOUND
+23) test_le_liste_admin_portano_anche_le_righe_spente — lista account e template → attivo_only=False
 """
 
 import json
@@ -230,13 +231,18 @@ class TestEmailTemplatePatchChiavi(TestCase):
         repo = mock_repo_cls.return_value
         repo.get_template.return_value = {"id": 3, "codice": "T"}
         request = _admin_request("PATCH")
-        request.data = {"oggetto": "Ciao", "corpo_html": "<p>x</p>", "corpo_testo": None}
+        # Dal 2026-11-20 il drawer manda anche `attivo`: e' il gesto con cui
+        # un template si spegne (Q24), e deve arrivare al repository.
+        request.data = {
+            "oggetto": "Ciao", "corpo_html": "<p>x</p>", "corpo_testo": None, "attivo": False,
+        }
         view = EmailTemplateDetailView()
         view.check_permissions = MagicMock()
         response = view.patch(request, 3)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(repo.update_template.call_args.kwargs["oggetto"], "Ciao")
+        self.assertIs(repo.update_template.call_args.kwargs["attivo"], False)
 
     @patch(REPO_PATH, autospec=True)
     def test_patch_template_chiave_estranea_rifiutata(self, mock_repo_cls: MagicMock) -> None:
@@ -530,14 +536,13 @@ class TestEmailAdminNonTrovato(TestCase):
     @patch(REPO_PATH, autospec=True)
     def test_account_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
         # Scopo: ogni verbo sull'account passa dalla stessa sede, e nessuno
-        # scrive: l'eliminazione legge prima di cancellare.
+        # scrive. (Il DELETE non c'e': un account si spegne, Q24 2026-11-19.)
         repo = mock_repo_cls.return_value
         repo.get_account.return_value = None
         view = self._view(EmailAccountDetailView)
         verbi = {
             "dettaglio": lambda: view.get(_admin_request(), 9),
             "modifica": lambda: view.patch(self._patch_request({"descrizione": "X"}), 9),
-            "eliminazione": lambda: view.delete(_admin_request("DELETE"), 9),
             "test": lambda: self._view(EmailAccountTestView).post(_admin_request("POST"), 9),
         }
         for nome, chiama in verbi.items():
@@ -546,12 +551,11 @@ class TestEmailAdminNonTrovato(TestCase):
                 self.assertEqual(codice, "E_EMAIL_ACCOUNT_NOT_FOUND")
                 self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)
         repo.update_account.assert_not_called()
-        repo.delete_account.assert_not_called()
 
     @patch(DISPATCH_PATH)
     @patch(REPO_PATH, autospec=True)
     def test_template_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
-        # Scopo: come per l'account, sui quattro verbi del template.
+        # Scopo: come per l'account, sui tre verbi del template.
         repo = mock_repo_cls.return_value
         repo.get_template.return_value = None
         view = self._view(EmailTemplateDetailView)
@@ -559,7 +563,6 @@ class TestEmailAdminNonTrovato(TestCase):
         verbi = {
             "dettaglio": lambda: view.get(_admin_request(), 9),
             "modifica": lambda: view.patch(self._patch_request({"oggetto": "X"}), 9),
-            "eliminazione": lambda: view.delete(_admin_request("DELETE"), 9),
             "anteprima": lambda: self._view(EmailTemplatePreviewView).post(anteprima, 9),
         }
         for nome, chiama in verbi.items():
@@ -568,7 +571,6 @@ class TestEmailAdminNonTrovato(TestCase):
                 self.assertEqual(codice, "E_EMAIL_TEMPLATE_NOT_FOUND")
                 self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)
         repo.update_template.assert_not_called()
-        repo.delete_template.assert_not_called()
 
     @patch(REPO_PATH, autospec=True)
     def test_log_inesistente_e_404(self, mock_repo_cls) -> None:
@@ -580,3 +582,27 @@ class TestEmailAdminNonTrovato(TestCase):
         )
         self.assertEqual(codice, "E_EMAIL_LOG_NOT_FOUND")
         self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)
+
+
+class TestEmailAdminListeConSpenti(TestCase):
+    """Le liste di amministrazione portano anche le righe spente (2026-11-20)."""
+
+    @patch(REPO_PATH, autospec=True)
+    def test_le_liste_admin_portano_anche_le_righe_spente(self, mock_repo_cls: MagicMock) -> None:
+        # Scopo: ⛔ account e template si tolgono dall'uso SPEGNENDOLI (Q24) e
+        # si riaccendono dal drawer, che si apre solo dalla lista: una lista
+        # dei soli attivi rende lo spegnimento senza ritorno. Il repository
+        # ha `attivo_only=True` di default: la view deve dirlo esplicitamente.
+        repo = mock_repo_cls.return_value
+        casi = (
+            (EmailAccountListView, repo.list_accounts),
+            (EmailTemplateListView, repo.list_templates),
+        )
+        for cls, metodo in casi:
+            with self.subTest(view=cls.__name__):
+                metodo.return_value = ([], 0)
+                view = cls()
+                view.check_permissions = MagicMock()
+                response = view.get(_admin_request())
+                self.assertEqual(response.status_code, 200)
+                self.assertIs(metodo.call_args.kwargs.get("attivo_only"), False)

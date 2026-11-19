@@ -27,10 +27,10 @@ ripercorrere le stesse strade.
 | 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ✅ la doc auto-generata rigenerata (2026-11-20) | §16.12 | 6 |
 | 6-ter | ✅ sessione DB e Tid | La domanda del BE e la Q24: le viste del segno, solo disattivazione (giro 2, `20261117-23` … `-28`), pgTAP, pagine `manual/`, guida, provato sullo scratch; ✅ Q23 e Q24 decise (2026-11-19) | §16.14 | 6 |
 | 6-quater | Tid e sessione DB | ✅ L'apply del giro 2 e i pgTAP verdi (Tid), ✅ la doc auto-generata (2026-11-20); ⏳ il commit | §16.14 | 6-ter |
-| 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
+| 7 | ✅ team BE/FE | R2, R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, più l'interruttore `attivo` del template (2026-11-20); ⏳ il commit (Tid). R4 ritirata dalla Q17 | §16.15 | 6-quater |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quater, 7 |
 
-**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** il giro 2 (§16.14: sei changeSet, le righe di cinque CSV, un pgTAP nuovo e quattro adeguati, quattro pagine `manual/` nuove e quattro aggiornate, la guida `gestione-mail.md`) e questo brief. **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
+**Decisione di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue; aspetta il team DB (§16.16). **Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** il giro 2 (§16.14: sei changeSet, le righe di cinque CSV, un pgTAP nuovo e quattro adeguati, quattro pagine `manual/` nuove e quattro aggiornate, la guida `gestione-mail.md`) e questo brief. **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -1358,3 +1358,50 @@ nel backend.
 | R-test | Un test del repository: una riga di seed porta il segno e i campi, una riga creata dal test no; un account che ha spedito si spegne | `backend/apps/core/tests/db/` (accanto ai test mail esistenti) |
 
 Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo sceglie il FE.
+
+### 16.15 L'esito del team BE/FE (2026-11-20)
+
+✅ **Fatte tutte le richieste del §16.14**, provate sul DB vero (dbdev, come app). Da committare (Tid).
+
+| # | Esito | File |
+| --- | --- | --- |
+| R2 | ✅ Policy rigenerate (`genera_error_policies`, `--check` allineato: il catalogo di dbdev coincide con git); i due codici `CONFLITTO_STATO` danno 409, `E_SEED_PRIMO_IMPIANTO` 500. Messaggi di ripiego senza segnaposto per i tre codici. api.md non si tocca: dal 2026-08-07 registrare un codice è dargli la classe a catalogo. `E_SEED_COLONNA_DEL_SOFTWARE` resta col banner di classe, come i lucchetti gemelli: il campo nel form è già spento | `error_policies_generated.py`, `error_messages_fallback.py` |
+| R1-BE | ✅ Tolto il `DELETE` sul dettaglio di account e template (ora 405) e i due metodi del repository; tolti i casi `eliminazione` dal test dei 404 | `email_views.py`, `email_repository.py`, `test_email_views_fase6.py` |
+| R1-BE-bis | ✅ Le quattro letture con `LEFT JOIN config.vw_email_{account,template}_seed` sull'id, `nata_dal_seed` e `campi_del_software` nelle risposte (il `text[]` arriva come lista). Nessun elenco di colonne nel backend | `email_repository.py`, `api_email.md` |
+| R1-BE-ter | ✅ Il log scrive `account["id"]`, l'account con cui la mail parte. Test con due id diversi (con lo stesso id sarebbe verde a vuoto) | `email_outbox_service.py`, `test_email_outbox_service.py` |
+| R3 | ✅ Forma minima (Tid, 2026-11-20): il drawer del template modificava già solo oggetto e corpi, con codice e lingua spenti per tutti, e il frontend non crea template. Ora, sui campi in `campi_del_software` (codice, lingua, variabili: gli altri due il drawer non li mostra), il motivo sotto il campo, e il segno «Template di sistema» su `nata_dal_seed`. Il segno resta nel drawer: in lista servirebbe una colonna a catalogo (`ui.lista_colonna`), lavoro DB, non chiesto. Sull'account niente da spegnere | `EmailTemplateDrawer.vue` (+ `.spec.js`), `it.json`/`en.json` |
+| Q24-FE | ✅ L'interruttore `attivo` nel drawer del template (Tid, 2026-11-20): con la Q24 è l'unico gesto per togliere un template dall'uso, e il drawer non l'aveva. L'account ce l'aveva già | `EmailTemplateDrawer.vue` |
+| R-test | ✅ `test_email_seed_primo_impianto_db` (5 test): segno e campi sulla riga di seed e non su quella creata dal test, in lista e dettaglio; `E_SEED_COLONNA_DEL_SOFTWARE` sul codice di un template di seed; `E_SEED_RIGA_NON_CANCELLABILE` ed `E_DELETE_NOT_ALLOWED` sul `DELETE`; un account con una mail nel log si spegne | `backend/apps/core/tests/db/` |
+
+**Due chiavi i18n nuove**, contro la riga sopra «nessuna chiave i18n nuova»: il motivo dei campi spenti
+(`amministrazione.email_campo_del_programma`) e il segno (`amministrazione.email_template_di_sistema`). Il testo lo sceglie il
+FE, come chiedeva R3, e una frase a video vuole la sua chiave.
+
+**Una nota per il team DB, non una richiesta.** Nel piano di `config.vw_email_template_seed` dentro la lista la
+`dbops.fn_seed_riga` compare due volte per riga (SubPlan 1 e 2: una per `nata_dal_seed`, una per il `CASE` di
+`campi_del_software`). Sulle tabelle della posta non pesa (9 righe); da guardare se la stessa forma va su una tabella grande.
+
+### 16.16 La verifica del giro BE/FE (2026-11-20, sessione di revisione)
+
+Rivisto il lavoro del §16.15 prima del commit. Verdi dopo le correzioni: i tre moduli di test del backend (54 test,
+quelli sul DB vero compresi), lo spec del drawer, ruff, `genera_error_policies --check`, i controlli i18n e classi morte.
+
+| # | Che cosa | Esito |
+| --- | --- | --- |
+| V-1 | **Lo spento non si riaccendeva.** Le due liste di amministrazione chiamavano il repository col suo default `attivo_only=True`: l'account o il template spento spariva dalla lista, e il drawer con l'interruttore si apre solo da lì. Con la Q24 spegnere è l'unico gesto, e dall'interfaccia era senza ritorno. Per il template il caso nasce in questo giro (l'interruttore è nuovo); per l'account c'era già | ✅ Corretto: le due liste passano `attivo_only=False` (`email_views.py`), test `test_le_liste_admin_portano_anche_le_righe_spente` (rosso col codice di prima), `api_email.md` |
+| V-2 | **Il rilancio batch spedisce da un account spento.** `send_pending_emails` riprende la mail in coda con l'account scritto nel log (`get_account_with_password`, che non guarda `attivo`). Prima del giro 2 il caso non esisteva: un account con una riga nel log non si spegneva. Ora si spegne, e una mail in `RETRY` o `FAILED` ripescabile riparte da lì. La guida dice che un account spento «non viene più scelto per gli invii nuovi»: un nuovo tentativo è un invio nuovo? | ✅ **Deciso da Tid il 2026-11-20: la strada (a).** ⏳ Aspetta il team DB (la richiesta sotto la tabella); il backend parte dopo, senza ripieghi. Le strade erano: (a) il rilancio risolve di nuovo l'account come fa la conferma della bozza, e allora il log deve poter cambiare `email_account_id` (R1-BE-ter: il log dice da dove parte), cosa che per le righe `SISTEMA` passa da `config.fn_chiudi_email_sistema`, quindi una richiesta al team DB; (b) il rilancio chiude la mail `FAILED` col motivo; (c) resta così, e lo si scrive nella guida. Nessun ripiego nel backend nell'attesa |
+| V-3 | Il test del payload del drawer del template (`test_patch_template_payload_del_drawer_passa`) e il commento della `PATCH` dicevano ancora «oggetto e corpi»: il drawer ora manda anche `attivo` | ✅ Allineati; il test prova che `attivo` arriva al repository |
+| V-4 | `test_email_seed_primo_impianto_db` cercava le sue due righe nella prima pagina della lista (`limit=200`): quante righe ha l'installazione decideva se le trovava | ✅ Le cerca per codice |
+
+**La richiesta al team DB per V-2 (chi cambia per primo: il DB).** Il rilancio deve poter scrivere sul log l'account con
+cui la mail riparte. Per le righe non di sistema il backend lo scrive da sé (`UPDATE` di `config.email_log`); per le righe
+`SISTEMA` l'esito passa da `config.fn_chiudi_email_sistema`, che oggi tocca solo stato, errore, `inviato_at` e tentativi.
+Serve un parametro in più, `p_email_account_id` con default `NULL` (`NULL` = la colonna resta com'è), oppure la forma che
+il team DB preferisce. Poi il backend: `send_pending_emails` risolve l'account con `config.fn_resolve_email_account` sul
+reparto del log quando quello scritto è spento, e passa il nuovo id insieme all'esito.
+
+**Il drawer dell'account segue `campi_del_software`** (ok di Tid alla regola del 2, 2026-11-20). Estratto il building block
+`campoDelSoftware` (`frontend/src/core/utils/`, a catalogo): lo leggono il drawer del template e quello dell'account. Ogni
+campo del form che l'elenco nomina è spento col motivo e resta fuori dal PATCH (`senzaCampiFermi`); sull'account c'è anche
+il segno «Account di sistema». Due chiavi i18n nuove (`email_account_di_sistema`, `email_campo_del_programma_account`).
+Sugli account l'elenco di oggi è vuoto: il caso è costruito in `EmailAccountDrawer.spec.js` (4 test, provato per mutazione).

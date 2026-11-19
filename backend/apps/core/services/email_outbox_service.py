@@ -224,7 +224,14 @@ class EmailOutboxService:
             oggetto=outbox["oggetto"],
             corpo_html=outbox["corpo_html"],
             corpo_testo=outbox.get("corpo_testo"),
-            email_account_id=outbox["email_account_id"],
+            # ⛔ L'account del LOG e' quello con cui la mail parte, non quello
+            #    della bozza: la bozza lo ha fissato alla preparazione, l'invio
+            #    lo risolve adesso (`account_di_invio`), e fra i due l'account
+            #    puo' essere stato spento. Il log dice da dove e' partita
+            #    (2026-11-20, R1-BE-ter di brief-db-seed-primo-impianto-non-si-
+            #    riscrive §16.14: prima il `require` del log lo nascondeva
+            #    facendo fallire l'invio; dal `-28` il log lo accetta).
+            email_account_id=account["id"],
             email_template_id=outbox["email_template_id"],
             ambito=outbox["ambito"],
             unita_organizzativa_id=outbox.get("unita_organizzativa_id"),

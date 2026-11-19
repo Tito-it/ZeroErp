@@ -208,6 +208,12 @@ class EmailAccountListView(AdminAPIView):
         repo = EmailRepository()
         results, total = repo.list_accounts(
             search=p["search"],
+            # ⛔ La lista di amministrazione porta anche gli account SPENTI:
+            #    un account si toglie dall'uso spegnendolo (Q24, 2026-11-19),
+            #    e si riaccende dal drawer, che si apre solo da qui. Col
+            #    default del repository (`attivo_only=True`) la riga spenta
+            #    spariva e nessun gesto la riaccendeva (verifica 2026-11-20).
+            attivo_only=False,
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
@@ -255,7 +261,10 @@ class EmailAccountListView(AdminAPIView):
 
 
 class EmailAccountDetailView(AdminAPIView):
-    """GET: dettaglio account. PATCH: modifica account. DELETE: elimina account."""
+    """GET: dettaglio account. PATCH: modifica account (si spegne con `attivo`).
+
+    Nessun DELETE: un account non si cancella, si spegne (Q24, 2026-11-19).
+    """
 
     @extend_schema(responses={200: dict})
     # Scopo: Dettaglio singolo account email per ID. Aggiunge le capability
@@ -309,15 +318,6 @@ class EmailAccountDetailView(AdminAPIView):
         repo.update_account(account_id, **update_fields)
         result = repo.get_account(account_id)
         return success_response(_enrich_account_with_capability(result) if result else {})
-
-    @extend_schema(responses={204: None})
-    # Scopo: Elimina un account email.
-    def delete(self, request: Request, account_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        # La lettura prima della cancellazione da' il 404 dalla sede unica.
-        _account_o_404(repo, account_id)
-        repo.delete_account(account_id)
-        return JsonResponse({}, status=204)
 
 
 class EmailAccountTestView(AdminAPIView):
@@ -390,6 +390,9 @@ class EmailTemplateListView(AdminAPIView):
         repo = EmailRepository()
         results, total = repo.list_templates(
             search=p["search"],
+            # ⛔ Anche i template SPENTI, come la lista degli account: lo
+            #    spento si riaccende dal drawer, che si apre solo da qui.
+            attivo_only=False,
             codice=request.query_params.get("codice") or None,
             limit=p["limit"],
             offset=p["offset"],
@@ -436,7 +439,10 @@ class EmailTemplateListView(AdminAPIView):
 
 
 class EmailTemplateDetailView(AdminAPIView):
-    """GET: dettaglio template. PATCH: modifica. DELETE: elimina."""
+    """GET: dettaglio template. PATCH: modifica (si spegne con `attivo`).
+
+    Nessun DELETE: un template non si cancella, si spegne (Q24, 2026-11-19).
+    """
 
     @extend_schema(responses={200: dict})
     # Scopo: Dettaglio singolo template email per ID (incluso corpo).
@@ -448,7 +454,8 @@ class EmailTemplateDetailView(AdminAPIView):
     # Scopo: Aggiorna parzialmente un template email.
     # ⛔ Dal 2026-09-26 una chiave fuori `_TEMPLATE_PATCH_KEYS` e' un 400
     #    `E_EMAIL_ADMIN`, non uno scarto silenzioso. `EmailTemplateDrawer`
-    #    manda `oggetto`, `corpo_html`, `corpo_testo` — verificato quel giorno.
+    #    manda `oggetto`, `corpo_html`, `corpo_testo` e, dal 2026-11-20,
+    #    `attivo` (l'interruttore con cui il template si spegne, Q24).
     def patch(self, request: Request, template_id: int) -> JsonResponse:
         data = corpo_oggetto(request)
         repo = EmailRepository()
@@ -476,15 +483,6 @@ class EmailTemplateDetailView(AdminAPIView):
         _V_EMAIL.require_campi_da_aggiornare(update_fields)
         repo.update_template(template_id, **update_fields)
         return success_response(repo.get_template(template_id) or {})
-
-    @extend_schema(responses={204: None})
-    # Scopo: Elimina un template email.
-    def delete(self, request: Request, template_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        # La lettura prima della cancellazione da' il 404 dalla sede unica.
-        _template_o_404(repo, template_id)
-        repo.delete_template(template_id)
-        return JsonResponse({}, status=204)
 
 
 class EmailTemplatePreviewView(AdminAPIView):
