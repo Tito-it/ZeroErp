@@ -104,6 +104,18 @@ class EmailRepository:
     #    INSERT/UPDATE, utente da `app.jwt_user`). Nessun UPDATE qui nomina
     #    `data_update` o `user_update`: riscriverli sarebbe la stessa regola su
     #    due livelli (2026-11-08, censimento di BE11 di brief-db-revisione-dbops).
+    # ⛔ Nessun DELETE su account e template: si spengono (`attivo = false`),
+    #    anche dopo aver spedito. Il DB rifiuta ogni cancellazione
+    #    (`dbops.automation_delete_block` → `E_DELETE_NOT_ALLOWED`; sulla riga
+    #    nata dal seed prima `E_SEED_RIGA_NON_CANCELLABILE`): un metodo che
+    #    risponde solo con un errore sarebbe un contratto falso (Tid 2026-11-19,
+    #    Q24 di brief-db-seed-primo-impianto-non-si-riscrive §16.14).
+    # ⭐ Lista e dettaglio di account e template leggono il segno del seed
+    #    dalla vista accanto alla tabella (`config.vw_email_{account,template}_seed`,
+    #    LEFT JOIN sull'id): `nata_dal_seed` e `campi_del_software`, i campi che
+    #    il form spegne. Vengono dalle stesse funzioni del guard che rifiuta
+    #    (`E_SEED_COLONNA_DEL_SOFTWARE`): qui nessun predicato sul registro e
+    #    nessun elenco di colonne, o il campo spento e il rifiuto divergono.
 
     # -------------------------------------------------------
     # Email Account — CRUD + risoluzione
@@ -141,9 +153,11 @@ class EmailRepository:
                    ea.smtp_host, ea.smtp_port, ea.smtp_use_tls, ea.smtp_use_ssl,
                    ea.smtp_username, ea.email_from, ea.email_reply_to,
                    ea.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software,
                    COUNT(*) OVER() AS total_count
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
+              LEFT JOIN config.vw_email_account_seed seed ON seed.email_account_id = ea.id
              WHERE {where}
              ORDER BY {order_clause}
              LIMIT %s OFFSET %s
@@ -176,9 +190,11 @@ class EmailRepository:
                    ea.smtp_username, ea.email_from, ea.email_reply_to,
                    ea.attivo,
                    ea.smtp_password_encrypted IS NOT NULL AS has_smtp_password,
-                   ea.meta
+                   ea.meta,
+                   seed.nata_dal_seed, seed.campi_del_software
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
+              LEFT JOIN config.vw_email_account_seed seed ON seed.email_account_id = ea.id
              WHERE ea.id = %s
         """
         with connection.cursor() as cursor:
@@ -258,12 +274,6 @@ class EmailRepository:
             "config.email_account", account_id, values,
             allowed=allowed,
         )
-
-    # Scopo: Elimina un account email per ID.
-    def delete_account(self, account_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM config.email_account WHERE id = %s", [account_id])
-            return cursor.rowcount > 0
 
     # Scopo: Persiste in `email_account.meta` l'esito dell'ultimo test SMTP.
     #        outcome ∈ {"SUCCESS", "FAILED"}; tested_at ISO-8601 UTC.
@@ -347,9 +357,11 @@ class EmailRepository:
                    et.lingua, et.oggetto,
                    et.variabili_disponibili,
                    et.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software,
                    COUNT(*) OVER() AS total_count
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
+              LEFT JOIN config.vw_email_template_seed seed ON seed.email_template_id = et.id
              WHERE {where}
              ORDER BY {order_clause}
              LIMIT %s OFFSET %s
@@ -366,9 +378,11 @@ class EmailRepository:
                    et.tipo_prestazione_id,
                    et.lingua, et.oggetto, et.corpo_html, et.corpo_testo,
                    et.variabili_disponibili,
-                   et.attivo
+                   et.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
+              LEFT JOIN config.vw_email_template_seed seed ON seed.email_template_id = et.id
              WHERE et.id = %s
         """
         with connection.cursor() as cursor:
@@ -420,12 +434,6 @@ class EmailRepository:
             "config.email_template", template_id, kwargs,
             allowed=self._TEMPLATE_UPDATE_COLS,
         )
-
-    # Scopo: Elimina un template email per ID.
-    def delete_template(self, template_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM config.email_template WHERE id = %s", [template_id])
-            return cursor.rowcount > 0
 
     # Scopo: Risolve template email per codice/reparto/tipo/lingua con fallback PG.
     def resolve_template(

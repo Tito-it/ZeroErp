@@ -1434,6 +1434,10 @@
     "email_new_account": "New email account",
     "email_edit_account": "Edit email account",
     "email_edit_template": "Edit email template",
+    "email_template_di_sistema": "System template",
+    "email_campo_del_programma": "Set by the software: this template is part of the initial configuration.",
+    "email_account_di_sistema": "System account",
+    "email_campo_del_programma_account": "Set by the software: this account is part of the initial configuration.",
     "email_detail_log": "Send detail",
     "definizioni_workflow": {
       "filtro_tipo": "Service type",
