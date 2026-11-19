@@ -1,6 +1,6 @@
 # Guida — Gestione degli Indirizzi
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -293,7 +293,10 @@ Un solo indirizzo per tipo per entità:
 * Layer ruolo: `UNIQUE (soggetto_ruolo_id, istanza_utility_id, tipo_indirizzo_id)` — implementato con due partial unique index per gestire NULL (`uq_indirizzi_ruolo_tipo_no_istanza` per `istanza_utility_id IS NULL`, `uq_indirizzi_ruolo_istanza_tipo` per `istanza_utility_id IS NOT NULL`)
 * Layer soggetto: `UNIQUE (soggetto_id, tipo_indirizzo_id)`
 
-Un indirizzo si può anche **copiare** in altri tipi, nello stesso soggetto o nello stesso ruolo e istanza: «la sede legale è anche spedizione e fatturazione». Lo fanno [`fn_copia_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_soggetto) e [`fn_copia_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_ruolo), più tipi in un gesto e tutto o niente: ogni riga nuova passa dalle stesse regole di un indirizzo scritto a mano. Un indirizzo con il dettaglio condivide il dettaglio; uno libero copia i suoi campi. L'azione si spegne, col motivo, quando non resta un tipo in cui copiarlo ([`vw_indirizzi_soggetti_azioni`](/dbzero/anagrafiche/views/vw_indirizzi_soggetti_azioni), [`vw_indirizzi_ruolo_azioni`](/dbzero/anagrafiche/views/vw_indirizzi_ruolo_azioni)).
+Un indirizzo si può anche **copiare** in altri tipi: «la sede legale è anche spedizione e fatturazione». Più tipi in un gesto e tutto o niente: ogni riga nuova passa dalle stesse regole di un indirizzo scritto a mano. Un indirizzo con il dettaglio condivide il dettaglio; uno libero copia i suoi campi. La copia va **dove lavora l'operatore**, cioè sulla chiave aperta:
+
+* sul **soggetto**, la copia resta sul soggetto ([`fn_copia_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_soggetto)). L'azione si spegne, col motivo, quando non resta un tipo in cui copiarlo ([`vw_indirizzi_soggetti_azioni`](/dbzero/anagrafiche/views/vw_indirizzi_soggetti_azioni));
+* sul **ruolo** o su una sua **istanza**, la copia va su quella chiave, qualunque sia la chiave da cui viene la riga: un'altra istanza, il ruolo, o il soggetto del ruolo che la cascata mostra ([`fn_copia_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_ruolo), [`fn_copia_indirizzo_soggetto_su_ruolo`](/dbzero/anagrafiche/funzioni/fn_copia_indirizzo_soggetto_su_ruolo)). Un tipo già presente si giudica sulla chiave di destinazione, non su quella della riga copiata. Quali tipi si possono ancora aggiungere lo dice il picker di quella chiave ([`fn_tipi_indirizzo_proponibili_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipi_indirizzo_proponibili_ruolo)): quando non ne resta nessuno, «Aggiungi» e «Copia come…» si spengono insieme. L'istanza deve essere del soggetto del ruolo, come per ogni indirizzo del ruolo.
 
 Chi scrive un indirizzo dalle madri ([`fn_crea_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_soggetto), [`fn_crea_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_crea_indirizzo_ruolo)) riceve il rifiuto con un codice e il tipo: `E_INDIRIZZO_SOGGETTO_TIPO_GIA_PRESENTE` o `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE`, sul campo del tipo. Lo dice la check del tipo ([`fn_check_tipo_indirizzo_soggetto`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_soggetto), [`fn_check_tipo_indirizzo_ruolo`](/dbzero/anagrafiche/funzioni/fn_check_tipo_indirizzo_ruolo)) prima di scrivere; gli indici restano per due scritture concorrenti.
 
