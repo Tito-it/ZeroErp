@@ -483,6 +483,13 @@ export function copiaRuoloIndirizzo(ruoloId, indirizzoId, tipi) {
     { tipi_indirizzo_codice_interno: tipi })
 }
 
+// La «modifica» di un indirizzo del ruolo: il BE cancella e riscrive in UNA
+// transazione, gemello di `replaceSoggettoIndirizzo`. Due richieste
+// (DELETE + POST) non bastano: l'obbligatorio cancellato da solo e' rifiutato.
+export function replaceRuoloIndirizzo(ruoloId, indirizzoId, payload) {
+  return api.put(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`, payload)
+}
+
 export function deleteRuoloIndirizzo(ruoloId, indirizzoId) {
   return api.delete(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/`)
 }

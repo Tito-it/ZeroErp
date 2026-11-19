@@ -131,6 +131,22 @@ class SoggettiDetailView(DomainAPIView):
             # fornitura. Non sono un codice IVA e non entrano nel risolutore.
             "cliente_pa": serializers.CharField(required=False),
             "split_payment": serializers.CharField(required=False),
+            # Col cambio di natura (R-7, brief-db-fornitore-privato-indirizzi
+            # §13.4): gli indirizzi che la natura nuova chiede, scritti dopo la
+            # riga nella stessa transazione. Senza la natura sono un 400.
+            "indirizzi": serializers.ListField(
+                child=inline_serializer(name="SoggettoUpdateIndirizzo", fields=campi_indirizzo_madre()),
+                required=False,
+            ),
+            "indirizzi_ruoli": serializers.ListField(
+                child=inline_serializer(name="SoggettoUpdateIndirizziRuolo", fields={
+                    "soggetto_ruolo_id": serializers.IntegerField(),
+                    "indirizzi": serializers.ListField(
+                        child=inline_serializer(name="SoggettoUpdateIndirizzoRuolo", fields=campi_indirizzo_madre()),
+                    ),
+                }),
+                required=False,
+            ),
         }),
         responses={200: inline_serializer(name="SoggettoUpdateResp", fields={"data": serializers.DictField()})},
     )
@@ -164,6 +180,22 @@ class SoggettoCambioNaturaMotiviView(DomainAPIView):
         responses={200: inline_serializer(name="SoggettoCambioNaturaMotiviResp", fields={
             "data": inline_serializer(name="SoggettoCambioNaturaMotiviData", fields={
                 "motivi": serializers.ListField(child=serializers.DictField()),
+                # Gli indirizzi obbligatori che mancherebbero sulla natura
+                # proposta (`soggetto_ruolo_id` null = il soggetto): il ripiego,
+                # se c'e', vale al posto del tipo.
+                "indirizzi_mancanti": serializers.ListField(
+                    child=inline_serializer(name="SoggettoCambioNaturaIndirizzoMancante", fields={
+                        "soggetto_ruolo_id": serializers.IntegerField(allow_null=True),
+                        "tipo_ruolo_id": serializers.IntegerField(allow_null=True),
+                        "ruolo_descrizione": serializers.CharField(allow_null=True),
+                        "tipo_indirizzo_id": serializers.IntegerField(),
+                        "tipo_indirizzo_codice_interno": serializers.CharField(),
+                        "tipo_indirizzo_descrizione": serializers.CharField(),
+                        "ripiego_tipo_indirizzo_id": serializers.IntegerField(allow_null=True),
+                        "ripiego_tipo_indirizzo_codice_interno": serializers.CharField(allow_null=True),
+                        "ripiego_tipo_indirizzo_descrizione": serializers.CharField(allow_null=True),
+                    }),
+                ),
             }),
         })},
     )

@@ -223,7 +223,7 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
   del **fornitore privato** (ricevuta o nota compenso, ritenuta d'acconto, F24, CU; l'indirizzo fiscale chiesto dal
-  documento, non dal ruolo) è da progettare: `brief-db-fornitore-privato-indirizzi.md` §7.
+  documento, non dal ruolo) è da progettare: `work-done/brief-db-fornitore-privato-indirizzi.md` §7.
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
 (`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è

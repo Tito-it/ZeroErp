@@ -1,9 +1,16 @@
 # Brief DB — Il privato può essere fornitore, senza inventarsi una sede legale
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-18
+## ⏭️ Chi riparte — ✅ CHIUSO il 2026-11-19, archiviato su richiesta di Tid
 
-**Riparte: il team BE/FE con R-5 (riga 7-b, §11.3), R-6 (riga 8-b, §12.4), R-7 (riga 8-f, §13.4) e R-8 (riga 10-b,
-§15.4), tutte sbloccate. Poi l'archiviazione (riga 9). Il lato DB è finito.**
+**Non riparte nessuno.** Il lato DB è finito e committato (giri 1 … 7); R-5 … R-8 del BE/FE sono fatti, verdi sul DB
+vero e documentati (§16), e vanno nel commit di Tid insieme a questa archiviazione. Restano fuori, ciascuno nella
+sua sede: il documento passivo del fornitore privato (§7, sviluppo acquisti, rimando in PROJECT_CONTEXT) e la copia
+di un indirizzo verso la chiave del drawer
+([brief-db-copia-indirizzo-destinazione](../work-in-progress/brief-db-copia-indirizzo-destinazione.md), D-1 … D-3
+decise il 2026-11-19).
+
+Storia della ripartenza fino al 2026-11-18:
+
 Il giro 7 (§15, Tid 2026-11-18): il titolare di un indirizzo è identità, due lucchetti di colonna; l'upsert fuori
 transazione di `test-soggetti-ruoli-indirizzi-required` tolto; applicato su dbdev il 2026-11-18, pgTAP verdi, doc
 auto-generata rigenerata, e committato (2026-11-18). Il giro 6 (§14: la lettura del
@@ -33,26 +40,26 @@ Decisioni prese il 2026-11-16: la (C), D-4, D-5, F-1.
 | 6 | BE/FE | ✅ R-1 il picker del ruolo da assegnare col soggetto; R-2 la chiave i18n del motivo nuovo; R-3 la policy del codice nuovo; R-4 il fornitore privato sul DB vero (2026-11-17, committate in `0664df90c3`) | §9.4 | 5 |
 | 7 | team DB | ✅ giro 3: le frasi dell'obbligatorio mancante per nome, un codice per layer (`20261116-26 … -28`, due CSV, pgTAP, doc), provato in `ROLLBACK` (2026-11-17) | §11 | 5 |
 | 7-a | Tid | ✅ `20261116-26 … -28` e i due CSV applicati su dbdev, pgTAP del §11.2 verdi (2026-11-17) | §11.2 | 7 |
-| 7-b | BE/FE | R-5: policy rigenerata col codice nuovo, ripiego dei due messaggi | §11.3 | 7-a |
+| 7-b | BE/FE | ✅ R-5: policy rigenerata col codice nuovo, ripiego dei due messaggi (2026-11-18, non committato) | §11.3 | 7-a |
 | 7-c | team DB | ✅ commit del giro 3, con la doc auto-generata (2026-11-17) | §11 | 7-a |
 | 7-bis | team DB | ✅ il builder `dbops.fn_pgtap_crea_soggetto_pf` (`20261116-22`), le cinque copie ritirate, pgTAP e doc, provati in `ROLLBACK` (2026-11-17) | §10 | — |
 | 7-bis-a | Tid | ✅ `20261116-22` applicato su dbdev, i sei pgTAP del §10.2 verdi (2026-11-17) | §10.2 | 7-bis |
 | 7-bis-b | team DB | ✅ commit del giro 7-bis (`8311f9a078`, 2026-11-17) | §10 | 7-bis-a |
 | 8 | team DB | ✅ giro 4 scritto e provato in `ROLLBACK` (2026-11-17): il requisito degli obbligatori in sede unica, sulla natura col ripiego (Tid, 2026-11-17); il controllo alla cancellazione, al cambio di tipo (F-1) e al cambio di natura; la fixture del ruolo; pgTAP e doc | §12 | 5 |
 | 8-a | Tid | ✅ `20261116-29 … -38` applicati su dbdev, pgTAP verdi, doc auto-generata rigenerata, commit (2026-11-17) | §12.3 | 8 |
-| 8-b | BE/FE | R-6: i rifiuti nuovi sui percorsi di cancellazione e modifica degli indirizzi e del cambio di natura; gli smoke | §12.4 | 8-a, 7-b |
+| 8-b | BE/FE | ✅ R-6: i rifiuti nuovi sui percorsi di cancellazione e modifica degli indirizzi e del cambio di natura; gli smoke; la modifica dell'indirizzo del ruolo in una transazione (§16) (2026-11-18, non committato) | §12.4 | 8-a, 7-b |
 | 8-c | Tid | ✅ il via al giro 5, nella forma proposta, dopo l'applicazione del giro 4 (2026-11-17) | §12.5 | — |
 | 8-d | team DB | ✅ giro 5 scritto e provato in `ROLLBACK` (2026-11-17): i mancanti del ruolo e del soggetto su una natura data, letti dai guard, e la lettura per il form del cambio di natura; la madre è del backend (Tid, 2026-11-17, §13) | §13 | 8-c, 8-a |
 | 8-e | Tid | ✅ `20261116-39 … -43` applicati su dbdev, pgTAP verdi (col presidio corretto, §13.3), commit (2026-11-17); resta la doc auto-generata | §13.3 | 8-d |
-| 8-f | BE/FE | R-7: il cambio di natura porta gli indirizzi mancanti, nella stessa transazione (col nome del giro 6) | §13.4 | 8-h ✅ |
+| 8-f | BE/FE | ✅ R-7: il cambio di natura porta gli indirizzi mancanti, nella stessa transazione (col nome del giro 6) (2026-11-18, non committato; la prova a video è di Tid) | §13.4 | 8-h ✅ |
 | 8-g | team DB | ✅ giro 6 scritto e provato in `ROLLBACK` (2026-11-18): la rinomina della lettura (`20261116-44`) e i tre pgTAP sul builder del privato | §14 | — |
 | 8-h | Tid | ✅ `20261116-44` applicato su dbdev, i quattro pgTAP del §14.2 verdi, doc auto-generata dei giri 5 e 6 rigenerata (2026-11-18) | §14.2 | 8-g |
 | 8-i | Tid | ✅ `20261116-45` (i COMMENT di `_ruolo` e `_soggetto`, §14.4) applicato su dbdev, pgTAP verdi, doc auto-generata, commit del giro 6 (`120312f74e`, 2026-11-18) | §14.4 | 8-h |
 | 10 | team DB | ✅ giro 7 scritto e provato in `ROLLBACK` (2026-11-18): i lucchetti del titolare dell'indirizzo, l'upsert del pgTAP, il §7 marcato | §15 | 8-i |
 | 10-a | Tid | ✅ i tre CSV (`automation_lock_columns`, `codici_errore`, `messaggi_errore`) e `20261116-46` applicati su dbdev, `test-indirizzi-titolare-immutabile-v1` e `test-soggetti-ruoli-indirizzi-required` verdi, doc auto-generata rigenerata (2026-11-18) | §15.3 | 10 |
-| 10-b | BE/FE | R-8: la policy e il ripiego dei due codici nuovi | §15.4 | 10-a ✅ |
+| 10-b | BE/FE | ✅ R-8: la policy e il ripiego dei due codici nuovi (2026-11-18, non committato) | §15.4 | 10-a ✅ |
 | 10-c | team DB | ✅ commit del giro 7 (2026-11-18) | §15 | 10-a |
-| 9 | chi chiude | archiviazione in `work-done/`: nessun residuo da portare in un brief nuovo (§15.5) | — | tutti |
+| 9 | chi chiude | ✅ archiviazione in `work-done/` (2026-11-19): nessun residuo da portare in un brief nuovo (§15.5) | — | tutti |
 
 Decisioni aperte di Tid: nessuna. Decise il 2026-11-18: l'omonimo si rinomina subito (§13.3), i tre pgTAP passano
 sul builder (§10.3), e `soggetto_ruolo_id` di un indirizzo è identità (§9.5, giro 7). Il giro 6 è committato
@@ -1061,3 +1068,45 @@ riletti prima dell'apply.
 
 Niente da portare in un brief nuovo: il §7 è sviluppo acquisti (marcato lì), il §9.5 è chiuso da questo giro,
 l'upsert del §14.2 pure. Restano R-5 … R-8 del BE/FE.
+
+## 16. Le richieste al BE/FE, fatte (team BE/FE, 2026-11-18)
+
+R-5 … R-8 scritti e provati sul DB vero (dbdev, 2026-11-18); non committati.
+
+| Richiesta | Che cosa | Prova |
+| --- | --- | --- |
+| R-5, R-8 | `error_policies_generated.py` rigenerato (entrano i tre codici, nessun'altra voce cambia); i ripieghi in `error_messages_fallback.py` | `test_error_policies_classi` verde; nessun codice vivo del DB senza policy o ripiego |
+| R-6 | rifiuti di `DELETE`, `PATCH` e `PUT` al commit, col codice del layer; `smoke-indirizzi-documento-catena` col controllo del commit (caso 7) | `test_indirizzi_obbligatori_db` 11 / 0; smoke catena verde |
+| R-7 | `motivi_cambio_natura` porta `indirizzi_mancanti`; il `PATCH` del soggetto accetta `indirizzi` e `indirizzi_ruoli`; nel `SoggettoDrawer` un `IndirizziMancantiForm` per titolare | stesso test, casi 6 … 10 |
+
+⚠️ **Un percorso rotto dal giro 4, trovato verificando R-6.** La modifica di un indirizzo del ruolo, nel
+`IndirizziSoggettoDrawer`, era `DELETE` + `POST` in due richieste: la `DELETE` dell'unico obbligatorio, giudicata al
+suo commit, era rifiutata, e col `silent` della chiamata il salvataggio falliva senza messaggio. Ora è un `PUT`
+(`replace_indirizzo_ruolo`, gemello di `replace_indirizzo_soggetto`: cancella e riscrive nello stesso
+`transaction.atomic()`), con la sua sezione in `api_indirizzi_ruolo.md` (§3-bis). Il `PATCH` non bastava: non risolve
+una via nuova in un dettaglio. Test: `test_sostituire_l_unico_obbligatorio_passa`.
+
+`smoke-fattura-indirizzi-snapshot` non è cambiato: chiude in `ROLLBACK` e i guard sono differiti, quindi da solo non
+li esercita; provato a parte col commit anticipato in coda (copia nello scratchpad), lo stato finale passa.
+
+Dalla revisione (2026-11-18): `IndirizziMancantiForm` rifaceva la matrice a **ogni** rilettura dei motivi
+(P.IVA o flag digitati, salvataggio rifiutato), e `setMatrice` svuotava gli indirizzi compilati: con un ripiego,
+quello scritto sul ripiego partiva col tipo richiesto. Ora segue la firma dei tipi
+(`IndirizziMancantiForm.spec.js`). Il «Cambia» del ruolo come una sola `PUT` ha il suo spec (caso 4 di
+`IndirizziSoggettoDrawer.spec.js`). `api_soggetti.md` allineata: §4 (`indirizzi`, `indirizzi_ruoli`, i rifiuti
+al commit), §8 (obbligatori su sostituzione ed eliminazione), §13 (`indirizzi_mancanti`).
+
+Decisi da Tid nella revisione (2026-11-18):
+
+* gli indirizzi del PATCH vogliono una natura **diversa** da quella salvata, non solo la chiave: la natura di oggi
+  rimandata apriva una seconda porta di scrittura senza la copia degli obbligatori. Test
+  `test_indirizzi_con_la_natura_di_oggi_rifiutati` (9b);
+* il collegamento form/composable dell'indirizzo, ricopiato in cinque componenti, è il BB
+  `collegaIndirizzoSoggettoForm` (regola del 2), col presidio che confronta le sue chiavi con prop ed eventi del form.
+
+Dalla prova a video (Tid, 2026-11-18): la dialog di «Copia come…» non diceva da dove né verso dove. Ora porta le
+righe **Da** e **Verso** (`CopiaIndirizzoDialog`, casi 4 e 5 degli spec). La copia sul servizio aperto, invece che
+sulla chiave della sorgente, è un cambio del verbo e non di questo brief: sta in
+[brief-db-copia-indirizzo-destinazione](../work-in-progress/brief-db-copia-indirizzo-destinazione.md), e non blocca l'archiviazione.
+
+Chiuso il 2026-11-19, su richiesta di Tid dopo la sua prova a video: archiviato in `work-done/`; il commit è di Tid.

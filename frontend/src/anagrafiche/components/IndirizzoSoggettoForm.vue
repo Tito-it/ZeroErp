@@ -31,6 +31,10 @@ const props = defineProps({
   capOptions: { type: Array, default: () => [] },
   loadingCap: { type: Boolean, default: false },
   autoClone: { type: Boolean, default: true },
+  // Il checkbox della copia negli obbligatori: spento dove chi scrive non
+  // copia (il cambio di natura, R-7 di brief-db-fornitore-privato-indirizzi:
+  // l'operatore scrive gli indirizzi che la natura nuova chiede).
+  mostraAutoClone: { type: Boolean, default: true },
   indirizzoWarnings: { type: Array, default: () => [] },
   addressNotFound: { type: Boolean, default: false },
   tipiEsistenti: { type: Array, default: () => [] },
@@ -105,7 +109,7 @@ const viaNoResultsGenerale = computed(() =>
 
     <!-- Checkbox: auto-clone + formato libero + via non presente (affiancati) -->
     <div class="form-row-inline" style="flex-wrap: wrap;">
-      <div v-if="tipiStatoArricchiti.filter(t => t.obbligatorio && !t.esistente).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
+      <div v-if="mostraAutoClone && tipiStatoArricchiti.filter(t => t.obbligatorio && !t.esistente).length > 1" style="display: flex; align-items: center; gap: 0.5rem;">
         <Checkbox
           :modelValue="autoClone"
           @update:modelValue="$emit('update:autoClone', $event)"

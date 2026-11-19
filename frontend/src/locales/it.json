@@ -6336,7 +6336,14 @@
         "titolo_da": "Copia l'indirizzo «{tipo}»",
         "spiegazione": "Scegli i tipi di indirizzo da aggiungere con questo stesso indirizzo. I tipi spenti non si possono aggiungere: accanto c'è il perché.",
         "conferma": "Copia",
-        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi"
+        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi",
+        "da": "Da",
+        "verso": "Verso",
+        "titolare_soggetto": "il soggetto",
+        "titolare_ruolo": "il ruolo",
+        "titolare_servizio": "il servizio {utility}",
+        "titolare_servizio_generico": "il servizio",
+        "verso_come_origine": "{titolare}, dove sta l'indirizzo di partenza"
       }
     },
     "soggetti": {
@@ -6380,6 +6387,10 @@
       },
       "cambio_natura_motivi_titolo": "Il cambio di natura non si può fare finché restano questi motivi:",
       "cambio_natura_motivi_non_verificati": "Non è stato possibile verificare se il cambio di natura si può fare: al salvataggio, se non si può, si vedrà il motivo.",
+      "cambio_natura_indirizzi_titolo": "La natura scelta chiede questi indirizzi, che il soggetto o i suoi ruoli non hanno: si compilano qui e si salvano insieme al cambio.",
+      "cambio_natura_indirizzi_soggetto": "Indirizzi del soggetto",
+      "cambio_natura_indirizzi_ruolo": "Indirizzi del ruolo {ruolo}",
+      "cambio_natura_indirizzo_o_ripiego": "{tipo}, oppure {ripiego}",
       "elimina_dati_societari": "Elimina i dati societari",
       "elimina_dati_societari_conferma": "Eliminare i dati societari del soggetto (forma giuridica, REA, capitale, fatturazione elettronica)? Restano nello storico, ma il soggetto non li avrà più.",
       "dati_societari_eliminati": "Dati societari eliminati.",

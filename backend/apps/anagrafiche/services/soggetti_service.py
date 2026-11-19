@@ -79,8 +79,17 @@ _FLAG_FISCALI_VALORI: frozenset[str] = frozenset({"S", "N"})
 # parte B): una SOTTO-CHIAVE della PATCH, non una colonna di `soggetti`. Va al
 # verbo DB `fn_scrivi_dati_societari`, che riceve lo STATO INTERO della sezione.
 _CHIAVE_DATI_SOCIETARI = "dati_societari"
+# Gli indirizzi che il cambio di natura porta con se' (R-7 di
+# brief-db-fornitore-privato-indirizzi §13.4): quelli del SOGGETTO, e quelli
+# per RUOLO (`[{soggetto_ruolo_id, indirizzi}]`), nella grammatica delle madri.
+# Due SOTTO-CHIAVI della PATCH, come i dati societari: si scrivono dopo la riga.
+_CHIAVE_INDIRIZZI = "indirizzi"
+_CHIAVE_INDIRIZZI_RUOLI = "indirizzi_ruoli"
+_CHIAVI_INDIRIZZI_NATURA: frozenset[str] = frozenset({_CHIAVE_INDIRIZZI, _CHIAVE_INDIRIZZI_RUOLI})
+_INDIRIZZI_RUOLO_VOCE_KEYS: frozenset[str] = frozenset({"soggetto_ruolo_id", "indirizzi"})
 _UPDATE_SOGGETTO_KEYS: frozenset[str] = (
     SOGGETTO_UPDATE_COLS | frozenset(SOGGETTO_UPDATE_ALIAS) | {_CHIAVE_DATI_SOCIETARI}
+    | _CHIAVI_INDIRIZZI_NATURA
 )
 # Le chiavi della sezione dati societari: i parametri del verbo, senza il
 # soggetto, dal binding del repository (le porte di creazione hanno gli stessi).
@@ -344,6 +353,9 @@ class SoggettiService:
             dati["tipo_soggetto_dettaglio_id"] = _V.require_positive_int(
                 dati, "tipo_soggetto_dettaglio_id",
             )
+        # ⚠️ Dopo la natura normalizzata: gli indirizzi si confrontano con un
+        #    intero, non con la stringa che il client puo' aver mandato.
+        indirizzi, indirizzi_ruoli = self._indirizzi_del_cambio_natura(soggetto_id, dati)
         # ⛔ Un PATCH senza campi e' un 400, non il 404 che dava l'UPDATE vuoto
         #    (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2). I dati
         #    societari contano come campo: `{"dati_societari": {}}` no.
@@ -373,7 +385,90 @@ class SoggettiService:
                     _VINCOLO_REA_DUPLICATA,
                     default_message=_MSG_REA_DUPLICATA,
                 )
+            # ⚠️ Gli indirizzi DOPO la riga: il guard del tipo li giudica sulla
+            #    natura del soggetto in quel momento, e un tipo che la natura di
+            #    prima vietava si scrive solo a natura cambiata. Gli obbligatori
+            #    (guard differiti) giudicano lo stato finale, al commit.
+            # ⚠️ Senza la copia degli obbligatori: l'operatore scrive quelli che
+            #    la lettura dei mancanti gli chiede, e una copia del primo
+            #    indirizzo nei tipi mancanti li soddisferebbe al suo posto.
+            if indirizzi:
+                create_with_dedup(
+                    lambda: self._repo.crea_indirizzi_soggetto(
+                        soggetto_id, indirizzi, copia_obbligatori=False,
+                    ),
+                    "Indirizzo duplicato per questo soggetto.",
+                )
+            for soggetto_ruolo_id, elenco in indirizzi_ruoli:
+                self.create_indirizzi_ruolo(soggetto_ruolo_id, elenco)
         return {"updated": True}
+
+    # Scopo: Le due sotto-chiavi degli indirizzi del cambio di natura, tolte
+    #        da `dati` e lette prima di scrivere: gli indirizzi del soggetto
+    #        (`indirizzi_per_madre`) e, per ogni ruolo, il ruolo e i suoi.
+    # ⛔ Accompagnano un CAMBIO DI NATURA, non lo sostituiscono: senza
+    #    `tipo_soggetto_dettaglio_id`, o con la natura che il soggetto ha gia',
+    #    sono un 400. Un indirizzo nuovo, fuori da li', si scrive dal suo
+    #    endpoint, che giudica il tipo gia' presente e copia gli obbligatori.
+    #    Fino al 2026-11-18 bastava la CHIAVE: la natura di oggi, rimandata,
+    #    apriva una seconda porta di scrittura senza la copia.
+    # ⛔ Il ruolo dev'essere DEL soggetto: un ruolo di un altro soggetto e' un
+    #    400 sul campo, non una scrittura altrove; uno che non c'e' e' il 404 di
+    #    `resolve_soggetto_id`, come negli endpoint del ruolo.
+    def _indirizzi_del_cambio_natura(
+        self, soggetto_id: str, dati: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], list[tuple[int, list[Any]]]]:
+        from django.db import connection
+
+        from apps.anagrafiche.db._helpers import resolve_soggetto_id
+
+        presenti = [k for k in (_CHIAVE_INDIRIZZI, _CHIAVE_INDIRIZZI_RUOLI) if k in dati]
+        raw_soggetto = dati.pop(_CHIAVE_INDIRIZZI, None)
+        raw_ruoli = dati.pop(_CHIAVE_INDIRIZZI_RUOLI, None)
+        if not presenti:
+            return [], []
+        salvato = (
+            require_found(self._repo.get_soggetto(soggetto_id), "Soggetto non trovato.")
+            if "tipo_soggetto_dettaglio_id" in dati else None
+        )
+        ErrorManager.require(
+            salvato is not None
+            and dati["tipo_soggetto_dettaglio_id"] != salvato["tipo_soggetto_dettaglio_id"],
+            code=E_ANAG_VALIDAZIONE,
+            message="Gli indirizzi si mandano col cambio di natura.",
+            context={"field": presenti[0]},
+        )
+        indirizzi = indirizzi_per_madre(raw_soggetto)
+
+        def leggi_ruolo(voce: dict[str, Any], _indice: int) -> tuple[int, list[Any]]:
+            _V.validate_allowed_keys(
+                voce, allowed=_INDIRIZZI_RUOLO_VOCE_KEYS,
+                message="Voce degli indirizzi del ruolo non valida.",
+            )
+            soggetto_ruolo_id = _V.require_positive_int(voce, "soggetto_ruolo_id")
+            elenco = voce.get("indirizzi")
+            # `raise_error` e' NoReturn: dopo il ramo il tipo e' la lista.
+            if not isinstance(elenco, list):
+                ErrorManager.raise_error(
+                    code=E_ANAG_VALIDAZIONE,
+                    message="Indirizzi del ruolo non validi: attesa una lista.",
+                    context={"field": _CHIAVE_INDIRIZZI_RUOLI},
+                )
+            with connection.cursor() as cursor:
+                proprietario = resolve_soggetto_id(cursor, soggetto_ruolo_id)
+            ErrorManager.require(
+                proprietario == str(soggetto_id),
+                code=E_ANAG_VALIDAZIONE,
+                message="Il ruolo indicato non e' di questo soggetto.",
+                context={"field": _CHIAVE_INDIRIZZI_RUOLI, "soggetto_ruolo_id": soggetto_ruolo_id},
+            )
+            return soggetto_ruolo_id, elenco
+
+        ruoli = (
+            _V.voci(raw_ruoli, leggi_ruolo, campo=_CHIAVE_INDIRIZZI_RUOLI)
+            if raw_ruoli is not None else []
+        )
+        return indirizzi, ruoli
 
     # Scopo: I motivi per cui il soggetto non passerebbe alla natura proposta,
     #        TUTTI e in ordine (K-4 di brief-db-cambio-natura-soggetto). Il
@@ -410,7 +505,14 @@ class SoggettiService:
         motivi = self._repo.check_cambio_natura(
             soggetto_id, tipo_soggetto_dettaglio_id=tipo_id, **proposto,
         )
-        return {"motivi": motivi}
+        # Gli indirizzi che la natura proposta chiede e che il soggetto o i suoi
+        # ruoli non hanno (R-7): il form li chiede, e il PATCH li porta. Stessa
+        # sede dei due guard degli obbligatori: cio' che si chiede e cio' che
+        # si rifiuterebbe al commit non divergono.
+        return {
+            "motivi": motivi,
+            "indirizzi_mancanti": self._repo.indirizzi_obbligatori_mancanti(soggetto_id, tipo_id),
+        }
 
     # Scopo: Elimina a mano i dati societari del soggetto (D-7 di
     #        brief-db-cambio-natura-soggetto): la strada per una ditta che
@@ -1211,6 +1313,28 @@ class SoggettiService:
             lambda: self._repo.crea_indirizzo_ruolo(soggetto_ruolo_id, indirizzo),
             "Indirizzo con questo tipo gia' presente per il ruolo/istanza.",
         )
+
+    # Scopo: Sostituisce un indirizzo del RUOLO: elimina il vecchio e scrive il
+    #        nuovo con la madre, in UNA transazione. Gemello di
+    #        `replace_indirizzo_soggetto`: per l'operatore e' una modifica, ma il
+    #        PATCH non basta, perche' non sa risolvere una via nuova in un
+    #        dettaglio (lo fa solo la madre).
+    # ⚠️ Fino al 2026-11-18 il FE faceva DELETE e POST in due richieste: dal
+    #    giro 4 di brief-db-fornitore-privato-indirizzi la DELETE dell'unico
+    #    obbligatorio, giudicata al suo commit, e' rifiutata. Qui il guard
+    #    differito giudica lo stato finale, all'uscita del blocco.
+    def replace_indirizzo_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        from django.db import transaction
+
+        with transaction.atomic():
+            deleted = self._repo.delete_indirizzo_ruolo(indirizzo_id, soggetto_ruolo_id)
+            ErrorManager.require(
+                deleted, code=E_ANAG_NOT_FOUND,
+                message="Indirizzo non trovato o non appartiene al ruolo.",
+            )
+            return self.create_indirizzo_ruolo(soggetto_ruolo_id, payload)
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.

@@ -371,6 +371,8 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `cliente_pa`, `split_payment` | string | `S` / `N` (minuscole e spazi normalizzati). Ammessi solo dove la natura lo dice (`cliente_pa_ammesso`, `split_payment_ammesso` del lookup dei tipi): altrimenti `E_CLIENTE_PA_NON_AMMESSO` / `E_SPLIT_PAYMENT_NON_AMMESSO` (400, `error.fields` = il flag) |
 | `tipo_soggetto_dettaglio_id` | int | La natura di dettaglio (fra i `tipi_modificabili_ids`). Cosa la natura nuova ammette — flag, forma giuridica, titoli IVA in vigore — lo giudicano i guard del DB |
 | `dati_societari` | object | La sezione dati societari, **stato intero**: crea o aggiorna la riga col verbo `anagrafiche.fn_scrivi_dati_societari`. Chiavi: `forma_giuridica_id`, `id_prov_iscri_rea`, `iscrizione_rea`, `capitale_sociale`, `socio_unico`, `liquidazione`, `destinatario_fe`, `pec_fatturazione`, `codice_sdi`, `data_costituzione`. Una chiave assente vale `null` |
+| `indirizzi` | array | Solo **col** `tipo_soggetto_dettaglio_id` (dal 2026-11-18, R-7 di brief-db-fornitore-privato-indirizzi): gli indirizzi del soggetto che la natura nuova chiede (`indirizzi_mancanti` di §13), nella forma della creazione (§7.2), **senza** la copia negli obbligatori |
+| `indirizzi_ruoli` | array | Come `indirizzi`, per i ruoli: `[{"soggetto_ruolo_id": int, "indirizzi": [...]}]`. Il ruolo dev'essere del soggetto |
 
 Inviare solo i campi che si intende modificare. Una chiave fuori dall'elenco
 sopra → 400 `E_ANAG_VALIDAZIONE`; un corpo vuoto (o con `dati_societari: {}`) →
@@ -385,6 +387,19 @@ salvataggio: il guard della forma la confronta con la natura nuova, e il guard
 al COMMIT (`trgfn_soggetti_guard_forma_giuridica_natura`) vede le due
 scritture insieme. Con i soli `dati_societari` il soggetto non si tocca, e un
 soggetto inesistente risponde `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (404).
+
+**Gli indirizzi del cambio di natura** (dal 2026-11-18): `indirizzi` e `indirizzi_ruoli` si scrivono
+**dopo** la riga e i dati societari, nella stessa transazione: il guard del tipo li giudica sulla natura
+nuova, che può ammettere un tipo che quella di prima vietava. Gli obbligatori del soggetto e dei ruoli
+li giudicano guard **differiti**, sullo stato finale al commit: un cambio di natura che lascia un
+obbligatorio scoperto è rifiutato col codice del layer.
+
+| Codice | Status | Causa |
+| --- | --- | --- |
+| `E_ANAG_VALIDAZIONE` | 400 | `indirizzi` / `indirizzi_ruoli` senza `tipo_soggetto_dettaglio_id`, o con la natura che il soggetto ha già (non è un cambio: gli indirizzi si scrivono da §7.2); voce di `indirizzi_ruoli` con chiavi fuori da `soggetto_ruolo_id`, `indirizzi`; ruolo di un altro soggetto (`error.fields` = la chiave) |
+| `E_ANAG_NOT_FOUND` | 404 | `soggetto_ruolo_id` inesistente |
+| `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` | 400 | Al commit, al soggetto manca un indirizzo che la natura nuova chiede, né c'è il ripiego |
+| `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Al commit, a un ruolo manca un indirizzo obbligatorio, né c'è il ripiego |
 
 **Rifiuti dei guard, col campo da accendere** (`error.fields`):
 
@@ -736,6 +751,10 @@ Stessi campi della creazione indirizzo (sezione 7.2).
 }
 ```
 
+Cancellazione e scrittura stanno in **una** transazione: il guard degli obbligatori (differito)
+giudica lo stato finale, quindi sostituire l'unico indirizzo obbligatorio con uno dello stesso tipo
+passa. Con un tipo diverso, senza il ripiego → 400 `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO`.
+
 ### Esempio
 
 ```bash
@@ -768,6 +787,10 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" \
   }
 }
 ```
+
+L'unico indirizzo di un tipo che la natura del soggetto dichiara obbligatorio, senza il ripiego →
+400 `E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO` (dal 2026-11-17, giro 4 di
+brief-db-fornitore-privato-indirizzi). Per cambiarlo si usa la sostituzione (§8.1).
 
 ### Esempio
 
@@ -1324,10 +1347,31 @@ comune delle check: `codice`, `reason`, `reason_key`, `dettaglio`, `valori`.
         "dettaglio": {},
         "valori": {}
       }
+    ],
+    "indirizzi_mancanti": [
+      {
+        "soggetto_ruolo_id": 7,
+        "tipo_ruolo_id": 2,
+        "ruolo_descrizione": "Fornitore",
+        "tipo_indirizzo_id": 4,
+        "tipo_indirizzo_codice_interno": "SPED",
+        "tipo_indirizzo_descrizione": "Consegna",
+        "ripiego_tipo_indirizzo_id": null,
+        "ripiego_tipo_indirizzo_codice_interno": null,
+        "ripiego_tipo_indirizzo_descrizione": null
+      }
     ]
   }
 }
 ```
+
+`indirizzi_mancanti` (dal 2026-11-18, R-7 di brief-db-fornitore-privato-indirizzi): gli indirizzi
+obbligatori che la natura proposta chiede e che il soggetto o i suoi ruoli non hanno, da
+`anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli`, la stessa lettura dei guard degli
+obbligatori. Prima il soggetto (`soggetto_ruolo_id`, `tipo_ruolo_id` e `ruolo_descrizione` `null`),
+poi ogni ruolo; il ripiego, se c'è, soddisfa il requisito al posto del tipo. Il frontend li chiede e
+li manda nel PATCH (§4, `indirizzi` / `indirizzi_ruoli`). Non sono motivi: il cambio non è vietato,
+manca un dato.
 
 I motivi possibili, nell'ordine in cui la funzione li valuta:
 

@@ -11,10 +11,11 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useFormInline } from '../../core/composables/useFormInline'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { collegaIndirizzoSoggettoForm } from '../composables/collegaIndirizzoSoggettoForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
-  listRuoloIndirizzi, createRuoloIndirizzo, deleteRuoloIndirizzo,
+  listRuoloIndirizzi, createRuoloIndirizzo, replaceRuoloIndirizzo, deleteRuoloIndirizzo,
   listSoggettoTipiIndirizzo, listRuoloTipiIndirizzo,
   copiaSoggettoIndirizzo, copiaRuoloIndirizzo,
 } from '../api/anagrafiche'
@@ -35,6 +36,7 @@ const { t } = useI18n()
 const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
 const indirizzo = useIndirizzoSoggettoForm()
+const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 
 // Context 'soggetto' (default) o 'ruolo': determina quale set di API usare.
 // Per 'soggetto': soggettoId = soggetto UUID. Per 'ruolo': soggettoId = soggetto_ruolo_id (int).
@@ -246,6 +248,31 @@ async function onStartCopia(ind) {
   copiaVisible.value = true
 }
 
+// Scopo: Il titolare di una riga, come lo legge chi copia: il soggetto, il
+//        ruolo o il servizio (l'istanza, col codice della sua utility).
+function titolareRiga(ind) {
+  if (!rigaDelRuolo(ind)) return t('anagrafiche.indirizzi.copia.titolare_soggetto')
+  if (ind.fonte === 'istanza') {
+    return ind.utility_codice
+      ? t('anagrafiche.indirizzi.copia.titolare_servizio', { utility: ind.utility_codice })
+      : t('anagrafiche.indirizzi.copia.titolare_servizio_generico')
+  }
+  return t('anagrafiche.indirizzi.copia.titolare_ruolo')
+}
+// Da dove e verso dove, per la dialog. ⚠️ La destinazione e' il titolare
+// della SORGENTE: il verbo del DB copia nello stesso ruolo e nella stessa
+// istanza della riga (`fn_copia_indirizzo_ruolo`), non sulla chiave del
+// drawer. La copia sulla chiave del drawer e' la richiesta B al team DB
+// (brief-db-copia-indirizzo-destinazione): quando c'e', cambia qui.
+const copiaOrigine = computed(() => copiaRiga.value && {
+  tipo: copiaRiga.value.tipo_indirizzo_descrizione,
+  indirizzo: copiaRiga.value.indirizzo_display || copiaRiga.value.indirizzo_libero || '',
+  titolare: titolareRiga(copiaRiga.value),
+})
+const copiaDestinazione = computed(() => (copiaRiga.value
+  ? t('anagrafiche.indirizzi.copia.verso_come_origine', { titolare: titolareRiga(copiaRiga.value) })
+  : ''))
+
 async function onConfermaCopia(codici) {
   const ind = copiaRiga.value
   if (!ind || codici.length === 0) return
@@ -340,8 +367,10 @@ async function onSaveForm() {
   let success = true
 
   if (isRuolo.value && formMode.value === 'edit' && replaceId.value) {
-    // Context ruolo + replace: DELETE vecchio + CREATE nuovo (stessa transazione lato server non garantita,
-    // ma il tipo resta lo stesso quindi il vincolo UNIQUE non e' violato dopo il delete).
+    // Context ruolo + replace: il BE cancella e riscrive in UNA transazione
+    // (PUT, gemello del soggetto). ⛔ Non DELETE + POST: dal 2026-11-17 la
+    // DELETE dell'unico obbligatorio, giudicata da sola, e' rifiutata — e col
+    // `silent` di allora il salvataggio falliva senza dire niente.
     const payload = payloads[0]
     if (indirizzo.existingDettaglioId.value) {
       payload.indirizzo_dettaglio_id = indirizzo.existingDettaglioId.value
@@ -349,19 +378,11 @@ async function onSaveForm() {
     if (props.istanzaUtilityId) {
       payload.istanza_utility_id = props.istanzaUtilityId
     }
-    // Step 1: elimina vecchio
-    const deleted = await execute(
-      () => deleteRuoloIndirizzo(props.soggettoId, replaceId.value),
-      { silent: true }
+    const result = await execute(
+      () => replaceRuoloIndirizzo(props.soggettoId, replaceId.value, payload),
+      { successMessage: t('indirizzi.indirizzo_salvato') }
     )
-    if (deleted === null) { success = false } else {
-      // Step 2: crea nuovo con stesso tipo
-      const result = await execute(
-        () => createRuoloIndirizzo(props.soggettoId, payload),
-        { successMessage: t('indirizzi.indirizzo_salvato') }
-      )
-      if (result === null) success = false
-    }
+    if (result === null) success = false
   } else if (isRuolo.value) {
     // Context ruolo + new: crea nuovo indirizzo
     const payload = payloads[0]
@@ -519,22 +540,15 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
           : t('anagrafiche.indirizzo_soggetto.nuovo_indirizzo')
         }}</h4>
       </div>
+      <!-- ⚠️ `address-not-found` spento DOPO il v-bind: l'avviso lo mostra il
+           drawer (`replace_non_trovato`, sotto), e il form ne aggiungerebbe un
+           secondo. Fino al 2026-11-18 la prop qui mancava e basta. -->
       <IndirizzoSoggettoForm
+        v-bind="legameIndirizzo"
         :campi-errati="campiErrati"
-        :form="indirizzo.form"
-        :is-libera="indirizzo.isLibera.value"
-        @update:is-libera="v => indirizzo.isLibera.value = v"
-        :tipi-stato="indirizzo.tipiStato.value"
         :tipi-esistenti="[...tipiEsistenti]"
-        :stati-lookup="indirizzo.statiLookup"
-        :cap-options="indirizzo.capOptions.value"
-        :loading-cap="indirizzo.loadingCap.value"
-        :auto-clone="indirizzo.autoClone.value"
-        @update:auto-clone="v => indirizzo.autoClone.value = v"
-        @switch-tipo="indirizzo.switchTipo"
-        :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
         :comune-initial-item="comuneInitialItem"
-        :disabled="false"
+        :address-not-found="false"
       />
 
       <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
@@ -553,6 +567,8 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
       v-model:visible="copiaVisible"
       :tipi="copiaTipi"
       :sorgente="copiaRiga?.tipo_indirizzo_descrizione || ''"
+      :origine="copiaOrigine"
+      :destinazione="copiaDestinazione"
       :loading="loading"
       @confirm="onConfermaCopia"
     />
