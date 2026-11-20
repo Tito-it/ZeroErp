@@ -2,10 +2,11 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-20
 
-**Riparte: Tid, con la prova a video e il commit del giro BE/FE (§8).** Il giro 1 del DB è applicato su dbdev e
-committato (changeSet `20261117-29` … `-32`). R-1 e R-2 sono fatte il 2026-11-20 sul branch `dev/backend-tid`,
-non committate: i test sul DB vero e lo spec del drawer sono verdi (§8.3), e la revisione dello stesso giorno ha
-corretto tre punti (§8.5). D-1 … D-4 decise, tutte come proposte.
+**Riparte: nessuno, il brief è chiuso e archiviato (2026-11-20).** La prova a video del caso del §1 l'ha fatta
+Tid il 2026-11-20 (§8.4). Il giro 1 del DB è
+applicato su dbdev e committato (changeSet `20261117-29` … `-32`). R-1 e R-2 sono fatte e committate il 2026-11-20
+(PR #167): i test sul DB vero e lo spec del drawer sono verdi (§8.3), e la revisione dello stesso giorno ha
+corretto tre punti (§8.5). Al team DB non resta niente. D-1 … D-4 decise, tutte come proposte.
 La verifica DB del 2026-11-20 (§4.1) corregge il §4: l'istanza di destinazione la giudica il guard che c'è già
 (niente codice nuovo, R-3 ritirata), e il motivo «nessun tipo» esce dalla riga e lo porta il picker della
 destinazione (D-4).
@@ -22,10 +23,11 @@ destinazione (D-4).
 | 4 | Tid | applicazione su dbdev, pgTAP verdi, doc auto-generata, commit ✅ 2026-11-20 | — | 3 |
 | 5 | BE/FE | R-1, R-2 ✅ 2026-11-20, scritte e provate | §8 | 4 |
 | 5-bis | BE/FE | revisione del giro (`/verifica`) ✅ 2026-11-20 | §8.5 | 5 |
-| 6 | Tid | prova a video del caso del §1, commit del giro BE/FE | §8.4 | 5-bis |
-| 7 | chi chiude | archiviazione in `work-done/` | — | tutti |
+| 5-ter | Tid | commit del giro BE/FE ✅ 2026-11-20 (PR #167) | §8.1 | 5-bis |
+| 6 | Tid | prova a video del caso del §1 ✅ 2026-11-20 | §8.4 | 5-ter |
+| 7 | sessione DB | archiviazione in `work-done/` ✅ 2026-11-20 | — | tutti |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro BE/FE (§8.1) e questo brief.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: questo brief riallineato.
 
 ## 1. Il caso (prova a video di Tid, 2026-11-18)
 
@@ -275,8 +277,8 @@ del BE sono accettate (D-3); R-1 va subito dopo l'apply.
 
 ### 8.4 Che cosa resta
 
-* Tid: la prova a video del caso del §1 (dal servizio, la Spedizione del ruolo copiata come Fatturazione: deve
-  nascere sul servizio), poi il commit.
+* Niente. ✅ La prova a video del caso del §1 (dal servizio, la Spedizione del ruolo copiata come Fatturazione: deve
+  nascere sul servizio) l'ha fatta Tid il 2026-11-20. Il commit del giro è fatto (2026-11-20, PR #167).
 
 ### 8.5 Revisione del giro (2026-11-20, `/verifica`)
 

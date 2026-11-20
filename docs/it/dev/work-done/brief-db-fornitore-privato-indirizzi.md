@@ -6,7 +6,7 @@
 vero e documentati (§16), e vanno nel commit di Tid insieme a questa archiviazione. Restano fuori, ciascuno nella
 sua sede: il documento passivo del fornitore privato (§7, sviluppo acquisti, rimando in PROJECT_CONTEXT) e la copia
 di un indirizzo verso la chiave del drawer
-([brief-db-copia-indirizzo-destinazione](../work-in-progress/brief-db-copia-indirizzo-destinazione.md), D-1 … D-3
+([brief-db-copia-indirizzo-destinazione](brief-db-copia-indirizzo-destinazione.md), D-1 … D-3
 decise il 2026-11-19).
 
 Storia della ripartenza fino al 2026-11-18:
@@ -1107,6 +1107,6 @@ Decisi da Tid nella revisione (2026-11-18):
 Dalla prova a video (Tid, 2026-11-18): la dialog di «Copia come…» non diceva da dove né verso dove. Ora porta le
 righe **Da** e **Verso** (`CopiaIndirizzoDialog`, casi 4 e 5 degli spec). La copia sul servizio aperto, invece che
 sulla chiave della sorgente, è un cambio del verbo e non di questo brief: sta in
-[brief-db-copia-indirizzo-destinazione](../work-in-progress/brief-db-copia-indirizzo-destinazione.md), e non blocca l'archiviazione.
+[brief-db-copia-indirizzo-destinazione](brief-db-copia-indirizzo-destinazione.md), e non blocca l'archiviazione.
 
 Chiuso il 2026-11-19, su richiesta di Tid dopo la sua prova a video: archiviato in `work-done/`; il commit è di Tid.
