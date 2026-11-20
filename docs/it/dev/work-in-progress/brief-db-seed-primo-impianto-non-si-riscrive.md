@@ -36,7 +36,7 @@ ripercorrere le stesse strade.
 | 7-ter | team BE/FE | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; ora sbloccato | §16.16 | 6-quinquies |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quinquies, 7, 7-ter |
 
-**Decisioni di Tid del 2026-11-20:** ✅ il rilancio batch scrive sul log l'account con cui la mail riparte (§16.16).
+**Decisioni di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue (§16.16, il DB è fatto).
 **Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** niente. **Committato il 2026-11-20:** il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che

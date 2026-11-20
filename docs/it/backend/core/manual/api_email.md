@@ -78,6 +78,11 @@ GET /api/v1/amm-software/email-accounts/
 | `order_by` | string | No | `codice` | Colonna di ordinamento |
 | `order_dir` | string | No | `asc` | `asc` / `desc` |
 
+⭐ La lista porta **anche gli account spenti** (`attivo: false`), e così quella dei
+template: un account o un template si toglie dall'uso spegnendolo, e si riaccende dal
+suo dettaglio, a cui si arriva da qui. ⚠️ Fino al 2026-11-20 le due liste davano i
+soli attivi: la riga spenta spariva e dall'interfaccia non si riaccendeva più.
+
 Risposta:
 
 ```json
@@ -101,12 +106,29 @@ Risposta:
         "smtp_username": "user@gmail.com",
         "email_from": "ZeroErp <user@gmail.com>",
         "email_reply_to": null,
-        "attivo": true
+        "attivo": true,
+        "nata_dal_seed": true,
+        "campi_del_software": []
       }
     ]
   }
 }
 ```
+
+⭐ **`nata_dal_seed` e `campi_del_software`** (dal 2026-11-20), in lista e nel
+dettaglio, di account e template. Vengono dalle viste `config.vw_email_account_seed`
+e `config.vw_email_template_seed`, che leggono le stesse funzioni del guard del seed
+di primo impianto:
+
+* `nata_dal_seed`: la riga l'ha installata il programma, non l'azienda;
+* `campi_del_software`: i campi che su una riga nata dal seed l'installazione non
+  modifica (il form li spegne). Lista vuota, mai `null`, su una riga creata
+  dall'azienda; sugli account oggi e' vuota anche sul seed, sui template sono
+  codice, reparto, tipo di prestazione, lingua e variabili disponibili. Cambiarne
+  uno e' 409 `E_SEED_COLONNA_DEL_SOFTWARE`.
+
+Il backend non tiene nessun elenco di colonne: il campo spento e il rifiuto
+vengono dalla stessa sede.
 
 > **Nota sicurezza**: la password SMTP non e' mai esposta nelle API. E' salvata
 > crittografata con Fernet (chiavi `DJANGO_FIELD_ENCRYPTION_KEYS`, separate dalla `SECRET_KEY`).
@@ -138,16 +160,21 @@ POST /api/v1/amm-software/email-accounts/
 > La logica di sistema (es. fallback account `SISTEMA` in `fn_resolve_email_account`)
 > usa `codice_interno`, non il `codice` mutabile.
 
-### Dettaglio / Modifica / Elimina
+### Dettaglio / Modifica
 
 ```http
 GET    /api/v1/amm-software/email-accounts/{id}/
 PATCH  /api/v1/amm-software/email-accounts/{id}/
-DELETE /api/v1/amm-software/email-accounts/{id}/
 ```
 
 PATCH accetta gli stessi campi del POST (tutti opzionali). Se `smtp_password`
 e' fornita, viene ri-crittografata.
+
+⛔ **Un account non si elimina, si spegne** (`PATCH` con `attivo: false`), anche
+dopo aver spedito: il `DELETE` non esiste (405) dal 2026-11-20. Il database
+rifiuta ogni cancellazione (`E_DELETE_NOT_ALLOWED`; sull'account nato dal seed,
+prima, `E_SEED_RIGA_NON_CANCELLABILE`), e le mail spedite restano storia che lo
+nomina (Q24 di brief-db-seed-primo-impianto-non-si-riscrive).
 
 ### Test connessione SMTP
 
@@ -269,13 +296,17 @@ POST /api/v1/amm-software/email-templates/
 | `variabili_disponibili` | array | No | Es. `["nome", "link", "azienda"]` |
 | `attivo` | bool | No | Default true. Booleano JSON, come sopra |
 
-### Dettaglio / Modifica / Elimina
+### Dettaglio / Modifica
 
 ```http
 GET    /api/v1/amm-software/email-templates/{id}/
 PATCH  /api/v1/amm-software/email-templates/{id}/
-DELETE /api/v1/amm-software/email-templates/{id}/
 ```
+
+⛔ **Un template non si elimina, si spegne** (`attivo: false`): come per gli
+account, il `DELETE` non esiste. Su un template nato dal seed i campi in
+`campi_del_software` non si modificano (409 `E_SEED_COLONNA_DEL_SOFTWARE`);
+oggetto, corpi e `attivo` si'.
 
 ### Preview template
 
@@ -424,6 +455,11 @@ brief-db-email-visibilita-per-ambito). Sono le due colonne su cui la RLS del log
 decide chi rivede la mail. ⚠️ Fino al 2026-09-25 l'`INSERT` del log non scriveva
 nessuna delle due: ogni invio di una bozza non di sistema veniva rifiutato dal
 database.
+
+L'**account** del log invece e' quello **con cui la mail parte**, risolto al
+momento dell'invio, non quello fissato nella bozza alla preparazione: fra i due
+l'account della bozza puo' essere stato spento (dal 2026-11-20, R1-BE-ter di
+brief-db-seed-primo-impianto-non-si-riscrive).
 
 La mail parte **con i suoi allegati** (messaggio `multipart/mixed`). Un file che
 non si legge dallo storage fa fallire l'invio (`FAILED`, col motivo nel log):
@@ -579,8 +615,9 @@ del file), HTTP 400.
 | `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` | 500 | il `file_path` dell'allegato (dal database) esce dall'archivio: dato alterato, caso da guardare anche per la sicurezza. Download e invio si fermano; la cancellazione lo scrive nel log e prosegue |
 | `E_EMAIL_ALLEGATI_LIMITE` | 409 | la mail ha gia' il numero massimo di allegati |
 | `E_EMITTENTE_NON_RISOLTO` | 400 | bozza non di sistema senza azienda attiva (modalita' «Tutti gli emittenti») |
-| `E_EMAIL_ACCOUNT_NOT_FOUND` | 404 | admin: account inesistente (dettaglio, modifica, eliminazione, test) |
-| `E_EMAIL_TEMPLATE_NOT_FOUND` | 404 | admin: template inesistente (dettaglio, modifica, eliminazione, anteprima) |
+| `E_EMAIL_ACCOUNT_NOT_FOUND` | 404 | admin: account inesistente (dettaglio, modifica, test) |
+| `E_EMAIL_TEMPLATE_NOT_FOUND` | 404 | admin: template inesistente (dettaglio, modifica, anteprima) |
+| `E_SEED_COLONNA_DEL_SOFTWARE` | 409 | admin: su una riga nata dal seed si e' cambiato un campo di `campi_del_software` (codice del database) |
 | `E_EMAIL_LOG_NOT_FOUND` | 404 | admin: riga del log inesistente o fuori perimetro |
 
 ⚠️ `E_EMAIL_LOG_NOT_FOUND` non e' `E_EMAIL_LOG_INESISTENTE` (500): quello nasce

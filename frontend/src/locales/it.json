@@ -1434,6 +1434,10 @@
     "email_new_account": "Nuovo account email",
     "email_edit_account": "Modifica account email",
     "email_edit_template": "Modifica template email",
+    "email_template_di_sistema": "Template di sistema",
+    "email_campo_del_programma": "Lo stabilisce il programma: il template fa parte della configurazione iniziale.",
+    "email_account_di_sistema": "Account di sistema",
+    "email_campo_del_programma_account": "Lo stabilisce il programma: l'account fa parte della configurazione iniziale.",
     "email_detail_log": "Dettaglio invio",
     "definizioni_workflow": {
       "filtro_tipo": "Tipo prestazione",
