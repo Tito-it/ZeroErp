@@ -8,7 +8,8 @@
 # ------------------------------------------------------------
 # Seed ui.lista_preset — preset di configurazione per le liste.
 # Attuale contenuto: preset di sistema 'clienti_default' (lista_id=1).
-#   ambito=sistema, is_default=TRUE, ordinamento per ragione_sociale ASC.
+#   ambito=sistema, ordinamento per ragione_sociale ASC. Un preset acceso per
+#   posto (uq_ui_lista_preset_posto): is_default non c'e' piu' (20261119-09).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -43,7 +44,6 @@ databaseChangeLog:
               - column: { name: ambito,                type: STRING }
               - column: { name: profilo_accesso_id,    type: NUMERIC }
               - column: { name: emittente_fiscale_id,  type: NUMERIC }
-              - column: { name: is_default,            type: BOOLEAN }
               - column: { name: pagina_dimensione,     type: NUMERIC }
               - column: { name: ordinamento_default,   type: CLOB }
               - column: { name: attivo,                type: BOOLEAN }

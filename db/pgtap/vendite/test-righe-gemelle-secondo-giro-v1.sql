@@ -565,18 +565,18 @@ SELECT set_eq(
     '28) vendite.offerta_righe: stesse colonne della 103, stesso ordine, stessi flag');
 
 SELECT set_eq(
-    $$SELECT concat_ws('|', p.is_default, p.ambito, p.pagina_dimensione, coalesce(p.ordinamento_default::text, ''),
+    $$SELECT concat_ws('|', p.attivo, p.ambito, p.pagina_dimensione, coalesce(p.ordinamento_default::text, ''),
                        c.codice, pc.ordine, pc.visibile, pc.fissata)
         FROM ui.lista_preset p JOIN ui.lista_definizione d ON d.id = p.lista_id
         JOIN ui.lista_preset_colonna pc ON pc.preset_id = p.id
         JOIN ui.lista_colonna c ON c.id = pc.colonna_id
-       WHERE d.codice = 'vendite.offerta_righe' AND p.is_default$$,
-    $$SELECT concat_ws('|', p.is_default, p.ambito, p.pagina_dimensione, coalesce(p.ordinamento_default::text, ''),
+       WHERE d.codice = 'vendite.offerta_righe' AND p.attivo$$,
+    $$SELECT concat_ws('|', p.attivo, p.ambito, p.pagina_dimensione, coalesce(p.ordinamento_default::text, ''),
                        c.codice, pc.ordine, pc.visibile, pc.fissata)
         FROM ui.lista_preset p JOIN ui.lista_definizione d ON d.id = p.lista_id
         JOIN ui.lista_preset_colonna pc ON pc.preset_id = p.id
         JOIN ui.lista_colonna c ON c.id = pc.colonna_id
-       WHERE d.codice = 'vendite.contratto_righe' AND p.is_default$$,
+       WHERE d.codice = 'vendite.contratto_righe' AND p.attivo$$,
     '29) vendite.offerta_righe: il preset di default e'' il gemello di quello della 103');
 
 -- ⚠️ Il campo vuoto delle colonne azione e' '' (loader), non NULL: si escludono

@@ -46,7 +46,7 @@
 --          insieme -> la fase non manca mai)
 --     29)  §7 follow-up: preset default liste 4..9 hanno pratica/fase/transito
 --          con visibile=true (18 righe lista_preset_colonna, resi inclusi)
---     30)  §7 follow-up: preset ddt_default (lista 8) creato e is_default
+--     30)  §7 follow-up: preset ddt_default (lista 8) creato e acceso
 --   ⭐ 31..39 — LA NATURA DELLA FRONTIERA, aggiunta il 2026-08-29 (changeSet
 --      20260829-01). Senza, il chip «Transito» decodifica il solo tipo e
 --      chiama «Fattura» una nota di credito: vendite.fatture e' UNA tabella.
@@ -244,7 +244,7 @@ SELECT is(
     (SELECT count(*)::int
        FROM ui.lista_preset_colonna pc
        JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
-       JOIN ui.lista_preset pr ON pr.id = pc.preset_id AND pr.is_default IS TRUE
+       JOIN ui.lista_preset pr ON pr.id = pc.preset_id AND pr.attivo IS TRUE
       WHERE pc.preset_id IN (4,5,6,7,8,9)
         AND lc.codice IN ('pratica','fase','transito')
         AND pc.visibile IS TRUE),
@@ -252,8 +252,8 @@ SELECT is(
 
 SELECT ok(
     EXISTS (SELECT 1 FROM ui.lista_preset
-             WHERE lista_id = 8 AND codice = 'ddt_default' AND is_default IS TRUE AND attivo),
-    'preset ddt_default creato e is_default');
+             WHERE lista_id = 8 AND codice = 'ddt_default' AND attivo),
+    'preset ddt_default creato e acceso');
 
 -- ---- 31..37: la natura della frontiera sulle SETTE liste -----------------
 -- ⚠️ L'ELENCO E' ESPLICITO, E DEVE RESTARLO. La forma comoda sarebbe un giro

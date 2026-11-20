@@ -73,9 +73,9 @@ SELECT d.dashboard_id, w.widget_id, CASE w.nome WHEN 'w_uno' THEN 10 ELSE 20 END
 -- Il preset di sistema: il solo w_uno, dimensione 6.
 CREATE TEMP TABLE _p AS
 WITH ins AS (
-  INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito,
                                    dimensione_max, attivo, user_insert)
-  SELECT dashboard_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', TRUE, 6, TRUE, '_pgtap'
+  SELECT dashboard_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', 6, TRUE, '_pgtap'
     FROM _d
   RETURNING id
 )

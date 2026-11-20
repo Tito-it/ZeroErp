@@ -16,7 +16,7 @@
 --   5.  Esattamente 22 colonne attive nel catalogo contratti
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
---   8.  Preset contratti_default presente con is_default=true
+--   8.  Preset contratti_default presente e acceso
 --   9.  Preset: pagina_dimensione=25, ambito=sistema
 --   10. Esattamente 13 colonne visibili nel preset contratti_default
 --   11. Colonna numero ha fissata=true nel preset (identificatore)
@@ -161,7 +161,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 8. Preset contratti_default presente con is_default=true
+-- 8. Preset contratti_default presente e acceso
 -- =========================================================
 SELECT ok(
     EXISTS (
@@ -170,10 +170,9 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice     = 'vendite.contratti'
            AND lp.codice     = 'contratti_default'
-           AND lp.is_default = TRUE
            AND lp.attivo     = TRUE
     ),
-    '8. Preset contratti_default presente, is_default=true, attivo=true'
+    '8. Preset contratti_default presente e acceso'
 );
 
 -- =========================================================

@@ -17,32 +17,15 @@ CREATE OR REPLACE FUNCTION ui.fn_resolve_lista_config(p_lista_codice character v
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Risolve la configurazione effettiva di una lista per un utente.
--- Applica cascata preset, merge nuove colonne, normalizzazione obbligatorie
--- e filtro autorizzativo colonna. Ritorna JSONB pronto per il frontend.
---
--- DB-3: step 2b usa JOIN + ORDER BY pa.priorita per cascata deterministica.
--- DB-4: legge app.ruolo_applicativo dalla GUC per filtrare la veste corrente.
---       Fallback sicuro: GUC assente/vuota/non-ENUM -> NULL -> tutte le vesti.
--- F.2:  step 5 aggiunge etichetta_i18n_key al JSONB colonna.
--- DEF-2: step 2.5 calcola preset_aggiornato (flag banner "novita' preset").
--- DB-A:  step 5 aggiunge priorita (peso ritiro dinamico FE), letta fresca
---        da ui.lista_colonna (attributo globale, non overridabile).
--- 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di
---        colonna lo calcola ui.fn_lista_colonne_livello(): due building
---        block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full).
--- 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice() (BB
---        condiviso con la ricerca libera e col backend), e il JSONB porta
---        ricerca_min_caratteri, la soglia della ricerca libera della lista.
--- 2026-09-30: la misura di pagina dal catalogo ui.misure_pagina (brief-db-
---        misure-pagina-catalogo): via il 25 scritto cinque volte, e la misura
---        che risponde e' sempre una del catalogo (passo 5-ter).
--- 2026-11-01: la cascata va PER CHIAVE (richiesta BE/FE «preferenza di lista
---        per chiave», decisione di Tid): colonne, ordinamento, filtri e
---        pagina_dimensione vengono ognuna dal primo livello che la contiene
---        (preferenza -> preset di base -> catalogo). Chiave assente nella
---        preferenza = come lo standard. Uscite nuove: origine e
---        pagina_dimensione_standard.
+-- Scopo: la configurazione effettiva di una lista per un utente, pronta
+--   per il frontend.
+-- Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione
+--   vengono ognuna dal primo livello che la contiene: la preferenza, poi il
+--   preset di base (ui.fn_preset_di_base), poi il catalogo. Poi il merge
+--   delle colonne nuove, la normalizzazione, il filtro dei permessi di
+--   colonna (ui.fn_lista_colonne_livello) e la misura di pagina dal catalogo.
+-- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
+--   altrimenti preset_aggiornato (ui.fn_preset_aggiornato).
 DECLARE
   -- La riga della lista, letta una volta dal BB: id, multi_emittente (P-2b,
   -- 2026-08-18), perimetro_emittente (2026-09-02), ricerca_min_caratteri
@@ -54,7 +37,6 @@ DECLARE
   v_filtri           ui.lista_preset.filtri_default%TYPE;
   -- La misura che risponde: la decide il passo 5-ter, dal catalogo.
   v_pagina_dim       ui.lista_preset.pagina_dimensione%TYPE;
-  v_profili_ids      INTEGER[];
   v_colonne_nuove    INTEGER := 0;
   -- I codici mergiati dal catalogo al passo 3. Servono al passo 5-bis per
   -- ricontarli DOPO il filtro dei permessi: senza, il contatore annuncia
@@ -91,10 +73,13 @@ DECLARE
   v_pref_preset_base_id    ui.lista_preferenza_utente.preset_base_id%TYPE;
   v_pref_preset_base_ts    ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
   v_pref_preset_ignored_at ui.lista_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
-  -- DEF-2: contenuto_aggiornato_il corrente del preset di base (lookup step 2.5)
-  v_preset_contenuto_aggiornato_il     ui.lista_preset.contenuto_aggiornato_il%TYPE;
-  -- DEF-2: flag risultato
+  -- Il preset di base, scelto da ui.fn_preset_di_base: id e data del
+  -- contenuto (l'ambito sta in v_preset_livello).
+  v_base_id                ui.lista_preset.id%TYPE;
+  v_base_contenuto         ui.lista_preset.contenuto_aggiornato_il%TYPE;
+  -- Tipi espliciti: due esiti calcolati qui, nessuna colonna di cui siano il riflesso.
   v_preset_aggiornato      BOOLEAN := FALSE;
+  v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
   -- 0. La riga della lista dal codice (2026-09-25: dal BB)
@@ -107,17 +92,9 @@ BEGIN
   v_lista    := ui.fn_lista_da_codice(p_lista_codice);
   v_lista_id := v_lista.id;
 
-  -- -------------------------------------------------------
-  -- 1. Risolvi profili applicabili (DB-4: GUC-aware)
-  --    v_ruolo_guc NULL = tutte le vesti (fallback legacy sicuro)
-  -- -------------------------------------------------------
-  SELECT ARRAY_AGG(profilo_accesso_id)
-    INTO v_profili_ids
-    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc);
-
-  IF v_profili_ids IS NULL THEN
-    v_profili_ids := ARRAY[]::INTEGER[];
-  END IF;
+  -- 1. I profili applicabili li legge ui.fn_preset_di_base, che sceglie il
+  --    preset di base; il livello di colonna li legge per conto suo
+  --    (ui.fn_lista_colonne_livello).
 
   -- -------------------------------------------------------
   -- 2. Cascata PER CHIAVE (2026-11-01): si leggono la preferenza e il
@@ -150,13 +127,17 @@ BEGIN
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.lista_id    = v_lista_id;
 
-  -- Il preset di base: il primo, nell'ordine 2b -> 2c -> 2d, con almeno
-  -- una colonna attiva. Si cerca SEMPRE (2026-11-01), anche con una
-  -- preferenza: e' lo standard delle chiavi che la preferenza non ha.
+  -- 2b. Il preset di base: lo sceglie ui.fn_preset_di_base, la sede comune
+  --     a liste e dashboard (acceso e con almeno una colonna attiva; il
+  --     ruolo solo con la veste, l'azienda solo accesa, poi il sistema). Si
+  --     cerca sempre, anche con una preferenza: e' lo standard delle chiavi
+  --     che la preferenza non ha, e la base del banner.
+  SELECT b.preset_id, b.ambito, b.contenuto_aggiornato_il
+    INTO v_base_id, v_preset_livello, v_base_contenuto
+    FROM ui.fn_preset_di_base('lista', v_lista_id, p_auth_user_id, v_ruolo_guc,
+                              p_emittente_fiscale_id) b;
 
-  -- 2b. Preset di profilo (DB-3: JOIN + ORDER BY pa.priorita ASC)
-  --     AD_HOC (prio=1) prevale su REPARTO/PORTALE (prio=2)
-  IF array_length(v_profili_ids, 1) > 0 THEN
+  IF v_base_id IS NOT NULL THEN
     SELECT
         (
           SELECT jsonb_agg(
@@ -176,86 +157,10 @@ BEGIN
         ),
         lp.ordinamento_default,
         lp.filtri_default,
-        lp.pagina_dimensione,
-        lp.ambito
-      INTO v_preset_colonne, v_preset_ordinamento, v_preset_filtri,
-           v_preset_pagina, v_preset_livello
+        lp.pagina_dimensione
+      INTO v_preset_colonne, v_preset_ordinamento, v_preset_filtri, v_preset_pagina
       FROM ui.lista_preset lp
-      JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
-        ON pa.profilo_accesso_id = lp.profilo_accesso_id
-     WHERE lp.lista_id   = v_lista_id
-       AND lp.ambito     = 'ruolo'
-       AND lp.is_default = TRUE
-       AND lp.attivo     = TRUE
-     ORDER BY pa.priorita ASC
-     LIMIT 1;
-  END IF;
-
-  -- 2c. Preset di emittente fiscale
-  IF v_preset_colonne IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
-    SELECT
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'codice',    lc.codice,
-              'ordine',    pc.ordine,
-              'larghezza', COALESCE(pc.larghezza, lc.larghezza_default),
-              'visibile',  pc.visibile,
-              'fissata',   pc.fissata
-            )
-            ORDER BY pc.ordine
-          )
-          FROM ui.lista_preset_colonna pc
-          JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
-         WHERE pc.preset_id = lp.id
-           AND lc.attivo = TRUE
-        ),
-        lp.ordinamento_default,
-        lp.filtri_default,
-        lp.pagina_dimensione,
-        lp.ambito
-      INTO v_preset_colonne, v_preset_ordinamento, v_preset_filtri,
-           v_preset_pagina, v_preset_livello
-      FROM ui.lista_preset lp
-     WHERE lp.lista_id             = v_lista_id
-       AND lp.ambito               = 'emittente_fiscale'
-       AND lp.emittente_fiscale_id = p_emittente_fiscale_id
-       AND lp.is_default           = TRUE
-       AND lp.attivo               = TRUE
-     LIMIT 1;
-  END IF;
-
-  -- 2d. Preset di sistema
-  IF v_preset_colonne IS NULL THEN
-    SELECT
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'codice',    lc.codice,
-              'ordine',    pc.ordine,
-              'larghezza', COALESCE(pc.larghezza, lc.larghezza_default),
-              'visibile',  pc.visibile,
-              'fissata',   pc.fissata
-            )
-            ORDER BY pc.ordine
-          )
-          FROM ui.lista_preset_colonna pc
-          JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
-         WHERE pc.preset_id = lp.id
-           AND lc.attivo = TRUE
-        ),
-        lp.ordinamento_default,
-        lp.filtri_default,
-        lp.pagina_dimensione,
-        lp.ambito
-      INTO v_preset_colonne, v_preset_ordinamento, v_preset_filtri,
-           v_preset_pagina, v_preset_livello
-      FROM ui.lista_preset lp
-     WHERE lp.lista_id   = v_lista_id
-       AND lp.ambito     = 'sistema'
-       AND lp.is_default = TRUE
-       AND lp.attivo     = TRUE
-     LIMIT 1;
+     WHERE lp.id = v_base_id;
   END IF;
 
   -- Le tre chiavi semplici: la preferenza, poi il preset di base.
@@ -287,28 +192,17 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 2.5 DEF-2: lookup contenuto_aggiornato_il corrente del preset di base.
-  --     Solo se la preferenza utente ha preset_base_id non-null
-  --     E uno snapshot valorizzato (preset_base_contenuto_aggiornato_il).
-  --     Poi calcola il flag: TRUE sse il preset e' piu' recente
-  --     dello snapshot E l'utente non ha ancora ignorato
-  --     (o il preset e' cambiato di nuovo dopo l'ignore).
+  -- 2.5 Il banner. preset_base_cambiato: la preferenza ha salvato una base
+  --     che non e' quella di oggi, un esito suo (propone il riallineamento).
+  --     preset_aggiornato: solo sulla base di oggi, dal contenuto che la
+  --     scelta ha gia' letto.
   -- -------------------------------------------------------
-  IF v_pref_preset_base_id IS NOT NULL AND v_pref_preset_base_ts IS NOT NULL THEN
-    SELECT lp.contenuto_aggiornato_il
-      INTO v_preset_contenuto_aggiornato_il
-      FROM ui.lista_preset lp
-     WHERE lp.id = v_pref_preset_base_id;
-  END IF;
-
-  v_preset_aggiornato :=
-        v_pref_preset_base_ts IS NOT NULL
-    AND v_preset_contenuto_aggiornato_il  IS NOT NULL
-    AND v_preset_contenuto_aggiornato_il  > v_pref_preset_base_ts
-    AND (
-          v_pref_preset_ignored_at IS NULL
-      OR  v_pref_preset_ignored_at < v_preset_contenuto_aggiornato_il
-    );
+  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
+                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
+  v_preset_aggiornato    := v_pref_preset_base_id IS NOT NULL
+                            AND NOT v_preset_base_cambiato
+                            AND ui.fn_preset_aggiornato(v_pref_preset_base_ts, v_base_contenuto,
+                                                        v_pref_preset_ignored_at);
 
   -- -------------------------------------------------------
   -- 3. Merge automatico colonne nuove dal catalogo
@@ -488,6 +382,15 @@ BEGIN
     'ricerca_min_caratteri', v_lista.ricerca_min_caratteri,
     'colonne_nuove',     v_colonne_nuove,
     'preset_aggiornato', v_preset_aggiornato,
+    -- Il preset di base di oggi (id, ambito, data del contenuto), o null: il
+    --   BE lo salva con la preferenza. Chiave ADDITIVA.
+    'preset_base',       CASE WHEN v_base_id IS NULL THEN NULL
+                              ELSE jsonb_build_object('id', v_base_id,
+                                                      'ambito', v_preset_livello::text,
+                                                      'contenuto_aggiornato_il', v_base_contenuto) END,
+    -- La base salvata non e' quella di oggi: il banner propone il
+    --   riallineamento. Chiave ADDITIVA.
+    'preset_base_cambiato', v_preset_base_cambiato,
     -- ⭐ P-2b: la lista dichiara se sa reggere piu' emittenti.
     --   Chiave ADDITIVA: i consumatori che non la leggono non si accorgono
     --   di niente. COALESCE difensivo — la colonna e' NOT NULL DEFAULT false,
@@ -519,7 +422,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve configurazione lista per un utente: cascata PER CHIAVE (2026-11-01: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con colonne fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge nuove colonne, normalizzazione, filtro autorizzativo, etichetta_i18n_key. Uscite 2026-11-01, ADDITIVE: origine (per ogni chiave il livello: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza) e pagina_dimensione_standard (la misura senza la preferenza). Richiesta BE/FE «preferenza di lista per chiave». DEF-2 (2026-05-11): preset_aggiornato. DB-A (2026-06-02): priorita per colonna (peso ritiro dinamico FE), letta fresca da ui.lista_colonna (attributo globale, non overridabile). P-2b (2026-08-18): l''envelope porta anche multi_emittente, la capacita'' dichiarata dalla lista di reggere piu'' emittenti. Chiave ADDITIVA, letta nella SELECT che gia'' recuperava la lista (nessun round-trip in piu''). ⚠️ NON e'' un permesso: non decide cosa l''utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se la SCHERMATA e'' leggibile nella condizione in cui sta per essere aperta. Brief perimetro-emittente P-2b. 2026-09-23: la veste la legge ui.fn_veste_corrente() e il livello di colonna lo calcola ui.fn_lista_colonne_livello(), building block condivisi con la ricerca libera (fn_lista_colonne_ricerca_full): una sede per il calcolo, perche'' la ricerca non trovi righe per una colonna che la lista non mostra. Brief: brief-db-ricerca-full-colonne-permessi. 2026-09-25: la riga della lista la legge ui.fn_lista_da_codice(), building block condiviso con la ricerca libera e col backend (una lettura sola, stesso E_UI_LISTA_NON_TROVATA), e il JSONB porta ricerca_min_caratteri: la soglia della ricerca libera, proprieta'' della lista (ui.lista_definizione.ricerca_min_caratteri), la stessa che legge il BB di ricerca del backend. Brief: brief-db-be-fe-ricerca-soglia-per-lista. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
+IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina dal catalogo ui.misure_pagina. Uscite: colonne, ordinamento, filtri, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il del preset di base di oggi, o null: il BE lo salva con la preferenza), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato (solo sulla base di oggi, ui.fn_preset_aggiornato), multi_emittente (la lista sa dire l''emittente di ogni riga: non e'' un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

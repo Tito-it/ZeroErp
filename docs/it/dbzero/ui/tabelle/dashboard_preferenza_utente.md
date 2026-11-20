@@ -38,7 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts()` |
+| trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
+| trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
 
 ---
 {% include-markdown "signature-core.md" %}

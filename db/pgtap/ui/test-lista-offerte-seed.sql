@@ -16,7 +16,7 @@
 --   5.  Esattamente 25 colonne attive nel catalogo offerte
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
---   8.  Preset offerte_default presente con is_default=true
+--   8.  Preset offerte_default presente e acceso
 --   9.  Preset: pagina_dimensione=25, ambito=sistema
 --   10. Esattamente 12 colonne visibili nel preset offerte_default
 --   11. Colonna codice ha fissata=true nel preset (identificatore)
@@ -146,7 +146,7 @@ SELECT is(
     '7. Tutti i campo_sorgente del catalogo offerte esistono nella vista o nella sintesi della lineage'
 );
 
--- 8. Preset offerte_default is_default=true
+-- 8. Preset offerte_default presente e acceso
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -154,10 +154,9 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice = 'vendite.offerte'
            AND lp.codice = 'offerte_default'
-           AND lp.is_default = TRUE
            AND lp.attivo = TRUE
     ),
-    '8. Preset offerte_default presente, is_default=true, attivo=true'
+    '8. Preset offerte_default presente e acceso'
 );
 
 -- 9. Preset: pagina_dimensione=25, ambito=sistema

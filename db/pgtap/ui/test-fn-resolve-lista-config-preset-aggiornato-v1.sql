@@ -78,15 +78,15 @@ WITH ins AS (
 )
 SELECT id AS col_id FROM ins;
 
--- Preset sistema per la lista (ambito='sistema', is_default=TRUE)
+-- Preset sistema per la lista (ambito='sistema', acceso)
 CREATE TEMP TABLE _t_preset_pa AS
 WITH ins AS (
   INSERT INTO ui.lista_preset (
-    lista_id, codice, descrizione, ambito, is_default,
+    lista_id, codice, descrizione, ambito,
     pagina_dimensione, attivo, user_insert
   )
   SELECT lista_id, 'SISTEMA_PA', 'Preset sistema test PA',
-         'sistema', TRUE, 25, TRUE, '_pgtap'
+         'sistema', 25, TRUE, '_pgtap'
   FROM _t_lista_pa
   RETURNING id
 )
