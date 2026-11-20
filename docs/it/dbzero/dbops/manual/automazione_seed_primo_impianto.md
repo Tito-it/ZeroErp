@@ -53,8 +53,10 @@ Oggi le tabelle sono sei: `config.email_account` (solo inserimento), `config.ema
   Le sue righe non entrano nel registro delle righe di seed; l'installazione le scrive e le cancella
   sempre. Il padre è a sua volta iscritto, acceso, non figlia e con la colonna `id`, altrimenti il
   confronto dà `PADRE_NON_ISCRITTO` e il trigger non si monta.
-* ⭐ Una scrittura dell'installazione sulla composizione personalizza il preset: la composizione
-  sposta `contenuto_aggiornato_il`, che in `ui.lista_preset` è una colonna dell'installazione.
+* ⭐ Una scrittura dell'installazione che cambia la composizione personalizza il preset: a fine
+  transazione cambia `composizione_impronta`, che in `ui.lista_preset` è una colonna
+  dell'installazione insieme a `contenuto_aggiornato_il`. Una composizione riscritta uguale (un
+  DELETE seguito dall'INSERT delle stesse righe) non cambia l'impronta, e non personalizza.
 * ⛔ In forma per colonna ogni colonna della tabella sta in uno dei due elenchi, tranne quelle libere
   (`id`, `meta`, le colonne d'audit, `tx_id`). Una colonna nuova non classificata ferma il giro su
   quella tabella: il trigger di prima resta finché qualcuno non la classifica.

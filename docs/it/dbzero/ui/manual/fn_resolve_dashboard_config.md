@@ -18,7 +18,7 @@
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — il gemello delle liste
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
-> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
 > * [script.fn_get_user_permissions_map](/dbzero/script/funzioni/fn_get_user_permissions_map) — il livello dell'utente per area
 > * [script.fn_get_user_actions_map](/dbzero/script/funzioni/fn_get_user_actions_map) — le azioni abilitate dell'utente
 
@@ -92,18 +92,20 @@ non vede nessun widget resta una dashboard vuota, se il pool non ha un widget se
 
 ### Il preset di base nel risultato, e il banner
 
-L'uscita porta `preset_base`: l'id, l'ambito e la data del contenuto del preset di base di oggi, oppure
-null. È ciò che il backend salva con la preferenza; la fotografia la scrive poi il database.
+L'uscita porta `preset_base`: l'id, l'ambito e la data del contenuto per chiave del preset di base di
+oggi, oppure null. È ciò che il backend salva con la preferenza; la fotografia la scrive poi il database.
 
 Il banner ha due esiti, gemelli di quelli delle liste, che non si accendono insieme:
 
 * `preset_base_cambiato` — la preferenza ha salvato una base che non è quella di oggi (spenta, cancellata
   o scavalcata da un altro preset): il banner propone il riallineamento;
-* `preset_aggiornato` — la base salvata è quella di oggi, e il suo contenuto è cambiato dopo la
-  fotografia senza che l'utente l'abbia ignorato dopo quel cambio
-  ([fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato)).
+* `preset_aggiornato_chiavi` — la base salvata è quella di oggi: le chiavi che la preferenza imposta
+  (`widget`, `dimensione_max`, di origine `preferenza`) il cui contenuto nel preset è cambiato dopo la
+  fotografia, vuoto se nessuna ([fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato)). Una
+  chiave che la preferenza segue dal preset non entra. `preset_aggiornato` vale «almeno una».
 
-In ogni altro caso tutti e due sono falsi.
+«Ignora» è una scrittura che nomina `preset_base_id`: la fotografia si riallinea. In ogni altro caso tutti
+e due sono spenti.
 
 ---
 
@@ -132,8 +134,6 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
   vince lo stesso, e la dashboard resta con le sole card aggiunte invisibili.
 * **La dimensione del preset non è controllata.** Zero o un negativo escono così come sono; la dimensione
   della preferenza, invece, deve essere un intero positivo.
-* **Il banner è per preset intero.** Guarda tutto il contenuto del preset di base: una preferenza di soli
-  widget vede il banner anche quando il preset cambia solo la dimensione, che le arriva già.
 * **La dashboard per codice ha una seconda copia nel backend**, che la cerca prima di scrivere una
   preferenza; le liste hanno un building block per questa lettura.
 
@@ -151,11 +151,13 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
   area nascosto, preset di sistema e di ruolo, preferenza che vince, widget nuovo contato, widget spento,
   priorità fra profili, campi opachi freschi.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — la cascata per chiave, la
-  dimensione standard, l'origine, il banner acceso da un cambio del preset.
+  dimensione standard, l'origine, il banner acceso da un cambio dei widget sulla chiave `widget`, la
+  dimensione che la preferenza segue dal preset che non entra nel banner.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset di widget fuori dal pool che non è base, e quello
   con un widget del pool che lo è.
 * Nessun test costruisce il filtro per azione, il widget visibile con il permesso, il preset d'azienda della
-  dashboard, il preset senza widget accesi che fa scendere la cascata, l'«ignora» del banner, né il
+  dashboard, il preset senza widget accesi che fa scendere la cascata, «Ignora» (lo prova il gemello delle
+  liste, sulla stessa funzione dello snapshot), né il
   conteggio dei widget nuovi tolti dal filtro.
 
 ---
@@ -172,6 +174,9 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
   leggevano i preset `is_default`, il ruolo senza spareggio con la veste nulla, l'azienda anche spenta, il
   preset fatto di widget fuori dal pool. Nell'uscita `preset_base` e `preset_base_cambiato`; il banner si
   calcola solo sulla base di oggi.
+* 2026-11-20 — il banner diventa per chiave: guarda solo le chiavi di origine `preferenza`, e nell'uscita
+  `preset_aggiornato_chiavi`; `preset_base.contenuto_aggiornato_il` è la mappa per chiave. L'«ignora» non
+  c'è più: è la riscrittura di `preset_base_id`.
 
 ---
 

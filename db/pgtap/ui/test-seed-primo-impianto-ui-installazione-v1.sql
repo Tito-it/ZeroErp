@@ -18,7 +18,7 @@
 --   sua composizione. In CI esistono perche' le carica il CSV e la rete di
 --   90_end le iscrive in dbops.seed_righe.
 --
--- Elenco test (plan 18):
+-- Elenco test (plan 19):
 --    1) le quattro tabelle hanno un trigger solo sulla funzione, BEFORE
 --       INSERT OR UPDATE OR DELETE FOR EACH ROW
 --    2) la composizione e' montata nella forma figlia del preset
@@ -34,17 +34,19 @@
 --   12) l'app cambia il codice del preset 1: E_SEED_COLONNA_DEL_SOFTWARE
 --   13) l'app cancella il preset 1: E_SEED_RIGA_NON_CANCELLABILE
 --   14) il preset 1 e' ancora intatto
---   15) l'app cambia una riga della composizione del preset 1: passa
---   16) … e il preset 1 diventa personalizzato (la data del contenuto)
---   17) l'app cancella una riga della composizione: passa
---   18) la composizione non ha registro: nessuna riga in dbops.seed_righe
+--   15) ⭐ l'app riscrive la composizione del preset 1 uguale (DELETE + INSERT,
+--       vincoli differiti): il preset resta intatto (Q37 di brief-db-revisione-ui)
+--   16) l'app cambia una riga della composizione del preset 1: passa
+--   17) … e il preset 1 diventa personalizzato (l'impronta della composizione)
+--   18) l'app cancella una riga della composizione: passa
+--   19) la composizione non ha registro: nessuna riga in dbops.seed_righe
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- 1-3 Il montaggio
@@ -146,28 +148,41 @@ SELECT is(
     '14) il preset 1 e'' ancora intatto');
 
 -- ============================================================
--- 15-18 La composizione segue il preset
+-- 15-19 La composizione segue il preset
 -- ============================================================
+-- Il trigger della composizione e' differito: il file gira IMMEDIATE, qui si
+-- differisce e lo si fa scattare con IMMEDIATE, come al commit dell'app.
+CREATE TEMP TABLE _comp AS SELECT * FROM ui.lista_preset_colonna WHERE preset_id = 1;
+SET CONSTRAINTS ALL DEFERRED;
+DELETE FROM ui.lista_preset_colonna WHERE preset_id = 1;
+INSERT INTO ui.lista_preset_colonna SELECT * FROM _comp;
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT is(
+    (SELECT s.personalizzata_il FROM dbops.fn_seed_riga('ui.lista_preset'::regclass, '1') s),
+    NULL,
+    '15) l''app riscrive la composizione del preset 1 uguale (DELETE + INSERT): il preset resta intatto');
+
 SELECT is(
     dbops.fn_pgtap_codice_errore($$UPDATE ui.lista_preset_colonna SET larghezza = 321 WHERE preset_id = 1 AND colonna_id = 3$$),
     NULL,
-    '15) l''app cambia una riga della composizione del preset 1: passa');
+    '16) l''app cambia una riga della composizione del preset 1: passa');
 
 SELECT isnt(
     (SELECT s.personalizzata_il FROM dbops.fn_seed_riga('ui.lista_preset'::regclass, '1') s),
     NULL,
-    '16) … e il preset 1 diventa personalizzato, attraverso la data del contenuto');
+    '17) … e il preset 1 diventa personalizzato, attraverso l''impronta della composizione');
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$DELETE FROM ui.lista_preset_colonna WHERE preset_id = 1 AND colonna_id = 14$$),
     NULL,
-    '17) l''app cancella una riga della composizione: passa');
+    '18) l''app cancella una riga della composizione: passa');
 
 SELECT is(
     (SELECT count(*)::int FROM dbops.seed_righe
       WHERE schema_name = 'ui' AND table_name = 'lista_preset_colonna'),
     0,
-    '18) la composizione non ha registro: le sue righe seguono il preset');
+    '19) la composizione non ha registro: le sue righe seguono il preset');
 
 SELECT * FROM finish();
 ROLLBACK;

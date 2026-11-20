@@ -22,10 +22,10 @@
 ### 🎯 Scopo Principale
 
 `ui.trgfn_preferenza_preset_base_snapshot` scrive lo **snapshot** del preset di base di una
-preferenza: `preset_base_contenuto_aggiornato_il` diventa la data del contenuto del preset
-`preset_base_id`, letta dalla tabella dei preset. Lo snapshot lo scrive il database, e il valore che
-arriva da chi scrive la riga non conta. Una funzione sola per le preferenze delle liste e delle
-dashboard.
+preferenza: `preset_base_contenuto_aggiornato_il` diventa la copia della data del contenuto per
+chiave (`{chiave: data}`) del preset `preset_base_id`, letta dalla tabella dei preset. Lo snapshot
+lo scrive il database, e il valore che arriva da chi scrive la riga non conta. Una funzione sola per
+le preferenze delle liste e delle dashboard.
 
 ---
 
@@ -33,15 +33,17 @@ dashboard.
 
 Il trigger è `BEFORE INSERT OR UPDATE` delle colonne `preset_base_id` e
 `preset_base_contenuto_aggiornato_il`, riga per riga: ogni scrittura che nomina la base o lo
-snapshot rilegge la data del contenuto del preset. Salvare la preferenza vuol dire «ho visto il
-preset com'è adesso», e il banner del preset aggiornato si spegne. Senza base lo snapshot è vuoto.
+snapshot rilegge la mappa del preset. Salvare la preferenza vuol dire «ho visto il preset com'è
+adesso», e il banner del preset aggiornato si spegne. Senza base lo snapshot è vuoto.
 
-Un aggiornamento che tocca solo l'«ignora» o la configurazione non attraversa il trigger, e lo
-snapshot resta quello di prima.
+⭐ **«Ignora» è la stessa scrittura.** Per chiudere il banner si riscrive `preset_base_id`, anche
+con lo stesso valore: lo snapshot si riallinea su tutte le chiavi, e il banner si riaccende al
+cambio successivo del preset. Riallineare anche le chiavi che non erano in banner non cambia
+niente: o non erano cambiate, o la preferenza le segue dal preset e il banner non le guarda.
 
-Quando la base cambia, o la riga nasce, l'«ignora» (`preset_aggiornato_ignored_at`) si azzera: si
-riferiva al preset di prima. La cancellazione del preset porta `preset_base_id` a nessuno con l'`ON
-DELETE SET NULL` della FK, e il trigger la vede come un cambio di base.
+Un aggiornamento che tocca solo la configurazione non attraversa il trigger, e lo snapshot resta
+quello di prima. La cancellazione del preset porta `preset_base_id` a nessuno con l'`ON DELETE SET
+NULL` della FK, e lo snapshot torna vuoto.
 
 ---
 
@@ -56,7 +58,7 @@ preferenze delle liste, `ui.dashboard_preset` su quelle delle dashboard. Un argo
 ### ⚠️ Che cosa oggi non copre
 
 * **La base di un altro contenitore.** Nessun vincolo chiede che `preset_base_id` sia un preset della
-  stessa lista o della stessa dashboard della preferenza: il trigger legge la data di quel preset
+  stessa lista o della stessa dashboard della preferenza: il trigger legge la mappa di quel preset
   comunque. Il resolver se ne accorge, perché la base salvata non è quella di oggi
   (`preset_base_cambiato`).
 
@@ -72,9 +74,9 @@ preferenze delle liste, `ui.dashboard_preset` su quelle delle dashboard. Un argo
 ### Test
 
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — lo snapshot scritto dal database, che ignora il valore
-  passato dall'applicazione.
-* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — la base portata a nessuno:
-  snapshot e «ignora» azzerati, flag spento.
+  passato dall'applicazione; «Ignora» chiude il banner, il cambio successivo lo riaccende.
+* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — il banner attraverso il
+  resolver: «Ignora», un nuovo cambio, la base portata a nessuno.
 
 ---
 
@@ -85,6 +87,10 @@ preferenze delle liste, `ui.dashboard_preset` su quelle delle dashboard. Un argo
   fino al salvataggio successivo. Le loro funzioni,
   `ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts` e la gemella delle dashboard, sono
   tolte.
+* 2026-11-20 — lo snapshot diventa la mappa per chiave del preset, e l'«ignora»
+  (`preset_aggiornato_ignored_at`) esce: chiudere il banner è riscrivere `preset_base_id`. I due
+  trigger si rimontano col nome `trg_ui_*_preferenza_utente_z90_snapshot_base_ins_upd` (quello delle
+  dashboard era troncato a 63 caratteri).
 
 ---
 

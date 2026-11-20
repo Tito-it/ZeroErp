@@ -19,7 +19,7 @@
 > * [ui.fn_lista_da_codice](/dbzero/ui/funzioni/fn_lista_da_codice) — la riga della lista dal codice
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
-> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello di ogni colonna per l'utente
 > * [ui.fn_misura_pagina_ammessa](/dbzero/ui/funzioni/fn_misura_pagina_ammessa) — una misura è del catalogo?
 > * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — la misura di default `PAGINA`
@@ -134,20 +134,23 @@ Ordine, larghezza, visibilità e fissaggio vengono dal livello che ha dato le co
 
 ### Il preset di base nel risultato, e il banner
 
-Il risultato porta `preset_base`: l'id, l'ambito e la data del contenuto del preset di base di
-oggi, oppure null. È ciò che il backend salva con la preferenza; lo snapshot lo scrive poi il
+Il risultato porta `preset_base`: l'id, l'ambito e la data del contenuto per chiave del preset di
+base di oggi, oppure null. È ciò che il backend salva con la preferenza; lo snapshot lo scrive poi il
 database.
 
 Il banner ha due esiti, che non si accendono insieme:
 
 * `preset_base_cambiato` — la preferenza ha salvato una base che non è quella di oggi (spenta,
   cancellata, o scavalcata da un altro preset): il banner propone il riallineamento;
-* `preset_aggiornato` — la base salvata è quella di oggi, e il suo contenuto è cambiato dopo lo
-  snapshot senza che l'utente abbia premuto «ignora» dopo quel cambio. Lo calcola
-  [fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato), sulla data del contenuto che la
-  scelta della base ha già letto.
+* `preset_aggiornato_chiavi` — la base salvata è quella di oggi: le chiavi che la preferenza imposta
+  (origine `preferenza`) il cui contenuto nel preset è cambiato dopo lo snapshot, in ordine, vuoto
+  se nessuna. Una chiave che la preferenza segue dal preset non entra: le arriva già. Le calcola
+  [fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato), sulla data del contenuto per
+  chiave che la scelta della base ha già letto. `preset_aggiornato` vale «almeno una».
 
-Senza preferenza, o con una preferenza senza base, tutti e due sono spenti.
+«Ignora» è una scrittura che nomina `preset_base_id`: lo snapshot si riallinea, e il banner si
+spegne fino al cambio successivo. Senza preferenza, o con una preferenza senza base, tutti e due
+sono spenti.
 
 ---
 
@@ -159,9 +162,6 @@ Senza preferenza, o con una preferenza senza base, tutti e due sono spenti.
   ferma la funzione con un errore di conversione, e la lista non si apre per quell'utente; una voce
   senza visibilità esce con la visibilità vuota; un codice ripetuto esce due volte. Una preferenza
   di colonne i cui codici sono tutti spariti lascia visibili solo identificatore e azioni.
-* **Il flag è per preset intero.** Guarda tutto il contenuto del preset di base, anche quando la
-  preferenza segue già il preset per le chiavi cambiate: una preferenza di sola misura vede il
-  banner quando cambia l'ordinamento del preset.
 
 ---
 
@@ -178,10 +178,12 @@ Senza preferenza, o con una preferenza senza base, tutti e due sono spenti.
   di profilo, preferenza, colonna sensibile con e senza grant, identificatore normalizzato, colonna
   nuova, priorità dei profili, veste, priorità di ritiro.
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — la cascata per chiave,
-  l'origine, la misura standard, la lista senza preset.
+  l'origine, la misura standard, la lista senza preset; il banner per chiave (una chiave che segue
+  il preset non lo accende) e la composizione riscritta uguale che non lo accende.
 * `db/pgtap/ui/test-fn-resolve-lista-config-contatore-colonne-nuove-v1.sql` — il contatore dopo il
   filtro dei permessi.
-* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — il flag.
+* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — il banner, «Ignora» e il
+  cambio dopo.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — `preset_base` nel risultato, `preset_base_cambiato`
   quando la base salvata è un'altra, `preset_aggiornato` solo sulla base di oggi.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura sempre del catalogo.
@@ -209,6 +211,9 @@ Senza preferenza, o con una preferenza senza base, tutti e due sono spenti.
 * 2026-11-20 — la scelta del preset di base passa a `ui.fn_preset_di_base`: prima tre letture,
   una per ambito, filtrate su `is_default`, col ruolo che guardava solo il profilo più prioritario.
   Nel risultato `preset_base` e `preset_base_cambiato`; il flag si calcola solo sulla base di oggi.
+* 2026-11-20 — il banner diventa per chiave: guarda solo le chiavi di origine `preferenza`, e nel
+  risultato `preset_aggiornato_chiavi`; `preset_base.contenuto_aggiornato_il` è la mappa per chiave.
+  L'«ignora» non c'è più: è la riscrittura di `preset_base_id`.
 
 ---
 

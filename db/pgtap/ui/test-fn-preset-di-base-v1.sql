@@ -6,15 +6,17 @@
 --   ui.fn_preset_di_base, ui.fn_preset_aggiornato, la chiave preset_base e
 --   preset_base_cambiato dei resolver, lo snapshot scritto dal DB
 --   (ui.trgfn_preferenza_preset_base_snapshot), un preset acceso per posto.
---   ChangeSet: 20261119-09 … -14.
+--   ChangeSet: 20261119-09 … -14; il banner per chiave e il lucchetto, giro
+--   1b (20261120-02 … -11).
 --
 -- Gira come l'applicazione (runner di default). Tutti i soggetti si
 --   costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
 --   operatore con un profilo AD_HOC, i preset e le preferenze.
 --
 -- Elenco test (plan 20):
---    1-4) fn_preset_aggiornato: senza snapshot falso; contenuto piu' recente
---         vero; chiuso dopo il cambio falso; contenuto uguale falso
+--    1-4) fn_preset_aggiornato, per chiave: senza snapshot nessuna; contenuto
+--         piu' recente la chiave; U6, una chiave non passata non entra;
+--         contenuto uguale nessuna
 --    5) U3: un preset d'azienda senza colonne attive non ferma la cascata:
 --       vince il sistema
 --    6) … con una colonna attiva vince l'azienda
@@ -30,15 +32,20 @@
 --   16) U2: il resolver espone preset_base, con l'id della base
 --   17) U5: base salvata diversa da quella di oggi: preset_base_cambiato
 --   18) … e preset_aggiornato tace
---   19) base di oggi, preset cambiato dopo lo snapshot: preset_aggiornato
+--   19) base di oggi, l'ordinamento del preset cambia dopo lo snapshot e la
+--       preferenza imposta l'ordinamento: preset_aggiornato
 --   20) … e preset_base_cambiato falso
+--   21) Q38: riscrivere lo stesso preset_base_id chiude il banner
+--   22) … e il cambio successivo del preset lo riaccende
+--   23) U8: l'app che scrive la data del contenuto riceve E_UI_PRESET_CONTENUTO_DERIVATO
+--   24) … e cosi' l'app che scrive un'impronta finta
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(20);
+SELECT plan(24);
 
 -- ============================================================
 -- Fixture
@@ -168,12 +175,20 @@ SELECT p.preset_id, w.widget_id, 1, TRUE FROM _dp p, _w w WHERE w.etichetta = 'F
 -- ============================================================
 -- 1-4 Il flag
 -- ============================================================
-SELECT is(ui.fn_preset_aggiornato(NULL, now(), NULL), false, '1) senza snapshot: falso');
-SELECT is(ui.fn_preset_aggiornato(now() - interval '1 day', now(), NULL), true,
-          '2) contenuto piu'' recente dello snapshot: vero');
-SELECT is(ui.fn_preset_aggiornato(now() - interval '2 day', now() - interval '1 day', now()), false,
-          '3) banner chiuso dopo il cambio: falso');
-SELECT is(ui.fn_preset_aggiornato(now(), now(), NULL), false, '4) contenuto uguale allo snapshot: falso');
+-- Snapshot e contenuto sono mappe {chiave: data}; il chiamante passa le chiavi
+-- che la preferenza imposta.
+SELECT is(ui.fn_preset_aggiornato(NULL, jsonb_build_object('colonne', now()), ARRAY['colonne']),
+          ARRAY[]::text[], '1) senza snapshot: nessuna chiave');
+SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now() - interval '1 day'),
+                                  jsonb_build_object('colonne', now()), ARRAY['colonne']),
+          ARRAY['colonne'], '2) contenuto piu'' recente dello snapshot: la chiave');
+SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now() - interval '1 day', 'ordinamento', now() - interval '1 day'),
+                                  jsonb_build_object('colonne', now() - interval '1 day', 'ordinamento', now()),
+                                  ARRAY['colonne']),
+          ARRAY[]::text[], '3) U6: cambia una chiave che la preferenza non imposta: nessuna');
+SELECT is(ui.fn_preset_aggiornato(jsonb_build_object('colonne', now()), jsonb_build_object('colonne', now()),
+                                  ARRAY['colonne']),
+          ARRAY[]::text[], '4) contenuto uguale allo snapshot: nessuna');
 
 -- ============================================================
 -- 5-10 La scelta, liste
@@ -242,7 +257,8 @@ SELECT is(
 INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, configurazione, preset_base_id,
                                         preset_base_contenuto_aggiornato_il)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT lista_id FROM _l), '{}'::jsonb,
-        (SELECT preset_id FROM _p WHERE codice = 'p_sistema'), TIMESTAMPTZ '2000-01-01 00:00:00+00');
+        (SELECT preset_id FROM _p WHERE codice = 'p_sistema'),
+        '{"colonne": "2000-01-01T00:00:00+00:00"}'::jsonb);
 
 SELECT is(
     (SELECT pu.preset_base_contenuto_aggiornato_il FROM ui.lista_preferenza_utente pu
@@ -278,17 +294,49 @@ SELECT is((pg_temp.risolta() ->> 'preset_base_cambiato')::boolean, true,
           '17) U5: la base salvata non e'' quella di oggi: preset_base_cambiato');
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, false, '18) … e preset_aggiornato tace');
 
--- Di nuovo la base di oggi, poi il preset cambia dopo lo snapshot.
+-- Di nuovo la base di oggi, con una preferenza sull'ordinamento; poi
+-- l'ordinamento del preset cambia dopo lo snapshot.
 UPDATE ui.lista_preferenza_utente
-   SET preset_base_id = (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer
+   SET preset_base_id = (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer,
+       configurazione = '{"ordinamento": [{"col": "c_pref", "dir": "asc"}]}'::jsonb
  WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
--- Lo snapshot non si scrive dall'app: si sposta la data del preset.
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = now() + interval '1 minute'
- WHERE id = (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer;
+CREATE TEMP TABLE _base AS SELECT (pg_temp.risolta() -> 'preset_base' ->> 'id')::integer AS preset_id;
+UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_preset", "dir": "desc"}]'::jsonb
+ WHERE id = (SELECT preset_id FROM _base);
 
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, true,
           '19) base di oggi, preset cambiato dopo lo snapshot: preset_aggiornato');
 SELECT is((pg_temp.risolta() ->> 'preset_base_cambiato')::boolean, false, '20) … e preset_base_cambiato falso');
+
+-- ============================================================
+-- 21-22 Q38: «Ignora» e' riscrivere preset_base_id
+-- ============================================================
+UPDATE ui.lista_preferenza_utente SET preset_base_id = preset_base_id
+ WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
+
+SELECT is(format('%s|%s', pg_temp.risolta() ->> 'preset_aggiornato', pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
+          'false|[]', '21) Q38: riscrivere lo stesso preset_base_id riallinea lo snapshot: il banner si chiude');
+
+UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_preset", "dir": "asc"}]'::jsonb
+ WHERE id = (SELECT preset_id FROM _base);
+
+SELECT is(format('%s|%s', pg_temp.risolta() ->> 'preset_aggiornato', pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
+          'true|["ordinamento"]', '22) … e il cambio successivo del preset lo riaccende');
+
+-- ============================================================
+-- 23-24 U8: la data del contenuto e l'impronta le scrive solo il DB
+-- ============================================================
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$
+        UPDATE ui.lista_preset SET contenuto_aggiornato_il = contenuto_aggiornato_il || '{"colonne": "2000-01-01T00:00:00+00:00"}'::jsonb
+         WHERE id = (SELECT preset_id FROM _base)$$),
+    'E_UI_PRESET_CONTENUTO_DERIVATO',
+    '23) U8: l''app scrive la data del contenuto: rifiutato');
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$
+        UPDATE ui.lista_preset SET composizione_impronta = 'finta' WHERE id = (SELECT preset_id FROM _base)$$),
+    'E_UI_PRESET_CONTENUTO_DERIVATO',
+    '24) U8: l''app scrive un''impronta che non e'' quella della composizione: rifiutato');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -24,45 +24,47 @@ AS $function$
 --   permessi (mappe aggregate). Campi opachi (deep_link, contatore_key,
 --   soglia) restituiti freschi, senza interpretarli.
 -- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
---   altrimenti preset_aggiornato (ui.fn_preset_aggiornato).
+--   altrimenti le chiavi di origine 'preferenza' il cui contenuto nel preset
+--   e' cambiato dopo lo snapshot (ui.fn_preset_aggiornato).
 DECLARE
   v_dashboard_id     ui.dashboard_definizione.id%TYPE;
   v_config_widget    JSONB;    -- widget della configurazione candidata
-  -- Il ripiego del catalogo grezzo (brief §3c): niente preset, o un preset
+  -- Il ripiego del catalogo grezzo: niente preset, o un preset
   -- senza dimensione.
   v_dimensione_catalogo CONSTANT ui.dashboard_preset.dimensione_max%TYPE := 8;
   v_dimensione_max   ui.dashboard_preset.dimensione_max%TYPE;
   v_widget_nuovi     INTEGER  := 0;
 
-  -- Mappe permessi aggregate (resolve once, §3b), GUC-aware fail-closed
+  -- Mappe permessi aggregate (lette una volta), GUC-aware fail-closed
   v_area_map         JSONB    := '{}'::JSONB;   -- { schema_db: 'LIVELLO' }
   v_azioni_map       JSONB    := '{}'::JSONB;   -- { permission_codename: bool }
 
-  -- Veste corrente dalla GUC. NULL = tutte le vesti, anche per un valore
-  -- fuori dominio: la regola sta nel building block (2026-09-23).
+  -- La veste corrente dalla GUC; NULL se assente o fuori dominio (la regola
+  --   sta nel building block): senza veste il preset di ruolo non concorre.
   v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
 
-  -- 2026-11-01: le due chiavi della preferenza, ognuna per conto suo.
+  -- Le due chiavi della preferenza, ognuna per conto suo.
   --   NULL = chiave assente (o null): «come lo standard».
   v_pref_widget      ui.dashboard_preferenza_utente.configurazione%TYPE;
   v_pref_dimensione  ui.dashboard_preset.dimensione_max%TYPE;
-  -- 2026-11-01: il preset di base (passi 2b-2d), letto anche quando c'e'
-  --   una preferenza: e' lo standard delle chiavi che la preferenza non ha.
+  -- Il preset di base (passo 2b), letto anche quando c'e' una
+  --   preferenza: e' lo standard delle chiavi che la preferenza non ha.
   v_preset_widget     JSONB;
   v_preset_dimensione ui.dashboard_preset.dimensione_max%TYPE;
   v_preset_livello    ui.dashboard_preset.ambito%TYPE;
   v_dimensione_standard ui.dashboard_preset.dimensione_max%TYPE;
 
-  -- Snapshot preset di base dalla preferenza utente (DEF-2)
+  -- Il preset di base salvato con la preferenza e il suo snapshot ({chiave: data}).
   v_pref_preset_base_id    ui.dashboard_preferenza_utente.preset_base_id%TYPE;
   v_pref_preset_base_ts    ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
-  v_pref_preset_ignored_at ui.dashboard_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
   -- Il preset di base, scelto da ui.fn_preset_di_base: id e data del
-  -- contenuto (l'ambito sta in v_preset_livello).
+  -- contenuto per chiave (l'ambito sta in v_preset_livello).
   v_base_id                ui.dashboard_preset.id%TYPE;
   v_base_contenuto         ui.dashboard_preset.contenuto_aggiornato_il%TYPE;
-  -- Tipi espliciti: due esiti calcolati qui, nessuna colonna di cui siano il riflesso.
-  v_preset_aggiornato      BOOLEAN := FALSE;
+  -- jsonb nudo: da dove viene ogni chiave, calcolato qui; e' l'uscita origine.
+  v_origine                JSONB;
+  -- Tipi espliciti: esiti calcolati qui, nessuna colonna di cui siano il riflesso.
+  v_preset_aggiornato_chiavi TEXT[] := ARRAY[]::TEXT[];
   v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
@@ -94,26 +96,24 @@ BEGIN
   v_azioni_map := script.fn_get_user_actions_map(p_auth_user_id);
 
   -- -------------------------------------------------------
-  -- 2. Cascata PER CHIAVE (2026-11-01): si leggono la preferenza e il
-  --    preset di base, poi ogni chiave prende il primo dei due che la
-  --    contiene, e il catalogo se nessuno dei due.
-  --    ⚠️ Prima la cascata sceglieva un livello solo, il primo con i
-  --    widget: una preferenza di soli widget rispondeva dimensione_max 8,
-  --    scavalcando quella del preset.
+  -- 2. Cascata per chiave: si leggono la preferenza e il preset di base,
+  --    poi ogni chiave prende il primo dei due che la contiene, e il
+  --    catalogo se nessuno dei due. Una preferenza di soli widget non
+  --    scavalca la dimensione del preset.
   -- -------------------------------------------------------
 
   -- 2a. Preferenza personale utente: ogni chiave per conto suo.
   --     dimensione_max vale se e' un intero positivo: nessun cast che
-  --     possa cadere (prima un valore non numerico fermava la funzione).
+  --     possa cadere. Legge anche preset_base_id e lo snapshot, per il
+  --     banner (passo 4-bis).
   SELECT
       NULLIF(pu.configurazione -> 'widget', 'null'::JSONB),
       CASE WHEN (pu.configurazione ->> 'dimensione_max') ~ '^[1-9][0-9]{0,8}$'
            THEN (pu.configurazione ->> 'dimensione_max')::INTEGER END,
       pu.preset_base_id,
-      pu.preset_base_contenuto_aggiornato_il,
-      pu.preset_aggiornato_ignored_at
+      pu.preset_base_contenuto_aggiornato_il
     INTO v_pref_widget, v_pref_dimensione,
-         v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
+         v_pref_preset_base_id, v_pref_preset_base_ts
     FROM ui.dashboard_preferenza_utente pu
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.dashboard_id = v_dashboard_id;
@@ -179,18 +179,6 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 2.5 Il banner, gemello delle liste: preset_base_cambiato se la base
-  --     salvata non e' quella di oggi; preset_aggiornato solo sulla base di
-  --     oggi, dal contenuto che la scelta ha gia' letto.
-  -- -------------------------------------------------------
-  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
-                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
-  v_preset_aggiornato    := v_pref_preset_base_id IS NOT NULL
-                            AND NOT v_preset_base_cambiato
-                            AND ui.fn_preset_aggiornato(v_pref_preset_base_ts, v_base_contenuto,
-                                                        v_pref_preset_ignored_at);
-
-  -- -------------------------------------------------------
   -- 3. Merge automatico widget nuovi dal pool della dashboard
   --    (presenti in dashboard_widget ma assenti dalla configurazione)
   -- -------------------------------------------------------
@@ -218,11 +206,11 @@ BEGIN
 
   -- -------------------------------------------------------
   -- 4. Assemblaggio finale + filtro permessi + arricchimento.
-  --    - Tiene solo widget del pool della dashboard, attivi (§4.6).
-  --    - Filtro permessi (§3b): drop se area BLOCCATA o azione negata.
+  --    - Tiene solo widget del pool della dashboard, attivi.
+  --    - Filtro permessi: drop se area BLOCCATA o azione negata.
   --    - Arricchisce dai campi freschi di ui.widget (deep_link,
   --      contatore_key, soglia, etichetta*, tipo_widget) — la
-  --      preferenza porta solo il codice (§3d).
+  --      preferenza porta solo il codice.
   -- -------------------------------------------------------
   SELECT jsonb_agg(
       jsonb_build_object(
@@ -247,7 +235,7 @@ BEGIN
     JOIN ui.dashboard_widget dw
       ON dw.dashboard_id = v_dashboard_id
      AND dw.widget_id   = w.id
-    -- decodifica area/azione per il lookup nelle mappe (§3b)
+    -- decodifica area/azione per il lookup nelle mappe
     LEFT JOIN config.aree_funzionali af ON af.id = w.area_id
     LEFT JOIN config.azioni_processo ap ON ap.id = w.azione_id
    WHERE
@@ -266,30 +254,53 @@ BEGIN
     v_config_widget := '[]'::JSONB;
   END IF;
 
+  -- Per ogni chiave il livello da cui viene ('preferenza', un ambito di
+  --   ui.ambito_preset o 'catalogo'), gemella delle liste: il FE rimanda al
+  --   salvataggio solo le chiavi 'preferenza', piu' quella toccata. Il
+  --   banner guarda solo le chiavi 'preferenza'.
+  v_origine := jsonb_build_object(
+    'widget',         CASE WHEN v_pref_widget   IS NOT NULL THEN 'preferenza'
+                           WHEN v_preset_widget IS NOT NULL THEN v_preset_livello::text
+                           ELSE 'catalogo' END,
+    'dimensione_max', CASE WHEN v_pref_dimensione   IS NOT NULL THEN 'preferenza'
+                           WHEN v_preset_dimensione IS NOT NULL THEN v_preset_livello::text
+                           ELSE 'catalogo' END
+  );
+
+  -- -------------------------------------------------------
+  -- 4-bis. Il banner. preset_base_cambiato: la preferenza ha salvato
+  --   una base che non e' quella di oggi, un esito suo (propone il
+  --   riallineamento). preset_aggiornato_chiavi: solo sulla base di oggi,
+  --   le chiavi di origine 'preferenza' il cui contenuto nel preset e'
+  --   cambiato dopo lo snapshot; una chiave che segue gia' il preset non
+  --   accende niente. preset_aggiornato: almeno una. Chiudere il banner e'
+  --   riscrivere preset_base_id: lo snapshot si riallinea.
+  -- -------------------------------------------------------
+  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
+                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
+  IF v_pref_preset_base_id IS NOT NULL AND NOT v_preset_base_cambiato THEN
+    v_preset_aggiornato_chiavi := ui.fn_preset_aggiornato(
+        v_pref_preset_base_ts, v_base_contenuto,
+        ARRAY(SELECT o.key FROM jsonb_each_text(v_origine) AS o
+               WHERE o.value = 'preferenza' ORDER BY o.key));
+  END IF;
+
   -- -------------------------------------------------------
   -- 5. Ritorna il JSONB finale (contratto FE)
   -- -------------------------------------------------------
   RETURN jsonb_build_object(
     'widget',            v_config_widget,
     'dimensione_max',    v_dimensione_max,
-    -- ⭐ 2026-11-01: la dimensione SENZA la preferenza. Chiave ADDITIVA.
+    -- La dimensione senza la preferenza. Chiave ADDITIVA.
     'dimensione_max_standard', v_dimensione_standard,
-    -- ⭐ 2026-11-01: per ogni chiave il livello da cui viene ('preferenza',
-    --   un ambito di ui.ambito_preset o 'catalogo'), gemella delle liste: il
-    --   FE rimanda al salvataggio solo le chiavi 'preferenza', piu' quella
-    --   toccata. Chiave ADDITIVA.
-    'origine', jsonb_build_object(
-      'widget',         CASE WHEN v_pref_widget   IS NOT NULL THEN 'preferenza'
-                             WHEN v_preset_widget IS NOT NULL THEN v_preset_livello::text
-                             ELSE 'catalogo' END,
-      'dimensione_max', CASE WHEN v_pref_dimensione   IS NOT NULL THEN 'preferenza'
-                             WHEN v_preset_dimensione IS NOT NULL THEN v_preset_livello::text
-                             ELSE 'catalogo' END
-    ),
+    -- Per chiave, il livello da cui viene. Chiave ADDITIVA.
+    'origine',           v_origine,
     'widget_nuovi',      v_widget_nuovi,
-    'preset_aggiornato', v_preset_aggiornato,
-    -- Il preset di base di oggi (id, ambito, data del contenuto), o null.
-    --   Chiave ADDITIVA, gemella delle liste.
+    'preset_aggiornato', cardinality(v_preset_aggiornato_chiavi) > 0,
+    -- Le chiavi in banner, ordinate; vuoto se nessuna. Chiave ADDITIVA.
+    'preset_aggiornato_chiavi', to_jsonb(v_preset_aggiornato_chiavi),
+    -- Il preset di base di oggi (id, ambito, data del contenuto per chiave),
+    --   o null. Chiave ADDITIVA, gemella delle liste.
     'preset_base',       CASE WHEN v_base_id IS NULL THEN NULL
                               ELSE jsonb_build_object('id', v_base_id,
                                                       'ambito', v_preset_livello::text,
@@ -301,7 +312,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'La configurazione effettiva di una dashboard per un utente, pronta per il frontend, gemella di ui.fn_resolve_lista_config. Cascata per chiave: widget e dimensione_max vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno un widget acceso nel pool della dashboard: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo (tutti i widget accesi del pool). Poi il merge dei widget nuovi del pool, il filtro dei permessi per area e azione (mappe aggregate script.fn_get_user_permissions_map e fn_get_user_actions_map, fail-closed fuori dalla veste OPERATORE) e i campi opachi freschi (deep_link, contatore_key, soglia, etichette, tipo_widget). Uscite: widget, dimensione_max e dimensione_max_standard (senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo), widget_nuovi, preset_base (id, ambito e contenuto_aggiornato_il del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato (solo sulla base di oggi, ui.fn_preset_aggiornato). Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA. La veste la legge ui.fn_veste_corrente. STABLE.';
+IS 'La configurazione effettiva di una dashboard per un utente, pronta per il frontend, gemella di ui.fn_resolve_lista_config. Cascata per chiave: widget e dimensione_max vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno un widget acceso nel pool della dashboard: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo (tutti i widget accesi del pool). Poi il merge dei widget nuovi del pool, il filtro dei permessi per area e azione (mappe aggregate script.fn_get_user_permissions_map e fn_get_user_actions_map, fail-closed fuori dalla veste OPERATORE) e i campi opachi freschi (deep_link, contatore_key, soglia, etichette, tipo_widget). Uscite: widget, dimensione_max e dimensione_max_standard (senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo), widget_nuovi, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset e'' cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner e'' riscrivere preset_base_id) e preset_aggiornato (almeno una). Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA. La veste la legge ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

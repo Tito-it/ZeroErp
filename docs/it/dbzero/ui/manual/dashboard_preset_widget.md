@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset_widget`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,10 +37,12 @@ coda, invisibili.
 
 ### Una riga cambiata è un preset cambiato
 
-Una riga aggiunta, tolta o cambiata sposta `contenuto_aggiornato_il` del preset
-([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)): è ciò che
-accende il banner «preset aggiornato» a chi era partito da quel preset. Una riscrittura uguale non sposta
-niente; una riga spostata da un preset all'altro tocca tutti e due.
+Una composizione cambiata sposta la chiave `widget` di `contenuto_aggiornato_il` del preset: è ciò che
+accende il banner «preset aggiornato» a chi ha scelto i suoi widget partendo da quel preset. Lo giudica a
+fine transazione un trigger differito
+([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)), sull'impronta
+della composizione: una riscrittura uguale non sposta niente, anche quando passa da un DELETE e da un
+INSERT separati; una riga spostata da un preset all'altro guarda tutti e due.
 
 ---
 
@@ -73,7 +75,7 @@ La tabella non solleva codici propri. La coppia ripetuta arriva come violazione 
 ### Test
 
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — i widget del preset riscritti
-  uguali non spostano la data, un widget cambiato sì.
+  uguali non spostano la data, un widget cambiato sposta la sola chiave `widget`.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — i widget del preset di sistema e di ruolo nella
   risoluzione.
 
@@ -84,6 +86,7 @@ La tabella non solleva codici propri. La coppia ripetuta arriva come violazione 
 * 2026-07-21 — nasce la tabella.
 * 2026-11-08 — una riga cambiata sposta `contenuto_aggiornato_il` del preset, non più `data_update`; le due
   FK entrano in eccezione alla regola ATTIVO.
+* 2026-11-20 — la composizione si giudica a fine transazione, sull'impronta: si sposta la chiave `widget`.
 
 ---
 

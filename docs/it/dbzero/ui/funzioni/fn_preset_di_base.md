@@ -13,7 +13,7 @@ CREATE FUNCTION fn_preset_di_base(p_famiglia text, p_contenitore_id integer, p_a
 
 ```sql
 CREATE OR REPLACE FUNCTION ui.fn_preset_di_base(p_famiglia text, p_contenitore_id integer, p_auth_user_id integer, p_veste config.ruolo_applicativo, p_emittente_fiscale_id bigint)
- RETURNS TABLE(preset_id integer, ambito ui.ambito_preset, contenuto_aggiornato_il timestamp with time zone)
+ RETURNS TABLE(preset_id integer, ambito ui.ambito_preset, contenuto_aggiornato_il jsonb)
  LANGUAGE sql
  STABLE
 BEGIN ATOMIC
@@ -64,7 +64,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION ui.fn_preset_di_base(p_famiglia text, p_contenitore_id integer, p_auth_user_id integer, p_veste config.ruolo_applicativo, p_emittente_fiscale_id bigint)
-IS 'Il preset di base di una lista (p_famiglia = ''lista'') o di una dashboard (''dashboard'') per un utente: lo standard delle chiavi che la preferenza non ha, e la base del banner del preset aggiornato. Un candidato vale se e'' acceso e ha contenuto: almeno una colonna attiva; per la dashboard almeno un widget acceso che sta nel pool. Ordine: il preset di ruolo del profilo applicabile piu'' prioritario, solo con la veste valorizzata (con la veste NULL il passo del ruolo si salta: il ripiego non allarga e non sceglie per id); poi quello dell''azienda p_emittente_fiscale_id, se l''azienda e'' accesa; poi quello di sistema. Un posto ha al piu'' un preset acceso (uq_ui_lista_preset_posto, uq_ui_dashboard_preset_posto): la scelta e'' deterministica. Una riga (id, ambito, contenuto_aggiornato_il) o nessuna. La leggono ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config. STABLE.';
+IS 'Il preset di base di una lista (p_famiglia = ''lista'') o di una dashboard (''dashboard'') per un utente: lo standard delle chiavi che la preferenza non ha, e la base del banner del preset aggiornato. Un candidato vale se e'' acceso e ha contenuto: almeno una colonna attiva; per la dashboard almeno un widget acceso che sta nel pool. Ordine: il preset di ruolo del profilo applicabile piu'' prioritario, solo con la veste valorizzata (con la veste NULL il passo del ruolo si salta: il ripiego non allarga e non sceglie per id); poi quello dell''azienda p_emittente_fiscale_id, se l''azienda e'' accesa; poi quello di sistema. Un posto ha al piu'' un preset acceso (uq_ui_lista_preset_posto, uq_ui_dashboard_preset_posto): la scelta e'' deterministica. Una riga (id, ambito, contenuto_aggiornato_il: la mappa {chiave: data} del contenuto del preset) o nessuna. La leggono ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config. STABLE.';
 ```
 
 </div>

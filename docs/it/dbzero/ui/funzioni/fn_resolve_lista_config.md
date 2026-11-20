@@ -25,11 +25,11 @@ AS $function$
 --   delle colonne nuove, la normalizzazione, il filtro dei permessi di
 --   colonna (ui.fn_lista_colonne_livello) e la misura di pagina dal catalogo.
 -- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
---   altrimenti preset_aggiornato (ui.fn_preset_aggiornato).
+--   altrimenti le chiavi di origine 'preferenza' il cui contenuto nel preset
+--   e' cambiato dopo lo snapshot (ui.fn_preset_aggiornato).
 DECLARE
-  -- La riga della lista, letta una volta dal BB: id, multi_emittente (P-2b,
-  -- 2026-08-18), perimetro_emittente (2026-09-02), ricerca_min_caratteri
-  -- (2026-09-25) vengono tutti da qui.
+  -- La riga della lista, letta una volta dal BB: id, multi_emittente,
+  -- perimetro_emittente e ricerca_min_caratteri vengono tutti da qui.
   v_lista            ui.lista_definizione%ROWTYPE;
   v_lista_id         ui.lista_definizione.id%TYPE;
   v_config_colonne   JSONB;
@@ -40,27 +40,27 @@ DECLARE
   v_colonne_nuove    INTEGER := 0;
   -- I codici mergiati dal catalogo al passo 3. Servono al passo 5-bis per
   -- ricontarli DOPO il filtro dei permessi: senza, il contatore annuncia
-  -- colonne che la funzione ha appena tolto (brief §4-ter).
+  -- colonne che la funzione ha appena tolto.
   v_codici_mergiati  TEXT[]  := ARRAY[]::TEXT[];
 
-  -- DB-4: veste corrente dalla GUC. NULL = tutte le vesti, anche per un
-  --   valore fuori dominio: la regola sta nel building block (2026-09-23).
+  -- La veste corrente dalla GUC; NULL se assente o fuori dominio (la regola
+  --   sta nel building block): senza veste il preset di ruolo non concorre.
   v_ruolo_guc        config.ruolo_applicativo := ui.fn_veste_corrente();
 
-  -- 2026-11-01: le quattro chiavi della preferenza, ognuna per conto suo.
+  -- Le quattro chiavi della preferenza, ognuna per conto suo.
   --   NULL = chiave assente (o null): «come lo standard».
   v_pref_colonne     ui.lista_preferenza_utente.configurazione%TYPE;
   v_pref_ordinamento ui.lista_preferenza_utente.configurazione%TYPE;
   v_pref_filtri      ui.lista_preferenza_utente.configurazione%TYPE;
   v_pref_pagina      ui.lista_preset.pagina_dimensione%TYPE;
-  -- 2026-11-01: il preset di base (passi 2b-2d), letto anche quando c'e'
-  --   una preferenza: e' lo standard delle chiavi che la preferenza non ha.
+  -- Il preset di base (passo 2b), letto anche quando c'e' una
+  --   preferenza: e' lo standard delle chiavi che la preferenza non ha.
   v_preset_colonne     JSONB;
   v_preset_ordinamento ui.lista_preset.ordinamento_default%TYPE;
   v_preset_filtri      ui.lista_preset.filtri_default%TYPE;
   v_preset_pagina      ui.lista_preset.pagina_dimensione%TYPE;
   v_preset_livello     ui.lista_preset.ambito%TYPE;
-  -- 2026-11-01: la misura senza la preferenza, e da dove viene.
+  -- La misura senza la preferenza, e da dove viene.
   v_pagina_standard    ui.lista_preset.pagina_dimensione%TYPE;
   -- Tipi espliciti: un esito e un'etichetta calcolati qui, nessuna colonna
   -- di cui siano il riflesso (l'etichetta e' un ambito_preset reso a testo,
@@ -69,20 +69,21 @@ DECLARE
   v_preset_pagina_ok   BOOLEAN;
   v_origine_pagina     TEXT;
 
-  -- DEF-2: snapshot preset di base dalla preferenza utente
+  -- Il preset di base salvato con la preferenza e il suo snapshot ({chiave: data}).
   v_pref_preset_base_id    ui.lista_preferenza_utente.preset_base_id%TYPE;
   v_pref_preset_base_ts    ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
-  v_pref_preset_ignored_at ui.lista_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
   -- Il preset di base, scelto da ui.fn_preset_di_base: id e data del
-  -- contenuto (l'ambito sta in v_preset_livello).
+  -- contenuto per chiave (l'ambito sta in v_preset_livello).
   v_base_id                ui.lista_preset.id%TYPE;
   v_base_contenuto         ui.lista_preset.contenuto_aggiornato_il%TYPE;
-  -- Tipi espliciti: due esiti calcolati qui, nessuna colonna di cui siano il riflesso.
-  v_preset_aggiornato      BOOLEAN := FALSE;
+  -- jsonb nudo: da dove viene ogni chiave, calcolato qui; e' l'uscita origine.
+  v_origine                JSONB;
+  -- Tipi espliciti: esiti calcolati qui, nessuna colonna di cui siano il riflesso.
+  v_preset_aggiornato_chiavi TEXT[] := ARRAY[]::TEXT[];
   v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
-  -- 0. La riga della lista dal codice (2026-09-25: dal BB)
+  -- 0. La riga della lista dal codice (dal BB)
   -- -------------------------------------------------------
   -- ⚠️ Una lettura sola: multi_emittente, perimetro_emittente e la soglia
   --   della ricerca si prendono da questa riga. Una seconda query sulla
@@ -97,19 +98,15 @@ BEGIN
   --    (ui.fn_lista_colonne_livello).
 
   -- -------------------------------------------------------
-  -- 2. Cascata PER CHIAVE (2026-11-01): si leggono la preferenza e il
-  --    preset di base, poi ogni chiave prende il primo dei due che la
-  --    contiene, e il catalogo se nessuno dei due.
-  --    ⚠️ Prima la cascata sceglieva un livello solo, il primo con le
-  --    colonne, e da li' prendeva tutte e quattro le chiavi: una
-  --    preferenza di sole colonne scavalcava l'ordinamento, i filtri e
-  --    la misura del preset.
+  -- 2. Cascata per chiave: si leggono la preferenza e il preset di base,
+  --    poi ogni chiave prende il primo dei due che la contiene, e il
+  --    catalogo se nessuno dei due. Una preferenza di sole colonne non
+  --    scavalca l'ordinamento, i filtri e la misura del preset.
   -- -------------------------------------------------------
 
   -- 2a. Preferenza personale utente: ogni chiave per conto suo.
   --     Chiave assente o null = «come lo standard» (NULLIF sul null JSON).
-  --     DEF-2: legge anche preset_base_id, preset_base_contenuto_aggiornato_il,
-  --     preset_aggiornato_ignored_at per il calcolo del flag al step 2.5.
+  --     Legge anche preset_base_id e lo snapshot, per il banner (passo 5-quater).
   SELECT
       NULLIF(pu.configurazione -> 'colonne',     'null'::JSONB),
       NULLIF(pu.configurazione -> 'ordinamento', 'null'::JSONB),
@@ -119,10 +116,9 @@ BEGIN
       CASE WHEN (pu.configurazione ->> 'pagina_dimensione') ~ '^[0-9]{1,9}$'
            THEN (pu.configurazione ->> 'pagina_dimensione')::INTEGER END,
       pu.preset_base_id,
-      pu.preset_base_contenuto_aggiornato_il,
-      pu.preset_aggiornato_ignored_at
+      pu.preset_base_contenuto_aggiornato_il
     INTO v_pref_colonne, v_pref_ordinamento, v_pref_filtri, v_pref_pagina,
-         v_pref_preset_base_id, v_pref_preset_base_ts, v_pref_preset_ignored_at
+         v_pref_preset_base_id, v_pref_preset_base_ts
     FROM ui.lista_preferenza_utente pu
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.lista_id    = v_lista_id;
@@ -192,19 +188,6 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 2.5 Il banner. preset_base_cambiato: la preferenza ha salvato una base
-  --     che non e' quella di oggi, un esito suo (propone il riallineamento).
-  --     preset_aggiornato: solo sulla base di oggi, dal contenuto che la
-  --     scelta ha gia' letto.
-  -- -------------------------------------------------------
-  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
-                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
-  v_preset_aggiornato    := v_pref_preset_base_id IS NOT NULL
-                            AND NOT v_preset_base_cambiato
-                            AND ui.fn_preset_aggiornato(v_pref_preset_base_ts, v_base_contenuto,
-                                                        v_pref_preset_ignored_at);
-
-  -- -------------------------------------------------------
   -- 3. Merge automatico colonne nuove dal catalogo
   --    (presenti in catalogo ma assenti dalla configurazione)
   -- -------------------------------------------------------
@@ -233,9 +216,8 @@ BEGIN
    );
 
   -- -------------------------------------------------------
-  -- 4. Livello effettivo per colonna (2026-09-23).
-  --    Non si calcola piu' qui: lo da' ui.fn_lista_colonne_livello, letto
-  --    nel passo 5 (grant del profilo piu' specifico, a parita' il piu'
+  -- 4. Il livello effettivo per colonna lo da' ui.fn_lista_colonne_livello,
+  --    letto nel passo 5 (grant del profilo piu' specifico, a parita' il piu'
   --    restrittivo; senza grant sensibile -> BLOCCATO, altrimenti TUTTO).
   --    ⭐ E' lo stesso calcolo della ricerca libera: una sede, due lettori.
   --    Se divergessero, la ricerca troverebbe righe per il valore di una
@@ -248,8 +230,8 @@ BEGIN
   --    - sensibile=TRUE senza grant esplicito: BLOCCATO (regola nel BB)
   --    - colonne BLOCCATE: rimosse
   --    - colonne LETTURA: esportabile=false
-  --    - F.2: aggiunge etichetta_i18n_key (NULL se non valorizzata)
-  --    - DB-A: aggiunge priorita (fresca da ui.lista_colonna, non dal candidato)
+  --    - aggiunge etichetta_i18n_key (NULL se non valorizzata)
+  --    - aggiunge priorita (fresca da ui.lista_colonna, non dal candidato)
   -- -------------------------------------------------------
   SELECT jsonb_agg(
       jsonb_build_object(
@@ -314,11 +296,6 @@ BEGIN
   --   cio' che e' stato mergiato. I due numeri divergono ogni volta che una
   --   colonna e' `sensibile = TRUE` senza un grant in ui.lista_colonna_permesso.
   --
-  --   Difetto trovato dal team BE il 2026-08-17
-  --   (brief-db-dash-competenza-gruppi-cliente-e-ricerca.md §4-ter). Era
-  --   LATENTE su OGNI lista, non su una sola, e non si era mai visto perche'
-  --   nessuno aveva mai seminato una colonna sensibile.
-  --
   --   ⚠️ La posizione e' l'intera correzione: nella funzione ci sono DUE
   --   blocchi `IF v_config_colonne IS NULL THEN`, e l'altro sta PRIMA del
   --   filtro dei permessi. Ricontare li' non correggerebbe nulla.
@@ -331,7 +308,7 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 5-ter. La misura di pagina (2026-09-30), per chiave (2026-11-01).
+  -- 5-ter. La misura di pagina, per chiave.
   --   Lo standard: la misura del preset di base se e' nel catalogo,
   --   altrimenti il default PAGINA del catalogo. Risponde la misura della
   --   preferenza se e' nel catalogo, altrimenti lo standard: una misura
@@ -349,6 +326,40 @@ BEGIN
                             WHEN v_preset_pagina_ok THEN v_preset_livello::text
                             ELSE 'catalogo' END;
 
+  -- Per ognuna delle quattro chiavi, il livello da cui viene: 'preferenza',
+  --   un ambito di ui.ambito_preset ('ruolo', 'emittente_fiscale',
+  --   'sistema') o 'catalogo'. Il FE rimanda al salvataggio solo le chiavi
+  --   'preferenza', piu' quella toccata: senza, salvare una chiave congela
+  --   anche le altre tre. Il banner guarda solo le chiavi 'preferenza'.
+  v_origine := jsonb_build_object(
+    'colonne',     CASE WHEN v_pref_colonne   IS NOT NULL THEN 'preferenza'
+                        WHEN v_preset_colonne IS NOT NULL THEN v_preset_livello::text
+                        ELSE 'catalogo' END,
+    'ordinamento', CASE WHEN v_pref_ordinamento IS NOT NULL THEN 'preferenza'
+                        ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
+    'filtri',      CASE WHEN v_pref_filtri IS NOT NULL THEN 'preferenza'
+                        ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
+    'pagina_dimensione', v_origine_pagina
+  );
+
+  -- -------------------------------------------------------
+  -- 5-quater. Il banner. preset_base_cambiato: la preferenza ha salvato
+  --   una base che non e' quella di oggi, un esito suo (propone il
+  --   riallineamento). preset_aggiornato_chiavi: solo sulla base di oggi,
+  --   le chiavi di origine 'preferenza' il cui contenuto nel preset e'
+  --   cambiato dopo lo snapshot; una chiave che segue gia' il preset non
+  --   accende niente. preset_aggiornato: almeno una. Chiudere il banner e'
+  --   riscrivere preset_base_id: lo snapshot si riallinea.
+  -- -------------------------------------------------------
+  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
+                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
+  IF v_pref_preset_base_id IS NOT NULL AND NOT v_preset_base_cambiato THEN
+    v_preset_aggiornato_chiavi := ui.fn_preset_aggiornato(
+        v_pref_preset_base_ts, v_base_contenuto,
+        ARRAY(SELECT o.key FROM jsonb_each_text(v_origine) AS o
+               WHERE o.value = 'preferenza' ORDER BY o.key));
+  END IF;
+
   -- -------------------------------------------------------
   -- 6. Ritorna il JSONB finale
   -- -------------------------------------------------------
@@ -357,33 +368,22 @@ BEGIN
     'ordinamento',       COALESCE(v_ordinamento, '[]'::JSONB),
     'filtri',            COALESCE(v_filtri, '{}'::JSONB),
     'pagina_dimensione', v_pagina_dim,
-    -- ⭐ 2026-11-01: la misura che la cascata darebbe SENZA la preferenza
-    --   (il drawer: «Come lo standard (N)»). Chiave ADDITIVA.
+    -- La misura che la cascata darebbe senza la preferenza (il drawer:
+    --   «Come lo standard (N)»). Chiave ADDITIVA.
     'pagina_dimensione_standard', v_pagina_standard,
-    -- ⭐ 2026-11-01: per ognuna delle quattro chiavi, il livello da cui
-    --   viene: 'preferenza', un ambito di ui.ambito_preset ('ruolo',
-    --   'emittente_fiscale', 'sistema') o 'catalogo'. Il FE rimanda al
-    --   salvataggio solo le chiavi 'preferenza', piu' quella toccata: senza,
-    --   salvare una chiave congela anche le altre tre. Chiave ADDITIVA.
-    'origine', jsonb_build_object(
-      'colonne',     CASE WHEN v_pref_colonne   IS NOT NULL THEN 'preferenza'
-                          WHEN v_preset_colonne IS NOT NULL THEN v_preset_livello::text
-                          ELSE 'catalogo' END,
-      'ordinamento', CASE WHEN v_pref_ordinamento IS NOT NULL THEN 'preferenza'
-                          ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
-      'filtri',      CASE WHEN v_pref_filtri IS NOT NULL THEN 'preferenza'
-                          ELSE COALESCE(v_preset_livello::text, 'catalogo') END,
-      'pagina_dimensione', v_origine_pagina
-    ),
-    -- ⭐ 2026-09-25: la soglia della ricerca libera, una proprieta' della
+    -- Per chiave, il livello da cui viene (passo 5-ter). Chiave ADDITIVA.
+    'origine',           v_origine,
+    -- La soglia della ricerca libera, una proprieta' della
     --   LISTA (non del preset, non dell'utente): sotto questo numero di
     --   caratteri il termine non si manda. E' la stessa colonna che legge il
     --   BB di ricerca del backend: una sede, due lettori. Chiave ADDITIVA.
     'ricerca_min_caratteri', v_lista.ricerca_min_caratteri,
     'colonne_nuove',     v_colonne_nuove,
-    'preset_aggiornato', v_preset_aggiornato,
-    -- Il preset di base di oggi (id, ambito, data del contenuto), o null: il
-    --   BE lo salva con la preferenza. Chiave ADDITIVA.
+    'preset_aggiornato', cardinality(v_preset_aggiornato_chiavi) > 0,
+    -- Le chiavi in banner, ordinate; vuoto se nessuna. Chiave ADDITIVA.
+    'preset_aggiornato_chiavi', to_jsonb(v_preset_aggiornato_chiavi),
+    -- Il preset di base di oggi (id, ambito, data del contenuto per chiave),
+    --   o null: il BE lo salva con la preferenza. Chiave ADDITIVA.
     'preset_base',       CASE WHEN v_base_id IS NULL THEN NULL
                               ELSE jsonb_build_object('id', v_base_id,
                                                       'ambito', v_preset_livello::text,
@@ -391,7 +391,7 @@ BEGIN
     -- La base salvata non e' quella di oggi: il banner propone il
     --   riallineamento. Chiave ADDITIVA.
     'preset_base_cambiato', v_preset_base_cambiato,
-    -- ⭐ P-2b: la lista dichiara se sa reggere piu' emittenti.
+    -- ⭐ La lista dichiara se sa reggere piu' emittenti.
     --   Chiave ADDITIVA: i consumatori che non la leggono non si accorgono
     --   di niente. COALESCE difensivo — la colonna e' NOT NULL DEFAULT false,
     --   ma se la SELECT non ha trovato la riga siamo gia' usciti con errore.
@@ -400,7 +400,7 @@ BEGIN
     --   condizione in cui sta per essere aperta. Chi la usa come controllo di
     --   autorizzazione crea una seconda via d'accesso accanto a quella vera.
     'multi_emittente',   COALESCE(v_lista.multi_emittente, false),
-    -- ⭐ 2026-09-02 — IL TERZO CASO, e senza di lui il flag sopra risponde a
+    -- ⭐ Il terzo caso, e senza di lui il flag sopra risponde a
     --   una domanda che per certe liste non esiste. `multi_emittente` dice
     --   «so dire da quale emittente arriva ogni riga»; su un catalogo GLOBALE
     --   — le famiglie di documento, le liste tecniche di `ui` — non c'e'
@@ -422,7 +422,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina dal catalogo ui.misure_pagina. Uscite: colonne, ordinamento, filtri, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il del preset di base di oggi, o null: il BE lo salva con la preferenza), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato (solo sulla base di oggi, ui.fn_preset_aggiornato), multi_emittente (la lista sa dire l''emittente di ogni riga: non e'' un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
+IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne, ordinamento, filtri e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina dal catalogo ui.misure_pagina. Uscite: colonne, ordinamento, filtri, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null: il BE lo salva con la preferenza), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset e'' cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner e'' riscrivere preset_base_id) e preset_aggiornato (almeno una), multi_emittente (la lista sa dire l''emittente di ogni riga: non e'' un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>
