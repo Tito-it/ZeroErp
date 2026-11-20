@@ -10,12 +10,14 @@
 --   dove va provata: db/pgtap/rls/test-rls-email-log-ambito.sql.
 --
 -- Test: le due porte per le email di sistema
--- ChangeSet: 20260906-01 / -02 / -14 · 20260907-05 · 20260911-06 / -07 / -08
+-- ChangeSet: 20260906-01 / -02 / -14 · 20260907-05 · 20260911-06 / -07 / -08 ·
+--            20261118-01
 -- Brief: brief-db-email-perimetro-e-invio-di-sistema §4 ·
 --        brief-db-sveglia-dei-processi §23 ·
---        brief-db-stato-email-console-non-e-inviata §7.2
+--        brief-db-stato-email-console-non-e-inviata §7.2 ·
+--        brief-db-seed-primo-impianto-non-si-riscrive §16.16
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 18):
 --  1) la porta accoda, e scrive SEMPRE ambito SISTEMA senza emittente
 --  2) ⭐ e le tre colonne di CONTESTO arrivano: uo, cc, pratica
 --  3) ⛔ un destinatario vuoto si ferma
@@ -27,6 +29,12 @@
 --  8) ⭐ `SIMULATA` e' un esito ammesso, e (8-bis) NON porta una data di invio
 --  9) ⭐ L'INVARIANTE FRA LE DUE SEDI DEL VOCABOLARIO
 -- 10) `config.email_outbox` ammette lo stesso valore
+-- 11) ⛔ una sola firma per nome: il cambio di firma e' un DROP + CREATE
+-- 12) ⭐ l'esito porta l'account da cui la mail e' ripartita, e (12-bis) il
+--     log lo segue anche se quello scritto prima e' spento
+-- 13) la chiamata a quattro argomenti chiude ancora, e (13-bis) senza
+--     account la colonna resta com'era
+-- 14) ⛔ un account inesistente lo ferma la FK, non la funzione
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ PERCHE' LE DUE FUNZIONI SI COLLAUDANO INSIEME.
@@ -59,7 +67,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(18);
 
 -- ============================================================
 -- 1..2. La porta che accoda
@@ -304,6 +312,98 @@ SELECT lives_ok(
     $$INSERT INTO config.email_outbox (destinatario, oggetto, corpo_html, stato)
       VALUES ('simulata-outbox@example.invalid', 'pgTAP bozza simulata', '<p/>', 'SIMULATA')$$,
     '10. config.email_outbox ammette SIMULATA, come la sua gemella'
+);
+
+-- ============================================================
+-- 11..14. L'account da cui la mail e' partita
+-- ============================================================
+-- ⭐ IL CASO DA CUI NASCE: una mail di sistema accodata su un account che poi
+--   si e' spento. Il rilancio risolve di nuovo l'account e passa quello nuovo
+--   insieme all'esito: il log deve dire da dove la mail e' partita davvero.
+-- ⚠️ I due account si costruiscono qui, uno spento e uno acceso: il caso non
+--   dipende da quali account ci sono sulla macchina.
+SELECT is(
+    (SELECT count(*)::int
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'config'
+        AND p.proname = 'fn_chiudi_email_sistema'),
+    1,
+    '11. una sola firma per nome: la vecchia a quattro argomenti non resta accanto alla nuova'
+);
+
+DO $account$
+DECLARE
+    v_spento config.email_account.id%TYPE;
+    v_acceso config.email_account.id%TYPE;
+    v_id     config.email_log.id%TYPE;
+BEGIN
+    INSERT INTO config.email_account
+        (codice, codice_interno, descrizione, smtp_host, smtp_username,
+         smtp_password_encrypted, email_from, attivo)
+    VALUES ('PGTAP_CHIUDI_SPENTO', 'PGTAP_CHIUDI_SPENTO', 'pgTAP account spento',
+            'smtp.test.local', 'spento@test.local', 'encrypted_pwd_test',
+            'spento@test.local', false)
+    RETURNING id INTO v_spento;
+
+    INSERT INTO config.email_account
+        (codice, codice_interno, descrizione, smtp_host, smtp_username,
+         smtp_password_encrypted, email_from, attivo)
+    VALUES ('PGTAP_CHIUDI_ACCESO', 'PGTAP_CHIUDI_ACCESO', 'pgTAP account acceso',
+            'smtp.test.local', 'acceso@test.local', 'encrypted_pwd_test',
+            'acceso@test.local', true)
+    RETURNING id INTO v_acceso;
+
+    v_id := config.fn_accoda_email_sistema(
+        'rilancio@example.invalid', 'pgTAP rilancio da account spento', '<p/>',
+        p_email_account_id => v_spento);
+
+    PERFORM set_config('pgtap.account_spento', v_spento::text, true);
+    PERFORM set_config('pgtap.account_acceso', v_acceso::text, true);
+    PERFORM set_config('pgtap.email_rilancio', v_id::text, true);
+END
+$account$;
+
+SELECT lives_ok(
+    format($$SELECT config.fn_chiudi_email_sistema(%s, 'RETRY', 'timeout', NULL, %s)$$,
+           current_setting('pgtap.email_rilancio'),
+           current_setting('pgtap.account_acceso')),
+    '12. il rilancio chiude l''esito e passa l''account da cui la mail e'' ripartita'
+);
+
+SELECT is(
+    (SELECT stato || '/' || email_account_id::text || '/' || tentativi::text
+       FROM config.email_log
+      WHERE id = current_setting('pgtap.email_rilancio')::bigint),
+    'RETRY/' || current_setting('pgtap.account_acceso') || '/1',
+    '12-bis. il log segue l''account nuovo, non resta su quello spento'
+);
+
+-- ⭐ Il default riproduce il prima: chi non passa l'account non lo tocca.
+--   E' la forma delle chiamate di oggi del backend, a quattro argomenti.
+SELECT lives_ok(
+    format($$SELECT config.fn_chiudi_email_sistema(%s, 'SENT', NULL, now())$$,
+           current_setting('pgtap.email_rilancio')),
+    '13. la chiamata a quattro argomenti di prima chiude ancora'
+);
+
+SELECT is(
+    (SELECT stato || '/' || email_account_id::text || '/' || tentativi::text
+       FROM config.email_log
+      WHERE id = current_setting('pgtap.email_rilancio')::bigint),
+    'SENT/' || current_setting('pgtap.account_acceso') || '/2',
+    '13-bis. e senza account la colonna resta com''era'
+);
+
+-- ⛔ Nessuna guardia propria: l'id inesistente lo ferma la FK, come in
+--   fn_accoda_email_sistema. Lo spento NON si rifiuta (test 12): la scelta di
+--   un account acceso e' di fn_resolve_email_account.
+SELECT throws_ok(
+    format($$SELECT config.fn_chiudi_email_sistema(%s, 'SENT', NULL, now(), 2147483647)$$,
+           current_setting('pgtap.email_rilancio')),
+    '23503',
+    NULL,
+    '14. un account inesistente lo ferma la FK del log'
 );
 
 SELECT * FROM finish();

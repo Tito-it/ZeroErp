@@ -1,5 +1,7 @@
 ## Documentazione Concettuale -- Tabella `config.email_log`
 
+> **Ultimo aggiornamento**: 20 novembre 2026
+>
 > Vedi anche
 >
 > Approfondimento tabelle:
@@ -35,6 +37,9 @@ Il management command `send_pending_emails` ripesca le email in `PENDING`, e que
 
 ⚠️ **Che ripeschi anche i `FAILED` non e' un dettaglio: e' il recupero.** Se l'SMTP viene configurato entro i tre tentativi di default, la mail parte da sola. Il `tentativi + 1` lo scrivono entrambe le strade dell'esito — l'`UPDATE` diretto e `config.fn_chiudi_email_sistema` — quindi la riga si ferma da se'.
 ⛔ Questa riga diceva «processa le email PENDING e RETRY» e **ometteva i `FAILED`**: era sbagliata, e la stessa omissione stava nel commento in testa al command, da dove si e' propagata al codice del backend. *Un commento non e' una fonte.* Corretta il 2026-09-11.
+
+⭐ **L'account segue l'invio.** `email_account_id` dice da quale account la mail è partita, non con quale era stata preparata. Un account che ha spedito si spegne e non si cancella, quindi una mail ripescata può avere sul log un account spento: il rilancio ne risolve un altro (`config.fn_resolve_email_account`) e lo scrive insieme all'esito. Sulle righe non di sistema lo fa l'`UPDATE` diretto; sulle righe `SISTEMA` lo fa il parametro `p_email_account_id` di `config.fn_chiudi_email_sistema`, dove `NULL` lascia l'account com'è.
+⛔ Il log non pretende un account acceso: l'account può spegnersi fra l'invio e la scrittura dell'esito, e la mail spedita resta storia. La FK verso l'account è un'eccezione della regola ATTIVO (`dbops.automazione_attivo_eccezioni`); scegliere un account acceso è compito del risolutore.
 
 #### ⭐ `SIMULATA` — «non ho nemmeno provato», e non e' un guasto
 
