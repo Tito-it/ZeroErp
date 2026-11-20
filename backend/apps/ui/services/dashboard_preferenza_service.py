@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Service di scrittura per `ui.dashboard_preferenza_utente` —
 #        valida il JSONB in ingresso (whitelist chiavi anti-injection),
-#        UPSERT con snapshot del preset di base, delete idempotente,
+#        UPSERT col preset di base di oggi (lo snapshot lo scrive il DB), delete idempotente,
 #        tombstone "ignora banner preset aggiornato".
 #        Gemello di `ListaPreferenzaService`.
 #
@@ -27,6 +27,7 @@ from apps.ui.db.dashboard_repository import DashboardRepository
 from apps.ui.services._preferenza import (
     E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
+    preset_base_id_di_oggi,
     richiedi_preferenza_non_vuota,
 )
 
@@ -77,7 +78,7 @@ class DashboardPreferenzaService:
         return dashboard_id
 
     # Scopo: UPSERT preferenza utente per (auth_user, dashboard_codice).
-    #        Valida il JSONB, calcola lo snapshot del preset di base
+    #        Valida il JSONB, legge il preset di base di oggi dalla risoluzione
     #        (per il badge "preset aggiornato") e materializza il record.
     def upsert(
         self,
@@ -91,12 +92,16 @@ class DashboardPreferenzaService:
         # 2. Whitelist + tipi del payload
         configurazione = self._validate_payload(payload)
 
-        # 3. Snapshot preset di base coerente con la cascata della fn DB
+        # 3. Il preset di base di oggi, dalla risoluzione (stesso emittente
+        #    della lettura della dashboard: la base salvata e' quella che
+        #    l'utente vede). Lo snapshot lo scrive il trigger del DB.
         emittente_id = PermissionResolver.get_emittente_for_user(user)
-        preset_id, preset_contenuto_aggiornato_il = self._repo.get_preset_base_snapshot(
-            dashboard_id=dashboard_id,
-            auth_user_id=user.id,
-            emittente_fiscale_id=emittente_id,
+        preset_id = preset_base_id_di_oggi(
+            self._repo.resolve_dashboard_config(
+                dashboard_codice=dashboard_codice,
+                auth_user_id=user.id,
+                emittente_fiscale_id=emittente_id,
+            )
         )
 
         # 4. UPSERT
@@ -105,7 +110,6 @@ class DashboardPreferenzaService:
             dashboard_id=dashboard_id,
             configurazione=configurazione,
             preset_base_id=preset_id,
-            preset_base_contenuto_aggiornato_il=preset_contenuto_aggiornato_il,
         )
 
         return {

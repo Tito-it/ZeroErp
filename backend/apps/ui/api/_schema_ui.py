@@ -28,7 +28,6 @@ TIPI_UI: Tipi = {
     "ambito": (testo, False),
     "profilo_accesso_id": (intero, True),
     "emittente_fiscale_id": (intero, True),
-    "is_default": (booleano, False),
     "pagina_dimensione": (intero, True),
     "ordinamento_default": (json, True),
     "filtri_default": (json, True),

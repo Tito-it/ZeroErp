@@ -35,9 +35,9 @@ import { chiaviScelte } from '../preferenzaPerChiave'
  * @param {string} codice - codice stabile della dashboard (es. 'home')
  * @returns {{
  *   config, contatori, loaded, dirty, loading, widgetNuovi, presetAggiornato,
- *   widgetVisibili, dimensioneMax,
+ *   presetBaseCambiato, widgetVisibili, dimensioneMax,
  *   load, loadContatori, applyChange, save, reset, ignorePresetUpdate,
- *   contatoreDi
+ *   riallineaPresetBase, contatoreDi
  * }}
  */
 export function useDashboardConfig(codice) {
@@ -145,6 +145,14 @@ export function useDashboardConfig(codice) {
     return result
   }
 
+  // Scopo: BE7 — «Riallinea» del banner della base cambiata. Risalva la
+  //        preferenza con le sole chiavi gia' scelte (`save`): il BE ci scrive
+  //        il preset di base di OGGI (`preset_base` della risoluzione) e il DB
+  //        ne riscrive lo snapshot. Nessuna chiave scelta = DELETE.
+  async function riallineaPresetBase() {
+    return save()
+  }
+
   // Scopo: "Ignora" banner preset aggiornato + reload per riallineare.
   async function ignorePresetUpdate() {
     const result = await execute(
@@ -203,6 +211,15 @@ export function useDashboardConfig(codice) {
     () => config.value?.preset_aggiornato ?? false,
   )
 
+  // TRUE quando la preferenza ha salvato un preset di base che non e' quello
+  // di oggi (spento, o oggi vale un altro livello della cascata). BE7 di
+  // brief-db-revisione-ui, giro 1a, gemello di `useListaConfig`: calcolato
+  // dal DB (`preset_base_cambiato` di `fn_resolve_dashboard_config`),
+  // passthrough. In quel caso `preset_aggiornato` e' sempre falso.
+  const presetBaseCambiato = computed(
+    () => config.value?.preset_base_cambiato ?? false,
+  )
+
   return {
     config,
     contatori,
@@ -212,6 +229,7 @@ export function useDashboardConfig(codice) {
     loading,
     widgetNuovi,
     presetAggiornato,
+    presetBaseCambiato,
     widgetVisibili,
     dimensioneMax,
     poolVuoto,
@@ -222,6 +240,7 @@ export function useDashboardConfig(codice) {
     save,
     reset,
     ignorePresetUpdate,
+    riallineaPresetBase,
     contatoreDi,
   }
 }

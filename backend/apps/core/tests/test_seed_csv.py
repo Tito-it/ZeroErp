@@ -75,7 +75,7 @@ class SeedCsvTests(TestCase):
         vuote = celle_vuote(SEED_UI_DIR / "lista_preset.csv")
         self.assertEqual(vuote["descrizione"], "")
         self.assertIsNone(vuote["profilo_accesso_id"])
-        self.assertIsNone(vuote["is_default"])
+        self.assertIsNone(vuote["emittente_fiscale_id"])
         dichiarazioni = (
             (("geoloc", None), ("nome_strada", "")),
         )

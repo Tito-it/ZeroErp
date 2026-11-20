@@ -66,6 +66,17 @@ _VALID_PAYLOAD: dict[str, Any] = {
 }
 
 
+# Scopo: La risoluzione con un preset di base, nella forma del resolver DB.
+def _risoluzione_con_base(preset_id: int) -> dict[str, Any]:
+    return {
+        "preset_base": {
+            "id": preset_id,
+            "ambito": "sistema",
+            "contenuto_aggiornato_il": "2026-05-06T00:00:00+00:00",
+        },
+    }
+
+
 class ListaPreferenzaUpsertTests(SimpleTestCase):
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
@@ -75,7 +86,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_happy_path(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (5, "2026-05-06T00:00")
+        repo.resolve_lista_config.return_value = _risoluzione_con_base(5)
         repo.upsert_preferenza.return_value = 99
         svc = ListaPreferenzaService(repository=repo)
 
@@ -88,7 +99,12 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertEqual(kwargs["lista_id"], 1)
         self.assertEqual(kwargs["preset_base_id"], 5)
-        self.assertEqual(kwargs["preset_base_contenuto_aggiornato_il"], "2026-05-06T00:00")
+        # ⭐ Lo snapshot lo scrive il trigger del DB (BE6): il service non lo passa.
+        self.assertNotIn("preset_base_contenuto_aggiornato_il", kwargs)
+        # La base viene dalla risoluzione, con l'emittente dell'utente (BE5).
+        repo.resolve_lista_config.assert_called_once_with(
+            lista_codice="anagrafiche.clienti", auth_user_id=42, emittente_fiscale_id=11,
+        )
         # Configurazione normalizzata propagata.
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 50)
@@ -169,7 +185,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_pagina_dimensione_la_decide_il_db(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (None, None)
+        repo.resolve_lista_config.return_value = {"preset_base": None}
         repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
@@ -188,7 +204,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_una_chiave_sola_arriva_da_sola(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (5, "2026-05-06T00:00")
+        repo.resolve_lista_config.return_value = _risoluzione_con_base(5)
         repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
@@ -268,7 +284,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     ) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (None, None)
+        repo.resolve_lista_config.return_value = {"preset_base": None}
         repo.upsert_preferenza.return_value = 99
         svc = ListaPreferenzaService(repository=repo)
 
@@ -277,7 +293,6 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertIsNone(result["preset_base_id"])
         kwargs = repo.upsert_preferenza.call_args.kwargs
         self.assertIsNone(kwargs["preset_base_id"])
-        self.assertIsNone(kwargs["preset_base_contenuto_aggiornato_il"])
 
 
 class ListaPreferenzaDeleteTests(SimpleTestCase):

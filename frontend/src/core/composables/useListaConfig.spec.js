@@ -10,6 +10,8 @@
 //   1. toccate le sole colonne: il PUT porta solo le colonne
 //   2. le chiavi gia' della preferenza si rimandano, con quella toccata
 //   3. ⭐ nessuna chiave scelta: DELETE, non un PUT vuoto
+//   4. BE7: `preset_base_cambiato` dal DB, passthrough (assente = falso)
+//   5. BE7: «Riallinea» rimanda le chiavi della preferenza, senza toccarle
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -53,8 +55,8 @@ function configDalServer(origine = {}) {
   }
 }
 
-async function caricata(origine) {
-  api.getListaConfig.mockResolvedValue(configDalServer(origine))
+async function caricata(origine, extra = {}) {
+  api.getListaConfig.mockResolvedValue({ ...configDalServer(origine), ...extra })
   api.getListaCatalogo.mockResolvedValue({ colonne: [] })
   const lista = useListaConfig('vendite.listini')
   await lista.load()
@@ -89,5 +91,24 @@ describe('useListaConfig.save — per chiave', () => {
     await lista.save()
     expect(api.putListaPreferenza).not.toHaveBeenCalled()
     expect(api.deleteListaPreferenza).toHaveBeenCalledWith('vendite.listini')
+  })
+})
+
+describe('useListaConfig — base del preset cambiata (BE7, giro 1a)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('4. `preset_base_cambiato` dal DB, passthrough (assente = falso)', async () => {
+    expect((await caricata()).presetBaseCambiato.value).toBe(false)
+    const lista = await caricata({ colonne: 'preferenza' }, { preset_base_cambiato: true })
+    expect(lista.presetBaseCambiato.value).toBe(true)
+  })
+
+  it('5. «Riallinea» rimanda le chiavi della preferenza, senza toccarle', async () => {
+    const lista = await caricata({ colonne: 'preferenza' }, { preset_base_cambiato: true })
+    await lista.riallineaPresetBase()
+    // Il BE ci scrive la base di oggi: il FE non manda nessun id di preset.
+    expect(api.putListaPreferenza).toHaveBeenCalledWith('vendite.listini', {
+      colonne: [{ codice: 'codice', ordine: 1, visibile: true }],
+    })
   })
 })

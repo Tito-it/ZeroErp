@@ -100,7 +100,6 @@ class MisurePaginaDbTests(unittest.TestCase):
                 lista_id=int(lista[0]),
                 configurazione={"pagina_dimensione": misura},
                 preset_base_id=None,
-                preset_base_contenuto_aggiornato_il=None,
             )
 
         self._rifiuto(esegui)

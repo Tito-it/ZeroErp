@@ -23,7 +23,6 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import jsonb_out
-from apps.ui.db.ui_repository import fetch_preset_base_snapshot
 
 
 class DashboardRepository:
@@ -111,15 +110,16 @@ class DashboardRepository:
         }
 
     # Scopo: UPSERT preferenza utente. Conflict target sulla UNIQUE
-    #        (auth_user_id, dashboard_id). Lo snapshot del preset di base
-    #        e' calcolato dal service e passato qui.
+    #        (auth_user_id, dashboard_id).
+    # ⭐ Lo snapshot lo scrive il trigger del DB, come per le liste
+    #    (`UiRepository.upsert_preferenza`): `preset_base_id` resta nel SET
+    #    perche' e' la colonna che fa scattare il riallineamento.
     def upsert_preferenza(
         self,
         auth_user_id: int,
         dashboard_id: int,
         configurazione: dict[str, Any],
         preset_base_id: int | None,
-        preset_base_contenuto_aggiornato_il: Any | None,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -128,15 +128,13 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     configurazione,
                     data_insert
                 )
-                VALUES (%s, %s, %s, %s, %s::jsonb, now())
+                VALUES (%s, %s, %s, %s::jsonb, now())
                 ON CONFLICT (auth_user_id, dashboard_id) DO UPDATE
                    SET configurazione          = EXCLUDED.configurazione,
                        preset_base_id          = EXCLUDED.preset_base_id,
-                       preset_base_contenuto_aggiornato_il = EXCLUDED.preset_base_contenuto_aggiornato_il,
                        data_update             = now()
                 RETURNING id
                 """,
@@ -144,7 +142,6 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     json.dumps(configurazione),
                 ],
             )
@@ -183,19 +180,3 @@ class DashboardRepository:
                 [auth_user_id, dashboard_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Snapshot preset di base per la preferenza dashboard. Delega al
-    #        BB condiviso `fetch_preset_base_snapshot` (cascata, COALESCE e
-    #        drift risk documentati li').
-    def get_preset_base_snapshot(
-        self,
-        dashboard_id: int,
-        auth_user_id: int,
-        emittente_fiscale_id: int | None,
-    ) -> tuple[int | None, Any | None]:
-        return fetch_preset_base_snapshot(
-            "ui.dashboard_preset",
-            entity_id=dashboard_id,
-            auth_user_id=auth_user_id,
-            emittente_fiscale_id=emittente_fiscale_id,
-        )

@@ -9,7 +9,8 @@
 #          lo nomina piu', e i suoi INSERT/UPDATE devono legare lo stesso.
 #        - La data del CONTENUTO di un preset e' `contenuto_aggiornato_il`:
 #          si sposta solo quando cambia il contenuto (il WHEN del trigger
-#          `a20`), non a ogni UPDATE. Lo snapshot della preferenza la legge.
+#          `a20`), non a ogni UPDATE. Lo snapshot della preferenza la legge,
+#          e dal giro 1a di brief-db-revisione-ui lo scrive il DB.
 #        - Spegnere una lista con colonne attive e' un 409 del guard ATTIVO,
 #          non un fallback di validazione del service.
 # Note: ⭐ La giuntura, non la regola: la regola la provano i pgTAP di `ui`
@@ -39,7 +40,8 @@ from django.db import connection, transaction
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 from apps.ui.db.ui_admin_repository import UiAdminRepository
-from apps.ui.db.ui_repository import UiRepository, fetch_preset_base_snapshot
+from apps.ui.db.ui_repository import UiRepository
+from apps.ui.services._preferenza import preset_base_id_di_oggi
 from apps.ui.services.lista_definizione_admin_service import ListaDefinizioneAdminService
 
 _ATTORE = "test_be11_audit_ui"
@@ -57,7 +59,7 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
         super().setUpClass()
         # La sonda sulla colonna del blocco 7-bis-c: un DB indietro fallirebbe
         # sull'attesa invece che sul prerequisito.
-        richiedi_db_provvisto("ui.trgfn_preset_contenuto_aggiornato()")
+        richiedi_db_provvisto("ui.trgfn_preferenza_preset_base_snapshot()")
 
     def setUp(self) -> None:
         apri_transazione_annullata(self)
@@ -77,13 +79,16 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
             "tipo_colonna": "informazione",
             "tipo_dato": "string",
             "ordine_default": 1,
+            # Spenta di proposito: la accende il test che la compone nel preset.
+            "attivo": False,
         })
         self.preset_id = self.repo.create_preset({
             "lista_id": self.lista_id,
             "codice": "be11_sistema",
             "descrizione": "Preset di sistema BE11",
             "ambito": "sistema",
-            "is_default": True,
+            # La bozza nasce spenta (Q26): il test la vuole accesa.
+            "attivo": True,
         })
 
     def _riga(self, tabella: str, riga_id: int, colonne: str) -> tuple[Any, ...]:
@@ -165,8 +170,11 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
             (self._adesso(),),
         )
 
-    # Lo snapshot (BB `fetch_preset_base_snapshot`, ramo «sistema») e
-    # l'upsert della preferenza col nome nuovo della colonna.
+    # BE5 + BE6 di brief-db-revisione-ui (giro 1a): la base viene dalla
+    # risoluzione (`preset_base`, ramo «sistema»), e lo snapshot lo scrive il
+    # trigger `ui.trgfn_preferenza_preset_base_snapshot` sulla data del
+    # CONTENUTO. L'upsert del BE nomina solo `preset_base_id`: un mock non vede
+    # che e' quella colonna, nel SET, a far scattare il trigger.
     def test_snapshot_e_preferenza_sulla_data_del_contenuto(self) -> None:
         with connection.cursor() as cur:
             cur.execute(
@@ -176,34 +184,59 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
                 [_ATTORE],
             )
             auth_user_id = int(cur.fetchone()[0])
+        # Un preset vale come base solo con contenuto (U3): una colonna ACCESA
+        # nella composizione (la colonna del setUp nasce spenta).
+        self.assertTrue(self.repo.update_colonna(self.colonna_id, {"attivo": True}))
+        self.repo.replace_preset_colonne(
+            self.preset_id, [{"colonna_id": self.colonna_id, "ordine": 1}],
+        )
+        with connection.cursor() as cur:
             cur.execute(
                 "UPDATE ui.lista_preset SET contenuto_aggiornato_il = now() - interval '1 day' "
                 "WHERE id = %s",
                 [self.preset_id],
             )
         (contenuto,) = self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il")
-        # Un UPDATE che non tocca il contenuto non cambia lo snapshot.
+        # Un UPDATE che non tocca il contenuto non sposta la data.
         self.assertTrue(self.repo.update_preset(self.preset_id, {"descrizione": "Altra"}))
-        preset_id, snapshot = fetch_preset_base_snapshot(
-            "ui.lista_preset",
-            entity_id=self.lista_id,
+
+        repo = UiRepository()
+        risoluzione = repo.resolve_lista_config(
+            lista_codice="ui.test_be11_audit",
             auth_user_id=auth_user_id,
             emittente_fiscale_id=None,
         )
-        self.assertEqual((preset_id, snapshot), (self.preset_id, contenuto))
+        self.assertEqual(preset_base_id_di_oggi(risoluzione), self.preset_id)
 
-        repo = UiRepository()
         repo.upsert_preferenza(
             auth_user_id=auth_user_id,
             lista_id=self.lista_id,
-            configurazione={},
-            preset_base_id=preset_id,
-            preset_base_contenuto_aggiornato_il=snapshot,
+            configurazione={"pagina_dimensione": 50},
+            preset_base_id=self.preset_id,
         )
         preferenza = repo.get_preferenza(auth_user_id, self.lista_id)
         assert preferenza is not None
         self.assertEqual(preferenza["preset_base_id"], self.preset_id)
         self.assertEqual(preferenza["preset_base_contenuto_aggiornato_il"], contenuto)
+
+        # Il contenuto cambia: il secondo salvataggio riallinea lo snapshot
+        # anche con la stessa base (ramo ON CONFLICT DO UPDATE).
+        self.assertTrue(self.repo.update_preset(
+            self.preset_id, {"filtri_default": {"stato": "ATTIVO"}},
+        ))
+        (contenuto_nuovo,) = self._riga(
+            "ui.lista_preset", self.preset_id, "contenuto_aggiornato_il",
+        )
+        self.assertNotEqual(contenuto_nuovo, contenuto)
+        repo.upsert_preferenza(
+            auth_user_id=auth_user_id,
+            lista_id=self.lista_id,
+            configurazione={"pagina_dimensione": 50},
+            preset_base_id=self.preset_id,
+        )
+        preferenza = repo.get_preferenza(auth_user_id, self.lista_id)
+        assert preferenza is not None
+        self.assertEqual(preferenza["preset_base_contenuto_aggiornato_il"], contenuto_nuovo)
 
     def test_upsert_permesso_audit_dal_trigger(self) -> None:
         # Il profilo si FABBRICA: «il primo che c'e'» dipendeva dai seed e,

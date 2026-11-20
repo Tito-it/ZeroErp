@@ -4,8 +4,8 @@
 # Doc: Python
 # Scopo: Service di scrittura per `ui.lista_preferenza_utente` —
 #        valida JSONB in ingresso (whitelist chiavi anti-injection),
-#        UPSERT preferenza con snapshot del preset di base
-#        (`preset_base_id` + `preset_base_contenuto_aggiornato_il` per badge DEF-2),
+#        UPSERT preferenza col preset di base di oggi (`preset_base_id`,
+#        dalla risoluzione; lo snapshot del badge DEF-2 lo scrive il DB),
 #        delete idempotente.
 #        Nessuna logica di dominio: la cascata e il filtro permessi
 #        vivono nella fn DB.
@@ -22,6 +22,7 @@ from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services._preferenza import (
     E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
+    preset_base_id_di_oggi,
     richiedi_preferenza_non_vuota,
 )
 
@@ -71,8 +72,8 @@ class ListaPreferenzaService:
         return lista_id
 
     # Scopo: UPSERT preferenza utente per (auth_user, lista_codice).
-    #        Valida la struttura JSONB in ingresso, calcola lo snapshot
-    #        del preset di base e materializza il record. Ritorna l'id
+    #        Valida la struttura JSONB in ingresso, legge il preset di base
+    #        di oggi dalla risoluzione e materializza il record. Ritorna l'id
     #        della preferenza salvata.
     def upsert(
         self,
@@ -86,12 +87,16 @@ class ListaPreferenzaService:
         # 2. Whitelist + tipi del payload
         configurazione = self._validate_payload(payload)
 
-        # 3. Snapshot preset di base coerente con la cascata della fn DB
+        # 3. Il preset di base di oggi, dalla risoluzione (stesso emittente
+        #    di `UiService.get_lista_config`: la base salvata e' quella che
+        #    l'utente vede). Lo snapshot lo scrive il trigger del DB.
         emittente_id = PermissionResolver.get_emittente_for_user(user)
-        preset_id, preset_contenuto_aggiornato_il = self._repo.get_preset_base_snapshot(
-            lista_id=lista_id,
-            auth_user_id=user.id,
-            emittente_fiscale_id=emittente_id,
+        preset_id = preset_base_id_di_oggi(
+            self._repo.resolve_lista_config(
+                lista_codice=lista_codice,
+                auth_user_id=user.id,
+                emittente_fiscale_id=emittente_id,
+            )
         )
 
         # 4. UPSERT
@@ -100,7 +105,6 @@ class ListaPreferenzaService:
             lista_id=lista_id,
             configurazione=configurazione,
             preset_base_id=preset_id,
-            preset_base_contenuto_aggiornato_il=preset_contenuto_aggiornato_il,
         )
 
         return {

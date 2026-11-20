@@ -8,7 +8,7 @@
 //     user-scoped (stores/navigation). Rispondono a "dove voglio andare".
 //   - CARD KPI: widget configurabili persistiti a DB (ui.dashboard_*),
 //     risolti con cascata preset+permessi. Rispondono a "devo andarci?".
-import { onActivated, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import Badge from 'primevue/badge'
@@ -23,6 +23,7 @@ import FavoriteItem from '../components/FavoriteItem.vue'
 import SessioniAttivePanel from '../components/SessioniAttivePanel.vue'
 import KpiCard from '../components/dash/KpiCard.vue'
 import DashboardWidgetModal from '../components/dash/DashboardWidgetModal.vue'
+import BannerPreset from '../components/BannerPreset.vue'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -44,6 +45,8 @@ const {
   loaded: dashLoaded,
   loading: dashLoading,
   widgetNuovi,
+  presetAggiornato,
+  presetBaseCambiato,
   widgetVisibili,
   dimensioneMax,
   poolVuoto,
@@ -51,6 +54,8 @@ const {
   applyChange: applyDashChange,
   save: saveDashboard,
   reset: resetDashboard,
+  ignorePresetUpdate,
+  riallineaPresetBase,
   contatoreDi,
 } = useDashboardConfig(DASHBOARD_CODICE)
 
@@ -95,6 +100,17 @@ async function onPersonalizzaApply(payload) {
   const result = await saveDashboard()
   if (result !== null) personalizzaVisible.value = false
 }
+
+// I testi dei due banner del preset (BB `BannerPreset`), del CRUSCOTTO.
+// «Vedi novita'» apre la modale delle card, come sulle liste la modale delle
+// colonne: il riallineamento dello snapshot avviene al salvataggio (trigger DB).
+const testiBannerPreset = computed(() => ({
+  aggiornato: t('home.preset_aggiornato_messaggio'),
+  vediNovita: t('home.preset_aggiornato_vedi_novita'),
+  ignora: t('home.preset_aggiornato_ignora'),
+  baseCambiato: t('home.preset_base_cambiato_messaggio'),
+  riallinea: t('home.preset_base_cambiato_riallinea'),
+}))
 
 function onFavoriteDragStart(favorite, event) {
   draggedFavorite.value = favorite
@@ -199,6 +215,18 @@ function onFavoriteDragEnd() {
           @click="personalizzaVisible = true"
         />
       </div>
+
+      <!-- I due banner del preset di base, gemelli delle liste (BE7 di
+           brief-db-revisione-ui): li decide `fn_resolve_dashboard_config`. -->
+      <BannerPreset
+        :aggiornato="presetAggiornato"
+        :base-cambiato="presetBaseCambiato"
+        :disabled="dashLoading"
+        :testi="testiBannerPreset"
+        @vedi-novita="personalizzaVisible = true"
+        @ignora="ignorePresetUpdate"
+        @riallinea="riallineaPresetBase"
+      />
 
       <div v-if="widgetVisibili.length > 0" class="app-dash-cards">
         <KpiCard

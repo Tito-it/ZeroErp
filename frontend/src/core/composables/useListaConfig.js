@@ -193,6 +193,24 @@ export function useListaConfig(codice, opzioni = {}) {
     () => config.value?.preset_aggiornato ?? false,
   )
 
+  // Computed BE7 (giro 1a di brief-db-revisione-ui): TRUE quando la
+  // preferenza ha salvato un preset di base che non e' quello di oggi (il
+  // preset e' stato spento, o oggi vale un altro livello della cascata).
+  // Calcolato dal DB (`preset_base_cambiato` di `fn_resolve_lista_config`):
+  // passthrough. In quel caso `preset_aggiornato` e' sempre falso.
+  const presetBaseCambiato = computed(
+    () => config.value?.preset_base_cambiato ?? false,
+  )
+
+  // Scopo: BE7 — «Riallinea» del banner della base cambiata. Risalva la
+  //        preferenza con le sole chiavi gia' scelte (`save`): il BE ci scrive
+  //        il preset di base di OGGI (`preset_base` della risoluzione) e il DB
+  //        ne riscrive lo snapshot. Nessuna chiave scelta = DELETE, e senza
+  //        preferenza non c'e' base da riallineare.
+  async function riallineaPresetBase() {
+    return save()
+  }
+
   // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST tombstone +
   //        reload per riallineare `config.value.preset_aggiornato` a false.
   //        La Idempotency-Key la mette l'interceptor di `core/api.js`. Toast/error gestito da useApiHandler.
@@ -214,12 +232,14 @@ export function useListaConfig(codice, opzioni = {}) {
     loading,
     colonneNuove,
     presetAggiornato,
+    presetBaseCambiato,
     load,
     ensureCatalogo,
     applyChange,
     save,
     reset,
     ignorePresetUpdate,
+    riallineaPresetBase,
   }
 }
 

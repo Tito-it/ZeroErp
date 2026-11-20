@@ -33,3 +33,18 @@ def richiedi_preferenza_non_vuota(
         detail="La preferenza non ha nessuna chiave: per tornare allo standard si elimina.",
     )
     return config
+
+
+# Scopo: L'id del preset di base di OGGI, letto dalla risoluzione (BE5 di
+#        brief-db-revisione-ui, giro 1a). `preset_base` e' la chiave che
+#        `fn_resolve_lista_config` / `fn_resolve_dashboard_config` espongono:
+#        `{id, ambito, contenuto_aggiornato_il}` oppure `null`. La scelta la fa
+#        il DB in una sede sola (`ui.fn_preset_di_base`): qui nessuna cascata.
+# ⭐ Si salva solo l'id. Lo snapshot (`preset_base_contenuto_aggiornato_il`)
+#    lo scrive il trigger `ui.trgfn_preferenza_preset_base_snapshot` a ogni
+#    scrittura che nomina `preset_base_id` (BE6): salvare e' riallineare.
+def preset_base_id_di_oggi(risoluzione: dict[str, Any]) -> int | None:
+    preset_base = risoluzione.get("preset_base")
+    if not preset_base:
+        return None
+    return int(preset_base["id"])
