@@ -478,9 +478,18 @@ export function copiaSoggettoIndirizzo(soggettoId, indirizzoSoggettoId, tipi) {
     { tipi_indirizzo_codice_interno: tipi })
 }
 
-export function copiaRuoloIndirizzo(ruoloId, indirizzoId, tipi) {
+// Le due copie verso il RUOLO portano la chiave di destinazione
+// (brief-db-copia-indirizzo-destinazione, D-1): `istanzaUtilityId` e' il
+// servizio su cui nasce la copia, `null` il ruolo. La sorgente e' una riga del
+// ruolo (in qualunque sua chiave) oppure, col gemello, una riga del soggetto.
+export function copiaRuoloIndirizzo(ruoloId, indirizzoId, tipi, istanzaUtilityId = null) {
   return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi/${indirizzoId}/copia/`,
-    { tipi_indirizzo_codice_interno: tipi })
+    { tipi_indirizzo_codice_interno: tipi, istanza_utility_id: istanzaUtilityId ?? null })
+}
+
+export function copiaSoggettoIndirizzoSuRuolo(ruoloId, indirizzoSoggettoId, tipi, istanzaUtilityId = null) {
+  return api.post(`${BASE}/ruoli/${ruoloId}/indirizzi-soggetto/${indirizzoSoggettoId}/copia/`,
+    { tipi_indirizzo_codice_interno: tipi, istanza_utility_id: istanzaUtilityId ?? null })
 }
 
 // La «modifica» di un indirizzo del ruolo: il BE cancella e riscrive in UNA

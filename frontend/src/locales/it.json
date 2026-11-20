@@ -6346,8 +6346,7 @@
         "titolare_soggetto": "il soggetto",
         "titolare_ruolo": "il ruolo",
         "titolare_servizio": "il servizio {utility}",
-        "titolare_servizio_generico": "il servizio",
-        "verso_come_origine": "{titolare}, dove sta l'indirizzo di partenza"
+        "titolare_servizio_generico": "il servizio"
       }
     },
     "soggetti": {

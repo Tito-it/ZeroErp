@@ -47,7 +47,8 @@ from apps.anagrafiche.api.views_fornitori import (
 )
 from apps.anagrafiche.api.views_contatti_ruolo import RuoloContattiDetailView, RuoloContattiView
 from apps.anagrafiche.api.views_indirizzi_ruolo import (
-    RuoloIndirizziCopiaView, RuoloIndirizziDetailView, RuoloIndirizziTipiView, RuoloIndirizziView,
+    RuoloIndirizziCopiaView, RuoloIndirizziDetailView, RuoloIndirizziSoggettoCopiaView,
+    RuoloIndirizziTipiView, RuoloIndirizziView,
 )
 from apps.anagrafiche.api.views_istanze_utility import (
     IstanzaUtilityLookupByIdView,
@@ -181,6 +182,8 @@ urlpatterns = [
     path("ruoli/<int:soggetto_ruolo_id>/indirizzi/tipi/", RuoloIndirizziTipiView.as_view(), name="anagrafiche-ruoli-indirizzi-tipi"),
     path("ruoli/<int:soggetto_ruolo_id>/indirizzi/<int:indirizzo_id>/", RuoloIndirizziDetailView.as_view(), name="anagrafiche-ruoli-indirizzi-detail"),
     path("ruoli/<int:soggetto_ruolo_id>/indirizzi/<int:indirizzo_id>/copia/", RuoloIndirizziCopiaView.as_view(), name="anagrafiche-ruoli-indirizzi-copia"),
+    # Il gemello: un indirizzo del SOGGETTO del ruolo copiato sulla chiave del ruolo.
+    path("ruoli/<int:soggetto_ruolo_id>/indirizzi-soggetto/<int:indirizzo_soggetto_id>/copia/", RuoloIndirizziSoggettoCopiaView.as_view(), name="anagrafiche-ruoli-indirizzi-soggetto-copia"),
     # Conti bancari ruolo
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/", RuoloContiBancariView.as_view(), name="anagrafiche-ruoli-conti-bancari"),
     path("ruoli/<int:soggetto_ruolo_id>/conti-bancari/<int:cb_id>/", RuoloContiBancariDetailView.as_view(), name="anagrafiche-ruoli-conti-bancari-detail"),

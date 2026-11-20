@@ -111,6 +111,10 @@ _UPDATE_INDIRIZZO_RUOLO_KEYS: frozenset[str] = INDIRIZZO_RUOLO_UPDATE_COLS
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
+# La chiave di destinazione delle copie verso il ruolo: l'istanza su cui nasce
+# la riga nuova, o assente/null per il ruolo.
+_CAMPO_DESTINAZIONE_COPIA = "istanza_utility_id"
+
 # Il corpo dei motivi del cambio di natura: la natura proposta (obbligatoria) e
 # i tre campi della riga che la check legge. Gli stessi nomi del PATCH.
 _MOTIVI_CAMBIO_NATURA_KEYS: frozenset[str] = frozenset({
@@ -763,28 +767,50 @@ class SoggettiService:
             ids = self._repo.copia_indirizzo_soggetto(soggetto_id, indirizzo_soggetto_id, tipi)
         return {"ids": ids}
 
-    # Scopo: Il gemello sul ruolo: la copia resta nel ruolo e nell'istanza
-    #        della sorgente. La copia fra layer non e' di questo verbo.
+    # Scopo: La copia di un indirizzo del RUOLO (brief-db-copia-indirizzo-
+    #        destinazione, D-1): la sorgente sta in qualunque chiave del ruolo,
+    #        la copia va sulla chiave di destinazione del corpo
+    #        (`istanza_utility_id`; assente o null = il ruolo). L'istanza di un
+    #        altro soggetto la rifiuta il guard del DB.
     def copia_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, indirizzo_id: int, payload: dict[str, Any],
     ) -> dict[str, Any]:
         from django.db import transaction
 
-        tipi = self._tipi_da_copiare(payload)
+        tipi = self._tipi_da_copiare(payload, con_destinazione=True)
+        destinazione = _V.optional_positive_int(payload, _CAMPO_DESTINAZIONE_COPIA)
         with transaction.atomic():
-            ids = self._repo.copia_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, tipi)
+            ids = self._repo.copia_indirizzo_ruolo(soggetto_ruolo_id, indirizzo_id, tipi, destinazione)
         return {"ids": ids}
 
-    # Scopo: Il corpo della copia, uguale sui due layer: solo
+    # Scopo: Il gemello dal SOGGETTO al ruolo (D-2): un indirizzo del soggetto
+    #        del ruolo copiato sulla chiave di destinazione del ruolo. Stesso
+    #        corpo della copia del ruolo.
+    def copia_indirizzo_soggetto_su_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_soggetto_id: int, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        from django.db import transaction
+
+        tipi = self._tipi_da_copiare(payload, con_destinazione=True)
+        destinazione = _V.optional_positive_int(payload, _CAMPO_DESTINAZIONE_COPIA)
+        with transaction.atomic():
+            ids = self._repo.copia_indirizzo_soggetto_su_ruolo(
+                soggetto_ruolo_id, indirizzo_soggetto_id, tipi, destinazione,
+            )
+        return {"ids": ids}
+
+    # Scopo: I tipi del corpo della copia, uguali sui tre verbi:
     #        `tipi_indirizzo_codice_interno`, una lista non vuota di codici.
-    #        Un corpo sbagliato e' un 400 sul campo; a DB arriverebbe come
-    #        `E_SCRIPT_CHIAMATA_NON_VALIDA`, un errore tecnico.
+    #        Le copie verso il ruolo (`con_destinazione`) ammettono anche la
+    #        chiave di destinazione. Un corpo sbagliato e' un 400 sul campo; a
+    #        DB arriverebbe come `E_SCRIPT_CHIAMATA_NON_VALIDA`, un errore tecnico.
     # ⚠️ Solo la FORMA: un tipo inesistente, ripetuto, gia' presente o non
     #    ammesso lo dice il verbo, col suo codice.
     @staticmethod
-    def _tipi_da_copiare(payload: dict[str, Any]) -> list[str]:
+    def _tipi_da_copiare(payload: dict[str, Any], *, con_destinazione: bool = False) -> list[str]:
         campo = "tipi_indirizzo_codice_interno"
-        _V.validate_allowed_keys(payload, allowed=frozenset({campo}))
+        ammesse = {campo, _CAMPO_DESTINAZIONE_COPIA} if con_destinazione else {campo}
+        _V.validate_allowed_keys(payload, allowed=frozenset(ammesse))
         tipi = payload.get(campo)
         ErrorManager.require(
             isinstance(tipi, list) and len(tipi) > 0

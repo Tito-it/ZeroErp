@@ -804,13 +804,29 @@ class SoggettiRepository:
             )
             return list(cursor.fetchone()[0])
 
+    # ⭐ Le due copie verso il RUOLO portano la chiave di destinazione
+    #    (brief-db-copia-indirizzo-destinazione, giro 1): `None` e' il ruolo,
+    #    un id una sua istanza. La firma a tre argomenti non esiste piu'.
     def copia_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, indirizzo_id: int, tipi: list[str],
+        istanza_utility_id_destinazione: int | None,
     ) -> list[int]:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s::bigint, %s::bigint, %s::text[])",
-                [soggetto_ruolo_id, indirizzo_id, tipi],
+                "SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s::bigint, %s::bigint, %s::text[], %s::bigint)",
+                [soggetto_ruolo_id, indirizzo_id, tipi, istanza_utility_id_destinazione],
+            )
+            return list(cursor.fetchone()[0])
+
+    def copia_indirizzo_soggetto_su_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_soggetto_id: int, tipi: list[str],
+        istanza_utility_id_destinazione: int | None,
+    ) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo("
+                "%s::bigint, %s::bigint, %s::text[], %s::bigint)",
+                [soggetto_ruolo_id, indirizzo_soggetto_id, tipi, istanza_utility_id_destinazione],
             )
             return list(cursor.fetchone()[0])
 

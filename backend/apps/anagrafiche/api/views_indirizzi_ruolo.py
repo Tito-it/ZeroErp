@@ -22,10 +22,7 @@ from apps.core.api.payload_validators import corpo_oggetto
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.api.schema_indirizzo import campi_indirizzo_madre
 from apps.anagrafiche.db._helpers import (
-    COLONNE_COPIA,
     COLONNE_INDIRIZZO_RESOLVED,
-    JOIN_COPIA_RUOLO,
-    JOIN_COPIA_SOGGETTO,
     resolve_soggetto_id,
 )
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
@@ -67,6 +64,10 @@ class RuoloIndirizziView(DomainAPIView):
     #        3. Indirizzi soggetto (fonte='soggetto', readonly)
     #           mostrati solo se tipo non coperto dai livelli 1 e 2
     #        Query param opzionale: istanza_utility_id.
+    # ⚠️ Le righe non portano il motivo di «Copia come…» (D-4 di
+    #    brief-db-copia-indirizzo-destinazione): in contesto ruolo la copia va
+    #    sulla chiave aperta, e se quella non ammette tipi lo dice il picker
+    #    (`ruoli/<id>/indirizzi/tipi/`), uguale per ogni riga.
     def get(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
@@ -87,13 +88,12 @@ class RuoloIndirizziView(DomainAPIView):
             # Livello 1: indirizzi ruolo + istanza specifica
             if istanza_utility_id is not None:
                 sql_ist = f"""
-                    SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'istanza' AS fonte
+                    SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, 'istanza' AS fonte
                       FROM anagrafiche.vw_indirizzi_resolved_ruolo v
-                      {JOIN_COPIA_RUOLO}
                      WHERE v.soggetto_ruolo_id = %s
                        AND v.istanza_utility_id = %s
                      ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-                """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
+                """  # noqa: S608 — colonne costanti di modulo, valori come parametri
                 cursor.execute(sql_ist, [soggetto_ruolo_id, istanza_utility_id])
                 l1 = rows_to_list(cursor)
                 results.extend(l1)
@@ -104,13 +104,12 @@ class RuoloIndirizziView(DomainAPIView):
 
             # Livello 2: indirizzi ruolo senza istanza (generici del ruolo)
             sql_ruolo = f"""
-                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'ruolo' AS fonte
+                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, 'ruolo' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_ruolo v
-                  {JOIN_COPIA_RUOLO}
                  WHERE v.soggetto_ruolo_id = %s
                    AND v.istanza_utility_id IS NULL
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
+            """  # noqa: S608 — colonne costanti di modulo, valori come parametri
             cursor.execute(sql_ruolo, [soggetto_ruolo_id])
             l2 = rows_to_list(cursor)
             for c in l2:
@@ -121,12 +120,11 @@ class RuoloIndirizziView(DomainAPIView):
 
             # Livello 3: indirizzi soggetto (fallback readonly)
             sql_sogg = f"""
-                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, {COLONNE_COPIA}, 'soggetto' AS fonte
+                SELECT {COLONNE_INDIRIZZO_RESOLVED}, {_RESOLVE_UTILITY}, 'soggetto' AS fonte
                   FROM anagrafiche.vw_indirizzi_resolved_soggetto v
-                  {JOIN_COPIA_SOGGETTO}
                  WHERE v.soggetto_id = %s::uuid
                  ORDER BY v.tipo_indirizzo_id, v.indirizzo_id
-            """  # noqa: S608 — colonne e join costanti di modulo, valori come parametri
+            """  # noqa: S608 — colonne costanti di modulo, valori come parametri
             cursor.execute(sql_sogg, [soggetto_id])
             l3 = rows_to_list(cursor)
             for c in l3:
@@ -195,23 +193,60 @@ class RuoloIndirizziTipiView(DomainAPIView):
         })
 
 
+# Scopo: Il corpo delle due copie verso il ruolo: i tipi, e la chiave di
+#        destinazione (assente o null = il ruolo, altrimenti una sua istanza).
+# ⛔ Una FACTORY, non un dizionario di modulo: un campo DRF si lega al primo
+#    serializer che lo riceve, e il secondo `inline_serializer` uscirebbe dallo
+#    schema OpenAPI senza corpo, senza nessun errore (stessa ragione di
+#    `campi_indirizzo_madre`). Presidio: `test_indirizzi_ruolo_api`,
+#    `TestSchemaCopiaSuRuolo`.
+def _campi_copia_su_ruolo() -> dict[str, serializers.Field]:
+    return {
+        "tipi_indirizzo_codice_interno": serializers.ListField(child=serializers.CharField()),
+        "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
+    }
+
+
 class RuoloIndirizziCopiaView(DomainAPIView):
     """POST copia un indirizzo del ruolo in altri tipi («Copia come…»)."""
     area_funzionale = "anagrafiche"
 
     @extend_schema(
-        request=inline_serializer(name="IndirizzoRuoloCopiaReq", fields={
-            "tipi_indirizzo_codice_interno": serializers.ListField(child=serializers.CharField()),
-        }),
+        request=inline_serializer(name="IndirizzoRuoloCopiaReq", fields=_campi_copia_su_ruolo()),
         responses={200: inline_serializer(name="IndirizzoRuoloCopiaResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Il verbo `anagrafiche.fn_copia_indirizzo_ruolo`: la copia resta nel
-    #        ruolo e nell'istanza della sorgente; `{"ids": [...]}` (R-1).
+    # Scopo: Il verbo `anagrafiche.fn_copia_indirizzo_ruolo`: la sorgente in
+    #        qualunque chiave del ruolo, la copia sulla chiave di destinazione
+    #        del corpo (`istanza_utility_id`; assente = il ruolo).
+    #        `{"ids": [...]}` (R-1 di brief-db-copia-indirizzo-destinazione).
     def post(self, request: Request, soggetto_ruolo_id: int, indirizzo_id: int) -> JsonResponse:
         return handle_post_json(
             request,
             handler=lambda p: SoggettiService().copia_indirizzo_ruolo(
                 soggetto_ruolo_id, indirizzo_id, p,
+            ),
+        )
+
+
+class RuoloIndirizziSoggettoCopiaView(DomainAPIView):
+    """POST copia un indirizzo del soggetto del ruolo sul ruolo («Copia come…»)."""
+    area_funzionale = "anagrafiche"
+
+    @extend_schema(
+        request=inline_serializer(name="IndirizzoSoggettoSuRuoloCopiaReq", fields=_campi_copia_su_ruolo()),
+        responses={200: inline_serializer(
+            name="IndirizzoSoggettoSuRuoloCopiaResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Il gemello dal soggetto al ruolo (D-2): le righe del livello
+    #        soggetto della cascata, in contesto ruolo, si copiano sulla chiave
+    #        del ruolo col verbo `anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo`.
+    #        Stesso corpo e stessa risposta della copia del ruolo.
+    def post(self, request: Request, soggetto_ruolo_id: int, indirizzo_soggetto_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().copia_indirizzo_soggetto_su_ruolo(
+                soggetto_ruolo_id, indirizzo_soggetto_id, p,
             ),
         )
 

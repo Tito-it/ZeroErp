@@ -19,11 +19,17 @@ Indice test eseguiti:
  5b) test_update_indirizzo_ruolo_chiave_ignota_400 — chiave fuori contratto → 400
  6) test_delete_indirizzo_ruolo_ok — DELETE elimina
  7) test_delete_indirizzo_ruolo_not_found — DELETE indirizzo inesistente
+ 8) TestCopiaSuRuoloApi.test_le_due_rotte_portano_la_destinazione_al_verbo — POST delle due copie
+    verso il ruolo: id del percorso, tipi e `istanza_utility_id` arrivano al repository del verbo giusto
+ 9) TestCopiaSuRuoloApi.test_senza_destinazione_il_verbo_riceve_none — corpo senza chiave = il ruolo
+10) TestSchemaCopiaSuRuolo.test_le_due_rotte_dichiarano_il_corpo — lo schema OpenAPI pubblicato porta
+    il corpo (tipi e destinazione) su TUTTE E DUE le rotte
 """
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
+from django.test import SimpleTestCase
 
 from apps.core.tests._helpers.jwt_mock import ClientApi
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
@@ -187,3 +193,80 @@ class TestIndirizziRuoloCrudApi(JwtMockedApiTest):
         mock_repo.delete_indirizzo_ruolo.return_value = False
         resp = self.client.delete("/api/v1/anagrafiche/ruoli/10/indirizzi/999/")
         self.assertIn(resp.status_code, (400, 404, 422))
+
+
+_ATOMIC = "django.db.transaction.atomic"
+_ROTTE_COPIA = (
+    ("/api/v1/anagrafiche/ruoli/10/indirizzi/50/copia/", "copia_indirizzo_ruolo"),
+    ("/api/v1/anagrafiche/ruoli/10/indirizzi-soggetto/50/copia/", "copia_indirizzo_soggetto_su_ruolo"),
+)
+
+
+class TestCopiaSuRuoloApi(JwtMockedApiTest):
+    """Le due copie verso il ruolo, dalla rotta al repository (brief-db-copia-indirizzo-destinazione)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.client = ClientApi()
+
+    # ⚠️ La transazione del service e' finta: qui non c'e' un database. Il
+    #    repository e' `autospec`: una firma che non combacia e' un rosso.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_ATOMIC, new_callable=MagicMock)
+    @patch(_SVC_REPO, autospec=True)
+    def test_le_due_rotte_portano_la_destinazione_al_verbo(self, mock_repo_cls, _atomic, _auth):
+        for url, verbo in _ROTTE_COPIA:
+            with self.subTest(verbo=verbo):
+                mock_repo_cls.reset_mock()
+                getattr(mock_repo_cls.return_value, verbo).return_value = [90]
+                resp = self.client.post(
+                    url,
+                    data=json.dumps({"tipi_indirizzo_codice_interno": ["FATT"], "istanza_utility_id": 9}),
+                    content_type="application/json",
+                )
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertEqual({"ids": [90]}, resp.json()["data"])
+                getattr(mock_repo_cls.return_value, verbo).assert_called_once_with(10, 50, ["FATT"], 9)
+                # Solo il verbo della rotta: l'altro non si chiama.
+                altro = next(v for _, v in _ROTTE_COPIA if v != verbo)
+                getattr(mock_repo_cls.return_value, altro).assert_not_called()
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_ATOMIC, new_callable=MagicMock)
+    @patch(_SVC_REPO, autospec=True)
+    def test_senza_destinazione_il_verbo_riceve_none(self, mock_repo_cls, _atomic, _auth):
+        for url, verbo in _ROTTE_COPIA:
+            with self.subTest(verbo=verbo):
+                getattr(mock_repo_cls.return_value, verbo).return_value = [91]
+                resp = self.client.post(
+                    url, data=json.dumps({"tipi_indirizzo_codice_interno": ["FATT"]}),
+                    content_type="application/json",
+                )
+                self.assertEqual(resp.status_code, 200, resp.content)
+                getattr(mock_repo_cls.return_value, verbo).assert_called_once_with(10, 50, ["FATT"], None)
+
+
+class TestSchemaCopiaSuRuolo(SimpleTestCase):
+    """Il contratto PUBBLICATO delle due copie verso il ruolo."""
+
+    # ⚠️ Un campo DRF si lega al primo serializer che lo riceve: con i campi in
+    #    un dizionario di modulo condiviso, la seconda rotta usciva dallo schema
+    #    SENZA corpo, e nessun test lo vedeva (gli endpoint rispondono uguale).
+    #    I campi vengono da una factory (`_campi_copia_su_ruolo`).
+    def test_le_due_rotte_dichiarano_il_corpo(self):
+        from drf_spectacular.settings import spectacular_settings
+
+        schema = spectacular_settings.DEFAULT_GENERATOR_CLASS().get_schema(request=None, public=True)
+        for percorso in (
+            "/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi/{indirizzo_id}/copia/",
+            "/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi-soggetto/{indirizzo_soggetto_id}/copia/",
+        ):
+            with self.subTest(percorso=percorso):
+                corpo = schema["paths"][percorso]["post"].get("requestBody")
+                self.assertIsNotNone(corpo, "la rotta non dichiara il corpo della richiesta")
+                nome = corpo["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+                componente = schema["components"]["schemas"][nome]
+                self.assertEqual(
+                    {"tipi_indirizzo_codice_interno", "istanza_utility_id"}, set(componente["properties"]),
+                )
+                self.assertEqual(["tipi_indirizzo_codice_interno"], componente["required"])

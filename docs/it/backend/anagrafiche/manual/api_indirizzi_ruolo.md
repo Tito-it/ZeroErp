@@ -299,9 +299,9 @@ Quelli della creazione (§2), più:
 
 ## 5. Copia indirizzo ruolo («Copia come…»)
 
-Copia un indirizzo del ruolo in uno o più tipi, **nello stesso ruolo e nella stessa istanza**
-della sorgente. Tutto o niente. Gemello della copia sul soggetto
-([api_soggetti.md](api_soggetti.md) §8.3), con lo stesso corpo.
+Copia un indirizzo del ruolo in uno o più tipi, sulla **chiave di destinazione** indicata nel
+corpo: il ruolo, o una sua istanza. La sorgente può stare in qualunque chiave del ruolo (il ruolo
+o un'altra istanza). Tutto o niente. Il frontend manda la chiave su cui l'operatore sta lavorando.
 
 | | |
 |---|---|
@@ -313,7 +313,8 @@ della sorgente. Tutto o niente. Gemello della copia sul soggetto
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `tipi_indirizzo_codice_interno` | string[] | Sì | I tipi di destinazione, per codice interno. Lista non vuota; nessun'altra chiave ammessa |
+| `tipi_indirizzo_codice_interno` | string[] | Sì | I tipi di destinazione, per codice interno. Lista non vuota |
+| `istanza_utility_id` | int \| null | No | L'istanza su cui nasce la copia. Assente o `null` = il ruolo. Nessun'altra chiave ammessa |
 
 ### Risposta (200)
 
@@ -327,21 +328,48 @@ Gli id delle righe nuove, nell'ordine dei tipi.
 
 | Codice | HTTP | Quando |
 |---|---|---|
-| `E_ANAG_VALIDAZIONE` | 400 | Corpo sbagliato: lista assente, vuota o con voci non testuali, o chiavi in più (`error.fields` = `tipi_indirizzo_codice_interno`) |
+| `E_ANAG_VALIDAZIONE` | 400 | Corpo sbagliato: lista assente, vuota o con voci non testuali, `istanza_utility_id` non intero positivo, o chiavi in più (`error.fields` = il campo) |
 | `E_SOGGETTO_RUOLO_NON_TROVATO` | 404 | Ruolo inesistente |
-| `E_INDIRIZZO_RUOLO_NON_TROVATO` | 404 | L'indirizzo non esiste o non è di quel ruolo |
-| `E_INDIRIZZO_COPIA_NESSUN_TIPO` | 409 | Nessun tipo proponibile: il motivo con cui `anagrafiche.vw_indirizzi_ruolo_azioni` spegne l'azione di riga (`anagrafiche.fn_check_copia_indirizzo_ruolo`) |
+| `E_INDIRIZZO_RUOLO_NON_TROVATO` | 404 | L'indirizzo non esiste o non è di quel ruolo, in nessuna sua chiave |
+| `E_ISTANZA_ALTRO_SOGGETTO` | 400 | L'istanza di destinazione non è del soggetto del ruolo (guard della tabella) |
+| `E_DATABASE` | 400 | L'istanza di destinazione non esiste (chiave esterna `fk_indirizzi_istanze_utilities`), come per la creazione (§2) |
 | `E_TIPO_INDIRIZZO_NON_TROVATO` | 400 | Un codice che il catalogo `config.tipi_indirizzi` non ha |
-| `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` | 400 | Un indirizzo di quel tipo c'è già sulla chiave, anche se il tipo è ripetuto nell'elenco |
+| `E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE` | 400 | Un indirizzo di quel tipo c'è già sulla chiave di destinazione, anche se il tipo è ripetuto nell'elenco |
 | `E_TIPO_INDIRIZZO_NON_PERMESSO` | 400 | Il tipo di ruolo non ammette quel tipo (`config.tipi_ruolo_tipi_indirizzo`) |
 
 ### Regole
 
-- Ogni riga la scrive la singolare `anagrafiche.fn_crea_indirizzo_ruolo`, con l'istanza della
-  sorgente: valgono i suoi guard, come per la creazione (§2).
+- Ogni riga la scrive la singolare `anagrafiche.fn_crea_indirizzo_ruolo`, con l'istanza di
+  destinazione: valgono i suoi guard, come per la creazione (§2).
 - Il backend controlla solo la **forma** del corpo; tipo inesistente, ripetuto, già presente o
-  non ammesso lo dice il verbo.
-- La copia fra layer (soggetto ↔ ruolo) non è di questo endpoint.
+  non ammesso lo dice il verbo, giudicandolo sulla chiave di destinazione.
+- La lista (§1) non porta un motivo di riga per la copia: se la chiave di destinazione non ammette
+  nessun tipo, lo dice il picker `ruoli/{id}/indirizzi/tipi/` (nessuna riga con `ammesso`), ed è
+  lo stesso per ogni riga. Il verbo non solleva `E_INDIRIZZO_COPIA_NESSUN_TIPO`.
+- La copia di un indirizzo del **soggetto** sul ruolo è del §5-bis. La copia dal ruolo al soggetto
+  non esiste.
+
+---
+
+## 5-bis. Copia sul ruolo un indirizzo del soggetto
+
+Copia un indirizzo del **soggetto del ruolo** in uno o più tipi, sulla chiave di destinazione del
+ruolo. È il gesto «Copia come…» sulle righe del livello soggetto della cascata (§1), in contesto
+ruolo. Corpo, risposta e regole sono quelli del §5.
+
+| | |
+|---|---|
+| **Metodo** | `POST` |
+| **URL** | `/api/v1/anagrafiche/ruoli/{soggetto_ruolo_id}/indirizzi-soggetto/{indirizzo_soggetto_id}/copia/` |
+| **Verbo DB** | `anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo` |
+
+### Errori
+
+Quelli del §5, con la sorgente giudicata sul soggetto:
+
+| Codice | HTTP | Quando |
+|---|---|---|
+| `E_INDIRIZZO_SOGGETTO_NON_TROVATO` | 404 | L'indirizzo non esiste o non è del soggetto del ruolo |
 
 ---
 

@@ -2,12 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-20
 
-**Riparte: Tid, con l'applicazione del giro 1 (§7).** Il giro 1 è scritto e provato in transazione annullata il
-2026-11-20 (changeSet `20261117-29` … `-32`, due CSV, pgTAP verdi in prova). D-1 … D-4 decise, tutte come proposte.
+**Riparte: Tid, con la prova a video e il commit del giro BE/FE (§8).** Il giro 1 del DB è applicato su dbdev e
+committato (changeSet `20261117-29` … `-32`). R-1 e R-2 sono fatte il 2026-11-20 sul branch `dev/backend-tid`,
+non committate: i test sul DB vero e lo spec del drawer sono verdi (§8.3), e la revisione dello stesso giorno ha
+corretto tre punti (§8.5). D-1 … D-4 decise, tutte come proposte.
 La verifica DB del 2026-11-20 (§4.1) corregge il §4: l'istanza di destinazione la giudica il guard che c'è già
 (niente codice nuovo, R-3 ritirata), e il motivo «nessun tipo» esce dalla riga e lo porta il picker della
-destinazione (D-4). ⚠️ Dopo l'apply la copia del ruolo e la lista degli indirizzi del ruolo sono rotte nel BE
-fino a R-1 (§7.3): la firma a tre argomenti e la vista di azioni non esistono più.
+destinazione (D-4).
 
 **Brief vicini verificati** (2026-11-20): nessuno aperto in `work-in-progress/`. Il precedente è archiviato,
 [brief-db-copia-indirizzo-soggetto](../work-done/brief-db-copia-indirizzo-soggetto.md): questo ne revoca §4.6 punto 3
@@ -18,11 +19,13 @@ fino a R-1 (§7.3): la firma a tre argomenti e la vista di azioni non esistono p
 | 1 | Tid | D-1 … D-3 ✅ 2026-11-19 | §5 | — |
 | 2 | Tid | D-4 ✅ 2026-11-20, strada (a) | §5 | — |
 | 3 | team DB | giro 1: i due verbi con la destinazione (dal ruolo, dal soggetto), il motivo secondo D-4, il registro `config.azioni_riga`, ritiro della firma vecchia, pgTAP e doc ✅ 2026-11-20, scritto e provato | §7 | 2 |
-| 4 | Tid | applicazione su dbdev, pgTAP verdi, doc auto-generata, commit | — | 3 |
-| 5 | BE/FE | R-1, R-2 | §6 | 4 |
-| 6 | chi chiude | archiviazione in `work-done/` | — | tutti |
+| 4 | Tid | applicazione su dbdev, pgTAP verdi, doc auto-generata, commit ✅ 2026-11-20 | — | 3 |
+| 5 | BE/FE | R-1, R-2 ✅ 2026-11-20, scritte e provate | §8 | 4 |
+| 5-bis | BE/FE | revisione del giro (`/verifica`) ✅ 2026-11-20 | §8.5 | 5 |
+| 6 | Tid | prova a video del caso del §1, commit del giro BE/FE | §8.4 | 5-bis |
+| 7 | chi chiude | archiviazione in `work-done/` | — | tutti |
 
-Decisioni aperte di Tid: nessuna. Lavoro da committare: tutto il giro 1 (§7.1) e questo brief.
+Decisioni aperte di Tid: nessuna. Lavoro da committare: il giro BE/FE (§8.1) e questo brief.
 
 ## 1. Il caso (prova a video di Tid, 2026-11-18)
 
@@ -151,6 +154,7 @@ c'è già, `E_INDIRIZZO_SOGGETTO_NON_TROVATO`. Il picker e la scrittura sono que
 ## 6. Richieste a BE/FE (dopo il giro 1)
 
 ⚠️ *Completate il 2026-11-20 (§4.1): R-1 e R-2 portano anche le superfici della lista; R-3 ritirata.*
+✅ *R-1 e R-2 fatte il 2026-11-20: §8.*
 
 * **R-1 (BE)**: `POST /ruoli/{id}/indirizzi/{id}/copia/` prende `istanza_utility_id` di destinazione (assente =
   il ruolo), e lo passa al verbo; il gemello per la sorgente del soggetto (D-2), con la stessa destinazione: in
@@ -228,3 +232,84 @@ del BE sono accettate (D-3); R-1 va subito dopo l'apply.
 * Non provati: i rollback (testo ricopiato dagli YAML del 2026-11-15, o un `DROP`), e l'esito come applicazione.
 * Guardrail sui quattro file: `guardrail_forme_changeset`, `guardrail_comment_al_presente`, `guardrail_run_on_change`
   verdi.
+
+## 8. Giro BE/FE — R-1 e R-2, fatte il 2026-11-20
+
+### 8.1 Che cosa c'è
+
+| Lato | File | Che cosa |
+| --- | --- | --- |
+| BE | `apps/anagrafiche/db/soggetti_repository.py` | `copia_indirizzo_ruolo` a quattro argomenti (la destinazione, `None` = il ruolo); `copia_indirizzo_soggetto_su_ruolo`, il gemello |
+| BE | `apps/anagrafiche/services/soggetti_service.py` | i due verbi leggono `istanza_utility_id` dal corpo (assente o `null` = il ruolo; un non intero positivo è un 400 `E_ANAG_VALIDAZIONE` sul campo) |
+| BE | `apps/anagrafiche/api/views_indirizzi_ruolo.py`, `api/urls.py` | `RuoloIndirizziCopiaView` con la destinazione; rotta nuova del gemello `POST ruoli/<id>/indirizzi-soggetto/<id>/copia/` (`RuoloIndirizziSoggettoCopiaView`); la lista del ruolo senza le viste di azioni sui tre livelli |
+| BE | `apps/anagrafiche/db/_helpers.py` | `JOIN_COPIA_RUOLO` ritirato; `COLONNE_COPIA` e `JOIN_COPIA_SOGGETTO` restano per la lista in contesto soggetto |
+| BE | `apps/core/services/error_policies_generated.py` | rigenerato: cambiano le sole note di `E_INDIRIZZO_COPIA_NESSUN_TIPO` ed `E_INDIRIZZO_RUOLO_NON_TROVATO` |
+| FE | `src/anagrafiche/api/anagrafiche.js` | `copiaRuoloIndirizzo(ruolo, indirizzo, tipi, istanzaUtilityId)`; `copiaSoggettoIndirizzoSuRuolo`, il gemello |
+| FE | `src/anagrafiche/components/IndirizziSoggettoDrawer.vue` | in contesto ruolo la copia va sulla chiave del drawer per ogni riga della cascata; i tipi dal picker di quella chiave; `useAzioneRiga('COPIA_INDIRIZZO_RUOLO')` tolto; la riga «Verso» dice la chiave del drawer |
+| FE | `src/locales/it.json`, `en.json` | tolta `anagrafiche.indirizzi.copia.verso_come_origine` |
+| Doc | `docs/it/backend/anagrafiche/manual/api_indirizzi_ruolo.md` (§5, §5-bis nuovo), `api_soggetti.md` (§8.3), i due cataloghi BB, l'indice BB backend rigenerato | il contratto delle due rotte e i building block cambiati |
+
+### 8.2 Scelte prese scrivendo
+
+* **La rotta del gemello** è `ruoli/<soggetto_ruolo_id>/indirizzi-soggetto/<indirizzo_soggetto_id>/copia/`: sotto il
+  ruolo, perché la destinazione è una chiave del ruolo, e con un segmento suo perché l'id è di `indirizzi_soggetti`
+  e non di `indirizzi`.
+* **«Copia come…» spenta in contesto ruolo** quando il picker della chiave del drawer non ha un tipo ammesso, su
+  ogni riga, con la frase che c'era già (`anagrafiche.indirizzi.copia_blocco.nessun_tipo_proponibile`). «Aggiungi»
+  in quel caso non compare, come prima.
+* **La riga «Verso» sul servizio** porta il codice dell'utility quando la lista ha almeno una riga di quel servizio
+  (è lì che il BE lo espone); altrimenti dice «il servizio» senza codice.
+* **In contesto soggetto niente cambia**: verbo del soggetto, motivo di riga dal registro.
+
+### 8.3 Prova (2026-11-20)
+
+* `apps.anagrafiche.tests.db.test_copia_indirizzo_db` sul DB vero (`ZEROERP_TEST_DB_E2E=1`): **13/13**, nessuno
+  saltato. Casi costruiti col builder `dbops.fn_pgtap_crea_cliente_ba`: senza destinazione la copia va sul ruolo;
+  con l'istanza va sull'istanza; l'istanza di un altro soggetto è un 400 `E_ISTANZA_ALTRO_SOGGETTO`; la destinazione
+  non intera è un 400 senza chiamare il DB; il gemello sul ruolo e sulla sua istanza; la riga di un altro soggetto è
+  un 404 `E_INDIRIZZO_SOGGETTO_NON_TROVATO`; la lista del ruolo si legge e non porta `copia_blocco_reason`.
+* Tutta l'app `apps.anagrafiche`: 735 test verdi; `mypy apps/anagrafiche` pulito.
+* `IndirizziSoggettoDrawer.spec.js`: 9/9 (casi 5-9 nuovi o riscritti); i test di `src/anagrafiche` e di
+  `src/vendite/_shared/indirizzi`: 70/70; `eslint src/anagrafiche` pulito; guard i18n e indice BB verdi.
+* Non provato: il gesto a video, e gli smoke bash.
+
+### 8.4 Che cosa resta
+
+* Tid: la prova a video del caso del §1 (dal servizio, la Spedizione del ruolo copiata come Fatturazione: deve
+  nascere sul servizio), poi il commit.
+
+### 8.5 Revisione del giro (2026-11-20, `/verifica`)
+
+Tre correzioni, sul codice non committato del §8.1.
+
+* **La rotta del gemello usciva dallo schema OpenAPI senza corpo della richiesta.** I campi delle due copie stavano
+  in un dizionario di modulo condiviso dai due `inline_serializer`: un campo DRF si lega al primo serializer che lo
+  riceve, e il secondo componente (`IndirizzoSoggettoSuRuoloCopiaReq`) non nasceva. Gli endpoint rispondevano uguale
+  e nessun test lo vedeva. Ora è una factory (`_campi_copia_su_ruolo`, come `campi_indirizzo_madre`). Presidio:
+  `test_indirizzi_ruolo_api.TestSchemaCopiaSuRuolo`, rosso col dizionario condiviso (provato).
+* **Le due rotte non erano provate dalla rotta al repository**: i test sul DB vero chiamano il service. Aggiunto
+  `TestCopiaSuRuoloApi` (repository `autospec`): id del percorso, tipi e destinazione arrivano al verbo giusto;
+  senza `istanza_utility_id` arriva `None`.
+* **Il picker che non risponde spegneva «Copia come…» col motivo «nessun tipo»** su ogni riga del ruolo: la lettura
+  fallita lasciava la matrice vuota, uguale a «nessun tipo ammesso». Ora l'azione si spegne solo se il picker ha
+  risposto (`matriceCaricata`); altrimenti resta accesa, e il clic rilegge il picker con l'errore a video. Spec,
+  caso 10, rosso col codice di prima (provato).
+
+In più, senza test: la chiave `v-for` delle card porta la fonte, perché in contesto ruolo la cascata unisce righe di
+`indirizzi` e di `indirizzi_soggetti`, con id che possono coincidere. La lista si rimonta a ogni ricarica, quindi la
+chiave doppia non arrivava a un riallineamento: non c'è un caso che diventi rosso.
+
+**Un intero oltre bigint nel corpo** (ok di Tid, 2026-11-20). `istanza_utility_id: 10^30` passava la validazione e
+tornava dal DB come 22003: un 400 `E_DATABASE` tecnico, senza campo e loggato come errore. Il tetto sta ora nel BB
+`PayloadValidator` (`require_positive_int` / `optional_positive_int`, `BIGINT_MAX`), per ogni endpoint che lo usa: è
+un 400 di validazione sul campo. Nello stesso punto `isdigit` è diventato `isdecimal` (`"²"` passava `isdigit` e
+`int` sollevava `ValueError`). Prova: `test_payload_helpers` 19b, 19c, 22b, rossi col codice di prima (provato); il
+caso sta anche in `test_copia_indirizzo_db` 5d. Lo stesso tetto è in `guard_positive_int`, che giudica gli id già
+interi (percorso, argomenti): oltre bigint è «identificatore non valido», prova 7b, rossa col codice di prima.
+
+Doc: `api_indirizzi_ruolo.md` §5 dice anche l'istanza di destinazione inesistente (`E_DATABASE` 400, dalla chiave
+esterna, come per «Aggiungi»: §4.1 A).
+
+Prova: `apps.anagrafiche` con `ZEROERP_TEST_DB_E2E=1`, più `test_schema_openapi_registro` e
+`test_copertura_doc_api`: 757 verdi; ruff sui file toccati e mypy a cricchetto puliti. `src/anagrafiche` e
+`src/vendite/_shared/indirizzi`: 71/71; eslint, guard i18n, classi morte e indice BB verdi.

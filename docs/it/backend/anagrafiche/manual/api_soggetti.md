@@ -842,7 +842,8 @@ Gli id delle righe nuove, nell'ordine dei tipi.
   come per la creazione (§7.2).
 - Il tipo inesistente, ripetuto, già presente o non ammesso lo dice il **verbo**, col suo codice:
   il backend non ricopia quelle regole.
-- La copia fra layer (dal soggetto a un ruolo, o viceversa) non è di questo endpoint.
+- La copia di un indirizzo del soggetto su un suo ruolo non è di questo endpoint: è
+  `ruoli/{id}/indirizzi-soggetto/{id}/copia/` ([api_indirizzi_ruolo.md](api_indirizzi_ruolo.md) §5-bis).
 
 ### Esempio
 

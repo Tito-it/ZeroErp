@@ -16,6 +16,7 @@ Indice test eseguiti:
  5) test_guard_positive_int_negative            — < 0 rifiutato
  6) test_guard_positive_int_bool                — True/False rifiutati (int trap)
  7) test_guard_positive_int_str                 — stringa rifiutata
+ 7b) test_guard_positive_int_oltre_bigint       — oltre il tetto di bigint rifiutato; il tetto passa
  8) test_require_string_ok                      — stringa valida, trim applicato
  9) test_require_string_missing                 — chiave assente -> VALIDATION
 10) test_require_string_empty                   — stringa vuota/whitespace
@@ -28,9 +29,13 @@ Indice test eseguiti:
 17) test_require_positive_int_zero              — 0 rifiutato
 18) test_require_positive_int_negative_str      — "-5" rifiutato
 19) test_require_positive_int_float             — float rifiutato
+19b) test_require_positive_int_oltre_bigint     — oltre il tetto di bigint -> VALIDATION sul campo
+     (int e stringa); il tetto stesso passa
+19c) test_require_positive_int_cifra_non_decimale — "²" -> VALIDATION, non ValueError
 20) test_optional_positive_int_absent           — chiave assente -> None
 21) test_optional_positive_int_none             — None esplicito -> None
 22) test_optional_positive_int_ok               — valore valido
+22b) test_optional_positive_int_oltre_bigint    — oltre il tetto di bigint -> VALIDATION sul campo
 23) test_optional_smallint_default_range        — [0, 32767]
 24) test_optional_smallint_fuori_range          — 40000 -> VALIDATION
 25) test_optional_smallint_negativo_default     — negativo rifiutato default
@@ -101,6 +106,7 @@ from unittest import TestCase
 from django.db import IntegrityError
 
 from apps.core.services.payload_helpers import (
+    BIGINT_MAX,
     MISSING,
     PayloadValidator,
     map_integrity_error,
@@ -176,6 +182,14 @@ class TestGuardPositiveInt(_Base):
     def test_guard_positive_int_str(self):
         with self.assertRaisesValidation():
             self.v.guard_positive_int("5", field="id")
+
+    # Stesso tetto di `require_positive_int`: oltre bigint l'id non esiste.
+    def test_guard_positive_int_oltre_bigint(self):
+        self.v.guard_positive_int(BIGINT_MAX, field="id")
+        for valore in (BIGINT_MAX + 1, 10**30):
+            with self.subTest(valore=valore), self.assertRaises(ServiceError) as ctx:
+                self.v.guard_positive_int(valore, field="id")
+            self.assertEqual(ctx.exception.code, _CODE)
 
 
 class TestRequireString(_Base):
@@ -258,6 +272,22 @@ class TestRequirePositiveInt(_Base):
         with self.assertRaisesValidation():
             self.v.require_positive_int({"id": 1.5}, "id")
 
+    # Oltre bigint il valore arriverebbe al DB e tornerebbe come 22003, un
+    # `E_DATABASE` tecnico senza campo: qui e' un rifiuto sul campo.
+    def test_require_positive_int_oltre_bigint(self):
+        self.assertEqual(self.v.require_positive_int({"id": BIGINT_MAX}, "id"), BIGINT_MAX)
+        self.assertEqual(self.v.require_positive_int({"id": str(BIGINT_MAX)}, "id"), BIGINT_MAX)
+        for valore in (BIGINT_MAX + 1, str(BIGINT_MAX + 1), 10**30):
+            with self.subTest(valore=valore), self.assertRaises(ServiceError) as ctx:
+                self.v.require_positive_int({"id": valore}, "id")
+            self.assertEqual(ctx.exception.code, _CODE)
+            self.assertEqual(ctx.exception.context.get("field"), "id")
+
+    # `"²".isdigit()` e' vero, ma `int("²")` solleva ValueError (un 500).
+    def test_require_positive_int_cifra_non_decimale(self):
+        with self.assertRaisesValidation():
+            self.v.require_positive_int({"id": "²"}, "id")
+
 
 class TestOptionalPositiveInt(_Base):
     def test_optional_positive_int_absent(self):
@@ -268,6 +298,11 @@ class TestOptionalPositiveInt(_Base):
 
     def test_optional_positive_int_ok(self):
         self.assertEqual(self.v.optional_positive_int({"id": 7}, "id"), 7)
+
+    def test_optional_positive_int_oltre_bigint(self):
+        with self.assertRaises(ServiceError) as ctx:
+            self.v.optional_positive_int({"id": BIGINT_MAX + 1}, "id")
+        self.assertEqual(ctx.exception.context.get("field"), "id")
 
 
 class TestOptionalSmallint(_Base):
