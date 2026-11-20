@@ -10,6 +10,11 @@
 #
 #        ⚠️ Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI). Tutto in transazione
 #        annullata: lo spegnimento di una colonna del test 3 non resta.
+#
+#        ⚠️ Una colonna si spegne con `attivo = false`, la leva
+#        dell'installazione. `ricercabile_full` su una riga nata dal seed e'
+#        del software (brief-db-seed-primo-impianto-non-si-riscrive §16.15,
+#        QU1): scriverlo come applicazione e' `E_SEED_COLONNA_DEL_SOFTWARE`.
 # ------------------------------------------------------------
 """Indice test (opt-in `ZEROERP_TEST_DB_E2E=1`):
 
@@ -27,8 +32,8 @@
    dal repository: nessun `warning` «colonne accese non dichiarate».
 
 3. test_spegnere_una_colonna_la_toglie_subito
-   Il motivo della lettura a runtime: si spegne `ricercabile_full` su una
-   colonna, e la stessa chiamata non la cerca piu' — senza toccare il codice.
+   Il motivo della lettura a runtime: si spegne una colonna (`attivo`), e la
+   stessa chiamata non la cerca piu' — senza toccare il codice.
 
 4. test_la_ricerca_trova_ogni_colonna_accesa_dal_repository
    Per le liste che non hanno un mondo costruito nel loro dominio: una riga
@@ -227,7 +232,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 self.assertIn("(v.ba_codice)::text", prima[0])
 
                 cur.execute(
-                    "UPDATE ui.lista_colonna lc SET ricercabile_full = false "
+                    "UPDATE ui.lista_colonna lc SET attivo = false "
                     "  FROM ui.lista_definizione ld "
                     " WHERE ld.id = lc.lista_id AND ld.codice = %s "
                     "   AND lc.campo_sorgente = 'ba_codice'",
@@ -635,7 +640,7 @@ class RicercaFullDbTests(unittest.TestCase):
 
                 def spegni(*campi: str) -> None:
                     cur.execute(
-                        "UPDATE ui.lista_colonna lc SET ricercabile_full = false"
+                        "UPDATE ui.lista_colonna lc SET attivo = false"
                         "  FROM ui.lista_definizione ld"
                         " WHERE ld.id = lc.lista_id AND ld.codice = %s"
                         "   AND lc.campo_sorgente = ANY(%s)",
@@ -755,9 +760,10 @@ class RicercaFullDbTests(unittest.TestCase):
                 # Una lista del seed che non accende colonne (contratto: non cerca).
                 self.assertFalse(svc.get_lista_config_per_video(utente, "vendite.lotti")["ricerca_full"])
                 cur.execute(
-                    "UPDATE ui.lista_colonna lc SET ricercabile_full = false "
+                    "UPDATE ui.lista_colonna lc SET attivo = false "
                     "  FROM ui.lista_definizione ld "
-                    " WHERE ld.id = lc.lista_id AND ld.codice = 'vendite.preventivi'"
+                    " WHERE ld.id = lc.lista_id AND ld.codice = 'vendite.preventivi' "
+                    "   AND lc.ricercabile_full"
                 )
                 self.assertFalse(svc.get_lista_config_per_video(utente, "vendite.preventivi")["ricerca_full"])
                 raise Annulla

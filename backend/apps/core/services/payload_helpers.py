@@ -260,6 +260,9 @@ class PayloadValidator:
 
     # Scopo: Verifica che un id passato come parametro sia int positivo.
     #        bool esplicitamente rifiutato (isinstance(True, int) == True).
+    #        Stesso tetto di `_coerce_positive_int`: oltre bigint l'id non puo'
+    #        esistere, e al DB sarebbe un 22003 (`E_DATABASE` tecnico) invece
+    #        di un identificatore non valido.
     def guard_positive_int(
         self,
         value: Any,
@@ -269,7 +272,7 @@ class PayloadValidator:
         function_name: str | None = None,
     ) -> None:
         ErrorManager.require(
-            isinstance(value, int) and not isinstance(value, bool) and value > 0,
+            isinstance(value, int) and not isinstance(value, bool) and 0 < value <= BIGINT_MAX,
             code=self._code,
             message=f"Identificatore '{field}' non valido.",
             context={field: value},
@@ -476,6 +479,12 @@ class PayloadValidator:
 
     # Scopo: Coerce valore raw a int positivo, rifiutando bool/float e
     #        stringhe non numeriche. Helper interno usato da required/optional.
+    # ⚠️ Col TETTO di bigint (`BIGINT_MAX`): un intero positivo arriva al DB
+    #    come id o parametro `bigint`, e oltre il tetto la chiamata fallisce
+    #    con 22003 — un `E_DATABASE` tecnico senza campo, loggato come errore,
+    #    per un valore sbagliato del client. Qui e' un rifiuto sul campo.
+    # ⚠️ `isdecimal`, non `isdigit`: `"²".isdigit()` e' vero e `int("²")`
+    #    solleva `ValueError`, un 500. `isdecimal` ammette cio' che `int` legge.
     def _coerce_positive_int(
         self,
         raw: Any,
@@ -496,7 +505,7 @@ class PayloadValidator:
         value: int
         if isinstance(raw, int):
             value = raw
-        elif isinstance(raw, str) and raw.strip().isdigit():
+        elif isinstance(raw, str) and raw.strip().isdecimal():
             value = int(raw.strip())
         else:
             ErrorManager.raise_error(
@@ -512,6 +521,16 @@ class PayloadValidator:
             message=message or f"Campo '{key}' deve essere un intero positivo.",
             detail=f"{key} deve essere un intero positivo." if message else None,
             context={key: value, "field": key},
+            **em,
+        )
+        ErrorManager.require(
+            value <= BIGINT_MAX,
+            code=self._code,
+            message=message or f"Campo '{key}' fuori dall'intervallo ammesso.",
+            detail=f"{key} supera il massimo ammesso ({BIGINT_MAX})." if message else None,
+            # Il valore come testo: un intero di trenta cifre non entra nel
+            # contesto JSON del log come numero leggibile da tutti i lettori.
+            context={key: str(value), "field": key},
             **em,
         )
         return value

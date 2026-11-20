@@ -166,10 +166,15 @@ class EmailRepository:
         return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio singolo account per ID con password crittografata (uso interno service).
+    # ⚠️ Legge anche gli account SPENTI, e porta `attivo`: un account che ha
+    #    spedito si spegne e non si cancella (Q24), quindi l'id scritto su un
+    #    log puo' essere di un account spento. Decide il chiamante — il rilancio
+    #    risolve un account acceso, il test di connessione prova quello chiesto.
     def get_account_with_password(self, account_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT id, codice, smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
-                   smtp_username, smtp_password_encrypted, email_from, email_reply_to
+                   smtp_username, smtp_password_encrypted, email_from, email_reply_to,
+                   attivo
               FROM config.email_account
              WHERE id = %s
         """
@@ -572,6 +577,11 @@ class EmailRepository:
     #    rifiuto NON va trasformato in un ripiego sull'UPDATE diretto: dice che
     #    qualcuno sta usando la porta di sistema per l'email di un'azienda, ed e'
     #    il solo posto in cui quel difetto si vede.
+    # ⭐ L'ACCOUNT SEGUE L'INVIO (brief-db-seed-primo-impianto-non-si-riscrive
+    #    §16.16, R5): `email_account_id` e' l'account da cui la mail e' partita
+    #    in questo tentativo, e si scrive con ogni esito — anche un FAILED e' un
+    #    tentativo partito da li'. `None` lascia la colonna com'e', sulle due
+    #    porte allo stesso modo (`COALESCE`, come `inviato_at` nella funzione).
     def update_log_stato(
         self,
         log_id: int,
@@ -580,12 +590,14 @@ class EmailRepository:
         ambito: str,
         errore: str | None = None,
         inviato_at: str | None = None,
+        email_account_id: int | None = None,
     ) -> bool:
         if ambito == AMBITO_SISTEMA:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_chiudi_email_sistema(%s, %s, %s, %s::timestamptz)",
-                    [log_id, stato, errore, inviato_at],
+                    "SELECT config.fn_chiudi_email_sistema("
+                    "%s, %s, %s, %s::timestamptz, %s::integer)",
+                    [log_id, stato, errore, inviato_at, email_account_id],
                 )
                 return bool(fetchone_scalar(cursor))
 
@@ -594,11 +606,14 @@ class EmailRepository:
                SET stato = %s,
                    errore = %s,
                    inviato_at = CASE WHEN %s IS NOT NULL THEN %s::timestamptz ELSE inviato_at END,
+                   email_account_id = COALESCE(%s::integer, email_account_id),
                    tentativi = tentativi + 1
              WHERE id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [stato, errore, inviato_at, inviato_at, log_id])
+            cursor.execute(
+                sql, [stato, errore, inviato_at, inviato_at, email_account_id, log_id],
+            )
             return cursor.rowcount > 0
 
     # Scopo: Lista log email con filtri, paginazione e conteggio.

@@ -1,8 +1,8 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-20 (il `20261118-01` applicato, verde e committato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-20 (R5 fatto dal BE, da committare)
 
-**Riparte: il team BE/FE**, con R5 del §16.16: il rilancio scrive l'account da cui la mail riparte. Il `20261118-01`
+**Riparte: Tid**, col commit di R5 del §16.16 (BE, test verdi), poi il 7-bis della sessione DB. Il `20261118-01`
 (la porta di chiusura delle mail di sistema riceve `p_email_account_id`) è applicato su dbdev, il pgTAP
 `config/test-fn-email-sistema` è verde (Tid, 2026-11-20), la doc auto-generata è rigenerata ed è committato.
 Il giro 2 (`20261117-23` … `-28`) è applicato su dbdev, i pgTAP sono verdi (Tid, 2026-11-20), la doc auto-generata è
@@ -32,12 +32,12 @@ ripercorrere le stesse strade.
 | 6-quater | ✅ Tid e sessione DB | L'apply del giro 2 e i pgTAP verdi (Tid), la doc auto-generata, il commit (2026-11-20) | §16.14 | 6-ter |
 | 6-quinquies | ✅ sessione DB e Tid | La richiesta del BE sul rilancio: il `20261118-01`, il pgTAP adeguato, la pagina `manual/`; l'apply e il pgTAP verde (Tid), la doc auto-generata, il commit (2026-11-20) | §16.16 | 6-quater |
 | 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
-| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento, QU1-QU5 decise (2026-11-20); ✅ giro 3 (`20261119-01` … `-05`, CSV, pgTAP) applicato su dbdev, pgTAP verdi (Tid, 2026-11-20); ✅ la superficie (`20261119-06` … `-08`) applicata su dbdev, pgTAP verdi (Tid, 2026-11-20); ⏳ R-UI al team BE/FE, la doc auto-generata | §16.15 | 6-quater |
-| 7-ter | team BE/FE | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; ora sbloccato | §16.16 | 6-quinquies |
+| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento scritto, ✅ QU1-QU4 decise (2026-11-20); ⏳ il giro | §16.15 | 6-quater |
+| 7-ter | ✅ team BE/FE, poi Tid | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; fatti e verdi (2026-11-20); ⏳ il commit | §16.16 | 6-quinquies |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quinquies, 7, 7-ter |
 
 **Decisioni di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue (§16.16, il DB è fatto).
-**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** niente. **Committato il 2026-11-20:** il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
+**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** R5, R5-doc e R5-test (§16.16, l'esito sotto la richiesta). **Committato il 2026-11-20:** il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -1650,3 +1650,22 @@ rimedi provvisori.
 | R5 | Il rilancio risolve l'account sul reparto del log quando quello scritto è spento (`config.fn_resolve_email_account`), spedisce con quello e scrive il nuovo id insieme all'esito: sulle righe `SISTEMA` come quinto argomento di `config.fn_chiudi_email_sistema` (`p_email_account_id`, `NULL` = lascia com'è), sulle altre nell'`UPDATE` diretto (la colonna entra nella whitelist delle colonne aggiornabili) | `backend/apps/core/management/commands/send_pending_emails.py`; `backend/apps/core/db/email_repository.py` (`update_log_stato`); `backend/apps/core/services/email_service.py` se passa da lì |
 | R5-doc | La guida dice «per ogni email il command usa l'account SMTP originale (quello con cui l'email era stata preparata)»: dopo R5 non è più vero | `docs/it/guide/gestione-mail.md` §Coda email e retry |
 | R5-test | Una mail di sistema e una di reparto accodate su un account spento: dopo il rilancio il log porta l'account risolto | `backend/apps/core/tests/db/test_email_porta_di_sistema.py`, `backend/apps/core/tests/services/` accanto ai test di `send_pending_emails` |
+
+**Esito del BE (2026-11-20).** ✅ R5, R5-doc e R5-test fatti; da committare.
+
+* `EmailRepository.update_log_stato` riceve `email_account_id` (`None` = lascia com'è): sulle righe `SISTEMA` è il
+  quinto argomento di `config.fn_chiudi_email_sistema`, sulle altre un `COALESCE` nell'`UPDATE` diretto.
+* `EmailDispatchService` lo passa con **ogni** esito (`SENT`, `FAILED`, `SIMULATA`, non configurato), anche alla
+  prima spedizione, dove coincide con l'account scritto all'INSERT.
+* `send_pending_emails` legge il log prima di scegliere l'account (`_account_del_rilancio`): quello del log se è
+  acceso (`get_account_with_password` porta `attivo`), altrimenti `config.fn_resolve_email_account` sul reparto del
+  log. ⚠️ Corretto nello stesso giro: il ripiego senza account sul log chiamava il risolutore **senza** il reparto.
+* Non è servita un'altra richiesta al DB: il reparto lo porta già `EmailRepository.get_log`.
+* `send_raw` non riceve più `email_account_id` a parte: il log prende `account["id"]`, l'account che spedisce.
+  Prima lo stesso dato arrivava da due fonti, che un chiamante poteva far divergere (ok Tid, 2026-11-20).
+* **Lettori censiti** di `email_log.email_account_id` (regola «Una garanzia ritirata si censisce in tutti i
+  lettori», `.codex/AGENTS.md`): il rilancio (adeguato); la conferma della bozza (R1-BE-ter, già adeguata); il
+  dettaglio e la lista del registro (`get_log`, `list_logs`) mostrano codice e mittente dell'account, e non dipendono
+  dal fatto che sia acceso. Il test di connessione legge un account scelto dall'amministratore, non dal log.
+* Test: `test_email_porta_di_sistema` 3 e 4 (DB vero, contesto del processo, sulle due porte) e
+  `test_email_service` 26 e 27 (ogni esito del rilancio, e il log del primo invio, portano l'account). Guida `gestione-mail.md` §Coda email e retry.

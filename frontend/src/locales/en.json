@@ -6346,8 +6346,7 @@
         "titolare_soggetto": "the party",
         "titolare_ruolo": "the role",
         "titolare_servizio": "the {utility} service",
-        "titolare_servizio_generico": "the service",
-        "verso_come_origine": "{titolare}, where the source address is"
+        "titolare_servizio_generico": "the service"
       }
     },
     "soggetti": {

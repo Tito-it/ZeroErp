@@ -332,7 +332,6 @@ class EmailDispatchService:
             oggetto=oggetto,
             corpo_html=corpo_html,
             corpo_testo=corpo_testo,
-            email_account_id=account["id"],
             email_template_id=template["id"],
             ambito=ambito,
             unita_organizzativa_id=unita_organizzativa_id,
@@ -354,7 +353,11 @@ class EmailDispatchService:
         oggetto: str,
         corpo_html: str,
         corpo_testo: str | None = None,
-        email_account_id: int | None = None,
+        # ⛔ L'account del log NON e' un parametro: e' `account["id"]`, cioe'
+        #    l'account con cui la mail parte. Fino al 2026-11-20 arrivava anche
+        #    come `email_account_id` separato — lo stesso dato da due fonti, che
+        #    un chiamante poteva far divergere scrivendo sul log un account
+        #    diverso da quello che spediva.
         email_template_id: int | None = None,
         # ⛔ Nessun default, come su `create_outbox` (2026-09-05). `ambito`
         #    classifica A CHI APPARTIENE l'email, ed e' la colonna su cui il
@@ -380,7 +383,7 @@ class EmailDispatchService:
     ) -> tuple[int, bool]:
         # Crea record log con stato PENDING
         log_id = self._repo.insert_log(
-            email_account_id=email_account_id,
+            email_account_id=account["id"],
             email_template_id=email_template_id,
             destinatario=destinatario,
             destinatari_cc=destinatari_cc,
@@ -417,7 +420,9 @@ class EmailDispatchService:
             #    che data una CONSEGNA, e scriverla qui sposterebbe la bugia di
             #    una casella invece di toglierla. Il momento della stampa e' gia'
             #    in `data_insert`.
-            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
+            self._repo.update_log_stato(
+                log_id, "SIMULATA", ambito=ambito, email_account_id=account["id"],
+            )
             return log_id, True
 
         success = self._send_smtp(
@@ -450,6 +455,7 @@ class EmailDispatchService:
                 self._repo.update_log_stato(
                     log_id, "FAILED", ambito=ambito,
                     errore="Password SMTP non configurata per l'account.",
+                    email_account_id=account["id"],
                 )
                 return False
             password = crypto_service.decrypt(encrypted_pw)
@@ -478,7 +484,10 @@ class EmailDispatchService:
             server.sendmail(account["email_from"], all_recipients, msg.as_string())
 
             now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
+            self._repo.update_log_stato(
+                log_id, "SENT", ambito=ambito, inviato_at=now,
+                email_account_id=account["id"],
+            )
             logger.info("Email inviata: log_id=%s dest=%s", log_id, destinatario)
             return True
 
@@ -489,6 +498,7 @@ class EmailDispatchService:
             errore = descrivi_errore_smtp(exc, account) if isinstance(exc, smtplib.SMTPException) else str(exc)
             self._repo.update_log_stato(
                 log_id, "FAILED", ambito=ambito, errore=errore[:500],
+                email_account_id=account["id"],
             )
             logger.exception("Errore invio email: log_id=%s dest=%s", log_id, destinatario)
             return False
@@ -548,7 +558,10 @@ class EmailDispatchService:
     ) -> None:
         motivo = _motivo_non_configurato(account)
         logger.error("Email NON inviata: log_id=%s %s", log_id, motivo)
-        self._repo.update_log_stato(log_id, "FAILED", ambito=ambito, errore=motivo)
+        self._repo.update_log_stato(
+            log_id, "FAILED", ambito=ambito, errore=motivo,
+            email_account_id=account["id"],
+        )
 
     # Scopo: Logga email in console (modalita' DEBUG senza SMTP reale).
     def _send_console(
@@ -612,7 +625,9 @@ class EmailDispatchService:
             #    fa `COALESCE(p_inviato_at, l.inviato_at)`, quindi NON passarlo
             #    conserva quello vecchio invece di sovrascriverlo con una data
             #    che descriverebbe una consegna mai avvenuta.
-            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
+            self._repo.update_log_stato(
+                log_id, "SIMULATA", ambito=ambito, email_account_id=account["id"],
+            )
             return True
         return self._send_smtp(
             account,

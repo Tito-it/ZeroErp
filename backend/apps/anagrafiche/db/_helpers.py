@@ -76,16 +76,16 @@ COLONNE_INDIRIZZO_RESOLVED = """v.indirizzo_id AS id,
            v.piano,
            v.interno"""
 
-# Scopo: Il motivo di riga di «Copia come…», dalla vista di azioni del layer
-#        della riga (alias `a`): e' la superficie dell'azione nel registro
-#        `config.azioni_riga` (COPIA_INDIRIZZO_SOGGETTO / COPIA_INDIRIZZO_RUOLO).
-#        NULL = la copia si puo' proporre. Una riga della cascata del ruolo che
-#        viene dal soggetto si copia col verbo del soggetto: il suo motivo e'
-#        quello della vista del soggetto.
+# Scopo: Il motivo di riga di «Copia come…» in contesto SOGGETTO, dalla vista
+#        di azioni del soggetto (alias `a`): e' la superficie dell'azione
+#        `COPIA_INDIRIZZO_SOGGETTO` nel registro `config.azioni_riga`.
+#        NULL = la copia si puo' proporre.
+# ⛔ La lista del RUOLO non lo porta (D-4 di brief-db-copia-indirizzo-
+#    destinazione, 2026-11-20): li' la copia va sulla chiave del drawer, il
+#    motivo «nessun tipo» e' uguale per ogni riga e lo dice il picker della
+#    destinazione. `JOIN_COPIA_RUOLO` e la vista `vw_indirizzi_ruolo_azioni`
+#    sono ritirati.
 COLONNE_COPIA = "a.copia_blocco_reason, a.copia_blocco_reason_key"
-JOIN_COPIA_RUOLO = (
-    "LEFT JOIN anagrafiche.vw_indirizzi_ruolo_azioni a ON a.indirizzo_id = v.indirizzo_id"
-)
 JOIN_COPIA_SOGGETTO = (
     "LEFT JOIN anagrafiche.vw_indirizzi_soggetti_azioni a ON a.indirizzo_soggetto_id = v.indirizzo_id"
 )

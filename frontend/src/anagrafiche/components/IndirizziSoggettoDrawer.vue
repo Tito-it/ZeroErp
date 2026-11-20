@@ -17,7 +17,7 @@ import {
   listSoggettoIndirizzi, createSoggettoIndirizzo, replaceSoggettoIndirizzo,
   listRuoloIndirizzi, createRuoloIndirizzo, replaceRuoloIndirizzo, deleteRuoloIndirizzo,
   listSoggettoTipiIndirizzo, listRuoloTipiIndirizzo,
-  copiaSoggettoIndirizzo, copiaRuoloIndirizzo,
+  copiaSoggettoIndirizzo, copiaRuoloIndirizzo, copiaSoggettoIndirizzoSuRuolo,
 } from '../api/anagrafiche'
 import { useAzioneRiga } from '../../core/composables/useAzioneRiga'
 import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
@@ -56,12 +56,21 @@ const props = defineProps({
 
 const isRuolo = computed(() => props.context === 'ruolo')
 
+// La CHIAVE del drawer in contesto ruolo, come la chiedono lista e picker: il
+// servizio aperto (`istanzaUtilityId`) o, senza, il ruolo. E' anche la
+// destinazione di «Aggiungi» e di «Copia come…».
+const paramsChiave = () => (props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {})
+
 const emit = defineEmits(['update:visible', 'saved', 'select'])
 
 // Lista indirizzi esistenti
 const indirizziList = ref([])
 const listLoading = ref(false)
 const matriceCompleta = ref([])
+// Il picker ha RISPOSTO: una matrice vuota perche' la lettura e' fallita (o non
+// e' ancora arrivata) non e' «nessun tipo ammesso», e non spegne «Copia come…»
+// con un motivo che il DB non ha detto.
+const matriceCaricata = ref(false)
 
 // Modalita' form: null = lista, 'create' = aggiungi, 'edit' = cambia. La
 // macchina e' il BB core `useFormInline` (sede unica, ok Tid 2026-09-28).
@@ -95,8 +104,7 @@ async function loadIndirizzi() {
   listLoading.value = true
   try {
     if (isRuolo.value) {
-      const listParams = props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {}
-      const res = await listRuoloIndirizzi(props.soggettoId, listParams)
+      const res = await listRuoloIndirizzi(props.soggettoId, paramsChiave())
       const payload = res.data?.data
       if (payload?.indirizzi_ruolo) {
         // Il backend gia' include 'fonte' (utility/ruolo/soggetto) nei dict
@@ -134,14 +142,13 @@ async function loadIndirizzi() {
 //    (ignorava la validita' delle righe di matrice, §3.1 del brief).
 async function loadMatrice() {
   if (!props.soggettoId) return
+  matriceCaricata.value = false
   try {
     const res = isRuolo.value
-      ? await listRuoloTipiIndirizzo(
-        props.soggettoId,
-        props.istanzaUtilityId ? { istanza_utility_id: props.istanzaUtilityId } : {},
-      )
+      ? await listRuoloTipiIndirizzo(props.soggettoId, paramsChiave())
       : await listSoggettoTipiIndirizzo(props.soggettoId)
     matriceCompleta.value = res.data?.data?.results || []
+    matriceCaricata.value = true
   } catch {
     matriceCompleta.value = []
   }
@@ -185,21 +192,33 @@ const addressNotFound = computed(() =>
 
 // === Azioni ===
 
-// «Copia come…» (R-4 di brief-db-copia-indirizzo-soggetto). Il motivo che la
-// spegne lo dice il REGISTRO delle azioni di riga (BB `useAzioneRiga`): quali
-// colonne della riga lo portano, e la sua chiave. Il layer decide il verbo:
-// le righe del ruolo (e dell'istanza) col verbo del ruolo, quelle del soggetto
-// — anche quando arrivano dalla cascata del ruolo — col verbo del soggetto.
+// «Copia come…»: la copia va sulla CHIAVE DEL DRAWER (D-1 di
+// brief-db-copia-indirizzo-destinazione), cioe' dove l'operatore sta lavorando.
+// - Contesto soggetto: la chiave e' il soggetto. Il motivo che spegne l'azione
+//   e' di riga, dal REGISTRO delle azioni (BB `useAzioneRiga`).
+// - Contesto ruolo: la chiave e' il ruolo o il servizio aperto, per OGNI riga
+//   della cascata (del servizio, del ruolo, del soggetto). Il motivo non e' di
+//   riga (D-4): se la chiave non ammette nessun tipo, «Copia come…» si spegne
+//   insieme ad «Aggiungi», dal picker della destinazione (`matriceCompleta`).
+//   ⚠️ Solo se il picker ha risposto (`matriceCaricata`): se la lettura e'
+//   fallita l'azione resta accesa, e il clic rilegge il picker con l'errore a video.
 const azioneCopiaSoggetto = useAzioneRiga('COPIA_INDIRIZZO_SOGGETTO')
-const azioneCopiaRuolo = useAzioneRiga('COPIA_INDIRIZZO_RUOLO')
 const rigaDelRuolo = (ind) => isRuolo.value && ind.fonte !== 'soggetto'
+
+function copiaBloccata(ind) {
+  if (!isRuolo.value) return azioneCopiaSoggetto.bloccata(ind)
+  return matriceCaricata.value && matriceDisponibile.value.length === 0
+}
+function motivoCopia(ind) {
+  if (!isRuolo.value) return azioneCopiaSoggetto.motivo(ind)
+  return copiaBloccata(ind) ? t('anagrafiche.indirizzi.copia_blocco.nessun_tipo_proponibile') : undefined
+}
 
 // Le azioni della card, nel kebab (RowActionsMenu): «Cambia» e «Elimina» dove
 // la riga e' del layer che il drawer gestisce, «Copia come…» su ogni riga.
 function azioniRiga(ind) {
   const visibile = !formMode.value && !isReadonly.value
   const editabile = !isRuolo.value || rigaDelRuolo(ind)
-  const copia = rigaDelRuolo(ind) ? azioneCopiaRuolo : azioneCopiaSoggetto
   const labelCopia = t('anagrafiche.indirizzi.copia.azione')
   return [
     {
@@ -214,8 +233,8 @@ function azioniRiga(ind) {
       label: labelCopia,
       icon: MANAGE_ICONS.CLONE,
       visible: visibile,
-      disabled: copia.bloccata(ind),
-      tooltip: copia.motivo(ind) || labelCopia,
+      disabled: copiaBloccata(ind),
+      tooltip: motivoCopia(ind) || labelCopia,
       command: () => onStartCopia(ind),
     },
     {
@@ -233,53 +252,64 @@ const copiaVisible = ref(false)
 const copiaRiga = ref(null)
 const copiaTipi = ref([])
 
-// I tipi in cui copiare: il picker del layer della riga. Per il ruolo, la
-// chiave e' la sua (ruolo o istanza della sorgente): la copia resta li'.
+// I tipi in cui copiare: il picker della DESTINAZIONE, cioe' della chiave del
+// drawer, riletto all'apertura della dialog. Non dipende dalla riga scelta.
 async function onStartCopia(ind) {
-  const tipi = await execute(() => (rigaDelRuolo(ind)
-    ? listRuoloTipiIndirizzo(
-      props.soggettoId,
-      ind.istanza_utility_id ? { istanza_utility_id: ind.istanza_utility_id } : {},
-    )
-    : listSoggettoTipiIndirizzo(isRuolo.value ? ind.soggetto_id : props.soggettoId)))
+  const tipi = await execute(() => (isRuolo.value
+    ? listRuoloTipiIndirizzo(props.soggettoId, paramsChiave())
+    : listSoggettoTipiIndirizzo(props.soggettoId)))
   if (tipi === null) return
   copiaRiga.value = ind
   copiaTipi.value = tipi?.results || []
   copiaVisible.value = true
 }
 
+// Scopo: Un servizio come lo legge chi copia: col codice della sua utility,
+//        quando la lista lo porta.
+function titolareServizio(utilityCodice) {
+  return utilityCodice
+    ? t('anagrafiche.indirizzi.copia.titolare_servizio', { utility: utilityCodice })
+    : t('anagrafiche.indirizzi.copia.titolare_servizio_generico')
+}
+
 // Scopo: Il titolare di una riga, come lo legge chi copia: il soggetto, il
 //        ruolo o il servizio (l'istanza, col codice della sua utility).
 function titolareRiga(ind) {
   if (!rigaDelRuolo(ind)) return t('anagrafiche.indirizzi.copia.titolare_soggetto')
-  if (ind.fonte === 'istanza') {
-    return ind.utility_codice
-      ? t('anagrafiche.indirizzi.copia.titolare_servizio', { utility: ind.utility_codice })
-      : t('anagrafiche.indirizzi.copia.titolare_servizio_generico')
-  }
+  if (ind.fonte === 'istanza') return titolareServizio(ind.utility_codice)
   return t('anagrafiche.indirizzi.copia.titolare_ruolo')
 }
-// Da dove e verso dove, per la dialog. ⚠️ La destinazione e' il titolare
-// della SORGENTE: il verbo del DB copia nello stesso ruolo e nella stessa
-// istanza della riga (`fn_copia_indirizzo_ruolo`), non sulla chiave del
-// drawer. La copia sulla chiave del drawer e' la richiesta B al team DB
-// (brief-db-copia-indirizzo-destinazione): quando c'e', cambia qui.
+
+// Da dove e verso dove, per la dialog. La destinazione e' la chiave del
+// drawer: il soggetto, il ruolo o il servizio aperto. Il codice dell'utility
+// del servizio lo portano le sue righe (`fonte = 'istanza'`): senza righe, il
+// servizio si nomina senza codice.
 const copiaOrigine = computed(() => copiaRiga.value && {
   tipo: copiaRiga.value.tipo_indirizzo_descrizione,
   indirizzo: copiaRiga.value.indirizzo_display || copiaRiga.value.indirizzo_libero || '',
   titolare: titolareRiga(copiaRiga.value),
 })
-const copiaDestinazione = computed(() => (copiaRiga.value
-  ? t('anagrafiche.indirizzi.copia.verso_come_origine', { titolare: titolareRiga(copiaRiga.value) })
-  : ''))
+const copiaDestinazione = computed(() => {
+  if (!copiaRiga.value) return ''
+  if (!isRuolo.value) return t('anagrafiche.indirizzi.copia.titolare_soggetto')
+  if (!props.istanzaUtilityId) return t('anagrafiche.indirizzi.copia.titolare_ruolo')
+  return titolareServizio(indirizziList.value.find(i => i.fonte === 'istanza')?.utility_codice)
+})
+
+// Il verbo della copia: in contesto soggetto quello del soggetto; in contesto
+// ruolo quello del layer della SORGENTE (una riga del ruolo, o una del
+// soggetto col gemello), sempre con la chiave del drawer come destinazione.
+function chiamaCopia(ind, codici) {
+  if (!isRuolo.value) return copiaSoggettoIndirizzo(props.soggettoId, ind.id, codici)
+  const verbo = rigaDelRuolo(ind) ? copiaRuoloIndirizzo : copiaSoggettoIndirizzoSuRuolo
+  return verbo(props.soggettoId, ind.id, codici, props.istanzaUtilityId)
+}
 
 async function onConfermaCopia(codici) {
   const ind = copiaRiga.value
   if (!ind || codici.length === 0) return
   const result = await execute(
-    () => (rigaDelRuolo(ind)
-      ? copiaRuoloIndirizzo(props.soggettoId, ind.id, codici)
-      : copiaSoggettoIndirizzo(isRuolo.value ? ind.soggetto_id : props.soggettoId, ind.id, codici)),
+    () => chiamaCopia(ind, codici),
     { successMessage: t('anagrafiche.indirizzi.copia.fatta', { n: codici.length }, codici.length) },
   )
   if (result !== null) {
@@ -470,7 +500,10 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
       </div>
 
       <div v-else-if="indirizziList.length > 0" class="indirizzi-list">
-        <div v-for="ind in indirizziList" :key="ind.id" class="indirizzo-select-row">
+        <!-- ⚠️ La chiave porta la fonte: in contesto ruolo la cascata unisce righe
+             di `indirizzi` e di `indirizzi_soggetti`, due tabelle con id propri
+             che possono coincidere. -->
+        <div v-for="ind in indirizziList" :key="`${ind.fonte || 'soggetto'}-${ind.id}`" class="indirizzo-select-row">
         <div
           class="indirizzo-card" :class="{ 'indirizzo-card-soggetto': ind.fonte === 'soggetto', 'indirizzo-card-ruolo': ind.fonte === 'ruolo' || ind.fonte === 'istanza' }">
           <div class="indirizzo-card-content">
@@ -489,7 +522,8 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
             </div>
           </div>
           <!-- Azioni della card nel kebab (R-4): Cambia, Copia come… (spenta
-               col motivo del registro), Elimina sulle righe del ruolo. -->
+               col motivo: di riga sul soggetto, della chiave sul ruolo),
+               Elimina sulle righe del ruolo. -->
           <div v-if="!formMode && !isReadonly" class="indirizzo-card-actions">
             <RowActionsMenu :row="ind" :actions="azioniRiga(ind)" force-compact />
           </div>

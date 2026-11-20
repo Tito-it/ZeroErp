@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -372,8 +372,17 @@ python manage.py send_pending_emails --dry-run
 python manage.py send_pending_emails --limit 10
 ```
 
-Schedulabile come cron job (pgAgent o crontab). Per ogni email il command
-usa l'account SMTP originale (quello con cui l'email era stata preparata).
+Lo sveglia un timer systemd (`zeroerp-send-pending-emails.timer`, vedi
+`backend/deploy/sveglie.json`).
+
+**L'account segue l'invio.** Per ogni email il command riparte dall'account
+scritto sul registro, se è ancora acceso. Se è stato spento (un account che ha
+spedito si spegne e non si cancella), o se il registro non ne ha uno, sceglie di
+nuovo l'account del reparto della mail, con il ripiego sull'account di sistema,
+come alla prima spedizione. L'esito del tentativo scrive sul registro l'account
+da cui la mail è ripartita: il registro dice da dove la mail è partita, non con
+quale account era stata preparata. Se nessun account acceso è disponibile, la
+mail resta `FAILED` col motivo.
 
 ---
 
