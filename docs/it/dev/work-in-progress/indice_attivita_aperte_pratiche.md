@@ -31,6 +31,7 @@
 - CONTRATTO: decisione di dominio aperta a monte (quale transizione è il milestone — F3)
 - ORDINE: cutover imperativo→dichiarativo (neutralizzare `_completa_flusso_ordine_pratica`, R2) + nodo àncora Forma C
 - R1: coordinare G-est.2 con fix-transazioni (finding #4/#5/#10) sullo stesso branch
+- Ereditate dal brief-padre proiezione-stato-dominio (archiviato 2026-11-20): validazione E2E in-app di MOSTRA su PREVENTIVI; D4, il `COLLEGATO` senza flusso sulla card del passo; §10.3 «azioni» nel descrittore
 - F4: verificare per dominio che MOSTRA-display BE/FE non sia solo-preventivi
 
 ### 3. [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md)
@@ -42,22 +43,15 @@
 - V3 — Preset per settore + fork: design da generare (priorità media-alta)
 - V4 — UI amministrazione workflow: BE pronto, resta l'editor FE (Fase 3) da generare
 - V5 — Ispettore read-only discoverability opzioni: da generare (gemella di V4)
-- V10 — Proiezione stato dominio: restano validazione E2E in-app MOSTRA e roll-out agli altri domini
+- V10 — Proiezione stato dominio: brief di design archiviato (2026-11-20); i residui e il roll-out di GUIDA stanno nel brief GUIDA multi-dominio (doc 2)
 - Cantiere `config.esiti_flussi_pratiche` (esiti data-driven bivio SMISTAMENTO): da finire
 - V7 — AI copilota di configurazione: visione futura, non ora
 
 ## Importanza MEDIA
 
-### 4. [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
+### 4. [brief-design-proiezione-stato-dominio.md](../work-done/brief-design-proiezione-stato-dominio.md) — archiviato
 
-**Descrizione**: brief di design (2026-07-01) sulla proiezione del descrittore normalizzato `fase`/`esito`/`terminale` del documento di dominio nella pratica. MOSTRA e GUIDA già implementate su PREVENTIVI; i residui sono in gran parte assorbiti dal brief roll-out multidominio (doc 2).
-
-**Attività aperte**:
-
-- Validazione E2E in-app di MOSTRA su PREVENTIVI
-- §10.3 "azioni" nel descrittore (fase successiva, dopo MOSTRA)
-- Indice a espressione `((uid::text))` per dominio al crescere dei volumi
-- Promuovere la "regola dell'ancora" da frammento Python a vista DB condivisa (`vw_pratica_doc_sorgente`)
+**Descrizione**: brief di design (2026-07-01) sulla proiezione di `fase`/`esito`/`terminale` del documento nella pratica. Archiviato il 2026-11-20: il modello sta nella guida Gestione Pratiche (§«Lo stato del documento nella pratica (MOSTRA)»), i residui aperti sono passati al doc 2. Chiuse le due voci tecniche che erano qui: la regola d'ancora ha le sue sedi DB (`script.vw_pratica_doc_sorgente`, `script.vw_flusso_doc_sorgente`); gli indici `((uid::text))` non servono più, perché i lettori cercano sulle chiavi native.
 
 ### 5. [analisi-gestione-operativa-attivita.md](analisi-gestione-operativa-attivita.md)
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset_colonna`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,9 +58,11 @@ alla regola ATTIVO: spegnere il preset o la colonna del catalogo non si ferma qu
 mostrare lo decide il resolver. Cancellare il preset cancella le righe; una colonna del catalogo
 citata da un preset non si cancella (FK senza azione).
 
-Ogni riga aggiunta, tolta o cambiata sposta la data del contenuto del preset
-([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)); la
-riscrittura di una riga uguale no.
+Una composizione cambiata sposta la chiave `colonne` della data del contenuto del preset. Lo
+giudica a fine transazione un trigger differito
+([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)),
+sull'impronta della composizione: il servizio di amministrazione salva la composizione cancellando
+tutte le righe e reinserendole, e una composizione salvata uguale non sposta niente.
 
 ---
 
@@ -70,9 +72,6 @@ riscrittura di una riga uguale no.
   lista del preset. Una riga che cita la colonna di un'altra lista entra; il resolver la abbina per
   codice alle colonne della lista del preset, e se un codice uguale c'è prende ordine e larghezza
   di una colonna diversa, altrimenti la scarta in silenzio.
-* **La sostituzione in blocco.** Il servizio di amministrazione salva la composizione
-  cancellando tutte le righe e reinserendole: anche una composizione salvata uguale sposta la data
-  del contenuto e accende il banner «preset aggiornato» a chi ha una preferenza su quel preset.
 
 ---
 
@@ -86,7 +85,10 @@ amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 ### Test
 
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — riga riscritta uguale,
-  cambiata, aggiunta e tolta: la data del contenuto del preset.
+  cambiata, aggiunta e tolta: la chiave `colonne` della data del contenuto; coi vincoli differiti,
+  DELETE + INSERT delle stesse righe non sposta niente.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-installazione-v1.sql` — la composizione di un preset di
+  seed riscritta uguale non lo personalizza.
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — le colonne del preset nella cascata.
 * `db/pgtap/ui/test-liste-preset-default-v1.sql` — il preset di default di ogni lista del seed ha
   le sue colonne.
@@ -99,6 +101,8 @@ amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 * 2026-11-01 — le righe spostano la data del preset, con un trigger condiviso con i widget dei
   preset di dashboard.
 * 2026-11-08 — le due FK entrano fra le eccezioni ATTIVO come righe di composizione.
+* 2026-11-20 — la composizione si giudica a fine transazione, sull'impronta: la sostituzione in
+  blocco di una composizione uguale non sposta più la data.
 
 ---
 

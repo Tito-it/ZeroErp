@@ -1,0 +1,175 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preferenza_preset_base_snapshot: lo snapshot per chiave, e
+#   «Ignora» e' un riallineamento.
+#   Brief: brief-db-revisione-ui (giro 1b: U6 con Q29, Q38. Decise da Tid il
+#   2026-11-20).
+#
+# Che cosa cambia: lo snapshot e' la copia della mappa {chiave: data} del preset
+#   di base (20261120-04); l'ignorato non c'e' piu' (Q38), quindi il ramo che lo
+#   azzerava esce. Chiudere il banner e' una scrittura che nomina
+#   preset_base_id, anche con lo stesso valore: lo snapshot si riallinea. Il
+#   resto identico a 20261119-14.
+# I due trigger: -04 li ha tolti (bloccavano l'ALTER TYPE con UPDATE OF), qui si
+#   rimontano. Quello delle dashboard nasceva con un nome di 67 caratteri,
+#   troncato da PostgreSQL in ..._snapshot_ins: i due gemelli prendono un nome
+#   che sta nei 63 (linee-guida-trigger, «Il nome del trigger»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-09-update-trgfn-preferenza-preset-base-snapshot-per-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261120-09-update-trgfn-preferenza-preset-base-snapshot-per-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preferenza_preset_base_snapshot: lo snapshot per chiave, senza l'ignorato; i due trigger
+        rimontati. Brief: brief-db-revisione-ui (giro 1b, U6, Q38).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preferenza_utente'), to_regclass('ui.dashboard_preferenza_utente'))
+                 AND attname = 'preset_aggiornato_ignored_at' AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_preset_base_snapshot()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: lo snapshot del preset di base della preferenza lo scrive
+              --   il DB: la copia della data del contenuto per chiave del preset di
+              --   base ({chiave: data}), letta dalla tabella dei preset
+              --   (TG_ARGV[0]). Il valore che arriva da chi scrive non conta: ogni
+              --   scrittura che nomina preset_base_id o lo snapshot riallinea, ed e'
+              --   cosi' che si chiude il banner del preset aggiornato.
+              -- Montaggio: BEFORE INSERT OR UPDATE OF preset_base_id,
+              --   preset_base_contenuto_aggiornato_il FOR EACH ROW.
+              DECLARE
+                  -- regclass nudo: la tabella dei preset, dall'argomento
+                  v_tabella_preset regclass;
+                  v_contenuto      ui.lista_preset.contenuto_aggiornato_il%TYPE;
+              BEGIN
+                  v_tabella_preset := to_regclass(TG_ARGV[0]);
+                  IF v_tabella_preset IS NULL
+                     OR v_tabella_preset NOT IN ('ui.lista_preset'::regclass, 'ui.dashboard_preset'::regclass) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'tgargs',    to_jsonb(TG_ARGV),
+                              'dettaglio', 'atteso ui.lista_preset o ui.dashboard_preset'),
+                          NULL::uuid,
+                          format('%s: atteso ui.lista_preset o ui.dashboard_preset', TG_NAME));
+                  END IF;
+
+                  IF NEW.preset_base_id IS NULL THEN
+                      v_contenuto := NULL;
+                  ELSIF v_tabella_preset = 'ui.lista_preset'::regclass THEN
+                      SELECT lp.contenuto_aggiornato_il INTO v_contenuto
+                        FROM ui.lista_preset lp WHERE lp.id = NEW.preset_base_id;
+                  ELSE
+                      SELECT dp.contenuto_aggiornato_il INTO v_contenuto
+                        FROM ui.dashboard_preset dp WHERE dp.id = NEW.preset_base_id;
+                  END IF;
+
+                  NEW.preset_base_contenuto_aggiornato_il := v_contenuto;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preferenza_preset_base_snapshot() IS
+                  'Sulle due preferenze (ui.lista_preferenza_utente, ui.dashboard_preferenza_utente) lo snapshot del preset di base lo scrive il DB: preset_base_contenuto_aggiornato_il = la copia di contenuto_aggiornato_il del preset preset_base_id, un oggetto {chiave: data}, letta dalla tabella dei preset TG_ARGV[0] (ui.lista_preset o ui.dashboard_preset); NULL senza base. Il valore che arriva da chi scrive non conta: ogni scrittura che nomina preset_base_id o lo snapshot e'' un riallineamento, e riscrivere lo stesso preset_base_id e'' il modo di chiudere il banner del preset aggiornato (ui.fn_preset_aggiornato). BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il FOR EACH ROW. Argomento fuori dai due: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_preset_base_snapshot_ins_upd
+                  ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins
+                  ON ui.dashboard_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd
+                  ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd
+                  ON ui.dashboard_preferenza_utente;
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd
+                  BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il
+                  ON ui.lista_preferenza_utente
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset');
+              CREATE TRIGGER trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd
+                  BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il
+                  ON ui.dashboard_preferenza_utente
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd
+                  ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd
+                  ON ui.dashboard_preferenza_utente;
+
+              CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_preset_base_snapshot()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: lo snapshot del preset di base della preferenza lo scrive
+              --   il DB: la data del contenuto del preset di base, letta dalla
+              --   tabella dei preset (TG_ARGV[0]). Il valore che arriva da chi
+              --   scrive non conta. Se la base cambia, l'ignorato si azzera.
+              -- Montaggio: BEFORE INSERT OR UPDATE OF preset_base_id,
+              --   preset_base_contenuto_aggiornato_il FOR EACH ROW.
+              DECLARE
+                  -- regclass nudo: la tabella dei preset, dall'argomento
+                  v_tabella_preset regclass;
+                  v_contenuto      ui.lista_preset.contenuto_aggiornato_il%TYPE;
+              BEGIN
+                  v_tabella_preset := to_regclass(TG_ARGV[0]);
+                  IF v_tabella_preset IS NULL
+                     OR v_tabella_preset NOT IN ('ui.lista_preset'::regclass, 'ui.dashboard_preset'::regclass) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'tgargs',    to_jsonb(TG_ARGV),
+                              'dettaglio', 'atteso ui.lista_preset o ui.dashboard_preset'),
+                          NULL::uuid,
+                          format('%s: atteso ui.lista_preset o ui.dashboard_preset', TG_NAME));
+                  END IF;
+
+                  IF NEW.preset_base_id IS NULL THEN
+                      v_contenuto := NULL;
+                  ELSIF v_tabella_preset = 'ui.lista_preset'::regclass THEN
+                      SELECT lp.contenuto_aggiornato_il INTO v_contenuto
+                        FROM ui.lista_preset lp WHERE lp.id = NEW.preset_base_id;
+                  ELSE
+                      SELECT dp.contenuto_aggiornato_il INTO v_contenuto
+                        FROM ui.dashboard_preset dp WHERE dp.id = NEW.preset_base_id;
+                  END IF;
+
+                  NEW.preset_base_contenuto_aggiornato_il := v_contenuto;
+
+                  IF TG_OP = 'INSERT' OR NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
+                      NEW.preset_aggiornato_ignored_at := NULL;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preferenza_preset_base_snapshot() IS
+                  'Sulle due preferenze (ui.lista_preferenza_utente, ui.dashboard_preferenza_utente) lo snapshot del preset di base lo scrive il DB: preset_base_contenuto_aggiornato_il = la data del contenuto del preset preset_base_id, letta dalla tabella dei preset TG_ARGV[0] (ui.lista_preset o ui.dashboard_preset); NULL senza base. Il valore che arriva da chi scrive non conta: ogni scrittura che nomina preset_base_id o lo snapshot e'' un riallineamento. Se la base cambia (o all''INSERT), preset_aggiornato_ignored_at si azzera: si riferiva alla base di prima. BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il FOR EACH ROW. Argomento fuori dai due: E_TRIGGER_ARGOMENTI_INVALIDI.';

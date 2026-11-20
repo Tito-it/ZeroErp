@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_preset_aggiornato: il banner del preset aggiornato per chiave.
+#   Brief: brief-db-revisione-ui (giro 1b: U6 con Q4 e Q29; Q38. Decise da Tid il
+#   2026-11-18 e il 2026-11-20).
+#
+# Che cosa cambia:
+#   - snapshot e contenuto sono mappe {chiave: data} (20261120-04); il chiamante
+#     passa le chiavi da guardare, quelle che la preferenza imposta (origine
+#     'preferenza'): una chiave che segue gia' il preset non accende il banner;
+#   - restituisce l'elenco delle chiavi in banner, vuoto e mai NULL; il booleano
+#     e' cardinality(...) > 0, e lo calcolano i resolver;
+#   - l'ignorato esce (Q38): chiudere il banner e' riallineare lo snapshot.
+# Firma cambiata: DROP della vecchia (timestamptz, timestamptz, timestamptz) e
+#   CREATE, una sola firma per nome (linee-guida-sql §5f). Chiamanti: i due
+#   resolver (20261120-10, -11), plpgsql, che non la bloccano. La verifica
+#   ui/test-fn-preset-di-base-v1 (test 1-4), riscritto nello stesso giro.
+# STABLE, non piu' IMMUTABLE: la lettura di una data da testo (::timestamptz)
+#   e' STABLE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-07-update-fn-preset-aggiornato-per-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261120-07-update-fn-preset-aggiornato-per-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_preset_aggiornato: le chiavi del banner, da snapshot e contenuto per chiave. Brief:
+        brief-db-revisione-ui (giro 1b, U6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preset'), to_regclass('ui.lista_preferenza_utente'))
+                 AND attname IN ('contenuto_aggiornato_il', 'preset_base_contenuto_aggiornato_il')
+                 AND atttypid = 'jsonb'::regtype
+                 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_preset_aggiornato(timestamptz, timestamptz, timestamptz);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_preset_aggiornato(
+                  -- lo snapshot del preset di base salvato con la preferenza, {chiave: data}
+                  p_snapshot  ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE,
+                  -- la data del contenuto del preset di base, oggi, {chiave: data}
+                  p_contenuto ui.lista_preset.contenuto_aggiornato_il%TYPE,
+                  -- text[]: le chiavi da guardare, quelle che la preferenza imposta; non il riflesso di una colonna
+                  p_chiavi    text[])
+               -- text[]: un sottoinsieme di p_chiavi
+               RETURNS text[]
+               LANGUAGE sql
+               STABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT COALESCE(array_agg(k.chiave ORDER BY k.chiave), ARRAY[]::text[])
+                    FROM unnest(fn_preset_aggiornato.p_chiavi) AS k(chiave)
+                   WHERE (fn_preset_aggiornato.p_contenuto ->> k.chiave)::timestamptz
+                       > (fn_preset_aggiornato.p_snapshot  ->> k.chiave)::timestamptz;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_preset_aggiornato(jsonb, jsonb, text[]) IS
+                  'Il banner del preset aggiornato, per liste e dashboard: le chiavi di p_chiavi per cui il contenuto del preset di base (p_contenuto, contenuto_aggiornato_il del preset) e'' piu'' recente dello snapshot salvato con la preferenza (p_snapshot, preset_base_contenuto_aggiornato_il). Il chiamante passa le chiavi che la preferenza imposta: una chiave che segue gia'' il preset non entra. Elenco ordinato, vuoto e mai NULL; vuoto se manca lo snapshot, il contenuto o la chiave in uno dei due. Chiudere il banner e'' riallineare lo snapshot (ui.trgfn_preferenza_preset_base_snapshot). Il chiamante lo chiede solo quando la base salvata e'' la base di oggi: una base diversa e'' un altro esito (preset_base_cambiato). La leggono ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_preset_aggiornato(jsonb, jsonb, text[]);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_preset_aggiornato(
+                  -- la data del contenuto salvata con la preferenza
+                  p_snapshot  timestamptz,
+                  -- la data del contenuto del preset di base, oggi
+                  p_contenuto timestamptz,
+                  -- quando l'utente ha chiuso il banner
+                  p_ignorato  timestamptz)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT fn_preset_aggiornato.p_snapshot IS NOT NULL
+                     AND fn_preset_aggiornato.p_contenuto IS NOT NULL
+                     AND fn_preset_aggiornato.p_contenuto > fn_preset_aggiornato.p_snapshot
+                     AND (fn_preset_aggiornato.p_ignorato IS NULL
+                          OR fn_preset_aggiornato.p_ignorato < fn_preset_aggiornato.p_contenuto);
+              END;

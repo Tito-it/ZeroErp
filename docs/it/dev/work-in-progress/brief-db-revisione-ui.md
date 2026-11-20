@@ -2,8 +2,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-20
 
-**Riparte: sessione DB**, col giro 1b (§2: U6 con Q29, U8, Q33); prima, un `/verifica-db` del giro 1a in una sessione nuova. **Riparte anche il team BE/FE** con le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6). Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
-[brief del seed](brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
+**Riparte: il team BE/FE**, con le ricadute del giro 1b: la parte 1b di BE7 e BE25 (§6), da ora. Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»). A Tid restano la doc auto-generata e il commit dell'1b; il `/verifica-db` del giro 1a resta da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
+[brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
 dbdev con i pgTAP verdi il 2026-11-20): i giri che toccano i CSV di `ui` sono sbloccati. Le decisioni Q1-Q36 sono prese
 (2026-11-18 … 2026-11-20); Q27-Q36, dall'analisi critica del 2026-11-20, completano o sostituiscono alcune delle prime, e
 le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e committato (`de25065c21`): le 32 pagine
@@ -20,12 +20,14 @@ le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e c
 | 4-ter | sessione DB | Q27: le tabelle di `ui` nel censimento del brief del seed. ✅ Censimento e QU1-QU5 decise; ✅ il giro che le iscrive (`20261119-01` … `-05`) applicato su dbdev, pgTAP verdi (Tid, 2026-11-20) | brief del seed, §16.15 | 4-bis |
 | 5 | team BE | Le ricadute «subito» (BE1, BE2, BE4), che non aspettano il DB; e la verifica di BE9 prima del giro 2 (Q35) | §6 | — |
 | 6 | ✅ Tid | Il via al giro 1a (2026-11-20) | §2 | 4-ter |
-| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); prossimo 1b | §2 | 6 |
-| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6); ⏳ il commit di Tid | §6 | 7 |
+| 6-bis | ✅ Tid | Q37-Q39 decise come raccomandate e il via all'1b (2026-11-20) | §3.1-ter, §7.1 | — |
+| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20); ⏳ la doc auto-generata dopo l'1b (Tid); ⏳ il via al giro 2 | §2 | 6-bis |
+| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6); ⏳ il commit di Tid. Giro 1b: ⏳ BE7 (parte 1b) e BE25, da ora | §6 | 7 |
 | 9 | sessione DB | Archiviazione in `work-done/` | §10 | 7, 8 |
 
 **Decisioni di Tid:** Q1-Q11 prese il 2026-11-18, Q12-Q25 il 2026-11-19, Q26 il 2026-11-20 (registrate in §7 e nelle
-schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1); nessuna aperta. **Da committare:** niente; il giro 1a è nel commit che lo porta, l'analisi critica e le decisioni del
+schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1). Q37-Q39 il 2026-11-20 come raccomandate (§7.1). Nessuna aperta. **Da committare:** il giro 1b, applicato (dieci changeSet, i
+CSV del registro del seed e dei codici d'errore, sette pgTAP, quindici pagine di doc, la guida), il suo piano e le correzioni del `/verifica-db`; il giro 1a è nel commit che lo porta, l'analisi critica e le decisioni del
 2026-11-20 sono committate col giro 3 del brief del seed, il giro 0 è nel commit `de25065c21`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-18; decisioni registrate fino al 2026-11-20. **A chi:** Tid e team DB.
@@ -38,7 +40,7 @@ schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1); nessuna aperta. **Da committ
 > nuove, non revisione, e qui non si toccano. [piano-be-fe-endpoint-senza-porta](piano-be-fe-endpoint-senza-porta.md)
 > cita una lista di `ui` solo come fatto. Nel [registro dei residui](registro-residui-aperti.md) nessuna voce ha per
 > oggetto le tabelle o le funzioni di `ui`. ⚠️ Mancava, trovato il 2026-11-20:
-> [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md). Le tabelle di catalogo
+> [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md). Le tabelle di catalogo
 > di `ui` sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin: il suo caso esatto, e il
 > suo §7 rimanda il censimento di queste tabelle al suo giro 1. Deciso da Tid il 2026-11-20 (Q27): le tabelle si
 > dichiarano nel censimento di quel brief, e i giri di qui che toccano i CSV di `ui` partono dopo.
@@ -80,7 +82,7 @@ dopo.
 | Giro | Classe | Contenuto | Ricadute BE/FE | Perché insieme |
 | --- | --- | --- | --- | --- |
 | 1a | A + B + C | **Il preset di base.** U1 (lo snapshot scritto dal DB), U2, U3, U4 con Q28, U5, U7, U9; il ritiro di `is_default` (Q26) con l'UNIQUE di Q30 | BE5, BE6, BE22 | I due resolver e i due trigger z90: la scelta del preset di base |
-| 1b | B + C | **Il banner per chiave.** U6 con la forma di Q29, U8, Q33 (`trgfn_preset_riga_tocca_preset` per istruzione) | BE7 | `trgfn_preset_*`, lo snapshot e l'ignorato per chiave, il flag del preset aggiornato |
+| 1b | B + C | **Il banner per chiave.** U6 con la forma di Q29, U8, Q33 col mezzo di Q37, Q38, Q39 (§3.1-ter) | BE7, BE25 | `trgfn_preset_*`, lo snapshot e l'ignorato per chiave, il flag del preset aggiornato |
 | 2 | A + B + C | **La forma della preferenza e i widget nuovi.** U10-U14; U19 (il BB della misura, letto dal guard di forma); il tetto 1-100 di `dimensione_max` nella preferenza (U21, parte del guard di forma) | BE8, BE9, BE11, BE20 | Il guard di forma comune a liste e dashboard, il conteggio dei nuovi, ordinamento e filtri, i legami fra preset, colonne e pool |
 | 3 | A + B | **Le misure.** U15-U18, U20; U21 sul preset (CHECK, l'8 in una sede) | BE10, FE1 | `misure_pagina`, i guard di `pagina_dimensione`, `dimensione_max` della dashboard |
 | 4 | B + C | **Il catalogo delle liste.** U22-U30 (U22 con Q35, U27 con il presidio di Q32); U37 (si riscrive `valida_campo_sorgente`) | BE12-BE15 | `lista_definizione`, `lista_colonna`, i loro trigger e i permessi di colonna |
@@ -237,6 +239,161 @@ girava con la veste NULL, e ora il ruolo non concorre senza veste. Il file dichi
 sua fixture, come il gemello delle liste: era la domanda che brief-db-pgtap-runner-rls-baseline §11 lasciava al
 cantiere `ui`. ✅ Applicato da Tid il 2026-11-20, pgTAP verdi, doc auto-generata rigenerata. Restano al giro 1b U6, U8, Q29, Q33; i marcatori di cronaca dentro i corpi dei
 resolver (§4.3) li toglie l'1b, che li riscrive di nuovo: qui sono riscritte la testata e il COMMENT.
+
+⚠️ **Residuo del giro 1a, trovato il 2026-11-20 dalla sessione che prepara l'1b.** I COMMENT di tre colonne non sono
+stati riscritti: `preset_base_contenuto_aggiornato_il` delle due preferenze dice ancora «NULL se il preset di base
+cambia (trigger z90)»; `lista_preferenza_utente.preset_aggiornato_ignored_at` dice ancora «DEF-2» e «confronta con
+`lista_preset.data_update`» (M5); il gemello delle dashboard non ha COMMENT. L'1b cambia la forma di queste colonne e li
+riscrive comunque.
+
+### 3.1-ter Il piano del giro 1b (sessione DB, 2026-11-20) — applicato, pgTAP verdi
+
+Corpi vivi letti da dbdev il 2026-11-20 (trigger da `pg_get_triggerdef`, colonne e dipendenze da `pg_attribute` e
+`pg_depend`): uguali alla doc auto-generata, rigenerata dopo il giro 1a. Nessun changeSet dopo `20261119-14` tocca
+oggetti di `ui` (`20261120-01` è su `vendite`).
+
+**Che cosa ha trovato la verifica, prima di scrivere.**
+
+* **Q33 non regge sul suo controesempio.** Provato su dbdev il 2026-11-20, su tabelle temporanee in una transazione
+  annullata. PostgreSQL rifiuta le transition table su un trigger con più di un evento («non si può specificare una
+  tabella di transizione per trigger con più di un evento»): servono tre trigger, uno per evento. Il punto che decide è
+  un altro: il DELETE + INSERT identico del BE sono **due istruzioni**, e ciascun trigger vede solo la sua. Il DELETE
+  vede «tolte tutte», l'INSERT vede «aggiunte tutte», e nessuno dei due può concludere «insieme uguale». Lo stesso
+  succede con le due operazioni in un'istruzione sola (CTE scrivibile): i trigger per istruzione scattano separati per
+  evento. Un constraint trigger differito, che vedrebbe la fine della transazione, esiste solo `FOR EACH ROW` (errore
+  di sintassi su `FOR EACH STATEMENT`). → Q37.
+* **`contenuto_aggiornato_il` ha un secondo lettore, che il brief non nominava**: il seed di primo impianto (giro 3 del
+  [brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md), §16.15, QU1-QU2). La colonna è
+  dell'installazione nella riga 5 del registro, e una scrittura dell'app che la sposta rende personalizzato il preset:
+  da quel momento il migrate non riscrive più la sua composizione. Oggi il DELETE + INSERT identico del BE personalizza
+  per finta un preset di seed. Q37 corregge anche questo. Ne segue un vincolo per il giro: la colonna **resta** (cambia
+  forma, non nome) e ogni colonna nuova del preset entra nella riga 5 del registro, o la tabella diventa
+  `NON_CLASSIFICATA`.
+* **L'ignorato non serve, se lo snapshot lo scrive il DB.** Il flag di oggi è
+  `contenuto > snapshot AND (ignorato IS NULL OR ignorato < contenuto)`, cioè `contenuto > max(snapshot, ignorato)`:
+  conta solo il più recente dei due. Dal giro 1a ogni scrittura che nomina `preset_base_id` riallinea lo snapshot al
+  contenuto di oggi (Q1). «Ignora» può essere quella scrittura: il banner si spegne e si riaccende al cambio successivo
+  del preset, come oggi. Per chiave vale lo stesso: riallineare anche le chiavi che non sono in banner non cambia niente,
+  perché quelle hanno già `contenuto ≤ snapshot`, oppure seguono il preset e il flag non le guarda. → Q38.
+* **La forma della data per chiave lato preset non è decisa.** Q4 dice «una data per chiave sul preset»; Q29 dà la
+  forma solo dal lato della preferenza. → Q39.
+
+**I pezzi** (nella forma di Q37-Q39, decise come raccomandate; le differenze dalla scrittura sono in «Lo stato», qui sotto):
+
+| Pezzo | Che cosa | Difetti |
+| --- | --- | --- |
+| `contenuto_aggiornato_il` dei due preset | Da `timestamptz` a `jsonb` `{chiave: data}`, stesso nome (Q39): `colonne`, `ordinamento`, `filtri`, `pagina_dimensione` per le liste; `widget`, `dimensione_max` per le dashboard. Le righe esistenti hanno tutte le chiavi alla data che la colonna porta oggi, non a `now()` (il banner resta identico). `DEFAULT` tolto: la scrive il trigger | U6/Q4 |
+| `composizione_impronta` dei due preset (Q37) | Colonna nuova, `text NOT NULL`: l'impronta della composizione (le righe del preset, ordinate). Entra fra le colonne dell'installazione nella riga 5 del registro del seed | Q33 |
+| `ui.fn_preset_impronta(p_famiglia, p_preset_id)` (Q37) | Il BB dell'impronta, `STABLE`: una sede per i due trigger qui sotto | Q33 |
+| `ui.trgfn_preset_contenuto_aggiornato()` | `BEFORE INSERT OR UPDATE`, senza `WHEN`: all'INSERT tutte le chiavi a `now()`; all'UPDATE riparte da `OLD` (il lucchetto di U8: scritto come rifiuto, «Lo stato»), sposta le chiavi le cui colonne sono cambiate e ricalcola l'impronta: se è diversa da `OLD`, sposta `colonne` (o `widget`) | U6, U8 |
+| `ui.trgfn_preset_riga_tocca_preset()` (Q37) | Diventa un constraint trigger `DEFERRABLE INITIALLY DEFERRED`, per riga: a fine transazione tocca il preset solo se l'impronta di oggi è diversa da quella salvata. Un DELETE + INSERT identico, e la riscrittura del seed, non spostano niente | Q33 |
+| Snapshot delle due preferenze | `preset_base_contenuto_aggiornato_il` da `timestamptz` a `jsonb`, la copia della mappa del preset di base; lo scrive `trgfn_preferenza_preset_base_snapshot` come oggi. Le righe esistenti: ogni chiave a `max(snapshot, ignorato)`, che conserva il banner di oggi | U6/Q29 |
+| `preset_aggiornato_ignored_at` delle due preferenze (Q38) | Si ritira (`DROP COLUMN`); «Ignora» è una scrittura che nomina `preset_base_id`. Con Q38 (b): `jsonb` come lo snapshot | Q29 |
+| `ui.fn_preset_aggiornato` | Nuova firma `(p_snapshot jsonb, p_contenuto jsonb, p_chiavi text[]) RETURNS text[]`, ~~`IMMUTABLE`~~ `STABLE` («Lo stato», qui sotto): le chiavi del banner, fra quelle di origine `preferenza`. La firma vecchia si toglie (`DROP`), non resta un overload | U6 |
+| `ui.fn_preset_di_base` | Restituisce la mappa `jsonb`. `DROP` + `CREATE`: il corpo `BEGIN ATOMIC` dipende dalla colonna, e l'`ALTER TYPE` non passa finché c'è | — |
+| I due resolver | Il flag per chiave sulle sole chiavi di origine `preferenza`; chiave additiva `preset_aggiornato_chiavi` (l'elenco); `preset_base.contenuto_aggiornato_il` diventa la mappa. Via i marcatori di cronaca dai corpi (§4.3) e M6, M7 nei COMMENT | U6, M6, M7 |
+| COMMENT | Le colonne toccate (compreso il residuo dell'1a qui sopra, M5) e le funzioni riscritte, secondo §5d | M5 |
+| pgTAP | I cinque che leggono le tre colonne (`…-cascata-per-chiave-v1` liste e dashboard, `…-preset-aggiornato-v1`, `test-fn-preset-di-base-v1`, `test-ui-nell-ambito-v1`). Presidi nuovi: U6 (preferenza di sola misura, cambia l'ordinamento: flag spento); U8 (l'app scrive la mappa: rifiutata); Q33 (DELETE + INSERT identico: data ferma; un cambio vero: data spostata); Q38 («Ignora» spegne il banner, il cambio dopo lo riaccende). ⚠️ Il trigger differito scatta al commit: i pgTAP che lo provano chiedono `SET CONSTRAINTS … IMMEDIATE` | |
+| Doc | Le pagine `manual/` delle funzioni e delle tabelle toccate, `fn_preset_impronta` nuova; la guida `configurazione-liste` dove parla del banner | |
+
+**Ordine dentro il giro.** Prima i `DROP` di ciò che dipende dalle colonne (i due trigger dello snapshot, che le nominano
+in `UPDATE OF`; `fn_preset_di_base`; la firma vecchia di `fn_preset_aggiornato`). Poi gli `ALTER` con la conversione
+delle righe, poi le funzioni e i trigger nuovi.
+
+**Garanzie ritirate** (AGENTS.md, «Una garanzia ritirata si censisce in tutti i lettori»):
+
+| Oggetto | La proprietà che i lettori davano per scontata | Lettori lato DB, con l'esito |
+| --- | --- | --- |
+| `contenuto_aggiornato_il` dei preset | È un `timestamptz`, uno per preset | I due resolver, `fn_preset_di_base`, `fn_preset_aggiornato`, i tre trigger di `ui`: si riscrivono nel giro. Il meccanismo del seed la legge per nome dal registro, non per tipo: non ne dipende |
+| La stessa colonna | Dopo una scrittura della composizione è già spostata, nella stessa transazione | Il seed (QU2): la personalizzazione si registra al commit della transazione dell'app; nella stessa transazione non c'è un migrate che la legga. Non ne dipende |
+| `preset_base_contenuto_aggiornato_il` | È un `timestamptz` | I due resolver e il trigger dello snapshot: si riscrivono nel giro |
+| `preset_aggiornato_ignored_at` | Esiste, e la scrive il BE | Nessun lettore DB oltre ai resolver, riscritti nel giro |
+
+Lato BE/FE la richiesta è BE7 riscritta (§6): **«censisci i lettori di `contenuto_aggiornato_il` (preset),
+`preset_base.contenuto_aggiornato_il` (resolver), `preset_base_contenuto_aggiornato_il` e
+`preset_aggiornato_ignored_at` (preferenze) che contano su un `timestamptz`, o sull'esistenza dell'ignorato»**.
+
+**Chi cambia per primo.** Il DB. Dopo l'apply si rompe il BE che scrive `preset_aggiornato_ignored_at` (rottura
+accettata in sviluppo); la richiesta parte con l'apply.
+
+**Lo stato (2026-11-20).** Scritti `20261120-02` … `-11`:
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `-02` (`00_schema`) | `composizione_impronta` nasce nuda sui due preset |
+| `-03` (`20_code`) | `ui.fn_preset_impronta`, col risultato ancorato alla colonna (`%TYPE`) |
+| `-04` (`00_schema`) | i `DROP` di ciò che blocca l'`ALTER TYPE`; le tre colonne a `jsonb` con la conversione delle righe; il backfill dell'impronta coi trigger spenti per nome; `NOT NULL`; via l'ignorato; i COMMENT di colonna (compreso il residuo dell'1a) |
+| `-05` | `ui.trgfn_preset_contenuto_aggiornato`: guard e derivazione, `BEFORE INSERT OR UPDATE` senza `WHEN`, rimontato per funzione coi nomi storici |
+| `-06` | `ui.trgfn_preset_riga_tocca_preset`: constraint trigger differito, scrive l'impronta solo se è cambiata |
+| `-07` | `ui.fn_preset_aggiornato(jsonb, jsonb, text[]) RETURNS text[]`, la firma vecchia tolta |
+| `-08` | `ui.fn_preset_di_base` ricreata, corpo identico |
+| `-09` | `ui.trgfn_preferenza_preset_base_snapshot` senza l'ignorato; i due trigger rimontati |
+| `-10`, `-11` | i due resolver: banner per chiave, `preset_aggiornato_chiavi`, via i marcatori di cronaca dei corpi (§4.3), M6, M7 |
+| `80_data` | riga 5 del registro del seed con `composizione_impronta` fra le colonne dell'installazione; `E_UI_PRESET_CONTENUTO_DERIVATO` in `codici_errore.csv` e `messaggi_errore.csv` (id 1517) |
+
+Quattro scelte della scrittura che il piano non diceva, sul modello:
+
+* **Il lucchetto di U8 rifiuta, non ignora** (`E_UI_PRESET_CONTENUTO_DERIVATO`, come diceva il presidio di U8; il
+  piano qui sopra diceva «ignorata»). Il trigger del seed (`a00`) giudica la personalizzazione sul valore scritto,
+  prima della derivazione: una scrittura ignorata personalizzerebbe per finta un preset di seed. Rifiuta chi scrive
+  la data, e chi scrive un'impronta diversa da quella della composizione di oggi; l'impronta vera la scrive solo il
+  trigger differito, ed è il valore che il seed vede cambiare.
+* **L'ora è `clock_timestamp()`, non `now()`.** Con `now()` un cambio del preset nella stessa transazione dopo lo
+  snapshot ha la stessa data dello snapshot, e il banner non lo vede mai. Ne segue che i pgTAP non retrodatano più:
+  salvano la mappa e guardano le chiavi che si spostano.
+* **La colonna nasce prima della funzione** (`-02`, poi `-03`), perché la funzione ancori il risultato con `%TYPE`
+  (Tid, 2026-11-20). Il giro ha preso un numero in più del piano.
+* **`ui.fn_preset_aggiornato` è `STABLE`, non `IMMUTABLE`** come diceva il piano: legge le date dalla mappa con
+  `::timestamptz` da testo, una conversione che dipende dalla sessione (`TimeZone`, `DateStyle`). Trovato dal
+  `/verifica-db` del 2026-11-20, che allinea qui il piano al codice.
+
+**Le prove.** `scripts/prova_changeset.py` sullo scratch, i dieci changeSet più uno YAML di prova (nello scratchpad)
+che fa ciò che fanno i mirror di `80_data` e la rete di `90_end`: la riga 5 del registro, il runner del seed, il
+codice d'errore. Estratto eseguito per intero, catalogo identico dopo il ROLLBACK. pgTAP (da owner):
+
+| pgTAP | Senza → con l'estratto |
+| --- | --- |
+| `ui/test-ui-nell-ambito-v1` (adeguato) | 6/2 rossi, interrotto → 10/0 |
+| `ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1` (adeguato, 11 → 13) | 5/0, interrotto → 13/0 |
+| `ui/test-fn-resolve-lista-config-cascata-per-chiave-v1` (adeguato, 19 → 22) | 10/0, interrotto → 22/0 |
+| `ui/test-fn-preset-di-base-v1` (adeguato, 20 → 24) | 0/0, interrotto → 24/0 |
+| `ui/test-fn-resolve-lista-config-preset-aggiornato-v1` (riscritto) | 4/2 → 6/0 |
+| `ui/test-seed-primo-impianto-ui-installazione-v1` (18 → 19) | 13/6 → 13/6: i sei rossi di prima, da owner (test da app) |
+| `ui/test-seed-primo-impianto-ui-software-v1`, `ui/test-fn-resolve-dashboard-config` | 16/0 → 16/0; 12/0 → 12/0 |
+| `script/test-catalogo-messaggi-errore-completo`, `dbops/test-riferimenti-morti-v1` | 7/0 → 7/0; 12/0 → 12/0 |
+
+⚠️ Il caso 18 di `…-lista-config-cascata-per-chiave-v1` asseriva il contrario di U6 (preferenza di sole colonne, cambia la
+misura del preset, banner acceso): è riscritto come presidio di U6. I presidi nuovi: U6 sulle due famiglie; U8 come app
+(data e impronta finta rifiutate); Q33 coi vincoli differiti (DELETE + INSERT identico fermo, un ordine cambiato
+sposta `colonne`); Q38 («Ignora» chiude, il cambio dopo riaccende); il seed (composizione riscritta uguale dall'app: il
+preset resta intatto, il caso 15, che da owner passa per costruzione e va letto come app). Guardrail dei changeSet e
+del preambolo pgTAP verdi.
+
+**La doc.** Riscritte le pagine `manual/` di `fn_preset_aggiornato`, `trgfn_preset_contenuto_aggiornato`,
+`trgfn_preset_riga_tocca_preset`, `trgfn_preferenza_preset_base_snapshot`; nuova `fn_preset_impronta`; riallineate
+`fn_preset_di_base`, i due resolver, i due preset, le due composizioni, le due preferenze (le righe «⚠️ Che cosa oggi non
+copre» di U6, U8 e della sostituzione in blocco tolte), le pagine del seed `automazione_seed_primo_impianto` e
+`trgfn_seed_primo_impianto`, la guida `configurazione-liste` §10.5. La doc auto-generata e `ui/index.md` li rigenera
+Tid dopo l'apply.
+
+**La verifica (`/verifica-db`, sessione nuova, 2026-11-20).** Nessun difetto di codice: corpi dei resolver confrontati con
+quelli vivi su dbdev, catena delle `preConditions`, censimento dei lettori delle colonne (funzioni, `BEGIN ATOMIC` da
+`pg_depend`, viste, fasi tardive), nessun clone dei preset, nessun caricamento di `80_data` coi trigger spenti; la
+prova ripetuta su ventidue pgTAP, nessun rosso nuovo. Corretti quattro testi:
+
+* l'avvertenza di `-06` e della pagina `trgfn_preset_riga_tocca_preset` sugli eventi trigger in sospeso: bloccano
+  l'`ALTER` della composizione, che li accoda, non del preset (provato su tabelle temporanee);
+* la nota di `E_UI_PRESET_CONTENUTO_DERIVATO` in `codici_errore.csv`, senza apostrofi;
+* «tutte le chiavi alla data di oggi» (testata di `-04` e tabella dei pezzi qui sopra): è la data che la colonna porta,
+  non `now()`;
+* `fn_preset_aggiornato` `STABLE` e non `IMMUTABLE`, allineato nel piano.
+
+Limiti dichiarati, non chiusi: il caricamento dei CSV dei preset da zero passa dal trigger (senza `DEFAULT`) e lo
+prova solo la CI; per le dashboard «Ignora» e il DELETE + INSERT identico non hanno un pgTAP proprio (la funzione è
+quella delle liste; lo dichiara la pagina `dashboard_preferenza_utente`).
+
+**L'apply.** ✅ `20261120-02` … `-11` applicati su dbdev da Tid il 2026-11-20 (23:55), pgTAP verdi. Parte la richiesta
+al team BE/FE: la parte 1b di BE7 e BE25 (§6).
 
 ### 3.2 Giro 2 — la forma della preferenza e i widget nuovi
 
@@ -710,11 +867,11 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | --- | --- | --- |
 | BE1 | subito | **BE.** `backend/apps/ui/services/lista_preset_admin_service.py:254-257`: il commento dice che dopo la cancellazione di un preset si lavora «sul catalogo grezzo»; vale il preset di base di oggi |
 | BE2 | subito | **BE.** `backend/apps/ui/db/dashboard_repository.py:13-15`: il commento cita `fn_resolve_livello_area` e `fn_check_azione_processo`, il resolver usa `fn_get_user_permissions_map` e `fn_get_user_actions_map`. `:38-41` e `services/dashboard_service.py:56-57`: il «Risultato» non elenca `dimensione_max_standard` e `origine` |
-| BE3 | ritirata | ~~**BE.** `ui_admin_repository.py:733` (`replace_preset_colonne`): … Va fatto il diff~~. Ritirata il 2026-11-20 (Q33): la regola «la data si sposta solo se il contenuto cambia» la tiene il DB dal giro 1b (`trgfn_preset_riga_tocca_preset` per istruzione, che confronta l'insieme vecchio col nuovo), e il DELETE + INSERT identico del BE non sposta più niente. Il BE non cambia |
+| BE3 | ritirata | ~~**BE.** `ui_admin_repository.py:733` (`replace_preset_colonne`): … Va fatto il diff~~. Ritirata il 2026-11-20 (Q33, col mezzo di Q37 (a)): la regola «la data si sposta solo se il contenuto cambia» la tiene il DB dal giro 1b (`trgfn_preset_riga_tocca_preset`, constraint trigger differito, che confronta l'impronta della composizione a fine transazione), e il DELETE + INSERT identico del BE non sposta più niente, purché stia in una transazione sola. Il BE non cambia |
 | BE4 | subito | **BE.** U30, Q18 decisa (b) il 2026-11-19: il controllo preventivo della cancellazione di una colonna conta anche i preset (`ui_admin_repository.py:528-543`); il commento «CASCADE» (`lista_colonna_admin_service.py:26`, `:276-279`; `ui_admin_repository.py:509-510`) si corregge |
 | BE5 | 1a | **BE.** U2: `fetch_preset_base_snapshot` (`ui_repository.py:32-35`, `:64-145`) si ritira; `lista_preferenza_service.py:91-98` e `dashboard_preferenza_service.py:94-100` leggono `preset_base` dalla risoluzione: `{"id", "ambito", "contenuto_aggiornato_il"}` oppure `null`, e salvano `preset_base.id` in `preset_base_id` ✅ **Fatto (BE, 2026-11-20).** Il BB `fetch_preset_base_snapshot` è ritirato; i due service leggono la base con `preset_base_id_di_oggi(risoluzione)` (`apps/ui/services/_preferenza.py`), dalla stessa risoluzione e con lo stesso emittente della lettura a video. Provato sul DB vero (`test_audit_ui_dal_trigger_db`) |
 | BE6 | 1a | **BE.** U1, Q1 decisa (b): l'upsert (`ui_repository.py:346`, `dashboard_repository.py:138`) non scrive più lo snapshot: lo scrive il trigger a ogni scrittura che nomina `preset_base_id` (il salvataggio è il riallineamento), e un valore passato dall'app non conta ✅ **Fatto (BE, 2026-11-20).** I due upsert non nominano più lo snapshot; `preset_base_id` resta nel SET di proposito, perché è la colonna che fa scattare il trigger. Provato sul DB vero: snapshot uguale alla data del contenuto, e riallineato al secondo salvataggio con la stessa base |
-| BE7 | 1a, 1b | **BE + FE.** U5, Q3 decisa (b): dal giro 1a i due resolver rispondono `preset_base_cambiato` (boolean): la base salvata non è quella di oggi, e allora `preset_aggiornato` è falso. Il banner propone il riallineamento (salvare con `preset_base.id`): servizio, FE e i18n. Dal giro 1b snapshot e ignorato sono JSONB per chiave (Q29): il BE scrive l'ignorato della chiave che l'utente chiude ✅ **Parte 1a fatta (BE + FE, 2026-11-20)** sulle liste: `useListaConfig` espone `presetBaseCambiato` e `riallineaPresetBase` (risalva la preferenza: il BE ci scrive la base di oggi); `ListaConfigurabile` mostra il banner «base cambiata» con «Riallinea», i18n it/en. Il servizio non cambia. ✅ **Dashboard, gemelle delle liste (decisione di Tid, 2026-11-20).** Prima non avevano nessun banner, nemmeno quello del preset aggiornato (`presetAggiornato` non lo leggeva nessuna vista). Ora `useDashboardConfig` espone anche `presetBaseCambiato` e `riallineaPresetBase`, e `HomeView` mostra i due banner sopra le card (testi `home.*`; «Vedi novità» apre la modale delle card). Il markup è il BB `BannerPreset`, estratto da `ListaConfigurabile` (regola del 2, ok Tid). La parte 1b (ignorato per chiave) aspetta il giro 1b |
+| BE7 | 1a, 1b | **BE + FE.** U5, Q3 decisa (b): dal giro 1a i due resolver rispondono `preset_base_cambiato` (boolean): la base salvata non è quella di oggi, e allora `preset_aggiornato` è falso. Il banner propone il riallineamento (salvare con `preset_base.id`): servizio, FE e i18n. Dal giro 1b snapshot e ignorato sono JSONB per chiave (Q29): il BE scrive l'ignorato della chiave che l'utente chiude ✅ **Parte 1a fatta (BE + FE, 2026-11-20)** sulle liste: `useListaConfig` espone `presetBaseCambiato` e `riallineaPresetBase` (risalva la preferenza: il BE ci scrive la base di oggi); `ListaConfigurabile` mostra il banner «base cambiata» con «Riallinea», i18n it/en. Il servizio non cambia. ✅ **Dashboard, gemelle delle liste (decisione di Tid, 2026-11-20).** Prima non avevano nessun banner, nemmeno quello del preset aggiornato (`presetAggiornato` non lo leggeva nessuna vista). Ora `useDashboardConfig` espone anche `presetBaseCambiato` e `riallineaPresetBase`, e `HomeView` mostra i due banner sopra le card (testi `home.*`; «Vedi novità» apre la modale delle card). Il markup è il BB `BannerPreset`, estratto da `ListaConfigurabile` (regola del 2, ok Tid). **Parte 1b, da fare ora: `20261120-02` … `-11` (Q37-Q39, §3.1-ter) applicati su dbdev, pgTAP verdi (Tid, 2026-11-20).** Che cosa cambia nel contratto: (1) `preset_aggiornato_ignored_at` non c'è più sulle due preferenze: «Ignora» è un salvataggio che nomina `preset_base_id` con il valore che ha già (il trigger riallinea lo snapshot), e una scrittura della colonna ritirata fallisce; (2) `preset_base_contenuto_aggiornato_il` delle preferenze, `contenuto_aggiornato_il` dei preset e `preset_base.contenuto_aggiornato_il` dei due resolver sono una mappa `{chiave: data}` (`colonne`, `ordinamento`, `filtri`, `pagina_dimensione`; `widget`, `dimensione_max`), non più un `timestamptz`; (3) chiave additiva `preset_aggiornato_chiavi` (elenco, vuoto se nessuna) nei due resolver: il banner può dire quali parti sono cambiate, e `preset_aggiornato` vale «almeno una»; (4) chi scrive `contenuto_aggiornato_il` o `composizione_impronta` di un preset riceve `E_UI_PRESET_CONTENUTO_DERIVATO` (BE25); (5) la composizione si confronta a fine transazione: il DELETE + INSERT di `replace_preset_colonne` resta corretto se sta in una transazione sola. **Il percorso da censire, elenco chiuso:** l'endpoint «ignora» (`POST …/preferenza/ignore-preset-update/` e il gemello delle dashboard, se c'è) e il suo repository, che oggi scrivono l'ignorato; ogni lettore delle tre colonne e di `preset_base.contenuto_aggiornato_il` che conta su un `timestamptz` (serializer, confronti, test Django); le scritture admin del preset che nominano `contenuto_aggiornato_il`; il FE che legge `presetAggiornato` (liste e `HomeView`), che può mostrare le parti cambiate da `preset_aggiornato_chiavi`; le pagine `docs/it/backend/ui/manual/api_ui_liste.md` e `api_ui_dashboard.md`, che descrivono l'ignorato |
 | BE8 | 2 | **BE.** U12: `lista_preferenza_service.py:188-231` e `dashboard_preferenza_service.py:161-253`: con Q6 la regola di forma sta nel guard DB, e la copia del BE si ritira nello stesso cantiere (regola del 2); il codice del guard nuovo va in policy e fallback |
 | BE9 | 2 | **FE.** U13: il FE non ripulisce più ordinamento e filtri da sé. Chi applica oggi l'ordinamento risolto alle API di lista lo verifica la sessione BE prima del giro 2 (Q35, 2026-11-20), e risponde qui: la voce diventa la richiesta chiusa, con l'elenco dei file |
 | BE10 | 3 | **BE.** `backend/apps/core/api/constants.py:16-19`: `DEFAULT_LIMIT = 25` ricopia il default `PAGINA`, e il suo commento cita una costante del FE ritirata. Q11-bis, deciso da Tid il 2026-11-18: le liste configurabili prendono la misura dal DB; la costante resta solo per gli endpoint fuori catalogo, dichiarata come regola dell'API, e il commento sulla costante FE ritirata si toglie |
@@ -729,8 +886,9 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | BE19 | — | **BE.** U31 e U23 (`perimetro_emittente`): verificato che il BE non scrive quelle tabelle né quella colonna. Niente da fare, salvo il fallback del codice nuovo |
 | BE20 | 2 | **BE + FE.** Q7: `col` di ordinamento e filtri è il codice della colonna. Il FE ordina per campo sorgente (`sortField` di PrimeVue, `ListaConfigurabile.vue:619-668`): il salvataggio della preferenza e del preset traduce il campo in codice nel BE, e il guard di forma rifiuta un `col` che non è un codice (Q34); in lettura il resolver dà anche il campo sorgente. Il test `test_lista_preferenza_service.py:63` già scrive il codice |
 | BE21 | 5 | **BE.** Q22: `data_update` delle due preferenze la scrive il DB; l'upsert del BE (`ui_repository.py`, `dashboard_repository.py:127-179`) smette di passarla |
-| BE22 | 1a | **BE + FE.** Q26: `is_default` esce dai preset di liste e dashboard. Il BE lo toglie da `_schema_ui.py:31`, `ui_admin_repository.py:56`, `:621-658`, dal drawer dei preset e dai messaggi dell'UNIQUE; la copia della cascata in `ui_repository.py:93-132` si ritira già con Q2 ✅ **Fatto (BE + FE, 2026-11-20).** `is_default` esce da schema, repository, service (whitelist: ora è un 400), drawer, pannello e i18n. ⚠️ Resta a DB la colonna di catalogo `is_default` della lista admin dei preset (`lista_colonna.csv`, id 665): domanda al team DB, nel brief del seed §16.15 |
+| BE22 | 1a | **BE + FE.** Q26: `is_default` esce dai preset di liste e dashboard. Il BE lo toglie da `_schema_ui.py:31`, `ui_admin_repository.py:56`, `:621-658`, dal drawer dei preset e dai messaggi dell'UNIQUE; la copia della cascata in `ui_repository.py:93-132` si ritira già con Q2 ✅ **Fatto (BE + FE, 2026-11-20).** `is_default` esce da schema, repository, service (whitelist: ora è un 400), drawer, pannello e i18n. ⚠️ Resta a DB la colonna di catalogo `is_default` della lista admin dei preset (`lista_colonna.csv`, id 665): domanda nata nel brief del seed (§16.15, esito del BE), passata qui alla sua archiviazione (2026-11-20): ⏳ **sessione DB**, residuo del giro 1a: la colonna va spenta o tolta dal CSV |
 | BE23 | 1a | **BE + FE.** Q30: un posto (lista o dashboard, ambito, profilo, azienda) ha al più un preset acceso. Accendere un secondo preset nello stesso posto è rifiutato dall'UNIQUE `uq_ui_lista_preset_posto` (o `uq_ui_dashboard_preset_posto`): il servizio lo mappa (`_CHECK_CONSTRAINTS` o il ripiego dell'integrità in `lista_preset_admin_service.py`), e il drawer dice di spegnere prima quello acceso. La bozza nasce spenta. File: `backend/apps/ui/services/lista_preset_admin_service.py`, `ListaPresetDrawer.vue` ✅ **Fatto (BE + FE, 2026-11-20).** `uq_ui_lista_preset_posto` mappato sul campo `attivo` col messaggio «spegnilo prima»; la bozza nasce spenta (default `attivo=false` in service, repository e drawer) |
+| BE25 | 1b | **BE.** Codice d'errore nuovo `E_UI_PRESET_CONTENUTO_DERIVATO` (TECNICO, segnaposto: il codice del preset): `error_policies_generated.py` e `error_messages_fallback.py` da rigenerare, la riga in §Tassonomia errori di `docs/it/dev/api.md`. Lo produce solo un chiamante rimasto alla forma in cui la data del contenuto si scriveva. Il codice `E_UI_PREFERENZA_NON_TROVATA` ha una nota che parla dell'endpoint «ignora» (DEF-2): resta valido se l'endpoint resta, e la nota si pulisce nel giro 6 |
 | BE24 | 1a | **BE.** La pagina `docs/it/backend/ui/manual/api_ui_liste.md` (righe 445, 514, 534) descrive il trigger z90 e la sua funzione, tolti dal giro 1a: lo snapshot lo scrive `ui.trgfn_preferenza_preset_base_snapshot` (BE6) ✅ **Fatto (BE, 2026-11-20).** `api_ui_liste.md` descrive il trigger nuovo, `preset_base` e `preset_base_cambiato`; `api_ui_admin_personalizzazioni.md` è senza `is_default` e con la superficie del seed |
 
 ## 7. Le decisioni di Tid
@@ -768,20 +926,24 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 
 Aperte dall'analisi critica prima del via al giro 1, e **decise da Tid il 2026-11-20, tutte come raccomandate**. Ognuna
 completa o sostituisce una decisione già presa: la decisione nuova sta in §7 e nella scheda del difetto, e la scelta
-superata è barrata, non resta come alternativa.
+superata è barrata, non resta come alternativa. Q37-Q39 vengono dopo: le ha aperte il piano del giro 1b (§3.1-ter,
+2026-11-20), e Tid le ha decise lo stesso giorno, come raccomandate.
 
 | # | Domanda | Riapre o completa | Opzioni | Decisione |
 | --- | --- | --- | --- | --- |
-| Q27 | Le tabelle di catalogo di `ui` nel meccanismo del [brief del seed](brief-db-seed-primo-impianto-non-si-riscrive.md): sono mirror `runOnChange` che l'app scrive dalle pagine admin, e il migrate riscrive le modifiche dell'app (`ricerca_min_caratteri`, preset, colonne, composizione) | Q14; i giri che toccano i CSV di `ui` (Q7, Q9, Q20, Q26) | (a) Le tabelle si dichiarano nel censimento del brief del seed, ognuna con la sua specie, e i giri di `ui` che toccano i CSV partono dopo; (b) il censimento si fa qui, nel giro 4, e il brief del seed lo riceve | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: il meccanismo ha una sede sola. Le cinque tabelle delle dashboard, in sola lettura per l'app (Q19), escono dal censimento |
+| Q27 | Le tabelle di catalogo di `ui` nel meccanismo del [brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md): sono mirror `runOnChange` che l'app scrive dalle pagine admin, e il migrate riscrive le modifiche dell'app (`ricerca_min_caratteri`, preset, colonne, composizione) | Q14; i giri che toccano i CSV di `ui` (Q7, Q9, Q20, Q26) | (a) Le tabelle si dichiarano nel censimento del brief del seed, ognuna con la sua specie, e i giri di `ui` che toccano i CSV partono dopo; (b) il censimento si fa qui, nel giro 4, e il brief del seed lo riceve | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: il meccanismo ha una sede sola. Le cinque tabelle delle dashboard, in sola lettura per l'app (Q19), escono dal censimento |
 | Q28 | Un significato solo per la veste NULL: oggi la cascata dei preset unisce le identità (U4, parità fra due PORTALE), i permessi di colonna prendono il livello più restrittivo (Q17) | U4 (lo spareggio sull'id, superato), Q17 | (a) Con la veste NULL il passo del ruolo si salta, e la cascata parte dall'azienda; i permessi restano al più restrittivo; (b) un vincolo impedisce due profili applicabili di pari priorità per lo stesso utente; (c) lo spareggio su un attributo del modello (il tipo del profilo) | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: «il ripiego non allarga mai» vale per preset e permessi, e la parità non può più nascere |
 | Q29 | La forma delle date per chiave dal lato della preferenza: lo snapshot (scritto dal DB, Q1) e l'ignorato sono una colonna ciascuno; le chiavi della dashboard non sono elencate | Q1, Q3, Q4; BE7 | (a) Snapshot e ignorato diventano un JSONB `{chiave: data}` ciascuno, chiavi validate dal guard di forma (Q6); (b) una colonna per chiave e per dato | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: le chiavi sono le stesse della `configurazione`, una chiave nuova non chiede DDL. Le chiavi della dashboard (`widget`, `dimensione_max`) si dichiarano nella decisione |
 | Q30 | Che cosa garantisce «un preset per posto» quando `is_default` si ritira: gli indici `uq_*_default` sono `WHERE is_default = true` | Q26; §3.7 | (a) UNIQUE parziale `WHERE attivo` sulle stesse chiavi; lo scambio con la bozza si fa spegnendo il vecchio prima di accendere la bozza (un indice parziale non si differisce); (b) UNIQUE pieno, e la bozza vive altrove | ✅ **Deciso da Tid il 2026-11-20.** **(a)**, con l'ordine dello scambio scritto nella guida e nel messaggio dell'UNIQUE |
 | Q31 | Lo stesso strumento per «il catalogo ha sempre un default» (U18, constraint trigger differito) e «la home non è mai vuota» (U32, presidio `dbops`) | Q20 (il motivo) | (a) Constraint trigger differito per tutti e due; (b) presidio `dbops` per tutti e due; (c) strumenti diversi, con la ragione sul modello scritta | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: il differito risolve i passaggi intermedi, e dopo Q19 tutti e due i cataloghi li scrive solo l'owner |
 | Q32 | Una vista che perde colonne (DDL sulla vista), il caso di U27 che Q16 non copre | Q16 | (a) Un presidio `dbops` che confronta le colonne di ogni lista con la sua relazione; (b) limite accettato, dichiarato nella guida, e resta il pgTAP sul seed | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: copre le liste create dall'app, che il pgTAP sul seed non vede |
-| Q33 | La sede di «la data del contenuto si sposta solo se il contenuto cambia», oggi violata dal DELETE + INSERT identico del BE (BE3) | BE3 | (a) Nel DB: il trigger delle righe del preset passa per istruzione, con le transition table, e confronta l'insieme vecchio col nuovo; (b) il BE fa il diff | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: la regola vale per ogni scrittore; BE3 si ritira |
+| Q33 | La sede di «la data del contenuto si sposta solo se il contenuto cambia», oggi violata dal DELETE + INSERT identico del BE (BE3) | BE3 | (a) Nel DB: ~~il trigger delle righe del preset passa per istruzione, con le transition table, e confronta l'insieme vecchio col nuovo~~ (il mezzo non regge: Q37); (b) il BE fa il diff | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: la regola vale per ogni scrittore; BE3 si ritira. Il mezzo è quello di Q37 |
 | Q34 | Chi traduce in codice il campo sorgente che il FE usa come `col` (Q7) | Q7; BE20 | (a) Il guard di forma rifiuta un `col` che non è un codice della lista, e il BE traduce; (b) il guard traduce, riscrivendo il valore | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: un guard non riscrive in silenzio ciò che riceve |
 | Q35 | I residui senza decisione: BE9 (chi applica oggi l'ordinamento risolto); U38 (la variabile utente non numerica); U22 (le preferenze della lista spenta, e il messaggio alla riaccensione rifiutata da Q16) | Q13, Q16; BE9, U38 | Una risposta per voce | ✅ **Deciso da Tid il 2026-11-20.** BE9: lo verifica la sessione BE prima del giro 2 e la voce diventa una richiesta chiusa; U38: un codice d'errore dedicato, non il 22P02; U22: le preferenze restano e si sospendono con la lista, la riaccensione rifiutata nomina le colonne orfane |
 | Q36 | La dimensione del giro 1: U1-U9, Q26, il cambio di modello di Q4, quattro ricadute BE | Q24 | (a) Giro 1a (z90, snapshot, `preset_base`, Q28, `is_default` e Q30) e giro 1b (date per chiave, Q29, esito «base cambiata»); (b) un giro solo | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: due apply più piccoli, e 1b parte con la forma di Q29 già decisa |
+| Q37 | La sede di «la data si sposta solo se la composizione cambia»: la forma di Q33 (trigger per istruzione con le transition table) non vede il DELETE + INSERT come un'operazione sola, e un constraint trigger differito esiste solo per riga (provato il 2026-11-20, §3.1-ter) | **Riapre Q33** (2026-11-20): ne tiene la sede (il DB) e cambia il mezzo | (a) Un'impronta della composizione sul preset (`composizione_impronta`, dal BB `ui.fn_preset_impronta`) e un constraint trigger differito per riga: a fine transazione la data si sposta solo se l'impronta è cambiata; (b) il diff lo fa il BE (l'opzione (b) di Q33, BE3 torna aperta); (c) il BE scrive con un `MERGE` che tocca solo le righe diverse: è (b) con un altro strumento | ✅ **Deciso da Tid il 2026-11-20, come raccomandata:** **(a)**: la regola vale per ogni scrittore, come voleva Q33, e toglie anche la personalizzazione finta del seed. Costo: una colonna di stato derivato e un trigger che scatta al commit |
+| Q38 | L'ignorato del banner, ora che lo snapshot lo scrive il DB: il flag dipende solo dal più recente fra snapshot e ignorato, e «Ignora» può essere un riallineamento (§3.1-ter) | **Riapre Q29** (2026-11-20) per la sola parte dell'ignorato; Q1 e Q3 restano | (a) `preset_aggiornato_ignored_at` si ritira dalle due preferenze; «Ignora» è una scrittura che nomina `preset_base_id`, e il trigger riallinea lo snapshot; le righe di oggi convertono lo snapshot a `max(snapshot, ignorato)`; (b) come Q29: anche l'ignorato diventa `jsonb` per chiave, e lo scrive il BE | ✅ **Deciso da Tid il 2026-11-20, come raccomandata:** **(a)**: una colonna in meno, nessun JSONB scritto dall'app da validare (la validazione di Q29 aspetterebbe il guard di forma del giro 2), e BE7 si riduce a una scrittura che il BE già sa fare |
+| Q39 | La forma della data per chiave dal lato del preset (Q4 la vuole per chiave, Q29 dà la forma solo per la preferenza) | **Completa Q4** | (a) `contenuto_aggiornato_il` resta col suo nome e diventa `jsonb` `{chiave: data}`, con le chiavi della `configurazione`; (b) una colonna per chiave (`colonne_aggiornate_il`, `ordinamento_aggiornato_il`, …) | ✅ **Deciso da Tid il 2026-11-20, come raccomandata:** **(a)**: le chiavi sono quelle della preferenza e dello snapshot, così il confronto è chiave contro chiave; una funzione sola regge le due tabelle; la riga 5 del registro del seed non cambia. Il nome dice ancora «una data»: lo dichiara il COMMENT |
 
 ## 8. Giro 0 — la documentazione, 2026-11-18 (fatto)
 

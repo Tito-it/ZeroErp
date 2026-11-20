@@ -195,7 +195,7 @@ comportamento di **ogni lettore**, non solo di quello che ha portato la richiest
 * Un lettore che non si adegua dichiara perché non dipende dalla proprietà: «non ne dipende»
   senza un motivo è un lettore non censito.
 
-Il caso: [brief-db-seed-primo-impianto-non-si-riscrive](../docs/it/dev/work-in-progress/brief-db-seed-primo-impianto-non-si-riscrive.md).
+Il caso: [brief-db-seed-primo-impianto-non-si-riscrive](../docs/it/dev/work-done/brief-db-seed-primo-impianto-non-si-riscrive.md).
 La Q24 (2026-11-19) ha reso spegnibile un account che ha spedito, e la richiesta al BE ha censito
 un solo lettore del log (R1-BE-ter, §16.14). Il rilancio batch e la porta di chiusura delle mail
 di sistema li ha trovati il BE lavorando, e ne è nato un secondo giro DB (§16.16, 2026-11-20).

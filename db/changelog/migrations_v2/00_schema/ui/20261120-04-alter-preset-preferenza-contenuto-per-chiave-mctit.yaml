@@ -1,0 +1,300 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: la data del contenuto del preset e lo snapshot della preferenza diventano
+#   per chiave; il preset salva l'impronta della composizione; l'ignorato del
+#   banner si ritira.
+#   Brief: brief-db-revisione-ui (giro 1b: U6 con Q4, Q29; Q33 col mezzo di Q37;
+#   Q38; Q39. Decise da Tid il 2026-11-18 e il 2026-11-20).
+#
+# Che cosa cambia:
+#   - ui.lista_preset.contenuto_aggiornato_il e il gemello delle dashboard: da
+#     timestamptz a jsonb {chiave: data}, stesso nome (Q39; il registro del seed
+#     la nomina, riga 5). Chiavi: colonne, ordinamento, filtri,
+#     pagina_dimensione per le liste; widget, dimensione_max per le dashboard,
+#     le stesse della configurazione della preferenza. Le righe esistenti hanno
+#     tutte le chiavi alla data che la colonna porta oggi (non a now()): il
+#     banner resta identico. Il DEFAULT
+#     esce: la scrive il trigger (20261120-05).
+#   - composizione_impronta dei due preset (nata nuda in 20261120-02): qui il
+#     backfill con ui.fn_preset_impronta (20261120-03), il NOT NULL e il
+#     COMMENT. La scrive il trigger differito della composizione (20261120-06).
+#     Il backfill delle righe
+#     esistenti non passa dai trigger (linee-guida-trigger, «Il backfill di una
+#     colonna derivata»): non e' una scrittura di dominio, e l'audit non deve
+#     spostarsi.
+#   - preset_base_contenuto_aggiornato_il delle due preferenze: da timestamptz
+#     a jsonb, la copia della mappa del preset di base (Q29). Le righe
+#     esistenti: ogni chiave a max(snapshot, ignorato). Il flag di oggi e'
+#     contenuto > snapshot AND (ignorato NULL o < contenuto), cioe'
+#     contenuto > max(snapshot, ignorato): il banner resta identico.
+#   - preset_aggiornato_ignored_at delle due preferenze si ritira (Q38):
+#     «Ignora» e' una scrittura che nomina preset_base_id, e il trigger dello
+#     snapshot riallinea.
+# Ordine: prima si tolgono gli oggetti che dipendono dalle colonne e ne
+#   bloccano l'ALTER TYPE: i due trigger dello snapshot (UPDATE OF la colonna) e
+#   ui.fn_preset_di_base (BEGIN ATOMIC, la legge). Li ricreano 20261120-08 e
+#   -09, nello stesso rilascio. I resolver e ui.fn_preset_aggiornato non
+#   bloccano (plpgsql; parametri senza dipendenza): li riscrivono -07, -10, -11.
+# Fatto datato (dbdev, 2026-11-20): nessuna vista e nessuna fase tardiva
+#   (70_dati_sistema, 80_data, 85_pgagent, 90_end) nomina le tre colonne; i CSV
+#   dei preset non portano contenuto_aggiornato_il.
+# ⚠️ Il BE che scrive preset_aggiornato_ignored_at, o che legge le due date
+#   come timestamptz, si rompe dopo l'apply (BE7 del brief).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-04-alter-preset-preferenza-contenuto-per-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261120-04-alter-preset-preferenza-contenuto-per-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: contenuto del preset e snapshot della preferenza per chiave (jsonb), composizione_impronta sul preset,
+        via preset_aggiornato_ignored_at. Brief: brief-db-revisione-ui (giro 1b).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preset'), to_regclass('ui.dashboard_preset'),
+                                  to_regclass('ui.lista_preferenza_utente'), to_regclass('ui.dashboard_preferenza_utente'))
+                 AND attname IN ('contenuto_aggiornato_il', 'preset_base_contenuto_aggiornato_il')
+                 AND atttypid = 'timestamptz'::regtype
+                 AND NOT attisdropped
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_preset_impronta'
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preset'), to_regclass('ui.dashboard_preset'))
+                 AND attname = 'composizione_impronta' AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DML e ALTER TABLE sulle stesse tabelle (linee-guida-sql §11.12).
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              -- Chi blocca l'ALTER TYPE: li ricreano 20261120-08 e -09.
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_z90_preset_base_snapshot_ins_upd
+                  ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins
+                  ON ui.dashboard_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins_upd
+                  ON ui.dashboard_preferenza_utente;
+              DROP FUNCTION ui.fn_preset_di_base(text, integer, integer, config.ruolo_applicativo, bigint);
+
+              -- La data del contenuto del preset, per chiave.
+              ALTER TABLE ui.lista_preset ALTER COLUMN contenuto_aggiornato_il DROP DEFAULT;
+              ALTER TABLE ui.lista_preset ALTER COLUMN contenuto_aggiornato_il TYPE jsonb
+                  USING jsonb_build_object('colonne',           to_jsonb(contenuto_aggiornato_il),
+                                           'ordinamento',       to_jsonb(contenuto_aggiornato_il),
+                                           'filtri',            to_jsonb(contenuto_aggiornato_il),
+                                           'pagina_dimensione', to_jsonb(contenuto_aggiornato_il));
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN contenuto_aggiornato_il DROP DEFAULT;
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN contenuto_aggiornato_il TYPE jsonb
+                  USING jsonb_build_object('widget',         to_jsonb(contenuto_aggiornato_il),
+                                           'dimensione_max', to_jsonb(contenuto_aggiornato_il));
+
+              -- L'impronta della composizione (la colonna e' nata in 20261120-02).
+              -- Backfill senza trigger: si spengono quelli accesi, per nome, e si
+              -- riaccendono ciascuno nel suo modo.
+              DO $do$
+              DECLARE
+                  -- i trigger accesi dei due preset, colonna per colonna di pg_trigger
+                  v_tabelle pg_catalog.pg_trigger.tgrelid%TYPE[];
+                  v_nomi    pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi    pg_catalog.pg_trigger.tgenabled%TYPE[];
+                  -- integer: un indice di ciclo, non il riflesso di una colonna
+                  i         integer;
+              BEGIN
+                  SELECT array_agg(t.tgrelid            ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgname            ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgenabled         ORDER BY t.tgrelid, t.tgname)
+                    INTO v_tabelle, v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid IN ('ui.lista_preset'::regclass, 'ui.dashboard_preset'::regclass)
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tabelle[i]::regclass, v_nomi[i]);
+                  END LOOP;
+
+                  UPDATE ui.lista_preset     SET composizione_impronta = ui.fn_preset_impronta('lista', id);
+                  UPDATE ui.dashboard_preset SET composizione_impronta = ui.fn_preset_impronta('dashboard', id);
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I', v_tabelle[i]::regclass,
+                                     CASE v_modi[i] WHEN 'R' THEN 'REPLICA' WHEN 'A' THEN 'ALWAYS' ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END
+              $do$;
+
+              ALTER TABLE ui.lista_preset     ALTER COLUMN composizione_impronta SET NOT NULL;
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN composizione_impronta SET NOT NULL;
+
+              -- Lo snapshot della preferenza, per chiave: ogni chiave a max(snapshot, ignorato).
+              ALTER TABLE ui.lista_preferenza_utente ALTER COLUMN preset_base_contenuto_aggiornato_il TYPE jsonb
+                  USING CASE WHEN preset_base_contenuto_aggiornato_il IS NULL THEN NULL
+                             ELSE jsonb_build_object(
+                                 'colonne',           to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)),
+                                 'ordinamento',       to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)),
+                                 'filtri',            to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)),
+                                 'pagina_dimensione', to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)))
+                        END;
+              ALTER TABLE ui.dashboard_preferenza_utente ALTER COLUMN preset_base_contenuto_aggiornato_il TYPE jsonb
+                  USING CASE WHEN preset_base_contenuto_aggiornato_il IS NULL THEN NULL
+                             ELSE jsonb_build_object(
+                                 'widget',         to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)),
+                                 'dimensione_max', to_jsonb(GREATEST(preset_base_contenuto_aggiornato_il, preset_aggiornato_ignored_at)))
+                        END;
+
+              -- L'ignorato si ritira.
+              ALTER TABLE ui.lista_preferenza_utente     DROP COLUMN preset_aggiornato_ignored_at;
+              ALTER TABLE ui.dashboard_preferenza_utente DROP COLUMN preset_aggiornato_ignored_at;
+
+              COMMENT ON COLUMN ui.lista_preset.contenuto_aggiornato_il IS
+                  'Quando e'' cambiato il contenuto del preset, per chiave: un oggetto {chiave: data} con colonne (la composizione, ui.lista_preset_colonna), ordinamento (ordinamento_default), filtri (filtri_default), pagina_dimensione. La scrive solo il database (ui.trgfn_preset_contenuto_aggiornato): all''INSERT tutte le chiavi all''ora dell''INSERT, all''UPDATE si sposta all''ora del cambio (clock_timestamp) la chiave il cui contenuto e'' cambiato, e una riscrittura uguale non sposta niente. Chi la scrive riceve E_UI_PRESET_CONTENUTO_DERIVATO. La confronta, chiave per chiave, con lo snapshot della preferenza (ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il) il banner del preset aggiornato (ui.fn_preset_aggiornato). Non e'' l''audit: data_update si sposta anche per i campi che non sono contenuto.';
+              COMMENT ON COLUMN ui.dashboard_preset.contenuto_aggiornato_il IS
+                  'Quando e'' cambiato il contenuto del preset, per chiave: un oggetto {chiave: data} con widget (la composizione, ui.dashboard_preset_widget) e dimensione_max. La scrive solo il database (ui.trgfn_preset_contenuto_aggiornato): all''INSERT tutte le chiavi all''ora dell''INSERT, all''UPDATE si sposta all''ora del cambio (clock_timestamp) la chiave il cui contenuto e'' cambiato, e una riscrittura uguale non sposta niente. Chi la scrive riceve E_UI_PRESET_CONTENUTO_DERIVATO. La confronta, chiave per chiave, con lo snapshot della preferenza (ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il) il banner del preset aggiornato (ui.fn_preset_aggiornato). Non e'' l''audit: data_update si sposta anche per i campi che non sono contenuto.';
+              COMMENT ON COLUMN ui.lista_preset.composizione_impronta IS
+                  'L''impronta della composizione del preset (ui.fn_preset_impronta sulle righe di ui.lista_preset_colonna). La scrive il trigger differito della composizione (ui.trgfn_preset_riga_tocca_preset) a fine transazione, solo quando la composizione e'' davvero cambiata: un DELETE seguito dall''INSERT delle stesse righe non la tocca. Quando cambia, si sposta la chiave colonne di contenuto_aggiornato_il. Un valore diverso da quello della composizione di oggi riceve E_UI_PRESET_CONTENUTO_DERIVATO. Per il seed di primo impianto e'' dell''installazione: una composizione cambiata dall''installazione personalizza il preset.';
+              COMMENT ON COLUMN ui.dashboard_preset.composizione_impronta IS
+                  'L''impronta della composizione del preset (ui.fn_preset_impronta sulle righe di ui.dashboard_preset_widget). La scrive il trigger differito della composizione (ui.trgfn_preset_riga_tocca_preset) a fine transazione, solo quando la composizione e'' davvero cambiata: un DELETE seguito dall''INSERT delle stesse righe non la tocca. Quando cambia, si sposta la chiave widget di contenuto_aggiornato_il. Un valore diverso da quello della composizione di oggi riceve E_UI_PRESET_CONTENUTO_DERIVATO.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il IS
+                  'Lo snapshot del preset di base: la copia di ui.lista_preset.contenuto_aggiornato_il del preset preset_base_id, un oggetto {chiave: data}, preso quando l''utente ha salvato. Lo scrive solo il database (ui.trgfn_preferenza_preset_base_snapshot) a ogni scrittura che nomina preset_base_id o lo snapshot: il valore che arriva da chi scrive non conta. Riscrivere lo stesso preset_base_id riallinea lo snapshot, ed e'' cosi'' che si chiude il banner. NULL senza preset di base. Il banner del preset aggiornato (ui.fn_preset_aggiornato) lo confronta con il contenuto del preset di oggi, sulle sole chiavi che la preferenza imposta.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il IS
+                  'Lo snapshot del preset di base: la copia di ui.dashboard_preset.contenuto_aggiornato_il del preset preset_base_id, un oggetto {chiave: data}, preso quando l''utente ha salvato. Lo scrive solo il database (ui.trgfn_preferenza_preset_base_snapshot) a ogni scrittura che nomina preset_base_id o lo snapshot: il valore che arriva da chi scrive non conta. Riscrivere lo stesso preset_base_id riallinea lo snapshot, ed e'' cosi'' che si chiude il banner. NULL senza preset di base. Il banner del preset aggiornato (ui.fn_preset_aggiornato) lo confronta con il contenuto del preset di oggi, sulle sole chiavi che la preferenza imposta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              ALTER TABLE ui.lista_preferenza_utente     ADD COLUMN preset_aggiornato_ignored_at timestamptz;
+              ALTER TABLE ui.dashboard_preferenza_utente ADD COLUMN preset_aggiornato_ignored_at timestamptz;
+              ALTER TABLE ui.lista_preferenza_utente ALTER COLUMN preset_base_contenuto_aggiornato_il TYPE timestamptz
+                  USING GREATEST((preset_base_contenuto_aggiornato_il ->> 'colonne')::timestamptz, (preset_base_contenuto_aggiornato_il ->> 'ordinamento')::timestamptz, (preset_base_contenuto_aggiornato_il ->> 'filtri')::timestamptz, (preset_base_contenuto_aggiornato_il ->> 'pagina_dimensione')::timestamptz);
+              ALTER TABLE ui.dashboard_preferenza_utente ALTER COLUMN preset_base_contenuto_aggiornato_il TYPE timestamptz
+                  USING GREATEST((preset_base_contenuto_aggiornato_il ->> 'widget')::timestamptz, (preset_base_contenuto_aggiornato_il ->> 'dimensione_max')::timestamptz);
+
+              ALTER TABLE ui.lista_preset     ALTER COLUMN composizione_impronta DROP NOT NULL;
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN composizione_impronta DROP NOT NULL;
+              ALTER TABLE ui.lista_preset ALTER COLUMN contenuto_aggiornato_il TYPE timestamptz
+                  USING GREATEST((contenuto_aggiornato_il ->> 'colonne')::timestamptz, (contenuto_aggiornato_il ->> 'ordinamento')::timestamptz, (contenuto_aggiornato_il ->> 'filtri')::timestamptz, (contenuto_aggiornato_il ->> 'pagina_dimensione')::timestamptz);
+              ALTER TABLE ui.lista_preset ALTER COLUMN contenuto_aggiornato_il SET DEFAULT now();
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN contenuto_aggiornato_il TYPE timestamptz
+                  USING GREATEST((contenuto_aggiornato_il ->> 'widget')::timestamptz, (contenuto_aggiornato_il ->> 'dimensione_max')::timestamptz);
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN contenuto_aggiornato_il SET DEFAULT now();
+
+              -- I due trigger dello snapshot, come li montava 20261119-14 (il corpo lo
+              -- rimette il rollback di 20261120-09).
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_z90_preset_base_snapshot_ins_upd
+                  BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il
+                  ON ui.lista_preferenza_utente
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset');
+              CREATE TRIGGER trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins
+                  BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il
+                  ON ui.dashboard_preferenza_utente
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset');
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_preset_di_base(
+                  -- text: 'lista' o 'dashboard', la famiglia; non il riflesso di una colonna
+                  p_famiglia            text,
+                  -- la lista o la dashboard (ui.lista_definizione.id o ui.dashboard_definizione.id)
+                  p_contenitore_id      ui.lista_definizione.id%TYPE,
+                  -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
+                  -- la cita con %TYPE (lo schema django e' del provisioning)
+                  p_auth_user_id        integer,
+                  p_veste               config.ruolo_applicativo,
+                  p_emittente_fiscale_id ui.lista_preset.emittente_fiscale_id%TYPE)
+               RETURNS TABLE (
+                  preset_id               ui.lista_preset.id%TYPE,
+                  ambito                  ui.lista_preset.ambito%TYPE,
+                  contenuto_aggiornato_il ui.lista_preset.contenuto_aggiornato_il%TYPE)
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+                  WITH profili AS MATERIALIZED (
+                      SELECT pa.profilo_accesso_id, pa.priorita
+                        FROM script.fn_get_profili_accesso_applicabili(fn_preset_di_base.p_auth_user_id,
+                                                                        fn_preset_di_base.p_veste) pa
+                       WHERE fn_preset_di_base.p_veste IS NOT NULL
+                  ),
+                  candidati AS (
+                      SELECT lp.id, lp.ambito, lp.profilo_accesso_id,
+                             lp.emittente_fiscale_id, lp.contenuto_aggiornato_il
+                        FROM ui.lista_preset lp
+                       WHERE fn_preset_di_base.p_famiglia = 'lista'
+                         AND lp.lista_id = fn_preset_di_base.p_contenitore_id
+                         AND lp.attivo
+                         AND EXISTS (SELECT 1
+                                       FROM ui.lista_preset_colonna pc
+                                       JOIN ui.lista_colonna lc ON lc.id = pc.colonna_id
+                                      WHERE pc.preset_id = lp.id
+                                        AND lc.attivo)
+                      UNION ALL
+                      SELECT dp.id, dp.ambito, dp.profilo_accesso_id,
+                             dp.emittente_fiscale_id::bigint, dp.contenuto_aggiornato_il
+                        FROM ui.dashboard_preset dp
+                       WHERE fn_preset_di_base.p_famiglia = 'dashboard'
+                         AND dp.dashboard_id = fn_preset_di_base.p_contenitore_id
+                         AND dp.attivo
+                         AND EXISTS (SELECT 1
+                                       FROM ui.dashboard_preset_widget pw
+                                       JOIN ui.widget w ON w.id = pw.widget_id
+                                       JOIN ui.dashboard_widget dw
+                                         ON dw.dashboard_id = dp.dashboard_id
+                                        AND dw.widget_id    = w.id
+                                      WHERE pw.preset_id = dp.id
+                                        AND w.attivo)
+                  )
+                  SELECT c.id, c.ambito, c.contenuto_aggiornato_il
+                    FROM candidati c
+                    LEFT JOIN profili pr
+                      ON c.ambito = 'ruolo'
+                     AND pr.profilo_accesso_id = c.profilo_accesso_id
+                   WHERE (c.ambito = 'ruolo' AND pr.profilo_accesso_id IS NOT NULL)
+                      OR (c.ambito = 'emittente_fiscale'
+                          AND c.emittente_fiscale_id = fn_preset_di_base.p_emittente_fiscale_id
+                          AND EXISTS (SELECT 1 FROM anagrafiche.emittenti_fiscali ef
+                                       WHERE ef.id = c.emittente_fiscale_id
+                                         AND ef.attivo))
+                      OR c.ambito = 'sistema'
+                   ORDER BY CASE c.ambito WHEN 'ruolo' THEN 1
+                                          WHEN 'emittente_fiscale' THEN 2
+                                          ELSE 3 END,
+                            pr.priorita
+                   LIMIT 1;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_preset_di_base(text, integer, integer, config.ruolo_applicativo, bigint) IS
+                  'Il preset di base di una lista (p_famiglia = ''lista'') o di una dashboard (''dashboard'') per un utente: lo standard delle chiavi che la preferenza non ha, e la base del banner del preset aggiornato. Un candidato vale se e'' acceso e ha contenuto: almeno una colonna attiva; per la dashboard almeno un widget acceso che sta nel pool. Ordine: il preset di ruolo del profilo applicabile piu'' prioritario, solo con la veste valorizzata (con la veste NULL il passo del ruolo si salta: il ripiego non allarga e non sceglie per id); poi quello dell''azienda p_emittente_fiscale_id, se l''azienda e'' accesa; poi quello di sistema. Un posto ha al piu'' un preset acceso (uq_ui_lista_preset_posto, uq_ui_dashboard_preset_posto): la scelta e'' deterministica. Una riga (id, ambito, contenuto_aggiornato_il) o nessuna. La leggono ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config. STABLE.';

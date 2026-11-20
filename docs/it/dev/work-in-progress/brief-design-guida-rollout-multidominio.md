@@ -23,7 +23,7 @@
 > **Gerarchia dei documenti** (dalla radice a qui):
 > 1. [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) — **padre** (V10 §4;
 >    Problema 1 §2.1 + radice §2.4 «due macchine a stati»).
-> 2. [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) — design MOSTRA/GUIDA
+> 2. [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md) — design MOSTRA/GUIDA
 >    (§6 le due direzioni · §8 deliverable · **D4** GUIDA).
 > 3. [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
 >    [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) —
@@ -34,7 +34,7 @@
 > contratti; e prima andrebbero definite le pratiche»*. Entrambe le osservazioni sono corrette e sono il
 > perno di questo brief.
 >
-> **Correlati**: [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) (padre
+> **Correlati**: [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md) (padre
 > MOSTRA/GUIDA), [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) (V10 + Problema 2
 > «variazione per azienda»), [brief-design-workflow-definizioni-versionate](../work-done/brief-design-workflow-definizioni-versionate.md)
 > (edizioni versionate — lo strumento con cui si *definiscono* le pratiche), il cantiere editor
@@ -288,7 +288,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
   - **Il fallback pratica-level è già stato implementato** (`script.vw_pratica_doc_sorgente`): dettaglio
     e lista accendono già i COLLEGATO senza `flusso_id`. Scoperto solo l'aggancio **per-flusso**
     (percorso/coda). Dettaglio nelle note **(b)** e **(c)** del
-    [brief-padre proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md).
+    [brief-padre proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md).
   - 🔴 **ATTENZIONE sul primo dominio del roll-out — OFFERTA**: `vendite.fn_push_offerta_a_contratto`
     ha firma `(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)` — **nessun `p_flusso_id`**.
     Il rischio che R1 voleva evitare (seconda modifica di firma → `DROP FUNCTION`) è scongiurato per i
@@ -311,14 +311,27 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
 
 ---
 
-## Nota di correzione al brief-padre
+## Ereditato dal brief-padre (archiviato il 2026-11-20)
 
-Il brief-padre [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) inquadra
-MOSTRA come «implementato solo su PREVENTIVI». La ricognizione 2026-07-07 mostra che il **livello di
-lettura DB (D1 norm + D3 resolver)** è in realtà **generico e completo su tutti e 4 i domini**; ciò che è
-PREVENTIVI-only è la **definizione di pratica** (e quindi i *dati*: solo la pratica preventivi crea link
-verso un documento) e il **wiring GUIDA**. Aggiornare la nota di stato del brief-padre di conseguenza a
-chiusura di questo cantiere.
+Il brief-padre [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md)
+è in `work-done/`: il modello (proiezione, vocabolario `fase`/`esito`/`terminale`, dove si legge) sta ora
+nella [guida Gestione Pratiche](../../guide/gestione-pratiche.md), §«Lo stato del documento nella pratica
+(MOSTRA)». La sua correzione di stato, chiesta qui il 2026-07-07 (il livello di lettura è generico, non
+solo PREVENTIVI), era già nella sua testata. Tre voci erano ancora aperte e passano a questo brief:
+
+1. **Validazione E2E in-app di MOSTRA su PREVENTIVI**: il Tag dello stato del documento sulla card
+   ADESSO e sui fatti, provato nell'app dall'operatore. Non risulta fatta.
+2. **D4: il documento di un passo per i `COLLEGATO` senza flusso.** Dal 2026-11-09 l'ancora per flusso ha
+   una sede DB, `script.vw_flusso_doc_sorgente`, e la copia BE `_doc_sorgente_lateral` è ritirata. La
+   vista sceglie però solo fra i link che portano quel `flusso_id`: un `COLLEGATO` nato senza flusso
+   (l'ordine generato dopo lo SMISTAMENTO) compare nel dettaglio della pratica ma non sulla card di
+   CONFERMA_ORDINE. Resta la mappa passo→tipo di sorgente di §9 R1, la stessa che serve a GUIDA.
+3. **Le «azioni» nel descrittore** (§10.3 del padre, decisa per dopo MOSTRA): la prossima azione suggerita
+   sul documento, dalla capability `script.fn_available_actions_*` di ogni dominio. Mai progettata.
+
+Chiusa invece senza lavoro la voce (a) del padre: gli indici a espressione `uid::text`/`id::text` per
+ordini e contratti non servono più, perché i lettori cercano sulle chiavi native
+(`20261005-23`, lotto P di `brief-db-sorgente-documento-e-riga`).
 
 *Brief vivo: a chiusura per dominio, aggiornare la tabella §2 e la riga V10 di
 [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md).*

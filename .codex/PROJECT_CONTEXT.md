@@ -257,7 +257,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 - 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q26 prese da Tid dal 2026-11-18 al 2026-11-20; prossimo passo il via al giro 1 di sei.
+  decisioni Q1-Q39 prese da Tid dal 2026-11-18 al 2026-11-20; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20.
+  Ora il BE/FE con le ricadute dell'1b (BE7, BE25), poi il via al giro 2 di sei.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al

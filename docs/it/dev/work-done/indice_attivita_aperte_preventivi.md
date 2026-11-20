@@ -12,7 +12,7 @@
 > | Residuo | Dove vive ora |
 > | --- | --- |
 > | Preventivi **acquisti** (greenfield) | [sviluppo-preventivi-acquisti.md](../work-in-progress/sviluppo-preventivi-acquisti.md), che resta in `work-in-progress` come specifica |
-> | Validazione **E2E in-app di MOSTRA** su PREVENTIVI | [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md), header «Restano» |
+> | Validazione **E2E in-app di MOSTRA** su PREVENTIVI | [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md), header «Restano» |
 > | `flusso_id` sui link **COLLEGATO** (capability dormiente → **D4**, lavoro di design) | stesso brief §«bivio» + [brief-design-guida-rollout-multidominio.md](../work-in-progress/brief-design-guida-rollout-multidominio.md) D-B |
 > | Nota di stato del brief-padre da aggiornare | ✅ **già fatta**: la dicitura «MOSTRA implementata su PREVENTIVI» è stata rettificata nell'header del brief proiezione |
 >
@@ -71,7 +71,7 @@ NOta su acquisti ora non è in previsione di fare sviluppo dominio acquisti.
 
 ## Importanza BASSA (residui minori su doc trasversali)
 
-### 2. [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) — solo parte preventivi
+### 2. [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) — solo parte preventivi
 
 **Descrizione**: brief proiezione stato dominio; PREVENTIVI è il pilota, con MOSTRA e GUIDA già implementate. Restano solo residui minori lato preventivi (il resto del doc riguarda altri domini).
 

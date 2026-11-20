@@ -8,7 +8,7 @@
 > **7/7 verde** (Accetta→POSITIVO, Rifiuta→NEGATIVO). Residui: cleanup handler dormiente,
 > roll-out altri domini. Vedi §12.
 > **Origine**: §6 (le due direzioni) e §8-**D4** di
-> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
+> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
 > (MOSTRA già implementato: Fase 0 DB ✅ · Fase 1 BE ✅ · Fase 2 FE ✅). Salda il
 > **debito §5.3** di [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md)
 > (handler accetta/push oggi per-pratica PREVENTIVI → generalizzare prima del 2° dominio).
@@ -242,5 +242,5 @@ in-pratica) → **roll-out domini** (offerta/ordine/contratto).
 ---
 
 *Brief vivo: a chiusura aggiornare §8-D4 e la nota GUIDA in
-[brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) e la riga
+[brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) e la riga
 V10 di [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md).*

@@ -734,10 +734,13 @@ Se la colonna deve restare nascosta a **tutti tranne** alcuni profili, la si mar
 ### 10.5 Riallineare una preferenza dopo modifica del preset
 
 Quando l'admin modifica un preset di base (aggiunge una colonna,
-cambia l'ordine), gli utenti che hanno una preferenza salvata da quel
-preset vedono il banner "preset aggiornato": "Vedi novità" apre la modale con le
-novità, "Ignora" lo nasconde finché il preset non cambia di nuovo. Le chiavi che
-l'utente non ha personalizzato seguono già il preset senza bisogno di nulla.
+cambia l'ordine), il banner "preset aggiornato" lo vedono gli utenti che hanno
+personalizzato proprio quella parte: chi ha scelto le sue colonne lo vede quando
+cambiano le colonne del preset, non quando cambia solo l'ordinamento, che gli
+arriva già. Le parti che l'utente non ha personalizzato seguono il preset senza
+bisogno di nulla. "Vedi novità" apre la modale con le novità, "Ignora" lo nasconde
+finché il preset non cambia di nuovo. Salvare un preset senza cambiarlo non accende
+niente.
 
 Quando invece il preset da cui l'utente era partito non è più il suo standard (l'admin
 l'ha spento, l'ha cancellato, o ha acceso un preset che prevale), il sistema non parla di

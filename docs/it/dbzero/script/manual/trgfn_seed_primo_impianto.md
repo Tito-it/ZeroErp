@@ -103,9 +103,11 @@ trigger nominano, insieme alla colonna che ne porta l'`id`.
   righe della figlia non entrano nel registro.
 * L'`UPDATE` saltato restituisce `OLD` perché il mirror trovi la riga e non tenti l'`INSERT`;
   l'`INSERT` saltato restituisce `NULL` perché la riga manca, e non c'è chiave da duplicare.
-* ⭐ Una scrittura dell'installazione sulla composizione sposta `contenuto_aggiornato_il` del preset,
-  che è una colonna dell'installazione: il preset diventa personalizzato, e da lì il CSV non riscrive
-  più la sua composizione né le sue colonne dell'installazione.
+* ⭐ Una scrittura dell'installazione che cambia la composizione cambia, a fine transazione,
+  `composizione_impronta` del preset, che è una colonna dell'installazione: il preset diventa
+  personalizzato, e da lì il CSV non riscrive più la sua composizione né le sue colonne
+  dell'installazione. Una composizione riscritta uguale non cambia l'impronta, e il preset resta
+  intatto.
 
 ---
 

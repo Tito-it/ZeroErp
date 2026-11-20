@@ -18,7 +18,7 @@
 > * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili dell'utente nella veste, con la loro priorità
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — la legge per le liste
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — la legge per le dashboard
-> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner, calcolato sulla base scelta qui
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner, calcolate sulla base scelta qui
 >
 > Guide:
 >
@@ -30,8 +30,8 @@
 
 `ui.fn_preset_di_base` sceglie il **preset di base** di una lista o di una dashboard per un utente:
 il preset che dà le chiavi che la preferenza non ha, e sul quale si misura il banner del preset
-aggiornato. Restituisce una riga (l'id del preset, il suo ambito e la data del suo contenuto),
-oppure nessuna se nessun preset vale.
+aggiornato. Restituisce una riga (l'id del preset, il suo ambito e la data del suo contenuto per
+chiave, la mappa `{chiave: data}`), oppure nessuna se nessun preset vale.
 
 È la sede unica della scelta: i due resolver la chiamano, e non hanno una copia propria della
 cascata dei preset.
@@ -117,6 +117,8 @@ Nessuno: un contenitore senza preset che valgano dà nessuna riga, non un rifiut
   (prima il ruolo guardava solo il profilo più prioritario), il ruolo si salta con la veste nulla
   (prima la parità fra due profili si scioglieva a caso), l'azienda spenta non si applica più. La
   scelta non legge più `is_default`, ritirato dai preset.
+* 2026-11-20 — si ricrea con la data del contenuto per chiave: la colonna `contenuto_aggiornato_il`
+  del risultato è la mappa. Scelta e firma restano le stesse.
 
 ---
 

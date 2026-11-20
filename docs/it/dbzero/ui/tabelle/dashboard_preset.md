@@ -21,7 +21,8 @@
 | user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying(80) | NO | CURRENT_USER |
-| contenuto_aggiornato_il | timestamp with time zone | NO | now() |
+| contenuto_aggiornato_il | jsonb | NO |  |
+| composizione_impronta | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -49,7 +50,8 @@
 | trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
 
 ---
 {% include-markdown "signature-core.md" %}
