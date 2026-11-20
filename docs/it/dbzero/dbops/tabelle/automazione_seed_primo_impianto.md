@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l'installazione l'ha modificata la riga e' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e' accesa, lo rigenera se diverge, lo toglie se la riga e' spenta. Tre forme: per riga (i due elenchi NULL, il default), per colonna (i due elenchi, per le righe miste), solo inserimento (per riga, e ogni riga di seed conta come personalizzata). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.
+> Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l'installazione l'ha modificata la riga e' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e' accesa, lo rigenera se diverge, lo toglie se la riga e' spenta. Quattro forme: per riga (gli elenchi e il padre NULL, il default), per colonna (i due elenchi, per le righe miste), solo inserimento (per riga, e ogni riga di seed conta come personalizzata), figlia (tabella_padre e colonna_padre: una tabella di composizione senza colonna id, che segue il suo padre). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -19,11 +19,14 @@
 | motivo | text | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
+| tabella_padre | text | YES |  |
+| colonna_padre | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_automazione_seed_primo_impianto_elenchi |  |
+| CHECK | chk_automazione_seed_primo_impianto_figlia |  |
 | CHECK | chk_automazione_seed_primo_impianto_motivo |  |
 | CHECK | chk_automazione_seed_primo_impianto_nome_tabella |  |
 | CHECK | chk_automazione_seed_primo_impianto_solo_inserimento_per_riga |  |

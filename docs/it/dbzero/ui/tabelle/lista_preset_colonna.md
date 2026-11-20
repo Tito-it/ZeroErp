@@ -31,6 +31,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
+| trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
+| trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
 | trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
 | trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
 | trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |

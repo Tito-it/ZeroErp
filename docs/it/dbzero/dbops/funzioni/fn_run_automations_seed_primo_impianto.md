@@ -29,8 +29,12 @@ AS $function$
             nome abbiano, e crea quello atteso
   TOGLIE    toglie tutti i trigger vivi (la riga e' spenta); il registro
             dbops.seed_righe resta, e torna buono se la riga si riaccende
-  NON_CLASSIFICATA, SENZA_ID
+  NON_CLASSIFICATA, SENZA_ID, PADRE_NON_ISCRITTO
             nessuna DDL: WARN nell'audit, il trigger di prima resta
+
+  Forma FIGLIA
+  La tabella di composizione non ha la colonna id e non si iscrive: CREA
+  monta il trigger e basta. Le sue righe seguono il padre.
 
   Trigger fuori dal registro
   Un trigger della funzione su una tabella che il registro non nomina
@@ -109,7 +113,7 @@ BEGIN
       FROM dbops.fn_seed_primo_impianto_divergenze(p_schemas) AS d
      ORDER BY d.schema_name, d.table_name
   LOOP
-    IF r.azione IN ('NON_CLASSIFICATA', 'SENZA_ID') THEN
+    IF r.azione IN ('NON_CLASSIFICATA', 'SENZA_ID', 'PADRE_NON_ISCRITTO') THEN
       PERFORM dbops.fn_audit_log_once(
         p_function_name => 'dbops.fn_run_automations_seed_primo_impianto',
         p_status        => 'WARN',
@@ -169,7 +173,7 @@ BEGIN
       -- L'iscrizione: solo alla nascita del trigger. Le righe di seed che
       -- ci sono gia' entrano nel registro; le altre restano
       -- dell'installazione.
-      IF r.azione = 'CREA' THEN
+      IF r.azione = 'CREA' AND r.argomenti_attesi[1] IS DISTINCT FROM 'FIGLIA' THEN
         IF NOT EXISTS (
              SELECT 1 FROM pg_catalog.pg_attribute a
               WHERE a.attrelid = format('%I.%I', r.schema_name, r.table_name)::regclass
@@ -238,7 +242,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_run_automations_seed_primo_impianto(p_exec_mode text, p_schemas text[], p_dry_run boolean)
-IS 'Runner della regola SEED_PRIMO_IMPIANTO: porta i trigger su script.trgfn_seed_primo_impianto delle tabelle in scope allo stato che dichiara dbops.automazione_seed_primo_impianto, con il confronto di dbops.fn_seed_primo_impianto_divergenze. CREA monta il trigger (BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, fase a00) e iscrive le righe di seed gia'' presenti in dbops.seed_righe: user_insert = ''SEED'' o un ruolo del migratore (dbops.fn_ruolo_del_migratore), segnata_da ISCRIZIONE; RIGENERA toglie i trigger vivi della funzione e rimonta l''atteso, senza ripassare dall''iscrizione; TOGLIE li toglie (riga spenta), il registro resta. NON_CLASSIFICATA e SENZA_ID non fanno DDL: WARN nell''audit, il trigger di prima resta. Un trigger della funzione su una tabella che il registro non nomina ferma il giro (E_SEED_PRIMO_IMPIANTO), come una tabella iscritta senza user_insert. Un guasto dell''ambiente esce col suo SQLSTATE. p_dry_run = true: nessuna DDL, l''azione nell''audit. Lo chiamano maintenance.proc_automations_lock_columns_job (convergenza del rilascio e giro notturno) e la rete di 90_end a ogni migrate.';
+IS 'Runner della regola SEED_PRIMO_IMPIANTO: porta i trigger su script.trgfn_seed_primo_impianto delle tabelle in scope allo stato che dichiara dbops.automazione_seed_primo_impianto, con il confronto di dbops.fn_seed_primo_impianto_divergenze. CREA monta il trigger (BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, fase a00) e iscrive le righe di seed gia'' presenti in dbops.seed_righe: user_insert = ''SEED'' o un ruolo del migratore (dbops.fn_ruolo_del_migratore), segnata_da ISCRIZIONE; RIGENERA toglie i trigger vivi della funzione e rimonta l''atteso, senza ripassare dall''iscrizione; TOGLIE li toglie (riga spenta), il registro resta. Forma FIGLIA: CREA monta il trigger senza iscrizione (la tabella di composizione non ha id, le sue righe seguono il padre). NON_CLASSIFICATA, SENZA_ID e PADRE_NON_ISCRITTO non fanno DDL: WARN nell''audit, il trigger di prima resta. Un trigger della funzione su una tabella che il registro non nomina ferma il giro (E_SEED_PRIMO_IMPIANTO), come una tabella iscritta senza user_insert. Un guasto dell''ambiente esce col suo SQLSTATE. p_dry_run = true: nessuna DDL, l''azione nell''audit. Lo chiamano maintenance.proc_automations_lock_columns_job (convergenza del rilascio e giro notturno) e la rete di 90_end a ogni migrate.';
 ```
 
 </div>
