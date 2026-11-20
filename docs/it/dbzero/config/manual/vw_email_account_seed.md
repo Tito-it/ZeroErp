@@ -1,9 +1,10 @@
 ## 📘 Documentazione Concettuale – Vista `config.vw_email_account_seed`
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
+> [dbops.fn_seed_superficie](/dbzero/dbops/manual/fn_seed_superficie) ·
 > [dbops.fn_seed_riga](/dbzero/dbops/manual/fn_seed_riga) ·
 > [dbops.fn_seed_colonne_del_software](/dbzero/dbops/manual/fn_seed_colonne_del_software) ·
 > [script.trgfn_seed_primo_impianto](/dbzero/script/manual/trgfn_seed_primo_impianto) — il guard ·
@@ -25,7 +26,8 @@ backend la legge accanto a `config.email_account`, nella lista e nel dettaglio.
 
 * ⭐ **Tutto viene dalle funzioni del guard**, come nella gemella dei template: il segno è
   `dbops.fn_seed_riga`, i campi sono gli argomenti del montaggio di
-  `script.trgfn_seed_primo_impianto`. Se la forma della tabella cambia nel registro della regola, la
+  `script.trgfn_seed_primo_impianto`, e il giudizio sulla riga è `dbops.fn_seed_superficie`, la sede
+  comune a tutte le superfici del seed. Se la forma della tabella cambia nel registro della regola, la
   colonna segue senza toccare il backend.
 * **Nessuna colonna per «elimina»**: un account non si cancella, nemmeno quello creato dall'azienda.
   Si spegne (`attivo = false`), anche dopo aver spedito: lo storico delle mail non lo tiene acceso

@@ -1,9 +1,10 @@
 ## 📘 Documentazione Concettuale – Vista `config.vw_email_template_seed`
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
+> [dbops.fn_seed_superficie](/dbzero/dbops/manual/fn_seed_superficie) ·
 > [dbops.fn_seed_riga](/dbzero/dbops/manual/fn_seed_riga) ·
 > [dbops.fn_seed_colonne_del_software](/dbzero/dbops/manual/fn_seed_colonne_del_software) ·
 > [script.trgfn_seed_primo_impianto](/dbzero/script/manual/trgfn_seed_primo_impianto) — il guard ·
@@ -25,7 +26,8 @@ Il backend la legge accanto a `config.email_template`, nella lista e nel dettagl
 
 * ⭐ **Tutto viene dalle funzioni del guard.** Il segno è `dbops.fn_seed_riga`, la stessa domanda
   che fa `script.trgfn_seed_primo_impianto`; i campi sono gli argomenti del suo montaggio, letti con
-  la stessa grammatica. Il campo spento e il rifiuto non possono divergere, e il backend non tiene
+  la stessa grammatica. Il giudizio sulla riga è `dbops.fn_seed_superficie`, la sede comune a tutte le
+  superfici del seed. Il campo spento e il rifiuto non possono divergere, e il backend non tiene
   nessun elenco di colonne.
 * **Nessuna colonna per «elimina»**: un template non si cancella, nemmeno quello creato
   dall'azienda. Si spegne (`attivo = false`), anche dopo aver spedito

@@ -32,7 +32,7 @@ ripercorrere le stesse strade.
 | 6-quater | ✅ Tid e sessione DB | L'apply del giro 2 e i pgTAP verdi (Tid), la doc auto-generata, il commit (2026-11-20) | §16.14 | 6-ter |
 | 6-quinquies | ✅ sessione DB e Tid | La richiesta del BE sul rilancio: il `20261118-01`, il pgTAP adeguato, la pagina `manual/`; l'apply e il pgTAP verde (Tid), la doc auto-generata, il commit (2026-11-20) | §16.16 | 6-quater |
 | 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
-| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento, QU1-QU5 decise (2026-11-20); ✅ giro 3 (`20261119-01` … `-05`, CSV, pgTAP) applicato su dbdev, pgTAP verdi (Tid, 2026-11-20); ⏳ la superficie per il BE (QU3), poi R-UI al team | §16.15 | 6-quater |
+| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento, QU1-QU5 decise (2026-11-20); ✅ giro 3 (`20261119-01` … `-05`, CSV, pgTAP) applicato su dbdev, pgTAP verdi (Tid, 2026-11-20); ✅ la superficie (`20261119-06` … `-08`) applicata su dbdev, pgTAP verdi (Tid, 2026-11-20); ⏳ R-UI al team BE/FE, la doc auto-generata | §16.15 | 6-quater |
 | 7-ter | team BE/FE | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; ora sbloccato | §16.16 | 6-quinquies |
 | 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quinquies, 7, 7-ter |
 
@@ -1527,9 +1527,7 @@ in `scartati` resta una data che non viene dal CSV. Non rompe niente; se diventa
 
 **Restano aperti, e non stanno in questo giro:**
 
-- la **superficie per il BE** di QU3 (`nata_dal_seed`, `campi_del_software` sulle liste e sui dettagli admin di `ui`):
-  la seconda occorrenza dopo le due viste della posta, quindi un building block, in un passo a parte. Fino ad allora il
-  BE riceve i due errori, gli stessi della posta (la loro tassonomia è la richiesta R2 del §16.14);
+- ~~la **superficie per il BE** di QU3, in un passo a parte~~: fatta, vedi «La superficie» qui sotto;
 - `is_default` sta fra le colonne del software di `ui.lista_preset`: il giro che lo ritira (Q26 del brief `ui`) lo
   toglie nello stesso changeSet anche dalla riga 5 del registro, altrimenti la tabella diventa `NON_CLASSIFICATA`;
 - di Q14 del brief `ui` si ritira «vista e schema dati di una lista certificata solo dall'owner» (QU4): lo fa il giro 4
@@ -1547,7 +1545,40 @@ del software non si cambiano.
 | R-UI3 | `replace_preset_colonne` su un preset di seed lo personalizza (la data del contenuto si sposta): da lì il migrate non ne riscrive la composizione. Atteso, nessun cambio di codice; da sapere per i test BE che salvano un preset di sistema | `backend/apps/ui/db/ui_admin_repository.py:733` |
 | R-UI-test | I test BE che cancellano o rinominano righe di seed di `ui` vanno su righe create dal test | `backend/apps/ui/tests/` |
 
-Il FE spegne cestino e campi del software quando arriva la superficie (passo successivo).
+| R-UI-sup | Liste e dettagli admin di definizioni, colonne e preset espongono `nata_dal_seed` e `campi_del_software`, letti da `dbops.fn_seed_superficie` (sotto) in `LEFT JOIN LATERAL`, con le colonne del software passate come sottoquery non correlata. Nessun elenco di colonne nel backend. Il FE spegne il cestino sulle righe nate dal seed e i campi in `campi_del_software`, col motivo (il testo lo sceglie il FE, come per la posta, R3 del §16.14) | `backend/apps/ui/db/ui_admin_repository.py` (le letture di lista e dettaglio delle tre tabelle); i drawer `ListaDefinizioneDrawer.vue`, `ListaColonnaDrawer.vue`, `ListaPresetDrawer.vue` e le loro tabelle |
+
+La forma della lettura, per R-UI-sup (`<t>` è la tabella, `x` il suo alias):
+
+```sql
+LEFT JOIN LATERAL dbops.fn_seed_superficie(
+    '<t>'::regclass, x.id::text,
+    (SELECT dbops.fn_seed_colonne_del_software('<t>'::regclass))) seed ON true
+```
+
+#### La superficie: `dbops.fn_seed_superficie` (QU3, 2026-11-20)
+
+La regola delle superfici (nata dal seed; i campi del software solo sulle righe di seed; vuoto e mai NULL) era scritta in
+ciascuna delle due viste della posta, e le liste admin di `ui` ne chiedevano altre tre. È la seconda occorrenza: un
+building block, e le due viste si riscrivono sopra nello stesso giro.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261119-06` (`20_code/dbops`) | `dbops.fn_seed_superficie(p_tabella, p_riga_id, p_colonne_del_software)`: una riga, `nata_dal_seed` e `campi_del_software`. Compone `fn_seed_riga` e l'elenco ricevuto; non legge il montaggio |
+| `20261119-07`, `-08` (`20_code/config`) | `config.vw_email_account_seed` e `config.vw_email_template_seed` sopra il building block: colonne, nomi e tipi identici (`CREATE OR REPLACE VIEW`), il BE della posta non cambia |
+
+**Perché le colonne le passa il chiamante.** Non dipendono dalla riga (linee-guida-sql §13.2): una funzione che le
+rilegge per riga rifarebbe la stessa lettura del montaggio per ogni riga della lista. Lettura e giudizio in due metà: il
+chiamante legge una volta con `fn_seed_colonne_del_software` (InitPlan), la funzione giudica la riga. Le viste della posta
+le leggevano già una volta, e così restano.
+
+**Nessuna vista nuova per `ui`**: il BE chiama il building block nelle sue letture. Una vista per tabella sarebbe stata
+la terza, la quarta e la quinta copia dello stesso adattatore.
+
+**Provato sullo scratch** (`prova_changeset.py`, i tre changeSet). `test-posta-solo-disattivazione-v1`, che legge le due
+viste, identico prima e dopo. `dbops/test-fn-seed-superficie-v1` (nuovo, 7 test, app): 6 ok da owner; il test 2 (una
+lista creata dal test non è nata dal seed) da owner è rosso per costruzione, perché nella sessione del migratore la lista
+nasce di seed. ✅ Applicato su dbdev, pgTAP verdi come app (Tid, 2026-11-20). ⏳ La doc auto-generata (le pagine
+`manual/` nuove linkano già la scheda).
 
 ### 16.16 Il rilancio scrive l'account da cui la mail riparte (richiesta del BE, decisione di Tid, 2026-11-20)
 

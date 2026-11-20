@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_riga`
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,10 +11,11 @@
 > Approfondimento funzioni:
 >
 > * [script.trgfn_seed_primo_impianto](/dbzero/script/funzioni/trgfn_seed_primo_impianto) — chiamante: il guard, all'`UPDATE` e al `DELETE`
+> * [dbops.fn_seed_superficie](/dbzero/dbops/funzioni/fn_seed_superficie) — chiamante: il segno del seed su una riga, per le superfici
 >
 > Approfondimento viste:
 >
-> * [config.vw_email_account_seed](/dbzero/config/views/vw_email_account_seed) e [config.vw_email_template_seed](/dbzero/config/views/vw_email_template_seed) — chiamanti: il segno «nata dal seed» per l'interfaccia
+> * [config.vw_email_account_seed](/dbzero/config/views/vw_email_account_seed) e [config.vw_email_template_seed](/dbzero/config/views/vw_email_template_seed) — il segno «nata dal seed» per l'interfaccia, attraverso [fn_seed_superficie](/dbzero/dbops/funzioni/fn_seed_superficie)
 >
 > Guide:
 >
