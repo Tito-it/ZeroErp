@@ -97,10 +97,10 @@ SELECT id AS colonna_id, lista_id, codice FROM ins;
 -- Il preset di sistema: due colonne su tre, ordinamento, filtri, misura PRESET.
 CREATE TEMP TABLE _p AS
 WITH ins AS (
-  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito,
                                pagina_dimensione, ordinamento_default, filtri_default,
                                attivo, user_insert)
-  SELECT l.lista_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', TRUE,
+  SELECT l.lista_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema',
          (SELECT preset FROM _m),
          '[{"col": "c_uno", "dir": "desc"}]'::jsonb, '{"c_due": "x"}'::jsonb,
          TRUE, '_pgtap'
@@ -320,9 +320,9 @@ VALUES ((SELECT auth_user_id FROM _u), (SELECT lista_id FROM _l), (SELECT preset
 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
    SET preset_base_id = EXCLUDED.preset_base_id,
        configurazione = EXCLUDED.configurazione;
--- Lo snapshot dopo: il trigger z90 lo azzera se preset_base_id cambia.
-UPDATE ui.lista_preferenza_utente SET preset_base_contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
+-- Lo snapshot lo scrive il DB (ui.trgfn_preferenza_preset_base_snapshot): e'
+-- la data del contenuto del preset, fissata qui sopra; quella passata
+-- nell'INSERT non conta.
 
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, FALSE,
     '17) snapshot allineato al preset: preset_aggiornato = false');

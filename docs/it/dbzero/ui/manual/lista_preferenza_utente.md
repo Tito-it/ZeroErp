@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,7 +15,8 @@
 > Approfondimento funzioni:
 >
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge la preferenza chiave per chiave
-> * [ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts) — azzera snapshot e «ignora» al cambio di base
+> * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive lo snapshot dal preset di base, azzera l'«ignora» al cambio di base
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
 > * [ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
 >
 > Guide:
@@ -51,15 +52,18 @@ dalla lista risolta senza errore.
 
 ### Lo snapshot del preset di base e il banner «preset aggiornato»
 
-Al salvataggio il servizio scrive in `preset_base_id` il preset che sta sotto la preferenza, e in
-`preset_base_contenuto_aggiornato_il` la sua data del contenuto di quel momento. Se poi la data
-del preset si sposta, il resolver accende `preset_aggiornato`: il frontend propone di vedere le
-novità. `preset_aggiornato_ignored_at` è il «non mostrarmelo più»: il flag resta spento finché il
-preset non cambia di nuovo dopo quel momento.
+Al salvataggio il servizio scrive in `preset_base_id` il preset di base che il resolver gli ha dato
+(`preset_base`). Lo snapshot `preset_base_contenuto_aggiornato_il` lo scrive il database: il
+trigger [trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot)
+legge la data del contenuto del preset a ogni scrittura che nomina la base o lo snapshot, e il
+valore mandato dal servizio non conta. Se poi la data del preset si sposta, il resolver accende
+`preset_aggiornato`: il frontend propone di vedere le novità. `preset_aggiornato_ignored_at` è il
+«non mostrarmelo più»: il flag resta spento finché il preset non cambia di nuovo dopo quel momento.
 
-Quando `preset_base_id` cambia (anche perché il preset si cancella, con l'`ON DELETE SET NULL`), il
-trigger [z90](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts)
-azzera lo snapshot e l'«ignora».
+Quando `preset_base_id` cambia (anche perché il preset si cancella, con l'`ON DELETE SET NULL`), lo
+stesso trigger azzera l'«ignora», che si riferiva alla base di prima. Se la base salvata non è più
+la base di oggi (spenta, cancellata o scavalcata), il resolver non accende `preset_aggiornato` ma
+`preset_base_cambiato`, che propone il riallineamento.
 
 ---
 
@@ -94,14 +98,8 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
   nascoste, e la lista parte con le sole colonne identificatore e azione.
 * **Ordinamento e filtri** passano così come sono salvati: possono nominare colonne spente, non
   ordinabili, non filtrabili o bloccate per l'utente.
-* **Il preset di base può non essere quello vero.** `preset_base_id` lo calcola il servizio con
-  una copia sua della cascata, che non scarta i preset senza colonne accese come fa il resolver; e
-  nessun vincolo chiede che sia un preset della stessa lista.
-* **Il preset di base spento.** Spento il preset, `preset_base_id` continua a puntarlo, e il flag
-  si calcola su di lui e non sul preset che ora sta davvero sotto la preferenza.
-* **Lo snapshot perso al salvataggio.** Quando un salvataggio cambia la base, il servizio scrive
-  la base nuova e la sua data nella stessa istruzione, e il trigger z90 azzera la data appena
-  scritta: fino al salvataggio successivo il banner non si accende più.
+* **Il preset di base di un'altra lista.** Nessun vincolo chiede che `preset_base_id` sia un preset
+  della stessa lista: il resolver lo tratta come una base che non è quella di oggi.
 * **Il banner per chiavi che seguono già il preset.** Il flag guarda la data del preset intero:
   una preferenza di sola misura vede il banner quando il preset cambia l'ordinamento, che le arriva
   già da solo.
@@ -122,6 +120,8 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
   e null.
 * `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — snapshot, «ignora», base
   azzerata dal trigger.
+* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — lo snapshot scritto dal database e non dal
+  servizio; la base salvata diversa da quella di oggi (`preset_base_cambiato`).
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — la preferenza prevale sui preset.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura della preferenza nel catalogo.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — lo snapshot rinominato, le FK in eccezione ATTIVO.
@@ -136,6 +136,9 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 * 2026-11-08 — lo snapshot `preset_base_data_update` si rinomina
   `preset_base_contenuto_aggiornato_il` e confronta la data del contenuto del preset; le FK verso
   lista e preset entrano fra le eccezioni ATTIVO.
+* 2026-11-20 — lo snapshot lo scrive il database, e il trigger `z90` che lo azzerava al cambio di
+  base è tolto: azzerava anche lo snapshot nuovo portato dallo stesso salvataggio. Il resolver espone
+  il preset di base da salvare (`preset_base`), e la copia della cascata nel servizio si ritira.
 
 ---
 

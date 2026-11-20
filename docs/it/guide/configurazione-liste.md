@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -20,6 +20,8 @@
 > **Vedi anche** — funzioni e trigger DB:
 >
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — la configurazione effettiva di una lista per un utente
+> * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base, per liste e dashboard
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il banner «preset aggiornato»
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di ogni colonna per un utente
 > * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — la vista della lista esiste
 > * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista
@@ -138,9 +140,14 @@ Un preset porta:
 * le **righe per pagina**, scelte fra le misure del catalogo (§2.6); vuoto vuol dire
   «la misura di default»
 
-Un solo preset può essere `is_default=true` per ogni combinazione
-(lista, ambito, profilo, emittente): è lo **standard** della lista per chi
-rientra in quell'ambito (§3).
+Ogni combinazione (lista, ambito, profilo, emittente) è un **posto**, e un posto ha
+**un solo preset acceso**: è lo **standard** della lista per chi rientra in
+quell'ambito (§3). Un preset vale se è acceso; i preset spenti non entrano nella
+cascata e non occupano il posto.
+
+Una nuova versione del preset si prepara **spenta**, come bozza accanto a quello in
+uso. Per metterla al suo posto si spegne prima il preset vecchio e poi si accende la
+bozza: accendere la bozza mentre il vecchio è ancora acceso è rifiutato.
 
 ### 2.4 Permesso colonna (`lista_colonna_permesso`)
 
@@ -176,7 +183,8 @@ colonne". Conserva **solo ciò che l'operatore ha scelto**, chiave per chiave:
 Una chiave che l'operatore non ha toccato non si salva: continua a venire dal preset,
 così una modifica del preset arriva anche a chi ha personalizzato altro. La
 preferenza ricorda anche il preset di partenza, per il banner "preset aggiornato"
-(§6) quando l'admin modifica il preset di base.
+(§6) quando l'admin modifica il preset di base: la data del contenuto di quel preset
+la registra il database a ogni salvataggio.
 
 Una sola preferenza per coppia (utente, lista). Il salvataggio
 sovrascrive la precedente; una preferenza senza più scelte si cancella, e l'operatore
@@ -200,10 +208,15 @@ colonne, ordinamento, filtri, righe per pagina — prendendola dal primo livello
 la contiene:
 
 1. **La preferenza personale**, se l'operatore ha scelto quella chiave
-2. Altrimenti, il **preset di base**: il primo, in quest'ordine, che ha almeno una colonna attiva
-   1. il preset di default per il suo **ruolo** (fra più profili, quello più specifico)
-   2. il preset di default per il suo **emittente fiscale**
-   3. il preset di default di **sistema**
+2. Altrimenti, il **preset di base**: il primo preset acceso, in quest'ordine, che ha almeno
+   una colonna attiva
+   1. il preset del suo **ruolo** (fra più profili, quello più specifico), solo quando la
+      sessione ha una veste: senza veste la cascata parte dall'emittente
+   2. il preset del suo **emittente fiscale**, solo se l'emittente è attivo
+   3. il preset di **sistema**
+
+   Un preset senza colonne attive non conta, a nessun livello: la cascata passa al
+   successivo, e da quel preset non prende nemmeno ordinamento, filtri o righe per pagina.
 3. Altrimenti, il **catalogo grezzo**: tutte le colonne attive, visibili, nell'ordine
    di catalogo; nessun ordinamento, nessun filtro, la misura di default
 
@@ -220,7 +233,10 @@ Sopra qualunque livello valgono poi tre regole:
   le `LETTURA` perdono l'export.
 
 La sede della cascata è il database:
-[ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config).
+[ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config), che sceglie il
+preset di base con [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base), la stessa
+regola delle dashboard. Il preset di base scelto è nel risultato, e il backend lo salva con la
+preferenza.
 
 ---
 
@@ -237,15 +253,15 @@ operare. Tutti i tab sotto si aggiornano di conseguenza.
 
 Lista dei preset configurati per la lista corrente. Per ogni preset si
 vedono codice, descrizione, ambito (sistema/ruolo/emittente), riferimento
-(profilo o emittente specifico), numero colonne configurate, flag
-default, stato attivo.
+(profilo o emittente specifico), numero colonne configurate, stato
+attivo.
 
 **Operazioni disponibili**:
 
 * **Nuovo preset**: drawer con codice, descrizione, ambito, riferimenti
   condizionali (profilo se ambito=ruolo, emittente se ambito=emittente
   fiscale), righe per pagina (una misura del catalogo, o il default), flag
-  is_default e attivo.
+  attivo. Un preset nuovo per un posto che ne ha già uno acceso nasce spento (§2.3).
 * **Modifica preset**: aggiorna i campi mutabili. L'ambito e i
   riferimenti sono immutabili dopo la creazione (per cambiarli si
   crea un nuovo preset).
@@ -424,6 +440,9 @@ L'operatore vede ogni lista personalizzabile con due affordance:
 * **Banner "preset aggiornato"** — appare quando l'admin modifica il
   preset da cui partiva la preferenza dell'utente. "Vedi novità" apre la modale
   con le novità; "Ignora" lo nasconde finché il preset non cambia di nuovo.
+  Se invece il preset di partenza non è più lo standard dell'utente (è stato spento,
+  cancellato, o ne vale un altro), il sistema lo segnala con un esito suo, "preset
+  di base cambiato", che propone di riallineare la preferenza al nuovo standard.
 
 ### 6.1 Cosa NON può fare l'operatore
 
@@ -598,13 +617,13 @@ Pagina `/config/personalizzazioni-liste` → seleziona "Clienti" → tab "Preset
 **Preset "Default sistema"**:
 
 * Codice: `default`, Descrizione: "Vista standard"
-* Ambito: sistema, is_default: ✓
+* Ambito: sistema, attivo: ✓
 * Composizione: ragione_sociale, comune, stato (le tre più universali)
 
 **Preset "Default amministrativo"**:
 
 * Codice: `default-admin`, Descrizione: "Vista amministrativa"
-* Ambito: ruolo, profilo: "Amministrativo", is_default: ✓
+* Ambito: ruolo, profilo: "Amministrativo", attivo: ✓
 * Composizione: ragione_sociale, partita_iva, codice_fiscale, stato
 
 ### Step 4 — Tenant admin imposta i permessi
@@ -698,8 +717,10 @@ Se la colonna deve restare nascosta a **tutti tranne** alcuni profili, la si mar
 3. Salva il preset (testata)
 4. Apri "Gestisci composizione" → seleziona le colonne, riordina,
    imposta visibilità di default → Salva
-5. Marca il preset come `is_default=true`. Diventa lo standard della lista per gli
-   operatori con quel ruolo, e prevale su un preset di emittente (§3).
+5. Accendi il preset (`attivo`). Diventa lo standard della lista per gli
+   operatori con quel ruolo, e prevale su un preset di emittente (§3). Se il ruolo ha
+   già un preset acceso per la lista, il nuovo si prepara spento, e per sostituirlo si
+   spegne prima il vecchio (§2.3).
 
 ### 10.4 Disattivare temporaneamente una lista
 
@@ -716,6 +737,13 @@ cambia l'ordine), gli utenti che hanno una preferenza salvata da quel
 preset vedono il banner "preset aggiornato": "Vedi novità" apre la modale con le
 novità, "Ignora" lo nasconde finché il preset non cambia di nuovo. Le chiavi che
 l'utente non ha personalizzato seguono già il preset senza bisogno di nulla.
+
+Quando invece il preset da cui l'utente era partito non è più il suo standard (l'admin
+l'ha spento, l'ha cancellato, o ha acceso un preset che prevale), il sistema non parla di
+"preset aggiornato" ma di "preset di base cambiato": l'utente può riallineare la
+preferenza al nuovo standard. Salvare la preferenza è il riallineamento: da quel momento
+il preset di partenza è quello nuovo. Il contratto dei due esiti è nella scheda di
+[ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config).
 
 ### 10.6 Esportare una lista in CSV o Excel
 

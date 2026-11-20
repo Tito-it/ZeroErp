@@ -40,7 +40,8 @@
 |------|--------|--------|--------|
 | trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
 | trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
-| trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()` |
+| trg_ui_lista_preferenza_utente_z90_preset_base_snapshot_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
+| trg_ui_lista_preferenza_utente_z90_preset_base_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 
 ---
 {% include-markdown "signature-core.md" %}

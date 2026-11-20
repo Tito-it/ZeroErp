@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,8 @@
 > Approfondimento funzioni:
 >
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge la preferenza e la combina con lo standard
-> * [ui.trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts) — azzera la fotografia quando cambia il preset di base
+> * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive la fotografia dal preset di base, azzera l'«ignora» al cambio di base
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
 
 ---
 
@@ -43,15 +44,17 @@ chiave assente.
 
 ### La fotografia del preset di base, per il banner «preset aggiornato»
 
-Al salvataggio il backend scrive in `preset_base_id` il preset da cui l'utente è partito, e in
-`preset_base_contenuto_aggiornato_il` la data del suo contenuto in quel momento. Se poi il preset cambia,
-la risoluzione accende `preset_aggiornato`; l'utente lo spegne con «ignora»
-(`preset_aggiornato_ignored_at`), finché il preset non cambia di nuovo.
+Al salvataggio il backend scrive in `preset_base_id` il preset di base che la risoluzione gli ha dato
+(`preset_base`). La fotografia `preset_base_contenuto_aggiornato_il` la scrive il database: il trigger
+[trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot), lo
+stesso delle liste, legge la data del contenuto del preset a ogni scrittura che nomina la base o la
+fotografia, e il valore mandato dal backend non conta. Se poi il preset cambia, la risoluzione accende
+`preset_aggiornato`; l'utente lo spegne con «ignora» (`preset_aggiornato_ignored_at`), finché il preset non
+cambia di nuovo.
 
-Quando `preset_base_id` cambia, il trigger
-[z90_clear_preset_base_ts](/dbzero/ui/funzioni/trgfn_ui_dashboard_preferenza_utente_z90_clear_preset_base_ts)
-azzera la fotografia e l'«ignora», che si riferivano al preset di prima. Un preset cancellato porta
-`preset_base_id` a NULL, e il trigger scatta anche lì.
+Quando `preset_base_id` cambia, lo stesso trigger azzera l'«ignora», che si riferiva al preset di prima. Un
+preset cancellato porta `preset_base_id` a NULL, e il trigger scatta anche lì. Se la base salvata non è più
+quella di oggi, la risoluzione risponde `preset_base_cambiato` invece di `preset_aggiornato`.
 
 ---
 
@@ -85,16 +88,10 @@ backend legge la riga direttamente solo per il proprio servizio di preferenza.
     funzione di risoluzione: la home di quell'utente non si apre più;
   * con una voce senza codice, spegne in silenzio l'aggiunta dei widget nuovi del pool;
   * con un codice ripetuto, mostra la stessa card due volte.
-* **Il salvataggio che cambia preset di base perde la fotografia.** Il trigger azzera
-  `preset_base_contenuto_aggiornato_il` ogni volta che `preset_base_id` cambia, anche quando lo stesso
-  UPDATE porta la data nuova: è il caso dell'UPSERT del backend. Dopo quel salvataggio il banner non si
-  accende più finché l'utente non salva di nuovo.
 * **Il preset di base può essere di un'altra dashboard.** Nessun vincolo lega `preset_base_id` alla
-  dashboard della riga.
-* **Il preset di base lo calcola il backend.** Il backend sceglie il preset con una copia propria della
-  cascata, che non coincide con quella della risoluzione: prende il primo preset di default acceso,
-  mentre la risoluzione prende il primo con almeno un widget acceso. Quando i due differiscono, il
-  banner confronta un preset diverso da quello che l'utente vede.
+  dashboard della riga: la risoluzione lo tratta come una base che non è quella di oggi.
+* **Il banner è per preset intero.** Una preferenza di soli widget vede il banner anche quando il preset
+  cambia solo la dimensione, che le arriva già.
 * **L'applicazione può scrivere qualunque cosa.** Nessuna RLS e nessun verbo: la riga di un utente la
   può scrivere chiunque abbia i privilegi del ruolo applicativo.
 
@@ -113,7 +110,8 @@ La tabella non solleva codici propri. Una seconda riga per la stessa coppia arri
   (soli widget, sola dimensione) e il banner che si accende quando il preset cambia.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — la preferenza che vince sul preset, il widget
   spento che sparisce anche dalla preferenza.
-* Nessun test costruisce l'«ignora», il trigger di azzeramento né una configurazione malformata.
+* Nessun test costruisce, per le dashboard, l'«ignora», la fotografia scritta dal trigger né una
+  configurazione malformata.
 
 ---
 
@@ -126,6 +124,9 @@ La tabella non solleva codici propri. Una seconda riga per la stessa coppia arri
 * 2026-11-08 — la fotografia si chiama `preset_base_contenuto_aggiornato_il` e confronta la data del
   contenuto del preset, non più quella dell'audit; le due FK verso dashboard e preset entrano in
   eccezione alla regola ATTIVO.
+* 2026-11-20 — la fotografia la scrive il database, e il trigger `z90` che la azzerava al cambio di base è
+  tolto: azzerava anche la fotografia nuova portata dallo stesso UPSERT. La risoluzione espone il preset di
+  base da salvare (`preset_base`), e la copia della cascata nel backend si ritira.
 
 ---
 

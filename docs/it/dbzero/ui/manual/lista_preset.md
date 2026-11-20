@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -16,7 +16,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — sceglie il preset di base e ne legge le chiavi
+> * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — sceglie il preset di base
+> * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge le chiavi del preset di base
 > * [ui.trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato) — la data del contenuto, dalla testata
 > * [ui.trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset) — la data del contenuto, dalle colonne
 > * [ui.trgfn_ui_lista_preset_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
@@ -47,24 +48,29 @@ di un preset: lo rifiuta solo il servizio di amministrazione.
 
 ---
 
-### Il preset di default: al più uno per posto, spento compreso
+### Un preset acceso per posto: vale se è acceso
 
-Della cascata fanno parte solo i preset `is_default` e accesi. L'indice unico parziale
-`uq_ui_lista_preset_default` ammette **un solo** preset di default per (lista, ambito, profilo,
-azienda), e conta anche quelli spenti: un preset di default spento occupa il posto, e per
-nominarne un altro si toglie prima il flag al vecchio. Un preset non di default non entra mai
-nella cascata: resta a disposizione dell'amministrazione.
+Un **posto** è la combinazione (lista, ambito, profilo, azienda). L'indice unico parziale
+`uq_ui_lista_preset_posto` ammette **un solo** preset acceso per posto, e tratta il profilo e
+l'azienda vuoti come un valore della chiave: due preset di sistema accesi della stessa lista sono
+rifiutati. Il preset acceso è quello che vale; i preset spenti non entrano mai nella cascata, e
+non occupano il posto.
 
-Nessuna regola chiede che una lista abbia un preset di default di sistema: senza, la lista
-ripiega sul catalogo delle colonne.
+Una **bozza** si prepara spenta, accanto al preset in uso. Per sostituire il preset di un posto si
+spegne il vecchio **prima** di accendere il nuovo: l'indice non si differisce a fine transazione, e
+accendere la bozza con il vecchio ancora acceso è rifiutato.
+
+Nessuna regola chiede che una lista abbia un preset di sistema: senza, la lista ripiega sul
+catalogo delle colonne.
 
 ---
 
 ### Che cosa dà un preset alla cascata
 
-[fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) sceglie un solo **preset di
-base** per l'utente (ruolo, poi azienda, poi sistema: la regola esatta è nella sua pagina) e ne
-prende, chiave per chiave, ciò che la preferenza dell'utente non sceglie: colonne, ordinamento,
+[fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) sceglie un solo **preset di base** per
+l'utente: un preset acceso con almeno una colonna attiva, il ruolo (solo con la veste), poi
+l'azienda (solo se accesa), poi il sistema. [fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)
+ne prende, chiave per chiave, ciò che la preferenza dell'utente non sceglie: colonne, ordinamento,
 filtri e righe per pagina.
 
 * Le colonne sono quelle accese del catalogo citate dalle righe del preset.
@@ -90,7 +96,7 @@ e la spostano due trigger, sulle funzioni condivise con i preset delle dashboard
 
 Una riscrittura uguale non la sposta: il seed riscrive ogni riga a ogni giro, e il banner si
 accenderebbe a tutti. `data_update` e `user_update` restano l'audit del framework, che si sposta a
-ogni scrittura. Non sono contenuto codice, descrizione, ambito, `is_default` e `attivo`: accendere
+ogni scrittura. Non sono contenuto codice, descrizione, ambito e `attivo`: accendere
 o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che cosa dice.
 
 ---
@@ -100,7 +106,8 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * Una lista con preset accesi non si spegne, e un preset nasce o si riaccende solo su una lista
   accesa (regola ATTIVO, controllo differito a fine transazione).
 * Spegnere un profilo o un'azienda non si ferma sul preset (le due FK sono in eccezione): il
-  preset resta, e la cascata non lo usa più perché il profilo non è più fra quelli dell'utente.
+  preset resta, e la cascata non lo usa più, perché il profilo non è più fra quelli dell'utente e
+  il preset di un'azienda spenta non si applica.
 * Cancellare un preset cancella le sue colonne; le preferenze che lo avevano come base perdono il
   riferimento e il loro snapshot.
 
@@ -119,8 +126,6 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
   catalogo cambia, i preset nati senza misura restano a 25.
 * **La data del contenuto si scrive a mano.** Un INSERT o un UPDATE dell'applicazione può
   scrivere `contenuto_aggiornato_il` a qualunque valore senza cambiare il contenuto.
-* **Il ruolo dopo il primo.** Fra i preset di ruolo la cascata guarda solo quello del profilo più
-  prioritario: se non ha colonne accese, passa all'azienda senza guardare i profili successivi.
 
 ---
 
@@ -128,7 +133,7 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` fuori dal catalogo delle misure.
 * Le regole ATTIVO del framework — preset su una lista spenta, lista spenta con preset accesi.
-* Le unicità (codice per lista, il default per posto) e il vincolo dell'ambito arrivano come
+* Le unicità (codice per lista, un preset acceso per posto) e il vincolo dell'ambito arrivano come
   violazione di vincolo; il servizio di amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 
 ---
@@ -139,7 +144,9 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — le chiavi prese dal
   preset, la data del contenuto (riscrittura uguale, cambio di testata e di colonne).
 * `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — il flag contro lo snapshot.
-* `db/pgtap/ui/test-liste-preset-default-v1.sql` — ogni lista del seed ha il suo preset di default.
+* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — la scelta del preset di base; un secondo preset
+  acceso nello stesso posto rifiutato, uno spento accettato.
+* `db/pgtap/ui/test-liste-preset-default-v1.sql` — ogni lista del seed ha il suo preset di sistema.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — audit NOT NULL, eccezioni ATTIVO, trigger del contenuto.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura del preset nel catalogo.
 * `db/pgtap/dbops/test-codice-maiuscolo-v1.sql`, `db/pgtap/dbops/test-user-update-not-null-v1.sql`
@@ -155,6 +162,10 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * 2026-11-08 — la data del contenuto passa da `data_update` a `contenuto_aggiornato_il`;
   `data_update` e `user_update` diventano l'audit del framework, e lo schema `ui` entra
   nell'ambito delle automazioni (le FK verso profilo e azienda in eccezione ATTIVO).
+* 2026-11-20 — `is_default` si ritira, e con lui l'indice `uq_ui_lista_preset_default`, che contava
+  anche i preset spenti: la cascata leggeva solo i preset di default accesi, e un preset acceso non
+  di default non lo leggeva nessuno. I preset in quello stato sono stati spenti. Al suo posto
+  `uq_ui_lista_preset_posto`, sui soli preset accesi.
 
 ---
 

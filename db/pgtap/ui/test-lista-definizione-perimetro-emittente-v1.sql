@@ -75,14 +75,25 @@ SELECT is(
 --   ottiene. In esercizio arriva un P0001, e il test diventa rosso su un
 --   database sano. ⛔ Un presidio che passa solo nella veste sbagliata non
 --   presidia: prova la veste.
+-- ⚠️ Su una lista dell'installazione, creata qui con perimetro_emittente =
+--   false: su una lista del seed (era vendite.famiglie_documento) rifiuta
+--   prima il seed di primo impianto, anche lui con un P0001
+--   (E_SEED_COLONNA_DEL_SOFTWARE), e il test passerebbe per la ragione
+--   sbagliata.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert, perimetro_emittente)
+VALUES ('tst.perimetro.lista_globale', 'Lista globale creata dall''installazione', 'vendite', true, 'pgtap', false);
+
 PREPARE incoerente AS
 UPDATE ui.lista_definizione SET multi_emittente = TRUE
- WHERE codice = 'vendite.famiglie_documento';
+ WHERE codice = 'tst.perimetro.lista_globale';
 
 SELECT throws_ok(
     'incoerente', 'P0001',
     NULL,
     '4) Dall''applicazione il flag non si scrive affatto: a rifiutare e'' il guard');
+
+-- La lista di prova esce subito: il test 6 conta le liste globali.
+DELETE FROM ui.lista_definizione WHERE codice = 'tst.perimetro.lista_globale';
 
 -- ⭐ Il secondo muro si prova sulla STRUTTURA e non sul comportamento: per
 --   vederlo agire servirebbe la veste dell'owner, che questo file non ha e non

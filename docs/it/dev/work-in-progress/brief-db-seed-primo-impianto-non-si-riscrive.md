@@ -1482,9 +1482,103 @@ create dall'app.
 | QU3 | ✅ (a): le righe di seed si spengono, senza eccezioni; la superficie per il BE diventa un building block |
 | QU4 | ✅ (a): di Q14 del brief `ui` restano `codice` immutabile e i due flag solo dal migratore, su ogni riga; «vista e schema dati di una lista certificata solo dall'owner» si ritira, perché la tiene il seed per colonna |
 
-**Dopo le decisioni**, un giro di questo brief con i changeSet del range dato da Tid (`20261119-01` …): le righe del
+~~**Dopo le decisioni**, un giro di questo brief con i changeSet del range dato da Tid (`20261119-01` …): le righe del
 registro, la forma «figlia» se QU2 è (a), la superficie per il BE, i pgTAP, e il provisioning dei runner su dbdev come al
-`20261117-28`.
+`20261117-28`.~~ Superato dal giro 3 qui sotto: il provisioning non serve (la rete `20261117-20` è `runAlways` e monta
+le tabelle nuove a ogni migrate), la superficie per il BE è un passo a parte.
+
+#### QU5 — Come si riconoscono le righe di seed di `ui` (Tid, 2026-11-20)
+
+Il runner iscrive alla nascita del trigger le righe con `user_insert = 'SEED'` o col nome di un ruolo del migratore. I
+CSV di `ui` portavano `mctit`, che non è un ruolo: nessuna riga sarebbe stata iscritta, e il meccanismo non avrebbe
+protetto niente, in silenzio. Il trigger d'audit riscrive `user_insert` all'INSERT (il ruolo che migra) ma non all'UPDATE,
+quindi il ricarico del mirror scrive il valore del CSV. **Deciso:** `user_insert = SEED` nei CSV di
+`lista_definizione`, `lista_colonna` e `lista_preset`, nello stesso rilascio dell'iscrizione. Il ricarico gira in
+`80_data` prima della rete di `90_end`, che le iscrive. Costo accettato: su dbdev le modifiche fatte da admin alle righe
+di seed di `ui` si riscrivono una volta (§11.7 chiede un rilascio prima; siamo in sviluppo).
+
+#### Il giro 3: le tabelle di `ui` e la forma figlia (2026-11-20)
+
+| ChangeSet / file | Che cosa |
+| --- | --- |
+| `20261119-01` (`00_schema/dbops`) | `tabella_padre` e `colonna_padre` nel registro, CHECK `chk_automazione_seed_primo_impianto_figlia` |
+| `20261119-02` (`20_code/dbops`) | `fn_seed_primo_impianto_argomenti`: la forma `FIGLIA, <colonna>, <schema.tabella>`. Firma invariata: la legge anche `fn_seed_colonne_del_software` (`BEGIN ATOMIC`), che un cambio di `RETURNS TABLE` costringerebbe a ricreare con le due viste della posta. Colonna e padre il trigger li legge dagli argomenti già validati |
+| `20261119-03` (`20_code/script`) | `trgfn_seed_primo_impianto`: il ramo FIGLIA |
+| `20261119-04` (`20_code/dbops`) | `fn_seed_primo_impianto_divergenze`: argomenti FIGLIA, niente `SENZA_ID` per la figlia, `PADRE_NON_ISCRITTO` |
+| `20261119-05` (`20_code/dbops`) | il runner: CREA su FIGLIA monta senza iscrizione; `PADRE_NON_ISCRITTO` è un salto con WARN |
+| `80_data` | il loader `20261117-19` con le due colonne; righe 3-6 del CSV del registro; `user_insert = SEED` nei tre CSV di `ui` (QU5; il diff è solo quella cella) |
+| pgTAP nuovi | `ui/test-seed-primo-impianto-ui-installazione-v1` (app, 18) e `ui/test-seed-primo-impianto-ui-software-v1` (owner, 16) |
+| pgTAP adeguati | `ui/test-lista-definizione-multi-emittente-v1` (test 3), `ui/test-lista-definizione-perimetro-emittente-v1` (test 4), `script/test-fn-is-proprietario-tabella-v1` (test 6): provavano il guard multi-emittente su una lista del seed, dove ora rifiuta prima il seed. Passano a una lista creata dal test |
+
+**Provato sullo scratch** (`scripts/prova_changeset.py`, i cinque changeSet più uno YAML di prova nello scratchpad che fa
+ciò che fanno `80_data` e la rete: le righe del registro, `user_insert`, il runner). Estratto eseguito per intero,
+catalogo identico dopo il ROLLBACK. Il test del software: 16 ok con l'estratto (senza, rosso e interrotto, come deve).
+Quello dell'installazione gira come app e lo script corre da owner: da owner passano i quattro test strutturali
+(montaggio, argomenti della figlia, divergenze di `ui` a zero, righe di seed riconosciute), e i sei rossi sono i casi che
+il migratore può fare e l'app no. ✅ Applicato su dbdev e pgTAP verdi, i due nuovi come app e da owner e i tre
+adeguati (Tid, 2026-11-20). ⏳ La doc auto-generata delle cinque funzioni e del registro è da rigenerare.
+
+**Un limite accettato, trovato rileggendo il giro.** Il trigger `z10` della composizione scatta anche sul DELETE. Quando
+il software toglie una riga sotto un preset personalizzato (una colonna ritirata), la data del contenuto del preset la
+sposta il migratore su una riga personalizzata: il seed la rimette da `OLD`, la scrive in `scartati` e alza un WARNING.
+Effetto: la data non si sposta (il banner tace per quel ritiro, e la colonna ritirata il resolver la scarta comunque), e
+in `scartati` resta una data che non viene dal CSV. Non rompe niente; se diventa rumore, la correzione sta nel trigger
+`z10`, che dalla sessione del migratore non tocca un padre personalizzato.
+
+**Restano aperti, e non stanno in questo giro:**
+
+- ~~la **superficie per il BE** di QU3, in un passo a parte~~: fatta, vedi «La superficie» qui sotto;
+- `is_default` sta fra le colonne del software di `ui.lista_preset`: il giro che lo ritira (Q26 del brief `ui`) lo
+  toglie nello stesso changeSet anche dalla riga 5 del registro, altrimenti la tabella diventa `NON_CLASSIFICATA`;
+- di Q14 del brief `ui` si ritira «vista e schema dati di una lista certificata solo dall'owner» (QU4): lo fa il giro 4
+  di quel brief, che riapre il guard multi-emittente.
+
+#### Ricadute BE/FE del giro 3 (da passare al team dopo l'apply)
+
+Elenco chiuso. Dopo l'apply le righe di seed di `ui` si spengono e non si cancellano, e sulle righe di seed le colonne
+del software non si cambiano.
+
+| # | Che cosa | File |
+| --- | --- | --- |
+| R-UI1 | Le tre cancellazioni admin su una riga di seed rispondono `E_SEED_RIGA_NON_CANCELLABILE` (la riga si spegne). Il servizio mappa il codice; il gesto ordinario diventa lo spegnimento | `backend/apps/ui/db/ui_admin_repository.py` (`DELETE` su `lista_definizione` `:274`, `lista_colonna` `:518`, `lista_preset` `:687`) e i tre servizi `backend/apps/ui/services/lista_definizione_admin_service.py`, `lista_colonna_admin_service.py`, `lista_preset_admin_service.py` |
+| R-UI2 | Gli UPDATE admin di una colonna del software su una riga di seed rispondono `E_SEED_COLONNA_DEL_SOFTWARE` (campo = la colonna): sulla definizione `codice`, `descrizione`, `schema_dati`, `vista_sql`; sulla colonna `codice`, `campo_sorgente`, `tipo_colonna`, `tipo_dato`, `formato`, `filtrabile`, `ordinabile`, `ricercabile_full`, `sensibile`, `etichetta_i18n_key`; sul preset `codice` e `is_default` | `backend/apps/ui/db/ui_admin_repository.py` (`_DEFINIZIONE_UPDATE_COLS`, `_COLONNA_UPDATE_COLS`, `_PRESET_UPDATE_COLS`) e i tre servizi |
+| R-UI3 | `replace_preset_colonne` su un preset di seed lo personalizza (la data del contenuto si sposta): da lì il migrate non ne riscrive la composizione. Atteso, nessun cambio di codice; da sapere per i test BE che salvano un preset di sistema | `backend/apps/ui/db/ui_admin_repository.py:733` |
+| R-UI-test | I test BE che cancellano o rinominano righe di seed di `ui` vanno su righe create dal test | `backend/apps/ui/tests/` |
+
+| R-UI-sup | Liste e dettagli admin di definizioni, colonne e preset espongono `nata_dal_seed` e `campi_del_software`, letti da `dbops.fn_seed_superficie` (sotto) in `LEFT JOIN LATERAL`, con le colonne del software passate come sottoquery non correlata. Nessun elenco di colonne nel backend. Il FE spegne il cestino sulle righe nate dal seed e i campi in `campi_del_software`, col motivo (il testo lo sceglie il FE, come per la posta, R3 del §16.14) | `backend/apps/ui/db/ui_admin_repository.py` (le letture di lista e dettaglio delle tre tabelle); i drawer `ListaDefinizioneDrawer.vue`, `ListaColonnaDrawer.vue`, `ListaPresetDrawer.vue` e le loro tabelle |
+
+La forma della lettura, per R-UI-sup (`<t>` è la tabella, `x` il suo alias):
+
+```sql
+LEFT JOIN LATERAL dbops.fn_seed_superficie(
+    '<t>'::regclass, x.id::text,
+    (SELECT dbops.fn_seed_colonne_del_software('<t>'::regclass))) seed ON true
+```
+
+#### La superficie: `dbops.fn_seed_superficie` (QU3, 2026-11-20)
+
+La regola delle superfici (nata dal seed; i campi del software solo sulle righe di seed; vuoto e mai NULL) era scritta in
+ciascuna delle due viste della posta, e le liste admin di `ui` ne chiedevano altre tre. È la seconda occorrenza: un
+building block, e le due viste si riscrivono sopra nello stesso giro.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261119-06` (`20_code/dbops`) | `dbops.fn_seed_superficie(p_tabella, p_riga_id, p_colonne_del_software)`: una riga, `nata_dal_seed` e `campi_del_software`. Compone `fn_seed_riga` e l'elenco ricevuto; non legge il montaggio |
+| `20261119-07`, `-08` (`20_code/config`) | `config.vw_email_account_seed` e `config.vw_email_template_seed` sopra il building block: colonne, nomi e tipi identici (`CREATE OR REPLACE VIEW`), il BE della posta non cambia |
+
+**Perché le colonne le passa il chiamante.** Non dipendono dalla riga (linee-guida-sql §13.2): una funzione che le
+rilegge per riga rifarebbe la stessa lettura del montaggio per ogni riga della lista. Lettura e giudizio in due metà: il
+chiamante legge una volta con `fn_seed_colonne_del_software` (InitPlan), la funzione giudica la riga. Le viste della posta
+le leggevano già una volta, e così restano.
+
+**Nessuna vista nuova per `ui`**: il BE chiama il building block nelle sue letture. Una vista per tabella sarebbe stata
+la terza, la quarta e la quinta copia dello stesso adattatore.
+
+**Provato sullo scratch** (`prova_changeset.py`, i tre changeSet). `test-posta-solo-disattivazione-v1`, che legge le due
+viste, identico prima e dopo. `dbops/test-fn-seed-superficie-v1` (nuovo, 7 test, app): 6 ok da owner; il test 2 (una
+lista creata dal test non è nata dal seed) da owner è rosso per costruzione, perché nella sessione del migratore la lista
+nasce di seed. ✅ Applicato su dbdev, pgTAP verdi come app (Tid, 2026-11-20). ⏳ La doc auto-generata (le pagine
+`manual/` nuove linkano già la scheda).
 
 ### 16.16 Il rilancio scrive l'account da cui la mail riparte (richiesta del BE, decisione di Tid, 2026-11-20)
 

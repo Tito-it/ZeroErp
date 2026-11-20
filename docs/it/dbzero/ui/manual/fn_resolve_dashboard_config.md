@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_resolve_dashboard_config`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,7 +17,8 @@
 >
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — il gemello delle liste
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
-> * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili dell'utente, per i preset di ruolo
+> * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
 > * [script.fn_get_user_permissions_map](/dbzero/script/funzioni/fn_get_user_permissions_map) — il livello dell'utente per area
 > * [script.fn_get_user_actions_map](/dbzero/script/funzioni/fn_get_user_actions_map) — le azioni abilitate dell'utente
 
@@ -55,13 +56,16 @@ vengono dalla preferenza, più quella toccata.
 ### Il preset di base
 
 Il preset di base si cerca sempre, anche quando c'è una preferenza: dà le chiavi che la preferenza non ha.
-È il primo, in quest'ordine, che sia di default, acceso e con almeno un widget acceso:
+Lo sceglie [fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base), la stessa sede delle liste: il
+primo preset acceso con almeno un widget acceso **nel pool** della dashboard, in quest'ordine:
 
 * **di ruolo**, fra i profili applicabili all'utente nella veste corrente, quello di priorità più alta;
-* **d'azienda**, per l'azienda passata dal chiamante, se c'è;
+  solo con la veste valorizzata;
+* **d'azienda**, per l'azienda passata dal chiamante, se c'è ed è accesa;
 * **di sistema**.
 
-Un preset i cui widget sono tutti spenti non conta: la ricerca scende al livello successivo.
+Un preset i cui widget sono tutti spenti, o tutti fuori dal pool, non conta: la ricerca scende al livello
+successivo.
 
 ---
 
@@ -86,19 +90,28 @@ non vede nessun widget resta una dashboard vuota, se il pool non ha un widget se
 
 ---
 
-### Il banner «preset aggiornato»
+### Il preset di base nel risultato, e il banner
 
-Se la preferenza ha una fotografia del suo preset di base, `preset_aggiornato` è vero quando il contenuto
-di quel preset è cambiato dopo la fotografia e l'utente non l'ha ignorato, o il preset è cambiato di nuovo
-dopo l'«ignora». In ogni altro caso è falso.
+L'uscita porta `preset_base`: l'id, l'ambito e la data del contenuto del preset di base di oggi, oppure
+null. È ciò che il backend salva con la preferenza; la fotografia la scrive poi il database.
+
+Il banner ha due esiti, gemelli di quelli delle liste, che non si accendono insieme:
+
+* `preset_base_cambiato` — la preferenza ha salvato una base che non è quella di oggi (spenta, cancellata
+  o scavalcata da un altro preset): il banner propone il riallineamento;
+* `preset_aggiornato` — la base salvata è quella di oggi, e il suo contenuto è cambiato dopo la
+  fotografia senza che l'utente l'abbia ignorato dopo quel cambio
+  ([fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato)).
+
+In ogni altro caso tutti e due sono falsi.
 
 ---
 
 ### La veste
 
-La veste la legge [fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente): senza veste nella sessione,
-o con una veste che non esiste, valgono i profili di tutte le vesti dell'utente. Per la presentazione è un
-ripiego sicuro; le mappe dei permessi restano chiuse fuori dalla veste di operatore.
+La veste la legge [fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente): una veste che non esiste vale
+come nessuna veste. Senza veste il passo del ruolo della scelta del preset si salta, e la cascata parte
+dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori dalla veste di operatore.
 
 ---
 
@@ -114,21 +127,13 @@ ripiego sicuro; le mappe dei permessi restano chiuse fuori dalla veste di operat
 * **Una preferenza malformata ferma la funzione.** Se `widget` non è un elenco, o un ordine o una
   visibilità non si convertono, la chiamata fallisce invece di trattare la chiave come assente, come fa per
   la dimensione.
-* **Il preset di base può essere fatto di widget che l'utente non vede, o fuori dal pool.** La scelta del
-  preset guarda solo che i suoi widget siano accesi: un preset tutto fuori dal pool, o tutto protetto da
-  permessi, vince lo stesso, e la dashboard resta con le sole card aggiunte invisibili.
-* **Fra due profili con la stessa priorità vince uno a caso.** Senza veste nella sessione due profili di
-  portale hanno la stessa priorità, e l'ordinamento non ha uno spareggio.
-* **Il preset d'azienda vale anche per un'azienda spenta.** La funzione non guarda se l'azienda passata è
-  accesa.
+* **Il preset di base può essere fatto di widget che l'utente non vede.** La scelta del preset guarda che
+  abbia un widget acceso nel pool, non i permessi: un preset tutto protetto da permessi che l'utente non ha
+  vince lo stesso, e la dashboard resta con le sole card aggiunte invisibili.
 * **La dimensione del preset non è controllata.** Zero o un negativo escono così come sono; la dimensione
   della preferenza, invece, deve essere un intero positivo.
-* **Il banner legge il preset della fotografia così com'è.** Se quel preset è stato spento, o non è più la
-  base dell'utente, un suo cambio accende lo stesso il banner.
-* **Il preset di base ha una seconda copia nel backend.** Il backend, per scrivere la fotografia, ripete la
-  cascata per conto suo e prende il primo preset di default acceso, senza guardare i widget; con una veste
-  che non esiste fallisce, invece di valere come «tutte le vesti». La funzione non restituisce il preset di
-  base che ha scelto.
+* **Il banner è per preset intero.** Guarda tutto il contenuto del preset di base: una preferenza di soli
+  widget vede il banner anche quando il preset cambia solo la dimensione, che le arriva già.
 * **La dashboard per codice ha una seconda copia nel backend**, che la cerca prima di scrivere una
   preferenza; le liste hanno un building block per questa lettura.
 
@@ -147,9 +152,11 @@ ripiego sicuro; le mappe dei permessi restano chiuse fuori dalla veste di operat
   priorità fra profili, campi opachi freschi.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — la cascata per chiave, la
   dimensione standard, l'origine, il banner acceso da un cambio del preset.
-* Nessun test costruisce il filtro per azione, il widget visibile con il permesso, il preset d'azienda, il
-  preset senza widget accesi che fa scendere la cascata, l'«ignora» del banner, né il conteggio dei widget
-  nuovi tolti dal filtro.
+* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset di widget fuori dal pool che non è base, e quello
+  con un widget del pool che lo è.
+* Nessun test costruisce il filtro per azione, il widget visibile con il permesso, il preset d'azienda della
+  dashboard, il preset senza widget accesi che fa scendere la cascata, l'«ignora» del banner, né il
+  conteggio dei widget nuovi tolti dal filtro.
 
 ---
 
@@ -161,6 +168,10 @@ ripiego sicuro; le mappe dei permessi restano chiuse fuori dalla veste di operat
   preferenza di soli widget rispondeva 8 invece della dimensione del preset.
 * 2026-11-08 — il banner confronta `contenuto_aggiornato_il` del preset con la fotografia rinominata; l'uscita
   non cambia.
+* 2026-11-20 — la scelta del preset di base passa a `ui.fn_preset_di_base`, comune con le liste: prima si
+  leggevano i preset `is_default`, il ruolo senza spareggio con la veste nulla, l'azienda anche spenta, il
+  preset fatto di widget fuori dal pool. Nell'uscita `preset_base` e `preset_base_cambiato`; il banner si
+  calcola solo sulla base di oggi.
 
 ---
 

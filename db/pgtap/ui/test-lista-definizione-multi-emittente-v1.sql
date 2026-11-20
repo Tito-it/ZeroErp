@@ -86,10 +86,17 @@ SELECT col_default_is(
 );
 
 -- 3) * Lo strato 1: l'applicazione non accende il flag.
+-- ⚠️ Su una lista dell'installazione, creata qui: su una lista del seed
+--   rifiuta prima il seed di primo impianto (multi_emittente e' una colonna
+--   del software, E_SEED_COLONNA_DEL_SOFTWARE), e il guard non si vedrebbe.
+--   Quel rifiuto lo prova test-seed-primo-impianto-ui-installazione-v1.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert)
+VALUES ('tst.p2b.lista_dell_installazione', 'Lista creata dall''installazione', 'vendite', true, 'pgtap');
+
 SELECT throws_like($$
     UPDATE ui.lista_definizione
        SET multi_emittente = true
-     WHERE id = (SELECT id FROM _t_lista)
+     WHERE codice = 'tst.p2b.lista_dell_installazione'
 $$, '%non si imposta dall%',
     '3. * l''applicazione NON puo'' accendere il flag (strato 1, Q1)');
 

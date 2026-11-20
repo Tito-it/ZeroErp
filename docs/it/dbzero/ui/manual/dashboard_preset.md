@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,7 +15,8 @@
 >
 > Approfondimento funzioni:
 >
-> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — sceglie il preset di base
+> * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — sceglie il preset di base
+> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge le chiavi del preset di base
 > * [script.fn_get_profili_accesso_applicabili](/dbzero/script/funzioni/fn_get_profili_accesso_applicabili) — i profili dell'utente, con la loro priorità
 > * [ui.trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato) — la data del contenuto, al cambio della dimensione
 > * [ui.trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset) — la data del contenuto, al cambio dei widget
@@ -39,17 +40,23 @@ in [dashboard_preset_widget](/dbzero/ui/tabelle/dashboard_preset_widget).
 Il CHECK `chk_ui_dashboard_preset_ambito_refs` tiene ambito e riferimenti coerenti: il preset di sistema
 non ha né profilo né azienda, quello di ruolo solo il profilo, quello d'azienda solo l'azienda.
 
-La risoluzione cerca un preset di ruolo, poi d'azienda, poi di sistema, e prende il primo con almeno un
-widget acceso. Fra più preset di ruolo vince il profilo con la priorità più alta (il binding sull'identità
-prima di quello sul reparto, e questo prima di quello sulla veste).
+La scelta del preset di base ([fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base)) cerca un preset
+di ruolo, poi d'azienda, poi di sistema, e prende il primo acceso con almeno un widget acceso nel pool della
+dashboard. Fra più preset di ruolo vince il profilo con la priorità più alta (il binding sull'identità prima
+di quello sul reparto, e questo prima di quello sulla veste); il passo del ruolo vale solo con la veste
+valorizzata. Il preset d'azienda vale solo se l'azienda è accesa.
 
 ---
 
-### Un solo preset di default per combinazione
+### Un preset acceso per posto: vale se è acceso
 
-La risoluzione legge solo i preset con `is_default` vero, e l'indice unico parziale
-`uq_ui_dashboard_preset_default` ne ammette uno per (dashboard, ambito, profilo, azienda). Un preset con
-`is_default` falso non lo legge nessuno, né il database né il backend.
+Un **posto** è la combinazione (dashboard, ambito, profilo, azienda). L'indice unico parziale
+`uq_ui_dashboard_preset_posto` ammette un solo preset acceso per posto, con il profilo e l'azienda vuoti
+contati come un valore della chiave. Il preset acceso è quello che vale; quelli spenti non li legge la
+risoluzione e non occupano il posto.
+
+Una bozza si prepara spenta. Per sostituire il preset di un posto si spegne il vecchio **prima** di
+accendere il nuovo: l'indice non si differisce a fine transazione.
 
 ---
 
@@ -87,14 +94,8 @@ lo legge.
 * **`dimensione_max` accetta zero e i negativi.** Nessun CHECK, nessun catalogo delle misure come per le
   liste: la risoluzione restituisce il valore così com'è, e il frontend tratta un valore non positivo come
   «nessun limite». La preferenza, invece, accetta solo un intero positivo.
-* **Il preset d'azienda vale anche per un'azienda spenta.** La risoluzione confronta l'azienda passata dal
-  chiamante senza guardare se è accesa; il preset di un profilo spento, invece, non entra, perché i profili
-  applicabili sono solo quelli accesi.
-* **Fra due profili con la stessa priorità vince uno a caso.** Senza veste nella sessione un utente può
-  avere due profili della stessa priorità (due vesti di portale), e la scelta del preset di ruolo non ha
-  uno spareggio.
 * **Un preset può proporre widget fuori dal pool della dashboard.** Nessun vincolo lo impedisce; la
-  risoluzione li toglie, ma sceglie lo stesso quel preset come base.
+  risoluzione li toglie, e un preset fatto solo di widget fuori dal pool non è base.
 * **Il preset di base conta i widget accesi, non quelli che l'utente può vedere.** Un preset i cui widget
   l'utente non ha il permesso di vedere vince lo stesso, e la dashboard resta con le sole card aggiunte
   invisibili.
@@ -107,7 +108,7 @@ lo legge.
 ### Codici errore
 
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un preset acceso su una dashboard spenta, a fine transazione.
-* Il CHECK dell'ambito, il secondo default per la stessa combinazione e il codice ripetuto nella stessa
+* Il CHECK dell'ambito, il secondo preset acceso nello stesso posto e il codice ripetuto nella stessa
   dashboard arrivano come violazioni di vincolo.
 
 ---
@@ -119,6 +120,8 @@ lo legge.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — il preset senza dimensione,
   la data del contenuto che non si sposta per una riscrittura uguale e si sposta per un cambio vero.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — i trigger e le eccezioni della regola ATTIVO.
+* `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset fatto di widget fuori dal pool che non è base, e
+  quello con un widget del pool che lo è.
 
 ---
 
@@ -129,6 +132,9 @@ lo legge.
   preferenza non ha.
 * 2026-11-08 — la data del contenuto passa da `data_update` a `contenuto_aggiornato_il`, e `data_update`
   diventa l'audit; le FK verso profilo e azienda entrano in eccezione alla regola ATTIVO.
+* 2026-11-20 — `is_default` si ritira, e con lui l'indice `uq_ui_dashboard_preset_default`: un preset
+  acceso non di default non lo leggeva nessuno, e i preset in quello stato sono stati spenti. Al suo posto
+  `uq_ui_dashboard_preset_posto`, sui soli preset accesi.
 
 ---
 

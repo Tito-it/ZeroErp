@@ -63,8 +63,8 @@
 # ============================================================
 #
 # dimensione_max = 8 (brief DB §3c): respiro oltre le 4 card attuali, tunabile
-# per ruolo/emittente. is_default = TRUE: unico per (dashboard, ambito, profilo,
-# emittente) via UNIQUE INDEX parziale uq_ui_dashboard_preset_default.
+# per ruolo/emittente. Un preset acceso per (dashboard, ambito, profilo,
+# emittente): UNIQUE parziale uq_ui_dashboard_preset_posto (20261119-09).
 #
 # NULL da CSV: token letterale NULL + nullValue "NULL" (profilo_accesso_id ed
 # emittente_fiscale_id devono essere NULL veri: il CHECK sull'ambito 'sistema'
@@ -84,7 +84,7 @@ databaseChangeLog:
         - ANY
       failOnError: true
       comment: >
-        Preset di sistema 'home_default' (dimensione_max 8, is_default) con tutti
+        Preset di sistema 'home_default' (dimensione_max 8) con tutti
         e 4 i widget. Nessun preset di ruolo: stesso pattern della famiglia liste
         (11 preset su 11 ambito 'sistema'), e il filtro permessi lo rende
         superfluo. Vedi il blocco DIVERGENZA in testa al file.
@@ -117,7 +117,6 @@ databaseChangeLog:
               - column: { name: ambito,                type: STRING }
               - column: { name: profilo_accesso_id,    type: NUMERIC }
               - column: { name: emittente_fiscale_id,  type: NUMERIC }
-              - column: { name: is_default,            type: BOOLEAN }
               - column: { name: dimensione_max,        type: NUMERIC }
               - column: { name: attivo,                type: BOOLEAN }
               - column: { name: data_insert,           type: STRING }

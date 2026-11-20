@@ -92,7 +92,6 @@ SELECT is(
              FROM ui.lista_preset p
             WHERE p.lista_id = ld.id
               AND p.ambito = 'sistema'
-              AND p.is_default
               AND p.attivo) <> 1),
   0,
   '2) ogni lista attiva ha esattamente un preset di sistema di default'
@@ -133,7 +132,6 @@ SELECT is(
 SELECT ok(
   (SELECT p.codice = 'dash_competenza_residui_default'
       AND p.ambito = 'sistema'
-      AND p.is_default
       AND p.attivo
       AND p.profilo_accesso_id IS NULL
       AND p.emittente_fiscale_id IS NULL
@@ -166,7 +164,7 @@ SELECT is(
                         FROM ui.lista_preset_colonna pc
                         JOIN ui.lista_preset p ON p.id = pc.preset_id
                        WHERE p.lista_id = ld.id
-                         AND p.ambito = 'sistema' AND p.is_default
+                         AND p.ambito = 'sistema' AND p.attivo
                          AND pc.colonna_id = lc.id)),
   0,
   '5) la lista dei residui non nasce con colonne fuori dal preset (banner DEF-2 spento)'

@@ -341,7 +341,6 @@ CREATE TEMP TABLE _t_preset_sys AS WITH ins AS (
             codice,
             descrizione,
             ambito,
-            is_default,
             pagina_dimensione,
             attivo,
             user_insert
@@ -350,7 +349,6 @@ CREATE TEMP TABLE _t_preset_sys AS WITH ins AS (
         'default_sistema',
         'Preset di sistema test',
         'sistema',
-        TRUE,
         10,
         TRUE,
         '_pgtap'
@@ -402,7 +400,6 @@ CREATE TEMP TABLE _t_preset_prof AS WITH ins AS (
             descrizione,
             ambito,
             profilo_accesso_id,
-            is_default,
             pagina_dimensione,
             attivo,
             user_insert
@@ -415,7 +412,6 @@ CREATE TEMP TABLE _t_preset_prof AS WITH ins AS (
             SELECT profilo_id
             FROM _t_profilo
         ),
-        TRUE,
         50,
         TRUE,
         '_pgtap'
@@ -738,7 +734,6 @@ INSERT INTO ui.lista_preset (
         descrizione,
         ambito,
         profilo_accesso_id,
-        is_default,
         pagina_dimensione,
         attivo,
         user_insert
@@ -748,7 +743,6 @@ SELECT l.lista_id,
     'Preset prio>1 test priorita DB-3',
     'ruolo',
     p.profilo_accesso_id,
-    TRUE,
     25,
     TRUE,
     '_pgtap'

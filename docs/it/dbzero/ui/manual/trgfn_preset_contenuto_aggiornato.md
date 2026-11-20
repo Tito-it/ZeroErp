@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_preset_contenuto_aggiornato`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -48,8 +48,7 @@ Così la funzione è una sola per le due famiglie, e una colonna di contenuto nu
 `data_update` è l'audit del framework e si sposta a ogni UPDATE, anche se riscrive la riga uguale
 (il seed lo fa a ogni giro) o tocca solo `attivo`. Se il banner guardasse l'audit si accenderebbe a
 tutti a ogni rilascio. Il `WHEN` confronta valore vecchio e nuovo: una riscrittura uguale non
-sposta la data del contenuto. Codice, descrizione, ambito, `is_default` e `attivo` non sono
-contenuto.
+sposta la data del contenuto. Codice, descrizione, ambito e `attivo` non sono contenuto.
 
 All'INSERT il trigger non c'è: la data nasce col default della colonna.
 

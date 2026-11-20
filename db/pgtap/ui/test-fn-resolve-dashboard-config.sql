@@ -60,22 +60,18 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
--- degli altri, e non e' una dimenticanza — ma la ragione qui e' scomoda e vale
--- la pena scriverla per esteso.
--- La fixture costruisce un'identita' CLIENTE_PORTALE (riga ~136) e su quella
--- verifica le precedenze fra preset. La funzione filtra i profili per la veste
--- corrente (`app.ruolo_applicativo` -> fn_get_profili_accesso_applicabili):
--- dichiarare OPERATORE in testa esclude — CORRETTAMENTE — il profilo di
--- un'identita' portale, e le asserzioni 6 e 10 cadono. La funzione fa il suo
--- mestiere; e' l'accoppiata «identita' portale + veste operatore» a non esistere.
--- ⚠️ Ma senza GUC la veste e' NULL = «tutte», e questa e' una condizione che
--- l'applicazione non produce MAI: il middleware la valorizza sempre. Quindi
--- oggi queste asserzioni sono verdi in un mondo che non esiste. La correzione
--- vera e' far dichiarare al test la veste coerente con la propria fixture
--- (CLIENTE_PORTALE), non imporgliene una operatore: e' una decisione del
--- cantiere `ui`, non di questo brief.
--- Brief: brief-db-pgtap-runner-rls-baseline §11.
+-- La veste: CLIENTE_PORTALE, quella della fixture (non OPERATORE).
+-- La fixture costruisce un'identita' CLIENTE_PORTALE e su quella verifica le
+-- precedenze fra preset. Il preset di base (ui.fn_preset_di_base) considera il
+-- ruolo solo con la veste valorizzata (brief-db-revisione-ui, Q28): con la veste
+-- NULL il passo del ruolo si salta, e le asserzioni 6 e 10 non misurerebbero
+-- niente. Con OPERATORE la funzione escluderebbe, correttamente, il profilo di
+-- un'identita' portale. Quindi il file dichiara la veste della propria fixture,
+-- come il gemello test-fn-resolve-lista-config, subito dopo aver costruito
+-- l'identita' (riga ~190). Fuori dalla veste OPERATORE le mappe permessi danno
+-- BLOCCATO: e' il caso negativo §4.5 dell'asserzione 4.
+-- Brief: brief-db-pgtap-runner-rls-baseline §11 (la domanda), brief-db-revisione-ui
+-- Q28 (la risposta).
 
 SELECT plan(12);
 
@@ -169,15 +165,9 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('dashboard config');
 CREATE TEMP TABLE _t_sr AS
 SELECT cliente_soggetto_ruolo_id AS sr_id FROM _t_mondo;
 
--- ⛔ E SUBITO DOPO SI RIMETTE LA SESSIONE COM'ERA, che in questo file e' SENZA
---   veste (vedi la nota lunga in testa). Costruire il cliente RICHIEDE un
---   contesto — sotto la RLS un billing account non si scrive da una sessione
---   senza veste — ma tenerlo aperto cambierebbe cio' che il file misura: con
---   `app.ruolo_applicativo = OPERATORE` la funzione escluderebbe, CORRETTA-
---   MENTE, il profilo di un'identita' portale, e le asserzioni 6 e 10
---   cadrebbero. Quale veste debba dichiarare questo file resta la decisione
---   del cantiere `ui` che la nota in testa descrive: qui si costruisce il
---   mondo senza toccare la domanda.
+-- ⛔ E SUBITO DOPO SI SVUOTA LA SESSIONE: il contesto che il BB ha aperto per
+--   scrivere il billing account e' quello operatore, non la veste del test.
+--   La veste del test si dichiara dopo aver costruito l'identita' (sotto).
 SELECT set_config('app.ruolo_applicativo', '', false);
 SELECT set_config('app.current_user_id',   '', false);
 
@@ -185,6 +175,12 @@ SELECT set_config('app.current_user_id',   '', false);
 CREATE TEMP TABLE _t_id AS WITH ins AS (
     SELECT anagrafiche.fn_crea_veste_portale(a.auth_user_id, s.sr_id, 'CLIENTE_PORTALE', TRUE) AS id FROM _t_sr s, _t_au a)
 SELECT id AS identita_id FROM ins;
+
+-- Da qui in poi si agisce come l'identita' appena creata: e' la veste che il
+-- test collauda (nota in testa). Senza, il preset di ruolo non concorre (Q28)
+-- e le asserzioni 6 e 10 cadono.
+SELECT set_config('app.ruolo_applicativo', 'CLIENTE_PORTALE', false);
+SELECT set_config('app.current_identita_id', (SELECT identita_id::text FROM _t_id), false);
 
 -- Profilo AD_HOC (prio=1) + binding all'identita
 CREATE TEMP TABLE _t_profilo AS WITH ins AS (
@@ -259,9 +255,9 @@ SELECT ok(
 -- =========================================================
 CREATE TEMP TABLE _t_preset_sys AS WITH ins AS (
     INSERT INTO ui.dashboard_preset (
-        dashboard_id, codice, descrizione, ambito, is_default, dimensione_max, attivo, user_insert
+        dashboard_id, codice, descrizione, ambito, dimensione_max, attivo, user_insert
     )
-    SELECT dashboard_id, 'default_sistema', 'Preset sistema test', 'sistema', TRUE, 6, TRUE, '_pgtap'
+    SELECT dashboard_id, 'default_sistema', 'Preset sistema test', 'sistema', 6, TRUE, '_pgtap'
     FROM _t_dash
     RETURNING id
 )
@@ -286,10 +282,10 @@ SELECT is(
 CREATE TEMP TABLE _t_preset_prof AS WITH ins AS (
     INSERT INTO ui.dashboard_preset (
         dashboard_id, codice, descrizione, ambito, profilo_accesso_id,
-        is_default, dimensione_max, attivo, user_insert
+        dimensione_max, attivo, user_insert
     )
     SELECT dashboard_id, 'preset_profilo', 'Preset AD_HOC test', 'ruolo',
-        (SELECT profilo_id FROM _t_profilo), TRUE, 5, TRUE, '_pgtap'
+        (SELECT profilo_id FROM _t_profilo), 5, TRUE, '_pgtap'
     FROM _t_dash
     RETURNING id
 )
@@ -398,10 +394,10 @@ LIMIT 1;
 
 INSERT INTO ui.dashboard_preset (
     dashboard_id, codice, descrizione, ambito, profilo_accesso_id,
-    is_default, dimensione_max, attivo, user_insert
+    dimensione_max, attivo, user_insert
 )
 SELECT d.dashboard_id, 'preset_prio2_pgtap', 'Preset prio>1 test priorita', 'ruolo',
-    p.profilo_accesso_id, TRUE, 77, TRUE, '_pgtap'
+    p.profilo_accesso_id, 77, TRUE, '_pgtap'
 FROM _t_dash d
 JOIN _t_profilo_prio2 p ON TRUE;
 

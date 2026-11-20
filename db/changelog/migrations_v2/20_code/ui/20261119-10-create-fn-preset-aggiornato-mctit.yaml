@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_preset_aggiornato: il flag «il preset di base e' cambiato dopo il
+#   salvataggio», una sede per liste e dashboard.
+#   Brief: brief-db-revisione-ui (giro 1a, U9).
+#
+# Perche': i due resolver scrivevano la stessa espressione (snapshot, contenuto,
+#   ignorato). La leggono fn_resolve_lista_config e fn_resolve_dashboard_config
+#   da 20261119-12 e -13. Il giro 1b la porta per chiave (Q29).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261119-10-create-fn-preset-aggiornato-mctit.yaml
+
+  - changeSet:
+      id: 20261119-10-create-fn-preset-aggiornato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_preset_aggiornato: il flag del banner del preset aggiornato. Brief: brief-db-revisione-ui (giro 1a, U9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_preset_aggiornato'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_preset_aggiornato(
+                  -- la data del contenuto salvata con la preferenza
+                  p_snapshot  ui.lista_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE,
+                  -- la data del contenuto del preset di base, oggi
+                  p_contenuto ui.lista_preset.contenuto_aggiornato_il%TYPE,
+                  -- quando l'utente ha chiuso il banner
+                  p_ignorato  ui.lista_preferenza_utente.preset_aggiornato_ignored_at%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT fn_preset_aggiornato.p_snapshot IS NOT NULL
+                     AND fn_preset_aggiornato.p_contenuto IS NOT NULL
+                     AND fn_preset_aggiornato.p_contenuto > fn_preset_aggiornato.p_snapshot
+                     AND (fn_preset_aggiornato.p_ignorato IS NULL
+                          OR fn_preset_aggiornato.p_ignorato < fn_preset_aggiornato.p_contenuto);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_preset_aggiornato(timestamptz, timestamptz, timestamptz) IS
+                  'Il flag del banner del preset aggiornato, per liste e dashboard: vero se il contenuto del preset di base (p_contenuto) e'' piu'' recente di quello salvato con la preferenza (p_snapshot) e l''utente non ha chiuso il banner dopo quel cambio (p_ignorato NULL o precedente). Falso, mai NULL, se manca lo snapshot o il contenuto. Il chiamante lo chiede solo quando la base salvata e'' la base di oggi: una base diversa e'' un altro esito (preset_base_cambiato). La leggono ui.fn_resolve_lista_config e ui.fn_resolve_dashboard_config. IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_preset_aggiornato(timestamptz, timestamptz, timestamptz);

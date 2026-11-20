@@ -13,7 +13,7 @@
 --   4.  Esattamente 15 colonne attive nel catalogo fornitori
 --   5.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   6.  Colonne con tipo_dato='boolean' hanno formato='yesno' (split_payment + ritenuta_acconto)
---   7.  Preset fornitori_default presente con is_default=true
+--   7.  Preset fornitori_default presente e acceso
 --   8.  Preset fornitori_default: pagina_dimensione=50, ambito=sistema
 --   9.  Esattamente 7 colonne nel preset fornitori_default
 --   10. Tutte le 7 colonne del preset hanno visibile=true
@@ -132,7 +132,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 7. Preset fornitori_default presente con is_default=true
+-- 7. Preset fornitori_default presente e acceso
 -- =========================================================
 SELECT ok(
     EXISTS (
@@ -141,10 +141,9 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice   = 'anagrafiche.fornitori'
            AND lp.codice   = 'fornitori_default'
-           AND lp.is_default = TRUE
            AND lp.attivo   = TRUE
     ),
-    '7. Preset fornitori_default presente, is_default=true, attivo=true'
+    '7. Preset fornitori_default presente e acceso'
 );
 
 -- =========================================================

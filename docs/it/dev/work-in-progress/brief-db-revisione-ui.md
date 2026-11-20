@@ -2,12 +2,13 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-20
 
-**Riparte: sessione DB**, nel [brief del seed](brief-db-seed-primo-impianto-non-si-riscrive.md): il censimento delle
-tabelle di `ui` che il migrate riscrive (Q27). Poi **Tid**, col via al giro 1a. Le decisioni Q1-Q36 sono prese
+**Riparte: sessione DB**, col giro 1b (§2: U6 con Q29, U8, Q33); prima, un `/verifica-db` del giro 1a in una sessione nuova. **Riparte anche il team BE/FE** con le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6). Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
+[brief del seed](brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
+dbdev con i pgTAP verdi il 2026-11-20): i giri che toccano i CSV di `ui` sono sbloccati. Le decisioni Q1-Q36 sono prese
 (2026-11-18 … 2026-11-20); Q27-Q36, dall'analisi critica del 2026-11-20, completano o sostituiscono alcune delle prime, e
 le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e committato (`de25065c21`): le 32 pagine
 `manual/` allo standard (28 riscritte, 4 nuove), la guida `configurazione-liste` riallineata al codice, il censimento
-(§3-§6). Nessun changeSet è scritto: lo sviluppo parte col via di Tid.
+(§3-§6).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -16,17 +17,16 @@ le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e c
 | 3 | Tid | Doc auto-generata rigenerata: le schede delle 4 funzioni con la pagina nuova non la includono ancora, e `ui/index.md` porta ancora «(scritta il 30-09-2026)» come descrizione | §8.3 | 1 |
 | 4 | ✅ Tid | Le decisioni Q1-Q26 e l'ordine dei giri, prese dal 2026-11-18 al 2026-11-20 | §2, §7 | 2 |
 | 4-bis | ✅ Tid | Le decisioni Q27-Q36, prese il 2026-11-20 come raccomandate | §7.1 | 4 |
-| 4-ter | sessione DB | Q27: le tabelle di `ui` nel censimento del brief del seed, ognuna con la sua specie | brief del seed, §7 | 4-bis |
+| 4-ter | sessione DB | Q27: le tabelle di `ui` nel censimento del brief del seed. ✅ Censimento e QU1-QU5 decise; ✅ il giro che le iscrive (`20261119-01` … `-05`) applicato su dbdev, pgTAP verdi (Tid, 2026-11-20) | brief del seed, §16.15 | 4-bis |
 | 5 | team BE | Le ricadute «subito» (BE1, BE2, BE4), che non aspettano il DB; e la verifica di BE9 prima del giro 2 (Q35) | §6 | — |
-| 6 | Tid | Il via al giro 1a | §2 | 4-ter |
-| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid | §2 | 6 |
-| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply | §6 | 7 |
+| 6 | ✅ Tid | Il via al giro 1a (2026-11-20) | §2 | 4-ter |
+| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); prossimo 1b | §2 | 6 |
+| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: BE5, BE6, BE7, BE22, BE23, BE24 | §6 | 7 |
 | 9 | sessione DB | Archiviazione in `work-done/` | §10 | 7, 8 |
 
 **Decisioni di Tid:** Q1-Q11 prese il 2026-11-18, Q12-Q25 il 2026-11-19, Q26 il 2026-11-20 (registrate in §7 e nelle
-schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1); nessuna aperta. **Da committare:**
-questo brief (l'analisi critica e le decisioni del 2026-11-20) e la richiesta al §7 del brief del seed; il giro 0 è nel
-commit `de25065c21`.
+schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1); nessuna aperta. **Da committare:** niente; il giro 1a è nel commit che lo porta, l'analisi critica e le decisioni del
+2026-11-20 sono committate col giro 3 del brief del seed, il giro 0 è nel commit `de25065c21`.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-18; decisioni registrate fino al 2026-11-20. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `ui` chiesta da Tid: allinearla allo standard e alle
@@ -210,6 +210,34 @@ dashboard, E guida). Dove due aree hanno trovato lo stesso difetto, qui è una v
 * **Correzione proposta.** Si unifica nel giro 1, che riapre comunque le due funzioni: un BB per la scelta del preset di
   base e uno per il flag, letti dai due resolver.
 
+### 3.1-bis Il piano del giro 1a (sessione DB, 2026-11-20)
+
+Corpi vivi letti da `pg_get_functiondef` su dbdev il 2026-11-20 (uguali alla doc auto-generata). ChangeSet dal range di
+Tid, dopo `20261119-08`.
+
+| Pezzo | Che cosa | Difetti |
+| --- | --- | --- |
+| `ui.fn_preset_di_base(p_famiglia, p_contenitore_id, p_auth_user_id, p_veste, p_emittente_fiscale_id)` | Il BB della scelta, uno per le due famiglie (`'lista'`, `'dashboard'`): un candidato vale se è acceso e ha contenuto (una colonna attiva; un widget acceso **nel pool**); ruolo solo con la veste valorizzata, azienda solo accesa, poi sistema; ordine per livello e priorità del profilo. Restituisce id, ambito e `contenuto_aggiornato_il`, oppure nessuna riga | U3, U4/Q28, U7, U9 |
+| `ui.fn_preset_aggiornato(snapshot, contenuto, ignorato)` | Il BB del flag, IMMUTABLE; il giro 1b lo porta per chiave (Q29) | U9 |
+| I due resolver | 2b-2d sostituiti dalla chiamata al BB e da una lettura del preset scelto; il passo 1 (`fn_get_profili_accesso_applicabili`) esce, lo legge il BB. Chiavi additive: `preset_base` (`{id, ambito, contenuto_aggiornato_il}` oppure `null`) e `preset_base_cambiato` (la preferenza ha un preset di base salvato e non è quello di oggi). Il flag si calcola solo quando la base salvata è quella di oggi, dal contenuto che il BB ha già letto | U2, U5/Q3 |
+| `ui.trgfn_preferenza_preset_base_snapshot()` | Una funzione sola sulle due preferenze (`TG_ARGV[0]` = la tabella dei preset), `BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il`: lo snapshot lo scrive il DB dal preset di base, quello che arriva dall'app non conta; se la base cambia, l'ignorato si azzera. Sostituisce i due z90, che si tolgono | U1/Q1 |
+| `is_default` | Si spengono i preset accesi con `is_default = false` (il resolver non li ha mai applicati: il comportamento resta identico; dbdev 2026-11-20: zero), poi `DROP COLUMN` su liste e dashboard (gli indici `uq_*_default` cadono con lei) e l'UNIQUE parziale `WHERE attivo` sul posto, `NULLS NOT DISTINCT` (linee-guida-sql §8.4-bis). Il loader e il CSV dei due preset senza la colonna; la riga 5 del registro del seed senza `is_default` | Q26, Q30 |
+| pgTAP | I quindici che scrivono `is_default` sui preset (tredici in `ui`, due in `vendite`); i presidi di U1-U5, U7; i test dello z90 che lo aggiravano (`…-cascata-per-chiave-v1:321-325`, `…-preset-aggiornato-v1` caso F) | |
+
+**Chi cambia per primo.** Il DB. Dopo l'apply il BE che scrive `is_default` si rompe (BE22): rottura accettata in sviluppo,
+la richiesta al team parte con l'apply insieme a BE5, BE6, BE7, BE23.
+
+**Lo stato (2026-11-20).** Scritti `20261119-09` … `-14`, il loader e il CSV dei due preset senza `is_default`, la riga 5
+del registro del seed; quindici pgTAP adeguati e `ui/test-fn-preset-di-base-v1` nuovo (20 test). Provato sullo scratch
+(`prova_changeset.py`, con uno YAML di prova per la riga del registro e la convergenza): estratto per intero, catalogo
+identico dopo il ROLLBACK; il test nuovo 20 ok; dei quindici, tredici con gli stessi verdi o di piu' e nessun rosso nuovo,
+`test-fn-resolve-dashboard-config` e `test-misure-pagina-v1` con i rossi che avevano gia' da owner (sono test da app).
+⚠️ Corretto dopo l'apply: i rossi 6 e 10 di `test-fn-resolve-dashboard-config` non erano del runner ma di Q28. Il file
+girava con la veste NULL, e ora il ruolo non concorre senza veste. Il file dichiara ora CLIENTE_PORTALE, la veste della
+sua fixture, come il gemello delle liste: era la domanda che brief-db-pgtap-runner-rls-baseline §11 lasciava al
+cantiere `ui`. ✅ Applicato da Tid il 2026-11-20, pgTAP verdi, doc auto-generata rigenerata. Restano al giro 1b U6, U8, Q29, Q33; i marcatori di cronaca dentro i corpi dei
+resolver (§4.3) li toglie l'1b, che li riscrive di nuovo: qui sono riscritte la testata e il COMMENT.
+
 ### 3.2 Giro 2 — la forma della preferenza e i widget nuovi
 
 **U10 (A) — Il badge dei widget nuovi conta anche quelli che l'utente non può vedere** · area D.
@@ -392,11 +420,16 @@ dashboard, E guida). Dove due aree hanno trovato lo stesso difetto, qui è una v
   solo dall'owner. `ricerca_min_caratteri` a scelta di Tid.
 * **Decisione (Q14, Tid, 2026-11-19).** Tutte e cinque: `perimetro_emittente` nello stesso guard di `multi_emittente`
   (una funzione sola, con l'elenco delle colonne); il codice della lista immutabile; il codice della colonna
-  immutabile; vista e schema dati di una lista certificata solo dall'owner; `ricerca_min_caratteri` resta all'app
-  (è una regolazione, non una dichiarazione del codice).
+  immutabile; ~~vista e schema dati di una lista certificata solo dall'owner~~ (superata da QU4); `ricerca_min_caratteri`
+  resta all'app (è una regolazione, non una dichiarazione del codice).
 * **Decisione (Q27, Tid, 2026-11-20), che completa Q14.** Il mirror `runOnChange` di `lista_definizione` carica anche
   `ricerca_min_caratteri`, e il migrate riscriverebbe la regolazione dell'app al primo cambio del CSV. La colonna si
   dichiara d'installazione nel censimento del brief del seed, con le altre tabelle di `ui` che l'app scrive.
+* **Decisione (QU4 del brief del seed, §16.15, Tid, 2026-11-20).** Una lista certificata nasce sempre dal seed, e sulle
+  righe di seed `codice`, `schema_dati`, `vista_sql` e i due flag sono colonne del software (`E_SEED_COLONNA_DEL_SOFTWARE`).
+  Di Q14 resta qui ciò che il seed non copre: `codice` della lista e della colonna immutabili, `multi_emittente` e
+  `perimetro_emittente` solo dal migratore, su ogni riga. «Vista e schema dati di una lista certificata solo dall'owner»
+  si ritira: la tiene il seed per colonna, e due guard per la stessa regola divergono.
 * **Presidio.** Come app, ciascun UPDATE è rifiutato; come owner passa.
 
 **U24 (B) — Un'azione può avere un campo sorgente, e allora entra nella ricerca** · area A.
@@ -679,9 +712,9 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | BE2 | subito | **BE.** `backend/apps/ui/db/dashboard_repository.py:13-15`: il commento cita `fn_resolve_livello_area` e `fn_check_azione_processo`, il resolver usa `fn_get_user_permissions_map` e `fn_get_user_actions_map`. `:38-41` e `services/dashboard_service.py:56-57`: il «Risultato» non elenca `dimensione_max_standard` e `origine` |
 | BE3 | ritirata | ~~**BE.** `ui_admin_repository.py:733` (`replace_preset_colonne`): … Va fatto il diff~~. Ritirata il 2026-11-20 (Q33): la regola «la data si sposta solo se il contenuto cambia» la tiene il DB dal giro 1b (`trgfn_preset_riga_tocca_preset` per istruzione, che confronta l'insieme vecchio col nuovo), e il DELETE + INSERT identico del BE non sposta più niente. Il BE non cambia |
 | BE4 | subito | **BE.** U30, Q18 decisa (b) il 2026-11-19: il controllo preventivo della cancellazione di una colonna conta anche i preset (`ui_admin_repository.py:528-543`); il commento «CASCADE» (`lista_colonna_admin_service.py:26`, `:276-279`; `ui_admin_repository.py:509-510`) si corregge |
-| BE5 | 1a | **BE.** U2: `fetch_preset_base_snapshot` (`ui_repository.py:32-35`, `:64-145`) si ritira; `lista_preferenza_service.py:91-98` e `dashboard_preferenza_service.py:94-100` leggono `preset_base` dalla risoluzione |
-| BE6 | 1a | **BE.** U1, Q1 decisa (b): l'upsert (`ui_repository.py:346`, `dashboard_repository.py:138`) non scrive più lo snapshot |
-| BE7 | 1b | **BE + FE.** U5, Q3 decisa (b): il banner con l'esito «base cambiata»: servizio, FE e i18n. Snapshot e ignorato sono JSONB per chiave (Q29): il BE scrive l'ignorato della chiave che l'utente chiude. Giro 1b |
+| BE5 | 1a | **BE.** U2: `fetch_preset_base_snapshot` (`ui_repository.py:32-35`, `:64-145`) si ritira; `lista_preferenza_service.py:91-98` e `dashboard_preferenza_service.py:94-100` leggono `preset_base` dalla risoluzione: `{"id", "ambito", "contenuto_aggiornato_il"}` oppure `null`, e salvano `preset_base.id` in `preset_base_id` |
+| BE6 | 1a | **BE.** U1, Q1 decisa (b): l'upsert (`ui_repository.py:346`, `dashboard_repository.py:138`) non scrive più lo snapshot: lo scrive il trigger a ogni scrittura che nomina `preset_base_id` (il salvataggio è il riallineamento), e un valore passato dall'app non conta |
+| BE7 | 1a, 1b | **BE + FE.** U5, Q3 decisa (b): dal giro 1a i due resolver rispondono `preset_base_cambiato` (boolean): la base salvata non è quella di oggi, e allora `preset_aggiornato` è falso. Il banner propone il riallineamento (salvare con `preset_base.id`): servizio, FE e i18n. Dal giro 1b snapshot e ignorato sono JSONB per chiave (Q29): il BE scrive l'ignorato della chiave che l'utente chiude |
 | BE8 | 2 | **BE.** U12: `lista_preferenza_service.py:188-231` e `dashboard_preferenza_service.py:161-253`: con Q6 la regola di forma sta nel guard DB, e la copia del BE si ritira nello stesso cantiere (regola del 2); il codice del guard nuovo va in policy e fallback |
 | BE9 | 2 | **FE.** U13: il FE non ripulisce più ordinamento e filtri da sé. Chi applica oggi l'ordinamento risolto alle API di lista lo verifica la sessione BE prima del giro 2 (Q35, 2026-11-20), e risponde qui: la voce diventa la richiesta chiusa, con l'elenco dei file |
 | BE10 | 3 | **BE.** `backend/apps/core/api/constants.py:16-19`: `DEFAULT_LIMIT = 25` ricopia il default `PAGINA`, e il suo commento cita una costante del FE ritirata. Q11-bis, deciso da Tid il 2026-11-18: le liste configurabili prendono la misura dal DB; la costante resta solo per gli endpoint fuori catalogo, dichiarata come regola dell'API, e il commento sulla costante FE ritirata si toglie |
@@ -697,6 +730,8 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | BE20 | 2 | **BE + FE.** Q7: `col` di ordinamento e filtri è il codice della colonna. Il FE ordina per campo sorgente (`sortField` di PrimeVue, `ListaConfigurabile.vue:619-668`): il salvataggio della preferenza e del preset traduce il campo in codice nel BE, e il guard di forma rifiuta un `col` che non è un codice (Q34); in lettura il resolver dà anche il campo sorgente. Il test `test_lista_preferenza_service.py:63` già scrive il codice |
 | BE21 | 5 | **BE.** Q22: `data_update` delle due preferenze la scrive il DB; l'upsert del BE (`ui_repository.py`, `dashboard_repository.py:127-179`) smette di passarla |
 | BE22 | 1a | **BE + FE.** Q26: `is_default` esce dai preset di liste e dashboard. Il BE lo toglie da `_schema_ui.py:31`, `ui_admin_repository.py:56`, `:621-658`, dal drawer dei preset e dai messaggi dell'UNIQUE; la copia della cascata in `ui_repository.py:93-132` si ritira già con Q2 |
+| BE23 | 1a | **BE + FE.** Q30: un posto (lista o dashboard, ambito, profilo, azienda) ha al più un preset acceso. Accendere un secondo preset nello stesso posto è rifiutato dall'UNIQUE `uq_ui_lista_preset_posto` (o `uq_ui_dashboard_preset_posto`): il servizio lo mappa (`_CHECK_CONSTRAINTS` o il ripiego dell'integrità in `lista_preset_admin_service.py`), e il drawer dice di spegnere prima quello acceso. La bozza nasce spenta. File: `backend/apps/ui/services/lista_preset_admin_service.py`, `ListaPresetDrawer.vue` |
+| BE24 | 1a | **BE.** La pagina `docs/it/backend/ui/manual/api_ui_liste.md` (righe 445, 514, 534) descrive il trigger z90 e la sua funzione, tolti dal giro 1a: lo snapshot lo scrive `ui.trgfn_preferenza_preset_base_snapshot` (BE6) |
 
 ## 7. Le decisioni di Tid
 
@@ -715,7 +750,7 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | Q11 | U20: la lista dichiara l'uso della misura (`COMPATTA` o `PAGINA`) | ✅ **Deciso da Tid il 2026-11-18: (a) sì, e sì a Q11-bis.** La lista dichiara l'uso (iniziale `PAGINA`, le liste di righe `COMPATTA`) e il resolver ripiega sul suo default. **Q11-bis** (BE10): le liste configurabili prendono la misura dal DB; `DEFAULT_LIMIT` del BE resta solo per gli endpoint fuori catalogo, dichiarato come regola dell'API |
 | Q12 | U21: il tetto della dashboard | ✅ **Deciso da Tid il 2026-11-19: (a).** `CHECK (dimensione_max > 0)` sul preset, NULL = lo standard, l'8 in una sede DB; il tetto vale fra 1 e 100 e sta nel DB (guard di forma, Q6); «≤0 = nessun tetto» non esiste |
 | Q13 | U22: spegnere una lista sospende colonne e preset | ✅ **Deciso da Tid il 2026-11-19:** **(a) sì**, eccezioni ATTIVO (forma della decisione del 2026-11-08) |
-| Q14 | U23: che cosa del seed scrive solo l'owner | ✅ **Deciso da Tid il 2026-11-19, tutte e cinque come raccomandato:** `perimetro_emittente` nel guard; codici di lista e di colonna immutabili; la vista di una lista certificata solo dall'owner; `ricerca_min_caratteri` resta all'app, colonna d'installazione nel censimento del seed (Q27) |
+| Q14 | U23: che cosa del seed scrive solo l'owner | ✅ **Deciso da Tid il 2026-11-19, tutte e cinque come raccomandato:** `perimetro_emittente` nel guard; codici di lista e di colonna immutabili; ~~la vista di una lista certificata solo dall'owner~~ (la tiene il seed per colonna, QU4); `ricerca_min_caratteri` resta all'app, colonna d'installazione nel censimento del seed (Q27) |
 | Q15 | U26: la sede dei nomi della lineage | ✅ **Deciso da Tid il 2026-11-19: (b)**, più il lato lista da una sede esistente o, se manca, da (a). **(b) un marcatore sulla colonna** |
 | Q16 | U27: riverificare le colonne | ✅ **Deciso da Tid il 2026-11-19:** **(a)**: controllo immediato per l'app, salto sulle liste spente con verifica all'accensione, le partizionate, un BB; la vista che perde colonne, un presidio `dbops` (Q32) |
 | Q17 | U29: i permessi di colonna con la veste NULL | ✅ **Deciso da Tid il 2026-11-19:** **(b) il livello più restrittivo** fra le vesti; per la cascata dei preset il passo del ruolo si salta (Q28) |
@@ -727,7 +762,7 @@ I numeri `BEn` restano quelli già citati nelle schede; il lato si legge in test
 | Q23 | U39: «lista accesa per codice» per chi vuole «niente» | ✅ **Deciso da Tid il 2026-11-19:** **il BE chiama il BB** e intercetta il codice, nessun BB nuovo |
 | Q24 | L'ordine dei giri (§2) | ✅ **Deciso da Tid il 2026-11-19: come in §2.** **Q24-bis:** il preset di ruolo che prevale sull'emittente resta (§3.7). Il giro 1 diviso in 1a e 1b (Q36) |
 | Q25 | Una guida delle dashboard: oggi non c'è (§9) | ✅ **Deciso da Tid il 2026-11-19: (a), scritta a fine giro 5.** **Una guida `configurazione-dashboard`** sua, che rimanda alla guida delle liste per il meccanismo comune |
-| Q26 | `dashboard_preset.is_default = false`: uno stato senza lettori | ✅ **Deciso da Tid il 2026-11-20: `is_default` si ritira, su liste e dashboard.** Un preset per posto, vale se acceso; la bozza si prepara spenta. Il gemello delle liste è uguale (trovato il 2026-11-19). I preset alternativi, se verranno, nascono nel brief delle viste nominate. Nel giro si riallinea la guida `configurazione-liste` (§2.3 e il passo 5 di §10), che oggi descrive `is_default`. I due indici `uq_*_default` li sostituisce l'UNIQUE parziale `WHERE attivo` (Q30) |
+| Q26 | `dashboard_preset.is_default = false`: uno stato senza lettori | ✅ **Deciso da Tid il 2026-11-20: `is_default` si ritira, su liste e dashboard.** Un preset per posto, vale se acceso; la bozza si prepara spenta. Il gemello delle liste è uguale (trovato il 2026-11-19). I preset alternativi, se verranno, nascono nel brief delle viste nominate. Nel giro si riallinea la guida `configurazione-liste` (§2.3 e il passo 5 di §10), che oggi descrive `is_default`; lo stesso changeSet toglie `is_default` dalle colonne del software di `ui.lista_preset` nel registro del seed (riga 5 di `dbops.automazione_seed_primo_impianto`), o la tabella diventa `NON_CLASSIFICATA`. I due indici `uq_*_default` li sostituisce l'UNIQUE parziale `WHERE attivo` (Q30) |
 
 ### 7.1 Le decisioni dell'analisi critica (2026-11-20)
 
