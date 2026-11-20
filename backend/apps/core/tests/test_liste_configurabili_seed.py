@@ -45,8 +45,9 @@
    colonna e le azioni di riga spariscono senza che niente fallisca — e' il
    difetto DB-1, trovato convertendo e non da un test.
 
-5. test_ogni_lista_del_seed_ha_un_preset_default
-   Senza preset `is_default` la lista non ha una configurazione di partenza.
+5. test_ogni_lista_del_seed_ha_un_preset_di_sistema_acceso
+   Senza un preset di sistema acceso la lista non ha una configurazione di
+   partenza (`is_default` e' uscito dal modello il 2026-11-20, Q26).
 
 5-bis. test_l_ordinamento_dei_preset_nomina_il_campo_sorgente
    Ogni `col` dell'`ordinamento_default` di un preset e' un `campo_sorgente`
@@ -1225,20 +1226,26 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
                     "o la lista esce dalla sentinella e prende una whitelist.",
                 )
 
-    def test_ogni_lista_del_seed_ha_un_preset_default(self) -> None:
+    # ⭐ Dal giro 1a di brief-db-revisione-ui (Q26, Q30, 2026-11-20)
+    #    `is_default` non esiste: un preset vale se e' ACCESO, e un posto ne
+    #    ha al piu' uno (`uq_ui_lista_preset_posto`). La configurazione di
+    #    partenza di una lista del seed e' il suo preset di SISTEMA acceso.
+    def test_ogni_lista_del_seed_ha_un_preset_di_sistema_acceso(self) -> None:
         preset = seed_ui("lista_preset.csv")
         for codice, _ in _LISTE:
             with self.subTest(lista=codice):
                 lista_id = seed_lista_id(codice)
-                default = [
+                accesi = [
                     p for p in preset
-                    if p["lista_id"] == lista_id and p["is_default"] == "t"
+                    if p["lista_id"] == lista_id
+                    and p["ambito"] == "sistema"
+                    and p["attivo"] == "t"
                 ]
                 self.assertEqual(
-                    len(default), 1,
-                    "serve esattamente un preset is_default: zero lascia la "
-                    "lista senza configurazione di partenza, due la rendono "
-                    "non deterministica.",
+                    len(accesi), 1,
+                    "serve esattamente un preset di sistema acceso: zero "
+                    "lascia la lista senza configurazione di partenza, due li "
+                    "rifiuterebbe l'UNIQUE del posto.",
                 )
 
     # 5-bis. La chiave `col` dell'ordinamento di un preset e' il `campo_sorgente`

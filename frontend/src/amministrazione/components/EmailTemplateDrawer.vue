@@ -25,6 +25,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
 import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import { previewEmailTemplate } from '../api/amministrazione'
 
@@ -151,25 +152,19 @@ async function handlePreview() {
         <div class="form-field">
           <label>{{ t('amministrazione.email_codice') }}</label>
           <InputText :modelValue="form.codice" disabled fluid />
-          <small v-if="delProgramma('codice')" class="app-text-muted" data-testid="motivo-codice">
-            {{ t('amministrazione.email_campo_del_programma') }}
-          </small>
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_lingua') }}</label>
           <InputText :modelValue="form.lingua" disabled fluid />
-          <small v-if="delProgramma('lingua')" class="app-text-muted" data-testid="motivo-lingua">
-            {{ t('amministrazione.email_campo_del_programma') }}
-          </small>
+          <MotivoDelProgramma campo="lingua" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
         </div>
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_attivo') }}</label>
         <ToggleSwitch v-model="form.attivo" :disabled="isReadonly || delProgramma('attivo')" data-testid="template-attivo" />
-        <small v-if="delProgramma('attivo')" class="app-text-muted" data-testid="motivo-attivo">
-          {{ t('amministrazione.email_campo_del_programma') }}
-        </small>
+        <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field" v-if="form.variabili_disponibili?.length">
@@ -178,35 +173,27 @@ async function handlePreview() {
           <Tag v-for="v in form.variabili_disponibili" :key="v"
                :value="`{{${v}}}`" severity="info" />
         </div>
-        <small v-if="delProgramma('variabili_disponibili')" class="app-text-muted" data-testid="motivo-variabili">
-          {{ t('amministrazione.email_campo_del_programma') }}
-        </small>
+        <MotivoDelProgramma campo="variabili_disponibili" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_oggetto') }}</label>
         <InputText v-model="form.oggetto" :disabled="isReadonly || delProgramma('oggetto')" fluid />
-        <small v-if="delProgramma('oggetto')" class="app-text-muted" data-testid="motivo-oggetto">
-          {{ t('amministrazione.email_campo_del_programma') }}
-        </small>
+        <MotivoDelProgramma campo="oggetto" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_corpo_html') }}</label>
         <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize
                   :disabled="isReadonly || delProgramma('corpo_html')" />
-        <small v-if="delProgramma('corpo_html')" class="app-text-muted" data-testid="motivo-corpo_html">
-          {{ t('amministrazione.email_campo_del_programma') }}
-        </small>
+        <MotivoDelProgramma campo="corpo_html" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_corpo_testo') }}</label>
         <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize
                   :disabled="isReadonly || delProgramma('corpo_testo')" />
-        <small v-if="delProgramma('corpo_testo')" class="app-text-muted" data-testid="motivo-corpo_testo">
-          {{ t('amministrazione.email_campo_del_programma') }}
-        </small>
+        <MotivoDelProgramma campo="corpo_testo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <!-- `app-escape`: l'anteprima e' consultazione, resta cliccabile anche in

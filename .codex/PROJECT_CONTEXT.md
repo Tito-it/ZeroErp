@@ -306,6 +306,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova** [DB]
 - 🟡 **Tetto d'area dei permessi — due decisioni residue di Tid**
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate** [DB]
+- **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata** [DB + BE/FE]
 - **Righe di listino: la gamba dei compositi bundle non è provata sul DB** [BE]
 - **La matrice di `stato_lotto` in due sedi che dissentono** [BE + DB]
 - **La porta dell'esito ancora aperta** [DB]

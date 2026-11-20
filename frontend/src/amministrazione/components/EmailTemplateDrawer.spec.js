@@ -80,7 +80,7 @@ describe('EmailTemplateDrawer — seed di primo impianto e solo disattivazione',
     expect(w.find('[data-testid="template-di-sistema"]').exists()).toBe(true)
     expect(w.find('[data-testid="motivo-codice"]').exists()).toBe(true)
     expect(w.find('[data-testid="motivo-lingua"]').exists()).toBe(true)
-    expect(w.find('[data-testid="motivo-variabili"]').exists()).toBe(true)
+    expect(w.find('[data-testid="motivo-variabili_disponibili"]').exists()).toBe(true)
   })
 
   it("template dell'installazione: nessun segno, nessun motivo", async () => {
@@ -88,7 +88,7 @@ describe('EmailTemplateDrawer — seed di primo impianto e solo disattivazione',
     expect(w.find('[data-testid="template-di-sistema"]').exists()).toBe(false)
     expect(w.find('[data-testid="motivo-codice"]').exists()).toBe(false)
     expect(w.find('[data-testid="motivo-lingua"]').exists()).toBe(false)
-    expect(w.find('[data-testid="motivo-variabili"]').exists()).toBe(false)
+    expect(w.find('[data-testid="motivo-variabili_disponibili"]').exists()).toBe(false)
   })
 
   it('spegnere il template: il payload porta `attivo: false`, e solo i campi del form', async () => {

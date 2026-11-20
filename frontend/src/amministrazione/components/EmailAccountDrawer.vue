@@ -28,6 +28,7 @@ import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
 import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import { testEmailAccount } from '../api/amministrazione'
 
@@ -218,18 +219,14 @@ async function handleTest() {
           <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit || isReadonly" fluid
             :invalid="campiErrati.includes('codice')"
           />
-          <small v-if="delProgramma('codice')" class="app-text-muted" data-testid="motivo-codice">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_attivo') }}</label>
           <ToggleSwitch v-model="form.attivo" :disabled="spento('attivo')"
             :invalid="campiErrati.includes('attivo')"
           />
-          <small v-if="delProgramma('attivo')" class="app-text-muted" data-testid="motivo-attivo">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
@@ -238,25 +235,19 @@ async function handleTest() {
         <InputText v-model="form.descrizione" :disabled="spento('descrizione')" fluid
           :invalid="campiErrati.includes('descrizione')" data-testid="account-descrizione"
         />
-        <small v-if="delProgramma('descrizione')" class="app-text-muted" data-testid="motivo-descrizione">
-          {{ t('amministrazione.email_campo_del_programma_account') }}
-        </small>
+        <MotivoDelProgramma campo="descrizione" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
       </div>
 
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_host') }}</label>
           <InputText v-model="form.smtp_host" :disabled="spento('smtp_host')" fluid />
-          <small v-if="delProgramma('smtp_host')" class="app-text-muted" data-testid="motivo-smtp_host">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_host" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_port') }}</label>
           <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="spento('smtp_port')" fluid />
-          <small v-if="delProgramma('smtp_port')" class="app-text-muted" data-testid="motivo-smtp_port">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_port" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
@@ -264,16 +255,12 @@ async function handleTest() {
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_tls') }}</label>
           <ToggleSwitch v-model="form.smtp_use_tls" :disabled="spento('smtp_use_tls')" />
-          <small v-if="delProgramma('smtp_use_tls')" class="app-text-muted" data-testid="motivo-smtp_use_tls">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_use_tls" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_ssl') }}</label>
           <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="spento('smtp_use_ssl')" />
-          <small v-if="delProgramma('smtp_use_ssl')" class="app-text-muted" data-testid="motivo-smtp_use_ssl">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_use_ssl" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
@@ -281,18 +268,14 @@ async function handleTest() {
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_username') }}</label>
           <InputText v-model="form.smtp_username" :disabled="spento('smtp_username')" fluid />
-          <small v-if="delProgramma('smtp_username')" class="app-text-muted" data-testid="motivo-smtp_username">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_username" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_password') }}</label>
           <Password v-model="form.smtp_password" :feedback="false" toggleMask fluid
                    :disabled="spento('smtp_password')"
                    :placeholder="isEdit ? t('amministrazione.email_smtp_password_placeholder') : ''" />
-          <small v-if="delProgramma('smtp_password')" class="app-text-muted" data-testid="motivo-smtp_password">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="smtp_password" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
@@ -300,16 +283,12 @@ async function handleTest() {
         <div class="form-field">
           <label>{{ t('amministrazione.email_from') }}</label>
           <InputText v-model="form.email_from" :disabled="spento('email_from')" fluid />
-          <small v-if="delProgramma('email_from')" class="app-text-muted" data-testid="motivo-email_from">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="email_from" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_reply_to') }}</label>
           <InputText v-model="form.email_reply_to" :disabled="spento('email_reply_to')" fluid />
-          <small v-if="delProgramma('email_reply_to')" class="app-text-muted" data-testid="motivo-email_reply_to">
-            {{ t('amministrazione.email_campo_del_programma_account') }}
-          </small>
+          <MotivoDelProgramma campo="email_reply_to" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 

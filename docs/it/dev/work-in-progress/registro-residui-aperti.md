@@ -241,7 +241,32 @@
   decidere col team DB se il mirror debba smettere di riscrivere le colonne che
   l'operatore può cambiare. ⏭️ Dal 2026-11-17 il tema generale sta in
   [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md)
-  (§7, Q5)
+  (§7, Q5). ⚠️ **Aggiornato il 2026-11-20: quel brief ha costruito il
+  meccanismo, ma non ha iscritto questa tabella.** Il meccanismo è la forma per
+  colonna: il registro `dbops.seed_righe`, le colonne del software lette da
+  `dbops.fn_seed_colonne_del_software`, la superficie
+  `dbops.fn_seed_superficie`. Ci sono iscritte la posta e le tabelle di catalogo
+  di `ui`. `vendite.famiglie_documento` ha già la sua forma decisa (§7): il
+  `codice` è dell'installazione, mentre formato, colonna serie, regole fiscali e
+  anno nel numero sono del software. Entra in un giro suo, dopo la lettura del
+  codice che la usa. Resta aperta fino a quel giro. Il giro la iscrive al
+  registro e ne dichiara le colonne del software; il BE ne espone poi la
+  superficie, come per la posta (§16.14 del brief)
+- **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata**
+  [DB + BE/FE] (Q7 di
+  [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md),
+  rinviata il 2026-11-17 fuori dal giro 1, §15.10; ereditata qui il 2026-11-20).
+  Quando l'installazione modifica una riga di seed, la riga diventa
+  personalizzata: il migrate non la riscrive più e mette i valori del CSV in
+  `dbops.seed_righe.scartati`. La riga torna a seguire il CSV solo se la si
+  toglie dal registro, a mano (§15.11, limite 5). Dall'interfaccia non c'è
+  un'azione per farlo. Il dato per costruirla c'è già: `personalizzata_il` e
+  `scartati`, con `scartati_il`. Manca la decisione: se l'azione serve, chi la
+  esegue e con quale verbo DB, e se il FE mostra un segno «personalizzata» sulla
+  riga. Il segno è facoltativo, è la R5 del §15.12 e la R3 del §11 del brief.
+  Superficie e drawer sono quelli di posta e `ui`: oggi espongono `nata_dal_seed`
+  e `campi_del_software`, non la personalizzazione. Si apre quando
+  l'interfaccia lo chiede. Di Tid, poi team DB, poi BE/FE
 - **Righe di listino: la gamba dei compositi bundle non è provata sul DB**
   (BE, stessa origine, §13.3 g): la ricerca libera di `vendite.listini_righe`
   è una condizione sola sulla CTE `unione`, ma

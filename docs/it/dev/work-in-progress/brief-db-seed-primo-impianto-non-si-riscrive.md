@@ -35,11 +35,11 @@ ripercorrere le stesse strade.
 | 6-ter | ✅ sessione DB e Tid | La domanda del BE e la Q24: le viste del segno, solo disattivazione (giro 2, `20261117-23` … `-28`), pgTAP, pagine `manual/`, guida, provato sullo scratch; ✅ Q23 e Q24 decise (2026-11-19) | §16.14 | 6 |
 | 6-quater | ✅ Tid e sessione DB | L'apply del giro 2 e i pgTAP verdi (Tid), la doc auto-generata, il commit (2026-11-20) | §16.14 | 6-ter |
 | 6-quinquies | ✅ sessione DB e Tid | La richiesta del BE sul rilancio: il `20261118-01`, il pgTAP adeguato, la pagina `manual/`; l'apply e il pgTAP verde (Tid), la doc auto-generata, il commit (2026-11-20) | §16.16 | 6-quater |
-| 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17). R1-BE-ter adeguata (esito di R5, §16.16); ⏳ l'esito delle altre | §16.14 | 6-quater |
+| 7 | ✅ team BE/FE e Tid | R2, R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14 (R4 ritirata dalla Q17): fatti e committati (2026-11-20, `185f7207a`; esito sotto la richiesta) | §16.14 | 6-quater |
 | 7-bis | ✅ sessione DB e Tid | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20); QU1-QU4 decise; il giro 3 (`20261119-01` … `-05`) e la superficie QU3 (`-06` … `-08`) applicati, pgTAP verdi, doc auto-generata rigenerata (2026-11-20) | §16.15 | 6-quater |
 | 7-ter | ✅ team BE/FE e Tid | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; fatti, verdi e committati (2026-11-20) | §16.16 | 6-quinquies |
-| 7-quater | team BE/FE | R-UI1, R-UI2, R-UI3, R-UI-test e R-UI-sup: le ricadute del giro 3 sulle pagine admin di `ui` (cancellazione e colonne del software sulle righe di seed, la superficie `nata_dal_seed` / `campi_del_software`). ⏳ Da fare: `test_ricerca_full_db` è già adeguato a `E_SEED_COLONNA_DEL_SOFTWARE`, `ui_admin_repository.py` non ancora | §16.15 | 7-bis |
-| 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quinquies, 7, 7-ter, 7-quater |
+| 7-quater | ✅ team BE/FE, poi Tid | R-UI1, R-UI2, R-UI3, R-UI-test, R-UI-sup del giro 3 di `ui`: fatti e verdi (2026-11-20, esito sotto la tabella delle ricadute); ⏳ il commit | §16.15 | 7-bis |
+| 8 | chi chiude | Archiviazione in `work-done/`, coi link dei residui riportati a `work-done/`. ✅ I residui sono già nel registro dei residui e in PROJECT_CONTEXT (2026-11-20): `famiglie_documento` resta aperta (la voce è aggiornata, il brief non l'ha iscritta: §7, giro suo), Q7 è una voce nuova (con R3 del §11 / R5 del §15.12). Q8 (il titolo) cade con la chiusura | — | 6-quinquies, 7, 7-ter, 7-quater |
 
 **Decisioni di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue (§16.16, il DB è fatto).
 **Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** questo brief riallineato. **Committato il 2026-11-20:** R5, R5-doc e R5-test del BE (§16.16, l'esito sotto la richiesta; PR #167); il giro 3 di `ui` e la superficie QU3 (§16.15); il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
@@ -1386,6 +1386,31 @@ nel backend.
 
 Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo sceglie il FE.
 
+**Esito del team BE/FE (2026-11-20).** Fatti e committati (`185f7207a`, 2026-11-20); riscontrati sul codice il
+2026-11-20, all'arrivo del riallineamento del team DB.
+
+- **R2**: `E_SEED_RIGA_NON_CANCELLABILE` ed `E_SEED_COLONNA_DEL_SOFTWARE` stanno nella policy generata
+  (`error_policies_generated.py`, classe `CONFLITTO_STATO`) e nei messaggi di ripiego
+  (`error_messages_fallback.py`), senza segnaposti. La tassonomia di `api.md` non elenca i singoli codici, ma
+  li registra con la classe: non c'è una riga da aggiungere lì. In `docs/it/backend/core/manual/api_email.md`
+  `E_SEED_COLONNA_DEL_SOFTWARE` sta nella tabella degli errori, `E_SEED_RIGA_NON_CANCELLABILE` nel testo sulla
+  cancellazione (l'endpoint non esiste più: il codice arriva solo a chi scrive sul DB).
+- **R1-BE**: il `DELETE` sul dettaglio di account e template non esiste più (405; le docstring di
+  `email_views.py` dicono «Nessun DELETE … si spegne», Q24), e `delete_account` / `delete_template` sono tolti dal
+  repository. In `api_email.md` e in `gestione-mail.md` resta solo il `DELETE` degli allegati, che non è di
+  questo brief.
+- **R1-BE-bis**: `list_accounts`, `get_account`, `list_templates` e `get_template` (`email_repository.py`) leggono
+  `config.vw_email_account_seed` / `config.vw_email_template_seed` in `LEFT JOIN` sull'id ed espongono
+  `nata_dal_seed` e `campi_del_software`; nessun elenco di colonne nel backend. Documentato in `api_email.md`.
+- **R1-BE-ter**: in `confirm_and_send` (`email_outbox_service.py`) il log scrive l'account con cui la mail parte
+  (`account_di_invio`, passato a `send_raw`), non quello della bozza. Adeguata insieme a R5 (§16.16).
+- **R3**: `EmailAccountDrawer.vue` ed `EmailTemplateDrawer.vue` spengono i campi in `campi_del_software` col
+  motivo e li tolgono dal PATCH (BB `campoDelSoftware` + `senzaCampiFermi`, gli stessi poi usati da R-UI-sup del
+  §16.15); il segno «di sistema» compare sulle righe `nata_dal_seed`.
+- **R-test**: `backend/apps/core/tests/db/test_email_seed_primo_impianto_db.py`, sul DB vero: il template e
+  l'account di seed portano segno e campi, un campo del software non si modifica, account e template non si
+  cancellano, un account che ha spedito si spegne.
+
 ### 16.15 Il censimento delle tabelle di `ui` (richiesta del brief `ui`, Q27, 2026-11-20)
 
 Chiesto dal [brief-db-revisione-ui](brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
@@ -1559,6 +1584,25 @@ LEFT JOIN LATERAL dbops.fn_seed_superficie(
     '<t>'::regclass, x.id::text,
     (SELECT dbops.fn_seed_colonne_del_software('<t>'::regclass))) seed ON true
 ```
+
+**Esito del team BE/FE (2026-11-20).** Fatti, provati sul DB vero.
+
+- **R-UI1, R-UI2**: nessun codice nel servizio. Il codice del guard arriva al client già tradotto
+  dalla policy generata (409, con il campo acceso per `E_SEED_COLONNA_DEL_SOFTWARE`), attraverso i
+  tre service admin; provato con una chiamata vera su una riga di seed di ciascuna tabella. Il
+  presidio della giuntura è `backend/apps/ui/tests/db/test_seed_primo_impianto_ui_db.py`.
+- **R-UI-sup**: le letture di lista e dettaglio delle tre tabelle (`ui_admin_repository.py`)
+  portano `nata_dal_seed` e `campi_del_software` nella forma qui sopra (un helper del modulo,
+  `_sql_superficie_seed`). Il FE spegne i campi in `campi_del_software` col motivo e li toglie dal
+  PATCH (BB `campoDelSoftware` + `senzaCampiFermi`) nei tre drawer, e spegne il cestino sulle righe
+  `nata_dal_seed` nei tre pannelli.
+- **R-UI3**: nessun cambio, come atteso.
+- **R-UI-test**: nessun test BE cancellava o rinominava righe di seed di `ui` (toccano `attivo` e
+  `ricerca_min_caratteri`, colonne dell'installazione).
+- ⚠️ **Domanda al team DB, nata qui**: la lista admin dei preset (`ui.lista_definizione`
+  `ui.lista_preset`, id 58) ha ancora la colonna di catalogo `is_default` (`lista_colonna.csv`, riga
+  id 665, accesa). Dal giro 1a di brief-db-revisione-ui il campo non esiste più: la colonna esce
+  vuota. Va spenta o tolta dal CSV nel giro che lo ritira (il BE non la consegna più).
 
 #### La superficie: `dbops.fn_seed_superficie` (QU3, 2026-11-20)
 

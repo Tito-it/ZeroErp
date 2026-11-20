@@ -13,8 +13,9 @@
 #          - ui.lista_colonna       -> list (esistente) / create / update /
 #                                      delete (T2 BE)
 #
-#        Logica di dominio nei trigger DB (CHECK ambito_refs, partial
-#        UNIQUE is_default, valida_vista_sql, valida_campo_sorgente). Il
+#        Logica di dominio nei trigger DB (CHECK ambito_refs, UNIQUE
+#        parziale del posto `WHERE attivo`, valida_vista_sql,
+#        valida_campo_sorgente). Il
 #        repository si limita a marshalling cursor + propagazione
 #        IntegrityError al service.
 # ------------------------------------------------------------
@@ -28,6 +29,29 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import fetchone_scalar, row_to_dict, rows_to_list
 from apps.core.db.sql_write_helpers import execute_dynamic_update
+
+
+# Scopo: La superficie del seed di primo impianto di una riga (R-UI-sup del
+#        brief-db-seed-primo-impianto-non-si-riscrive §16.15): `nata_dal_seed`
+#        e `campi_del_software`, dal building block del DB
+#        `dbops.fn_seed_superficie`. Il FE spegne il cestino sulle righe nate
+#        dal seed e i campi del software (il guard li rifiuterebbe con
+#        `E_SEED_RIGA_NON_CANCELLABILE` / `E_SEED_COLONNA_DEL_SOFTWARE`).
+# ⭐ Nessun elenco di colonne nel backend: le colonne del software le legge il
+#    DB (`dbops.fn_seed_colonne_del_software`) in una sottoquery NON correlata,
+#    cioe' una volta per lettura e non per riga (linee-guida-sql §13.2).
+# ⛔ `tabella` e `alias` sono costanti di questo modulo, mai input esterno.
+def _sql_superficie_seed(tabella: str, alias: str) -> str:
+    return (
+        "LEFT JOIN LATERAL dbops.fn_seed_superficie("
+        f"'{tabella}'::regclass, {alias}.id::text, "
+        f"(SELECT dbops.fn_seed_colonne_del_software('{tabella}'::regclass))"
+        ") seed ON true"
+    )
+
+
+# Le due colonne della superficie, nella SELECT di lista e di dettaglio.
+_COLONNE_SUPERFICIE_SEED = "seed.nata_dal_seed, seed.campi_del_software,"
 
 
 # SELECT comune per ui.lista_preset con display fields (profilo accesso +
@@ -53,12 +77,13 @@ _PRESET_SELECT_SQL = """
            p.emittente_fiscale_id,
            ef.codice                      AS emittente_fiscale_codice,
            s_ef.ragione_sociale_completa  AS emittente_ragione_sociale,
-           p.is_default,
            p.pagina_dimensione,
            p.ordinamento_default,
            p.filtri_default,
            p.attivo,
            {extra_select}
+           seed.nata_dal_seed,
+           seed.campi_del_software,
            p.data_insert,
            p.user_insert,
            p.data_update,
@@ -72,6 +97,7 @@ _PRESET_SELECT_SQL = """
            ON sr_ef.id = ef.soggetto_ruolo_id
       LEFT JOIN anagrafiche.soggetti                s_ef
            ON s_ef.id = sr_ef.soggetto_id
+      {superficie_seed}
      WHERE {filter_clause}
 """
 
@@ -107,20 +133,26 @@ class UiAdminRepository:
     # SELECT esteso usato dalla pagina tecnica Fase 2: include vista_sql,
     # note, audit. La proiezione "Fase 1" (id/codice/descrizione/schema_dati/
     # attivo) resta esposta da `list_definizioni` come header del select.
-    _DEFINIZIONE_SELECT_FULL = """
-        SELECT id,
-               codice,
-               descrizione,
-               schema_dati,
-               vista_sql,
-               note,
-               attivo,
-               data_insert,
-               user_insert,
-               data_update,
-               user_update
-          FROM ui.lista_definizione
-    """
+    # La superficie del seed (`nata_dal_seed`, `campi_del_software`) viaggia
+    # con lista e dettaglio (R-UI-sup). Le clausole aggiunte dai chiamanti
+    # (`WHERE id`, `ORDER BY attivo, codice, id`) restano non ambigue: la
+    # funzione laterale non porta colonne con quei nomi.
+    _DEFINIZIONE_SELECT_FULL = f"""
+        SELECT d.id,
+               d.codice,
+               d.descrizione,
+               d.schema_dati,
+               d.vista_sql,
+               d.note,
+               d.attivo,
+               {_COLONNE_SUPERFICIE_SEED}
+               d.data_insert,
+               d.user_insert,
+               d.data_update,
+               d.user_update
+          FROM ui.lista_definizione d
+          {_sql_superficie_seed("ui.lista_definizione", "d")}
+    """  # noqa: S608 — solo costanti del modulo (tabella e alias), nessun input esterno
 
     # Scopo: Lista delle definizioni di lista attive. Usato dall'header
     #        "Lista corrente" della pagina admin per popolare il Select
@@ -284,8 +316,8 @@ class UiAdminRepository:
     # campi della tabella (etichetta_i18n_key, formato, allineamento,
     # gruppo, flag comportamento, audit). La proiezione "Fase 1" per la
     # composizione preset resta in `list_colonne_by_lista` (helper FE).
-    _COLONNA_SELECT_FULL = """
-        SELECT id,
+    _COLONNA_SELECT_FULL = f"""
+        SELECT c.id,
                lista_id,
                codice,
                etichetta,
@@ -306,12 +338,14 @@ class UiAdminRepository:
                ricercabile_full,
                sensibile,
                attivo,
+               {_COLONNE_SUPERFICIE_SEED}
                data_insert,
                user_insert,
                data_update,
                user_update
-          FROM ui.lista_colonna
-    """
+          FROM ui.lista_colonna c
+          {_sql_superficie_seed("ui.lista_colonna", "c")}
+    """  # noqa: S608 — solo costanti del modulo (tabella e alias), nessun input esterno
 
     # Scopo: Lista colonne attive di una lista, ordinate per gruppo +
     #        ordine_default. Usato dal sub-drawer composizione preset
@@ -564,6 +598,7 @@ class UiAdminRepository:
         self, lista_id: int
     ) -> list[dict[str, Any]]:
         sql = _PRESET_SELECT_SQL.format(
+            superficie_seed=_sql_superficie_seed("ui.lista_preset", "p"),
             extra_select=_PRESET_LIST_EXTRA_SELECT,
             filter_clause="p.lista_id = %s",
         ) + " ORDER BY p.ambito, p.codice, p.id"
@@ -591,6 +626,7 @@ class UiAdminRepository:
     #        inesistente. Usato dal service per get post-mutazione.
     def get_preset(self, preset_id: int) -> dict[str, Any] | None:
         sql = _PRESET_SELECT_SQL.format(
+            superficie_seed=_sql_superficie_seed("ui.lista_preset", "p"),
             extra_select="",
             filter_clause="p.id = %s",
         )
@@ -618,7 +654,6 @@ class UiAdminRepository:
                     ambito,
                     profilo_accesso_id,
                     emittente_fiscale_id,
-                    is_default,
                     pagina_dimensione,
                     ordinamento_default,
                     filtri_default,
@@ -627,7 +662,7 @@ class UiAdminRepository:
                 VALUES (
                     %s, %s, %s, %s::ui.ambito_preset,
                     %s, %s,
-                    %s, %s,
+                    %s,
                     %s::jsonb, %s::jsonb,
                     %s
                 )
@@ -640,11 +675,10 @@ class UiAdminRepository:
                     data["ambito"],
                     data.get("profilo_accesso_id"),
                     data.get("emittente_fiscale_id"),
-                    data.get("is_default", False),
                     data.get("pagina_dimensione"),
                     json.dumps(ordinamento_default) if ordinamento_default is not None else None,
                     json.dumps(filtri_default) if filtri_default is not None else None,
-                    data.get("attivo", True),
+                    data.get("attivo", False),
                 ],
             )
             row = cursor.fetchone()
@@ -655,7 +689,7 @@ class UiAdminRepository:
     # escluso (testata della classe). Gli immutabili (lista_id/
     # ambito/profilo/emittente) restano fuori anche qui.
     _PRESET_UPDATE_COLS: frozenset[str] = frozenset({
-        "codice", "descrizione", "is_default", "pagina_dimensione",
+        "codice", "descrizione", "pagina_dimensione",
         "ordinamento_default", "filtri_default", "attivo",
     })
 

@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit DashboardPreferenzaService — valida payload (whitelist
-#        chiavi anti-injection), snapshot preset di base, UPSERT/DELETE
+#        chiavi anti-injection), preset di base dalla risoluzione, UPSERT/DELETE
 #        preferenza, tombstone ignore. CI senza DB reale (SimpleTestCase
 #        + repository mockato). Gemello di test_lista_preferenza_service.
 #
@@ -64,11 +64,17 @@ _PATCH_EMITTENTE = patch(
 )
 
 
-# Scopo: Repo mockato con dashboard esistente (id=1) e snapshot preset.
+# Scopo: Repo mockato con dashboard esistente (id=1) e preset di base 5.
 def _make_repo() -> MagicMock:
     repo = MagicMock()
     repo.get_dashboard_id.return_value = 1
-    repo.get_preset_base_snapshot.return_value = (5, "2026-07-01T00:00")
+    repo.resolve_dashboard_config.return_value = {
+        "preset_base": {
+            "id": 5,
+            "ambito": "sistema",
+            "contenuto_aggiornato_il": "2026-07-01T00:00:00+00:00",
+        },
+    }
     repo.upsert_preferenza.return_value = 99
     return repo
 
@@ -87,14 +93,26 @@ class DashboardPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertEqual(kwargs["dashboard_id"], 1)
         self.assertEqual(kwargs["preset_base_id"], 5)
-        self.assertEqual(kwargs["preset_base_contenuto_aggiornato_il"], "2026-07-01T00:00")
+        # ⭐ Lo snapshot lo scrive il trigger del DB (BE6): il service non lo passa.
+        self.assertNotIn("preset_base_contenuto_aggiornato_il", kwargs)
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["dimensione_max"], 8)
         self.assertEqual(len(cfg["widget"]), 2)
-        # Snapshot calcolato con la stessa cascata della fn DB.
-        repo.get_preset_base_snapshot.assert_called_once_with(
-            dashboard_id=1, auth_user_id=42, emittente_fiscale_id=11,
+        # La base viene dalla risoluzione, con l'emittente dell'utente (BE5).
+        repo.resolve_dashboard_config.assert_called_once_with(
+            dashboard_codice="home", auth_user_id=42, emittente_fiscale_id=11,
         )
+
+    @_PATCH_EMITTENTE
+    def test_upsert_senza_preset_di_base(self, _mock_em) -> None:
+        repo = _make_repo()
+        repo.resolve_dashboard_config.return_value = {"preset_base": None}
+        svc = DashboardPreferenzaService(repository=repo)
+
+        result = svc.upsert(_make_user(), "home", dict(_VALID_PAYLOAD))
+
+        self.assertIsNone(result["preset_base_id"])
+        self.assertIsNone(repo.upsert_preferenza.call_args.kwargs["preset_base_id"])
 
     @_PATCH_EMITTENTE
     def test_upsert_dashboard_inesistente_raises(self, _mock_em) -> None:

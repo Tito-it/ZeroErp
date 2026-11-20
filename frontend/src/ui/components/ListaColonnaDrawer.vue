@@ -16,6 +16,9 @@
 //            arriva dal Select header via prop)
 //          - etichetta_i18n_key + etichetta separati (decisione 3):
 //            il BE risolve la cascata `t(key) || etichetta` lato runtime.
+//          - su una colonna nata dal seed di primo impianto i campi del
+//            software sono spenti col motivo e restano fuori dal PATCH
+//            (R-UI-sup di brief-db-seed-primo-impianto-non-si-riscrive §16.15)
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tabs from 'primevue/tabs'
@@ -34,6 +37,9 @@ import { NAV_ICONS } from '../../core/navigation'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiColonnaAdminStore } from '../stores/uiColonnaAdmin'
+import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -50,6 +56,10 @@ const colonnaStore = useUiColonnaAdminStore()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Scopo: il campo lo stabilisce il programma su questa colonna (riga di
+// seed)? L'elenco viaggia con la riga della lista (`campi_del_software`).
+const delProgramma = (campo) => isEdit.value && campoDelSoftware(props.recordData, campo)
 const activeTab = ref('generale')
 
 // Snapshot di listaId al momento dell'apertura del drawer in create:
@@ -198,7 +208,8 @@ function buildPayload() {
 
 async function onSave() {
   if (!canSave.value) return
-  const payload = buildPayload()
+  // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
+  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), delProgramma) : buildPayload()
   let result
   if (isEdit.value) {
     result = await execute(
@@ -248,15 +259,19 @@ async function onSave() {
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_codice') }}</label>
-                <InputText v-model="form.codice" maxlength="80"
+                <InputText v-model="form.codice"
+                  :disabled="delProgramma('codice')" maxlength="80"
                   :invalid="campiErrati.includes('codice')"
                 />
+                <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_campo_sorgente') }}</label>
-                <InputText v-model="form.campo_sorgente" maxlength="80"
+                <InputText v-model="form.campo_sorgente"
+                  :disabled="delProgramma('campo_sorgente')" maxlength="80"
                   :invalid="campiErrati.includes('campo_sorgente')"
                 />
+                <MotivoDelProgramma campo="campo_sorgente" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
                 <Message
                   severity="info"
                   :closable="false"
@@ -271,15 +286,19 @@ async function onSave() {
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_etichetta') }}</label>
-                <InputText v-model="form.etichetta" maxlength="120"
+                <InputText v-model="form.etichetta"
+                  :disabled="delProgramma('etichetta')" maxlength="120"
                   :invalid="campiErrati.includes('etichetta')"
                 />
+                <MotivoDelProgramma campo="etichetta" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_etichetta_i18n_key') }}</label>
-                <InputText v-model="form.etichetta_i18n_key" maxlength="120"
+                <InputText v-model="form.etichetta_i18n_key"
+                  :disabled="delProgramma('etichetta_i18n_key')" maxlength="120"
                   :invalid="campiErrati.includes('etichetta_i18n_key')"
                 />
+                <MotivoDelProgramma campo="etichetta_i18n_key" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
                 <Message
                   severity="info"
                   :closable="false"
@@ -293,9 +312,11 @@ async function onSave() {
 
             <div class="form-field">
               <label>{{ t('ui.admin.colonna_etichetta_estesa') }}</label>
-              <InputText v-model="form.etichetta_estesa" maxlength="200"
+              <InputText v-model="form.etichetta_estesa"
+                :disabled="delProgramma('etichetta_estesa')" maxlength="200"
                 :invalid="campiErrati.includes('etichetta_estesa')"
               />
+              <MotivoDelProgramma campo="etichetta_estesa" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
             </div>
 
             <div class="form-grid-2col">
@@ -303,21 +324,25 @@ async function onSave() {
                 <label>{{ t('ui.admin.colonna_tipo_colonna') }}</label>
                 <Select
                   v-model="form.tipo_colonna"
+                  :disabled="delProgramma('tipo_colonna')"
                   :options="tipoColonnaOptions"
                   option-label="label"
                   option-value="value"
                   :invalid="campiErrati.includes('tipo_colonna')"
                 />
+                <MotivoDelProgramma campo="tipo_colonna" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_tipo_dato') }}</label>
                 <Select
                   v-model="form.tipo_dato"
+                  :disabled="delProgramma('tipo_dato')"
                   :options="tipoDatoOptions"
                   option-label="label"
                   option-value="value"
                   :invalid="campiErrati.includes('tipo_dato')"
                 />
+                <MotivoDelProgramma campo="tipo_dato" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
           </div>
@@ -327,12 +352,16 @@ async function onSave() {
           <div class="form-grid">
             <div class="form-grid-2col">
               <div class="form-field form-field-inline">
-                <Checkbox v-model="form.filtrabile" binary input-id="ui-col-filtrabile" />
+                <Checkbox v-model="form.filtrabile"
+                  :disabled="delProgramma('filtrabile')" binary input-id="ui-col-filtrabile" />
                 <label for="ui-col-filtrabile">{{ t('ui.admin.colonna_filtrabile') }}</label>
+                <MotivoDelProgramma campo="filtrabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field form-field-inline">
-                <Checkbox v-model="form.ordinabile" binary input-id="ui-col-ordinabile" />
+                <Checkbox v-model="form.ordinabile"
+                  :disabled="delProgramma('ordinabile')" binary input-id="ui-col-ordinabile" />
                 <label for="ui-col-ordinabile">{{ t('ui.admin.colonna_ordinabile') }}</label>
+                <MotivoDelProgramma campo="ordinabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
 
@@ -342,13 +371,16 @@ async function onSave() {
                   v-model="form.esportabile"
                   binary
                   input-id="ui-col-esportabile"
-                  :disabled="isAzione"
+                  :disabled="isAzione || delProgramma('esportabile')"
                 />
                 <label for="ui-col-esportabile">{{ t('ui.admin.colonna_esportabile') }}</label>
+                <MotivoDelProgramma campo="esportabile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field form-field-inline">
-                <Checkbox v-model="form.ricercabile_full" binary input-id="ui-col-ricercabile" />
+                <Checkbox v-model="form.ricercabile_full"
+                  :disabled="delProgramma('ricercabile_full')" binary input-id="ui-col-ricercabile" />
                 <label for="ui-col-ricercabile">{{ t('ui.admin.colonna_ricercabile_full') }}</label>
+                <MotivoDelProgramma campo="ricercabile_full" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
             <Message
@@ -362,14 +394,18 @@ async function onSave() {
 
             <div class="form-grid-2col">
               <div class="form-field form-field-inline">
-                <Checkbox v-model="form.sensibile" binary input-id="ui-col-sensibile" />
+                <Checkbox v-model="form.sensibile"
+                  :disabled="delProgramma('sensibile')" binary input-id="ui-col-sensibile" />
                 <label for="ui-col-sensibile">{{ t('ui.admin.colonna_sensibile') }}</label>
+                <MotivoDelProgramma campo="sensibile" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field form-field-inline">
-                <Checkbox v-model="form.attivo" binary input-id="ui-col-attivo"
+                <Checkbox v-model="form.attivo"
+                  :disabled="delProgramma('attivo')" binary input-id="ui-col-attivo"
                   :invalid="campiErrati.includes('attivo')"
                 />
                 <label for="ui-col-attivo">{{ t('common.active') }}</label>
+                <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
           </div>
@@ -380,32 +416,40 @@ async function onSave() {
             <div class="form-grid-3col">
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_ordine_default') }}</label>
-                <InputNumber v-model="form.ordine_default" :min="1" :max="100000" show-buttons
+                <InputNumber v-model="form.ordine_default"
+                  :disabled="delProgramma('ordine_default')" :min="1" :max="100000" show-buttons
                   :invalid="campiErrati.includes('ordine_default')"
                 />
+                <MotivoDelProgramma campo="ordine_default" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_larghezza_default') }}</label>
-                <InputNumber v-model="form.larghezza_default" :min="1" :max="4000" show-buttons />
+                <InputNumber v-model="form.larghezza_default"
+                  :disabled="delProgramma('larghezza_default')" :min="1" :max="4000" show-buttons />
+                <MotivoDelProgramma campo="larghezza_default" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_allineamento') }}</label>
                 <Select
                   v-model="form.allineamento"
+                  :disabled="delProgramma('allineamento')"
                   :options="allineamentoOptions"
                   option-label="label"
                   option-value="value"
                   :invalid="campiErrati.includes('allineamento')"
                 />
+                <MotivoDelProgramma campo="allineamento" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
 
             <div class="form-grid-2col">
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_formato') }}</label>
-                <InputText v-model="form.formato" maxlength="60"
+                <InputText v-model="form.formato"
+                  :disabled="delProgramma('formato')" maxlength="60"
                   :invalid="campiErrati.includes('formato')"
                 />
+                <MotivoDelProgramma campo="formato" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
                 <Message
                   severity="info"
                   :closable="false"
@@ -417,15 +461,19 @@ async function onSave() {
               </div>
               <div class="form-field">
                 <label>{{ t('ui.admin.colonna_gruppo_ordine') }}</label>
-                <InputNumber v-model="form.gruppo_ordine" :min="1" :max="100000" show-buttons />
+                <InputNumber v-model="form.gruppo_ordine"
+                  :disabled="delProgramma('gruppo_ordine')" :min="1" :max="100000" show-buttons />
+                <MotivoDelProgramma campo="gruppo_ordine" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
               </div>
             </div>
 
             <div class="form-field">
               <label>{{ t('ui.admin.colonna_gruppo') }}</label>
-              <InputText v-model="form.gruppo" maxlength="60"
+              <InputText v-model="form.gruppo"
+                :disabled="delProgramma('gruppo')" maxlength="60"
                 :invalid="campiErrati.includes('gruppo')"
               />
+              <MotivoDelProgramma campo="gruppo" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
             </div>
           </div>
         </TabPanel>
@@ -437,6 +485,7 @@ async function onSave() {
 <style scoped>
 .form-field-inline {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }

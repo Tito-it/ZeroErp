@@ -10,6 +10,10 @@
 //          - Pre-popolazione da props.recordData in edit
 //          - useApiHandler per call store
 //          - Niente readonly: pagina tecnica SUPER_ADMIN-only
+//          - Su una definizione nata dal seed di primo impianto i campi del
+//            software sono spenti col motivo e restano fuori dal PATCH
+//            (R-UI-sup di brief-db-seed-primo-impianto-non-si-riscrive
+//            §16.15; BB `campoDelSoftware` + `senzaCampiFermi`)
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
@@ -21,6 +25,9 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
+import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -36,6 +43,10 @@ const definizioneStore = useUiDefinizioneAdminStore()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Scopo: il campo lo stabilisce il programma su questa definizione (riga di
+// seed)? L'elenco viaggia con la riga della lista (`campi_del_software`).
+const delProgramma = (campo) => isEdit.value && campoDelSoftware(props.recordData, campo)
 
 function defaultForm() {
   return {
@@ -98,7 +109,8 @@ function buildPayload() {
 
 async function onSave() {
   if (!canSave.value) return
-  const payload = buildPayload()
+  // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
+  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), delProgramma) : buildPayload()
   let result
   if (isEdit.value) {
     result = await execute(
@@ -140,29 +152,37 @@ async function onSave() {
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_codice') }}</label>
           <InputText v-model="form.codice" maxlength="80"
+            :disabled="delProgramma('codice')"
             :invalid="campiErrati.includes('codice')"
           />
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         </div>
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_schema_dati') }}</label>
           <InputText v-model="form.schema_dati" maxlength="80"
+            :disabled="delProgramma('schema_dati')"
             :invalid="campiErrati.includes('schema_dati')"
           />
+          <MotivoDelProgramma campo="schema_dati" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         </div>
       </div>
 
       <div class="form-field">
         <label>{{ t('ui.admin.definizione_descrizione') }}</label>
         <InputText v-model="form.descrizione" maxlength="200"
+          :disabled="delProgramma('descrizione')"
           :invalid="campiErrati.includes('descrizione')"
         />
+        <MotivoDelProgramma campo="descrizione" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('ui.admin.definizione_vista_sql') }}</label>
         <InputText v-model="form.vista_sql" maxlength="120"
+          :disabled="delProgramma('vista_sql')"
           :invalid="campiErrati.includes('vista_sql')"
         />
+        <MotivoDelProgramma campo="vista_sql" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         <Message
           severity="info"
           :closable="false"
@@ -176,15 +196,19 @@ async function onSave() {
       <div class="form-field">
         <label>{{ t('ui.admin.definizione_note') }}</label>
         <Textarea v-model="form.note" rows="3" auto-resize
+          :disabled="delProgramma('note')"
           :invalid="campiErrati.includes('note')"
         />
+        <MotivoDelProgramma campo="note" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
       </div>
 
       <div class="form-field form-field-inline">
         <Checkbox v-model="form.attivo" binary input-id="ui-def-attivo"
+          :disabled="delProgramma('attivo')"
           :invalid="campiErrati.includes('attivo')"
         />
         <label for="ui-def-attivo">{{ t('common.active') }}</label>
+        <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
       </div>
       <Message
         v-if="!form.attivo"
@@ -201,6 +225,7 @@ async function onSave() {
 <style scoped>
 .form-field-inline {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
