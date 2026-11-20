@@ -10,6 +10,9 @@
 //        e Fase 1 minimal, qui uso 2 InputNumber (id) — il super-admin
 //        sa gli id; in Fase 2 si possono sostituire con autocomplete
 //        ricchi senza cambiare il contratto del drawer.
+//        Su un preset nato dal seed di primo impianto i campi del software
+//        sono spenti col motivo e restano fuori dal PATCH (R-UI-sup di
+//        brief-db-seed-primo-impianto-non-si-riscrive §16.15).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
@@ -26,6 +29,9 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
+import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -48,6 +54,10 @@ const isReadonlyEffective = computed(
 )
 const isEdit = computed(() => props.mode === 'edit')
 
+// Scopo: il campo lo stabilisce il programma su questo preset (riga di
+// seed)? L'elenco viaggia con la riga della lista (`campi_del_software`).
+const delProgramma = (campo) => isEdit.value && campoDelSoftware(props.recordData, campo)
+
 const ambitiOptions = computed(() => [
   { label: t('ui.admin.preset_ambito_sistema'), value: 'sistema' },
   { label: t('ui.admin.preset_ambito_emittente_fiscale'), value: 'emittente_fiscale' },
@@ -61,9 +71,10 @@ function defaultForm() {
     ambito: 'sistema',
     profilo_accesso_id: null,
     emittente_fiscale_id: null,
-    is_default: false,
     pagina_dimensione: null,
-    attivo: true,
+    // ⭐ La bozza nasce spenta (Q26 di brief-db-revisione-ui): si compone e
+    // poi si accende. Un posto ha al piu' un preset acceso (BE23).
+    attivo: false,
   }
 }
 
@@ -85,7 +96,6 @@ watch(
         ambito: data.ambito ?? 'sistema',
         profilo_accesso_id: data.profilo_accesso_id ?? null,
         emittente_fiscale_id: data.emittente_fiscale_id ?? null,
-        is_default: !!data.is_default,
         pagina_dimensione: data.pagina_dimensione ?? null,
         attivo: !!data.attivo,
       }
@@ -122,7 +132,6 @@ function buildPayload() {
   const payload = {
     codice: form.value.codice.trim(),
     descrizione: form.value.descrizione.trim(),
-    is_default: form.value.is_default,
     attivo: form.value.attivo,
   }
   // Sempre, anche NULL: in modifica e' il modo di tornare al default. Prima si
@@ -142,7 +151,8 @@ function buildPayload() {
 
 async function onSave() {
   if (!canSave.value) return
-  const payload = buildPayload()
+  // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
+  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), delProgramma) : buildPayload()
   let result
   if (isEdit.value) {
     result = await execute(
@@ -186,8 +196,10 @@ async function onSave() {
         <div class="form-field">
           <label>{{ t('ui.admin.preset_codice') }}</label>
           <InputText v-model="form.codice" maxlength="80"
+            :disabled="delProgramma('codice')"
             :invalid="campiErrati.includes('codice')"
           />
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         </div>
         <div class="form-field">
           <label>{{ t('ui.admin.preset_pagina_dimensione') }}</label>
@@ -200,16 +212,20 @@ async function onSave() {
             :options="misureOpzioni()"
             :placeholder="t('ui.admin.preset_pagina_dimensione_default', { misura: misuraDefault(USO_MISURA.PAGINA) })"
             show-clear
+            :disabled="delProgramma('pagina_dimensione')"
             :invalid="campiErrati.includes('pagina_dimensione')"
           />
+          <MotivoDelProgramma campo="pagina_dimensione" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         </div>
       </div>
 
       <div class="form-field">
         <label>{{ t('ui.admin.preset_descrizione') }}</label>
         <InputText v-model="form.descrizione" maxlength="200"
+          :disabled="delProgramma('descrizione')"
           :invalid="campiErrati.includes('descrizione')"
         />
+        <MotivoDelProgramma campo="descrizione" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
       </div>
 
       <div class="form-field">
@@ -269,16 +285,12 @@ async function onSave() {
 
       <div class="form-grid-2col">
         <div class="form-field form-field-inline">
-          <Checkbox v-model="form.is_default" binary input-id="ui-preset-default"
-            :invalid="campiErrati.includes('is_default')"
-          />
-          <label for="ui-preset-default">{{ t('ui.admin.preset_is_default') }}</label>
-        </div>
-        <div class="form-field form-field-inline">
           <Checkbox v-model="form.attivo" binary input-id="ui-preset-attivo"
+            :disabled="delProgramma('attivo')"
             :invalid="campiErrati.includes('attivo')"
           />
           <label for="ui-preset-attivo">{{ t('common.active') }}</label>
+          <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />
         </div>
       </div>
     </div>
@@ -288,6 +300,7 @@ async function onSave() {
 <style scoped>
 .form-field-inline {
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
