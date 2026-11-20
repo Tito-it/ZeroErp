@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.fn_documento_lineage_sintesi(p_tipo_ids, p_uids)`
 
+> **Ultimo aggiornamento**: 20 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 > [vendite.fn_documento_lineage_archi](/dbzero/vendite/funzioni/fn_documento_lineage_archi) — gli archi per chiave
@@ -66,5 +68,13 @@ quella di prima; il pannello «Passaggi» mostra l'arco.
 
 Esempio: un preventivo evaso il cui ordine è stato annullato torna «non
 transitato». È giusto: si può smistare di nuovo.
+
+### 🔄 rev 2026-11-20 — la pratica si calcola una volta per documento
+
+`20261120-01`. La pratica di ogni documento chiesto sta in un passo a parte della query finale,
+che ora è materializzato. Prima il database poteva rifarlo per ogni documento della pagina: con
+25 documenti, 625 ricerche invece di 25. Il risultato non cambia; cambia il tempo. Misurato sul
+database di sviluppo il 20 novembre 2026: una pagina da 25 preventivi da 1,27 s a 97 ms, tutte le
+righe delle sette liste di vendita da 12,9 s a 0,7 s.
 
 {% include-markdown "signature-core.md" %}
