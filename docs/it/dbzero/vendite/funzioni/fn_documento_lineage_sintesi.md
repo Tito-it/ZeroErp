@@ -207,7 +207,13 @@ BEGIN
           FROM jsonb_array_elements(coalesce(v_inc, '[]'::jsonb)) e
           LEFT JOIN nodi nf ON nf.tipo_id = (e->>'from_t')::bigint AND nf.uid = e->>'from_u'
          GROUP BY 1, 2
-    ), prat AS (
+    ), prat AS MATERIALIZED (
+        -- ⭐ rev 2026-11-20 (20261120-01): MATERIALIZED. Senza, il planner
+        --   puo' mettere la CTE nel lato interno di un nested loop e
+        --   rifarla per ogni nodo: n x n ricerche della pratica invece
+        --   di n. Accadeva su una pagina da 25 preventivi (625 ricerche,
+        --   1,2 s); materializzata, 97 ms. La pratica di un nodo del
+        --   seme si calcola una volta, qualunque piano scelga il join.
         -- La pratica del documento: una sede sola, pratiche.fn_pratica_del_documento
         -- (rev 20261011-96), la stessa che leggono le viste di lista.
         SELECT s.t AS tipo, s.u AS uid, pd.n_pratiche, pd.pratica_id, pd.pratica_numero

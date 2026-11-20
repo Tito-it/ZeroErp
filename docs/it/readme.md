@@ -1,6 +1,6 @@
 # ZeroERP
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 
 **ERP open-source per aziende italiane, progettato con approccio DB-first e sviluppo concentrico.**
 
@@ -292,6 +292,7 @@ sono le sue trappole. Le guide, raggruppate per area:
   [uso di `obsoleto`](./guide/uso-di-obsoleto.md)
 - **Configurazione** — [parametri multi-scope](./guide/configurazione-e-gestione-parametri.md) ·
   [liste configurabili](./guide/configurazione-liste.md) ·
+  [configurare senza perdere le modifiche agli aggiornamenti](./guide/configurazione-iniziale-e-aggiornamenti.md) ·
   [automazioni DB](./guide/automazione-db.md)
 - **Qualità e presidi** — [messaggi di errore e log](./guide/Messaggi-di-Errore-e-Generazione-Log.md) ·
   [presidi e registri del debito](./guide/presidi-e-registri-del-debito.md) ·
