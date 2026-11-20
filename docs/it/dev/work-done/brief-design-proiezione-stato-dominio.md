@@ -1,6 +1,20 @@
 # Brief Design — Proiezione generica dello stato di dominio nelle pratiche
 
 > **Tipo**: brief di design autorevole (modello + piano DB/BE, FE di consumo) · **Data**: 2026-07-01
+>
+> 📦 **ARCHIVIATO (2026-11-20), spostato in `work-done/`.** Le Fasi 0–3 sono consegnate: proiezione su
+> preventivo, offerta, ordine, contratto, bolla e reso (`script.vw_stato_sorgente`), ancora per pratica
+> (`script.vw_pratica_doc_sorgente`) e per milestone (`script.vw_flusso_doc_sorgente`, dal 2026-11-09:
+> la copia BE `_doc_sorgente_lateral` è ritirata), GUIDA pilota su PREVENTIVI.
+> **Il modello** (§2–§4, §9) sta nella [guida Gestione Pratiche](../../guide/gestione-pratiche.md),
+> §«Lo stato del documento nella pratica (MOSTRA)»: è quella la sede, questo documento è storia.
+> **I residui** passano al [brief GUIDA multi-dominio](../work-in-progress/brief-design-guida-rollout-multidominio.md),
+> §«Ereditato dal brief-padre»: la validazione E2E in-app di MOSTRA, D4 (il `COLLEGATO` senza flusso sulla
+> card del passo), le «azioni» nel descrittore (§10.3). La nota **(a)** qui sotto è chiusa senza lavoro: i
+> lettori cercano sulle chiavi native, gli indici `uid::text` per ordini e contratti non servono.
+> ⚠️ Ciò che segue è lo stato al 2026-07-19, non aggiornato: §5, §7, §8 e §11 descrivono anche oggetti
+> mai costruiti (`config.sorgenti.resolver_key`: il dispatch è diventato la union dei rami).
+>
 > ⚠️ **Allineamento al modello della provenienza (2026-11-08).** Dove questo documento descrive la sorgente
 > della pratica come `(sorgente_tipo_id, sorgente_uid)` testuale, con la chiave nativa castata a testo e il
 > `key_selector` passato come letterale al trigger del reconcile, oggi vale il modello unico di
@@ -18,7 +32,7 @@
 > legge quella union tramite il frammento condiviso `_doc_sorgente_lateral` → il livello di lettura
 > **non è più solo-preventivi**. Ciò che resta specifico di PREVENTIVI è il **pilota** (validazione
 > E2E in-app) e il roll-out di consumo agli altri domini, non la capacità di leggerne lo stato.
-> Fase 0 DB ✅ (D1-D3 consegnate dal team DB, [brief chiuso](../work-done/brief-db-proiezione-stato-dominio.md));
+> Fase 0 DB ✅ (D1-D3 consegnate dal team DB, [brief chiuso](brief-db-proiezione-stato-dominio.md));
 > Fase 1 BE ✅ (display fields `doc_*` nei payload **percorso/coda/dettaglio+lista** via
 > frammento condiviso `_doc_sorgente_lateral` su `script.vw_stato_sorgente`, ancore
 > per-flusso e ROOT; smoke live: PREVENTIVAZIONE COMPLETATO proietta "Preventivo /
@@ -28,8 +42,8 @@
 > (`api_percorso/api_coda_lavoro/api_pratica_detail`).
 > **Fase 3 GUIDA (D4) ✅ pilota PREVENTIVI IMPLEMENTATO + E2E verde (2026-07-07)** — inversione
 > handler→proiezione, binding NULL (accept+reject auto-avanzano il milestone); design-of-record
-> [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
-> [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) (chiusi).
+> [brief-design-guida-avanza-esito-proiettato](brief-design-guida-avanza-esito-proiettato.md) +
+> [brief-db-guida-avanza-esito-proiettato](brief-db-guida-avanza-esito-proiettato.md) (chiusi).
 > **Restano**: validazione E2E in-app di MOSTRA su PREVENTIVI → roll-out MOSTRA+GUIDA agli altri
 > domini (offerte/ordini/contratti, brief DB per dominio) → §10.3 azioni nel descrittore.
 >
@@ -92,13 +106,13 @@
 > *quella* è il D4 pinning per-step della nota **(b)**.
 >
 > **Origine**: voce **V10** e §2.4 di
-> [analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) — la
+> [analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) — la
 > *radice profonda del Problema 1*: pratica e documenti di dominio sono **due macchine a
 > stati sovrapposte**, e la pratica non conosce lo stato del documento in corso.
 > Cicli di vita **verificati** sui quattro domini reali (§3).
 >
-> **Documenti collegati**: [brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md)
-> (V1, consuma questa proiezione), [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md)
+> **Documenti collegati**: [brief-fe-percorso-narrativo-operatore.md](brief-fe-percorso-narrativo-operatore.md)
+> (V1, consuma questa proiezione), [analisi-uniformita-pratica-preventivi.md](analisi-uniformita-pratica-preventivi.md)
 > (principio "non divergere dallo standalone"), [Guida Gestione Pratiche](../../guide/gestione-pratiche.md).
 
 ---
@@ -172,7 +186,7 @@ Ogni dominio sa produrre, e la pratica sa consumare, un descrittore **sempre ugu
 | `stato_codice` + `stato_descrizione` | valori nativi del dominio | **Display**: "Emesso", "Accettato" (alimenta la vista-racconto V1) |
 | `fase` ∈ `APERTO · IN_CORSO · IN_ATTESA · CHIUSO` | mapping dichiarato dal dominio | **Routing/colore**: il motore ragiona su questo, mai sui nomi di dominio |
 | `esito` → `config.esiti_flussi_pratiche` (`—/POSITIVO/NEGATIVO/PARZIALE`) | mapping dichiarato dal dominio | **Verdetto**: fa avanzare il milestone (§6). **Riusa il vocabolario esiti di oggi** |
-| `terminale` (bool) | dominio | il documento non evolverà più (auto-chiusura milestone) |
+| `terminale` (bool) | dominio | sul documento l'operatore non ha più niente da fare a mano (i passaggi di processo possono ancora spostarlo: si rilegge, non si copia). L'auto-chiusura del milestone su `terminale` non è stata costruita: il reconcile legge solo `esito` |
 | `azioni` (jsonb, opzionale) | `fn_available_actions_*` | la **prossima azione** suggerita nel documento |
 
 **Punto architetturale**: è il **dominio a dichiarare la mappa** (vendite *sa* che
@@ -307,7 +321,7 @@ lettura ≠ esecuzione di scrittura.)*
 ### 11.4 Fasi
 
 - **Fase 0 — Prerequisiti DB** → **brief separato al team DB**
-  ([brief-db-proiezione-stato-dominio.md](../work-done/brief-db-proiezione-stato-dominio.md),
+  ([brief-db-proiezione-stato-dominio.md](brief-db-proiezione-stato-dominio.md),
   `feedback_db_actions_passaggio_team`): **D1** (colonne norm + seed mapping per dominio),
   **D2** (resolver per dominio: vista/fn che dà il descrittore §4), **D3** (`resolver_key` +
   dispatch `fn_stato_sorgente` / vista normalizzata). **Additivo, roll-out per dominio**:
@@ -329,5 +343,5 @@ la vista-racconto deve renderizzare.
 
 ---
 
-*Brief vivo: aggiornare lo stato in testa e la riga V10 di
-[analisi-pratiche-valutazione-stato.md](analisi-pratiche-valutazione-stato.md) a chiusura.*
+*Brief archiviato il 2026-11-20: la riga V10 di
+[analisi-pratiche-valutazione-stato.md](../work-in-progress/analisi-pratiche-valutazione-stato.md) è aggiornata.*

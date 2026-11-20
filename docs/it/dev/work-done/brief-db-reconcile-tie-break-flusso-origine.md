@@ -18,7 +18,7 @@
 > **Origine del difetto**: interazione tra
 > [brief-db-aggancio-documento-flusso.md](brief-db-aggancio-documento-flusso.md)
 > (2026-06-16, introduce `pratiche_sorgenti.flusso_id` come **ancora d'origine**) e
-> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md)
+> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md)
 > / GUIDA D4 (2026-07-07, introduce `fn_reconcile_sorgente` che **riusa** quella
 > colonna come tie-break del milestone *in attesa*).
 >

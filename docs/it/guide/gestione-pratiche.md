@@ -1,6 +1,6 @@
 # Guida — Gestione Pratiche e Workflow
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -44,6 +44,8 @@
 > * [pratiche.fn_genera_pratica_da_flusso](/dbzero/pratiche/funzioni/fn_genera_pratica_da_flusso) — la generazione cross-pratica
 > * [pratiche.fn_calcola_tempo_netto_da_a](/dbzero/pratiche/funzioni/fn_calcola_tempo_netto_da_a) · [pratiche.fn_valuta_tempo_esecuzione_da_a](/dbzero/pratiche/funzioni/fn_valuta_tempo_esecuzione_da_a) — i tempi netti e il semaforo
 > * [pratiche.trgfn_pratiche_giornale_ins](/dbzero/pratiche/funzioni/trgfn_pratiche_giornale_ins) — il giornale, alimentato dai trigger (una funzione per evento)
+> * [pratiche.fn_stato_sorgente](/dbzero/pratiche/funzioni/fn_stato_sorgente) — lo stato di un documento nel vocabolario comune
+> * [script.vw_stato_sorgente](/dbzero/script/views/vw_stato_sorgente) · [script.vw_pratica_doc_sorgente](/dbzero/script/views/vw_pratica_doc_sorgente) · [script.vw_flusso_doc_sorgente](/dbzero/script/views/vw_flusso_doc_sorgente) — i resolver di dominio e il documento di una pratica e di un milestone
 >
 > **Vedi anche** — API e service backend:
 >
@@ -610,6 +612,64 @@ Giornale registra:
 ```
 
 Se l'esito fosse stato NEGATIVO, la regola non si sarebbe attivata (`esito_richiesto = POSITIVO`).
+
+---
+
+## Lo stato del documento nella pratica (MOSTRA)
+
+Una pratica e i documenti che segue (preventivo, offerta, ordine, contratto, bolla, reso) sono
+**due macchine a stati**: il documento ha i suoi stati e i suoi drawer che li fanno avanzare, la
+pratica ha i suoi milestone. La pratica non ricopia gli stati del documento: li **proietta**.
+
+* **Proiezione, non copia.** Uno stato del documento non diventa un flusso. Il milestone è un
+  traguardo, e la pratica legge a ogni query lo stato vivo del documento: l'unica verità resta il
+  documento, nessuna copia da tenere allineata.
+* **Quali stati diventano milestone.** Solo i punti di **responsabilità o di attesa**, quelli che
+  chiedono un'assegnazione, una coda, un tempo atteso (comunicare al cliente, attendere
+  l'accettazione). Gli altri si **mostrano** e basta: «il cliente ha visualizzato» è uno stato da
+  mostrare; una revisione si mostra come «rev. N», non come un flusso nuovo.
+
+### Il vocabolario comune: fase, esito, terminale
+
+Ogni dominio dichiara, sulle righe del proprio vocabolario degli stati (`config.stati_doc_*`), come
+ciascuno stato si traduce in tre valori comuni. È il dominio a dichiarare la mappa; il motore delle
+pratiche ragiona solo su questi tre valori e **non nomina mai uno stato di dominio**.
+
+| Valore | Che cosa dice | A cosa serve |
+| --- | --- | --- |
+| `fase` | `APERTO`, `IN_ATTESA`, `IN_CORSO`, `CHIUSO` | instradamento e colore |
+| `esito` | un verdetto di [`config.esiti_flussi_pratiche`](/dbzero/config/tabelle/esiti_flussi_pratiche), o nessuno | il verdetto che fa avanzare il milestone (GUIDA, sotto) |
+| `terminale` | sul documento l'operatore non ha più niente da fare a mano | quando smettere di mostrarlo come «in corso» |
+
+Accanto ai tre valori il descrittore porta il codice e la descrizione dello stato nativo, per la
+lettura dell'operatore («Emesso», «Accettato»).
+
+⚠️ `terminale` non vuol dire «non cambierà più»: i passaggi di processo possono ancora spostare il
+documento (la revisione annullata che riporta emessa quella precedente). Per questo la proiezione
+si rilegge a ogni query e non si copia.
+
+La mappa di ogni dominio sta nella pagina del suo vocabolario (per esempio
+[`config.stati_doc_offerte`](/dbzero/config/tabelle/stati_doc_offerte)).
+
+### Dove si legge
+
+* [`script.vw_stato_sorgente`](/dbzero/script/views/vw_stato_sorgente) — la union dei **resolver di
+  dominio**, una riga per documento. È l'unica superficie da cui il motore legge lo stato di un
+  documento. Un dominio nuovo aggiunge il suo ramo e il motore non cambia.
+* [`pratiche.fn_stato_sorgente`](/dbzero/pratiche/funzioni/fn_stato_sorgente) — lo stesso
+  descrittore per un documento solo. Risponde sempre: un tipo senza resolver, o un documento che non
+  c'è, dà la sentinella `UNKNOWN` (`risolto` falso), e il milestone resta manuale. Per questo la
+  proiezione si accende **un dominio alla volta**, senza rompere niente.
+* [`script.vw_pratica_doc_sorgente`](/dbzero/script/views/vw_pratica_doc_sorgente) — il documento
+  **più vivo** di una pratica fra tutti i suoi collegamenti (`ROOT` e `COLLEGATO`): alimenta
+  dettaglio e lista.
+* [`script.vw_flusso_doc_sorgente`](/dbzero/script/views/vw_flusso_doc_sorgente) — il documento di
+  un **milestone**, fra i collegamenti che portano quel flusso: alimenta percorso e coda di lavoro.
+  ⚠️ Un collegamento senza flusso (un `COLLEGATO` nato fuori da un milestone) compare a livello di
+  pratica ma non sulla card di un passo.
+
+Come una pratica si aggancia al documento (tipo, chiave, riga) lo descrive la guida
+[Documenti e sorgenti](/guide/sorgente-polimorfa).
 
 ---
 
