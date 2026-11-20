@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_primo_impianto_divergenze`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,11 +36,15 @@ Il trigger vivo si riconosce dalla funzione che esegue,
 | `RIGENERA` | nome, momento, argomenti o abilitazione diversi dall'atteso, o più di un trigger |
 | `TOGLIE` | riga spenta, trigger vivo |
 | `SCONOSCIUTO` | trigger vivo su una tabella che il registro non nomina: il runner si ferma |
-| `NON_CLASSIFICATA` | forma per colonna con una colonna non libera in nessuno dei due elenchi, o con una colonna elencata che la tabella non ha |
-| `SENZA_ID` | la tabella non ha la colonna `id`: il registro non saprebbe nominare la riga |
+| `NON_CLASSIFICATA` | forma per colonna con una colonna non libera in nessuno dei due elenchi, o con una colonna elencata che la tabella non ha; forma figlia con la colonna del padre che la tabella non ha |
+| `SENZA_ID` | la tabella non ha la colonna `id`: il registro non saprebbe nominare la riga. Non vale per la forma figlia, che la colonna `id` non la chiede |
+| `PADRE_NON_ISCRITTO` | forma figlia con un padre che il registro non nomina, spento, figlia a sua volta o senza colonna `id` |
 
-`NON_CLASSIFICATA` e `SENZA_ID` sono difetti della dichiarazione: il runner non monta e non
-rigenera, e il trigger di prima resta.
+`NON_CLASSIFICATA`, `SENZA_ID` e `PADRE_NON_ISCRITTO` sono difetti della dichiarazione: il runner
+non monta e non rigenera, e il trigger di prima resta.
+
+Nella forma figlia gli argomenti attesi sono `FIGLIA`, la colonna del padre e il padre: la colonna
+del padre conta come elencata.
 
 Il momento atteso è `BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW` (`tgtype` 31), il nome quello
 del template `trg_<tabella>_a00_seed_primo_impianto_ins_upd_dlt` o quello dichiarato.
@@ -67,12 +71,18 @@ o `SCONOSCIUTO`) e il presidio, che è un'asserzione pgTAP: vuota dopo ogni giro
   zero.
 * `db/pgtap/dbops/test-seed-primo-impianto-software-v1.sql`, asserzioni 21-22 — `NON_CLASSIFICATA`
   su una colonna aggiunta.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-installazione-v1.sql`, asserzione 3 — il presidio a zero
+  sulle tabelle di `ui`.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql`, asserzioni 13-15 — la forma figlia:
+  `CREA` e non `SENZA_ID` sotto un padre iscritto, `PADRE_NON_ISCRITTO` sotto un padre non iscritto,
+  `NON_CLASSIFICATA` con la colonna del padre assente.
 
 ---
 
 ### Note di migrazione
 
 * 2026-11-17 — nasce (`brief-db-seed-primo-impianto-non-si-riscrive`).
+* 2026-11-20 — la forma figlia e l'azione `PADRE_NON_ISCRITTO`.
 
 ---
 

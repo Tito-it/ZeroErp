@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.lista_preset e ui.dashboard_preset: is_default si ritira, un preset per
+#   posto.
+#   Brief: brief-db-revisione-ui (giro 1a; Q26 e Q30 decise da Tid il 2026-11-20).
+#
+# Che cosa cambia: un posto (la lista o la dashboard, l'ambito, il profilo,
+#   l'azienda) ha al piu' un preset acceso, e vale se e' acceso; una bozza si
+#   prepara spenta. is_default non ha piu' un lettore che lo distingua da
+#   attivo, quindi esce, e con lui gli indici uq_*_default (cadono con la
+#   colonna del loro predicato). Al loro posto l'UNIQUE parziale WHERE attivo,
+#   NULLS NOT DISTINCT perche' profilo e azienda sono nullable e fanno parte
+#   del posto (linee-guida-sql §8.4-bis).
+# Prima del ritiro si spengono i preset accesi con is_default = false: il
+#   resolver non li ha mai applicati (filtrava is_default), quindi spegnerli
+#   lascia la risposta identica e libera il posto per l'UNIQUE. Fatto datato,
+#   dbdev 2026-11-20: zero righe; il seed non ne ha.
+# Ordine: i due resolver leggono ancora is_default fino a 20261119-12 e -13,
+#   nello stesso rilascio (20_code dopo 00_schema).
+# ⚠️ Il BE che scrive is_default si rompe dopo l'apply (BE22 del brief).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261119-09-alter-preset-ritira-is-default-un-preset-per-posto-mctit.yaml
+
+  - changeSet:
+      id: 20261119-09-alter-preset-ritira-is-default-un-preset-per-posto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.lista_preset e ui.dashboard_preset: is_default si ritira, UNIQUE del posto sui preset accesi.
+        Brief: brief-db-revisione-ui (giro 1a, Q26, Q30).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preset'), to_regclass('ui.dashboard_preset'))
+                 AND attname = 'is_default' AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I preset accesi che non erano di default: il resolver non li applicava.
+              UPDATE ui.lista_preset     SET attivo = false WHERE attivo AND NOT is_default;
+              UPDATE ui.dashboard_preset SET attivo = false WHERE attivo AND NOT is_default;
+
+              ALTER TABLE ui.lista_preset     DROP COLUMN is_default;
+              ALTER TABLE ui.dashboard_preset DROP COLUMN is_default;
+
+              CREATE UNIQUE INDEX uq_ui_lista_preset_posto
+                  ON ui.lista_preset (lista_id, ambito, profilo_accesso_id, emittente_fiscale_id)
+                  NULLS NOT DISTINCT
+                  WHERE attivo;
+              CREATE UNIQUE INDEX uq_ui_dashboard_preset_posto
+                  ON ui.dashboard_preset (dashboard_id, ambito, profilo_accesso_id, emittente_fiscale_id)
+                  NULLS NOT DISTINCT
+                  WHERE attivo;
+
+              COMMENT ON INDEX ui.uq_ui_lista_preset_posto IS
+                  'Un preset acceso per posto: la lista, l''ambito, il profilo e l''azienda, con NULL come valore della chiave. Il preset vale se e'' acceso; una bozza si prepara spenta, e per sostituire il preset di un posto si spegne il vecchio prima di accendere il nuovo.';
+              COMMENT ON INDEX ui.uq_ui_dashboard_preset_posto IS
+                  'Un preset acceso per posto: la dashboard, l''ambito, il profilo e l''azienda, con NULL come valore della chiave. Il preset vale se e'' acceso; una bozza si prepara spenta, e per sostituire il preset di un posto si spegne il vecchio prima di accendere il nuovo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS ui.uq_ui_lista_preset_posto;
+              DROP INDEX IF EXISTS ui.uq_ui_dashboard_preset_posto;
+              ALTER TABLE ui.lista_preset     ADD COLUMN is_default boolean NOT NULL DEFAULT false;
+              ALTER TABLE ui.dashboard_preset ADD COLUMN is_default boolean NOT NULL DEFAULT false;
+              UPDATE ui.lista_preset     SET is_default = true WHERE attivo;
+              UPDATE ui.dashboard_preset SET is_default = true WHERE attivo;
+              CREATE UNIQUE INDEX uq_ui_lista_preset_default ON ui.lista_preset
+                  (lista_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, (0)::bigint))
+                  WHERE (is_default = true);
+              CREATE UNIQUE INDEX uq_ui_dashboard_preset_default ON ui.dashboard_preset
+                  (dashboard_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, 0))
+                  WHERE (is_default = true);

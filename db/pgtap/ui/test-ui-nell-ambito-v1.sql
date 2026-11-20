@@ -175,9 +175,9 @@ SELECT id AS lista_id FROM ins;
 
 CREATE TEMP TABLE _p ON COMMIT DROP AS
 WITH ins AS (
-  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito,
                                ordinamento_default, attivo, user_insert)
-  SELECT l.lista_id, 'pgtap_ambito', 'Preset test ui nell''ambito', 'sistema', TRUE,
+  SELECT l.lista_id, 'pgtap_ambito', 'Preset test ui nell''ambito', 'sistema',
          '[]'::jsonb, TRUE, '_pgtap'
     FROM _l l
   RETURNING id

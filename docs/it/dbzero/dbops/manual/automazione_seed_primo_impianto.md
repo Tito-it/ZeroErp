@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_seed_primo_impianto`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -28,24 +28,33 @@ L'elenco delle tabelle del **seed di primo impianto**: quelle in cui il CSV crea
 l'installazione l'ha modificata la riga è sua. Su ognuna il giro delle automazioni monta il trigger
 [trgfn_seed_primo_impianto](/dbzero/script/funzioni/trgfn_seed_primo_impianto).
 
-Oggi le tabelle sono due: `config.email_account` (solo inserimento) e `config.email_template` (per
-colonna).
+Oggi le tabelle sono sei: `config.email_account` (solo inserimento), `config.email_template`,
+`ui.lista_definizione`, `ui.lista_colonna` e `ui.lista_preset` (per colonna), e `ui.lista_preset_colonna`
+(figlia di `ui.lista_preset`).
 
 ---
 
-### Una riga per tabella, in tre forme
+### Una riga per tabella, in quattro forme
 
 | Forma | Colonne | Che cosa fa il CSV su una riga di seed |
 | --- | --- | --- |
-| **per riga** (il default) | `colonne_software` e `colonne_installazione` `NULL` | finché la riga è intatta la aggiorna tutta; personalizzata, non le riscrive più niente |
+| **per riga** (il default) | `colonne_software`, `colonne_installazione`, `tabella_padre` e `colonna_padre` `NULL` | finché la riga è intatta la aggiorna tutta; personalizzata, non le riscrive più niente |
 | **per colonna** | i due elenchi, non vuoti e disgiunti | le colonne del software le aggiorna sempre, e l'installazione non le può cambiare; quelle dell'installazione come nella forma per riga |
 | **solo inserimento** | `solo_inserimento` vero, i due elenchi `NULL` | crea la riga se manca, e poi non la aggiorna più, toccata o no |
+| **figlia** | `tabella_padre` (`schema.tabella`) e `colonna_padre`, i due elenchi `NULL` | scrive la riga solo se il padre è una riga di seed intatta; sotto un padre personalizzato non la tocca |
 
 * La forma **per colonna** serve alle righe miste, in cui una parte è del software e una parte
   dell'installazione. In `email_template` il `codice`, il reparto, il tipo di prestazione, la lingua
   e le variabili sono del software; oggetto, corpi e `attivo` dell'installazione.
 * Il **solo inserimento** serve quando il CSV porta segnaposto che ogni installazione sostituisce:
   l'host SMTP di esempio, la password da configurare.
+* La forma **figlia** serve a una tabella di composizione senza colonna `id`, che non ha una vita sua
+  e segue il padre: la composizione di un preset (`ui.lista_preset_colonna`, colonna `preset_id`).
+  Le sue righe non entrano nel registro delle righe di seed; l'installazione le scrive e le cancella
+  sempre. Il padre è a sua volta iscritto, acceso, non figlia e con la colonna `id`, altrimenti il
+  confronto dà `PADRE_NON_ISCRITTO` e il trigger non si monta.
+* ⭐ Una scrittura dell'installazione sulla composizione personalizza il preset: la composizione
+  sposta `contenuto_aggiornato_il`, che in `ui.lista_preset` è una colonna dell'installazione.
 * ⛔ In forma per colonna ogni colonna della tabella sta in uno dei due elenchi, tranne quelle libere
   (`id`, `meta`, le colonne d'audit, `tx_id`). Una colonna nuova non classificata ferma il giro su
   quella tabella: il trigger di prima resta finché qualcuno non la classifica.
@@ -55,7 +64,8 @@ colonna).
 * `motivo` — perché la tabella è di primo impianto, in parole.
 
 I `CHECK` della tabella tengono la forma coerente: i due elenchi sono tutti e due `NULL` o tutti e due
-pieni e disgiunti, e il solo inserimento vale solo per la forma per riga.
+pieni e disgiunti, il solo inserimento vale solo per la forma per riga, e la forma figlia ha padre e
+colonna insieme, senza elenchi e senza solo inserimento.
 
 ---
 
@@ -72,7 +82,11 @@ nasce dopo `80_data`, quindi il CSV ritoccato nello stesso rilascio passa prima 
 ### Test
 
 * `db/pgtap/config/test-seed-primo-impianto-installazione-v1.sql` — il trigger montato su tutte e due
-  le tabelle, primo fra i `BEFORE`, e nessuna divergenza.
+  le tabelle di `config`, primo fra i `BEFORE`, e nessuna divergenza.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-installazione-v1.sql` — le quattro tabelle di `ui` montate,
+  la composizione nella forma figlia del preset, nessuna divergenza.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql`, asserzione 12 — una riga figlia con gli
+  elenchi è rifiutata dal `CHECK`.
 * `db/pgtap/dbops/test-seed-primo-impianto-postura-v1.sql` — all'applicazione solo `SELECT`.
 
 ---
@@ -81,6 +95,7 @@ nasce dopo `80_data`, quindi il CSV ritoccato nello stesso rilascio passa prima 
 
 * 2026-11-17 — nasce, con `config.email_account` e `config.email_template`
   (`brief-db-seed-primo-impianto-non-si-riscrive`).
+* 2026-11-20 — la forma figlia (`tabella_padre`, `colonna_padre`) e le quattro tabelle di `ui`.
 
 ---
 

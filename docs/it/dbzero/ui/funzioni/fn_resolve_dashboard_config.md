@@ -17,17 +17,14 @@ CREATE OR REPLACE FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice cha
  LANGUAGE plpgsql
  STABLE
 AS $function$
--- Scopo: risolve la configurazione effettiva di una dashboard per un utente.
--- Cascata preset -> merge widget nuovi -> filtro permessi via resolver.
--- Ritorna JSONB pronto per il frontend. Zero interpretazione di
--- deep_link/contatore_key/soglia (campi opachi restituiti freschi).
--- 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block
--- condiviso con il risolutore delle liste e con la ricerca libera.
--- 2026-11-01: la cascata va PER CHIAVE, come quella delle liste
--- (richiesta BE/FE «preferenza di lista per chiave» §4): widget e
--- dimensione_max vengono ognuna dal primo livello che la contiene
--- (preferenza -> preset di base -> catalogo). Uscite nuove: origine e
--- dimensione_max_standard.
+-- Scopo: la configurazione effettiva di una dashboard per un utente, pronta
+--   per il frontend. Cascata per chiave (widget, dimensione_max): la
+--   preferenza, poi il preset di base (ui.fn_preset_di_base), poi il
+--   catalogo. Poi il merge dei widget nuovi del pool e il filtro dei
+--   permessi (mappe aggregate). Campi opachi (deep_link, contatore_key,
+--   soglia) restituiti freschi, senza interpretarli.
+-- Il banner: preset_base_cambiato se la base salvata non e' quella di oggi,
+--   altrimenti preset_aggiornato (ui.fn_preset_aggiornato).
 DECLARE
   v_dashboard_id     ui.dashboard_definizione.id%TYPE;
   v_config_widget    JSONB;    -- widget della configurazione candidata
@@ -35,7 +32,6 @@ DECLARE
   -- senza dimensione.
   v_dimensione_catalogo CONSTANT ui.dashboard_preset.dimensione_max%TYPE := 8;
   v_dimensione_max   ui.dashboard_preset.dimensione_max%TYPE;
-  v_profili_ids      INTEGER[];
   v_widget_nuovi     INTEGER  := 0;
 
   -- Mappe permessi aggregate (resolve once, §3b), GUC-aware fail-closed
@@ -61,8 +57,13 @@ DECLARE
   v_pref_preset_base_id    ui.dashboard_preferenza_utente.preset_base_id%TYPE;
   v_pref_preset_base_ts    ui.dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il%TYPE;
   v_pref_preset_ignored_at ui.dashboard_preferenza_utente.preset_aggiornato_ignored_at%TYPE;
-  v_preset_contenuto_aggiornato_il     ui.dashboard_preset.contenuto_aggiornato_il%TYPE;
+  -- Il preset di base, scelto da ui.fn_preset_di_base: id e data del
+  -- contenuto (l'ambito sta in v_preset_livello).
+  v_base_id                ui.dashboard_preset.id%TYPE;
+  v_base_contenuto         ui.dashboard_preset.contenuto_aggiornato_il%TYPE;
+  -- Tipi espliciti: due esiti calcolati qui, nessuna colonna di cui siano il riflesso.
   v_preset_aggiornato      BOOLEAN := FALSE;
+  v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
   -- 0. Recupera dashboard_id dal codice
@@ -84,18 +85,11 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 1. Profili applicabili (GUC-aware) + mappe permessi (resolve once)
-  --    Le mappe sono l'autorita per il gating (coprono super-admin,
-  --    override utente, veste corrente). Fail-closed su non-OPERATORE.
+  -- 1. Mappe permessi (resolve once). Le mappe sono l'autorita' per il
+  --    gating (coprono super-admin, override utente, veste corrente).
+  --    Fail-closed su non-OPERATORE. I profili applicabili li legge
+  --    ui.fn_preset_di_base.
   -- -------------------------------------------------------
-  SELECT ARRAY_AGG(profilo_accesso_id)
-    INTO v_profili_ids
-    FROM script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc);
-
-  IF v_profili_ids IS NULL THEN
-    v_profili_ids := ARRAY[]::INTEGER[];
-  END IF;
-
   v_area_map   := script.fn_get_user_permissions_map(p_auth_user_id);
   v_azioni_map := script.fn_get_user_actions_map(p_auth_user_id);
 
@@ -124,11 +118,16 @@ BEGIN
    WHERE pu.auth_user_id = p_auth_user_id
      AND pu.dashboard_id = v_dashboard_id;
 
-  -- Il preset di base: il primo, nell'ordine 2b -> 2c -> 2d, con almeno
-  -- un widget attivo. Si cerca SEMPRE (2026-11-01).
+  -- 2b. Il preset di base: lo sceglie ui.fn_preset_di_base, la sede comune
+  --     a liste e dashboard (acceso e con almeno un widget acceso nel pool;
+  --     il ruolo solo con la veste, l'azienda solo accesa, poi il sistema).
+  --     Si cerca sempre, anche con una preferenza.
+  SELECT b.preset_id, b.ambito, b.contenuto_aggiornato_il
+    INTO v_base_id, v_preset_livello, v_base_contenuto
+    FROM ui.fn_preset_di_base('dashboard', v_dashboard_id, p_auth_user_id, v_ruolo_guc,
+                              p_emittente_fiscale_id) b;
 
-  -- 2b. Preset di ruolo (priorita ASC: AD_HOC prio 1 > REPARTO/PORTALE prio 2)
-  IF array_length(v_profili_ids, 1) > 0 THEN
+  IF v_base_id IS NOT NULL THEN
     SELECT
         (
           SELECT jsonb_agg(
@@ -144,75 +143,10 @@ BEGIN
          WHERE pw.preset_id = lp.id
            AND w.attivo = TRUE
         ),
-        lp.dimensione_max,
-        lp.ambito
-      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
+        lp.dimensione_max
+      INTO v_preset_widget, v_preset_dimensione
       FROM ui.dashboard_preset lp
-      JOIN script.fn_get_profili_accesso_applicabili(p_auth_user_id, v_ruolo_guc) pa
-        ON pa.profilo_accesso_id = lp.profilo_accesso_id
-     WHERE lp.dashboard_id = v_dashboard_id
-       AND lp.ambito       = 'ruolo'
-       AND lp.is_default   = TRUE
-       AND lp.attivo       = TRUE
-     ORDER BY pa.priorita ASC
-     LIMIT 1;
-  END IF;
-
-  -- 2c. Preset di emittente fiscale
-  IF v_preset_widget IS NULL AND p_emittente_fiscale_id IS NOT NULL THEN
-    SELECT
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'codice',   w.codice,
-              'ordine',   pw.ordine,
-              'visibile', pw.visibile
-            )
-            ORDER BY pw.ordine
-          )
-          FROM ui.dashboard_preset_widget pw
-          JOIN ui.widget w ON w.id = pw.widget_id
-         WHERE pw.preset_id = lp.id
-           AND w.attivo = TRUE
-        ),
-        lp.dimensione_max,
-        lp.ambito
-      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
-      FROM ui.dashboard_preset lp
-     WHERE lp.dashboard_id         = v_dashboard_id
-       AND lp.ambito               = 'emittente_fiscale'
-       AND lp.emittente_fiscale_id = p_emittente_fiscale_id
-       AND lp.is_default           = TRUE
-       AND lp.attivo               = TRUE
-     LIMIT 1;
-  END IF;
-
-  -- 2d. Preset di sistema
-  IF v_preset_widget IS NULL THEN
-    SELECT
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'codice',   w.codice,
-              'ordine',   pw.ordine,
-              'visibile', pw.visibile
-            )
-            ORDER BY pw.ordine
-          )
-          FROM ui.dashboard_preset_widget pw
-          JOIN ui.widget w ON w.id = pw.widget_id
-         WHERE pw.preset_id = lp.id
-           AND w.attivo = TRUE
-        ),
-        lp.dimensione_max,
-        lp.ambito
-      INTO v_preset_widget, v_preset_dimensione, v_preset_livello
-      FROM ui.dashboard_preset lp
-     WHERE lp.dashboard_id = v_dashboard_id
-       AND lp.ambito       = 'sistema'
-       AND lp.is_default   = TRUE
-       AND lp.attivo       = TRUE
-     LIMIT 1;
+     WHERE lp.id = v_base_id;
   END IF;
 
   -- La dimensione: la preferenza, poi il preset di base, poi il ripiego.
@@ -245,25 +179,16 @@ BEGIN
   END IF;
 
   -- -------------------------------------------------------
-  -- 2.5 DEF-2: flag preset_aggiornato. TRUE sse il preset di base
-  --     e' piu' recente dello snapshot salvato E l'utente non ha
-  --     ancora ignorato (o il preset e' cambiato dopo l'ignore).
+  -- 2.5 Il banner, gemello delle liste: preset_base_cambiato se la base
+  --     salvata non e' quella di oggi; preset_aggiornato solo sulla base di
+  --     oggi, dal contenuto che la scelta ha gia' letto.
   -- -------------------------------------------------------
-  IF v_pref_preset_base_id IS NOT NULL AND v_pref_preset_base_ts IS NOT NULL THEN
-    SELECT lp.contenuto_aggiornato_il
-      INTO v_preset_contenuto_aggiornato_il
-      FROM ui.dashboard_preset lp
-     WHERE lp.id = v_pref_preset_base_id;
-  END IF;
-
-  v_preset_aggiornato :=
-        v_pref_preset_base_ts IS NOT NULL
-    AND v_preset_contenuto_aggiornato_il  IS NOT NULL
-    AND v_preset_contenuto_aggiornato_il  > v_pref_preset_base_ts
-    AND (
-          v_pref_preset_ignored_at IS NULL
-      OR  v_pref_preset_ignored_at < v_preset_contenuto_aggiornato_il
-    );
+  v_preset_base_cambiato := v_pref_preset_base_id IS NOT NULL
+                            AND v_pref_preset_base_id IS DISTINCT FROM v_base_id;
+  v_preset_aggiornato    := v_pref_preset_base_id IS NOT NULL
+                            AND NOT v_preset_base_cambiato
+                            AND ui.fn_preset_aggiornato(v_pref_preset_base_ts, v_base_contenuto,
+                                                        v_pref_preset_ignored_at);
 
   -- -------------------------------------------------------
   -- 3. Merge automatico widget nuovi dal pool della dashboard
@@ -362,14 +287,21 @@ BEGIN
                              ELSE 'catalogo' END
     ),
     'widget_nuovi',      v_widget_nuovi,
-    'preset_aggiornato', v_preset_aggiornato
+    'preset_aggiornato', v_preset_aggiornato,
+    -- Il preset di base di oggi (id, ambito, data del contenuto), o null.
+    --   Chiave ADDITIVA, gemella delle liste.
+    'preset_base',       CASE WHEN v_base_id IS NULL THEN NULL
+                              ELSE jsonb_build_object('id', v_base_id,
+                                                      'ambito', v_preset_livello::text,
+                                                      'contenuto_aggiornato_il', v_base_contenuto) END,
+    'preset_base_cambiato', v_preset_base_cambiato
   );
 
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_dashboard_config(p_dashboard_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'Risolve la configurazione effettiva di una dashboard per un utente: cascata PER CHIAVE (2026-11-01: widget e dimensione_max vengono ognuna dal primo livello che la contiene — preferenza, poi il preset di base, il primo con widget fra ruolo GUC-aware deterministico per priorita, emittente e sistema, poi il catalogo; nella preferenza una chiave assente vuol dire «come lo standard»), merge widget nuovi, filtro permessi via resolver script.* (mappe aggregate, fail-closed non-OPERATORE), arricchimento campi opachi (deep_link/contatore_key/soglia). Ritorna JSONB { widget[], dimensione_max, dimensione_max_standard, origine, widget_nuovi, preset_aggiornato }; dimensione_max_standard e origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo) sono del 2026-11-01, ADDITIVE, gemelle di ui.fn_resolve_lista_config. Richiesta BE/FE «preferenza di lista per chiave» §4. Mirror di ui.fn_resolve_lista_config (brief-db-dashboard-home §3). 2026-09-23: la veste la legge ui.fn_veste_corrente(), building block condiviso con fn_resolve_lista_config e fn_lista_colonne_ricerca_full. Brief: brief-db-ricerca-full-colonne-permessi. rev 2026-11-08 (brief-db-revisione-dbops, giro 7-bis blocco c): la data del contenuto del preset sta in contenuto_aggiornato_il, lo snapshot in preset_base_contenuto_aggiornato_il; data_update e'' l''audit.';
+IS 'La configurazione effettiva di una dashboard per un utente, pronta per il frontend, gemella di ui.fn_resolve_lista_config. Cascata per chiave: widget e dimensione_max vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno un widget acceso nel pool della dashboard: il preset di ruolo del profilo piu'' prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo (tutti i widget accesi del pool). Poi il merge dei widget nuovi del pool, il filtro dei permessi per area e azione (mappe aggregate script.fn_get_user_permissions_map e fn_get_user_actions_map, fail-closed fuori dalla veste OPERATORE) e i campi opachi freschi (deep_link, contatore_key, soglia, etichette, tipo_widget). Uscite: widget, dimensione_max e dimensione_max_standard (senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo), widget_nuovi, preset_base (id, ambito e contenuto_aggiornato_il del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non e'' quella di oggi), preset_aggiornato (solo sulla base di oggi, ui.fn_preset_aggiornato). Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA. La veste la legge ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

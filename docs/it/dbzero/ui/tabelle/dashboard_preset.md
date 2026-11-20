@@ -15,7 +15,6 @@
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | integer | YES |  |
-| is_default | boolean | NO | false |
 | dimensione_max | integer | YES | 8 |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
@@ -41,7 +40,7 @@
 | ix_ui_dashboard_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_dashboard_preset_profilo_accesso_id | `CREATE INDEX ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |
-| uq_ui_dashboard_preset_default | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_default ON ui.dashboard_preset USING btree (dashboard_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, 0)) WHERE (is_default = true)` |
+| uq_ui_dashboard_preset_posto | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_posto ON ui.dashboard_preset USING btree (dashboard_id, ambito, profilo_accesso_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE attivo` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |

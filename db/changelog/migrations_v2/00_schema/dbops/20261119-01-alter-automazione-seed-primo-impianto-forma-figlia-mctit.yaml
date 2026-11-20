@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_seed_primo_impianto: la forma FIGLIA.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.15, QU2 decisa (a)
+#   da Tid il 2026-11-20).
+#
+# Che cosa cambia: due colonne, tabella_padre e colonna_padre. Una riga che le
+#   valorizza dichiara una tabella di composizione (senza colonna id, come
+#   ui.lista_preset_colonna) che segue il suo padre: il software non scrive le
+#   righe di un padre che non e' una riga di seed intatta, l'installazione le
+#   scrive liberamente. Il padre e' a sua volta iscritto al registro; lo
+#   verifica dbops.fn_seed_primo_impianto_divergenze (PADRE_NON_ISCRITTO).
+# DDL vivo: quello di 20261117-03 (doc auto-generata del 2026-11-20). Il COMMENT
+#   di tabella si riscrive intero (linee-guida-sql §5d).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261119-01-alter-automazione-seed-primo-impianto-forma-figlia-mctit.yaml
+
+  - changeSet:
+      id: 20261119-01-alter-automazione-seed-primo-impianto-forma-figlia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automazione_seed_primo_impianto: tabella_padre e colonna_padre, la forma FIGLIA. Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive (§16.15).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('dbops.automazione_seed_primo_impianto')
+                 AND attname IN ('tabella_padre', 'colonna_padre')
+                 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_seed_primo_impianto
+                  ADD COLUMN tabella_padre text,
+                  ADD COLUMN colonna_padre text,
+                  ADD CONSTRAINT chk_automazione_seed_primo_impianto_figlia
+                      CHECK ((tabella_padre IS NULL AND colonna_padre IS NULL)
+                             OR (tabella_padre ~ '^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$'
+                                 AND colonna_padre ~ '^[a-z_][a-z0-9_]*$'
+                                 AND NOT solo_inserimento
+                                 AND colonne_software IS NULL
+                                 AND colonne_installazione IS NULL));
+
+              COMMENT ON TABLE dbops.automazione_seed_primo_impianto IS
+                  'Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l''installazione l''ha modificata la riga e'' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e'' accesa, lo rigenera se diverge, lo toglie se la riga e'' spenta. Quattro forme: per riga (gli elenchi e il padre NULL, il default), per colonna (i due elenchi, per le righe miste), solo inserimento (per riga, e ogni riga di seed conta come personalizzata), figlia (tabella_padre e colonna_padre: una tabella di composizione senza colonna id, che segue il suo padre). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.';
+              COMMENT ON COLUMN dbops.automazione_seed_primo_impianto.tabella_padre IS
+                  'Forma figlia: la tabella padre, schema.tabella, a sua volta iscritta a questo registro e con la colonna id. Il software scrive una riga della figlia solo se il suo padre e'' una riga di seed intatta; l''installazione la scrive sempre, e personalizza il padre se il padre se ne accorge (ui.lista_preset con contenuto_aggiornato_il). NULL nelle altre forme.';
+              COMMENT ON COLUMN dbops.automazione_seed_primo_impianto.colonna_padre IS
+                  'Forma figlia: la colonna della figlia che porta l''id del padre. NULL nelle altre forme.';
+              COMMENT ON CONSTRAINT chk_automazione_seed_primo_impianto_figlia ON dbops.automazione_seed_primo_impianto IS
+                  'La forma figlia ha tabella_padre (schema.tabella) e colonna_padre insieme, e nessun altro elemento delle altre forme: non e'' solo inserimento e non ha i due elenchi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.automazione_seed_primo_impianto
+                  DROP CONSTRAINT IF EXISTS chk_automazione_seed_primo_impianto_figlia,
+                  DROP COLUMN IF EXISTS colonna_padre,
+                  DROP COLUMN IF EXISTS tabella_padre;
+              COMMENT ON TABLE dbops.automazione_seed_primo_impianto IS
+                  'Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l''installazione l''ha modificata la riga e'' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e'' accesa, lo rigenera se diverge, lo toglie se la riga e'' spenta. Tre forme: per riga (i due elenchi NULL, il default), per colonna (i due elenchi, per le righe miste), solo inserimento (per riga, e ogni riga di seed conta come personalizzata). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.';

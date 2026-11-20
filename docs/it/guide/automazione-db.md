@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -590,14 +590,15 @@ tre specie di seed e il criterio d'ingresso stanno in
 **Come funziona:**
 
 * config in `dbops.automazione_seed_primo_impianto`, una riga per tabella, dal suo CSV: la
-  forma (per riga, per colonna con i due elenchi di colonne, solo inserimento), l'interruttore
+  forma (per riga, per colonna con i due elenchi di colonne, solo inserimento, figlia con il
+  padre e la colonna che ne porta l'`id`), l'interruttore
   `enabled`, il nome del trigger e il motivo. Come per DELETE_BLOCK, la regola non ha una riga
   in `automation_rules_tbl`;
 * trigger `BEFORE INSERT OR UPDATE OR DELETE` per riga su `script.trgfn_seed_primo_impianto`,
   in fase `a00`: scatta **per primo**, così i guard che vengono dopo vedono i valori che ha
   rimesso a posto e un valore del CSV scartato non ferma il migrate. Restituisce sempre la
-  riga, mai `NULL`: il blocco `UPDATE … IF not found THEN INSERT` del mirror non va in chiave
-  duplicata;
+  riga, mai `NULL`, salvo l'`INSERT` saltato della forma figlia: il blocco
+  `UPDATE … IF not found THEN INSERT` del mirror non va in chiave duplicata;
 * chi scrive: il software è la sessione del migratore, tutto il resto è l'installazione.
   All'`INSERT` del software la riga entra in `dbops.seed_righe`, nata dal seed; una riga che
   lì non c'è l'ha creata l'installazione, e il software non la riscrive;
@@ -611,14 +612,19 @@ tre specie di seed e il criterio d'ingresso stanno in
   `E_SEED_COLONNA_DEL_SOFTWARE`; una colonna dell'installazione cambiata fa la riga
   personalizzata;
 * il `DELETE` di una riga di seed è `E_SEED_RIGA_NON_CANCELLABILE`: si spegne;
+* la forma **figlia** è per una tabella di composizione senza `id` che segue il padre (la
+  composizione dei preset delle liste): il software ne scrive le righe solo sotto un padre che è
+  una riga di seed intatta, altrimenti un `WARNING`; il `DELETE` del software passa; l'installazione
+  scrive e cancella sempre. Le sue righe non entrano nel registro: conta il padre;
 * runner `dbops.fn_run_automations_seed_primo_impianto()`, nella procedura del lucchetto
   (convergenza del rilascio e giro notturno delle 21:10) e in una rete di `90_end` che
   converge a ogni migrate. **Converge**: crea il trigger dove manca, lo rigenera se diverge,
   lo toglie se la riga è spenta. Quando lo **crea** segna nel registro le righe di seed che
   ci sono già (`user_insert` uguale a `SEED` o a un ruolo del migratore);
 * il confronto fra atteso e vivo sta in [dbops.fn_seed_primo_impianto_divergenze](/dbzero/dbops/funzioni/fn_seed_primo_impianto_divergenze);
-  una tabella per colonna con una colonna non classificata esce come `NON_CLASSIFICATA` e il
-  runner lascia il trigger di prima;
+  una tabella per colonna con una colonna non classificata esce come `NON_CLASSIFICATA`, una figlia
+  il cui padre non è iscritto, è spento, è figlia a sua volta o non ha `id` come
+  `PADRE_NON_ISCRITTO`, e in tutti e due i casi il runner lascia il trigger di prima;
 * ⛔ una tabella entra in un rilascio **precedente** al primo ritocco del suo CSV.
 
 **La porta di manutenzione.** `zeroerp.allow_seed_primo_impianto_override` lascia passare la

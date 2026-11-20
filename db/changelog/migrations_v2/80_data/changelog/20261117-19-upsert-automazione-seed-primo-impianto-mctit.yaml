@@ -9,7 +9,9 @@
 # Mirror di dbops.automazione_seed_primo_impianto: le tabelle iscritte al seed
 #   di primo impianto. Il CSV comanda (catalogo, linee-guida-sql §11.7): una
 #   riga si spegne (enabled = false), non si toglie (§11.2).
-#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.4, Q11, Q19)
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.4, Q11, Q19; §16.15,
+#   QU1-QU2: le tabelle di ui e la forma figlia, colonne tabella_padre e
+#   colonna_padre da 20261119-01)
 #
 # ⚠️ REGOLA D'INGRESSO. Il trigger nasce dopo 80_data (la rete di 90_end e la
 #   convergenza del rilascio): una tabella si iscrive qui in un rilascio
@@ -39,7 +41,8 @@ databaseChangeLog:
             tableName: automazione_seed_primo_impianto
       comment: >
         Mirror di dbops.automazione_seed_primo_impianto dal CSV: config.email_account in solo inserimento,
-        config.email_template per colonna. Brief: brief-db-seed-primo-impianto-non-si-riscrive.
+        config.email_template per colonna; ui.lista_definizione, ui.lista_colonna e ui.lista_preset per colonna,
+        ui.lista_preset_colonna figlia di ui.lista_preset. Brief: brief-db-seed-primo-impianto-non-si-riscrive.
       changes:
         - loadUpdateData:
             relativeToChangelogFile: true
@@ -61,3 +64,5 @@ databaseChangeLog:
               - column: { name: motivo, type: STRING }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
+              - column: { name: tabella_padre, type: STRING }
+              - column: { name: colonna_padre, type: STRING }

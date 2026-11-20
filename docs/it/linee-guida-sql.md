@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -2762,7 +2762,7 @@ posta, il testo di una mail) il ritocco del CSV cancella la configurazione del
 cliente, password comprese.
 
 **Il criterio d'ingresso, sul modello.** Una tabella è di primo impianto se il
-CSV le dà il valore iniziale e poi la riga la configura l'installazione. Due forme:
+CSV le dà il valore iniziale e poi la riga la configura l'installazione. Quattro forme:
 
 * **per riga** (il default): la riga è tutta configurazione dell'installazione,
   tranne la chiave con cui il codice la cerca, che dev'essere già ferma per conto
@@ -2776,7 +2776,13 @@ CSV le dà il valore iniziale e poi la riga la configura l'installazione. Due fo
   classifica;
 * **solo inserimento**: la forma per riga in cui il CSV crea la riga se manca e
   poi non la aggiorna più, toccata o no. Serve quando il CSV porta segnaposto che
-  ogni installazione sostituisce (l'host SMTP di esempio).
+  ogni installazione sostituisce (l'host SMTP di esempio);
+* **figlia**: una tabella di composizione senza colonna `id`, che non ha una vita
+  sua e segue il padre (la composizione di un preset). Il CSV ne scrive le righe
+  solo sotto un padre che è una riga di seed intatta; l'installazione le scrive
+  sempre, e se il padre se ne accorge (una sua colonna dell'installazione che la
+  composizione sposta) il padre diventa personalizzato. Il padre è a sua volta di
+  primo impianto, con la colonna `id`.
 
 `meta`, le colonne d'audit e `tx_id` non contano per «personalizzata».
 

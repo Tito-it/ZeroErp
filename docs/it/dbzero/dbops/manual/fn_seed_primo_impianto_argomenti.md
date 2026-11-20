@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_seed_primo_impianto_argomenti`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -27,10 +27,13 @@ sé, un argomento letto in due modi farebbe sembrare giusto un trigger montato m
 
 ### La grammatica
 
-* `[0]` — la forma: `RIGA`, `COLONNA` o `SOLO_INSERIMENTO`.
+* `[0]` — la forma: `RIGA`, `COLONNA`, `SOLO_INSERIMENTO` o `FIGLIA`.
 * Nella forma `COLONNA`, `[1]` le colonne del software e `[2]` quelle dell'installazione, separate da
   virgola. I due elenchi non sono vuoti, non si sovrappongono e non nominano colonne libere.
-* Nelle altre due forme non ci sono altri argomenti.
+* Nella forma `FIGLIA`, `[1]` la colonna della figlia che porta l'`id` del padre e `[2]` il padre,
+  nella forma `schema.tabella`. La funzione ne controlla solo la forma del nome: colonna e padre li
+  legge il trigger, dopo questa validazione, e un padre che non esiste lo ferma il trigger.
+* Nelle forme `RIGA` e `SOLO_INSERIMENTO` non ci sono altri argomenti.
 
 ---
 
@@ -39,7 +42,8 @@ sé, un argomento letto in due modi farebbe sembrare giusto un trigger montato m
 Una riga sola:
 
 * `valido`, `dettaglio` — se il montaggio rispetta la grammatica, e se no perché;
-* `forma`, `colonne_software`, `colonne_installazione` — gli argomenti letti;
+* `forma`, `colonne_software`, `colonne_installazione` — gli argomenti letti; gli elenchi sono
+  `NULL` in tutte le forme tranne `COLONNA`;
 * `colonne_libere` — sempre presente: `id`, `meta`, `data_insert`, `user_insert`, `data_update`,
   `user_update`, `tx_id`. Sono le colonne che nessun elenco nomina e che non contano per
   «personalizzata».
@@ -56,13 +60,17 @@ Nessun pgTAP diretto. La grammatica la esercitano i test che passano dal trigger
 * `db/pgtap/config/test-seed-primo-impianto-installazione-v1.sql`, asserzioni 1-3 — le due tabelle
   montate, nelle forme solo inserimento e per colonna, senza divergenze;
 * `db/pgtap/dbops/test-seed-primo-impianto-software-v1.sql`, asserzioni 21-22 — una colonna non
-  classificata.
+  classificata;
+* `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql`, asserzioni 8-11 — la forma `FIGLIA`:
+  valida con colonna e padre, non valida con due argomenti, col padre senza schema o con la colonna
+  `NULL`.
 
 ---
 
 ### Note di migrazione
 
 * 2026-11-17 — nasce (`brief-db-seed-primo-impianto-non-si-riscrive`).
+* 2026-11-20 — la forma `FIGLIA`, con la firma invariata.
 
 ---
 

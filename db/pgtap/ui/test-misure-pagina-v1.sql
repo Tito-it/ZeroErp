@@ -61,10 +61,10 @@ SELECT ld.id AS lista_id, ld.codice AS lista_codice
 CREATE OR REPLACE FUNCTION pg_temp.preset(p_misura integer) RETURNS void
 LANGUAGE sql AS $$
     -- user_insert esplicito: su ui.lista_preset e' NOT NULL senza default.
-    INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, is_default, pagina_dimensione, attivo, user_insert)
+    INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, pagina_dimensione, attivo, user_insert)
     VALUES ((SELECT lista_id FROM _l),
             '_pgtap_misura_' || COALESCE(p_misura::text, 'null') || '_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-            'pgTAP misure di pagina', 'sistema', false, p_misura, true, 'pgtap');
+            'pgTAP misure di pagina', 'sistema', p_misura, false, 'pgtap');
 $$;
 
 CREATE OR REPLACE FUNCTION pg_temp.preferenza(p_configurazione jsonb) RETURNS void

@@ -30,7 +30,11 @@ AS $function$
 --     della forma. Manca → CREA; diverso → RIGENERA;
 --   - forma COLONNA con colonne non classificate o assenti →
 --     NON_CLASSIFICATA, al posto di CREA o RIGENERA (il trigger di
---     prima resta); tabella senza colonna id → SENZA_ID;
+--     prima resta); tabella senza colonna id → SENZA_ID, salvo la forma
+--     FIGLIA, che la colonna id non la chiede;
+--   - forma FIGLIA: la colonna del padre assente → NON_CLASSIFICATA;
+--     il padre non iscritto, spento, figlia a sua volta o senza id →
+--     PADRE_NON_ISCRITTO (il trigger di prima resta);
 --   - riga spenta e un vivo → TOGLIE;
 --   - un vivo senza riga → SCONOSCIUTO: il runner si ferma e lo nomina.
 DECLARE
@@ -63,6 +67,7 @@ BEGIN
                    d.trigger_name, 'trg_{table}_a00_seed_primo_impianto_ins_upd_dlt',
                    d.schema_name, d.table_name) AS trg,
                CASE
+                 WHEN d.tabella_padre IS NOT NULL THEN ARRAY['FIGLIA', d.colonna_padre, d.tabella_padre]
                  WHEN d.solo_inserimento        THEN ARRAY['SOLO_INSERIMENTO']
                  WHEN d.colonne_software IS NULL THEN ARRAY['RIGA']
                  ELSE ARRAY['COLONNA',
@@ -70,8 +75,22 @@ BEGIN
                             array_to_string(d.colonne_installazione, ',')]
                END AS args,
                d.colonne_software IS NOT NULL AS per_colonna,
+               d.tabella_padre IS NOT NULL AS figlia,
+               -- il padre: iscritto, acceso, non figlia a sua volta, con la colonna id
+               (d.tabella_padre IS NULL
+                OR EXISTS (SELECT 1
+                             FROM dbops.automazione_seed_primo_impianto p
+                            WHERE p.schema_name || '.' || p.table_name = d.tabella_padre
+                              AND p.enabled
+                              AND p.tabella_padre IS NULL
+                              AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute pa
+                                           WHERE pa.attrelid = to_regclass(d.tabella_padre)
+                                             AND pa.attname = 'id' AND pa.attnum > 0
+                                             AND NOT pa.attisdropped))) AS padre_ok,
                COALESCE(d.colonne_software, ARRAY[]::text[])
-                 || COALESCE(d.colonne_installazione, ARRAY[]::text[]) AS elencate
+                 || COALESCE(d.colonne_installazione, ARRAY[]::text[])
+                 || CASE WHEN d.colonna_padre IS NULL THEN ARRAY[]::text[]
+                         ELSE ARRAY[d.colonna_padre] END AS elencate
           FROM tab t
           JOIN dbops.automazione_seed_primo_impianto d
             ON d.schema_name = t.sch AND d.table_name = t.tbl
@@ -113,7 +132,8 @@ BEGIN
                  WHEN r.rel IS NULL THEN 'SCONOSCIUTO'
                  WHEN NOT r.enabled AND vt.rel IS NULL THEN NULL
                  WHEN NOT r.enabled THEN 'TOGLIE'
-                 WHEN NOT k.ha_id THEN 'SENZA_ID'
+                 WHEN NOT k.ha_id AND NOT r.figlia THEN 'SENZA_ID'
+                 WHEN NOT r.padre_ok THEN 'PADRE_NON_ISCRITTO'
                  WHEN cardinality(k.non_class) > 0 OR cardinality(k.assenti) > 0
                    THEN 'NON_CLASSIFICATA'
                  WHEN vt.rel IS NULL THEN 'CREA'
@@ -144,7 +164,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_seed_primo_impianto_divergenze(p_schemas text[])
-IS 'Il trigger del seed di primo impianto ATTESO (dbops.automazione_seed_primo_impianto) contro quello VIVO, una riga per tabella dell''ambito che diverge. Il vivo e'' ogni trigger su script.trgfn_seed_primo_impianto, qualunque nome abbia. Azioni: CREA (riga accesa, nessun trigger), RIGENERA (nome, momento, argomenti o abilitazione diversi, o piu'' di uno), TOGLIE (riga spenta, trigger vivo), SCONOSCIUTO (trigger vivo senza riga: il runner si ferma), NON_CLASSIFICATA (forma COLONNA con una colonna non libera in nessuno dei due elenchi, o con una colonna elencata che la tabella non ha: il runner non monta e non rigenera, il trigger di prima resta), SENZA_ID (la tabella non ha la colonna id). p_schemas NULL = l''ambito di dbops.fn_resolve_scope; le tabelle fuori dall''ambito non si confrontano. La leggono il runner dbops.fn_run_automations_seed_primo_impianto, la rete di convergenza e il presidio. STABLE.';
+IS 'Il trigger del seed di primo impianto ATTESO (dbops.automazione_seed_primo_impianto) contro quello VIVO, una riga per tabella dell''ambito che diverge. Il vivo e'' ogni trigger su script.trgfn_seed_primo_impianto, qualunque nome abbia. Azioni: CREA (riga accesa, nessun trigger), RIGENERA (nome, momento, argomenti o abilitazione diversi, o piu'' di uno), TOGLIE (riga spenta, trigger vivo), SCONOSCIUTO (trigger vivo senza riga: il runner si ferma), NON_CLASSIFICATA (forma COLONNA con una colonna non libera in nessuno dei due elenchi, o con una colonna elencata che la tabella non ha: il runner non monta e non rigenera, il trigger di prima resta), SENZA_ID (la tabella non ha la colonna id, salvo la forma FIGLIA), PADRE_NON_ISCRITTO (forma FIGLIA con un padre non iscritto, spento, figlia a sua volta o senza colonna id: il runner non monta e non rigenera). Nella forma FIGLIA la colonna del padre conta come elencata: assente, NON_CLASSIFICATA. p_schemas NULL = l''ambito di dbops.fn_resolve_scope; le tabelle fuori dall''ambito non si confrontano. La leggono il runner dbops.fn_run_automations_seed_primo_impianto, la rete di convergenza e il presidio. STABLE.';
 ```
 
 </div>
