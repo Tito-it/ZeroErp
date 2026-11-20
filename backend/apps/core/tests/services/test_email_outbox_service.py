@@ -333,8 +333,11 @@ class ConfirmAndSendTests(TestCase):
         EmailOutboxService().confirm_and_send(10)
 
         kwargs = dispatch.send_raw.call_args.kwargs
-        self.assertEqual(kwargs["email_account_id"], 7)
         self.assertIs(kwargs["account"], dispatch.account_di_invio.return_value)
+        self.assertEqual(kwargs["account"]["id"], 7)
+        # ⛔ Nessun secondo canale per l'account del log: `send_raw` lo prende
+        #    da `account` (test 27 di test_email_service).
+        self.assertNotIn("email_account_id", kwargs)
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

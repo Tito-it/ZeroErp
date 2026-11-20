@@ -50,6 +50,10 @@ Indice test eseguiti:
 23) test_l_invio_scrive_sul_log_credenziali_rifiutate
 24) test_su_gmail_il_messaggio_indica_la_password_per_le_app
 25) test_una_chiusura_senza_rifiuto_resta_una_chiusura
+
+⭐ RilancioAccountTests — l'account segue l'invio (R5 del brief del seed, §16.16).
+26) test_ogni_esito_del_rilancio_scrive_l_account
+27) test_il_log_dell_invio_porta_l_account_che_spedisce
 """
 
 import socket
@@ -595,3 +599,50 @@ class CredenzialiRifiutateTests(TestCase):
         messaggio = self._prova_connessione(_ServerSmtpFinto(rifiuta=False), MockRepo, mock_settings)
         self.assertIn("Connection unexpectedly closed", messaggio)
         self.assertNotIn("Credenziali", messaggio)
+
+
+class RilancioAccountTests(TestCase):
+    """⭐ L'account segue l'invio (brief-db-seed-primo-impianto-non-si-riscrive
+    §16.16, R5): ogni esito del rilancio scrive sul log l'account con cui la
+    mail e' ripartita, che puo' non essere quello con cui era stata preparata.
+    """
+
+    # 26. I tre esiti del rilancio — non configurato, stampata, fallita —
+    #     portano tutti l'account del tentativo.
+    @patch(_SETTINGS)
+    @patch(_REPO, autospec=True)
+    def test_ogni_esito_del_rilancio_scrive_l_account(self, MockRepo, mock_settings):
+        repo = MockRepo.return_value
+        repo.list_allegati_by_log.return_value = []
+        log = {"ambito": "SISTEMA", "destinatario": "d@x.it", "oggetto": "o",
+               "corpo_inviato_html": "<p>x</p>"}
+        casi = (
+            ("non configurato", False, SMTP_PLACEHOLDER_HOST, "x", "FAILED"),
+            ("stampata", True, "", "x", "SIMULATA"),
+            ("senza password", False, "smtp.azienda.test", None, "FAILED"),
+        )
+        for nome, debug, host, password, stato in casi:
+            with self.subTest(nome):
+                repo.reset_mock()
+                mock_settings.DEBUG = debug
+                account = {**_account(host), "id": 7, "smtp_password_encrypted": password}
+                EmailDispatchService().retry_log_entry(99, account, log)
+                args, kwargs = repo.update_log_stato.call_args
+                self.assertEqual(args[1], stato)
+                self.assertEqual(kwargs["email_account_id"], 7)
+
+    # 27. ⛔ Anche il primo invio: il log nasce con l'account che spedisce.
+    #     Fino al 2026-11-20 `send_raw` lo riceveva anche come parametro a
+    #     parte, e due fonti per lo stesso dato possono divergere.
+    @patch(_SETTINGS)
+    @patch(_REPO, autospec=True)
+    def test_il_log_dell_invio_porta_l_account_che_spedisce(self, MockRepo, mock_settings):
+        mock_settings.DEBUG = True
+        repo = MockRepo.return_value
+        repo.insert_log.return_value = 5
+        EmailDispatchService().send_raw(
+            account={**_account(""), "id": 7}, destinatario="a@b.test", oggetto="o",
+            corpo_html="<p>x</p>", ambito="SISTEMA",
+        )
+        self.assertEqual(repo.insert_log.call_args.kwargs["email_account_id"], 7)
+        self.assertEqual(repo.update_log_stato.call_args.kwargs["email_account_id"], 7)

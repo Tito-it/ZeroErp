@@ -43,6 +43,19 @@ Indicazioni di Tid per questo giro (possono essere vuote): $ARGUMENTS
 - Un codice errore nuovo vuole la policy generata **e** il messaggio di
   ripiego. `error_policies_generated.py` non si rigenera se il DB è avanti
   rispetto a git.
+- **Garanzie ritirate** (regola in `.codex/AGENTS.md`). Se l'arrivo toglie o
+  allenta una garanzia (trigger, `require`, `CHECK`, FK dichiarata eccezione
+  ATTIVO in `dbops.automazione_attivo_eccezioni`, `NOT NULL` tolto, guardia
+  ritirata da una funzione), lo si vede dal diff dei changeSet e della doc
+  auto-generata, non dal brief:
+  - il brief deve avere la sezione **«Garanzie ritirate»**. Se manca, è una
+    domanda aperta per il team DB, e si dice quale garanzia manca;
+  - per ogni garanzia **censisci i lettori in `backend/` e `frontend/`**
+    (`grep` sulla colonna e sull'oggetto, poi segui i percorsi che la
+    leggono), anche fuori dall'elenco dei file del brief. Ogni lettore: va
+    adeguato, oppure non dipende dalla proprietà e perché;
+  - un lettore che ha bisogno di qualcosa dal DB va fra le domande aperte
+    **adesso**, tutto insieme, non a metà sviluppo.
 
 ## 4. Esito, poi aspetta
 
@@ -50,7 +63,8 @@ Riporta a Tid, senza cominciare lo sviluppo:
 
 1. **Rotto adesso** su dbdev, da fare per primo;
 2. **Attività sbloccate**, con la sigla del brief (BE…, FE…), cosa chiedono e i
-   file coinvolti;
+   file coinvolti; per ogni garanzia ritirata, i lettori censiti e il loro
+   esito;
 3. **In attesa** di un prerequisito DB, e quale;
 4. **Domande aperte** per Tid o per il team DB;
 5. l'ordine che proponi.

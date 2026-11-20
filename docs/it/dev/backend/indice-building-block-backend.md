@@ -195,7 +195,7 @@
 
 ### Ritento di un invio fallito
 
-- L261 `EmailDispatchService.retry_log_entry` — Ritenta invio email fallita da log
+- L261 `EmailDispatchService.retry_log_entry` — Ritenta l'invio di una mail del log: `retry_log_entry(log_id, account, log_detail)`, con…
 
 ### Connessione e account SMTP
 
