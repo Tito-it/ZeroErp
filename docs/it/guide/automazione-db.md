@@ -585,7 +585,8 @@ quelli di sempre.
 Sulle tabelle che il CSV semina e l'installazione configura dall'interfaccia, il CSV crea
 la riga, e dopo che l'installazione l'ha modificata non la riscrive più. Il modello delle
 tre specie di seed e il criterio d'ingresso stanno in
-[linee-guida-sql §11.7](/linee-guida-sql).
+[linee-guida-sql §11.7](/linee-guida-sql); che cosa vede e che cosa può fare chi configura il
+sistema sta in [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti).
 
 **Come funziona:**
 

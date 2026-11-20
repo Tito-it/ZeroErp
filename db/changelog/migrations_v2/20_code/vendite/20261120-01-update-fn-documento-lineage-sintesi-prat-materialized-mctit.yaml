@@ -20,6 +20,8 @@
 #   Cambia una riga (la CTE prat) e il commento accanto; corpo dal -75, identico
 #   al catalogo di dbdev il 2026-11-20. Firma, risultato e COMMENT restano.
 #   Rollback: il corpo del -75 (stessa firma).
+#
+# id-senza-type: ammesso — debito: il RETURNS TABLE e' quello del -75, anteriore alla regola, e il changeSet era gia' applicato quando il guardrail l'ha visto (ancorarlo qui ne cambia il checksum). Le ancore sono config.sorgenti.id%TYPE per tipo_id, frontiera_tipo_id, root_tipo_id e pratiche.pratiche.id%TYPE per pratica_id: le mette la prossima revisione della funzione
 # ------------------------------------------------------------
 
 databaseChangeLog:

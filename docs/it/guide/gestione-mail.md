@@ -8,6 +8,7 @@
 >
 > * [Guida Risorse Umane e Accessi](/guide/risorse-umane-e-accessi)
 > * [Guida Gestione Pratiche](/guide/gestione-pratiche)
+> * [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti) — perché account e template modificati restano come li hai lasciati
 > * [API Email (doc backend)](/backend/core/manual/api_email)
 > * [API Invito Operatore](/backend/core/manual/api_invito_operatore)
 > * [API Reset Password](/backend/core/manual/api_password_reset)
