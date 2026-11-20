@@ -1,8 +1,13 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-20 (R5 committato, giro 3 di `ui` applicato)
+## ⏭️ Chi riparte — aggiornato al 2026-11-20 (archiviato)
 
-**Riparte: il team BE/FE**, con le ricadute del giro 3 sulle tabelle di `ui` (R-UI1 … R-UI-sup, §16.15, passo
+**Riparte: nessuno. Archiviato il 2026-11-20**: lato DB e lato BE/FE chiusi e committati (l'ultimo giro BE/FE, R-UI1 …
+R-UI-sup del §16.15, in `8d5601d70f`, PR #171). I residui stanno nel [registro dei residui](../work-in-progress/registro-residui-aperti.md)
+(`famiglie_documento`, Q7); la colonna di catalogo `is_default` della lista admin dei preset (§16.15, esito del BE) è
+passata al [brief-db-revisione-ui](../work-in-progress/brief-db-revisione-ui.md) (BE22), residuo del suo giro 1a.
+
+⚠️ Lo stato prima dell'archiviazione: **ripartiva il team BE/FE**, con le ricadute del giro 3 sulle tabelle di `ui` (R-UI1 … R-UI-sup, §16.15, passo
 7-quater) e con la chiusura del passo 7 (§16.14). Il lato DB di questo brief è finito: il giro 3 (`20261119-01` …
 `-05`) e la superficie `dbops.fn_seed_superficie` (`20261119-06` … `-08`) sono applicati su dbdev, i pgTAP sono verdi
 (Tid, 2026-11-20) e la doc auto-generata è rigenerata. R5, R5-doc e R5-test del §16.16 sono fatti dal BE e committati
@@ -38,11 +43,11 @@ ripercorrere le stesse strade.
 | 7 | ✅ team BE/FE e Tid | R2, R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14 (R4 ritirata dalla Q17): fatti e committati (2026-11-20, `185f7207a`; esito sotto la richiesta) | §16.14 | 6-quater |
 | 7-bis | ✅ sessione DB e Tid | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20); QU1-QU4 decise; il giro 3 (`20261119-01` … `-05`) e la superficie QU3 (`-06` … `-08`) applicati, pgTAP verdi, doc auto-generata rigenerata (2026-11-20) | §16.15 | 6-quater |
 | 7-ter | ✅ team BE/FE e Tid | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; fatti, verdi e committati (2026-11-20) | §16.16 | 6-quinquies |
-| 7-quater | ✅ team BE/FE, poi Tid | R-UI1, R-UI2, R-UI3, R-UI-test, R-UI-sup del giro 3 di `ui`: fatti e verdi (2026-11-20, esito sotto la tabella delle ricadute); ⏳ il commit | §16.15 | 7-bis |
-| 8 | chi chiude | Archiviazione in `work-done/`, coi link dei residui riportati a `work-done/`. ✅ I residui sono già nel registro dei residui e in PROJECT_CONTEXT (2026-11-20): `famiglie_documento` resta aperta (la voce è aggiornata, il brief non l'ha iscritta: §7, giro suo), Q7 è una voce nuova (con R3 del §11 / R5 del §15.12). Q8 (il titolo) cade con la chiusura | — | 6-quinquies, 7, 7-ter, 7-quater |
+| 7-quater | ✅ team BE/FE, poi Tid | R-UI1, R-UI2, R-UI3, R-UI-test, R-UI-sup del giro 3 di `ui`: fatti e verdi (2026-11-20, esito sotto la tabella delle ricadute); ✅ committati (2026-11-20, `8d5601d70f`, PR #171) | §16.15 | 7-bis |
+| 8 | ✅ sessione DB | Archiviazione in `work-done/` (2026-11-20), coi link dei residui riportati a `work-done/`. ✅ I residui sono già nel registro dei residui e in PROJECT_CONTEXT (2026-11-20): `famiglie_documento` resta aperta (la voce è aggiornata, il brief non l'ha iscritta: §7, giro suo), Q7 è una voce nuova (con R3 del §11 / R5 del §15.12). Q8 (il titolo) cade con la chiusura | — | 6-quinquies, 7, 7-ter, 7-quater |
 
 **Decisioni di Tid del 2026-11-20:** ✅ V-2, strada (a): il rilancio batch risolve di nuovo l'account e il log lo segue (§16.16, il DB è fatto).
-**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** questo brief riallineato. **Committato il 2026-11-20:** R5, R5-doc e R5-test del BE (§16.16, l'esito sotto la richiesta; PR #167); il giro 3 di `ui` e la superficie QU3 (§16.15); il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
+**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Decisioni aperte di Tid:** nessuna. **Da committare:** l'archiviazione di questo brief e i link riportati a `work-done/` (2026-11-20). **Committato il 2026-11-20:** R-UI1 … R-UI-sup del BE/FE (§16.15, PR #171); R5, R5-doc e R5-test del BE (§16.16, l'esito sotto la richiesta; PR #167); il giro 3 di `ui` e la superficie QU3 (§16.15); il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -221,7 +226,7 @@ Il censimento completo (ogni mirror `runOnChange` su una tabella che l'app può 
 leggendo la **struttura**: GRANT di `zeroerp_app`, `config.tabelle_gestibili.pannello`, endpoint che
 scrivono. Ogni tabella trovata riceve una specie dichiarata.
 
-**Le tabelle di `ui` (richiesta del [brief-db-revisione-ui](brief-db-revisione-ui.md), Q27, Tid 2026-11-20).** Il
+**Le tabelle di `ui` (richiesta del [brief-db-revisione-ui](../work-in-progress/brief-db-revisione-ui.md), Q27, Tid 2026-11-20).** Il
 censimento di questo meccanismo è la sede della decisione, e i giri del brief `ui` che toccano i CSV di `ui` partono
 dopo. Sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin:
 
@@ -1413,7 +1418,7 @@ Nessuna chiave i18n nuova: «elimina» non c'è, e il motivo dei campi spenti lo
 
 ### 16.15 Il censimento delle tabelle di `ui` (richiesta del brief `ui`, Q27, 2026-11-20)
 
-Chiesto dal [brief-db-revisione-ui](brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
+Chiesto dal [brief-db-revisione-ui](../work-in-progress/brief-db-revisione-ui.md) (Q27, Tid 2026-11-20): le tabelle di catalogo di `ui`
 sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin, e i giri di quel brief che toccano i
 CSV di `ui` partono dopo la loro iscrizione (linee-guida-sql §11.7: una tabella entra in un rilascio precedente al primo
 ritocco del suo CSV). Letti la struttura (doc auto-generata del 2026-11-14) e il codice che le scrive
@@ -1602,7 +1607,8 @@ LEFT JOIN LATERAL dbops.fn_seed_superficie(
 - ⚠️ **Domanda al team DB, nata qui**: la lista admin dei preset (`ui.lista_definizione`
   `ui.lista_preset`, id 58) ha ancora la colonna di catalogo `is_default` (`lista_colonna.csv`, riga
   id 665, accesa). Dal giro 1a di brief-db-revisione-ui il campo non esiste più: la colonna esce
-  vuota. Va spenta o tolta dal CSV nel giro che lo ritira (il BE non la consegna più).
+  vuota. Va spenta o tolta dal CSV nel giro che lo ritira (il BE non la consegna più). ⏭️ Passata al
+  brief-db-revisione-ui (BE22) all'archiviazione di questo brief (2026-11-20): è un residuo del suo giro 1a.
 
 #### La superficie: `dbops.fn_seed_superficie` (QU3, 2026-11-20)
 

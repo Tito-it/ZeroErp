@@ -414,7 +414,7 @@ e funzioni nuove includono la loro pagina, e `documenti/index.md` ha le descrizi
 segnalazione.
 
 > ⚠️ **Aggiornato il 2026-11-17 (Tid):** il brief a parte non c'è più. La porta si tratta in
-> [brief-db-seed-primo-impianto-non-si-riscrive](../work-in-progress/brief-db-seed-primo-impianto-non-si-riscrive.md), §13,
+> [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md), §13,
 > che costruiva un trigger nuovo con la stessa porta. Lì il tema è allargato a tutte le porte
 > `zeroerp.allow_*_override` dei trigger d'automazione, non alla sola `trgfn_lock_columns`.
 
