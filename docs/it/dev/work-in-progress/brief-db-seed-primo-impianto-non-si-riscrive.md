@@ -1,10 +1,13 @@
 # Brief DB — Il seed di primo impianto: la riga modificata dall'installazione non si riscrive
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-20 (giro 2 applicato, pgTAP verdi, doc rigenerata; da committare)
+## ⏭️ Chi riparte — aggiornato al 2026-11-20 (il `20261118-01` applicato, verde e committato)
 
-**Riparte: Tid**, col commit del giro 2. Il giro 2 (`20261117-23` … `-28`) è applicato su dbdev, i pgTAP sono verdi
-(Tid, 2026-11-20) e la doc auto-generata è rigenerata (2026-11-20, con le pagine `manual/` del giro 1 e del giro 2).
-Poi il **team BE/FE**, con R2 subito e il resto ora sbloccato: la richiesta, con l'elenco chiuso dei file, è al
+**Riparte: il team BE/FE**, con R5 del §16.16: il rilancio scrive l'account da cui la mail riparte. Il `20261118-01`
+(la porta di chiusura delle mail di sistema riceve `p_email_account_id`) è applicato su dbdev, il pgTAP
+`config/test-fn-email-sistema` è verde (Tid, 2026-11-20), la doc auto-generata è rigenerata ed è committato.
+Il giro 2 (`20261117-23` … `-28`) è applicato su dbdev, i pgTAP sono verdi (Tid, 2026-11-20), la doc auto-generata è
+rigenerata ed è committato (2026-11-20, PR #162).
+Il **team BE/FE** ha R2 subito e il resto sbloccato: la richiesta, con l'elenco chiuso dei file, è al
 **§16.14**, che risponde alla domanda del BE «come legge l'app il segno nata dal seed», applica la Q24 (account e
 template si spengono, non si cancellano) e sostituisce R1 e R3 del §15.12.
 Il giro 1, `20261117-01` … `-22`, è applicato su dbdev e i pgTAP sono verdi (Tid, 2026-11-18). Lo stato del giro è al §16.12. Le verifiche sono al §16.8, il censimento
@@ -26,12 +29,15 @@ ripercorrere le stesse strade.
 | 6 | ✅ Tid e sessione DB | L'apply, i pgTAP verdi, la baseline B-7, la doc auto-generata, la riga `SISTEMA`, il commit (2026-11-18) | §16.12 | 5 |
 | 6-bis | ✅ sessione DB, poi Tid | Le pagine `manual/` dei building block nuovi e dei lettori della porta (2026-11-18); ✅ la doc auto-generata rigenerata (2026-11-20) | §16.12 | 6 |
 | 6-ter | ✅ sessione DB e Tid | La domanda del BE e la Q24: le viste del segno, solo disattivazione (giro 2, `20261117-23` … `-28`), pgTAP, pagine `manual/`, guida, provato sullo scratch; ✅ Q23 e Q24 decise (2026-11-19) | §16.14 | 6 |
-| 6-quater | Tid e sessione DB | ✅ L'apply del giro 2 e i pgTAP verdi (Tid), ✅ la doc auto-generata (2026-11-20); ⏳ il commit | §16.14 | 6-ter |
+| 6-quater | ✅ Tid e sessione DB | L'apply del giro 2 e i pgTAP verdi (Tid), la doc auto-generata, il commit (2026-11-20) | §16.14 | 6-ter |
+| 6-quinquies | ✅ sessione DB e Tid | La richiesta del BE sul rilancio: il `20261118-01`, il pgTAP adeguato, la pagina `manual/`; l'apply e il pgTAP verde (Tid), la doc auto-generata, il commit (2026-11-20) | §16.16 | 6-quater |
 | 7 | team BE/FE | R2 subito; R1-BE, R1-BE-bis, R1-BE-ter, R3 e R-test del §16.14, dopo il 6-quater (R4 ritirata dalla Q17) | §16.14 | 6-quater |
-| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento scritto; ⏳ QU1-QU4 di Tid | §16.15 | 6-quater |
-| 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quater, 7 |
+| 7-bis | sessione DB | Il censimento delle tabelle di `ui`, chiesto dal brief `ui` (Q27, Tid 2026-11-20): ne aspetta i giri che toccano i CSV di `ui`. ✅ Censimento scritto, ✅ QU1-QU4 decise (2026-11-20); ⏳ il giro | §16.15 | 6-quater |
+| 7-ter | team BE/FE | R5, R5-doc e R5-test: il rilancio scrive l'account da cui la mail riparte; ora sbloccato | §16.16 | 6-quinquies |
+| 8 | chi chiude | Archiviazione in `work-done/`, con il rimando tolto dal registro dei residui | — | 6-quinquies, 7, 7-ter |
 
-**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** il giro 2 (§16.14: sei changeSet, le righe di cinque CSV, un pgTAP nuovo e quattro adeguati, quattro pagine `manual/` nuove e quattro aggiornate, la guida `gestione-mail.md`) e questo brief. **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
+**Decisioni di Tid del 2026-11-20:** ✅ il rilancio batch scrive sul log l'account con cui la mail riparte (§16.16).
+**Decisioni di Tid del 2026-11-19:** ✅ Q23 e ✅ Q24, solo disattivazione (§16.14). Rinviate fuori dal giro 1: Q7 (il ripristino) e Q8 (il titolo). **Da committare:** niente. **Committato il 2026-11-20:** il giro 2 (§16.14); poi il `20261118-01`, `config/test-fn-email-sistema.sql`, la pagina `manual/` di `config.email_log`, la doc auto-generata della funzione e questo brief (§16.16). **Committato il 2026-11-18:** il giro 1 (22 changeSet, il CSV nuovo, i CSV dei codici e dei presidi, il loop e il provisioning, 4 pgTAP nuovi e 26 adeguati, la baseline B-7, tre guide, le pagine `manual/`, la doc auto-generata) e questo brief.
 
 **Brief vicini verificati (2026-11-17):** in `work-in-progress/` nessun brief tratta i mirror che
 riscrivono un dato modificato da interfaccia. Le menzioni di `loadUpdateData` in
@@ -1467,6 +1473,86 @@ create dall'app.
 - `ui.lista_colonna_permesso`: non ha un CSV;
 - le due preferenze: non hanno un CSV.
 
+#### Le decisioni (Tid, 2026-11-20)
+
+| # | Decisione |
+| --- | --- |
+| QU1 | ✅ La classificazione per colonna come proposta, per le tre tabelle |
+| QU2 | ✅ (a): la composizione segue il suo preset, con la forma nuova «figlia» |
+| QU3 | ✅ (a): le righe di seed si spengono, senza eccezioni; la superficie per il BE diventa un building block |
+| QU4 | ✅ (a): di Q14 del brief `ui` restano `codice` immutabile e i due flag solo dal migratore, su ogni riga; «vista e schema dati di una lista certificata solo dall'owner» si ritira, perché la tiene il seed per colonna |
+
 **Dopo le decisioni**, un giro di questo brief con i changeSet del range dato da Tid (`20261119-01` …): le righe del
 registro, la forma «figlia» se QU2 è (a), la superficie per il BE, i pgTAP, e il provisioning dei runner su dbdev come al
 `20261117-28`.
+
+### 16.16 Il rilancio scrive l'account da cui la mail riparte (richiesta del BE, decisione di Tid, 2026-11-20)
+
+**La richiesta del BE (2026-11-20).** Dal giro 2 un account che ha spedito si spegne (Q24). `send_pending_emails`
+riprende le mail in coda (`config.vw_email_in_coda`) con l'account scritto sul log, senza guardare `attivo`: una mail in
+`RETRY`, o un `FAILED` ancora ripescabile, riparte da un account spento. La regola è quella di R1-BE-ter: il log dice
+da dove la mail è partita. Quindi il rilancio risolve di nuovo l'account e il log lo segue. Sulle righe non di sistema
+il backend lo scrive con l'`UPDATE` diretto. Sulle righe `SISTEMA` l'esito passa da `config.fn_chiudi_email_sistema`,
+che scriveva solo stato, errore, `inviato_at` e tentativi.
+
+**La decisione di Tid (2026-11-20):** il rilancio batch deve poter scrivere sul log l'account con cui la mail riparte.
+Cambia per primo il DB.
+
+#### La verifica sulle righe non di sistema
+
+La domanda del BE: il processo del batch può aggiornare `email_account_id` sulle righe `REPARTO` e `OPERATORE`? **Sì**,
+e non serve niente dal DB. Letto dal catalogo di dbdev il 2026-11-20, cioè dalla struttura:
+
+* **grant:** `zeroerp_app` ha `UPDATE` sulla tabella e sulla colonna;
+* **policy:** `rls_email_log_ambito` (`USING` e `WITH CHECK` uguali) non legge `email_account_id`. Il processo
+  `send_pending_emails` (`script.fn_scope_identita_processo`) vede le righe `REPARTO` e `OPERATORE` delle aziende del suo
+  perimetro, e le stesse righe passano il `WITH CHECK` dopo che l'account è cambiato;
+* **trigger:** nessuno guarda la colonna. I due `require` attivo scattano su `UPDATE OF unita_organizzativa_id` e
+  `UPDATE OF emittente_fiscale_id`, e la guardia dello scope emittente non cambia esito perché l'azienda resta quella.
+  Il `require` verso l'account non c'è più dal giro 2: la FK è un'eccezione ATTIVO (§16.14).
+
+#### Il changeSet `20261118-01` (numero dato da Tid)
+
+`config.fn_chiudi_email_sistema` riceve un parametro in coda, `p_email_account_id`, `DEFAULT NULL`: `NULL` lascia la
+colonna com'è, con lo stesso `COALESCE` di `inviato_at`. Le chiamate di oggi (backend a quattro argomenti, pgTAP a due o
+quattro) non cambiano comportamento (linee-guida-sql §5f). La firma cambia, quindi DROP della firma vecchia e CREATE,
+con gli attributi vivi ripetuti e l'`EXECUTE` all'applicazione ridato. Testata ri-ancorata con `%TYPE`, COMMENT
+riscritto al presente. Il corpo viene dalla doc auto-generata, identica al vivo.
+
+* ⛔ **Nessun controllo che l'account sia acceso.** L'account può spegnersi fra l'invio e la scrittura dell'esito, e la
+  mail spedita è storia: per questo la FK del log è un'eccezione ATTIVO. La scelta di un account acceso è di
+  `config.fn_resolve_email_account`: ripeterla nella porta di chiusura ne farebbe una seconda sede.
+* ⛔ **Nessuna guardia propria sull'id inesistente.** Lo ferma la FK `fk_email_log_email_account` (`23503`), come in
+  `config.fn_accoda_email_sistema`, che l'account lo riceve allo stesso modo. Un codice proprio avrebbe senso solo se
+  lo avesse anche l'accodamento.
+* L'account si scrive con ogni esito, non solo con `SENT`: anche un `RETRY` o un `FAILED` è un tentativo partito da
+  quell'account.
+
+**Provato** con `scripts/prova_changeset.py` sullo scratch (2026-11-20). L'estratto gira per intero, catalogo identico
+dopo il `ROLLBACK`. `config/test-fn-email-sistema` (plan da 12 a 18) passa 18 su 18 con l'estratto. Senza l'estratto
+passa 14 su 18: i 4 rossi sono i casi nuovi (12, 12-bis, 13-bis, 14). Gli attributi (`SECURITY DEFINER`, volatilità,
+`PARALLEL`, `COST`, `search_path`, proprietario, privilegi) restano quelli del vivo: i privilegi sono le stesse tre voci,
+in un altro ordine. Il presidio dei COMMENT e quello delle forme sono verdi sul file. I test nuovi:
+
+* 11: una sola firma per nome;
+* 12 e 12-bis: una mail di sistema accodata su un account **spento**, che il test costruisce, chiusa in `RETRY` con
+  un account acceso. Il log porta quello acceso;
+* 13 e 13-bis: la chiamata a quattro argomenti chiude ancora, e l'account resta com'era;
+* 14: un account inesistente lo ferma la FK.
+
+**Applicato** su dbdev da Tid il 2026-11-20, col pgTAP `config/test-fn-email-sistema` verde; resta una sola firma, a
+cinque argomenti.
+
+**Documentazione:** la pagina `manual/` di `config.email_log` (§«Ciclo di vita»: l'account segue l'invio) e la doc
+auto-generata della funzione, rigenerata dopo l'apply.
+
+#### La richiesta al team BE/FE (dopo l'apply del `20261118-01`)
+
+**Chi cambia per primo:** il DB, con questo changeSet. Il backend parte dopo l'apply e, nell'attesa, non introduce
+rimedi provvisori.
+
+| # | Che cosa | File |
+| --- | --- | --- |
+| R5 | Il rilancio risolve l'account sul reparto del log quando quello scritto è spento (`config.fn_resolve_email_account`), spedisce con quello e scrive il nuovo id insieme all'esito: sulle righe `SISTEMA` come quinto argomento di `config.fn_chiudi_email_sistema` (`p_email_account_id`, `NULL` = lascia com'è), sulle altre nell'`UPDATE` diretto (la colonna entra nella whitelist delle colonne aggiornabili) | `backend/apps/core/management/commands/send_pending_emails.py`; `backend/apps/core/db/email_repository.py` (`update_log_stato`); `backend/apps/core/services/email_service.py` se passa da lì |
+| R5-doc | La guida dice «per ogni email il command usa l'account SMTP originale (quello con cui l'email era stata preparata)»: dopo R5 non è più vero | `docs/it/guide/gestione-mail.md` §Coda email e retry |
+| R5-test | Una mail di sistema e una di reparto accodate su un account spento: dopo il rilancio il log porta l'account risolto | `backend/apps/core/tests/db/test_email_porta_di_sistema.py`, `backend/apps/core/tests/services/` accanto ai test di `send_pending_emails` |
