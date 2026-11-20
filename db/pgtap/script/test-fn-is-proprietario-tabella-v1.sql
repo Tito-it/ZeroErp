@@ -74,9 +74,15 @@ SELECT is(script.fn_is_proprietario_tabella('magazzino.inventari'::regclass), fa
 -- ============================================================
 -- 6-7 I consumatori
 -- ============================================================
+-- ⚠️ Su una lista dell'installazione, creata qui: su una lista del seed
+--   rifiuta prima il seed di primo impianto (multi_emittente e' una colonna
+--   del software, E_SEED_COLONNA_DEL_SOFTWARE), e il guard non si vedrebbe.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert)
+VALUES ('tst.proprietario.lista_dell_installazione', 'Lista creata dall''installazione', 'vendite', true, 'pgtap');
+
 SELECT is(
     pg_temp.codice_di($q$ UPDATE ui.lista_definizione SET multi_emittente = NOT multi_emittente
-                          WHERE id = (SELECT min(id) FROM ui.lista_definizione) $q$),
+                          WHERE codice = 'tst.proprietario.lista_dell_installazione' $q$),
     'E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE',
     '6) il guard di ui, passato dal BB, rifiuta ancora l''app');
 

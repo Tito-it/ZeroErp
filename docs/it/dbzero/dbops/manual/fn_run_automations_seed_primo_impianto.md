@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_seed_primo_impianto`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,11 +38,12 @@ corregge una per una.
 
 * `CREA` — monta il trigger, `BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW` in fase `a00`, e
   **iscrive** le righe di seed già presenti: entrano nel registro quelle con `user_insert` uguale a
-  `SEED` o a un ruolo del migratore, con `segnata_da = ISCRIZIONE`.
+  `SEED` o a un ruolo del migratore, con `segnata_da = ISCRIZIONE`. Sulla forma figlia monta il
+  trigger e non iscrive: la tabella di composizione non ha `id`, e le sue righe seguono il padre.
 * `RIGENERA` — toglie i trigger vivi della funzione e rimonta l'atteso. Non ripassa
   dall'iscrizione: il registro c'è già.
 * `TOGLIE` — toglie il trigger della riga spenta. Il registro resta.
-* `NON_CLASSIFICATA`, `SENZA_ID` — nessuna DDL: un `WARN` nell'audit, e il trigger di prima resta.
+* `NON_CLASSIFICATA`, `SENZA_ID`, `PADRE_NON_ISCRITTO` — nessuna DDL: un `WARN` nell'audit, e il trigger di prima resta.
 * `SCONOSCIUTO` — un trigger della funzione su una tabella che il registro non nomina ferma il giro
   con `E_SEED_PRIMO_IMPIANTO`: toglierlo cancellerebbe in silenzio una protezione.
 
@@ -84,6 +85,8 @@ da `E_SEED_PRIMO_IMPIANTO`.
   username (23-24); la rigenerazione non ripassa dall'iscrizione (25).
 * `db/pgtap/config/test-seed-primo-impianto-installazione-v1.sql`, asserzioni 1-3 — dopo il giro i
   trigger ci sono, e nessuna divergenza.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql`, asserzione 16 — il runner monta la
+  forma figlia e non la iscrive.
 
 ---
 
@@ -91,6 +94,7 @@ da `E_SEED_PRIMO_IMPIANTO`.
 
 * 2026-11-17 — nasce (`brief-db-seed-primo-impianto-non-si-riscrive`). Ricalca lo stampo di
   `DELETE_BLOCK`, con un registro suo: la regola non ha una riga in `automation_rules_tbl`.
+* 2026-11-20 — la forma figlia e il salto `PADRE_NON_ISCRITTO`.
 
 ---
 

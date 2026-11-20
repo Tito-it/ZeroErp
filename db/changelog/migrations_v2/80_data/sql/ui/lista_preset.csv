@@ -1,114 +1,114 @@
 id,lista_id,codice,descrizione,ambito,profilo_accesso_id,emittente_fiscale_id,is_default,pagina_dimensione,ordinamento_default,attivo,data_insert,user_insert
-1,1,clienti_default,Vista standard clienti,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-07 00:00:00,mctit
-2,2,soggetti_default,Vista standard soggetti,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-22 00:00:00,mctit
-3,3,fornitori_default,Vista standard fornitori,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-24 00:00:00,mctit
-4,4,contratti_default,Vista standard contratti,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-02 00:00:00,mctit
-5,5,preventivi_default,Vista standard preventivi,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-03 00:00:00,mctit
-6,6,offerte_default,Vista standard offerte commerciali,sistema,,,t,25,"[{""col"":""validita_dal"",""dir"":""desc""}]",t,2026-06-03 00:00:00,mctit
-7,7,ordini_default,Vista standard ordini di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-03 00:00:00,mctit
-8,8,ddt_default,Vista standard DDT di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-07-15 00:00:00,mctit
-9,9,resi_default,Vista standard resi di vendita,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
-10,10,resi_da_accreditare_default,Vista standard coda accrediti,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
-11,11,resi_da_riconsegnare_default,Vista standard coda ri-consegne,sistema,,,t,25,,t,2026-07-18 00:00:00,mctit
-12,12,lotti_default,Vista standard lotti di fatturazione,sistema,,,t,25,,t,2026-07-30 00:00:00,mctit
-13,13,categorie_clienti_default,Vista standard categorie clienti,sistema,,,t,25,"[{""col"":""ordinamento"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-14,14,utilities_tipi_ruolo_default,Vista standard matrice utility / ruoli,sistema,,,t,25,"[{""col"":""utility_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-15,15,indirizzi_default,Vista standard indirizzi,sistema,,,t,25,"[{""col"":""indirizzo_normalizzato"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-16,16,tipi_ruolo_tipi_indirizzo_default,Vista standard matrice ruoli / indirizzi,sistema,,,t,25,"[{""col"":""tipo_ruolo_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-17,17,pratiche_default,Vista standard pratiche,sistema,,,t,10,"[{""col"":""data_apertura"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
-18,18,emittenti_fiscali_default,Vista standard emittenti fiscali,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,10,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-20,20,uom_tipi_default,Vista standard tipi di unita di misura,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-21,21,unita_misura_default,Vista standard unita di misura,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,mctit
-22,22,conversioni_uom_default,Vista standard conversioni UoM,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-07-31 00:00:00,mctit
-23,23,promo_articoli_default,Vista standard promozioni articolo,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
-24,24,template_documenti_default,Vista standard template documenti,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-25,25,template_asset_default,Vista standard asset template,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-26,26,articoli_default,Vista standard articoli,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-27,27,listini_default,Vista standard listini,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-28,28,operatori_default,Vista standard operatori,sistema,,,t,25,"[{""col"":""soggetto_cognome"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-29,29,email_account_default,Vista standard account email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-30,30,email_template_default,Vista standard template email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,mctit
-31,31,email_log_default,Vista standard log email,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
-32,32,audit_log_default,Vista standard log di audit,sistema,,,t,25,"[{""col"":""timestamp"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
-33,33,categorie_listini_default,Vista standard listini per categoria,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,mctit
-34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
-35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
-36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,mctit
-37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,10,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,mctit
-38,38,commesse_attivita_default,Vista standard attivita commessa,sistema,,,t,10,,t,2026-08-03 00:00:00,mctit
-39,39,dash_aperto_documenti_default,Vista standard situazione aperta,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
-40,40,dash_backlog_documenti_default,Vista standard backlog,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
-41,41,dash_competenza_errori_default,Vista standard errori competenza,sistema,,,t,10,"[{""col"":""data_evento"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
-42,42,dash_competenza_gruppi_default,Vista standard gruppi fatturabili,sistema,,,t,25,"[{""col"":""valore"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
-43,43,dash_competenza_commesse_default,Vista standard drill-down commesse,sistema,,,t,25,"[{""col"":""valore_tot"",""dir"":""desc""}]",t,2026-08-03 00:00:00,mctit
-44,44,fondi_fattura_da_decidere_default,Vista standard fondi da decidere,sistema,,,t,50,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-15 00:00:00,mctit
-45,45,lotto_fatture_default,Vista standard documenti del lotto,sistema,,,t,10,,t,2026-08-22 00:00:00,mctit
-46,46,lotto_task_runs_default,Vista standard tentativi dei task,sistema,,,t,10,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
-47,47,lotto_segnalazioni_default,Vista standard segnalazioni del lotto,sistema,,,t,10,"[{""col"":""livello"",""dir"":""desc""}]",t,2026-08-22 00:00:00,mctit
-48,48,fatture_default,Vista standard fatture di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-24 00:00:00,mctit
-49,49,dash_competenza_residui_default,Vista standard residui da riportare,sistema,,,t,25,"[{""col"":""competenza_mese"",""dir"":""asc""}]",t,2026-08-27 00:00:00,mctit
-50,50,distinte_default,Vista standard distinte contabili,sistema,,,t,25,"[{""col"":""data_contabile"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
-51,51,righe_default,Vista standard righe contabili da lavorare,sistema,,,t,25,"[{""col"":""data_pagamento"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
-52,52,rate_fuori_capienza_default,Vista standard rate fuori capienza,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
-53,53,eccedenze_default,Vista standard eccedenze da sistemare,sistema,,,t,25,"[{""col"":""eccedenza_cliente"",""dir"":""desc""}]",t,2026-08-25 00:00:00,mctit
-54,54,registri_numerazione_default,Vista standard registri di numerazione,sistema,,,t,10,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
-55,55,famiglie_documento_default,Vista standard famiglie di documento,sistema,,,t,25,"[{""col"":""codice_interno"",""dir"":""asc""}]",t,2026-09-01 00:00:00,mctit
-56,56,lista_definizione_default,Vista standard definizioni di lista,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
-57,57,lista_colonna_default,Vista standard catalogo colonne,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
-58,58,lista_preset_default,Vista standard preset,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
-59,59,lista_colonna_permesso_default,Vista standard permessi colonna,sistema,,,t,,,t,2026-09-02 00:00:00,mctit
-60,60,canali_incasso_default,Vista standard canali di incasso,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
-61,61,sistemazioni_fattura_default,Vista standard atti di sistemazione,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
-62,62,soggetto_titoli_iva_default,Vista standard titoli IVA soggetto,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
-63,63,titoli_iva_sfondati_default,Vista standard titoli IVA sfondati,sistema,,,t,25,,t,2026-09-02 00:00:00,mctit
-64,64,titolo_iva_ambiti_default,Vista standard ambiti del titolo,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
-65,65,titolo_iva_movimenti_default,Vista standard registro movimenti,sistema,,,t,10,,t,2026-09-02 00:00:00,mctit
-66,66,processi_default,Vista standard processi automatici,sistema,,,t,25,"[{""col"":""canale"",""dir"":""asc""}]",t,2026-09-05 00:00:00,mctit
-67,67,lotto_gruppi_default,Vista standard documenti presi in carico,sistema,,,t,10,,t,2026-09-06 00:00:00,mctit
-68,68,rate_default,Vista standard rate da incassare,sistema,,,t,10,"[{""col"":""data_scadenza"",""dir"":""asc""}]",t,2026-09-17 00:00:00,mctit
-69,69,distinta_righe_default,Vista standard righe di una distinta,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
-70,70,inventari_default,Vista standard inventari di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-71,71,inventario_righe_default,Vista standard righe di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
-72,72,inventario_piano_default,Vista standard piano di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
-73,73,rettifiche_default,Vista standard rettifiche di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-74,74,rettifica_righe_default,Vista standard righe di una rettifica,sistema,,,t,10,,t,2026-09-18 00:00:00,mctit
-75,75,disponibilita_default,Vista standard disponibilita' per articolo e magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-76,76,disponibilita_articoli_default,Vista standard disponibilita' per articolo,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-77,77,movimenti_default,Vista standard registro dei movimenti di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,mctit
-78,78,error_log_default,Vista standard registro degli errori tecnici,sistema,,,t,25,"[{""col"":""occurred_at"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
-79,79,giornale_default,Vista standard giornale degli eventi,sistema,,,t,25,"[{""col"":""quando"",""dir"":""desc""}]",t,2026-09-19 00:00:00,mctit
-80,80,magazzini_default,Vista standard magazzini,sistema,,,t,25,,t,2026-09-21 00:00:00,mctit
-81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,10,,t,2026-09-21 00:00:00,mctit
-82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,10,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,mctit
-83,83,sessioni_attive_default,Vista standard sessioni attive,sistema,,,t,25,"[{""col"":""data_ultimo_evento"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-84,84,documenti_sorgente_default,Vista standard documenti generati di una sorgente,sistema,,,t,10,"[{""col"":""generato_at"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-85,85,flussi_default,Vista standard flussi di una pratica,sistema,,,t,10,"[{""col"":""sequenza"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-86,86,utilities_tipi_ruolo_usage_default,Vista standard emittenti che usano la matrice,sistema,,,t,10,"[{""col"":""emittente_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-87,87,reparti_default,Vista standard reparti,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-88,88,template_versioni_default,Vista standard versioni di un template,sistema,,,t,10,"[{""col"":""versione"",""dir"":""desc""}]",t,2026-09-27 00:00:00,mctit
-89,89,preventivo_revisioni_default,Vista standard revisioni di un preventivo,sistema,,,t,10,"[{""col"":""rev"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-90,90,offerta_revisioni_default,Vista standard revisioni di un'offerta commerciale,sistema,,,t,10,"[{""col"":""revisione_numero"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-91,91,regioni_default,Vista standard regioni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-92,92,province_default,Vista standard province,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-93,93,stati_default,Vista standard stati,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-94,94,comuni_default,Vista standard comuni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-95,95,codici_postali_default,Vista standard codici postali,sistema,,,t,25,"[{""col"":""comune_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-96,96,toponomastica_default,Vista standard toponomastica,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,mctit
-97,97,preventivo_righe_default,Vista standard righe di un preventivo,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-98,98,ordine_righe_default,Vista standard righe di un ordine,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-99,99,ddt_righe_default,Vista standard righe di un DDT,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-100,100,reso_righe_default,Vista standard righe di un reso,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-101,101,articolo_componenti_default,Vista standard distinta base,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-09-28 00:00:00,mctit
-102,102,fattura_righe_default,Vista standard righe di una fattura,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-103,103,contratto_righe_default,Vista standard righe di un contratto,sistema,,,t,10,,t,2026-09-28 00:00:00,mctit
-104,104,accessi_altri_default,Vista standard altri accessi,sistema,,,t,25,"[{""col"":""nome_visualizzato"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
-105,105,accessi_sistema_default,Vista standard accessi di sistema,sistema,,,t,25,"[{""col"":""username"",""dir"":""asc""}]",t,2026-10-02 00:00:00,mctit
-106,106,offerta_righe_default,Vista standard righe di un'offerta,sistema,,,t,10,,t,2026-10-05 00:00:00,mctit
-107,107,definizioni_workflow_default,Vista standard definizioni di workflow,sistema,,,t,25,"[{""col"":""tipo_prestazione_descrizione"",""dir"":""asc""},{""col"":""versione"",""dir"":""desc""}]",t,2026-10-31 00:00:00,mctit
-108,108,parametri_impostazioni_default,Vista standard impostazioni,sistema,,,t,25,"[{""col"":""code"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
-109,109,vendite_note_default,Vista standard note di un documento,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
-110,110,catalogo_note_default,Vista standard note di un articolo,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
-111,111,articolo_uom_default,Vista standard unita di misura di un articolo,sistema,,,t,25,"[{""col"":""uom_codice"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
-112,112,listini_versioni_default,Vista standard versioni di un listino,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-10-31 00:00:00,mctit
-113,113,ricerca_soggetti_default,Vista standard ricerca soggetti,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-10-31 00:00:00,mctit
+1,1,clienti_default,Vista standard clienti,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-07 00:00:00,SEED
+2,2,soggetti_default,Vista standard soggetti,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-22 00:00:00,SEED
+3,3,fornitori_default,Vista standard fornitori,sistema,,,t,50,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-05-24 00:00:00,SEED
+4,4,contratti_default,Vista standard contratti,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-02 00:00:00,SEED
+5,5,preventivi_default,Vista standard preventivi,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-03 00:00:00,SEED
+6,6,offerte_default,Vista standard offerte commerciali,sistema,,,t,25,"[{""col"":""validita_dal"",""dir"":""desc""}]",t,2026-06-03 00:00:00,SEED
+7,7,ordini_default,Vista standard ordini di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-06-03 00:00:00,SEED
+8,8,ddt_default,Vista standard DDT di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-07-15 00:00:00,SEED
+9,9,resi_default,Vista standard resi di vendita,sistema,,,t,25,,t,2026-07-18 00:00:00,SEED
+10,10,resi_da_accreditare_default,Vista standard coda accrediti,sistema,,,t,25,,t,2026-07-18 00:00:00,SEED
+11,11,resi_da_riconsegnare_default,Vista standard coda ri-consegne,sistema,,,t,25,,t,2026-07-18 00:00:00,SEED
+12,12,lotti_default,Vista standard lotti di fatturazione,sistema,,,t,25,,t,2026-07-30 00:00:00,SEED
+13,13,categorie_clienti_default,Vista standard categorie clienti,sistema,,,t,25,"[{""col"":""ordinamento"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+14,14,utilities_tipi_ruolo_default,Vista standard matrice utility / ruoli,sistema,,,t,25,"[{""col"":""utility_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+15,15,indirizzi_default,Vista standard indirizzi,sistema,,,t,25,"[{""col"":""indirizzo_normalizzato"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+16,16,tipi_ruolo_tipi_indirizzo_default,Vista standard matrice ruoli / indirizzi,sistema,,,t,25,"[{""col"":""tipo_ruolo_descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+17,17,pratiche_default,Vista standard pratiche,sistema,,,t,10,"[{""col"":""data_apertura"",""dir"":""desc""}]",t,2026-07-31 00:00:00,SEED
+18,18,emittenti_fiscali_default,Vista standard emittenti fiscali,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+19,19,emittente_billing_account_default,Vista standard billing account emittente,sistema,,,t,10,"[{""col"":""billing_account_codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+20,20,uom_tipi_default,Vista standard tipi di unita di misura,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+21,21,unita_misura_default,Vista standard unita di misura,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-07-31 00:00:00,SEED
+22,22,conversioni_uom_default,Vista standard conversioni UoM,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-07-31 00:00:00,SEED
+23,23,promo_articoli_default,Vista standard promozioni articolo,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,SEED
+24,24,template_documenti_default,Vista standard template documenti,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+25,25,template_asset_default,Vista standard asset template,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+26,26,articoli_default,Vista standard articoli,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+27,27,listini_default,Vista standard listini,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+28,28,operatori_default,Vista standard operatori,sistema,,,t,25,"[{""col"":""soggetto_cognome"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+29,29,email_account_default,Vista standard account email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+30,30,email_template_default,Vista standard template email,sistema,,,t,25,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-08-01 00:00:00,SEED
+31,31,email_log_default,Vista standard log email,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-01 00:00:00,SEED
+32,32,audit_log_default,Vista standard log di audit,sistema,,,t,25,"[{""col"":""timestamp"",""dir"":""desc""}]",t,2026-08-01 00:00:00,SEED
+33,33,categorie_listini_default,Vista standard listini per categoria,sistema,,,t,25,"[{""col"":""valido_al"",""dir"":""desc""}]",t,2026-08-01 00:00:00,SEED
+34,34,coda_lavori_default,Vista standard coda lavori,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,SEED
+35,35,coda_stampa_default,Vista standard coda stampa,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,SEED
+36,36,approvazioni_prezzo_default,Vista standard approvazioni prezzo,sistema,,,t,25,"[{""col"":""data_insert"",""dir"":""desc""}]",t,2026-08-02 00:00:00,SEED
+37,37,listini_righe_default,Vista standard righe versione listino,sistema,,,t,10,"[{""col"":""articolo_descrizione"",""dir"":""asc""}]",t,2026-08-03 00:00:00,SEED
+38,38,commesse_attivita_default,Vista standard attivita commessa,sistema,,,t,10,,t,2026-08-03 00:00:00,SEED
+39,39,dash_aperto_documenti_default,Vista standard situazione aperta,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,SEED
+40,40,dash_backlog_documenti_default,Vista standard backlog,sistema,,,t,25,"[{""col"":""anzianita_giorni"",""dir"":""desc""}]",t,2026-08-03 00:00:00,SEED
+41,41,dash_competenza_errori_default,Vista standard errori competenza,sistema,,,t,10,"[{""col"":""data_evento"",""dir"":""desc""}]",t,2026-08-03 00:00:00,SEED
+42,42,dash_competenza_gruppi_default,Vista standard gruppi fatturabili,sistema,,,t,25,"[{""col"":""valore"",""dir"":""desc""}]",t,2026-08-03 00:00:00,SEED
+43,43,dash_competenza_commesse_default,Vista standard drill-down commesse,sistema,,,t,25,"[{""col"":""valore_tot"",""dir"":""desc""}]",t,2026-08-03 00:00:00,SEED
+44,44,fondi_fattura_da_decidere_default,Vista standard fondi da decidere,sistema,,,t,50,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-15 00:00:00,SEED
+45,45,lotto_fatture_default,Vista standard documenti del lotto,sistema,,,t,10,,t,2026-08-22 00:00:00,SEED
+46,46,lotto_task_runs_default,Vista standard tentativi dei task,sistema,,,t,10,"[{""col"":""started_at"",""dir"":""desc""}]",t,2026-08-22 00:00:00,SEED
+47,47,lotto_segnalazioni_default,Vista standard segnalazioni del lotto,sistema,,,t,10,"[{""col"":""livello"",""dir"":""desc""}]",t,2026-08-22 00:00:00,SEED
+48,48,fatture_default,Vista standard fatture di vendita,sistema,,,t,25,"[{""col"":""data"",""dir"":""desc""}]",t,2026-08-24 00:00:00,SEED
+49,49,dash_competenza_residui_default,Vista standard residui da riportare,sistema,,,t,25,"[{""col"":""competenza_mese"",""dir"":""asc""}]",t,2026-08-27 00:00:00,SEED
+50,50,distinte_default,Vista standard distinte contabili,sistema,,,t,25,"[{""col"":""data_contabile"",""dir"":""desc""}]",t,2026-08-25 00:00:00,SEED
+51,51,righe_default,Vista standard righe contabili da lavorare,sistema,,,t,25,"[{""col"":""data_pagamento"",""dir"":""desc""}]",t,2026-08-25 00:00:00,SEED
+52,52,rate_fuori_capienza_default,Vista standard rate fuori capienza,sistema,,,t,25,"[{""col"":""data_scadenza"",""dir"":""desc""}]",t,2026-08-25 00:00:00,SEED
+53,53,eccedenze_default,Vista standard eccedenze da sistemare,sistema,,,t,25,"[{""col"":""eccedenza_cliente"",""dir"":""desc""}]",t,2026-08-25 00:00:00,SEED
+54,54,registri_numerazione_default,Vista standard registri di numerazione,sistema,,,t,10,"[{""col"":""codice"",""dir"":""asc""}]",t,2026-09-01 00:00:00,SEED
+55,55,famiglie_documento_default,Vista standard famiglie di documento,sistema,,,t,25,"[{""col"":""codice_interno"",""dir"":""asc""}]",t,2026-09-01 00:00:00,SEED
+56,56,lista_definizione_default,Vista standard definizioni di lista,sistema,,,t,,,t,2026-09-02 00:00:00,SEED
+57,57,lista_colonna_default,Vista standard catalogo colonne,sistema,,,t,,,t,2026-09-02 00:00:00,SEED
+58,58,lista_preset_default,Vista standard preset,sistema,,,t,,,t,2026-09-02 00:00:00,SEED
+59,59,lista_colonna_permesso_default,Vista standard permessi colonna,sistema,,,t,,,t,2026-09-02 00:00:00,SEED
+60,60,canali_incasso_default,Vista standard canali di incasso,sistema,,,t,25,,t,2026-09-02 00:00:00,SEED
+61,61,sistemazioni_fattura_default,Vista standard atti di sistemazione,sistema,,,t,10,,t,2026-09-02 00:00:00,SEED
+62,62,soggetto_titoli_iva_default,Vista standard titoli IVA soggetto,sistema,,,t,10,,t,2026-09-02 00:00:00,SEED
+63,63,titoli_iva_sfondati_default,Vista standard titoli IVA sfondati,sistema,,,t,25,,t,2026-09-02 00:00:00,SEED
+64,64,titolo_iva_ambiti_default,Vista standard ambiti del titolo,sistema,,,t,10,,t,2026-09-02 00:00:00,SEED
+65,65,titolo_iva_movimenti_default,Vista standard registro movimenti,sistema,,,t,10,,t,2026-09-02 00:00:00,SEED
+66,66,processi_default,Vista standard processi automatici,sistema,,,t,25,"[{""col"":""canale"",""dir"":""asc""}]",t,2026-09-05 00:00:00,SEED
+67,67,lotto_gruppi_default,Vista standard documenti presi in carico,sistema,,,t,10,,t,2026-09-06 00:00:00,SEED
+68,68,rate_default,Vista standard rate da incassare,sistema,,,t,10,"[{""col"":""data_scadenza"",""dir"":""asc""}]",t,2026-09-17 00:00:00,SEED
+69,69,distinta_righe_default,Vista standard righe di una distinta,sistema,,,t,10,,t,2026-09-18 00:00:00,SEED
+70,70,inventari_default,Vista standard inventari di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,SEED
+71,71,inventario_righe_default,Vista standard righe di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,SEED
+72,72,inventario_piano_default,Vista standard piano di un inventario,sistema,,,t,10,,t,2026-09-18 00:00:00,SEED
+73,73,rettifiche_default,Vista standard rettifiche di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,SEED
+74,74,rettifica_righe_default,Vista standard righe di una rettifica,sistema,,,t,10,,t,2026-09-18 00:00:00,SEED
+75,75,disponibilita_default,Vista standard disponibilita' per articolo e magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,SEED
+76,76,disponibilita_articoli_default,Vista standard disponibilita' per articolo,sistema,,,t,25,,t,2026-09-18 00:00:00,SEED
+77,77,movimenti_default,Vista standard registro dei movimenti di magazzino,sistema,,,t,25,,t,2026-09-18 00:00:00,SEED
+78,78,error_log_default,Vista standard registro degli errori tecnici,sistema,,,t,25,"[{""col"":""occurred_at"",""dir"":""desc""}]",t,2026-09-19 00:00:00,SEED
+79,79,giornale_default,Vista standard giornale degli eventi,sistema,,,t,25,"[{""col"":""quando"",""dir"":""desc""}]",t,2026-09-19 00:00:00,SEED
+80,80,magazzini_default,Vista standard magazzini,sistema,,,t,25,,t,2026-09-21 00:00:00,SEED
+81,81,ubicazioni_default,Vista standard ubicazioni di un magazzino,sistema,,,t,10,,t,2026-09-21 00:00:00,SEED
+82,82,lotti_default,Vista standard lotti di un articolo,sistema,,,t,10,"[{""col"":""data_arrivo"",""dir"":""desc""}]",t,2026-09-21 00:00:00,SEED
+83,83,sessioni_attive_default,Vista standard sessioni attive,sistema,,,t,25,"[{""col"":""data_ultimo_evento"",""dir"":""desc""}]",t,2026-09-27 00:00:00,SEED
+84,84,documenti_sorgente_default,Vista standard documenti generati di una sorgente,sistema,,,t,10,"[{""col"":""generato_at"",""dir"":""desc""}]",t,2026-09-27 00:00:00,SEED
+85,85,flussi_default,Vista standard flussi di una pratica,sistema,,,t,10,"[{""col"":""sequenza"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+86,86,utilities_tipi_ruolo_usage_default,Vista standard emittenti che usano la matrice,sistema,,,t,10,"[{""col"":""emittente_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+87,87,reparti_default,Vista standard reparti,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+88,88,template_versioni_default,Vista standard versioni di un template,sistema,,,t,10,"[{""col"":""versione"",""dir"":""desc""}]",t,2026-09-27 00:00:00,SEED
+89,89,preventivo_revisioni_default,Vista standard revisioni di un preventivo,sistema,,,t,10,"[{""col"":""rev"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+90,90,offerta_revisioni_default,Vista standard revisioni di un'offerta commerciale,sistema,,,t,10,"[{""col"":""revisione_numero"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+91,91,regioni_default,Vista standard regioni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+92,92,province_default,Vista standard province,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+93,93,stati_default,Vista standard stati,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+94,94,comuni_default,Vista standard comuni,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+95,95,codici_postali_default,Vista standard codici postali,sistema,,,t,25,"[{""col"":""comune_descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+96,96,toponomastica_default,Vista standard toponomastica,sistema,,,t,25,"[{""col"":""descrizione"",""dir"":""asc""}]",t,2026-09-27 00:00:00,SEED
+97,97,preventivo_righe_default,Vista standard righe di un preventivo,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+98,98,ordine_righe_default,Vista standard righe di un ordine,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+99,99,ddt_righe_default,Vista standard righe di un DDT,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+100,100,reso_righe_default,Vista standard righe di un reso,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+101,101,articolo_componenti_default,Vista standard distinta base,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-09-28 00:00:00,SEED
+102,102,fattura_righe_default,Vista standard righe di una fattura,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+103,103,contratto_righe_default,Vista standard righe di un contratto,sistema,,,t,10,,t,2026-09-28 00:00:00,SEED
+104,104,accessi_altri_default,Vista standard altri accessi,sistema,,,t,25,"[{""col"":""nome_visualizzato"",""dir"":""asc""}]",t,2026-10-02 00:00:00,SEED
+105,105,accessi_sistema_default,Vista standard accessi di sistema,sistema,,,t,25,"[{""col"":""username"",""dir"":""asc""}]",t,2026-10-02 00:00:00,SEED
+106,106,offerta_righe_default,Vista standard righe di un'offerta,sistema,,,t,10,,t,2026-10-05 00:00:00,SEED
+107,107,definizioni_workflow_default,Vista standard definizioni di workflow,sistema,,,t,25,"[{""col"":""tipo_prestazione_descrizione"",""dir"":""asc""},{""col"":""versione"",""dir"":""desc""}]",t,2026-10-31 00:00:00,SEED
+108,108,parametri_impostazioni_default,Vista standard impostazioni,sistema,,,t,25,"[{""col"":""code"",""dir"":""asc""}]",t,2026-10-31 00:00:00,SEED
+109,109,vendite_note_default,Vista standard note di un documento,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,SEED
+110,110,catalogo_note_default,Vista standard note di un articolo,sistema,,,t,25,"[{""col"":""posizione"",""dir"":""asc""},{""col"":""seq"",""dir"":""asc""}]",t,2026-10-31 00:00:00,SEED
+111,111,articolo_uom_default,Vista standard unita di misura di un articolo,sistema,,,t,25,"[{""col"":""uom_codice"",""dir"":""asc""}]",t,2026-10-31 00:00:00,SEED
+112,112,listini_versioni_default,Vista standard versioni di un listino,sistema,,,t,10,"[{""col"":""valido_dal"",""dir"":""desc""}]",t,2026-10-31 00:00:00,SEED
+113,113,ricerca_soggetti_default,Vista standard ricerca soggetti,sistema,,,t,25,"[{""col"":""ragione_sociale_completa"",""dir"":""asc""}]",t,2026-10-31 00:00:00,SEED
