@@ -9,7 +9,7 @@
 > • [vendite.fatture](/dbzero/vendite/tabelle/fatture)    
 >
 ### 🎯 Scopo Principale
-(last review)
+(latest review 21-11-2026)
 `anagrafiche.emittenti_fiscali` rappresenta l’anagrafica **degli emittenti fiscali** disponibili
 nel sistema. Ogni emittente e` un ruolo (`soggetti_ruoli`) con configurazioni operative
 utili al ciclo di fatturazione.
@@ -80,6 +80,27 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
   della matrice `config.utilities_tipi_ruolo`; la tabella
   `anagrafiche.emittenti_fiscali_utilities` e` opzionale e contiene solo
   parametri specifici quando servono.
+
+---
+
+### L'emittente appartiene al suo soggetto
+
+* `soggetto_ruolo_id` è l'**identità** dell'emittente: un emittente fiscale è
+  l'emittente di un soggetto, e non passa a un altro ruolo. Dare all'emittente un
+  ruolo diverso vorrebbe dire creare un altro emittente. Quello creato sul
+  soggetto sbagliato si ritira e si ricrea.
+* La colonna la blocca il lock di colonna del registro
+  `dbops.automation_lock_columns`, con il codice `E_EMITTENTE_SOGGETTO_IMMUTABILE`.
+  Riscrivere lo stesso valore è ammesso, cambiarlo no. Il ruolo, a sua volta, non
+  cambia soggetto (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE` su
+  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)): tutta
+  la catena emittente → ruolo → soggetto è immutabile.
+* Il form la mostra non modificabile perché la colonna compare in
+  [dbops.vw_non_editable_fields](/dbzero/dbops/views/vw_non_editable_fields).
+* Il controllo del ruolo
+  ([trgfn_emittenti_fiscali_guard_ruolo_emi_fis](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_guard_ruolo_emi_fis))
+  verifica che il ruolo sia di emittente fiscale (`EF`), non che resti lo stesso:
+  quel compito è del lock, che scatta per primo.
 
 ---
 
