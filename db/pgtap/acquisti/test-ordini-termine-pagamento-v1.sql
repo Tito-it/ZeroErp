@@ -44,19 +44,24 @@ SELECT is(
       WHERE c.conrelid = 'acquisti.ordini'::regclass AND c.contype = 'f'
         AND c.confrelid = 'config.termini_pagamento'::regclass
         AND a.attname = 'termine_pagamento_id'),
-    (SELECT format('%s|%s', c.confupdtype, c.confdeltype)
+    -- L'atteso non e' mai NULL: senza la FK di riferimento su vendite.ordini
+    -- i due lati sarebbero NULL (anche senza la FK di acquisti) e is() li
+    -- darebbe uguali (verde a vuoto).
+    COALESCE((SELECT format('%s|%s', c.confupdtype, c.confdeltype)
        FROM pg_catalog.pg_constraint c
        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
       WHERE c.conrelid = 'vendite.ordini'::regclass AND c.contype = 'f'
         AND c.confrelid = 'config.termini_pagamento'::regclass
-        AND a.attname = 'termine_pagamento_id'),
+        AND a.attname = 'termine_pagamento_id'), '<FK di riferimento assente su vendite.ordini>'),
     '3. la FK del termine ha le azioni di quella di vendite.ordini');
 
 SELECT is(
     (SELECT format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a
       WHERE a.attrelid = 'acquisti.ordini'::regclass AND a.attname = 'termine_pagamento_id'),
-    (SELECT format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a
+    -- Stesso presidio: senza la colonna di riferimento i due lati sarebbero NULL.
+    COALESCE((SELECT format_type(a.atttypid, a.atttypmod) FROM pg_catalog.pg_attribute a
       WHERE a.attrelid = 'vendite.ordini'::regclass AND a.attname = 'termine_pagamento_id'),
+             '<colonna di riferimento assente su vendite.ordini>'),
     '4. termine_pagamento_id ha il tipo della colonna di vendite.ordini');
 
 SELECT * FROM finish();

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_run_automations_attivo`
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -8,13 +8,15 @@
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO`: ambito, template dei nomi, parametri
 > * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK che il motore non lega
+> * [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni) — le FK senza `_id` che il motore lega comunque
 > * [dbops.automation_overrides_cols](/dbzero/dbops/tabelle/automation_overrides_cols) — il nome della colonna attivo, quando non è `attivo`
 >
 > Approfondimento funzioni:
 >
 > * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — il block che monta sul padre
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il require che monta sul figlio
-> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — toglie i trigger delle FK diventate eccezione
+> * [dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) — dice se una FK resta fuori, e perché
+> * [dbops.fn_ritira_attivo_eccezioni](/dbzero/dbops/funzioni/fn_ritira_attivo_eccezioni) — toglie i trigger delle FK che il motore non lega
 > * [dbops.fn_ritira_attivo_orfani](/dbzero/dbops/funzioni/fn_ritira_attivo_orfani) — toglie i trigger che nominano oggetti spariti
 > * [dbops.fn_trigger_exists_require_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_require_by_args) — il controllo di esistenza per argomenti del require
 > * [dbops.fn_trigger_exists_block_by_args](/dbzero/dbops/funzioni/fn_trigger_exists_block_by_args) — il controllo di esistenza per argomenti del block
@@ -52,7 +54,15 @@ Il motore lavora per **relazione FK**, non per tabella. Una FK entra quando:
 * il **padre ha la colonna attivo** (col nome di `automation_overrides_cols`, se c'è): senza, la FK
   si salta. Il caso «solo il figlio ha `attivo`» non è gestito, di proposito;
 * non è dichiarata in `dbops.automazione_attivo_eccezioni`;
-* la colonna FK finisce in `_id`: le FK su codici testuali non si legano.
+* la colonna FK finisce in `_id`, **oppure** la FK è dichiarata in
+  `dbops.automazione_attivo_inclusioni`: le altre FK su codici testuali non si legano.
+
+Le ultime due condizioni le risponde
+[dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa), la stessa sede che legge il
+ritiro: un'eccezione prevale anche su un'inclusione. ⚠️ Il predicato `_id` è un `LIKE '%_id'` col
+`_` jolly, com'è sempre stato. Le prime inclusioni (2026-11-21) sono le due FK `regime_fiscale_rf`
+verso `config.regimi_fiscali(codice_interno)`: un regime spento non si assegna, uno in uso non si
+spegne.
 
 Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo
 guarda.
@@ -110,8 +120,8 @@ regola, vera se manca; è l'**unica** chiave dei parametri che il motore legge. 
 ### Chi genera ritira
 
 Fuori dal dry run, prima di guardare le FK, il motore chiama `dbops.fn_ritira_attivo_eccezioni` e
-`dbops.fn_ritira_attivo_orfani`. Il primo toglie i trigger delle FK diventate eccezione dopo
-essere state legate; il secondo quelli che nominano una tabella o una colonna che non esiste più,
+`dbops.fn_ritira_attivo_orfani`. Il primo toglie i trigger delle FK che il motore non lega più:
+una FK diventata eccezione, o una FK senza `_id` tolta dal registro delle inclusioni; il secondo quelli che nominano una tabella o una colonna che non esiste più,
 come il block rimasto su un padre dopo l'eliminazione della figlia. I due ritiri guardano tutto il
 database, non solo l'ambito del giro.
 
@@ -141,6 +151,9 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
   ramo fuori dal dry run.
 * `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — la FK dichiarata eccezione non ha
   trigger, e il motore continua a legare le altre FK della stessa figlia.
+* `db/pgtap/dbops/test-automazione-attivo-inclusioni-v1.sql` — le FK incluse hanno require e
+  block; la risposta di `fn_attivo_fk_esclusa` nei quattro casi; il regime spento rifiutato, quello
+  in uso che non si spegne, il ruolo spento che lo tiene e non si riaccende.
 * `db/pgtap/dbops/test-attivo-due-fk-stessa-coppia-v1.sql` — due FK della stessa coppia hanno due
   require e due block con nomi diversi; un secondo giro non ricrea niente; il trigger col nome di
   prima si rigenera.
@@ -158,6 +171,8 @@ presidio dei job lo attribuisca all'esercizio e non allo sviluppo.
 * 2026-10-16 — un guasto dell'ambiente si rilancia col suo SQLSTATE invece di diventare `P0001`
   (`brief-db-presidio-job-run-a-chi-tocca`).
 * 2026-10-21 — il ritiro degli orfani in testa al giro (`brief-be-utenti-di-sviluppo` §9.5).
+* 2026-11-21 — il registro delle inclusioni e il building block `fn_attivo_fk_esclusa`: le FK
+  senza `_id` dichiarate si legano (regime fiscale di emittente e fornitore).
 * 2026-11-08 — il trigger si riconosce dagli argomenti: la strategia d'esistenza della regola esce;
   quando due FK darebbero lo stesso nome sulla stessa tabella l'hash della FK entra sempre, e il
   trigger vivo col nome di prima si rigenera; i template vengono solo dal registro (`20261109-72`,

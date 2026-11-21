@@ -49,6 +49,12 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
   Un emittente attivo senza conferma compare nel presidio
   [dbops.vw_emittenti_regime_non_confermato](/dbzero/dbops/views/vw_emittenti_regime_non_confermato).
   Brief: `brief-db-esigibilita-iva-per-cassa-emittente` (D-1, D-9, D-11, sezione 10).
+* ⭐ Un regime **spento** non si assegna a un emittente acceso (`E_ATTIVO_PADRE_NON_ATTIVO`, col
+  campo `regime_fiscale_rf` nel contesto), e un regime che un emittente acceso usa non si spegne
+  (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`). Un emittente spento tiene il suo regime anche se il regime si
+  spegne, ma riaccenderlo è rifiutato finché non gli si dà un regime acceso. Dal 2026-11-21:
+  revoca la decisione del 2026-10-01 per cui un emittente poteva tenere un regime che il catalogo
+  spegne. La regola completa sta in [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali).
 * `bollo_auto`, `bollo_soglia`, `valuta_id` e `rounding_policy` sono configurazioni
   operative dell'emissione e appartengono al ruolo emittente.
 * `rounding_policy`, quando valorizzata, usa gli stessi valori ammessi della

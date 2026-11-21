@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -134,6 +134,7 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
 * `automazione_attivo_eccezioni` — le **FK** che la regola ATTIVO non lega: per una riga (schema, tabella **figlia**, colonna FK) il motore non genera né il block sul padre né il require sul figlio, e ritira quelli già generati. Ogni riga porta il suo **motivo**, obbligatorio: un'eccezione senza perché è un buco nel framework. È **per FK, non per tabella**: le altre coppie della stessa figlia restano legate. Dettaglio in §4.2, «Le eccezioni».
   ⚠️ Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
+* `automazione_attivo_inclusioni` — il verso opposto: le **FK senza il suffisso `_id`** che la regola ATTIVO lega comunque, una per riga col suo motivo. Dettaglio in §4.2, «Le inclusioni».
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup: per una tabella esclusa nessuno scrive la scadenza (né il giro né il trigger alla nascita) e nessuno cancella righe
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 * `storico_scope_policy` — per ogni tabella storicizzata, da dove si prende l'azienda emittente da congelare nella sua storia (vedi §3.4)
@@ -313,7 +314,7 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 * **Nessuna cascata automatica** sui figli
 * La regola si applica solo se il padre possiede la colonna `attivo`
 * Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo guarda
-* Solo FK a **una colonna**, con colonna che termina in `_id` (esclude le FK composte e i riferimenti a codici testuali)
+* Solo FK a **una colonna**, con colonna che termina in `_id` (esclude le FK composte e i riferimenti a codici testuali), salvo le FK dichiarate fra le **inclusioni** (sotto)
 
 **Trigger generati:**
 
@@ -340,6 +341,12 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | `vendite.fatture_stampa_coda.tipo_documento_output_id` | la coda di stampa è un **outbox**: il worker aggiorna la riga a ogni passaggio, e il require scatterebbe su ogni aggiornamento; con un tipo di documento spento si fermerebbe il lotto intero, e il block impedirebbe di spegnere un tipo finché una riga storica lo nomina. Se un tipo può stampare lo decide la risoluzione del modello al drenaggio |
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
+
+**Le inclusioni: una FK su un codice che si lega comunque.** Il filtro `_id` esclude le FK verso un codice testuale. Quando una di queste è un vero legame padre/figlio, si dichiara in [`dbops.automazione_attivo_inclusioni`](/dbzero/dbops/tabelle/automazione_attivo_inclusioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_inclusioni.csv`): il motore genera la coppia intera, block e require, con la colonna del padre che la FK referenzia davvero. Se una FK si lega lo dice una funzione sola, [`dbops.fn_attivo_fk_esclusa`](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa), che leggono sia il motore sia il ritiro: un'eccezione prevale anche su un'inclusione, e togliere una riga ritira i suoi trigger al giro successivo. ⚠️ Un trigger ATTIVO montato **a mano** su una FK senza `_id` va dichiarato qui, o il ritiro lo toglie. Il presidio è `db/pgtap/dbops/test-automazione-attivo-inclusioni-v1.sql`.
+
+| Figlia · FK | Perché |
+| --- | --- |
+| `anagrafiche.emittenti_fiscali.regime_fiscale_rf`, `anagrafiche.fornitori.regime_fiscale_rf` | un **regime fiscale spento non si assegna**, e uno in uso non si spegne. Le due FK puntano a `config.regimi_fiscali(codice_interno)`. Contano i ruoli accesi: un emittente o un fornitore spento tiene il suo regime, ma non si riaccende finché non ne ha uno acceso |
 
 ⚠️ **Una figlia senza `attivo` che è una parte del padre va fra le eccezioni.** Senza `attivo` sulla figlia il block conta **ogni** sua riga. Se la figlia è composizione del padre (righe di composizione, pivot, preferenze) il padre non si spegnerebbe mai: quella FK si dichiara qui. Il guard resta fra due entità che hanno entrambe `attivo`.
 
