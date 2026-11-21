@@ -58,6 +58,28 @@ dell'utente e della veste corrente, e fuori dalla veste di operatore negano tutt
 Un widget acceso chiede area e azione accese, a fine transazione; un'area o un'azione non si spengono
 finché un widget acceso le cita.
 
+**Con un'azione, l'area è nulla oppure quella dell'azione.** Un'azione appartiene a un'area, e un widget
+non può dichiarare un'area diversa: lo tiene la FK composita `fk_ui_widget_azione_della_sua_area`, da
+(`azione_id`, `area_id`) verso (`id`, `area_id`) dell'azione. Con uno dei due vuoto non si controlla.
+Tiene anche l'altro verso: un'azione non cambia area finché un widget la cita insieme all'area.
+
+---
+
+### Una home senza card è un esito
+
+Dopo il filtro dei permessi l'elenco dei widget può restare vuoto: per esempio, un utente senza l'area di
+nessun widget del pool. Il database non lo impedisce e non aggiunge card di riempimento: la regola è che la
+home non resti **muta**, e lo stato vuoto lo dice il frontend, distinguendo «nessuna card attiva» da
+«nessuna card disponibile per il tuo profilo». Per questo la card di benvenuto, senza area né azione, è
+spenta nel seed.
+
+---
+
+### Lo scrive solo il migratore
+
+Il catalogo dei widget lo possiede il CSV del seed. L'applicazione lo legge e non lo scrive: ha il solo
+`SELECT`. Un widget nuovo, o una correzione, è una riga del CSV.
+
 ---
 
 ### Spento, sparisce a tutti
@@ -70,14 +92,8 @@ da un preset non si cancella.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **«Mai vuota» non è garantita.** La risoluzione ripiega fino al catalogo del pool, ma il filtro dei
-  permessi viene dopo: a un utente senza permessi resta qualcosa solo se il pool ha un widget acceso
-  senza area né azione. Nessun vincolo lo chiede.
-* **Area e azione possono non essere coerenti.** Un'azione appartiene a un'area, e il widget può dichiarare
-  un'area diversa da quella della sua azione.
 * **La chiave del contatore non è controllata.** Il database accetta qualunque testo; l'elenco delle chiavi
   che il backend sa calcolare sta solo nel backend.
-* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
 
@@ -85,7 +101,9 @@ da un preset non si cancella.
 
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un widget acceso su un'area o un'azione spente, a fine transazione.
 * `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` — lo spegnimento di un'area o di un'azione che un widget acceso cita.
-* Il codice ripetuto arriva come violazione di `uq_ui_widget_codice`.
+* Il codice ripetuto arriva come violazione di `uq_ui_widget_codice`; un'area diversa da quella
+  dell'azione, come violazione di `fk_ui_widget_azione_della_sua_area`. Tutte e due le legge chi scrive il
+  seed.
 
 ---
 
@@ -94,6 +112,8 @@ da un preset non si cancella.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — il widget con area che l'utente non vede, il widget
   spento che sparisce anche dalla preferenza, i campi opachi restituiti freschi.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — le regole ATTIVO verso area e azione.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — l'area dell'azione, la porta in sola lettura, i testi
+  non vuoti.
 
 ---
 
@@ -103,6 +123,7 @@ da un preset non si cancella.
 * 2026-11-08 — lo schema `ui` entra nell'ambito delle automazioni: audit del framework e regola ATTIVO.
 * 2026-11-21 — codice, etichetta, chiave di traduzione e chiave del contatore non sono mai la
   stringa vuota (un CHECK per colonna).
+* 2026-11-21 — con un'azione, l'area è nulla o quella dell'azione; l'applicazione perde la scrittura.
 
 ---
 

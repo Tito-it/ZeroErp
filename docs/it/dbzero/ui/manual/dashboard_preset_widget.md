@@ -72,13 +72,17 @@ widget, e contarli come figli vivi impedirebbe di spegnerlo; un widget proposto 
 stesso. Spegnere il widget lo toglie dal preset alla risoluzione. Cancellare il preset cancella le sue
 righe; un widget proposto da un preset non si cancella (FK senza azione).
 
+### Lo scrive solo il migratore
+
+La tabella la possiede il CSV del seed, come il resto del catalogo delle dashboard: l'applicazione la legge
+e non la scrive (ha il solo `SELECT`).
+
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
 * **Un widget spento non cambia la data del contenuto.** Il preset perde una card senza che il banner si
   accenda.
-* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
 
@@ -109,6 +113,7 @@ un'altra dashboard arrivano come violazioni di vincolo.
 * 2026-11-21 — nasce `dashboard_id`, scritta dal database, con i due vincoli composti verso il preset e
   il pool della stessa dashboard. Le righe che proponevano un widget fuori dal pool sono state tolte;
   prima la risoluzione le scartava, e il preset restava la base.
+* 2026-11-21 — l'applicazione perde la scrittura: la composizione la scrive solo il migratore.
 
 ---
 

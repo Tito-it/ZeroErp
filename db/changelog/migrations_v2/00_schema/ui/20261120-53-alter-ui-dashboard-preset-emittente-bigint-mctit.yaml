@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.dashboard_preset.emittente_fiscale_id: da integer a bigint, il tipo di
+#   anagrafiche.emittenti_fiscali.id e del gemello ui.lista_preset.emittente_fiscale_id.
+#   Brief: brief-db-revisione-ui (giro 5, U35).
+#
+# Perche': la colonna e' una FK verso una chiave bigint. Con integer un id
+#   d'azienda oltre il limite non si potrebbe citare, e chi legge la colonna
+#   deve convertire (ui.fn_preset_di_base portava un cast ::bigint solo per
+#   allineare le due famiglie).
+#
+# Che cosa blocca l'ALTER TYPE (letto da pg_depend su dbdev, 2026-11-21):
+#   · ui.fn_preset_di_base, corpo BEGIN ATOMIC: si toglie qui e si ricrea in
+#     20261120-54, nello stesso rilascio (linee-guida-sql §5c);
+#   · trg_dashboard_preset_a10_lock_columns_upd, il lucchetto del posto
+#     (UPDATE OF emittente_fiscale_id): lo genera il runner dei lucchetti in
+#     90_end dal registro dbops.automation_lock_columns. Si toglie con IF
+#     EXISTS (su un database da zero nasce dopo, in 90_end) e lo rimonta il
+#     runner in 90_end/20261120-62. Fra i due changeSet il posto del preset non
+#     ha il lucchetto: e' la finestra del migrate, in cui l'app non scrive.
+#   FK, indice della FK, UNIQUE del posto e CHECK dell'ambito si adeguano da
+#   soli con l'ALTER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-53-alter-ui-dashboard-preset-emittente-bigint-mctit.yaml
+
+  - changeSet:
+      id: 20261120-53-alter-ui-dashboard-preset-emittente-bigint
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.dashboard_preset.emittente_fiscale_id a bigint, il tipo della chiave che cita. Toglie
+        ui.fn_preset_di_base (ricreata da 20261120-54) e il lucchetto del posto (rimontato da
+        90_end/20261120-62). Brief: brief-db-revisione-ui (giro 5, U35).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('ui.dashboard_preset')
+                 AND attname = 'emittente_fiscale_id' AND atttypid = 'integer'::regtype AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_dashboard_preset_a10_lock_columns_upd ON ui.dashboard_preset;
+
+              DROP FUNCTION ui.fn_preset_di_base(text, integer, integer, config.ruolo_applicativo, bigint);
+
+              ALTER TABLE ui.dashboard_preset
+                ALTER COLUMN emittente_fiscale_id TYPE bigint;
+
+              COMMENT ON COLUMN ui.dashboard_preset.emittente_fiscale_id IS
+                'L''azienda del preset (anagrafiche.emittenti_fiscali.id), valorizzata solo con ambito '
+                '''emittente_fiscale'' (chk_ui_dashboard_preset_ambito_refs). Fa parte del posto del preset: '
+                'non si riscrive (E_UI_PRESET_POSTO_IMMUTABILE). Il preset di un''azienda spenta non si applica.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il ritorno a integer chiede di nuovo di togliere la funzione e il
+              -- lucchetto: si fa a mano, con 20261120-54 e -62 annullati prima.
+              SELECT 1;

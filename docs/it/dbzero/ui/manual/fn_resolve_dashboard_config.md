@@ -15,6 +15,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [ui.fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice) — la dashboard accesa per codice
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — il gemello delle liste
 > * [ui.fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente) — la veste della sessione
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
@@ -92,8 +93,10 @@ volta per chiamata, e fuori dalla veste di operatore negano tutto. Ogni widget p
 i18n, tipo, collegamento, chiave del contatore e soglia letti da `ui.widget`: la preferenza e il preset
 portano solo codice, ordine e visibilità.
 
-Il catalogo garantisce una dashboard non vuota prima del filtro dei permessi, non dopo: a un utente che
-non vede nessun widget resta una dashboard vuota, se il pool non ha un widget senza area né azione.
+Dopo il filtro dei permessi l'elenco dei widget può essere vuoto, ed è un esito: a un utente che non vede
+nessun widget del pool la funzione risponde un elenco vuoto, non una card di riempimento. La home non resta
+muta perché lo stato vuoto lo dice il frontend («nessuna card attiva», «nessuna card disponibile per il tuo
+profilo»).
 
 ---
 
@@ -145,16 +148,13 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 * **Il preset di base può essere fatto di widget che l'utente non vede.** La scelta del preset guarda che
   abbia un widget acceso nel pool, non i permessi: un preset tutto protetto da permessi che l'utente non ha
   vince lo stesso, e la dashboard resta con le sole card aggiunte invisibili.
-* **La dimensione del preset non è controllata.** Zero o un negativo escono così come sono; la dimensione
-  della preferenza, invece, deve essere un intero da 1 a 100.
-* **La dashboard per codice ha una seconda copia nel backend**, che la cerca prima di scrivere una
-  preferenza; le liste hanno un building block per questa lettura.
 
 ---
 
 ### Codici errore
 
-* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta.
+* `E_UI_DASHBOARD_NON_TROVATA` — codice inesistente o dashboard spenta, dalla lettura per codice
+  ([fn_dashboard_da_codice](/dbzero/ui/funzioni/fn_dashboard_da_codice)).
 
 ---
 
@@ -171,6 +171,8 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 * `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — una riga malformata scritta senza il guard che non
   ferma la funzione (codice ripetuto preso una volta, ordine e visibilità dal pool); una card nuova del
   pool di un'area non concessa che non conta in `widget_nuovi`, e una senza area che conta.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — la dashboard spenta rifiutata, anche coi preset
+  accesi.
 * Nessun test costruisce il filtro per azione, il widget visibile con il permesso, il preset d'azienda della
   dashboard, il preset senza widget accesi che fa scendere la cascata, né «Ignora» (lo prova il gemello
   delle liste, sulla stessa funzione dello snapshot).
@@ -195,6 +197,8 @@ dall'azienda: il ripiego non allarga. Le mappe dei permessi restano chiuse fuori
 * 2026-11-21 — `widget_nuovi` si conta dopo il filtro dei permessi: prima contava anche le card che
   l'utente non può vedere. La lettura smette di cadere su una preferenza malformata, una voce senza codice
   non spegne più l'aggiunta dei widget nuovi, e la dimensione della preferenza vale solo da 1 a 100.
+* 2026-11-21 — la dashboard per codice la legge `ui.fn_dashboard_da_codice`, condivisa col backend; il
+  rifiuto non cambia.
 
 ---
 

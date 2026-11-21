@@ -263,8 +263,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   decisioni Q1-Q49 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
   giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) e giro 3 (le misure,
   `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
-  verdi il 2026-11-21: ora il commit e la doc auto-generata, poi il giro 5 (Q49 (a): la dashboard spenta come la lista). Al DB il `/verifica-db` dei giri 1a, 2, 3 e 4, poi i giri 5-6;
-  al BE/FE le ricadute dei giri 2, 3 e 4 (§3.2-bis, §3.3-bis, §3.4-bis).
+  verdi e committato il 2026-11-21. Giro 5 (il catalogo delle dashboard, `20261120-53` … `-62`, Q49 e Q50 (a): il
+  «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
+  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6;
+  al BE/FE le ricadute dei giri 2, 3, 4 e 5 (§3.2-bis, §3.3-bis, §3.4-bis, §3.5-bis).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

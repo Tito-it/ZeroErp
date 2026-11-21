@@ -598,7 +598,7 @@ E_UI_CAMPO_SORGENTE_NON_TROVATO,DATO_ERRATO,NULL,NULL,NULL
 E_UI_COLONNA_IN_USO,CONFLITTO_STATO,NULL,NULL,NULL
 E_UI_COLONNA_NON_TROVATA,NON_TROVATO,NULL,NULL,NULL
 E_UI_COLONNA_VALIDAZIONE,DATO_ERRATO,NULL,NULL,NULL
-E_UI_DASHBOARD_NON_TROVATA,NON_TROVATO,NULL,E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le · dashboard configurabili — sollevato da fn_resolve_dashboard_config · quando il codice dashboard non esiste o e' attivo=false.,NULL
+E_UI_DASHBOARD_NON_TROVATA,NON_TROVATO,NULL,"E_UI_DASHBOARD_NON_TROVATA: sollevato dal building block ui.fn_dashboard_da_codice (lo chiamano ui.fn_resolve_dashboard_config e il backend) quando il codice dashboard non esiste o la dashboard e' spenta. Gemello di E_UI_LISTA_NON_TROVATA.",NULL
 E_UI_DEFINIZIONE_IN_USO,CONFLITTO_STATO,NULL,NULL,NULL
 E_UI_DEFINIZIONE_NON_TROVATA,NON_TROVATO,NULL,NULL,NULL
 E_UI_DEFINIZIONE_VALIDAZIONE,DATO_ERRATO,NULL,NULL,NULL

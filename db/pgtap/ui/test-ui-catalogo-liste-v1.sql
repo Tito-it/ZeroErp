@@ -4,7 +4,7 @@
 --
 -- Test: il CATALOGO DELLE LISTE, giro 4.
 --   Brief: brief-db-revisione-ui, giro 4 (U22-U30, U37; Q13-Q18, Q32, Q35,
---   Q47, Q48).
+--   Q47, Q48); i casi 25-26 dal giro 5 (U31).
 --   ChangeSet: 00_schema/ui/20261120-43, -44; 20_code/ui/20261120-45 … -49;
 --   20_code/dbops/20261120-50; 90_end/20261120-51, -52; i registri in
 --   80_data/sql/dbops (automazione_attivo_eccezioni, automation_lock_columns).
@@ -57,8 +57,9 @@
 --   23) ... e una lista accesa sana non ci compare
 --   U28: i testi vuoti
 --   24) una vista_sql vuota e' rifiutata dal CHECK
---   25) un'etichetta di widget vuota e' rifiutata dal CHECK
---   26) una descrizione di dashboard vuota e' rifiutata dal CHECK
+--   U31 (giro 5): il catalogo delle dashboard non si scrive come applicazione
+--   25) l'INSERT di un widget: permesso negato
+--   26) l'INSERT di una dashboard: permesso negato
 --   U29: la veste NULL non allarga
 --   27) ⭐ con la veste NULL, la colonna sensibile concessa TUTTO dal profilo di
 --       un'altra veste resta BLOCCATO (il livello piu' restrittivo)
@@ -323,17 +324,25 @@ SELECT throws_ok(
     '23514', NULL,
     '24) una vista_sql vuota e'' rifiutata (chk_lista_definizione_vista_sql_non_vuota)');
 
+-- ============================================================
+-- 25-26) U31 (giro 5): il catalogo delle dashboard lo scrive solo il migratore
+-- ============================================================
+-- ⚠️ Fino al giro 4 i due casi provavano i CHECK dei testi vuoti di widget e
+--   dashboard. Dal giro 5 l'applicazione non scrive quelle tabelle (la porta di
+--   90_end/20261120-60): i CHECK si provano da owner in
+--   ui/test-ui-catalogo-dashboard-v1 (casi 20-21), e qui resta il rifiuto, che
+--   si vede solo come applicazione (rosso da owner per costruzione).
 SELECT throws_ok(
     $$ INSERT INTO ui.widget (codice, etichetta, tipo_widget, attivo, user_insert)
-       VALUES ('_pgtap_widget_vuoto', '', 'kpi', TRUE, '_pgtap') $$,
-    '23514', NULL,
-    '25) un''etichetta di widget vuota e'' rifiutata (chk_widget_etichetta_non_vuota)');
+       VALUES ('_pgtap_widget_app', 'Widget app', 'kpi', TRUE, '_pgtap') $$,
+    '42501', NULL,
+    '25) come app, l''INSERT di un widget: permesso negato');
 
 SELECT throws_ok(
     $$ INSERT INTO ui.dashboard_definizione (codice, descrizione, attivo, user_insert)
-       VALUES ('_pgtap.dash_vuota', ' ', TRUE, '_pgtap') $$,
-    '23514', NULL,
-    '26) una descrizione di dashboard vuota e'' rifiutata (chk_dashboard_definizione_descrizione_non_vuota)');
+       VALUES ('_pgtap.dash_app', 'Dashboard app', TRUE, '_pgtap') $$,
+    '42501', NULL,
+    '26) come app, l''INSERT di una dashboard: permesso negato');
 
 -- ============================================================
 -- 27-28) U29: la veste NULL non allarga

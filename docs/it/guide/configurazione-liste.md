@@ -38,6 +38,7 @@
 > **Vedi anche** — guide correlate:
 >
 > * [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni) — profili d'accesso e azioni di processo
+> * [Configurazione delle dashboard](/guide/configurazione-dashboard) — la gemella delle liste: la home a card
 > * [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti) — liste, colonne e preset proposti dal programma: che cosa si cambia, che cosa resta del programma, che cosa fa un aggiornamento
 
 ---
