@@ -36,10 +36,11 @@ __all__ = [
 
 E_UI_LISTA_NON_TROVATA = "E_UI_LISTA_NON_TROVATA"
 
-# Whitelist root del payload preferenza.
-_PAYLOAD_KEYS = frozenset(
-    {"colonne", "ordinamento", "filtri", "pagina_dimensione"}
-)
+# Whitelist root del payload preferenza. ⛔ `ordinamento` e `filtri` sono
+# usciti dalla preferenza (Q38/Q39 §6 di brief-db-revisione-ui, giro 2 del
+# 2026-11-21): l'ordinamento di partenza e' del preset, i filtri dello store.
+# Una delle due chiavi nel corpo e' un 400 come ogni chiave fuori whitelist.
+_PAYLOAD_KEYS = frozenset({"colonne", "pagina_dimensione"})
 # Whitelist di una singola colonna nella preferenza.
 _COLONNA_KEYS = frozenset(
     {"codice", "ordine", "larghezza", "visibile", "fissata"}
@@ -188,28 +189,6 @@ class ListaPreferenzaService:
                 colonne_raw, self._validate_colonna, campo="colonne",
                 message="Preferenza lista non valida.",
             )
-
-        # ordinamento: lista di oggetti {col, dir}; trasparente al BE
-        ordinamento = payload.get("ordinamento")
-        if ordinamento is not None:
-            ErrorManager.require(
-                isinstance(ordinamento, list),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail="Il campo 'ordinamento' deve essere una lista.",
-            )
-            config["ordinamento"] = ordinamento
-
-        # filtri: dict trasparente (formato deciso col componente Vue, §10.1.2)
-        filtri = payload.get("filtri")
-        if filtri is not None:
-            ErrorManager.require(
-                isinstance(filtri, dict),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza lista non valida.",
-                detail="Il campo 'filtri' deve essere un oggetto.",
-            )
-            config["filtri"] = filtri
 
         # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
         # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare il

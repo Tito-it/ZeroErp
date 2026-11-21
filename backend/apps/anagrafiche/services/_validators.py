@@ -1,11 +1,13 @@
 # Scopo: Helper di validazione/estrazione condivisi per i service anagrafiche.
 #        require_str, optional_str, extract_optional_fields, require_found,
 #        create_with_dedup, create_with_constraint_mapping, update_with_dedup,
-#        rifiuto_integrita (la traduzione di un IntegrityError per SQLSTATE).
+#        rifiuto_integrita (la traduzione di un IntegrityError per SQLSTATE),
+#        regime_nel_catalogo (la FK del regime fiscale in 400 sul campo).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any, NoReturn, TypeVar
 
 from django.db import IntegrityError
@@ -195,6 +197,41 @@ def create_with_constraint_mapping(
             # `rifiuto_integrita` porta a validazione), mai per FK o CHECK.
             rifiuto_integrita(exc, default_message)
         raise
+
+
+# Il campo del regime fiscale (FatturaPA, RF01…): stessa chiave del payload su
+# emittente e fornitore, FK su `config.regimi_fiscali.codice_interno` in tutti e due.
+CAMPO_REGIME_FISCALE = "regime_fiscale_rf"
+
+
+# Scopo: Traduce in 400 sul campo `regime_fiscale_rf` un codice di regime fuori
+#        catalogo, cioe' la FK `fk` (il nome del vincolo della tabella che il
+#        chiamante scrive) verso `config.regimi_fiscali`.
+#        ⚠️ Traduce SOLO quella FK: ogni altra IntegrityError si rilancia com'e',
+#        perche' il ripiego dei chiamanti (o il middleware) la gestisce gia' —
+#        un ripiego qui la maschererebbe da errore di regime. Per questo, dentro
+#        il blocco, `create_with_constraint_mapping` va chiamata SENZA
+#        `default_message`: col ripiego tradurrebbe lei la FK in `E_ANAG_FK`.
+#        Consumatori: emittenti fiscali (`fk_emittenti_fiscali_regimi_fiscali`)
+#        e fornitori (`fk_fornitori_regimi_fiscali`), creazione e PATCH.
+# ⭐ Regola del 2 (ok Tid, 2026-11-21): nasce dalla copia privata del service
+#    dell'emittente, quando il regime del fornitore e' passato sul catalogo.
+#    Resta fuori la regola sul VUOTO, che non e' la stessa: sull'emittente il
+#    regime e' NOT NULL e il vuoto e' un 400, sul fornitore e' nullable.
+@contextmanager
+def regime_nel_catalogo(fk: str) -> Iterator[None]:
+    try:
+        yield
+    except IntegrityError as exc:
+        if vincolo_violato(exc, [fk]) is None:
+            raise
+        ErrorManager.raise_error(
+            code=E_ANAG_VALIDAZIONE,
+            message="Regime fiscale non presente nel catalogo dei regimi.",
+            detail=str(exc),
+            context={"field": CAMPO_REGIME_FISCALE},
+            cause=exc,
+        )
 
 
 def update_with_dedup(fn: Any, duplicate_message: str, not_found_message: str) -> dict:

@@ -174,7 +174,8 @@ curl -X GET "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/?searc
 
 Restituisce lo stesso oggetto della lista (senza `id_fiscale_univoco_cf_piva`), con in piu' `valuta_descrizione`,
 `brand_meta` (jsonb opzionale per branding/metadati emittente) e, dal
-2026-10-01, `regime_fiscale_descrizione` (dal catalogo `config.regimi_fiscali`)
+2026-10-01, `regime_fiscale_descrizione` e, dal 2026-11-22, `regime_fiscale_codice` (il codice a video,
+distinto da `codice_interno` = `regime_fiscale_rf`; tutti e due dal catalogo `config.regimi_fiscali`)
 con `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` (entrambi
 `null` = regime mai confermato, vedi §4.2).
 
@@ -276,6 +277,7 @@ curl -X POST "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/" \
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` o `codice` mancanti, oppure soggetto senza P.IVA; `regime_fiscale_rf` vuoto/`null` o fuori catalogo (`error.fields` = `regime_fiscale_rf`) |
 | `E_ANAG_DUPLICATO` | 409 | Esiste gia' un emittente per questo soggetto o codice |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` di un regime del catalogo **spento** (`attivo = false`): un regime spento non si assegna (D-6 di brief-db-fornitore-doppioni-del-soggetto, require del DB). `error.fields` = `regime_fiscale_rf` |
 
 ---
 
@@ -337,6 +339,7 @@ curl -X PATCH "https://api.example.com/api/v1/anagrafiche/emittenti-fiscali/1/" 
 | Codice | HTTP | Descrizione |
 | --- | --- | --- |
 | `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori elenco (compreso `codice`), corpo vuoto, regime vuoto/`null`/fuori catalogo |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` di un regime del catalogo **spento** (`attivo = false`): un regime spento non si assegna (D-6 di brief-db-fornitore-doppioni-del-soggetto, require del DB). `error.fields` = `regime_fiscale_rf` |
 | `E_ANAG_NOT_FOUND` | 404 | Emittente non trovato |
 
 ---

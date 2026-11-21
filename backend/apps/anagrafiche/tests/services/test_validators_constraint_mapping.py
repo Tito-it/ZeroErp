@@ -32,6 +32,8 @@
     unicita' → duplicato; FK → E_ANAG_FK; CHECK → validazione; NOT NULL →
     validazione col campo; il default di `create_with_constraint_mapping` non
     maschera una FK da duplicato
+ 7) RegimeNelCatalogoTest (2026-11-21): la FK del regime nominata → 400 sul
+    campo `regime_fiscale_rf`; un'altra FK, o un'unicita', si rilanciano
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from django.db import IntegrityError
 from apps.anagrafiche.services._validators import (
     create_with_constraint_mapping,
     create_with_dedup,
+    regime_nel_catalogo,
     update_with_dedup,
 )
 from apps.core.services.service_errors import ServiceError
@@ -159,3 +162,26 @@ class RifiutoIntegritaTest(TestCase):
                 default_message="Violazione di unicita'.",
             )
         self.assertEqual(ctx.exception.code, "E_ANAG_FK")
+
+
+class RegimeNelCatalogoTest(TestCase):
+    """Il BB `regime_nel_catalogo(fk)`: traduce SOLO la FK che il chiamante nomina."""
+
+    def test_la_fk_nominata_e_400_sul_campo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            with regime_nel_catalogo("fk_fornitori_regimi_fiscali"):
+                _fallisce_con("fk_fornitori_regimi_fiscali", SQLSTATE_FK)()
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "regime_fiscale_rf")
+
+    def test_la_fk_di_un_altra_tabella_si_rilancia(self):
+        # Il regime dell'emittente non e' quello del fornitore: ogni chiamante
+        # nomina la FK della tabella che scrive.
+        with self.assertRaises(IntegrityError):
+            with regime_nel_catalogo("fk_fornitori_regimi_fiscali"):
+                _fallisce_con("fk_emittenti_fiscali_regimi_fiscali", SQLSTATE_FK)()
+
+    def test_un_unicita_si_rilancia(self):
+        with self.assertRaises(IntegrityError):
+            with regime_nel_catalogo("fk_fornitori_regimi_fiscali"):
+                _fallisce_con("uq_fornitori_codice")()

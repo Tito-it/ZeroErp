@@ -15,7 +15,11 @@
 #  6) Lookup stati fornitore
 #  7) Crea fornitore (soggetto esistente + indirizzi obbligatori)
 #  8) Dettaglio fornitore creato
-#  9) PATCH fornitore (aggiorna rating e pec_email)
+#  9) PATCH fornitore (aggiorna rating e note)
+# ⚠️ Dal 2026-11-21 PEC, canale FE e split payment sono del soggetto, non del
+#    fornitore, e il regime si chiama `regime_fiscale_rf` (codice del catalogo
+#    config.regimi_fiscali): una chiave fuori contratto e' un 400, anche in
+#    creazione (brief-db-fornitore-doppioni-del-soggetto).
 # 10) Crea fornitore duplicato (atteso errore)
 # ------------------------------------------------------------
 set -euo pipefail
@@ -203,9 +207,9 @@ echo "-- 7. Crea fornitore --"
 do_curl POST "/api/v1/anagrafiche/fornitori/" \
     "{
         \"soggetto_id\": \"${SOGG_ID}\",
-        \"pec_email\": \"test-smoke@pec.it\",
+        \"note\": \"smoke fornitori\",
         \"rating\": 75,
-        \"regime_fiscale\": \"RF01\"
+        \"regime_fiscale_rf\": \"RF01\"
     }"
 NEW_FORN_ID=""
 if [[ "$LAST_STATUS" == "200" ]]; then
@@ -247,34 +251,34 @@ if [[ -n "$NEW_FORN_ID" && "$NEW_FORN_ID" != "" ]]; then
     log_info "Codice: $(json_get "$LAST_BODY" ".data.codice")"
     log_info "Ragione sociale: $(json_get "$LAST_BODY" ".data.ragione_sociale_completa")"
     log_info "Rating: $(json_get "$LAST_BODY" ".data.rating")"
-    log_info "PEC: $(json_get "$LAST_BODY" ".data.pec_email")"
-    log_info "Regime fiscale: $(json_get "$LAST_BODY" ".data.regime_fiscale")"
+    log_info "Note: $(json_get "$LAST_BODY" ".data.note")"
+    log_info "Regime fiscale: $(json_get "$LAST_BODY" ".data.regime_fiscale_rf")"
 else
     log_info "Skipped (nessun fornitore disponibile)"
 fi
 
 # --- 9. PATCH fornitore ---
 echo ""
-echo "-- 9. PATCH fornitore (rating + pec_email) --"
+echo "-- 9. PATCH fornitore (rating + note) --"
 if [[ -n "$NEW_FORN_ID" && "$NEW_FORN_ID" != "" ]]; then
     do_curl PATCH "/api/v1/anagrafiche/fornitori/${NEW_FORN_ID}/" \
-        "{\"rating\": 90, \"pec_email\": \"updated@pec.it\"}"
+        "{\"rating\": 90, \"note\": \"smoke aggiornato\"}"
     check "PATCH fornitore" "200" ".data.updated"
     log_info "Updated: $EXTRACTED"
 
     # Verifica che il PATCH sia stato applicato
     do_curl GET "/api/v1/anagrafiche/fornitori/${NEW_FORN_ID}/"
     PATCHED_RATING=$(json_get "$LAST_BODY" ".data.rating")
-    PATCHED_PEC=$(json_get "$LAST_BODY" ".data.pec_email")
+    PATCHED_NOTE=$(json_get "$LAST_BODY" ".data.note")
     if [[ "$PATCHED_RATING" == "90" ]]; then
         log_ok "Rating aggiornato a 90"
     else
         log_fail "Rating non aggiornato — atteso 90, ricevuto $PATCHED_RATING"
     fi
-    if [[ "$PATCHED_PEC" == "updated@pec.it" ]]; then
-        log_ok "PEC aggiornata"
+    if [[ "$PATCHED_NOTE" == "smoke aggiornato" ]]; then
+        log_ok "Note aggiornate"
     else
-        log_fail "PEC non aggiornata — atteso updated@pec.it, ricevuto $PATCHED_PEC"
+        log_fail "Note non aggiornate — atteso «smoke aggiornato», ricevuto $PATCHED_NOTE"
     fi
 else
     log_info "Skipped (nessun fornitore disponibile)"

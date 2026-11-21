@@ -79,7 +79,6 @@ _PRESET_SELECT_SQL = """
            s_ef.ragione_sociale_completa  AS emittente_ragione_sociale,
            p.pagina_dimensione,
            p.ordinamento_default,
-           p.filtri_default,
            p.attivo,
            {extra_select}
            seed.nata_dal_seed,
@@ -659,9 +658,9 @@ class UiAdminRepository:
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
     #        sono enforced lato DB (IntegrityError -> mapping service).
-    #        `user_insert` lo scrive il trigger di audit. `filtri_default`
-    #        non si scrive (Q38 di brief-db-revisione-ui): resta NULL finche'
-    #        il DB non ritira la colonna.
+    #        `user_insert` lo scrive il trigger di audit. La forma di
+    #        `ordinamento_default` la giudica il guard del DB
+    #        (`E_UI_CONFIGURAZIONE_FORMA`, brief-db-revisione-ui giro 2).
     def create_preset(
         self,
         data: dict[str, Any],
@@ -717,9 +716,9 @@ class UiAdminRepository:
     # Scopo: Aggiorna preset sui soli campi presenti in `data`. SET
     #        dinamico via BB `execute_dynamic_update`: il JSONB
     #        `ordinamento_default` (lista) va a `::jsonb` dal BB, None azzera.
-    #        `filtri_default` e' fuori whitelist (Q38). Gli immutabili (lista_id/
-    #        ambito/profilo/emittente) NON sono in whitelist update lato
-    #        service, quindi non arrivano qui.
+    #        Gli immutabili (lista_id/ambito/profilo/emittente) NON sono in
+    #        whitelist update lato service, quindi non arrivano qui (il DB li
+    #        tiene col lucchetto `E_UI_PRESET_POSTO_IMMUTABILE`).
     def update_preset(
         self,
         preset_id: int,

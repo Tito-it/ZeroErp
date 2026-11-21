@@ -15,6 +15,7 @@ import { getEmittenteFormDefaults } from '../api/amministrazione'
 import { paramBool, paramNumber, paramString } from '../../core/utils/parameterCast'
 import { blockNonAlphanumeric, normalizeUpperNoSpaces } from '../../core/utils/string'
 import { displayTimestamp } from '../../core/utils/date'
+import { voceRegimeFiscale } from '../../core/utils/voceRegimeFiscale'
 import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -106,19 +107,10 @@ const form = ref(defaultForm())
 //    il bollo non deve confermare un regime che nessuno ha guardato.
 const confermaRegime = ref(false)
 const regimeConfermato = computed(() => !!detail.value?.regime_fiscale_confermato_il)
-// La voce del regime dell'emittente come la conosce il dettaglio: la combo
-// propone i soli regimi ATTIVI, e uno disattivato dopo che l'emittente l'ha
-// preso resta suo (Tid, 2026-10-01) — senza questa voce il campo apparirebbe
-// vuoto. Stessi campi dell'elenco del lookup.
-const voceRegimeCorrente = computed(() => {
-  const d = detail.value
-  if (!d?.regime_fiscale_rf) return null
-  return {
-    codice_interno: d.regime_fiscale_rf,
-    codice: d.regime_fiscale_rf,
-    descrizione: d.regime_fiscale_descrizione,
-  }
-})
+// La voce del regime dell'emittente come la conosce il dettaglio: un regime
+// disattivato dopo che l'emittente l'ha preso resta suo (Tid, 2026-10-01).
+// BB `voceRegimeFiscale`, lo stesso del drawer fornitore.
+const voceRegimeCorrente = computed(() => voceRegimeFiscale(detail.value))
 const regimeCambiato = computed(() =>
   isEdit.value && form.value.regime_fiscale_rf !== (detail.value?.regime_fiscale_rf ?? null))
 const regimeDaDichiarare = computed(() =>

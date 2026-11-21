@@ -16,11 +16,14 @@ tabelle (`lista_definizione`, `lista_colonna`, `lista_preset`,
 e la funzione `ui.fn_resolve_lista_config(VARCHAR, INTEGER, BIGINT)` che
 applica:
 
-1. cascata **per chiave** (dal 2026-11-01): `colonne`, `ordinamento`,
-   `filtri` e `pagina_dimensione` vengono ognuna dal primo livello che la
+1. cascata **per chiave** (dal 2026-11-01): `colonne` e `pagina_dimensione`
+   vengono ognuna dal primo livello che la
    contiene — preferenza utente -> preset di ruolo (priorita ASC) ->
    preset di emittente -> preset di sistema -> catalogo grezzo. Una chiave
-   assente dalla preferenza vale «come lo standard»;
+   assente dalla preferenza vale «come lo standard». ⛔ `ordinamento` e
+   `filtri` sono usciti dalla cascata col giro 2 di brief-db-revisione-ui
+   (Q38/Q39 §6, 2026-11-21): i filtri di partenza sono dello store,
+   l'ordinamento di partenza è del preset (`ui.fn_ordinamento_lista`);
 2. merge automatico delle nuove colonne aggiunte al catalogo dopo
    l'ultimo salvataggio della preferenza (con `visibile=false`);
 3. normalizzazione colonne obbligatorie (`identificatore`/`azione`
@@ -91,14 +94,10 @@ sistema o sul catalogo grezzo.
         "tipo_colonna": "informazione"
       }
     ],
-    "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
-    "filtri": {"attivo": true},
     "pagina_dimensione": 25,
     "pagina_dimensione_standard": 25,
     "origine": {
       "colonne": "preferenza",
-      "ordinamento": "sistema",
-      "filtri": "sistema",
       "pagina_dimensione": "sistema"
     },
     "colonne_nuove": 0,
@@ -107,8 +106,6 @@ sistema o sul catalogo grezzo.
       "ambito": "sistema",
       "contenuto_aggiornato_il": {
         "colonne": "2026-11-20T09:12:00+00:00",
-        "ordinamento": "2026-11-18T16:40:00+00:00",
-        "filtri": "2026-11-18T16:40:00+00:00",
         "pagina_dimensione": "2026-11-18T16:40:00+00:00"
       }
     },
@@ -143,13 +140,14 @@ Campi top-level:
 
 - `colonne_nuove` — quante colonne del catalogo non erano presenti nella
   preferenza salvata (per il badge UX "N nuove colonne disponibili")
-- `ordinamento` / `filtri` / `pagina_dimensione` — stato derivato dalla
+- `pagina_dimensione` — stato derivato dalla
   cascata (preferenza > preset di ruolo > preset di emittente > preset
   di sistema > la misura di default `PAGINA` del catalogo
   `ui.misure_pagina`). ⭐ Dal 2026-09-30 `pagina_dimensione` e' **sempre
   una misura del catalogo**: quella scelta se ammessa, altrimenti il
   default — mai `NULL`, mai un numero che il paginatore non offre
-- `origine` — per ognuna delle quattro chiavi, il livello da cui viene:
+- `origine` — per ognuna delle due chiavi (`colonne`, `pagina_dimensione`),
+  il livello da cui viene:
   `preferenza`, `ruolo`, `emittente_fiscale`, `sistema` o `catalogo` (dal
   2026-11-01). ⭐ Il FE rimanda al salvataggio **solo** le chiavi
   `preferenza`, piu' quella toccata: rimandare la configurazione intera
@@ -312,14 +310,16 @@ Errori:
     },
     {"codice": "partita_iva", "ordine": 2, "visibile": true}
   ],
-  "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
-  "filtri": {"attivo": true},
   "pagina_dimensione": 50
 }
 ```
 
-Whitelist root payload: `colonne`, `ordinamento`, `filtri`,
-`pagina_dimensione`. ⭐ **Ogni chiave e' facoltativa** (dal 2026-11-01):
+Whitelist root payload: `colonne`, `pagina_dimensione`. ⛔ `ordinamento` e
+`filtri` sono usciti dalla preferenza (Q38/Q39 §6 di brief-db-revisione-ui,
+giro 2 del 2026-11-21): nel payload sono un `400
+E_UI_PREFERENZA_VALIDAZIONE` della whitelist, e il guard di forma del DB le
+rifiuta comunque (`400 E_UI_CONFIGURAZIONE_FORMA`, la rete per chi scrive senza
+passare dal service). ⭐ **Ogni chiave e' facoltativa** (dal 2026-11-01):
 quella assente (o `null`) vale «come lo standard», e la preferenza contiene
 solo le chiavi scelte. ⛔ Una preferenza **senza chiavi** si toglie col
 `DELETE` (endpoint 4): il `PUT` vuoto risponde `400
@@ -336,9 +336,6 @@ E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`
   catalogo risponde `400 E_UI_MISURA_PAGINA_NON_AMMESSA`. ⛔ Fino al
   2026-09-30 il service applicava un suo tetto (`MAX_LIMIT`, 200): una
   seconda regola, diversa dal catalogo, che ammetteva 37
-- `ordinamento` — lista di oggetti, formato trasparente al BE (decisione
-  congiunta col componente Vue, vedi WIP §10.1.2)
-- `filtri` — oggetto, formato trasparente al BE
 
 #### Output
 

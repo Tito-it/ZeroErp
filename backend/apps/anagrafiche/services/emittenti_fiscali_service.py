@@ -9,11 +9,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
-
-from django.db import IntegrityError
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.emittenti_fiscali_repository import (
@@ -25,11 +21,13 @@ from apps.anagrafiche.db.emittenti_fiscali_repository import (
 )
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
 from apps.anagrafiche.services._validators import (
+    CAMPO_REGIME_FISCALE,
     create_with_constraint_mapping,
     create_with_dedup,
     extract_optional_fields,
     optional_str,
     require_found,
+    regime_nel_catalogo,
     require_str,
 )
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_uuid
@@ -40,7 +38,6 @@ from apps.core.services.non_editable_fields_helper import (
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
-    vincolo_violato,
 )
 
 
@@ -65,7 +62,8 @@ _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
 
 # Il regime fiscale dell'emittente (brief-db-esigibilita-iva-per-cassa-emittente,
 # 2026-10-01): NOT NULL con default RF01 e FK al catalogo `config.regimi_fiscali`.
-_CAMPO_REGIME = "regime_fiscale_rf"
+# Il codice fuori catalogo lo traduce il BB `regime_nel_catalogo` (_validators).
+_CAMPO_REGIME = CAMPO_REGIME_FISCALE
 _FK_REGIME = "fk_emittenti_fiscali_regimi_fiscali"
 
 
@@ -91,35 +89,9 @@ def _regime_dichiarato(payload: dict[str, Any]) -> bool:
     return True
 
 
-# Scopo: Traduce in 400 sul campo un codice di regime fuori catalogo (FK).
-#        ⚠️ Traduce SOLO la FK del regime: ogni altra IntegrityError si rilancia
-#        com'e', perche' il ripiego dei chiamanti (o il middleware) la gestisce
-#        gia' — un ripiego qui la maschererebbe da errore di regime.
-@contextmanager
-def _regime_nel_catalogo() -> Iterator[None]:
-    try:
-        yield
-    except IntegrityError as exc:
-        if vincolo_violato(exc, [_FK_REGIME]) is None:
-            raise
-        ErrorManager.raise_error(
-            code=E_ANAG_VALIDAZIONE,
-            message="Regime fiscale non presente nel catalogo dei regimi.",
-            detail=str(exc),
-            context={"field": _CAMPO_REGIME},
-            cause=exc,
-        )
-
-
 class EmittentiFiscaliService:
     """Service per gestione emittenti fiscali (Amm. Software)."""
 
-    # ⭐ Tutta dal DB, senza gap: `codice` (E_CODICE_NON_MODIFICABILE) e
-    #        `soggetto_ruolo_id` (E_EMITTENTE_SOGGETTO_IMMUTABILE, dal
-    #        2026-11-21) li blocca il trigger di lock e la vista li elenca.
-    #        Fino a quel giorno qui c'era il gap `soggetto_id`: nominava un
-    #        campo del payload (l'emittente non ha quella colonna) per una
-    #        regola che il DB non garantiva.
     def __init__(self) -> None:
         self._repo = EmittentiFiscaliRepository()
 
@@ -142,6 +114,12 @@ class EmittentiFiscaliService:
         return emittente
 
     # Scopo: Lista `non_editable_fields` per anagrafica emittente (Fase 4 — A9).
+    # ⭐ Tutta dal DB, senza gap: `codice` (E_CODICE_NON_MODIFICABILE) e
+    #        `soggetto_ruolo_id` (E_EMITTENTE_SOGGETTO_IMMUTABILE, dal
+    #        2026-11-21) li blocca il trigger di lock e la vista li elenca.
+    #        Fino a quel giorno qui c'era il gap `soggetto_id`: nominava un
+    #        campo del payload (l'emittente non ha quella colonna) per una
+    #        regola che il DB non garantiva.
     def get_non_editable_fields(self) -> list[str]:
         return compute_non_editable_fields("anagrafiche", "emittenti_fiscali")
 
@@ -199,7 +177,7 @@ class EmittentiFiscaliService:
         #    regime dichiarato in un'istruzione, `fn_crea_emittente_fiscale`.
         #    Restano qui il pre-check della partita IVA (sopra) e la traduzione
         #    dei vincoli per nome.
-        with _regime_nel_catalogo():
+        with regime_nel_catalogo(_FK_REGIME):
             emittente_id, soggetto_ruolo_id = create_with_constraint_mapping(
                 lambda: self._repo.crea_emittente_fiscale(soggetto_id, codice, emittente_data),
                 {
@@ -248,7 +226,7 @@ class EmittentiFiscaliService:
         _V.require_campi_da_aggiornare(payload)
         # Copia difensiva: il repo normalizza stringhe vuote -> None e non deve mutare
         # request.data della view (che potrebbe essere riusato dal middleware di logging).
-        with _regime_nel_catalogo():
+        with regime_nel_catalogo(_FK_REGIME):
             updated = self._repo.update_emittente(emittente_id, dict(payload))
         ErrorManager.require(
             updated,

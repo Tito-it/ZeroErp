@@ -53,14 +53,14 @@ _RICERCA_FORNITORI = RicercaFull(
 )
 
 
-# Campi editabili sul fornitore (pagamento, fiscale, FE, rating, note).
+# Campi editabili sul fornitore (pagamento, fiscale, rating, note).
 # ⚠️ Whitelist RIGIDA del BB `execute_dynamic_update` (2026-09-26): e' anche la
 #    base del contratto PATCH che `FornitoriService` valida (400).
 FORNITORE_UPDATE_ALLOWED: frozenset[str] = frozenset({
     "stato_fornitore_id", "attivo",
     "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
     "ritenuta_acconto", "ritenuta_aliquota",
-    "regime_fiscale",
+    "regime_fiscale_rf",
     "rating", "qualifica_scadenza",
     "note",
 })
@@ -149,20 +149,16 @@ class FornitoriRepository:
                    v.modalita_pagamento_desc,
                    v.termine_pagamento_codice,
                    v.ritenuta_acconto,
-                   v.regime_fiscale,
+                   -- La colonna `regime_fiscale` del catalogo legge il CODICE
+                   -- (RF01…), FK su config.regimi_fiscali dal 2026-11-21.
+                   -- ⚠️ Split payment, canale FE e PEC non ci sono piu': sono
+                   --    del soggetto (soggetti, dati_societari), e il fornitore
+                   --    ne portava un doppione che nessuno modificava. Usciti
+                   --    da catalogo, vista e tabella il 2026-11-21
+                   --    (brief-db-fornitore-doppioni-del-soggetto.md).
+                   v.regime_fiscale_rf,
                    v.rating,
                    v.qualifica_scadenza,
-                   -- ⚠️ Doppioni del soggetto (soggetti.split_payment,
-                   --    dati_societari) usciti da form e dettaglio il
-                   --    2026-11-21: restano qui SOLO finche' la lista
-                   --    `anagrafiche.fornitori` di ui.lista_colonna li espone
-                   --    (codici pec_email, canale_fe, split_payment). Mostrano
-                   --    il valore del fornitore, non piu' modificabile, non
-                   --    quello del soggetto: richiesta al DB in
-                   --    brief-db-fornitore-doppioni-del-soggetto.md.
-                   v.split_payment,
-                   v.canale_fe,
-                   v.pec_email,
                    v.data_insert,
                    v.data_update,
                    COUNT(*) OVER () AS total_count
@@ -198,7 +194,11 @@ class FornitoriRepository:
                    -- Fiscale
                    f.ritenuta_acconto,
                    f.ritenuta_aliquota,
-                   f.regime_fiscale,
+                   f.regime_fiscale_rf,
+                   -- Il codice a video del regime: il catalogo lo tiene
+                   -- distinto da `codice_interno` (BB FE `voceRegimeFiscale`).
+                   rf.codice              AS regime_fiscale_codice,
+                   rf.descrizione         AS regime_fiscale_descrizione,
                    -- Rating
                    f.rating,
                    f.qualifica_scadenza,
@@ -218,6 +218,9 @@ class FornitoriRepository:
               LEFT JOIN config.valute v           ON v.id  = f.valuta_id
               LEFT JOIN config.modalita_pagamento mp ON mp.id = f.modalita_pagamento_id
               LEFT JOIN config.termini_pagamento tp  ON tp.id = f.termine_pagamento_id
+              -- La descrizione serve alla combo del drawer anche per un regime
+              -- disattivato dopo la scelta (la combo propone i soli attivi).
+              LEFT JOIN config.regimi_fiscali rf     ON rf.codice_interno = f.regime_fiscale_rf
              WHERE f.id = %s
         """
         with connection.cursor() as cursor:
@@ -244,7 +247,7 @@ class FornitoriRepository:
     _UPDATE_NULLABLE = {
         "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
         "ritenuta_aliquota",
-        "regime_fiscale",
+        "regime_fiscale_rf",
         "rating", "qualifica_scadenza", "note",
     }
 
