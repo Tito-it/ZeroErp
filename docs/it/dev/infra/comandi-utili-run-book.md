@@ -1,6 +1,6 @@
 # Runbook dettagliato – Nodo Proxmox + VM (dbdev/backend)
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 
 ## Indice
 
@@ -9,7 +9,7 @@
 3. Proxmox Firewall vs UFW (scelta e regole)
 4. Unbound sul nodo (DNS locale per le VM)
 5. Tailscale (nodo/VM, exit node)
-6. PostgreSQL 18/main (avvio affidabile e accessi)
+6. PostgreSQL 19/main (avvio affidabile e accessi)
 7. Git/GitHub da VS Code (SSH 22/443, HTTPS)
 8. Checklist post‑riavvio
 9. Comandi veloci (appendice)
@@ -38,7 +38,7 @@
    * `tailscale status` (nodo/VM); opzionale **exit node**.
 6. **PostgreSQL:**
 
-   * `pg_lsclusters` / `systemctl status postgresql@18-main`
+   * `pg_lsclusters` / `systemctl status postgresql@19-main`
 7. **Git/GitHub:**
 
    * Se SSH bloccato: usa **443 (`ssh.github.com`)** o **HTTPS**.
@@ -233,13 +233,13 @@ sudo tailscale up --exit-node=none
 
 ---
 
-## 6) PostgreSQL 18/main
+## 6) PostgreSQL 19/main
 
 ### 6.1 Stato cluster e avvio
 
 ```bash
 sudo pg_lsclusters
-sudo systemctl status postgresql@18-main --no-pager
+sudo systemctl status postgresql@19-main --no-pager
 ```
 
 ### 6.2 Avvio affidabile (dopo rete e Tailscale)
@@ -247,8 +247,8 @@ sudo systemctl status postgresql@18-main --no-pager
 Override systemd:
 
 ```bash
-sudo mkdir -p /etc/systemd/system/postgresql@18-main.service.d
-sudo tee /etc/systemd/system/postgresql@18-main.service.d/override.conf >/dev/null <<'EOF'
+sudo mkdir -p /etc/systemd/system/postgresql@19-main.service.d
+sudo tee /etc/systemd/system/postgresql@19-main.service.d/override.conf >/dev/null <<'EOF'
 [Unit]
 After=network-online.target tailscaled.service
 Wants=network-online.target
@@ -256,11 +256,12 @@ Wants=network-online.target
 [Service]
 Restart=on-failure
 RestartSec=5s
+LimitNOFILE=65536
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable postgresql@18-main
-sudo systemctl restart postgresql@18-main
+sudo systemctl enable postgresql@19-main
+sudo systemctl restart postgresql@19-main
 ```
 
 ### 6.3 Listen & accessi
@@ -268,20 +269,20 @@ sudo systemctl restart postgresql@18-main
 **Opzione A (consigliata):** `listen_addresses='*'` e limito con pg_hba + firewall
 
 ```bash
-sudo sed -i "s/^#\?listen_addresses.*/listen_addresses = '*'/'" /etc/postgresql/18/main/postgresql.conf
+sudo sed -i "s/^#\?listen_addresses.*/listen_addresses = '*'/'" /etc/postgresql/19/main/postgresql.conf
 ```
 
 `pg_hba.conf` (LAN + Tailscale):
 
 ```bash
-sudo tee -a /etc/postgresql/18/main/pg_hba.conf >/dev/null <<'EOF'
+sudo tee -a /etc/postgresql/19/main/pg_hba.conf >/dev/null <<'EOF'
 # LAN 192.168.X.0/24
 host    all     all     192.168.X.0/24        md5
 # Tailscale 100.64.0.0/10
 host    all     all     100.64.0.0/10         md5
 EOF
 
-sudo systemctl restart postgresql@18-main
+sudo systemctl restart postgresql@19-main
 ```
 
 Verifica:
@@ -380,7 +381,7 @@ git pull --rebase origin Tito-dev
 6. **PostgreSQL** up e listening:
 
    ```bash
-   systemctl status postgresql@18-main --no-pager
+   systemctl status postgresql@19-main --no-pager
    sudo ss -ltnp | grep 5432
    ```
 7. **Git**:
@@ -424,8 +425,8 @@ b) sudo tailscale up --exit-node=none   # disattiva
 
 ```bash
 sudo pg_lsclusters
-sudo systemctl status postgresql@18-main --no-pager
-sudo systemctl restart postgresql@18-main
+sudo systemctl status postgresql@19-main --no-pager
+sudo systemctl restart postgresql@19-main
 sudo -u postgres psql -c 'select version();'
 ```
 
