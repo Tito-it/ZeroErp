@@ -171,6 +171,17 @@
       "messaggio": "There are unsaved changes: closing will discard them. Close anyway?",
       "chiudi": "Close without saving",
       "indicatore": "Unsaved changes"
+    },
+    "banner_preset": {
+      "parti_cambiate": "Changed: {parti}.",
+      "parte": {
+        "colonne": "columns",
+        "ordinamento": "sorting",
+        "filtri": "filters",
+        "pagina_dimensione": "rows per page",
+        "widget": "cards",
+        "dimensione_max": "maximum number of cards"
+      }
     }
   },
   "strumenti": {

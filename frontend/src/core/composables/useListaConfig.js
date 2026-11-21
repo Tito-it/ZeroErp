@@ -187,14 +187,19 @@ export function useListaConfig(codice, opzioni = {}) {
   // Computed: count delle nuove colonne disponibili (badge UX).
   const colonneNuove = computed(() => config.value?.colonne_nuove ?? 0)
 
-  // Computed DEF-2: TRUE quando il preset di base e' stato modificato
-  // dall'admin dopo lo snapshot della preferenza utente E l'utente non
-  // ha dismissato il banner per quella versione del preset. Calcolato
-  // lato DB da `fn_resolve_lista_config`: passthrough qui.
-  // `?? false` fallback safe: se il DB non espone ancora il campo
-  // (brief team DB non atterrato), il banner FE resta nascosto.
+  // Computed DEF-2: TRUE quando il contenuto del preset di base e' cambiato,
+  // in almeno una chiave scelta dall'utente, dopo lo snapshot della sua
+  // preferenza (l'«Ignora» riallinea lo snapshot). Calcolato lato DB da
+  // `fn_resolve_lista_config`: passthrough qui. `?? false`: campo assente =
+  // banner nascosto.
   const presetAggiornato = computed(
     () => config.value?.preset_aggiornato ?? false,
+  )
+
+  // Le chiavi cambiate (`preset_aggiornato_chiavi`, giro 1b di
+  // brief-db-revisione-ui): il banner dice quali parti. Vuoto se nessuna.
+  const presetAggiornatoChiavi = computed(
+    () => config.value?.preset_aggiornato_chiavi ?? [],
   )
 
   // Computed BE7 (giro 1a di brief-db-revisione-ui): TRUE quando la
@@ -215,8 +220,9 @@ export function useListaConfig(codice, opzioni = {}) {
     return save()
   }
 
-  // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST tombstone +
-  //        reload per riallineare `config.value.preset_aggiornato` a false.
+  // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST (il BE riallinea
+  //        lo snapshot del preset di base) + reload per riportare
+  //        `config.value.preset_aggiornato` a false.
   //        La Idempotency-Key la mette l'interceptor di `core/api.js`. Toast/error gestito da useApiHandler.
   async function ignorePresetUpdate() {
     const result = await execute(
@@ -236,6 +242,7 @@ export function useListaConfig(codice, opzioni = {}) {
     loading,
     colonneNuove,
     presetAggiornato,
+    presetAggiornatoChiavi,
     presetBaseCambiato,
     load,
     ensureCatalogo,

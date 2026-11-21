@@ -46,6 +46,7 @@ const {
   loading: dashLoading,
   widgetNuovi,
   presetAggiornato,
+  presetAggiornatoChiavi,
   presetBaseCambiato,
   widgetVisibili,
   dimensioneMax,
@@ -220,6 +221,7 @@ function onFavoriteDragEnd() {
            brief-db-revisione-ui): li decide `fn_resolve_dashboard_config`. -->
       <BannerPreset
         :aggiornato="presetAggiornato"
+        :chiavi="presetAggiornatoChiavi"
         :base-cambiato="presetBaseCambiato"
         :disabled="dashLoading"
         :testi="testiBannerPreset"

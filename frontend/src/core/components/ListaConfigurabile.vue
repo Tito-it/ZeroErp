@@ -243,6 +243,7 @@ const {
   loading: configLoading,
   colonneNuove,
   presetAggiornato,
+  presetAggiornatoChiavi,
   presetBaseCambiato,
   load,
   ensureCatalogo,
@@ -748,8 +749,9 @@ async function onSeePresetUpdate() {
   await openModal()
 }
 
-// DEF-2: CTA "Ignora" del banner preset aggiornato → POST tombstone +
-// reload config (composable). Toast/error handling via useApiHandler.
+// DEF-2: CTA "Ignora" del banner preset aggiornato → POST (il BE riallinea lo
+// snapshot del preset di base) + reload config (composable). Toast/error
+// handling via useApiHandler.
 async function onIgnorePresetUpdate() {
   await ignorePresetUpdate()
 }
@@ -844,10 +846,11 @@ defineExpose({
          touch finiscono nel kebab insieme alle altre azioni. -->
 
     <!-- I due banner del preset di base (BB `BannerPreset`): «preset
-         aggiornato» (DEF-2, tombstone «Ignora») e «base cambiata» (BE7 di
+         aggiornato» (DEF-2, «Ignora», con le parti cambiate) e «base cambiata» (BE7 di
          brief-db-revisione-ui, «Riallinea»). Li decide il DB. -->
     <BannerPreset
       :aggiornato="presetAggiornato"
+      :chiavi="presetAggiornatoChiavi"
       :base-cambiato="presetBaseCambiato"
       :disabled="configLoading"
       :testi="testiBannerPreset"

@@ -35,6 +35,7 @@ import { chiaviScelte } from '../preferenzaPerChiave'
  * @param {string} codice - codice stabile della dashboard (es. 'home')
  * @returns {{
  *   config, contatori, loaded, dirty, loading, widgetNuovi, presetAggiornato,
+ *   presetAggiornatoChiavi,
  *   presetBaseCambiato, widgetVisibili, dimensioneMax,
  *   load, loadContatori, applyChange, save, reset, ignorePresetUpdate,
  *   riallineaPresetBase, contatoreDi
@@ -153,7 +154,8 @@ export function useDashboardConfig(codice) {
     return save()
   }
 
-  // Scopo: "Ignora" banner preset aggiornato + reload per riallineare.
+  // Scopo: "Ignora" banner preset aggiornato (il BE riallinea lo snapshot)
+  //        + reload.
   async function ignorePresetUpdate() {
     const result = await execute(
       () => apiIgnorePresetUpdate(codice),
@@ -204,11 +206,18 @@ export function useDashboardConfig(codice) {
   // sarebbe una bugia, perche' non troverebbe nulla da attivare.
   const poolVuoto = computed(() => (config.value?.widget || []).length === 0)
 
-  // TRUE quando il preset di base e' cambiato dopo lo snapshot della
-  // preferenza utente e il banner non e' stato dismissato. Calcolato
-  // lato DB: passthrough. `?? false` = banner nascosto se il campo manca.
+  // TRUE quando il contenuto del preset di base e' cambiato, in almeno una
+  // chiave scelta dall'utente, dopo lo snapshot della preferenza (l'«Ignora»
+  // lo riallinea). Calcolato lato DB: passthrough. `?? false` = banner
+  // nascosto se il campo manca.
   const presetAggiornato = computed(
     () => config.value?.preset_aggiornato ?? false,
+  )
+
+  // Le chiavi cambiate (`preset_aggiornato_chiavi`), gemello di
+  // `useListaConfig`. Vuoto se nessuna.
+  const presetAggiornatoChiavi = computed(
+    () => config.value?.preset_aggiornato_chiavi ?? [],
   )
 
   // TRUE quando la preferenza ha salvato un preset di base che non e' quello
@@ -229,6 +238,7 @@ export function useDashboardConfig(codice) {
     loading,
     widgetNuovi,
     presetAggiornato,
+    presetAggiornatoChiavi,
     presetBaseCambiato,
     widgetVisibili,
     dimensioneMax,

@@ -337,13 +337,13 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
     def test_ignore_preset_update_happy_path(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = True
+        repo.riallinea_snapshot_base.return_value = True
         svc = ListaPreferenzaService(repository=repo)
 
         result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")
 
         self.assertTrue(result["ignored"])
-        repo.set_preset_aggiornato_ignored.assert_called_once_with(
+        repo.riallinea_snapshot_base.assert_called_once_with(
             auth_user_id=42, lista_id=1,
         )
 
@@ -355,12 +355,12 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.ignore_preset_update(_make_user(), "non.esiste")
         self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.set_preset_aggiornato_ignored.assert_not_called()
+        repo.riallinea_snapshot_base.assert_not_called()
 
     def test_ignore_preset_update_senza_preferenza_raises(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = False  # no riga
+        repo.riallinea_snapshot_base.return_value = False  # no riga
         svc = ListaPreferenzaService(repository=repo)
 
         with self.assertRaises(ServiceError) as ctx:
@@ -369,14 +369,14 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
 
     def test_ignore_preset_update_pref_senza_preset_base_id(self) -> None:
         # Edge: preferenza esiste ma `preset_base_id` e' NULL (utente ha
-        # salvato senza preset applicabile). L'UPDATE setta comunque il
-        # tombstone — il trigger DB non si attiva (preset_base_id non
-        # cambia) e la fn DB ritorna sempre preset_aggiornato=false. Il
-        # service non deve sollevare: dal suo punto di vista la riga
-        # esiste e l'UPDATE e' atomico.
+        # salvato senza preset applicabile). L'UPDATE riscrive comunque
+        # `preset_base_id` (NULL): il trigger DB porta lo snapshot a NULL e
+        # la fn DB ritorna preset_aggiornato=false. Il service non deve
+        # sollevare: dal suo punto di vista la riga esiste e l'UPDATE e'
+        # atomico.
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = True
+        repo.riallinea_snapshot_base.return_value = True
         svc = ListaPreferenzaService(repository=repo)
 
         result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")

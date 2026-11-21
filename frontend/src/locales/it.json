@@ -171,6 +171,17 @@
       "messaggio": "Ci sono modifiche non salvate: chiudendo andranno perse. Chiudere comunque?",
       "chiudi": "Chiudi senza salvare",
       "indicatore": "Modifiche non salvate"
+    },
+    "banner_preset": {
+      "parti_cambiate": "Cambiato: {parti}.",
+      "parte": {
+        "colonne": "colonne",
+        "ordinamento": "ordinamento",
+        "filtri": "filtri",
+        "pagina_dimensione": "righe per pagina",
+        "widget": "card",
+        "dimensione_max": "numero massimo di card"
+      }
     }
   },
   "strumenti": {

@@ -61,11 +61,11 @@ export function deleteListaPreferenza(codice) {
   return api.delete(`${BASE}/liste/${encodeURIComponent(codice)}/preferenza/`)
 }
 
-// Scopo: DEF-2 — tombstone "ignora banner preset aggiornato". POST senza
-// body: setta `preset_aggiornato_ignored_at = NOW()` sulla preferenza
-// utente. Il flag `preset_aggiornato` di fn_resolve_lista_config torna
-// FALSE finche' il preset non viene modificato di nuovo. 404 se l'utente
-// non ha ancora una preferenza salvata (caso patologico).
+// Scopo: DEF-2 — «Ignora» del banner preset aggiornato. POST senza body:
+// il BE riallinea lo snapshot del preset di base della preferenza al
+// contenuto di oggi. Il flag `preset_aggiornato` di fn_resolve_lista_config
+// torna FALSE finche' il contenuto del preset non cambia di nuovo. 404 se
+// l'utente non ha ancora una preferenza salvata (caso patologico).
 //
 // Idempotency-Key obbligatoria (handle_post_json strong mode lato BE):
 // l'`Idempotency-Key` la mette l'interceptor di `core/api.js` (§A5, 2026-10-20).
@@ -112,7 +112,8 @@ export function deleteDashboardPreferenza(codice) {
   return api.delete(`${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/`)
 }
 
-// Scopo: Tombstone "ignora banner preset aggiornato" per la dashboard.
+// Scopo: «Ignora» del banner preset aggiornato per la dashboard (come
+//        `ignorePresetUpdate`: il BE riallinea lo snapshot).
 export function ignoreDashboardPresetUpdate(codice) {
   return api.post(
     `${BASE}/dashboard/${encodeURIComponent(codice)}/preferenza/ignore-preset-update/`,

@@ -102,9 +102,19 @@ sistema o sul catalogo grezzo.
       "pagina_dimensione": "sistema"
     },
     "colonne_nuove": 0,
-    "preset_base": {"id": 5, "ambito": "sistema", "contenuto_aggiornato_il": "2026-11-20T09:12:00+00:00"},
+    "preset_base": {
+      "id": 5,
+      "ambito": "sistema",
+      "contenuto_aggiornato_il": {
+        "colonne": "2026-11-20T09:12:00+00:00",
+        "ordinamento": "2026-11-18T16:40:00+00:00",
+        "filtri": "2026-11-18T16:40:00+00:00",
+        "pagina_dimensione": "2026-11-18T16:40:00+00:00"
+      }
+    },
     "preset_base_cambiato": false,
     "preset_aggiornato": false,
+    "preset_aggiornato_chiavi": [],
     "ricerca_full": true,
     "richiede_scelta_emittente": false
   },
@@ -146,7 +156,8 @@ Campi top-level:
   congelerebbe nella preferenza le chiavi del preset (era il difetto fino
   al 2026-10-31)
 - `preset_base` — il preset di base di **oggi** per l'utente (`{id, ambito,
-  contenuto_aggiornato_il}`), oppure `null` se nessun preset vale e ogni
+  contenuto_aggiornato_il}`; la data del contenuto è **per chiave**,
+  `{chiave: data}`, dal giro 1b di brief-db-revisione-ui), oppure `null` se nessun preset vale e ogni
   chiave viene dal catalogo. Lo sceglie il DB in una sede sola
   (`ui.fn_preset_di_base`): un preset vale se è acceso e ha almeno una
   colonna attiva; il ruolo concorre solo con la veste valorizzata, l'azienda
@@ -157,9 +168,12 @@ Campi top-level:
   Il frontend mostra il banner «base cambiata» con l'azione «Riallinea», che
   risalva la preferenza (dal 2026-11-20, BE7 di brief-db-revisione-ui)
 - `preset_aggiornato` — `true` se la base salvata è quella di oggi e il suo
-  contenuto è cambiato dopo l'ultimo salvataggio (e l'utente non l'ha
-  ignorato): il banner DEF-2. Con `preset_base_cambiato` vero è sempre
-  `false`, e i due banner non si sovrappongono
+  contenuto è cambiato, in almeno una chiave scelta dall'utente (origine
+  `preferenza`), dopo lo snapshot della preferenza: il banner DEF-2.
+  «Ignora» (endpoint 5) riallinea lo snapshot. Con `preset_base_cambiato`
+  vero è sempre `false`, e i due banner non si sovrappongono
+- `preset_aggiornato_chiavi` — le chiavi di quel cambiamento (elenco, vuoto
+  se nessuna; dal giro 1b): il banner dice quali parti sono cambiate
 - `pagina_dimensione_standard` — la misura che la cascata darebbe **senza**
   la preferenza; il drawer di personalizzazione la mostra come «Come lo
   standard (N)»
@@ -344,8 +358,9 @@ E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`
 - `preset_base_id` — id del preset di base di oggi, letto dalla
   risoluzione (`preset_base` dell'endpoint 1; `null` se l'utente parte dal
   catalogo). ⭐ Lo snapshot per il banner «preset aggiornato» (DEF-2),
-  `lista_preferenza_utente.preset_base_contenuto_aggiornato_il`, lo scrive il
-  DB: `ui.trgfn_preferenza_preset_base_snapshot` lo legge dalla data del
+  `lista_preferenza_utente.preset_base_contenuto_aggiornato_il` (per chiave,
+  `{chiave: data}`), lo scrive il
+  DB: `ui.trgfn_preferenza_preset_base_snapshot` lo copia dalla data del
   **contenuto** del preset a ogni scrittura che nomina `preset_base_id`
   (dal 2026-11-20, BE5 e BE6 di brief-db-revisione-ui). Ogni salvataggio è
   quindi un riallineamento.
@@ -414,12 +429,15 @@ Errori:
 
 #### Scopo
 
-Tombstone "Ignora banner preset aggiornato": setta
-`ui.lista_preferenza_utente.preset_aggiornato_ignored_at = NOW()` sulla
-preferenza utente per `(request.user, codice)`. Il flag
-`preset_aggiornato` ritornato da `ui.fn_resolve_lista_config` torna
-`false` finche' il contenuto del preset non cambia di nuovo
-(`preset.contenuto_aggiornato_il > ignored_at`).
+«Ignora» del banner preset aggiornato: riscrive `preset_base_id` della
+preferenza di `(request.user, codice)` col valore che ha già, e il trigger
+`ui.trgfn_preferenza_preset_base_snapshot` riallinea lo snapshot
+(`preset_base_contenuto_aggiornato_il`) al contenuto di oggi, chiave per
+chiave. Il flag `preset_aggiornato` ritornato da `ui.fn_resolve_lista_config`
+torna `false` finche' il contenuto del preset non cambia di nuovo. ⛔ Dal
+giro 1b di brief-db-revisione-ui (2026-11-20) l'ignorato
+`preset_aggiornato_ignored_at` non esiste più: «ignorare» e «riallineare»
+sono lo stesso gesto, e il banner si confronta solo con lo snapshot.
 
 L'endpoint chiude la conversazione "l'amministratore ha aggiornato il
 preset del tuo ruolo, vedi novita' / ignora": "Vedi novita'" si chiude
@@ -460,20 +478,17 @@ Errori:
 #### Note DEF-2
 
 - **Idempotency-Key**: obbligatoria per coerenza con il pattern POST
-  (api.md). Il replay strong mode garantisce che retry FE non duplichino
-  side-effect anche se `now()` viene comunque sovrascritto in modo
-  benigno.
-- **Reset automatico tombstone**: il trigger
-  `ui.trgfn_preferenza_preset_base_snapshot` azzera
-  `preset_aggiornato_ignored_at` quando cambia `preset_base_id` o la riga
-  nasce (cambio preset di base = relazione utente-preset resettata, il
-  tombstone storico riferisce al vecchio preset). Dal 2026-11-20 sostituisce
-  i due trigger `z90` di prima.
+  (api.md). Ripetere il riallineamento è innocuo: lo snapshot torna uguale.
+- **La base resta quella salvata**: «Ignora» non cambia `preset_base_id`.
+  Con la base cambiata il banner è l'altro («Riallinea»), che salva la base
+  di oggi con la preferenza (endpoint 3).
 - **Riapparizione banner**: il banner torna visibile alla prossima
-  modifica del contenuto del preset (`preset.contenuto_aggiornato_il >
-  ignored_at`). Pattern by
-  design: l'utente che "ignora una volta" non perde visibilita' sulle
-  future modifiche.
+  modifica del contenuto del preset, in una chiave scelta dall'utente.
+  Pattern by design: l'utente che "ignora una volta" non perde visibilita'
+  sulle future modifiche.
+- **Lo snapshot non lo scrive l'app**: chi scrive la data del contenuto di
+  un preset riceve `500 E_UI_PRESET_CONTENUTO_DERIVATO` (la scrive solo il
+  DB, `ui.trgfn_preset_contenuto_aggiornato`).
 
 ---
 

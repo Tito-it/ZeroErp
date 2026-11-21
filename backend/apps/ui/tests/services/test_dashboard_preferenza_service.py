@@ -284,13 +284,13 @@ class DashboardPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
     @_PATCH_EMITTENTE
     def test_ignore_preset_update_happy_path(self, _mock_em) -> None:
         repo = _make_repo()
-        repo.set_preset_aggiornato_ignored.return_value = True
+        repo.riallinea_snapshot_base.return_value = True
         svc = DashboardPreferenzaService(repository=repo)
 
         result = svc.ignore_preset_update(_make_user(), "home")
 
         self.assertEqual(result, {"ignored": True})
-        repo.set_preset_aggiornato_ignored.assert_called_once_with(
+        repo.riallinea_snapshot_base.assert_called_once_with(
             auth_user_id=42, dashboard_id=1,
         )
 
@@ -298,7 +298,7 @@ class DashboardPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
     def test_ignore_preset_update_senza_preferenza_raises(self, _mock_em) -> None:
         # Tombstone su preferenza inesistente -> 404 parlante.
         repo = _make_repo()
-        repo.set_preset_aggiornato_ignored.return_value = False
+        repo.riallinea_snapshot_base.return_value = False
         svc = DashboardPreferenzaService(repository=repo)
 
         with self.assertRaises(ServiceError) as ctx:
