@@ -87,7 +87,7 @@ riceve `403 E_ACCESSO_RISERVATO_ADMIN`.
 | `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap` | Trigger | Inserisce default mapping `is_default=true, billing_account_id=NULL` alla creazione del primo emittente |
 | `anagrafiche.trgfn_emittenti_fiscali_normalize` | Trigger | Normalizzazione INSERT/UPDATE |
 | `anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis` | Trigger | Coerenza ruolo `EF` |
-| `dbops.trgfn_prevent_deactivate_if_children` | Trigger (×16) | Blocca la disattivazione se esistono figli. Un trigger **per tabella figlia** generato dall'automazione ATTIVO. Il messaggio **non nomina tabelle**: dal 2026-11-11 (S-BE-1 di brief-db-revisione-dbops) la frase è per l'operatore, e quale tabella figlia blocca sta nel contesto del registro errori (`dbops.error_log`), per chi ripara il dato. Dal changeSet `20260820-08` i codici sono **due**, scelti dal guard secondo la tabella figlia: `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` dove le righe collegate si **disattivano** (la figlia ha la colonna `attivo`) e `E_ATTIVO_BLOCK_CHILDREN_EXIST` dove si **tolgono** (la figlia non ce l'ha). Prima era un codice solo e la parola «attive» era falsa per 181 trigger su 349. Copertura reale (letta dagli argomenti dei trigger, non dai loro nomi troncati): `anagrafiche.emittenti_fiscali_billing_account`, `anagrafiche.emittenti_fiscali_utilities`, `config.parameter_overrides`, `config.user_emittente_attivo`, `config.user_emittenti_fiscali`, `documenti.documenti_generati`, `documenti.template_asset`, `documenti.template_documenti`, `pratiche.pratiche`, `pratiche.workflow_definizioni`, `vendite.contratti`, `vendite.ddt`, `vendite.offerte_commerciali`, `vendite.ordini`, `vendite.preventivi`, `vendite.resi`.<br>⚠️ Sostituisce `anagrafiche.trgfn_emittenti_fiscali_guard_attivo`, **droppato** il 2026-08-20 (changeSet `20260820-02`): era un doppione che copriva **il solo** mapping billing account — non i quattro figli che questa riga gli attribuiva — e non veniva nemmeno più raggiunto, perché i BEFORE ROW scattano in ordine alfabetico e il generico viene prima. Il suo codice `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` è **ritirato**. |
+| `dbops.trgfn_prevent_deactivate_if_children` | Trigger (uno per FK figlia) | Blocca la disattivazione se esistono figli. Un trigger **per tabella figlia** generato dall'automazione ATTIVO. Il messaggio **non nomina tabelle**: dal 2026-11-11 (S-BE-1 di brief-db-revisione-dbops) la frase è per l'operatore, e quale tabella figlia blocca sta nel contesto del registro errori (`dbops.error_log`), per chi ripara il dato. Dal changeSet `20260820-08` i codici sono **due**, scelti dal guard secondo la tabella figlia: `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` dove le righe collegate si **disattivano** (la figlia ha la colonna `attivo`) e `E_ATTIVO_BLOCK_CHILDREN_EXIST` dove si **tolgono** (la figlia non ce l'ha). Prima era un codice solo e la parola «attive» era falsa per 181 trigger su 349. Copertura reale (letta dagli argomenti dei trigger, non dai loro nomi troncati): `anagrafiche.emittenti_fiscali_billing_account`, `anagrafiche.emittenti_fiscali_utilities`, `config.parameter_overrides`, `config.user_emittente_attivo`, `config.user_emittenti_fiscali`, `documenti.documenti_generati`, `documenti.template_asset`, `documenti.template_documenti`, `pratiche.pratiche`, `pratiche.workflow_definizioni`, `vendite.contratti`, `vendite.ddt`, `vendite.offerte_commerciali`, `vendite.ordini`, `vendite.preventivi`, `vendite.resi`.<br>⚠️ Sostituisce `anagrafiche.trgfn_emittenti_fiscali_guard_attivo`, **droppato** il 2026-08-20 (changeSet `20260820-02`): era un doppione che copriva **il solo** mapping billing account — non i quattro figli che questa riga gli attribuiva — e non veniva nemmeno più raggiunto, perché i BEFORE ROW scattano in ordine alfabetico e il generico viene prima. Il suo codice `E_EMITTENTE_DISATTIVAZIONE_BLOCCATA` è **ritirato**. |
 | `anagrafiche.trgfn_emittenti_fiscali_default_guard` | Trigger | Garantisce un solo default globale in `emittenti_fiscali_billing_account` |
 | `dbops.trgfn_child_requires_active_parent` | Trigger | Per `emittenti_fiscali_utilities` impedisce inserire/aggiornare un record figlio se il padre `emittenti_fiscali` non e' attivo |
 | `script.trgfn_lock_columns` | Trigger | Rende immutabile `codice` in UPDATE |
@@ -179,9 +179,16 @@ con `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` (entrambi
 `null` = regime mai confermato, vedi §4.2).
 
 **Fase 4 — `non_editable_fields` nel detail**: il dict di response include
-`non_editable_fields: ["codice", "soggetto_id"]`. Il FE consuma il campo
-nel drawer di edit per gating dei Select dimensionali. Pattern coerente con
-altre matrici amm-software (categorie clienti listini, tipi ruolo indirizzi).
+`non_editable_fields: ["codice", "soggetto_ruolo_id"]`, tutta dal lock vivo di
+`dbops.vw_non_editable_fields` (BB `compute_non_editable_fields`, nessun gap):
+`codice` lo blocca `E_CODICE_NON_MODIFICABILE`, `soggetto_ruolo_id`
+`E_EMITTENTE_SOGGETTO_IMMUTABILE` (dal 2026-11-21: un emittente appartiene per
+sempre al suo soggetto). ⚠️ Fino a quel giorno la lista portava il gap Python
+`soggetto_id`, un campo del payload: la tabella non ha quella colonna, e il DB
+non garantiva la regola. ⚠️ Oggi `EmittenteFiscaleDrawer.vue` non legge la
+chiave: il soggetto si sceglie solo in creazione e i campi immutabili li spegne
+`isEdit`. Pattern coerente con altre matrici amm-software (categorie clienti
+listini, tipi ruolo indirizzi).
 
 ### 2.1 Esempio cURL
 

@@ -292,16 +292,14 @@ fatto rispondere una colonna a due domande.
 
 * **Figlio → padre**: una commessa non punta a una risorsa umana spenta. Lo
   impone a DB il require generato dal framework ATTIVO
-  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), che però risponde
-  con `E_ATTIVO_REQUIRE` — classe **TECNICO**, la stessa del trigger montato
-  male. Per l'operatore è un dato sbagliato, non un guasto: il backend verifica
-  «persona attiva» **prima** dell'`UPDATE` e risponde `400` col campo; il guard
-  DB resta l'autorità.
+  (`trg_commesse_a10_risorse_umane_require_attivo_ins_upd`), che risponde
+  `E_ATTIVO_PADRE_NON_ATTIVO` — classe **CONFLITTO_STATO** (409), con la colonna
+  nel campo. È l'unica sede della regola: il backend non la ricontrolla prima
+  dell'`UPDATE`, traduce il rifiuto del DB.
 * **Padre → figli**: una persona responsabile di una commessa — **anche
   chiusa**, perché `commesse` non ha `attivo` e il block conta tutti i figli —
-  **non si disattiva** (`trg_risorse_umane_a10_commesse_block_deact_upd`). È il
-  quarto block della sua specie su `risorse_umane`, accanto a `pratiche`,
-  `flussi` e `competenze_flussi`: per liberare una persona si cambia il
+  **non si disattiva** (`trg_risorse_umane_a10_commesse_block_deact_upd`,
+  `E_ATTIVO_BLOCK_CHILDREN_EXIST`): per liberare una persona si cambia il
   responsabile, non si spegne la persona.
 
 ⚠️ **Non esiste una lista configurata `vendite.commesse`**: in
@@ -859,7 +857,7 @@ Errori comuni:
 | riga AF già fatturata        | emit_da_commessa               | Tentativo update su riga fatturato=true                                                                                                          |
 | ROOT source mancante         | emit_da_commessa               | Nessun link ROOT in commesse_sorgenti                                                                                                            |
 | sorgente COMMESSA non attiva | emit_da_commessa               | config.sorgenti COMMESSA disabilitata                                                                                                            |
-| responsabile non attivo      | `PATCH /commesse/<id>/`        | il backend risponde `400` col campo (`E_COMMESSA_VALIDATION`) **prima** del require DB, che rifiuterebbe con `E_ATTIVO_REQUIRE` (classe TECNICO) |
+| responsabile non attivo      | `PATCH /commesse/<id>/`        | il require DB rifiuta con `E_ATTIVO_PADRE_NON_ATTIVO` (409, colonna nel campo); il backend lo traduce senza ricontrollare |
 
 ---
 

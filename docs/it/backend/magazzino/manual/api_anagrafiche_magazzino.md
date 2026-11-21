@@ -37,7 +37,7 @@ il padre dell'ubicazione e' dello stesso magazzino e senza cicli
 (`E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO`, `E_MAG_UBICAZIONE_PADRE_CICLICO`),
 il magazzino dell'ubicazione e' immutabile (`E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`),
 la scadenza del lotto non precede l'arrivo (`chk_mag_lotti_scadenza_dopo_arrivo`),
-l'articolo del lotto e' attivo (`E_ATTIVO_REQUIRE`). Il service esegue e traduce
+l'articolo del lotto e' attivo (`E_ATTIVO_PADRE_NON_ATTIVO`, 409 col campo). Il service esegue e traduce
 (`translate_db_errors`: i vincoli con nome col **campo**, i codici del DB intatti).
 
 Codice: `apps/magazzino/api/views_anagrafiche.py`,
@@ -157,7 +157,9 @@ Il file.
 Crea. Payload: `articolo_id`, `codice`, `data_arrivo` (obbligatori);
 `data_scadenza` (>= arrivo: lo dice il CHECK, il BE traduce col campo e non
 ricontrolla), `meta`. Su un articolo disattivo il DB rifiuta
-(`E_ATTIVO_REQUIRE`, TECNICO): il FE non apre il drawer su un articolo spento.
+(`E_ATTIVO_PADRE_NON_ATTIVO`, 409, campo `articolo_id`): il FE non apre il drawer su
+un articolo spento. ⚠️ Fino al 2026-11-07 il require rispondeva `E_ATTIVO_REQUIRE`
+(TECNICO, 500): oggi quel codice lo solleva solo il generatore dei trigger.
 
 #### 14. `GET /api/v1/magazzino/lotti/{id}/`
 
@@ -175,7 +177,7 @@ Per delta (`codice`, `data_arrivo`, `data_scadenza` — `null` la toglie —,
 | `E_MAGAZZINO_VALIDATION` (fino al 2026-09-23 il generico `E_VALIDATION_INPUT`, R-6) | payload o query rifiutati dal BE (campo nel contesto); FK/CHECK del DB tradotti col campo |
 | `E_ANAG_DUPLICATO` | `uq_magazzini_codice`, `uq_mag_ubicazioni_mag_codice`, `uq_mag_lotti_articolo_codice` — campo `codice` |
 | `E_MAG_MAGAZZINO_NON_TROVATO` · `E_MAG_UBICAZIONE_NON_TROVATA` · `E_MAG_LOTTO_NON_TROVATO` | i tre 404 (R-2 del brief DB) |
-| i codici del DB | `E_CODICE_NON_MODIFICABILE`, `E_MAG_MAGAZZINO_CON_GIACENZA`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, `E_MAG_UBICAZIONE_PADRE_*`, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`, `E_EMITTENTE_NON_RISOLTO`, `E_ATTIVO_REQUIRE`: passano **com'e'**, con la frase e il campo del catalogo |
+| i codici del DB | `E_CODICE_NON_MODIFICABILE`, `E_MAG_MAGAZZINO_CON_GIACENZA`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, `E_MAG_UBICAZIONE_PADRE_*`, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`, `E_EMITTENTE_NON_RISOLTO`, `E_ATTIVO_PADRE_NON_ATTIVO`: passano **com'e'**, con la frase e il campo del catalogo |
 
 ## Presidi
 
