@@ -104,6 +104,18 @@ class EmailRepository:
     #    INSERT/UPDATE, utente da `app.jwt_user`). Nessun UPDATE qui nomina
     #    `data_update` o `user_update`: riscriverli sarebbe la stessa regola su
     #    due livelli (2026-11-08, censimento di BE11 di brief-db-revisione-dbops).
+    # ⛔ Nessun DELETE su account e template: si spengono (`attivo = false`),
+    #    anche dopo aver spedito. Il DB rifiuta ogni cancellazione
+    #    (`dbops.automation_delete_block` → `E_DELETE_NOT_ALLOWED`; sulla riga
+    #    nata dal seed prima `E_SEED_RIGA_NON_CANCELLABILE`): un metodo che
+    #    risponde solo con un errore sarebbe un contratto falso (Tid 2026-11-19,
+    #    Q24 di brief-db-seed-primo-impianto-non-si-riscrive §16.14).
+    # ⭐ Lista e dettaglio di account e template leggono il segno del seed
+    #    dalla vista accanto alla tabella (`config.vw_email_{account,template}_seed`,
+    #    LEFT JOIN sull'id): `nata_dal_seed` e `campi_del_software`, i campi che
+    #    il form spegne. Vengono dalle stesse funzioni del guard che rifiuta
+    #    (`E_SEED_COLONNA_DEL_SOFTWARE`): qui nessun predicato sul registro e
+    #    nessun elenco di colonne, o il campo spento e il rifiuto divergono.
 
     # -------------------------------------------------------
     # Email Account — CRUD + risoluzione
@@ -141,9 +153,11 @@ class EmailRepository:
                    ea.smtp_host, ea.smtp_port, ea.smtp_use_tls, ea.smtp_use_ssl,
                    ea.smtp_username, ea.email_from, ea.email_reply_to,
                    ea.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software,
                    COUNT(*) OVER() AS total_count
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
+              LEFT JOIN config.vw_email_account_seed seed ON seed.email_account_id = ea.id
              WHERE {where}
              ORDER BY {order_clause}
              LIMIT %s OFFSET %s
@@ -152,10 +166,15 @@ class EmailRepository:
         return fetch_paged_with_total(sql, params, offset=offset)
 
     # Scopo: Dettaglio singolo account per ID con password crittografata (uso interno service).
+    # ⚠️ Legge anche gli account SPENTI, e porta `attivo`: un account che ha
+    #    spedito si spegne e non si cancella (Q24), quindi l'id scritto su un
+    #    log puo' essere di un account spento. Decide il chiamante — il rilancio
+    #    risolve un account acceso, il test di connessione prova quello chiesto.
     def get_account_with_password(self, account_id: int) -> dict[str, Any] | None:
         sql = """
             SELECT id, codice, smtp_host, smtp_port, smtp_use_tls, smtp_use_ssl,
-                   smtp_username, smtp_password_encrypted, email_from, email_reply_to
+                   smtp_username, smtp_password_encrypted, email_from, email_reply_to,
+                   attivo
               FROM config.email_account
              WHERE id = %s
         """
@@ -176,9 +195,11 @@ class EmailRepository:
                    ea.smtp_username, ea.email_from, ea.email_reply_to,
                    ea.attivo,
                    ea.smtp_password_encrypted IS NOT NULL AS has_smtp_password,
-                   ea.meta
+                   ea.meta,
+                   seed.nata_dal_seed, seed.campi_del_software
               FROM config.email_account ea
               LEFT JOIN config.unita_organizzative uo ON uo.id = ea.unita_organizzativa_id
+              LEFT JOIN config.vw_email_account_seed seed ON seed.email_account_id = ea.id
              WHERE ea.id = %s
         """
         with connection.cursor() as cursor:
@@ -258,12 +279,6 @@ class EmailRepository:
             "config.email_account", account_id, values,
             allowed=allowed,
         )
-
-    # Scopo: Elimina un account email per ID.
-    def delete_account(self, account_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM config.email_account WHERE id = %s", [account_id])
-            return cursor.rowcount > 0
 
     # Scopo: Persiste in `email_account.meta` l'esito dell'ultimo test SMTP.
     #        outcome ∈ {"SUCCESS", "FAILED"}; tested_at ISO-8601 UTC.
@@ -347,9 +362,11 @@ class EmailRepository:
                    et.lingua, et.oggetto,
                    et.variabili_disponibili,
                    et.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software,
                    COUNT(*) OVER() AS total_count
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
+              LEFT JOIN config.vw_email_template_seed seed ON seed.email_template_id = et.id
              WHERE {where}
              ORDER BY {order_clause}
              LIMIT %s OFFSET %s
@@ -366,9 +383,11 @@ class EmailRepository:
                    et.tipo_prestazione_id,
                    et.lingua, et.oggetto, et.corpo_html, et.corpo_testo,
                    et.variabili_disponibili,
-                   et.attivo
+                   et.attivo,
+                   seed.nata_dal_seed, seed.campi_del_software
               FROM config.email_template et
               LEFT JOIN config.unita_organizzative uo ON uo.id = et.unita_organizzativa_id
+              LEFT JOIN config.vw_email_template_seed seed ON seed.email_template_id = et.id
              WHERE et.id = %s
         """
         with connection.cursor() as cursor:
@@ -420,12 +439,6 @@ class EmailRepository:
             "config.email_template", template_id, kwargs,
             allowed=self._TEMPLATE_UPDATE_COLS,
         )
-
-    # Scopo: Elimina un template email per ID.
-    def delete_template(self, template_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM config.email_template WHERE id = %s", [template_id])
-            return cursor.rowcount > 0
 
     # Scopo: Risolve template email per codice/reparto/tipo/lingua con fallback PG.
     def resolve_template(
@@ -564,6 +577,11 @@ class EmailRepository:
     #    rifiuto NON va trasformato in un ripiego sull'UPDATE diretto: dice che
     #    qualcuno sta usando la porta di sistema per l'email di un'azienda, ed e'
     #    il solo posto in cui quel difetto si vede.
+    # ⭐ L'ACCOUNT SEGUE L'INVIO (brief-db-seed-primo-impianto-non-si-riscrive
+    #    §16.16, R5): `email_account_id` e' l'account da cui la mail e' partita
+    #    in questo tentativo, e si scrive con ogni esito — anche un FAILED e' un
+    #    tentativo partito da li'. `None` lascia la colonna com'e', sulle due
+    #    porte allo stesso modo (`COALESCE`, come `inviato_at` nella funzione).
     def update_log_stato(
         self,
         log_id: int,
@@ -572,12 +590,14 @@ class EmailRepository:
         ambito: str,
         errore: str | None = None,
         inviato_at: str | None = None,
+        email_account_id: int | None = None,
     ) -> bool:
         if ambito == AMBITO_SISTEMA:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT config.fn_chiudi_email_sistema(%s, %s, %s, %s::timestamptz)",
-                    [log_id, stato, errore, inviato_at],
+                    "SELECT config.fn_chiudi_email_sistema("
+                    "%s, %s, %s, %s::timestamptz, %s::integer)",
+                    [log_id, stato, errore, inviato_at, email_account_id],
                 )
                 return bool(fetchone_scalar(cursor))
 
@@ -586,11 +606,14 @@ class EmailRepository:
                SET stato = %s,
                    errore = %s,
                    inviato_at = CASE WHEN %s IS NOT NULL THEN %s::timestamptz ELSE inviato_at END,
+                   email_account_id = COALESCE(%s::integer, email_account_id),
                    tentativi = tentativi + 1
              WHERE id = %s
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [stato, errore, inviato_at, inviato_at, log_id])
+            cursor.execute(
+                sql, [stato, errore, inviato_at, inviato_at, email_account_id, log_id],
+            )
             return cursor.rowcount > 0
 
     # Scopo: Lista log email con filtri, paginazione e conteggio.

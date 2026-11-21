@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_delete_block_by_guc()`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,7 +23,7 @@
 ### 🎯 Scopo Principale
 
 La funzione trigger **generica** del blocco delle cancellazioni: rifiuta il `DELETE` di una riga,
-salvo che la sessione abbia acceso un interruttore di manutenzione (una **GUC**). Il framework la
+salvo che la sessione del migratore abbia acceso un interruttore di manutenzione (una **GUC**). Il framework la
 monta sulle tabelle di `dbops.automation_delete_block`, con un trigger `BEFORE DELETE` per riga.
 
 ---
@@ -32,7 +32,10 @@ monta sulle tabelle di `dbops.automation_delete_block`, con un trigger `BEFORE D
 
 * Il trigger riceve un argomento, la chiave della GUC (`guc_key`). Senza argomento la funzione
   solleva `E_TRIGGER_ARGOMENTI_INVALIDI`.
-* Se la GUC vale `on` nella sessione, il `DELETE` passa.
+* Se la porta è aperta, il `DELETE` passa: la GUC è accesa (`on`, `true` o `1`) **e** la sessione
+  è del migratore ([fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta)).
+  Ogni riga cancellata dalla porta resta nel diario delle porte.
+* ⛔ Per l'applicazione la GUC accesa non apre niente: il `DELETE` resta rifiutato.
 * Altrimenti la funzione registra l'errore e rifiuta con `E_DELETE_NOT_ALLOWED`, con la tabella e
   l'`id` della riga.
 
@@ -46,7 +49,7 @@ abbia il trigger: un trigger su questa funzione che il registro non nomina ferma
 
 ### Codici errore
 
-* `E_DELETE_NOT_ALLOWED` — cancellazione rifiutata, GUC spenta.
+* `E_DELETE_NOT_ALLOWED` — cancellazione rifiutata: porta chiusa.
 * `E_TRIGGER_ARGOMENTI_INVALIDI` — trigger montato senza la chiave della GUC.
 
 ---
@@ -57,6 +60,8 @@ abbia il trigger: un trigger su questa funzione che il registro non nomina ferma
 * 2026-11-08 — il framework la monta `BEFORE DELETE` invece di `AFTER DELETE`, e riconosce il
   blocco vivo da questa funzione e dal suo argomento (`brief-db-revisione-dbops`, giro 10c). La
   funzione non cambia.
+* 2026-11-17 — la porta passa da `script.fn_porta_manutenzione_aperta`: solo il migratore la apre,
+  con la riga nel diario (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 

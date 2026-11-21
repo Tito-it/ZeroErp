@@ -24,13 +24,15 @@
 --   4) le sei colonne codice di ui sono in eccezione per CODICE_MAIUSCOLO
 --   5) le sette tabelle che prendono l'audit hanno data_update e user_update
 --      NOT NULL col DEFAULT
---   6) i due preset hanno contenuto_aggiornato_il NOT NULL; le due preferenze
---      lo snapshot rinominato, e il nome vecchio non c'e' piu'
+--   6) i due preset hanno contenuto_aggiornato_il jsonb NOT NULL; le due
+--      preferenze lo snapshot jsonb, e il nome vecchio non c'e' piu'
 --   7) la funzione del contenuto e' quella nuova, la vecchia e' ritirata
 --   8) i due trigger a20 dei preset sono sulla funzione nuova
 --   9) ⭐ con l'audit montato, un UPDATE che non tocca il contenuto sposta
 --      data_update e NON contenuto_aggiornato_il (caso COSTRUITO)
---  10) ⭐ ... e un UPDATE del contenuto li sposta tutti e due
+--  10) ⭐ ... e un UPDATE dell'ordinamento sposta data_update e la sola chiave
+--      ordinamento della data del contenuto (per chiave, dal giro 1b di
+--      brief-db-revisione-ui)
 --
 -- ⚠️ I montaggi veri della convergenza (ci_apply) non si provano qui: dipendono
 --   da quando la convergenza e' girata. Il caso 9-10 monta il trigger come lo
@@ -120,18 +122,19 @@ SELECT is_empty(
     '5) le sette tabelle che prendono l''audit hanno data_update e user_update NOT NULL col DEFAULT');
 
 SELECT is(
-    (SELECT string_agg(format('%s.%s:%s', c.relname, a.attname, a.attnotnull::text), ',' ORDER BY c.relname, a.attname)
+    (SELECT string_agg(format('%s.%s:%s:%s', c.relname, a.attname, format_type(a.atttypid, a.atttypmod),
+                              a.attnotnull::text), ',' ORDER BY c.relname, a.attname)
        FROM pg_attribute a
        JOIN pg_class c ON c.oid = a.attrelid
       WHERE c.relnamespace = 'ui'::regnamespace
         AND c.relname IN ('lista_preset', 'dashboard_preset', 'lista_preferenza_utente', 'dashboard_preferenza_utente')
         AND a.attname IN ('contenuto_aggiornato_il', 'preset_base_contenuto_aggiornato_il', 'preset_base_data_update')
         AND a.attnum > 0 AND NOT a.attisdropped),
-    'dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il:false,'
-    || 'dashboard_preset.contenuto_aggiornato_il:true,'
-    || 'lista_preferenza_utente.preset_base_contenuto_aggiornato_il:false,'
-    || 'lista_preset.contenuto_aggiornato_il:true',
-    '6) la data del contenuto ha la sua colonna sui preset, lo snapshot il nome nuovo');
+    'dashboard_preferenza_utente.preset_base_contenuto_aggiornato_il:jsonb:false,'
+    || 'dashboard_preset.contenuto_aggiornato_il:jsonb:true,'
+    || 'lista_preferenza_utente.preset_base_contenuto_aggiornato_il:jsonb:false,'
+    || 'lista_preset.contenuto_aggiornato_il:jsonb:true',
+    '6) la data del contenuto per chiave (jsonb) sui preset, lo snapshot jsonb col nome nuovo');
 
 -- ============================================================
 -- 7-8) La funzione del contenuto e i suoi trigger
@@ -150,8 +153,8 @@ SELECT is(
        JOIN pg_class c ON c.oid = t.tgrelid
       WHERE NOT t.tgisinternal
         AND t.tgfoid = 'ui.trgfn_preset_contenuto_aggiornato()'::regprocedure),
-    'dashboard_preset:trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd,'
-    || 'lista_preset:trg_ui_lista_preset_a20_contenuto_aggiornato_upd',
+    'dashboard_preset:trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd,'
+    || 'lista_preset:trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd',
     '8) i due trigger a20 dei preset sono sulla funzione nuova');
 
 -- ============================================================
@@ -175,29 +178,38 @@ SELECT id AS lista_id FROM ins;
 
 CREATE TEMP TABLE _p ON COMMIT DROP AS
 WITH ins AS (
-  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito,
                                ordinamento_default, attivo, user_insert)
-  SELECT l.lista_id, 'pgtap_ambito', 'Preset test ui nell''ambito', 'sistema', TRUE,
+  SELECT l.lista_id, 'pgtap_ambito', 'Preset test ui nell''ambito', 'sistema',
          '[]'::jsonb, TRUE, '_pgtap'
     FROM _l l
   RETURNING id
 )
 SELECT id AS preset_id FROM ins;
 
--- Le due date indietro, a un istante noto: il trigger di audit va spento per
--- poterle scrivere, poi si riaccende.
+-- Le due date indietro, a un istante noto: il trigger di audit e quello del
+-- contenuto (che rifiuta chi scrive la data) vanno spenti per poterle
+-- scrivere, poi si riaccendono.
 ALTER TABLE ui.lista_preset DISABLE TRIGGER _pgtap_lista_preset_audit_data_user_upd;
+ALTER TABLE ui.lista_preset DISABLE TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd;
 UPDATE ui.lista_preset
    SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00',
-       contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
+       contenuto_aggiornato_il = jsonb_build_object(
+           'colonne',           '2026-01-01T10:00:00+00:00',
+           'ordinamento',       '2026-01-01T10:00:00+00:00',
+           'filtri',            '2026-01-01T10:00:00+00:00',
+           'pagina_dimensione', '2026-01-01T10:00:00+00:00')
  WHERE id = (SELECT preset_id FROM _p);
+ALTER TABLE ui.lista_preset ENABLE TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd;
 ALTER TABLE ui.lista_preset ENABLE TRIGGER _pgtap_lista_preset_audit_data_user_upd;
 
 UPDATE ui.lista_preset SET descrizione = 'Preset test ui nell''ambito, rinominato'
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT format('%s|%s', (data_update = now())::text, (contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00')::text)
+    (SELECT format('%s|%s', (data_update = now())::text,
+                   (SELECT bool_and((v #>> '{}')::timestamptz = TIMESTAMPTZ '2026-01-01 10:00:00+00')
+                      FROM jsonb_each(contenuto_aggiornato_il) AS e(k, v))::text)
        FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
     'true|true',
     '9) con l''audit montato, cambiare la descrizione sposta data_update e non la data del contenuto');
@@ -206,10 +218,13 @@ UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "x", "dir": "asc"}]':
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT format('%s|%s', (data_update = now())::text, (contenuto_aggiornato_il = now())::text)
+    (SELECT format('%s|%s', (data_update = now())::text,
+                   (SELECT string_agg(k, ',' ORDER BY k)
+                      FROM jsonb_each_text(contenuto_aggiornato_il) AS e(k, v)
+                     WHERE v::timestamptz > TIMESTAMPTZ '2026-01-01 10:00:00+00'))
        FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    'true|true',
-    '10) ... e cambiare il contenuto sposta tutte e due le date');
+    'true|ordinamento',
+    '10) ... e cambiare l''ordinamento sposta data_update e la sola chiave ordinamento');
 
 SELECT * FROM finish();
 ROLLBACK;

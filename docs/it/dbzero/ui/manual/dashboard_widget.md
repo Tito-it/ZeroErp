@@ -1,40 +1,82 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_widget`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> Tabelle correlate:
+> Approfondimento tabelle:
 >
-> [ui.dashboard_definizione](/dbzero/ui/tabelle/dashboard_definizione)
-> [ui.widget](/dbzero/ui/tabelle/widget)
+> * [ui.dashboard_definizione](/dbzero/ui/tabelle/dashboard_definizione) — la dashboard del pool
+> * [ui.widget](/dbzero/ui/tabelle/widget) — il catalogo globale dei widget
+> * [ui.dashboard_preset_widget](/dbzero/ui/tabelle/dashboard_preset_widget) — i widget che un preset propone
 >
-> Funzione:
+> Approfondimento funzioni:
 >
-> [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config)
-
-La tabella **`ui.dashboard_widget`** è la **composizione dashboard↔widget**: il ponte che rende il widget globale ([ui.widget](/dbzero/ui/tabelle/widget)) utilizzabile su più dashboard senza duplicarne la definizione. Dichiara quali widget del catalogo globale sono candidati per una dashboard e il loro ordine di default.
+> * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — usa il pool come catalogo, per l'aggiunta dei nuovi e come filtro
 
 ---
 
 ### 🎯 Scopo Principale
 
-* **Pool candidato per dashboard**: elenca i widget disponibili per una dashboard specifica. È anche la sorgente del **"catalogo grezzo"** (fallback "mai vuota") e del **merge automatico** dei widget nuovi nella funzione di risoluzione.
-* **Ordine di default**: `ordine_default` determina la disposizione delle card quando manca un preset o una preferenza utente.
+`ui.dashboard_widget` è il **pool di una dashboard**: quali widget del catalogo globale può mostrare, e
+in che ordine quando nessuno ha scelto. Una riga per coppia (dashboard, widget).
+
+Il widget è globale ([ui.widget](/dbzero/ui/tabelle/widget)): questa tabella lo rende disponibile a più
+dashboard senza ricopiarne la definizione.
 
 ---
 
-### Colonne chiave
+### Il pool decide che cosa la dashboard può mostrare
 
-| Colonna | Scopo |
-|---------|-------|
-| `dashboard_id` | FK `ui.dashboard_definizione` |
-| `widget_id` | FK `ui.widget` (catalogo globale) |
-| `ordine_default` | Ordine del widget nella dashboard in assenza di preset/preferenza |
+La funzione di risoluzione legge il pool tre volte:
 
-**PK** `(dashboard_id, widget_id)`: un widget compare una sola volta per dashboard. `dashboard_id` è leading, quindi la PK copre già l'accesso per dashboard (nessun indice FK dedicato su `dashboard_id`; l'indice serve solo su `widget_id`).
+* **catalogo**: senza preferenza né preset, la dashboard mostra tutti i widget accesi del pool, visibili,
+  nell'ordine di `ordine_default`;
+* **widget nuovi**: un widget acceso del pool che la configurazione non nomina si aggiunge in coda,
+  invisibile, e si conta in `widget_nuovi`;
+* **filtro**: un widget fuori dal pool non compare, anche se una preferenza o un preset lo nominano.
+
+Togliere un widget dal pool lo toglie quindi a tutti, preferenze comprese; aggiungerlo lo offre a tutti
+come novità.
 
 ---
 
-### Note operative
+### Una parte, non un'entità
 
-* Aggiungere un widget a una dashboard = inserire una riga qui; il widget deve già esistere in `ui.widget`.
-* Rimuovere un widget dal pool di una dashboard (DELETE qui) lo fa sparire dalla risoluzione anche per gli utenti che lo avevano in preferenza (la risoluzione richiede la membership nel pool).
+La riga non ha `attivo`, e le due FK sono in eccezione alla regola ATTIVO: un widget nel pool si spegne
+lo stesso, e una dashboard non si ferma sul suo pool. Spegnere il widget lo toglie dalla dashboard alla
+risoluzione. Un widget nel pool non si cancella (FK senza azione), e nemmeno la dashboard.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Togliere un widget dal pool non tocca i preset che lo propongono.** Il preset continua a nominarlo, e la
+  sua data del contenuto non si sposta.
+* **L'ordine di default può essere uguale per due widget.** Nessun vincolo lo impedisce, e l'ordine fra i
+  due non è determinato.
+* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
+
+---
+
+### Codici errore
+
+La tabella non solleva codici propri. La coppia ripetuta arriva come violazione della chiave primaria.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — il catalogo del pool, il widget nuovo aggiunto
+  invisibile e contato.
+
+---
+
+### Note di migrazione
+
+* 2026-07-21 — nasce la tabella.
+* 2026-11-08 — le due FK entrano in eccezione alla regola ATTIVO.
+
+---
+
+{% include-markdown "signature-core.md" %}

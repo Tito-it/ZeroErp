@@ -58,6 +58,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
+| trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
 | trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
 | trg_lista_colonna_a10_lista_definizione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'lista_definizione', 'attivo', 'lista_id', 'id')` |
 | trg_lista_colonna_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

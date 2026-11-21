@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CANCELLARE O CAMBIARE UN INDIRIZZO NON LASCIA IL SOGGETTO SENZA OBBLIGATORIO
+#   anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto() -> trigger
+#   trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt
+#     CONSTRAINT TRIGGER AFTER UPDATE OR DELETE ON anagrafiche.indirizzi_soggetti
+#     DEFERRABLE INITIALLY DEFERRED
+#   Brief: brief-db-fornitore-privato-indirizzi §8.4 (F-1, Tid 2026-11-16), giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Gemello di -35 sul layer SOGGETTO. L'app cancella gli indirizzi del
+#   soggetto (delete_indirizzo_soggetto) e li sostituisce con cancella e
+#   riscrivi (replace_indirizzo_soggetto, in una transazione): togliere la
+#   sede legale di una societa' lasciava il soggetto senza obbligatorio.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Come -35: differito, giudica il soggetto di PRIMA (OLD.soggetto_id), un
+#   UPDATE che non tocca ne' il tipo ne' il soggetto non chiede niente, il
+#   soggetto che non c'e' piu' tace (la FK verso il soggetto e' NO ACTION:
+#   prima gli indirizzi). Il controllo e'
+#   anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (-32),
+#   E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO. Nome di 61 caratteri.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-36-create-trg-indirizzi-soggetti-guard-obbligatori-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261116-36-create-trg-indirizzi-soggetti-guard-obbligatori-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Alla cancellazione di un indirizzo del soggetto, o al cambio del suo tipo o del suo
+        soggetto, il soggetto di prima si ricontrolla a fine transazione: non resta senza obbligatorio.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND OLD.soggetto_id IS NOT DISTINCT FROM NEW.soggetto_id
+                     AND OLD.tipo_indirizzo_id IS NOT DISTINCT FROM NEW.tipo_indirizzo_id THEN
+                      RETURN NULL;
+                  END IF;
+
+                  PERFORM anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(OLD.soggetto_id, NULL::uuid);
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto()
+              IS 'Constraint trigger DEFERRABLE su anagrafiche.indirizzi_soggetti, AFTER UPDATE OR DELETE: quando si cancella un indirizzo del soggetto, o se ne cambia il tipo o il soggetto, il soggetto di prima (OLD.soggetto_id) deve avere ancora i suoi indirizzi obbligatori, a fine transazione. Il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO); un soggetto cancellato nella stessa transazione tace. Un UPDATE che non cambia ne'' il tipo ne'' il soggetto non chiede niente. Gemello di anagrafiche.trgfn_indirizzi_guard_obbligatori_ruolo, il layer RUOLO.';
+
+              DROP TRIGGER IF EXISTS trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt
+                  ON anagrafiche.indirizzi_soggetti;
+              CREATE CONSTRAINT TRIGGER trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt
+                  AFTER UPDATE OR DELETE ON anagrafiche.indirizzi_soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto();
+
+              COMMENT ON TRIGGER trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt ON anagrafiche.indirizzi_soggetti IS
+                'Al commit, il soggetto da cui un indirizzo e'' stato tolto (cancellato, o cambiato di tipo o di soggetto) ha ancora i suoi indirizzi obbligatori. Differito: sostituire un indirizzo, o cancellare il soggetto coi suoi indirizzi, passa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_indirizzi_soggetti_a10_guard_obbligatori_soggetto_upd_dlt
+                  ON anagrafiche.indirizzi_soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto();

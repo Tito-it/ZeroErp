@@ -19,6 +19,7 @@ AS $function$
 DECLARE
     c_chi        CONSTANT text := 'anagrafiche.fn_check_tipo_indirizzo_ruolo';
     v_tipo_ruolo anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+    v_natura     anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
     v_motivi     jsonb;
 BEGIN
     -- =========================================================
@@ -32,7 +33,8 @@ BEGIN
     -- Regole:
     --   - i tipi presenti si leggono sulla chiave dei due indici
     --     (istanza IS NOT DISTINCT FROM quella data): un tipo
-    --     del ruolo non blocca la stessa istanza, e viceversa.
+    --     del ruolo non blocca la stessa istanza, e viceversa;
+    --   - la natura e' quella del soggetto del ruolo.
     -- =========================================================
     IF p_soggetto_ruolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -43,9 +45,10 @@ BEGIN
             'manca il ruolo');
     END IF;
 
-    SELECT sr.tipo_ruolo_id
-      INTO v_tipo_ruolo
+    SELECT sr.tipo_ruolo_id, s.tipo_soggetto_dettaglio_id
+      INTO v_tipo_ruolo, v_natura
       FROM anagrafiche.soggetti_ruoli sr
+      JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
      WHERE sr.id = p_soggetto_ruolo_id;
 
     IF NOT FOUND THEN
@@ -66,14 +69,15 @@ BEGIN
                  AND i.istanza_utility_id IS NOT DISTINCT FROM p_istanza_utility_id),
         p_tipo_indirizzo_id,
         script.fn_data_operativa(),
-        p_soggetto_ruolo_id);
+        p_soggetto_ruolo_id,
+        v_natura);
 
     RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_check_tipo_indirizzo_ruolo(p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_tipo_indirizzo_id integer)
-IS 'I motivi per cui il tipo di indirizzo non si puo'' scrivere sul ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza: legge il tipo di ruolo e i tipi che la chiave (ruolo, istanza) ha gia'' (la chiave di uq_indirizzi_ruolo_tipo_no_istanza e uq_indirizzi_ruolo_istanza_tipo) e li passa a anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, col giorno di script.fn_data_operativa(). Array ordinato di motivi, [] se ammesso: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), poi il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO). Ruolo mancante E_SCRIPT_CHIAMATA_NON_VALIDA, inesistente E_SOGGETTO_RUOLO_NON_TROVATO. SECURITY INVOKER. La chiama anagrafiche.fn_crea_indirizzo_ruolo, che solleva il primo motivo prima di scrivere. Gemella di anagrafiche.fn_check_tipo_indirizzo_soggetto.';
+IS 'I motivi per cui il tipo di indirizzo non si puo'' scrivere sul ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza: legge il tipo di ruolo, la natura del soggetto del ruolo e i tipi che la chiave (ruolo, istanza) ha gia'' (la chiave di uq_indirizzi_ruolo_tipo_no_istanza e uq_indirizzi_ruolo_istanza_tipo) e li passa a anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, col giorno di script.fn_data_operativa(). Array ordinato di motivi, [] se ammesso: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO), il tipo che la natura del soggetto non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). Ruolo mancante E_SCRIPT_CHIAMATA_NON_VALIDA, inesistente E_SOGGETTO_RUOLO_NON_TROVATO. SECURITY INVOKER. La chiama anagrafiche.fn_crea_indirizzo_ruolo, che solleva il primo motivo prima di scrivere. Gemella di anagrafiche.fn_check_tipo_indirizzo_soggetto.';
 ```
 
 </div>

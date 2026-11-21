@@ -1,0 +1,209 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preset_riga_tocca_preset: la composizione cambiata si giudica a fine
+#   transazione, sull'impronta.
+#   Brief: brief-db-revisione-ui (giro 1b: Q33 col mezzo di Q37, deciso da Tid il
+#   2026-11-20).
+#
+# Perche': il trigger per riga spostava la data del preset a ogni riga aggiunta,
+#   tolta o cambiata. Il BE riscrive la composizione con un DELETE seguito
+#   dall'INSERT delle stesse righe: la data si spostava senza che niente fosse
+#   cambiato, il banner si accendeva, e il seed di primo impianto vedeva un
+#   preset di seed personalizzato. Un trigger per istruzione non basta: DELETE e
+#   INSERT sono due istruzioni, e ciascuna vede solo la sua meta' (provato su
+#   dbdev il 2026-11-20).
+# Ora: constraint trigger DEFERRABLE INITIALLY DEFERRED, per riga (un constraint
+#   trigger non puo' essere per istruzione). A fine transazione calcola
+#   l'impronta della composizione (ui.fn_preset_impronta) e la scrive sul preset
+#   solo se e' diversa da quella salvata. Il preset sposta allora la chiave
+#   colonne (o widget) della data del contenuto (20261120-05), e il seed vede
+#   cambiare una colonna dell'installazione (registro, riga 5). Piu' eventi
+#   sullo stesso preset: il primo scrive, gli altri trovano l'impronta uguale.
+# Si rimonta col nome di prima (20261101-23, -25), come constraint trigger: il
+#   DROP TRIGGER toglie anche la voce di pg_constraint.
+# ⚠️ I pgTAP girano con SET CONSTRAINTS ALL IMMEDIATE: li' scatta a fine
+#   istruzione, e un DELETE + INSERT in due istruzioni sposta la data. Il caso si
+#   prova coi vincoli differiti, chiudendo con SET CONSTRAINTS ALL IMMEDIATE.
+# ⚠️ Un evento in sospeso fa fallire un ALTER TABLE, nella stessa transazione,
+#   della tabella che lo ha accodato: la composizione (ui.lista_preset_colonna,
+#   ui.dashboard_preset_widget), non il preset (provato su tabelle temporanee il
+#   2026-11-20). Chi scrive la composizione e poi la altera nello stesso
+#   changeSet apre con SET CONSTRAINTS ALL IMMEDIATE (linee-guida-sql §11.12).
+#   Fatto datato (2026-11-20): nessun changeSet di 70_dati_sistema, 80_data,
+#   85_pgagent e 90_end altera le due composizioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-06-update-trgfn-preset-riga-tocca-preset-differito-mctit.yaml
+
+  - changeSet:
+      id: 20261120-06-update-trgfn-preset-riga-tocca-preset-differito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preset_riga_tocca_preset: constraint trigger differito, sposta il preset solo se l'impronta della
+        composizione e' cambiata. Brief: brief-db-revisione-ui (giro 1b, Q33, Q37).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_preset_impronta'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_riga_tocca_preset()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una composizione cambiata e' un cambio del preset. A fine
+              --   transazione si calcola l'impronta della composizione e, se e'
+              --   diversa da quella salvata, la si scrive sul preset: il trigger del
+              --   preset sposta la chiave colonne (o widget) della data del
+              --   contenuto. Una riscrittura uguale, anche in piu' istruzioni (un
+              --   DELETE seguito dall'INSERT delle stesse righe), non sposta niente.
+              --   TG_ARGV[0] = la tabella del preset (ui.lista_preset,
+              --   ui.dashboard_preset); la riga figlia porta preset_id.
+              -- Montaggio: CONSTRAINT TRIGGER AFTER INSERT OR UPDATE OR DELETE,
+              --   DEFERRABLE INITIALLY DEFERRED, FOR EACH ROW.
+              DECLARE
+                  -- regclass nudo: la tabella dei preset, dall'argomento
+                  v_tabella_preset regclass;
+                  -- text: 'lista' o 'dashboard', dalla tabella del preset
+                  v_famiglia       text;
+                  -- gli id dei preset toccati (ui.lista_preset.id e ui.dashboard_preset.id,
+                  -- integer tutti e due)
+                  v_preset_ids     ui.lista_preset.id%TYPE[];
+                  v_preset_id      ui.lista_preset.id%TYPE;
+                  v_impronta       ui.lista_preset.composizione_impronta%TYPE;
+              BEGIN
+                  v_tabella_preset := to_regclass(TG_ARGV[0]);
+                  v_famiglia := CASE v_tabella_preset
+                                    WHEN 'ui.lista_preset'::regclass     THEN 'lista'
+                                    WHEN 'ui.dashboard_preset'::regclass THEN 'dashboard'
+                                END;
+                  IF v_famiglia IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'tgargs',    to_jsonb(TG_ARGV),
+                              'dettaglio', 'atteso ui.lista_preset o ui.dashboard_preset'),
+                          NULL::uuid,
+                          format('%s: atteso ui.lista_preset o ui.dashboard_preset', TG_NAME));
+                  END IF;
+
+                  -- Una riga riscritta uguale non e' un cambio.
+                  IF TG_OP = 'UPDATE' AND OLD IS NOT DISTINCT FROM NEW THEN
+                      RETURN NULL;
+                  END IF;
+
+                  v_preset_ids := CASE TG_OP
+                                      WHEN 'INSERT' THEN ARRAY[NEW.preset_id]
+                                      WHEN 'DELETE' THEN ARRAY[OLD.preset_id]
+                                      -- spostata su un altro preset: si guardano tutti e due
+                                      ELSE ARRAY[OLD.preset_id, NEW.preset_id]
+                                  END;
+
+                  FOREACH v_preset_id IN ARRAY v_preset_ids LOOP
+                      v_impronta := ui.fn_preset_impronta(v_famiglia, v_preset_id);
+                      -- Il preset cancellato (CASCADE) non c'e' piu': zero righe.
+                      IF v_famiglia = 'lista' THEN
+                          UPDATE ui.lista_preset
+                             SET composizione_impronta = v_impronta
+                           WHERE id = v_preset_id
+                             AND composizione_impronta IS DISTINCT FROM v_impronta;
+                      ELSE
+                          UPDATE ui.dashboard_preset
+                             SET composizione_impronta = v_impronta
+                           WHERE id = v_preset_id
+                             AND composizione_impronta IS DISTINCT FROM v_impronta;
+                      END IF;
+                  END LOOP;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preset_riga_tocca_preset() IS
+                  'Sulla composizione dei preset (ui.lista_preset_colonna, ui.dashboard_preset_widget; TG_ARGV[0] = la tabella del preset, ui.lista_preset o ui.dashboard_preset): a fine transazione calcola l''impronta della composizione (ui.fn_preset_impronta) e, se e'' diversa da composizione_impronta del preset, la scrive. Il trigger del preset (ui.trgfn_preset_contenuto_aggiornato) sposta allora la chiave colonne, o widget, di contenuto_aggiornato_il. Una riscrittura uguale non sposta niente, anche quando passa da un DELETE e da un INSERT separati. Una riga spostata su un altro preset guarda tutti e due; un preset cancellato non si tocca. CONSTRAINT TRIGGER AFTER INSERT OR UPDATE OR DELETE, DEFERRABLE INITIALLY DEFERRED, FOR EACH ROW: con SET CONSTRAINTS IMMEDIATE scatta a fine istruzione. Argomento fuori dai due: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  ON ui.lista_preset_colonna;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  ON ui.dashboard_preset_widget;
+
+              CREATE CONSTRAINT TRIGGER trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.lista_preset_colonna
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset');
+              CREATE CONSTRAINT TRIGGER trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.dashboard_preset_widget
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  ON ui.lista_preset_colonna;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  ON ui.dashboard_preset_widget;
+
+              CREATE OR REPLACE FUNCTION ui.trgfn_preset_riga_tocca_preset()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una riga di un preset aggiunta, tolta o cambiata e' un cambio
+              --   del preset: ne sposta contenuto_aggiornato_il, la data che il flag
+              --   preset_aggiornato confronta con lo snapshot della preferenza.
+              --   TG_ARGV[0] = la tabella del preset (ui.lista_preset,
+              --   ui.dashboard_preset); la riga figlia porta preset_id.
+              -- ⚠️ Confronto sulla riga intera: le tabelle figlie non hanno audit.
+              DECLARE
+                  -- Tipo esplicito: %TYPE[] non e' sintassi PostgreSQL, e l'id viene da
+                  -- due tabelle (ui.lista_preset.id, ui.dashboard_preset.id, integer).
+                  v_preset_ids integer[];
+              BEGIN
+                  -- Una riscrittura uguale (il seed loadUpdateData lo fa a ogni giro)
+                  -- non e' un cambio.
+                  IF TG_OP = 'UPDATE' AND OLD IS NOT DISTINCT FROM NEW THEN
+                      RETURN NULL;
+                  END IF;
+
+                  v_preset_ids := CASE TG_OP
+                                      WHEN 'INSERT' THEN ARRAY[NEW.preset_id]
+                                      WHEN 'DELETE' THEN ARRAY[OLD.preset_id]
+                                      -- spostata su un altro preset: cambiano tutti e due
+                                      ELSE ARRAY[OLD.preset_id, NEW.preset_id]
+                                  END;
+
+                  -- Il padre cancellato (CASCADE) non c'e' piu': zero righe.
+                  EXECUTE format('UPDATE %s SET contenuto_aggiornato_il = now() WHERE id = ANY ($1)',
+                                 TG_ARGV[0]::regclass)
+                    USING v_preset_ids;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              CREATE TRIGGER trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.lista_preset_colonna
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset');
+              CREATE TRIGGER trg_ui_dashboard_preset_widget_z10_tocca_preset_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OR DELETE ON ui.dashboard_preset_widget
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.dashboard_preset');

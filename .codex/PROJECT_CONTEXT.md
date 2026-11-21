@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-15.
+> Ultima revisione: 2026-11-18.
 
 ## Identità del Progetto
 
@@ -221,7 +221,9 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
-  d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5).
+  d'acquisto è rinviato a `work-done/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
+  del **fornitore privato** (ricevuta o nota compenso, ritenuta d'acconto, F24, CU; l'indirizzo fiscale chiesto dal
+  documento, non dal ruolo) è da progettare: `work-done/brief-db-fornitore-privato-indirizzi.md` §7.
 
 ⭐ **I domini nuovi nascono con il permesso applicato dal DB**
 (`work-done/brief-db-permesso-nel-verbo-di-scrittura.md`, D-1 → D-5 di Tid). Il modello è
@@ -249,13 +251,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dell'amministratore che rifiutano le credenziali di sistema).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
-- 📝 **Revisione dello schema `documenti`** (`work-in-progress/brief-db-revisione-documenti.md`): giro 0 (la doc)
-  scritto il 2026-11-14; difetti censiti e le dodici decisioni prese lo stesso giorno. Cinque giri da fare (§2),
-  non iniziati: aspetta il via di Tid al giro 1.
 - **GUIDA roll-out multi-dominio** (`work-in-progress/brief-design-guida-rollout-multidominio.md`):
   deciso, si parte da OFFERTA.
 - **PrimeVue 5** (`work-in-progress/piano-migrazione-primevue-5.md`): leggere prima il §1-bis, il
   cambio di licenza.
+- 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
+  pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
+  decisioni Q1-Q39 prese da Tid dal 2026-11-18 al 2026-11-20; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20.
+  Ora il BE/FE con le ricadute dell'1b (BE7, BE25), poi il via al giro 2 di sei.
 - ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
   decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
   il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al
@@ -282,7 +285,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Residui di `work-done/brief-db-scadenza-preventivi.md`**: `validita_al` dice due cose; il verbo di chiusura del listino
 - **Residui di `work-done/brief-modello-documento-vendita.md`**: i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili; due rami del preventivo senza strada dall'interfaccia; `DocumentoDrawerHost` tace sul drawer che non si carica
 - **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`**: il reset del rifiuto sta solo nel BE del preventivo; la riga `test-preventivi-approvazione-prezzo.sql`
-- **Residui di `work-done/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; la numerazione della versione nuova; `vendite.fatture.utility_id NOT NULL`
+- **Residui di `work-done/brief-db-modelli-documento-standard.md`**: il giro degli smoke su `dev.smoke`; B-8, la matrice utility dell'emittente; `vendite.fatture.utility_id NOT NULL`
 - **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`**: errori lato client senza SQLSTATE; `SMOKE_GIRO_FALLITO`; `error_detail` con la riga `CONTEXT:`; il `%TYPE` mancato del giro 1
 - **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`**: D-4, che cosa registra il titolo IVA `COOPERATIVA`; censimento dei titoli IVA fuori regola; `SGT-0000121` con `cliente_pa = 'S'`; `anagrafiche.fornitori.split_payment`
 - **La commessa vuota lasciata dal push batch** [DB + BE]
@@ -304,6 +307,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova** [DB]
 - 🟡 **Tetto d'area dei permessi — due decisioni residue di Tid**
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate** [DB]
+- **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata** [DB + BE/FE]
 - **Righe di listino: la gamba dei compositi bundle non è provata sul DB** [BE]
 - **La matrice di `stato_lotto` in due sedi che dissentono** [BE + DB]
 - **La porta dell'esito ancora aperta** [DB]

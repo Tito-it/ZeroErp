@@ -7,6 +7,10 @@
 -- la stessa check (linee-guida-sql §12.6).
 --   Brief: brief-db-copia-indirizzo-soggetto §3.1, §4.3, §4.6, giro 2.
 --   ChangeSet 20261114-96, -97; 20261115-60, -61 (§8, Q-2).
+--   Rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-18): il picker
+--   sul tipo di ruolo prende il soggetto in coda; qui sempre NULL (soggetto non
+--   ancora scelto), e le risposte restano quelle di prima. La natura nei picker
+--   la prova test-fornitore-privato-indirizzi-v1.
 --
 -- Elenco test (plan 25):
 --   presidi
@@ -177,10 +181,12 @@ SELECT ok(
     '1) i picker del soggetto e della natura leggono la check della madre');
 
 SELECT ok(
-    pg_temp.dipende('anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(integer)',
-                    'anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(integer, integer[], integer, date, bigint)')
+    -- rev 2026-11-17 (20261116-18): la meta' sul contesto prende la natura in coda,
+    --   il picker sul tipo di ruolo il soggetto.
+    pg_temp.dipende('anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(integer, uuid)',
+                    'anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(integer, integer[], integer, date, bigint, bigint)')
     AND pg_temp.dipende('anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(bigint, bigint)',
-                        'anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(integer, integer[], integer, date, bigint)'),
+                        'anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(integer, integer[], integer, date, bigint, bigint)'),
     '2) i picker del ruolo e del tipo di ruolo leggono la check della madre');
 
 -- ============================================================
@@ -288,7 +294,7 @@ SELECT is(pg_temp.scrivi_soggetto('CON'), NULL,
 -- ============================================================
 SELECT results_eq(
     format($$SELECT ammesso, reason
-               FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s)
+               FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s, NULL::uuid)
               WHERE tipo_indirizzo_id IN (%s, %s)
               ORDER BY ammesso DESC$$,
            (SELECT tipo_ruolo FROM _f), pg_temp.tipo('FORNITURA'), pg_temp.tipo('CON')),
@@ -297,7 +303,7 @@ SELECT results_eq(
 
 SELECT results_eq(
     format($$SELECT obbligatorio
-               FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s)
+               FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s, NULL::uuid)
               WHERE tipo_indirizzo_id IN (%s, %s)
               ORDER BY tipo_indirizzo_id = %s DESC$$,
            (SELECT tipo_ruolo FROM _f), pg_temp.tipo('POSTA'), pg_temp.tipo('CON'), pg_temp.tipo('POSTA')),
@@ -333,7 +339,7 @@ DELETE FROM config.tipi_ruolo_tipi_indirizzo WHERE tipo_ruolo_id = (SELECT tipo_
 
 SELECT is(
     (SELECT count(*) FILTER (WHERE ammesso)::integer
-       FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo((SELECT tipo_ruolo FROM _f))),
+       FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo((SELECT tipo_ruolo FROM _f), NULL::uuid)),
     (SELECT count(*)::integer FROM config.tipi_indirizzi),
     '20) tipo di ruolo senza matrice: tutti i tipi ammessi');
 
@@ -361,13 +367,13 @@ SELECT is(
 
 SELECT is(
     (SELECT count(*)::integer FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(
-                (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_ruoli))),
+                (SELECT COALESCE(max(id), 0) + 1 FROM config.tipi_ruoli), NULL::uuid)),
     0,
     '24) un tipo di ruolo che non c''e'': nessuna riga');
 
 SELECT is(
     (SELECT count(*) FILTER (WHERE ammesso)::integer
-       FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(NULL::integer)),
+       FROM anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(NULL::integer, NULL::uuid)),
     (SELECT count(*)::integer FROM config.tipi_indirizzi),
     '25) tipo di ruolo NULL: tutti i tipi ammessi');
 

@@ -54,7 +54,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_file_protect_file()
-IS 'Guard A7-bis: blocca UPDATE su file. File generato = istantanea immutabile di salvataggio. Solo meta/ordinamento modificabili.';
+IS 'Tiene fermi i dati di salvataggio di un file della stampa: la stampa, il tipo, il tipo MIME, il nome, il peso, la chiave nello storage, l''impronta e is_principale (E_DOCUMENTI_GENERATO_FILE_IMMUTABILE). Restano liberi meta e ordinamento. Le colonne confrontate sono tutte NOT NULL.';
 ```
 
 </div>

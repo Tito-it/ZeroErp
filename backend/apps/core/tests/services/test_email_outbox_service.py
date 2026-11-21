@@ -31,6 +31,7 @@ Indice test eseguiti:
 21) CodiciR7Tests.test_mail_piena_e_409_e_non_scrive_il_file
 22) CodiciR7Tests.test_percorso_fuori_radice_e_500
 23) CodiciR7Tests.test_template_non_configurato_e_500
+24) ConfirmAndSendTests.test_il_log_porta_l_account_di_invio_non_quello_della_bozza
 """
 
 import os
@@ -309,6 +310,34 @@ class ConfirmAndSendTests(TestCase):
         self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
         repo.update_outbox_stato.assert_not_called()
         MockDispatchRepo.return_value.insert_log.assert_not_called()
+
+    # Scopo: ⭐ Il log dice con quale account la mail e' PARTITA, non con
+    #    quale era stata preparata la bozza. Fra la preparazione e l'invio
+    #    l'account della bozza puo' essere stato spento: `account_di_invio`
+    #    ne risolve un altro, e il log deve portare quello (R1-BE-ter del
+    #    brief-db-seed-primo-impianto-non-si-riscrive §16.14).
+    # ⚠️ Gli id sono DIVERSI di proposito: con lo stesso id il test sarebbe
+    #    verde anche leggendo l'account della bozza.
+    @patch(_DISPATCH)
+    @patch(_REPO, autospec=True)
+    def test_il_log_porta_l_account_di_invio_non_quello_della_bozza(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        dispatch = MockDispatch.return_value
+        repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "email_account_id": 1}
+        dispatch.account_di_invio.return_value = {**_MOCK_ACCOUNT, "id": 7}
+        repo.update_outbox_stato.return_value = True
+        repo.copy_allegati_to_log.return_value = 0
+        dispatch.send_raw.return_value = (99, True)
+        dispatch.canale_invio.return_value = CANALE_SMTP
+
+        EmailOutboxService().confirm_and_send(10)
+
+        kwargs = dispatch.send_raw.call_args.kwargs
+        self.assertIs(kwargs["account"], dispatch.account_di_invio.return_value)
+        self.assertEqual(kwargs["account"]["id"], 7)
+        # ⛔ Nessun secondo canale per l'account del log: `send_raw` lo prende
+        #    da `account` (test 27 di test_email_service).
+        self.assertNotIn("email_account_id", kwargs)
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

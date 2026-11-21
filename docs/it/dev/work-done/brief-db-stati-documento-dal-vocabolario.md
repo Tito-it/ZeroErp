@@ -340,7 +340,7 @@ che `terminale` e la matrice non possano dissentire.
 | `frontend/src/vendite/offerte/constants.js:40` `STATI_OFFERTA_TERMINALI` (letto da `OffertaDrawer.vue:205`) | FE | severity del banner; il commento dice già «stati in cui l'operatore non ha più nulla da fare» e che SUPERATA può tornare EMESSA | ✅ di significato, ❌ **copia** del vocabolario in JS (S-10) |
 | `config.stati_doc_*` COMMENT di `terminale` (offerte, ordini, preventivi, contratti) | DB | «non evolverà più» | ❌ da riscrivere |
 | `config.stati_doc_listino_versioni.terminale` COMMENT | DB | «Nessun passaggio esce da qui» (lettura B) | ❌ da allineare |
-| `brief-design-proiezione-stato-dominio.md:175` | doc | «il documento non evolverà più (auto-chiusura milestone)» | ❌ da allineare (debito documentale: fuori da questo file) |
+| `brief-design-proiezione-stato-dominio.md` §4 | doc | «il documento non evolverà più (auto-chiusura milestone)» | ✅ allineato il 2026-11-20, con l'archiviazione del brief |
 | `db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql:16` | pgTAP | «resta terminale per l'operatore: nessuna uscita manuale» | ✅ |
 
 Nessun lettore usa `terminale` per «finito per sempre» in modo da **fermare** qualcosa (un guard, un job, una copia

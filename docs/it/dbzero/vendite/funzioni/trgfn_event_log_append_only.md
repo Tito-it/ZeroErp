@@ -16,8 +16,6 @@ CREATE OR REPLACE FUNCTION vendite.trgfn_event_log_append_only()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE
-    v_allow_logs text;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -25,16 +23,15 @@ BEGIN
     --   fra ALTERARE LA STORIA e RITIRARE CIO' CHE E' SCADUTO.
     --
     -- Regole:
-    --   UPDATE                      -> sempre vietato
-    --   DELETE con GUC manutenzione -> ammesso (parita' con
-    --                                  script.trgfn_logs_guard_delete)
-    --   DELETE di riga scaduta      -> ammesso (retention)
-    --   DELETE di riga viva         -> vietato
+    --   UPDATE                         -> sempre vietato
+    --   DELETE di riga scaduta         -> ammesso (retention)
+    --   DELETE con porta di manutenzione -> ammesso (parita' con
+    --                                     vendite.trgfn_logs_guard_delete)
+    --   DELETE di riga viva            -> vietato
     --
-    -- ⭐ Il criterio del terzo ramo non e' CHI cancella ma COSA:
+    -- ⭐ Il criterio della retention non e' CHI cancella ma COSA:
     --   cosi' dbops.fn_purge_cleanup_expired funziona com'e',
-    --   senza propagare GUC ne' riconoscere ruoli, e senza
-    --   toccare una funzione condivisa di dbops.
+    --   senza propagare GUC ne' riconoscere ruoli.
     --
     -- ⭐ Il veto sull'UPDATE e' cio' che rende `cleanup_at`
     --   immutabile: nessuno puo' anticipare la scadenza di una
@@ -59,18 +56,19 @@ BEGIN
 
     -- Da qui in giu' e' un DELETE.
 
-    -- 1. Manutenzione straordinaria: stessa leva dei log gemelli.
-    v_allow_logs := current_setting('zeroerp.maintenance_allow_delete_logs', true);
-
-    IF COALESCE(lower(v_allow_logs), 'off') IN ('on', 'true', '1') THEN
-        RETURN OLD;
-    END IF;
-
-    -- 2. Retention: la riga ha passato la sua scadenza.
+    -- 1. Retention: la riga ha passato la sua scadenza.
     --    ⚠️ `cleanup_at` NULL = riga senza scadenza (nessuna
     --    regola CLEANUP_AT corrispondeva quando e' nata): non si
     --    cancella. In dubbio si conserva.
     IF OLD.cleanup_at IS NOT NULL AND OLD.cleanup_at <= now() THEN
+        RETURN OLD;
+    END IF;
+
+    -- 2. Manutenzione straordinaria: stessa porta dei log gemelli,
+    --    aperta solo per la sessione del migratore, con la riga
+    --    nel diario.
+    IF script.fn_porta_manutenzione_aperta(
+           'zeroerp.maintenance_allow_delete_logs', TG_RELID, TG_OP, OLD.id::text) THEN
         RETURN OLD;
     END IF;
 
@@ -95,7 +93,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_event_log_append_only()
-IS 'Tiene vendite.event_log append-only distinguendo fra ALTERARE LA STORIA e RITIRARE CIO'' CHE E'' SCADUTO. UPDATE sempre vietato (E_UPDATE_NOT_ALLOWED); DELETE ammesso solo con la GUC zeroerp.maintenance_allow_delete_logs (parita'' con script.trgfn_logs_guard_delete dei log gemelli) o su riga con cleanup_at <= now(). ⭐ Il criterio del secondo ramo non e'' CHI cancella ma COSA: cosi'' dbops.fn_purge_cleanup_expired funziona com''e'', senza propagare GUC ne'' riconoscere ruoli. ⭐ Ed e'' il veto sull''UPDATE a rendere immutabile cleanup_at: nessuno puo'' anticipare la scadenza di una riga scomoda. ⚠️ Prima del 2026-08-22 era un RAISE EXCEPTION nudo, senza codice registrato, e vietava anche il DELETE della retention: con cleanup_at il job settimanale avrebbe iniziato a fallire.';
+IS 'Tiene vendite.event_log append-only distinguendo fra ALTERARE LA STORIA e RITIRARE CIO'' CHE E'' SCADUTO. UPDATE sempre vietato (E_UPDATE_NOT_ALLOWED); DELETE ammesso su una riga con cleanup_at <= now() (la retention) o dalla porta di manutenzione zeroerp.maintenance_allow_delete_logs, che apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta) e lascia la riga in dbops.porte_manutenzione_passaggi; ogni altro DELETE e'' E_DELETE_NOT_ALLOWED. ⭐ Il criterio della retention non e'' CHI cancella ma COSA: cosi'' dbops.fn_purge_cleanup_expired funziona com''e'', senza propagare GUC ne'' riconoscere ruoli. ⭐ Il veto sull''UPDATE rende immutabile cleanup_at: nessuno puo'' anticipare la scadenza di una riga scomoda. cleanup_at NULL = la riga non scade.';
 ```
 
 </div>

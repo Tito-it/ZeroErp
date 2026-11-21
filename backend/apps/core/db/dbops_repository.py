@@ -22,6 +22,7 @@ from apps.core.db._helpers import (
     predicato_giorno_operativo,
     sql_order_clause,
 )
+from apps.core.db.formati_file import sql_formati_ammessi
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
 from apps.core.services.service_errors import ServiceError
 from apps.core.types import (
@@ -83,6 +84,11 @@ LOOKUP_ORDER_COLONNE: tuple[str, ...] = ("codice", "descrizione")
 #                        «assegna» e che si ritira con `obsoleto_dal` — sarebbe
 #                        stata un 500 alla prima chiamata, con la rel dichiarata
 #                        ammessa (`feedback_contratto_dichiarato_provalo_intero`).
+#   altre_colonne      → (opzionale) `{nome: espressione SQL}`: colonne in piu'
+#                        oltre a `extra_col`, quando la tendina ne vuole due
+#                        (2026-11-16: i formati ammessi da un tipo di risorsa,
+#                        BB `sql_formati_ammessi`). Espressioni COSTANTI di
+#                        questo modulo, mai input; alias della tabella `t`.
 # ⛔ Le tabelle del PANNELLO CONFIG sono un SOTTOINSIEME di quelle del lookup
 #    (`config.tabelle_gestibili`: `pannello` implica `lookup`, fuori le quattro
 #    con RLS, D-P2): il pannello lista le righe col lookup generico, quindi una
@@ -179,6 +185,45 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "has_attivo": False,
     },
     "documenti.orientamenti_pagina": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    # I quattro vocabolari «storici» dei modelli (tipo di documento, tipo di
+    # risorsa, tipo di file della stampa, motore di stampa) hanno dal
+    # 2026-11-16 la forma dei tre della versione (D16, giro 2 di
+    # brief-db-revisione-documenti, BE13): `etichetta_key` e `ordine`, niente
+    # `attivo`. Senza queste righe il lookup generico filtrava su `attivo`,
+    # che non c'e' piu': le tendine dei modelli erano un errore.
+    # ⭐ Tipo di risorsa e tipo di file portano anche i FORMATI che ammettono
+    #    (`[{mime_type, estensione, etichetta_key}]`, dal DB): il drawer della
+    #    risorsa li mostra accanto al file da caricare (BE5).
+    "documenti.tipi_documento_output": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.tipi_asset_documento": {
+        "extra_col": "etichetta_key",
+        "altre_colonne": {
+            "formati": sql_formati_ammessi("documenti.tipi_asset_documento"),
+        },
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.tipi_file_documento": {
+        "extra_col": "etichetta_key",
+        "altre_colonne": {
+            "formati": sql_formati_ammessi("documenti.tipi_file_documento"),
+        },
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.render_engine_documento": {
         "extra_col": "etichetta_key",
         "has_codice_interno": True,
         "has_obsoleto": False,
@@ -321,6 +366,10 @@ class DbopsRepository:
             "OR t.codice_interno ILIKE %(search)s" if spec["has_codice_interno"] else ""
         )
         extra_expr = spec.get("extra_expr", f"t.{spec['extra_col']}")
+        altre_colonne_sql = "".join(
+            f"{espressione} AS {nome},\n"
+            for nome, espressione in spec.get("altre_colonne", {}).items()
+        )
 
         # ⭐ Un frammento FROM+WHERE per la pagina e per il conteggio di
         #    ripiego: il perimetro del totale e' quello della lista.
@@ -356,6 +405,7 @@ class DbopsRepository:
                     t.descrizione,
                     {attivo_sql} AS attivo,
                     {extra_expr} AS {spec["extra_col"]},
+                    {altre_colonne_sql}
                     COUNT(*) OVER () AS total_count
                 {from_where}
                  ORDER BY {ordinamento}

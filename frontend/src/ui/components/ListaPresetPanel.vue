@@ -23,7 +23,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useListaAzioni } from '../../core/composables/useListaAzioni'
 import { useInjectBlocked, useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
+import { MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useUiAdminStore } from '../stores/uiAdmin'
 import { useUiPresetAdminStore } from '../stores/uiPresetAdmin'
@@ -99,6 +99,10 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       visible: !isReadonly.value,
+      // ⭐ Una riga nata dal seed di primo impianto non si cancella: si spegne
+      // (R-UI1). Il segno lo porta la riga della lista (`nata_dal_seed`).
+      disabled: data.nata_dal_seed === true,
+      tooltip: data.nata_dal_seed === true ? t('ui.admin.riga_del_programma') : undefined,
       command: () => onDelete(data),
     },
   ]
@@ -179,9 +183,6 @@ function severityForAmbito(ambito) {
       >
         <template #cell-ambito="{ data }">
           <Tag :value="t(`ui.admin.preset_ambito_${data.ambito}`)" :severity="severityForAmbito(data.ambito)" />
-        </template>
-        <template #cell-is_default="{ data }">
-          <i v-if="data.is_default" :class="STATUS_ICONS.SI" />
         </template>
         <template #cell-attivo="{ data }">
           <AttivoTag :active="data.attivo" :active-label="t('common.yes')" :inactive-label="t('common.no')" />

@@ -15,20 +15,21 @@
 #
 # Indice test (0..N):
 #   0. create_404_if_template_invisible
-#   1. create_happy_path_calculates_next_versione_num
+#   1. create_happy_path_numero_dal_db (2026-11-17: il numero lo assegna il DB)
 #   2. create_payload_extra_keys_rejected
 #   3. create_missing_required_field_rejected
 #   4. update_pubblicata_rejected_at_service
 #   5. update_bozza_happy_path
 #   6. update_empty_payload_rejected
-#   7. delete_pubblicata_rejected_at_service
+#   7. delete_pubblicata_rejected_at_service (frase del catalogo, 2026-11-17)
 #   8. delete_bozza_happy_path
 #   9. clone_overrides_titolo_and_resets_dates
 #  10. pubblica_requires_valido_dal
 #  11. pubblica_delega_ordine_date_al_db
 #  12. pubblica_bozza_happy_path
 #  13. pubblica_already_pubblicata_rejected_at_service
-#  14. pubblica_overlap_mappato_a_codice_dedicato
+#  14. (ritirato il 2026-11-17: la sovrapposizione la rende il verbo DB,
+#      provata sul DB vero in documenti/tests/db/test_versione_contesto_db 4)
 #  15. create_senza_forma_dei_dati_rifiutata (2026-09-30)
 #  16. update_bozza_cambia_la_forma_dei_dati (2026-09-30)
 #  17. clone_copia_la_forma_dei_dati (2026-09-30)
@@ -68,6 +69,7 @@ def _patch_transaction_atomic():
         side_effect=_no_op_atomic,
     )
 
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.service_errors import ServiceError
 from apps.documenti.services.context_builders import (
     get_builder_del_template as _get_builder_vero,
@@ -163,10 +165,11 @@ class TemplateVersioniAdminServiceCreateTests(SimpleTestCase):
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_NOT_FOUND")
         repo.create_versione.assert_not_called()
 
-    # 1. happy path: calcola next_versione_num e usa BOZZA come stato.
-    def test_create_happy_path_calculates_next_versione_num(self) -> None:
+    # 1. happy path: stato BOZZA, nessun numero mandato; il numero e' quello
+    #    della riga riletta (lo assegna il DB, 2026-11-17, BE20).
+    def test_create_happy_path_numero_dal_db(self) -> None:
         svc, repo, reader = _service_with_mocks(
-            repo_methods={"next_versione_num": 5, "create_versione": 50},
+            repo_methods={"create_versione": 50},
             reader_methods={
                 "get_template": {"id": 1},
                 "get_versione": {"id": 50, "versione": 5},
@@ -174,11 +177,11 @@ class TemplateVersioniAdminServiceCreateTests(SimpleTestCase):
         )
         result = svc.create_versione(_make_user(), 1, dict(_VALID_VERSIONE_PAYLOAD))
         self.assertEqual(result["versione"], 5)
-        repo.next_versione_num.assert_called_once_with(1)
-        # Verifica il dict passato al repo: stato=BOZZA, versione=5.
+        self.assertEqual(reader.get_versione.call_args.args[1:], (1, 50))
+        # Il dict passato al repo: stato=BOZZA, e il numero non c'e'.
         data = repo.create_versione.call_args.args[0]
         self.assertEqual(data["stato"], "BOZZA")
-        self.assertEqual(data["versione"], 5)
+        self.assertNotIn("versione", data)
         self.assertEqual(data["template_documento_id"], 1)
         self.assertEqual(data["versione_contesto"], 2)
 
@@ -359,6 +362,13 @@ class TemplateVersioniAdminServiceDeleteTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.delete_versione(_make_user(), 1, 11)
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_DELETE_BLOCKED")
+        # La frase e' quella del catalogo (policy), non una del service:
+        # il message del ServiceError vince sulla policy, e una seconda frase
+        # direbbe la stessa regola in un altro modo (2026-11-17).
+        self.assertEqual(
+            ctx.exception.message,
+            ErrorPolicyRegistry.resolve("E_DOCUMENTI_VERSIONE_DELETE_BLOCKED").user_message,
+        )
         repo.delete_versione.assert_not_called()
 
     # 8. BOZZA: delete OK.
@@ -398,7 +408,6 @@ class TemplateVersioniAdminServiceCloneTests(SimpleTestCase):
             valido_dal=None, valido_al=None, attivo=None, meta=None,
         )
         repo.create_versione.assert_not_called()
-        repo.next_versione_num.assert_not_called()
         # La versione restituita e' la nuova, riletta nel suo template.
         self.assertEqual(reader.get_versione.call_args.args[1:], (1, 70))
 
@@ -495,26 +504,6 @@ class TemplateVersioniAdminServicePubblicaTests(SimpleTestCase):
             )
         self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VALIDATION")
         repo.pubblica_versione.assert_not_called()
-
-    # 14. EXCLUDE parziale ripristinato 2026-06-02 (migration 20260602-05):
-    #     overlap fra versioni PUBBLICATE attive -> codice 409 dedicato
-    #     E_DOCUMENTI_VERSIONE_OVERLAP (armonizzazione, prima era E_DOCUMENTI_VALIDATION).
-    def test_pubblica_overlap_mappato_a_codice_dedicato(self) -> None:
-        svc, repo, _ = _service_with_mocks(
-            reader_methods={
-                "get_versione": dict(_BOZZA_VERSIONE), "get_template": _TEMPLATE,
-            },
-        )
-        repo.pubblica_versione.side_effect = IntegrityError(
-            'conflicting key value violates exclusion constraint '
-            '"ex_template_documenti_versioni_no_overlap_pubblicata"'
-        )
-        with self.assertRaises(ServiceError) as ctx:
-            svc.pubblica_versione(
-                _make_user(), 1, 11, {"valido_dal": "2026-06-01"}
-            )
-        self.assertEqual(ctx.exception.code, "E_DOCUMENTI_VERSIONE_OVERLAP")
-        self.assertIn("sovrappongono", (ctx.exception.message or "").lower())
 
     # 18. La forma che arriva al verbo e' quella del builder DEL TEMPLATE
     #     (risolto dal suo `context_builder_code`), non quella dichiarata

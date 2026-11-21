@@ -1,6 +1,6 @@
 # Guida — Documenti e Stampe
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, operatori configuratori.
 >
@@ -63,6 +63,11 @@ vendita, fattura di vendita.
 Lo stesso tipo può avere modelli diversi per aziende diverse. E la stessa sorgente può produrre
 più tipi: una fattura, per esempio, potrebbe avere anche un allegato con un tipo suo.
 
+I tipi di documento, come gli altri elenchi fissi del modulo (tipi di asset e di file, motori,
+formati della sorgente e della pagina, formati di file), sono ciò che il sistema sa usare: non si
+configurano dall'interfaccia e non si spengono. Una voce nuova arriva con un aggiornamento del
+sistema, insieme al codice che la sa trattare.
+
 ### 2.2 Modello (template)
 
 Il modello è la **definizione del layout** di un tipo di documento per una sorgente di dati (il
@@ -80,7 +85,10 @@ massimo un predefinito attivo, e uno solo anche fra gli standard. Il database ri
 
 ### 2.3 Versione
 
-Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS veri.
+Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS veri. Le versioni sono
+numerate da 1, e il numero lo dà il sistema quando la versione nasce, scritta da zero o copiata: due
+versioni create nello stesso momento sullo stesso modello prendono due numeri diversi, senza errori.
+Il numero non cambia più.
 
 | Stato | Significato |
 |---|---|
@@ -88,10 +96,13 @@ Ogni modello ha più versioni nel tempo. La versione contiene l'HTML e il CSS ve
 | `PUBBLICATA` | Usabile per generare documenti, dalla sua data di validità |
 | `OBSOLETA` | Superata da una pubblicazione successiva: stampa ancora fino all'ultimo giorno della sua validità |
 
-Una versione pubblicata **non cambia più**, nemmeno quando diventa obsoleta, e non torna in bozza:
-per cambiare il layout si crea una versione nuova. Per
-lo stesso modello le versioni attive fuori bozza non si sovrappongono nel tempo. Pubblicando una
-versione nuova, la precedente si chiude il giorno prima e diventa obsoleta.
+Una versione nasce in bozza, e **ne esce solo con «Pubblica»**: è la pubblicazione che controlla la
+forma dei dati e chiude la versione precedente. Una versione spenta non si pubblica: non stamperebbe,
+e chiuderebbe quella che stampa. Una versione pubblicata **non cambia più**, nemmeno quando diventa
+obsoleta, e non torna in bozza: per cambiare il layout si crea una versione nuova, anche copiando
+una versione esistente dello stesso documento. Per lo stesso modello le versioni attive fuori bozza
+non si sovrappongono nel tempo. Pubblicando una versione nuova, la precedente si chiude il giorno
+prima e diventa obsoleta.
 
 **Che cosa stampa lo decidono le date, non lo stato.** Se la versione nuova parte da una data
 futura, fino al giorno prima si stampa ancora con la precedente, e dal giorno di partenza con la
@@ -108,8 +119,16 @@ versione li richiama per codice, e il motore li cerca **fra gli asset dell'azien
 documento**. Un asset che manca ferma la stampa, invece di produrre un PDF senza logo. Per questo i
 modelli standard non richiamano asset.
 
-Il file di un asset non si sostituisce e l'asset non si cancella: la ristampa di un documento già
-generato ritrova così, per codice, lo stesso file di allora. Il codice è unico per azienda e non ha
+Ogni tipo di asset ammette solo alcuni formati di file: un logo è un'immagine (PNG, JPEG, SVG, WebP,
+GIF), un foglio di stile è un CSS. Il database rifiuta un asset in un formato che il suo tipo non
+ammette; lo stesso vale per gli allegati di un documento generato (PDF, JPEG, PNG).
+
+Una stampa nuova usa solo gli asset **utilizzabili oggi**: accesi e validi alla data di oggi
+dell'azienda. La regola sta in un posto solo del database.
+
+Il file di un asset non si sostituisce, l'asset non passa a un'altra azienda e non si cancella: la
+ristampa di un documento già generato ritrova così, per codice, lo stesso file di allora. Per usare
+lo stesso file in un'altra azienda lo si carica come asset nuovo di quell'azienda. Il codice è unico per azienda e non ha
 una validità nel tempo: un logo nuovo è un asset nuovo con un codice nuovo, e le versioni che
 devono usarlo sono versioni nuove del modello.
 
@@ -163,7 +182,7 @@ sceglie, **si verifica**, con la stessa funzione:
 | Caso | Che cosa dice | Chi rimedia |
 |---|---|---|
 | Modelli suoi pubblicati, nessuno predefinito | l'azienda ha modelli suoi, ma nessuno è predefinito | l'operatore: segna un predefinito |
-| Nessun modello, nemmeno lo standard | nessun modello di stampa per il documento | l'assistenza: manca lo standard |
+| Nessun modello, nemmeno lo standard | nessun modello di stampa per il documento (senza tipo indicato, il documento si nomina con la sorgente) | l'assistenza: manca lo standard |
 | Tipo non indicato su una sorgente con più tipi | il documento produce più tipi | chi ha chiamato la stampa: indicare il tipo |
 | Modello indicato spento o senza versione valida | il modello oggi non può stampare, e perché | l'operatore: lo riattiva o pubblica una versione |
 | Modello indicato non adatto | il modello non è adatto a questo documento, e perché | l'operatore: sceglie un altro modello |
@@ -209,6 +228,10 @@ deriva:
 | `STANDARD_AVANTI` | lo standard è andato avanti: la copia funziona, ma non ha l'evoluzione |
 | `CONTESTO_SUPERATO` | la copia legge una forma dei dati più vecchia: alla stampa si fermerà |
 | `ORIGINE_NON_DICHIARATA` | il modello non dice da dove deriva: si confronta solo la forma dei dati, con lo standard predefinito |
+| `STANDARD_NON_STAMPA` | lo standard con cui confrontarla manca, è spento o oggi non stampa: non c'è niente da confrontare |
+
+Una copia resta nello scarto anche quando il suo standard non stampa: non si ripiega su un altro
+standard, che non sarebbe quello copiato.
 
 ---
 
@@ -309,13 +332,20 @@ configura o genera.
 |---|---|
 | Un PDF si ricollega sempre al modello e alla versione usati | Sono registrati nel documento generato |
 | Il layout di una versione pubblicata non cambia | Le colonne della versione sono bloccate dal database una volta pubblicata |
-| Un documento si stampa solo con un modello che può stampare | La regola sta in un punto solo del database, letto da tutta la stampa |
+| Una versione si pubblica solo con «Pubblica» | Il database rifiuta una versione che nasce pubblicata o che lo diventa senza la pubblicazione, e una versione spenta pubblicata |
+| Un documento si stampa solo con un modello che può stampare | La regola sta in un punto solo del database, letto da tutta la stampa e di nuovo alla registrazione del documento generato, che nasce solo dalla versione in uso oggi |
 | Un modello di un'azienda non stampa i documenti di un'altra | Lo verifica il database prima del render e alla scrittura del documento generato |
 | Un'azienda nuova emette dal primo giorno | Gli standard di sistema |
 | Uno standard non si modifica dall'interfaccia | Il database rifiuta la scrittura a chi non è il proprietario delle tabelle |
-| Il file di un asset non cambia e l'asset non sparisce | Il database rifiuta la sostituzione del file e la cancellazione |
-| Un documento generato non si cancella | Il database rifiuta la cancellazione del record e dei suoi eventi |
+| Il file di un asset non cambia, l'asset non cambia azienda e non sparisce | Il database rifiuta la sostituzione del file, il cambio d'azienda e la cancellazione |
+| Il numero di una versione lo dà il sistema | Il database lo assegna alla nascita, in fila per modello, e non lo lascia cambiare |
+| Un documento generato non si cancella e non cambia | Il database rifiuta la cancellazione del record, dei suoi eventi e del suo file, e ogni modifica dello snapshot |
+| Ogni documento generato ha il suo PDF | Il database rifiuta, a fine operazione, un documento generato senza il PDF principale |
 | Il PDF prodotto è verificabile | L'hash del file è conservato col record |
+| Un asset o un allegato è in un formato che il suo tipo ammette | Il database confronta il formato dichiarato con i formati abbinati al tipo |
+| Gli elenchi fissi del modulo non si cambiano dall'interfaccia | L'applicazione li legge soltanto: una voce nuova arriva con il codice che la usa |
+| Un modello, una versione o un'azienda che hanno stampato si possono spegnere | Le stampe sono storia: non tengono accesi i loro padri, e un'azienda che spegne i suoi modelli torna allo standard |
+| Un asset si usa solo se è utilizzabile oggi | La regola «acceso e valido oggi» ha una sede nel database |
 
 ---
 
@@ -336,13 +366,16 @@ documenti/
 ├── formati_pagina                     — A4, A3, LETTER
 ├── orientamenti_pagina                — PORTRAIT, LANDSCAPE
 ├── formati_template                   — il formato del contenuto di una versione
+├── tipi_asset_documento_formati       — i formati di file che ogni tipo di asset ammette
+├── tipi_file_documento_formati        — i formati di file che ogni tipo di file ammette
 ├── vw_template_versioni_stampabili    — i modelli che possono stampare oggi
 ├── vw_template_risoluzione_emittente  — per ogni azienda e documento, con che cosa si stampa
-└── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard
+├── vw_template_personalizzati_scarto  — lo scarto delle copie dal loro standard
+└── vw_template_asset_utilizzabili     — gli asset che si possono usare oggi
 ```
 
-I parametri dello storage (provider, bucket, limiti) sono in `config.parameters` con prefisso
-`documenti_*`.
+I formati di file (tipo MIME ed estensione) sono il vocabolario `config.formati_file`. I parametri
+dello storage (provider, bucket, limiti) sono in `config.parameters` con prefisso `documenti_*`.
 
 ---
 

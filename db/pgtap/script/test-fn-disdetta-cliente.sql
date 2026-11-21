@@ -28,8 +28,13 @@
 -- =========================================================
 DO $$
 BEGIN
-    -- Abilita manutenzione per poter eliminare clienti
-    SET LOCAL zeroerp.maintenance_ruoli_delete = 'on';
+    -- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la
+    --   porta zeroerp.maintenance_ruoli_delete si apre solo per la sessione del
+    --   migratore, e il test gira come app. Questa pulizia toglie gli avanzi che le
+    --   versioni del test che committavano hanno lasciato su un database di
+    --   sviluppo: su un database nuovo (la CI) non trova righe e non tocca il
+    --   blocco. Se su dbdev ne trova, il DELETE e' rifiutato: gli avanzi si tolgono
+    --   una volta a mano, dal migratore, con la porta.
 
     DELETE FROM anagrafiche.clienti c
     WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
@@ -370,54 +375,14 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- Cleanup finale
+-- Niente pulizia finale: il ROLLBACK ritira ogni fixture.
+-- ⛔ Tolta il 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): il
+--    DELETE del cliente passava dalla porta zeroerp.maintenance_ruoli_delete, che
+--    ora si apre solo per la sessione del migratore; il test gira come app.
 -- =========================================================
-DO $$
-BEGIN
-    -- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): l'ultimo BA di
-    --   un'istanza non si cancella da solo (constraint trigger
-    --   trg_billing_account_z90_require_istanza_ha_ba_dlt). Qui istanza e BA se
-    --   ne vanno INSIEME: la finestra differita si apre prima dei DELETE e si
-    --   richiude dopo quello delle istanze, cosi' il controllo scatta su uno
-    --   stato finito. Con i vincoli IMMEDIATE del preambolo scatterebbe sul
-    --   DELETE dei BA, con l'istanza ancora li'.
-    SET CONSTRAINTS ALL DEFERRED;
-    SET LOCAL zeroerp.maintenance_ruoli_delete = 'on';
-
-    DELETE FROM anagrafiche.clienti c
-    WHERE c.codice_cliente_importato LIKE 'TST-DIS-%';
-
-    -- 🔴 Il mapping emittente PRIMA del billing account (2026-08-18).
-    --   Ogni BA nuovo riceve automaticamente una riga in
-    --   `emittenti_fiscali_billing_account`, e la sua FK impedisce di
-    --   cancellare il padre: la pulizia moriva sul figlio che non aveva
-    --   creato lei. ⚠️ Quarto strato di questo file — ogni difetto ne
-    --   nascondeva un altro.
-    DELETE FROM anagrafiche.emittenti_fiscali_billing_account efba
-    WHERE efba.billing_account_id IN (
-        SELECT ba.id FROM anagrafiche.billing_account ba
-        WHERE ba.istanza_utility_id IN (
-            SELECT iu.id FROM anagrafiche.istanze_utilities iu
-            WHERE iu.codice LIKE 'TST-DIS-%'
-        )
-    );
-
-    DELETE FROM anagrafiche.billing_account ba
-    WHERE ba.istanza_utility_id IN (
-        SELECT iu.id FROM anagrafiche.istanze_utilities iu
-        WHERE iu.codice LIKE 'TST-DIS-%'
-    );
-
-    DELETE FROM anagrafiche.istanze_utilities iu
-    WHERE iu.codice LIKE 'TST-DIS-%';
-
-    SET CONSTRAINTS ALL IMMEDIATE;
-END;
-$$;
 
 SELECT * FROM finish();
 
 -- Il ROLLBACK e' la garanzia: comunque vada — verde, rosso, o morto a meta' —
--- questo file non lascia nulla dietro di se'. Le DELETE del cleanup restano
--- perche' dove sono un'asserzione devono girare davvero.
+-- questo file non lascia nulla dietro di se'.
 ROLLBACK;

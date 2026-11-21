@@ -3,8 +3,9 @@
 //        - fetch della configurazione effettiva (cascata preset+permessi
 //          risolta dal BE);
 //        - fetch lazy del catalogo colonne arricchito (per la modale);
-//        - mutazione locale della config (colonne, ordinamento, filtri,
-//          pagina_dimensione) con tracking dirty;
+//        - mutazione locale della config (colonne, pagina_dimensione) con
+//          tracking dirty; `ordinamento` e `filtri` arrivano dal resolver ma
+//          non si salvano (Q38, Q39 di brief-db-revisione-ui);
 //        - save (PUT preferenza con Idempotency-Key) e reset (DELETE
 //          preferenza), entrambi seguiti da reload della config.
 //
@@ -143,8 +144,11 @@ export function useListaConfig(codice, opzioni = {}) {
   // viene perso, solo lo stato locale e' fuori sync temporaneamente.
   async function save() {
     if (!config.value) return null
-    // Estrai solo i campi accettati dal BE (whitelist allineata a
-    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS).
+    // Estrai solo i campi che si salvano: un sottoinsieme di
+    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS. ⚠️ Dal
+    // 2026-11-20 e' piu' stretta di proposito: il BE accetta ancora
+    // `ordinamento` e `filtri` finche' il DB non li ritira (Q38/Q39 di
+    // brief-db-revisione-ui), il FE non li manda gia' piu'.
     //
     // Drift risk: questa whitelist FE deve restare sincronizzata con
     // quella BE (apps/ui/services/lista_preferenza_service.py). Se il BE
@@ -183,18 +187,42 @@ export function useListaConfig(codice, opzioni = {}) {
   // Computed: count delle nuove colonne disponibili (badge UX).
   const colonneNuove = computed(() => config.value?.colonne_nuove ?? 0)
 
-  // Computed DEF-2: TRUE quando il preset di base e' stato modificato
-  // dall'admin dopo lo snapshot della preferenza utente E l'utente non
-  // ha dismissato il banner per quella versione del preset. Calcolato
-  // lato DB da `fn_resolve_lista_config`: passthrough qui.
-  // `?? false` fallback safe: se il DB non espone ancora il campo
-  // (brief team DB non atterrato), il banner FE resta nascosto.
+  // Computed DEF-2: TRUE quando il contenuto del preset di base e' cambiato,
+  // in almeno una chiave scelta dall'utente, dopo lo snapshot della sua
+  // preferenza (l'«Ignora» riallinea lo snapshot). Calcolato lato DB da
+  // `fn_resolve_lista_config`: passthrough qui. `?? false`: campo assente =
+  // banner nascosto.
   const presetAggiornato = computed(
     () => config.value?.preset_aggiornato ?? false,
   )
 
-  // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST tombstone +
-  //        reload per riallineare `config.value.preset_aggiornato` a false.
+  // Le chiavi cambiate (`preset_aggiornato_chiavi`, giro 1b di
+  // brief-db-revisione-ui): il banner dice quali parti. Vuoto se nessuna.
+  const presetAggiornatoChiavi = computed(
+    () => config.value?.preset_aggiornato_chiavi ?? [],
+  )
+
+  // Computed BE7 (giro 1a di brief-db-revisione-ui): TRUE quando la
+  // preferenza ha salvato un preset di base che non e' quello di oggi (il
+  // preset e' stato spento, o oggi vale un altro livello della cascata).
+  // Calcolato dal DB (`preset_base_cambiato` di `fn_resolve_lista_config`):
+  // passthrough. In quel caso `preset_aggiornato` e' sempre falso.
+  const presetBaseCambiato = computed(
+    () => config.value?.preset_base_cambiato ?? false,
+  )
+
+  // Scopo: BE7 — «Riallinea» del banner della base cambiata. Risalva la
+  //        preferenza con le sole chiavi gia' scelte (`save`): il BE ci scrive
+  //        il preset di base di OGGI (`preset_base` della risoluzione) e il DB
+  //        ne riscrive lo snapshot. Nessuna chiave scelta = DELETE, e senza
+  //        preferenza non c'e' base da riallineare.
+  async function riallineaPresetBase() {
+    return save()
+  }
+
+  // Scopo: DEF-2 — "Ignora" banner preset aggiornato. POST (il BE riallinea
+  //        lo snapshot del preset di base) + reload per riportare
+  //        `config.value.preset_aggiornato` a false.
   //        La Idempotency-Key la mette l'interceptor di `core/api.js`. Toast/error gestito da useApiHandler.
   async function ignorePresetUpdate() {
     const result = await execute(
@@ -214,12 +242,15 @@ export function useListaConfig(codice, opzioni = {}) {
     loading,
     colonneNuove,
     presetAggiornato,
+    presetAggiornatoChiavi,
+    presetBaseCambiato,
     load,
     ensureCatalogo,
     applyChange,
     save,
     reset,
     ignorePresetUpdate,
+    riallineaPresetBase,
   }
 }
 
@@ -229,9 +260,15 @@ function _deepClone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
-// Whitelist root del payload BE (allineata a ListaPreferenzaService).
+// Whitelist root del payload BE (sottoinsieme di ListaPreferenzaService).
 // Sotto-whitelist colonna inline in _extractColonna.
-const _PAYLOAD_ROOT_KEYS = ['colonne', 'ordinamento', 'filtri', 'pagina_dimensione']
+// ⛔ `ordinamento` e `filtri` NON si salvano (Q38 e Q39 di
+//    brief-db-revisione-ui, Tid 2026-11-20): i filtri si ritirano, e il clic
+//    sull'intestazione non si ricorda; l'ordinamento di partenza e' del preset.
+//    Il salvataggio e' per chiave: una preferenza vecchia che le porta (salvata
+//    prima del 2026-11-01, quando si salvava la configurazione intera) le perde
+//    al primo salvataggio, ed e' l'esito voluto.
+const _PAYLOAD_ROOT_KEYS = ['colonne', 'pagina_dimensione']
 const _COLONNA_KEYS = ['codice', 'ordine', 'larghezza', 'visibile', 'fissata']
 
 function _extractWritablePayload(config) {

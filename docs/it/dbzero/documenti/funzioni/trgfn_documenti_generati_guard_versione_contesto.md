@@ -38,7 +38,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_documenti_generati_guard_versione_contesto()
-IS 'Guard sull''INSERT di documenti.documenti_generati: la forma dichiarata dal contesto congelato (context_json -> _meta -> context_version, un intero JSON; altrimenti NULL = non dichiarata) deve essere quella che la versione di template legge. Delega a documenti.fn_guard_versione_contesto (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA / _NON_VERIFICABILE). Solo INSERT: il contesto e la versione di una stampa non cambiano dopo (protect_snapshot). Brief: brief-db-documenti-versione-contesto-template.';
+IS 'Guard sull''INSERT di documenti.documenti_generati: la forma dichiarata dal contesto congelato (context_json -> _meta -> context_version, un intero JSON; altrimenti NULL = non dichiarata) deve essere quella che la versione di template legge. Delega a documenti.fn_guard_versione_contesto (E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA / _NON_VERIFICABILE). Solo INSERT: il contesto e la versione di una stampa non cambiano dopo (documenti.trgfn_documenti_generati_protect_snapshot).';
 ```
 
 </div>

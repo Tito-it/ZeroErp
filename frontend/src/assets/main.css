@@ -2218,6 +2218,11 @@ a {
  * `font-bold` stava in uno <style scoped> ed era usata in altri otto file:
  * la regola globale e' questa, la copia scoped e' stata tolta. */
 .app-text-muted { color: var(--app-text-muted); }
+/* `app-motivo-campo` (2026-11-20, BB `MotivoDelProgramma`): il motivo sotto un
+ * campo spento. Accanto a una casella in riga (`form-field-inline`, che va in
+ * `flex-wrap`) va a capo da solo; in un `form-field` in colonna non cambia
+ * niente. Era `.form-field-inline > small` copiato in tre `<style scoped>`. */
+.app-motivo-campo { flex-basis: 100%; }
 .font-bold { font-weight: 600; }
 /* ⭐ `app-mono` (2026-09-19, regola del 2 — ok Tid): il testo a spaziatura
  * fissa di un identificativo tecnico (codice job, tx_id, IBAN, fattore, nome

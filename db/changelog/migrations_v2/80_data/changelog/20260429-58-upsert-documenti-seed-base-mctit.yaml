@@ -37,9 +37,8 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: attivo, type: STRING }
-              - column: { name: meta, type: STRING }
-              - column: { name: storicizza, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
               - column:
@@ -62,9 +61,8 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: attivo, type: STRING }
-              - column: { name: meta, type: STRING }
-              - column: { name: storicizza, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
               - column:
@@ -87,9 +85,8 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: attivo, type: STRING }
-              - column: { name: meta, type: STRING }
-              - column: { name: storicizza, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
               - column:
@@ -112,9 +109,8 @@ databaseChangeLog:
               - column: { name: codice, type: STRING }
               - column: { name: codice_interno, type: STRING }
               - column: { name: descrizione, type: STRING }
-              - column: { name: attivo, type: STRING }
-              - column: { name: meta, type: STRING }
-              - column: { name: storicizza, type: STRING }
+              - column: { name: etichetta_key, type: STRING }
+              - column: { name: ordine, type: NUMERIC }
               - column: { name: data_insert, type: STRING }
               - column: { name: user_insert, type: STRING }
               - column:

@@ -27,13 +27,14 @@ import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { listRisoluzioneTemplate } from '../api/templateDocumenti'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 
 const props = defineProps({
   // Un contatore: ogni volta che cambia, il pannello rilegge.
   aggiorna: { type: Number, default: 0 },
 })
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const { execute } = useApiHandler()
 const righe = ref([])
 
@@ -68,9 +69,13 @@ onActivated(carica)
 watch(() => props.aggiorna, carica)
 
 // Scopo: il nome di un documento a video: il tipo, con la sorgente fra
-//        parentesi (lo stesso tipo puo' avere due sorgenti).
+//        parentesi (lo stesso tipo puo' avere due sorgenti). Il tipo con
+//        l'etichetta che il DB dichiara, ripiego sulla `descrizione`.
 function documento(riga) {
-  return `${riga.tipo_documento_output_descrizione} (${riga.sorgente_tipo_descrizione})`
+  const tipo = labelOrCode(
+    t, te, riga.tipo_documento_output_etichetta_key, riga.tipo_documento_output_descrizione,
+  )
+  return `${tipo} (${riga.sorgente_tipo_descrizione})`
 }
 
 function azienda(riga) {

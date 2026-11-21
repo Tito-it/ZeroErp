@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHE COSA MANCA A UN SOGGETTO, SU UNA NATURA DATA
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(soggetto, natura, giorno)
+#     -> TABLE(tipo_indirizzo_id, ripiego_tipo_indirizzo_id)
+#   Brief: brief-db-fornitore-privato-indirizzi §12.5, giro 5.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Gemella di -39 sul layer SOGGETTO: la domanda «quali obbligatori
+#   mancano» la fanno il guard del soggetto (sulla sua natura, -42) e il form
+#   del cambio di natura (sulla natura proposta, -43). E' l'esito COMPLETA
+#   del 2026-10-11 (brief-db-cambio-natura-soggetto-conferma-e-pulizia §2):
+#   gli obbligatori della natura nuova l'operatore li da' nello stesso
+#   salvataggio, e il form deve sapere quali.
+#
+# ── LA FORMA (la regola del guard, invariata) ───────────────────
+#   Le righe obbligatorie della matrice della natura PASSATA, attive e valide
+#   il giorno dato (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura sul tipo
+#   della riga), per cui il soggetto non ha un indirizzo ne' del tipo ne' del
+#   ripiego della riga. Ordinate per tipo. Soggetto che non esiste, o natura
+#   NULL: nessuna riga. BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER: le
+#   tabelle lette non sono sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-40-create-fn-indirizzi-obbligatori-mancanti-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261116-40-create-fn-indirizzi-obbligatori-mancanti-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gli indirizzi obbligatori che mancano a un soggetto, su una natura data (quella di oggi o
+        quella proposta da un cambio): li leggono il guard e il form del cambio di natura.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                  p_soggetto_id                anagrafiche.soggetti.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  p_oggi                       config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              RETURNS TABLE(
+                  tipo_indirizzo_id         config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE,
+                  ripiego_tipo_indirizzo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT m.tipo_indirizzo_id, m.fallback_tipo_indirizzo_id
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                     AND m.obbligatorio
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             p_tipo_soggetto_dettaglio_id, m.tipo_indirizzo_id, p_oggi)
+                     AND EXISTS (SELECT 1 FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id)
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.indirizzi_soggetti i
+                            WHERE i.soggetto_id = p_soggetto_id
+                              AND (i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                                   OR i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id))
+                   ORDER BY m.tipo_indirizzo_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE)
+              IS 'Gli indirizzi obbligatori che mancano a un soggetto su una natura data, il giorno dato: le righe obbligatorie di config.tipi_soggetto_dettaglio_tipi_indirizzo per la natura passata (non quella del soggetto), attive e valide (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), per cui il soggetto non ha in anagrafiche.indirizzi_soggetti un indirizzo ne'' del tipo ne'' del ripiego della riga; col tipo richiesto e il ripiego. Ordinate per tipo. Soggetto che non esiste, o natura NULL: nessuna riga. La leggono il guard anagrafiche.fn_guard_indirizzi_obbligatori_soggetto (sulla natura del soggetto) e anagrafiche.fn_indirizzi_obbligatori_mancanti (sulla natura proposta da un cambio). Gemella di anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE,
+                  config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE);

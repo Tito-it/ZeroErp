@@ -36,8 +36,8 @@
 -- 17) ⭐ Il reset bloccato dichiara il suo CODICE nel log (W_, 20260821-43)
 -- 18) Ragione dell'annullamento SUL DATO (motivo), non solo nel log
 -- 19) Warning log su reset bloccato
--- 20) Cleanup completato
--- 21) Assert finale cleanup
+-- 20) Cleanup completato — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
+-- 21) Assert finale cleanup — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
 --
 -- ⭐ IL CASO 14 E' SDOPPIATO (Tid, 2026-08-22). Qui resta la meta'
 --   «contabilizzazione»: una distinta CHIUSA con dentro denaro che NON e' mai
@@ -69,7 +69,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('fondi_fattura');
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM tmp_mondo_ff)); END $ctx$;
 
-SELECT plan(22);
+SELECT plan(21);
 -- ============================================================
 -- 0) Riferimenti e costanti
 -- ============================================================
@@ -657,70 +657,13 @@ SELECT ok(
     'Warning log inserito su reset bloccato'
   );
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-
-UPDATE vendite.fatture
-SET storicizza = false
-WHERE meta->>'test_scope' = (
-    SELECT test_scope
-    FROM tmp_costanti_ff
-  );
-DELETE FROM vendite.fatture_log
-WHERE fattura_id IN (
-    SELECT id
-    FROM tmp_fattura_dst
-  );
-DELETE FROM pagamenti.vendite_movimenti
-WHERE fattura_id IN (
-    SELECT id
-    FROM tmp_fattura_src
-  )
-  AND COALESCE(meta->>'origine', '') = 'FONDO_FATTURA';
--- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
---    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
---    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
---    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
---    ROLLBACK farebbe comunque il lavoro.
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-DELETE FROM pagamenti.vendite_contabili_righe
-WHERE fattura_id IN (
-    SELECT id
-    FROM tmp_fattura_src
-  )
-  AND COALESCE(meta->>'origine', '') = 'FONDO_FATTURA';
-DELETE FROM vendite.fatture_fondi_fattura
-WHERE fattura_id IN (
-    SELECT id
-    FROM tmp_fattura_dst
-  )
-  OR riferimento_fattura_id IN (
-    SELECT id
-    FROM tmp_fattura_src
-  );
-DELETE FROM vendite.fatture_fondi_fattura_source
-WHERE fattura_sorgente_id IN (
-    SELECT id
-    FROM tmp_fattura_src
-  );
-DELETE FROM vendite.fatture
-WHERE meta->>'test_scope' = (
-    SELECT test_scope
-    FROM tmp_costanti_ff
-  );
-DELETE FROM vendite.tipi_fondi_fattura
-WHERE meta->>'test_scope' = (
-    SELECT test_scope
-    FROM tmp_costanti_ff
-  );
-/*  
- DELETE FROM pagamenti.centri_riscossione
- WHERE meta->>'test_scope' = (
- SELECT test_scope
- FROM tmp_costanti_ff
- );  */
-SELECT ok(true, 'Cleanup completato');
 SELECT *
 FROM finish();
 ROLLBACK;

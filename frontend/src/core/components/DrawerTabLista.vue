@@ -148,11 +148,13 @@ defineExpose({
   dirty: computed(() => listaInterna.value?.dirty ?? false),
   colonneNuove: computed(() => listaInterna.value?.colonneNuove ?? 0),
   presetAggiornato: computed(() => listaInterna.value?.presetAggiornato ?? false),
+  presetBaseCambiato: computed(() => listaInterna.value?.presetBaseCambiato ?? false),
   openModal: (...a) => listaInterna.value?.openModal?.(...a),
   save: (...a) => listaInterna.value?.save?.(...a),
   reset: (...a) => listaInterna.value?.reset?.(...a),
   applyChange: (...a) => listaInterna.value?.applyChange?.(...a),
   ignorePresetUpdate: (...a) => listaInterna.value?.ignorePresetUpdate?.(...a),
+  riallineaPresetBase: (...a) => listaInterna.value?.riallineaPresetBase?.(...a),
   // Espansione righe, per l'azione standard «Espandi tutte» di useListaAzioni.
   haEspansione: computed(() => listaInterna.value?.haEspansione === true),
   haRighe: computed(() => listaInterna.value?.haRighe === true),

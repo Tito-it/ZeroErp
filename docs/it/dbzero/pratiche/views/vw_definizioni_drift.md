@@ -25,7 +25,7 @@ SELECT f.id AS definizione_id,
     (pc.versione - f.versione_origine) AS versioni_indietro
    FROM (pratiche.workflow_definizioni f
      JOIN pratiche.workflow_definizioni pc ON (((pc.tipo_prestazione_id = f.tipo_prestazione_id) AND (pc.emittente_fiscale_id IS NULL) AND ((pc.stato)::text = 'PUBBLICATA'::text))))
-  WHERE ((f.preset_origine_id IS NOT NULL) AND (f.versione_origine IS NOT NULL) AND (f.emittente_fiscale_id IS NOT NULL) AND ((f.stato)::text = ANY ((ARRAY['BOZZA'::character varying, 'PUBBLICATA'::character varying])::text[])) AND (pc.versione > f.versione_origine));
+  WHERE ((f.preset_origine_id IS NOT NULL) AND (f.versione_origine IS NOT NULL) AND (f.emittente_fiscale_id IS NOT NULL) AND ((f.stato)::text = ANY (ARRAY[('BOZZA'::character varying)::text, ('PUBBLICATA'::character varying)::text])) AND (pc.versione > f.versione_origine));
 ```
 
 </div>

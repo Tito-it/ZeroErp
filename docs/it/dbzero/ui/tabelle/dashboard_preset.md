@@ -15,14 +15,14 @@
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | integer | YES |  |
-| is_default | boolean | NO | false |
 | dimensione_max | integer | YES | 8 |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | character varying(80) | NO | CURRENT_USER |
-| contenuto_aggiornato_il | timestamp with time zone | NO | now() |
+| contenuto_aggiornato_il | jsonb | NO |  |
+| composizione_impronta | text | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -41,7 +41,7 @@
 | ix_ui_dashboard_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_dashboard_preset_profilo_accesso_id | `CREATE INDEX ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |
-| uq_ui_dashboard_preset_default | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_default ON ui.dashboard_preset USING btree (dashboard_id, ambito, COALESCE(profilo_accesso_id, 0), COALESCE(emittente_fiscale_id, 0)) WHERE (is_default = true)` |
+| uq_ui_dashboard_preset_posto | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_posto ON ui.dashboard_preset USING btree (dashboard_id, ambito, profilo_accesso_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE attivo` |
 
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
@@ -50,7 +50,8 @@
 | trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_dashboard_preset_a20_contenuto_aggiornato_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
 
 ---
 {% include-markdown "signature-core.md" %}

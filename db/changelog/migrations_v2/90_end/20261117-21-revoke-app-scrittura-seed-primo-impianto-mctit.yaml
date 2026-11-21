@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La postura delle tre tabelle del seed di primo impianto e delle porte: a
+#   zeroerp_app SELECT soltanto.
+#   * dbops.seed_righe — la scrive solo script.trgfn_seed_primo_impianto
+#     (DEFINER) e il runner: un'app che la scrivesse falsificherebbe il segno
+#     «nata dal seed» o toglierebbe la personalizzazione;
+#   * dbops.porte_manutenzione_passaggi — la scrive solo
+#     script.fn_porta_manutenzione_aperta (DEFINER);
+#   * dbops.automazione_seed_primo_impianto — la possiede il CSV: un'app che la
+#     scrivesse spegnerebbe la protezione.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.11)
+#
+# Tre sedi (linee-guida-sql §11.8): questo forward per dev, il loop
+#   90_end/ci_apply/20260205-41 (v_tabelle_sola_lettura_app) e la fase post di
+#   scripts/sql/provision_zeroerp.sql. Il pgTAP di postura le tiene allineate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261117-21-revoke-app-scrittura-seed-primo-impianto-mctit.yaml
+
+  - changeSet:
+      id: 20261117-21-revoke-app-scrittura-seed-primo-impianto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La postura del seed di primo impianto e del diario delle porte: a zeroerp_app SELECT soltanto.
+        Postura resa stabile dal loop 20260205-41 e dal provisioning.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip postura del seed di primo impianto.';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'dbops.seed_righe',
+                      'dbops.porte_manutenzione_passaggi',
+                      'dbops.automazione_seed_primo_impianto'
+                  ] LOOP
+                      EXECUTE format('GRANT SELECT ON TABLE %s TO zeroerp_app', v_tabella);
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+                  dbops.seed_righe, dbops.porte_manutenzione_passaggi,
+                  dbops.automazione_seed_primo_impianto
+                  TO zeroerp_app;

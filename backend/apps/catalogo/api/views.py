@@ -54,7 +54,6 @@ from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
-    optional_uuid,
     paginated_envelope,
     parse_list_params,
     qp_bool_optional,
@@ -63,6 +62,7 @@ from apps.core.api.payload_validators import (
     qp_iso_date_optional,
     qp_str,
     qp_str_upper,
+    qp_uuid_optional,
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
@@ -704,9 +704,7 @@ class ApiArticoliLookup(DomainAPIView):
                 documento_id=qp_int_optional(qp.get("documento_id"), "documento_id"),
                 search=search,
                 tipo_eccezione=qp_str_upper(qp.get("tipo_eccezione")),
-                articolo_padre_id=optional_uuid(
-                    {"articolo_padre_id": qp.get("articolo_padre_id")}, "articolo_padre_id",
-                ),
+                articolo_padre_id=qp_uuid_optional(qp.get("articolo_padre_id"), "articolo_padre_id"),
                 limit=limit,
             ))
 

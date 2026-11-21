@@ -121,6 +121,11 @@ SELECT is(
 -- =========================================================
 -- 4) Pulizia pre-test: elimino RES / SEDELEG / SEDEOP per il soggetto_ruolo del Gestore
 -- =========================================================
+-- ⚠️ Rev 2026-11-17 (giro 4 di brief-db-fornitore-privato-indirizzi): la
+--   pulizia toglie la sede legale, obbligatoria per il gestore, che il 7)
+--   riscrive. Il guard degli obbligatori, che dal giro 4 scatta anche alla
+--   cancellazione, giudica a finestra richiusa, dopo il 7).
+SET CONSTRAINTS ALL DEFERRED;
 DELETE FROM anagrafiche.indirizzi i
 USING tmp_gestore_guard g, tmp_tipi_indirizzo_guard t
 WHERE i.soggetto_ruolo_id = g.soggetto_ruolo_id
@@ -248,6 +253,10 @@ SELECT is(
     1,
     'Inserimento SEDELEG per Gestore riuscito: 1 indirizzo SEDELEG presente'
 );
+
+-- La sede legale c'e' di nuovo: si richiude la finestra aperta dalla pulizia,
+-- e il guard degli obbligatori del gestore giudica qui.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- =========================================================
 -- 7) Test fallback fn_get_indirizzo: richiesta SEDEOP → ritorna SEDELEG

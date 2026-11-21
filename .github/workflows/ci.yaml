@@ -38,8 +38,9 @@ jobs:
 
     services:
       postgres:
-        # Postgres 18 con PostGIS 3.6 già preinstallato
-        image: postgis/postgis:18-3.6
+        # Postgres 19 ufficiale: postgis, pgtap e plpgsql_check li installa
+        # scripts/ci-estensioni-postgres.sh (postgis/postgis non ha ancora un tag 19)
+        image: postgres:19
         env:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: postgres
@@ -141,7 +142,7 @@ jobs:
         run: |
           # Driver PostgreSQL da Maven Central (NIENTE LPM): evita il fallimento
           # "Checksum validation failed" del package manager LPM. Liquibase carica
-          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 18.
+          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 19.
           LB_HOME="${LIQUIBASE_HOME:-$(dirname "$(readlink -f "$(command -v liquibase)")")}"
           mkdir -p "$LB_HOME/lib"
           curl -fsSL -o "$LB_HOME/lib/postgresql.jar" \
@@ -171,6 +172,12 @@ jobs:
             --out  db/changelog/migrations_v2/changelog-autogen.yaml \
             --strict
 
+
+      - name: Installa le estensioni nel container Postgres (postgis, pgtap, plpgsql_check)
+        # postgis serve al primo changeSet (001-01, senza preCondition): il
+        # passo va PRIMA del giro provision. Sede e ragioni: lo script, lo
+        # stesso di ci-validate.yaml.
+        run: scripts/ci-estensioni-postgres.sh "${{ job.services.postgres.id }}" zeroerp
 
       - name: Liquibase admin (provision - pre)
         run: |

@@ -2,11 +2,11 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.documenti_generati_eventi
---   - INSERT eventi ammessi (GENERATO/SCARICATO/STORAGE_ORPHAN/RISTAMPA_FEDELE)
+--   - INSERT eventi ammessi (GENERATO/SCARICATO/RISTAMPA_FEDELE); STORAGE_ORPHAN ritirato
 --   - CHECK evento_tipo (set chiuso v1: ANTEPRIMA, RENDER_KO rifiutati)
 --   - CHECK esito (OK/KO/WARN)
 --   - CHECK messaggio non-vuoto / detail jsonb object
---   - guard append-only: block UPDATE / block DELETE
+--   - un evento non si modifica e non si cancella (i due codici)
 --   - FK documento_generato_id (asserita dal CATALOGO: da quando la tabella e'
 --     in RLS il perimetro rifiuta prima della foreign key — vedi test 12 e 16)
 --   - storico OFF (no provisioning automatico)
@@ -16,14 +16,14 @@
 --  1) Setup: documento generato di riferimento creato
 --  2) INSERT evento GENERATO esito=OK passa
 --  3) INSERT evento SCARICATO con messaggio passa
---  4) INSERT evento STORAGE_ORPHAN user_id=NULL esito=KO passa
+--  4) CHECK evento_tipo: STORAGE_ORPHAN non e' piu' un evento (il file orfano sta nel log)
 --  5) CHECK evento_tipo: ANTEPRIMA non ammesso in v1 (Decisione 30)
 --  6) CHECK evento_tipo: RENDER_KO non ammesso (set chiuso)
 --  7) CHECK esito: valore non in (OK,KO,WARN) rifiutato
 --  8) CHECK messaggio: stringa solo whitespace rifiutata
 --  9) CHECK detail: jsonb non-object (array) rifiutato
--- 10) Guard block UPDATE: UPDATE messaggio bloccato
--- 11) Guard block DELETE: DELETE evento bloccato
+-- 10) Un evento non si modifica: E_EVENTO_DOCUMENTO_UPDATE_VIETATA
+-- 11) Un evento non si cancella: E_EVENTO_DOCUMENTO_DELETE_VIETATA
 -- 12) FK: documento_generato_id dichiarata a catalogo verso documenti_generati
 -- 13) Storico OFF: storico.documenti_generati_eventi NON esiste
 -- 14) Default audit: data_insert e user_insert popolati su INSERT minimo
@@ -52,7 +52,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   lotto D di brief-db-sorgente-documento-e-riga il guard unico verifica che il
 --   documento stampato esista, e la chiave di un preventivo e' il suo uid.
 CREATE TEMP TABLE _dg_src AS
-SELECT p.preventivo_uid FROM dbops.fn_pgtap_crea_preventivo('dg eventi', 'DRAFT') p;
+SELECT p.preventivo_uid, p.emittente_fiscale_id
+  FROM dbops.fn_pgtap_crea_preventivo('dg eventi', 'DRAFT') p;
 
 
 SELECT plan(16);
@@ -62,8 +63,7 @@ SELECT plan(16);
 -- ============================================================
 CREATE TEMP TABLE tmp_dge_ctx AS
 SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)               AS emittente_id,
+  (SELECT emittente_fiscale_id FROM _dg_src)                     AS emittente_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'PREVENTIVO')                       AS sorgente_id,
   (SELECT t.id FROM documenti.tipi_documento_output t
@@ -80,7 +80,6 @@ WITH ins_t AS (
   SELECT tipo_output_id, 'PGTAP-DGE', 'PGTAP_DGE', 'Template per eventi',
          sorgente_id, 'pgtap.builder', emittente_id, false, true
     FROM tmp_dge_ctx
-   WHERE emittente_id IS NOT NULL
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dge_template FROM ins_t;
@@ -88,17 +87,25 @@ SELECT id INTO TEMP TABLE tmp_dge_template FROM ins_t;
 WITH ins_v AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
-    render_engine_id, valido_dal, valido_al, versione_contesto
+    render_engine_id, versione_contesto
   )
   SELECT (SELECT id FROM tmp_dge_template),
-         1, 'PUBBLICATA', 'v1', '<html>v1</html>',
-         (SELECT render_id FROM tmp_dge_ctx),
-         DATE '2026-01-01', DATE '2026-12-31', 1
+         1, 'BOZZA', 'v1', '<html>v1</html>',
+         (SELECT render_id FROM tmp_dge_ctx), 1
   RETURNING id
 )
 SELECT id INTO TEMP TABLE tmp_dge_versione FROM ins_v;
 
-WITH ins_dg AS (
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione: la fixture lo percorre. La versione vale da una data passata
+--   e non scade: la stampa nasce solo dalla versione in uso alla data operativa.
+SELECT documenti.fn_pubblica_template_documento_versione(
+  (SELECT id FROM tmp_dge_versione), script.fn_data_operativa() - 30, 1, NULL);
+
+-- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf): senza,
+--   non si registra (guard differito, che IMMEDIATE fa scattare a fine istruzione).
+CREATE TEMP TABLE tmp_dge_doc AS
+SELECT dbops.fn_pgtap_stampa_con_pdf($i$
   INSERT INTO documenti.documenti_generati (
     tipo_documento_output_id, template_documento_id, template_versione_id,
     sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
@@ -114,10 +121,7 @@ WITH ins_dg AS (
     'Doc per eventi', 'doc-evt.pdf',
     '{"tot": 100, "_meta": {"context_version": 1}}'::jsonb,
     repeat('1', 64), repeat('2', 64), repeat('3', 64),
-    (SELECT emittente_id FROM tmp_dge_ctx)
-  RETURNING id
-)
-SELECT id INTO TEMP TABLE tmp_dge_doc FROM ins_dg;
+    (SELECT emittente_id FROM tmp_dge_ctx)$i$) AS id;
 
 -- 1) Pre-condizione setup
 SELECT ok(
@@ -160,23 +164,19 @@ SELECT is(
 );
 
 -- ============================================================
--- 4) INSERT evento STORAGE_ORPHAN user_id NULL esito=KO
+-- 4) CHECK evento_tipo: STORAGE_ORPHAN ritirato. Il file orfano nasce quando la
+--    stampa non esiste, e documento_generato_id e' NOT NULL: nessuno poteva
+--    scriverlo. Il BE lo registra nel log.
 -- ============================================================
-INSERT INTO documenti.documenti_generati_eventi (
-  documento_generato_id, evento_tipo, esito, user_id, messaggio, detail
-)
-SELECT (SELECT id FROM tmp_dge_doc), 'STORAGE_ORPHAN', 'KO',
-       NULL, 'File orfano post-fail commit',
-       jsonb_build_object('storage_key', 's3://bucket/orphan.pdf');
-
-SELECT is(
-  (SELECT COUNT(*)::int FROM documenti.documenti_generati_eventi
-    WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
-      AND evento_tipo = 'STORAGE_ORPHAN'
-      AND esito = 'KO'
-      AND user_id IS NULL),
-  1,
-  'INSERT evento STORAGE_ORPHAN user_id=NULL esito=KO passa'
+SELECT throws_ok(
+  $$INSERT INTO documenti.documenti_generati_eventi (
+      documento_generato_id, evento_tipo, esito, user_id, messaggio
+    )
+    SELECT (SELECT id FROM tmp_dge_doc), 'STORAGE_ORPHAN', 'KO',
+           NULL, 'File orfano post-fail commit'$$,
+  '23514',
+  NULL,
+  'CHECK evento_tipo: STORAGE_ORPHAN non e'' piu'' un evento'
 );
 
 -- ============================================================
@@ -245,28 +245,26 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 10) Guard block UPDATE: UPDATE messaggio bloccato
+-- 10) Un evento non si modifica: E_EVENTO_DOCUMENTO_UPDATE_VIETATA
 -- ============================================================
-SELECT throws_ok(
-  $$UPDATE documenti.documenti_generati_eventi
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.documenti_generati_eventi
        SET messaggio = 'modificato'
      WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
-       AND evento_tipo = 'SCARICATO'$$,
-  NULL,
-  NULL,
-  'Guard block UPDATE: UPDATE messaggio bloccato'
+       AND evento_tipo = 'SCARICATO'$$),
+  'E_EVENTO_DOCUMENTO_UPDATE_VIETATA',
+  '10) un evento non si modifica: E_EVENTO_DOCUMENTO_UPDATE_VIETATA'
 );
 
 -- ============================================================
--- 11) Guard block DELETE: DELETE evento bloccato
+-- 11) Un evento non si cancella: E_EVENTO_DOCUMENTO_DELETE_VIETATA
 -- ============================================================
-SELECT throws_ok(
-  $$DELETE FROM documenti.documenti_generati_eventi
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$DELETE FROM documenti.documenti_generati_eventi
      WHERE documento_generato_id = (SELECT id FROM tmp_dge_doc)
-       AND evento_tipo = 'GENERATO'$$,
-  NULL,
-  NULL,
-  'Guard block DELETE: DELETE evento bloccato'
+       AND evento_tipo = 'GENERATO'$$),
+  'E_EVENTO_DOCUMENTO_DELETE_VIETATA',
+  '11) un evento non si cancella: E_EVENTO_DOCUMENTO_DELETE_VIETATA'
 );
 
 -- ============================================================

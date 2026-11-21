@@ -3,12 +3,20 @@
 // Mostra variabili disponibili per il template, permette preview HTML
 // renderizzata dal BE. Preview confinata in iframe sandbox per non eseguire
 // script/CSS invasivo nella shell admin (vedi A12/C5 del WIP frontend amm).
+// ⭐ Il template non si elimina, si spegne: l'interruttore `attivo` e' il gesto
+//    (Q24 di brief-db-seed-primo-impianto-non-si-riscrive, 2026-11-19).
+// ⭐ Su un template nato dal seed i campi in `campi_del_software` li stabilisce
+//    il programma: restano spenti col motivo sotto (R3) e non entrano nel
+//    PATCH. L'elenco arriva dal dettaglio (stessa sede del guard del DB), qui
+//    non se ne scrive nessuno: vale per ogni campo del form, anche per quelli
+//    che oggi l'elenco non nomina (BB `campoDelSoftware`).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import ToggleSwitch from 'primevue/toggleswitch'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -16,6 +24,9 @@ import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useEmailTemplatesStore } from '../stores/emailTemplates'
 import { useApiHandler } from '../../core/composables/useApiHandler'
+import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import { previewEmailTemplate } from '../api/amministrazione'
 
 
@@ -41,6 +52,10 @@ const previewHtml = ref('')
 const previewLoading = ref(false)
 const showPreview = ref(false)
 
+// Scopo: il campo lo stabilisce il programma su questo template (riga di seed)?
+const dettaglio = ref(null)
+const delProgramma = (campo) => campoDelSoftware(dettaglio.value, campo)
+
 const canSave = computed(() => {
   if (isReadonly.value) return false
   const f = form.value
@@ -60,19 +75,24 @@ watch(() => props.visible, async (vis) => {
       corpo_html: d?.corpo_html || '',
       corpo_testo: d?.corpo_testo || '',
       lingua: d?.lingua || 'it',
-      variabili_disponibili: d?.variabili_disponibili || []
+      variabili_disponibili: d?.variabili_disponibili || [],
+      attivo: d?.attivo ?? true,
+      nata_dal_seed: d?.nata_dal_seed === true
     }
+    dettaglio.value = d
     fissa()
   }
 })
 
 async function handleSave() {
   if (isReadonly.value) return
-  const payload = {
+  // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
+  const payload = senzaCampiFermi({
     oggetto: form.value.oggetto,
     corpo_html: form.value.corpo_html,
-    corpo_testo: form.value.corpo_testo || null
-  }
+    corpo_testo: form.value.corpo_testo || null,
+    attivo: form.value.attivo
+  }, delProgramma)
   const result = await execute(
     () => store.update(props.templateId, payload),
     { successMessage: t('notifications.save_success') }
@@ -124,15 +144,27 @@ async function handlePreview() {
     @save="handleSave"
   >
     <div class="form-grid">
+      <div v-if="form.nata_dal_seed" data-testid="template-di-sistema">
+        <Tag :value="t('amministrazione.email_template_di_sistema')" severity="secondary" />
+      </div>
+
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_codice') }}</label>
           <InputText :modelValue="form.codice" disabled fluid />
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_lingua') }}</label>
           <InputText :modelValue="form.lingua" disabled fluid />
+          <MotivoDelProgramma campo="lingua" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
         </div>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('amministrazione.email_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadonly || delProgramma('attivo')" data-testid="template-attivo" />
+        <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field" v-if="form.variabili_disponibili?.length">
@@ -141,21 +173,27 @@ async function handlePreview() {
           <Tag v-for="v in form.variabili_disponibili" :key="v"
                :value="`{{${v}}}`" severity="info" />
         </div>
+        <MotivoDelProgramma campo="variabili_disponibili" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_oggetto') }}</label>
-        <InputText v-model="form.oggetto" :disabled="isReadonly" fluid />
+        <InputText v-model="form.oggetto" :disabled="isReadonly || delProgramma('oggetto')" fluid />
+        <MotivoDelProgramma campo="oggetto" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_corpo_html') }}</label>
-        <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize :disabled="isReadonly" />
+        <Textarea v-model="form.corpo_html" :rows="12" fluid autoResize
+                  :disabled="isReadonly || delProgramma('corpo_html')" />
+        <MotivoDelProgramma campo="corpo_html" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_corpo_testo') }}</label>
-        <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize :disabled="isReadonly" />
+        <Textarea v-model="form.corpo_testo" :rows="5" fluid autoResize
+                  :disabled="isReadonly || delProgramma('corpo_testo')" />
+        <MotivoDelProgramma campo="corpo_testo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma')" />
       </div>
 
       <!-- `app-escape`: l'anteprima e' consultazione, resta cliccabile anche in

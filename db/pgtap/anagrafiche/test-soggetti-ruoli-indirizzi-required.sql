@@ -13,28 +13,9 @@
 --  6) Guard deferred su soggetti_ruoli: passa con indirizzo obbligatorio presente
 --
 -- ------------------------------------------------------------
--- Cleanup iniziale (solo per test precedenti non rollbackati)
-DO $$ BEGIN
-DELETE FROM anagrafiche.indirizzi i
-WHERE i.soggetto_ruolo_id IN (
-    SELECT sr.id
-    FROM anagrafiche.soggetti_ruoli sr
-      JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
-    WHERE s.codice IN ('TST-RUOLO-IND-ERR', 'TST-RUOLO-IND-OK')
-  );
-DELETE FROM anagrafiche.soggetti_ruoli sr USING anagrafiche.soggetti s
-WHERE sr.soggetto_id = s.id
-  AND s.codice IN ('TST-RUOLO-IND-ERR', 'TST-RUOLO-IND-OK');
-DELETE FROM anagrafiche.contatti c
-WHERE c.soggetto_id IN (
-    SELECT s.id
-    FROM anagrafiche.soggetti s
-    WHERE s.codice IN ('TST-RUOLO-IND-ERR', 'TST-RUOLO-IND-OK')
-  );
-DELETE FROM anagrafiche.soggetti s
-WHERE s.codice IN ('TST-RUOLO-IND-ERR', 'TST-RUOLO-IND-OK');
-END;
-$$;
+-- Rev 2026-11-17: via la pulizia iniziale dei soggetti 'TST-RUOLO-IND-*'. I
+--   soggetti li costruisce il builder, con un codice suo, e ogni caso chiude
+--   in ROLLBACK: non c'e' residuo da cercare.
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -102,34 +83,12 @@ SELECT ok(
     ) = 1,
     'Esiste almeno una regola obbligatoria attiva in config.tipi_ruolo_tipi_indirizzo'
   );
-CREATE TEMP TABLE tmp_stradario_test AS
-SELECT id
-FROM config.stradario
-ORDER BY id
-LIMIT 1;
-CREATE TEMP TABLE tmp_indirizzo_dettaglio_test AS WITH upsert AS (
-  INSERT INTO anagrafiche.indirizzi_dettaglio (
-      stradario_id,
-      civico,
-      via_norm,
-      civico_norm,
-      attivo,
-      storicizza
-    )
-  SELECT s.id,
-    1,
-    'VIA TEST RUOLO REQUIRED',
-    '1',
-    TRUE,
-    FALSE
-  FROM tmp_stradario_test s ON CONFLICT (stradario_id, civico, estensione_civico, palazzina, scala, piano, interno) DO
-  UPDATE
-  SET data_update = now(),
-    user_update = CURRENT_USER
-  RETURNING id
-)
-SELECT id
-FROM upsert;
+-- Rev 2026-11-18 (brief-db-fornitore-privato-indirizzi §15): via lo stradario
+--   e l'upsert su anagrafiche.indirizzi_dettaglio che stavano qui. Erano fuori
+--   da ogni transazione, quindi COMMITTAVANO: una riga del dettaglio creata, o
+--   una esistente riscritta (ON CONFLICT DO UPDATE), a ogni corsa. L'indirizzo
+--   del ruolo del caso 2 si scrive ora in forma libera, nella forma che lo
+--   stato pretende (dbops.fn_pgtap_indirizzo_libero_forma), come gli altri pgTAP.
 -- =========================================================
 -- Caso 1: ruolo senza indirizzo obbligatorio -> blocco deferred
 -- =========================================================
@@ -142,78 +101,15 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
 --   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
 --   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+-- Il privato, gia' completo dei suoi indirizzi e del contatto, dal builder
+--   (rev 2026-11-17, brief-db-fornitore-privato-indirizzi §10.3): il caso
+--   isola il guard del RUOLO, e il soggetto e' il veicolo, non l'oggetto.
+--   Prima lo costruiva un INSERT diretto su anagrafiche.soggetti, accanto
+--   alla madre. Il builder richiude la finestra differita uscendo: il caso
+--   la riapre subito dopo, perche' si regge su di essa.
+CREATE TEMP TABLE tmp_soggetto_ruolo_err AS
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Test', 'Ruolo ERR') AS id;
 SET CONSTRAINTS ALL DEFERRED;
-WITH ins AS (
-  INSERT INTO anagrafiche.soggetti (
-      codice,
-      cognome,
-      nome,
-      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
-      stato_id,
-      tipo_soggetto_dettaglio_id,
-      codice_fiscale,
-      storicizza,
-      attivo
-    )
-  SELECT 'TST-RUOLO-IND-ERR',
-    'Test',
-    'Ruolo ERR',
-    'M',
-    (
-      SELECT stato_id
-      FROM tmp_stato_test
-    ),
-    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
-    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
-    --   brief-db-sesso-senza-default.
-    (
-      SELECT id
-      FROM config.tipi_soggetto_dettaglio
-      WHERE codice_interno = 'PR'
-    ),
-    'QMMTPK69T01G127B',
-    TRUE,
-    TRUE
-  RETURNING id
-)
-SELECT * INTO TEMP TABLE tmp_soggetto_ruolo_err
-FROM ins;
-INSERT INTO anagrafiche.contatti (
-    tipo_contatto_id,
-    soggetto_id,
-    nominativo,
-    email,
-    is_default
-  )
-SELECT (
-    SELECT tipo_contatto_id
-    FROM tmp_tipo_contatto_test
-  ),
-  s.id,
-  'Contatto ruolo ERR',
-  'ruolo.err@example.com',
-  TRUE
-FROM tmp_soggetto_ruolo_err s;
-
--- Soddisfa i requisiti indirizzo del soggetto, per isolare il guard del ruolo
-INSERT INTO anagrafiche.indirizzi_soggetti (
-    soggetto_id,
-    tipo_indirizzo_id,
-    indirizzo_dettaglio_id,
-    storicizza
-  )
-SELECT s.id,
-  m.tipo_indirizzo_id,
-  d.id,
-  FALSE
-FROM tmp_soggetto_ruolo_err s
-  JOIN anagrafiche.soggetti sg ON sg.id = s.id
-  JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m ON m.tipo_soggetto_dettaglio_id = sg.tipo_soggetto_dettaglio_id
-  JOIN tmp_indirizzo_dettaglio_test d ON TRUE
-WHERE m.obbligatorio = TRUE
-  AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
-  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 SELECT lives_ok(
     $$
@@ -246,78 +142,15 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   IMMEDIATE come ogni helper: questo caso invece si regge sulla finestra
 --   differita — inserisce l'incompleto e forza IMMEDIATE dentro throws_ok.
 --   Contare sulla finestra «di default» e' verde su dev e rosso in CI.
+-- Il privato, gia' completo dei suoi indirizzi e del contatto, dal builder
+--   (rev 2026-11-17, brief-db-fornitore-privato-indirizzi §10.3): il caso
+--   isola il guard del RUOLO, e il soggetto e' il veicolo, non l'oggetto.
+--   Prima lo costruiva un INSERT diretto su anagrafiche.soggetti, accanto
+--   alla madre. Il builder richiude la finestra differita uscendo: il caso
+--   la riapre subito dopo, perche' si regge su di essa.
+CREATE TEMP TABLE tmp_soggetto_ruolo_ok AS
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Test', 'Ruolo OK') AS id;
 SET CONSTRAINTS ALL DEFERRED;
-WITH ins AS (
-  INSERT INTO anagrafiche.soggetti (
-      codice,
-      cognome,
-      nome,
-      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
-      stato_id,
-      tipo_soggetto_dettaglio_id,
-      codice_fiscale,
-      storicizza,
-      attivo
-    )
-  SELECT 'TST-RUOLO-IND-OK',
-    'Test',
-    'Ruolo OK',
-    'M',
-    (
-      SELECT stato_id
-      FROM tmp_stato_test
-    ),
-    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
-    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
-    --   brief-db-sesso-senza-default.
-    (
-      SELECT id
-      FROM config.tipi_soggetto_dettaglio
-      WHERE codice_interno = 'PR'
-    ),
-    'QMMTPK69T01G127B',
-    TRUE,
-    TRUE
-  RETURNING id
-)
-SELECT * INTO TEMP TABLE tmp_soggetto_ruolo_ok
-FROM ins;
-INSERT INTO anagrafiche.contatti (
-    tipo_contatto_id,
-    soggetto_id,
-    nominativo,
-    email,
-    is_default
-  )
-SELECT (
-    SELECT tipo_contatto_id
-    FROM tmp_tipo_contatto_test
-  ),
-  s.id,
-  'Contatto ruolo OK',
-  'ruolo.ok@example.com',
-  TRUE
-FROM tmp_soggetto_ruolo_ok s;
-
--- Soddisfa i requisiti indirizzo del soggetto, per isolare il guard del ruolo
-INSERT INTO anagrafiche.indirizzi_soggetti (
-    soggetto_id,
-    tipo_indirizzo_id,
-    indirizzo_dettaglio_id,
-    storicizza
-  )
-SELECT s.id,
-  m.tipo_indirizzo_id,
-  d.id,
-  FALSE
-FROM tmp_soggetto_ruolo_ok s
-  JOIN anagrafiche.soggetti sg ON sg.id = s.id
-  JOIN config.tipi_soggetto_dettaglio_tipi_indirizzo m ON m.tipo_soggetto_dettaglio_id = sg.tipo_soggetto_dettaglio_id
-  JOIN tmp_indirizzo_dettaglio_test d ON TRUE
-WHERE m.obbligatorio = TRUE
-  AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
-  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 WITH ins_role AS (
   INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)
@@ -332,16 +165,18 @@ FROM ins_role;
 INSERT INTO anagrafiche.indirizzi (
     soggetto_ruolo_id,
     tipo_indirizzo_id,
-    indirizzo_dettaglio_id,
+    indirizzo_libero, stato_id, comune_id, codice_postale_id, locality, postal_code,
     storicizza
   )
 SELECT r.id,
   rr.tipo_indirizzo_id,
-  d.id,
+  'Via pgTAP ruolo required 1', sg.stato_id, f.comune_id, f.codice_postale_id, f.locality, f.postal_code,
   FALSE
 FROM tmp_ruolo_ok r
   JOIN tmp_regola_ruolo_required rr ON TRUE
-  JOIN tmp_indirizzo_dettaglio_test d ON TRUE;
+  JOIN tmp_soggetto_ruolo_ok so ON TRUE
+  JOIN anagrafiche.soggetti sg ON sg.id = so.id
+  CROSS JOIN LATERAL dbops.fn_pgtap_indirizzo_libero_forma(sg.stato_id) f;
 SELECT lives_ok(
     $$
     SET CONSTRAINTS ALL IMMEDIATE;

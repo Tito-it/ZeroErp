@@ -34,7 +34,7 @@ Decisioni aperte di Tid: nessuna (Q-2: `NULL` resta «tutti ammessi», ok di Tid
 > modo di creare un indirizzo partendo da uno che il soggetto ha già, per esempio duplicare la
 > sede legale come indirizzo di spedizione cambiando solo il tipo.
 > **Brief vicini verificati:**
-> [brief-db-fornitore-privato-indirizzi](../work-in-progress/brief-db-fornitore-privato-indirizzi.md): tratta gli
+> [brief-db-fornitore-privato-indirizzi](brief-db-fornitore-privato-indirizzi.md): tratta gli
 > indirizzi del **ruolo** (`config.tipi_ruolo_tipi_indirizzo`) e la sede legale del privato;
 > oggetti diversi, nessuna sovrapposizione. `work-done/brief-db-cambio-natura-soggetto-conferma-e-pulizia`
 > (chiuso il 2026-11-14) ha dato a `fn_tipo_indirizzo_ammesso_per_natura` la forma di sede unica del

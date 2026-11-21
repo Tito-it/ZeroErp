@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO «SOLO DISATTIVAZIONE» SU ACCOUNT E TEMPLATE DI POSTA
+#   Tid, 2026-11-19 (brief-db-seed-primo-impianto-non-si-riscrive §16.14, Q24):
+#   un account o un template di posta non si cancella, si spegne; e si spegne
+#   anche dopo aver spedito.
+#
+#   Due registri, due runner:
+#   - dbops.automation_delete_block, righe 9 e 10 (config.email_account,
+#     config.email_template; porta zeroerp.maintenance_email_delete): il runner
+#     monta il blocco BEFORE DELETE (E_DELETE_NOT_ALLOWED);
+#   - dbops.automazione_attivo_eccezioni, quattro righe (email_log ed
+#     email_outbox verso account e template): fn_ritira_attivo_eccezioni toglie i
+#     block_deact sui padri e i require sui figli. Senza, un account che ha
+#     spedito una volta non si spegnerebbe piu', e con il blocco della DELETE non
+#     ci sarebbe piu' nessun gesto per toglierlo dall'uso.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Su dbdev il ci_apply non rigira le automazioni (i job sono serali): senza
+#   questo passo account e template resterebbero cancellabili e non spegnibili
+#   fino alla sera, e il pgTAP del giro rosso. Da zero il ci_apply fa lo stesso
+#   lavoro; i due runner convergono, e rigirarli non fa danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Si chiamano i RUNNER, non si scrive un CREATE o un DROP TRIGGER a mano
+#   (stessa scelta di 20261116-46). Il delete_block solo sullo schema config.
+#   Le precondizioni pretendono le righe dei registri: senza, i runner non
+#   farebbero niente e il changeSet sarebbe un verde a vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261117-28-provision-posta-solo-disattivazione-mctit.yaml
+
+  - changeSet:
+      id: 20261117-28-provision-posta-solo-disattivazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Provisiona subito «solo disattivazione» su config.email_account e config.email_template: il blocco
+        della DELETE (fn_run_automations_delete_block su config) e il ritiro dei trigger ATTIVO verso
+        email_log ed email_outbox (fn_ritira_attivo_eccezioni). brief-db-seed-primo-impianto-non-si-riscrive §16.14.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM dbops.automation_delete_block
+                   WHERE enabled IS TRUE
+                     AND guc_key = 'zeroerp.maintenance_email_delete'
+                     AND (schema_name, table_name) IN (('config', 'email_account'),
+                                                       ('config', 'email_template'));
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT count(*) FROM dbops.automazione_attivo_eccezioni
+                   WHERE schema_figlia = 'config'
+                     AND tabella_figlia IN ('email_log', 'email_outbox')
+                     AND colonna_fk IN ('email_account_id', 'email_template_id');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_delete_block('AUTO', ARRAY['config'], false);
+              SELECT dbops.fn_ritira_attivo_eccezioni();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger li governano i registri: per tornare indietro si spengono
+              -- le righe di automation_delete_block, si tolgono quelle di
+              -- automazione_attivo_eccezioni e si rigirano i runner, che
+              -- convergono. Qui non si tocca niente.
+              SELECT 1;

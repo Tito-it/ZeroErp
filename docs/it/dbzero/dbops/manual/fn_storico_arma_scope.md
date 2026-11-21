@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_storico_arma_scope`
 
-> **Ultimo aggiornamento**: 9 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -113,7 +113,7 @@ non scrive niente, nemmeno il `WARN` del salto.
   armata se tutte le sue madri sono `NESSUNO`; la policy di lettura è quella del perimetro per
   istruzione; le policy di scrittura sono senza filtro; una shadow di prova nasce armata e il trigger
   scrive attraverso la RLS; l'applicazione non ha `DELETE` su nessuna shadow.
-* `db/pgtap/dbops/test-comment-al-presente-v1.sql` (test 5) — il commento delle due colonne, su
+* `db/pgtap/dbops/test-comment-al-presente-v1.sql` (test 6) — il commento delle due colonne, su
   ogni shadow, non porta brief, marcatori di revisione, id di changeSet o hash.
 
 ---

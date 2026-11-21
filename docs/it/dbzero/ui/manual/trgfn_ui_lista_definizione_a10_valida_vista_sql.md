@@ -1,45 +1,88 @@
-# trgfn_ui_lista_definizione_a10_valida_vista_sql
+## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_ui_lista_definizione_a10_valida_vista_sql`
+
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la lista che dichiara la vista
+>
+> Approfondimento funzioni:
+>
+> * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il controllo gemello sulle colonne
+>
+> Guide:
+>
+> * [Configurazione delle liste](/guide/configurazione-liste) — la lista registrata prima della sua vista
+
+---
 
 ### 🎯 Scopo Principale
 
-Guard BEFORE INSERT/UPDATE su `ui.lista_definizione`: verifica che `vista_sql` esista come relazione (view, materialized view o tabella) in `pg_catalog.pg_class` prima di permettere il salvataggio. Previene typo nel nome della view che causerebbero errori runtime alla prima apertura della lista.
+Il trigger verifica, quando una lista si scrive, che la relazione dichiarata in `vista_sql` esista
+nello schema `schema_dati` della lista: un nome sbagliato si ferma al salvataggio invece che alla
+prima apertura della lista.
 
-## Schema
+---
 
-`ui`
+### Quando controlla
 
-## Firma
+Parte alla nascita della lista e quando cambiano `vista_sql`, `schema_dati` o `attivo`. Non
+controlla:
 
-```sql
-ui.trgfn_ui_lista_definizione_a10_valida_vista_sql() RETURNS trigger
-```
+* una lista senza vista dichiarata, che legge i dati da una funzione o dal backend;
+* una lista spenta.
 
-## Trigger associato
+Il secondo salto permette di registrare una lista prima che la sua vista esista: la si registra
+spenta, e quando la vista c'è la si accende, e il controllo parte in quel momento.
 
-```sql
-TRIGGER trg_ui_lista_definizione_a10_valida_vista_sql_ins_upd
-  BEFORE INSERT OR UPDATE OF vista_sql, attivo
-  ON ui.lista_definizione
-  FOR EACH ROW
-```
+---
 
-## Logica
+### Che cosa vale come vista vera
 
-| Condizione | Azione |
-|------------|--------|
-| `NEW.vista_sql IS NULL` | Skip (la lista può non avere una view) |
-| `NEW.attivo = FALSE` | Skip (lista disattivata, non validare) |
-| View non trovata in `pg_catalog.pg_class` | Errore `E_UI_VISTA_SQL_NON_TROVATA` |
-| View trovata (`relkind IN ('v','m','r')`) | `RETURN NEW` |
+Una vista, una vista materializzata o una tabella con quel nome nello schema della lista. Il nome si
+scrive senza schema; un'omonima in un altro schema non conta (`comuni` esiste in `config` e in
+`storico`).
 
-## Errori sollevati
+---
 
-| Codice | Quando |
-|--------|--------|
-| `E_UI_VISTA_SQL_NON_TROVATA` | `vista_sql` non trovata in `pg_catalog.pg_class` |
+### ⚠️ Che cosa oggi non copre
 
-## Note
+* **Una vista cancellata o rinominata dopo non si vede**: il controllo guarda la riga quando si
+  scrive. Il presidio è il pgTAP del catalogo, sulle liste del seed.
+* **Cambiare vista non riverifica le colonne** della lista, che restano anche se la vista nuova non
+  le ha.
+* **Una tabella partizionata è rifiutata**: non è fra i tipi ammessi.
+* **Una `vista_sql` vuota su una lista spenta passa**: nessun vincolo rifiuta la stringa vuota, e il
+  salto sulle liste spente la lascia entrare.
 
-- Il trigger si attiva solo su `UPDATE OF vista_sql, attivo` (non su ogni UPDATE): minimizza l'overhead.
-- Accetta `relkind IN ('v','m','r')`: view, materialized view e tabelle sono tutti validi come sorgente dati.
-- Il nome della view deve essere il nome grezzo (senza schema) come appare in `pg_class.relname`.
+---
+
+### Codici errore
+
+* `E_UI_VISTA_SQL_NON_TROVATA` — la relazione non c'è nello schema della lista. La frase porta il nome
+  qualificato.
+
+---
+
+### Test
+
+* `db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql` — una vista che esiste solo in un
+  altro schema è rifiutata, la vista nel suo schema passa; ogni lista accesa del catalogo ha la sua
+  vista.
+
+Il salto sulle liste spente, la verifica alla riaccensione e il cambio del solo `schema_dati` non
+sono costruiti da nessun test.
+
+---
+
+### Note di migrazione
+
+* 2026-05-06 — nasce, col catalogo delle liste.
+* 2026-09-27 — la relazione si cerca nello schema della lista, e il trigger parte anche sul cambio di
+  `schema_dati`: prima bastava un'omonima in qualunque schema.
+
+---
+
+{% include-markdown "signature-core.md" %}

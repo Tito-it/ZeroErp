@@ -1,0 +1,763 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLE TABELLE E DELLE COLONNE DI documenti, AL PRESENTE
+#   Giro 5 della revisione dello schema (pulizia e metadati).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il COMMENT e' il primo paragrafo della scheda auto-generata: descrive
+#   l'oggetto al presente, senza storia (linee-guida-sql §5d).
+#   - Riscritti: le colonne che portavano un marcatore di revisione, il nome
+#     di un brief o una sigla (validita' di risorse e versioni, standard,
+#     derivata_da_versione_id, versione_contesto); user_id e detail degli
+#     eventi, che citavano un evento ritirato; i COMMENT di tabella di
+#     stampa, risorse,
+#     modelli e versioni, veri ma generici; le policy di file ed eventi delle
+#     stampe, che portavano id di changeSet (il presidio non leggeva lo
+#     schema delle policy). Nascono in 00_schema (20260910-32) e nessuna
+#     fase tardiva le riscrive.
+#   - Nuovi: ogni colonna delle 15 tabelle che non ne aveva uno, audit
+#     compreso. Le colonne dei sette vocabolari e dei due abbinamenti avevano
+#     gia' il loro: qui entrano id e audit.
+#   formato_template, page_format e page_orientation non sono qui: li
+#   riscrive 80_data, e la riscrittura sta nel 20261116-16.
+#   Nessun comportamento cambia.
+#
+#   Rollback: i COMMENT di prima (NULL dove non c'erano), letti dal catalogo
+#   di dbdev il 2026-11-17.
+#   Brief: brief-db-revisione-documenti, giro 5 (§15).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/documenti/20261116-10-comment-tabelle-e-colonne-documenti-mctit.yaml
+
+  - changeSet:
+      id: 20261116-10-comment-tabelle-e-colonne-documenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        documenti: i COMMENT delle tabelle e delle colonne al presente, e quelli che mancavano.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 15
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'documenti' AND c.relkind = 'r'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE documenti.documenti_generati IS
+                  'Il registro delle stampe emesse dal motore documentale: una riga per documento prodotto, con i dati congelati, le impronte di dati, template e PDF, il modello e la versione con cui e'' nata e il documento da cui viene. E'' storia: dopo la nascita cambia solo meta (documenti.trgfn_documenti_generati_protect_snapshot) e la riga non si cancella (E_DOCUMENTI_GENERATO_DELETE_BLOCKED). Alla nascita il modello va bene per il documento e stampa oggi con quella versione (documenti.trgfn_documenti_generati_check_coerenza), i dati hanno la forma che la versione legge (documenti.trgfn_documenti_generati_guard_versione_contesto), e a fine transazione la stampa ha il suo PDF principale (documenti.trgfn_documenti_generati_guard_file_principale). I file stanno in documenti.documenti_generati_file, la cronologia in documenti.documenti_generati_eventi. Un operatore vede e scrive le stampe delle aziende del suo perimetro.';
+              COMMENT ON COLUMN documenti.documenti_generati.id IS
+                  'Identificativo della stampa. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.uid IS
+                  'Identificativo universale della stampa (uuid, DEFAULT uuidv7()), unico (uq_documenti_generati_uid). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.tipo_documento_output_id IS
+                  'Il tipo di documento stampato (documenti.tipi_documento_output): alla nascita e'' quello del modello (documenti.trgfn_documenti_generati_check_coerenza). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.template_documento_id IS
+                  'Il modello con cui la stampa e'' nata (documenti.template_documenti): alla nascita va bene per il documento (stessa sorgente, stesso tipo, stessa azienda, oppure standard) e stampa oggi. Non tiene acceso il modello: la chiave e'' un''eccezione della regola ATTIVO (dbops.automazione_attivo_eccezioni). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.template_versione_id IS
+                  'La versione con cui la stampa e'' nata: e'' del modello indicato ed e'' quella in uso alla data operativa (documenti.fn_template_motivo_non_stampabile). La ristampa fedele la rilegge. Non tiene accesa la versione: la chiave e'' un''eccezione della regola ATTIVO. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.titolo IS
+                  'Il titolo della stampa, non vuoto (chk_documenti_generati_titolo_non_vuoto). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.nome_file IS
+                  'Il nome del file PDF prodotto, non vuoto (chk_documenti_generati_nome_file_non_vuoto). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.context_json IS
+                  'I dati congelati con cui il PDF e'' stato reso, un oggetto JSON (chk_documenti_generati_context_json_obj): _meta.context_version dichiara la loro forma, che e'' quella che la versione legge. La ristampa fedele rende di nuovo da qui. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.context_hash IS
+                  'Impronta SHA-256 di context_json, 64 caratteri esadecimali (chk_documenti_generati_context_hash_len). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.template_hash IS
+                  'Impronta SHA-256 del template con cui il PDF e'' stato reso, 64 caratteri esadecimali (chk_documenti_generati_template_hash_len). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.pdf_hash IS
+                  'Impronta SHA-256 del PDF prodotto, 64 caratteri esadecimali (chk_documenti_generati_pdf_hash_len): verifica che il file conservato sia quello. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.generato_da_user_id IS
+                  'L''utente dell''applicazione che ha chiesto la stampa (django.auth_user); NULL per una stampa nata senza utente. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot). Anche il passaggio da o verso NULL e'' un cambio.';
+              COMMENT ON COLUMN documenti.documenti_generati.generato_at IS
+                  'Il momento della stampa (DEFAULT now()). Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.emittente_fiscale_id IS
+                  'L''azienda del documento stampato (anagrafiche.emittenti_fiscali): decide chi vede la stampa (rls_documenti_generati_ef_whitelist) ed e'' nel perimetro di chi scrive (script.trgfn_guard_emittente_scope). Non tiene accesa l''azienda: la chiave e'' un''eccezione della regola ATTIVO. Fa parte dello snapshot: non cambia (documenti.trgfn_documenti_generati_protect_snapshot).';
+              COMMENT ON COLUMN documenti.documenti_generati.meta IS
+                  'Dati liberi della stampa (jsonb, DEFAULT ''{}''): l''unica colonna che cambia dopo la nascita.';
+              COMMENT ON COLUMN documenti.documenti_generati.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.documenti_generati.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.id IS
+                  'Identificativo dell''evento.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.documento_generato_id IS
+                  'La stampa a cui l''evento appartiene (documenti.documenti_generati): l''evento ne segue il perimetro.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.evento_at IS
+                  'Il momento dell''evento (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_id IS
+                  'L''utente dell''applicazione che ha originato l''evento (django.auth_user); NULL per un evento nato senza utente.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.esito IS
+                  'L''esito dell''evento: OK, KO o WARN (chk_documenti_generati_eventi_esito, DEFAULT OK). Una correzione e'' un evento nuovo con esito KO o WARN: un evento non si modifica.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.messaggio IS
+                  'Il testo dell''evento per chi legge la cronologia: NULL oppure non vuoto (chk_documenti_generati_eventi_messaggio_non_vuoto).';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.detail IS
+                  'Il dettaglio tecnico dell''evento, un oggetto JSON (chk_documenti_generati_eventi_detail_obj, DEFAULT ''{}'').';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.meta IS
+                  'Dati liberi dell''evento, un oggetto JSON (chk_documenti_generati_eventi_meta_obj, DEFAULT ''{}'').';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.id IS
+                  'Identificativo del file.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.documento_generato_id IS
+                  'La stampa a cui il file appartiene (documenti.documenti_generati): il file ne segue il perimetro. Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_tipo_id IS
+                  'Il tipo del file (documenti.tipi_file_documento): PDF_FINALE, il PDF della stampa, o ALLEGATO. Il formato deve essere fra quelli che il tipo ammette (documenti.trgfn_guard_formato_ammesso). Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.mime_type IS
+                  'Il tipo MIME dichiarato del file, non vuoto, fra quelli abbinati al suo tipo in documenti.tipi_file_documento_formati (confrontato minuscolo). Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_name IS
+                  'Il nome del file, non vuoto (chk_documenti_generati_file_file_name_non_vuoto). Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_size_bytes IS
+                  'Il peso del file in byte, positivo (chk_documenti_generati_file_size_pos). Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.storage_key IS
+                  'La chiave del file nello storage dei documenti, non vuota. Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.sha256 IS
+                  'Impronta SHA-256 del file, 64 caratteri esadecimali (chk_documenti_generati_file_sha256_len): verifica che il file conservato sia quello salvato. Non cambia (documenti.trgfn_documenti_generati_file_protect_file).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.ordinamento IS
+                  'L''ordine del file fra quelli dello stesso tipo della stampa, da 1 (chk_documenti_generati_file_ordinamento_pos, DEFAULT 1), unico per stampa e tipo (uq_documenti_generati_file_doc_tipo_ord). Si modifica.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.meta IS
+                  'Dati liberi del file (jsonb, DEFAULT ''{}''). Si modifica.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.documenti_generati_file.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.documenti_generati_file.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.formati_pagina.id IS
+                  'Identificativo del formato di pagina.';
+              COMMENT ON COLUMN documenti.formati_pagina.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.formati_pagina.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_pagina.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_pagina.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_pagina.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.formati_template.id IS
+                  'Identificativo del formato della sorgente.';
+              COMMENT ON COLUMN documenti.formati_template.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.formati_template.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_template.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_template.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.formati_template.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.id IS
+                  'Identificativo dell''orientamento di pagina.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.orientamenti_pagina.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.render_engine_documento.id IS
+                  'Identificativo del motore di render.';
+              COMMENT ON COLUMN documenti.render_engine_documento.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.render_engine_documento.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.render_engine_documento.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.render_engine_documento.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.render_engine_documento.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.id IS
+                  'Identificativo del tipo di risorsa.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.id IS
+                  'Identificativo del tipo di documento.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.tipi_documento_output.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_documento_output.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.id IS
+                  'Identificativo del tipo di file della stampa.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.tipi_file_documento.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.id IS
+                  'Identificativo dell''abbinamento.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.id IS
+                  'Identificativo dell''abbinamento.';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON TABLE documenti.template_asset IS
+                  'Le risorse grafiche di un''azienda per i suoi modelli: logo, firma, immagini, PDF, fogli di stile. La riga descrive il file (tipo MIME, nome, peso, impronta, chiave nello storage); il file sta nello storage. Una versione di modello cita la risorsa col suo codice_interno, cercata fra quelle dell''azienda del documento: nessuna FK la lega a un modello o a una stampa. Il file non cambia (documenti.trgfn_template_asset_protect_file) e la risorsa non si cancella (E_DOCUMENTI_ASSET_DELETE_BLOCKED): lo stesso codice interno indica sempre gli stessi byte, ed e'' cosi'' che la ristampa fedele ritrova il file di allora. Si ritira chiudendo valido_al o spegnendola; quelle che si usano oggi le dice documenti.vw_template_asset_utilizzabili.';
+              COMMENT ON COLUMN documenti.template_asset.id IS
+                  'Identificativo della risorsa.';
+              COMMENT ON COLUMN documenti.template_asset.codice IS
+                  'Il codice leggibile della risorsa, unico per azienda (uq_template_asset_emittente_codice), salvato in maiuscolo (script.trgfn_codice_maiuscolo). Si modifica.';
+              COMMENT ON COLUMN documenti.template_asset.codice_interno IS
+                  'La chiave con cui una versione di modello cita la risorsa: unica per azienda senza tener conto delle date (uq_template_asset_emittente_codice_interno), salvata in maiuscolo, e non si modifica (script.trgfn_lock_columns, E_CODICE_NON_MODIFICABILE). Un file nuovo e'' una risorsa nuova, con un codice interno nuovo.';
+              COMMENT ON COLUMN documenti.template_asset.descrizione IS
+                  'La descrizione della risorsa, non vuota (chk_template_asset_descrizione_non_vuota). Si modifica.';
+              COMMENT ON COLUMN documenti.template_asset.asset_tipo_id IS
+                  'Il tipo di risorsa (documenti.tipi_asset_documento), che dice i formati ammessi: si modifica, se il tipo nuovo ammette il formato del file (documenti.trgfn_guard_formato_ammesso).';
+              COMMENT ON COLUMN documenti.template_asset.mime_type IS
+                  'Il tipo MIME dichiarato del file, non vuoto, fra quelli abbinati al tipo in documenti.tipi_asset_documento_formati (confrontato minuscolo). Non cambia (documenti.trgfn_template_asset_protect_file).';
+              COMMENT ON COLUMN documenti.template_asset.file_name IS
+                  'Il nome del file, non vuoto (chk_template_asset_file_name_non_vuoto). Non cambia (documenti.trgfn_template_asset_protect_file).';
+              COMMENT ON COLUMN documenti.template_asset.file_size_bytes IS
+                  'Il peso del file in byte, positivo (chk_template_asset_file_size_pos). Non cambia (documenti.trgfn_template_asset_protect_file).';
+              COMMENT ON COLUMN documenti.template_asset.storage_key IS
+                  'La chiave del file nello storage dei documenti, non vuota. Non cambia (documenti.trgfn_template_asset_protect_file).';
+              COMMENT ON COLUMN documenti.template_asset.sha256 IS
+                  'Impronta SHA-256 del file, 64 caratteri esadecimali (chk_template_asset_sha256_len), unica per azienda (uq_template_asset_emittente_sha256): lo stesso file non si carica due volte. Non cambia (documenti.trgfn_template_asset_protect_file).';
+              COMMENT ON COLUMN documenti.template_asset.emittente_fiscale_id IS
+                  'L''azienda della risorsa (anagrafiche.emittenti_fiscali); se non e'' indicata la prende dalla sessione (script.trgfn_default_emittente_fiscale). Una risorsa accesa vuole l''azienda accesa.';
+              COMMENT ON COLUMN documenti.template_asset.valido_dal IS
+                  'Il primo giorno in cui la risorsa si usa (DEFAULT script.fn_data_operativa()). Si modifica; l''ordine delle due date lo verifica script.trgfn_guard_date_validita.';
+              COMMENT ON COLUMN documenti.template_asset.valido_al IS
+                  'L''ultimo giorno in cui la risorsa si usa; NULL = senza fine. Chiuderlo ritira la risorsa dalle stampe nuove; la ristampa fedele la usa comunque.';
+              COMMENT ON COLUMN documenti.template_asset.attivo IS
+                  'Stato della risorsa (DEFAULT true): spenta non si usa per le stampe nuove; la ristampa fedele la usa comunque.';
+              COMMENT ON COLUMN documenti.template_asset.meta IS
+                  'Dati liberi della risorsa (jsonb, DEFAULT ''{}''). Si modifica.';
+              COMMENT ON COLUMN documenti.template_asset.storicizza IS
+                  'Se true (DEFAULT), l''UPDATE e il DELETE della riga ne lasciano la versione di prima in storico.template_asset (script.trgfn_storico_generic).';
+              COMMENT ON COLUMN documenti.template_asset.validita IS
+                  'Il periodo della risorsa, [valido_dal, valido_al] coi giorni estremi compresi (una data NULL = senza limite da quel lato), calcolato dalle due date (GENERATED ALWAYS STORED): non si scrive. Lo legge documenti.vw_template_asset_utilizzabili.';
+              COMMENT ON COLUMN documenti.template_asset.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.template_asset.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_asset.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_asset.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_asset.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON TABLE documenti.template_documenti IS
+                  'Il modello di stampa: che cosa si produce (il tipo di documento), da quale documento (la sorgente) e per quale azienda; il contenuto sta nelle versioni (documenti.template_documenti_versioni). Un modello e'' di un''azienda, oppure standard: del sistema, senza azienda, scritto solo dal proprietario della tabella e valido per l''azienda che non ha modelli suoi capaci di stampare. Con quale modello si stampa lo decide documenti.fn_risolvi_template_applicabile. Spento non stampa e non conta nella risoluzione; si spegne solo senza versioni accese, e le stampe non lo tengono acceso.';
+              COMMENT ON COLUMN documenti.template_documenti.id IS
+                  'Identificativo del modello.';
+              COMMENT ON COLUMN documenti.template_documenti.tipo_documento_output_id IS
+                  'Il tipo di documento che il modello stampa (documenti.tipi_documento_output).';
+              COMMENT ON COLUMN documenti.template_documenti.codice IS
+                  'Il codice leggibile del modello, unico per azienda e sorgente (uq_template_documenti_emittente_sorgente_codice), salvato in maiuscolo (script.trgfn_codice_maiuscolo).';
+              COMMENT ON COLUMN documenti.template_documenti.codice_interno IS
+                  'L''identita'' tecnica stabile del modello, unica per azienda e sorgente (uq_template_documenti_emittente_sorgente_codice_interno), salvata in maiuscolo; non si modifica (script.trgfn_lock_columns, E_CODICE_NON_MODIFICABILE). E'' la chiave con cui i changeSet trovano uno standard.';
+              COMMENT ON COLUMN documenti.template_documenti.descrizione IS
+                  'La descrizione del modello, non vuota (chk_template_documenti_descrizione_non_vuota).';
+              COMMENT ON COLUMN documenti.template_documenti.sorgente_tipo_id IS
+                  'Il tipo di documento da cui si stampa (config.sorgenti): una stampa col modello ha la stessa sorgente. Un modello acceso vuole la sorgente accesa.';
+              COMMENT ON COLUMN documenti.template_documenti.context_builder_code IS
+                  'Il builder del backend che prepara i dati della stampa: un nome che il codice riconosce, non vuoto (chk_template_documenti_context_builder_non_vuoto).';
+              COMMENT ON COLUMN documenti.template_documenti.file_name_pattern IS
+                  'Lo schema del nome del file prodotto, che applica il backend: NULL oppure non vuoto (chk_template_documenti_file_name_pattern_non_vuoto).';
+              COMMENT ON COLUMN documenti.template_documenti.is_default IS
+                  'Il modello predefinito per la sua azienda, il tipo di documento e la sorgente: al piu'' uno acceso, anche fra gli standard (uq_template_documenti_default_attivo). Un''azienda con modelli suoi capaci di stampare stampa col suo predefinito; senza predefinito la stampa si ferma (E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINITO).';
+              COMMENT ON COLUMN documenti.template_documenti.attivo IS
+                  'Stato del modello (DEFAULT true). Spento non stampa e non conta nella risoluzione: spegnere i propri modelli di un documento riporta l''azienda allo standard. Si spegne solo senza versioni accese; le stampe non lo tengono acceso.';
+              COMMENT ON COLUMN documenti.template_documenti.meta IS
+                  'Dati liberi del modello (jsonb, DEFAULT ''{}'').';
+              COMMENT ON COLUMN documenti.template_documenti.storicizza IS
+                  'Se true (DEFAULT), l''UPDATE e il DELETE della riga ne lasciano la versione di prima in storico.template_documenti (script.trgfn_storico_generic).';
+              COMMENT ON COLUMN documenti.template_documenti.standard IS
+                  'Modello standard, di sistema: vale per ogni azienda che non ha modelli suoi capaci di stampare per lo stesso tipo di documento e la stessa sorgente (documenti.fn_risolvi_template_applicabile). Non ha azienda (chk_template_documenti_standard_senza_emittente). Lo scrivono solo il seed e i changeSet: dall''applicazione si legge (trg_template_documenti_a05_guard_standard_ins_upd_dlt). Non cambia dopo la nascita (script.trgfn_lock_columns, E_COLONNA_NON_MODIFICABILE).';
+              COMMENT ON COLUMN documenti.template_documenti.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.template_documenti.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON TABLE documenti.template_documenti_versioni IS
+                  'Le versioni da stampare di un modello: il corpo (HTML, CSS, Markdown), il motore, la pagina, la forma dei dati che legge, lo stato e la validita''. Si nasce in BOZZA e se ne esce solo con documenti.fn_pubblica_template_documento_versione; fuori bozza (PUBBLICATA o OBSOLETA) la versione non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata). Che cosa stampa lo decidono le date, non lo stato (documenti.vw_template_versioni_stampabili): una OBSOLETA stampa fino all''ultimo giorno della sua validita''. Per ogni data, al piu'' una versione accesa fuori bozza per modello (ex_template_documenti_versioni_no_overlap_pubblicata). Si cancella solo una bozza che nessuna stampa ha usato.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.id IS
+                  'Identificativo della versione.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.template_documento_id IS
+                  'Il modello a cui la versione appartiene (documenti.template_documenti). Una versione accesa vuole il modello acceso. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione IS
+                  'Il numero della versione nel suo modello, da 1 (chk_template_documenti_versioni_versione_pos), unico per modello (uq_template_documenti_versioni_template_versione). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.stato IS
+                  'BOZZA, PUBBLICATA o OBSOLETA (chk_template_documenti_versioni_stato, DEFAULT BOZZA). Una versione nasce in BOZZA; PUBBLICATA e OBSOLETA le scrive solo documenti.fn_pubblica_template_documento_versione (E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO), e lo stato non torna indietro. Il proprietario della tabella (seed, changeSet) lo scrive senza il verbo.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.titolo IS
+                  'Il titolo della versione, non vuoto (chk_template_documenti_versioni_titolo_non_vuoto). Si modifica anche fuori bozza.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.html_template IS
+                  'Il corpo HTML della versione, non vuoto (chk_template_documenti_versioni_html_template_non_vuoto). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.css_template IS
+                  'Il foglio di stile della versione; NULL = nessuno. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.markdown_template IS
+                  'Il corpo Markdown della versione; NULL = nessuno. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.render_engine_id IS
+                  'Il motore che rende la versione in PDF (documenti.render_engine_documento). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_top_mm IS
+                  'Il margine superiore della pagina in millimetri, finito e non negativo (DEFAULT 10). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_right_mm IS
+                  'Il margine destro della pagina in millimetri, finito e non negativo (DEFAULT 10). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_bottom_mm IS
+                  'Il margine inferiore della pagina in millimetri, finito e non negativo (DEFAULT 10). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_left_mm IS
+                  'Il margine sinistro della pagina in millimetri, finito e non negativo (DEFAULT 10). Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.valido_dal IS
+                  'Il primo giorno in cui la versione stampa. NULL solo in bozza (chk_template_documenti_versioni_valido_dal_fuori_bozza): lo fissa la pubblicazione. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.valido_al IS
+                  'L''ultimo giorno in cui la versione stampa; NULL = senza fine. La pubblicazione della versione successiva lo porta al giorno prima del suo inizio, ed e'' l''unica scrittura che lo cambia fuori bozza.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.context_schema IS
+                  'Un oggetto JSON (chk_template_documenti_versioni_context_schema_obj, DEFAULT ''{}'') che nessuno controlla: le variabili del template non si validano. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.meta IS
+                  'Dati liberi della versione (jsonb, DEFAULT ''{}''). Si modifica anche fuori bozza.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.attivo IS
+                  'Stato della versione (DEFAULT true). Spenta non stampa, e una bozza spenta non si pubblica (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA). Si spegne anche se ha stampato o se una copia ne deriva, e anche fuori bozza.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.storicizza IS
+                  'Se true (DEFAULT), l''UPDATE e il DELETE della riga ne lasciano la versione di prima in storico.template_documenti_versioni (script.trgfn_storico_generic).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.validita IS
+                  'Il periodo della versione, [valido_dal, valido_al] coi giorni estremi compresi (una data NULL = senza limite da quel lato), calcolato dalle due date (GENERATED ALWAYS STORED): non si scrive. Lo leggono il vincolo di non sovrapposizione e documenti.vw_template_versioni_stampabili.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione_contesto IS
+                  'La forma dei dati (contesto) che questa versione legge: lo stesso numero che il builder del backend scrive in _meta.context_version del contesto che produce. Si stampa solo se i due numeri coincidono (documenti.fn_guard_versione_contesto: la chiamano il backend prima del render, il trigger sull''INSERT di documenti.documenti_generati e la pubblicazione). Il numero e'' del tipo di documento, non globale: la forma 2 del preventivo non e'' la forma 2 del DDT. Obbligatorio, senza default: chi crea una versione dichiara quale forma legge. In bozza si cambia, anche verso una forma che il builder non produce ancora: e'' cosi'' che si prepara la versione per la forma successiva. Fuori bozza non cambia (documenti.trgfn_template_documenti_versioni_protect_pubblicata).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.derivata_da_versione_id IS
+                  'La versione del modello standard da cui questa versione di una copia personalizzata e'' partita (azione «personalizza»). NULL: versione scritta da zero, oppure versione successiva della stessa copia, che eredita l''origine dalla piu'' recente che la dichiara. Punta solo a una versione standard dello stesso tipo e della stessa sorgente, e cambia solo in bozza (trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd). E'' la provenienza della copia, non un padre vivo: la chiave e'' un''eccezione della regola ATTIVO. La legge documenti.vw_template_personalizzati_scarto.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.tx_id IS
+                  'La transazione che ha scritto la riga per ultima, per legarla al registro dbops.transaction_ids e ai log: la scrive dbops.trgfn_tx_id_managed.';
+              COMMENT ON POLICY rls_documenti_generati_eventi_ef_whitelist ON documenti.documenti_generati_eventi IS
+                  'Perimetro emittente della cronologia delle stampe: un evento e'' dell''azienda della sua stampa (documento_generato_id, NOT NULL), come in rls_documenti_generati_ef_whitelist. I guard della tabella difendono l''immutabilita'' degli eventi, non il perimetro: e'' questa policy a impedire di aggiungere un evento alla stampa di un''altra azienda.';
+              COMMENT ON POLICY rls_documenti_generati_file_ef_whitelist ON documenti.documenti_generati_file IS
+                  'Perimetro emittente dei file delle stampe: un file e'' dell''azienda della sua stampa (documento_generato_id, NOT NULL), come in rls_documenti_generati_ef_whitelist. Qui il perimetro pesa piu'' che altrove: la riga porta storage_key, file_name e sha256, le coordinate con cui il file si recupera.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE documenti.documenti_generati IS
+                  'Registro storico delle generazioni persistite del motore documentale.';
+              COMMENT ON COLUMN documenti.documenti_generati.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.uid IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.tipo_documento_output_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.template_documento_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.template_versione_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.titolo IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.nome_file IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.context_json IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.context_hash IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.template_hash IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.pdf_hash IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.generato_da_user_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.generato_at IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.emittente_fiscale_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.documento_generato_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.evento_at IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_id IS
+                  'Utente Django che ha originato l''evento. NULL per eventi tecnici (es. STORAGE_ORPHAN da cleanup automatico). FK condizionale a django.auth_user.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.esito IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.messaggio IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.detail IS
+                  'Dettaglio tecnico evento (jsonb object). Es. {"storage_key": "...", "size_bytes": 1024} per STORAGE_ORPHAN.';
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_eventi.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.documento_generato_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_tipo_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.mime_type IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_name IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.file_size_bytes IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.storage_key IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.sha256 IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.ordinamento IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.documenti_generati_file.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_pagina.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.formati_template.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.orientamenti_pagina.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.render_engine_documento.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_documento_output.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_asset_documento_formati.tx_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.tipi_file_documento_formati.tx_id IS
+                  NULL;
+              COMMENT ON TABLE documenti.template_asset IS
+                  'Catalogo degli asset documentali riusabili per emittente fiscale.';
+              COMMENT ON COLUMN documenti.template_asset.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.codice IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.codice_interno IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.asset_tipo_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.mime_type IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.file_name IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.file_size_bytes IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.storage_key IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.sha256 IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.emittente_fiscale_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.valido_dal IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.valido_al IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.attivo IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.storicizza IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+              COMMENT ON COLUMN documenti.template_asset.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_asset.tx_id IS
+                  NULL;
+              COMMENT ON TABLE documenti.template_documenti IS
+                  'Contenitore logico dei template documentali per output, sorgente ed emittente.';
+              COMMENT ON COLUMN documenti.template_documenti.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.tipo_documento_output_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.codice IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.codice_interno IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.sorgente_tipo_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.context_builder_code IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.file_name_pattern IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.is_default IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.attivo IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.storicizza IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.standard IS
+                  'Modello standard, di sistema: vale per ogni emittente che non ha modelli suoi attivi per lo stesso tipo di documento e la stessa sorgente (risoluzione: documenti.fn_risolvi_template_applicabile). Non ha emittente (chk_template_documenti_standard_senza_emittente). Lo scrivono solo il seed e i changeSet: dall''applicazione si legge e basta (guard trg_template_documenti_a05_guard_standard_ins_upd_dlt). Non cambia dopo la nascita (lock di colonna). Brief: brief-db-modelli-documento-standard.';
+              COMMENT ON COLUMN documenti.template_documenti.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti.tx_id IS
+                  NULL;
+              COMMENT ON TABLE documenti.template_documenti_versioni IS
+                  'Versioni renderizzabili del template documentale, con validita temporale e stato di pubblicazione.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.template_documento_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.stato IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.titolo IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.html_template IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.css_template IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.markdown_template IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.render_engine_id IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_top_mm IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_right_mm IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_bottom_mm IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.margin_left_mm IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.valido_dal IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.valido_al IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.context_schema IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.meta IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.attivo IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.storicizza IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.validita IS
+                  'Range calcolato da valido_dal/valido_al. GENERATED ALWAYS STORED. rev 2026-05-14.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.versione_contesto IS
+                  'La forma dei dati (contesto) che questa versione del template legge: lo stesso numero che il builder del backend scrive in _meta.context_version del contesto che produce. Si stampa solo se i due numeri coincidono (documenti.fn_guard_versione_contesto: la chiamano il backend prima del render, il trigger sull''INSERT di documenti_generati e la pubblicazione). Il numero e'' di ogni tipo di documento, non globale: la forma 2 del preventivo non e'' la forma 2 del DDT. Obbligatorio, senza default: chi crea una versione dichiara quale forma legge. Una BOZZA puo'' dichiarare una forma che il builder non produce ancora (D-C4: e'' cosi'' che si prepara la versione per la forma successiva); da PUBBLICATA non si cambia. Brief: brief-db-documenti-versione-contesto-template.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.derivata_da_versione_id IS
+                  'La versione del modello standard da cui questa versione di una copia personalizzata e'' partita (azione «personalizza»). NULL: versione scritta da zero, oppure versione successiva della stessa copia, che eredita l''origine dalla piu'' recente che la dichiara. Punta solo a una versione standard dello stesso tipo e della stessa sorgente, e cambia solo in bozza (trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd). Serve a documenti.vw_template_personalizzati_scarto. Brief: brief-db-modelli-documento-standard §4.1 Q-5.';
+              COMMENT ON COLUMN documenti.template_documenti_versioni.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.data_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.user_update IS
+                  NULL;
+              COMMENT ON COLUMN documenti.template_documenti_versioni.tx_id IS
+                  NULL;
+              COMMENT ON POLICY rls_documenti_generati_eventi_ef_whitelist ON documenti.documenti_generati_eventi IS
+                  'Perimetro emittente del diario di generazione documentale: risale da documento_generato_id (NOT NULL) e rispecchia rls_documenti_generati_ef_whitelist. ⚠️ La tabella e'' append-only per trigger, ma quei guard difendono l''immutabilita'', non il perimetro: nessuno dei due impedisce di appendere un evento al documento di un''altra azienda. Slice 20260910-31..34.';
+              COMMENT ON POLICY rls_documenti_generati_file_ef_whitelist ON documenti.documenti_generati_file IS
+                  'Perimetro emittente del FILE generato: risale da documento_generato_id (NOT NULL). ⚠️ Qui il perimetro pesa piu'' che altrove — la riga porta storage_key, file_name e sha256, cioe'' le coordinate con cui il documento si recupera, non dei metadati. Slice 20260910-31..34.';

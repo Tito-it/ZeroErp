@@ -59,6 +59,18 @@ EXCEPTION WHEN SQLSTATE 'P0001' THEN
     RETURN v_c;
 END $$;
 
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi §8.3-bis, la (C)): nel seed il
+--   fornitore ha un solo obbligatorio (FATT), e con uno solo la copia degli
+--   obbligatori non si esercita (il test passerebbe per sottrazione). Il secondo
+--   (POSTA, che la societa' del test ammette) lo scrive il test, prima di leggerli.
+DELETE FROM config.tipi_ruolo_tipi_indirizzo
+ WHERE tipo_ruolo_id = (SELECT id FROM config.tipi_ruoli WHERE codice_interno = 'FO')
+   AND tipo_indirizzo_id = (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'POSTA');
+INSERT INTO config.tipi_ruolo_tipi_indirizzo (id, tipo_ruolo_id, tipo_indirizzo_id, obbligatorio, attivo)
+SELECT (SELECT COALESCE(max(m.id), 0) + 1 FROM config.tipi_ruolo_tipi_indirizzo m), tr.id, ti.id, true, true
+  FROM config.tipi_ruoli tr, config.tipi_indirizzi ti
+ WHERE tr.codice_interno = 'FO' AND ti.codice_interno = 'POSTA';
+
 -- I tipi obbligatori del fornitore, dalla matrice.
 CREATE TEMP TABLE t_obbl AS
 SELECT trti.tipo_indirizzo_id, ti.codice_interno
@@ -148,13 +160,19 @@ SET CONSTRAINTS ALL DEFERRED;
 UPDATE t_cl SET sr_id = (SELECT script.fn_get_or_create_soggetto_ruolo(p_soggetto_id := s.soggetto_id, p_cd_int_ruolo := 'CL')
                            FROM t_sr s);
 
--- I tipi ammessi per il cliente, dalla matrice: tre diversi, per tre forme.
+-- I tipi ammessi per il cliente: tre diversi, per tre forme.
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-18/-19): si
+--   leggono dal picker del ruolo, che chiama la check della madre, non dalla sola
+--   matrice del ruolo. Dalla matrice il secondo era RES, che la natura della
+--   societa' del test non ammette: il guard del ruolo ora guarda anche la natura,
+--   e quella riga era un dato che il modello non ammette.
 CREATE TEMP TABLE t_tipi_cl AS
-SELECT ti.id AS tipo_id, ti.codice_interno, row_number() OVER (ORDER BY trti.obbligatorio DESC, ti.id) AS n
-  FROM config.tipi_ruolo_tipi_indirizzo trti
-  JOIN config.tipi_ruoli tr     ON tr.id = trti.tipo_ruolo_id
-  JOIN config.tipi_indirizzi ti ON ti.id = trti.tipo_indirizzo_id
- WHERE tr.codice_interno = 'CL' AND trti.attivo;
+SELECT p.tipo_indirizzo_id AS tipo_id, ti.codice_interno,
+       row_number() OVER (ORDER BY p.obbligatorio DESC, ti.id) AS n
+  FROM t_cl c
+ CROSS JOIN LATERAL anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(c.sr_id, NULL) p
+  JOIN config.tipi_indirizzi ti ON ti.id = p.tipo_indirizzo_id
+ WHERE p.ammesso;
 
 CREATE TEMP TABLE t_n2 AS
 SELECT anagrafiche.fn_crea_indirizzi_ruolo(

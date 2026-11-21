@@ -15,6 +15,7 @@
 #   4. detail_template_404_when_service_raises_not_found
 #   5. versioni_list_ok (envelope standard + parametri di lista)
 #   5-bis. versioni_list_senza_ordine_lascia_decidere_il_repository
+#   5-ter. versioni_list_filtro_stato_normalizzato (vuoto = nessun filtro, 2026-11-17)
 #   6. versione_detail_ok
 #   7. post_template_201_happy_path
 #   8. post_template_validation_error_400
@@ -261,6 +262,29 @@ class DocumentiApiSmokeTests(JwtMockedApiTest):
         kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
         self.assertFalse(kwargs["order_by"])
         self.assertIsNone(kwargs["order_dir"])
+
+    # 5-ter. Il filtro `stato` passa da `qp_str_upper`: minuscolo e con spazi
+    #        diventa il codice; vuoto o di soli spazi e' «nessun filtro», non
+    #        un codice vuoto che il service rifiuterebbe con un 400.
+    @patch(
+        "rest_framework_simplejwt.authentication.JWTAuthentication.authenticate",
+        return_value=(Mock(), None),
+    )
+    @patch("apps.documenti.api.views.TemplateService")
+    def test_versioni_list_filtro_stato_normalizzato(
+        self, mocked_service_cls, _mock_auth,
+    ) -> None:
+        mocked_service_cls.return_value.list_versioni.return_value = {
+            "results": [], "total_count": 0,
+        }
+        for grezzo, atteso in ((" bozza ", "BOZZA"), ("%20%20", None), ("", None)):
+            with self.subTest(stato=grezzo):
+                resp = self.client.get(
+                    f"/api/v1/documenti/templates/1/versioni/?stato={grezzo}"
+                )
+                self.assertEqual(resp.status_code, 200)
+                kwargs = mocked_service_cls.return_value.list_versioni.call_args.kwargs
+                self.assertEqual(kwargs["stato"], atteso)
 
     # 6. dettaglio versione (incluso payload html).
     @patch(

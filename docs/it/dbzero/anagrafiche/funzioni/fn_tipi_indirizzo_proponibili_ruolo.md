@@ -17,9 +17,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(p_sog
  STABLE
 BEGIN ATOMIC
  SELECT ti.id,
-     (EXISTS ( SELECT 1
-            FROM config.tipi_ruolo_tipi_indirizzo mo
-           WHERE ((mo.tipo_ruolo_id = ctx.tipo_ruolo) AND (mo.tipo_indirizzo_id = ti.id) AND mo.obbligatorio AND anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo((ctx.tipo_ruolo)::bigint, ti.id, script.fn_data_operativa())))) AS "exists",
+     anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo(ctx.tipo_ruolo, ctx.natura, ti.id, script.fn_data_operativa()) AS fn_tipo_indirizzo_obbligatorio_per_ruolo,
      (jsonb_array_length(c.motivi) = 0),
      ((c.motivi -> 0) ->> 'codice'::text),
      ((c.motivi -> 0) ->> 'reason'::text),
@@ -28,18 +26,20 @@ BEGIN ATOMIC
      c.motivi
     FROM ((( SELECT sr.id,
              sr.tipo_ruolo_id AS tipo_ruolo,
+             s.tipo_soggetto_dettaglio_id AS natura,
              ARRAY( SELECT i.tipo_indirizzo_id
                     FROM anagrafiche.indirizzi i
                    WHERE ((i.soggetto_ruolo_id = sr.id) AND (NOT (i.istanza_utility_id IS DISTINCT FROM fn_tipi_indirizzo_proponibili_ruolo.p_istanza_utility_id)))) AS presenti
-            FROM anagrafiche.soggetti_ruoli sr
+            FROM (anagrafiche.soggetti_ruoli sr
+              JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
            WHERE (sr.id = fn_tipi_indirizzo_proponibili_ruolo.p_soggetto_ruolo_id)) ctx
       CROSS JOIN config.tipi_indirizzi ti)
-      CROSS JOIN LATERAL ( SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(ctx.tipo_ruolo, ctx.presenti, ti.id, script.fn_data_operativa(), ctx.id) AS motivi) c)
+      CROSS JOIN LATERAL ( SELECT anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto(ctx.tipo_ruolo, ctx.presenti, ti.id, script.fn_data_operativa(), ctx.id, ctx.natura) AS motivi) c)
    ORDER BY (jsonb_array_length(c.motivi) = 0) DESC, ti.codice_interno;
 END
 
 COMMENT ON FUNCTION anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint)
-IS 'Il picker dei tipi di indirizzo per il ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (riga obbligatoria della matrice del tipo di ruolo che anagrafiche.fn_tipo_indirizzo_ammesso_per_ruolo ammette oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: il tipo di ruolo e i tipi che la chiave (ruolo, istanza) ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_ruolo solleva: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), poi il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO). L''istanza non ha default: NULL vuol dire il ruolo. Prima gli ammessi, poi gli altri, per codice interno. Ruolo inesistente: nessuna riga. SECURITY INVOKER. Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_soggetto.';
+IS 'Il picker dei tipi di indirizzo per il ruolo salvato, sul ruolo stesso (istanza NULL) o su una sua istanza (Aggiungi, e i tipi di destinazione della copia): una riga per tipo di config.tipi_indirizzi, con obbligatorio (anagrafiche.fn_tipo_indirizzo_obbligatorio_per_ruolo sul tipo di ruolo e sulla natura del soggetto, oggi), ammesso, il primo motivo (motivo_codice, reason, reason_key, reason_valori) e tutti i motivi. Contesto: il tipo di ruolo, la natura del soggetto del ruolo e i tipi che la chiave (ruolo, istanza) ha gia'', letti una volta; i motivi sono quelli di anagrafiche.fn_check_tipo_indirizzo_ruolo_su_contesto, la check che la madre anagrafiche.fn_crea_indirizzo_ruolo solleva: il tipo gia'' presente (E_INDIRIZZO_RUOLO_TIPO_GIA_PRESENTE), il tipo che il tipo di ruolo non ammette (E_TIPO_INDIRIZZO_NON_PERMESSO), il tipo che la natura non ammette (E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO). L''istanza non ha default: NULL vuol dire il ruolo. Prima gli ammessi, poi gli altri, per codice interno. Ruolo inesistente: nessuna riga. SECURITY INVOKER. Gemello di anagrafiche.fn_tipi_indirizzo_proponibili_soggetto.';
 ```
 
 </div>

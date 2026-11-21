@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==2.8.0
+anthropic==2.12.0
     # via -r ../requirements.in
 anyio==4.16.0
     # via
@@ -60,9 +60,9 @@ gunicorn==27.0.1
     # via -r ../requirements.in
 h11==0.16.0
     # via httpcore2
-httpcore2==2.16.0
+httpcore2==2.16.2
     # via httpx2
-httpx2==2.16.0
+httpx2==2.16.2
     # via anthropic
 idna==3.20
     # via
@@ -96,11 +96,11 @@ psycopg-binary==3.3.9
     # via -r ../requirements.in
 pycparser==3.12
     # via cffi
-pydantic==2.14.3
+pydantic==2.14.4
     # via
     #   -r ../requirements.in
     #   anthropic
-pydantic-core==2.50.4
+pydantic-core==2.50.5
     # via pydantic
 pydyf==0.13.0
     # via weasyprint
@@ -108,11 +108,11 @@ pyjwt==2.15.1
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
-pyotp==2.11.2
+pyotp==2.12.1
     # via -r ../requirements.in
 pyphen==0.18.1
     # via weasyprint
-pyyaml==6.0.3
+pyyaml==6.0.4
     # via drf-spectacular
 redis==8.1.0
     # via

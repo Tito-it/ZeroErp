@@ -409,6 +409,39 @@ class SoggettiRepository:
             ])
             return list(jsonb_out(fetchone_scalar(cursor)) or [])
 
+    # Scopo: Gli indirizzi obbligatori che mancherebbero al soggetto e a ogni
+    #        suo ruolo sulla natura PROPOSTA (R-7 di
+    #        brief-db-fornitore-privato-indirizzi §13.4): la lettura del form
+    #        del cambio di natura, dal requisito dei due guard. Una riga per
+    #        requisito: `soggetto_ruolo_id` e `tipo_ruolo_id` NULL = il
+    #        soggetto; il ripiego, se c'e', soddisfa il requisito al posto del
+    #        tipo. Codici e descrizioni dai cataloghi, per il form.
+    # ⚠️ `RETURNS TABLE`: `SELECT … FROM fn(…)`, non `SELECT fn(…)`, che
+    #    consegnerebbe la tupla in un campo solo.
+    def indirizzi_obbligatori_mancanti(
+        self, soggetto_id: str, tipo_soggetto_dettaglio_id: int,
+    ) -> list[dict[str, Any]]:
+        sql = """
+            SELECT m.soggetto_ruolo_id,
+                   m.tipo_ruolo_id,
+                   tr.descrizione    AS ruolo_descrizione,
+                   m.tipo_indirizzo_id,
+                   ti.codice_interno AS tipo_indirizzo_codice_interno,
+                   ti.descrizione    AS tipo_indirizzo_descrizione,
+                   m.ripiego_tipo_indirizzo_id,
+                   rp.codice_interno AS ripiego_tipo_indirizzo_codice_interno,
+                   rp.descrizione    AS ripiego_tipo_indirizzo_descrizione
+              FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto_e_ruoli(
+                       %s::uuid, %s::bigint) WITH ORDINALITY AS m
+              JOIN config.tipi_indirizzi ti ON ti.id = m.tipo_indirizzo_id
+              LEFT JOIN config.tipi_indirizzi rp ON rp.id = m.ripiego_tipo_indirizzo_id
+              LEFT JOIN config.tipi_ruoli tr ON tr.id = m.tipo_ruolo_id
+             ORDER BY m.ordinality
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id, tipo_soggetto_dettaglio_id])
+            return rows_to_list(cursor)
+
     # Scopo: I motivi per cui i dati societari non si possono eliminare
     #        (`[]` = si puo', o non c'e' niente da eliminare). La stessa check
     #        che il verbo `fn_elimina_dati_societari` solleva.
@@ -771,13 +804,29 @@ class SoggettiRepository:
             )
             return list(cursor.fetchone()[0])
 
+    # ⭐ Le due copie verso il RUOLO portano la chiave di destinazione
+    #    (brief-db-copia-indirizzo-destinazione, giro 1): `None` e' il ruolo,
+    #    un id una sua istanza. La firma a tre argomenti non esiste piu'.
     def copia_indirizzo_ruolo(
         self, soggetto_ruolo_id: int, indirizzo_id: int, tipi: list[str],
+        istanza_utility_id_destinazione: int | None,
     ) -> list[int]:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s::bigint, %s::bigint, %s::text[])",
-                [soggetto_ruolo_id, indirizzo_id, tipi],
+                "SELECT anagrafiche.fn_copia_indirizzo_ruolo(%s::bigint, %s::bigint, %s::text[], %s::bigint)",
+                [soggetto_ruolo_id, indirizzo_id, tipi, istanza_utility_id_destinazione],
+            )
+            return list(cursor.fetchone()[0])
+
+    def copia_indirizzo_soggetto_su_ruolo(
+        self, soggetto_ruolo_id: int, indirizzo_soggetto_id: int, tipi: list[str],
+        istanza_utility_id_destinazione: int | None,
+    ) -> list[int]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo("
+                "%s::bigint, %s::bigint, %s::text[], %s::bigint)",
+                [soggetto_ruolo_id, indirizzo_soggetto_id, tipi, istanza_utility_id_destinazione],
             )
             return list(cursor.fetchone()[0])
 

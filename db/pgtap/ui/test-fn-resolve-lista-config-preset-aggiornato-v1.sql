@@ -1,20 +1,24 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
--- Test: ui.fn_resolve_lista_config — flag preset_aggiornato (DEF-2)
+-- Test: ui.fn_resolve_lista_config — il banner del preset aggiornato
+--   La data del contenuto del preset e lo snapshot della preferenza sono mappe
+--   {chiave: data} scritte dal DB; «Ignora» e' riscrivere preset_base_id
+--   (giro 1b di brief-db-revisione-ui, Q38). La preferenza imposta tutte e
+--   quattro le chiavi, quindi le guarda tutte.
 -- ------------------------------------------------------------
 -- Indice test (1..6):
--- Caso A) snapshot allineato (preset_base_contenuto_aggiornato_il = lista_preset.contenuto_aggiornato_il)
+-- Caso A) snapshot allineato (lo scrive il DB al salvataggio)
 --         → preset_aggiornato = FALSE
--- Caso B) admin modifica il preset (UPDATE lista_preset.contenuto_aggiornato_il a ts_v2 > snapshot)
+-- Caso B) admin modifica l'ordinamento del preset dopo lo snapshot
 --         → preset_aggiornato = TRUE
--- Caso C) utente preme "Ignora" (preset_aggiornato_ignored_at = ts_ignored > ts_v2)
+-- Caso C) utente preme "Ignora" (riscrive lo stesso preset_base_id)
 --         → preset_aggiornato = FALSE
--- Caso D) admin modifica il preset di nuovo (ts_v3 > ts_ignored)
---         → preset_aggiornato = TRUE (ignored_at < contenuto_aggiornato_il)
+-- Caso D) admin modifica il preset di nuovo
+--         → preset_aggiornato = TRUE
 -- Caso E) nessuna preferenza utente (usa preset di sistema, no snapshot)
 --         → preset_aggiornato = FALSE
--- Caso F) cambio preset_base_id (trigger azzera snapshot e ignored_at)
+-- Caso F) preset_base_id a NULL: lo snapshot diventa NULL
 --         → preset_aggiornato = FALSE
 -- ------------------------------------------------------------
 
@@ -38,15 +42,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(6);
 
 -- ============================================================
--- Timestamp fissi per test deterministici
--- ============================================================
--- ts_v1: prima versione del preset (usata come snapshot iniziale)
--- ts_v2: admin aggiorna preset dopo ts_v1
--- ts_ignored: utente ignora dopo ts_v2
--- ts_v3: admin aggiorna preset di nuovo dopo ts_ignored
--- ============================================================
-
--- ============================================================
 -- Setup: lista di test + 1 colonna + preset sistema + auth_user
 -- ============================================================
 
@@ -57,7 +52,7 @@ WITH ins AS (
     codice, descrizione, schema_dati, vista_sql, attivo, user_insert
   ) VALUES (
     '_pgtap.test_pa_' || substr(md5(clock_timestamp()::text), 1, 6),
-    'Lista test pgTAP preset_aggiornato DEF-2',
+    'Lista test pgTAP preset_aggiornato',
     'pgtap', NULL, TRUE, '_pgtap'
   )
   RETURNING id, codice
@@ -78,15 +73,15 @@ WITH ins AS (
 )
 SELECT id AS col_id FROM ins;
 
--- Preset sistema per la lista (ambito='sistema', is_default=TRUE)
+-- Preset sistema per la lista (ambito='sistema', acceso)
 CREATE TEMP TABLE _t_preset_pa AS
 WITH ins AS (
   INSERT INTO ui.lista_preset (
-    lista_id, codice, descrizione, ambito, is_default,
+    lista_id, codice, descrizione, ambito,
     pagina_dimensione, attivo, user_insert
   )
   SELECT lista_id, 'SISTEMA_PA', 'Preset sistema test PA',
-         'sistema', TRUE, 25, TRUE, '_pgtap'
+         'sistema', 25, TRUE, '_pgtap'
   FROM _t_lista_pa
   RETURNING id
 )
@@ -96,11 +91,6 @@ SELECT id AS preset_id FROM ins;
 INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fissata)
 SELECT p.preset_id, c.col_id, 10, TRUE, FALSE
 FROM _t_preset_pa p, _t_col_pa c;
-
--- Imposta contenuto_aggiornato_il del preset a ts_v1 (prima versione)
-UPDATE ui.lista_preset
-   SET contenuto_aggiornato_il = TIMESTAMP '2026-01-01 10:00:00'
- WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 -- auth_user di test
 CREATE TEMP TABLE _t_au_pa AS
@@ -117,17 +107,15 @@ WITH ins AS (
 )
 SELECT id AS user_id FROM ins;
 
--- Preferenza utente con preset_base_id puntato al preset sistema,
--- snapshot allineato (preset_base_contenuto_aggiornato_il = ts_v1 = contenuto_aggiornato_il corrente del preset)
+-- Preferenza utente con preset_base_id puntato al preset sistema: lo
+-- snapshot lo scrive il DB, dalla data del contenuto del preset.
 CREATE TEMP TABLE _t_pref_pa AS
 WITH ins AS (
   INSERT INTO ui.lista_preferenza_utente (
-    auth_user_id, lista_id, preset_base_id, preset_base_contenuto_aggiornato_il,
-    configurazione
+    auth_user_id, lista_id, preset_base_id, configurazione
   )
   SELECT
     u.user_id, l.lista_id, p.preset_id,
-    TIMESTAMP '2026-01-01 10:00:00',
     jsonb_build_object(
       'colonne', jsonb_build_array(
         jsonb_build_object(
@@ -146,9 +134,6 @@ SELECT id AS pref_id, auth_user_id, lista_id FROM ins;
 
 -- ============================================================
 -- CASO A) snapshot allineato → preset_aggiornato = FALSE
--- lista_preset.contenuto_aggiornato_il = TIMESTAMP '2026-01-01 10:00:00'
--- preset_base_contenuto_aggiornato_il  = TIMESTAMP '2026-01-01 10:00:00'
--- → contenuto_aggiornato_il NON > snapshot → FALSE
 -- ============================================================
 SELECT is(
   (SELECT ui.fn_resolve_lista_config(l.lista_codice, u.user_id, NULL)->>'preset_aggiornato'
@@ -160,10 +145,10 @@ SELECT is(
 
 -- ============================================================
 -- CASO B) admin modifica il preset → preset_aggiornato = TRUE
--- Simula: UPDATE lista_preset SET contenuto_aggiornato_il = ts_v2 (> ts_v1)
+-- La data la sposta il DB, all'ora del cambio.
 -- ============================================================
 UPDATE ui.lista_preset
-   SET contenuto_aggiornato_il = TIMESTAMP '2026-03-01 10:00:00'
+   SET ordinamento_default = '[{"col": "col_pa", "dir": "desc"}]'::jsonb
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(
@@ -176,10 +161,10 @@ SELECT is(
 
 -- ============================================================
 -- CASO C) utente ignora il banner → preset_aggiornato = FALSE
--- preset_aggiornato_ignored_at = ts_ignored (> ts_v2)
+-- «Ignora» riscrive lo stesso preset_base_id: lo snapshot si riallinea.
 -- ============================================================
 UPDATE ui.lista_preferenza_utente
-   SET preset_aggiornato_ignored_at = TIMESTAMP '2026-04-01 10:00:00'
+   SET preset_base_id = preset_base_id
  WHERE id = (SELECT pref_id FROM _t_pref_pa);
 
 SELECT is(
@@ -187,15 +172,14 @@ SELECT is(
      FROM _t_lista_pa l, _t_au_pa u
   ),
   'false',
-  'Caso C: ignored_at >= contenuto_aggiornato_il → preset_aggiornato = FALSE'
+  'Caso C: Ignora (riscrive preset_base_id, lo snapshot si riallinea) → preset_aggiornato = FALSE'
 );
 
 -- ============================================================
 -- CASO D) admin modifica il preset di nuovo dopo l'ignore → TRUE
--- contenuto_aggiornato_il = ts_v3 > ts_ignored → banner riappare
 -- ============================================================
 UPDATE ui.lista_preset
-   SET contenuto_aggiornato_il = TIMESTAMP '2026-05-01 10:00:00'
+   SET ordinamento_default = '[{"col": "col_pa", "dir": "asc"}]'::jsonb
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(
@@ -203,7 +187,7 @@ SELECT is(
      FROM _t_lista_pa l, _t_au_pa u
   ),
   'true',
-  'Caso D: preset modificato di nuovo dopo ignored_at → preset_aggiornato = TRUE'
+  'Caso D: preset modificato di nuovo dopo Ignora → preset_aggiornato = TRUE'
 );
 
 -- ============================================================
@@ -234,8 +218,7 @@ SELECT is(
 );
 
 -- ============================================================
--- CASO F) cambio preset_base_id → trigger azzera snapshot e ignored_at
---         fn legge preset_base_id=NULL → preset_aggiornato = FALSE
+-- CASO F) preset_base_id a NULL → lo snapshot e' NULL → preset_aggiornato = FALSE
 -- ============================================================
 UPDATE ui.lista_preferenza_utente
    SET preset_base_id = NULL
@@ -246,7 +229,7 @@ SELECT is(
      FROM _t_lista_pa l, _t_au_pa u
   ),
   'false',
-  'Caso F: preset_base_id → NULL (trigger azzera snapshot e ignored_at) → preset_aggiornato = FALSE'
+  'Caso F: preset_base_id → NULL (lo snapshot diventa NULL) → preset_aggiornato = FALSE'
 );
 
 SELECT * FROM finish();

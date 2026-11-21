@@ -77,8 +77,17 @@ SELECT plan(10);
 --    la partita IVA del soggetto e' «libera ADESSO».
 --    ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
 -- =========================================================
+-- ⚠️ rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, 20261116-19): la residenza
+--   e' un indirizzo di PERSONA. La societa' del builder _pg non la ammette (matrice
+--   config.tipi_soggetto_dettaglio_tipi_indirizzo), e da quel changeSet il guard
+--   degli indirizzi del ruolo guarda anche la natura del soggetto: la residenza sul
+--   ruolo di una societa' era un dato che il modello non ammette. Il veicolo diventa
+--   un privato (PR), coi suoi obbligatori sul soggetto.
+-- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, riga 7-bis, 20261116-22): il
+--   privato lo costruisce il builder dbops.fn_pgtap_crea_soggetto_pf, dalle madri; la
+--   residenza e' fra i suoi obbligatori. Apre e richiude da se' la finestra differita.
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT dbops.fn_pgtap_crea_soggetto_pg('Cliente RES/DOMFISC pgTAP') AS soggetto_id;
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Res Domfisc', 'Privato') AS soggetto_id;
 
 CREATE TEMP TABLE tmp_ruolo_test_id AS
 SELECT dbops.fn_pgtap_crea_soggetto_ruolo(t.soggetto_id, 'CL') AS soggetto_ruolo_id

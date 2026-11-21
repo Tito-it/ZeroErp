@@ -2,18 +2,38 @@
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgTAP test per Zero ERP
 -- Test: documenti.template_asset
---   - dedup (emittente_fiscale_id, sha256)
---   - guard A3 (delete block fisico)
---   - guard A4 (immutabilita' file/hash/storage)
+--   - lo stesso file una volta sola per azienda (uq_template_asset_emittente_sha256)
+--   - una risorsa non si cancella
+--   - il file non cambia (protect_file), il codice interno e l'azienda nemmeno
+--     (lock di colonna)
+--   - i campi liberi: codice, descrizione, date, attivo, meta, storicizza
 -- ------------------------------------------------------------
--- Indice test (1..7):
---  1) Setup: emittente fiscale disponibile, asset di base creato
---  2) Dedup sha256: stesso emittente + stesso sha256 bloccato
---  3) Stesso sha256 ammesso per emittente diverso (skip soft se em2 assente)
---  4) A3: DELETE fisico asset bloccato (sempre)
---  5) A4: UPDATE storage_key bloccato
---  6) A4: UPDATE sha256 bloccato
---  7) A4: UPDATE meta (non protetto) ammesso
+-- Indice test (1..19):
+--  1) Setup: una risorsa nasce con l'azienda della sessione
+--  2) Stessa azienda, stessa impronta: uq_template_asset_emittente_sha256
+--  3) Stessa impronta per un'altra azienda: ammessa
+--  4) Stessa azienda, stesso codice interno: uq_template_asset_emittente_codice_interno
+--  5) DELETE di una risorsa: E_DOCUMENTI_ASSET_DELETE_BLOCKED
+--  6-10) storage_key, sha256, file_size_bytes, mime_type, file_name non cambiano:
+--        E_DOCUMENTI_ASSET_FILE_IMMUTABILE
+-- 11) codice_interno non cambia: E_CODICE_NON_MODIFICABILE
+-- 12) meta e' libero
+-- 13) codice e' libero, e si salva in maiuscolo
+-- 14) descrizione e' libera
+-- 15) le date sono libere: valido_al si chiude
+-- 16) attivo e' libero: la risorsa si spegne
+-- 17) ... e una risorsa spenta il file non lo cambia lo stesso
+-- 18) l'azienda non cambia: E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE
+-- 19) storicizza e' libero
+-- ⚠️ 18-19 nascono col giro 6 di brief-db-revisione-documenti (2026-11-17): il
+--    lucchetto dell'azienda lo genera ci_apply dalla riga di
+--    dbops.automation_lock_columns. Prima del giro il 18 era rosso: l'UPDATE
+--    spostava la risorsa nell'altra azienda.
+-- ⚠️ Le due aziende si costruiscono (dbops.fn_pgtap_crea_emittente_operatore):
+--    il caso «un'altra azienda» non si pesca fra quelle che ci sono.
+-- ⚠️ Il cambio del tipo MIME lo giudicherebbe anche il guard del formato
+--    (a10_tipo_ammette_formato), che viene dopo protect_file (a10_protect_file):
+--    parla protect_file, ed e' il codice atteso.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -27,143 +47,129 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- Due aziende nuove, ciascuna col suo operatore.
+CREATE TEMP TABLE _e  ON COMMIT DROP AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
+CREATE TEMP TABLE _e2 ON COMMIT DROP AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m;
 
-SELECT plan(7);
+-- Contesto applicativo: questo test gira come gira l'applicazione, con
+-- l'operatore della prima azienda in sessione.
+DO $ctx$ BEGIN
+  PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _e));
+END $ctx$;
+
+SELECT plan(19);
 
 -- ============================================================
--- Setup contesto + asset di base
+-- Setup: la risorsa di base, con l'azienda della sessione
+--   (script.trgfn_default_emittente_fiscale riempie emittente_fiscale_id)
 -- ============================================================
-CREATE TEMP TABLE tmp_ta_ctx AS
-SELECT
-  (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef
-    WHERE ef.attivo = true ORDER BY ef.id LIMIT 1)        AS emittente_id,
-  (SELECT t.id FROM documenti.tipi_asset_documento t
-    WHERE t.codice_interno = 'LOGO')                      AS tipo_logo_id;
+CREATE TEMP TABLE tmp_ta_ctx ON COMMIT DROP AS
+SELECT (SELECT t.id FROM documenti.tipi_asset_documento t
+         WHERE t.codice_interno = 'LOGO') AS tipo_logo_id;
 
 WITH ins AS (
   INSERT INTO documenti.template_asset (
     codice, codice_interno, descrizione, asset_tipo_id,
-    mime_type, file_name, file_size_bytes, storage_key, sha256,
-    emittente_fiscale_id, attivo
+    mime_type, file_name, file_size_bytes, storage_key, sha256, attivo
   )
   SELECT 'PGTAP-ASSET-1', 'PGTAP_ASSET_1', 'Logo test',
          tipo_logo_id, 'image/png', 'logo.png', 1024,
-         's3://bucket/pgtap/logo.png',
-         repeat('a', 64),
-         emittente_id, true
+         's3://bucket/pgtap/logo.png', repeat('a', 64), true
     FROM tmp_ta_ctx
-   WHERE emittente_id IS NOT NULL
-  RETURNING id
+  RETURNING id, emittente_fiscale_id
 )
-SELECT id INTO TEMP TABLE tmp_ta_asset FROM ins;
+SELECT id, emittente_fiscale_id INTO TEMP TABLE tmp_ta_asset FROM ins;
 
 -- 1) Pre-condizione
-SELECT ok(
-  (SELECT COUNT(*) > 0 FROM tmp_ta_asset),
-  'Setup: emittente fiscale disponibile, asset di base creato'
+SELECT is(
+  (SELECT emittente_fiscale_id FROM tmp_ta_asset),
+  (SELECT emittente_fiscale_id FROM _e),
+  '1) la risorsa nasce con l''azienda della sessione'
 );
 
 -- ============================================================
--- 2) Dedup sha256: stesso (emittente, sha256) bloccato
+-- 2-4) Le unicita' per azienda
 -- ============================================================
-SELECT throws_ok(
-  $$INSERT INTO documenti.template_asset (
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$INSERT INTO documenti.template_asset (
       codice, codice_interno, descrizione, asset_tipo_id,
-      mime_type, file_name, file_size_bytes, storage_key, sha256,
-      emittente_fiscale_id, attivo
+      mime_type, file_name, file_size_bytes, storage_key, sha256, attivo
     )
-    SELECT 'PGTAP-ASSET-1-BIS', 'PGTAP_ASSET_1_BIS', 'dup sha',
+    SELECT 'PGTAP-ASSET-1-BIS', 'PGTAP_ASSET_1_BIS', 'stesso file',
            tipo_logo_id, 'image/png', 'logo2.png', 2048,
-           's3://bucket/pgtap/logo2.png',
-           repeat('a', 64),
-           emittente_id, true
-      FROM tmp_ta_ctx$$,
-  '23505',
-  NULL,
-  'Dedup sha256: stesso (emittente, sha256) bloccato'
+           's3://bucket/pgtap/logo2.png', repeat('a', 64), true
+      FROM tmp_ta_ctx$$),
+  'uq_template_asset_emittente_sha256',
+  '2) stessa azienda, stessa impronta: uq_template_asset_emittente_sha256'
 );
 
--- ============================================================
--- 3) Stesso sha256 ammesso per emittente diverso (skip soft se em2 assente)
--- ============================================================
-DO $$
-DECLARE
-  v_em2 bigint;
-  v_ok  boolean := true;
-BEGIN
-  SELECT ef.id INTO v_em2
-    FROM anagrafiche.emittenti_fiscali ef
-   WHERE ef.attivo = true
-     AND ef.id <> (SELECT emittente_id FROM tmp_ta_ctx)
-   ORDER BY ef.id
-   LIMIT 1;
-
-  IF v_em2 IS NOT NULL THEN
-    INSERT INTO documenti.template_asset (
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format($q$INSERT INTO documenti.template_asset (
       codice, codice_interno, descrizione, asset_tipo_id,
       mime_type, file_name, file_size_bytes, storage_key, sha256,
       emittente_fiscale_id, attivo
     )
-    VALUES (
-      'PGTAP-ASSET-EM2', 'PGTAP_ASSET_EM2', 'Logo em2',
-      (SELECT tipo_logo_id FROM tmp_ta_ctx),
-      'image/png', 'logo.png', 1024,
-      's3://bucket/em2/logo.png',
-      repeat('a', 64),
-      v_em2, true
-    );
-    -- success: v_ok resta true
-  END IF;
+    SELECT 'PGTAP-ASSET-EM2', 'PGTAP_ASSET_EM2', 'Logo dell''altra azienda',
+           tipo_logo_id, 'image/png', 'logo.png', 1024,
+           's3://bucket/em2/logo.png', repeat('a', 64), %s, true
+      FROM tmp_ta_ctx$q$, (SELECT emittente_fiscale_id FROM _e2))),
+  NULL,
+  '3) la stessa impronta per un''altra azienda e'' ammessa'
+);
 
-  CREATE TEMP TABLE tmp_ta_em2 AS SELECT v_ok AS ok;
-EXCEPTION WHEN OTHERS THEN
-  CREATE TEMP TABLE tmp_ta_em2 AS SELECT false AS ok;
-END$$;
-
-SELECT ok(
-  (SELECT ok FROM tmp_ta_em2),
-  'Stesso sha256 ammesso per emittente diverso (o skip soft se em2 assente)'
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$INSERT INTO documenti.template_asset (
+      codice, codice_interno, descrizione, asset_tipo_id,
+      mime_type, file_name, file_size_bytes, storage_key, sha256, attivo
+    )
+    SELECT 'PGTAP-ASSET-1-TER', 'PGTAP_ASSET_1', 'stesso codice interno',
+           tipo_logo_id, 'image/png', 'logo3.png', 3072,
+           's3://bucket/pgtap/logo3.png', repeat('c', 64), true
+      FROM tmp_ta_ctx$$),
+  'uq_template_asset_emittente_codice_interno',
+  '4) stessa azienda, stesso codice interno: uq_template_asset_emittente_codice_interno'
 );
 
 -- ============================================================
--- 4) A3: DELETE fisico asset bloccato (sempre)
+-- 5) Una risorsa non si cancella
 -- ============================================================
-SELECT throws_ok(
-  $$DELETE FROM documenti.template_asset
-     WHERE id = (SELECT id FROM tmp_ta_asset)$$,
-  NULL,
-  NULL,
-  'A3: DELETE fisico template_asset sempre bloccato'
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$DELETE FROM documenti.template_asset
+     WHERE id = (SELECT id FROM tmp_ta_asset)$$),
+  'E_DOCUMENTI_ASSET_DELETE_BLOCKED',
+  '5) una risorsa non si cancella: E_DOCUMENTI_ASSET_DELETE_BLOCKED'
 );
 
 -- ============================================================
--- 5) A4: UPDATE storage_key bloccato
+-- 6-10) Il file non cambia
 -- ============================================================
-SELECT throws_ok(
-  $$UPDATE documenti.template_asset
-       SET storage_key = 's3://hack/logo.png'
-     WHERE id = (SELECT id FROM tmp_ta_asset)$$,
-  NULL,
-  NULL,
-  'A4: UPDATE storage_key bloccato'
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE documenti.template_asset SET %s WHERE id = %s',
+    c.set_clause, (SELECT id FROM tmp_ta_asset))),
+  'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+  c.n || ') ' || c.colonna || ' non cambia: E_DOCUMENTI_ASSET_FILE_IMMUTABILE')
+  FROM (VALUES
+    (6,  'storage_key',     'storage_key = ''s3://hack/logo.png'''),
+    (7,  'sha256',          'sha256 = repeat(''b'', 64)'),
+    (8,  'file_size_bytes', 'file_size_bytes = file_size_bytes + 1'),
+    (9,  'mime_type',       'mime_type = ''image/jpeg'''),
+    (10, 'file_name',       'file_name = ''logo-nuovo.png''')
+  ) AS c(n, colonna, set_clause)
+ ORDER BY c.n;
+
+-- 11) Il codice interno non cambia
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.template_asset
+       SET codice_interno = 'PGTAP_ASSET_ALTRO'
+     WHERE id = (SELECT id FROM tmp_ta_asset)$$),
+  'E_CODICE_NON_MODIFICABILE',
+  '11) codice_interno non cambia: E_CODICE_NON_MODIFICABILE'
 );
 
--- 6) A4: UPDATE sha256 bloccato
-SELECT throws_ok(
-  $$UPDATE documenti.template_asset
-       SET sha256 = repeat('b', 64)
-     WHERE id = (SELECT id FROM tmp_ta_asset)$$,
-  NULL,
-  NULL,
-  'A4: UPDATE sha256 bloccato'
-);
-
--- 7) A4: UPDATE meta (non protetto) ammesso
+-- ============================================================
+-- 12-16) I campi liberi
+-- ============================================================
 UPDATE documenti.template_asset
    SET meta = '{"asset_test": "ok"}'::jsonb
  WHERE id = (SELECT id FROM tmp_ta_asset);
@@ -172,7 +178,81 @@ SELECT is(
   (SELECT meta->>'asset_test' FROM documenti.template_asset
     WHERE id = (SELECT id FROM tmp_ta_asset)),
   'ok',
-  'A4: UPDATE meta (non protetto) ammesso'
+  '12) meta e'' libero'
+);
+
+UPDATE documenti.template_asset
+   SET codice = 'pgtap-asset-nuovo'
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT codice::text FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  'PGTAP-ASSET-NUOVO',
+  '13) codice e'' libero, e si salva in maiuscolo'
+);
+
+UPDATE documenti.template_asset
+   SET descrizione = 'Logo rinominato'
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT descrizione FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  'Logo rinominato',
+  '14) descrizione e'' libera'
+);
+
+UPDATE documenti.template_asset
+   SET valido_al = script.fn_data_operativa() + 30
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT valido_al FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  script.fn_data_operativa() + 30,
+  '15) le date sono libere: valido_al si chiude'
+);
+
+UPDATE documenti.template_asset
+   SET attivo = false
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT attivo FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  false,
+  '16) attivo e'' libero: la risorsa si spegne'
+);
+
+SELECT is(
+  dbops.fn_pgtap_codice_errore($$UPDATE documenti.template_asset
+       SET storage_key = 's3://hack/logo-spento.png'
+     WHERE id = (SELECT id FROM tmp_ta_asset)$$),
+  'E_DOCUMENTI_ASSET_FILE_IMMUTABILE',
+  '17) spenta, la risorsa non cambia file lo stesso'
+);
+
+-- ============================================================
+-- 18-19) L'azienda e' ferma, storicizza e' libera
+-- ============================================================
+SELECT is(
+  dbops.fn_pgtap_codice_errore(format(
+    'UPDATE documenti.template_asset SET emittente_fiscale_id = %s WHERE id = %s',
+    (SELECT emittente_fiscale_id FROM _e2), (SELECT id FROM tmp_ta_asset))),
+  'E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE',
+  '18) l''azienda non cambia: E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE'
+);
+
+UPDATE documenti.template_asset
+   SET storicizza = false
+ WHERE id = (SELECT id FROM tmp_ta_asset);
+
+SELECT is(
+  (SELECT storicizza FROM documenti.template_asset
+    WHERE id = (SELECT id FROM tmp_ta_asset)),
+  false,
+  '19) storicizza e'' libero'
 );
 
 SELECT * FROM finish();

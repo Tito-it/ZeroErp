@@ -73,7 +73,7 @@ BEGIN ATOMIC
              cs.sorgente_uid AS k_uuid,
              cs.sorgente_id AS k_bigint
             FROM (chiavi k
-              JOIN vendite.commesse_sorgenti cs ON (((cs.commessa_id = ANY (k.com_ids)) AND ((((cs.sorgente_tipo_id = k.t_prev) OR (cs.sorgente_tipo_id = k.t_ord)) OR (cs.sorgente_tipo_id = k.t_con)) OR (cs.sorgente_tipo_id = k.t_ddt)))))
+              JOIN vendite.commesse_sorgenti cs ON (((cs.commessa_id = ANY (k.com_ids)) AND ((cs.sorgente_tipo_id = k.t_prev) OR (cs.sorgente_tipo_id = k.t_ord) OR (cs.sorgente_tipo_id = k.t_con) OR (cs.sorgente_tipo_id = k.t_ddt)))))
          ), prev_k AS MATERIALIZED (
           SELECT p.uid
             FROM vendite.preventivi p
@@ -100,7 +100,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'B'::text
+             'B'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN prev_k p ON ((p.uid = cs.sorgente_uid)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
@@ -113,7 +113,7 @@ BEGIN ATOMIC
              s_to.id,
              (c.id)::text AS id,
              NULL::character varying AS "varchar",
-             'C'::text
+             'C'::text AS text
             FROM (((vendite.contratti c
               JOIN config.sorgenti s_from ON (((s_from.id = c.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = c.sorgente_id) OR (oc.uid = c.sorgente_uid))))
@@ -125,7 +125,7 @@ BEGIN ATOMIC
              s_to.id,
              (o.id)::text AS id,
              NULL::character varying AS "varchar",
-             'D'::text
+             'D'::text AS text
             FROM (((vendite.ordini o
               JOIN config.sorgenti s_from ON (((s_from.id = o.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = o.sorgente_id) OR (oc.uid = o.sorgente_uid))))
@@ -137,7 +137,7 @@ BEGIN ATOMIC
              s_off.id,
              (figlia.uid)::text AS uid,
              NULL::character varying AS "varchar",
-             'V'::text
+             'V'::text AS text
             FROM ((vendite.offerte_commerciali figlia
               JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
               JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
@@ -148,7 +148,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'E'::text
+             'E'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN ord_k o ON ((o.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
@@ -161,7 +161,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'F'::text
+             'F'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN vendite.contratti c ON ((c.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
@@ -174,7 +174,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'U'::text
+             'U'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN vendite.ddt d ON ((d.id = cs.sorgente_id)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
@@ -187,7 +187,7 @@ BEGIN ATOMIC
              s_to.id,
              (f.id)::text AS id,
              NULL::character varying AS "varchar",
-             'G'::text
+             'G'::text AS text
             FROM (((((vendite.attivita_fatturabili af
               JOIN vendite.commesse cm ON ((cm.id = af.commessa_id)))
               JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
@@ -201,7 +201,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'H'::text
+             'H'::text AS text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
@@ -213,7 +213,7 @@ BEGIN ATOMIC
              s_to.id,
              (r.id)::text AS id,
              NULL::character varying AS "varchar",
-             'R'::text
+             'R'::text AS text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
@@ -225,7 +225,7 @@ BEGIN ATOMIC
              s_fat.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'N'::text
+             'N'::text AS text
             FROM ((vendite.fatture_righe fr
               JOIN vendite.fatture_righe rr ON ((rr.id = fr.riga_rettificata_id)))
               JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
@@ -236,7 +236,7 @@ BEGIN ATOMIC
              s_to.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'S'::text
+             'S'::text AS text
             FROM ((((((vendite.resi_righe_accrediti acc
               JOIN vendite.resi_righe rr ON ((rr.id = acc.resi_riga_id)))
               JOIN vendite.resi r ON ((r.id = rr.reso_id)))
@@ -251,7 +251,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'T'::text
+             'T'::text AS text
             FROM ((((((vendite.resi_righe_riconsegne rrr
               JOIN vendite.resi_righe rr ON ((rr.id = rrr.resi_riga_id)))
               JOIN vendite.resi r ON ((r.id = rr.reso_id)))
@@ -266,7 +266,7 @@ BEGIN ATOMIC
              s_to.id,
              (o.id)::text AS id,
              NULL::character varying AS "varchar",
-             'A'::text
+             'A'::text AS text
             FROM (((vendite.ordini o
               JOIN config.sorgenti s_from ON (((s_from.id = o.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.preventivi p ON (((p.id = o.sorgente_id) OR (p.uid = o.sorgente_uid))))
@@ -281,7 +281,7 @@ BEGIN ATOMIC
              s_to.id,
              (o.id)::text AS id,
              NULL::character varying AS "varchar",
-             'A'::text
+             'A'::text AS text
             FROM (((vendite.ordini o
               JOIN config.sorgenti s_from ON (((s_from.id = o.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.preventivi p ON (((p.id = o.sorgente_id) OR (p.uid = o.sorgente_uid))))
@@ -295,7 +295,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'B'::text
+             'B'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
               JOIN vendite.preventivi p ON ((p.uid = cs.sorgente_uid)))
@@ -311,7 +311,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'B'::text
+             'B'::text AS text
             FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
               JOIN vendite.preventivi p ON ((p.uid = cs.k_uuid)))
@@ -326,7 +326,7 @@ BEGIN ATOMIC
              s_to.id,
              (c.id)::text AS id,
              NULL::character varying AS "varchar",
-             'C'::text
+             'C'::text AS text
             FROM (((vendite.contratti c
               JOIN config.sorgenti s_from ON (((s_from.id = c.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = c.sorgente_id) OR (oc.uid = c.sorgente_uid))))
@@ -341,7 +341,7 @@ BEGIN ATOMIC
              s_to.id,
              (c.id)::text AS id,
              NULL::character varying AS "varchar",
-             'C'::text
+             'C'::text AS text
             FROM (((vendite.contratti c
               JOIN config.sorgenti s_from ON (((s_from.id = c.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = c.sorgente_id) OR (oc.uid = c.sorgente_uid))))
@@ -355,7 +355,7 @@ BEGIN ATOMIC
              s_to.id,
              (o.id)::text AS id,
              NULL::character varying AS "varchar",
-             'D'::text
+             'D'::text AS text
             FROM (((vendite.ordini o
               JOIN config.sorgenti s_from ON (((s_from.id = o.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = o.sorgente_id) OR (oc.uid = o.sorgente_uid))))
@@ -370,7 +370,7 @@ BEGIN ATOMIC
              s_to.id,
              (o.id)::text AS id,
              NULL::character varying AS "varchar",
-             'D'::text
+             'D'::text AS text
             FROM (((vendite.ordini o
               JOIN config.sorgenti s_from ON (((s_from.id = o.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_from.attivo IS TRUE))))
               JOIN vendite.offerte_commerciali oc ON (((oc.id = o.sorgente_id) OR (oc.uid = o.sorgente_uid))))
@@ -384,7 +384,7 @@ BEGIN ATOMIC
              s_off.id,
              (figlia.uid)::text AS uid,
              NULL::character varying AS "varchar",
-             'V'::text
+             'V'::text AS text
             FROM ((vendite.offerte_commerciali figlia
               JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
               JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
@@ -396,7 +396,7 @@ BEGIN ATOMIC
              s_off.id,
              (figlia.uid)::text AS uid,
              NULL::character varying AS "varchar",
-             'V'::text
+             'V'::text AS text
             FROM ((vendite.offerte_commerciali figlia
               JOIN vendite.offerte_commerciali padre ON ((padre.id = figlia.revisione_padre_id)))
               JOIN config.sorgenti s_off ON ((((s_off.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s_off.attivo IS TRUE))))
@@ -409,7 +409,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'E'::text
+             'E'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN vendite.ordini o ON ((o.id = cs.sorgente_id)))
@@ -425,7 +425,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'E'::text
+             'E'::text AS text
             FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN vendite.ordini o ON ((o.id = cs.k_bigint)))
@@ -440,7 +440,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'F'::text
+             'F'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
               JOIN vendite.contratti c ON ((c.id = cs.sorgente_id)))
@@ -456,7 +456,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'F'::text
+             'F'::text AS text
             FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
               JOIN vendite.contratti c ON ((c.id = cs.k_bigint)))
@@ -471,7 +471,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'U'::text
+             'U'::text AS text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN vendite.ddt d ON ((d.id = cs.sorgente_id)))
@@ -487,7 +487,7 @@ BEGIN ATOMIC
              s_to.id,
              (cm.id)::text AS id,
              cs.ruolo_link,
-             'U'::text
+             'U'::text AS text
             FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN vendite.ddt d ON ((d.id = cs.k_bigint)))
@@ -502,7 +502,7 @@ BEGIN ATOMIC
              s_to.id,
              (f.id)::text AS id,
              NULL::character varying AS "varchar",
-             'G'::text
+             'G'::text AS text
             FROM (((((vendite.attivita_fatturabili af
               JOIN vendite.commesse cm ON ((cm.id = af.commessa_id)))
               JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
@@ -517,7 +517,7 @@ BEGIN ATOMIC
              s_to.id,
              (f.id)::text AS id,
              NULL::character varying AS "varchar",
-             'G'::text
+             'G'::text AS text
             FROM (((((vendite.fatture_righe fr
               JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
               JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
@@ -533,7 +533,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'H'::text
+             'H'::text AS text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
@@ -548,7 +548,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'H'::text
+             'H'::text AS text
             FROM (((vendite.ddt d
               JOIN config.sorgenti s_from ON (((s_from.id = d.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
               JOIN vendite.ordini o ON (((o.id = d.sorgente_id) OR (o.uid = d.sorgente_uid))))
@@ -562,7 +562,7 @@ BEGIN ATOMIC
              s_to.id,
              (r.id)::text AS id,
              NULL::character varying AS "varchar",
-             'R'::text
+             'R'::text AS text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
@@ -576,7 +576,7 @@ BEGIN ATOMIC
              s_to.id,
              (r.id)::text AS id,
              NULL::character varying AS "varchar",
-             'R'::text
+             'R'::text AS text
             FROM (((vendite.resi r
               JOIN config.sorgenti s_from ON (((s_from.id = r.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
               JOIN vendite.ddt d ON ((d.id = r.sorgente_id)))
@@ -590,7 +590,7 @@ BEGIN ATOMIC
              s_fat.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'N'::text
+             'N'::text AS text
             FROM ((vendite.fatture_righe rr
               JOIN vendite.fatture_righe fr ON ((fr.riga_rettificata_id = rr.id)))
               JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
@@ -602,7 +602,7 @@ BEGIN ATOMIC
              s_fat.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'N'::text
+             'N'::text AS text
             FROM ((vendite.fatture_righe fr
               JOIN vendite.fatture_righe rr ON ((rr.id = fr.riga_rettificata_id)))
               JOIN config.sorgenti s_fat ON ((((s_fat.codice_interno)::text = 'FATTURA'::text) AND (s_fat.attivo IS TRUE))))
@@ -615,7 +615,7 @@ BEGIN ATOMIC
              s_to.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'S'::text
+             'S'::text AS text
             FROM ((((((vendite.resi_righe rr
               JOIN vendite.resi r ON ((r.id = rr.reso_id)))
               JOIN vendite.resi_righe_accrediti acc ON ((acc.resi_riga_id = rr.id)))
@@ -631,7 +631,7 @@ BEGIN ATOMIC
              s_to.id,
              (fr.fattura_id)::text AS fattura_id,
              NULL::character varying AS "varchar",
-             'S'::text
+             'S'::text AS text
             FROM ((((((vendite.fatture_righe fr
               JOIN vendite.attivita_fatturabili af ON ((af.fattura_riga_id = fr.id)))
               JOIN vendite.resi_righe_accrediti acc ON ((acc.commessa_attivita_id = af.commessa_attivita_id)))
@@ -648,7 +648,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'T'::text
+             'T'::text AS text
             FROM ((((((vendite.resi_righe rr
               JOIN vendite.resi r ON ((r.id = rr.reso_id)))
               JOIN vendite.resi_righe_riconsegne rrr ON ((rrr.resi_riga_id = rr.id)))
@@ -664,7 +664,7 @@ BEGIN ATOMIC
              s_to.id,
              (d.id)::text AS id,
              NULL::character varying AS "varchar",
-             'T'::text
+             'T'::text AS text
             FROM ((((((vendite.ddt_righe dr
               JOIN vendite.ddt d ON ((d.id = dr.ddt_id)))
               JOIN vendite.resi_righe_riconsegne rrr ON ((rrr.ddt_riga_id = dr.id)))

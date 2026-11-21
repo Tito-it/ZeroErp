@@ -7,7 +7,6 @@
 --   sorgente_uid uuid (tipi a chiave uid), una serie sola di versioni per
 --   documento, il guard unico la valida e blocca la cancellazione del documento
 --   stampato. La coda tiene la fattura nella sola sorgente_id, FK vera.
--- ChangeSet: 20261108-14 … -21
 -- Brief: brief-db-sorgente-documento-e-riga §7.2 lotto D, giro D.1 (S-4, S-6, S-9, D-3, V-6)
 -- ------------------------------------------------------------
 -- Indice test (plan 18):
@@ -26,7 +25,7 @@
 --   10) tutte e due le chiavi: E_SORG_CHIAVE_NON_CONFORME (il guard parla prima del CHECK)
 --   LO SNAPSHOT
 --   11) la stampa spostata su un altro preventivo: E_DOCUMENTI_GENERATO_SNAPSHOT_IMMUTABILE
---   12) lo stato si cambia ancora
+--   12) meta, fuori dallo snapshot, si cambia ancora (lo stato ha un valore solo)
 --   LA CANCELLAZIONE (BLOCCA)
 --   13) il preventivo stampato non si cancella: E_SORG_ORIGINE_REFERENZIATA
 --   14) ... e l'ordine stampato nemmeno
@@ -123,7 +122,7 @@ WITH t AS (
   INSERT INTO documenti.template_documenti_versioni (
     template_documento_id, versione, stato, titolo, html_template,
     render_engine_id, valido_dal, valido_al, versione_contesto)
-  SELECT t.id, 1, 'PUBBLICATA', 'v1', '<html>v1</html>',
+  SELECT t.id, 1, 'BOZZA', 'v1', '<html>v1</html>',
          (SELECT r.id FROM documenti.render_engine_documento r WHERE r.codice_interno = 'WEASYPRINT'),
          DATE '2026-01-01', DATE '2099-12-31', 1
     FROM t
@@ -134,11 +133,20 @@ SELECT s.codice_interno AS sorgente, t.id AS template_id, tv.id AS versione_id,
   FROM t JOIN tv ON tv.template_documento_id = t.id
   JOIN config.sorgenti s ON s.id = t.sorgente_tipo_id;
 
+-- ⚠️ Una versione nasce in bozza ed esce dalla bozza solo dal verbo della
+--   pubblicazione (guard dello stato, 20261116-02): la fixture lo percorre.
+SELECT documenti.fn_pubblica_template_documento_versione(x.versione_id, DATE '2026-01-01', 1, DATE '2099-12-31')
+  FROM _tpl x ORDER BY x.versione_id;
+
 -- La stampa di un documento: le colonne dello snapshot dal modello del tipo,
--- la chiave e il numero dal test. Ritorna l'istruzione, per pg_temp.esito.
+-- la chiave e il numero dal test; il PDF principale lo scrive
+-- dbops.fn_pgtap_stampa_con_pdf (senza, la stampa non si registra). Ritorna
+-- l'istruzione, per dbops.fn_pgtap_codice_errore.
 CREATE FUNCTION pg_temp.stampa(p_sorgente text, p_id bigint, p_uid uuid, p_progressivo integer)
 RETURNS text LANGUAGE sql AS $f$
   SELECT format(
+    'SELECT dbops.fn_pgtap_stampa_con_pdf(%L)',
+    format(
     'INSERT INTO documenti.documenti_generati (
         tipo_documento_output_id, template_documento_id, template_versione_id,
         sorgente_tipo_id, sorgente_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
@@ -151,7 +159,7 @@ RETURNS text LANGUAGE sql AS $f$
             (SELECT emittente_fiscale_id FROM _pv WHERE k = ''A'')
        FROM _tpl t WHERE t.sorgente = %L',
     coalesce(p_id::text, 'NULL'), coalesce(quote_literal(p_uid::text) || '::uuid', 'NULL'),
-    p_progressivo, p_sorgente)
+    p_progressivo, p_sorgente))
 $f$;
 
 -- ============================================================
@@ -201,11 +209,11 @@ SELECT is(dbops.fn_pgtap_codice_errore(format(
   '11) la stampa spostata su un altro preventivo: lo snapshot non cambia');
 
 SELECT is(dbops.fn_pgtap_codice_errore(format(
-    'UPDATE documenti.documenti_generati SET stato = ''ARCHIVIATO''
+    'UPDATE documenti.documenti_generati SET meta = ''{"nota": "pgtap"}''::jsonb
       WHERE sorgente_uid = %L::uuid AND progressivo_sorgente = 2',
     (SELECT preventivo_uid FROM _pv WHERE k = 'A'))),
   NULL,
-  '12) lo stato fuori dallo snapshot si cambia ancora');
+  '12) meta, fuori dallo snapshot, si cambia ancora');
 
 -- ============================================================
 -- LA CANCELLAZIONE (BLOCCA)

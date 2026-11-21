@@ -35,11 +35,12 @@
 -- 14) nuova versione con partenza domani: la precedente e' OBSOLETA, chiusa a oggi
 -- 15) ... e oggi stampa lei, non la nuova (20261114-02: la validita' decide)
 -- 16) nuova versione con partenza oggi: stampa la nuova, la superata no
--- 17) una OBSOLETA sopra il periodo di altre versioni fuori bozza viola il vincolo
+-- 17) una pubblicazione che parte dentro una OBSOLETA viola il vincolo: la chiusura
+--     prende solo le PUBBLICATE che iniziano prima
 -- 18) una OBSOLETA non si modifica (Guard A1, 20261114-04)
 -- 19) una OBSOLETA non torna in BOZZA
 -- 20) una PUBBLICATA non torna in BOZZA
--- 21) dopo la pubblicazione la porta della chiusura e' richiusa
+-- 21) dopo la pubblicazione la porta del verbo e' richiusa
 -- 22) senza porta una PUBBLICATA non si chiude a mano
 -- 23) a porta aperta passa solo la chiusura, non un'altra colonna cambiata
 --
@@ -54,6 +55,11 @@
 --    passa (prova del 2026-11-14 sullo scratch: senza 17/6, con 23/0). Da soli
 --    sarebbero verdi anche prima: fissano che la porta non apre piu' di quanto serve. I test 4-7 e 14 provano che la
 --    pubblicazione chiude come prima, ora in una scrittura sola sotto la porta.
+-- ⭐ Dal 20261116-02 una versione nasce in bozza ed esce dalla bozza solo dal
+--    verbo: il 17, che inseriva una OBSOLETA a mano, ora raggiunge il vincolo da
+--    una pubblicazione che parte dentro una OBSOLETA (la sovrapposizione e' con
+--    lei sola: rosso senza il 20261114-01, come prima). La porta si chiama come
+--    il verbo, zeroerp.allow_template_versione_pubblicazione_override (21, 23).
 --
 -- Scopo:
 --  - ⭐ i test 1-3 provano il ritiro della copia (20260924-02): la regola del
@@ -354,21 +360,29 @@ SELECT is(
     '16) C: la V2 parte oggi e stampa lei; la V1, chiusa a ieri, non stampa piu'''
 );
 
--- Una riga per modello per costruzione: una OBSOLETA che copre il periodo di un'altra
--- versione fuori bozza viola il vincolo. ⚠️ Con un INSERT e non con un UPDATE: dal
--- 20261114-04 l'UPDATE di una OBSOLETA lo ferma prima il Guard A1 (test 18), e qui
--- si prova il vincolo, che presidia anche le strade dove il trigger non passa.
-SELECT throws_ok(
-    format($q$INSERT INTO documenti.template_documenti_versioni (
-                  template_documento_id, versione, stato, titolo, html_template,
-                  render_engine_id, valido_dal, valido_al, versione_contesto)
-              VALUES (%s, 3, 'OBSOLETA', 'Versione B3', '<p>B3</p>', %s,
-                      script.fn_data_operativa(), script.fn_data_operativa() + 5, 1)$q$,
-           (SELECT id FROM tmp_ptv_tpl2 WHERE k = 'B'),
-           (SELECT render_id FROM tmp_ptv_ctx)),
-    '23P01',
-    NULL,
-    '17) B: una OBSOLETA sopra il periodo di V1 e V2 viola il vincolo: per ogni data, una sola versione stampabile'
+-- Una riga per modello per costruzione. ⚠️ Dal 20261116-02 una versione non nasce
+-- fuori bozza e una OBSOLETA non si scrive a mano: il vincolo si raggiunge dal
+-- verbo. La B3 vale solo oggi, dentro la V1 OBSOLETA che vale fino a oggi, e non
+-- tocca la V2 che parte domani: la sovrapposizione e' con la sola OBSOLETA. La
+-- chiusura prende solo le PUBBLICATE che iniziano prima di lei (nessuna), e la
+-- ferma il vincolo.
+CREATE TEMP TABLE tmp_ptv_b3 AS
+WITH ins AS (
+    INSERT INTO documenti.template_documenti_versioni (
+        template_documento_id, versione, stato, titolo, html_template, render_engine_id,
+        versione_contesto)
+    VALUES ((SELECT id FROM tmp_ptv_tpl2 WHERE k = 'B'), 3, 'BOZZA', 'Versione B3', '<p>B3</p>',
+            (SELECT render_id FROM tmp_ptv_ctx), 1)
+    RETURNING id
+)
+SELECT id FROM ins;
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore(format($q$SELECT documenti.fn_pubblica_template_documento_versione(
+                  %s, script.fn_data_operativa(), 1, script.fn_data_operativa())$q$,
+           (SELECT id FROM tmp_ptv_b3))),
+    'E_DOCUMENTI_VERSIONE_OVERLAP',
+    '17) B: la B3 che vale oggi, dentro la V1 OBSOLETA, viola il vincolo: E_DOCUMENTI_VERSIONE_OVERLAP, dal verbo'
 );
 
 -- ============================================================
@@ -403,9 +417,9 @@ SELECT throws_like(
 -- La porta si richiude: dopo le pubblicazioni sopra nessuno la trova aperta, e
 -- senza porta la chiusura fatta a mano e' rifiutata.
 SELECT is(
-    current_setting('zeroerp.allow_template_versione_chiusura_override', true),
+    current_setting('zeroerp.allow_template_versione_pubblicazione_override', true),
     'off',
-    '21) dopo la pubblicazione la porta della chiusura e'' richiusa'
+    '21) dopo la pubblicazione la porta del verbo e'' richiusa'
 );
 
 SELECT throws_like(
@@ -419,7 +433,7 @@ SELECT throws_like(
 -- A porta aperta passa SOLO la chiusura: con un'altra colonna cambiata, no.
 SELECT throws_like(
     format($q$WITH porta AS (
-                  SELECT set_config('zeroerp.allow_template_versione_chiusura_override', 'on', true))
+                  SELECT set_config('zeroerp.allow_template_versione_pubblicazione_override', 'on', true))
               UPDATE documenti.template_documenti_versioni
                  SET stato = 'OBSOLETA', valido_al = script.fn_data_operativa() + 30,
                      html_template = '<p>di contrabbando</p>'

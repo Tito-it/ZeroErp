@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FIXTURE DEL RUOLO PASSA UN OBBLIGATORIO CHE LA NATURA AMMETTE
+#   dbops.fn_pgtap_crea_soggetto_ruolo(soggetto, ruolo, stato) -> bigint
+#   Brief: brief-db-fornitore-privato-indirizzi §9.5 (la quarta copia di
+#   «obbligatorio per il ruolo», decisa da Tid il 2026-11-17: nel giro 4).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   La fixture sceglieva il primo indirizzo da passare alla plurale con una
+#   query sua sulla matrice del ruolo (attivo e obbligatorio, senza finestra
+#   di validita' e senza natura): una quarta copia della regola. Su un ruolo
+#   con un obbligatorio che la natura del soggetto vieta passava proprio quel
+#   tipo, e il guard del tipo lo rifiutava.
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Il primo tipo viene dal requisito del ruolo sulla natura del soggetto
+#   (anagrafiche.fn_indirizzi_obbligatori_ruolo, -29), il giorno di
+#   script.fn_data_operativa(): lo stesso che pretendono i guard e che copia
+#   l'auto-clone. Su una natura che ammette il tipo della riga, il tipo
+#   passato e' quello di prima.
+#
+# ── DA DOVE VIENE ───────────────────────────────────────────────
+#   Corpo dalla doc auto-generata (l'ultimo YAML del corpo e' 20261019-02);
+#   il COMMENT dal vivo, poi riscritto. Attributi vivi: VOLATILE, INVOKER,
+#   proconfig vuoto; p_stato_id con DEFAULT 1, ora ancorato a config.stati.id
+#   (integer: la firma non cambia).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261116-38-update-fn-pgtap-crea-soggetto-ruolo-obbligatori-per-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261116-38-update-fn-pgtap-crea-soggetto-ruolo-obbligatori-per-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_pgtap_crea_soggetto_ruolo: il primo indirizzo obbligatorio dal requisito del ruolo
+        sulla natura del soggetto, non da una query sua sulla matrice.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(
+                  p_soggetto_id  anagrafiche.soggetti.id%TYPE,
+                  p_cd_int_ruolo config.tipi_ruoli.codice_interno%TYPE,
+                  p_stato_id     config.stati.id%TYPE DEFAULT 1
+              )
+               RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: assegnare a un soggetto un ruolo GIA' completo dei suoi
+              --   indirizzi obbligatori, che sono un layer SEPARATO da quelli
+              --   del soggetto.
+              -- Uso:
+              --   SELECT dbops.fn_pgtap_crea_soggetto_ruolo(<soggetto_id>, 'GE');
+              DECLARE
+                  v_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- Vedi la nota sulla finestra differita in
+                  -- fn_pgtap_crea_soggetto_pg: qui vale per il layer RUOLO, che
+                  -- ha una matrice SUA (config.tipi_ruolo_tipi_indirizzo) e un
+                  -- guard suo. ⚠️ Un indirizzo di SOGGETTO, per quanto presente,
+                  -- non lo soddisfa: sono due layer distinti, e il fallback del
+                  -- guard porta a un altro TIPO, non all'altro LAYER.
+                  SET CONSTRAINTS ALL DEFERRED;
+                  v_ruolo_id := script.fn_get_or_create_soggetto_ruolo(
+                                    p_soggetto_id  := p_soggetto_id,
+                                    p_cd_int_ruolo := p_cd_int_ruolo
+                                );
+                  -- Gli indirizzi li scrive il verbo di dominio
+                  --   anagrafiche.fn_crea_indirizzi_ruolo, come l'applicazione. Si
+                  --   passa il PRIMO tipo che il requisito del ruolo chiede sulla
+                  --   natura del soggetto (anagrafiche.fn_indirizzi_obbligatori_ruolo:
+                  --   il tipo della riga, o il suo ripiego se la natura vieta il
+                  --   tipo): gli altri li clona il verbo (auto-clone), e i tipi che
+                  --   il ruolo ha gia' li salta (il ruolo puo' gia' esistere).
+                  --   Nessun obbligatorio: elenco vuoto, niente.
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(
+                      v_ruolo_id,
+                      COALESCE(
+                          -- I campi della forma dallo stato (catalogo: comune e CAP;
+                          --   estera: localita'), come li vuole il guard.
+                          (SELECT jsonb_build_array(jsonb_build_object(
+                                      'tipo_indirizzo_id',   o.tipo_indirizzo_id,
+                                      'indirizzo_libero',    'Via pgTAP ruolo 1',
+                                      'stato_id',            p_stato_id)
+                                  || jsonb_strip_nulls(to_jsonb(f)))
+                             FROM anagrafiche.soggetti_ruoli sr
+                             JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
+                            CROSS JOIN LATERAL anagrafiche.fn_indirizzi_obbligatori_ruolo(
+                                      sr.tipo_ruolo_id, s.tipo_soggetto_dettaglio_id,
+                                      script.fn_data_operativa()) o
+                            CROSS JOIN dbops.fn_pgtap_indirizzo_libero_forma(p_stato_id) f
+                            WHERE sr.id = v_ruolo_id
+                            ORDER BY o.tipo_indirizzo_id
+                            LIMIT 1),
+                          '[]'::jsonb));
+                  SET CONSTRAINTS ALL IMMEDIATE;
+                  RETURN v_ruolo_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_ruolo(anagrafiche.soggetti.id%TYPE, config.tipi_ruoli.codice_interno%TYPE, config.stati.id%TYPE)
+              IS 'Fixture pgTAP: assegna a un soggetto un ruolo gia'' completo dei suoi indirizzi OBBLIGATORI, quelli che il requisito del ruolo chiede sulla natura del soggetto (anagrafiche.fn_indirizzi_obbligatori_ruolo: il tipo della riga obbligatoria, o il suo ripiego se la natura vieta il tipo), lo stesso che pretendono i guard. ⚠️ Gli indirizzi di RUOLO sono un layer separato da quelli di SOGGETTO: hanno una matrice propria e un guard proprio, e un indirizzo di soggetto non soddisfa il guard del ruolo (il suo ripiego porta a un altro TIPO, non all''altro LAYER). Il ruolo lo crea o lo ritrova anagrafiche.fn_get_or_create_soggetto_ruolo; gli indirizzi li scrive il verbo anagrafiche.fn_crea_indirizzi_ruolo dal primo tipo richiesto (copia sugli altri obbligatori, salta quelli gia'' presenti), da un indirizzo libero nella forma che il guard pretende per lo stato (dbops.fn_pgtap_indirizzo_libero_forma: comune e CAP del catalogo, oppure localita''). Come la sorella dbops.fn_pgtap_crea_soggetto_pg, apre e RICHIUDE la finestra dei vincoli differiti. Ritorna il soggetto_ruolo_id. ⚠️ Esce con i vincoli IMMEDIATE, come ogni helper.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261019-02; si torna indietro con un changeSet nuovo.
+              SELECT 1;

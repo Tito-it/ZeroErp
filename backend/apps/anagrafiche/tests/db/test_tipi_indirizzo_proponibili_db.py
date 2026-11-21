@@ -29,11 +29,19 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 6) RuoloPickerDbTests.test_codice_di_ruolo_sconosciuto — elenco vuoto, non «tutti ammessi»
 7) RuoloPickerDbTests.test_ruolo_inesistente — 404 `E_ANAG_NOT_FOUND`
 8) RuoloPickerDbTests.test_tipo_di_ruolo_inesistente — per id: elenco vuoto (Q-2)
+9) RuoloPickerDbTests.test_col_soggetto_la_natura_spegne_i_tipi — il picker del ruolo da
+   assegnare a un privato: ammesso = ammesso dal ruolo E dalla natura; i tipi spenti dalla sola
+   natura col motivo `E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO` (R-1 di
+   brief-db-fornitore-privato-indirizzi, 2026-11-17)
+10) RuoloPickerDbTests.test_col_soggetto_gli_obbligatori_sono_ammessi — un fornitore privato si
+   puo' creare: ogni tipo obbligatorio per il privato e' anche ammesso
+11) RuoloPickerDbTests.test_soggetto_inesistente — elenco vuoto, non «natura che non conta»
 """
 
 from __future__ import annotations
 
 import unittest
+import uuid
 
 from django.db import connection, transaction
 
@@ -62,6 +70,14 @@ class _Mondo(unittest.TestCase):
         with connection.cursor() as cur:
             cur.execute(f"SELECT COALESCE(max(id), 0) + 1 FROM {tabella}")  # nome di tabella cablato nel test
             return int(cur.fetchone()[0])
+
+    # Il privato (natura di default del builder), con gli indirizzi che la
+    # sua natura pretende; la finestra differita la richiude il builder.
+    @staticmethod
+    def _soggetto_pf(cognome: str) -> str:
+        with connection.cursor() as cur:
+            cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pf(%s)", [cognome])
+            return str(cur.fetchone()[0])
 
     @staticmethod
     def _soggetto_pg(nome: str) -> str:
@@ -238,4 +254,60 @@ class RuoloPickerDbTests(_Mondo):
         from apps.core.db.lookup_repository import LookupRepository
 
         tipo_ruolo_id = self._id_inesistente("config.tipi_ruoli")
-        self.assertEqual([], LookupRepository().list_tipi_indirizzo_proponibili("tipo_ruolo", tipo_ruolo_id))
+        self.assertEqual(
+            [], LookupRepository().list_tipi_indirizzo_proponibili("tipo_ruolo", tipo_ruolo_id, None),
+        )
+
+    # Il confronto e' sul PREDICATO della natura, non sulla matrice di oggi:
+    # col soggetto, un tipo e' ammesso se lo ammette il ruolo (il picker senza
+    # soggetto) e lo ammette la natura del soggetto.
+    def test_col_soggetto_la_natura_spegne_i_tipi(self):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        soggetto_id = self._soggetto_pf("Picker privato e2e")
+        repo = LookupRepository()
+        senza = {r["codice_interno"]: r for r in repo.list_tipi_indirizzo_proponibili_tipo_ruolo("FO")}
+        con = {
+            r["codice_interno"]: r
+            for r in repo.list_tipi_indirizzo_proponibili_tipo_ruolo("FO", soggetto_id)
+        }
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT ti.codice_interno,
+                       anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                           s.tipo_soggetto_dettaglio_id, ti.id, script.fn_data_operativa())
+                  FROM config.tipi_indirizzi ti
+                 CROSS JOIN anagrafiche.soggetti s
+                 WHERE s.id = %s::uuid
+                """,
+                [soggetto_id],
+            )
+            dalla_natura = dict(cur.fetchall())
+
+        self.assertEqual(set(senza), set(con))
+        for codice, riga in con.items():
+            with self.subTest(tipo=codice):
+                self.assertEqual(senza[codice]["ammesso"] and dalla_natura[codice], riga["ammesso"])
+        spenti_dalla_natura = [c for c in con if senza[c]["ammesso"] and not dalla_natura[c]]
+        if not spenti_dalla_natura:
+            self.skipTest("La natura del privato ammette ogni tipo ammesso dal ruolo FO.")
+        for codice in spenti_dalla_natura:
+            with self.subTest(spento=codice):
+                self.assertEqual("E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO", con[codice]["motivo_codice"])
+
+    def test_col_soggetto_gli_obbligatori_sono_ammessi(self):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        righe = LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo(
+            "FO", self._soggetto_pf("Picker obbligatori e2e"),
+        )
+        self.assertTrue(righe)
+        self.assertTrue(all(r["ammesso"] for r in righe if r["obbligatorio"]))
+
+    def test_soggetto_inesistente(self):
+        from apps.core.db.lookup_repository import LookupRepository
+
+        self.assertEqual(
+            [], LookupRepository().list_tipi_indirizzo_proponibili_tipo_ruolo("FO", str(uuid.uuid4())),
+        )

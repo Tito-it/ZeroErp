@@ -5,7 +5,7 @@
 -- ------------------------------------------------------------
 -- Indice test (1..4):
 --  1) Tipo documento ORDINE_VENDITA presente in documenti.tipi_documento_output
---  2) Tipo documento ORDINE_VENDITA attivo
+--  2) Tipo documento ORDINE_VENDITA con la sua chiave di traduzione
 --  3) Sorgente ORDINE_VENDITA presente e attiva in config.sorgenti (riuso)
 --  4) Nessun duplicato di codice ORDINE_VENDITA su tipi_documento_output
 -- ------------------------------------------------------------
@@ -37,11 +37,13 @@ SELECT is(
   'Tipo documento ORDINE_VENDITA presente in tipi_documento_output'
 );
 
--- 2) Tipo documento attivo
-SELECT ok(
-  (SELECT attivo FROM documenti.tipi_documento_output
+-- 2) Tipo documento con la sua chiave di traduzione (un vocabolario non ha
+--    attivo: un tipo c'e' o non c'e')
+SELECT is(
+  (SELECT etichetta_key::text FROM documenti.tipi_documento_output
     WHERE codice = 'ORDINE_VENDITA'),
-  'Tipo documento ORDINE_VENDITA attivo'
+  'documenti.tipi_documento_output.ordine_vendita',
+  'Tipo documento ORDINE_VENDITA con la sua chiave di traduzione'
 );
 
 -- 3) Sorgente riusata (gia presente per push/canali) e attiva

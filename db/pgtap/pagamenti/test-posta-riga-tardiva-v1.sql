@@ -24,7 +24,7 @@
 -- 17) Caso 9: la GUC settata su un ALTRO id non apre la porta
 -- 18) Dopo la madre la porta e' richiusa: la GUC e' vuota
 -- 19) Una riga che non esiste: E_RIGA_CONTABILE_NON_TROVATA
--- 20) Cleanup
+-- 20) Cleanup — ⚠️ ritirato il 2026-11-18: niente pulizia, il ROLLBACK basta
 --
 -- Scopo:
 --  - collaudare D20-b: il «resto» di D3-a ha un futuro. Sotto una distinta
@@ -60,7 +60,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(20);
+SELECT plan(19);
 
 -- ============================================================
 -- Fixture
@@ -452,39 +452,13 @@ SELECT throws_like(
 );
 
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-
-DELETE FROM pagamenti.vendite_movimenti m
- WHERE m.fattura_id IN (SELECT id FROM tmp_fatture);
-
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-DELETE FROM pagamenti.vendite_contabili_righe cr
- WHERE cr.contabile_id IN (SELECT contabile_id FROM tmp_contabile
-                           UNION ALL SELECT contabile_id FROM tmp_contabile_ann
-                           UNION ALL SELECT contabile_id FROM tmp_contabile_val);
-
-DELETE FROM pagamenti.vendite_contabili
- WHERE id IN (SELECT contabile_id FROM tmp_contabile
-              UNION ALL SELECT contabile_id FROM tmp_contabile_ann
-              UNION ALL SELECT contabile_id FROM tmp_contabile_val);
-
-DELETE FROM vendite.fatture_scadenze
- WHERE id IN (SELECT id FROM tmp_rate);
-
-DELETE FROM vendite.fatture_log
- WHERE fattura_id IN (SELECT id FROM tmp_fatture);
-
-UPDATE vendite.fatture
-   SET storicizza = false
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-DELETE FROM vendite.fatture
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-SELECT ok(true, '20) Cleanup completato');
-
 SELECT * FROM finish();
 
 ROLLBACK;

@@ -12,6 +12,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { useLookup } from '../../core/composables/useLookup'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { collegaIndirizzoSoggettoForm } from '../composables/collegaIndirizzoSoggettoForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
@@ -44,6 +45,7 @@ const { warn } = useNotify()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 // ⛔ `useParameterDefaults(['DEFAULT_IVA_ID'])` rimosso il 2026-08-29 (I0/D7-bis
 //    del brief brief-be-fe-iva-risolutore-e-regime-cliente): il cliente non
 //    porta piu' un codice IVA, quindi non c'e' piu' nessun default da
@@ -122,6 +124,10 @@ const detail = ref(null) // dati extra solo per visualizzazione
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
+// Il picker degli indirizzi del ruolo si rilegge quando il soggetto e' scelto:
+// la sua natura decide ammessi e obbligatori. ⚠️ Dopo `soggettoSelezionato`:
+// `watch` valuta il getter subito (TDZ).
+indirizzo.seguiSoggettoDelRuolo(TIPO_RUOLO.CLIENTE, () => soggettoSelezionato.value?.id)
 
 // Modifiche non salvate (BB useDrawerFormPreserve): il form, il soggetto
 // scelto in creazione, e contatto e indirizzo inline (il Salva della creazione
@@ -263,7 +269,8 @@ watch(() => props.visible, async (val) => {
     if (utilityDefaultId.value) {
       form.value.utility_id = utilityDefaultId.value
     }
-    indirizzo.loadMatriceRuolo(TIPO_RUOLO.CLIENTE)
+    // La matrice degli indirizzi del ruolo CL si legge alla scelta del
+    // soggetto (`seguiSoggettoDelRuolo`): prima la sezione non c'e'.
   }
   // Fotografia dopo il popolamento completo (dettaglio o default + utility di default).
   fissa()
@@ -555,20 +562,8 @@ const eventoStatoDetail = computed(() => {
             <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
           </div>
           <IndirizzoSoggettoForm
+            v-bind="legameIndirizzo"
             :campi-errati="campiErrati"
-            :form="indirizzo.form"
-            :is-libera="indirizzo.isLibera.value"
-            @update:is-libera="v => indirizzo.isLibera.value = v"
-            :tipi-stato="indirizzo.tipiStato.value"
-            :stati-lookup="indirizzo.statiLookup"
-            :cap-options="indirizzo.capOptions.value"
-            :loading-cap="indirizzo.loadingCap.value"
-            :auto-clone="indirizzo.autoClone.value"
-            @update:auto-clone="v => indirizzo.autoClone.value = v"
-            @switch-tipo="indirizzo.switchTipo"
-            :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-            :address-not-found="indirizzo.addressNotFound.value"
-            :disabled="false"
           />
         </template>
 

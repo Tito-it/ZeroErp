@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CAMBIA LA NATURA DEL SOGGETTO: I SUOI RUOLI HANNO ANCORA I LORO OBBLIGATORI?
+#   anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli() -> trigger
+#   trg_soggetti_a10_guard_obbligatori_ruoli_upd
+#     CONSTRAINT TRIGGER AFTER UPDATE ON anagrafiche.soggetti
+#     DEFERRABLE INITIALLY DEFERRED
+#     WHEN (la natura cambia)
+#   Brief: brief-db-fornitore-privato-indirizzi §9.5, giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Con la regola del 2026-11-17 («vale il ripiego», -29) il requisito del
+#   ruolo dipende dalla natura del soggetto: cambiando natura, un ruolo puo'
+#   dover avere un tipo che prima non doveva. Il caso che solo questo trigger
+#   vede: la riga obbligatoria chiede un tipo e un ripiego che la natura di
+#   prima vietava entrambi (il ruolo non doveva niente, e non ha niente), e
+#   la natura nuova ne ammette uno. Nessun indirizzo cambia, quindi il
+#   trigger degli indirizzi (-35) non scatta, e il ruolo non si riscrive,
+#   quindi non scatta il suo (-33). Il soggetto, invece, si: qui.
+#   Il cambio di natura ha gia' i suoi motivi (fn_check_cambio_natura_soggetto:
+#   gli indirizzi del soggetto e dei ruoli che la natura nuova vieta); questo
+#   guarda l'altro verso, l'obbligatorio che la natura nuova chiede.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Differito come i guard degli obbligatori: il cambio di natura e gli
+#   indirizzi che lo accompagnano stanno nella stessa transazione. Ogni ruolo
+#   del soggetto passa da anagrafiche.fn_guard_indirizzi_obbligatori_ruolo
+#   (-31), in ordine di id: il primo che manca parla. Il WHEN sta sul
+#   montaggio e vede la riga finale (un AFTER), quindi anche una natura
+#   scritta da un altro trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-37-create-trg-soggetti-guard-obbligatori-ruoli-mctit.yaml
+
+  - changeSet:
+      id: 20261116-37-create-trg-soggetti-guard-obbligatori-ruoli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Al cambio di natura del soggetto, i suoi ruoli si ricontrollano a fine transazione: il
+        requisito degli obbligatori del ruolo dipende dalla natura.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  FOR v_ruolo_id IN
+                      SELECT sr.id
+                        FROM anagrafiche.soggetti_ruoli sr
+                       WHERE sr.soggetto_id = NEW.id
+                       ORDER BY sr.id
+                  LOOP
+                      PERFORM anagrafiche.fn_guard_indirizzi_obbligatori_ruolo(v_ruolo_id, NEW.tx_id);
+                  END LOOP;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli()
+              IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti, AFTER UPDATE quando cambia la natura (tipo_soggetto_dettaglio_id): ogni ruolo del soggetto deve avere, a fine transazione, gli indirizzi obbligatori che il requisito chiede sulla natura nuova. Il requisito del ruolo dipende dalla natura (anagrafiche.fn_indirizzi_obbligatori_ruolo); il controllo e'' anagrafiche.fn_guard_indirizzi_obbligatori_ruolo, ruolo per ruolo in ordine di id (E_INDIRIZZO_OBBLIGATORIO_MANCANTE al primo mancante). Gli indirizzi che la natura nuova vieta li ferma prima anagrafiche.fn_check_cambio_natura_soggetto.';
+
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_obbligatori_ruoli_upd
+                  ON anagrafiche.soggetti;
+              CREATE CONSTRAINT TRIGGER trg_soggetti_a10_guard_obbligatori_ruoli_upd
+                  AFTER UPDATE ON anagrafiche.soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  WHEN (OLD.tipo_soggetto_dettaglio_id IS DISTINCT FROM NEW.tipo_soggetto_dettaglio_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli();
+
+              COMMENT ON TRIGGER trg_soggetti_a10_guard_obbligatori_ruoli_upd ON anagrafiche.soggetti IS
+                'Al commit, dopo un cambio di natura, ogni ruolo del soggetto ha gli indirizzi obbligatori che la natura nuova chiede. Differito: il cambio di natura e gli indirizzi che lo accompagnano stanno nella stessa transazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_obbligatori_ruoli_upd
+                  ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_obbligatori_ruoli();

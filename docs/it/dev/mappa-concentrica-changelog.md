@@ -194,7 +194,7 @@ decisioni del 14-11; i giri 1-5 aspettano il via. Su **PrimeVue** Tid decide il 
 sulla 4.5.5 e si predispone l'uscita, con OpenVue (fork MIT) come strada preferita e Vuetify di
 riserva; nasce il presidio `guard:classi-interne`. Vedi
 [brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md),
-[brief-db-revisione-documenti.md](work-in-progress/brief-db-revisione-documenti.md),
+[brief-db-revisione-documenti.md](work-done/brief-db-revisione-documenti.md),
 [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
 
 **Trasversale — La catena di verifica: il registro della CI da 358 a 22.** Il 1° novembre il

@@ -4,12 +4,11 @@
 --
 -- Test: il patto fra una versione di template e la forma dei dati che legge.
 -- Oggetti:
---   documenti.template_documenti_versioni.versione_contesto      (20260930-14/-16)
---   documenti.fn_guard_versione_contesto                          (20260930-18)
---   documenti.trgfn_documenti_generati_guard_versione_contesto    (20260930-19)
---   trg_documenti_generati_a10_guard_versione_contesto_ins        (20260930-20)
--- La pubblicazione (20260930-21) e l'immutabilita' da PUBBLICATA (20260930-17)
--- hanno i loro test: test-fn-pubblica-template-documento-versione-v1 (8-11) e
+--   documenti.template_documenti_versioni.versione_contesto
+--   documenti.fn_guard_versione_contesto
+--   documenti.trgfn_documenti_generati_guard_versione_contesto
+--   trg_documenti_generati_a10_guard_versione_contesto_ins
+-- La pubblicazione e l'immutabilita' fuori bozza hanno i loro test: test-fn-pubblica-template-documento-versione-v1 (8-11) e
 -- test-documenti-template-versioni (10-11).
 -- Brief: brief-db-documenti-versione-contesto-template.md
 --
@@ -84,7 +83,8 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- ⚠️ In un'istruzione separata dal padre (guida pgTAP, «Padre e figlio»).
--- V1 legge la forma 1, V2 la forma 2. BOZZA: il patto non guarda lo stato.
+-- V1 legge la forma 1, V2 la forma 2. Nascono in BOZZA: il patto della forma non
+-- guarda lo stato. La V1 si pubblica prima delle stampe (9-13).
 CREATE TEMP TABLE tmp_dvc_v AS
 WITH ins AS (
     INSERT INTO documenti.template_documenti_versioni (
@@ -153,6 +153,12 @@ SELECT throws_like(
 -- ============================================================
 -- 9-13) Il trigger sulle stampe
 -- ============================================================
+-- ⚠️ Una stampa nasce dalla versione con cui il modello stampa oggi (coerenza
+--   alla nascita, 20261116-07): la V1 esce di bozza dal verbo, in vigore dal
+--   2026-01-01. Una bozza non stampa piu'.
+SELECT documenti.fn_pubblica_template_documento_versione(
+    (SELECT id FROM tmp_dvc_v WHERE versione = 1), DATE '2026-01-01', 1, NULL);
+
 -- Una stampa della V1 (forma 1). Il contesto e' l'unica cosa che varia fra i
 -- casi: la funzione di comodo lo riceve e compone il resto della riga.
 CREATE TEMP TABLE tmp_dvc_seq (n integer);
@@ -164,22 +170,27 @@ DECLARE
     v_n integer;
 BEGIN
     UPDATE tmp_dvc_seq SET n = n + 1 RETURNING n INTO v_n;
-    INSERT INTO documenti.documenti_generati (
-        tipo_documento_output_id, template_documento_id, template_versione_id,
-        sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
-        titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
-        emittente_fiscale_id
-    )
-    SELECT coalesce(p_tipo_output_id, c.tipo_output_id),
-           (SELECT id FROM tmp_dvc_template),
-           (SELECT id FROM tmp_dvc_v WHERE versione = 1),
-           c.sorgente_id,
-           (SELECT preventivo_uid FROM _dg_src), NULL, v_n,
-           'Stampa pgTAP ' || v_n, 'pgtap-dvc-' || v_n || '.pdf',
-           p_contesto,
-           repeat('1', 64), repeat('2', 64), repeat('3', 64),
-           c.emittente_id
-      FROM tmp_dvc_ctx c;
+    -- ⚠️ La stampa nasce col suo PDF principale (dbops.fn_pgtap_stampa_con_pdf):
+    --   senza, non si registra (guard differito, che IMMEDIATE fa scattare a fine
+    --   istruzione).
+    PERFORM dbops.fn_pgtap_stampa_con_pdf(format($i$
+        INSERT INTO documenti.documenti_generati (
+            tipo_documento_output_id, template_documento_id, template_versione_id,
+            sorgente_tipo_id, sorgente_uid, sorgente_riga, progressivo_sorgente,
+            titolo, nome_file, context_json, context_hash, template_hash, pdf_hash,
+            emittente_fiscale_id
+        )
+        SELECT coalesce(%s::bigint, c.tipo_output_id),
+               (SELECT id FROM tmp_dvc_template),
+               (SELECT id FROM tmp_dvc_v WHERE versione = 1),
+               c.sorgente_id,
+               (SELECT preventivo_uid FROM _dg_src), NULL, %s,
+               'Stampa pgTAP ' || %s, 'pgtap-dvc-' || %s || '.pdf',
+               %L::jsonb,
+               repeat('1', 64), repeat('2', 64), repeat('3', 64),
+               c.emittente_id
+          FROM tmp_dvc_ctx c$i$,
+        coalesce(p_tipo_output_id::text, 'NULL'), v_n, v_n, v_n, p_contesto::text));
 END
 $f$;
 
@@ -208,7 +219,8 @@ SELECT throws_like(
 
 SELECT throws_like(
     $q$SELECT pg_temp.fn_dvc_stampa('{"tot": 1}'::jsonb, 999999999)$q$,
-    '%Incoerenza referenziale%',
+    -- La frase della coerenza copre anche la stampabilita' (20261116-07).
+    '%La stampa non si registra: il modello o la versione indicati non vanno bene%',
     '13) tipo output incoerente E contesto senza forma: parla la coerenza, che viene prima'
 );
 

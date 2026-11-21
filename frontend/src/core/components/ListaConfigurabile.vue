@@ -90,8 +90,7 @@ import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
-import Button from 'primevue/button'
-import { MANAGE_ICONS } from '../constants'
+import BannerPreset from './BannerPreset.vue'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
 import { drawerAperti } from '../composables/useDrawerInCima'
@@ -244,12 +243,15 @@ const {
   loading: configLoading,
   colonneNuove,
   presetAggiornato,
+  presetAggiornatoChiavi,
+  presetBaseCambiato,
   load,
   ensureCatalogo,
   applyChange,
   save,
   reset,
   ignorePresetUpdate,
+  riallineaPresetBase,
 } = useListaConfig(props.codice, {
   emittenteEsplicito: () => props.emittenteEsplicito,
 })
@@ -740,17 +742,34 @@ async function openModal() {
 // DEF-2: CTA "Vedi novita'" del banner preset aggiornato → apre la
 // modale di personalizzazione. Niente reset del flag qui: il riallineo
 // avviene naturalmente al successivo save (lo snapshot si aggiorna a
-// `preset.contenuto_aggiornato_il` corrente in `ListaPreferenzaService.upsert`:
-// la data del CONTENUTO del preset, non l'audit `data_update`).
+// `preset.contenuto_aggiornato_il` corrente: lo scrive il trigger del DB
+// `ui.trgfn_preferenza_preset_base_snapshot` a ogni salvataggio — la data del
+// CONTENUTO del preset, non l'audit `data_update`).
 async function onSeePresetUpdate() {
   await openModal()
 }
 
-// DEF-2: CTA "Ignora" del banner preset aggiornato → POST tombstone +
-// reload config (composable). Toast/error handling via useApiHandler.
+// DEF-2: CTA "Ignora" del banner preset aggiornato → POST (il BE riallinea lo
+// snapshot del preset di base) + reload config (composable). Toast/error
+// handling via useApiHandler.
 async function onIgnorePresetUpdate() {
   await ignorePresetUpdate()
 }
+
+// BE7: CTA "Riallinea" del banner della base cambiata → risalva la
+// preferenza: il BE ci scrive la base di oggi (composable).
+async function onRiallineaPresetBase() {
+  if ((await riallineaPresetBase()) !== null) emettiConfigRiletta()
+}
+
+// I testi dei due banner del preset (BB `BannerPreset`), della LISTA.
+const testiBannerPreset = computed(() => ({
+  aggiornato: t('lista_config.preset_aggiornato_messaggio'),
+  vediNovita: t('lista_config.preset_aggiornato_vedi_novita'),
+  ignora: t('lista_config.preset_aggiornato_ignora'),
+  baseCambiato: t('lista_config.preset_base_cambiato_messaggio'),
+  riallinea: t('lista_config.preset_base_cambiato_riallinea'),
+}))
 
 // Modale -> apply: aggiorna config locale e salva sul server.
 async function onApply(payload) {
@@ -800,11 +819,13 @@ defineExpose({
   dirty,
   colonneNuove,
   presetAggiornato,
+  presetBaseCambiato,
   save,
   reset,
   applyChange,
   openModal,
   ignorePresetUpdate,
+  riallineaPresetBase,
   // Espansione righe, per l'azione standard «Espandi tutte» di useListaAzioni.
   haEspansione,
   haRighe,
@@ -824,41 +845,19 @@ defineExpose({
          renderizzabili nel suffix della PageActionsBar del caller — su
          touch finiscono nel kebab insieme alle altre azioni. -->
 
-    <!-- DEF-2: banner "preset aggiornato". Visibile solo quando il BE
-         segnala che l'admin ha modificato il preset di base dopo lo
-         snapshot della preferenza utente (e l'utente non ha ancora
-         dismissato). PrimeVue Message severity=info non chiudibile: la
-         dismissione esplicita avviene via CTA "Ignora" (tombstone). -->
-    <Message
-      v-if="presetAggiornato"
-      severity="info"
-      :closable="false"
-      class="lista-preset-aggiornato"
-    >
-      <div class="lista-preset-aggiornato__row">
-        <span class="lista-preset-aggiornato__msg">
-          {{ t('lista_config.preset_aggiornato_messaggio') }}
-        </span>
-        <div class="lista-preset-aggiornato__actions">
-          <Button
-            severity="info"
-            size="small"
-            :label="t('lista_config.preset_aggiornato_vedi_novita')"
-            :icon="MANAGE_ICONS.NOVITA"
-            :disabled="configLoading"
-            @click="onSeePresetUpdate"
-          />
-          <Button
-            severity="secondary"
-            text
-            size="small"
-            :label="t('lista_config.preset_aggiornato_ignora')"
-            :disabled="configLoading"
-            @click="onIgnorePresetUpdate"
-          />
-        </div>
-      </div>
-    </Message>
+    <!-- I due banner del preset di base (BB `BannerPreset`): «preset
+         aggiornato» (DEF-2, «Ignora», con le parti cambiate) e «base cambiata» (BE7 di
+         brief-db-revisione-ui, «Riallinea»). Li decide il DB. -->
+    <BannerPreset
+      :aggiornato="presetAggiornato"
+      :chiavi="presetAggiornatoChiavi"
+      :base-cambiato="presetBaseCambiato"
+      :disabled="configLoading"
+      :testi="testiBannerPreset"
+      @vedi-novita="onSeePresetUpdate"
+      @ignora="onIgnorePresetUpdate"
+      @riallinea="onRiallineaPresetBase"
+    />
 
     <!-- Cancello di perimetro emittente (P-2b): la lista non sa dire da quale
          emittente arriva ogni riga, e chi la sta aprendo ne ha piu' di uno
@@ -1080,28 +1079,6 @@ defineExpose({
   flex-direction: column;
   height: 100%;
   min-height: 0;
-}
-
-.lista-preset-aggiornato {
-  margin-bottom: 0.5rem;
-}
-
-.lista-preset-aggiornato__row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.lista-preset-aggiornato__msg {
-  flex: 1 1 auto;
-  min-width: 12rem;
-}
-
-.lista-preset-aggiornato__actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
 /* Dettaglio inline del caller: NON entra nella larghezza della tabella madre.

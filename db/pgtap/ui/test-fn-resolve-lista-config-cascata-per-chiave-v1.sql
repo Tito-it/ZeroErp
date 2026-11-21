@@ -25,18 +25,22 @@
 --    8) senza preferenza: tutto dal preset, misura = standard
 --    9) preset senza misura: standard = default PAGINA, origine catalogo
 --   10) lista senza preset: colonne, ordinamento, filtri e misura dal catalogo
---   La data del contenuto del preset
---   11) riscrivere la riga del preset uguale: contenuto_aggiornato_il non si sposta
---   12) cambiare ordinamento_default: contenuto_aggiornato_il = now()
---   13) riscrivere una colonna del preset uguale: contenuto_aggiornato_il non si sposta
---   14) cambiare una colonna del preset: contenuto_aggiornato_il = now()
---   15) aggiungere una colonna al preset: contenuto_aggiornato_il = now()
---   16) togliere una colonna dal preset: contenuto_aggiornato_il = now()
---   Il flag
+--   La data del contenuto del preset, per chiave (giro 1b di brief-db-revisione-ui)
+--   11) riscrivere la riga del preset uguale: nessuna chiave si sposta
+--   12) cambiare ordinamento_default: si sposta la sola chiave ordinamento
+--   13) riscrivere una colonna del preset uguale: nessuna chiave si sposta
+--   14) cambiare una colonna del preset: si sposta la sola chiave colonne
+--   15) aggiungere una colonna al preset: si sposta la chiave colonne
+--   16) togliere una colonna dal preset: si sposta la chiave colonne
+--   Il banner per chiave
 --   17) snapshot allineato: preset_aggiornato = false
---   18) il preset cambia davvero: contenuto_aggiornato_il spostato e flag acceso
+--   18) ⭐ U6: preferenza di sole colonne, cambia la misura del preset: banner spento
 --   I trigger
 --   19) i due trigger delle liste ci sono, sulle due funzioni condivise
+--   20) cambia la composizione: banner acceso, preset_aggiornato_chiavi = colonne
+--   La composizione a fine transazione
+--   21) ⭐ DELETE + INSERT delle stesse righe (vincoli differiti): niente si sposta
+--   22) DELETE + INSERT con un ordine cambiato: si sposta colonne
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -48,7 +52,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- preset e preferenze). Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(19);
+SELECT plan(22);
 
 -- ============================================================
 -- Fixture
@@ -97,10 +101,10 @@ SELECT id AS colonna_id, lista_id, codice FROM ins;
 -- Il preset di sistema: due colonne su tre, ordinamento, filtri, misura PRESET.
 CREATE TEMP TABLE _p AS
 WITH ins AS (
-  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito,
                                pagina_dimensione, ordinamento_default, filtri_default,
                                attivo, user_insert)
-  SELECT l.lista_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', TRUE,
+  SELECT l.lista_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema',
          (SELECT preset FROM _m),
          '[{"col": "c_uno", "dir": "desc"}]'::jsonb, '{"c_due": "x"}'::jsonb,
          TRUE, '_pgtap'
@@ -240,100 +244,94 @@ SELECT is(
     '10) lista senza preset: tutte e quattro le chiavi dal catalogo');
 
 -- ============================================================
--- 11-16 La data del contenuto del preset
+-- 11-16 La data del contenuto del preset, per chiave
 -- ============================================================
--- Data fissa nel passato: ogni spostamento la porta a now().
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
+-- La data la scrive solo il DB, all'ora del cambio (clock_timestamp): si salva
+-- la mappa e si guardano le chiavi che si spostano.
+CREATE FUNCTION pg_temp.chiavi_spostate(p_prima jsonb, p_dopo jsonb) RETURNS text
+LANGUAGE sql AS $f$
+  SELECT COALESCE(string_agg(d.key, ',' ORDER BY d.key), '')
+    FROM jsonb_each_text(p_dopo) AS d
+   WHERE d.value::timestamptz > (p_prima ->> d.key)::timestamptz
+$f$;
+CREATE TEMP TABLE _mappa (mappa jsonb);
+CREATE FUNCTION pg_temp.salva() RETURNS void LANGUAGE sql AS $f$
+  DELETE FROM _mappa;
+  INSERT INTO _mappa SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p);
+$f$;
+CREATE FUNCTION pg_temp.spostate() RETURNS text LANGUAGE sql AS $f$
+  SELECT pg_temp.chiavi_spostate((SELECT mappa FROM _mappa),
+         (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)))
+$f$;
 
+SELECT pg_temp.salva();
 UPDATE ui.lista_preset
    SET ordinamento_default = ordinamento_default, filtri_default = filtri_default,
        pagina_dimensione = pagina_dimensione, descrizione = descrizione
  WHERE id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '11) riscrivere la riga del preset uguale (come fa il seed): contenuto_aggiornato_il non si sposta');
+SELECT is(pg_temp.spostate(), '',
+    '11) riscrivere la riga del preset uguale (come fa il seed): nessuna chiave si sposta');
 
 UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "c_due", "dir": "asc"}]'::jsonb
  WHERE id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '12) cambiare ordinamento_default: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'ordinamento',
+    '12) cambiare ordinamento_default: si sposta la sola chiave ordinamento');
 
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
+SELECT pg_temp.salva();
 UPDATE ui.lista_preset_colonna SET ordine = ordine, visibile = visibile
  WHERE preset_id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '13) riscrivere le colonne del preset uguali: contenuto_aggiornato_il non si sposta');
+SELECT is(pg_temp.spostate(), '',
+    '13) riscrivere le colonne del preset uguali: nessuna chiave si sposta');
 
 UPDATE ui.lista_preset_colonna SET visibile = FALSE
  WHERE preset_id = (SELECT preset_id FROM _p)
    AND colonna_id = (SELECT colonna_id FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_due');
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '14) cambiare una colonna del preset: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'colonne',
+    '14) cambiare una colonna del preset: si sposta la sola chiave colonne');
 
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
+SELECT pg_temp.salva();
 INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fissata)
 SELECT (SELECT preset_id FROM _p), colonna_id, 3, TRUE, FALSE
   FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_tre';
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '15) aggiungere una colonna al preset: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'colonne',
+    '15) aggiungere una colonna al preset: si sposta la chiave colonne');
 
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
+SELECT pg_temp.salva();
 DELETE FROM ui.lista_preset_colonna
  WHERE preset_id = (SELECT preset_id FROM _p)
    AND colonna_id = (SELECT colonna_id FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_tre');
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '16) togliere una colonna dal preset: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'colonne',
+    '16) togliere una colonna dal preset: si sposta la chiave colonne');
 
 -- ============================================================
--- 17-18 Il flag
+-- 17-18, 20 Il banner per chiave
 -- ============================================================
-UPDATE ui.lista_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
-INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, preset_base_id, preset_base_contenuto_aggiornato_il, configurazione)
+-- Lo snapshot lo scrive il DB (ui.trgfn_preferenza_preset_base_snapshot): la
+-- mappa del preset di base di questo momento. Qui non si passa.
+INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, preset_base_id, configurazione)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT lista_id FROM _l), (SELECT preset_id FROM _p),
-        TIMESTAMPTZ '2026-01-01 10:00:00+00', jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne)))
+        jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne)))
 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
    SET preset_base_id = EXCLUDED.preset_base_id,
        configurazione = EXCLUDED.configurazione;
--- Lo snapshot dopo: il trigger z90 lo azzera se preset_base_id cambia.
-UPDATE ui.lista_preferenza_utente SET preset_base_contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND lista_id = (SELECT lista_id FROM _l);
 
 SELECT is((pg_temp.risolta() ->> 'preset_aggiornato')::boolean, FALSE,
     '17) snapshot allineato al preset: preset_aggiornato = false');
 
+SELECT pg_temp.salva();
 UPDATE ui.lista_preset SET pagina_dimensione = (SELECT pag FROM _m) WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
-    (SELECT format('%s|%s', (SELECT contenuto_aggiornato_il = now() FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p))::text,
-                   pg_temp.risolta() ->> 'preset_aggiornato')),
-    'true|true',
-    '18) il preset cambia davvero (la misura): contenuto_aggiornato_il spostato e flag acceso');
+    format('%s|%s|%s', pg_temp.spostate(), pg_temp.risolta() ->> 'preset_aggiornato',
+           pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
+    'pagina_dimensione|false|[]',
+    '18) ⭐ U6: preferenza di sole colonne, cambia la misura del preset (che la preferenza segue gia''): la chiave si sposta, il banner resta spento');
 
 -- ============================================================
 -- 19 I trigger
@@ -349,6 +347,43 @@ SELECT is(
         AND p.proname IN ('trgfn_preset_contenuto_aggiornato', 'trgfn_preset_riga_tocca_preset')),
     'ui.lista_preset:trgfn_preset_contenuto_aggiornato,ui.lista_preset_colonna:trgfn_preset_riga_tocca_preset',
     '19) i due trigger delle liste ci sono, sulle due funzioni condivise');
+
+-- ============================================================
+-- 20 Il banner sulla chiave della preferenza
+-- ============================================================
+UPDATE ui.lista_preset_colonna SET larghezza = 222
+ WHERE preset_id = (SELECT preset_id FROM _p)
+   AND colonna_id = (SELECT colonna_id FROM _c WHERE lista_id = (SELECT lista_id FROM _l) AND codice = 'c_uno');
+
+SELECT is(
+    format('%s|%s', pg_temp.risolta() ->> 'preset_aggiornato', pg_temp.risolta() -> 'preset_aggiornato_chiavi'),
+    'true|["colonne"]',
+    '20) cambia la composizione, che la preferenza imposta: banner acceso, sulla chiave colonne');
+
+-- ============================================================
+-- 21-22 La composizione si giudica a fine transazione (vincoli differiti)
+-- ============================================================
+-- Il trigger della composizione e' un constraint trigger differito: il file
+-- gira IMMEDIATE, qui si differisce e lo si fa scattare con IMMEDIATE.
+CREATE TEMP TABLE _righe AS
+SELECT * FROM ui.lista_preset_colonna WHERE preset_id = (SELECT preset_id FROM _p);
+
+SELECT pg_temp.salva();
+SET CONSTRAINTS ALL DEFERRED;
+DELETE FROM ui.lista_preset_colonna WHERE preset_id = (SELECT preset_id FROM _p);
+INSERT INTO ui.lista_preset_colonna SELECT * FROM _righe;
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT is(pg_temp.spostate(), '',
+    '21) ⭐ DELETE + INSERT delle stesse righe, in due istruzioni: nessuna chiave si sposta');
+
+SET CONSTRAINTS ALL DEFERRED;
+DELETE FROM ui.lista_preset_colonna WHERE preset_id = (SELECT preset_id FROM _p);
+INSERT INTO ui.lista_preset_colonna SELECT preset_id, colonna_id, ordine + 1, larghezza, visibile, fissata FROM _righe;
+SET CONSTRAINTS ALL IMMEDIATE;
+
+SELECT is(pg_temp.spostate(), 'colonne',
+    '22) DELETE + INSERT con un ordine cambiato: si sposta la chiave colonne');
 
 SELECT * FROM finish();
 ROLLBACK;

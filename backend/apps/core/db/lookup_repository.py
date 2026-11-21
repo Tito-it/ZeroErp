@@ -142,7 +142,7 @@ class LookupRepository:
         "soggetto": "anagrafiche.fn_tipi_indirizzo_proponibili_soggetto(%s::uuid)",
         "natura": "anagrafiche.fn_tipi_indirizzo_proponibili_natura(%s::bigint)",
         "ruolo": "anagrafiche.fn_tipi_indirizzo_proponibili_ruolo(%s::bigint, %s::bigint)",
-        "tipo_ruolo": "anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s::integer)",
+        "tipo_ruolo": "anagrafiche.fn_tipi_indirizzo_proponibili_tipo_ruolo(%s::integer, %s::uuid)",
     }
 
     def list_tipi_indirizzo_proponibili(
@@ -175,8 +175,12 @@ class LookupRepository:
     #        CODICE del tipo di ruolo (la rotta lo porta per codice). Un codice
     #        sconosciuto e' un elenco vuoto, come prima: passare NULL alla
     #        funzione vorrebbe dire «nessuna matrice, tutti ammessi».
+    #        `soggetto_id` e' il soggetto a cui il ruolo si assegna: `None`
+    #        finche' non e' scelto (la natura non conta); con il soggetto,
+    #        la natura toglie i tipi che non ammette. Un soggetto che non
+    #        esiste e' un elenco vuoto (la funzione non da' righe).
     def list_tipi_indirizzo_proponibili_tipo_ruolo(
-        self, tipo_ruolo_codice: str,
+        self, tipo_ruolo_codice: str, soggetto_id: str | None = None,
     ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -186,7 +190,7 @@ class LookupRepository:
             row = cursor.fetchone()
         if row is None:
             return []
-        return self.list_tipi_indirizzo_proponibili("tipo_ruolo", row[0])
+        return self.list_tipi_indirizzo_proponibili("tipo_ruolo", row[0], soggetto_id)
 
     # Scopo: Matrice utility ammesse per un tipo ruolo + override specifici di
     #        un'entita' figlia (es. emittente fiscale, fornitore, cliente). LEFT JOIN

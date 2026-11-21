@@ -40,6 +40,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
+| trg_lista_definizione_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'codice,descrizione,schema_dati,vista_sql,multi_emittente,perimetro_emittente', 'note,attivo,ricerca_min_caratteri')` |
 | trg_lista_definizione_a10_lista_colonna_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_colonna', 'lista_id', 'id', 'attivo')` |
 | trg_lista_definizione_a10_lista_preset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'lista_preset', 'lista_id', 'id', 'attivo')` |
 | trg_lista_definizione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

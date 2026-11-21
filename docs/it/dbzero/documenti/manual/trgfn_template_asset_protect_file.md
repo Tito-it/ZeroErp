@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `documenti.trgfn_template_asset_protect_file`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,7 +10,7 @@
 >
 > Approfondimento funzioni:
 >
-> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — un asset non si cancella
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
 >
 > Guide:
@@ -36,8 +36,10 @@ asset nuovo.
 
 La regola vale da subito, anche per un asset che nessun template ha ancora usato.
 
-Restano liberi descrizione, codice, meta, attivo e le date: spegnere l'asset o chiuderne la validità
-è il modo di ritirarlo. Il codice interno non cambia per un'altra ragione (il lock di colonna).
+Restano liberi descrizione, codice, il tipo (se ammette il formato del file), meta, attivo, le date
+e `storicizza`: spegnere l'asset o chiuderne la validità è il modo di ritirarlo. Il codice interno e
+l'azienda non cambiano per un'altra strada, il lucchetto di colonna (`E_CODICE_NON_MODIFICABILE`,
+`E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`).
 
 Il trigger scatta su ogni UPDATE e confronta le cinque colonne nel corpo: tutte e cinque sono
 obbligatorie, quindi il confronto non incontra valori vuoti.
@@ -53,8 +55,9 @@ obbligatorie, quindi il confronto non incontra valori vuoti.
 
 ### Test
 
-* `db/pgtap/documenti/test-documenti-template-asset.sql` — cambiare la chiave nello storage o
-  l'impronta è rifiutato; cambiare `meta` passa.
+* `db/pgtap/documenti/test-documenti-template-asset.sql` — ognuna delle cinque colonne del file è
+  ferma, anche su un asset spento; codice interno e azienda li ferma il lucchetto; codice,
+  descrizione, date, attivo, `meta` e `storicizza` sono liberi.
 
 ---
 
@@ -63,6 +66,8 @@ obbligatorie, quindi il confronto non incontra valori vuoti.
 * 2026-05-01 — nasce il guard.
 * 2026-08-05 — il guard solleva il suo codice: fino ad allora chiamava la registrazione dell'errore
   con una firma che non esisteva, e moriva con un errore tecnico.
+* 2026-11-17 — il commento del corpo e il COMMENT nominano fra i campi fermi anche l'azienda, che da
+  quel giorno blocca il lucchetto di colonna, e `storicizza` fra quelli liberi.
 
 ---
 

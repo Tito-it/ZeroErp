@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'OBBLIGATORIO MANCANTE DEL SOGGETTO HA UN CODICE SUO, E NOMINA LA NATURA
+#   anagrafiche.trgfn_soggetti_guard_indirizzi_required() -> trigger
+#   (constraint trigger DEFERRABLE INITIALLY DEFERRED su
+#    anagrafiche.soggetti, AFTER INSERT OR UPDATE)
+#   Brief: brief-db-fornitore-privato-indirizzi §4.3, §8.2 (6), giro 3.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il guard sollevava E_INDIRIZZO_OBBLIGATORIO_MANCANTE, lo stesso codice
+#   del guard del ruolo, con una frase scritta per nessuno dei due: «per
+#   soggetto <id> per tipo soggetto dettaglio <id>, fallback id <tipo
+#   richiesto>». La regola e' un'altra (la matrice della natura,
+#   config.tipi_soggetto_dettaglio_tipi_indirizzo) e chi rimedia corregge
+#   un'altra configurazione: e' la ragione per cui il tipo non ammesso ha
+#   gia' due codici per layer (E_TIPO_INDIRIZZO_NON_PERMESSO del ruolo,
+#   E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO del soggetto).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────
+#   Il codice: E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO (nuovo,
+#   DATO_ERRATO, codici_errore.csv), frase «Il tipo soggetto %s richiede
+#   l'indirizzo %s.» (messaggi_errore.csv). I valori: la natura per
+#   descrizione (codice_interno se la descrizione manca, come il guard del
+#   tipo non ammesso) e il tipo richiesto col suo ripiego
+#   (anagrafiche.fn_nomi_tipo_indirizzo_richiesto, -26). Gli id restano nel
+#   contesto.
+#   ⚠️ Ricaduta BE: il codice nuovo entra nelle policy rigenerate e nel
+#   ripiego dei messaggi (brief §11, R-5). Nessun call-site BE confronta il
+#   codice del layer soggetto (censito il 2026-11-17).
+#
+# ── CHE COSA NON CAMBIA ─────────────────────────────────────────
+#   La regola e il montaggio: nessun DDL sul trigger.
+#
+# ── DA DOVE VIENE IL CORPO ──────────────────────────────────────
+#   Doc auto-generata (rigenerata dopo 20261009-44, l'ultimo changeSet che
+#   l'ha riscritta). Attributi vivi: VOLATILE, INVOKER, proconfig vuoto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-28-update-trgfn-soggetti-guard-indirizzi-required-codice-proprio-mctit.yaml
+
+  - changeSet:
+      id: 20261116-28-update-trgfn-soggetti-guard-indirizzi-required-codice-proprio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        L'indirizzo obbligatorio mancante del soggetto ha un codice suo
+        (E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO) e si dice col nome della natura e
+        del tipo richiesto (col ripiego).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_has_matrix  boolean;
+                v_today       date := script.fn_data_operativa();
+                v_missing     record;
+                v_natura_nome config.tipi_soggetto_dettaglio.descrizione%TYPE;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- se non ho il tipo, non applico vincoli (fallback permissivo)
+                IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel tipo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                 WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi_soggetti i
+                      WHERE i.soggetto_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura_nome
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                  -- Codice PROPRIO di questo layer, distinto da quello del
+                  -- guard degli obbligatori del RUOLO, che legge un'altra
+                  -- matrice. Valori per descrizione, nell'ordine della
+                  -- frase: la natura, poi il tipo richiesto col suo
+                  -- ripiego. Gli id stanno nel contesto.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO',
+                    jsonb_build_object(
+                      'soggetto_id', NEW.id,
+                      'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    COALESCE(v_natura_nome, NEW.tipo_soggetto_dettaglio_id::text),
+                    COALESCE(anagrafiche.fn_nomi_tipo_indirizzo_richiesto(
+                                 v_missing.tipo_indirizzo_id,
+                                 v_missing.fallback_tipo_indirizzo_id),
+                             v_missing.tipo_indirizzo_id::text)
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+              IS 'Constraint trigger DEFERRABLE su anagrafiche.soggetti: il soggetto deve avere, fra i suoi indirizzi (anagrafiche.indirizzi_soggetti), ogni tipo che config.tipi_soggetto_dettaglio_tipi_indirizzo dichiara obbligatorio per la sua natura, attivo e valido il giorno di script.fn_data_operativa(), oppure il ripiego della riga (fallback_tipo_indirizzo_id). Natura NULL o senza nessuna riga di matrice: libero. Al primo obbligatorio mancante E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO, coi valori della frase nell''ordine natura e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. ⛔ Da NON confondere con anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required, il gemello del layer RUOLO, che legge la matrice del tipo di ruolo e solleva E_INDIRIZZO_OBBLIGATORIO_MANCANTE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Il corpo precedente e' in 20261009-44; si torna indietro con un changeSet nuovo.
+              SELECT 1;

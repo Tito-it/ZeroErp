@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_lock_columns: la porta zeroerp.allow_lock_columns_override passa
+#   da script.fn_porta_manutenzione_aperta (20261117-06).
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§15.5, §16.9)
+#
+# Che cosa cambia:
+#   - la porta si apre solo per la sessione del migratore: l'applicazione che
+#     accende la GUC trova il lucchetto chiuso;
+#   - la porta si chiede alla PRIMA colonna bloccata che cambia, non in testa:
+#     un UPDATE che non tocca colonne bloccate non lascia tracce nel diario;
+#   - il controllo degli argomenti a coppie gira sempre (prima la porta aperta
+#     lo saltava).
+# Corpo vivo letto da pg_get_functiondef su dbdev il 2026-11-18. Attributi vivi:
+#   INVOKER, VOLATILE, nessun SET, owner zeroerp_owner.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261117-07-update-trgfn-lock-columns-porta-manutenzione-mctit.yaml
+
+  - changeSet:
+      id: 20261117-07-update-trgfn-lock-columns-porta-manutenzione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_lock_columns: la porta di manutenzione passa da script.fn_porta_manutenzione_aperta,
+        alla prima colonna bloccata che cambia. Brief: brief-db-seed-primo-impianto-non-si-riscrive.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_lock_columns()')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.fn_porta_manutenzione_aperta(text,regclass,text,text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_lock_columns()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Tipi nudi DICHIARATI: contatori, nomi di colonna e codici letti
+                -- da TG_ARGV, valori di colonne qualunque resi a testo. Nessuna
+                -- colonna di cui siano il riflesso.
+                n_args  int := array_length(TG_ARGV, 1);
+                i       int;
+                col     text;
+                msgcode text;
+                oldval  text;
+                newval  text;
+              BEGIN
+                -- 1) Se il numero di argomenti non e pari, errore
+                IF n_args % 2 <> 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ARGOMENTI_A_COPPIE',
+                    jsonb_build_object('expected_pairs', n_args/2),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 2) Ciclo sulle coppie (colonna, codice messaggio)
+                FOR i IN 1..n_args BY 2 LOOP
+                  col     := TG_ARGV[i-1];
+                  msgcode := TG_ARGV[i];
+
+                  -- Leggo dinamicamente OLD.col e NEW.col
+                  EXECUTE format(
+                    'SELECT ($1).%I::text, ($2).%I::text',
+                    col, col
+                  ) USING OLD, NEW INTO oldval, newval;
+
+                  IF oldval IS DISTINCT FROM newval THEN
+                    -- La porta di manutenzione: si chiede qui, alla prima colonna
+                    -- bloccata che cambia, perche' il diario dica che cosa ha forzato.
+                    -- Per l'applicazione resta chiusa anche con la GUC accesa.
+                    IF script.fn_porta_manutenzione_aperta(
+                           'zeroerp.allow_lock_columns_override', TG_RELID, TG_OP,
+                           to_jsonb(OLD) ->> 'id') THEN
+                      RETURN NEW;
+                    END IF;
+
+                    -- 'campo': la colonna da evidenziare nel form, letta da
+                    -- script.fn_log_and_raise_error. 'column' resta per chi la legge.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      msgcode,
+                      jsonb_build_object(
+                        'campo',     col,
+                        'column',    col,
+                        'old_value', oldval,
+                        'new_value', newval
+                      ),
+                      NULL::uuid,
+                      col
+                    );
+                  END IF;
+                END LOOP;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_lock_columns() IS
+                  'Impedisce la modifica delle colonne protette. Argomenti a coppie (colonna, codice_messaggio): per ogni colonna cambiata solleva il suo codice, col nome della colonna come valore del messaggio e nel contesto campo (la colonna da evidenziare nel form), column, old_value, new_value. Argomenti dispari -> E_ARGOMENTI_A_COPPIE. I trigger li genera l''automazione LOCK_COLUMNS da dbops.automation_lock_columns; il form legge le colonne bloccate da dbops.vw_non_editable_fields. Porta di manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = ''on'', che apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta) e lascia una riga in dbops.porte_manutenzione_passaggi per ogni riga forzata; per l''applicazione il lucchetto resta chiuso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_lock_columns()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Tipi nudi DICHIARATI: contatori, nomi di colonna e codici letti
+                -- da TG_ARGV, valori di colonne qualunque resi a testo. Nessuna
+                -- colonna di cui siano il riflesso.
+                n_args  int := array_length(TG_ARGV, 1);
+                i       int;
+                col     text;
+                msgcode text;
+                oldval  text;
+                newval  text;
+              BEGIN
+                -- 0) GUC override per manutenzione
+                IF current_setting('zeroerp.allow_lock_columns_override', true) = 'on' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 1) Se il numero di argomenti non e pari, errore
+                IF n_args % 2 <> 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    TG_NAME,
+                    'E_ARGOMENTI_A_COPPIE',
+                    jsonb_build_object('expected_pairs', n_args/2),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+
+                -- 2) Ciclo sulle coppie (colonna, codice messaggio)
+                FOR i IN 1..n_args BY 2 LOOP
+                  col     := TG_ARGV[i-1];
+                  msgcode := TG_ARGV[i];
+
+                  -- Leggo dinamicamente OLD.col e NEW.col
+                  EXECUTE format(
+                    'SELECT ($1).%I::text, ($2).%I::text',
+                    col, col
+                  ) USING OLD, NEW INTO oldval, newval;
+
+                  IF oldval IS DISTINCT FROM newval THEN
+                    -- 'campo': la colonna da evidenziare nel form, letta da
+                    -- script.fn_log_and_raise_error. 'column' resta per chi la legge.
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      TG_NAME,
+                      msgcode,
+                      jsonb_build_object(
+                        'campo',     col,
+                        'column',    col,
+                        'old_value', oldval,
+                        'new_value', newval
+                      ),
+                      NULL::uuid,
+                      col
+                    );
+                  END IF;
+                END LOOP;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_lock_columns() IS
+                  'Impedisce la modifica delle colonne protette. Argomenti a coppie (colonna, codice_messaggio): per ogni colonna cambiata solleva il suo codice, col nome della colonna come valore del messaggio e nel contesto campo (la colonna da evidenziare nel form), column, old_value, new_value. Argomenti dispari -> E_ARGOMENTI_A_COPPIE. I trigger li genera l''automazione LOCK_COLUMNS da dbops.automation_lock_columns; il form legge le colonne bloccate da dbops.vw_non_editable_fields. Override per la manutenzione: SET LOCAL zeroerp.allow_lock_columns_override = ''on''.';

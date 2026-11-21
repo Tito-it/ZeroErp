@@ -5,6 +5,11 @@
 // `can_test`/`test_reason` (Fase 6). Mostra Tag con ultimo esito test
 // (last_test_outcome) quando disponibile. La password non viene
 // re-inviata in edit se vuota (preserva quella corrente).
+// ⭐ Su un account nato dal seed i campi in `campi_del_software` li stabilisce
+//    il programma: spenti col motivo sotto, e fuori dal PATCH. L'elenco arriva
+//    dal dettaglio (stessa sede del guard del DB); oggi sugli account e' vuoto,
+//    ma il form lo segue il giorno in cui la regola nomina una colonna
+//    (brief-db-seed-primo-impianto-non-si-riscrive §16.16, 2026-11-20).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { displayTimestamp } from '../../core/utils/date'
@@ -22,6 +27,9 @@ import { NAV_ICONS } from '../../core/navigation'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
+import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
+import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 import { testEmailAccount } from '../api/amministrazione'
 
 
@@ -66,6 +74,16 @@ const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { v
 const testLoading = ref(false)
 
 const isEdit = computed(() => props.mode === 'edit')
+
+// Scopo: il campo lo stabilisce il programma su questo account (riga di seed)?
+// ⚠️ La riga e' quella caricata da QUESTA apertura: in creazione e' `null`, o
+//    resterebbe l'elenco dell'ultimo account aperto (`store.currentAccount`).
+const dettaglio = ref(null)
+// ⚠️ L'elenco nomina le COLONNE: la password del form (`smtp_password`) e' la
+//    colonna `smtp_password_encrypted`, l'unico campo dove i due nomi divergono.
+const COLONNA_DEL_CAMPO = Object.freeze({ smtp_password: 'smtp_password_encrypted' })
+const delProgramma = (campo) => campoDelSoftware(dettaglio.value, COLONNA_DEL_CAMPO[campo] ?? campo)
+const spento = (campo) => isReadonly.value || delProgramma(campo)
 const canSave = computed(() => {
   if (isReadonly.value) return false
   const f = form.value
@@ -101,6 +119,7 @@ watch(() => props.visible, async (vis) => {
   if (isEdit.value && props.accountId) {
     await store.fetchDetail(props.accountId)
     const d = store.currentAccount || {}
+    dettaglio.value = store.currentAccount || null
     // Spread del default + override col detail. La password resta vuota
     // (placeholder visivo "********"); se l'utente non la cambia, handleSave
     // la rimuove dal payload per non sovrascrivere quella corrente lato BE.
@@ -119,6 +138,7 @@ watch(() => props.visible, async (vis) => {
       attivo: d.attivo ?? DEFAULT_FORM.attivo,
     }
   } else {
+    dettaglio.value = null
     form.value = { ...DEFAULT_FORM }
   }
   fissa()
@@ -126,7 +146,8 @@ watch(() => props.visible, async (vis) => {
 
 async function handleSave() {
   if (isReadonly.value) return
-  const payload = { ...form.value }
+  // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
+  const payload = senzaCampiFermi({ ...form.value }, delProgramma)
   // Non inviare password vuota in edit (non sovrascrivere)
   if (isEdit.value && !payload.smtp_password) {
     delete payload.smtp_password
@@ -188,71 +209,86 @@ async function handleTest() {
     @save="handleSave"
   >
     <div class="form-grid">
+      <div v-if="dettaglio?.nata_dal_seed === true" data-testid="account-di-sistema">
+        <Tag :value="t('amministrazione.email_account_di_sistema')" severity="secondary" />
+      </div>
+
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_codice') }}</label>
           <InputText v-model="form.codice" class="app-codice-input" :disabled="isEdit || isReadonly" fluid
             :invalid="campiErrati.includes('codice')"
           />
+          <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
+          <ToggleSwitch v-model="form.attivo" :disabled="spento('attivo')"
             :invalid="campiErrati.includes('attivo')"
           />
+          <MotivoDelProgramma campo="attivo" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
       <div class="form-field">
         <label>{{ t('amministrazione.email_descrizione') }}</label>
-        <InputText v-model="form.descrizione" :disabled="isReadonly" fluid
-          :invalid="campiErrati.includes('descrizione')"
+        <InputText v-model="form.descrizione" :disabled="spento('descrizione')" fluid
+          :invalid="campiErrati.includes('descrizione')" data-testid="account-descrizione"
         />
+        <MotivoDelProgramma campo="descrizione" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
       </div>
 
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_host') }}</label>
-          <InputText v-model="form.smtp_host" :disabled="isReadonly" fluid />
+          <InputText v-model="form.smtp_host" :disabled="spento('smtp_host')" fluid />
+          <MotivoDelProgramma campo="smtp_host" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_port') }}</label>
-          <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="isReadonly" fluid />
+          <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="spento('smtp_port')" fluid />
+          <MotivoDelProgramma campo="smtp_port" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_tls') }}</label>
-          <ToggleSwitch v-model="form.smtp_use_tls" :disabled="isReadonly" />
+          <ToggleSwitch v-model="form.smtp_use_tls" :disabled="spento('smtp_use_tls')" />
+          <MotivoDelProgramma campo="smtp_use_tls" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_ssl') }}</label>
-          <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="isReadonly" />
+          <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="spento('smtp_use_ssl')" />
+          <MotivoDelProgramma campo="smtp_use_ssl" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_username') }}</label>
-          <InputText v-model="form.smtp_username" :disabled="isReadonly" fluid />
+          <InputText v-model="form.smtp_username" :disabled="spento('smtp_username')" fluid />
+          <MotivoDelProgramma campo="smtp_username" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_smtp_password') }}</label>
           <Password v-model="form.smtp_password" :feedback="false" toggleMask fluid
-                   :disabled="isReadonly"
+                   :disabled="spento('smtp_password')"
                    :placeholder="isEdit ? t('amministrazione.email_smtp_password_placeholder') : ''" />
+          <MotivoDelProgramma campo="smtp_password" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('amministrazione.email_from') }}</label>
-          <InputText v-model="form.email_from" :disabled="isReadonly" fluid />
+          <InputText v-model="form.email_from" :disabled="spento('email_from')" fluid />
+          <MotivoDelProgramma campo="email_from" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
         <div class="form-field">
           <label>{{ t('amministrazione.email_reply_to') }}</label>
-          <InputText v-model="form.email_reply_to" :disabled="isReadonly" fluid />
+          <InputText v-model="form.email_reply_to" :disabled="spento('email_reply_to')" fluid />
+          <MotivoDelProgramma campo="email_reply_to" :fermo="delProgramma" :testo="t('amministrazione.email_campo_del_programma_account')" />
         </div>
       </div>
 

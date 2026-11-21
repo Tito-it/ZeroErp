@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `pagamenti.enti_incasso`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -90,6 +90,11 @@ quindi vale identico in lettura e in scrittura: `USING` e `WITH CHECK` dicono la
 rifiutare è il `NOT NULL`, col suo messaggio: altrimenti «hai dimenticato il conto» diventerebbe
 un errore di permesso (403 al posto di 400). Una policy non deve rispondere a una domanda che un
 vincolo risponde meglio.
+
+Il ramo si scrive `num_nulls(soggetto_ruolo_conto_bancario_id) = 1`, non `IS NULL`: la colonna è
+`NOT NULL`, e PostgreSQL ne approfitta per ridurre `IS NULL` a falso anche dentro la policy. Il
+ramo sparirebbe e la policy tornerebbe a coprire il vincolo. La regola generale è nelle linee
+guida SQL, §10.6-bis.
 
 ---
 

@@ -22,15 +22,18 @@
 --    3) preferenza di sola dimensione: i widget vengono dal preset
 --    4) ... la dimensione e' quella della preferenza, lo standard resta il preset
 --    5) senza preferenza, preset senza dimensione: 8, origine catalogo
---   La data del contenuto del preset
---    6) riscrivere la riga del preset uguale: contenuto_aggiornato_il non si sposta
---    7) cambiare dimensione_max: contenuto_aggiornato_il = now()
---    8) riscrivere i widget del preset uguali: contenuto_aggiornato_il non si sposta
---    9) cambiare un widget del preset: contenuto_aggiornato_il = now()
+--   La data del contenuto del preset, per chiave (giro 1b di brief-db-revisione-ui)
+--    6) riscrivere la riga del preset uguale: nessuna chiave si sposta
+--    7) cambiare dimensione_max: si sposta la sola chiave dimensione_max
+--    8) riscrivere i widget del preset uguali: nessuna chiave si sposta
+--    9) cambiare un widget del preset: si sposta la sola chiave widget
 --   Il flag
 --   10) il preset cambia davvero: flag acceso
 --   I trigger
 --   11) i due trigger delle dashboard ci sono, sulle due funzioni condivise
+--   Le chiavi del banner
+--   12) preset_aggiornato_chiavi = widget, la chiave della preferenza
+--   13) cambia dimensione_max, che la preferenza non imposta: non entra
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -43,7 +46,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- gated, quindi le mappe dei permessi (fail-closed) non tolgono niente.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(11);
+SELECT plan(13);
 
 -- ============================================================
 -- Fixture
@@ -73,9 +76,9 @@ SELECT d.dashboard_id, w.widget_id, CASE w.nome WHEN 'w_uno' THEN 10 ELSE 20 END
 -- Il preset di sistema: il solo w_uno, dimensione 6.
 CREATE TEMP TABLE _p AS
 WITH ins AS (
-  INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito, is_default,
+  INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito,
                                    dimensione_max, attivo, user_insert)
-  SELECT dashboard_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', TRUE, 6, TRUE, '_pgtap'
+  SELECT dashboard_id, 'SISTEMA_CASCATA', 'Preset sistema test cascata', 'sistema', 6, TRUE, '_pgtap'
     FROM _d
   RETURNING id
 )
@@ -166,54 +169,57 @@ SELECT is(
 UPDATE ui.dashboard_preset SET dimensione_max = 6 WHERE id = (SELECT preset_id FROM _p);
 
 -- ============================================================
--- 6-9 La data del contenuto del preset
+-- 6-9 La data del contenuto del preset, per chiave
 -- ============================================================
-UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
+-- La data la scrive solo il DB, all'ora del cambio (clock_timestamp): si salva
+-- la mappa e si guardano le chiavi che si spostano.
+CREATE FUNCTION pg_temp.chiavi_spostate(p_prima jsonb, p_dopo jsonb) RETURNS text
+LANGUAGE sql AS $f$
+  SELECT COALESCE(string_agg(d.key, ',' ORDER BY d.key), '')
+    FROM jsonb_each_text(p_dopo) AS d
+   WHERE d.value::timestamptz > (p_prima ->> d.key)::timestamptz
+$f$;
+CREATE TEMP TABLE _m (mappa jsonb);
+CREATE FUNCTION pg_temp.salva() RETURNS void LANGUAGE sql AS $f$
+  DELETE FROM _m;
+  INSERT INTO _m SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p);
+$f$;
+CREATE FUNCTION pg_temp.spostate() RETURNS text LANGUAGE sql AS $f$
+  SELECT pg_temp.chiavi_spostate((SELECT mappa FROM _m),
+         (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)))
+$f$;
 
+SELECT pg_temp.salva();
 UPDATE ui.dashboard_preset SET dimensione_max = dimensione_max, descrizione = descrizione
  WHERE id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
-    TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '6) riscrivere la riga del preset uguale (come fa il seed): contenuto_aggiornato_il non si sposta');
+SELECT is(pg_temp.spostate(), '',
+    '6) riscrivere la riga del preset uguale (come fa il seed): nessuna chiave si sposta');
 
 UPDATE ui.dashboard_preset SET dimensione_max = 7 WHERE id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '7) cambiare dimensione_max: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'dimensione_max',
+    '7) cambiare dimensione_max: si sposta la sola chiave dimensione_max');
 
-UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
+SELECT pg_temp.salva();
 UPDATE ui.dashboard_preset_widget SET ordine = ordine, visibile = visibile
  WHERE preset_id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
-    TIMESTAMPTZ '2026-01-01 10:00:00+00',
-    '8) riscrivere i widget del preset uguali: contenuto_aggiornato_il non si sposta');
+SELECT is(pg_temp.spostate(), '',
+    '8) riscrivere i widget del preset uguali: nessuna chiave si sposta');
 
 UPDATE ui.dashboard_preset_widget SET ordine = 15 WHERE preset_id = (SELECT preset_id FROM _p);
 
-SELECT is(
-    (SELECT contenuto_aggiornato_il FROM ui.dashboard_preset WHERE id = (SELECT preset_id FROM _p)),
-    now(),
-    '9) cambiare un widget del preset: contenuto_aggiornato_il = now()');
+SELECT is(pg_temp.spostate(), 'widget',
+    '9) cambiare un widget del preset: si sposta la sola chiave widget');
 
 -- ============================================================
--- 10 Il flag
+-- 10, 12, 13 Il banner per chiave
 -- ============================================================
-UPDATE ui.dashboard_preset SET contenuto_aggiornato_il = TIMESTAMPTZ '2026-01-01 10:00:00+00'
- WHERE id = (SELECT preset_id FROM _p);
-
-INSERT INTO ui.dashboard_preferenza_utente (auth_user_id, dashboard_id, preset_base_id,
-                                            preset_base_contenuto_aggiornato_il, configurazione)
+-- Lo snapshot lo scrive il DB dal preset di base: qui non si passa.
+INSERT INTO ui.dashboard_preferenza_utente (auth_user_id, dashboard_id, preset_base_id, configurazione)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT dashboard_id FROM _d), (SELECT preset_id FROM _p),
-        TIMESTAMPTZ '2026-01-01 10:00:00+00', jsonb_build_object('widget', (SELECT widget FROM _pref_widget)));
+        jsonb_build_object('widget', (SELECT widget FROM _pref_widget)));
 
 INSERT INTO ui.dashboard_preset_widget (preset_id, widget_id, ordine, visibile)
 SELECT p.preset_id, w.widget_id, 20, TRUE FROM _p p, _w w WHERE w.nome = 'w_due';
@@ -235,6 +241,17 @@ SELECT is(
         AND p.proname IN ('trgfn_preset_contenuto_aggiornato', 'trgfn_preset_riga_tocca_preset')),
     'ui.dashboard_preset:trgfn_preset_contenuto_aggiornato,ui.dashboard_preset_widget:trgfn_preset_riga_tocca_preset',
     '11) i due trigger delle dashboard ci sono, sulle due funzioni condivise');
+
+-- ============================================================
+-- 12-13 Le chiavi del banner
+-- ============================================================
+SELECT is(pg_temp.risolta() -> 'preset_aggiornato_chiavi', '["widget"]'::jsonb,
+    '12) le chiavi del banner: widget, la chiave che la preferenza imposta');
+
+UPDATE ui.dashboard_preset SET dimensione_max = 5 WHERE id = (SELECT preset_id FROM _p);
+
+SELECT is(pg_temp.risolta() -> 'preset_aggiornato_chiavi', '["widget"]'::jsonb,
+    '13) cambia dimensione_max, che la preferenza non imposta (la segue dal preset): non entra nel banner');
 
 SELECT * FROM finish();
 ROLLBACK;

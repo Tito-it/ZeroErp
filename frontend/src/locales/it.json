@@ -171,6 +171,17 @@
       "messaggio": "Ci sono modifiche non salvate: chiudendo andranno perse. Chiudere comunque?",
       "chiudi": "Chiudi senza salvare",
       "indicatore": "Modifiche non salvate"
+    },
+    "banner_preset": {
+      "parti_cambiate": "Cambiato: {parti}.",
+      "parte": {
+        "colonne": "colonne",
+        "ordinamento": "ordinamento",
+        "filtri": "filtri",
+        "pagina_dimensione": "righe per pagina",
+        "widget": "card",
+        "dimensione_max": "numero massimo di card"
+      }
     }
   },
   "strumenti": {
@@ -953,6 +964,11 @@
     "personalizza_giu": "Sposta giù",
     "personalizza_reset": "Ripristina predefinite",
     "personalizza_reset_conferma": "Ripristinare le card predefinite? La tua personalizzazione andrà persa.",
+    "preset_aggiornato_messaggio": "Le card predefinite di questo cruscotto sono state aggiornate da un amministratore. Le novità non sono ancora visibili nella tua scelta personale.",
+    "preset_aggiornato_vedi_novita": "Vedi novità",
+    "preset_aggiornato_ignora": "Ignora",
+    "preset_base_cambiato_messaggio": "La configurazione di base di questo cruscotto è cambiata: la tua scelta personale parte ancora da quella precedente.",
+    "preset_base_cambiato_riallinea": "Riallinea",
     "widget_situazione_aperta": "Situazione aperta",
     "widget_competenza": "Da fatturare",
     "widget_backlog": "Documenti fermi",
@@ -1434,6 +1450,10 @@
     "email_new_account": "Nuovo account email",
     "email_edit_account": "Modifica account email",
     "email_edit_template": "Modifica template email",
+    "email_template_di_sistema": "Template di sistema",
+    "email_campo_del_programma": "Lo stabilisce il programma: il template fa parte della configurazione iniziale.",
+    "email_account_di_sistema": "Account di sistema",
+    "email_campo_del_programma_account": "Lo stabilisce il programma: l'account fa parte della configurazione iniziale.",
     "email_detail_log": "Dettaglio invio",
     "definizioni_workflow": {
       "filtro_tipo": "Tipo prestazione",
@@ -5829,6 +5849,28 @@
     "orientamenti_pagina": {
       "portrait": "Verticale",
       "landscape": "Orizzontale"
+    },
+    "tipi_asset_documento": {
+      "logo": "Logo",
+      "firma": "Firma",
+      "immagine": "Immagine",
+      "pdf": "PDF",
+      "css": "Foglio di stile (CSS)"
+    },
+    "tipi_file_documento": {
+      "pdf_finale": "PDF della stampa",
+      "allegato": "Allegato"
+    },
+    "tipi_documento_output": {
+      "preventivo": "Preventivo",
+      "contratto": "Contratto",
+      "offerta_commerciale": "Offerta commerciale",
+      "ordine_vendita": "Ordine di vendita",
+      "ddt_vendita": "DDT di vendita",
+      "fattura_vendita": "Fattura di vendita"
+    },
+    "render_engine_documento": {
+      "weasyprint": "WeasyPrint"
     }
   },
   "config": {
@@ -5859,7 +5901,9 @@
         "CONTESTO_SUPERATO": "Forma dei dati superata",
         "CONTESTO_SUPERATO_hint": "La copia legge una forma dei dati più vecchia di quella del modello standard: alla stampa si fermerà. Va ripartita dallo standard o aggiornata.",
         "ORIGINE_NON_DICHIARATA": "Origine non dichiarata",
-        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati."
+        "ORIGINE_NON_DICHIARATA_hint": "Il modello non dichiara da quale versione standard deriva: si confronta solo la forma dei dati.",
+        "STANDARD_NON_STAMPA": "Standard che non stampa",
+        "STANDARD_NON_STAMPA_hint": "Lo standard con cui confrontarla manca, è spento o oggi non stampa: non c'è niente con cui confrontare la copia."
       },
       "personalizza": {
         "action": "Personalizza",
@@ -5957,7 +6001,7 @@
         "download_error": "Impossibile scaricare il file asset.",
         "file_count": "File allegati: {count}",
         "field_file": "File",
-        "field_file_hint": "Max 25 MB. Tipo MIME deve corrispondere al tipo asset selezionato.",
+        "field_file_hint": "Il formato del file deve essere fra quelli ammessi dal tipo scelto.",
         "field_codice": "Codice",
         "field_codice_interno": "Codice interno",
         "field_descrizione": "Descrizione",
@@ -5970,7 +6014,9 @@
         "col_tipo": "Tipo",
         "col_mime": "MIME",
         "col_file_name": "Nome file",
-        "col_size": "Dimensione"
+        "col_size": "Dimensione",
+        "formati_ammessi": "Formati ammessi: {formati}",
+        "max_file_mb": "Dimensione massima: {mb} MB"
       }
     },
     "impostazioni": {
@@ -6074,6 +6120,15 @@
       "pipeline_error": "Giro di fatturazione interrotto per errore",
       "pipeline_started": "Giro di fatturazione avviato",
       "step_completed": "Passo completato"
+    },
+    "formati_file": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "svg": "SVG",
+      "webp": "WebP",
+      "gif": "GIF",
+      "pdf": "PDF",
+      "css": "CSS"
     }
   },
   "lista_config": {
@@ -6105,6 +6160,8 @@
     "preset_aggiornato_messaggio": "La configurazione di questa lista è stata aggiornata da un amministratore. Le novità non sono ancora visibili nella tua vista personale.",
     "preset_aggiornato_vedi_novita": "Vedi novità",
     "preset_aggiornato_ignora": "Ignora",
+    "preset_base_cambiato_messaggio": "La configurazione di base di questa lista è cambiata: la tua vista personale parte ancora da quella precedente.",
+    "preset_base_cambiato_riallinea": "Riallinea",
     "troncamento_titolo": "Elenco incompleto — non visualizzato",
     "troncamento_testo": "La lista è configurata come non paginata, ma sono arrivate {righe} righe su {total}. Mostrarle farebbe passare una parte per il tutto, quindi la tabella non viene disegnata. Segnalare l'anomalia: il dettaglio è nella console del browser."
   },
@@ -6301,7 +6358,13 @@
         "titolo_da": "Copia l'indirizzo «{tipo}»",
         "spiegazione": "Scegli i tipi di indirizzo da aggiungere con questo stesso indirizzo. I tipi spenti non si possono aggiungere: accanto c'è il perché.",
         "conferma": "Copia",
-        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi"
+        "fatta": "Indirizzo copiato in un altro tipo | Indirizzo copiato in {n} tipi",
+        "da": "Da",
+        "verso": "Verso",
+        "titolare_soggetto": "il soggetto",
+        "titolare_ruolo": "il ruolo",
+        "titolare_servizio": "il servizio {utility}",
+        "titolare_servizio_generico": "il servizio"
       }
     },
     "soggetti": {
@@ -6337,6 +6400,7 @@
         "titoli_iva_altri_emittenti": "La natura scelta non ammette {titoli} titoli IVA in vigore presentati ad altre aziende, che da qui non si vedono: deve chiuderli un amministratore, o l'azienda che li ha ricevuti.",
         "dati_societari": "La natura scelta non ha dati societari: vanno eliminati prima del cambio.",
         "indirizzi": "La natura scelta non ammette {indirizzi} indirizzi del soggetto: vanno eliminati prima del cambio.",
+        "indirizzi_ruolo": "La natura scelta non ammette {indirizzi} indirizzi del ruolo {ruolo}: vanno eliminati dal ruolo prima del cambio.",
         "senza_natura_con_titoli_iva": "Il soggetto ha titoli IVA in vigore, e senza una natura non li può avere: si sceglie la natura, oppure si chiudono prima i titoli."
       },
       "dati_societari_elimina_blocco": {
@@ -6344,6 +6408,10 @@
       },
       "cambio_natura_motivi_titolo": "Il cambio di natura non si può fare finché restano questi motivi:",
       "cambio_natura_motivi_non_verificati": "Non è stato possibile verificare se il cambio di natura si può fare: al salvataggio, se non si può, si vedrà il motivo.",
+      "cambio_natura_indirizzi_titolo": "La natura scelta chiede questi indirizzi, che il soggetto o i suoi ruoli non hanno: si compilano qui e si salvano insieme al cambio.",
+      "cambio_natura_indirizzi_soggetto": "Indirizzi del soggetto",
+      "cambio_natura_indirizzi_ruolo": "Indirizzi del ruolo {ruolo}",
+      "cambio_natura_indirizzo_o_ripiego": "{tipo}, oppure {ripiego}",
       "elimina_dati_societari": "Elimina i dati societari",
       "elimina_dati_societari_conferma": "Eliminare i dati societari del soggetto (forma giuridica, REA, capitale, fatturazione elettronica)? Restano nello storico, ma il soggetto non li avrà più.",
       "dati_societari_eliminati": "Dati societari eliminati.",
@@ -6472,7 +6540,8 @@
       "preset_seleziona_profilo": "Seleziona profilo...",
       "preset_emittente_fiscale_id": "Emittente fiscale (id)",
       "preset_emittente_fiscale": "Emittente fiscale (id)",
-      "preset_is_default": "Preset di default",
+      "campo_del_programma": "Lo stabilisce il programma: la riga fa parte della configurazione iniziale.",
+      "riga_del_programma": "Questa riga fa parte della configurazione iniziale del programma: non si elimina, si disattiva.",
       "preset_default": "Default",
       "preset_pagina_dimensione": "Pagina (righe)",
       "preset_pagina_dimensione_default": "Default ({misura})",

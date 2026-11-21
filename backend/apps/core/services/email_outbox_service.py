@@ -224,7 +224,13 @@ class EmailOutboxService:
             oggetto=outbox["oggetto"],
             corpo_html=outbox["corpo_html"],
             corpo_testo=outbox.get("corpo_testo"),
-            email_account_id=outbox["email_account_id"],
+            # ⛔ L'account del LOG e' quello con cui la mail parte (`account`,
+            #    che `send_raw` scrive sul log), non quello della bozza: la
+            #    bozza lo ha fissato alla preparazione, l'invio lo risolve
+            #    adesso (`account_di_invio`), e fra i due l'account puo' essere
+            #    stato spento (2026-11-20, R1-BE-ter di brief-db-seed-primo-
+            #    impianto-non-si-riscrive §16.14). `email_account_id` della
+            #    bozza qui non si passa: `send_raw` non lo accetta piu'.
             email_template_id=outbox["email_template_id"],
             ambito=outbox["ambito"],
             unita_organizzativa_id=outbox.get("unita_organizzativa_id"),

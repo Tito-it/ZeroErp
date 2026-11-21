@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL REGISTRO DEI MOVIMENTI DI PLAFOND IVA: «SOLO AGGIUNTE» DAL BB
+#   trg_stiva_movimenti_a10_append_only_upd_dlt
+#   ritiro di anagrafiche.trgfn_stiva_movimenti_append_only
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La funzione vietava sempre UPDATE e DELETE, a ogni ruolo, senza porte: e'
+#   la regola del building block script.trgfn_prevent_modification_generic.
+#   Decisione di Tid del 2026-11-14 (Q9b del brief di revisione di
+#   `documenti`, ok cross-dominio): le copie si ritirano anche fuori schema,
+#   nello stesso giro dell'estensione del BB (20261115-82).
+#   Letta riga per riga il 2026-11-15, dice la stessa cosa: codice
+#   E_TITOLO_IVA_MOVIMENTO_IMMUTABILE, nella frase il tipo di movimento e la sua
+#   data in GG/MM/AAAA (il BB scrive cosi' ogni colonna `date`), il tx_id della
+#   riga. Il contesto passa alle chiavi del BB (tabella, operazione, id): nessun
+#   lettore delle vecchie (movimento_id, titolo_iva_id, tipo_movimento) nel BE
+#   ne' nei pgTAP.
+#   Scartata `vendite.trgfn_event_log_append_only`: ha la porta di manutenzione
+#   e la retention (cleanup_at), e' un guard proprio.
+#
+# -- MONTAGGI STORICI (dai changelog) ----------------------------------------
+#   Un solo nome dal 20260830-22: DROP + CREATE per nome. Il pgTAP
+#   test-stiva-movimenti-annullo-v1 cambia nello stesso giro (il test 0 contava
+#   la funzione ritirata).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261115-84-update-stiva-movimenti-solo-aggiunte-dal-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261115-84-update-stiva-movimenti-solo-aggiunte-dal-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il registro dei movimenti di plafond IVA vieta UPDATE e DELETE dal building block
+        script.trgfn_prevent_modification_generic, con lo stesso codice e la stessa frase; la
+        funzione propria si ritira.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'trgfn_prevent_modification_generic'
+                 AND p.prosrc LIKE '%TG_ARGV[0]%'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_stiva_movimenti_a10_append_only_upd_dlt
+                  ON anagrafiche.soggetti_titoli_iva_movimenti;
+              CREATE TRIGGER trg_stiva_movimenti_a10_append_only_upd_dlt
+                  BEFORE UPDATE OR DELETE ON anagrafiche.soggetti_titoli_iva_movimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_prevent_modification_generic(
+                      'E_TITOLO_IVA_MOVIMENTO_IMMUTABILE', 'tipo_movimento', 'data_movimento');
+              COMMENT ON TRIGGER trg_stiva_movimenti_a10_append_only_upd_dlt ON anagrafiche.soggetti_titoli_iva_movimenti IS
+                'Il registro dei movimenti di plafond IVA e'' «solo aggiunte»: una riga non si modifica e non si cancella, da nessun ruolo (E_TITOLO_IVA_MOVIMENTO_IMMUTABILE, con il tipo e la data del movimento nella frase). Si corregge con un contro-movimento di segno opposto (anagrafiche.fn_annulla_movimento_titolo_iva).';
+
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_stiva_movimenti_append_only();
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- La funzione ritirata non si ricrea da qui (il corpo si prende dalla doc
+              -- auto-generata in un changeSet nuovo): il montaggio resta sul BB, che
+              -- solleva lo stesso codice con la stessa frase.
+              SELECT 1;

@@ -1,5 +1,7 @@
 ## 📘 Documentazione Concettuale – Funzione `vendite.trgfn_logs_guard_delete`
 
+> **Ultimo aggiornamento**: 18 novembre 2026
+>
 > 👀 **Vedi anche**
 >
 **Approfondimento tabelle:**
@@ -12,6 +14,7 @@
 • [vendite.trgfn_event_log_append_only](/dbzero/vendite/funzioni/trgfn_event_log_append_only) — il gemello su `event_log`  
 > • [dbops.trgfn_cleanup_at_alla_nascita](/dbzero/dbops/funzioni/trgfn_cleanup_at_alla_nascita) — chi scrive la scadenza  
 > • [dbops.fn_purge_cleanup_expired](/dbzero/dbops/funzioni/fn_purge_cleanup_expired) — chi la ritira  
+> • [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta) — la porta di manutenzione, solo per il migratore  
 >
 ### 🎯 Scopo Principale
 (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)  
@@ -27,13 +30,18 @@ distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto
   * `vendite.fatture_log`
   * `vendite.fatturazione_lotti_log`
 * `DELETE` **ammesso** in tre casi, in quest'ordine:
-  1. una GUC di manutenzione è attiva — `zeroerp.maintenance_allow_delete_logs = on`
-     oppure `zeroerp.maintenance_reset_lotto_draft = on` (il reset tecnico di un lotto in
-     bozza);
+  1. la porta di **verbo** `zeroerp.maintenance_reset_lotto_draft` è accesa: la accende
+     `vendite.fn_cleanup_fatture_by_ids` per il reset di un lotto in bozza chiamato
+     dall'applicazione, e il guard la legge da sé;
   2. **la riga è scaduta**: `cleanup_at IS NOT NULL AND cleanup_at <= now()` — è la
-     retention che passa (dal 2026-09-18);
-  3. — altrimenti la funzione solleva `E_DELETE_NOT_ALLOWED` (`NON_PERMESSO`) via
-     `script.fn_log_and_raise_error`, con tabella, `id` e `cleanup_at` nel contesto.
+     retention che passa;
+  3. la porta di **manutenzione** `zeroerp.maintenance_allow_delete_logs` è aperta, cioè
+     accesa (`on`, `true` o `1`) da una sessione del migratore
+     ([fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta)).
+     La riga cancellata resta nel diario delle porte. Per l'applicazione la GUC accesa non
+     apre niente;
+  — altrimenti la funzione solleva `E_DELETE_NOT_ALLOWED` (`NON_PERMESSO`) via
+  `script.fn_log_and_raise_error`, con tabella, `id` e `cleanup_at` nel contesto.
 * `cleanup_at` **NULL** = riga senza scadenza (nessuna regola `CLEANUP_AT` quando è nata):
   non si cancella. In dubbio si conserva.
 
@@ -46,7 +54,7 @@ distinguendo però fra **cancellare la storia** e **ritirare ciò che è scaduto
 **senza** propagare GUC né riconoscere ruoli, e il guard lo lascia passare perché la riga
 ha passato la sua scadenza — non perché a cancellare sia il job.
 
-Fino al 2026-09-18 questo ramo non c'era, e le due tabelle non avevano `cleanup_at`: era
+Fino al 2026-09-18 il ramo della retention non c'era, e le due tabelle non avevano `cleanup_at`: era
 la «mina latente» dichiarata in `test-cleanup-framework.sql` (13-16). Con la sola colonna
 aggiunta, il job sarebbe stato respinto ogni domenica — dal 2026-08-23 l'orchestratore non
 muore più, ma lascia una riga `ERROR` in `dbops.audit_log` (`BLOCKED_BY_TABLE`), per sempre.
@@ -89,9 +97,20 @@ Nessun output funzionale (trigger guard: ritorna `OLD` in caso consentito).
 
 ### Verifica
 
-* `db/pgtap/vendite/test-logs-guard-delete.sql` — i rami 1 e 3 (GUC, riga viva).
+* `db/pgtap/vendite/test-logs-guard-delete.sql` — la porta di manutenzione accesa
+  dall'applicazione non apre, e la riga viva si rifiuta.
 * `db/pgtap/vendite/test-registri-fatturazione-scadenza-alla-nascita.sql` — il ramo 2
   (riga scaduta) e la conseguenza su `critical`.
+
+---
+
+### Note di migrazione
+
+* 2026-09-18 — la riga scaduta passa (retention).
+* 2026-11-17 — la porta di manutenzione passa da `script.fn_porta_manutenzione_aperta`: si
+  apre solo alla sessione del migratore, e si chiede dopo la retention, così il diario
+  registra solo le righe vive cancellate. La porta di verbo del reset del lotto resta com'è
+  (`brief-db-seed-primo-impianto-non-si-riscrive`).
 
 ---
 

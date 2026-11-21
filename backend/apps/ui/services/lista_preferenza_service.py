@@ -4,8 +4,8 @@
 # Doc: Python
 # Scopo: Service di scrittura per `ui.lista_preferenza_utente` —
 #        valida JSONB in ingresso (whitelist chiavi anti-injection),
-#        UPSERT preferenza con snapshot del preset di base
-#        (`preset_base_id` + `preset_base_contenuto_aggiornato_il` per badge DEF-2),
+#        UPSERT preferenza col preset di base di oggi (`preset_base_id`,
+#        dalla risoluzione; lo snapshot del badge DEF-2 lo scrive il DB),
 #        delete idempotente.
 #        Nessuna logica di dominio: la cascata e il filtro permessi
 #        vivono nella fn DB.
@@ -22,6 +22,7 @@ from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services._preferenza import (
     E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
+    preset_base_id_di_oggi,
     richiedi_preferenza_non_vuota,
 )
 
@@ -71,8 +72,8 @@ class ListaPreferenzaService:
         return lista_id
 
     # Scopo: UPSERT preferenza utente per (auth_user, lista_codice).
-    #        Valida la struttura JSONB in ingresso, calcola lo snapshot
-    #        del preset di base e materializza il record. Ritorna l'id
+    #        Valida la struttura JSONB in ingresso, legge il preset di base
+    #        di oggi dalla risoluzione e materializza il record. Ritorna l'id
     #        della preferenza salvata.
     def upsert(
         self,
@@ -86,12 +87,16 @@ class ListaPreferenzaService:
         # 2. Whitelist + tipi del payload
         configurazione = self._validate_payload(payload)
 
-        # 3. Snapshot preset di base coerente con la cascata della fn DB
+        # 3. Il preset di base di oggi, dalla risoluzione (stesso emittente
+        #    di `UiService.get_lista_config`: la base salvata e' quella che
+        #    l'utente vede). Lo snapshot lo scrive il trigger del DB.
         emittente_id = PermissionResolver.get_emittente_for_user(user)
-        preset_id, preset_contenuto_aggiornato_il = self._repo.get_preset_base_snapshot(
-            lista_id=lista_id,
-            auth_user_id=user.id,
-            emittente_fiscale_id=emittente_id,
+        preset_id = preset_base_id_di_oggi(
+            self._repo.resolve_lista_config(
+                lista_codice=lista_codice,
+                auth_user_id=user.id,
+                emittente_fiscale_id=emittente_id,
+            )
         )
 
         # 4. UPSERT
@@ -100,7 +105,6 @@ class ListaPreferenzaService:
             lista_id=lista_id,
             configurazione=configurazione,
             preset_base_id=preset_id,
-            preset_base_contenuto_aggiornato_il=preset_contenuto_aggiornato_il,
         )
 
         return {
@@ -125,11 +129,12 @@ class ListaPreferenzaService:
         )
         return {"deleted": deleted}
 
-    # Scopo: Tombstone "Ignora banner preset aggiornato" (DEF-2). Setta
-    #        `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente.
-    #        Il flag `preset_aggiornato` di `fn_resolve_lista_config` torna
-    #        FALSE finche' il preset non viene modificato di nuovo
-    #        (`preset.contenuto_aggiornato_il > ignored_at`).
+    # Scopo: «Ignora» del banner preset aggiornato (DEF-2). Riallinea lo
+    #        snapshot del preset di base al contenuto di oggi (il DB lo
+    #        riscrive quando la preferenza nomina `preset_base_id`): il flag
+    #        `preset_aggiornato` di `fn_resolve_lista_config` torna FALSE
+    #        finche' il contenuto del preset non cambia di nuovo, chiave per
+    #        chiave (`preset_aggiornato_chiavi`).
     #        Solleva E_UI_LISTA_NON_TROVATA se la lista non esiste e
     #        E_UI_PREFERENZA_NON_TROVATA se l'utente non ha ancora una
     #        preferenza (caso patologico: il banner non sarebbe visibile,
@@ -141,7 +146,7 @@ class ListaPreferenzaService:
     ) -> dict[str, Any]:
         lista_id = self._require_lista_id(lista_codice)
 
-        ignored = self._repo.set_preset_aggiornato_ignored(
+        ignored = self._repo.riallinea_snapshot_base(
             auth_user_id=user.id,
             lista_id=lista_id,
         )

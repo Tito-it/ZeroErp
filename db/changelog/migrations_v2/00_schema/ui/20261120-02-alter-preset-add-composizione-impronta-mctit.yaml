@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.lista_preset e ui.dashboard_preset: nasce composizione_impronta.
+#   Brief: brief-db-revisione-ui (giro 1b: Q33 col mezzo di Q37, deciso da Tid il
+#   2026-11-20).
+#
+# Perche': il preset salva l'impronta della sua composizione, e il trigger
+#   differito della composizione la confronta a fine transazione (20261120-06):
+#   un DELETE seguito dall'INSERT delle stesse righe non e' un cambio.
+# Nasce qui, nuda e nullable, prima della funzione che la calcola
+#   (ui.fn_preset_impronta, 20261120-03), che cosi' ancora il suo risultato alla
+#   colonna con %TYPE. Il backfill delle righe esistenti, il NOT NULL e il
+#   COMMENT stanno in 20261120-04, dopo la funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-02-alter-preset-add-composizione-impronta-mctit.yaml
+
+  - changeSet:
+      id: 20261120-02-alter-preset-add-composizione-impronta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.lista_preset e ui.dashboard_preset: la colonna composizione_impronta. Brief: brief-db-revisione-ui
+        (giro 1b, Q33, Q37).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid IN (to_regclass('ui.lista_preset'), to_regclass('ui.dashboard_preset'))
+                 AND attname = 'composizione_impronta' AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preset     ADD COLUMN composizione_impronta text;
+              ALTER TABLE ui.dashboard_preset ADD COLUMN composizione_impronta text;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_preset     DROP COLUMN IF EXISTS composizione_impronta;
+              ALTER TABLE ui.dashboard_preset DROP COLUMN IF EXISTS composizione_impronta;

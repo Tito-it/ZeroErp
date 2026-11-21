@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -149,6 +149,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | l'utente tecnico di un processo, a roster | `dbops.fn_pgtap_crea_roster_processo('<processo>')` |
 | un cliente fatturabile (soggetto → CL → istanza → BA) | `dbops.fn_pgtap_crea_cliente_ba('<etichetta>'[, utility, emittente_sr])` |
 | un soggetto con un ruolo e basta (CL, FO, BANK_B…) | `dbops.fn_pgtap_crea_soggetto_pg(...)` + `fn_pgtap_crea_soggetto_ruolo(..., 'CL')` |
+| una **persona fisica** già valida — privato o ditta individuale, con i suoi indirizzi obbligatori — **senza** risorsa umana né identità | `dbops.fn_pgtap_crea_soggetto_pf('<cognome>'[, '<nome>'[, <natura_id>]])` |
 | un **super admin** (senza azienda, come in produzione) | `dbops.fn_pgtap_crea_operatore_umano('<etichetta>', p_super_admin := true)` — sotto, §«Un super admin non ha un'azienda» |
 | **un articolo** del test, costruito intero con la struttura che il test sceglie: non gestito a magazzino se il test non misura il magazzino; kit, solo componente, lotto e seriale a richiesta | `dbops.fn_pgtap_crea_articolo('<codice>'[, <gestito>[, …]])` |
 | cambiare la **struttura di un articolo già usato**, dalla porta vera e come super admin costruito | `dbops.fn_pgtap_articolo_correggi_struttura(<articolo_id>, <campi>)` |

@@ -63,9 +63,6 @@
     i parametri di sistema li farebbe leggere come override; la forma proposta sono due campi
     «effettivo» da `anagrafiche.fn_parametri_importo_utility` e una colonna FE accanto. Da decidere,
     di Tid;
-  - **la numerazione della versione nuova** di un template: la versione scritta da zero la numera il
-    BE (`next_versione_num`, MAX+1), la copia la numera il DB (`fn_crea_bozza_da_versione`). Due sedi
-    dello stesso numero; si chiude con un verbo DB per la versione nuova. Brief nuovo se Tid vuole;
   - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
     pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
 - **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
@@ -242,7 +239,34 @@
   `vendite.famiglie_documento` lo riscrive a ogni migrate, come già la
   `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
   decidere col team DB se il mirror debba smettere di riscrivere le colonne che
-  l'operatore può cambiare
+  l'operatore può cambiare. ⏭️ Dal 2026-11-17 il tema generale sta in
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md)
+  (§7, Q5). ⚠️ **Aggiornato il 2026-11-20: quel brief ha costruito il
+  meccanismo, ma non ha iscritto questa tabella.** Il meccanismo è la forma per
+  colonna: il registro `dbops.seed_righe`, le colonne del software lette da
+  `dbops.fn_seed_colonne_del_software`, la superficie
+  `dbops.fn_seed_superficie`. Ci sono iscritte la posta e le tabelle di catalogo
+  di `ui`. `vendite.famiglie_documento` ha già la sua forma decisa (§7): il
+  `codice` è dell'installazione, mentre formato, colonna serie, regole fiscali e
+  anno nel numero sono del software. Entra in un giro suo, dopo la lettura del
+  codice che la usa. Resta aperta fino a quel giro. Il giro la iscrive al
+  registro e ne dichiara le colonne del software; il BE ne espone poi la
+  superficie, come per la posta (§16.14 del brief)
+- **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata**
+  [DB + BE/FE] (Q7 di
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md),
+  rinviata il 2026-11-17 fuori dal giro 1, §15.10; ereditata qui il 2026-11-20).
+  Quando l'installazione modifica una riga di seed, la riga diventa
+  personalizzata: il migrate non la riscrive più e mette i valori del CSV in
+  `dbops.seed_righe.scartati`. La riga torna a seguire il CSV solo se la si
+  toglie dal registro, a mano (§15.11, limite 5). Dall'interfaccia non c'è
+  un'azione per farlo. Il dato per costruirla c'è già: `personalizzata_il` e
+  `scartati`, con `scartati_il`. Manca la decisione: se l'azione serve, chi la
+  esegue e con quale verbo DB, e se il FE mostra un segno «personalizzata» sulla
+  riga. Il segno è facoltativo, è la R5 del §15.12 e la R3 del §11 del brief.
+  Superficie e drawer sono quelli di posta e `ui`: oggi espongono `nata_dal_seed`
+  e `campi_del_software`, non la personalizzazione. Si apre quando
+  l'interfaccia lo chiede. Di Tid, poi team DB, poi BE/FE
 - **Righe di listino: la gamba dei compositi bundle non è provata sul DB**
   (BE, stessa origine, §13.3 g): la ricerca libera di `vendite.listini_righe`
   è una condizione sola sulla CTE `unione`, ma

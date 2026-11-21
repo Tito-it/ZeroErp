@@ -18,8 +18,11 @@
 #          - whitelist chiavi payload via PayloadValidator
 #          - campi immutabili (lista_id/ambito/profilo/emittente) accettati
 #            solo in CREATE
-#          - integrita' ambito_refs / unicita' codice / partial UNIQUE
-#            is_default delegate al DB (mappate via map_integrity_error)
+#          - integrita' ambito_refs / unicita' codice / un preset acceso
+#            per posto (`uq_ui_lista_preset_posto`, Q30 di
+#            brief-db-revisione-ui) delegate al DB (map_integrity_error)
+#          - `is_default` non esiste piu' (Q26, giro 1a): un preset vale se
+#            e' acceso, e la bozza nasce spenta
 #
 #        Niente filtro scope emittente lato service: il Blocco F e'
 #        ammesso solo a SUPER_ADMIN o azioni `ui_preset_manage` /
@@ -65,13 +68,16 @@ CREATE_KEYS: frozenset[str] = frozenset(
         "ambito",
         "profilo_accesso_id",
         "emittente_fiscale_id",
-        "is_default",
         "pagina_dimensione",
         "ordinamento_default",
-        "filtri_default",
         "attivo",
     }
 )
+
+# ⛔ `filtri_default` non e' piu' in nessuna delle due whitelist (Q38 di
+#    brief-db-revisione-ui, Tid 2026-11-20): i filtri di partenza di una
+#    lista restano dello store, la colonna la ritira il DB nel giro 2. Fino
+#    ad allora la si legge ancora (dettaglio admin), non la si scrive.
 
 # Whitelist chiavi del payload update. Esclude gli immutabili. Per
 # cambiare ambito/refs si crea un nuovo preset.
@@ -79,10 +85,8 @@ UPDATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
         "descrizione",
-        "is_default",
         "pagina_dimensione",
         "ordinamento_default",
-        "filtri_default",
         "attivo",
     }
 )
@@ -91,16 +95,22 @@ _MAX_CODICE_LEN = 80
 _MAX_DESCRIZIONE_LEN = 200
 
 # Mapping vincoli DB -> codice + messaggio applicativo. I nomi sono
-# allineati a 20260506-04 (CHECK + UNIQUE + partial UNIQUE).
+# allineati a 20260506-04 (CHECK + UNIQUE) e, per il posto, al giro 1a di
+# brief-db-revisione-ui (2026-11-20).
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_ui_lista_preset_lista_codice": (
         E_PRESET_VALIDATION,
         "Esiste gia' un preset con questo codice per la lista.",
         "codice",
     ),
-    "uq_ui_lista_preset_default": (
+    # ⭐ Un posto (lista, ambito, profilo, azienda) ha al piu' un preset
+    #    ACCESO (BE23, Q30): l'UNIQUE e' parziale `WHERE attivo`. Il campo e'
+    #    `attivo`, perche' e' l'accensione a fare il conflitto.
+    "uq_ui_lista_preset_posto": (
         E_PRESET_VALIDATION,
-        "Esiste gia' un preset di default per (lista, ambito, profilo, emittente).",
+        "In questo posto c'e' gia' un preset acceso: spegnilo prima di "
+        "accendere questo.",
+        "attivo",
     ),
 }
 
@@ -252,9 +262,14 @@ class ListaPresetAdminService:
         return self.get_preset(preset_id)
 
     # Scopo: Cancella preset. ON DELETE SET NULL su lista_preferenza_utente
-    #        (DB-2) preserva le preferenze: il badge "preset aggiornato"
-    #        sparira' e l'utente lavorera' direttamente sul catalogo grezzo
-    #        finche' non sceglie un altro preset.
+    #        (DB-2) preserva le preferenze, con `preset_base_id` NULL: il
+    #        trigger `ui.trgfn_preferenza_preset_base_snapshot` lo vede come
+    #        un cambio di base e azzera snapshot e «ignora». Da li' vale il
+    #        preset di base DI OGGI, che sceglie la risoluzione
+    #        (`ui.fn_preset_di_base`), non il catalogo grezzo: se la cascata
+    #        da' un altro preset il resolver risponde `preset_base_cambiato`
+    #        e il banner propone il riallineamento; il catalogo resta solo
+    #        quando nessun preset vale (brief-db-revisione-ui, BE1).
     def delete_preset(self, preset_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(preset_id, field="preset_id")
         deleted = self._repo.delete_preset(preset_id)
@@ -330,10 +345,12 @@ class ListaPresetAdminService:
     # Helpers privati
     # =================================================================
 
-    # Scopo: Normalizza il payload create. Applica defaults applicativi
-    #        (is_default=False, attivo=True). I campi JSONB
-    #        ordinamento_default/filtri_default sono accettati come
-    #        liste/dict; conversione a JSON la fa il repository.
+    # Scopo: Normalizza il payload create. Default applicativo: la bozza
+    #        nasce SPENTA (`attivo=False`, Q26 di brief-db-revisione-ui): si
+    #        compone e poi si accende, e accenderla e' il gesto che incontra
+    #        il preset gia' acceso nello stesso posto. Il JSONB
+    #        ordinamento_default e' accettato come lista; conversione a
+    #        JSON la fa il repository.
     def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
         data["lista_id"] = self._v.require_positive_int(payload, "lista_id")
@@ -370,11 +387,8 @@ class ListaPresetAdminService:
             data["profilo_accesso_id"] = None
             data["emittente_fiscale_id"] = None
 
-        is_default = self._v.optional_bool(payload, "is_default")
-        data["is_default"] = bool(is_default) if is_default is not None else False
-
         attivo = self._v.optional_bool(payload, "attivo")
-        data["attivo"] = bool(attivo) if attivo is not None else True
+        data["attivo"] = bool(attivo) if attivo is not None else False
 
         # pagina_dimensione: qui solo la FORMA (un intero). Quali misure sono
         # ammesse lo dice il catalogo `ui.misure_pagina`, e lo fa rispettare
@@ -394,15 +408,6 @@ class ListaPresetAdminService:
             )
             data["ordinamento_default"] = value
 
-        if "filtri_default" in payload:
-            value = payload["filtri_default"]
-            ErrorManager.require(
-                value is None or isinstance(value, dict),
-                code=E_PRESET_VALIDATION,
-                message="filtri_default deve essere un oggetto o null.",
-            )
-            data["filtri_default"] = value
-
         return data
 
     # Scopo: Normalizza il payload update sui soli campi mutabili
@@ -417,15 +422,6 @@ class ListaPresetAdminService:
             data["descrizione"] = self._v.require_string(
                 payload, "descrizione", max_len=_MAX_DESCRIZIONE_LEN
             )
-        if "is_default" in payload:
-            value = self._v.optional_bool(payload, "is_default")
-            ErrorManager.require(
-                value is not None,
-                code=E_PRESET_VALIDATION,
-                message="Il campo 'is_default' non puo' essere NULL.",
-                detail="field=is_default",
-            )
-            data["is_default"] = bool(value)
         if "attivo" in payload:
             value = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(
@@ -449,14 +445,6 @@ class ListaPresetAdminService:
                 message="ordinamento_default deve essere una lista o null.",
             )
             data["ordinamento_default"] = value
-        if "filtri_default" in payload:
-            value = payload["filtri_default"]
-            ErrorManager.require(
-                value is None or isinstance(value, dict),
-                code=E_PRESET_VALIDATION,
-                message="filtri_default deve essere un oggetto o null.",
-            )
-            data["filtri_default"] = value
         return data
 
     # Scopo: Valida una singola riga di composizione preset.

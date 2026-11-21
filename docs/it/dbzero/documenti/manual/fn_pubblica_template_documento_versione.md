@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `documenti.fn_pubblica_template_documento_versione`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -15,7 +15,7 @@
 > Approfondimento funzioni:
 >
 > * [documenti.fn_guard_versione_contesto](/dbzero/documenti/funzioni/fn_guard_versione_contesto) — il patto sulla forma dei dati
-> * [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata) — la porta della chiusura
+> * [documenti.trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata) — il guard dello stato, e la porta del verbo
 > * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — l'ordine delle due date
 > * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — la registrazione dell'errore
 >
@@ -31,6 +31,10 @@
 pubblicate che la nuova supera. Restituisce la versione pubblicata, il suo modello e quante versioni
 ha chiuso.
 
+È l'**unica strada** per cui una versione esce dalla bozza: il guard dello stato
+([trgfn_template_documenti_versioni_protect_pubblicata](/dbzero/documenti/funzioni/trgfn_template_documenti_versioni_protect_pubblicata))
+rifiuta una versione che nasce fuori bozza o che ne esce con un UPDATE diretto.
+
 Chi chiama passa, oltre alla versione e alle date, la **forma dei dati** che il builder del backend
 produce per quel tipo di documento: la versione si pubblica solo se legge proprio quella forma.
 
@@ -39,12 +43,14 @@ produce per quel tipo di documento: la versione si pubblica solo se legge propri
 ### Che cosa controlla, prima di scrivere
 
 1. La versione e la data di inizio sono indicate; la versione esiste ed è in bozza.
-2. La versione legge la forma dei dati che il builder produce
+2. La bozza è **accesa**. Una versione spenta non stampa: pubblicata, chiuderebbe la versione che
+   stampa oggi e dalla sua data d'inizio il modello resterebbe senza una versione con cui stampare.
+3. La versione legge la forma dei dati che il builder produce
    ([fn_guard_versione_contesto](/dbzero/documenti/funzioni/fn_guard_versione_contesto)). Il controllo
    sta qui e non sulla bozza: una bozza può dichiarare una forma che il builder non produce ancora, ed
    è così che si prepara la versione successiva.
 
-Tutti e due i controlli precedono ogni scrittura, quindi un rifiuto non lascia niente a metà.
+Tutti i controlli precedono ogni scrittura, quindi un rifiuto non lascia niente a metà.
 
 L'ordine delle due date **non** si giudica qui: ha una sede sola, il guard comune delle date, che
 scatta sulla scrittura della versione. Con le date invertite la transazione si annulla per intero,
@@ -67,13 +73,24 @@ Non chiude:
 * una versione che comincia lo stesso giorno della nuova o dopo.
 
 Negli ultimi due casi, se i periodi si toccano, la pubblicazione viola il vincolo di non
-sovrapposizione e il backend la traduce in `E_DOCUMENTI_VERSIONE_OVERLAP`: una versione nuova comincia
-dopo l'inizio della più recente già in vigore.
+sovrapposizione, e la funzione la rende col suo codice, `E_DOCUMENTI_VERSIONE_OVERLAP`: una versione
+nuova comincia dopo l'inizio della più recente già in vigore. Succede con lo stesso inizio di una
+versione pubblicata, con un inizio dentro il periodo di una obsoleta e con due pubblicazioni dello
+stesso modello nello stesso istante. Un'altra violazione d'esclusione esce com'è.
 
-La chiusura è **una scrittura sola**, stato e data insieme, a porta
-`zeroerp.allow_template_versione_chiusura_override` aperta: il guard d'immutabilità protegge le
-versioni fuori bozza, e a porta aperta ammette solo questa forma. La funzione apre la porta dopo aver
-scelto le versioni da chiudere e la richiude subito.
+---
+
+### La porta del verbo
+
+Le due scritture della funzione, la chiusura e la pubblicazione, passano sotto la porta
+`zeroerp.allow_template_versione_pubblicazione_override`. Il guard dello stato, a porta aperta,
+ammette solo queste due forme: una pubblicata che diventa obsoleta con la fine accorciata, una bozza
+che diventa pubblicata con le sole date cambiate. La chiusura è **una scrittura sola**, stato e data
+insieme.
+
+La funzione apre la porta dopo aver scelto le versioni da chiudere e la richiude prima di uscire,
+anche in errore: il valore di `set_config` dura fino alla fine della transazione, e chi chiama dentro
+una transazione più lunga non deve trovarla aperta.
 
 ---
 
@@ -98,16 +115,6 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Pubblicare una versione spenta chiude quella accesa.** La funzione non guarda `attivo` della
-  versione da pubblicare: una bozza spenta diventa pubblicata, che non stampa, e la versione attiva
-  che la precedeva si chiude. Dal suo inizio il modello resta senza versione che stampa.
-* Non è l'unica strada per pubblicare: una bozza portata a `PUBBLICATA` con un UPDATE diretto, o una
-  versione che nasce pubblicata, salta i controlli di questa funzione (vedi la pagina della tabella).
-
----
-
 ### Codici errore
 
 * `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO` — versione non indicata o non positiva, data di inizio non
@@ -115,9 +122,13 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
 * `E_DOCUMENTI_VERSIONE_NOT_FOUND` — la versione non esiste.
 * `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO` — la versione non è in bozza, anche se ha smesso di
   esserlo durante la pubblicazione.
+* `E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA` (`CONFLITTO_STATO`) — la bozza è spenta; la frase dice numero
+  e template, il rimedio è riaccenderla.
 * `E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA` — la versione legge una forma dei dati diversa da quella
   passata.
 * `E_DOCUMENTI_VERSIONE_CONTESTO_NON_VERIFICABILE` — forma dei dati non passata; di classe tecnica.
+* `E_DOCUMENTI_VERSIONE_OVERLAP` (`CONFLITTO_STATO`) — la versione nuova si sovrapporrebbe a una
+  versione fuori bozza che la chiusura non risolve; il rimedio è un'altra data d'inizio.
 * `E_DATA_AL_MINORE_DAL` — la fine precede l'inizio; lo solleva il guard comune delle date.
 * `E_DOCUMENTI_TEMPLATE_STANDARD_SOLA_LETTURA` — dall'applicazione, su una versione di uno standard.
 
@@ -130,10 +141,11 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
   fine; nessuna chiusura per una versione già finita; forma dei dati diversa o assente, con rifiuto
   atomico; una bozza preparata per la forma successiva si pubblica quando il builder la produce;
   vincolo e registro su pubblicate e obsolete; con la nuova che parte domani oggi stampa la
-  precedente, con la nuova che parte oggi stampa la nuova; immutabilità delle obsolete e porta della
-  chiusura.
-* Non provati: i rifiuti `E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO`, `E_DOCUMENTI_VERSIONE_NOT_FOUND` ed
-  `E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO`.
+  precedente, con la nuova che parte oggi stampa la nuova; una pubblicazione che parte dentro una
+  obsoleta ferma dal vincolo; immutabilità delle obsolete e porta del verbo.
+* `db/pgtap/documenti/test-documenti-pubblicazione-e-copia-v1.sql` — la bozza spenta rifiutata, con
+  la frase e senza toccare la pubblicata; i rifiuti dei parametri, della versione inesistente e della
+  versione già pubblicata; lo stesso inizio di una pubblicata fermato dal vincolo.
 
 ---
 
@@ -144,6 +156,12 @@ Audit, `tx_id`, storico e validità li gestiscono i trigger della tabella e la c
 * 2026-09-30 — entra il patto sulla forma dei dati.
 * 2026-11-14 — la chiusura diventa una scrittura sola a porta aperta, perché anche le obsolete sono
   protette: prima erano due UPDATE, lo stato e poi la data.
+* 2026-11-16 — diventa l'unica strada fuori dalla bozza: la porta vale anche per la pubblicazione e
+  prende il nome del verbo (prima `…_chiusura_override`), e si richiude anche in errore. Una bozza
+  spenta non si pubblica più: fino ad allora diventava pubblicata, non stampava, e chiudeva la
+  versione che stampava.
+* 2026-11-17 — la sovrapposizione con una versione fuori bozza esce col codice della funzione,
+  `E_DOCUMENTI_VERSIONE_OVERLAP`: prima usciva il 23P01 del vincolo, e il codice lo dava il backend.
 
 ---
 

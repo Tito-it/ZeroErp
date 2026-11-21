@@ -11,7 +11,8 @@
 //        - Sola lettura: prop `readonly` cumulativa con useInjectReadonly.
 //
 //        Dropdown lookup standard:
-//          - tipi_documento_output, sorgenti, render_engine via LookupSelect
+//          - tipo di documento con l'etichetta del DB (useLookupEtichettato),
+//            sorgenti via LookupSelect
 //            (lista del lookup `config.tabelle_gestibili`);
 //          - context_builder_code dal REGISTRO del backend
 //            (`GET /documenti/context-builders/`, dal 2026-10-03: prima era
@@ -47,6 +48,7 @@ import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import TemplateVersioniSection from './TemplateVersioniSection.vue'
 import InputText from 'primevue/inputtext'
@@ -57,6 +59,11 @@ import Divider from 'primevue/divider'
 import Tag from 'primevue/tag'
 
 const { t, te } = useI18n()
+// Il tipo di documento con l'etichetta che il DB dichiara riga per riga
+// (BE13 di brief-db-revisione-documenti): il valore e' l'id della FK.
+const { opzioni: tipoOutputOptions } = useLookupEtichettato(
+  { rel: 'documenti.tipi_documento_output' }, { campoCodice: 'id' },
+)
 const store = useTemplateDocumentiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
@@ -414,11 +421,14 @@ async function confermaPersonalizza() {
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('config.modelli_documenti.field_tipo_output') }} *</label>
-          <LookupSelect
+          <Select
             v-model="form.tipo_documento_output_id"
-            rel="documenti.tipi_documento_output"
+            :options="tipoOutputOptions"
+            option-label="label"
+            option-value="value"
             :placeholder="t('config.modelli_documenti.filter_tipo_output')"
             :disabled="isEdit || isReadOnlyEffective"
+            fluid
           />
           <small class="app-text-muted">
             {{ t('config.modelli_documenti.field_immutable_after_create') }}

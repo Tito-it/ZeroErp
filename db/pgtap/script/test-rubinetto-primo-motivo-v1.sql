@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    63,
+    62,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -386,7 +386,16 @@ SELECT is(
     --   vendite.fn_varia_prezzi_versione_listino (20261115-79), che solleva il
     --   primo motivo di script.fn_check_listino_riga_scrivibile della versione;
     --   prima la regola la diceva il guard delle righe, solo se ne prendeva una.
-    'le sessantatre funzioni bonificate chiamano l''helper');
+    -- ⚠️ 2026-11-20: da 63 a 62. Un sito che ESCE, non una bonifica disfatta:
+    --   anagrafiche.fn_copia_indirizzo_ruolo (20261117-30) non solleva piu' il
+    --   primo motivo di anagrafiche.fn_check_copia_indirizzo_ruolo, ritirata col
+    --   20261117-32. La copia va sulla chiave di destinazione, il motivo «nessun
+    --   tipo» lo dice il picker della destinazione e il tipo lo giudica la
+    --   singolare anagrafiche.fn_crea_indirizzo_ruolo, che resta nel conto
+    --   (brief-db-copia-indirizzo-destinazione, D-4 a). Il gemello
+    --   anagrafiche.fn_copia_indirizzo_soggetto_su_ruolo (-31) nasce senza motivo
+    --   di riga, e non entra.
+    'le sessantadue funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

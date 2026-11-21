@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> File persistiti collegati a un documento generato. In Fase A: un solo PDF_FINALE per documento.
+> I file di una stampa: il PDF principale, scritto con la stampa, e gli allegati aggiunti dopo. Un file non si cancella e i suoi dati di salvataggio non cambiano (si modificano solo meta e ordinamento).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -51,11 +51,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_documenti_generati_file_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_FILE_DOCUMENTO_DELETE_VIETATA')` |
 | trg_documenti_generati_file_a10_protect_file_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_file_protect_file()` |
-| trg_documenti_generati_file_a10_tipi_file_documento_requ_db402e | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_file_documento', 'attivo', 'file_tipo_id', 'id')` |
-| trg_documenti_generati_file_a10_tipi_file_documento_requ_db402e | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'tipi_file_documento', 'attivo', 'file_tipo_id', 'id')` |
-| trg_documenti_generati_file_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
+| trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
 | trg_documenti_generati_file_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_documenti_generati_file_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_file_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_documenti_generati_file_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 

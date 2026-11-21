@@ -94,6 +94,10 @@ function buildRowActions(data) {
       icon: MANAGE_ICONS.DELETE,
       severity: 'danger',
       allowWhenInactive: true,
+      // ⭐ Una riga nata dal seed di primo impianto non si cancella: si spegne
+      // (R-UI1). Il segno lo porta la riga della lista (`nata_dal_seed`).
+      disabled: data.nata_dal_seed === true,
+      tooltip: data.nata_dal_seed === true ? t('ui.admin.riga_del_programma') : undefined,
       command: () => onDelete(data),
     },
   ]

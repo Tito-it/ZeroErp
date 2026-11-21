@@ -22,11 +22,18 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
+import { useLookupEtichettato } from '../../core/composables/useLookupEtichettato'
 import { buildBoolOptions } from '../../core/utils/options'
+import { labelOrCode } from '../../core/utils/i18nLabel'
 import { statoScartoTemplateSeverity } from '../../core/utils/severity'
 
 const emit = defineEmits(['new', 'row-click'])
-const { t } = useI18n()
+const { t, te } = useI18n()
+// Il tipo di documento con l'etichetta che il DB dichiara riga per riga
+// (BE13 di brief-db-revisione-documenti): il valore e' l'id del filtro.
+const { opzioni: tipoOutputOptions } = useLookupEtichettato(
+  { rel: 'documenti.tipi_documento_output' }, { campoCodice: 'id' },
+)
 const store = useTemplateDocumentiStore()
 // `applyFilters` lo possiede la pagina (legge la casella di ricerca): lo si
 // chiede pigro, al cambio del filtro.
@@ -52,10 +59,12 @@ const boolOptions = buildBoolOptions(t)
     @new="emit('new')"
   >
     <template #filtri>
-      <LookupSelect
+      <Select
         v-model="tipoOutputFilter"
         class="app-filter-w-md"
-        rel="documenti.tipi_documento_output"
+        :options="tipoOutputOptions"
+        option-label="label"
+        option-value="value"
         :placeholder="t('config.modelli_documenti.filter_tipo_output')"
         show-clear
         @change="onTipoOutputChange"
@@ -86,6 +95,11 @@ const boolOptions = buildBoolOptions(t)
         :placeholder="t('config.modelli_documenti.col_standard')"
         @change="onStandardChange"
       />
+    </template>
+    <!-- Il tipo con l'etichetta che il DB dichiara, come nel filtro: la
+         `descrizione` del seed resta il ripiego (e l'ordinamento). -->
+    <template #cell-tipo_documento_output_descrizione="{ data }">
+      {{ labelOrCode(t, te, data.tipo_documento_output_etichetta_key, data.tipo_documento_output_descrizione) }}
     </template>
     <template #cell-is_default="{ data }">
       <Tag v-if="data.is_default" :value="t('common.yes')" severity="info" />

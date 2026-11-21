@@ -17,10 +17,13 @@ CREATE OR REPLACE FUNCTION documenti.fn_pubblica_template_documento_versione(p_v
  LANGUAGE plpgsql
 AS $function$
 -- Scopo:
---   Pubblica una versione template documento in modo atomico.
+--   Pubblica una versione template documento in modo atomico. E'
+--   l'unica strada per cui una versione esce dalla bozza.
 --
 -- Regole:
---   - la versione target deve esistere ed essere BOZZA;
+--   - la versione target deve esistere, essere BOZZA ed essere
+--     accesa: una bozza spenta pubblicata non stamperebbe, e
+--     chiuderebbe la versione che stampa;
 --   - p_valido_dal e' obbligatorio;
 --   - p_versione_contesto e' la forma dei dati che il builder del
 --     backend produce per quel tipo di documento: la versione si
@@ -36,18 +39,30 @@ AS $function$
 --     template con valido_dal < p_valido_dal e intervallo sovrapposto.
 --     Una OBSOLETA stampa fino al suo valido_al: che cosa stampa lo
 --     decide la validita' (documenti.vw_template_versioni_stampabili);
---   - la chiusura e' una scrittura sola, sotto la porta
---     zeroerp.allow_template_versione_chiusura_override: il Guard A1
---     protegge PUBBLICATA e OBSOLETA, e ammette solo questa forma;
---   - il vincolo EXCLUDE resta il guardrail finale contro overlap
---     residui o race concorrenti.
+--   - le due scritture (la chiusura, la pubblicazione) passano sotto la
+--     porta zeroerp.allow_template_versione_pubblicazione_override: il
+--     guard dello stato (trgfn_template_documenti_versioni_protect_pubblicata)
+--     a porta aperta ammette solo queste due forme. La porta si apre
+--     dopo la scelta delle versioni e si richiude prima di uscire,
+--     anche in errore;
+--   - una sovrapposizione che la chiusura non risolve (lo stesso inizio di
+--     una versione fuori bozza, un inizio dentro una OBSOLETA, una
+--     pubblicazione concorrente) la ferma il vincolo
+--     ex_template_documenti_versioni_no_overlap_pubblicata: il verbo la
+--     rende col suo codice, E_DOCUMENTI_VERSIONE_OVERLAP. Un'altra
+--     violazione d'esclusione si rilancia com'e'.
 DECLARE
     v_template_id  documenti.template_documenti_versioni.template_documento_id%TYPE;
     v_stato        documenti.template_documenti_versioni.stato%TYPE;
+    v_attivo       documenti.template_documenti_versioni.attivo%TYPE;
+    v_versione     documenti.template_documenti_versioni.versione%TYPE;
+    v_modello      documenti.template_documenti.descrizione%TYPE;
     -- id di documenti.template_documenti_versioni: %TYPE[] non e' sintassi valida
     v_closed_ids   bigint[] := ARRAY[]::bigint[];
     -- un conteggio: nessuna colonna di cui sia il riflesso
     v_closed_count integer  := 0;
+    -- il nome del vincolo violato, dalla diagnostica dell'errore
+    v_vincolo      text;
 BEGIN
     IF p_versione_id IS NULL OR p_versione_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -71,11 +86,12 @@ BEGIN
         );
     END IF;
 
-    SELECT v.template_documento_id, v.stato
-      INTO v_template_id, v_stato
+    SELECT v.template_documento_id, v.stato, v.attivo, v.versione, t.descrizione
+      INTO v_template_id, v_stato, v_attivo, v_versione, v_modello
       FROM documenti.template_documenti_versioni v
+      JOIN documenti.template_documenti t ON t.id = v.template_documento_id
      WHERE v.id = p_versione_id
-     FOR UPDATE;
+     FOR UPDATE OF v;
 
     IF v_template_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -99,6 +115,23 @@ BEGIN
             ),
             NULL::uuid,
             p_versione_id::text, v_stato
+        );
+    END IF;
+
+    -- Una bozza spenta non stampa: pubblicarla chiuderebbe la
+    -- versione che stampa e lascerebbe il modello senza stampa.
+    IF v_attivo IS NOT TRUE THEN
+        PERFORM script.fn_log_and_raise_error(
+            'documenti',
+            'fn_pubblica_template_documento_versione',
+            'E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA',
+            jsonb_build_object(
+                'versione_id',           p_versione_id,
+                'template_documento_id', v_template_id,
+                'versione',              v_versione
+            ),
+            NULL::uuid,
+            v_versione::text, v_modello::text
         );
     END IF;
 
@@ -140,42 +173,71 @@ BEGIN
     -- Calcola subito: evita GET DIAGNOSTICS post-UPDATE.
     v_closed_count := COALESCE(array_length(v_closed_ids, 1), 0);
 
-    IF v_closed_count > 0 THEN
-        -- Una scrittura sola, stato e data insieme: il Guard A1 protegge
-        -- PUBBLICATA e OBSOLETA, e a porta aperta ammette solo questa
-        -- forma (PUBBLICATA -> OBSOLETA, valido_al accorciato). La porta
-        -- si apre qui, dopo la scelta delle versioni, e si richiude
-        -- subito: nessun'altra scrittura della transazione la trova aperta.
-        PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'on', true);
+    -- Le due scritture del verbo, sotto la sua porta. Si apre qui,
+    -- dopo la scelta delle versioni, e si richiude prima di uscire:
+    -- nel blocco EXCEPTION anche in errore, perche' il terzo argomento
+    -- di set_config lega il valore alla transazione, non alla chiamata.
+    BEGIN
+        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'on', true);
 
+        IF v_closed_count > 0 THEN
+            -- Una scrittura sola, stato e data insieme: a porta aperta il
+            -- guard ammette solo questa forma (PUBBLICATA -> OBSOLETA,
+            -- valido_al accorciato).
+            UPDATE documenti.template_documenti_versioni
+               SET stato     = 'OBSOLETA',
+                   valido_al = p_valido_dal - 1
+             WHERE id = ANY(v_closed_ids);
+        END IF;
+
+        -- A porta aperta il guard ammette solo BOZZA -> PUBBLICATA con
+        -- le sole date cambiate.
         UPDATE documenti.template_documenti_versioni
-           SET stato     = 'OBSOLETA',
-               valido_al = p_valido_dal - 1
-         WHERE id = ANY(v_closed_ids);
+           SET stato      = 'PUBBLICATA',
+               valido_dal = p_valido_dal,
+               valido_al  = p_valido_al
+         WHERE id    = p_versione_id
+           AND stato = 'BOZZA';
 
-        PERFORM set_config('zeroerp.allow_template_versione_chiusura_override', 'off', true);
-    END IF;
+        IF NOT FOUND THEN
+            PERFORM script.fn_log_and_raise_error(
+                'documenti',
+                'fn_pubblica_template_documento_versione',
+                'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
+                jsonb_build_object(
+                    'versione_id',    p_versione_id,
+                    'stato_corrente', v_stato
+                ),
+                NULL::uuid,
+                p_versione_id::text, v_stato
+            );
+        END IF;
 
-    UPDATE documenti.template_documenti_versioni
-       SET stato      = 'PUBBLICATA',
-           valido_dal = p_valido_dal,
-           valido_al  = p_valido_al
-     WHERE id    = p_versione_id
-       AND stato = 'BOZZA';
-
-    IF NOT FOUND THEN
-        PERFORM script.fn_log_and_raise_error(
-            'documenti',
-            'fn_pubblica_template_documento_versione',
-            'E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO',
-            jsonb_build_object(
-                'versione_id',    p_versione_id,
-                'stato_corrente', v_stato
-            ),
-            NULL::uuid,
-            p_versione_id::text, v_stato
-        );
-    END IF;
+        PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+    EXCEPTION
+        WHEN exclusion_violation THEN
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
+            IF v_vincolo IS DISTINCT FROM 'ex_template_documenti_versioni_no_overlap_pubblicata' THEN
+                RAISE;
+            END IF;
+            PERFORM script.fn_log_and_raise_error(
+                'documenti',
+                'fn_pubblica_template_documento_versione',
+                'E_DOCUMENTI_VERSIONE_OVERLAP',
+                jsonb_build_object(
+                    'versione_id',           p_versione_id,
+                    'template_documento_id', v_template_id,
+                    'valido_dal',            p_valido_dal,
+                    'valido_al',             p_valido_al
+                ),
+                NULL::uuid,
+                VARIADIC ARRAY[]::text[]
+            );
+        WHEN OTHERS THEN
+            PERFORM set_config('zeroerp.allow_template_versione_pubblicazione_override', 'off', true);
+            RAISE;
+    END;
 
     versione_id           := p_versione_id;
     template_documento_id := v_template_id;
@@ -185,7 +247,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.fn_pubblica_template_documento_versione(p_versione_id bigint, p_valido_dal date, p_versione_contesto integer, p_valido_al date)
-IS 'Pubblica una versione template BOZZA e chiude, nella stessa transazione, le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). La chiusura passa dal Guard A1 a porta zeroerp.allow_template_versione_chiusura_override aperta. p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL).';
+IS 'Pubblica una versione template BOZZA, ed e'' l''unica strada per cui una versione esce dalla bozza. Nella stessa transazione chiude le versioni PUBBLICATE precedenti sovrapposte: OBSOLETE con fine al giorno prima della nuova, e stampabili fino a quel giorno (documenti.vw_template_versioni_stampabili). Le due scritture passano sotto la porta zeroerp.allow_template_versione_pubblicazione_override, che il guard dello stato (documenti.trgfn_template_documenti_versioni_protect_pubblicata) chiede e che il verbo richiude prima di uscire, anche in errore. Rifiuti: parametri mancanti (E_DOCUMENTI_PUBBLICA_INPUT_INVALIDO), versione inesistente (E_DOCUMENTI_VERSIONE_NOT_FOUND), non in bozza (E_DOCUMENTI_VERSIONE_PUBBLICA_STATO_INVALIDO), bozza spenta (E_DOCUMENTI_VERSIONE_PUBBLICA_SPENTA: non stamperebbe, e chiuderebbe la versione che stampa). p_versione_contesto (obbligatorio) e'' la forma dei dati che il builder produce: la versione si pubblica solo se dichiara di leggere quella forma (documenti.fn_guard_versione_contesto: E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA). L''ordine delle date lo giudica il guard comune script.trgfn_guard_date_validita sull''UPDATE della versione (E_DATA_AL_MINORE_DAL); una sovrapposizione che la chiusura non risolve (stesso inizio di una versione fuori bozza, inizio dentro una OBSOLETA, una pubblicazione concorrente) la ferma il vincolo ex_template_documenti_versioni_no_overlap_pubblicata, e il verbo la rende col suo codice (E_DOCUMENTI_VERSIONE_OVERLAP).';
 ```
 
 </div>

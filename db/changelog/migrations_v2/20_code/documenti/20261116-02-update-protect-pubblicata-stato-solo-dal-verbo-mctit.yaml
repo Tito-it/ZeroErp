@@ -1,0 +1,254 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO STATO DI UNA VERSIONE DI TEMPLATE HA UN VERBO SOLO
+#   documenti.trgfn_template_documenti_versioni_protect_pubblicata
+#   trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd
+#     (al posto di trg_template_documenti_versioni_a10_protect_pubblicata_upd)
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il guard guardava solo OLD.stato. Un UPDATE BOZZA -> PUBBLICATA (o
+#   OBSOLETA), o un INSERT che nasce fuori bozza, saltava i due controlli
+#   della pubblicazione: la forma dei dati che la versione legge
+#   (fn_guard_versione_contesto) e la chiusura della versione precedente.
+#   Restava solo il vincolo di non sovrapposizione. Decisione di Tid del
+#   2026-11-14 (Q3): uno stato fuori bozza si scrive solo da «Pubblica»,
+#   cioe' da documenti.fn_pubblica_template_documento_versione; il seed dello
+#   standard, scritto dal proprietario della tabella, passa.
+#
+# -- LA PORTA ----------------------------------------------------------------
+#   La pubblicazione apriva gia' una porta per la chiusura della versione
+#   precedente. La stessa porta vale ora anche per la sua scrittura, e prende
+#   il nome del verbo: zeroerp.allow_template_versione_pubblicazione_override
+#   (prima ..._chiusura_override). A porta aperta passano due forme sole:
+#   BOZZA -> PUBBLICATA con le sole date cambiate, PUBBLICATA -> OBSOLETA con
+#   valido_al accorciato. La porta protegge da un backend che sbaglia, non da
+#   uno manomesso: una sessione la puo' aprire.
+#   Il proprietario della tabella scrive lo stato senza porta
+#   (script.fn_is_proprietario_tabella, lo stesso riconoscimento del guard
+#   dello standard): e' come nasce e si chiude uno standard nei pgTAP che
+#   girano da owner. L'immutabilita' fuori bozza vale anche per lui.
+#
+# -- LA FASE -----------------------------------------------------------------
+#   Da a10 ad a05: e' un'immutabilita', e parla prima della validita' del
+#   valore nuovo (linee-guida-trigger, «La fase»). Fra gli a10 della tabella
+#   c'e' il guard comune delle date: su una PUBBLICATA con le date invertite
+#   diceva «la data al e' inferiore alla data dal», mandando a correggere una
+#   data che non si puo' cambiare. Il guard dello standard (a05_guard_standard)
+#   resta prima: sullo standard l'app non scrive niente.
+#   Il trigger monta anche l'INSERT: si toglie per FUNZIONE (pg_trigger.tgfoid)
+#   e si ricrea col nome nuovo. Su dbdev un solo montaggio (letto 2026-11-16).
+#
+# -- CHI SCRIVE LO STATO (censito 2026-11-16) ------------------------------
+#   DB: solo fn_pubblica_template_documento_versione (20261116-03 apre la
+#   porta anche per la pubblicazione). I seed 80_data inseriscono BOZZE e le
+#   pubblicano dal verbo (20261020-13 … -18, 20261020-25, 20260804-66,
+#   20260816-02). BE: create_versione fissa 'BOZZA', update_versione non
+#   scrive lo stato, la pubblicazione chiama il verbo (BE4: verificato).
+#   pgTAP: le fixture che inseriscono o aggiornano una versione fuori bozza
+#   girando come app passano dal verbo, riscritte nel giro; quelle che girano
+#   da owner (template-standard-v1, personalizza-v1, porta-unica-v1) restano.
+#
+#   Corpo dalla doc auto-generata (ultimo changeSet 20261114-04): cambiano il
+#   ramo della bozza, la porta e il COMMENT; LANGUAGE, SECURITY INVOKER,
+#   nessuna clausola SET/COST da ripetere.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-02-update-protect-pubblicata-stato-solo-dal-verbo-mctit.yaml
+
+  - changeSet:
+      id: 20261116-02-update-protect-pubblicata-stato-solo-dal-verbo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lo stato di una versione di template fuori bozza si scrive solo dalla pubblicazione: una
+        versione nasce in BOZZA, ne esce solo pubblicandosi, e fuori bozza non si modifica.
+        Il trigger passa ad a05 e monta anche l'INSERT.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo:
+              --   Lo stato di una versione di template ha un verbo solo,
+              --   documenti.fn_pubblica_template_documento_versione:
+              --   1. una versione nasce in BOZZA;
+              --   2. esce dalla bozza solo pubblicandosi: BOZZA -> PUBBLICATA,
+              --      con le sole date cambiate, a porta aperta;
+              --   3. fuori bozza (PUBBLICATA o OBSOLETA) non si modifica: HTML,
+              --      CSS, render engine, pagina, validita', forma dei dati,
+              --      template_documento_id, versione e stato restano quelli
+              --      della pubblicazione. Per ogni cambio si crea una BOZZA.
+              --      Unica eccezione: la chiusura che la pubblicazione fa della
+              --      versione precedente, PUBBLICATA -> OBSOLETA con valido_al
+              --      che si accorcia, a porta aperta.
+              --   La porta e' zeroerp.allow_template_versione_pubblicazione_override:
+              --   la apre e la richiude la pubblicazione. Protegge da un backend
+              --   che sbaglia, non da uno manomesso.
+              --
+              -- Il proprietario della tabella (seed, changeSet) scrive lo stato
+              -- senza porta (regole 1 e 2): e' come nasce uno standard.
+              -- L'immutabilita' (regola 3) vale anche per lui.
+              --
+              -- Errori:
+              --   E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO      (regole 1 e 2)
+              --   E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE  (regola 3)
+              DECLARE
+                -- la porta: un interruttore della sessione, non il riflesso di una colonna
+                v_porta boolean := current_setting(
+                    'zeroerp.allow_template_versione_pubblicazione_override', true) IS NOT DISTINCT FROM 'on';
+              BEGIN
+                -- 1. La nascita. IF annidati: OLD si legge solo sull'UPDATE.
+                IF TG_OP = 'INSERT' THEN
+                  IF NEW.stato <> 'BOZZA'
+                     AND NOT script.fn_is_proprietario_tabella(TG_RELID) THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                      'E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO',
+                      jsonb_build_object(
+                        'template_documento_id', NEW.template_documento_id,
+                        'versione',              NEW.versione,
+                        'operazione',            TG_OP,
+                        'stato_nuovo',           NEW.stato),
+                      NULL::uuid,
+                      NEW.versione::text);
+                  END IF;
+                  RETURN NEW;
+                END IF;
+
+                -- 2. L'uscita dalla bozza.
+                IF OLD.stato = 'BOZZA' THEN
+                  IF NEW.stato = 'BOZZA'
+                     OR script.fn_is_proprietario_tabella(TG_RELID) THEN
+                    RETURN NEW;
+                  END IF;
+
+                  IF NEW.stato = 'PUBBLICATA'
+                     AND v_porta
+                     AND (NEW.html_template, NEW.css_template, NEW.markdown_template,
+                          NEW.render_engine_id, NEW.formato_template, NEW.page_format,
+                          NEW.page_orientation, NEW.margin_top_mm, NEW.margin_right_mm,
+                          NEW.margin_bottom_mm, NEW.margin_left_mm,
+                          NEW.context_schema, NEW.versione_contesto,
+                          NEW.template_documento_id, NEW.versione)
+                         IS NOT DISTINCT FROM
+                         (OLD.html_template, OLD.css_template, OLD.markdown_template,
+                          OLD.render_engine_id, OLD.formato_template, OLD.page_format,
+                          OLD.page_orientation, OLD.margin_top_mm, OLD.margin_right_mm,
+                          OLD.margin_bottom_mm, OLD.margin_left_mm,
+                          OLD.context_schema, OLD.versione_contesto,
+                          OLD.template_documento_id, OLD.versione)
+                  THEN
+                    RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                    'E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione',              OLD.versione,
+                      'operazione',            TG_OP,
+                      'stato',                 OLD.stato,
+                      'stato_nuovo',           NEW.stato,
+                      'porta',                 v_porta),
+                    NULL::uuid,
+                    OLD.versione::text);
+                END IF;
+
+                -- 3. Fuori bozza.
+                IF OLD.stato IN ('PUBBLICATA', 'OBSOLETA') THEN
+                  IF OLD.stato = 'PUBBLICATA'
+                     AND NEW.stato = 'OBSOLETA'
+                     AND v_porta
+                     AND NEW.valido_al IS NOT NULL
+                     AND (OLD.valido_al IS NULL OR NEW.valido_al <= OLD.valido_al)
+                     AND (NEW.html_template, NEW.css_template, NEW.markdown_template,
+                          NEW.render_engine_id, NEW.formato_template, NEW.page_format,
+                          NEW.page_orientation, NEW.margin_top_mm, NEW.margin_right_mm,
+                          NEW.margin_bottom_mm, NEW.margin_left_mm, NEW.valido_dal,
+                          NEW.context_schema, NEW.versione_contesto,
+                          NEW.template_documento_id, NEW.versione)
+                         IS NOT DISTINCT FROM
+                         (OLD.html_template, OLD.css_template, OLD.markdown_template,
+                          OLD.render_engine_id, OLD.formato_template, OLD.page_format,
+                          OLD.page_orientation, OLD.margin_top_mm, OLD.margin_right_mm,
+                          OLD.margin_bottom_mm, OLD.margin_left_mm, OLD.valido_dal,
+                          OLD.context_schema, OLD.versione_contesto,
+                          OLD.template_documento_id, OLD.versione)
+                  THEN
+                    RETURN NEW;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'documenti', 'trgfn_template_documenti_versioni_protect_pubblicata',
+                    'E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE',
+                    jsonb_build_object(
+                      'template_documento_id', OLD.template_documento_id,
+                      'versione', OLD.versione,
+                      'stato', OLD.stato,
+                      'stato_nuovo', NEW.stato
+                    ),
+                    NULL::uuid,
+                    VARIADIC ARRAY[]::text[]
+                  );
+                END IF;
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()
+              IS 'Lo stato di una versione di template ha un verbo solo, documenti.fn_pubblica_template_documento_versione. Una versione nasce in BOZZA; ne esce solo pubblicandosi, da BOZZA a PUBBLICATA con le sole date cambiate; fuori bozza (PUBBLICATA o OBSOLETA) non si modifica e lo stato non torna indietro, salvo la chiusura che la pubblicazione fa della versione precedente, da PUBBLICATA a OBSOLETA con valido_al accorciato e nient''altro cambiato. Le due scritture della pubblicazione passano a porta zeroerp.allow_template_versione_pubblicazione_override aperta, che il verbo apre e richiude. Il proprietario della tabella (seed, changeSet: script.fn_is_proprietario_tabella) scrive lo stato senza porta, come nasce uno standard; l''immutabilita'' fuori bozza vale anche per lui. Rifiuti: E_DOCUMENTI_VERSIONE_STATO_FUORI_VERBO (nascita o uscita dalla bozza fuori dal verbo), E_DOCUMENTI_VERSIONE_PUBBLICATA_IMMUTABILE (una versione fuori bozza modificata).';
+
+              -- Si toglie per funzione: ogni nome con cui e' montata sulla tabella.
+              DO $drop$
+              DECLARE
+                  v_nome pg_catalog.pg_trigger.tgname%TYPE;
+              BEGIN
+                  FOR v_nome IN
+                      SELECT t.tgname
+                        FROM pg_catalog.pg_trigger t
+                       WHERE t.tgrelid = 'documenti.template_documenti_versioni'::regclass
+                         AND t.tgfoid  = 'documenti.trgfn_template_documenti_versioni_protect_pubblicata'::regproc
+                         AND NOT t.tgisinternal
+                  LOOP
+                      EXECUTE format('DROP TRIGGER %I ON documenti.template_documenti_versioni', v_nome);
+                  END LOOP;
+              END
+              $drop$;
+
+              CREATE TRIGGER trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd
+                  BEFORE INSERT OR UPDATE OF
+                      html_template, css_template, markdown_template, render_engine_id,
+                      formato_template, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, context_schema, versione_contesto,
+                      template_documento_id, versione, stato
+                  ON documenti.template_documenti_versioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata();
+
+              COMMENT ON TRIGGER trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd
+                  ON documenti.template_documenti_versioni IS
+                  'Lo stato di una versione ha un verbo solo: si nasce in BOZZA, se ne esce pubblicando, fuori bozza non si modifica. Fase a05: l''immutabilita'' parla prima del guard comune delle date. L''elenco dell''UPDATE comprende lo stato e la forma dei dati che la versione legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Corpo e montaggio di prima li rimette il changeSet 20261114-04,
+              -- rilanciato dopo aver tolto il montaggio nuovo.
+              DROP TRIGGER IF EXISTS trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd
+                  ON documenti.template_documenti_versioni;

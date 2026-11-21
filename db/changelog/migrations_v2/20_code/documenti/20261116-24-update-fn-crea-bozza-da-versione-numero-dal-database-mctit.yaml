@@ -1,0 +1,321 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COPIA DI UNA VERSIONE NON NUMERA PIU': IL NUMERO LO ASSEGNA IL DATABASE
+#   documenti.fn_crea_bozza_da_versione
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Dal 20261116-23 il numero di ogni versione nuova lo assegna il trigger
+#   documenti.trgfn_template_documenti_versioni_assegna_numero, in fila per
+#   modello. La copia calcolava ancora il suo MAX + 1 e traduceva la gara sul
+#   numero in E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE: sarebbe stata una
+#   seconda sede della regola, e il trigger le sostituiva comunque il numero
+#   (la copia gira da applicazione). Ora l'INSERT non nomina il numero, e il
+#   blocco che intercettava il 23505 esce: con le nascite in fila la gara
+#   non c'e', e il codice si ritira (obsoleto_dal nel catalogo, questo giro).
+#   R1 della sessione BE, decisione di Tid del 2026-11-17.
+#
+#   Corpo dal changeSet 20261116-04, verificato uguale al vivo il 2026-11-17
+#   (pg_proc.prosrc, spazi normalizzati): cambiano il commento in testa, la
+#   dichiarazione di v_vincolo e v_versione (tolte), la scrittura e il
+#   COMMENT. Firma e RETURNS invariati, ancorati a %TYPE; LANGUAGE,
+#   volatilita', SECURITY INVOKER invariati, nessuna clausola SET/COST/ROWS.
+#
+# -- CHI LA CHIAMA (censito 2026-11-17) ------------------------------------
+#   DB: fn_personalizza_template_standard. BE: clone_versione. pgTAP:
+#   test-documenti-personalizza-v1, test-documenti-template-standard-v1,
+#   test-documenti-pubblicazione-e-copia-v1 (il 27 riscritto in questo giro),
+#   test-documenti-numero-versione-v1 (nuovo).
+#   Brief: brief-db-revisione-documenti, giro 6 (§16).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/documenti/20261116-24-update-fn-crea-bozza-da-versione-numero-dal-database-mctit.yaml
+
+  - changeSet:
+      id: 20261116-24-update-fn-crea-bozza-da-versione-numero-dal-database
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La copia di una versione di template non calcola piu' il numero: lo assegna il trigger
+        della tabella, e la traduzione della gara sul numero esce.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION documenti.fn_crea_bozza_da_versione(
+                  p_versione_origine_id       documenti.template_documenti_versioni.id%TYPE,
+                  p_template_documento_id     documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  p_derivata_da_versione_id   documenti.template_documenti_versioni.derivata_da_versione_id%TYPE DEFAULT NULL,
+                  p_titolo                    documenti.template_documenti_versioni.titolo%TYPE DEFAULT NULL,
+                  p_valido_dal                documenti.template_documenti_versioni.valido_dal%TYPE DEFAULT NULL,
+                  p_valido_al                 documenti.template_documenti_versioni.valido_al%TYPE DEFAULT NULL,
+                  p_attivo                    documenti.template_documenti_versioni.attivo%TYPE DEFAULT true,
+                  p_meta                      documenti.template_documenti_versioni.meta%TYPE DEFAULT NULL
+              )
+               RETURNS documenti.template_documenti_versioni.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: copia la versione p_versione_origine_id in una BOZZA
+              --   nuova del modello p_template_documento_id e ne restituisce
+              --   l'id. Sede unica dei campi che una copia riprende.
+              -- Regole:
+              --   - la destinazione e' un modello dello stesso documento
+              --     dell'origine: stessa sorgente, stesso tipo. La regola e'
+              --     quella di documenti.fn_template_motivo_non_coerente;
+              --   - il numero non lo sceglie la copia: lo assegna il database
+              --     alla nascita, il successivo all'ultimo del modello di
+              --     destinazione, in fila con le altre nascite dello stesso
+              --     modello (documenti.trgfn_template_documenti_versioni_assegna_numero).
+              DECLARE
+                  v_origine        documenti.template_documenti_versioni%ROWTYPE;
+                  v_orig_tipo      documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_orig_sorgente  documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  -- il motivo restituito da fn_template_motivo_non_coerente: un codice, non una colonna
+                  v_motivo         text;
+                  v_id             documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  IF p_versione_origine_id IS NULL OR p_versione_origine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id obbligatorio e > 0');
+                  END IF;
+                  IF p_template_documento_id IS NULL OR p_template_documento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_documento_id', 'valore', p_template_documento_id),
+                          NULL::uuid, 'p_template_documento_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT * INTO v_origine
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.id = p_versione_origine_id;
+
+                  IF v_origine.id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id: la versione non esiste');
+                  END IF;
+
+                  SELECT t.tipo_documento_output_id, t.sorgente_tipo_id
+                    INTO v_orig_tipo, v_orig_sorgente
+                    FROM documenti.template_documenti t
+                   WHERE t.id = v_origine.template_documento_id;
+
+                  -- La destinazione e' dello stesso documento dell'origine. La
+                  -- funzione valuta i motivi in ordine (MODELLO_INESISTENTE,
+                  -- SORGENTE, TIPO, EMITTENTE): l'emittente non riguarda la copia,
+                  -- e arriva solo quando sorgente e tipo coincidono.
+                  v_motivo := documenti.fn_template_motivo_non_coerente(
+                      p_template_documento_id, v_orig_sorgente, NULL, v_orig_tipo);
+
+                  IF v_motivo = 'MODELLO_INESISTENTE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_documento_id', 'valore', p_template_documento_id),
+                          NULL::uuid, 'p_template_documento_id: il modello non esiste');
+                  ELSIF v_motivo IN ('SORGENTE', 'TIPO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO',
+                          jsonb_build_object(
+                              'versione_origine_id',   p_versione_origine_id,
+                              'template_origine_id',   v_origine.template_documento_id,
+                              'template_documento_id', p_template_documento_id,
+                              'motivo',                v_motivo),
+                          NULL::uuid,
+                          v_origine.versione::text);
+                  END IF;
+
+                  INSERT INTO documenti.template_documenti_versioni (
+                      template_documento_id, stato, titolo,
+                      formato_template, html_template, css_template, markdown_template,
+                      render_engine_id, page_format, page_orientation,
+                      margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                      valido_dal, valido_al, versione_contesto, context_schema, meta,
+                      attivo, derivata_da_versione_id)
+                  VALUES (
+                      p_template_documento_id, 'BOZZA',
+                      COALESCE(p_titolo, v_origine.titolo),
+                      v_origine.formato_template, v_origine.html_template,
+                      v_origine.css_template, v_origine.markdown_template,
+                      v_origine.render_engine_id, v_origine.page_format, v_origine.page_orientation,
+                      v_origine.margin_top_mm, v_origine.margin_right_mm,
+                      v_origine.margin_bottom_mm, v_origine.margin_left_mm,
+                      p_valido_dal, p_valido_al, v_origine.versione_contesto,
+                      v_origine.context_schema, COALESCE(p_meta, v_origine.meta),
+                      COALESCE(p_attivo, true), p_derivata_da_versione_id)
+                  RETURNING id INTO v_id;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_crea_bozza_da_versione(
+                  documenti.template_documenti_versioni.id%TYPE,
+                  documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  documenti.template_documenti_versioni.derivata_da_versione_id%TYPE,
+                  documenti.template_documenti_versioni.titolo%TYPE,
+                  documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.valido_al%TYPE,
+                  documenti.template_documenti_versioni.attivo%TYPE,
+                  documenti.template_documenti_versioni.meta%TYPE) IS
+                  'Copia una versione (qualunque stato) in una BOZZA nuova del modello indicato e ne restituisce l''id. Copia corpo, motore, pagina, versione_contesto, context_schema e meta; non le date (si fissano alla pubblicazione) e non l''origine, che dichiara il chiamante (p_derivata_da_versione_id). Sostituzioni facoltative: titolo, date, attivo, meta. La destinazione e'' un modello dello stesso documento dell''origine, stessa sorgente e stesso tipo, con la regola di documenti.fn_template_motivo_non_coerente (E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO); versione o modello che non esistono: E_PARAMETRO_INVALIDO. Il numero lo assegna il database alla nascita, il successivo all''ultimo del modello (documenti.trgfn_template_documenti_versioni_assegna_numero). Sede unica dei campi di una copia: la usano fn_personalizza_template_standard e il clone di una versione del backend.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo e il COMMENT del 20261116-04: la copia torna a numerare da
+              -- se', come serve dopo il rollback del 20261116-23 che toglie il trigger.
+              CREATE OR REPLACE FUNCTION documenti.fn_crea_bozza_da_versione(
+                  p_versione_origine_id       documenti.template_documenti_versioni.id%TYPE,
+                  p_template_documento_id     documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  p_derivata_da_versione_id   documenti.template_documenti_versioni.derivata_da_versione_id%TYPE DEFAULT NULL,
+                  p_titolo                    documenti.template_documenti_versioni.titolo%TYPE DEFAULT NULL,
+                  p_valido_dal                documenti.template_documenti_versioni.valido_dal%TYPE DEFAULT NULL,
+                  p_valido_al                 documenti.template_documenti_versioni.valido_al%TYPE DEFAULT NULL,
+                  p_attivo                    documenti.template_documenti_versioni.attivo%TYPE DEFAULT true,
+                  p_meta                      documenti.template_documenti_versioni.meta%TYPE DEFAULT NULL
+              )
+               RETURNS documenti.template_documenti_versioni.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: copia la versione p_versione_origine_id in una BOZZA
+              --   nuova del modello p_template_documento_id, col numero
+              --   successivo, e ne restituisce l'id. Sede unica dei campi che
+              --   una copia riprende.
+              -- Regole:
+              --   - la destinazione e' un modello dello stesso documento
+              --     dell'origine: stessa sorgente, stesso tipo. La regola e'
+              --     quella di documenti.fn_template_motivo_non_coerente;
+              --   - il numero e' MAX + 1 del modello di destinazione: se una
+              --     copia concorrente lo prende prima, la copia non nasce
+              --     (E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE) e si riprova.
+              DECLARE
+                  v_origine        documenti.template_documenti_versioni%ROWTYPE;
+                  v_orig_tipo      documenti.template_documenti.tipo_documento_output_id%TYPE;
+                  v_orig_sorgente  documenti.template_documenti.sorgente_tipo_id%TYPE;
+                  -- il motivo restituito da fn_template_motivo_non_coerente: un codice, non una colonna
+                  v_motivo         text;
+                  -- il nome del vincolo violato, dalla diagnostica dell'errore
+                  v_vincolo        text;
+                  v_versione       documenti.template_documenti_versioni.versione%TYPE;
+                  v_id             documenti.template_documenti_versioni.id%TYPE;
+              BEGIN
+                  IF p_versione_origine_id IS NULL OR p_versione_origine_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id obbligatorio e > 0');
+                  END IF;
+                  IF p_template_documento_id IS NULL OR p_template_documento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_documento_id', 'valore', p_template_documento_id),
+                          NULL::uuid, 'p_template_documento_id obbligatorio e > 0');
+                  END IF;
+
+                  SELECT * INTO v_origine
+                    FROM documenti.template_documenti_versioni v
+                   WHERE v.id = p_versione_origine_id;
+
+                  IF v_origine.id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_versione_origine_id', 'valore', p_versione_origine_id),
+                          NULL::uuid, 'p_versione_origine_id: la versione non esiste');
+                  END IF;
+
+                  SELECT t.tipo_documento_output_id, t.sorgente_tipo_id
+                    INTO v_orig_tipo, v_orig_sorgente
+                    FROM documenti.template_documenti t
+                   WHERE t.id = v_origine.template_documento_id;
+
+                  -- La destinazione e' dello stesso documento dell'origine. La
+                  -- funzione valuta i motivi in ordine (MODELLO_INESISTENTE,
+                  -- SORGENTE, TIPO, EMITTENTE): l'emittente non riguarda la copia,
+                  -- e arriva solo quando sorgente e tipo coincidono.
+                  v_motivo := documenti.fn_template_motivo_non_coerente(
+                      p_template_documento_id, v_orig_sorgente, NULL, v_orig_tipo);
+
+                  IF v_motivo = 'MODELLO_INESISTENTE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_template_documento_id', 'valore', p_template_documento_id),
+                          NULL::uuid, 'p_template_documento_id: il modello non esiste');
+                  ELSIF v_motivo IN ('SORGENTE', 'TIPO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO',
+                          jsonb_build_object(
+                              'versione_origine_id',   p_versione_origine_id,
+                              'template_origine_id',   v_origine.template_documento_id,
+                              'template_documento_id', p_template_documento_id,
+                              'motivo',                v_motivo),
+                          NULL::uuid,
+                          v_origine.versione::text);
+                  END IF;
+
+                  BEGIN
+                      SELECT COALESCE(max(v.versione), 0) + 1 INTO v_versione
+                        FROM documenti.template_documenti_versioni v
+                       WHERE v.template_documento_id = p_template_documento_id;
+
+                      INSERT INTO documenti.template_documenti_versioni (
+                          template_documento_id, versione, stato, titolo,
+                          formato_template, html_template, css_template, markdown_template,
+                          render_engine_id, page_format, page_orientation,
+                          margin_top_mm, margin_right_mm, margin_bottom_mm, margin_left_mm,
+                          valido_dal, valido_al, versione_contesto, context_schema, meta,
+                          attivo, derivata_da_versione_id)
+                      VALUES (
+                          p_template_documento_id, v_versione, 'BOZZA',
+                          COALESCE(p_titolo, v_origine.titolo),
+                          v_origine.formato_template, v_origine.html_template,
+                          v_origine.css_template, v_origine.markdown_template,
+                          v_origine.render_engine_id, v_origine.page_format, v_origine.page_orientation,
+                          v_origine.margin_top_mm, v_origine.margin_right_mm,
+                          v_origine.margin_bottom_mm, v_origine.margin_left_mm,
+                          p_valido_dal, p_valido_al, v_origine.versione_contesto,
+                          v_origine.context_schema, COALESCE(p_meta, v_origine.meta),
+                          COALESCE(p_attivo, true), p_derivata_da_versione_id)
+                      RETURNING id INTO v_id;
+                  EXCEPTION WHEN unique_violation THEN
+                      GET STACKED DIAGNOSTICS v_vincolo = CONSTRAINT_NAME;
+                      IF v_vincolo IS DISTINCT FROM 'uq_template_documenti_versioni_template_versione' THEN
+                          RAISE;
+                      END IF;
+                      PERFORM script.fn_log_and_raise_error(
+                          'documenti', 'fn_crea_bozza_da_versione', 'E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE',
+                          jsonb_build_object(
+                              'template_documento_id', p_template_documento_id,
+                              'versione',              v_versione,
+                              'versione_origine_id',   p_versione_origine_id),
+                          NULL::uuid,
+                          v_versione::text);
+                  END;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION documenti.fn_crea_bozza_da_versione(
+                  documenti.template_documenti_versioni.id%TYPE,
+                  documenti.template_documenti_versioni.template_documento_id%TYPE,
+                  documenti.template_documenti_versioni.derivata_da_versione_id%TYPE,
+                  documenti.template_documenti_versioni.titolo%TYPE,
+                  documenti.template_documenti_versioni.valido_dal%TYPE,
+                  documenti.template_documenti_versioni.valido_al%TYPE,
+                  documenti.template_documenti_versioni.attivo%TYPE,
+                  documenti.template_documenti_versioni.meta%TYPE) IS
+                  'Copia una versione (qualunque stato) in una BOZZA nuova del modello indicato, col numero successivo di quel modello, e ne restituisce l''id. Copia corpo, motore, pagina, versione_contesto, context_schema e meta; non le date (si fissano alla pubblicazione) e non l''origine, che dichiara il chiamante (p_derivata_da_versione_id). Sostituzioni facoltative: titolo, date, attivo, meta. La destinazione e'' un modello dello stesso documento dell''origine, stessa sorgente e stesso tipo, con la regola di documenti.fn_template_motivo_non_coerente (E_DOCUMENTI_COPIA_DOCUMENTO_DIVERSO); versione o modello che non esistono: E_PARAMETRO_INVALIDO. Il numero e'' MAX + 1 del modello: se una copia concorrente lo prende prima, la copia non nasce (E_DOCUMENTI_VERSIONE_NUMERO_CONCORRENTE) e si riprova. Sede unica dei campi di una copia: la usano fn_personalizza_template_standard e il clone di una versione del backend.';

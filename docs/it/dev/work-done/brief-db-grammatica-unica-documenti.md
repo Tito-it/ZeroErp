@@ -243,7 +243,7 @@ migrazione resta chiuso invece di crescere a ogni giro.
 | Documento | Che cosa porta | Decisione |
 | --- | --- | --- |
 | [analisi-simmetria-ordini-acquisto](../work-in-progress/analisi-simmetria-ordini-acquisto.md) §4.6 | `config.sorgenti` ha solo sorgenti di `vendite`; `config.tipi_entita` non ha l'ordine d'acquisto: lineage, motore documentale e bersaglio d'errore non vedono gli acquisti | **G-2**: la grammatica comprende `acquisti`? |
-| [brief-design-proiezione-stato-dominio](../work-in-progress/brief-design-proiezione-stato-dominio.md) | `config.sorgenti` trattato già da registro dei tipi (`target_table`, `key_selector`, la proposta `resolver_key`) | **G-1** |
+| [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) | `config.sorgenti` trattato già da registro dei tipi (`target_table`, `key_selector`, la proposta `resolver_key`) | **G-1** |
 | [valutazione-modello-di-dominio-db](../work-in-progress/valutazione-modello-di-dominio-db.md) | V-5: `codice` mutabile e `codice_interno` immutabile; le note di `vendite`, `acquisti`, `magazzino` partizionate per `target_tipo`, con `CHECK` e routing di partizione | **G-1** (quale colonna porta il codice), **G-3** (allargare `target_tipo` tocca le partizioni) |
 | [analisi-db-magazzino-carico-e-scarico](../work-in-progress/analisi-db-magazzino-carico-e-scarico.md), [analisi-db-magazzino-aggancio-documento-e-produzione](../work-in-progress/analisi-db-magazzino-aggancio-documento-e-produzione.md) | le sorgenti di riga (`*_RIGA`) e la sorgente polimorfa (`sorgente_tipo_id` → `config.sorgenti`) di rettifiche, trasferimenti, inventari, eventi asset | **G-2** (righe e varianti) |
 

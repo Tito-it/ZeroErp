@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_credenziali_da_sanare`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 18 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -28,15 +28,21 @@ motivo. Deve restare vuota.
 
 ---
 
-### I due motivi
+### I tre motivi
 
 | Motivo | Che cosa vuol dire | Come si sana |
 | --- | --- | --- |
 | `NESSUNA_VESTE` | la credenziale non ha alcuna veste, nemmeno spenta: non entra da nessuna porta, e la lista degli operatori non la mostra | dandole una veste, o cancellandola. Spegnerla in Django non basta: resta una credenziale senza veste |
 | `PERSONA_E_SISTEMA` | sulla stessa credenziale ci sono vesti di persona e vesti di macchina | separando le due nature su due credenziali |
+| `NOME_DI_RUOLO_DB` | lo username è `SEED` o il nome di un ruolo del database, senza distinguere maiuscole e minuscole | rinominando la credenziale |
 
 Il guard sulla natura della credenziale oggi rifiuta le credenziali miste: qui escono quelle
 nate prima del guard, e quelle prodotte da una gara fra due transazioni.
+
+Un nome di ruolo inganna il riconoscimento delle righe di seed: quando una tabella entra nel seed
+di primo impianto, una riga col suo nome in `user_insert` sembrerebbe scritta dal migratore. Le
+credenziali così le elenca
+[script.fn_credenziali_con_nome_di_ruolo](/dbzero/script/funzioni/fn_credenziali_con_nome_di_ruolo).
 
 ---
 
@@ -73,6 +79,8 @@ La vista è `security_invoker`: le tabelle sotto si leggono coi privilegi di chi
 ### Note di migrazione
 
 * 2026-10-02 — nasce con l'area accessi (`brief-db-be-fe-area-accessi`, R-DB-2).
+* 2026-11-17 — il terzo motivo, `NOME_DI_RUOLO_DB` (`brief-db-seed-primo-impianto-non-si-riscrive`,
+  Q17).
 
 ---
 

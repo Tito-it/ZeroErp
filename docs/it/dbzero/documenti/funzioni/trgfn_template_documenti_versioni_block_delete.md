@@ -70,7 +70,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()
-IS 'Guard A2: blocca DELETE su versioni PUBBLICATA/OBSOLETA o gia'' usate da documenti generati.';
+IS 'Si cancella solo una versione in BOZZA che nessuna stampa ha usato (E_DOCUMENTI_VERSIONE_DELETE_BLOCKED): PUBBLICATA e OBSOLETA restano per la ristampa e per l''audit, e una versione citata da una stampa resta per la ristampa fedele. Il secondo rifiuto ripete la FK RESTRICT della stampa per dare il codice parlante: conta le stampe che chi cancella vede, e quelle fuori dal suo perimetro le ferma la FK.';
 ```
 
 </div>

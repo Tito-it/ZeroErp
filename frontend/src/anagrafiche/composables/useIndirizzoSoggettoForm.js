@@ -5,6 +5,7 @@
 
 import { ref, computed, watch } from 'vue'
 import { useLookup } from '../../core/composables/useLookup'
+import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useIndirizzoBase, buildIndirizzoPayload } from './useIndirizzoBase'
 import { useIndirizzoMultiTipo } from './useIndirizzoMultiTipo'
 import { lookupStati } from '../api/anagrafiche'
@@ -127,8 +128,16 @@ export function useIndirizzoSoggettoForm() {
     return Object.entries(salvati).map(([codice, data]) => _buildPayload(data, codice))
   }
 
+  // ⭐ Una matrice sola, una fetch alla volta: l'apertura del drawer e la scelta
+  //    del soggetto possono avere due letture in volo, e la piu' vecchia (senza
+  //    soggetto) non deve sovrascrivere la piu' nuova (BB `useFetchVersion`).
+  const versioneMatrice = useFetchVersion()
+
   // --- Reset completo ---
+  // ⚠️ `invalidate()`: una lettura della matrice partita prima del reset, se
+  //    arriva dopo, ripopolerebbe la matrice che il reset ha appena svuotato.
   function reset() {
+    versioneMatrice.invalidate()
     base.reset()
     form.tipo_indirizzo_codice_interno = null
     form._isLibera = false
@@ -146,21 +155,40 @@ export function useIndirizzoSoggettoForm() {
     assegnaCampiLiberi(form, data)
   }
 
-  // Scopo: Carica i tipi proponibili per la natura (soggetto da creare) e li setta nel multi-tipo.
-  async function loadMatriceTipo(tipoSoggettoDettaglioId) {
+  async function _caricaMatrice(leggi) {
+    const t = versioneMatrice.tag()
+    let righe
     try {
-      const res = await lookupTipiIndirizzoNatura(tipoSoggettoDettaglioId)
-      multiTipo.setMatrice(res.data?.data?.results || [])
-    } catch { multiTipo.setMatrice([]) }
+      const res = await leggi()
+      righe = res.data?.data?.results || []
+    } catch { righe = [] }
+    if (versioneMatrice.isCurrent(t)) multiTipo.setMatrice(righe)
+  }
+
+  // Scopo: Carica i tipi proponibili per la natura (soggetto da creare) e li setta nel multi-tipo.
+  function loadMatriceTipo(tipoSoggettoDettaglioId) {
+    return _caricaMatrice(() => lookupTipiIndirizzoNatura(tipoSoggettoDettaglioId))
   }
 
   // Scopo: Carica i tipi proponibili per il tipo di ruolo (es. 'FO', 'CL': ruolo da
-  //        assegnare) e li setta nel multi-tipo.
-  async function loadMatriceRuolo(tipoRuoloCodice) {
-    try {
-      const res = await lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice)
-      multiTipo.setMatrice(res.data?.data?.results || [])
-    } catch { multiTipo.setMatrice([]) }
+  //        assegnare) e per il soggetto a cui si assegna (`null` finche' non e'
+  //        scelto), e li setta nel multi-tipo.
+  function loadMatriceRuolo(tipoRuoloCodice, soggettoId = null) {
+    return _caricaMatrice(() => lookupTipiIndirizzoTipoRuolo(tipoRuoloCodice, soggettoId))
+  }
+
+  // Scopo: Il picker del ruolo da assegnare segue il soggetto scelto: a ogni
+  //        cambio si rilegge, perche' la natura del soggetto toglie i tipi che
+  //        non ammette e decide gli obbligatori (il fornitore privato non ha
+  //        sede legale). `soggettoId` e' un getter.
+  // ⭐ Si legge SOLO a soggetto scelto, ed e' l'unica lettura del ruolo da
+  //    assegnare: nei drawer di creazione la sezione indirizzi compare col
+  //    soggetto, e una matrice senza soggetto non andrebbe mai a video. Il
+  //    reset all'apertura (che riporta il soggetto a null) non rilegge: una
+  //    seconda lettura identica a quella di apertura e' stata tolta il
+  //    2026-11-17.
+  function seguiSoggettoDelRuolo(tipoRuoloCodice, soggettoId) {
+    watch(soggettoId, (id) => { if (id) loadMatriceRuolo(tipoRuoloCodice, id) })
   }
 
   return {
@@ -175,6 +203,7 @@ export function useIndirizzoSoggettoForm() {
     setMatrice: multiTipo.setMatrice,
     loadMatriceTipo,
     loadMatriceRuolo,
+    seguiSoggettoDelRuolo,
     toPayloadArray,
     // Lookup
     statiLookup,

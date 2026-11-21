@@ -1,0 +1,144 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SOGGETTO HA I SUOI INDIRIZZI OBBLIGATORI? ALTRIMENTI SI FERMA
+#   anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(soggetto, tx) -> void
+#   Brief: brief-db-fornitore-privato-indirizzi §8.4 (F-1), giro 4.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Gemello di -31 sul layer SOGGETTO. Il controllo stava nel corpo del
+#   constraint trigger di anagrafiche.soggetti e scattava solo quando si
+#   scrive il soggetto; il giro 4 lo fa scattare anche quando si cancella un
+#   indirizzo del soggetto o se ne cambia il tipo (-36). Due chiamanti, una
+#   sede (regola del 2).
+#
+# ── LA REGOLA (invariata) ───────────────────────────────────────
+#   Ogni riga obbligatoria di config.tipi_soggetto_dettaglio_tipi_indirizzo per
+#   la natura del soggetto, attiva e valida il giorno di
+#   script.fn_data_operativa(), deve avere fra gli indirizzi del soggetto
+#   (anagrafiche.indirizzi_soggetti) il suo tipo o il suo ripiego. Al primo
+#   mancante, per tipo: E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO, con
+#   la frase del giro 3. Natura NULL: libero. Soggetto che non c'e' piu':
+#   tace. Id NULL: E_SCRIPT_CHIAMATA_NON_VALIDA.
+#   La finestra di validita' della riga la dice
+#   anagrafiche.fn_tipo_indirizzo_ammesso_per_natura sul tipo della riga (una
+#   riga obbligatoria e' ammessa se e' attiva e valida), non un predicato
+#   ricopiato. Il ripiego non si filtra: la matrice della natura e' la stessa
+#   che giudica il tipo, e una riga di quel tipo sul soggetto c'e' o non c'e'.
+#   Il controllo «la matrice ha righe?» se ne va: senza righe obbligatorie
+#   non c'e' niente da cercare.
+#   Codice, frase e chiavi del contesto non cambiano. SECURITY INVOKER: le
+#   tabelle lette non sono sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-32-create-fn-guard-indirizzi-obbligatori-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261116-32-create-fn-guard-indirizzi-obbligatori-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard degli indirizzi obbligatori di un soggetto, in una sede sola: lo chiamano il
+        trigger del soggetto e quello degli indirizzi del soggetto.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_tx_id       anagrafiche.soggetti.tx_id%TYPE)
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  c_chi         CONSTANT text := 'anagrafiche.fn_guard_indirizzi_obbligatori_soggetto';
+                  v_natura_id   anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                  v_oggi        config.tipi_soggetto_dettaglio_tipi_indirizzo.valido_dal%TYPE;
+                  v_tipo_id     config.tipi_soggetto_dettaglio_tipi_indirizzo.tipo_indirizzo_id%TYPE;
+                  v_ripiego_id  config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                  v_natura_nome config.tipi_soggetto_dettaglio.descrizione%TYPE;
+              BEGIN
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', c_chi, 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id),
+                          p_tx_id,
+                          c_chi,
+                          'il soggetto da controllare non e'' indicato');
+                  END IF;
+
+                  SELECT s.tipo_soggetto_dettaglio_id
+                    INTO v_natura_id
+                    FROM anagrafiche.soggetti s
+                   WHERE s.id = p_soggetto_id;
+
+                  -- Il soggetto non c'e' piu' (cancellato nella stessa
+                  -- transazione), o non ha natura: niente da pretendere.
+                  IF NOT FOUND OR v_natura_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  v_oggi := script.fn_data_operativa();
+
+                  SELECT m.tipo_indirizzo_id, m.fallback_tipo_indirizzo_id
+                    INTO v_tipo_id, v_ripiego_id
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_natura_id
+                     AND m.obbligatorio
+                     AND anagrafiche.fn_tipo_indirizzo_ammesso_per_natura(
+                             v_natura_id, m.tipo_indirizzo_id, v_oggi)
+                     AND NOT EXISTS (
+                           SELECT 1
+                             FROM anagrafiche.indirizzi_soggetti i
+                            WHERE i.soggetto_id = p_soggetto_id
+                              AND (i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                                   OR i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id))
+                   ORDER BY m.tipo_indirizzo_id
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura_nome
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = v_natura_id;
+
+                  -- Codice PROPRIO di questo layer (giro 3). Valori per
+                  -- descrizione, nell'ordine della frase: la natura, poi il tipo
+                  -- richiesto col suo ripiego. Gli id nel contesto.
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche', c_chi, 'E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO',
+                      jsonb_build_object(
+                          'soggetto_id',                p_soggetto_id,
+                          'tipo_soggetto_dettaglio_id', v_natura_id,
+                          'tipo_indirizzo_id_required', v_tipo_id,
+                          'fallback_tipo_indirizzo_id', v_ripiego_id),
+                      p_tx_id,
+                      COALESCE(v_natura_nome, v_natura_id::text),
+                      COALESCE(anagrafiche.fn_nomi_tipo_indirizzo_richiesto(v_tipo_id, v_ripiego_id),
+                               v_tipo_id::text));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tx_id%TYPE)
+              IS 'Guard: il soggetto deve avere, fra i suoi indirizzi (anagrafiche.indirizzi_soggetti), ogni tipo che config.tipi_soggetto_dettaglio_tipi_indirizzo dichiara obbligatorio per la sua natura, in una riga attiva e valida il giorno di script.fn_data_operativa() (anagrafiche.fn_tipo_indirizzo_ammesso_per_natura), oppure il ripiego della riga. Al primo mancante, per tipo, E_INDIRIZZO_OBBLIGATORIO_MANCANTE_TIPO_SOGGETTO coi valori della frase nell''ordine natura e tipo richiesto col ripiego, per descrizione (anagrafiche.fn_nomi_tipo_indirizzo_richiesto); gli id nel contesto. Natura NULL, o soggetto che non esiste (cancellato nella stessa transazione): tace. Id NULL: E_SCRIPT_CHIAMATA_NON_VALIDA. Il tx_id va al log dell''errore. Sede unica del controllo del layer SOGGETTO: la chiamano i constraint trigger differiti di anagrafiche.soggetti (anagrafiche.trgfn_soggetti_guard_indirizzi_required) e di anagrafiche.indirizzi_soggetti (anagrafiche.trgfn_indirizzi_soggetti_guard_obbligatori_soggetto). Gemello di anagrafiche.fn_guard_indirizzi_obbligatori_ruolo, il layer RUOLO. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_indirizzi_obbligatori_soggetto(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tx_id%TYPE);

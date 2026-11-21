@@ -195,17 +195,23 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- 8) Override GUC consente la modifica
+-- 8) Per l'applicazione la porta del lock resta chiusa
 -- ============================================================
+-- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la porta
+--   si apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta).
+--   Questo test gira come app: con la GUC accesa il lock rifiuta lo stesso. Che il
+--   migratore la apra lo prova db/pgtap/dbops/test-seed-primo-impianto-software-v1.sql.
 SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 
-SELECT lives_ok(
+SELECT throws_ok(
     format(
         'UPDATE catalogo.articoli SET uom_id = %s WHERE id = %L',
         (SELECT uom2_id FROM tmp_refs),
         (SELECT id FROM tmp_art)
     ),
-    '8) GUC zeroerp.allow_lock_columns_override=on consente UPDATE uom_id'
+    'P0001',
+    NULL,
+    '8) GUC zeroerp.allow_lock_columns_override=on accesa dall''app: il lock rifiuta lo stesso'
 );
 
 RESET zeroerp.allow_lock_columns_override;

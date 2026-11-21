@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Lookup dei tipi di asset documentale caricabili per emittente.
+> I tipi di risorsa che un'azienda carica per i suoi modelli (logo, firma, immagine, PDF, foglio di stile). Ogni tipo dichiara i formati di file che ammette in documenti.tipi_asset_documento_formati. Un tipo nuovo nasce con un changeSet; l'applicazione li legge soltanto.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
@@ -12,14 +12,13 @@
 | codice | character varying(80) | NO |  |
 | codice_interno | character varying(80) | NO |  |
 | descrizione | text | NO |  |
-| attivo | boolean | NO | true |
-| meta | jsonb | NO | '{}'::jsonb |
-| storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
+| etichetta_key | character varying(120) | NO |  |
+| ordine | smallint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -42,15 +41,12 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_tipi_asset_documento_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_tipi_asset_documento_a10_template_asset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_asset', 'asset_tipo_id', 'id', 'attivo')` |
-| trg_tipi_asset_documento_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_tipi_asset_documento_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_tipi_asset_documento_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_tipi_asset_documento_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_asset_documento_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_tipi_asset_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_tipi_asset_documento_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_tipi_asset_documento_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_asset_documento_id')` |
-| trg_tipi_asset_documento_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('tipi_asset_documento_id')` |
+| trg_tipi_asset_documento_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

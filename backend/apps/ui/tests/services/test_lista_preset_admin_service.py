@@ -24,12 +24,16 @@
 #  14. replace_preset_colonne_duplicato_raises
 #  15. replace_preset_colonne_payload_non_lista_raises
 #  16. replace_preset_colonne_chiavi_extra_riga_raises
+#  17. create_preset_is_default_rifiutato (Q26: la chiave e' uscita)
+#  18. update_preset_secondo_acceso_nel_posto (BE23, Q30)
+#  19. create/update_preset_filtri_default_rifiutato (Q38: i filtri si ritirano)
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from django.db import IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
@@ -113,10 +117,8 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
             "codice": "default",
             "descrizione": "Default sistema",
             "ambito": "sistema",
-            "is_default": True,
             "pagina_dimensione": 50,
             "ordinamento_default": [{"col": "id", "dir": "asc"}],
-            "filtri_default": {"attivo": True},
         })
 
         self.assertEqual(result["id"], 7)
@@ -126,6 +128,47 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
         # Refs azzerati per ambito sistema.
         self.assertIsNone(data["profilo_accesso_id"])
         self.assertIsNone(data["emittente_fiscale_id"])
+        # ⭐ La bozza nasce spenta (Q26 di brief-db-revisione-ui).
+        self.assertIs(data["attivo"], False)
+        self.assertNotIn("is_default", data)
+
+    # `is_default` e' uscito dal modello (Q26, giro 1a): ora e' una chiave
+    # sconosciuta, e la whitelist la rifiuta.
+    def test_create_preset_is_default_rifiutato(self) -> None:
+        repo = _repo_with_lista_attiva()
+        svc = ListaPresetAdminService(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.create_preset({
+                "lista_id": 1,
+                "codice": "x",
+                "descrizione": "X",
+                "ambito": "sistema",
+                "is_default": True,
+            })
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        repo.create_preset.assert_not_called()
+
+    # `filtri_default` non si scrive piu' (Q38 di brief-db-revisione-ui): la
+    # colonna la ritira il DB nel giro 2, la whitelist la rifiuta gia' ora.
+    def test_create_update_preset_filtri_default_rifiutato(self) -> None:
+        repo = _repo_with_lista_attiva()
+        svc = ListaPresetAdminService(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.create_preset({
+                "lista_id": 1,
+                "codice": "x",
+                "descrizione": "X",
+                "ambito": "sistema",
+                "filtri_default": {"attivo": True},
+            })
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        repo.create_preset.assert_not_called()
+
+        repo.get_preset.return_value = {"id": 7, "ambito": "sistema"}
+        with self.assertRaises(ServiceError) as ctx:
+            svc.update_preset(7, {"filtri_default": None})
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        repo.update_preset.assert_not_called()
 
     def test_create_preset_ruolo_richiede_profilo(self) -> None:
         repo = _repo_with_lista_attiva()
@@ -222,15 +265,34 @@ class ListaPresetAdminUpdateTests(SimpleTestCase):
 
         svc.update_preset(5, {
             "descrizione": "Nuova",
-            "is_default": False,
+            "attivo": True,
             "pagina_dimensione": 100,
         })
 
         repo.update_preset.assert_called_once()
         update_data = repo.update_preset.call_args.args[1]
         self.assertEqual(update_data["descrizione"], "Nuova")
-        self.assertIs(update_data["is_default"], False)
+        self.assertIs(update_data["attivo"], True)
         self.assertEqual(update_data["pagina_dimensione"], 100)
+
+
+    # BE23 (Q30): un posto ha al piu' un preset acceso. Accenderne un
+    # secondo e' il rifiuto dell'UNIQUE parziale, che il service traduce
+    # in un 400 sul campo `attivo`.
+    def test_update_preset_secondo_acceso_nel_posto(self) -> None:
+        repo = MagicMock()
+        repo.get_preset.return_value = {"id": 5, "ambito": "sistema"}
+        repo.update_preset.side_effect = IntegrityError(
+            'duplicate key value violates unique constraint "uq_ui_lista_preset_posto"'
+        )
+        svc = ListaPresetAdminService(repo=repo)
+
+        with self.assertRaises(ServiceError) as ctx:
+            svc.update_preset(5, {"attivo": True})
+
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        self.assertIn("acceso", ctx.exception.message)
+        self.assertEqual(ctx.exception.context.get("field"), "attivo")
 
 
 class ListaPresetAdminDeleteTests(SimpleTestCase):
@@ -323,20 +385,20 @@ class UiAdminRepositoryUpdateSqlTests(SimpleTestCase):
             {
                 "descrizione": "Base",
                 "ordinamento_default": [{"campo": "codice", "dir": "asc"}],
-                "filtri_default": None,
+                "attivo": True,
             },
         ))
         self.assertTrue(esito)
         sql, params = cursor.execute.call_args.args
         self.assertTrue(sql.startswith("UPDATE ui.lista_preset SET "))
         self.assertIn("ordinamento_default = %s::jsonb", sql)
-        self.assertIn("filtri_default = %s", sql)
+        self.assertIn("attivo = %s", sql)
         self.assertNotIn("user_update", sql)
         self.assertNotIn("data_update", sql)
         self.assertTrue(sql.endswith("WHERE id = %s"))
         self.assertEqual(
             params,
-            ["Base", '[{"campo": "codice", "dir": "asc"}]', None, 5],
+            ["Base", '[{"campo": "codice", "dir": "asc"}]', True, 5],
         )
 
     # ⛔ Un immutabile (`ambito`) che arrivasse fin qui e' un errore di

@@ -171,6 +171,17 @@
       "messaggio": "There are unsaved changes: closing will discard them. Close anyway?",
       "chiudi": "Close without saving",
       "indicatore": "Unsaved changes"
+    },
+    "banner_preset": {
+      "parti_cambiate": "Changed: {parti}.",
+      "parte": {
+        "colonne": "columns",
+        "ordinamento": "sorting",
+        "filtri": "filters",
+        "pagina_dimensione": "rows per page",
+        "widget": "cards",
+        "dimensione_max": "maximum number of cards"
+      }
     }
   },
   "strumenti": {
@@ -953,6 +964,11 @@
     "personalizza_giu": "Move down",
     "personalizza_reset": "Restore defaults",
     "personalizza_reset_conferma": "Restore the default cards? Your customisation will be lost.",
+    "preset_aggiornato_messaggio": "The default cards of this dashboard were updated by an administrator. The new options are not yet visible in your personal selection.",
+    "preset_aggiornato_vedi_novita": "See what's new",
+    "preset_aggiornato_ignora": "Dismiss",
+    "preset_base_cambiato_messaggio": "The base configuration of this dashboard has changed: your personal selection still starts from the previous one.",
+    "preset_base_cambiato_riallinea": "Realign",
     "widget_situazione_aperta": "Open situation",
     "widget_competenza": "To be invoiced",
     "widget_backlog": "Stalled documents",
@@ -1434,6 +1450,10 @@
     "email_new_account": "New email account",
     "email_edit_account": "Edit email account",
     "email_edit_template": "Edit email template",
+    "email_template_di_sistema": "System template",
+    "email_campo_del_programma": "Set by the software: this template is part of the initial configuration.",
+    "email_account_di_sistema": "System account",
+    "email_campo_del_programma_account": "Set by the software: this account is part of the initial configuration.",
     "email_detail_log": "Send detail",
     "definizioni_workflow": {
       "filtro_tipo": "Service type",
@@ -5829,6 +5849,28 @@
     "orientamenti_pagina": {
       "portrait": "Portrait",
       "landscape": "Landscape"
+    },
+    "tipi_asset_documento": {
+      "logo": "Logo",
+      "firma": "Signature",
+      "immagine": "Image",
+      "pdf": "PDF",
+      "css": "Stylesheet (CSS)"
+    },
+    "tipi_file_documento": {
+      "pdf_finale": "Print PDF",
+      "allegato": "Attachment"
+    },
+    "tipi_documento_output": {
+      "preventivo": "Quote",
+      "contratto": "Contract",
+      "offerta_commerciale": "Commercial offer",
+      "ordine_vendita": "Sales order",
+      "ddt_vendita": "Sales delivery note",
+      "fattura_vendita": "Sales invoice"
+    },
+    "render_engine_documento": {
+      "weasyprint": "WeasyPrint"
     }
   },
   "config": {
@@ -5859,7 +5901,9 @@
         "CONTESTO_SUPERATO": "Data shape outdated",
         "CONTESTO_SUPERATO_hint": "The copy reads an older data shape than the standard template: printing will stop. Start again from the standard or update it.",
         "ORIGINE_NON_DICHIARATA": "Origin not declared",
-        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared."
+        "ORIGINE_NON_DICHIARATA_hint": "The template does not declare which standard version it derives from: only the data shape is compared.",
+        "STANDARD_NON_STAMPA": "Standard not printing",
+        "STANDARD_NON_STAMPA_hint": "The standard to compare it with is missing, switched off or does not print today: there is nothing to compare the copy with."
       },
       "personalizza": {
         "action": "Customize",
@@ -5957,7 +6001,7 @@
         "download_error": "Unable to download the asset file.",
         "file_count": "Attached files: {count}",
         "field_file": "File",
-        "field_file_hint": "Max 25 MB. MIME type must match the selected asset type.",
+        "field_file_hint": "The file format must be one of those allowed by the selected type.",
         "field_codice": "Code",
         "field_codice_interno": "Internal code",
         "field_descrizione": "Description",
@@ -5970,7 +6014,9 @@
         "col_tipo": "Type",
         "col_mime": "MIME",
         "col_file_name": "File name",
-        "col_size": "Size"
+        "col_size": "Size",
+        "formati_ammessi": "Allowed formats: {formati}",
+        "max_file_mb": "Maximum size: {mb} MB"
       }
     },
     "impostazioni": {
@@ -6074,6 +6120,15 @@
       "pipeline_error": "Invoicing run stopped by an error",
       "pipeline_started": "Invoicing run started",
       "step_completed": "Step completed"
+    },
+    "formati_file": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "svg": "SVG",
+      "webp": "WebP",
+      "gif": "GIF",
+      "pdf": "PDF",
+      "css": "CSS"
     }
   },
   "lista_config": {
@@ -6105,6 +6160,8 @@
     "preset_aggiornato_messaggio": "The configuration of this list was updated by an administrator. The new options are not yet visible in your personal view.",
     "preset_aggiornato_vedi_novita": "See what's new",
     "preset_aggiornato_ignora": "Dismiss",
+    "preset_base_cambiato_messaggio": "The base configuration of this list has changed: your personal view still starts from the previous one.",
+    "preset_base_cambiato_riallinea": "Realign",
     "troncamento_titolo": "Incomplete list — not displayed",
     "troncamento_testo": "This list is configured as non-paginated, but {righe} of {total} rows were received. Showing them would present a subset as the whole set, so the table is not rendered. Please report this: details are in the browser console."
   },
@@ -6301,7 +6358,13 @@
         "titolo_da": "Copy the «{tipo}» address",
         "spiegazione": "Choose the address types to add with this same address. Disabled types cannot be added: the reason is shown next to them.",
         "conferma": "Copy",
-        "fatta": "Address copied into one more type | Address copied into {n} types"
+        "fatta": "Address copied into one more type | Address copied into {n} types",
+        "da": "From",
+        "verso": "To",
+        "titolare_soggetto": "the party",
+        "titolare_ruolo": "the role",
+        "titolare_servizio": "the {utility} service",
+        "titolare_servizio_generico": "the service"
       }
     },
     "soggetti": {
@@ -6337,6 +6400,7 @@
         "titoli_iva_altri_emittenti": "The chosen nature does not allow {titoli} VAT exemption declarations in force with other companies, not visible from here: an administrator, or the company that received them, must close them.",
         "dati_societari": "The chosen nature has no company data: delete it before the change.",
         "indirizzi": "The chosen nature does not allow {indirizzi} addresses of the party: delete them before the change.",
+        "indirizzi_ruolo": "The chosen nature does not allow {indirizzi} addresses of the {ruolo} role: delete them from the role before the change.",
         "senza_natura_con_titoli_iva": "The party has VAT exemption declarations in force and cannot have them without a legal nature: choose a nature, or close the declarations first."
       },
       "dati_societari_elimina_blocco": {
@@ -6344,6 +6408,10 @@
       },
       "cambio_natura_motivi_titolo": "The legal nature cannot be changed while these reasons remain:",
       "cambio_natura_motivi_non_verificati": "It was not possible to check whether the legal nature can be changed: on saving, if it cannot, the reason will be shown.",
+      "cambio_natura_indirizzi_titolo": "The chosen nature requires these addresses, which the party or its roles do not have: fill them in here and they are saved together with the change.",
+      "cambio_natura_indirizzi_soggetto": "Party addresses",
+      "cambio_natura_indirizzi_ruolo": "Addresses of the {ruolo} role",
+      "cambio_natura_indirizzo_o_ripiego": "{tipo}, or {ripiego}",
       "elimina_dati_societari": "Delete company data",
       "elimina_dati_societari_conferma": "Delete the party's company data (legal form, REA, share capital, e-invoicing)? It stays in the history, but the party will no longer have it.",
       "dati_societari_eliminati": "Company data deleted.",
@@ -6472,7 +6540,8 @@
       "preset_seleziona_profilo": "Select profile...",
       "preset_emittente_fiscale_id": "Fiscal issuer (id)",
       "preset_emittente_fiscale": "Fiscal issuer (id)",
-      "preset_is_default": "Default preset",
+      "campo_del_programma": "Set by the software: this row is part of the initial configuration.",
+      "riga_del_programma": "This row is part of the software's initial configuration: it cannot be deleted, only deactivated.",
       "preset_default": "Default",
       "preset_pagina_dimensione": "Page size",
       "preset_pagina_dimensione_default": "Default ({misura})",

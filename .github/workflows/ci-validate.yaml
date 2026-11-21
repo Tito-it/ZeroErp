@@ -64,7 +64,7 @@ jobs:
 
     services:
       postgres:
-        image: postgis/postgis:18-3.6
+        image: postgres:19
         env:
           POSTGRES_DB: zeroerp
           POSTGRES_USER: postgres
@@ -226,7 +226,7 @@ jobs:
         run: |
           # Driver PostgreSQL da Maven Central (NIENTE LPM): evita il fallimento
           # "Checksum validation failed" del package manager LPM. Liquibase carica
-          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 18.
+          # automaticamente i .jar in LIQUIBASE_HOME/lib. 42.7.x è compatibile con PG 19.
           LB_HOME="${LIQUIBASE_HOME:-$(dirname "$(readlink -f "$(command -v liquibase)")")}"
           mkdir -p "$LB_HOME/lib"
           curl -fsSL -o "$LB_HOME/lib/postgresql.jar" \
@@ -512,55 +512,16 @@ jobs:
             "ALTER ROLE zeroerp_owner IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';
              ALTER ROLE zeroerp_app IN DATABASE zeroerp SET myapp.dblink_log_connection = 'hostaddr=127.0.0.1 port=5432 dbname=zeroerp user=zeroerp_log password=secret-log';"
 
-      - name: Installa plpgsql_check nel container Postgres
-        # Serve al guardrail «riferimenti morti» in fondo a questo workflow.
-        # Il changeSet che crea l'estensione (20260804-36) e' CONDIZIONALE su
-        # pg_available_extensions: se il pacchetto non c'e' viene saltato senza
-        # essere marcato eseguito, quindi si riprende da solo appena c'e'. Per
+      - name: Installa le estensioni nel container Postgres (postgis, pgtap, plpgsql_check)
+        # postgis serve al primo changeSet (001-01, senza preCondition);
+        # plpgsql_check al guardrail «riferimenti morti» in fondo a questo
+        # workflow; pgtap alla suite pgTAP. Il changeSet che crea plpgsql_check
+        # (20260804-36) e' CONDIZIONALE su pg_available_extensions: se il
+        # pacchetto non c'e' viene saltato senza essere marcato eseguito. Per
         # questo il passo va PRIMA del giro provision.
-        #
-        # ⚠️ Si installa nel container del service, non sul runner: postgres
-        # gira li' dentro e le estensioni le carica dal SUO filesystem.
-        # L'immagine postgis/postgis:18-3.6 ha gia' il repo PGDG configurato
-        # (ci prende postgis), quindi basta un apt-get.
-        #
-        # Se un giorno questo passo diventasse lento o fragile, l'alternativa
-        # e' un'immagine custom costruita a monte: piu' pulita, ma vuole un
-        # registry e un job di build: sproporzionata per un pacchetto solo.
-        run: |
-          set -euo pipefail
-          CID="$(docker ps --filter 'ancestor=postgis/postgis:18-3.6' --format '{{.ID}}' | head -1)"
-          if [ -z "$CID" ]; then
-            echo "::error::container del service postgres non trovato"
-            exit 1
-          fi
-          # ⚠️ pgTAP si installa QUI, nello stesso apt-get: serve a far girare la
-          # suite pgTAP (passo in fondo al workflow). Nello stesso comando e non
-          # in uno step suo perche' `apt-get update` e' il pezzo lento, e farlo
-          # due volte raddoppierebbe il costo per niente.
-          docker exec "$CID" bash -euo pipefail -c \
-            "apt-get update -qq && apt-get install -y -qq postgresql-18-plpgsql-check postgresql-18-pgtap"
-          # ⚠️ Riavvio OBBLIGATORIO dopo l'apt-get. Le dipendenze dei due
-          #   pacchetti tirano su la minor PGDG piu' recente di postgresql-18,
-          #   che sovrascrive i .so in /usr/lib/postgresql/18/lib mentre il
-          #   postmaster della minor dell'immagine e' ancora in piedi: il primo
-          #   backend che carica plpgsql.so muore con «undefined symbol» (12-11-2026,
-          #   immagine 18.6, apt 18.7: heap_datum_update_type). Il riavvio
-          #   allinea binario e librerie; pacchetti e dati restano, perche'
-          #   restart non ricrea il container.
-          docker restart "$CID" >/dev/null
-          for _ in $(seq 1 60); do
-            docker exec "$CID" pg_isready -U postgres -d zeroerp -q && break
-            sleep 1
-          done
-          docker exec "$CID" pg_isready -U postgres -d zeroerp
-          docker exec "$CID" psql -U postgres -d zeroerp -tAc "SELECT version();"
-          # Verifica che postgres lo veda davvero: senza, il changeSet -36
-          # verrebbe saltato e il guardrail fallirebbe piu' tardi con un
-          # messaggio meno chiaro di questo.
-          docker exec "$CID" psql -U postgres -d zeroerp -tAc \
-            "SELECT count(*) FROM pg_available_extensions WHERE name='plpgsql_check';" \
-            | grep -qx 1
+        # ⭐ La sede (perche' apt, il riavvio obbligatorio, la verifica) e' lo
+        #   script: e' lo stesso di ci.yaml.
+        run: scripts/ci-estensioni-postgres.sh "${{ job.services.postgres.id }}" zeroerp
 
       - name: Liquibase admin (provision - pre)
         run: |

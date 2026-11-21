@@ -94,6 +94,98 @@ def _motivo_non_configurato(
     )
 
 
+# Scopo: La sessione SMTP dell'account, aperta e AUTENTICATA: connessione,
+#        TLS (STARTTLS) o SSL, login. ⭐ Sede unica per l'invio (`_send_smtp`) e
+#        per il pulsante «prova connessione» (`test_connection`): erano due
+#        copie, e il difetto sotto andava corretto in tutte e due.
+#
+# 🔴 Perche' il login non e' un semplice `server.login()` (2026-11-17):
+#    `smtplib.login` prova uno dopo l'altro i metodi di autenticazione che il
+#    server annuncia. Gmail rifiuta il primo (`AUTH PLAIN` → `535 5.7.8
+#    Username and Password not accepted`) e, al secondo (`AUTH LOGIN`), CHIUDE
+#    la connessione. `smtplib` lascia uscire la chiusura e il 535 si perde: il
+#    giornale e il drawer dicevano «Connection unexpectedly closed», che sembra
+#    un guasto di rete, su quella che era una password sbagliata.
+# ⇒ Si ascolta ogni rifiuto (`auth` dell'istanza, che `login` chiama) e, se il
+#    server poi chiude, si rilancia il PRIMO rifiuto vero. La logica di scelta
+#    dei metodi resta quella di `smtplib`: non la si riscrive.
+# ⚠️ La sessione restituita e' di chi chiama, che la chiude (`quit`). Se invece
+#    STARTTLS o il login falliscono, la chiude questa funzione prima di
+#    sollevare: chi chiama non riceve mai una sessione a meta'.
+def apri_sessione_smtp(
+    account: dict[str, Any], password: str, *, timeout: int,
+) -> smtplib.SMTP:
+    if account.get("smtp_use_ssl"):
+        server: smtplib.SMTP = smtplib.SMTP_SSL(
+            account["smtp_host"], account["smtp_port"], timeout=timeout,
+        )
+    else:
+        server = smtplib.SMTP(account["smtp_host"], account["smtp_port"], timeout=timeout)
+
+    rifiuti: list[smtplib.SMTPAuthenticationError] = []
+    auth_originale = server.auth
+
+    def _auth_che_ricorda(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return auth_originale(*args, **kwargs)
+        except smtplib.SMTPAuthenticationError as exc:
+            rifiuti.append(exc)
+            raise
+
+    server.auth = _auth_che_ricorda  # type: ignore[method-assign]
+    try:
+        if not account.get("smtp_use_ssl") and account.get("smtp_use_tls"):
+            server.starttls()
+        server.login(account["smtp_username"], password)
+    except smtplib.SMTPServerDisconnected as exc:
+        _chiudi_sessione(server)
+        if rifiuti:
+            raise rifiuti[0] from exc
+        raise
+    except BaseException:
+        _chiudi_sessione(server)
+        raise
+    return server
+
+
+# Chiusura best-effort: la connessione puo' essere gia' caduta, e l'esito e'
+# gia' deciso da chi chiama.
+def _chiudi_sessione(server: smtplib.SMTP) -> None:
+    try:
+        server.quit()
+    except (smtplib.SMTPException, OSError):
+        pass
+
+
+# Scopo: L'errore SMTP detto a chi lo legge — il giornale delle email
+#        (`email_log.errore`) e il drawer dell'account (`last_test_message`).
+# ⭐ Le credenziali rifiutate si dicono per quello che sono, col codice e il
+#    testo del server; su Gmail si aggiunge la causa di gran lunga piu'
+#    frequente (la password dell'account al posto della password per le app).
+# ⚠️ `str()` di un `SMTPResponseException` e' la tupla `(535, b'...')`: si
+#    compone qui il testo leggibile, non lo si lascia a chi chiama.
+_HOST_GMAIL = ("smtp.gmail.com", "smtp.googlemail.com")
+
+
+def descrivi_errore_smtp(exc: BaseException, account: dict[str, Any]) -> str:
+    if isinstance(exc, smtplib.SMTPResponseException):
+        testo = exc.smtp_error
+        if isinstance(testo, bytes):
+            testo = testo.decode("utf-8", errors="replace")
+        risposta = f"{exc.smtp_code} {' '.join(str(testo).split())}"
+        if isinstance(exc, smtplib.SMTPAuthenticationError):
+            messaggio = f"Credenziali SMTP rifiutate dal server ({risposta})."
+            host = (account.get("smtp_host") or "").strip().lower()
+            if host in _HOST_GMAIL:
+                messaggio += (
+                    " Con Gmail serve una password per le app (16 caratteri), "
+                    "non la password dell'account."
+                )
+            return messaggio
+        return f"Errore SMTP: {risposta}"
+    return f"Errore SMTP: {exc}"
+
+
 class EmailDispatchService:
     """Servizio invio email con risoluzione account/template per reparto."""
 
@@ -240,7 +332,6 @@ class EmailDispatchService:
             oggetto=oggetto,
             corpo_html=corpo_html,
             corpo_testo=corpo_testo,
-            email_account_id=account["id"],
             email_template_id=template["id"],
             ambito=ambito,
             unita_organizzativa_id=unita_organizzativa_id,
@@ -262,7 +353,11 @@ class EmailDispatchService:
         oggetto: str,
         corpo_html: str,
         corpo_testo: str | None = None,
-        email_account_id: int | None = None,
+        # ⛔ L'account del log NON e' un parametro: e' `account["id"]`, cioe'
+        #    l'account con cui la mail parte. Fino al 2026-11-20 arrivava anche
+        #    come `email_account_id` separato — lo stesso dato da due fonti, che
+        #    un chiamante poteva far divergere scrivendo sul log un account
+        #    diverso da quello che spediva.
         email_template_id: int | None = None,
         # ⛔ Nessun default, come su `create_outbox` (2026-09-05). `ambito`
         #    classifica A CHI APPARTIENE l'email, ed e' la colonna su cui il
@@ -288,7 +383,7 @@ class EmailDispatchService:
     ) -> tuple[int, bool]:
         # Crea record log con stato PENDING
         log_id = self._repo.insert_log(
-            email_account_id=email_account_id,
+            email_account_id=account["id"],
             email_template_id=email_template_id,
             destinatario=destinatario,
             destinatari_cc=destinatari_cc,
@@ -325,7 +420,9 @@ class EmailDispatchService:
             #    che data una CONSEGNA, e scriverla qui sposterebbe la bugia di
             #    una casella invece di toglierla. Il momento della stampa e' gia'
             #    in `data_insert`.
-            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
+            self._repo.update_log_stato(
+                log_id, "SIMULATA", ambito=ambito, email_account_id=account["id"],
+            )
             return log_id, True
 
         success = self._send_smtp(
@@ -358,6 +455,7 @@ class EmailDispatchService:
                 self._repo.update_log_stato(
                     log_id, "FAILED", ambito=ambito,
                     errore="Password SMTP non configurata per l'account.",
+                    email_account_id=account["id"],
                 )
                 return False
             password = crypto_service.decrypt(encrypted_pw)
@@ -382,18 +480,14 @@ class EmailDispatchService:
 
             all_recipients = [destinatario] + (destinatari_cc or [])
 
-            if account.get("smtp_use_ssl"):
-                server = smtplib.SMTP_SSL(account["smtp_host"], account["smtp_port"], timeout=_SMTP_TIMEOUT_SEND)
-            else:
-                server = smtplib.SMTP(account["smtp_host"], account["smtp_port"], timeout=_SMTP_TIMEOUT_SEND)
-                if account.get("smtp_use_tls"):
-                    server.starttls()
-
-            server.login(account["smtp_username"], password)
+            server = apri_sessione_smtp(account, password, timeout=_SMTP_TIMEOUT_SEND)
             server.sendmail(account["email_from"], all_recipients, msg.as_string())
 
             now = datetime.now(timezone.utc).isoformat()
-            self._repo.update_log_stato(log_id, "SENT", ambito=ambito, inviato_at=now)
+            self._repo.update_log_stato(
+                log_id, "SENT", ambito=ambito, inviato_at=now,
+                email_account_id=account["id"],
+            )
             logger.info("Email inviata: log_id=%s dest=%s", log_id, destinatario)
             return True
 
@@ -401,19 +495,16 @@ class EmailDispatchService:
         #    (`percorso_allegato`): la mail non parte, e il log lo dice invece
         #    di restare PENDING.
         except (smtplib.SMTPException, OSError, ValueError, ServiceError) as exc:
+            errore = descrivi_errore_smtp(exc, account) if isinstance(exc, smtplib.SMTPException) else str(exc)
             self._repo.update_log_stato(
-                log_id, "FAILED", ambito=ambito, errore=str(exc)[:500],
+                log_id, "FAILED", ambito=ambito, errore=errore[:500],
+                email_account_id=account["id"],
             )
             logger.exception("Errore invio email: log_id=%s dest=%s", log_id, destinatario)
             return False
         finally:
             if server:
-                try:
-                    server.quit()
-                # Chiusura best-effort: la connessione puo' essere gia' caduta,
-                # e l'esito dell'invio e' gia' deciso sopra.
-                except (smtplib.SMTPException, OSError):
-                    pass
+                _chiudi_sessione(server)
 
     # Scopo: Il messaggio `mixed` — il corpo alternativo seguito dai file
     #        allegati, letti dallo storage col BB `percorso_allegato`.
@@ -467,7 +558,10 @@ class EmailDispatchService:
     ) -> None:
         motivo = _motivo_non_configurato(account)
         logger.error("Email NON inviata: log_id=%s %s", log_id, motivo)
-        self._repo.update_log_stato(log_id, "FAILED", ambito=ambito, errore=motivo)
+        self._repo.update_log_stato(
+            log_id, "FAILED", ambito=ambito, errore=motivo,
+            email_account_id=account["id"],
+        )
 
     # Scopo: Logga email in console (modalita' DEBUG senza SMTP reale).
     def _send_console(
@@ -531,7 +625,9 @@ class EmailDispatchService:
             #    fa `COALESCE(p_inviato_at, l.inviato_at)`, quindi NON passarlo
             #    conserva quello vecchio invece di sovrascriverlo con una data
             #    che descriverebbe una consegna mai avvenuta.
-            self._repo.update_log_stato(log_id, "SIMULATA", ambito=ambito)
+            self._repo.update_log_stato(
+                log_id, "SIMULATA", ambito=ambito, email_account_id=account["id"],
+            )
             return True
         return self._send_smtp(
             account,
@@ -583,21 +679,10 @@ class EmailDispatchService:
         server: smtplib.SMTP | smtplib.SMTP_SSL | None = None
         try:
             password = crypto_service.decrypt(encrypted_pw)
-            if account.get("smtp_use_ssl"):
-                server = smtplib.SMTP_SSL(account["smtp_host"], account["smtp_port"], timeout=_SMTP_TIMEOUT_TEST)
-            else:
-                server = smtplib.SMTP(account["smtp_host"], account["smtp_port"], timeout=_SMTP_TIMEOUT_TEST)
-                if account.get("smtp_use_tls"):
-                    server.starttls()
-            server.login(account["smtp_username"], password)
+            server = apri_sessione_smtp(account, password, timeout=_SMTP_TIMEOUT_TEST)
             return {"success": True, "message": "Connessione SMTP riuscita."}
         except Exception as exc:
-            return {"success": False, "message": f"Errore SMTP: {exc}"}
+            return {"success": False, "message": descrivi_errore_smtp(exc, account)}
         finally:
             if server:
-                try:
-                    server.quit()
-                # Chiusura best-effort: la connessione puo' essere gia' caduta,
-                # e l'esito dell'invio e' gia' deciso sopra.
-                except (smtplib.SMTPException, OSError):
-                    pass
+                _chiudi_sessione(server)

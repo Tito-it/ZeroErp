@@ -70,33 +70,16 @@ SELECT ok(
 --   macchina (una persona vera del database di sviluppo). Su un
 --   database ricostruito dai changelog non c'e', e la fixture moriva su
 --   «soggetto_id mancante per il ruolo RIS_UMANA».
--- ⭐ Si costruisce dal percorso di produzione — anagrafiche.fn_crea_soggetto_pf
---   e fn_crea_indirizzo_soggetto, come fa fn_crea_operatore_v2 — e SENZA
---   risorsa umana: inserirla e' il caso del test. Per questo non si usa
+-- ⭐ Si costruisce dalle madri del dominio — anagrafiche.fn_crea_soggetto_pf e
+--   la madre degli indirizzi — col builder dbops.fn_pgtap_crea_soggetto_pf, e
+--   SENZA risorsa umana: inserirla e' il caso del test. Per questo non si usa
 --   dbops.fn_pgtap_crea_operatore_umano, che la risorsa umana la crea gia'.
--- ⚠️ E' una SAGA: il guard degli indirizzi del soggetto e' DEFERRABLE, e gli
---   indirizzi arrivano dopo il soggetto. Si apre la finestra, si costruisce,
---   si richiude (i guard scattano li', su un soggetto finito).
-SET CONSTRAINTS ALL DEFERRED;
-
+--   Il builder apre e richiude da se' la finestra differita: i guard del
+--   soggetto scattano li', su un soggetto finito.
+-- rev 2026-11-17 (brief-db-fornitore-privato-indirizzi, riga 7-bis, 20261116-22):
+--   il privato costruito a mano era una copia del builder, ritirata.
 CREATE TEMP TABLE tmp_soggetto_test AS
-SELECT anagrafiche.fn_crea_soggetto_pf(
-           p_cognome        := 'Risorsa',
-           p_nome           := 'pgTAP',
-           p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
-           -- obbligatoria: la madre ne fa il contatto di default del soggetto
-           p_email          := 'pgtap_risorse_umane@example.com',
-           p_sesso := 'M',
-           p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')) AS id;
-
--- rev 2026-10-18: la madre prende l'indirizzo in jsonb (20261018-96)
-SELECT anagrafiche.fn_crea_indirizzo_soggetto(
-           (SELECT id FROM tmp_soggetto_test),
-           jsonb_build_object('tipo_indirizzo_codice_interno',  t.codice_interno,
-                              'indirizzo_dettaglio_id', dbops.fn_pgtap_crea_indirizzo_dettaglio('risorse umane')))
-  FROM (VALUES ('RES'), ('DOMFISC')) AS t(codice_interno);
-
-SET CONSTRAINTS ALL IMMEDIATE;
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Risorsa') AS id;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_soggetto_test WHERE id IS NOT NULL),

@@ -120,11 +120,11 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 -- ⚠️ `ORDER BY` su ogni `LIMIT 1`: senza, si scommette su quale riga esce.
 CREATE TEMP TABLE _catalogo AS
 SELECT (SELECT t.id FROM documenti.tipi_documento_output t
-         WHERE t.attivo ORDER BY t.id LIMIT 1)              AS tipo_output_id,
+         ORDER BY t.id LIMIT 1)                             AS tipo_output_id,
        (SELECT r.id FROM documenti.render_engine_documento r
-         WHERE r.attivo ORDER BY r.id LIMIT 1)              AS render_engine_id,
+         ORDER BY r.id LIMIT 1)                             AS render_engine_id,
        (SELECT f.id FROM documenti.tipi_file_documento f
-         WHERE f.attivo ORDER BY f.id LIMIT 1)              AS file_tipo_id,
+         ORDER BY f.id LIMIT 1)                             AS file_tipo_id,
        (SELECT s.id FROM config.sorgenti s
          WHERE s.codice_interno = 'FATTURA' AND s.attivo)   AS sorgente_tipo_id;
 
@@ -159,6 +159,12 @@ WITH v AS (
 SELECT t.lato, v.id AS versione_id, v.template_documento_id AS template_id
   FROM v JOIN _template t ON t.template_id = v.template_documento_id;
 
+-- ⚠️ Una stampa nasce dalla versione con cui il modello stampa oggi (coerenza
+--   alla nascita, 20261116-07): le versioni escono di bozza dal verbo, in
+--   vigore dal 2026-01-01.
+SELECT documenti.fn_pubblica_template_documento_versione(v.versione_id, DATE '2026-01-01', 1, NULL)
+  FROM _versioni v;
+
 -- ⚠️ I quattro campi devono COMBACIARE con quelli del template: lo pretende
 --   `trgfn_documenti_generati_check_coerenza` (versione -> template, tipo
 --   output, sorgente, emittente). Un solo campo fuori posto e il documento non
@@ -185,31 +191,36 @@ BEGIN
         SELECT f.fattura_id INTO v_fattura
           FROM dbops.fn_pgtap_crea_fattura('dg satelliti ' || v_t.lato) f;
 
-        WITH d AS (
-            INSERT INTO documenti.documenti_generati
-                (tipo_documento_output_id, template_documento_id, template_versione_id,
-                 sorgente_tipo_id, sorgente_id, progressivo_sorgente,
-                 titolo, nome_file, context_json,
-                 context_hash, template_hash, pdf_hash, emittente_fiscale_id)
-            SELECT c.tipo_output_id, v_t.template_id, v.versione_id,
-                   c.sorgente_tipo_id, v_fattura, 1,
-                   'Documento pgTAP RLS ' || v_t.lato,
-                   'pgtap-rls-' || v_t.lato || '.pdf',
-                   -- _meta.context_version = versione_contesto della versione: lo
-                   --   pretende il guard della forma (20260930-20).
-                   jsonb_build_object('lato', v_t.lato,
-                                      '_meta', jsonb_build_object('context_version', 1)),
-                   encode(sha256(('ctx'  || v_t.lato)::bytea), 'hex')::varchar,
-                   encode(sha256(('tpl'  || v_t.lato)::bytea), 'hex')::varchar,
-                   encode(sha256(('pdf'  || v_t.lato)::bytea), 'hex')::varchar,
-                   v_t.emittente_fiscale_id
-              FROM _versioni v
-              CROSS JOIN _catalogo c
-             WHERE v.template_id = v_t.template_id
-            RETURNING id
-        )
+        -- La stampa e il suo file: il file e' il dato che questa slice mette al
+        --   riparo. dbops.fn_pgtap_stampa_con_pdf li scrive in due istruzioni,
+        --   come il servizio (in una CTE sola la policy del file non vedrebbe la
+        --   stampa), e fa giudicare subito il guard del file principale.
         INSERT INTO _documenti
-        SELECT v_t.lato, d.id, v_t.emittente_fiscale_id, v_t.auth_user_id FROM d;
+        SELECT v_t.lato,
+               dbops.fn_pgtap_stampa_con_pdf(format($i$
+                 INSERT INTO documenti.documenti_generati
+                     (tipo_documento_output_id, template_documento_id, template_versione_id,
+                      sorgente_tipo_id, sorgente_id, progressivo_sorgente,
+                      titolo, nome_file, context_json,
+                      context_hash, template_hash, pdf_hash, emittente_fiscale_id)
+                 SELECT c.tipo_output_id, %s, v.versione_id,
+                        c.sorgente_tipo_id, %s, 1,
+                        'Documento pgTAP RLS ' || %L,
+                        'pgtap-rls-' || %L || '.pdf',
+                        -- _meta.context_version = versione_contesto della versione: lo
+                        --   pretende il guard della forma.
+                        jsonb_build_object('lato', %L,
+                                           '_meta', jsonb_build_object('context_version', 1)),
+                        encode(sha256(('ctx'  || %L)::bytea), 'hex')::varchar,
+                        encode(sha256(('tpl'  || %L)::bytea), 'hex')::varchar,
+                        encode(sha256(('pdf'  || %L)::bytea), 'hex')::varchar,
+                        %s
+                   FROM _versioni v
+                   CROSS JOIN _catalogo c
+                  WHERE v.template_id = %s$i$,
+                 v_t.template_id, v_fattura, v_t.lato, v_t.lato, v_t.lato, v_t.lato, v_t.lato,
+                 v_t.lato, v_t.emittente_fiscale_id, v_t.template_id)),
+               v_t.emittente_fiscale_id, v_t.auth_user_id;
     END LOOP;
 END
 $stampe$;
@@ -220,15 +231,7 @@ INSERT INTO documenti.documenti_generati_eventi
 SELECT d.documento_id, 'GENERATO', now(), 'OK', 'Evento pgTAP RLS ' || d.lato
   FROM _documenti d;
 
--- Il file: e' il dato che questa slice mette al riparo.
-INSERT INTO documenti.documenti_generati_file
-    (documento_generato_id, file_tipo_id, mime_type, file_name,
-     file_size_bytes, storage_key, sha256, ordinamento)
-SELECT d.documento_id, c.file_tipo_id, 'application/pdf',
-       'pgtap-rls-' || d.lato || '.pdf', 1024,
-       'pgtap/rls/' || d.lato || '/documento.pdf',
-       encode(sha256(('file' || d.lato)::bytea), 'hex')::varchar, 1
-  FROM _documenti d CROSS JOIN _catalogo c;
+-- Il file e' nato con la stampa, nel giro qui sopra.
 
 -- ============================================================
 -- 1..3. La struttura

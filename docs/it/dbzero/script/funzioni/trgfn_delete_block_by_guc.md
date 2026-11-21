@@ -33,8 +33,9 @@ BEGIN
         );
     END IF;
 
-    -- Se la GUC e' abilitata → consente DELETE
-    IF current_setting(TG_ARGV[0], true) = 'on' THEN
+    -- La porta di manutenzione: la GUC dell'argomento, aperta solo per
+    -- la sessione del migratore, con la riga nel diario.
+    IF script.fn_porta_manutenzione_aperta(TG_ARGV[0], TG_RELID, TG_OP, OLD.id::text) THEN
         RETURN OLD;
     END IF;
 
@@ -57,7 +58,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_delete_block_by_guc()
-IS 'Blocca DELETE se GUC non abilitata. Errori: ERRORE_PARAMETRI, E_DELETE_NOT_ALLOWED.';
+IS 'Blocca il DELETE delle tabelle dichiarate in dbops.automation_delete_block (BEFORE DELETE FOR EACH ROW, montato dall''automazione DELETE_BLOCK). TG_ARGV[0] e'' la GUC della porta di manutenzione: apre solo per la sessione del migratore (script.fn_porta_manutenzione_aperta), e ogni riga cancellata dalla porta lascia una riga in dbops.porte_manutenzione_passaggi; per l''applicazione il DELETE resta rifiutato anche con la GUC accesa. Errori: E_TRIGGER_ARGOMENTI_INVALIDI (argomento mancante), E_DELETE_NOT_ALLOWED (il DELETE).';
 ```
 
 </div>

@@ -29,6 +29,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit, tipo_asset_che_ammette
 
 
 class JsonbDocumentiDbTests(unittest.TestCase):
@@ -58,6 +59,7 @@ class JsonbDocumentiDbTests(unittest.TestCase):
                 """
             )
             preventivo_id, self.emittente, uid, sorgente = cur.fetchone()
+            giudica_la_stampa_al_commit(cur)
         self.generato = DocumentGenerationService(storage=storage).genera_documento(
             get_user_model().objects.get(pk=uid),
             emittente_fiscale_id=self.emittente,
@@ -86,8 +88,7 @@ class JsonbDocumentiDbTests(unittest.TestCase):
 
     def test_asset_meta_oggetto(self) -> None:
         with connection.cursor() as cur:
-            cur.execute("SELECT id FROM documenti.tipi_asset_documento WHERE attivo ORDER BY id LIMIT 1")
-            asset_tipo = cur.fetchone()[0]
+            asset_tipo = tipo_asset_che_ammette(cur, "image/png")
         asset_id = self.repo.create_asset({
             "codice": "JSONB_BE", "codice_interno": "JSONBBE", "descrizione": "Asset jsonb",
             "asset_tipo_id": asset_tipo, "mime_type": "image/png", "file_name": "a.png",

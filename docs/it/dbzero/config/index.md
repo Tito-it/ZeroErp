@@ -36,6 +36,7 @@ search:
 - [esiti_flussi_pratiche](tabelle/esiti_flussi_pratiche.md) — Vocabolario **data-driven** degli **esiti** dei flussi operativi (il "verdetto" con cui un flusso si chiude, es. `POSITIVO`). Sostituisce l'enum che prima era **cablato** in piu' CHECK (`chk_flussi_esito`, ecc.): il motore fornisce il **meccanismo** (la tabella), i domini seedano i **valori**. Cosi' un dominio puo' aggiungere un esito senza toccare il codice del motore — decisivo per il **bivio-per-esito** (instradamento merce/servizi dello SMISTAMENTO) senza portare semantica di dominio in un CHECK di motore (layering).
 - [esposizioni_componente](tabelle/esposizioni_componente.md)
 - [eventi_dominio](tabelle/eventi_dominio.md)
+- [formati_file](tabelle/formati_file.md) — Il vocabolario dei formati di file che il sistema riconosce: un tipo MIME con la sua estensione (PNG, JPEG, SVG, WebP, GIF, PDF, foglio di stile CSS). I tipi che accettano un file abbinano qui i formati che ammettono, invece di tenerne ognuno una lista sua.
 - [forme_giuridiche](tabelle/forme_giuridiche.md) — (latest review 21-12-25)
 - [forme_giuridiche_tipi_soggetto_dettaglio](tabelle/forme_giuridiche_tipi_soggetto_dettaglio.md) — (latest review 21-12-25) La tabella **`config.forme_giuridiche_tipi_soggetto_dettaglio`** è una **matrice di configurazione** (Strada **B**) che definisce:
 - [identita_scope_bindings](tabelle/identita_scope_bindings.md) — (latest revision 18-04-2026)
@@ -199,6 +200,8 @@ search:
 - [vw_codici_errore_identita](views/vw_codici_errore_identita.md) — (rev 2026-08-21)
 - [vw_codici_postali_lista](views/vw_codici_postali_lista.md)
 - [vw_comuni_lista](views/vw_comuni_lista.md)
+- [vw_email_account_seed](views/vw_email_account_seed.md)
 - [vw_email_in_coda](views/vw_email_in_coda.md) — (latest review 11-09-2026)
+- [vw_email_template_seed](views/vw_email_template_seed.md)
 - [vw_province_lista](views/vw_province_lista.md)
 - [vw_regioni_lista](views/vw_regioni_lista.md)

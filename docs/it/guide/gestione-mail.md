@@ -1,6 +1,6 @@
 # Guida – Gestione Mail
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > Destinatari: amministratori di sistema, sviluppatori backend, analisti funzionali
 >
@@ -8,6 +8,7 @@
 >
 > * [Guida Risorse Umane e Accessi](/guide/risorse-umane-e-accessi)
 > * [Guida Gestione Pratiche](/guide/gestione-pratiche)
+> * [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti) — perché account e template modificati restano come li hai lasciati
 > * [API Email (doc backend)](/backend/core/manual/api_email)
 > * [API Invito Operatore](/backend/core/manual/api_invito_operatore)
 > * [API Reset Password](/backend/core/manual/api_password_reset)
@@ -103,6 +104,15 @@ Il sistema supporta due modalita':
 
 Il seed iniziale crea un account con codice `SISTEMA` e host placeholder.
 Per inviare email realmente, l'amministratore deve configurare un account SMTP valido.
+
+⭐ **La configurazione resta quella che hai scritto.** L'account `SISTEMA` il programma
+lo crea una volta sola, all'installazione, e poi non lo tocca più: un aggiornamento del
+programma non riporta i valori di esempio, nemmeno sulla password.
+
+⭐ **Un account non si elimina: si disattiva.** Vale per `SISTEMA` (il ripiego di tutti
+gli invii) e per gli account dei reparti, anche dopo che hanno spedito: le mail inviate
+restano nello storico col loro account, e un account spento non viene più scelto per
+gli invii nuovi. Gli account per reparto si creano liberamente.
 
 Da **Amm. Software → Account Email** (solo ADMIN):
 
@@ -227,6 +237,15 @@ Se una variabile non viene fornita, resta invariata nel testo (es. `{{link}}`
 rimane se `link` non e' tra le variabili).
 
 ### Modificare un template esistente
+
+⭐ **I testi che modifichi restano tuoi.** Finché nessuno tocca un template di sistema,
+un aggiornamento del programma può migliorarne il testo. Appena ne modifichi oggetto o
+corpo, il template è dell'azienda: gli aggiornamenti successivi non lo riscrivono più.
+Sui template di sistema non si cambiano il codice, la lingua, il reparto, il tipo di
+pratica e le variabili disponibili: sono ciò con cui il programma ritrova il template di
+base. Per un testo diverso per un reparto o per una lingua si crea un override (qui
+sotto). Un template non si elimina, né di sistema né override: si disattiva, anche dopo
+aver spedito, e un template spento non viene più scelto.
 
 Da **Amm. Software → Template Email** (solo ADMIN):
 
@@ -354,8 +373,17 @@ python manage.py send_pending_emails --dry-run
 python manage.py send_pending_emails --limit 10
 ```
 
-Schedulabile come cron job (pgAgent o crontab). Per ogni email il command
-usa l'account SMTP originale (quello con cui l'email era stata preparata).
+Lo sveglia un timer systemd (`zeroerp-send-pending-emails.timer`, vedi
+`backend/deploy/sveglie.json`).
+
+**L'account segue l'invio.** Per ogni email il command riparte dall'account
+scritto sul registro, se è ancora acceso. Se è stato spento (un account che ha
+spedito si spegne e non si cancella), o se il registro non ne ha uno, sceglie di
+nuovo l'account del reparto della mail, con il ripiego sull'account di sistema,
+come alla prima spedizione. L'esito del tentativo scrive sul registro l'account
+da cui la mail è ripartita: il registro dice da dove la mail è partita, non con
+quale account era stata preparata. Se nessun account acceso è disponibile, la
+mail resta `FAILED` col motivo.
 
 ---
 
@@ -421,10 +449,10 @@ pratiche ZeroErp via API bidirezionale.
 | Metodo | Endpoint | Scopo |
 | --- | --- | --- |
 | GET/POST | `/api/v1/amm-software/email-accounts/` | Lista e crea account SMTP |
-| GET/PATCH/DELETE | `/api/v1/amm-software/email-accounts/{id}/` | Dettaglio, modifica, elimina |
+| GET/PATCH | `/api/v1/amm-software/email-accounts/{id}/` | Dettaglio e modifica (si spegne con `attivo`: non si elimina) |
 | POST | `/api/v1/amm-software/email-accounts/{id}/test/` | Test connessione SMTP |
 | GET/POST | `/api/v1/amm-software/email-templates/` | Lista e crea template |
-| GET/PATCH/DELETE | `/api/v1/amm-software/email-templates/{id}/` | Dettaglio, modifica, elimina |
+| GET/PATCH | `/api/v1/amm-software/email-templates/{id}/` | Dettaglio e modifica (si spegne con `attivo`: non si elimina) |
 | POST | `/api/v1/amm-software/email-templates/{id}/preview/` | Preview template renderizzato |
 | GET | `/api/v1/amm-software/email-log/` | Consultazione log (admin vede tutto) |
 | GET | `/api/v1/amm-software/email-log/{id}/` | Dettaglio email inviata |

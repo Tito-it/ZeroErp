@@ -24,7 +24,7 @@
 >
 > **Documenti collegati**: [Guida Gestione Pratiche](../../guide/gestione-pratiche.md),
 > [Gestione Pratiche — Configurazione](../../guide/gestione-pratiche-configurazione.md),
-> [brief-design-proiezione-stato-dominio.md](../work-in-progress/brief-design-proiezione-stato-dominio.md) (V10, indipendente),
+> [brief-design-proiezione-stato-dominio.md](brief-design-proiezione-stato-dominio.md) (V10, indipendente),
 > [gestione-pratiche-come-procedere.md](../work-in-progress/gestione-pratiche-come-procedere.md).
 
 ---

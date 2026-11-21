@@ -13,6 +13,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../composables/useSoggettoForm'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { collegaIndirizzoSoggettoForm } from '../composables/collegaIndirizzoSoggettoForm'
 import { useDatiSocietariForm } from '../composables/useDatiSocietariForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useLookup } from '../../core/composables/useLookup'
@@ -32,6 +33,7 @@ import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from './DatiSocietariForm.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
+import IndirizziMancantiForm from './IndirizziMancantiForm.vue'
 import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from './ContiBancariDrawer.vue'
 import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
@@ -53,6 +55,7 @@ const soggetto = useSoggettoForm({ proponiSesso: () => props.mode !== 'edit' })
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 
 // Opzioni S/N dei flag di regime fiscale (I0/D8, 2026-08-29).
 // ⭐ Spostate qui da `ClienteDrawer.vue` insieme ai due campi: sono la stessa
@@ -125,6 +128,11 @@ const motiviCambio = ref([])
 //    cambio passa», e lo si dice (decisione di Tid, 2026-11-15). Il guard al
 //    salvataggio resta la difesa: rifiuta col primo motivo.
 const motiviNonVerificati = ref(false)
+// Gli indirizzi che la natura scelta chiede e che il soggetto o i suoi ruoli
+// non hanno (R-7 di brief-db-fornitore-privato-indirizzi §13.4): arrivano con i
+// motivi, dalla stessa sede dei guard degli obbligatori, e si mandano nello
+// stesso PATCH del cambio. Senza, il salvataggio e' rifiutato al commit.
+const indirizziMancanti = ref([])
 const motiviFv = useFetchVersion()
 async function caricaMotiviCambio() {
   const f = soggetto.form
@@ -132,6 +140,7 @@ async function caricaMotiviCambio() {
     || f.tipo_soggetto_dettaglio_id === tipoCaricatoId.value) {
     motiviFv.invalidate()
     motiviCambio.value = []
+    indirizziMancanti.value = []
     motiviNonVerificati.value = false
     return
   }
@@ -147,16 +156,44 @@ async function caricaMotiviCambio() {
     const res = await getMotiviCambioNatura(props.itemId, corpo)
     if (!motiviFv.isCurrent(mia)) return
     motiviCambio.value = res?.data?.data?.motivi ?? []
+    indirizziMancanti.value = res?.data?.data?.indirizzi_mancanti ?? []
     motiviNonVerificati.value = false
   } catch {
     if (!motiviFv.isCurrent(mia)) return
     motiviCambio.value = []
+    indirizziMancanti.value = []
     motiviNonVerificati.value = true
   }
 }
 const { run: caricaMotiviPresto, flush: caricaMotiviOra, cancel: annullaMotivi } =
   useDebouncedAction(caricaMotiviCambio, { detailed: true })
 const frasiMotivi = computed(() => motiviCambio.value.map(m => fraseMotivo(t, te, m)))
+// I mancanti per titolare: prima il soggetto (`soggetto_ruolo_id` null), poi
+// ogni ruolo, nell'ordine della lettura. Un form per gruppo.
+const gruppiMancanti = computed(() => {
+  const gruppi = new Map()
+  for (const m of indirizziMancanti.value) {
+    const chiave = m.soggetto_ruolo_id ?? 'soggetto'
+    if (!gruppi.has(chiave)) {
+      gruppi.set(chiave, {
+        chiave,
+        soggettoRuoloId: m.soggetto_ruolo_id ?? null,
+        titolo: m.soggetto_ruolo_id == null
+          ? t('anagrafiche.soggetti.cambio_natura_indirizzi_soggetto')
+          : t('anagrafiche.soggetti.cambio_natura_indirizzi_ruolo', { ruolo: m.ruolo_descrizione }),
+        mancanti: [],
+      })
+    }
+    gruppi.get(chiave).mancanti.push(m)
+  }
+  return [...gruppi.values()]
+})
+// I form montati, per chiave del gruppo: al salvataggio ne raccolgo i payload.
+const formMancanti = new Map()
+function registraFormMancanti(chiave, el) {
+  if (el) formMancanti.set(chiave, el)
+  else formMancanti.delete(chiave)
+}
 // I campi della riga che i motivi chiedono di correggere: si mostrano e si
 // accendono anche se la natura scelta non li prevede (K-6: niente piu' flag
 // portato a `N` di nascosto, lo porta l'operatore).
@@ -333,6 +370,7 @@ function populateFromDetail(data) {
   natureProponibili.value = data.nature_proponibili ?? []
   capabilityElimina.value = capabilityEliminaDa(data)
   motiviCambio.value = []
+  indirizziMancanti.value = []
   motiviNonVerificati.value = false
   nonEditableFields.value = data.non_editable_fields ?? []
   titoliIvaRiepilogo.value = data.titoli_iva || []
@@ -401,6 +439,7 @@ watch(() => props.visible, async (val) => {
     natureProponibili.value = null
     capabilityElimina.value = {}
     motiviCambio.value = []
+    indirizziMancanti.value = []
     motiviNonVerificati.value = false
     nonEditableFields.value = null
     tipoCaricatoId.value = null
@@ -541,6 +580,18 @@ async function handleSave() {
     // titoli IVA (brief-db-dati-fiscali-e-societari-del-soggetto §8.3).
     if (f.tipo_soggetto_dettaglio_id !== tipoCaricatoId.value) {
       payload.tipo_soggetto_dettaglio_id = f.tipo_soggetto_dettaglio_id
+      // Gli indirizzi che la natura nuova chiede, nello stesso salvataggio: il
+      // backend li scrive dopo la natura (R-7). Un gruppo lasciato vuoto non
+      // parte, e il rifiuto del guard dice che cosa manca.
+      for (const g of gruppiMancanti.value) {
+        const indirizzi = formMancanti.get(g.chiave)?.toPayloadArray() ?? []
+        if (!indirizzi.length) continue
+        if (g.soggettoRuoloId == null) {
+          payload.indirizzi = indirizzi
+        } else {
+          (payload.indirizzi_ruoli ??= []).push({ soggetto_ruolo_id: g.soggettoRuoloId, indirizzi })
+        }
+      }
     }
     // Dati societari col verbo DB, STATO INTERO, come in creazione (parte B).
     // ⚠️ Solo se la riga c'e' gia' o l'operatore ha scelto una forma: con la
@@ -660,6 +711,22 @@ async function handleSave() {
       </ul>
     </Message>
 
+    <!-- Gli indirizzi che la natura scelta chiede (R-7): un form per titolare,
+         salvati col cambio di natura. -->
+    <template v-if="isEdit && gruppiMancanti.length">
+      <Message severity="info" :closable="false">
+        {{ t('anagrafiche.soggetti.cambio_natura_indirizzi_titolo') }}
+      </Message>
+      <IndirizziMancantiForm
+        v-for="g in gruppiMancanti"
+        :key="g.chiave"
+        :ref="el => registraFormMancanti(g.chiave, el)"
+        :titolo="g.titolo"
+        :mancanti="g.mancanti"
+        :campi-errati="campiErrati"
+      />
+    </template>
+
     <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
     <template v-if="!isEdit">
       <div class="app-drawer-section">
@@ -707,20 +774,8 @@ async function handleSave() {
         <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
       </div>
       <IndirizzoSoggettoForm
+        v-bind="legameIndirizzo"
         :campi-errati="campiErrati"
-        :form="indirizzo.form"
-        :is-libera="indirizzo.isLibera.value"
-        @update:is-libera="v => indirizzo.isLibera.value = v"
-        :tipi-stato="indirizzo.tipiStato.value"
-        :stati-lookup="indirizzo.statiLookup"
-        :cap-options="indirizzo.capOptions.value"
-        :loading-cap="indirizzo.loadingCap.value"
-        :auto-clone="indirizzo.autoClone.value"
-        @update:auto-clone="v => indirizzo.autoClone.value = v"
-        @switch-tipo="indirizzo.switchTipo"
-        :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-        :address-not-found="indirizzo.addressNotFound.value"
-        :disabled="false"
       />
     </template>
 

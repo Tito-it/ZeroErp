@@ -24,123 +24,6 @@ from apps.core.db._helpers import (
 )
 
 
-# Espressione SQL pura per leggere la GUC `app.ruolo_applicativo` con
-# fallback NULL. Stessa semantica della 2-arg di
-# `script.fn_get_profili_accesso_applicabili` post DB-4: GUC vuota ->
-# NULL -> "tutte le vesti" (comportamento legacy). Nessun valore utente
-# concatenato qui: il letterale e' SQL-safe.
-_GUC_VESTE_EXPR = (
-    "NULLIF(current_setting('app.ruolo_applicativo', true), '')"
-    "::config.ruolo_applicativo"
-)
-
-# Tabelle preset ammesse dal BB `fetch_preset_base_snapshot`
-# (tabella -> colonna FK dell'entita' personalizzata). Whitelist chiusa:
-# i nomi vengono interpolati nell'SQL, mai valori provenienti dall'esterno.
-_PRESET_SNAPSHOT_TABLES: dict[str, str] = {
-    "ui.lista_preset": "lista_id",
-    "ui.dashboard_preset": "dashboard_id",
-}
-
-
-# Scopo: BB condiviso liste/dashboard — snapshot (id, snapshot_ts) del
-#        preset di base risolto per l'utente, da memorizzare nella
-#        preferenza al momento del salvataggio. Replica la cascata
-#        Step 2b/c/d delle fn DB (`ui.fn_resolve_lista_config` /
-#        `ui.fn_resolve_dashboard_config`): ruolo (priorita ASC) ->
-#        emittente fiscale -> sistema. Ritorna `(None, None)` se nessun
-#        preset applicabile (la preferenza partira' dal catalogo grezzo).
-#
-# `snapshot_ts = contenuto_aggiornato_il`: la data del CONTENUTO del preset,
-# `NOT NULL`, scritta solo dai due trigger a mano del DB
-# (`ui.trgfn_preset_contenuto_aggiornato` sulle colonne di contenuto,
-# `ui.trgfn_preset_riga_tocca_preset` dalle righe figlie). ⛔ Non
-# `data_update`: dal blocco 7-bis-c di brief-db-revisione-dbops (2026-11-08)
-# e' l'audit, che il trigger generico sposta a OGNI UPDATE (anche il solo
-# `attivo`, anche la riscrittura uguale di un seed) e accenderebbe il badge
-# `preset_aggiornato` a tutti. Il ripiego su `data_insert` (DEF-2,
-# 2026-05-11) non serve piu': la colonna nasce valorizzata.
-#
-# ATTENZIONE — drift risk: questa cascata duplica la logica DB. Se in
-# futuro le fn di risoluzione cambiano (nuovo livello di preset,
-# ordinamento, ecc.) va aggiornata anche questa funzione. Soluzione
-# strutturale: brief team DB per esporre il preset di base nel JSONB
-# delle fn (campo `preset_base`) — eliminerebbe la duplicazione.
-def fetch_preset_base_snapshot(
-    preset_table: str,
-    *,
-    entity_id: int,
-    auth_user_id: int,
-    emittente_fiscale_id: int | None,
-) -> tuple[int | None, Any | None]:
-    fk_column = _PRESET_SNAPSHOT_TABLES.get(preset_table)
-    if fk_column is None:
-        raise ValueError(f"tabella preset non in whitelist: {preset_table}")
-
-    # 1. preset di ruolo (priorita ASC)
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT p.id, p.contenuto_aggiornato_il
-              FROM {preset_table} p
-              JOIN script.fn_get_profili_accesso_applicabili(
-                     %s,
-                     {_GUC_VESTE_EXPR}
-                   ) pa
-                ON pa.profilo_accesso_id = p.profilo_accesso_id
-             WHERE p.{fk_column} = %s
-               AND p.ambito      = 'ruolo'
-               AND p.is_default  = TRUE
-               AND p.attivo      = TRUE
-             ORDER BY pa.priorita ASC
-             LIMIT 1
-            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, GUC letterale, valori come parametri
-            [auth_user_id, entity_id],
-        )
-        row = cursor.fetchone()
-    if row:
-        return int(row[0]), row[1]
-
-    # 2. preset di emittente fiscale
-    if emittente_fiscale_id is not None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT id, contenuto_aggiornato_il
-                  FROM {preset_table}
-                 WHERE {fk_column}           = %s
-                   AND ambito               = 'emittente_fiscale'
-                   AND emittente_fiscale_id = %s
-                   AND is_default           = TRUE
-                   AND attivo               = TRUE
-                 LIMIT 1
-                """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
-                [entity_id, emittente_fiscale_id],
-            )
-            row = cursor.fetchone()
-        if row:
-            return int(row[0]), row[1]
-
-    # 3. preset di sistema
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            SELECT id, contenuto_aggiornato_il
-              FROM {preset_table}
-             WHERE {fk_column} = %s
-               AND ambito      = 'sistema'
-               AND is_default  = TRUE
-               AND attivo      = TRUE
-             LIMIT 1
-            """,  # noqa: S608 — tabella/FK da whitelist _PRESET_SNAPSHOT_TABLES, valori come parametri
-            [entity_id],
-        )
-        row = cursor.fetchone()
-    if row:
-        return int(row[0]), row[1]
-
-    return None, None
-
 
 class UiRepository:
     """Accesso DB per personalizzazioni liste (schema `ui`).
@@ -285,9 +168,9 @@ class UiRepository:
         return rows
 
     # Scopo: Preferenza utente per (auth_user, lista). None se non esiste.
-    #        Inclusi metadati (`preset_base_id`, `preset_base_contenuto_aggiornato_il`,
-    #        `data_update`) per permettere al FE/service il check del
-    #        badge "preset aggiornato" (DEF-2).
+    #        Inclusi metadati (`preset_base_id`, lo snapshot per chiave
+    #        `preset_base_contenuto_aggiornato_il` come dict `{chiave: data}`
+    #        o None, `data_update`).
     def get_preferenza(
         self, auth_user_id: int, lista_id: int
     ) -> dict[str, Any] | None:
@@ -314,22 +197,25 @@ class UiRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_contenuto_aggiornato_il": row[3],
+            # Lo snapshot e' per chiave (`{chiave: data}`, giro 1b): jsonb.
+            "preset_base_contenuto_aggiornato_il": jsonb_out(row[3]),
             "data_insert": row[4],
             "data_update": row[5],
         }
 
-    # Scopo: UPSERT preferenza utente. Snapshot di
-    #        `lista_preset.contenuto_aggiornato_il` catturato dal service e passato qui come parametro
-    #        `preset_base_contenuto_aggiornato_il`. La PK e' (auth_user_id, lista_id)
-    #        (UNIQUE), quindi il conflict target esegue UPDATE coerente.
+    # Scopo: UPSERT preferenza utente. La UNIQUE (auth_user_id, lista_id)
+    #        fa del conflict target un UPDATE coerente.
+    # ⭐ Lo snapshot (`preset_base_contenuto_aggiornato_il`) non si scrive: lo
+    #    scrive `ui.trgfn_preferenza_preset_base_snapshot` (BE6, giro 1a di
+    #    brief-db-revisione-ui), `BEFORE INSERT OR UPDATE OF preset_base_id`.
+    # ⛔ `preset_base_id` resta nel SET anche quando non cambia: e' la colonna
+    #    nominata che fa scattare il trigger, cioe' il riallineamento.
     def upsert_preferenza(
         self,
         auth_user_id: int,
         lista_id: int,
         configurazione: dict[str, Any],
         preset_base_id: int | None,
-        preset_base_contenuto_aggiornato_il: Any | None,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -338,15 +224,13 @@ class UiRepository:
                     auth_user_id,
                     lista_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     configurazione,
                     data_insert
                 )
-                VALUES (%s, %s, %s, %s, %s::jsonb, now())
+                VALUES (%s, %s, %s, %s::jsonb, now())
                 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
                    SET configurazione           = EXCLUDED.configurazione,
                        preset_base_id           = EXCLUDED.preset_base_id,
-                       preset_base_contenuto_aggiornato_il  = EXCLUDED.preset_base_contenuto_aggiornato_il,
                        data_update              = now()
                 RETURNING id
                 """,
@@ -354,7 +238,6 @@ class UiRepository:
                     auth_user_id,
                     lista_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     json.dumps(configurazione),
                 ],
             )
@@ -363,20 +246,26 @@ class UiRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Setta `preset_aggiornato_ignored_at = NOW()` sulla preferenza
-    #        utente (DEF-2 "Ignora" banner preset aggiornato). Ritorna True
-    #        se ha aggiornato una riga, False se la preferenza non esiste
-    #        (il chiamante service trasforma False in
-    #        E_UI_PREFERENZA_NON_TROVATA 404).
-    def set_preset_aggiornato_ignored(
+    # Scopo: «Ignora» del banner preset aggiornato (DEF-2): riallinea lo
+    #        snapshot del preset di base al contenuto di oggi, riscrivendo
+    #        `preset_base_id` col valore che ha gia'. Ritorna True se ha
+    #        aggiornato una riga, False se la preferenza non esiste (il
+    #        service lo traduce in E_UI_PREFERENZA_NON_TROVATA 404).
+    # ⭐ Lo snapshot lo scrive `ui.trgfn_preferenza_preset_base_snapshot`
+    #    (`BEFORE UPDATE OF preset_base_id`): e' nominare la colonna, non
+    #    cambiarla, a farlo scattare. Dal giro 1b di brief-db-revisione-ui
+    #    l'ignorato (`preset_aggiornato_ignored_at`) non c'e' piu'.
+    # ⛔ La base resta quella salvata: con la base cambiata il banner e'
+    #    «Riallinea», che salva la base di oggi (`upsert_preferenza`).
+    def riallinea_snapshot_base(
         self, auth_user_id: int, lista_id: int
     ) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ui.lista_preferenza_utente
-                   SET preset_aggiornato_ignored_at = now(),
-                       data_update                  = now()
+                   SET preset_base_id = preset_base_id,
+                       data_update    = now()
                  WHERE auth_user_id = %s
                    AND lista_id     = %s
                 """,
@@ -397,19 +286,3 @@ class UiRepository:
                 [auth_user_id, lista_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Snapshot preset di base per la preferenza liste. Delega al BB
-    #        condiviso `fetch_preset_base_snapshot` (cascata, COALESCE e
-    #        drift risk documentati li').
-    def get_preset_base_snapshot(
-        self,
-        lista_id: int,
-        auth_user_id: int,
-        emittente_fiscale_id: int | None,
-    ) -> tuple[int | None, Any | None]:
-        return fetch_preset_base_snapshot(
-            "ui.lista_preset",
-            entity_id=lista_id,
-            auth_user_id=auth_user_id,
-            emittente_fiscale_id=emittente_fiscale_id,
-        )

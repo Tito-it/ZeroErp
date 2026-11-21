@@ -1,19 +1,25 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.template_asset`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [documenti.tipi_asset_documento](/dbzero/documenti/tabelle/tipi_asset_documento) — che genere di asset è
+> * [documenti.tipi_asset_documento_formati](/dbzero/documenti/tabelle/tipi_asset_documento_formati) — i formati che ogni tipo ammette
 > * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — l'azienda a cui l'asset appartiene
+>
+> Approfondimento viste:
+>
+> * [documenti.vw_template_asset_utilizzabili](/dbzero/documenti/views/vw_template_asset_utilizzabili) — gli asset che si possono usare oggi
 >
 > Approfondimento funzioni:
 >
-> * [documenti.trgfn_template_asset_block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete) — un asset non si cancella
+> * [script.trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic) — un asset non si cancella
 > * [documenti.trgfn_template_asset_protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file) — il file di un asset non cambia
 > * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — l'azienda presa dalla sessione
+> * [documenti.trgfn_guard_formato_ammesso](/dbzero/documenti/funzioni/trgfn_guard_formato_ammesso) — un asset nasce in un formato del suo tipo
 >
 > Guide:
 >
@@ -43,17 +49,22 @@ versione.
 
 ---
 
-### ⛔ Un asset non cambia file e non si cancella
+### ⛔ Un asset non cambia file né azienda, e non si cancella
 
 * Il file di un asset non cambia: chiave nello storage, impronta, peso, tipo e nome sono quelli del
   caricamento ([protect_file](/dbzero/documenti/funzioni/trgfn_template_asset_protect_file)).
-* Un asset non si cancella mai
-  ([block_delete](/dbzero/documenti/funzioni/trgfn_template_asset_block_delete)).
+* Un asset resta dell'azienda per cui è stato caricato (`emittente_fiscale_id`, lucchetto di colonna,
+  `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE`). Una versione lo cerca fra gli asset dell'azienda del
+  documento: spostato, la ristampa di una stampa di prima non lo ritroverebbe, e l'altra azienda si
+  troverebbe un asset col file di qualcun altro. Per un'altra azienda si carica un asset nuovo.
+* Un asset non si cancella mai, da nessun ruolo (il rifiuto sempre attivo di
+  [trgfn_prevent_modification_generic](/dbzero/script/funzioni/trgfn_prevent_modification_generic)).
 
 Insieme fanno dell'asset un'istantanea stabile: la ristampa fedele di un documento ritrova il file di
 allora, anche se oggi l'asset è scaduto o spento.
 
-Restano modificabili descrizione, codice, meta, attivo e le date.
+Restano modificabili descrizione, codice, il tipo (se ammette il formato), meta, attivo, le date e
+`storicizza`.
 
 ---
 
@@ -67,7 +78,10 @@ carica due volte, nemmeno con due ruoli diversi. Due aziende possono avere lo st
 ### Attivo e valido: che cosa la stampa può usare
 
 Una stampa nuova e l'anteprima usano solo gli asset attivi e validi oggi; la ristampa fedele usa
-l'asset di allora comunque. `validita` è l'intervallo generato da `valido_dal` e `valido_al`, estremi
+l'asset di allora comunque. La regola «utilizzabile oggi» sta in un posto solo, la vista
+[vw_template_asset_utilizzabili](/dbzero/documenti/views/vw_template_asset_utilizzabili), per il
+render e per il filtro degli asset utilizzabili della lista (il backend ripete ancora la condizione:
+lo dice la pagina della vista). `validita` è l'intervallo generato da `valido_dal` e `valido_al`, estremi
 compresi, e l'ordine delle date lo verifica il guard comune. Un asset si ritira chiudendo la validità
 o spegnendolo.
 
@@ -86,9 +100,13 @@ ristampa fedele, che ritrova il file di allora anche se oggi l'asset è scaduto 
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Il formato lo ammette il tipo
 
-* «Attivo e valido oggi» per un asset non ha una sede nel database: lo scrive il backend.
+Un asset nasce solo in un formato che il suo tipo ammette
+([tipi_asset_documento_formati](/dbzero/documenti/tabelle/tipi_asset_documento_formati)): un logo in
+PNG, JPEG, SVG, WebP o GIF, un foglio di stile in CSS. Il formato non cambia dopo la nascita; il tipo
+sì, e il tipo nuovo deve ammettere il formato dell'asset. Il backend legge la stessa lista per
+controllare i byte del file.
 
 ---
 
@@ -97,6 +115,8 @@ ristampa fedele, che ritrova il file di allora anche se oggi l'asset è scaduto 
 * `E_DOCUMENTI_ASSET_DELETE_BLOCKED` — cancellazione di un asset.
 * `E_DOCUMENTI_ASSET_FILE_IMMUTABILE` — modifica del file di un asset.
 * `E_CODICE_NON_MODIFICABILE` — modifica del codice interno.
+* `E_DOCUMENTI_ASSET_EMITTENTE_IMMUTABILE` — modifica dell'azienda.
+* `E_DOCUMENTI_FORMATO_NON_AMMESSO` — formato che il tipo dell'asset non ammette.
 * `E_DATA_AL_MINORE_DAL` — fine che precede l'inizio.
 * Le unicità (codice, codice interno, impronta) arrivano come violazione di vincolo, e il backend le
   traduce per nome.
@@ -106,7 +126,11 @@ ristampa fedele, che ritrova il file di allora anche se oggi l'asset è scaduto 
 ### Test
 
 * `db/pgtap/documenti/test-documenti-template-asset.sql` — unicità dell'impronta, cancellazione
-  bloccata, file immutabile, meta modificabile.
+  bloccata, file, codice interno e azienda fermi, i campi liberi.
+* `db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql` — il formato ammesso dal tipo, alla
+  nascita e al cambio di tipo.
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — utilizzabile l'asset acceso e
+  valido oggi, non quello spento né quello che vale da domani.
 
 ---
 
@@ -114,6 +138,9 @@ ristampa fedele, che ritrova il file di allora anche se oggi l'asset è scaduto 
 
 * 2026-04-29 — nasce la tabella.
 * 2026-05-14 — `validita` diventa una colonna generata.
+* 2026-11-16 — il formato ammesso dal tipo passa dal backend al database, e la regola «utilizzabile
+  oggi» ha la sua vista.
+* 2026-11-17 — l'azienda di un asset è ferma: fino ad allora un UPDATE la spostava in un'altra.
 
 ---
 

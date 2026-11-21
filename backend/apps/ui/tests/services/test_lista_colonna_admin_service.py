@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Test unit ListaColonnaAdminService — Blocco F Fase 2 (DEF-5b)
 #        CRUD su ui.lista_colonna con UX vincoli (esportabile=False per
-#        tipo_colonna='azione') e soft-block DELETE per preferenze.
+#        tipo_colonna='azione') e soft-block DELETE per preferenze e preset.
 #        CI senza DB reale (SimpleTestCase + repository mockato).
 #
 # Indice test (0..N):
@@ -36,6 +36,9 @@
 #    21. delete_colonna_inesistente_raises
 #    22. delete_colonna_in_uso_da_preferenze_raises_409
 #    23. delete_colonna_happy_path_zero_preferenze
+#    24. delete_colonna_in_un_preset_raises_409_e_nomina_i_preset
+#    25. delete_colonna_fk_preset_al_delete_raises_409
+#    26. delete_colonna_nata_dal_seed_salta_i_controlli
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -83,6 +86,9 @@ def _row_colonna(**overrides: Any) -> dict[str, Any]:
         "user_insert": "tester",
         "data_update": None,
         "user_update": None,
+        # La superficie del seed, come la legge `get_colonna_admin`.
+        "nata_dal_seed": False,
+        "campi_del_software": [],
     }
     base.update(overrides)
     return base
@@ -400,8 +406,55 @@ class ListaColonnaDeleteTests(SimpleTestCase):
         repo = MagicMock()
         repo.get_colonna_admin.return_value = _row_colonna()
         repo.count_preferenze_referenced_by_colonna.return_value = 0
+        repo.preset_con_colonna.return_value = []
         repo.delete_colonna.return_value = True
         svc = ListaColonnaAdminService(repo=repo)
         result = svc.delete_colonna(100)
         self.assertTrue(result["deleted"])
         self.assertEqual(result["id"], 100)
+        repo.preset_con_colonna.assert_called_once_with(100)
+
+    # Q18 di brief-db-revisione-ui: la FK dei preset e' NO ACTION, il
+    # controllo preventivo la anticipa e dice DA QUALI preset toglierla.
+    def test_delete_colonna_in_un_preset_raises_409_e_nomina_i_preset(self) -> None:
+        repo = MagicMock()
+        repo.get_colonna_admin.return_value = _row_colonna()
+        repo.count_preferenze_referenced_by_colonna.return_value = 0
+        repo.preset_con_colonna.return_value = ["base_sistema", "commerciale"]
+        svc = ListaColonnaAdminService(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.delete_colonna(100)
+        self.assertEqual(ctx.exception.code, E_COLONNA_IN_USE)
+        self.assertIn("base_sistema, commerciale", ctx.exception.message)
+        repo.delete_colonna.assert_not_called()
+
+    # Il preset nato fra il controllo e il DELETE: lo ferma la FK, e il
+    # rifiuto e' lo stesso codice col messaggio dei preset.
+    def test_delete_colonna_fk_preset_al_delete_raises_409(self) -> None:
+        repo = MagicMock()
+        repo.get_colonna_admin.return_value = _row_colonna()
+        repo.count_preferenze_referenced_by_colonna.return_value = 0
+        repo.preset_con_colonna.return_value = []
+        repo.delete_colonna.side_effect = IntegrityError(
+            'update or delete on table "lista_colonna" violates foreign key '
+            'constraint "fk_lista_preset_colonna_lista_colonna" on table '
+            '"lista_preset_colonna"'
+        )
+        svc = ListaColonnaAdminService(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.delete_colonna(100)
+        self.assertEqual(ctx.exception.code, E_COLONNA_IN_USE)
+        self.assertIn("preset", ctx.exception.message)
+
+    # Una colonna del seed non si cancella comunque: il rifiuto vero e'
+    # quello del DB, e i due controlli non lo devono coprire con un
+    # rimedio («toglila dai preset») che non porta da nessuna parte.
+    def test_delete_colonna_nata_dal_seed_salta_i_controlli(self) -> None:
+        repo = MagicMock()
+        repo.get_colonna_admin.return_value = _row_colonna(nata_dal_seed=True)
+        repo.delete_colonna.return_value = True
+        svc = ListaColonnaAdminService(repo=repo)
+        svc.delete_colonna(100)
+        repo.count_preferenze_referenced_by_colonna.assert_not_called()
+        repo.preset_con_colonna.assert_not_called()
+        repo.delete_colonna.assert_called_once_with(100)

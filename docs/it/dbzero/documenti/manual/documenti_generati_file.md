@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.documenti_generati_file`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -32,8 +32,10 @@ Una stampa ha il suo PDF (`PDF_FINALE`) e può avere degli allegati (`ALLEGATO`)
 
 ### Il file principale e gli altri
 
-* `is_principale` dice qual è il file che rappresenta la stampa: al più uno per stampa
-  (`uq_documenti_generati_file_principale`). Il PDF della generazione nasce principale, gli allegati no.
+* `is_principale` dice qual è il file che rappresenta la stampa: **esattamente uno** per stampa. Al più uno lo
+  tiene `uq_documenti_generati_file_principale`; almeno uno lo chiede, a fine transazione, il controllo della
+  stampa che nasce (`documenti.trgfn_documenti_generati_guard_file_principale`). Il PDF della generazione nasce
+  principale, gli allegati no.
 * `ordinamento` numera i file dello stesso ruolo sulla stessa stampa, da 1: la terna stampa, ruolo, ordinamento
   è unica.
 * `sha256` (64 caratteri), `file_size_bytes` (positivo), `mime_type`, `file_name` e `storage_key` (non vuoti)
@@ -41,14 +43,27 @@ Una stampa ha il suo PDF (`PDF_FINALE`) e può avere degli allegati (`ALLEGATO`)
 
 ---
 
-### ⭐ Un file salvato non si sostituisce
+### ⭐ Un file salvato non si sostituisce e non si cancella
 
 Dopo l'inserimento non cambiano né la stampa e il ruolo, né il file (posizione, impronta, dimensione, tipo, nome),
 né `is_principale` (`trgfn_documenti_generati_file_protect_file`). Restano modificabili `ordinamento`, `meta` e i
 campi di audit. Sostituire il PDF vorrebbe dire mentire su ciò che è stato emesso: una stampa sbagliata si
 rigenera, e la nuova ha il suo progressivo e i suoi file.
 
+Il file non si cancella, da nessun ruolo (il rifiuto sempre attivo di `script.trgfn_prevent_modification_generic`):
+senza il suo PDF la stampa non si scarica e non si ristampa, e l'impronta conservata non verifica più niente.
+
 Lo storico standard è spento, come sulla stampa: il file non cambia.
+
+---
+
+### Il formato lo ammette il tipo
+
+Un file nasce solo in un formato che il suo tipo ammette
+([tipi_file_documento_formati](/dbzero/documenti/tabelle/tipi_file_documento_formati)): il PDF
+principale è un PDF, un allegato un PDF, un JPEG o un PNG
+([trgfn_guard_formato_ammesso](/dbzero/documenti/funzioni/trgfn_guard_formato_ammesso)). Il tipo di
+file è un vocabolario senza `attivo`: c'è o non c'è, e non lo tiene acceso nessun file.
 
 ---
 
@@ -59,21 +74,11 @@ file delle stampe delle aziende del suo perimetro.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Una stampa senza file è ammessa.** Il database non chiede che una stampa abbia un file principale: lo garantisce
-  solo il backend, che scrive stampa e PDF nella stessa transazione.
-* **Un file si può cancellare.** A differenza della stampa e dei suoi eventi, la tabella non ha un trigger che rifiuti
-  il `DELETE`, e l'applicazione ha il privilegio: cancellando la riga del PDF principale la stampa resta senza il suo
-  file, e la ristampa e il download non lo ritrovano più. Le colonne del file sono protette solo dall'UPDATE.
-* **Un tipo di file usato non si spegne.** La tabella non ha `attivo`, e ogni file conta come figlio vivo per il
-  blocco della regola ATTIVO su `tipi_file_documento`.
-
----
-
 ### Codici errore
 
-* `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE` — si è cercato di cambiare il file o il suo ruolo.
+* `E_DOCUMENTI_GENERATO_FILE_IMMUTABILE` — si è cercato di cambiare il file o il suo ruolo;
+* `E_FILE_DOCUMENTO_DELETE_VIETATA` — si è cercato di cancellare il file;
+* `E_DOCUMENTI_FORMATO_NON_AMMESSO` — il formato non è ammesso dal tipo di file.
 
 ---
 
@@ -81,6 +86,8 @@ file delle stampe delle aziende del suo perimetro.
 
 * `db/pgtap/documenti/test-documenti-generati-file.sql` — un solo principale, la terna unica, il blocco della
   sostituzione;
+* `db/pgtap/documenti/test-documenti-stampa-e-storia-v1.sql` — il principale obbligatorio, il file che non si
+  cancella, il tipo di file che si spegne;
 * `db/pgtap/documenti/test-documenti-storico-disabled.sql` — lo storico spento;
 * `db/pgtap/rls/test-rls-documenti-satelliti.sql` — il perimetro dei file.
 
@@ -92,6 +99,8 @@ file delle stampe delle aziende del suo perimetro.
 * 2026-05-01 — nasce `is_principale`.
 * 2026-06-03 — gli allegati si possono aggiungere dopo l'emissione.
 * 2026-09-10 — la tabella entra nel perimetro delle aziende.
+* 2026-11-15 — il file non si cancella più, e una stampa nuova deve avere il suo principale; la chiave del tipo di
+  file diventa un'eccezione della regola ATTIVO.
 
 ---
 

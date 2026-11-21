@@ -102,6 +102,19 @@ sistema o sul catalogo grezzo.
       "pagina_dimensione": "sistema"
     },
     "colonne_nuove": 0,
+    "preset_base": {
+      "id": 5,
+      "ambito": "sistema",
+      "contenuto_aggiornato_il": {
+        "colonne": "2026-11-20T09:12:00+00:00",
+        "ordinamento": "2026-11-18T16:40:00+00:00",
+        "filtri": "2026-11-18T16:40:00+00:00",
+        "pagina_dimensione": "2026-11-18T16:40:00+00:00"
+      }
+    },
+    "preset_base_cambiato": false,
+    "preset_aggiornato": false,
+    "preset_aggiornato_chiavi": [],
     "ricerca_full": true,
     "richiede_scelta_emittente": false
   },
@@ -142,6 +155,25 @@ Campi top-level:
   `preferenza`, piu' quella toccata: rimandare la configurazione intera
   congelerebbe nella preferenza le chiavi del preset (era il difetto fino
   al 2026-10-31)
+- `preset_base` — il preset di base di **oggi** per l'utente (`{id, ambito,
+  contenuto_aggiornato_il}`; la data del contenuto è **per chiave**,
+  `{chiave: data}`, dal giro 1b di brief-db-revisione-ui), oppure `null` se nessun preset vale e ogni
+  chiave viene dal catalogo. Lo sceglie il DB in una sede sola
+  (`ui.fn_preset_di_base`): un preset vale se è acceso e ha almeno una
+  colonna attiva; il ruolo concorre solo con la veste valorizzata, l'azienda
+  solo se accesa, poi il sistema. ⭐ È la base che il salvataggio della
+  preferenza registra (endpoint 3): il backend non ha una copia della cascata
+- `preset_base_cambiato` — `true` se la preferenza ha salvato un preset di
+  base che non è quello di oggi (spento, o sostituito da un altro livello).
+  Il frontend mostra il banner «base cambiata» con l'azione «Riallinea», che
+  risalva la preferenza (dal 2026-11-20, BE7 di brief-db-revisione-ui)
+- `preset_aggiornato` — `true` se la base salvata è quella di oggi e il suo
+  contenuto è cambiato, in almeno una chiave scelta dall'utente (origine
+  `preferenza`), dopo lo snapshot della preferenza: il banner DEF-2.
+  «Ignora» (endpoint 5) riallinea lo snapshot. Con `preset_base_cambiato`
+  vero è sempre `false`, e i due banner non si sovrappongono
+- `preset_aggiornato_chiavi` — le chiavi di quel cambiamento (elenco, vuoto
+  se nessuna; dal giro 1b): il banner dice quali parti sono cambiate
 - `pagina_dimensione_standard` — la misura che la cascata darebbe **senza**
   la preferenza; il drawer di personalizzazione la mostra come «Come lo
   standard (N)»
@@ -323,11 +355,15 @@ E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`
 ```
 
 - `id` — PK della riga in `ui.lista_preferenza_utente`
-- `preset_base_id` — id del preset di base risolto al momento del
-  salvataggio (`null` se l'utente partiva dal catalogo grezzo). Lo
-  snapshot del `data_update` di quel preset e' memorizzato in
-  `lista_preferenza_utente.preset_base_data_update` per il badge
-  "preset aggiornato" (DEF-2).
+- `preset_base_id` — id del preset di base di oggi, letto dalla
+  risoluzione (`preset_base` dell'endpoint 1; `null` se l'utente parte dal
+  catalogo). ⭐ Lo snapshot per il banner «preset aggiornato» (DEF-2),
+  `lista_preferenza_utente.preset_base_contenuto_aggiornato_il` (per chiave,
+  `{chiave: data}`), lo scrive il
+  DB: `ui.trgfn_preferenza_preset_base_snapshot` lo copia dalla data del
+  **contenuto** del preset a ogni scrittura che nomina `preset_base_id`
+  (dal 2026-11-20, BE5 e BE6 di brief-db-revisione-ui). Ogni salvataggio è
+  quindi un riallineamento.
 
 Errori:
 
@@ -344,9 +380,10 @@ Errori:
 
 - L'UPSERT usa `ON CONFLICT (auth_user_id, lista_id) DO UPDATE`: stessa
   chiamata aggiorna la preferenza esistente.
-- `preset_base_data_update` viene aggiornato a ogni salvataggio:
-  l'utente che salva risolve implicitamente l'eventuale notifica
-  "preset aggiornato".
+- `preset_base_contenuto_aggiornato_il` lo riscrive il DB a ogni
+  salvataggio: l'utente che salva risolve implicitamente l'eventuale
+  notifica "preset aggiornato", e con la base di oggi anche quella della
+  base cambiata.
 - L'`Idempotency-Key` strong mode (`DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1`)
   fa replay della risposta sulla stessa key entro la TTL di
   `dbops.idempotency_keys`.
@@ -392,17 +429,20 @@ Errori:
 
 #### Scopo
 
-Tombstone "Ignora banner preset aggiornato": setta
-`ui.lista_preferenza_utente.preset_aggiornato_ignored_at = NOW()` sulla
-preferenza utente per `(request.user, codice)`. Il flag
-`preset_aggiornato` ritornato da `ui.fn_resolve_lista_config` torna
-`false` finche' il preset non viene modificato di nuovo
-(`preset.data_update > ignored_at`).
+«Ignora» del banner preset aggiornato: riscrive `preset_base_id` della
+preferenza di `(request.user, codice)` col valore che ha già, e il trigger
+`ui.trgfn_preferenza_preset_base_snapshot` riallinea lo snapshot
+(`preset_base_contenuto_aggiornato_il`) al contenuto di oggi, chiave per
+chiave. Il flag `preset_aggiornato` ritornato da `ui.fn_resolve_lista_config`
+torna `false` finche' il contenuto del preset non cambia di nuovo. ⛔ Dal
+giro 1b di brief-db-revisione-ui (2026-11-20) l'ignorato
+`preset_aggiornato_ignored_at` non esiste più: «ignorare» e «riallineare»
+sono lo stesso gesto, e il banner si confronta solo con lo snapshot.
 
 L'endpoint chiude la conversazione "l'amministratore ha aggiornato il
 preset del tuo ruolo, vedi novita' / ignora": "Vedi novita'" si chiude
-naturalmente al successivo save preferenza (lo snapshot
-`preset_base_data_update` si riallinea); "Ignora" usa questo endpoint
+naturalmente al successivo save preferenza (il DB riscrive lo snapshot
+`preset_base_contenuto_aggiornato_il`); "Ignora" usa questo endpoint
 per nascondere il banner senza modificare la configurazione utente.
 
 #### Input
@@ -438,18 +478,17 @@ Errori:
 #### Note DEF-2
 
 - **Idempotency-Key**: obbligatoria per coerenza con il pattern POST
-  (api.md). Il replay strong mode garantisce che retry FE non duplichino
-  side-effect anche se `now()` viene comunque sovrascritto in modo
-  benigno.
-- **Reset automatico tombstone**: il trigger
-  `trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts` azzera
-  anche `preset_aggiornato_ignored_at` quando cambia `preset_base_id`
-  (cambio preset di base = relazione utente-preset resettata, il
-  tombstone storico riferisce al vecchio preset).
+  (api.md). Ripetere il riallineamento è innocuo: lo snapshot torna uguale.
+- **La base resta quella salvata**: «Ignora» non cambia `preset_base_id`.
+  Con la base cambiata il banner è l'altro («Riallinea»), che salva la base
+  di oggi con la preferenza (endpoint 3).
 - **Riapparizione banner**: il banner torna visibile alla prossima
-  modifica del preset (`preset.data_update > ignored_at`). Pattern by
-  design: l'utente che "ignora una volta" non perde visibilita' sulle
-  future modifiche.
+  modifica del contenuto del preset, in una chiave scelta dall'utente.
+  Pattern by design: l'utente che "ignora una volta" non perde visibilita'
+  sulle future modifiche.
+- **Lo snapshot non lo scrive l'app**: chi scrive la data del contenuto di
+  un preset riceve `500 E_UI_PRESET_CONTENUTO_DERIVATO` (la scrive solo il
+  DB, `ui.trgfn_preset_contenuto_aggiornato`).
 
 ---
 
@@ -510,11 +549,10 @@ Errori:
 - **Cascata preset di ruolo**: ordinata per `priorita ASC` (AD_HOC=1
   prevale su REPARTO/PORTALE=2). DB-3 landed 2026-05-07.
 - **Eliminazione preset di base**: la FK `preset_base_id` e'
-  `ON DELETE SET NULL` (DB-2 landed). Trigger DB
-  `trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd` azzera
-  anche `preset_base_data_update`. Il FE deve verificare
-  `preset_base_id IS NOT NULL` prima di mostrare il badge "preset
-  aggiornato".
+  `ON DELETE SET NULL` (DB-2 landed), e
+  `ui.trgfn_preferenza_preset_base_snapshot` lo vede come un cambio di base:
+  snapshot e «ignora» azzerati. I due flag (`preset_base_cambiato`,
+  `preset_aggiornato`) li calcola il DB: il FE li legge e basta.
 - **Veste GUC corrotta**: il cast in fn DB e' avvolto in `EXCEPTION
   WHEN invalid_text_representation THEN NULL` -> fallback "tutte le
   vesti" (legacy) invece di propagare eccezione (deviazione team DB
@@ -525,13 +563,14 @@ Errori:
 - Tabelle: `ui.lista_definizione`, `ui.lista_colonna`, `ui.lista_preset`,
   `ui.lista_preset_colonna`, `ui.lista_preferenza_utente`,
   `ui.lista_colonna_permesso`, `ui.misure_pagina`
-- Funzioni: `ui.fn_resolve_lista_config`, `ui.fn_get_misure_pagina`,
+- Funzioni: `ui.fn_resolve_lista_config` (con `ui.fn_preset_di_base` e
+  `ui.fn_preset_aggiornato`), `ui.fn_get_misure_pagina`,
   `script.fn_get_profili_accesso_applicabili`,
   `script.fn_resolve_emittente_for_user` (via Python
   `PermissionResolver.get_emittente_for_user`)
 - Trigger: `trgfn_ui_lista_definizione_a10_valida_vista_sql`,
   `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`,
-  `trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd`
+  `ui.trgfn_preferenza_preset_base_snapshot` (lo snapshot del preset di base)
 
 ## Building block backend usati
 

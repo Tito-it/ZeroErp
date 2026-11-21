@@ -29,6 +29,9 @@ class TemplateDocumentoListRow(TypedDict):
     tipo_documento_output_id: int
     tipo_documento_output_codice: str
     tipo_documento_output_descrizione: str
+    # L'indirizzo i18n che il vocabolario dichiara (dal 2026-11-16): la
+    # lista lo traduce, `descrizione` resta per ordinamento ed export.
+    tipo_documento_output_etichetta_key: str
     sorgente_tipo_id: int
     sorgente_tipo_codice: str
     sorgente_tipo_descrizione: str
@@ -117,6 +120,8 @@ class TemplateAssetListRow(TypedDict):
     asset_tipo_id: int
     asset_tipo_codice: str
     asset_tipo_descrizione: str
+    # L'indirizzo i18n del tipo (dal 2026-11-16): la lista lo traduce.
+    asset_tipo_etichetta_key: str
     mime_type: str
     file_name: str
     file_size_bytes: int

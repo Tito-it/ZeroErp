@@ -53,8 +53,11 @@ class DashboardService:
     # Scopo: Risolve la configurazione effettiva della dashboard per
     #        l'utente autenticato. `emittente_fiscale_id` derivato 1:1
     #        dall'utente (admin globale -> None: la fn DB lo gestisce).
-    # Risultato: dict `{widget[], dimensione_max, widget_nuovi,
-    #        preset_aggiornato}` gia' filtrato per permessi.
+    # Risultato: il dict della fn, gia' filtrato per permessi: `{widget[],
+    #        dimensione_max, dimensione_max_standard, origine, widget_nuovi,
+    #        preset_aggiornato, preset_aggiornato_chiavi, preset_base,
+    #        preset_base_cambiato}` (dettaglio
+    #        delle chiavi in `DashboardRepository.resolve_dashboard_config`).
     def get_dashboard_config(
         self,
         user: Any,

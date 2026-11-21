@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: «Copia come…» (R-1 di brief-db-copia-indirizzo-soggetto, 2026-11-15)
-#        sul DATABASE VERO: il binding dei due verbi
-#        `anagrafiche.fn_copia_indirizzo_soggetto` / `_ruolo` (uuid, bigint,
-#        text[] → bigint[]) e la traduzione dei loro rifiuti nell'envelope:
-#        codice, status e campo, come li vede il client.
+# Scopo: «Copia come…» (R-1 di brief-db-copia-indirizzo-soggetto, 2026-11-15;
+#        R-1 di brief-db-copia-indirizzo-destinazione, 2026-11-20) sul
+#        DATABASE VERO: il binding dei tre verbi
+#        `anagrafiche.fn_copia_indirizzo_soggetto` (uuid, bigint, text[]),
+#        `fn_copia_indirizzo_ruolo` e `fn_copia_indirizzo_soggetto_su_ruolo`
+#        (bigint, bigint, text[], bigint: la chiave di destinazione) e la
+#        traduzione dei loro rifiuti nell'envelope: codice, status e campo,
+#        come li vede il client.
 # Note: ⚠️ Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI). I tipi si scelgono dal
 #       picker (quelli che ammette oggi), la sorgente si crea dalla porta
 #       dell'applicazione: nessun test dipende dalla matrice di oggi.
@@ -20,10 +23,21 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 4) CopiaSoggettoDbTests.test_corpo_sbagliato — 400 `E_ANAG_VALIDAZIONE`, senza chiamare il DB
 4b) CopiaSoggettoDbTests.test_la_lista_del_soggetto_porta_motivo_e_forma_estera — R-3: la lista legge la
    vista risolta (la forma estera arriva) e il motivo di «Copia come…» uguale alla check
-5) CopiaRuoloDbTests.test_la_copia_resta_nel_ruolo — gli id nuovi sullo stesso ruolo, istanza della sorgente
+5) CopiaRuoloDbTests.test_senza_destinazione_la_copia_va_sul_ruolo — corpo senza `istanza_utility_id`:
+   la riga nuova nasce sul ruolo (istanza NULL)
+5b) CopiaRuoloDbTests.test_la_copia_va_sull_istanza_di_destinazione — la sorgente e' del ruolo, la
+   riga nuova nasce sull'istanza del corpo (D-1)
+5c) CopiaRuoloDbTests.test_l_istanza_di_un_altro_soggetto — 400 `E_ISTANZA_ALTRO_SOGGETTO`, dal guard
+   della tabella
+5d) CopiaRuoloDbTests.test_destinazione_non_intera — 400 `E_ANAG_VALIDAZIONE`, senza chiamare il DB
+   (anche un intero oltre bigint)
 6) CopiaRuoloDbTests.test_l_indirizzo_di_un_altro_ruolo — 404 `E_INDIRIZZO_RUOLO_NON_TROVATO`
-7) CopiaRuoloDbTests.test_la_lista_del_ruolo_porta_il_motivo_della_copia — R-3: ogni riga della
-   cascata porta `copia_blocco_reason` / `_key`, dalla vista di azioni del suo layer, uguale alla check
+7) CopiaRuoloDbTests.test_la_lista_del_ruolo_non_porta_il_motivo_della_copia — D-4: la lista del ruolo
+   si legge (la vista di azioni ritirata non c'e' piu') e nessuna riga della cascata porta
+   `copia_blocco_reason` / `_key`
+8) CopiaSoggettoSuRuoloDbTests.test_dal_soggetto_al_ruolo_e_alla_sua_istanza — il gemello (D-2): la
+   riga del soggetto copiata sul ruolo e su una sua istanza
+9) CopiaSoggettoSuRuoloDbTests.test_l_indirizzo_di_un_altro_soggetto — 404 `E_INDIRIZZO_SOGGETTO_NON_TROVATO`
 """
 
 from __future__ import annotations
@@ -34,7 +48,12 @@ from django.db import DatabaseError, connection, transaction
 
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, apri_transazione_annullata, richiedi_db_provvisto
+from apps.core.tests.db_e2e import (
+    apri_contesto_operatore,
+    apri_operatore_con_aree,
+    apri_transazione_annullata,
+    richiedi_db_provvisto,
+)
 
 
 class _Mondo(unittest.TestCase):
@@ -154,39 +173,60 @@ class CopiaSoggettoDbTests(_Mondo):
                 self.assertEqual(cur.fetchone()[0], r["copia_blocco_reason_key"])
 
 
-class CopiaRuoloDbTests(_Mondo):
+class _MondoRuolo(_Mondo):
 
-    # I soggetti TUTTI PRIMA della finestra differita: il builder chiude con
-    # `SET CONSTRAINTS ALL IMMEDIATE`, e un ruolo gia' aperto senza i suoi
-    # obbligatori verrebbe giudicato li'. Il guard giudica al COMMIT.
-    def _ruoli_fornitore(self, quanti: int = 1) -> list[int]:
-        soggetti = [self._soggetto_pg(f"Copia ruolo e2e {n}") for n in range(quanti)]
-        ruoli = []
+    # ⚠️ Un operatore COSTRUITO col suo emittente (BB `apri_operatore_con_aree`):
+    #    il cliente di prova nasce col billing account, e il BA vuole un
+    #    emittente su cui lavorare, letto dal contesto.
+    def setUp(self) -> None:
+        apri_transazione_annullata(self)
         with connection.cursor() as cur:
-            cur.execute("SET CONSTRAINTS ALL DEFERRED")
-            for soggetto_id in soggetti:
-                cur.execute(
-                    "SELECT script.fn_get_or_create_soggetto_ruolo(%s::uuid, 'FO')", [soggetto_id],
-                )
-                ruoli.append(int(cur.fetchone()[0]))
-        return ruoli
+            apri_operatore_con_aree(cur, aree=("anagrafiche",), motivo="e2e copia indirizzo sul ruolo")
 
-    def _sorgente(self, sr_id: int) -> tuple[int, str]:
+    # Un cliente col suo ruolo e la sua istanza (col billing account), dal
+    # builder dei pgTAP: `(soggetto_ruolo_id, istanza_utility_id, soggetto_id)`.
+    @staticmethod
+    def _cliente(nome: str) -> tuple[int, int, str]:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT soggetto_ruolo_id, istanza_utility_id, soggetto_id"
+                "  FROM dbops.fn_pgtap_crea_cliente_ba(%s)",
+                [nome],
+            )
+            sr_id, istanza_id, soggetto_id = cur.fetchone()
+        return int(sr_id), int(istanza_id), str(soggetto_id)
+
+    # Il tipo ammesso su TUTTE le chiavi date (ruolo, istanza): quello che la
+    # copia puo' scrivere ovunque il test la mandi. La sorgente e' una riga
+    # che c'e' gia' sul ruolo (il builder crea gli obbligatori).
+    def _tipo_libero(self, sr_id: int, *istanze: int | None) -> str:
         from apps.anagrafiche.services.soggetti_service import SoggettiService
 
         servizio = SoggettiService()
-        tipo_src, tipo_dst = self._due_ammessi(servizio.get_tipi_indirizzo_proponibili_ruolo(sr_id, None))
-        src = servizio.create_indirizzo_ruolo(sr_id, self._payload(tipo_src))["id"]
-        return int(src), tipo_dst
+        ammessi: set[str] | None = None
+        for istanza in istanze:
+            suoi = {
+                r["codice_interno"]
+                for r in servizio.get_tipi_indirizzo_proponibili_ruolo(sr_id, istanza) if r["ammesso"]
+            }
+            ammessi = suoi if ammessi is None else ammessi & suoi
+        if not ammessi:
+            self.skipTest("Serve un tipo di indirizzo ammesso sulle chiavi di destinazione.")
+        return sorted(ammessi)[0]
 
-    def test_la_copia_resta_nel_ruolo(self):
-        from apps.anagrafiche.services.soggetti_service import SoggettiService
+    def _riga_del_ruolo(self, sr_id: int) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM anagrafiche.indirizzi"
+                " WHERE soggetto_ruolo_id = %s AND istanza_utility_id IS NULL ORDER BY id LIMIT 1",
+                [sr_id],
+            )
+            riga = cur.fetchone()
+        if riga is None:
+            self.skipTest("Il ruolo di prova non ha un indirizzo da copiare.")
+        return int(riga[0])
 
-        (sr_id,) = self._ruoli_fornitore()
-        src, tipo_dst = self._sorgente(sr_id)
-        ids = SoggettiService().copia_indirizzo_ruolo(
-            sr_id, src, {"tipi_indirizzo_codice_interno": [tipo_dst]},
-        )["ids"]
+    def _chiavi(self, ids: list[int]) -> list[tuple]:
         with connection.cursor() as cur:
             cur.execute(
                 "SELECT i.soggetto_ruolo_id, i.istanza_utility_id, ti.codice_interno"
@@ -194,38 +234,124 @@ class CopiaRuoloDbTests(_Mondo):
                 " WHERE i.id = ANY(%s)",
                 [ids],
             )
-            self.assertEqual([(sr_id, None, tipo_dst)], cur.fetchall())
+            return cur.fetchall()
+
+
+class CopiaRuoloDbTests(_MondoRuolo):
+
+    def test_senza_destinazione_la_copia_va_sul_ruolo(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id, _, _ = self._cliente("Copia ruolo e2e")
+        src, tipo = self._riga_del_ruolo(sr_id), self._tipo_libero(sr_id, None)
+        ids = SoggettiService().copia_indirizzo_ruolo(
+            sr_id, src, {"tipi_indirizzo_codice_interno": [tipo]},
+        )["ids"]
+        self.assertEqual([(sr_id, None, tipo)], self._chiavi(ids))
+
+    def test_la_copia_va_sull_istanza_di_destinazione(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id, istanza_id, _ = self._cliente("Copia ruolo su istanza e2e")
+        src, tipo = self._riga_del_ruolo(sr_id), self._tipo_libero(sr_id, istanza_id)
+        ids = SoggettiService().copia_indirizzo_ruolo(
+            sr_id, src, {"tipi_indirizzo_codice_interno": [tipo], "istanza_utility_id": istanza_id},
+        )["ids"]
+        self.assertEqual([(sr_id, istanza_id, tipo)], self._chiavi(ids))
+
+    def test_l_istanza_di_un_altro_soggetto(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id, istanza_id, _ = self._cliente("Copia ruolo istanza altrui e2e A")
+        _, istanza_altrui, _ = self._cliente("Copia ruolo istanza altrui e2e B")
+        src, tipo = self._riga_del_ruolo(sr_id), self._tipo_libero(sr_id, istanza_id)
+        self.assertEqual(
+            ("E_ISTANZA_ALTRO_SOGGETTO", 400),
+            self._rifiuto_db(lambda: SoggettiService().copia_indirizzo_ruolo(
+                sr_id, src, {"tipi_indirizzo_codice_interno": [tipo], "istanza_utility_id": istanza_altrui},
+            )),
+        )
+
+    def test_destinazione_non_intera(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        for destinazione in ("abc", 0, -3, True, 1.5, 10**30):
+            corpo = {"tipi_indirizzo_codice_interno": ["FATT"], "istanza_utility_id": destinazione}
+            for verbo in ("copia_indirizzo_ruolo", "copia_indirizzo_soggetto_su_ruolo"):
+                with self.subTest(destinazione=destinazione, verbo=verbo), \
+                        self.assertRaises(ServiceError) as ctx:
+                    getattr(SoggettiService(), verbo)(1, 1, corpo)
+                self.assertEqual("E_ANAG_VALIDAZIONE", ctx.exception.code)
 
     def test_l_indirizzo_di_un_altro_ruolo(self):
         from apps.anagrafiche.services.soggetti_service import SoggettiService
 
-        sr_id, altro = self._ruoli_fornitore(2)
-        src, tipo_dst = self._sorgente(sr_id)
+        sr_id, _, _ = self._cliente("Copia ruolo altrui e2e A")
+        altro, _, _ = self._cliente("Copia ruolo altrui e2e B")
+        src, tipo = self._riga_del_ruolo(sr_id), self._tipo_libero(altro, None)
         self.assertEqual(
             ("E_INDIRIZZO_RUOLO_NON_TROVATO", 404),
             self._rifiuto_db(lambda: SoggettiService().copia_indirizzo_ruolo(
-                altro, src, {"tipi_indirizzo_codice_interno": [tipo_dst]},
+                altro, src, {"tipi_indirizzo_codice_interno": [tipo]},
             )),
         )
 
-    def test_la_lista_del_ruolo_porta_il_motivo_della_copia(self):
+    def test_la_lista_del_ruolo_non_porta_il_motivo_della_copia(self):
         import json
         from types import SimpleNamespace
 
         from apps.anagrafiche.api.views_indirizzi_ruolo import RuoloIndirizziView
 
-        (sr_id,) = self._ruoli_fornitore()
-        self._sorgente(sr_id)
-        dati = json.loads(
-            RuoloIndirizziView().get(SimpleNamespace(query_params={}), sr_id).content,
-        )["data"]
-        righe = [("ruolo", r) for r in dati["indirizzi_ruolo"]] + [("soggetto", r) for r in dati["indirizzi_soggetto"]]
-        self.assertTrue(dati["indirizzi_ruolo"])
-        for layer, r in righe:
-            with self.subTest(layer=layer, id=r["id"]), connection.cursor() as cur:
-                cur.execute(
-                    f"SELECT anagrafiche.fn_check_copia_indirizzo_{layer}(%s) -> 0 ->> 'reason_key'",  # layer da due letterali
-                    [r["id"]],
-                )
-                self.assertEqual(cur.fetchone()[0], r["copia_blocco_reason_key"])
-                self.assertIn("copia_blocco_reason", r)
+        sr_id, istanza_id, _ = self._cliente("Copia ruolo lista e2e")
+        for query in ({}, {"istanza_utility_id": str(istanza_id)}):
+            with self.subTest(query=query):
+                dati = json.loads(
+                    RuoloIndirizziView().get(SimpleNamespace(query_params=query), sr_id).content,
+                )["data"]
+                righe = dati["indirizzi_ruolo"] + dati["indirizzi_soggetto"]
+                self.assertTrue(righe)
+                for r in righe:
+                    self.assertNotIn("copia_blocco_reason", r)
+                    self.assertNotIn("copia_blocco_reason_key", r)
+
+
+class CopiaSoggettoSuRuoloDbTests(_MondoRuolo):
+
+    def _riga_del_soggetto(self, soggetto_id: str) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM anagrafiche.indirizzi_soggetti WHERE soggetto_id = %s::uuid ORDER BY id LIMIT 1",
+                [soggetto_id],
+            )
+            riga = cur.fetchone()
+        if riga is None:
+            self.skipTest("Il soggetto di prova non ha un indirizzo da copiare.")
+        return int(riga[0])
+
+    def test_dal_soggetto_al_ruolo_e_alla_sua_istanza(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id, istanza_id, soggetto_id = self._cliente("Copia soggetto su ruolo e2e")
+        src, tipo = self._riga_del_soggetto(soggetto_id), self._tipo_libero(sr_id, None, istanza_id)
+        servizio = SoggettiService()
+        sul_ruolo = servizio.copia_indirizzo_soggetto_su_ruolo(
+            sr_id, src, {"tipi_indirizzo_codice_interno": [tipo], "istanza_utility_id": None},
+        )["ids"]
+        sull_istanza = servizio.copia_indirizzo_soggetto_su_ruolo(
+            sr_id, src, {"tipi_indirizzo_codice_interno": [tipo], "istanza_utility_id": istanza_id},
+        )["ids"]
+        self.assertEqual([(sr_id, None, tipo)], self._chiavi(sul_ruolo))
+        self.assertEqual([(sr_id, istanza_id, tipo)], self._chiavi(sull_istanza))
+
+    def test_l_indirizzo_di_un_altro_soggetto(self):
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+
+        sr_id, _, _ = self._cliente("Copia soggetto su ruolo altrui e2e A")
+        _, _, altro_soggetto = self._cliente("Copia soggetto su ruolo altrui e2e B")
+        src, tipo = self._riga_del_soggetto(altro_soggetto), self._tipo_libero(sr_id, None)
+        self.assertEqual(
+            ("E_INDIRIZZO_SOGGETTO_NON_TROVATO", 404),
+            self._rifiuto_db(lambda: SoggettiService().copia_indirizzo_soggetto_su_ruolo(
+                sr_id, src, {"tipi_indirizzo_codice_interno": [tipo]},
+            )),
+        )

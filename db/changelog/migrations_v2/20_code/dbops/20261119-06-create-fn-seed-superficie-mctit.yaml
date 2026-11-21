@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_seed_superficie: il segno del seed di primo impianto su una riga.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.15, QU3 decisa (a)
+#   da Tid il 2026-11-20: la superficie diventa un building block).
+#
+# Perche': la seconda occorrenza. Le due viste della posta (20261117-26, -27)
+#   scrivevano ciascuna la stessa regola (nata_dal_seed da fn_seed_riga, i campi
+#   del software solo sulle righe di seed, vuoto e mai NULL), e le liste admin di
+#   ui ne chiedono altre tre. Qui la regola sta una volta; le due viste si
+#   riscrivono sopra (20261119-07, -08) nello stesso giro.
+# Forma: lettura e giudizio in due meta' (linee-guida-sql §13.2, terza forma).
+#   Le colonne del software valgono per la tabella: le legge il chiamante una
+#   volta, la funzione giudica la riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261119-06-create-fn-seed-superficie-mctit.yaml
+
+  - changeSet:
+      id: 20261119-06-create-fn-seed-superficie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_seed_superficie: nata_dal_seed e campi_del_software di una riga. Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive (§16.15).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_seed_superficie'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_seed_superficie(
+                  -- regclass: la tabella iscritta, non il riflesso di una colonna
+                  p_tabella regclass,
+                  p_riga_id dbops.seed_righe.riga_id%TYPE,
+                  -- text[]: le colonne del software della tabella, gia' lette dal chiamante
+                  -- una volta per tabella (dbops.fn_seed_colonne_del_software), non per riga
+                  p_colonne_del_software text[])
+               RETURNS TABLE (
+                  -- boolean e text[] nudi: un giudizio e un elenco di nomi di colonna
+                  nata_dal_seed      boolean,
+                  campi_del_software text[])
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT s.nata,
+                         CASE WHEN s.nata THEN COALESCE(fn_seed_superficie.p_colonne_del_software, ARRAY[]::text[])
+                              ELSE ARRAY[]::text[]
+                         END
+                    FROM (SELECT EXISTS (SELECT 1
+                                           FROM dbops.fn_seed_riga(fn_seed_superficie.p_tabella,
+                                                                   fn_seed_superficie.p_riga_id)) AS nata) s;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_seed_superficie(regclass, text, text[]) IS
+                  'Il segno del seed di primo impianto su una riga, per le superfici che lo mostrano (liste e dettagli): nata_dal_seed dice se la riga p_riga_id (la chiave primaria id, come testo) della tabella p_tabella l''ha installata il software (dbops.fn_seed_riga); campi_del_software sono, su una riga nata dal seed, le colonne che l''installazione non modifica, quelle su cui il guard script.trgfn_seed_primo_impianto alza E_SEED_COLONNA_DEL_SOFTWARE; vuoto, mai NULL, su una riga dell''installazione o quando la forma della tabella non ne ha. Le colonne non dipendono dalla riga: il chiamante le legge una volta per tabella con dbops.fn_seed_colonne_del_software, in una sottoquery non correlata, e le passa in p_colonne_del_software (linee-guida-sql §13.2). Una riga sola. La leggono config.vw_email_account_seed, config.vw_email_template_seed e le liste admin di ui. SECURITY INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_seed_superficie(regclass, text, text[]);

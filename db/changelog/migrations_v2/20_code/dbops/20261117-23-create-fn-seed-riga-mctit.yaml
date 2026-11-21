@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_seed_riga: la voce del registro di una riga, cioe' la domanda «questa
+#   riga e' nata dal seed?» in una sede sola.
+#   Brief: brief-db-seed-primo-impianto-non-si-riscrive (§16.14)
+#
+# Perche' un building block (regola del 2): la domanda la fanno il guard
+#   script.trgfn_seed_primo_impianto (UPDATE e DELETE) e le superfici che dicono
+#   all'interfaccia quali campi spegnere (config.vw_email_account_seed,
+#   config.vw_email_template_seed). Il registro ha la chiave in una forma sua (schema e tabella come
+#   testo, l'id come testo): chi la ricopia nel join la ricopia sbagliata al primo
+#   cambio. Qui la tabella entra come regclass e lo schema si legge dal catalogo.
+#
+# Nessuna riga = la riga non e' nata dal seed (e' dell'installazione), oppure la
+#   tabella non e' iscritta. SECURITY INVOKER: l'app ha SELECT sul registro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261117-23-create-fn-seed-riga-mctit.yaml
+
+  - changeSet:
+      id: 20261117-23-create-fn-seed-riga
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_seed_riga: la voce di dbops.seed_righe per una riga di una tabella iscritta al seed di
+        primo impianto (nessuna riga = dell'installazione). Brief:
+        brief-db-seed-primo-impianto-non-si-riscrive (§16.14).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops' AND p.proname = 'fn_seed_riga'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION dbops.fn_seed_riga(
+                  -- regclass nudo: la tabella iscritta, che il registro tiene come
+                  -- schema e nome di testo; non il riflesso di una colonna
+                  p_tabella regclass,
+                  p_riga_id dbops.seed_righe.riga_id%TYPE)
+              RETURNS TABLE (
+                  seed_riga_id      dbops.seed_righe.id%TYPE,
+                  schema_name       dbops.seed_righe.schema_name%TYPE,
+                  table_name        dbops.seed_righe.table_name%TYPE,
+                  personalizzata_il dbops.seed_righe.personalizzata_il%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT s.id, s.schema_name, s.table_name, s.personalizzata_il
+                    FROM dbops.seed_righe s
+                    JOIN pg_catalog.pg_class c ON c.oid = p_tabella
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                   WHERE s.schema_name = n.nspname::text
+                     AND s.table_name  = c.relname::text
+                     AND s.riga_id     = p_riga_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION dbops.fn_seed_riga(regclass, text) IS
+                  'La voce di dbops.seed_righe per la riga p_riga_id (la chiave primaria id, come testo) della tabella p_tabella: una riga se la riga e'' nata dal seed, nessuna se l''ha creata l''installazione o se la tabella non e'' iscritta al seed di primo impianto. seed_riga_id e'' l''id della voce, personalizzata_il dice se l''installazione l''ha gia'' modificata. Lo schema e il nome della tabella si leggono dal catalogo, non dal testo di regclass (che dipende dal search_path). La leggono il guard script.trgfn_seed_primo_impianto e le superfici config.vw_email_account_seed e config.vw_email_template_seed. SECURITY INVOKER, STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- ⚠️ Il guard e le due viste la chiamano: rollback di quelli prima.
+              DROP FUNCTION IF EXISTS dbops.fn_seed_riga(regclass, text);

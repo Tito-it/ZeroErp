@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 13 novembre 2026
+> **Ultimo aggiornamento**: 20 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -157,6 +157,7 @@ I **runner** sono funzioni SQL che leggono rules e ambito, risolvono le tabelle 
 | [fn_run_automations_delete_block](/dbzero/dbops/funzioni/fn_run_automations_delete_block)   | DELETE_BLOCK (converge: crea, rigenera, toglie)    |
 | [fn_run_automations_guard_utility](/dbzero/dbops/funzioni/fn_run_automations_guard_utility) | GUARD utility/tipo ruolo (converge: crea, rigenera, toglie) |
 | [fn_run_automations_cleanup](/dbzero/dbops/funzioni/fn_run_automations_cleanup)             | CLEANUP                                            |
+| [fn_run_automations_seed_primo_impianto](/dbzero/dbops/funzioni/fn_run_automations_seed_primo_impianto) | SEED_PRIMO_IMPIANTO (converge: crea, rigenera, toglie) |
 
 Tutti i runner accettano gli stessi tre parametri — modo di esecuzione, schemi (NULL = l'ambito), `p_dry_run`:
 
@@ -579,6 +580,88 @@ quelli di sempre.
 * Trigger function: `script.trgfn_codice_maiuscolo()`
 * Eccezioni: `dbops.automazione_codice_eccezioni`
 
+### 4.9 SEED_PRIMO_IMPIANTO (la riga modificata dall'installazione non si riscrive)
+
+Sulle tabelle che il CSV semina e l'installazione configura dall'interfaccia, il CSV crea
+la riga, e dopo che l'installazione l'ha modificata non la riscrive più. Il modello delle
+tre specie di seed e il criterio d'ingresso stanno in
+[linee-guida-sql §11.7](/linee-guida-sql); che cosa vede e che cosa può fare chi configura il
+sistema sta in [Configurare il sistema senza perdere le modifiche agli aggiornamenti](/guide/configurazione-iniziale-e-aggiornamenti).
+
+**Come funziona:**
+
+* config in `dbops.automazione_seed_primo_impianto`, una riga per tabella, dal suo CSV: la
+  forma (per riga, per colonna con i due elenchi di colonne, solo inserimento, figlia con il
+  padre e la colonna che ne porta l'`id`), l'interruttore
+  `enabled`, il nome del trigger e il motivo. Come per DELETE_BLOCK, la regola non ha una riga
+  in `automation_rules_tbl`;
+* trigger `BEFORE INSERT OR UPDATE OR DELETE` per riga su `script.trgfn_seed_primo_impianto`,
+  in fase `a00`: scatta **per primo**, così i guard che vengono dopo vedono i valori che ha
+  rimesso a posto e un valore del CSV scartato non ferma il migrate. Restituisce sempre la
+  riga, mai `NULL`, salvo l'`INSERT` saltato della forma figlia: il blocco
+  `UPDATE … IF not found THEN INSERT` del mirror non va in chiave duplicata;
+* chi scrive: il software è la sessione del migratore, tutto il resto è l'installazione.
+  All'`INSERT` del software la riga entra in `dbops.seed_righe`, nata dal seed; una riga che
+  lì non c'è l'ha creata l'installazione, e il software non la riscrive;
+* sull'`UPDATE` del software, una riga di seed intatta segue il CSV; una personalizzata (o in
+  solo inserimento) tiene le colonne dell'installazione, e il salto lo dice un `WARNING`
+  nell'output del migrate. Su una riga personalizzata i valori scartati vanno anche nel
+  registro; in solo inserimento no, perché la riga è dell'installazione per costruzione. Il
+  `WARNING` serve a chi scrive a mano con l'utente del migratore: senza, perderebbe la
+  scrittura senza saperlo;
+* sull'`UPDATE` dell'installazione, una colonna del software cambiata su una riga di seed è
+  `E_SEED_COLONNA_DEL_SOFTWARE`; una colonna dell'installazione cambiata fa la riga
+  personalizzata;
+* il `DELETE` di una riga di seed è `E_SEED_RIGA_NON_CANCELLABILE`: si spegne;
+* la forma **figlia** è per una tabella di composizione senza `id` che segue il padre (la
+  composizione dei preset delle liste): il software ne scrive le righe solo sotto un padre che è
+  una riga di seed intatta, altrimenti un `WARNING`; il `DELETE` del software passa; l'installazione
+  scrive e cancella sempre. Le sue righe non entrano nel registro: conta il padre;
+* runner `dbops.fn_run_automations_seed_primo_impianto()`, nella procedura del lucchetto
+  (convergenza del rilascio e giro notturno delle 21:10) e in una rete di `90_end` che
+  converge a ogni migrate. **Converge**: crea il trigger dove manca, lo rigenera se diverge,
+  lo toglie se la riga è spenta. Quando lo **crea** segna nel registro le righe di seed che
+  ci sono già (`user_insert` uguale a `SEED` o a un ruolo del migratore);
+* il confronto fra atteso e vivo sta in [dbops.fn_seed_primo_impianto_divergenze](/dbzero/dbops/funzioni/fn_seed_primo_impianto_divergenze);
+  una tabella per colonna con una colonna non classificata esce come `NON_CLASSIFICATA`, una figlia
+  il cui padre non è iscritto, è spento, è figlia a sua volta o non ha `id` come
+  `PADRE_NON_ISCRITTO`, e in tutti e due i casi il runner lascia il trigger di prima;
+* ⛔ una tabella entra in un rilascio **precedente** al primo ritocco del suo CSV.
+
+**La porta di manutenzione.** `zeroerp.allow_seed_primo_impianto_override` lascia passare la
+bonifica voluta e il `DELETE` forward-only, solo per la sessione del migratore; la riga resta
+personalizzata. Come tutte le porte di manutenzione passa da
+[script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta).
+
+**La lettura del segno.** Le pagine che mostrano una tabella iscritta dicono se la riga è nata
+dal seed e quali campi restano del software: il segno si legge dal DB, e l'elenco delle colonne
+non si ricopia nel backend né nel frontend.
+
+* [dbops.fn_seed_riga](/dbzero/dbops/funzioni/fn_seed_riga) dà la voce di `dbops.seed_righe`
+  di una riga (la chiave `id` come testo): una riga se è nata dal seed, nessuna se l'ha creata
+  l'installazione o se la tabella non è iscritta;
+* [dbops.fn_seed_colonne_del_software](/dbzero/dbops/funzioni/fn_seed_colonne_del_software)
+  dà le colonne del software di una tabella, lette dagli argomenti del trigger montato (vuoto,
+  mai `NULL`, se la forma non ne ha o il trigger manca);
+* [dbops.fn_seed_superficie](/dbzero/dbops/funzioni/fn_seed_superficie) dà la superficie di una
+  riga: `nata_dal_seed` e `campi_del_software`, vuoto e mai `NULL` su una riga
+  dell'installazione. Le colonne non dipendono dalla riga: il chiamante le legge una volta per
+  tabella con `fn_seed_colonne_del_software`, in una sottoquery non correlata, e le passa come
+  terzo argomento ([linee-guida-sql §13.2](/linee-guida-sql)). La leggono
+  [config.vw_email_account_seed](/dbzero/config/views/vw_email_account_seed),
+  [config.vw_email_template_seed](/dbzero/config/views/vw_email_template_seed) e le liste admin
+  di `ui`; una tabella iscritta in un giro nuovo la espone allo stesso modo.
+
+### Le porte di manutenzione
+
+Le porte di manutenzione dei trigger del framework (`zeroerp.allow_lock_columns_override` del
+lucchetto, la GUC di DELETE_BLOCK, quella del seed di primo impianto) e quelle di due guard di
+`vendite` (`zeroerp.maintenance_allow_delete_logs`, `zeroerp.maintenance_allow_attivita_bypass`)
+si aprono solo se la GUC è accesa (`on`, `true` o `1`) **e** la sessione è del migratore. Per
+l'applicazione restano chiuse anche con la GUC accesa. Ogni riga che una porta lascia passare
+ne lascia una in `dbops.porte_manutenzione_passaggi`. Le porte che una funzione apre per sé
+(un verbo che attraversa un guard e lo richiude) non cambiano.
+
 ---
 
 ## 5. Configurazione pratica
@@ -903,7 +986,7 @@ Dove pgAgent c'è, i job di `85_pgagent` rieseguono le stesse procedure:
 | Quando              | Job                                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | ogni giorno, 21:00  | `automations_audit_update`, `automations_storico_provision`, `automations_storico`, `automations_tx_id`, `automations_attivo`, `automations_overlap` |
-| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA e CODICE_MAIUSCOLO), `automations_delete_block`, `automations_guard_utility` |
+| ogni giorno, 21:10  | `automations_lock_columns` (con DATE_VALIDITA, CODICE_MAIUSCOLO e SEED_PRIMO_IMPIANTO), `automations_delete_block`, `automations_guard_utility` |
 | sabato, 07:00       | `sync_storico_set_storicizza`                                                                                          |
 | sabato, 07:05       | `apply_storicizza_weekly`: dopo il sync, nello stesso ordine della convergenza                                         |
 | domenica, 23:00     | `automations_cleanup_weekly`, `automations_apply_fk_indexes_policy`                                                   |

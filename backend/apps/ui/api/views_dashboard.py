@@ -143,15 +143,15 @@ class ApiDashboardIgnorePresetUpdateView(DomainAPIView):
     """
     POST /api/v1/ui/dashboard/<codice>/preferenza/ignore-preset-update
 
-    Tombstone "Ignora banner preset aggiornato": setta
-    `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente.
+    «Ignora» del banner preset aggiornato: riallinea lo snapshot del
+    preset di base della preferenza al contenuto di oggi.
     Body vuoto ammesso.
     """
 
     skip_area_check = True
 
     @extend_schema(request=None, responses={200: _DATA_RESPONSE})
-    # Scopo: Setta il tombstone "ignore" del banner per (user, dashboard).
+    # Scopo: «Ignora» del banner per (user, dashboard).
     def post(self, request: Request, codice: str) -> JsonResponse:
         def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return DashboardPreferenzaService().ignore_preset_update(

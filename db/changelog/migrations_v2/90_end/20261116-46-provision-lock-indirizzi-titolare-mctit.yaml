@@ -1,0 +1,81 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO I LOCK DEL TITOLARE DI UN INDIRIZZO
+#   anagrafiche.indirizzi.soggetto_ruolo_id     -> E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE
+#   anagrafiche.indirizzi_soggetti.soggetto_id  -> E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE
+#   Tid, 2026-11-18 (brief-db-fornitore-privato-indirizzi §15): il titolare
+#   di un indirizzo e' la sua identita'. Le righe sono in
+#   80_data/sql/dbops/automation_lock_columns.csv, i codici nei due CSV dei
+#   codici.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   I guard del tipo di indirizzo sono UPDATE OF tipo_indirizzo_id: un
+#   indirizzo spostato su un altro titolare non e' giudicato sul ruolo e sulla
+#   natura nuovi, e il titolare di partenza perde un obbligatorio. Il lock
+#   chiude quella strada. Su dbdev il ci_apply non rigira le automazioni (il
+#   job dei lock e' serale): senza questo passo la strada resterebbe aperta
+#   fino alla sera, e il pgTAP del giro rosso. Da zero il ci_apply lo monta
+#   comunque; il runner converge (crea, rigenera, toglie), e rigirarlo non fa
+#   danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Si chiama il RUNNER, non si scrive un CREATE TRIGGER a mano (stessa scelta
+#   di 20261019-86). Solo lo schema anagrafiche.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261116-46-provision-lock-indirizzi-titolare-mctit.yaml
+
+  - changeSet:
+      id: 20261116-46-provision-lock-indirizzi-titolare
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona subito i lock di colonna sul titolare di un indirizzo
+        (anagrafiche.indirizzi.soggetto_ruolo_id, anagrafiche.indirizzi_soggetti.soggetto_id)
+        chiamando il runner dei lock sullo schema anagrafiche. brief-db-fornitore-privato-indirizzi §15.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Le due righe del registro devono esserci e essere accese: senza,
+            # il runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND (target_schema, target_table, column_name, error_code) IN (
+                         ('anagrafiche', 'indirizzi', 'soggetto_ruolo_id', 'E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE'),
+                         ('anagrafiche', 'indirizzi_soggetti', 'soggetto_id', 'E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE'));
+            # I codici devono essere vivi, o il lock risponderebbe con un
+            # segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice IN ('E_INDIRIZZO_RUOLO_TITOLARE_IMMUTABILE',
+                                    'E_INDIRIZZO_SOGGETTO_TITOLARE_IMMUTABILE')
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['anagrafiche'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spengono le
+              -- righe di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

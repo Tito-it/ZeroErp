@@ -10,6 +10,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useIndirizzoSoggettoForm } from '../composables/useIndirizzoSoggettoForm'
+import { collegaIndirizzoSoggettoForm } from '../composables/collegaIndirizzoSoggettoForm'
 import { raccogliFormInline } from '../composables/raccogliFormInline'
 import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
@@ -37,6 +38,7 @@ const { execute, loading, campiErrati } = useApiHandler()
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
+const legameIndirizzo = collegaIndirizzoSoggettoForm(indirizzo)
 const codiceField = useCodiceField('anagrafiche', 'fornitori')
 
 const props = defineProps({
@@ -56,6 +58,10 @@ const detail = ref(null)
 // SoggettoResolver (solo creazione)
 const resolverVisible = ref(false)
 const soggettoSelezionato = ref(null)
+// Il picker degli indirizzi del ruolo si rilegge quando il soggetto e' scelto:
+// la sua natura decide ammessi e obbligatori. ⚠️ Dopo `soggettoSelezionato`:
+// `watch` valuta il getter subito (TDZ).
+indirizzo.seguiSoggettoDelRuolo(TIPO_RUOLO.FORNITORE, () => soggettoSelezionato.value?.id)
 
 // Modifiche non salvate (BB useDrawerFormPreserve): il form, il soggetto
 // scelto in creazione, e contatto e indirizzo inline (il Salva della creazione
@@ -130,9 +136,9 @@ watch([() => props.visible, () => props.mode, () => props.fornitoreId], async ([
     detail.value = d
     populateFormFromDetail(d)
   } else {
+    // La matrice degli indirizzi del ruolo FO si legge alla scelta del
+    // soggetto (`seguiSoggettoDelRuolo`): prima la sezione non c'e'.
     resetForm()
-    // Carica matrice indirizzi obbligatori per ruolo FO
-    indirizzo.loadMatriceRuolo(TIPO_RUOLO.FORNITORE)
   }
   fissa()
 })
@@ -404,20 +410,8 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
           <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
         </div>
         <IndirizzoSoggettoForm
+          v-bind="legameIndirizzo"
           :campi-errati="campiErrati"
-          :form="indirizzo.form"
-          :is-libera="indirizzo.isLibera.value"
-          @update:is-libera="v => indirizzo.isLibera.value = v"
-          :tipi-stato="indirizzo.tipiStato.value"
-          :stati-lookup="indirizzo.statiLookup"
-          :cap-options="indirizzo.capOptions.value"
-          :loading-cap="indirizzo.loadingCap.value"
-          :auto-clone="indirizzo.autoClone.value"
-          @update:auto-clone="v => indirizzo.autoClone.value = v"
-          @switch-tipo="indirizzo.switchTipo"
-          :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-          :address-not-found="indirizzo.addressNotFound.value"
-          :disabled="false"
         />
       </template>
 

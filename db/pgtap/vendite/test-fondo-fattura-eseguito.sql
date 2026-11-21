@@ -305,39 +305,13 @@ SELECT is(
 );
 
 -- ============================================================
--- Cleanup
+-- Niente pulizia: il test finisce in ROLLBACK, che ritira ogni fixture.
+-- ⛔ La pulizia di prima cancellava i log con la porta di manutenzione
+--    zeroerp.maintenance_allow_delete_logs, che dal 2026-11-18 si apre solo
+--    per la sessione del migratore (script.fn_porta_manutenzione_aperta,
+--    brief-db-seed-primo-impianto-non-si-riscrive §16.9): come app quei
+--    DELETE sarebbero rifiutati. Si toglie la causa, come in create-cliente.sql.
 -- ============================================================
--- ⚠️ Ordine imposto dalle FK: movimenti -> righe contabili -> fondi -> atti.
-SELECT set_config('zeroerp.maintenance_allow_delete_logs', 'on', true);
-
-UPDATE vendite.fatture
-   SET storicizza = false
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
-DELETE FROM vendite.fatture_log
- WHERE fattura_id IN (SELECT id FROM tmp_dst UNION ALL SELECT id FROM tmp_src);
-
-DELETE FROM pagamenti.vendite_movimenti
- WHERE contabile_riga_id IN (SELECT riga_id FROM tmp_riga);
-
--- ⚠️ Dal 2026-09-14 (D17) il DELETE di una riga contabile passa dal guard del
---    contenuto della distinta: sotto una CHIUSA o una GENERATA e' rifiutato.
---    Questo cleanup e' un passaggio tecnico e lo dichiara con la stessa GUC
---    che usa la madre del giro dei fondi (fn_cancella_fondo_fattura); il
---    ROLLBACK farebbe comunque il lavoro.
-SELECT set_config('zeroerp.allow_contabile_riga_delete_override', 'on', true);
-DELETE FROM pagamenti.vendite_contabili_righe
- WHERE fondo_source_id IN (SELECT source_id FROM tmp_atto);
-
-DELETE FROM vendite.fatture_fondi_fattura
- WHERE fattura_id IN (SELECT id FROM tmp_dst);
-
-DELETE FROM vendite.fatture_fondi_fattura_source
- WHERE fattura_sorgente_id IN (SELECT id FROM tmp_src);
-
-DELETE FROM vendite.fatture
- WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti);
-
 SELECT * FROM finish();
 
 ROLLBACK;

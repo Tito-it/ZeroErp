@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `documenti.vw_template_versioni_stampabili`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,6 +17,7 @@
 >
 > * [documenti.fn_risolvi_template_applicabile](/dbzero/documenti/funzioni/fn_risolvi_template_applicabile) — la porta della stampa
 > * [documenti.fn_template_esito_risoluzione](/dbzero/documenti/funzioni/fn_template_esito_risoluzione) — la regola dei due livelli
+> * [documenti.fn_template_motivo_non_stampabile](/dbzero/documenti/funzioni/fn_template_motivo_non_stampabile) — perché un modello oggi non stampa
 > * [documenti.fn_personalizza_template_standard](/dbzero/documenti/funzioni/fn_personalizza_template_standard) — la versione da cui parte una copia
 > * [script.fn_data_operativa](/dbzero/script/funzioni/fn_data_operativa) — il giorno di oggi nel fuso dell'azienda
 >
@@ -65,7 +66,9 @@ sovrappongono: lo impedisce un vincolo di esclusione sulla tabella delle version
 ### Chi la legge
 
 * `fn_template_esito_risoluzione` — la regola dei due livelli;
-* `fn_risolvi_template_applicabile` — la deduzione del tipo e il modello indicato;
+* `fn_template_motivo_non_stampabile` — perché un modello oggi non stampa, per la risoluzione del modello
+  indicato e per la nascita della stampa;
+* `fn_risolvi_template_applicabile` — la deduzione del tipo e la versione del modello indicato;
 * `fn_personalizza_template_standard`, attraverso la porta della stampa — la versione dello standard
   da cui parte una copia;
 * `vw_template_personalizzati_scarto` — le due versioni che confronta.

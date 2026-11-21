@@ -11,8 +11,10 @@
 #        Divergenza dalle liste (brief DB §3a): il widget e' GLOBALE
 #        (`ui.widget`, codice unico) e la membership in una dashboard
 #        vive in `ui.dashboard_widget`. Nessuna tabella permessi
-#        dedicata (§3b): il filtro e' dentro la fn via i resolver
-#        `script.fn_resolve_livello_area` / `fn_check_azione_processo`.
+#        dedicata (§3b): il filtro e' dentro la fn, sulle due mappe
+#        dell'utente `script.fn_get_user_permissions_map` (area non
+#        BLOCCATA) e `script.fn_get_user_actions_map` (azione abilitata),
+#        lette una volta per chiamata.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ from typing import Any
 from django.db import connection
 
 from apps.core.db._helpers import jsonb_out
-from apps.ui.db.ui_repository import fetch_preset_base_snapshot
 
 
 class DashboardRepository:
@@ -31,14 +32,22 @@ class DashboardRepository:
 
     # Scopo: Risolve la configurazione effettiva di una dashboard per
     #        l'utente. Wrapper 1:1 di `ui.fn_resolve_dashboard_config`.
-    #        La fn applica: cascata preferenza/preset ruolo/emittente/
-    #        sistema/catalogo grezzo, merge widget nuovi, filtro permessi
-    #        (area + azione). Veste corrente letta dalla GUC
-    #        `app.ruolo_applicativo` dentro la fn.
-    # Risultato: dict con `widget[]`, `dimensione_max`, `widget_nuovi`,
-    #        `preset_aggiornato`. Ogni widget porta codice/ordine/visibile
-    #        + i campi freschi del catalogo (etichetta, etichetta_i18n_key,
-    #        tipo_widget, deep_link, contatore_key, soglia).
+    #        La fn applica: cascata per chiave (preferenza, preset di base
+    #        scelto da `ui.fn_preset_di_base`, catalogo del pool), merge
+    #        widget nuovi, filtro permessi (area + azione). Veste corrente
+    #        letta dentro la fn (`ui.fn_veste_corrente`).
+    # Risultato: dict con `widget[]`, `dimensione_max`,
+    #        `dimensione_max_standard` (la dimensione senza la preferenza),
+    #        `origine` (`{widget, dimensione_max}` -> il livello da cui viene
+    #        ogni chiave), `widget_nuovi`, `preset_aggiornato`,
+    #        `preset_aggiornato_chiavi` (le chiavi cambiate, elenco),
+    #        `preset_base` (`{id, ambito, contenuto_aggiornato_il}` del preset
+    #        di base di oggi, la data del contenuto per chiave, o None) e
+    #        `preset_base_cambiato`. Ogni widget porta
+    #        codice/ordine/visibile + i campi freschi del catalogo
+    #        (etichetta, etichetta_i18n_key, tipo_widget, deep_link,
+    #        contatore_key, soglia). Il contratto e' la pagina
+    #        `docs/it/dbzero/ui/manual/fn_resolve_dashboard_config.md`.
     def resolve_dashboard_config(
         self,
         dashboard_codice: str,
@@ -105,21 +114,23 @@ class DashboardRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_contenuto_aggiornato_il": row[3],
+            # Lo snapshot e' per chiave (`{chiave: data}`, giro 1b): jsonb.
+            "preset_base_contenuto_aggiornato_il": jsonb_out(row[3]),
             "data_insert": row[4],
             "data_update": row[5],
         }
 
     # Scopo: UPSERT preferenza utente. Conflict target sulla UNIQUE
-    #        (auth_user_id, dashboard_id). Lo snapshot del preset di base
-    #        e' calcolato dal service e passato qui.
+    #        (auth_user_id, dashboard_id).
+    # ⭐ Lo snapshot lo scrive il trigger del DB, come per le liste
+    #    (`UiRepository.upsert_preferenza`): `preset_base_id` resta nel SET
+    #    perche' e' la colonna che fa scattare il riallineamento.
     def upsert_preferenza(
         self,
         auth_user_id: int,
         dashboard_id: int,
         configurazione: dict[str, Any],
         preset_base_id: int | None,
-        preset_base_contenuto_aggiornato_il: Any | None,
     ) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -128,15 +139,13 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     configurazione,
                     data_insert
                 )
-                VALUES (%s, %s, %s, %s, %s::jsonb, now())
+                VALUES (%s, %s, %s, %s::jsonb, now())
                 ON CONFLICT (auth_user_id, dashboard_id) DO UPDATE
                    SET configurazione          = EXCLUDED.configurazione,
                        preset_base_id          = EXCLUDED.preset_base_id,
-                       preset_base_contenuto_aggiornato_il = EXCLUDED.preset_base_contenuto_aggiornato_il,
                        data_update             = now()
                 RETURNING id
                 """,
@@ -144,7 +153,6 @@ class DashboardRepository:
                     auth_user_id,
                     dashboard_id,
                     preset_base_id,
-                    preset_base_contenuto_aggiornato_il,
                     json.dumps(configurazione),
                 ],
             )
@@ -153,17 +161,19 @@ class DashboardRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Tombstone "ignora banner preset aggiornato". Ritorna False se
-    #        la preferenza non esiste (il service traduce in 404).
-    def set_preset_aggiornato_ignored(
+    # Scopo: «Ignora» del banner preset aggiornato: riallinea lo snapshot
+    #        riscrivendo `preset_base_id` col valore che ha gia', come per
+    #        le liste (`UiRepository.riallinea_snapshot_base`). Ritorna False
+    #        se la preferenza non esiste (il service traduce in 404).
+    def riallinea_snapshot_base(
         self, auth_user_id: int, dashboard_id: int
     ) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ui.dashboard_preferenza_utente
-                   SET preset_aggiornato_ignored_at = now(),
-                       data_update                  = now()
+                   SET preset_base_id = preset_base_id,
+                       data_update    = now()
                  WHERE auth_user_id = %s
                    AND dashboard_id = %s
                 """,
@@ -183,19 +193,3 @@ class DashboardRepository:
                 [auth_user_id, dashboard_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Snapshot preset di base per la preferenza dashboard. Delega al
-    #        BB condiviso `fetch_preset_base_snapshot` (cascata, COALESCE e
-    #        drift risk documentati li').
-    def get_preset_base_snapshot(
-        self,
-        dashboard_id: int,
-        auth_user_id: int,
-        emittente_fiscale_id: int | None,
-    ) -> tuple[int | None, Any | None]:
-        return fetch_preset_base_snapshot(
-            "ui.dashboard_preset",
-            entity_id=dashboard_id,
-            auth_user_id=auth_user_id,
-            emittente_fiscale_id=emittente_fiscale_id,
-        )

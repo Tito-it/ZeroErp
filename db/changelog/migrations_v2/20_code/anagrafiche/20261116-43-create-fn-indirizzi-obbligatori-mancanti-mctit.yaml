@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# GLI INDIRIZZI CHE UNA NATURA CHIEDE E IL SOGGETTO NON HA
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti(soggetto, natura)
+#     -> TABLE(soggetto_ruolo_id, tipo_ruolo_id, tipo_indirizzo_id, ripiego_tipo_indirizzo_id)
+#   Brief: brief-db-fornitore-privato-indirizzi §12.5, giro 5 (Tid, 2026-11-17).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────
+#   Il cambio di natura porta con se' gli indirizzi che la natura nuova
+#   chiede (Tid, 2026-11-17, che completa l'esito COMPLETA del 2026-10-11):
+#   l'operatore li da' nello stesso salvataggio, e il backend li scrive nella
+#   stessa transazione, dopo la natura. Il form deve sapere quali chiedere
+#   PRIMA di salvare, e deve chiedere cio' che i guard pretenderanno
+#   (linee-guida-sql §12.6). Senza questa lettura un tipo che la natura di
+#   prima vietava e quella nuova chiede non ha strada dall'interfaccia.
+#
+# ── LA FORMA ────────────────────────────────────────────────────
+#   Sulla natura passata (proposta, o quella di oggi): una riga per ogni
+#   indirizzo obbligatorio che manca, prima quelli del soggetto
+#   (soggetto_ruolo_id e tipo_ruolo_id NULL, da
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto), poi quelli di
+#   ogni ruolo del soggetto in ordine di id (da
+#   anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo), ognuno col tipo
+#   richiesto e il ripiego che lo sostituisce. Sono le stesse due funzioni
+#   che leggono i guard: cio' che questa lista dice di dare e' cio' che i
+#   guard, al commit, pretendono. Giorno: script.fn_data_operativa().
+#   La natura non ha default (§5f): NULL vuol dire «la natura non conta», e
+#   sul soggetto non chiede niente. Soggetto che non esiste: nessuna riga.
+#   Gli indirizzi che la natura nuova VIETA non sono qui: sono i motivi di
+#   anagrafiche.fn_check_cambio_natura_soggetto, da togliere prima.
+#   BEGIN ATOMIC (§5c), STABLE, SECURITY INVOKER: le tabelle lette non sono
+#   sotto RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261116-43-create-fn-indirizzi-obbligatori-mancanti-mctit.yaml
+
+  - changeSet:
+      id: 20261116-43-create-fn-indirizzi-obbligatori-mancanti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Gli indirizzi obbligatori che una natura (proposta da un cambio, o quella di oggi) chiede
+        e il soggetto non ha, sul soggetto e su ogni suo ruolo: il form del cambio di natura li chiede.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti(
+                  p_soggetto_id                anagrafiche.soggetti.id%TYPE,
+                  p_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              RETURNS TABLE(
+                  soggetto_ruolo_id         anagrafiche.soggetti_ruoli.id%TYPE,
+                  tipo_ruolo_id             anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE,
+                  tipo_indirizzo_id         anagrafiche.indirizzi.tipo_indirizzo_id%TYPE,
+                  ripiego_tipo_indirizzo_id anagrafiche.indirizzi.tipo_indirizzo_id%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT x.soggetto_ruolo_id, x.tipo_ruolo_id, x.tipo_indirizzo_id, x.ripiego_tipo_indirizzo_id
+                    FROM (SELECT sr.id AS soggetto_ruolo_id, sr.tipo_ruolo_id,
+                                 r.tipo_indirizzo_id, r.ripiego_tipo_indirizzo_id
+                            FROM anagrafiche.soggetti_ruoli sr
+                           CROSS JOIN LATERAL anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo(
+                                     sr.id, p_tipo_soggetto_dettaglio_id, script.fn_data_operativa()) r
+                           WHERE sr.soggetto_id = p_soggetto_id
+                          UNION ALL
+                          SELECT NULL, NULL, s.tipo_indirizzo_id, s.ripiego_tipo_indirizzo_id
+                            FROM anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto(
+                                     p_soggetto_id, p_tipo_soggetto_dettaglio_id, script.fn_data_operativa()) s) x
+                   ORDER BY x.soggetto_ruolo_id NULLS FIRST, x.tipo_indirizzo_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION anagrafiche.fn_indirizzi_obbligatori_mancanti(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE)
+              IS 'Gli indirizzi obbligatori che la natura data (proposta da un cambio di natura, o quella di oggi) chiede e il soggetto non ha: prima quelli del soggetto (soggetto_ruolo_id e tipo_ruolo_id NULL; anagrafiche.fn_indirizzi_obbligatori_mancanti_soggetto), poi quelli di ogni suo ruolo in ordine di id (anagrafiche.fn_indirizzi_obbligatori_mancanti_ruolo), col tipo richiesto e il ripiego che lo sostituisce, il giorno di script.fn_data_operativa(). Sono le letture dei guard degli obbligatori: cio'' che la lista chiede di dare e'' cio'' che i guard pretendono al commit. Serve al form del cambio di natura, che chiede questi indirizzi e li manda nello stesso salvataggio, scritti dopo la natura. La natura non ha default: NULL vuol dire che la natura non conta, e sul soggetto non chiede niente. Soggetto che non esiste: nessuna riga. Gli indirizzi che la natura vieta non sono qui: sono motivi di anagrafiche.fn_check_cambio_natura_soggetto. STABLE, SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_indirizzi_obbligatori_mancanti(
+                  anagrafiche.soggetti.id%TYPE,
+                  anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE);

@@ -35,9 +35,10 @@ import { chiaviScelte } from '../preferenzaPerChiave'
  * @param {string} codice - codice stabile della dashboard (es. 'home')
  * @returns {{
  *   config, contatori, loaded, dirty, loading, widgetNuovi, presetAggiornato,
- *   widgetVisibili, dimensioneMax,
+ *   presetAggiornatoChiavi,
+ *   presetBaseCambiato, widgetVisibili, dimensioneMax,
  *   load, loadContatori, applyChange, save, reset, ignorePresetUpdate,
- *   contatoreDi
+ *   riallineaPresetBase, contatoreDi
  * }}
  */
 export function useDashboardConfig(codice) {
@@ -145,7 +146,16 @@ export function useDashboardConfig(codice) {
     return result
   }
 
-  // Scopo: "Ignora" banner preset aggiornato + reload per riallineare.
+  // Scopo: BE7 — «Riallinea» del banner della base cambiata. Risalva la
+  //        preferenza con le sole chiavi gia' scelte (`save`): il BE ci scrive
+  //        il preset di base di OGGI (`preset_base` della risoluzione) e il DB
+  //        ne riscrive lo snapshot. Nessuna chiave scelta = DELETE.
+  async function riallineaPresetBase() {
+    return save()
+  }
+
+  // Scopo: "Ignora" banner preset aggiornato (il BE riallinea lo snapshot)
+  //        + reload.
   async function ignorePresetUpdate() {
     const result = await execute(
       () => apiIgnorePresetUpdate(codice),
@@ -196,11 +206,27 @@ export function useDashboardConfig(codice) {
   // sarebbe una bugia, perche' non troverebbe nulla da attivare.
   const poolVuoto = computed(() => (config.value?.widget || []).length === 0)
 
-  // TRUE quando il preset di base e' cambiato dopo lo snapshot della
-  // preferenza utente e il banner non e' stato dismissato. Calcolato
-  // lato DB: passthrough. `?? false` = banner nascosto se il campo manca.
+  // TRUE quando il contenuto del preset di base e' cambiato, in almeno una
+  // chiave scelta dall'utente, dopo lo snapshot della preferenza (l'«Ignora»
+  // lo riallinea). Calcolato lato DB: passthrough. `?? false` = banner
+  // nascosto se il campo manca.
   const presetAggiornato = computed(
     () => config.value?.preset_aggiornato ?? false,
+  )
+
+  // Le chiavi cambiate (`preset_aggiornato_chiavi`), gemello di
+  // `useListaConfig`. Vuoto se nessuna.
+  const presetAggiornatoChiavi = computed(
+    () => config.value?.preset_aggiornato_chiavi ?? [],
+  )
+
+  // TRUE quando la preferenza ha salvato un preset di base che non e' quello
+  // di oggi (spento, o oggi vale un altro livello della cascata). BE7 di
+  // brief-db-revisione-ui, giro 1a, gemello di `useListaConfig`: calcolato
+  // dal DB (`preset_base_cambiato` di `fn_resolve_dashboard_config`),
+  // passthrough. In quel caso `preset_aggiornato` e' sempre falso.
+  const presetBaseCambiato = computed(
+    () => config.value?.preset_base_cambiato ?? false,
   )
 
   return {
@@ -212,6 +238,8 @@ export function useDashboardConfig(codice) {
     loading,
     widgetNuovi,
     presetAggiornato,
+    presetAggiornatoChiavi,
+    presetBaseCambiato,
     widgetVisibili,
     dimensioneMax,
     poolVuoto,
@@ -222,6 +250,7 @@ export function useDashboardConfig(codice) {
     save,
     reset,
     ignorePresetUpdate,
+    riallineaPresetBase,
     contatoreDi,
   }
 }

@@ -66,6 +66,17 @@ _VALID_PAYLOAD: dict[str, Any] = {
 }
 
 
+# Scopo: La risoluzione con un preset di base, nella forma del resolver DB.
+def _risoluzione_con_base(preset_id: int) -> dict[str, Any]:
+    return {
+        "preset_base": {
+            "id": preset_id,
+            "ambito": "sistema",
+            "contenuto_aggiornato_il": "2026-05-06T00:00:00+00:00",
+        },
+    }
+
+
 class ListaPreferenzaUpsertTests(SimpleTestCase):
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
@@ -75,7 +86,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_happy_path(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (5, "2026-05-06T00:00")
+        repo.resolve_lista_config.return_value = _risoluzione_con_base(5)
         repo.upsert_preferenza.return_value = 99
         svc = ListaPreferenzaService(repository=repo)
 
@@ -88,7 +99,12 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertEqual(kwargs["auth_user_id"], 42)
         self.assertEqual(kwargs["lista_id"], 1)
         self.assertEqual(kwargs["preset_base_id"], 5)
-        self.assertEqual(kwargs["preset_base_contenuto_aggiornato_il"], "2026-05-06T00:00")
+        # ⭐ Lo snapshot lo scrive il trigger del DB (BE6): il service non lo passa.
+        self.assertNotIn("preset_base_contenuto_aggiornato_il", kwargs)
+        # La base viene dalla risoluzione, con l'emittente dell'utente (BE5).
+        repo.resolve_lista_config.assert_called_once_with(
+            lista_codice="anagrafiche.clienti", auth_user_id=42, emittente_fiscale_id=11,
+        )
         # Configurazione normalizzata propagata.
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 50)
@@ -169,7 +185,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_pagina_dimensione_la_decide_il_db(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (None, None)
+        repo.resolve_lista_config.return_value = {"preset_base": None}
         repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
@@ -188,7 +204,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     def test_upsert_una_chiave_sola_arriva_da_sola(self, _mock_em) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (5, "2026-05-06T00:00")
+        repo.resolve_lista_config.return_value = _risoluzione_con_base(5)
         repo.upsert_preferenza.return_value = 7
         svc = ListaPreferenzaService(repository=repo)
 
@@ -268,7 +284,7 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
     ) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.get_preset_base_snapshot.return_value = (None, None)
+        repo.resolve_lista_config.return_value = {"preset_base": None}
         repo.upsert_preferenza.return_value = 99
         svc = ListaPreferenzaService(repository=repo)
 
@@ -277,7 +293,6 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         self.assertIsNone(result["preset_base_id"])
         kwargs = repo.upsert_preferenza.call_args.kwargs
         self.assertIsNone(kwargs["preset_base_id"])
-        self.assertIsNone(kwargs["preset_base_contenuto_aggiornato_il"])
 
 
 class ListaPreferenzaDeleteTests(SimpleTestCase):
@@ -322,13 +337,13 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
     def test_ignore_preset_update_happy_path(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = True
+        repo.riallinea_snapshot_base.return_value = True
         svc = ListaPreferenzaService(repository=repo)
 
         result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")
 
         self.assertTrue(result["ignored"])
-        repo.set_preset_aggiornato_ignored.assert_called_once_with(
+        repo.riallinea_snapshot_base.assert_called_once_with(
             auth_user_id=42, lista_id=1,
         )
 
@@ -340,12 +355,12 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.ignore_preset_update(_make_user(), "non.esiste")
         self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.set_preset_aggiornato_ignored.assert_not_called()
+        repo.riallinea_snapshot_base.assert_not_called()
 
     def test_ignore_preset_update_senza_preferenza_raises(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = False  # no riga
+        repo.riallinea_snapshot_base.return_value = False  # no riga
         svc = ListaPreferenzaService(repository=repo)
 
         with self.assertRaises(ServiceError) as ctx:
@@ -354,14 +369,14 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
 
     def test_ignore_preset_update_pref_senza_preset_base_id(self) -> None:
         # Edge: preferenza esiste ma `preset_base_id` e' NULL (utente ha
-        # salvato senza preset applicabile). L'UPDATE setta comunque il
-        # tombstone — il trigger DB non si attiva (preset_base_id non
-        # cambia) e la fn DB ritorna sempre preset_aggiornato=false. Il
-        # service non deve sollevare: dal suo punto di vista la riga
-        # esiste e l'UPDATE e' atomico.
+        # salvato senza preset applicabile). L'UPDATE riscrive comunque
+        # `preset_base_id` (NULL): il trigger DB porta lo snapshot a NULL e
+        # la fn DB ritorna preset_aggiornato=false. Il service non deve
+        # sollevare: dal suo punto di vista la riga esiste e l'UPDATE e'
+        # atomico.
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
-        repo.set_preset_aggiornato_ignored.return_value = True
+        repo.riallinea_snapshot_base.return_value = True
         svc = ListaPreferenzaService(repository=repo)
 
         result = svc.ignore_preset_update(_make_user(), "anagrafiche.clienti")

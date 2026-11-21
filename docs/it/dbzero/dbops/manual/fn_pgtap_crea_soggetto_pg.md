@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_pgtap_crea_soggetto_pg`
 
-> **Ultimo aggiornamento**: 8 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -19,6 +19,7 @@
 > * [dbops.fn_pgtap_piva_libera](/dbzero/dbops/funzioni/fn_pgtap_piva_libera) — la partita IVA libera
 > * [dbops.fn_pgtap_indirizzo_libero_forma](/dbzero/dbops/funzioni/fn_pgtap_indirizzo_libero_forma) — i campi dell'indirizzo nella forma dello stato
 > * [dbops.fn_pgtap_crea_soggetto_ruolo](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_ruolo) — il passo successivo: il ruolo
+> * [dbops.fn_pgtap_crea_soggetto_pf](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pf) — il gemello per la persona fisica
 >
 > Guide:
 >
@@ -67,8 +68,9 @@ immediati: un chiamante che poi costruisce a mano un'altra saga deve aprirsi la 
   sociale e un'email di prova.
 
 ⚠️ Una natura di persona fisica non passa: la rifiuta la madre
-(`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`), perché la persona fisica ha la sua porta. Per una persona fisica c'è
-[fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano).
+(`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`), perché la persona fisica ha la sua porta. Per una persona fisica c'è il
+gemello [fn_pgtap_crea_soggetto_pf](/dbzero/dbops/funzioni/fn_pgtap_crea_soggetto_pf); per un operatore
+(persona fisica, risorsa umana, identità) [fn_pgtap_crea_operatore_umano](/dbzero/dbops/funzioni/fn_pgtap_crea_operatore_umano).
 
 ---
 

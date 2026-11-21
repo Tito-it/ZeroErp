@@ -29,6 +29,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.documenti.tests.db._stampa import giudica_la_stampa_al_commit
 
 
 class RistampaFedeleDbTests(unittest.TestCase):
@@ -56,6 +57,7 @@ class RistampaFedeleDbTests(unittest.TestCase):
                     """
                 )
                 preventivo_id, emittente, uid, sorgente = cur.fetchone()
+                giudica_la_stampa_al_commit(cur)
                 user = get_user_model().objects.get(pk=uid)
 
                 generato = svc.genera_documento(

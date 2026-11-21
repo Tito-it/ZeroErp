@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `documenti.formati_pagina`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -37,7 +37,8 @@ insieme all'orientamento e ai margini della versione, e vince sull'impaginazione
 Il vocabolario dice ciò che il motore di stampa sa onorare, non una scelta dell'azienda: per questo non
 ha `attivo`, e un valore nuovo nasce dal seed insieme al codice che lo sa trattare. Il drawer della
 versione lo rende come tendina, con l'etichetta tradotta da `etichetta_key` e l'ordine di `ordine`,
-che non ha altra semantica.
+che non ha altra semantica. `descrizione` è obbligatoria, per chi legge il catalogo. L'applicazione
+lo legge soltanto. È la forma dei sette vocabolari dello schema.
 
 La versione punta al vocabolario per chiave esterna sul `codice_interno`, che è bloccato dopo
 l'inserimento; la chiave esterna rifiuta sia un valore fuori vocabolario sia la cancellazione o il
@@ -49,6 +50,7 @@ versione, e una copia nel frontend offriva valori che il database rifiutava.
 
 ### Test
 
+* `db/pgtap/documenti/test-documenti-vocabolari-forma-v1.sql` — la forma e la sola lettura.
 * `db/pgtap/documenti/test-documenti-vocabolari-versione-v1.sql` — i valori del seed, nessun
   `attivo`, la chiave esterna su `codice_interno`, un valore fuori vocabolario rifiutato, il blocco
   della chiave, la presenza nel lookup e non nel pannello.
@@ -58,6 +60,8 @@ versione, e una copia nel frontend offriva valori che il database rifiutava.
 ### Note di migrazione
 
 * 2026-10-04 — nasce, e prende il posto del `CHECK` su `template_documenti_versioni.page_format`.
+* 2026-11-16 — `descrizione` obbligatoria e non vuota, `codice` non vuoto; l'applicazione lo legge
+  soltanto.
 
 ---
 

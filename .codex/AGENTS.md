@@ -171,6 +171,35 @@ giorni di distanza, e ognuno lascia all'altro un pezzo da rifare.
   `work-done/`, guide, `git log -S`): la proposta dice se è nuova, se completa una decisione
   presa o se ne **revoca** una, citandola con la data.
 
+## ⛔ Una garanzia ritirata si censisce in tutti i lettori, nello stesso giro
+
+Vale per DB, backend e frontend (Tid, 2026-11-20). Un trigger, un `require`, un `CHECK`, una
+FK che diventa eccezione ATTIVO, un `NOT NULL` tolto: ognuno, oltre a fermare un caso,
+**garantisce una proprietà** a chi legge la colonna dopo. «L'account scritto sul log è
+acceso» non lo diceva nessun commento, lo garantiva `prevent_deactivate_if_children`; il
+codice che leggeva il log ci contava senza saperlo. Togliere la garanzia cambia il
+comportamento di **ogni lettore**, non solo di quello che ha portato la richiesta.
+
+* Il brief di un giro che ritira o allenta una garanzia ha la sezione **«Garanzie
+  ritirate»**: per ognuna l'oggetto, la proprietà che i lettori davano per scontata
+  («l'account del log è acceso») e il censimento dei lettori **lato DB** (funzioni, viste,
+  trigger, job che leggono la colonna), ciascuno con l'esito: va adeguato in questo giro,
+  oppure non ne dipende, e perché.
+* La sessione DB non legge `backend/` né `frontend/`, quindi il censimento applicativo non lo
+  può fare lei: la richiesta al team BE/FE è **«censisci i lettori di `<colonna>` che contano
+  su `<proprietà>`»**, accanto all'elenco dei file già noti. Un elenco chiuso di file, da solo,
+  dice al BE di non guardare altrove: è così che i lettori mancanti arrivano uno alla volta.
+* Il censimento applicativo si fa **all'arrivo del giro, prima di cominciare** (`/arrivi-db`):
+  se un lettore chiede qualcosa al DB, la richiesta torna al team DB tutta insieme, non a
+  metà sviluppo.
+* Un lettore che non si adegua dichiara perché non dipende dalla proprietà: «non ne dipende»
+  senza un motivo è un lettore non censito.
+
+Il caso: [brief-db-seed-primo-impianto-non-si-riscrive](../docs/it/dev/work-done/brief-db-seed-primo-impianto-non-si-riscrive.md).
+La Q24 (2026-11-19) ha reso spegnibile un account che ha spedito, e la richiesta al BE ha censito
+un solo lettore del log (R1-BE-ter, §16.14). Il rilancio batch e la porta di chiusura delle mail
+di sistema li ha trovati il BE lavorando, e ne è nato un secondo giro DB (§16.16, 2026-11-20).
+
 ## Dove sta cosa
 
 AGENTS.md tiene solo le regole **trasversali**. Il dettaglio di ogni materia sta
@@ -199,7 +228,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
   Django orchestra ed espone le API; Vue fa solo presentazione.
 - Struttura: `backend/`, `frontend/`, migrazioni DB in `db/changelog/migrations_v2/`, pgTAP in `db/pgtap/`.
 - Lingua: it-IT per documentazione e commenti (Python, SQL, JS).
-- Stack: Python + Django, PostgreSQL 18, Liquibase 5, pgTAP, Vue 3.
+- Stack: Python + Django, PostgreSQL 19, Liquibase 5, pgTAP, Vue 3.
   ⛔ **Le versioni non si ricopiano nei documenti**: si leggono dalla fonte.
   *Un numero scritto in due posti ne ha sempre uno stantio, e quello senza
   presidio è il documento.*

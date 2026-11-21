@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `documenti.vw_template_personalizzati_scarto`
 
-> **Ultimo aggiornamento**: 14 novembre 2026
+> **Ultimo aggiornamento**: 16 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,7 +38,7 @@ Due versioni, tutte e due quelle con cui si stampa oggi:
 
 * la versione della copia;
 * la versione dello **standard di riferimento**: quello da cui la copia deriva, oppure, per una copia
-  senza origine dichiarata, il predefinito standard dello stesso tipo e della stessa sorgente.
+  senza origine dichiarata, il predefinito standard acceso dello stesso tipo e della stessa sorgente.
 
 È lo stesso riferimento da cui parte «personalizza»: una copia appena nata e pubblicata è `ALLINEATA`,
 e la copia di uno standard non predefinito si confronta con quello standard.
@@ -52,6 +52,7 @@ la **ereditano** senza ripeterla: vale l'origine della versione più recente che
 
 | Stato | Significato |
 | --- | --- |
+| `STANDARD_NON_STAMPA` | lo standard di riferimento manca, è spento o oggi non ha una versione in vigore: non c'è niente con cui confrontare la copia, e le colonne della versione dello standard sono vuote |
 | `CONTESTO_SUPERATO` | la versione in uso legge i dati in una forma più vecchia di quella dello standard: è il caso che si ferma alla stampa, e per questo viene per primo |
 | `ORIGINE_NON_DICHIARATA` | nessuna versione della copia dice da dove viene: un modello scritto da zero, o nato prima dello standard |
 | `ALLINEATA` | la copia parte dalla versione con cui lo standard stampa oggi |
@@ -63,29 +64,29 @@ ogni cambio di forma.
 
 ---
 
-### Una riga solo se tutte e due stampano
+### Una riga per ogni copia in uso
 
-Lo scarto si misura fra due cose che stampano: un modello dell'azienda spento, o senza una versione che
-stampi oggi, non ha riga, e nemmeno lo standard. Il modello standard non ha mai riga: non è una copia.
+Ha una riga ogni modello dell'azienda che stampa oggi: lo scarto è di un modello in uso, e un modello
+spento, o senza una versione in vigore, non ha riga. Il modello standard non ha mai riga: non è una
+copia.
 
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Lo standard di origine che non stampa più.** Se lo standard da cui la copia deriva viene spento, o
-  resta senza una versione valida oggi, la copia sparisce dalla vista: non si confronta con il
-  predefinito della coppia, e la lista la mostra senza stato, come se non fosse una copia. Lo stesso
-  accade a una copia senza origine quando la coppia non ha un predefinito standard che stampa.
+Lo standard di riferimento, invece, può non stampare. La copia resta nella vista con lo stato
+`STANDARD_NON_STAMPA`, e `standard_template_documento_id` nomina comunque lo standard da cui deriva,
+quando c'è. Non si ripiega sul predefinito della coppia: potrebbe essere uno standard diverso da quello
+copiato, e il confronto direbbe una cosa falsa.
 
 ---
 
 ### Test
 
 * `db/pgtap/documenti/test-documenti-template-standard-v1.sql` — i quattro stati, e l'origine ereditata
-  dalla versione precedente.
+  dalla versione precedente; lo standard d'origine, o il predefinito della coppia, che non stampa più:
+  la copia resta con `STANDARD_NON_STAMPA` e la vista lo nomina.
 * `db/pgtap/documenti/test-documenti-personalizza-v1.sql` — la copia appena pubblicata è `ALLINEATA`;
   la copia di uno standard non predefinito si confronta con lui; senza origine si confronta col
   predefinito.
+* `db/pgtap/documenti/test-documenti-risoluzione-scarto-asset-v1.sql` — una copia la cui coppia non ha
+  uno standard che stampa resta nella vista con `STANDARD_NON_STAMPA`, senza standard né versione.
 
 ---
 
@@ -95,6 +96,8 @@ stampi oggi, non ha riga, e nemmeno lo standard. Il modello standard non ha mai 
 * 2026-10-21 — fino a qui il riferimento era sempre lo standard predefinito della coppia, sulla sua
   pubblicata col numero più alto senza guardare `attivo` né la data: la copia di uno standard non
   predefinito si confrontava con un altro modello. Da qui le due versioni sono quelle che stampano oggi.
+* 2026-11-16 — prima una copia il cui standard di riferimento non stampava spariva dalla vista, e la
+  lista la mostrava senza stato. Da qui resta, con lo stato `STANDARD_NON_STAMPA`.
 
 ---
 

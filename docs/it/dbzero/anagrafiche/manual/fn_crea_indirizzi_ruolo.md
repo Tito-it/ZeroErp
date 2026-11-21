@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_indirizzi_ruolo()`
 
-> **Ultimo aggiornamento**: 15 novembre 2026
+> **Ultimo aggiornamento**: 17 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -20,10 +20,15 @@ sviluppo.
 
 ### La regola dell'auto-clone
 
-Ogni ruolo ha i suoi indirizzi **obbligatori**: per il fornitore fatturazione e
-sede legale, per il cliente la fatturazione (la matrice è
-`config.tipi_ruolo_tipi_indirizzo`). Se chi crea il ruolo ne indica uno solo,
-gli altri obbligatori si **copiano dal primo**: stesso indirizzo, tipo diverso.
+Ogni ruolo ha i suoi indirizzi **obbligatori**: per il cliente e per il fornitore
+la fatturazione (la matrice è `config.tipi_ruolo_tipi_indirizzo`). Se chi crea il
+ruolo ne indica uno solo, gli altri obbligatori si **copiano dal primo**: stesso
+indirizzo, tipo diverso.
+
+* Un tipo che la **natura del soggetto** non ammette non si copia: nessuna
+  scrittura lo accetterebbe (il guard del ruolo guarda anche la natura). Se la
+  natura ammette il suo **ripiego**, si copia il ripiego: è lui che il ruolo deve
+  avere.
 
 * Un tipo che il ruolo ha già si salta: niente doppioni.
 * Un elenco vuoto non scrive niente, nemmeno i cloni.
@@ -58,10 +63,14 @@ dopo.
 * Il tipo ammesso per il ruolo e la forma dell'indirizzo libero: li dicono la
   singolare (con la check del tipo) e i guard della tabella
   (`trgfn_indirizzi_guard_forma_libera` per la forma, con codice e campo).
-* I tipi obbligatori sono le righe obbligatorie della matrice che il guard ammette
-  **oggi** (attive e nella finestra di validità), lette col predicato
-  [`fn_tipo_indirizzo_ammesso_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_ammesso_per_ruolo):
-  una riga scaduta non fa nascere una copia.
+* I tipi obbligatori li dice
+  [`fn_tipo_indirizzo_obbligatorio_per_ruolo`](/dbzero/anagrafiche/funzioni/fn_tipo_indirizzo_obbligatorio_per_ruolo),
+  sul tipo di ruolo e sulla natura del soggetto, **oggi**, leggendo il requisito del ruolo
+  ([`fn_indirizzi_obbligatori_ruolo`](/dbzero/anagrafiche/funzioni/fn_indirizzi_obbligatori_ruolo)):
+  per ogni riga obbligatoria attiva e valida, il tipo se la natura lo ammette, altrimenti
+  il suo ripiego se la natura e il ruolo lo ammettono. Una riga scaduta, o una riga di cui
+  la natura vieta tipo e ripiego, non fa nascere una copia. Gli stessi obbligatori li
+  mostrano i picker del ruolo, e li pretende il guard del ruolo.
 
 ### 🔄 rev 19-10-2026 — la riga la scrive la singolare
 

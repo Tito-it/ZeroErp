@@ -65,10 +65,16 @@ SELECT plan(12);
 -- 0) Oggetti presenti
 -- ============================================================
 SELECT ok(
-  (SELECT count(*) = 3 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE (n.nspname = 'anagrafiche' AND p.proname IN
-             ('fn_annulla_movimento_titolo_iva','trgfn_stiva_movimenti_append_only'))
+  (SELECT count(*) = 2 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE (n.nspname = 'anagrafiche' AND p.proname = 'fn_annulla_movimento_titolo_iva')
        OR (n.nspname = 'script' AND p.proname = 'fn_check_annullo_movimento_titolo_iva'))
+  -- «solo aggiunte»: il building block «rifiuta sempre», montato su UPDATE e
+  --   DELETE col codice del registro (cercato per funzione e argomenti, non per nome)
+  AND EXISTS (SELECT 1 FROM pg_trigger t
+               WHERE t.tgrelid = 'anagrafiche.soggetti_titoli_iva_movimenti'::regclass
+                 AND t.tgfoid = 'script.trgfn_prevent_modification_generic'::regproc
+                 AND (t.tgtype & 8) <> 0 AND (t.tgtype & 16) <> 0
+                 AND encode(t.tgargs, 'escape') LIKE 'E_TITOLO_IVA_MOVIMENTO_IMMUTABILE\\000%')
   AND EXISTS (SELECT 1 FROM pg_attribute
                WHERE attrelid = 'anagrafiche.soggetti_titoli_iva_movimenti'::regclass
                  AND attname = 'annulla_movimento_id' AND NOT attisdropped)
@@ -77,7 +83,7 @@ SELECT ok(
   AND EXISTS (SELECT 1 FROM pg_constraint
                WHERE conrelid = 'anagrafiche.soggetti_titoli_iva_movimenti'::regclass
                  AND conname = 'chk_stiva_movimenti_auto_annullo'),
-  '0) oggetti presenti (colonna, indice, check, madre, check di dominio, vista)');
+  '0) oggetti presenti (colonna, indice, check, madre, check di dominio, vista, rifiuto dal BB)');
 
 -- ============================================================
 -- Fixture: due titoli IVA dello STESSO emittente di chi opera.

@@ -12,11 +12,10 @@
 | auth_user_id | integer | NO |  |
 | lista_id | integer | NO |  |
 | preset_base_id | integer | YES |  |
-| preset_base_contenuto_aggiornato_il | timestamp with time zone | YES |  |
+| preset_base_contenuto_aggiornato_il | jsonb | YES |  |
 | configurazione | jsonb | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES |  |
-| preset_aggiornato_ignored_at | timestamp with time zone | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,7 +39,8 @@
 |------|--------|--------|--------|
 | trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
 | trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
-| trg_ui_lista_preferenza_utente_z90_clear_preset_base_ts_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_z90_clear_preset_base_ts()` |
+| trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
+| trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 
 ---
 {% include-markdown "signature-core.md" %}

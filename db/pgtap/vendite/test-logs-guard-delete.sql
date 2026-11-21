@@ -7,10 +7,10 @@
 -- 1) Riferimenti minimi presenti
 -- 2) Setup record log completato
 -- 3) DELETE fatture_log bloccato senza GUC
--- 4) DELETE fatture_log consentito con GUC allow_delete_logs
+-- 4) DELETE fatture_log con la GUC accesa dall'app: rifiutato (la porta e' del migratore)
 -- 5) Reinserimento fatture_log completato
 -- 6) DELETE fatturazione_lotti_log bloccato senza GUC
--- 7) DELETE fatturazione_lotti_log consentito con GUC allow_delete_logs
+-- 7) DELETE fatturazione_lotti_log con la GUC accesa dall'app: rifiutato
 -- ------------------------------------------------------------
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
@@ -229,7 +229,9 @@ $$,
 NULL,
 'DELETE fatture_log bloccato senza GUC'
 );
-SELECT lives_ok(
+-- ⚠️ Rev 2026-11-18 (brief-db-seed-primo-impianto-non-si-riscrive §16.9): la porta
+--   si apre solo per la sessione del migratore; come app la GUC accesa non basta.
+SELECT throws_ok(
     $$
     SELECT set_config(
         'zeroerp.maintenance_allow_delete_logs',
@@ -242,7 +244,9 @@ WHERE id = (
     FROM tmp_log_fattura_lgd
   );
 $$,
-'DELETE fatture_log consentito con GUC allow_delete_logs'
+'P0001',
+NULL,
+'DELETE fatture_log con la GUC accesa dall''app: rifiutato lo stesso'
 );
 CREATE TEMP TABLE tmp_log_fattura_lgd_2 AS WITH ins AS (
   INSERT INTO vendite.fatture_log (
@@ -296,7 +300,7 @@ $$,
 NULL,
 'DELETE fatturazione_lotti_log bloccato senza GUC'
 );
-SELECT lives_ok(
+SELECT throws_ok(
     $$
     SELECT set_config(
         'zeroerp.maintenance_allow_delete_logs',
@@ -309,7 +313,9 @@ WHERE id = (
     FROM tmp_log_lotto_lgd
   );
 $$,
-'DELETE fatturazione_lotti_log consentito con GUC allow_delete_logs'
+'P0001',
+NULL,
+'DELETE fatturazione_lotti_log con la GUC accesa dall''app: rifiutato lo stesso'
 );
 SELECT *
 FROM finish();

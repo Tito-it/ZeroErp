@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from apps.core.management.comando_aziendale import ComandoAziendale
 from django.db import connection
@@ -46,6 +47,29 @@ logger = logging.getLogger("zeroerp.email")
 # I contatori di un giro delle email (`_esegui_giro`), che il giro per azienda
 # somma (`EsitoGiroPerAzienda.totali`).
 _CHIAVI_ESITO_EMAIL: tuple[str, ...] = ("processate", "inviate", "fallite")
+
+
+# Scopo: L'account da cui una mail in coda riparte, o `None` se non ce n'e'
+#        nessuno acceso (il giro la segna FAILED e prosegue).
+# ⭐ Quello scritto sul log, finche' e' acceso. Spento (Q24: un account che ha
+#    spedito si spegne e non si cancella) o mai scritto, si risolve di nuovo
+#    sul REPARTO DEL LOG con `config.fn_resolve_email_account`, che sceglie solo
+#    fra gli accesi e ripiega su SISTEMA — lo stesso risolutore che ha scelto
+#    l'account la prima volta. L'esito scrivera' sul log l'account scelto qui
+#    (brief-db-seed-primo-impianto-non-si-riscrive §16.16, R5).
+# ⛔ Non `EmailDispatchService.account_di_invio`: quello rifiuta con un 500, e
+#    il rilancio non rifiuta, segna la mail e passa alla successiva.
+# ⚠️ Fino al 2026-11-20 il ripiego chiamava il risolutore SENZA il reparto, e
+#    una mail di reparto senza account ripartiva dall'account di SISTEMA.
+def _account_del_rilancio(
+    repo: EmailRepository, row: dict[str, Any], log_detail: dict[str, Any],
+) -> dict[str, Any] | None:
+    account_id = row.get("email_account_id")
+    if account_id:
+        account = repo.get_account_with_password(account_id)
+        if account and account["attivo"]:
+            return account
+    return repo.resolve_account(log_detail.get("unita_organizzativa_id"))
 
 
 class Command(ComandoAziendale):
@@ -237,12 +261,13 @@ class Command(ComandoAziendale):
         sent = 0
         failed = 0
         for row in rows:
-            # Risolvi account: usa quello specifico del log, con fallback a SISTEMA
-            account_id = row.get("email_account_id")
-            if account_id:
-                account = repo.get_account_with_password(account_id)
-            else:
-                account = repo.resolve_account()
+            # Recupera corpo e reparto dal log
+            log_detail = repo.get_log(row["id"])
+            if not log_detail:
+                failed += 1
+                continue
+
+            account = _account_del_rilancio(repo, row, log_detail)
             if not account:
                 repo.update_log_stato(
                     row["id"], "FAILED", ambito=row["ambito"],
@@ -251,13 +276,8 @@ class Command(ComandoAziendale):
                 failed += 1
                 continue
 
-            # Recupera corpo dal log
-            log_detail = repo.get_log(row["id"])
-            if not log_detail:
-                failed += 1
-                continue
-
-            # Invio via metodo pubblico retry_log_entry
+            # Invio via metodo pubblico retry_log_entry: l'esito scrive sul log
+            # anche l'account con cui la mail e' ripartita.
             success = dispatch.retry_log_entry(row["id"], account, log_detail)
             if success:
                 sent += 1

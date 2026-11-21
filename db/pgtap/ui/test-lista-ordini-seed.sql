@@ -16,7 +16,7 @@
 --   5.  Esattamente 24 colonne attive nel catalogo ordini
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
---   8.  Preset ordini_default presente con is_default=true
+--   8.  Preset ordini_default presente e acceso
 --   9.  Preset: pagina_dimensione=25, ambito=sistema
 --   10. Esattamente 10 colonne visibili nel preset ordini_default
 --   11. Colonna numero ha fissata=true nel preset (identificatore)
@@ -147,7 +147,7 @@ SELECT is(
     '7. Tutti i campo_sorgente del catalogo ordini esistono nella vista o nella sintesi della lineage'
 );
 
--- 8. Preset ordini_default is_default=true
+-- 8. Preset ordini_default presente e acceso
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -155,10 +155,9 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice = 'vendite.ordini'
            AND lp.codice = 'ordini_default'
-           AND lp.is_default = TRUE
            AND lp.attivo = TRUE
     ),
-    '8. Preset ordini_default presente, is_default=true, attivo=true'
+    '8. Preset ordini_default presente e acceso'
 );
 
 -- 9. Preset: pagina_dimensione=25, ambito=sistema

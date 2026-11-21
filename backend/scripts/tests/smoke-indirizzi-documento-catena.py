@@ -38,6 +38,8 @@
 #   4  layer SOGGETTO: nessun indirizzo di ruolo -> snapshot senza origine_indirizzo_id
 #   5  tipo non risolvibile -> zero righe (nessun errore: decide il chiamante)
 #   6  i 5 domini dichiarano il documento per lo slot di default DB
+#   7  lo stato costruito dallo smoke passa i guard degli indirizzi
+#      obbligatori al commit (simulato con SET CONSTRAINTS ALL IMMEDIATE)
 # ------------------------------------------------------------
 
 from django.db import connection, transaction
@@ -136,6 +138,14 @@ with transaction.atomic():
         altra_istanza_id = cur.fetchone()[0]
         print(f"fixture: soggetto_ruolo {sr_id}, istanza {istanza_id}, "
               f"altra istanza {altra_istanza_id}\n")
+        # ⚠️ Il builder esce coi vincoli IMMEDIATE: si torna a quelli di una
+        #    transazione dell'applicazione, coi guard degli indirizzi
+        #    obbligatori (constraint trigger differiti) rimandati al commit.
+        #    Senza, la DELETE qui sotto, che con la scrittura del passo 2 e' una
+        #    SOSTITUZIONE, era rifiutata subito (dal 2026-11-17, giro 4 di
+        #    brief-db-fornitore-privato-indirizzi, che li monta anche sulla
+        #    cancellazione).
+        cur.execute("SET CONSTRAINTS ALL DEFERRED")
 
         # ⚠️ Il tipo NON si può fissare a mano: `anagrafiche.indirizzi` ha il
         # guard `trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`, che ammette
@@ -236,11 +246,13 @@ with transaction.atomic():
               "non esercitabile")
 
     # --- 4) layer SOGGETTO: nessun indirizzo di RUOLO ---------------------
+    # ⛔ Fino al 2026-11-18 qui si cancellavano gli indirizzi del ruolo scritti
+    #    ai passi 2 e 3: toglievano al ruolo il suo obbligatorio, uno stato che
+    #    il guard rifiuta al commit (giro 4 di brief-db-fornitore-privato-
+    #    indirizzi) e che lo smoke vedeva solo perche' si annulla. Il caso «il
+    #    ruolo non ha quel tipo» si ottiene scegliendo un tipo che il ruolo non
+    #    ha, senza toccarlo.
     with connection.cursor() as cur:
-        cur.execute(
-            "DELETE FROM anagrafiche.indirizzi WHERE id = ANY(%s)",
-            [[id_generico, id_istanza]],
-        )
         # Un tipo presente sul layer SOGGETTO ma SENZA righe sul layer RUOLO:
         # se il ruolo avesse ancora un indirizzo di quel tipo, la catena
         # risponderebbe (giustamente) dal RUOLO e l'asserzione «origine NULL»
@@ -312,6 +324,19 @@ with transaction.atomic():
     else:
         print("  SKIP 5) questo soggetto ha un indirizzo per ogni tipo ammesso: "
               "il caso «nessuna fonte» non è esercitabile su questi dati")
+
+    # --- 7) lo stato costruito e' uno che il commit accetta ---------------
+    # I guard degli indirizzi obbligatori sono differiti: senza questo
+    # controllo uno smoke che si annulla puo' risolvere su uno stato che
+    # nessun salvataggio vero lascerebbe in piedi.
+    try:
+        with transaction.atomic(), connection.cursor() as cur:
+            cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        esito_commit = None
+    except Exception as exc:  # l'esito e' cio' che si controlla
+        esito_commit = str(exc).splitlines()[0]
+    check("7) lo stato costruito passa i guard al commit", esito_commit is None,
+          f"rifiuto={esito_commit}")
 
     transaction.set_rollback(True)
 

@@ -1,9 +1,5 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
--- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
---   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
---   fixture viene completata, si toglie questa riga e si rimette il
---   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP per Zero ERP
 -- Copyright (C) 2026 Tid (Michele Carlo Titini)
 --
@@ -29,25 +25,18 @@
 -- ri-verificato qui: questo file isola la correttezza funzionale + atomicita'.
 --
 -- Idempotente: gira dentro un'unica transazione chiusa da ROLLBACK, non
--- lascia residui. CF di test dedicato per non collidere con altre fixture.
+-- lascia residui. CF e P.IVA liberi, scelti dal builder del soggetto.
 -- ------------------------------------------------------------
 
 BEGIN;
 
--- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
---   altri, e non e' una dimenticanza.
---   `anagrafiche.soggetti` ha TRE guard DEFERRABLE INITIALLY DEFERRED —
---   indirizzi, contatti, dati societari — e li' la deferralita' e' il CONTRATTO
---   DEL DOMINIO: si crea il soggetto, poi il suo indirizzo, e la completezza si
---   verifica al COMMIT. E' per questo che anagrafiche.fn_crea_soggetto_pf puo'
---   restituire un soggetto ancora incompleto, ed e' cosi' che la usa il backend.
---   Forzare IMMEDIATE pretenderebbe l'indirizzo nell'istante stesso dell'INSERT
---   del soggetto: vieterebbe il pattern che il dominio ha scelto.
---   ⚠️ Resta un buco reale: senza la riga quei guard non vengono esercitati da
---   questo test, e la fixture lascia un soggetto che l'applicazione non
---   potrebbe committare. La correzione vera e' COMPLETARE LA FIXTURE
---   (indirizzo + contatti): allora la riga si rimette e il test verifica sul
---   serio. Brief: brief-db-pgtap-runner-rls-baseline §21.
+-- ⚠️ Rev 2026-11-17 (brief-db-fornitore-privato-indirizzi §10.3): la fixture
+--   e' COMPLETA, e il file chiude con `SET CONSTRAINTS ALL IMMEDIATE` dove
+--   l'unita' di lavoro finisce. Fino a questa data il file ne era esente
+--   (brief-db-pgtap-runner-rls-baseline §21): il soggetto nasceva da un INSERT
+--   diretto, senza indirizzi, e i tre guard differiti di anagrafiche.soggetti
+--   non venivano mai esercitati. Ora soggetto e ruolo vengono dai builder
+--   pgTAP, gia' completi dalle madri del dominio, e il debito e' chiuso.
 
 -- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
 -- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
@@ -72,48 +61,35 @@ SET CONSTRAINTS ALL DEFERRED;
 SELECT plan(20);
 
 -- =========================================================
--- Fixture: soggetto PG + ruolo CL + istanza fittizia + BA + cliente
+-- Fixture: soggetto PF + ruolo CL + istanza fittizia + BA + cliente
 -- =========================================================
--- Costanti (CF/PIVA finti e dedicati a questo test)
+-- Costanti (CF e P.IVA li sceglie il builder del soggetto)
 CREATE TEMP TABLE k AS
 SELECT
-    '01677080440'::text        AS piva_test,
-    'RSSMRA80A01H501U'::text   AS cf_test,   -- CF valido (Mario Rossi, 1980-01-01, M), libero
     'CL'::varchar              AS codice_ruolo_cliente,   -- config.tipi_ruoli.codice_interno
     'BASE'::varchar            AS codice_utility_test,     -- config.utilities.codice_interno (richiede_pdp=false)
     1::smallint                AS cat_c1,                  -- categorie_clienti STANDARD (id 1)
     4::smallint                AS cat_c2;                  -- categorie_clienti GOLD     (id 4)
 
--- 1) Soggetto PG
-WITH ins AS (
-    INSERT INTO anagrafiche.soggetti (
-        ragione_sociale, cognome, nome, sesso, stato_id,
-        codice_fiscale, tipo_soggetto_dettaglio_id, storicizza, attivo
-    )
-    SELECT NULL, 'Rossi', 'Mario', 'M', 1,
-           k.cf_test, 1, TRUE, TRUE   -- tipo_soggetto_dettaglio_id 1 = PR (Persona Fisica - Privato, solo CF)
-    FROM k
-    RETURNING id
-)
-SELECT id INTO TEMP TABLE tmp_soggetto FROM ins;
+-- 1) Soggetto PF: il privato, gia' completo di contatto e indirizzi
+--    obbligatori (dbops.fn_pgtap_crea_soggetto_pf). Prima un INSERT diretto
+--    su anagrafiche.soggetti col solo contatto: un soggetto che
+--    l'applicazione non potrebbe committare.
+CREATE TEMP TABLE tmp_soggetto AS
+SELECT dbops.fn_pgtap_crea_soggetto_pf('Rossi', 'Mario') AS id;
 
 SELECT is((SELECT count(*)::int FROM tmp_soggetto), 1,
           'Fixture: inserito 1 soggetto di test');
 
--- Contatto minimo (constraint soggetti)
-INSERT INTO anagrafiche.contatti (
-    tipo_contatto_id, soggetto_id, nominativo, email, is_default, default_context
-)
-SELECT 1, (SELECT id FROM tmp_soggetto),
-       'Referente Test fn_update_cliente', 'upd.cliente@example.com', TRUE, 'soggetto';
-
--- 2) Ruolo CL
+-- 2) Ruolo CL, coi suoi indirizzi obbligatori (dbops.fn_pgtap_crea_soggetto_ruolo),
+--    in un'istruzione separata dal soggetto come il builder pretende.
 CREATE TEMP TABLE tmp_soggetto_ruolo AS
-SELECT script.fn_get_or_create_soggetto_ruolo(
-           p_soggetto_id  := s.id,
-           p_cd_int_ruolo := k.codice_ruolo_cliente
-       ) AS id
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, k.codice_ruolo_cliente) AS id
 FROM tmp_soggetto s, k;
+
+-- I builder escono coi vincoli IMMEDIATE: la saga del cliente (istanza, BA,
+-- cliente) riapre la finestra, e la richiude a fixture completa.
+SET CONSTRAINTS ALL DEFERRED;
 
 -- 3) Istanza fittizia
 WITH ins AS (
@@ -158,6 +134,9 @@ SELECT id INTO TEMP TABLE tmp_cliente FROM ins;
 
 SELECT is((SELECT count(*)::int FROM tmp_cliente), 1,
           'Fixture: inserito 1 cliente di test');
+
+-- La fixture e' completa: i guard differiti giudicano qui, come al commit.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(
     (SELECT categoria_cliente_id FROM anagrafiche.billing_account

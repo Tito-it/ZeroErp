@@ -1,111 +1,107 @@
-## 📘 Documentazione Concettuale – Funzione `script.trgfn_prevent_modification_generic()`
+## 📘 Documentazione Concettuale – Trigger function `script.trgfn_prevent_modification_generic`
 
+> **Ultimo aggiornamento**: 15 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni :    
+> Approfondimento tabelle:
 >
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)    
-
-
-La trigger function **`script.trgfn_prevent_modification_generic()`** impedisce modifiche o cancellazioni sui record di tabelle di audit (o altre tabelle protette), sollevando un’eccezione centralizzata tramite `fn_log_and_raise_error`.
+> * [documenti.documenti_generati](/dbzero/documenti/tabelle/documenti_generati) — la stampa, che non si cancella
+> * [documenti.documenti_generati_eventi](/dbzero/documenti/tabelle/documenti_generati_eventi) — la cronologia della stampa, che non si modifica e non si cancella
+> * [documenti.documenti_generati_file](/dbzero/documenti/tabelle/documenti_generati_file) — il file della stampa, che non si cancella
+> * [documenti.template_asset](/dbzero/documenti/tabelle/template_asset) — l'asset, che non si cancella
+> * [anagrafiche.soggetti_titoli_iva_movimenti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_movimenti) — il registro del plafond IVA, «solo aggiunte»
+> * [dbops.transaction_ids](/dbzero/dbops/tabelle/transaction_ids) — il registro delle transazioni
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto
+> * [script.trgfn_delete_block_by_guc](/dbzero/script/funzioni/trgfn_delete_block_by_guc) — il blocco della cancellazione che ha una porta
+>
+> Guide:
+>
+> * [Linee guida Trigger](/linee-guida-trigger) — i nomi, le fasi, gli argomenti di un building block
 
 ---
+
 ### 🎯 Scopo Principale
-* **Proteggere dati di audit**
-  Garantire l’inalterabilità delle cronologie storiche registrate in tabelle dedicate (es. `config.parameters_audit`).
-* **Centralizzare la gestione degli errori**
-  Usare un wrapper di logging e exception unificato per fornire messaggi coerenti e tracce in log.
+
+Il building block «rifiuta sempre»: montato su una tabella, vieta le operazioni del suo evento a chiunque, owner
+compreso. Non decide niente: la sola presenza del trigger è la regola.
+
+Serve alle tabelle che sono storia (una stampa, la sua cronologia, il suo file, un registro «solo aggiunte»): lì una
+riga scritta resta, e la correzione è una riga nuova.
 
 ---
 
-### Parametri di Input
+### Il codice lo dice il montaggio
 
-Questa funzione **non** riceve parametri espliciti: utilizza le variabili di contesto PL/pgSQL:
+Chi monta il trigger gli passa, come argomenti, ciò che il rifiuto deve dire:
 
-| Variabile       | Descrizione                                                                   |
-| --------------- | ----------------------------------------------------------------------------- |
-| `TG_TABLE_NAME` | Nome della tabella su cui è stato invocato il trigger.                        |
-| `TG_OP`         | Tipo di operazione che ha attivato il trigger (`INSERT`, `UPDATE`, `DELETE`). |
+* **il primo argomento è il codice d'errore**, quello della tabella: chi legge il rifiuto sa *che cosa* non si fa
+  (una stampa non si cancella, un movimento di plafond non si modifica). Senza argomenti il codice è
+  `E_TABELLA_OP_NON_CONSENTITA`, con la tabella e l'operazione nella frase;
+* **gli altri argomenti sono colonne della riga**, i cui valori entrano nella frase nell'ordine dei segnaposto del
+  messaggio. Una data si scrive come la legge una persona (giorno, mese, anno). La riga è quella che si stava per
+  modificare o cancellare, oppure quella proposta su un inserimento.
 
----
+Una colonna che la tabella non ha è un montaggio sbagliato, e il trigger lo dice
+(`E_TRIGGER_ARGOMENTI_INVALIDI`) invece di comporre una frase con un buco.
 
-### Flusso di Esecuzione
-
-1. **Chiamata dal trigger**
-   Eseguita `BEFORE UPDATE` o `BEFORE DELETE` sulla tabella protetta.
-2. **Sollevamento dell’eccezione**
-   Invoca:
-
-   ```plpgsql
-   PERFORM script.fn_log_and_raise_error(
-     'database',                             -- canale log
-     'trgfn_prevent_parameters_audit_modification', -- nome del trigger/contesto
-     'E_TABELLA_OP_NON_CONSENTITA',          -- codice messaggio (E=Error)
-     jsonb_build_object(
-       'nome_tabella', TG_TABLE_NAME,
-       'trigger_op',    TG_OP
-     ),                                       -- contesto JSON per il messaggio
-     TG_TABLE_NAME::text,
-     TG_OP::text
-   );
-   ```
-
-   La funzione `fn_log_and_raise_error` logga l’evento e lancia un `RAISE EXCEPTION` con un messaggio tradotto da tabella `config.messaggi_errore`.
-3. **Prevenzione operazione**
-   Poiché l’eccezione interrompe l’operazione, nessuna modifica viene applicata.
+Il contesto del rifiuto porta la tabella, l'operazione e l'`id` della riga; il `tx_id` viene dalla riga, se la
+tabella lo porta.
 
 ---
 
-### 🔖 Definizione SQL
+### ⛔ Nessuna porta
 
-```sql
-CREATE OR REPLACE FUNCTION script.trgfn_prevent_modification_generic()
-  RETURNS trigger
-  LANGUAGE plpgsql
-AS $function$
-BEGIN
-  PERFORM script.fn_log_and_raise_error(
-    'database',
-    'trgfn_prevent_parameters_audit_modification',
-    'E_TABELLA_OP_NON_CONSENTITA',
-    jsonb_build_object(
-      'nome_tabella', TG_TABLE_NAME,
-      'trigger_op',   TG_OP
-    ),
-    TG_TABLE_NAME::text,
-    TG_OP::text
-  );
-END;
-$function$;
-
-COMMENT ON FUNCTION script.trgfn_prevent_modification_generic() IS
-  'Trigger function che blocca UPDATE e DELETE su tabelle protette, sollevando errore tramite fn_log_and_raise_error.';
-```
+Il building block non ha eccezioni: niente variabile di sessione che lo apra, niente ruolo che lo scavalchi. Dove
+una scrittura legittima deve passare (una manutenzione dichiarata, una riga scaduta che la pulizia ritira) la
+regola è un'altra, e vuole un guard suo: `script.trgfn_delete_block_by_guc` per una cancellazione con la sua porta,
+`vendite.trgfn_event_log_append_only` per un registro con la sua scadenza.
 
 ---
 
-### Applicazione del Trigger
+### Dove è montato
 
-Per proteggere una tabella (es. `config.parameters_audit`):
+* `documenti.documenti_generati`, sul `DELETE` (`E_DOCUMENTI_GENERATO_DELETE_BLOCKED`);
+* `documenti.documenti_generati_eventi`, sull'`UPDATE` e sul `DELETE` (`E_EVENTO_DOCUMENTO_UPDATE_VIETATA`,
+  `E_EVENTO_DOCUMENTO_DELETE_VIETATA`);
+* `documenti.documenti_generati_file`, sul `DELETE` (`E_FILE_DOCUMENTO_DELETE_VIETATA`);
+* `documenti.template_asset`, sul `DELETE` (`E_DOCUMENTI_ASSET_DELETE_BLOCKED`);
+* `anagrafiche.soggetti_titoli_iva_movimenti`, sull'`UPDATE` e sul `DELETE` (`E_TITOLO_IVA_MOVIMENTO_IMMUTABILE`,
+  col tipo e la data del movimento nella frase);
+* `dbops.transaction_ids`, sull'`UPDATE` e sul `DELETE`, senza argomenti.
 
-```sql
-DROP TRIGGER IF EXISTS trg_prevent_mod_parameters_audit ON config.parameters_audit;
-
-CREATE TRIGGER trg_prevent_mod_parameters_audit
-  BEFORE UPDATE OR DELETE
-  ON config.parameters_audit
-  FOR EACH ROW
-  EXECUTE FUNCTION script.trgfn_prevent_modification_generic();
-```
-
----
-
-### Vantaggi Operativi
-
-* **Sicurezza dei dati**: impedisce involontarie cancellazioni o modifiche.
-* **Consistenza dei messaggi**: utilizza un sistema di logging/exception centralizzato per coerenza.
-* **Riutilizzabilità**: la stessa funzione può proteggere più tabelle di audit o log.
+Una tabella nuova che deve vietare sempre un'operazione monta questo building block col suo codice: non si scrive
+una funzione propria che faccia la stessa cosa.
 
 ---
 
-> **“Centralizzare la protezione dei dati critici in una trigger function riutilizzabile assicura sicurezza, trasparenza e facilità di manutenzione.”**
+### Codici errore
+
+* il codice del montaggio, oppure `E_TABELLA_OP_NON_CONSENTITA` senza argomenti;
+* `E_TRIGGER_ARGOMENTI_INVALIDI` — una colonna degli argomenti non esiste nella tabella.
+
+---
+
+### Test
+
+* `db/pgtap/documenti/test-documenti-stampa-e-storia-v1.sql` — il codice di riserva, i valori della riga nella
+  frase con la data, la colonna che non esiste, i montaggi sulle tabelle di `documenti` e del plafond IVA, le copie
+  ritirate;
+* `db/pgtap/anagrafiche/test-stiva-movimenti-annullo-v1.sql` — il registro del plafond rifiuta modifica e
+  cancellazione.
+
+---
+
+### Note di migrazione
+
+* 2026-08-06 — il rifiuto si registra col nome del trigger che scatta, non con quello di una funzione che non
+  esisteva più.
+* 2026-11-15 — il building block riceve il codice e le colonne dal montaggio; le funzioni proprie di stampa,
+  eventi, asset e movimenti di plafond, che facevano la stessa cosa con un codice ciascuna, sono ritirate.
+
+---
+
+{% include-markdown "signature-core.md" %}

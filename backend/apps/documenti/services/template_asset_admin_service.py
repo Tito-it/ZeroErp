@@ -4,12 +4,15 @@
 # Doc: Python
 # Scopo: Service admin per `documenti.template_asset` (Tranche G).
 #        2 metodi pubblici:
-#        - upload_asset: valida MIME contro whitelist per tipo asset,
-#          calcola sha256 + size, costruisce storage_key, scrive su
-#          DocumentStorage (atomic), INSERT row con dedup unique
-#          (emittente, sha256). Pattern transazionale: INSERT + write
-#          dentro transaction.atomic(); cleanup file post-fail commit
-#          come storage_orphan.
+#        - upload_asset: calcola sha256 + size, costruisce storage_key
+#          (estensione dal formato letto dal DB), INSERT row con dedup
+#          unique (emittente, sha256), scrive su DocumentStorage (atomic).
+#          Il formato dichiarato lo giudica il DB alla nascita della riga
+#          (`documenti.trgfn_guard_formato_ammesso`,
+#          E_DOCUMENTI_FORMATO_NON_AMMESSO): niente whitelist qui.
+#          Pattern transazionale: INSERT + write dentro
+#          transaction.atomic(); se il commit fallisce il file scritto si
+#          cancella (file orfano, solo nel log).
 #        - update_asset_metadati: PATCH solo su descrizione, valido_*,
 #          attivo, meta. Trigger DB A4 (protect_file) blocca comunque
 #          modifiche a storage_key/sha256/file_size/mime/file_name.
@@ -32,6 +35,7 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
 
+from apps.core.db.formati_file import estensione_del_formato
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import (
@@ -50,42 +54,10 @@ E_VALIDATION = "E_DOCUMENTI_VALIDATION"
 E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 E_STORAGE_FAILED = "E_DOCUMENTI_STORAGE_FAILED"
 
-# MIME whitelist per `tipi_asset_documento.codice_interno`. Decisione 67:
-# nessun upload generico libero. La mappa e' service-side per evitare
-# round-trip DB; allineata ai 6 codici seed Fase A (LOGO, FIRMA,
-# IMMAGINE, PDF, CSS, ALTRO).
-#
-# `ALTRO` non e' presente in v1: vietiamo upload finche' non c'e' una
-# whitelist concreta. La create asset con tipo ALTRO viene rifiutata
-# con E_DOCUMENTI_VALIDATION.
-_MIME_WHITELIST_PER_TIPO: dict[str, frozenset[str]] = {
-    "LOGO": frozenset({
-        "image/png", "image/jpeg", "image/svg+xml",
-        "image/webp", "image/gif",
-    }),
-    "FIRMA": frozenset({
-        "image/png", "image/jpeg", "image/svg+xml",
-        "image/webp",
-    }),
-    "IMMAGINE": frozenset({
-        "image/png", "image/jpeg", "image/svg+xml",
-        "image/webp", "image/gif",
-    }),
-    "PDF": frozenset({"application/pdf"}),
-    "CSS": frozenset({"text/css"}),
-}
-
-# Estensioni associate ai MIME ammessi (per costruire lo storage_key).
-# Mapping minimo, usato solo come fallback se file_name non ha estensione.
-_MIME_EXT_FALLBACK: dict[str, str] = {
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "image/svg+xml": "svg",
-    "image/webp": "webp",
-    "image/gif": "gif",
-    "application/pdf": "pdf",
-    "text/css": "css",
-}
+# ⚠️ Le mappe `_MIME_WHITELIST_PER_TIPO` e `_MIME_EXT_FALLBACK` sono uscite il
+#    2026-11-16 (BE5 di brief-db-revisione-documenti): i formati di un tipo
+#    stanno nel DB (`documenti.tipi_asset_documento_formati` ⨝
+#    `config.formati_file`) e il DB rifiuta quello che il tipo non ammette.
 
 # Chiavi ammesse in payload metadati (su upload e su update).
 _UPLOAD_METADATI_KEYS: frozenset[str] = frozenset({
@@ -169,14 +141,15 @@ class TemplateAssetAdminService:
     # Scopo: Crea un nuovo asset caricando il file binario.
     #        Sequenza:
     #         1. validate payload + scope emittente
-    #         2. risolve asset_tipo (codice_interno) e valida MIME contro whitelist
+    #         2. legge il tipo asset coi formati che ammette (404-like se
+    #            l'id non esiste)
     #         3. valida size <= documenti_asset_upload_max_mb
     #         4. calcola sha256 + costruisce storage_key
     #         5. INSERT row dentro transaction.atomic() — dedup naturale via
     #            unique (emittente, sha256)
     #         6. write file su storage (atomic write filesystem)
-    #         7. commit (uscita dal with): in caso di errore commit, cleanup
-    #            file storage_orphan
+    #         7. commit (uscita dal with): in caso di errore commit, il
+    #            file scritto si cancella (file orfano, solo nel log)
     def upload_asset(
         self,
         user: AbstractBaseUser | AnonymousUser | None,
@@ -194,10 +167,11 @@ class TemplateAssetAdminService:
         data = self._build_upload_metadati(metadati)
         self._guard_emittente_in_scope(user, data["emittente_fiscale_id"])
 
-        # 2) MIME whitelist per il tipo asset.
-        codice_tipo = self._resolve_codice_tipo_asset(data["asset_tipo_id"])
+        # 2) il tipo asset coi suoi formati. Il formato dichiarato lo giudica
+        #    il DB all'INSERT (E_DOCUMENTI_FORMATO_NON_AMMESSO): un MIME che
+        #    il tipo non ammette non arriva mai a scrivere il file.
+        formati = self._formati_del_tipo_asset(data["asset_tipo_id"])
         normalized_mime = (client_mime_type or "").strip().lower()
-        self._guard_mime_for_tipo(codice_tipo, normalized_mime)
 
         # 3) size check (params: documenti_asset_upload_max_mb, default 25).
         size = len(file_bytes)
@@ -217,7 +191,7 @@ class TemplateAssetAdminService:
 
         # 4) sha256 + storage_key stabile.
         sha = hashlib.sha256(file_bytes).hexdigest()
-        ext = self._resolve_extension(client_file_name, normalized_mime)
+        ext = self._resolve_extension(client_file_name, normalized_mime, formati)
         storage_key = f"assets/{data['emittente_fiscale_id']}/{sha}.{ext}"
         sanitized_file_name = self._sanitize_file_name(client_file_name)
 
@@ -262,7 +236,7 @@ class TemplateAssetAdminService:
             need_cleanup = False  # commit OK, niente cleanup
         finally:
             if need_cleanup and storage_uri:
-                # Caso STORAGE_ORPHAN: file scritto ma commit DB fallito.
+                # File orfano: scritto, ma il commit DB e' fallito.
                 # Best-effort: log + delete. Non solleviamo per non mascherare
                 # l'eccezione originale del commit.
                 try:
@@ -346,9 +320,12 @@ class TemplateAssetAdminService:
     # Helpers privati
     # =================================================================
 
-    # Scopo: Risolve codice_interno del tipo asset via repo dedicato.
-    #        Cache evitata in v1: 1 round-trip DB per upload e' accettabile.
-    def _resolve_codice_tipo_asset(self, asset_tipo_id: int) -> str:
+    # Scopo: I formati che il tipo asset ammette, letti dal DB (BB
+    #        `sql_formati_ammessi` dentro `get_tipo_asset`). Un id che non
+    #        esiste e' un dato errato, detto prima dell'INSERT.
+    #        ⚠️ Niente controllo «tipo non attivo» dal 2026-11-16 (BE11): il
+    #        vocabolario non ha `attivo`, un tipo c'e' o non c'e'.
+    def _formati_del_tipo_asset(self, asset_tipo_id: int) -> list[dict[str, Any]]:
         row = self._repo.get_tipo_asset(asset_tipo_id)
         if row is None:
             ErrorManager.raise_error(
@@ -356,30 +333,8 @@ class TemplateAssetAdminService:
                 message="asset_tipo_id non valido.",
                 detail=f"asset_tipo_id={asset_tipo_id}",
             )
-        if not row["attivo"]:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message="Tipo asset non attivo.",
-                detail=f"asset_tipo_id={asset_tipo_id}",
-            )
-        return row["codice_interno"]
-
-    # Scopo: Verifica MIME contro whitelist per il tipo. ALTRO e qualsiasi
-    #        tipo non in whitelist sono rifiutati: niente upload generico.
-    def _guard_mime_for_tipo(self, codice_tipo: str, mime: str) -> None:
-        whitelist = _MIME_WHITELIST_PER_TIPO.get(codice_tipo)
-        if whitelist is None:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message=f"Tipo asset '{codice_tipo}' non ammesso per upload.",
-                detail=f"tipi_ammessi={sorted(_MIME_WHITELIST_PER_TIPO.keys())!r}",
-            )
-        if mime not in whitelist:
-            ErrorManager.raise_error(
-                code=E_VALIDATION,
-                message=f"MIME '{mime}' non valido per tipo asset '{codice_tipo}'.",
-                detail=f"mime_ammessi={sorted(whitelist)!r}",
-            )
+        assert row is not None
+        return list(row.get("formati") or [])
 
     # Scopo: Verifica che `emittente_fiscale_id` sia nello scope dell'utente.
     #        Helper centralizzato in `apps.documenti.services._scope` per
@@ -391,16 +346,16 @@ class TemplateAssetAdminService:
     ) -> None:
         guard_emittente_in_scope_for_user(user, emittente_fiscale_id)
 
-    # Scopo: Estrae estensione lower-case da file_name; fallback su MIME.
-    def _resolve_extension(self, file_name: str, mime: str) -> str:
+    # Scopo: Estrae estensione lower-case da file_name; ripiego
+    #        sull'estensione del formato (dal DB), poi `bin`.
+    def _resolve_extension(
+        self, file_name: str, mime: str, formati: list[dict[str, Any]],
+    ) -> str:
         _, ext = os.path.splitext(file_name or "")
         ext = ext.lstrip(".").lower().strip()
         if ext and ext.isalnum() and len(ext) <= 10:
             return ext
-        fallback = _MIME_EXT_FALLBACK.get(mime)
-        if fallback:
-            return fallback
-        return "bin"
+        return estensione_del_formato(formati, mime) or "bin"
 
     # Scopo: Sanitizza il file_name fornito dal client. Trim + rimuove path
     #        separator per evitare iniezione nello storage_key (anche se

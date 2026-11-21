@@ -179,12 +179,13 @@ Errori:
       "emittente_fiscale_id": null,
       "emittente_fiscale_codice": null,
       "emittente_ragione_sociale": null,
-      "is_default": true,
       "pagina_dimensione": 25,
       "ordinamento_default": [{"col": "ragione_sociale", "dir": "asc"}],
       "filtri_default": {"attivo": true},
       "attivo": true,
       "colonne_count": 14,
+      "nata_dal_seed": true,
+      "campi_del_software": ["lista_id", "codice", "ambito", "profilo_accesso_id", "emittente_fiscale_id"],
       "data_insert": "2026-05-07T10:30:00",
       "user_insert": "tid",
       "data_update": null,
@@ -208,6 +209,16 @@ denormalizzati via LEFT JOIN: `null` se l'ambito non li valorizza.
 
 `colonne_count` e' il numero di righe in `ui.lista_preset_colonna` per
 quel preset (subquery nello stesso ROUND-TRIP).
+
+`nata_dal_seed` / `campi_del_software` — la superficie del seed di primo
+impianto (dal 2026-11-20, R-UI-sup del §16.15 di
+brief-db-seed-primo-impianto-non-si-riscrive), letta da
+`dbops.fn_seed_superficie` in `LEFT JOIN LATERAL`. Le portano anche le
+liste e i dettagli di definizioni e colonne (rotte 12, 14, 17, 19). Su una
+riga nata dal seed `campi_del_software` elenca le colonne che il programma
+stabilisce (il guard rifiuta di cambiarle); altrimenti è vuoto, mai `null`.
+⭐ Nessun elenco di colonne nel backend: lo dà il DB, e il frontend spegne il
+cestino e quei campi col motivo.
 
 Errori:
 
@@ -234,7 +245,6 @@ Errori:
   "ambito": "sistema",
   "profilo_accesso_id": null,
   "emittente_fiscale_id": null,
-  "is_default": true,
   "pagina_dimensione": 25,
   "ordinamento_default": [{"col": "ragione_sociale", "dir": "asc"}],
   "filtri_default": {"attivo": true},
@@ -243,7 +253,7 @@ Errori:
 ```
 
 Whitelist payload: `lista_id`, `codice`, `descrizione`, `ambito`,
-`profilo_accesso_id`, `emittente_fiscale_id`, `is_default`,
+`profilo_accesso_id`, `emittente_fiscale_id`,
 `pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo`.
 `lista_id` viene dal path: il valore in body e' sovrascritto dalla view.
 
@@ -258,9 +268,9 @@ Vincoli:
   - `ruolo` → `profilo_accesso_id` NOT NULL, `emittente_fiscale_id` NULL
   - `emittente_fiscale` → `emittente_fiscale_id` NOT NULL,
     `profilo_accesso_id` NULL
-- `is_default` (bool stretto) — default `false`. Partial UNIQUE su
-  `(lista_id, ambito, COALESCE(profilo_accesso_id,0), COALESCE(emittente_fiscale_id,0))
-   WHERE is_default = TRUE` permette **un solo** default per scope
+- ⛔ `is_default` non esiste più (dal 2026-11-20, Q26 di
+  brief-db-revisione-ui): un preset vale se è **acceso**, e la chiave nel
+  payload è un `400` della whitelist
 - `pagina_dimensione` (int o `null` = «il default») — una delle misure del
   catalogo `ui.misure_pagina`. Il backend ne controlla solo la forma: una
   misura fuori catalogo la rifiuta il DB (guard + FK) con
@@ -270,7 +280,12 @@ Vincoli:
   al default)
 - `ordinamento_default` (lista o null) / `filtri_default` (oggetto o
   null) — formato trasparente al BE
-- `attivo` (bool stretto) — default `true`
+- `attivo` (bool stretto) — default `false`: la bozza nasce spenta, si
+  compone e poi si accende. ⭐ Un posto (lista, ambito, profilo, azienda) ha
+  al più **un** preset acceso: l'UNIQUE parziale `uq_ui_lista_preset_posto`
+  (`NULLS NOT DISTINCT WHERE attivo`) rifiuta il secondo, e il service lo
+  traduce in `400 E_UI_PRESET_VALIDAZIONE` sul campo `attivo` («spegni prima
+  quello acceso», BE23)
 
 #### Output
 
@@ -282,7 +297,7 @@ Errori:
 - `400` `E_IDEMPOTENCY_KEY_REQUIRED` — header mancante
 - `400` `E_UI_PRESET_VALIDAZIONE` — payload invalido (chiavi extra,
   tipi non corretti, ambito sconosciuto, refs incoerenti con CHECK,
-  UNIQUE codice violato, partial UNIQUE default violato)
+  UNIQUE codice violato, un secondo preset acceso nello stesso posto)
 - `404` `E_UI_LISTA_NON_TROVATA`
 
 ---
@@ -296,8 +311,11 @@ Errori:
 - Header sicurezza: `Authorization: Bearer <access_token>`
 - Body JSON: subset dei campi mutabili presenti nel payload.
 
-Whitelist update: `codice`, `descrizione`, `is_default`,
+Whitelist update: `codice`, `descrizione`,
 `pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo`.
+
+Su un preset nato dal seed, `codice` è una colonna del programma: il guard
+risponde `409 E_SEED_COLONNA_DEL_SOFTWARE` col campo acceso (R-UI2).
 
 Campi **immutabili** (rifiutati con `E_UI_PRESET_VALIDAZIONE` se
 presenti nel payload, prima della validazione altri campi):
@@ -310,9 +328,12 @@ Per cambiare ambito o riferimenti si crea un nuovo preset.
 
 Errori:
 
-- `400` `E_UI_PRESET_VALIDAZIONE` — payload invalido o campi immutabili
+- `400` `E_UI_PRESET_VALIDAZIONE` — payload invalido o campi immutabili,
+  o un secondo preset acceso nello stesso posto (campo `attivo`)
 - `400` — payload vuoto (`Nessun campo aggiornabile presente`)
 - `404` `E_UI_PRESET_NON_TROVATO`
+- `409` `E_SEED_COLONNA_DEL_SOFTWARE` — una colonna del programma su un
+  preset nato dal seed
 
 ---
 
@@ -341,6 +362,8 @@ Effetti collaterali (FK):
 Errori:
 
 - `404` `E_UI_PRESET_NON_TROVATO`
+- `409` `E_SEED_RIGA_NON_CANCELLABILE` — il preset è nato dal seed di primo
+  impianto: si spegne, non si cancella (R-UI1)
 
 ---
 
@@ -575,6 +598,18 @@ ignorata. I booleani devono essere booleani JSON. Il `PATCH` vuole almeno un
 campo (`require_campi_da_aggiornare`) e lavora per delta. `POST` con
 `Idempotency-Key` obbligatoria. Create e `PATCH` rispondono il dettaglio;
 `DELETE` risponde `{"deleted": true, "id": <id>}`.
+
+**Righe nate dal seed di primo impianto** (dal 2026-11-20, R-UI1 e R-UI2
+del §16.15 di brief-db-seed-primo-impianto-non-si-riscrive). Il `DELETE` di
+una definizione o di una colonna di seed è un `409
+E_SEED_RIGA_NON_CANCELLABILE` (si spegne con `PATCH attivo=false`); il
+`PATCH` di una colonna del programma è un `409 E_SEED_COLONNA_DEL_SOFTWARE`
+col campo acceso. Sulla definizione sono `codice`, `descrizione`,
+`schema_dati`, `vista_sql`; sulla colonna `codice`, `campo_sorgente`,
+`tipo_colonna`, `tipo_dato`, `formato`, i flag di comportamento e
+`etichetta_i18n_key` — ma l'elenco vero è `campi_del_software` della riga.
+I codici li traduce il middleware dalla policy generata: il service non li
+mappa.
 
 | # | Rotta | Corpo / risposta | Errori |
 | --- | --- | --- | --- |

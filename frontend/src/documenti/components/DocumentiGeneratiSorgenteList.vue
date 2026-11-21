@@ -99,11 +99,11 @@ watch(
   },
 )
 
-// Scopo: Severity stato applicativo documento (DDL CHECK chiuso v1).
+// Scopo: Severity stato applicativo della stampa. Lo stato e' solo
+//        GENERATO: ARCHIVIATO e ANNULLATO sono usciti dal CHECK il 2026-11-16
+//        (D7 di brief-db-revisione-documenti, una stampa e' storia).
 function statoSeverity(stato) {
   if (stato === 'GENERATO') return 'info'
-  if (stato === 'ARCHIVIATO') return 'success'
-  if (stato === 'ANNULLATO') return 'danger'
   return 'secondary'
 }
 
