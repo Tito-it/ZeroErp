@@ -22,7 +22,7 @@ SELECT t.id AS template_documento_id,
     t.standard,
     t.is_default
    FROM (documenti.template_documenti t
-     JOIN documenti.template_documenti_versioni v ON (((v.template_documento_id = t.id) AND ((v.stato)::text = ANY ((ARRAY['PUBBLICATA'::character varying, 'OBSOLETA'::character varying])::text[])) AND v.attivo AND (v.validita @> ( SELECT script.fn_data_operativa() AS fn_data_operativa)))))
+     JOIN documenti.template_documenti_versioni v ON (((v.template_documento_id = t.id) AND ((v.stato)::text = ANY (ARRAY[('PUBBLICATA'::character varying)::text, ('OBSOLETA'::character varying)::text])) AND v.attivo AND (v.validita @> ( SELECT script.fn_data_operativa() AS fn_data_operativa)))))
   WHERE t.attivo;
 ```
 

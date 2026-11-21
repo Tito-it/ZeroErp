@@ -76,25 +76,25 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_template_documenti_versioni_a04_assegna_numero_ins | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_assegna_numero()` |
-| trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
 | trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
 | trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
-| trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()` |
+| trg_template_documenti_versioni_a05_guard_standard_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_standard_guard_sola_lettura()` |
 | trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()` |
+| trg_template_documenti_versioni_a05_protect_pubblicata_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_protect_pubblicata()` |
 | trg_template_documenti_versioni_a10_block_delete_protected_dlt | BEFORE | DELETE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_block_delete()` |
 | trg_template_documenti_versioni_a10_date_validita_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_documenti_versioni_a10_date_validita_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_date_validita()` |
 | trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()` |
 | trg_template_documenti_versioni_a10_guard_derivata_da_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_template_documenti_versioni_guard_derivata_da()` |
 | trg_template_documenti_versioni_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('versione', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
 | trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
-| trg_template_documenti_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_template_documenti_versioni_a10_template_documenti_r_6d5768 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('documenti', 'template_documenti', 'attivo', 'template_documento_id', 'id')` |
 | trg_template_documenti_versioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_template_documenti_versioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_template_documenti_versioni_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_documenti_versioni_id')` |
+| trg_template_documenti_versioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_template_documenti_versioni_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_documenti_versioni_id')` |
+| trg_template_documenti_versioni_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('template_documenti_versioni_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

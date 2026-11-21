@@ -228,7 +228,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
   Django orchestra ed espone le API; Vue fa solo presentazione.
 - Struttura: `backend/`, `frontend/`, migrazioni DB in `db/changelog/migrations_v2/`, pgTAP in `db/pgtap/`.
 - Lingua: it-IT per documentazione e commenti (Python, SQL, JS).
-- Stack: Python + Django, PostgreSQL 18, Liquibase 5, pgTAP, Vue 3.
+- Stack: Python + Django, PostgreSQL 19, Liquibase 5, pgTAP, Vue 3.
   ⛔ **Le versioni non si ricopiano nei documenti**: si leggono dalla fonte.
   *Un numero scritto in due posti ne ha sempre uno stantio, e quello senza
   presidio è il documento.*
