@@ -22,10 +22,11 @@ AS $function$
 DECLARE
     v_misura ui.misure_pagina.misura%TYPE;
 BEGIN
+    -- Sul testo dell'enum: un uso fuori vocabolario non trova la riga.
     SELECT m.misura
       INTO v_misura
       FROM ui.misure_pagina m
-     WHERE m.uso_default = p_uso;
+     WHERE m.uso_default::text = p_uso;
 
     IF v_misura IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -40,7 +41,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_misura_pagina_default(p_uso character varying)
-IS 'La misura «righe per pagina» di default per un uso (COMPATTA: drawer e dialog; PAGINA: pagine e ripiego del resolver delle liste), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default (o l''uso e'' fuori vocabolario) solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_resolve_lista_config e ui.fn_get_misure_pagina. STABLE, INVOKER. Brief: brief-db-misure-pagina-catalogo §2.';
+IS 'La misura «righe per pagina» di default per un uso (ui.uso_misura_pagina: COMPATTA, drawer e dialog; PAGINA, pagine), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default, o l''uso è fuori vocabolario, solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_get_misure_pagina, ui.fn_resolve_lista_config (col default dell''uso della lista) e il trigger differito del catalogo, che a fine transazione pretende un default per ogni uso. STABLE, INVOKER.';
 ```
 
 </div>

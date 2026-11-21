@@ -68,7 +68,8 @@ questi livelli che la contiene:
 1. **la preferenza dell'utente**, se ha quella chiave (una chiave null vale come assente);
 2. **il preset di base**;
 3. **il catalogo**: tutte le colonne accese, visibili, con l'identificatore fissato; la misura di
-   default `PAGINA`.
+   default dell'uso della lista (`COMPATTA` o `PAGINA`, dichiarato da
+   [lista_definizione](/dbzero/ui/tabelle/lista_definizione)).
 
 Il preset di base si cerca sempre, anche quando c'è una preferenza: dà le chiavi che la
 preferenza non ha. Lo sceglie [fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base), la sede
@@ -99,7 +100,8 @@ flowchart TD
 ### Le righe per pagina e lo standard
 
 Per `pagina_dimensione` vale solo una misura del catalogo. Lo **standard** è la misura del preset
-di base se è nel catalogo, altrimenti il default `PAGINA`. Risponde la misura della preferenza se
+di base se è nel catalogo, altrimenti il default del catalogo per l'uso della lista: una lista che
+si mostra in un drawer parte dalla misura compatta. Risponde la misura della preferenza se
 è nel catalogo, altrimenti lo standard. Il risultato porta anche lo standard da solo, perché il
 frontend lo mostra come «come lo standard (N)». La misura che risponde non è mai vuota.
 
@@ -190,7 +192,8 @@ sono spenti.
 ### Codici errore
 
 * `E_UI_LISTA_NON_TROVATA` — lista inesistente o spenta (dal building block della lista).
-* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — il catalogo delle misure non ha il default `PAGINA`.
+* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — il catalogo delle misure non ha il default dell'uso della
+  lista.
 
 ---
 
@@ -212,6 +215,8 @@ sono spenti.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — `preset_base` nel risultato, `preset_base_cambiato`
   quando la base salvata è un'altra, `preset_aggiornato` solo sulla base di oggi.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura sempre del catalogo.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — il ripiego sul default dell'uso della lista,
+  `PAGINA` e `COMPATTA`, con l'origine `catalogo`.
 * `db/pgtap/ui/test-lista-ricerca-min-caratteri-v1.sql`,
   `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql`,
   `db/pgtap/ui/test-lista-definizione-perimetro-emittente-v1.sql` — le proprietà della lista nel
@@ -244,6 +249,8 @@ sono spenti.
   partenza sono dell'interfaccia. Prima passavano così com'erano scritti, anche con colonne spente o
   bloccate per l'utente. Nello stesso giorno la lettura smette di cadere su una preferenza malformata, e
   le colonne nuove non si spengono più per una voce senza codice.
+* 2026-11-21 — senza preferenza né preset la misura è il default dell'uso della lista: prima sempre
+  il default `PAGINA`, e una lista compatta aveva il 10 scritto nel preset.
 
 ---
 

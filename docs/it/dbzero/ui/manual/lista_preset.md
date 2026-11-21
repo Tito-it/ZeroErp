@@ -94,9 +94,10 @@ pagina.
   ordinabili o bloccate per lui.
 * I filtri di partenza non sono del preset: li decide l'interfaccia di ogni lista.
 * `pagina_dimensione` è una misura del catalogo
-  [misure_pagina](/dbzero/ui/tabelle/misure_pagina) (FK e guard). Vuota vale il default `PAGINA`
-  del catalogo, ma la colonna ha un `DEFAULT` proprio di 25: un preset che nasce senza indicarla
-  ha 25 scritto, non «vuoto».
+  [misure_pagina](/dbzero/ui/tabelle/misure_pagina) (FK e guard). Vuota vale lo standard: il
+  default del catalogo per l'uso della lista (`COMPATTA` o `PAGINA`, dichiarato da
+  [lista_definizione](/dbzero/ui/tabelle/lista_definizione)). La colonna non ha un default
+  proprio: un preset che nasce senza indicarla segue il catalogo.
 
 ---
 
@@ -144,13 +145,6 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Il `DEFAULT` 25.** È una seconda sede del default `PAGINA` del catalogo: se il default del
-  catalogo cambia, i preset nati senza misura restano a 25.
-
----
-
 ### Codici errore
 
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` fuori dal catalogo delle misure.
@@ -173,6 +167,8 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
   acceso nello stesso posto rifiutato, uno spento accettato.
 * `db/pgtap/ui/test-liste-preset-default-v1.sql` — ogni lista del seed ha il suo preset di sistema.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — audit NOT NULL, eccezioni ATTIVO, trigger del contenuto.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — un preset senza misura scrive NULL e segue
+  l'uso della lista.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura del preset nel catalogo.
 * `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — la forma dell'ordinamento, l'ordinamento
   risolto per l'utente, la data del contenuto con le sole chiavi `colonne` e `pagina_dimensione`, la

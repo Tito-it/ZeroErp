@@ -102,6 +102,17 @@ schermata e la ricerca del backend, lo prendono dalla stessa riga, attraverso
 
 ---
 
+### Dove si mostra la lista: la sua misura di partenza
+
+`uso_misura` dice dove la lista si mostra: `COMPATTA` in un drawer o in un dialog, `PAGINA` in una
+pagina intera, che è il default. Il vocabolario è quello del catalogo delle misure
+([misure_pagina](/dbzero/ui/tabelle/misure_pagina), l'enum `ui.uso_misura_pagina`): quando né la
+preferenza dell'utente né il preset di base dicono quante righe per pagina, la lista risponde il
+default del catalogo per il suo uso. Lo dichiara il CSV del seed, ed è una colonna del software:
+sulle liste nate dal seed l'installazione non la cambia.
+
+---
+
 ### ⚠️ Spegnere una lista chiede prima di spegnerne colonne e preset
 
 Una lista spenta non esiste per chi la cerca: `fn_lista_da_codice` risponde
@@ -163,6 +174,8 @@ rifiuto arriva come violazione di vincolo.
   e l'elenco per nome delle liste che cercano da 1.
 * `db/pgtap/script/test-fn-is-proprietario-tabella-v1.sql` — il guard del contrassegno rifiuta
   l'applicazione anche quando lo spegne.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — l'uso dichiarato e il ripiego della misura
+  sul suo default.
 
 Gli elenchi per nome valgono anche come regola: chi aggiunge o toglie dal seed una lista globale,
 certificata o che cerca da 1 scrive il nome nel test nello stesso giro.
@@ -177,6 +190,8 @@ certificata o che cerca da 1 scrive il nome nel test nello stesso giro.
   in un CSV a parte.
 * 2026-09-25 — nasce `ricerca_min_caratteri`.
 * 2026-09-27 — la vista si cerca nel suo schema, non più per solo nome.
+* 2026-11-21 — nasce `uso_misura`: la lista dichiara dove si mostra, e la misura ripiega sul default
+  di quell'uso.
 
 ---
 

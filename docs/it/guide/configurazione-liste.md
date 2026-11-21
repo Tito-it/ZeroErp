@@ -141,7 +141,7 @@ Un preset porta:
   sinistra, non scrollano)
 * l'**ordinamento** di partenza: da quali colonne la lista parte ordinata, e in che verso
 * le **righe per pagina**, scelte fra le misure del catalogo (§2.6); vuoto vuol dire
-  «la misura di default»
+  «la misura di default» per il tipo di lista
 
 I **filtri** di partenza non sono del preset: li decide la schermata di ogni lista.
 
@@ -205,10 +205,16 @@ torna allo standard.
 
 Le misure che il selettore sotto ogni lista offre («righe per pagina») stanno in un
 catalogo solo, insieme a due default: uno per le liste a pagina intera e uno per le
-liste compatte nei drawer e nei dialog. Preset e preferenze possono dichiarare solo
-una misura del catalogo, e la lista risponde **sempre** una misura del catalogo: una
-misura salvata e poi tolta dal catalogo smette di valere, e torna lo standard. Il
-dettaglio è in [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
+liste compatte nei drawer e nei dialog. Il catalogo ha sempre tutti e due i default.
+Ogni lista dichiara di quale dei due tipi è, e quando né il preset né la preferenza
+dicono la misura parte dal default del suo tipo: le righe di un documento, aperte in
+un drawer, partono dalla misura compatta.
+
+Preset e preferenze possono dichiarare solo una misura del catalogo, e la lista
+risponde **sempre** una misura del catalogo. Quando una misura si toglie dal catalogo,
+esce anche dalle preferenze che la usavano, e quegli operatori tornano allo standard.
+Una misura non si cambia di valore: se ne aggiunge una nuova. Il dettaglio è in
+[ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
 
 ---
 
@@ -228,7 +234,7 @@ le colonne e le righe per pagina — prendendola dal primo livello che la contie
    Un preset senza colonne attive non conta, a nessun livello: la cascata passa al
    successivo, e da quel preset non prende nemmeno le righe per pagina o l'ordinamento.
 3. Altrimenti, il **catalogo grezzo**: tutte le colonne attive, visibili, nell'ordine
-   di catalogo, e la misura di default
+   di catalogo, e la misura di default per il tipo di lista
 
 Così una preferenza che tocca solo le colonne non congela le righe per pagina del preset.
 

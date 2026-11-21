@@ -74,3 +74,8 @@ databaseChangeLog:
               # la leggono il risolutore delle liste e il BB di ricerca del BE.
               # Brief: brief-db-be-fe-ricerca-soglia-per-lista, sezione 4.2.
               - column: { name: ricerca_min_caratteri, type: NUMERIC }
+              # Dove si mostra la lista (colonna da 20261120-36, brief-db-revisione-ui
+              # giro 3, Q11 e Q44): COMPATTA sulle liste di righe aperte in un drawer o
+              # in un dialog, PAGINA sulle altre (default della colonna). Il resolver
+              # ripiega sul default di questo uso. Colonna del software (Q46).
+              - column: { name: uso_misura, type: STRING }

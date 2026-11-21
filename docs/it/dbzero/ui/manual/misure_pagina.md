@@ -17,6 +17,8 @@
 > * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — la misura di default per un uso
 > * [ui.fn_guard_misura_pagina](/dbzero/ui/funzioni/fn_guard_misura_pagina) — il rifiuto di una misura fuori catalogo
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — la lista risponde sempre una misura del catalogo
+> * [ui.trgfn_misure_pagina_guard_default_per_uso](/dbzero/ui/funzioni/trgfn_misure_pagina_guard_default_per_uso) — a fine transazione, un default per ogni uso
+> * [ui.trgfn_misure_pagina_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_misure_pagina_ritira_dalle_preferenze) — la misura ritirata esce dalle preferenze
 >
 > Guide:
 >
@@ -38,20 +40,24 @@ preferenze delle liste configurabili possono dichiarare solo una di queste misur
 ### Una riga per misura, e la misura è la chiave
 
 La misura (quante righe) è unica e positiva, ed è la chiave con cui gli altri la citano: il preset
-di una lista punta al numero, non all'`id`. Una misura non si riscrive: se ne aggiunge una, o se ne
-toglie una.
+di una lista punta al numero, non all'`id`. Una misura non si riscrive, e un lucchetto di colonna lo impone
+(`E_UI_MISURA_PAGINA_IMMUTABILE`): una misura nuova è una riga nuova, e la vecchia si toglie.
 
 ---
 
-### Due default, al più uno per uso
+### Un default per ogni uso
 
-`uso_default` dice se la riga è il default di un uso:
+`uso_default` dice se la riga è il default di un uso. Gli usi sono un vocabolario chiuso, l'enum
+`ui.uso_misura_pagina`, lo stesso con cui ogni lista dichiara dove si mostra
+([lista_definizione](/dbzero/ui/tabelle/lista_definizione), `uso_misura`):
 
 * `COMPATTA` — liste nei drawer e nei dialog;
-* `PAGINA` — liste a pagina intera, e il ripiego della lista configurabile quando né la preferenza né
-  il preset dichiarano una misura.
+* `PAGINA` — liste a pagina intera.
 
-Una riga senza uso è una misura solo offerta. Ogni uso sta su al più una riga. Il default si legge
+Una riga senza uso è una misura solo offerta. Ogni uso sta su **esattamente una** riga: al più una
+la garantisce l'indice unico, almeno una un trigger differito, che a fine transazione rifiuta un
+catalogo rimasto senza il default di un uso. Spostare un default da una misura a un'altra si fa
+quindi in una transazione sola: togliere l'uso da una riga e darlo all'altra. Il default si legge
 con [fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default), che non risponde mai
 vuoto: un uso senza riga è un catalogo rotto, e la funzione solleva.
 
@@ -63,10 +69,12 @@ vuoto: un uso senza riga è un catalogo rotto, e la funzione solleva.
   codice parlante. Nessuna misura vuol dire «il default».
 * **La preferenza di una persona** porta la misura dentro un campo JSONB: una FK non ci arriva, e la
   controlla alla scrittura il guard di forma della preferenza
-  ([trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma)).
+  ([trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma)). Quando una
+  misura si toglie dal catalogo, esce anche dalle preferenze che la citano: il resto della
+  preferenza resta, e la persona torna allo standard.
 * **La lista configurabile**, quando si apre, risponde sempre una misura del catalogo: quella della
   preferenza se è nel catalogo, altrimenti quella del preset di base se è nel catalogo, altrimenti il
-  default `PAGINA`.
+  default dell'uso della lista (`COMPATTA` o `PAGINA`).
 * **Tutti i paginatori**, anche quelli che non sono liste configurabili, leggono misure e default
   con [fn_get_misure_pagina](/dbzero/ui/funzioni/fn_get_misure_pagina).
 
@@ -83,32 +91,17 @@ misura nasce, si sposta di uso o si toglie con un changeSet.
 
 `ui.dashboard_preset.dimensione_max` e la `dimensione_max` della preferenza di dashboard non sono
 misure di questo catalogo. Non dicono quante righe offre un paginatore, ma **quante card al più** la
-dashboard mostra: un tetto, non una voce di un menu. Il catalogo non le controlla: il tetto da 1 a 100
-della preferenza lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa).
+dashboard mostra: un tetto, non una voce di un menu. Il catalogo non le controlla: il tetto da 1 a 100,
+per il preset e per la preferenza, lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa).
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Una misura citata da una preferenza si toglie.** La FK arriva solo dai preset: togliere dal
-  catalogo, o riscrivere, una misura che sta solo nelle preferenze riesce, e la preferenza resta con
-  una misura che non c'è più. La lista la scarta in lettura e risponde lo standard; ma il guard della
-  preferenza rifiuta ogni modifica della configurazione che conservi quella misura, anche se tocca
-  soltanto le colonne.
-* **La misura si riscrive.** Nessun lucchetto ferma l'UPDATE di `misura`: se nessun preset la cita
-  passa, le preferenze che la citavano restano orfane e l'uso di default segue la riga sul numero
-  nuovo.
-* **Il catalogo può restare senza un default.** Il vincolo dice «al più una riga per uso», non
-  «esattamente una»: togliere la riga del default, o il suo uso, riesce, e da quel momento ogni
-  lettura delle misure solleva `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE`, con tutti i paginatori.
 * **Una misura citata da un preset non si toglie, ma col 23503 grezzo** della FK, senza un codice di
-  catalogo.
-* **Il default `PAGINA` non sta solo qui.** `ui.lista_preset.pagina_dimensione` ha come default di
-  colonna un numero scritto: un preset inserito senza la misura nasce con quel numero e non con
-  «nessuna misura», quindi non segue più il default del catalogo; e il backend ha una sua costante
-  per le chiamate API senza misura.
-* **Il default `COMPATTA` non arriva alle liste configurabili.** Il ripiego della lista è sempre
-  `PAGINA`: una lista configurabile mostrata compatta ha la misura scritta nel suo preset.
+  catalogo. Il catalogo lo scrive solo un changeSet, e chi lo scrive legge la FK.
+* **Il backend ha una sua costante** per le chiamate API fuori dalle liste configurabili, che non
+  passano da questo catalogo.
 
 ---
 
@@ -116,7 +109,9 @@ della preferenza lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dime
 
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — un preset o una preferenza con una misura fuori catalogo, o con
   un valore che non è un numero intero.
-* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — il catalogo non ha il default chiesto.
+* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — il catalogo non ha il default chiesto: alla lettura, o a
+  fine transazione quando una scrittura lascia un uso senza default.
+* `E_UI_MISURA_PAGINA_IMMUTABILE` — si riscrive una misura.
 * Il `DELETE` o l'UPDATE di una misura citata da un preset arriva come violazione della FK
   `fk_lista_preset_misure_pagina`.
 
@@ -127,6 +122,9 @@ della preferenza lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dime
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — un default per uso, la lettura unica, il rifiuto di
   preset e preferenze fuori catalogo, il resolver che risponde la misura scelta, i permessi
   dell'applicazione.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — un default per ogni uso (lo spostamento in una
+  transazione), la misura che non si riscrive, il ritiro che esce dalle preferenze, il ripiego
+  sull'uso della lista, i preset senza default di colonna.
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — la misura per chiave:
   preferenza, preset di base, default `PAGINA`.
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — la misura del preset e della preferenza nella
@@ -140,6 +138,9 @@ della preferenza lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dime
   numero ripetuto nella funzione che risolve le liste, e nessuno rifiutava una misura fuori elenco.
 * 2026-11-01 — la lista risponde la misura per chiave: la preferenza, poi il preset di base, poi il
   default.
+* 2026-11-21 — l'uso diventa un vocabolario condiviso con le liste, che dichiarano il proprio; il
+  catalogo ha sempre un default per uso, la misura non si riscrive, e il ritiro di una misura esce
+  dalle preferenze.
 
 ---
 

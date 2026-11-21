@@ -86,8 +86,10 @@ $$;
 -- ============================================================
 -- 1-3 Il catalogo
 -- ============================================================
+-- uso_default e' l'enum ui.uso_misura_pagina (brief-db-revisione-ui, giro 3, Q44):
+--   un enum non ha collation, si ordina sul testo.
 SELECT is(
-    (SELECT string_agg(format('%s=%s', m.uso_default, count), ',' ORDER BY m.uso_default COLLATE "C")
+    (SELECT string_agg(format('%s=%s', m.uso_default, count), ',' ORDER BY m.uso_default::text COLLATE "C")
        FROM (SELECT uso_default, count(*) FROM ui.misure_pagina WHERE uso_default IS NOT NULL
               GROUP BY uso_default) m),
     'COMPATTA=1,PAGINA=1',
