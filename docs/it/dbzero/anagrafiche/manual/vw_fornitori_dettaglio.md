@@ -7,16 +7,21 @@ Approfondimento tabelle:
 > • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
 > • [config.stati_fornitore](/dbzero/config/tabelle/stati_fornitore)
 > • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)
+> • [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali)
 
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+(rev 2026-11-21)
 
 Dettaglio completo del fornitore in una riga sola: anagrafica del soggetto,
-stato (con il flag `blocca_ordini`), condizioni di pagamento (valuta, modalità, termine,
-giorni, fine mese), regime fiscale (split payment, ritenuta d'acconto e aliquota, bollo,
-regime, canale FE, PEC) e i due campi di qualifica (`rating`, `qualifica_scadenza`).
+stato (con il flag `blocca_ordini`), condizioni di pagamento (valuta, modalità, termine),
+fiscale (ritenuta d'acconto e aliquota; il regime col suo codice RF, `regime_fiscale_rf`, e
+la descrizione del catalogo, `regime_fiscale_descrizione`) e i due campi di qualifica
+(`rating`, `qualifica_scadenza`).
+
+Split payment e instradamento della fatturazione elettronica non sono qui: sono del
+soggetto, per ogni suo ruolo. È anche la sorgente della lista configurabile dei fornitori.
 
 È la superficie di **dettaglio**, non di lista: espone tutto ciò che serve a compilare la
 scheda fornitore senza una seconda chiamata.
@@ -29,7 +34,7 @@ scheda fornitore senza una seconda chiamata.
 prime superfici stabili di un dominio ancora agli inizi, ed è già consumata dal backend.
 
 Va letta con quella consapevolezza: **espone colonne che il ciclo acquisti non usa ancora**
-(rating, scadenza qualifica, canale FE), predisposte perché il modello le prevede. La loro
+(rating, scadenza qualifica), predisposte perché il modello le prevede. La loro
 presenza non significa che a monte ci sia un processo che le mantiene.
 
 ---
@@ -58,7 +63,8 @@ ricordarsi di aggiungere qui `security_invoker`, e non lo scoprirà da un test r
   Chi apre un ordine deve controllarlo, la vista non lo fa per lui.
 * **Nessuna riga per un fornitore senza soggetto**: `soggetti_ruoli` e `soggetti` sono legati
   con `JOIN` interno. Tutto il resto (stato, valuta, modalità e termine di pagamento) è
-  `LEFT JOIN`, quindi un riferimento mancante lascia `NULL` senza far sparire il fornitore.
+  `LEFT JOIN`, quindi un riferimento mancante lascia `NULL` senza far sparire il fornitore. Lo
+  stesso vale per il regime: senza regime, codice e descrizione sono `NULL`.
 
 ---
 

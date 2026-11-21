@@ -6,19 +6,23 @@
 -- Scope: verifica che migration 20260524-11/12 + aggiornamenti CSV
 --        abbiano prodotto lo stato atteso nel DB.
 --
--- Indice test (1..12):
+-- Indice test (1..14):
 --   1.  Vista vw_fornitori_dettaglio ha id_fiscale_univoco_cf_piva
 --   2.  Lista anagrafiche.fornitori presente in lista_definizione
 --   3.  vista_sql della lista = vw_fornitori_dettaglio
---   4.  Esattamente 15 colonne attive nel catalogo fornitori
+--   4.  Esattamente 10 colonne attive nel catalogo fornitori
 --   5.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
---   6.  Colonne con tipo_dato='boolean' hanno formato='yesno' (split_payment + ritenuta_acconto)
+--   6.  Colonne con tipo_dato='boolean' hanno formato='yesno' (solo ritenuta_acconto)
 --   7.  Preset fornitori_default presente e acceso
 --   8.  Preset fornitori_default: pagina_dimensione=50, ambito=sistema
 --   9.  Esattamente 7 colonne nel preset fornitori_default
 --   10. Tutte le 7 colonne del preset hanno visibile=true
 --   11. Colonna codice ha fissata=true nel preset
 --   12. Il preset mostra id_fiscale (CF/PIVA unificato), NON codice_fiscale
+--   13. Le tre colonne dei doppioni del soggetto (pec_email, canale_fe,
+--       split_payment) non sono nel catalogo, nemmeno spente (20261121-01)
+--   14. La colonna regime_fiscale legge regime_fiscale_rf, il codice RF della
+--       vista (20261121-03/-05)
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -37,7 +41,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(14);
 
 -- =========================================================
 -- 1. Vista vw_fornitori_dettaglio ha id_fiscale_univoco_cf_piva
@@ -76,7 +80,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 4. Esattamente 15 colonne attive nel catalogo fornitori
+-- 4. Esattamente 10 colonne attive nel catalogo fornitori
 -- =========================================================
 SELECT is(
     (
@@ -96,8 +100,11 @@ SELECT is(
     --    seed: il test passava per la divergenza, non nonostante.
     --    Emerso il 2026-08-02, quando una modifica non correlata allo stesso
     --    CSV ha fatto ri-girare il loader `runOnChange` e riallineato il DB.
-    13,
-    '4. Catalogo fornitori: esattamente 13 colonne attive (id_fiscale unisce CF e P.IVA)'
+    -- Da 13 a 10 il 2026-11-21 (20261121-01): escono pec_email, canale_fe e
+    --    split_payment, doppioni del soggetto (brief-db-fornitore-doppioni-
+    --    del-soggetto, giro A).
+    10,
+    '4. Catalogo fornitori: esattamente 10 colonne attive (id_fiscale unisce CF e P.IVA)'
 );
 
 -- =========================================================
@@ -116,7 +123,8 @@ SELECT is(
 );
 
 -- =========================================================
--- 6. Colonne boolean hanno formato='yesno' (split_payment e ritenuta_acconto)
+-- 6. Colonne boolean hanno formato='yesno' (resta ritenuta_acconto:
+--    split_payment e' uscito il 2026-11-21, 20261121-01)
 -- =========================================================
 SELECT is(
     (
@@ -127,8 +135,8 @@ SELECT is(
            AND lc.tipo_dato = 'boolean'
            AND lc.formato   = 'yesno'
     ),
-    2,
-    '6. Colonne boolean (split_payment, ritenuta_acconto): formato = yesno'
+    1,
+    '6. Colonne boolean (ritenuta_acconto): formato = yesno'
 );
 
 -- =========================================================
@@ -238,6 +246,40 @@ SELECT ok(
            AND lc.codice = 'codice_fiscale'
     ),
     '12. Preset fornitori_default: colonna id_fiscale presente, codice_fiscale assente (fix 20260524-12)'
+);
+
+-- =========================================================
+-- 13. I doppioni del soggetto non sono nel catalogo (20261121-01)
+--     Ne' accesi ne' spenti: una riga spenta col campo_sorgente su una
+--     colonna che la vista perde (giro B) renderebbe il CSV irriscrivibile.
+-- =========================================================
+SELECT is(
+    (
+        SELECT COALESCE(array_agg(lc.codice::text ORDER BY lc.codice), '{}'::text[])
+          FROM ui.lista_colonna lc
+          JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+         WHERE ld.codice = 'anagrafiche.fornitori'
+           AND lc.codice IN ('pec_email', 'canale_fe', 'split_payment')
+    ),
+    '{}'::text[],
+    '13. Catalogo fornitori: pec_email, canale_fe e split_payment assenti, anche spente'
+);
+
+-- =========================================================
+-- 14. La colonna regime_fiscale legge il codice RF (20261121-03/-05)
+--     Il codice della colonna resta (preferenze e chiave i18n lo nominano),
+--     cambia il campo, che segue la colonna rinominata.
+-- =========================================================
+SELECT is(
+    (
+        SELECT lc.campo_sorgente::text
+          FROM ui.lista_colonna lc
+          JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+         WHERE ld.codice = 'anagrafiche.fornitori'
+           AND lc.codice = 'regime_fiscale'
+    ),
+    'regime_fiscale_rf',
+    '14. Colonna regime_fiscale: campo_sorgente = regime_fiscale_rf'
 );
 
 SELECT * FROM finish();

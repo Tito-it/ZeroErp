@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La lista anagrafiche.fornitori smette di mostrare tre doppioni del soggetto
+#   (brief-db-fornitore-doppioni-del-soggetto, giro A, D-1 «a» di Tid,
+#   2026-11-21).
+#
+# -- CHE COSA ---------------------------------------------------
+#   Escono dal catalogo le colonne di codice pec_email, canale_fe e
+#   split_payment. Leggevano il valore del FORNITORE, che nessuno scrive piu'
+#   (il form, la PATCH e la creazione non lo portano): la sede vera e' il
+#   soggetto (split_payment) e i suoi dati societari (canale e PEC). Una
+#   colonna che mostra il doppione diverge in silenzio dal dato vero.
+#
+# -- PERCHE' SI CANCELLANO E NON SI SPENGONO --------------------
+#   Al giro B la vista vw_fornitori_dettaglio perde i tre campi. Una riga
+#   spenta resterebbe col campo_sorgente su una colonna che non esiste:
+#   - la riprende il pgTAP ui/test-lista-colonna-campo-sorgente-in-vista-v1
+#     (test 2), che guarda anche le colonne spente;
+#   - il CSV diventerebbe irriscrivibile (linee-guida-sql 11.2): al prossimo
+#     risveglio del mirror trgfn_ui_lista_colonna_a10_valida_campo_sorgente
+#     rifiuta la riga.
+#   Le righe escono dal CSV nello stesso giro. loadUpdateData non cancella,
+#   quindi su un database che le ha gia' serve questo DELETE forward-only:
+#   l'unica eccezione al CSV di 11.2. Da zero il mirror non le scrive, e il
+#   DELETE non trova niente.
+#
+# -- LE FIGLIE ----------------------------------------------------
+#   - ui.lista_colonna_permesso: FK ON DELETE CASCADE, escono con la riga;
+#   - ui.lista_preset_colonna: FK senza CASCADE. Le voci si tolgono prima,
+#     su ogni preset della lista: anche quelli dell'installazione, che sono
+#     figlie vere su ogni macchina;
+#   - ui.lista_preset.ordinamento_default: il guard
+#     trgfn_ui_lista_preset_guard_ordinamento rifiuta, alla prossima
+#     scrittura del preset, un col che non e' il codice di una colonna della
+#     lista. Le voci sui tre codici si tolgono qui, con la porta del seed
+#     aperta perche' la colonna e' dell'installazione;
+#   - ui.lista_preferenza_utente: niente da fare. Il resolver salta una
+#     voce il cui codice non sta nel catalogo della lista, e il guard di
+#     forma non confronta i codici col catalogo.
+#
+# -- LA PORTA DEL SEED --------------------------------------------
+#   lista_colonna e lista_preset sono iscritte al seed di primo impianto: il
+#   DELETE di una riga nata dal seed e la bonifica di una colonna
+#   dell'installazione passano solo con zeroerp.allow_seed_primo_impianto_override
+#   accesa nella sessione del migratore (guida automazione-db, «La porta di
+#   manutenzione»). SET LOCAL: vale fino al commit del changeSet.
+#   La voce di dbops.seed_righe della riga cancellata la toglie il trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261121-01-delete-ui-lista-fornitori-colonne-doppioni-soggetto-mctit.yaml
+
+  - changeSet:
+      id: 20261121-01-delete-ui-lista-fornitori-colonne-doppioni-soggetto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lista anagrafiche.fornitori: escono dal catalogo le colonne pec_email,
+        canale_fe e split_payment, doppioni del soggetto che leggevano il valore
+        del fornitore, non piu' scritto da nessuno. DELETE forward-only (il CSV
+        le perde nello stesso giro), dopo le voci dei preset e l'ordinamento di
+        apertura che le nominano; porta del seed di primo impianto aperta. Brief:
+        brief-db-fornitore-doppioni-del-soggetto, giro A (D-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM ui.lista_definizione
+               WHERE codice = 'anagrafiche.fornitori';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: true
+            stripComments: false
+            sql: |
+              SET LOCAL zeroerp.allow_seed_primo_impianto_override = 'on';
+
+              -- 1) Le voci dei preset che mostrano le tre colonne.
+              DELETE FROM ui.lista_preset_colonna pc
+               USING ui.lista_colonna lc,
+                     ui.lista_definizione ld
+               WHERE pc.colonna_id = lc.id
+                 AND lc.lista_id   = ld.id
+                 AND ld.codice     = 'anagrafiche.fornitori'
+                 AND lc.codice IN ('pec_email', 'canale_fe', 'split_payment');
+
+              -- 2) L'ordinamento di apertura: via le voci sui tre codici,
+              --    l'ordine delle altre resta.
+              UPDATE ui.lista_preset p
+                 SET ordinamento_default = (
+                         SELECT COALESCE(jsonb_agg(e.voce ORDER BY e.n), '[]'::jsonb)
+                           FROM jsonb_array_elements(p.ordinamento_default)
+                                WITH ORDINALITY AS e(voce, n)
+                          WHERE (e.voce ->> 'col') IS NULL
+                             OR (e.voce ->> 'col') NOT IN ('pec_email', 'canale_fe', 'split_payment'))
+                FROM ui.lista_definizione ld
+               WHERE p.lista_id = ld.id
+                 AND ld.codice  = 'anagrafiche.fornitori'
+                 AND jsonb_typeof(p.ordinamento_default) = 'array'
+                 AND EXISTS (
+                         SELECT 1
+                           FROM jsonb_array_elements(p.ordinamento_default) AS v(voce)
+                          WHERE (v.voce ->> 'col') IN ('pec_email', 'canale_fe', 'split_payment'));
+
+              -- 3) Le tre colonne (i permessi di colonna escono in cascata).
+              DELETE FROM ui.lista_colonna lc
+               USING ui.lista_definizione ld
+               WHERE lc.lista_id = ld.id
+                 AND ld.codice   = 'anagrafiche.fornitori'
+                 AND lc.codice IN ('pec_email', 'canale_fe', 'split_payment');
+      rollback:
+        - empty: {}
