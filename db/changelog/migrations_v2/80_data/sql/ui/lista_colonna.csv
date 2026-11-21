@@ -662,7 +662,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 662,58,ambito,Ambito,NULL,ambito,informazione,string,NULL,160,30,left,NULL,NULL,t,t,t,f,f,t,2026-09-02 00:00:00,SEED,ui.admin.preset_ambito,80
 663,58,profilo_accesso,Profilo di accesso,Profilo di accesso a cui il preset si applica (vuoto se globale o di emittente),profilo_accesso_codice,informazione,string,NULL,220,40,left,NULL,NULL,f,f,t,f,f,t,2026-09-02 00:00:00,SEED,ui.admin.preset_profilo_accesso,60
 664,58,colonne_count,Colonne,NULL,colonne_count,informazione,numeric,NULL,100,50,right,NULL,NULL,f,f,t,f,f,t,2026-09-02 00:00:00,SEED,ui.admin.preset_colonne_count,50
-665,58,is_default,Default,NULL,is_default,informazione,boolean,NULL,90,60,center,NULL,NULL,t,t,t,f,f,t,2026-09-02 00:00:00,SEED,ui.admin.preset_default,70
+665,58,is_default,Default,NULL,is_default,informazione,boolean,NULL,90,60,center,NULL,NULL,t,t,t,f,f,f,2026-09-02 00:00:00,SEED,ui.admin.preset_default,70
 666,58,attivo,Attivo,NULL,attivo,informazione,boolean,NULL,90,70,center,NULL,NULL,t,t,t,f,f,t,2026-09-02 00:00:00,SEED,common.col_attivo,70
 667,58,azioni,Azioni,NULL,NULL,azione,string,NULL,70,999,center,NULL,99,f,f,f,f,f,t,2026-09-02 00:00:00,SEED,common.col_azioni,50
 668,59,colonna_etichetta,Colonna,NULL,colonna_etichetta,identificatore,string,NULL,NULL,10,left,NULL,NULL,t,t,t,f,f,t,2026-09-02 00:00:00,SEED,ui.admin.permesso_colonna,100

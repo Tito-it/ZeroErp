@@ -53,12 +53,12 @@
 |------|--------|--------|--------|
 | trg_documenti_generati_file_a10_block_delete_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_prevent_modification_generic('E_FILE_DOCUMENTO_DELETE_VIETATA')` |
 | trg_documenti_generati_file_a10_protect_file_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_documenti_generati_file_protect_file()` |
-| trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
 | trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
+| trg_documenti_generati_file_a10_tipo_ammette_formato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION documenti.trgfn_guard_formato_ammesso()` |
 | trg_documenti_generati_file_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_documenti_generati_file_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_documenti_generati_file_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_documenti_generati_file_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_documenti_generati_file_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 
 ---
 {% include-markdown "signature-core.md" %}

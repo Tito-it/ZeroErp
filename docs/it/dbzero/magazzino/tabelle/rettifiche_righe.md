@@ -57,19 +57,19 @@
 | trg_rettifiche_righe_a10_articoli_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_rettifiche_righe_a10_assets_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'asset_id', 'id')` |
 | trg_rettifiche_righe_a10_assets_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'assets', 'attivo', 'asset_id', 'id')` |
-| trg_rettifiche_righe_a10_guard_testata_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata('rettifiche', 'rettifica_id', 'stato_mag_rettifiche', 'zeroerp.magazzino_posting_rettifica')` |
-| trg_rettifiche_righe_a10_guard_testata_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata('rettifiche', 'rettifica_id', 'stato_mag_rettifiche', 'zeroerp.magazzino_posting_rettifica')` |
 | trg_rettifiche_righe_a10_guard_testata_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata('rettifiche', 'rettifica_id', 'stato_mag_rettifiche', 'zeroerp.magazzino_posting_rettifica')` |
-| trg_rettifiche_righe_a10_lotti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'lotti', 'attivo', 'lotto_id', 'id')` |
+| trg_rettifiche_righe_a10_guard_testata_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata('rettifiche', 'rettifica_id', 'stato_mag_rettifiche', 'zeroerp.magazzino_posting_rettifica')` |
+| trg_rettifiche_righe_a10_guard_testata_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_righe_guard_testata('rettifiche', 'rettifica_id', 'stato_mag_rettifiche', 'zeroerp.magazzino_posting_rettifica')` |
 | trg_rettifiche_righe_a10_lotti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'lotti', 'attivo', 'lotto_id', 'id')` |
-| trg_rettifiche_righe_a10_ubicazioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id', 'id')` |
+| trg_rettifiche_righe_a10_lotti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'lotti', 'attivo', 'lotto_id', 'id')` |
 | trg_rettifiche_righe_a10_ubicazioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id', 'id')` |
+| trg_rettifiche_righe_a10_ubicazioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'ubicazioni', 'attivo', 'ubicazione_id', 'id')` |
 | trg_rettifiche_righe_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_rettifiche_righe_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_rettifiche_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_rettifiche_righe_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_rettifiche_righe_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('rettifiche_righe_id')` |
+| trg_rettifiche_righe_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_rettifiche_righe_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('rettifiche_righe_id')` |
+| trg_rettifiche_righe_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('rettifiche_righe_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

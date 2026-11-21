@@ -51,10 +51,10 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_magazzino_trasferimenti_a10_sorgente_in_uscita_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_sorgente_in_uscita()` |
-| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
-| trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
+| trg_trasferimenti_a10_guard_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_sorgente('DOCUMENTO', 'BLOCCA')` |
 | trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
+| trg_trasferimenti_a10_guard_stesso_emittente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_trasferimenti_guard_stesso_emittente()` |
 | trg_trasferimenti_a10_guard_transizione_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_trasferimento', 'zeroerp.magazzino_posting_trasferimento')` |
 | trg_trasferimenti_a10_guard_transizione_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION magazzino.trgfn_documento_interno_guard_transizione('stato_trasferimento', 'zeroerp.magazzino_posting_trasferimento')` |
 | trg_trasferimenti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
