@@ -3857,7 +3857,8 @@
       "azione_reason": {
         "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: pubblicane una o scegli un altro listino.",
         "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA.",
-        "documenti_vivi": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annulla prima quel documento."
+        "documenti_vivi": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annulla prima quel documento.",
+        "kit_senza_componenti": "Un kit col prezzo negoziato non ha componenti attivi: aggiungili o riattivali prima di emettere l'offerta."
       },
       "col_descrizione": "Descrizione",
       "col_qta": "Qta",

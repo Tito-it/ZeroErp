@@ -1048,6 +1048,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_OFFERTA_ANNULLO_CON_DOCUMENTI_VIVI": "L'offerta ha generato un contratto o un ordine non annullato: per annullarla, annullare prima quel documento.",
     "E_OFFERTA_CONTRATTO_GIA_GENERATO": "Questa offerta ha già generato un contratto.",
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "Eccezione offerta non trovata.",
+    "E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI": "Impossibile emettere l'offerta: un kit col prezzo negoziato non ha componenti attivi. Aggiungerli o riattivarli prima di emettere.",
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "Impossibile emettere l'offerta: il listino di riferimento non ha una versione in vigore oggi.",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "Impossibile emettere: la versione di listino non è attiva.",
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",

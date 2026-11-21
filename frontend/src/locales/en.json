@@ -3857,7 +3857,8 @@
       "azione_reason": {
         "listino_senza_versione_in_vigore": "The price list has no version in force today: publish one or choose another price list.",
         "listino_versione_non_attiva": "The linked price list version is not ACTIVE.",
-        "documenti_vivi": "The offer generated a contract or an order that is not cancelled: to cancel the offer, cancel that document first."
+        "documenti_vivi": "The offer generated a contract or an order that is not cancelled: to cancel the offer, cancel that document first.",
+        "kit_senza_componenti": "A kit with a negotiated price has no active components: add or re-enable them before issuing the offer."
       },
       "col_descrizione": "Description",
       "col_qta": "Qty",

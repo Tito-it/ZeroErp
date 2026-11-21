@@ -2,8 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-21 (sera)
 
-**Riparte: il team FE**, con la chiave i18n del §8.19 (8i): sblocca il commit della doc rigenerata, che oggi
-`check_i18n_keys.py` ferma. Poi il BE (la policy, 8l) e la chiusura DB. Il giro 5 e il 5-bis sono applicati e verdi
+**Riparte: il team DB**, con la chiusura (7): la chiave i18n (8i) e la policy (8l) sono consegnate il 2026-11-21
+sera (§8.22), da committare (Tid). La doc rigenerata era già entrata in `2e867df58` (PR #181) prima della chiave, con
+`check_i18n_keys.py` rosso: la chiave del §8.22 lo riporta verde. Il giro 5 e il 5-bis sono applicati e verdi
 (Tid, 2026-11-21, §8.21). Il giro 5 è scritto e provato in transazione il 2026-11-21 (§8.17): chiude il residuo offerta → ordine
 del §8.8 con D-6 «a», e corregge un difetto trovato verificando il caso del §8.16 (l'OVERRIDE su un kit perdeva il
 prezzo negoziato). La documentazione rimasta alle regole di prima (due guide, due manuali) è
@@ -55,18 +56,19 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 8g | ✅ team DB | Le quattro righe di dbdev riparate; giro 5-bis `20261120-18 … -20`, codice nuovo, pgTAP; prova in transazione (2026-11-21) | §8.19 | 8f |
 | 8g-bis | ✅ team DB | Revisione `/verifica-db` del giro 5 e 5-bis: due pgTAP estesi, chiamanti della `-14` completati (2026-11-21) | §8.20 | 8g |
 | 8h | ✅ Tid | Apply di `-13 … -20` e dei CSV, pgTAP del §8.17, del §8.19 e del §8.20 verdi; doc auto-generata rigenerata, non committata (2026-11-21) | §8.21 | 8b, 8g-bis |
-| 8i | **team FE** ⏭️ | La chiave i18n `vendite.offerte.azione_reason.kit_senza_componenti`, it ed en: senza, `check_i18n_keys.py` è rosso sulla doc rigenerata | §8.19, §8.21 | 8h |
-| 8i-bis | Tid | Commit della doc rigenerata, con la chiave del FE o dopo | §8.21 | 8i |
-| 8l | team BE | La policy di `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` rigenerata | §8.19 | 8h |
-| 7 | team DB | Chiusura: archiviazione | — | 8i-bis, 8l |
+| 8i | ✅ team FE | La chiave i18n `vendite.offerte.azione_reason.kit_senza_componenti`, it ed en (2026-11-21) | §8.19, §8.22 | 8h |
+| 8i-bis | ✅ Tid | Commit della doc rigenerata: entrata in `2e867df58` (PR #181), prima della chiave | §8.21, §8.22 | — |
+| 8l | ✅ team BE | La policy di `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` rigenerata, col ripiego (2026-11-21) | §8.19, §8.22 | 8h |
+| 8m | Tid | Commit di 8i e 8l su `dev/backend-tid` | §8.22 | 8i, 8l |
+| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 8m |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-21: D-7-bis «b2», kit a consumo esente, le quattro
 righe da riparare (§8.18); il residuo del §8.8 si chiude qui come
 giro 5; D-6 «a» (§8.16); D-7 «b» (§8.17). Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
 approvata), R-1 e R-2 della revisione (in fondo al §8.13), la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** il giro 5 e il 5-bis, applicati e verdi (§8.21); la doc auto-generata rigenerata, che
-aspetta la chiave del FE (8i); il resto come prima (otto changeSet, due righe di CSV, tre pgTAP nuovi o corretti, le pagine
+corpo vivo. **Lavoro da committare:** la chiave del FE e la policy del BE (§8.22, `dev/backend-tid`). Il giro 5 e il 5-bis
+e la doc rigenerata sono entrati in `2e867df58` (PR #181). Prima della PR #181 restavano da committare: il resto come prima (otto changeSet, due righe di CSV, tre pgTAP nuovi o corretti, le pagine
 `manual/` e la guida delle offerte, §8.17 e §8.19), le quattro
 pagine riallineate del 2026-11-21 e questo brief; l'estrazione del §8.15 e questo brief sono committati su `dev/backend-tid` (2026-11-21). La riga del CSV del §8.14
 è nel commit `f4959f97d`; la consegna del §8.13 nel commit `d16a9a973d` (PR #126).
@@ -1281,3 +1283,33 @@ pulito. Da owner: la row security non entra nella prova.
   `vendite.offerte.azione_reason.kit_senza_componenti`, emessa dalla check e assente dai locales (verificato il
   2026-11-21 sera). Il pre-commit fermerebbe il commit della doc: si committa insieme alla chiave del FE (8i), o dopo.
 * Per la chiusura (7) restano la chiave del FE e la policy del BE: niente di DB.
+
+### 8.22 La chiave del FE (8i) e la policy del BE (8l) — consegnate (sessione BE/FE, 2026-11-21 sera)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-11-21. **A chi:** Tid per il commit; team DB per la
+> chiusura (7).
+
+**Un fatto trovato all'arrivo.** La doc auto-generata del giro 5 e del 5-bis è entrata in `2e867df58` (PR #181)
+**prima** della chiave, contro l'ordine del §8.19: fino a questa consegna `scripts/check_i18n_keys.py` era rosso su
+`dev/db-tid`, su `main` e sul branch allineato (CI frontend e pre-commit), e «Emetti» spento avrebbe mostrato la chiave
+grezza.
+
+| Sigla | File | Che cosa |
+| --- | --- | --- |
+| 8i | `frontend/src/locales/it.json`, `en.json` | `vendite.offerte.azione_reason.kit_senza_componenti`, coi testi del §8.19, dopo `documenti_vivi` |
+| 8l | `backend/apps/core/services/error_policies_generated.py` | Rigenerata con `genera_error_policies`: una voce (`DATO_ERRATO`) e il conteggio 1253 → 1254 |
+| 8l | `backend/apps/core/services/error_messages_fallback.py` | Il ripiego, senza segnaposti |
+
+**Prima di rigenerare:** confronto a secco col catalogo di dbdev, la sola divergenza era la voce nuova; il codice
+sta nei due CSV in git e gli otto changeSet `20261120-13 … -20` sono in git: il DB non è avanti rispetto a git.
+
+**Prova:** `check_i18n_keys.py` verde; `genera_error_policies --check` allineato; i test della policy e del manager
+degli errori (`test_error_codes_db_policy_guardrail`, `test_error_codes_declared_guardrail`,
+`test_error_policies_divergenza_db`, `test_error_policies_classi`, `test_error_manager`): 30, verdi (2 saltati).
+
+**Percorsi rotti dall'arrivo: nessuno.** Delle cinque funzioni del giro 5 il BE chiama la sola
+`vendite.fn_genera_ordine_da_offerta` (`offerte_repository.py`), firma e ritorno invariati; il rifiuto nuovo viene dal
+guard della transizione, sulla strada dell'emissione. **Garanzie ritirate: nessuna** (il giro ne aggiunge una).
+
+**Resta aperta, per Tid:** la check comprende l'AGGIUNTA oltre all'OVERRIDE di D-7 (§8.19, «Le scelte»); se si vuole
+il solo OVERRIDE è una riga della check, lavoro DB.

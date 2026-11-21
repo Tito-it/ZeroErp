@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1253, di cui 132 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1254, di cui 132 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1291,6 +1291,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Mutua esclusività offerta → (contratto XOR ordine): la stessa offerta si · materializza in UNA sola forma. Famiglia "già materializzato" = conflitto · di stato → 409 uniforme (coerente con E_ORD_OFFERTA_GIA_CONVERTITA sopra). · Entrambi i codici sono sollevati sia da DB (fn_push_offerta_a_contratto) · sia da BE (guard incrociati): la registrazione qui fissa lo status, che · altrimenti cadrebbe sul fallback 400 dei codici E_* non registrati. · - CONTRATTO_GIA_GENERATO: blocca la generazione ordine se esiste già un · contratto (guard BE crea_ordine_da_offerta) ED è il codice idempotenza · del push duplicato (fn_push_offerta_a_contratto, UNIQUE offerta_id). · - ORDINE_GIA_GENERATO: blocca il push a contratto se esiste già un ordine · (guard DB fn_push_offerta_a_contratto, mutua esclusività).
     "E_OFFERTA_CONTRATTO_GIA_GENERATO": "CONFLITTO_STATO",
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "NON_TROVATO",
+    # Si emette un'offerta con un kit col prezzo negoziato (OVERRIDE o AGGIUNTA, a quantita' fissa) che non ha componenti attivi in vendite.offerte_commerciali_eccezioni_componenti: il prezzo negoziato del kit e' la somma dei suoi componenti, e senza non ha da dove ricomporsi. Lo compone script.fn_check_offerta_kit_con_componenti; lo solleva vendite.trgfn_offerte_commerciali_guard_transizione all'emissione dallo stato iniziale, e lo espone script.fn_available_actions_offerta sull'azione di emissione (reason KIT_SENZA_COMPONENTI, reason_key vendite.offerte.azione_reason.kit_senza_componenti). Esente il kit a consumo. Nasce il 2026-11-21 (brief-db-provenienza-prezzo-segue-il-prezzo §8.19, D-7-bis di Tid). DATO_ERRATO: il rimedio e' nella stessa offerta. Valori: codice dell'offerta, codice dell'articolo; nel contesto offerta_id, eccezione_id, articolo_id, tipo_eccezione.
+    "E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI": "DATO_ERRATO",
     # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del · push a contratto. Senza registrazione cadevano sul fallback 400, mentre · la convenzione del progetto per "operazione non ammessa nello stato / · precondizione di transizione / overlap" è 409 (gemelli già registrati: · E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE, · E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati · qui per fissare lo status corretto (il messaggio parlante DB vince · comunque su user_message). Pulizia 2026-06-08.
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "CONFLITTO_STATO",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "CONFLITTO_STATO",
