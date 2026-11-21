@@ -15,7 +15,7 @@
 > Decisioni aperte di Tid: nessuna (resta il via). Da committare: solo questo file (riverifica e
 > decisioni del 2026-11-21).
 >
-> **Brief vicini verificati (2026-11-21):** `work-done/brief-db-processi-accensione-per-ambiente`
+> **Brief vicini verificati (2026-11-21):** `work-done/2026/brief-db-processi-accensione-per-ambiente`
 > ha costruito, senza citare questo brief, due pezzi del Lotto 1 (§3-bis, punti 1-2);
 > `work-in-progress/piano-be-fe-magazzino-lotto-3` e `collaudo-in-app-magazzino-bolla-e-reso`
 > rimandano qui per i seriali (asset); `analisi-db-magazzino-carico-e-scarico` e
@@ -27,10 +27,10 @@
 > §3), poi team DB; 🔵 richieste a BE in §7, da fare nello stesso giro di PR.
 >
 > **Origine.** La **D-P4** del
-> [brief del pannello](../work-done/brief-db-pannello-config-verbo-generico.md)
+> [brief del pannello](../work-done/2026/brief-db-pannello-config-verbo-generico.md)
 > (Tid, 2026-09-25): *«`magazzini` e `ubicazioni`: un brief a sé del cantiere
 > magazzino, con i loro verbi»*. Quel brief non era mai stato scritto; è emerso
-> chiudendo il [brief del modello](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md)
+> chiudendo il [brief del modello](../work-done/2026/brief-db-permesso-nel-verbo-di-scrittura.md)
 > il 2026-10-03. Il modello sta nella
 > [guida dei permessi §7.4](../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura).
 >
@@ -141,7 +141,7 @@ ciò che sta intorno, per mano di un altro cantiere.
 
 **1. Il BB della scrittura da `jsonb` esiste già (D-M3 fatta).**
 `script.fn_scrivi_riga_da_jsonb(tabella, dati, dove, rileggi_per)` (INVOKER, `20261017-05`,
-rivisto in `20261018-34`) è nato dalla 2b-1 di `work-done/brief-db-processi-accensione-per-ambiente`.
+rivisto in `20261018-34`) è nato dalla 2b-1 di `work-done/2026/brief-db-processi-accensione-per-ambiente`.
 Lo usano `config.fn_pannello_scrivi` e la famiglia `fn_crea_*` (contatto, fornitore, cliente, BA,
 emittente, veste portale, contratto, magazzino). ⇒ D-M3 non è più una decisione e il P-2 è fatto:
 i verbi di magazzino scrivono con quel BB.
@@ -344,8 +344,8 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 ## 9. Riferimenti
 
 * [Guida dei permessi §7.4-7.5](../../guide/architettura-permessi-e-autorizzazioni.md#74-il-permesso-nel-verbo-di-scrittura) — il modello.
-* [Brief del pannello](../work-done/brief-db-pannello-config-verbo-generico.md), D-P2 (niente RLS nel verbo generico) e D-P4.
-* [Verbi con permesso di magazzino](../work-done/brief-db-magazzino-verbi-con-permesso.md) — la forma dei verbi, il perimetro rimesso dal verbo, D-V1.
+* [Brief del pannello](../work-done/2026/brief-db-pannello-config-verbo-generico.md), D-P2 (niente RLS nel verbo generico) e D-P4.
+* [Verbi con permesso di magazzino](../work-done/2026/brief-db-magazzino-verbi-con-permesso.md) — la forma dei verbi, il perimetro rimesso dal verbo, D-V1.
 * [Linee guida SQL](../../linee-guida-sql.md) §10.4 (l'utente dalla GUC), §11.8 (le tre sedi della postura).
 * Guida del dominio: `dbzero/magazzino/_dominio-magazzino.md`, §«La porta».
 

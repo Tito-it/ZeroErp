@@ -13,13 +13,13 @@ configurabili con export.
 
 > **Dal 2026-08-18 espone anche il verbo dell'ACCREDITO** (la nota di credito
 > sui resi): vedi la sezione dedicata più sotto e
-> [brief-design-note-credito-resi.md](../../../dev/work-done/brief-design-note-credito-resi.md).
+> [brief-design-note-credito-resi.md](../../../dev/work-done/2026/brief-design-note-credito-resi.md).
 >
 > Stato: BE completo. Modello e state machine (DRAFT→CONFERMATO, +ANNULLATO),
 > residuo ordine, flip DDT→RESO: vedi
-> [brief-db-resi-vendita.md](../../../dev/work-done/brief-db-resi-vendita.md).
+> [brief-db-resi-vendita.md](../../../dev/work-done/2026/brief-db-resi-vendita.md).
 > Code configurabili + export: vedi
-> [brief-be-fe-resi-code-configurabili.md](../../../dev/work-done/brief-be-fe-resi-code-configurabili.md).
+> [brief-be-fe-resi-code-configurabili.md](../../../dev/work-done/2026/brief-be-fe-resi-code-configurabili.md).
 
 ## Endpoints
 
@@ -51,7 +51,7 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
   (`fn_available_actions_reso`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
 - Update `PATCH /<id>/` — `data`/`meta`/`magazzino_id` (altre chiavi → 400
-  `E_RESO_VALIDAZIONE`; `{}` → 400), risposta `{reso_id, updated}`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
+  `E_RESO_VALIDAZIONE`; `{}` → 400), risposta `{reso_id, updated}`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
   delete solo DRAFT + 0 righe (abbandono bozza): la regola «si cancella solo la bozza vuota» la giudica **solo il DB** (`vendite.trgfn_doc_guard_delete_solo_bozza`, dal 2026-11-08: il service non la ripete, brief-db-sorgente-documento-e-riga §8.21 BE-Z.2-a): fuori bozza 409 `E_DELETE_DOC_NON_BOZZA`, bozza con contenuto 409 `E_DELETE_DOC_CON_RIGHE`, documento citato come origine da un altro 409 `E_SORG_ORIGINE_REFERENZIATA`; il service legge solo l'esito del `DELETE`;
   risposta `{reso_id, deleted}`, il reso che non c'è è un 404 `E_RESO_NOT_FOUND`.
 

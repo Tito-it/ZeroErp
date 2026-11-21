@@ -9,9 +9,9 @@ ordinata per anzianità (i più vecchi prima).
 ## Contesto
 
 Fase 2 BE del brief
-[brief-design-fatturazione-due-lenti](../../../dev/work-done/brief-design-fatturazione-due-lenti.md)
+[brief-design-fatturazione-due-lenti](../../../dev/work-done/2026/brief-design-fatturazione-due-lenti.md)
 §5 (substrato DB in
-[brief-db-fatturazione-due-lenti](../../../dev/work-done/brief-db-fatturazione-due-lenti.md)
+[brief-db-fatturazione-due-lenti](../../../dev/work-done/2026/brief-db-fatturazione-due-lenti.md)
 §5, migrations `20260706-01..15`): due endpoint GET **sottili** sopra le
 proiezioni read-only `vendite.vw_dash_backlog_riepilogo` (contatori
 classe × area) e `vendite.vw_dash_backlog_documenti` (union dei 6 resolver
@@ -57,7 +57,7 @@ Nessun parametro.
   escluso a monte dalla vista) dà lista vuota, mai 400.
 - `area` (opzionale): `PREVENTIVO | ORDINE_VENDITA | DDT_VENDITA |
   OFFERTA_COMMERCIALE | CONTRATTO | COMMESSA | RESO_VENDITA`
-> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-done/brief-db-grammatica-unica-documenti.md) (G-6).
+> ⭐ **Dal 2026-10-20 l'`area` è il codice della sorgente** (`config.sorgenti.codice_interno`): `PREVENTIVO`, `ORDINE_VENDITA`, `DDT_VENDITA`, `OFFERTA_COMMERCIALE`, `CONTRATTO`, `COMMESSA`, `RESO_VENDITA`. Il plurale (`ORDINI`, `RESI`…) è ritirato col sotto-giro 2d di [brief-db-grammatica-unica-documenti](../../../dev/work-done/2026/brief-db-grammatica-unica-documenti.md) (G-6).
 
   (case-insensitive; fuori whitelist → `E_VENDITE_VALIDATION`; assente = tutte).
 - `ritardo_giorni` (opzionale, intero > 0; assente = nessuna soglia): «fermi da

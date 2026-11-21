@@ -91,7 +91,7 @@ avere righe CLIENTE e FORNITORE nella stessa espansione — servono colonne adat
 ## 3. Quattro residui del cantiere «il lavoro che non torna indietro»
 
 > Aggiunti il **2026-08-28**, archiviando
-> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-done/brief-be-fe-lavoro-che-non-torna-indietro.md).
+> [brief-be-fe-lavoro-che-non-torna-indietro.md](../work-done/2026/brief-be-fe-lavoro-che-non-torna-indietro.md).
 > ⛔ Nessuno dei quattro è un difetto di quel cantiere: sono cose **di altri
 > perimetri** o **decisioni di prodotto**, tenute scritte perché un brief
 > archiviato non è il posto dove lasciare roba viva.

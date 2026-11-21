@@ -19,7 +19,7 @@ oggi la **periodicità** con cui il kit si addebita a canone. Su un kit di quota
 con cui ogni contratto del listino lo paga; altrove è la periodicità proposta all'adesione.
 
 Il kit sul listino **non ha una riga** in `listini_righe`, per la decisione del modello unificato
-dei componenti (`work-done/brief-db-componenti-modello-unificato.md`, 2026-05): il suo prezzo è
+dei componenti (`work-done/2026/brief-db-componenti-modello-unificato.md`, 2026-05): il suo prezzo è
 la somma dei componenti, e qui non c'è. Senza questa tabella un kit non avrebbe avuto dove
 tenere la periodicità: la quota fissa di un kit non si sarebbe mai addebitata, e un kit aderito
 non l'avrebbe ereditata.

@@ -42,13 +42,13 @@
 > - [mappa-concentrica.md](../../mappa-concentrica.md) — §Anello 2: pratiche è
 >   *predisposta, in attesa di validazione*. §Caso di studio: pratiche prima di
 >   vendite
-> - [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md) — modello operativo
+> - [gestione-pratiche-v2.md](../work-done/2026/gestione-pratiche-v2.md) — modello operativo
 >   pratiche v2 (fasi 1-7 DB+BE+FE)
 > - [Guida Gestione Pratiche](../../guide/gestione-pratiche.md) — semantica
 >   tipi_prestazione, template_flussi, handler, generazione cross-pratica
 > - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md) — pattern già aperto
 >   per assistenza/CRM, qui generalizzato
-> - [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
+> - [analisi-offerta-commerciale.md](../work-done/2026/analisi-offerta-commerciale.md)
 >   — futuro asse `offerta_commerciale → contratto`, distinto da preventivo→ordine
 > - [pratiche_sorgenti](../../dbzero/pratiche/manual/pratiche_sorgenti.md) — tabella
 >   ponte M:N esistente
@@ -520,7 +520,7 @@ Sequenza minimale, prerequisiti lineari (configurabili per varianti future):
 ### 5.3 Il flusso `CONFERMA_VENDITA`: split e idempotenza
 
 > ⚠️ **AGGIORNAMENTO — decisioni ratificate (Tid, 2026-06-08/09), prevalgono su questa prosa.**
-> Fonte autorevole: [brief-preventivi-ordini.md §0](../work-done/brief-preventivi-ordini.md).
+> Fonte autorevole: [brief-preventivi-ordini.md §0](../work-done/2026/brief-preventivi-ordini.md).
 >
 > 1. **Natura ricorrente (MODALITÀ A — blocco vero):** un articolo con
 >    `destinazione_tipo = 'CONTRATTO'` (oggi `SERVIZIO_RICORRENTE`) **non può stare
@@ -1188,9 +1188,9 @@ Quattro fasi successive. Ogni fase chiude prima di iniziare la successiva.
 > stretto**: pratica **`PREVENTIVI`** (immediata/differita) → **commessa diretta**
 > (nessuno split natura, niente ordine/contratto). Tracciato in tre brief
 > dedicati:
-> [brief-db-pratica-preventivi.md](../work-done/brief-db-pratica-preventivi.md),
-> [brief-be-pratica-preventivi.md](../work-done/brief-be-pratica-preventivi.md),
-> [brief-fe-pratica-preventivi.md](../work-done/brief-fe-pratica-preventivi.md).
+> [brief-db-pratica-preventivi.md](../work-done/2026/brief-db-pratica-preventivi.md),
+> [brief-be-pratica-preventivi.md](../work-done/2026/brief-be-pratica-preventivi.md),
+> [brief-fe-pratica-preventivi.md](../work-done/2026/brief-fe-pratica-preventivi.md).
 >
 > - **Fase B (DB)** — ✅ **CONSEGNATA** (2026-06-08): seed `PREVENTIVI_IMMEDIATA/_DIFFERITA`
 >   + 8 `template_flussi` + handler_flussi `vendita.push_preventivo`, motore
@@ -1311,14 +1311,14 @@ contiene, nell'ordine:
 > `smoke-test-preventivi-smistamento-ordine.sh`,
 > `smoke-test-ordini-giro-commessa.sh`), sia da super admin (36 OK) sia da
 > **operatore reale** (33 OK, con seed delle azioni di processo pratiche —
-> prima mancanti — vedi `work-done/brief-db-azioni-processo-pratiche.md`).
+> prima mancanti — vedi `work-done/2026/brief-db-azioni-processo-pratiche.md`).
 > La validazione ha scovato e chiuso bug reali a ogni livello (competenza
 > NOT NULL + policy `competenza_mese` ignorata nella fn di push; jsonb-as-str
 > su `handler_params`/`meta`; resolver commessa cieco al multi-sorgente; 4
 > buchi della generazione cross-pratica). In corsa la Fase E si è estesa col
 > cantiere **workflow v2** (ripetibilità, bivi, lenti contesto, guard
 > chiusura): vedi
-> [analisi-pratiche-workflow-v2](../work-done/analisi-pratiche-workflow-v2.md).
+> [analisi-pratiche-workflow-v2](../work-done/2026/analisi-pratiche-workflow-v2.md).
 
 - ✅ Esecuzione end-to-end sotto pratica: richiesta → preventivo misto →
   (split per natura) → ordine + commessa emittibile; preventivo EVASO,
@@ -1357,9 +1357,9 @@ fase F il motore si può promuovere a contratto stabile.
 - [Guida Gestione Pratiche](../../guide/gestione-pratiche.md)
 - [Guida Gestione Preventivi](../../guide/gestione-preventivi.md)
 - [Manuale vendite.ordini](../../dbzero/vendite/manual/ordini.md)
-- [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md)
+- [gestione-pratiche-v2.md](../work-done/2026/gestione-pratiche-v2.md)
 - [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md)
-- [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
+- [analisi-offerta-commerciale.md](../work-done/2026/analisi-offerta-commerciale.md)
 - [pratiche_sorgenti manual](../../dbzero/pratiche/manual/pratiche_sorgenti.md)
 
 ### 9.2 Tabelle/funzioni DB di interesse
@@ -1436,7 +1436,7 @@ da §5.3.2.
 **Nota architetturale critica — perché 3 valori ma solo 2 ammessi**:
 
 Il modello commerciale di ZeroErp (vedi
-[analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
+[analisi-offerta-commerciale.md](../work-done/2026/analisi-offerta-commerciale.md)
 §2) tiene **strutturalmente separati** due assi:
 
 - **Preventivo → Ordine / Commessa** = proposta di transazione puntuale,
@@ -1868,7 +1868,7 @@ procede normalmente come §11.1.7.
 > l'asse "offerta commerciale → contratto". Il dominio
 > `vendite.offerte_commerciali` (tabelle, service, view, drawer) **non esiste
 > oggi in ZeroErp**: è in stato di analisi iniziale APERTA, vedi
-> [analisi-offerta-commerciale.md](../work-done/analisi-offerta-commerciale.md)
+> [analisi-offerta-commerciale.md](../work-done/2026/analisi-offerta-commerciale.md)
 > §7.
 >
 > Per coerenza con il manifesto §III bis (non disegnare astrazioni che il
@@ -2030,7 +2030,7 @@ anticipo per evitare migrazioni successive).
 
 *Analisi integrazione domini Anello 3 con motore pratiche — ZeroErp
 (2026-05-18, revisione critica 2026-05-19; **Fase E chiusa 2026-06-12**, vedi
-§8.5 e [analisi-pratiche-workflow-v2](../work-done/analisi-pratiche-workflow-v2.md)).
+§8.5 e [analisi-pratiche-workflow-v2](../work-done/2026/analisi-pratiche-workflow-v2.md)).
 Documento vivo, da aggiornare ad ogni Fase chiusa. Prossimo passo: Fase F —
 secondo consumatore (candidata: assistenza/ticketing,
 [crm-ticketing-pratiche](crm-ticketing-pratiche.md)).*

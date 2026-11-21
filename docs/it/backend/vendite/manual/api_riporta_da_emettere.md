@@ -11,9 +11,9 @@ normale: **nessun lotto viene rigenerato, nessuna fattura viene ricreata**.
 ## Contesto
 
 Consegna **BE-3** di
-[brief-be-fe-lavoro-che-non-torna-indietro.md](../../../dev/work-done/brief-be-fe-lavoro-che-non-torna-indietro.md),
+[brief-be-fe-lavoro-che-non-torna-indietro.md](../../../dev/work-done/2026/brief-be-fe-lavoro-che-non-torna-indietro.md),
 metà applicativa del cantiere DB
-[brief-db-lavoro-che-non-torna-indietro.md](../../../dev/work-done/brief-db-lavoro-che-non-torna-indietro.md).
+[brief-db-lavoro-che-non-torna-indietro.md](../../../dev/work-done/2026/brief-db-lavoro-che-non-torna-indietro.md).
 
 ⭐ **Perché esiste.** Fino al 2026-08-26 «Elimina dal lotto» non liberava niente:
 la pulizia cancellava le righe di fattura **prima** di riallineare le attività, e

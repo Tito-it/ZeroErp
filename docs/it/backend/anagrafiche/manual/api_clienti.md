@@ -99,7 +99,7 @@ dato appartiene.
 riempito con un default di parametro e **letto da nessuno**. Il campo prometteva
 una scelta che non aveva effetto.
 
-📌 Storia completa: [Fase 1 del cantiere IVA](../../../dev/work-done/brief-be-fe-iva-risolutore-e-regime-cliente.md)
+📌 Storia completa: [Fase 1 del cantiere IVA](../../../dev/work-done/2026/brief-be-fe-iva-risolutore-e-regime-cliente.md)
 (slice `S1`, `S2`, `S3`).
 
 **Errori**

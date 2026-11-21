@@ -815,7 +815,7 @@ database; anche bypassandolo, il database rifiuta comunque le operazioni scorret
 
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 [documentazione API Ordini](/backend/vendite/manual/api_ordini). Le decisioni di
-modello sono raccolte negli addendum di sviluppo (`dev/work-done/db-brief-ordini-vendita.md`,
+modello sono raccolte negli addendum di sviluppo (`dev/work-done/2026/db-brief-ordini-vendita.md`,
 `brief-ordini-stampa.md`, `db-brief-ordini-lock-cliente.md`, `brief-preventivi-ordini.md`;
 le date di consegna in `brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`).*
 

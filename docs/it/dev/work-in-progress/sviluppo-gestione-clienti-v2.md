@@ -4,7 +4,7 @@
 >
 > Data: aprile 2026
 >
-> Prerequisiti: [sviluppo-gestione-clienti.md (completato)](../work-done/sviluppo-gestione-clienti.md)
+> Prerequisiti: [sviluppo-gestione-clienti.md (completato)](../work-done/2026/sviluppo-gestione-clienti.md)
 >
 > Funzioni DB di riferimento:
 >

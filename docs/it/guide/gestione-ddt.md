@@ -602,8 +602,8 @@ Come funziona, dal punto di vista del DDT:
   [Gestione Commesse](/guide/gestione-commesse) §«Annullare una commessa».
 
 > Il modello completo del reso (entità, guard, ri-consegna, note di credito) è
-> nei brief `work-done/brief-db-resi-vendita.md` e
-> `work-done/brief-be-fe-resi-vendita.md`.
+> nei brief `work-done/2026/brief-db-resi-vendita.md` e
+> `work-done/2026/brief-be-fe-resi-vendita.md`.
 
 ---
 
@@ -745,9 +745,9 @@ per dare messaggi chiari prima del giro al database.
 *Per il dettaglio tecnico delle API REST, formati payload e codici errore vedi la
 [documentazione API DDT](/backend/vendite/manual/api_ddt). Le decisioni di
 modello sono raccolte negli addendum di sviluppo
-(`dev/work-done/brief-db-ddt-vendita-evasione-e-stati.md`,
+(`dev/work-done/2026/brief-db-ddt-vendita-evasione-e-stati.md`,
 `brief-db-ddt-emittente-user-e-etichetta-soggetto.md`) e, per il reso, nei brief
-della slice resi (`dev/work-done/brief-db-resi-vendita.md`,
-`dev/work-done/brief-be-fe-resi-vendita.md`).*
+della slice resi (`dev/work-done/2026/brief-db-resi-vendita.md`,
+`dev/work-done/2026/brief-be-fe-resi-vendita.md`).*
 
 {% include-markdown "signature-core.md" %}

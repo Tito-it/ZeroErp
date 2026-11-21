@@ -23,7 +23,7 @@
 > * ✅ **Il prerequisito è chiuso** (§3.3): dal 2026-09-25 la RLS applica gli
 >   ambiti `REPARTO`/`OPERATORE` su log, bozze e allegati, e dal 2026-09-26 il
 >   backend non ne tiene più una copia
->   ([brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md) §9).
+>   ([brief-db-email-visibilita-per-ambito.md](../work-done/2026/brief-db-email-visibilita-per-ambito.md) §9).
 > * ✅ **§2.3 passi 1-4 fatti il 2026-09-26**: la lista del log è aperta a ogni
 >   operatore (skip d'area, decisione di Tid) nel dominio frontend
 >   Strumenti, voce «Email» senza `requireArea` (era il dominio «Personale», assorbito
@@ -240,7 +240,7 @@ stesso emittente. Sull'outbox potrebbe anche **spedirne** la bozza.
 
 ⇒ ⛔ La correzione **non** va nella view: sarebbe la seconda sede del §1.1. Va
 nelle policy:
-[brief-db-email-visibilita-per-ambito.md](../work-done/brief-db-email-visibilita-per-ambito.md)
+[brief-db-email-visibilita-per-ambito.md](../work-done/2026/brief-db-email-visibilita-per-ambito.md)
 (decisioni D-1 → D-4 ✅ prese da Tid il 2026-09-25; il lavoro è del team DB). Il §2.3 riparte quando quel brief è chiuso.
 ✅ **Chiuso**: DB il 2026-09-25, BE il 2026-09-26 (brief §9, che ha trovato anche
 un difetto preesistente: l'`INSERT` del log non scriveva l'emittente, quindi

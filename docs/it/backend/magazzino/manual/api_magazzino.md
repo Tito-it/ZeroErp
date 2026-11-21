@@ -18,9 +18,9 @@ tre documenti che questa pagina non sostituisce:
 
 | Documento | Che cosa contiene |
 | --- | --- |
-| [brief-db-magazzino-lotto-2-motore.md](../../../dev/work-done/brief-db-magazzino-lotto-2-motore.md) | il **modello**: la porta sul registro, la primitiva, le decisioni D-L2-* |
-| [brief-db-magazzino-lotto-2-bis-be-fe.md](../../../dev/work-done/brief-db-magazzino-lotto-2-bis-be-fe.md) | ciò che il BE/FE ha chiesto al DB: la capability (R-1), i codici (R-2, R-6, R-7), l'azione `registra_magazzino` (R-3) |
-| [piano-be-fe-magazzino-lotto-2-motore.md](../../../dev/work-done/piano-be-fe-magazzino-lotto-2-motore.md) | il piano BE/FE, le domande Q-1 … Q-5 decise da Tid |
+| [brief-db-magazzino-lotto-2-motore.md](../../../dev/work-done/2026/brief-db-magazzino-lotto-2-motore.md) | il **modello**: la porta sul registro, la primitiva, le decisioni D-L2-* |
+| [brief-db-magazzino-lotto-2-bis-be-fe.md](../../../dev/work-done/2026/brief-db-magazzino-lotto-2-bis-be-fe.md) | ciò che il BE/FE ha chiesto al DB: la capability (R-1), i codici (R-2, R-6, R-7), l'azione `registra_magazzino` (R-3) |
+| [piano-be-fe-magazzino-lotto-2-motore.md](../../../dev/work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md) | il piano BE/FE, le domande Q-1 … Q-5 decise da Tid |
 
 ```text
 magazzino.inventari            la TESTATA: un magazzino, una data, uno stato
@@ -154,7 +154,7 @@ non apre un `atomic()` attorno a una scrittura sola.
 Il permesso è controllato **due volte**, e nessuna delle due è di troppo:
 l'endpoint ha `post_permission = registra_magazzino` (area Magazzino,
 `pericolosa`), e il verbo a DB lo richiede di nuovo come prima riga
-(`script.fn_guard_azione`, [brief dei verbi](../../../dev/work-done/brief-db-magazzino-verbi-con-permesso.md)).
+(`script.fn_guard_azione`, [brief dei verbi](../../../dev/work-done/2026/brief-db-magazzino-verbi-con-permesso.md)).
 ⚠️ Una riga a catalogo non è un permesso: finché l'azione non è assegnata a un
 profilo, solo i super admin registrano (fail-closed).
 

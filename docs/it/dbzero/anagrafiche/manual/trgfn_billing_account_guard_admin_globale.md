@@ -4,7 +4,7 @@
 
 Trigger function `BEFORE INSERT` su `anagrafiche.billing_account`: **un billing account si crea solo avendo un emittente fiscale su cui scriverlo**. Se nel sistema esistono emittenti attivi, l'utente deve appartenere a un emittente (riga in `config.user_emittenti_fiscali`) **oppure** lavorare dentro un emittente del suo perimetro (`app.current_emittente_id`, la combo in alto). Chi non ha né l'uno né l'altro — tipicamente il super admin in «Tutti gli emittenti» — viene rifiutato: non si saprebbe a quale emittente associare il nuovo cliente.
 
-Nata col refactor 2026‑04‑08 (decisione Q6 del [WIP](/dev/work-done/refactor-operatore-emittenti)) come «gli admin globali non creano billing account»; dalla rev 2026‑08‑04 di [`script.fn_check_user_can_create_ba`](/dbzero/script/funzioni/fn_check_user_can_create_ba) il super admin **dentro** un emittente può creare. Il nome della funzione e del codice (`…ADMIN_GLOBALE…`) resta per non rompere i riferimenti del backend.
+Nata col refactor 2026‑04‑08 (decisione Q6 del [WIP](/dev/work-done/2026/refactor-operatore-emittenti)) come «gli admin globali non creano billing account»; dalla rev 2026‑08‑04 di [`script.fn_check_user_can_create_ba`](/dbzero/script/funzioni/fn_check_user_can_create_ba) il super admin **dentro** un emittente può creare. Il nome della funzione e del codice (`…ADMIN_GLOBALE…`) resta per non rompere i riferimenti del backend.
 
 Pattern: defense‑in‑depth a livello DB. Anche se il backend prevede un check applicativo, il guard DB garantisce l'invarianza in caso di bypass o bug.
 
@@ -58,4 +58,4 @@ Non previsto un override esplicito (es. GUC `allow_admin_globale_create_ba`), e 
 ## Vedi anche
 
 * [`anagrafiche.trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — gemello `AFTER INSERT` che esegue l'auto‑link.
-* [Refactor operatore ↔ emittente](/dev/work-done/refactor-operatore-emittenti)
+* [Refactor operatore ↔ emittente](/dev/work-done/2026/refactor-operatore-emittenti)

@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # Il registro dei codici errore senza policy — mirror vivo del CSV
 #   Tabella: 20260805-36 · Misura: 20260805-35
-#   Brief: docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md
+#   Brief: docs/it/dev/work-done/2026/brief-db-be-terzo-lato-presidio-codici.md
 #
 #   ── ✅ AZZERATO IL 2026-08-07 (brief §26.2, §27) ──────────────────────
 #   Il CSV e' oggi la sola intestazione: **zero voci**. Non e' un registro

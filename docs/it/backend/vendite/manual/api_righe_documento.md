@@ -12,7 +12,7 @@ generati dal factory condiviso `build_lista_figlia_views`
 `pagina_dopo_testata` (`apps/core/services/testata_guard.py`).
 
 Design-of-record:
-[brief-db-liste-righe-documento.md](../../../dev/work-done/brief-db-liste-righe-documento.md).
+[brief-db-liste-righe-documento.md](../../../dev/work-done/2026/brief-db-liste-righe-documento.md).
 
 | Documento | Base path | Lista a catalogo | Sorgente | Ordine del documento |
 |---|---|---|---|---|

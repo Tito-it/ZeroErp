@@ -507,7 +507,7 @@ del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 
 ## 1-bis. Area «Accessi» e azioni della credenziale
 
-> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-done/brief-db-be-fe-area-accessi.md)).
+> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-done/2026/brief-db-be-fe-area-accessi.md)).
 > La voce «Operatori» e' diventata l'area **«Accessi»**, tre schede che insieme
 > censiscono TUTTE le credenziali, ognuna in una scheda sola: la partizione la
 > decide il DB (`script.fn_categoria_accesso` → `OPERATORE` / `SISTEMA` /
@@ -1716,7 +1716,7 @@ resa insieme al numero: alcune viste sono registri di debito. ⭐ Al **2026-09-0
 `dbops.vw_processi_programmazione_da_guardare` nasce con **una** riga
 (`apply_storicizza_weekly`, che dal febbraio 2026 gira senza lasciare traccia sul
 giornale): il suo stesso `COMMENT` lo dichiara e dice quando va tolto. Brief:
-`work-done/brief-db-sveglia-dei-processi.md` §8.1.
+`work-done/2026/brief-db-sveglia-dei-processi.md` §8.1.
 
 **Esempio curl:**
 
@@ -1782,7 +1782,7 @@ attore (`richiesto_da`); il drenatore
 sottoprocesso — **la stessa riga del timer, meno l'orario** — e il comando
 registra il suo run sotto il proprio processo con `origine = COMMAND` e
 l'utente di chi ha premuto. **Il web non esegue niente.** Brief:
-`work-done/brief-db-avvio-manuale-di-un-processo.md`; piano
+`work-done/2026/brief-db-avvio-manuale-di-un-processo.md`; piano
 `piano-be-fe-avvio-manuale-di-un-processo.md`.
 
 ⚠️ **Porta**: `AdminAPIView` (v1 solo `SUPER_ADMIN`, decisione di Tid del

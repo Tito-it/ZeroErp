@@ -10,7 +10,7 @@ cliente del BA, `categoria_cliente_id_snapshot` dal BA, `default_valido_*`
 da `config.parameters`, suffisso codice clone, esistenza di BOZZE.
 
 Riferimento concettuale:
-[analisi-refactor.frontend-vendite.md §A5/A8](/dev/work-done/analisi-refactor.frontend-vendite#a5-defaults-contratto-da-form-defaults-backend) (Fase 2.B3-B5).
+[analisi-refactor.frontend-vendite.md §A5/A8](/dev/work-done/2026/analisi-refactor.frontend-vendite#a5-defaults-contratto-da-form-defaults-backend) (Fase 2.B3-B5).
 
 ## Contesto
 
@@ -361,4 +361,4 @@ user e' presente nel JWT.
 - Backend routes: `apps/vendite/api/{preventivi_urls,urls_contratti,urls_listini}.py`
 - Frontend client: `frontend/src/vendite/api/formDefaults.js`
 - Frontend consumer: `frontend/src/vendite/{components/{VersioneFormDrawer,CloneVersioneDrawer,ChiudiVersioneDialog}.vue,preventivi/components/PreventiviDrawer.vue}`
-- Refactor doc: `docs/it/dev/work-done/analisi-refactor.frontend-vendite.md` §A5/A8 + Fase 2 piano (chiuso)
+- Refactor doc: `docs/it/dev/work-done/2026/analisi-refactor.frontend-vendite.md` §A5/A8 + Fase 2 piano (chiuso)

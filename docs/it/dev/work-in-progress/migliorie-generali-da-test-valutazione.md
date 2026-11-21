@@ -33,7 +33,7 @@ liste, che è anche lavoro DB (`brief-db-revisione-ui`).
 > scorecard (§5) e la checklist delle voci aperte (§6). La valutazione di febbraio (§1), ciò che è
 > nato in sette mesi (§2), la valutazione del design del 04-10 (§2-bis), le voci chiuse (§7) e i
 > riallineamenti della testata sono nell'**archivio**,
-> [migliorie-generali-da-test-valutazione-storia.md](../work-done/migliorie-generali-da-test-valutazione-storia.md), con la stessa numerazione: un
+> [migliorie-generali-da-test-valutazione-storia.md](../work-done/2026/migliorie-generali-da-test-valutazione-storia.md), con la stessa numerazione: un
 > rimando «§D13» o «§7 D7» da un changeSet o da un brief si legge lì.
 >
 > **Numeri del 2026-11-14** (repo e catalogo di dbdev con `scripts/indicatori-qualita-db.sh
@@ -99,7 +99,7 @@ cioè anche `codice_interno`; il divieto di DELETE su clienti ed emittenti; otto
 guard del lotto e delle fatture…). Il backend non ne accende nessuna, ma un blocco
 che l'applicazione può spegnere da sola protegge solo finché l'applicazione non
 sbaglia. Proposta nel brief
-[brief-db-esclusioni-implicite.md](../work-done/brief-db-esclusioni-implicite.md) §4: un
+[brief-db-esclusioni-implicite.md](../work-done/2026/brief-db-esclusioni-implicite.md) §4: un
 building block che lega il bypass al **proprietario delle tabelle** (la forma di
 `zeroerp.ddt_cambio_stato`), i verbi del lotto DEFINER (approvato), circa 45 pgTAP
 da riscrivere perché usano quelle GUC come scorciatoia di fixture.
@@ -284,7 +284,7 @@ costruisce se il DB è vuoto, il BB di composizione
 operatore umano, PDP e listino, e dal 2026-10-07 quelli di **ordine, preventivo,
 commessa e attività di commessa**). Resta applicarla, e ciò che il giro 2 ha
 lasciato
-([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
+([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/2026/brief-db-fixture-che-costruiscono-giro-2.md)
 §5, §7, §9, §11):
 
 * 🔴 **prima di tutto, la regressione** `test-comment-al-presente-catalogo-v1` (sopra): finché c'è,
@@ -314,7 +314,7 @@ lasciato
   fuori dai commenti (metodo diverso da quello del 07-10, quindi non confrontabile), i file sono
   18 per l'ordine, 46 per il preventivo, 16 per la commessa e 21 per l'attività. I builder ci sono (`dbops.fn_pgtap_crea_ordine`, `_preventivo`,
   `_commessa`, `_commessa_attivita`): si migrano con il lotto 4, per famiglia
-  ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
+  ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/2026/brief-db-fixture-rls-documenti-costruiti.md)
   §6);
 * ✅ i file che fissano `SET LOCAL app.current_user_id = '1'`: **zero** al 2026-10-27 (4 al 23-10,
   7 al 13-10, 28 al 22-09: l'utente 1 non esiste in CI). Gli ultimi quattro (due della porta
@@ -371,16 +371,16 @@ un'asimmetria fra i due si chiude subito, non in una «fase due». ⚠️ `stori
 
 ✅ **Al 2026-09-26 i due schemi non sono più allo stesso punto.** `magazzino` ha
 il comportamento dei lotti 1 e 2 — il terreno vuoto
-(`work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md`, chiuso il 17-09), il
-motore (`work-done/brief-db-magazzino-lotto-2-motore.md`, lato DB chiuso il
+(`work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md`, chiuso il 17-09), il
+motore (`work-done/2026/brief-db-magazzino-lotto-2-motore.md`, lato DB chiuso il
 18-09) e i verbi con permesso
-(`work-done/brief-db-magazzino-verbi-con-permesso.md`, 25-09) — e **17** file
+(`work-done/2026/brief-db-magazzino-verbi-con-permesso.md`, 25-09) — e **17** file
 pgTAP; resta aperto come cantiere (collaudo a video). ⛔ `acquisti` è ancora
 dove lo descrive la tabella: **zero** test, comportamento da scrivere. La
 tabella qui sotto è la fotografia dell'8-09 e per `acquisti` resta vera.
 
 ✅ **Al 2026-10-23** `magazzino` ha anche il lotto 3 (scarico da DDT) e il 3-bis (carico da reso),
-chiusi il 14-10 (`work-done/brief-db-magazzino-lotto-3-*.md`), e **25** file pgTAP; restano aperti
+chiusi il 14-10 (`work-done/2026/brief-db-magazzino-lotto-3-*.md`), e **25** file pgTAP; restano aperti
 `brief-db-magazzino-tutte-le-scritture-dal-verbo.md` e i collaudi a video. ⛔ `acquisti` non si è
 mosso: zero test, nessun changeSet di comportamento (gli ultimi del 09-10 sono adeguamenti di
 regole generali), e `analisi-simmetria-ordini-acquisto.md` è ferma al 14-09. Intanto `vendite`
@@ -528,7 +528,7 @@ cadeva sul NOT NULL di `competenza_al`). Il lister dei contratti mandava ogni ri
 la competenza di tutto il contratto: un canone diventava un addebito unico. D-2 (a) di Tid: dal
 `20261013-24` il push manda solo le UNA_TANTUM; la generazione per periodo del canone e le quantità di
 orario e consumo dalle loro fonti si progettano nel brief
-[brief-db-contratto-righe-periodiche-in-commessa.md](../work-done/brief-db-contratto-righe-periodiche-in-commessa.md).
+[brief-db-contratto-righe-periodiche-in-commessa.md](../work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md).
 ✅ **Al 2026-11-01 il canone è fatto**: decisioni G-0 … G-11 (28-10), lotti L1 … L9 e il giro del §7 lato
 DB, il passaggio BE/FE (§7.6, §7.11, §7.13.4). Brief archiviato il 2026-11-01: il collaudo a video
 (il form della riga a canone, la colonna «Periodicità» della lista 37) è fra i residui di
@@ -639,7 +639,7 @@ rossi noti.
       `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid
       (fermo dal 05-10; il ramo delle istanze fittizie del 14-10 eredita i difetti).
 * [ ] **D17** — Q-2: legare le GUC di bypass al proprietario delle tabelle (proposta in
-      `work-done/brief-db-esclusioni-implicite.md` §4). Via di Tid il 2026-11-03; il brief suo non è
+      `work-done/2026/brief-db-esclusioni-implicite.md` §4). Via di Tid il 2026-11-03; il brief suo non è
       ancora aperto (14-11). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
 
 ### 🟠 La sostanza

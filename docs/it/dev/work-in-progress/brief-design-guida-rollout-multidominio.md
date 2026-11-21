@@ -12,8 +12,8 @@
 >
 > **Owner**: Tid · **Stato**: 🟢 **DECISO (owner, 2026-07-07)** — le 4 decisioni (§6) sono adottate; pronto per
 > i brief DB per dominio, **si parte da OFFERTA**. Il pilota PREVENTIVI è chiuso ed E2E-verde
-> ([brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md),
-> [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md)). Questo brief
+> ([brief-design-guida-avanza-esito-proiettato](../work-done/2026/brief-design-guida-avanza-esito-proiettato.md),
+> [brief-db-guida-avanza-esito-proiettato](../work-done/2026/brief-db-guida-avanza-esito-proiettato.md)). Questo brief
 > pianifica l'estensione del meccanismo a OFFERTA, ORDINE, CONTRATTO.
 >
 > **Documento padre**: [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) — è il
@@ -23,10 +23,10 @@
 > **Gerarchia dei documenti** (dalla radice a qui):
 > 1. [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) — **padre** (V10 §4;
 >    Problema 1 §2.1 + radice §2.4 «due macchine a stati»).
-> 2. [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md) — design MOSTRA/GUIDA
+> 2. [brief-design-proiezione-stato-dominio](../work-done/2026/brief-design-proiezione-stato-dominio.md) — design MOSTRA/GUIDA
 >    (§6 le due direzioni · §8 deliverable · **D4** GUIDA).
-> 3. [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md) +
->    [brief-db-guida-avanza-esito-proiettato](../work-done/brief-db-guida-avanza-esito-proiettato.md) —
+> 3. [brief-design-guida-avanza-esito-proiettato](../work-done/2026/brief-design-guida-avanza-esito-proiettato.md) +
+>    [brief-db-guida-avanza-esito-proiettato](../work-done/2026/brief-db-guida-avanza-esito-proiettato.md) —
 >    **pilota PREVENTIVI** (design-of-record + DB, chiusi in work-done).
 > 4. **Questo brief** — roll-out del meccanismo agli altri domini (OFFERTA/CONTRATTO/ORDINE).
 >
@@ -34,11 +34,11 @@
 > contratti; e prima andrebbero definite le pratiche»*. Entrambe le osservazioni sono corrette e sono il
 > perno di questo brief.
 >
-> **Correlati**: [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md) (padre
+> **Correlati**: [brief-design-proiezione-stato-dominio](../work-done/2026/brief-design-proiezione-stato-dominio.md) (padre
 > MOSTRA/GUIDA), [analisi-pratiche-valutazione-stato](analisi-pratiche-valutazione-stato.md) (V10 + Problema 2
-> «variazione per azienda»), [brief-design-workflow-definizioni-versionate](../work-done/brief-design-workflow-definizioni-versionate.md)
+> «variazione per azienda»), [brief-design-workflow-definizioni-versionate](../work-done/2026/brief-design-workflow-definizioni-versionate.md)
 > (edizioni versionate — lo strumento con cui si *definiscono* le pratiche), il cantiere editor
-> [brief-fe-fase3-editor-definizioni-workflow](../work-done/brief-fe-fase3-editor-definizioni-workflow.md).
+> [brief-fe-fase3-editor-definizioni-workflow](../work-done/2026/brief-fe-fase3-editor-definizioni-workflow.md).
 
 ---
 
@@ -174,7 +174,7 @@ che vale per tutti i domini presenti e futuri.
   innocuo sugli altri. ⚠️ **Non è un changeset a sé**: l'INSERT del link COLLEGATO vive dentro le funzioni
   di push (`fn_push_preventivo_a_ordine` oggi inserisce `(pratica_id, sorgente_tipo_id, sorgente_uid,
   ruolo_link)` **senza** `flusso_id`) — le stesse funzioni che
-  [analisi-fix-transazioni](../work-done/analisi-fix-transazioni.md) rifonde in **funzioni madre** (finding #4/#5/#10).
+  [analisi-fix-transazioni](../work-done/2026/analisi-fix-transazioni.md) rifonde in **funzioni madre** (finding #4/#5/#10).
   G-est.2 va **incorporato in quelle madri**, non scritto in parallelo (vedi §9-R1).
 
 Entrambe **additive** e non regressive sul pilota PREVENTIVI (che continua a bindare su `esito` NULL con
@@ -241,7 +241,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
   cablati. Il §1/§6 lo ammette a valle («avanza-su-descrittore»), ma va detto nell'incipit: **due domini su
   tre non sono «solo cablaggio»**.
 - **F2 — D-B inverte la proposta del pilota (tracciabilità).** Il pilota
-  [brief-design-guida-avanza-esito-proiettato](../work-done/brief-design-guida-avanza-esito-proiettato.md)
+  [brief-design-guida-avanza-esito-proiettato](../work-done/2026/brief-design-guida-avanza-esito-proiettato.md)
   §6(b) proponeva **l'opposto** («NON forzare `flusso_id` sui COLLEGATO; usare la mappa step→sorgente»).
   D-B sceglie il forcing — legittimo e **compatibile col motore attuale** (che già legge `flusso_id` come
   restrizione, quindi *nessuna* modifica al motore per D-B) — ma è un ribaltamento da annotare.
@@ -259,7 +259,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
 - **R1 — Coordinamento con la fix-transazioni (stesso branch, stesse funzioni).** ✅ **RECEPITO sul lato
   firma — verificato in DB il 2026-07-16.** G-est.2 (`flusso_id` sul
   COLLEGATO) va **dentro le funzioni madre** dei finding **#4/#5/#10** di
-  [analisi-fix-transazioni](../work-done/analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
+  [analisi-fix-transazioni](../work-done/2026/analisi-fix-transazioni.md) — che *già* riscrivono l'INSERT su
   `pratiche_sorgenti`. Progettare **da subito** la firma della madre per ricevere/risolvere il `flusso_id`
   (oggi `fn_push_preventivo_a_ordine` riceve `p_pratica_id` ma non il flusso): aggiungerlo dopo = seconda
   modifica di firma → `DROP FUNCTION` (regola `RETURNS TABLE`). **#3 escluso** (link ROOT: `flusso_id` già
@@ -288,7 +288,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
   - **Il fallback pratica-level è già stato implementato** (`script.vw_pratica_doc_sorgente`): dettaglio
     e lista accendono già i COLLEGATO senza `flusso_id`. Scoperto solo l'aggancio **per-flusso**
     (percorso/coda). Dettaglio nelle note **(b)** e **(c)** del
-    [brief-padre proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md).
+    [brief-padre proiezione-stato-dominio](../work-done/2026/brief-design-proiezione-stato-dominio.md).
   - 🔴 **ATTENZIONE sul primo dominio del roll-out — OFFERTA**: `vendite.fn_push_offerta_a_contratto`
     ha firma `(p_offerta_id, p_pratica_id, p_chiudi_contratto_esistente)` — **nessun `p_flusso_id`**.
     Il rischio che R1 voleva evitare (seconda modifica di firma → `DROP FUNCTION`) è scongiurato per i
@@ -313,7 +313,7 @@ sotto riguardano il *framing* e il *coordinamento con altre attività*, non erro
 
 ## Ereditato dal brief-padre (archiviato il 2026-11-20)
 
-Il brief-padre [brief-design-proiezione-stato-dominio](../work-done/brief-design-proiezione-stato-dominio.md)
+Il brief-padre [brief-design-proiezione-stato-dominio](../work-done/2026/brief-design-proiezione-stato-dominio.md)
 è in `work-done/`: il modello (proiezione, vocabolario `fase`/`esito`/`terminale`, dove si legge) sta ora
 nella [guida Gestione Pratiche](../../guide/gestione-pratiche.md), §«Lo stato del documento nella pratica
 (MOSTRA)». La sua correzione di stato, chiesta qui il 2026-07-07 (il livello di lettura è generico, non

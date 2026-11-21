@@ -304,7 +304,7 @@ Dominio offerta commerciale lato BE+FE **completo**.
 ## Riferimenti
 
 - API: [api_offerte](api_offerte.md)
-- Modello: [analisi-offerta-commerciale](/dev/work-done/analisi-offerta-commerciale)
-- Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/analisi-offerta-commerciale-db)
-- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-done/analisi-offerta-commerciale-be-fe)
+- Modello: [analisi-offerta-commerciale](/dev/work-done/2026/analisi-offerta-commerciale)
+- Brief DB: [analisi-offerta-commerciale-db](/dev/work-done/2026/analisi-offerta-commerciale-db)
+- Piano BE+FE: [analisi-offerta-commerciale-be-fe](/dev/work-done/2026/analisi-offerta-commerciale-be-fe)
 - Service contratto (specchio strutturale): [contratti_service.py](../../../../backend/apps/vendite/services/contratti_service.py)

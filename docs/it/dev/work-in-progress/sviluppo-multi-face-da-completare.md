@@ -16,14 +16,14 @@
 > bloccato.*
 >
 > **Fonti.** Estratto e riorganizzato da:
-> - [sviluppo-multi-face-auth.md](../work-done/sviluppo-multi-face-auth.md) (in
+> - [sviluppo-multi-face-auth.md](../work-done/2026/sviluppo-multi-face-auth.md) (in
 >   `work-done` ma con checklist ancora aperte — è il vero WIP appeso)
 > - [sviluppo-portale-shop.md](sviluppo-portale-shop.md)
 > - [smoke-b1-invito-shop-checklist.md](smoke-b1-invito-shop-checklist.md)
 > - **RLS, tre documenti di riferimento**:
->   [analisi-attivazione-rls-operatori.md](../work-done/analisi-attivazione-rls-operatori.md)
+>   [analisi-attivazione-rls-operatori.md](../work-done/2026/analisi-attivazione-rls-operatori.md)
 >   (le decisioni, §11) ·
->   [analisi-attivazione-rls-db.md](../work-done/analisi-attivazione-rls-db.md)
+>   [analisi-attivazione-rls-db.md](../work-done/2026/analisi-attivazione-rls-db.md)
 >   (il log DB, §15) ·
 >   [architettura-multi-face-auth.md §6](../../guide/architettura-multi-face-auth.md)
 >   (il modello)
@@ -167,7 +167,7 @@ cantiere:
 
 E due lavori adiacenti, **non** di questo cantiere ma che lo toccano:
 
-- [x] [brief-db-rls-storico-scope-congelato.md](../work-done/brief-db-rls-storico-scope-congelato.md)
+- [x] [brief-db-rls-storico-scope-congelato.md](../work-done/2026/brief-db-rls-storico-scope-congelato.md)
       — lo storico porta il proprio perimetro e non lo ricalcola: **APPLICATO
       il 2026-09-11** (passi 1-7, 37 shadow armate con `scope_emittente_fiscale_id`
       congelato alla scrittura e policy `FOR SELECT` generate da
@@ -318,7 +318,7 @@ il 2026-09-11**.
       non aspetta il rollout). ⚠️ Stava qui «fuori scope finché non in
       produzione»: era la ragione sbagliata, perché la tabella non era inerte
       (due FK `ON DELETE RESTRICT`, `storicizza` che la riarmava a ogni
-      `ci_apply`). Storia in `work-done/brief-db-rls-storico-scope-congelato.md`
+      `ci_apply`). Storia in `work-done/2026/brief-db-rls-storico-scope-congelato.md`
       §10. *(Il «benchmark post-RLS > 10%» che stava qui è ritirato — §1.2.)*
 
 ---

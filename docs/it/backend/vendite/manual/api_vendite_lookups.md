@@ -9,7 +9,7 @@ nei drawer Vue (`'PERCENTUALE'`, `'COMMODITY'`, ecc.) e li espongono come
 risorse REST con cache modulo-level lato FE (`useGlobalLookup`).
 
 Riferimento concettuale:
-[analisi-refactor.frontend-vendite.md §A7](/dev/work-done/analisi-refactor.frontend-vendite#a7-enum-tipo_variazione-promo-e-contrattilistini-da-lookup-statico).
+[analisi-refactor.frontend-vendite.md §A7](/dev/work-done/2026/analisi-refactor.frontend-vendite#a7-enum-tipo_variazione-promo-e-contrattilistini-da-lookup-statico).
 
 ## Contesto
 

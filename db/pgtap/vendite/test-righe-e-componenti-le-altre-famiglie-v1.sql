@@ -12,7 +12,7 @@
 --
 -- Test: righe e componenti di preventivo, ordine e DDT allineati a contratto
 --   e offerta. ChangeSet 20261008-30 … -35.
--- Brief: docs/it/dev/work-done/brief-db-righe-e-componenti-le-altre-famiglie.md
+-- Brief: docs/it/dev/work-done/2026/brief-db-righe-e-componenti-le-altre-famiglie.md
 --
 -- Elenco test (plan 26):
 --  I lettori DEFINER (§2.2)

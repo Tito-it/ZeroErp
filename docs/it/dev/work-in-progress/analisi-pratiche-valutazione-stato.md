@@ -13,12 +13,12 @@
 > **Natura del documento**: qui si raccolgono le **opinioni generali** e le **cose da
 > valutare/rivalutare**. Non decide nulla: è la *lista degli spunti* da cui nascono i
 > brief operativi (BE/FE/DB). Il primo brief generato da questa analisi è già pronto:
-> [brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md).
+> [brief-fe-percorso-narrativo-operatore.md](../work-done/2026/brief-fe-percorso-narrativo-operatore.md).
 >
 > **Documenti collegati**: [Guida Gestione Pratiche](../../guide/gestione-pratiche.md),
 > [Gestione Pratiche — Configurazione](../../guide/gestione-pratiche-configurazione.md),
 > [gestione-pratiche-come-procedere.md](gestione-pratiche-come-procedere.md),
-> [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md),
+> [analisi-uniformita-pratica-preventivi.md](../work-done/2026/analisi-uniformita-pratica-preventivi.md),
 > [crm-ticketing-pratiche.md](crm-ticketing-pratiche.md).
 
 ---
@@ -69,7 +69,7 @@ Separarli è già metà della cura, perché due dei tre **non si toccano nemmeno
 ### 2.1 Problema 1 — L'operatore non deve *mai* vedere «il flusso» (presentazione)
 
 È un problema di **presentazione**, non di motore. La risposta è già stata scritta
-dall'autore stesso in [analisi-uniformita-pratica-preventivi.md](../work-done/analisi-uniformita-pratica-preventivi.md):
+dall'autore stesso in [analisi-uniformita-pratica-preventivi.md](../work-done/2026/analisi-uniformita-pratica-preventivi.md):
 *«la pratica non deve divergere dal programma standalone»*. Portato fino in fondo:
 parole come *flusso, template, prerequisito, modalità esito, direzione, handler* sono
 **vocabolario da idraulico**; l'operatore non deve incontrarle mai. Lui pensa «mi è
@@ -83,7 +83,7 @@ davvero, **peggiora con la profondità** (l'ingresso "Le mie attività" è quasi
 vista *Percorso* — che dovrebbe essere il racconto — è la più leaky), ed è **economico
 da chiudere** perché le etichette umane (`descrizione`) esistono già nel dato e non
 vengono renderizzate. Dettaglio, evidenze e piano nel brief:
-[brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md).
+[brief-fe-percorso-narrativo-operatore.md](../work-done/2026/brief-fe-percorso-narrativo-operatore.md).
 
 ### 2.2 Problema 2 — La variazione fra aziende non ha un asse su cui appoggiarsi (architettura)
 
@@ -125,7 +125,7 @@ Non è greenfield: esiste già l'infrastruttura di scope multi-company
 > **sostituisce l'intero set** (copia assistita, non patch); (b) le pratiche in volo
 > **restano stabili** (pin → **V6 risolta strutturalmente**); (c) il preset **È** la
 > definizione con `emittente = NULL`. Brief:
-> [brief-design-workflow-definizioni-versionate.md](../work-done/brief-design-workflow-definizioni-versionate.md).
+> [brief-design-workflow-definizioni-versionate.md](../work-done/2026/brief-design-workflow-definizioni-versionate.md).
 
 ### 2.3 Problema 3 — Gli strumenti di configurazione, e l'analogia con l'AI da correggere (governo)
 
@@ -156,7 +156,7 @@ perché un LLM generi la configurazione e il DB scarti da solo le combinazioni i
 
 > Non è un quarto problema: è la **causa sotto il Problema 1**, emersa ragionando
 > (2026-07-01). Il dettaglio e il piano stanno nel brief dedicato:
-> [brief-design-proiezione-stato-dominio.md](../work-done/brief-design-proiezione-stato-dominio.md).
+> [brief-design-proiezione-stato-dominio.md](../work-done/2026/brief-design-proiezione-stato-dominio.md).
 
 Le pratiche sono una macchina a stati, ma **anche** preventivo, offerta, contratto e
 ordine lo sono — coi propri drawer che *già sanno* avanzare i loro stati. Dentro la
@@ -216,17 +216,17 @@ sforzo*, non urgenza assoluta.
 
 | # | Tema | Cosa valutare | Tipo | Priorità | Brief |
 |---|---|---|---|---|---|
-| **V1** | **Comprensibilità operatore** | Il *Percorso* è un debugger della macchina a stati, non un racconto; il lessico da motore trapela. Trasformarlo in "sei qui / prossimo passo / un pulsante". | FE (+ display fields BE) | 🔴 alta | ✅ [brief-fe-percorso-narrativo-operatore.md](../work-done/brief-fe-percorso-narrativo-operatore.md) |
-| **V2** | **Variazione per azienda** | Asse `emittente`/override sui workflow (oggi i template sono globali). **✅ Deciso 2026-07-02: modello C «edizioni versionate + fork»** (§2.2) — definizioni con versione, pratica pinnata all'edizione, fork con provenance. **Assorbe V6.** **✅ Implementato 2026-07-04**: DB Fasi 0-2 + BE completo (admin edizioni Slice 1 + editing strutturale BOZZA Slice 2 anelli 1-5). Resta la UI editor (→ V4). | Design → DB → BE | 🔴 alta (strategica) | ✅ [brief-design-workflow-definizioni-versionate.md](../work-done/brief-design-workflow-definizioni-versionate.md) |
+| **V1** | **Comprensibilità operatore** | Il *Percorso* è un debugger della macchina a stati, non un racconto; il lessico da motore trapela. Trasformarlo in "sei qui / prossimo passo / un pulsante". | FE (+ display fields BE) | 🔴 alta | ✅ [brief-fe-percorso-narrativo-operatore.md](../work-done/2026/brief-fe-percorso-narrativo-operatore.md) |
+| **V2** | **Variazione per azienda** | Asse `emittente`/override sui workflow (oggi i template sono globali). **✅ Deciso 2026-07-02: modello C «edizioni versionate + fork»** (§2.2) — definizioni con versione, pratica pinnata all'edizione, fork con provenance. **Assorbe V6.** **✅ Implementato 2026-07-04**: DB Fasi 0-2 + BE completo (admin edizioni Slice 1 + editing strutturale BOZZA Slice 2 anelli 1-5). Resta la UI editor (→ V4). | Design → DB → BE | 🔴 alta (strategica) | ✅ [brief-design-workflow-definizioni-versionate.md](../work-done/2026/brief-design-workflow-definizioni-versionate.md) |
 | **V3** | **Preset per settore + fork** | Formalizzare "convenzione con vie di fuga" (§3): cosa è preset, cosa è fork, quali paletti. Inquadra V2 e V4. | Design | 🟠 media-alta | da generare |
 | **V4** | **UI di amministrazione workflow** | Oggi solo seed Liquibase. Serve editor/ispettore (anche solo read-only all'inizio) che renda visibili gli step, i prerequisiti, gli esiti. **BE pronto** (`api_definizioni_workflow`: dettaglio + editing step/figli/archi); resta **l'editor FE** (Fase 3). | FE (BE ✅) | 🟠 media | BE fatto — FE da generare |
 | **V5** | **Discoverability delle opzioni** | "Capire le opzioni possibili": il §5 della guida configurazione è già la specifica di questa vista. Può nascere gemella di V4 (ispettore read-only). | FE | 🟡 media | da generare |
 | **V6** | **Estensibilità senza rotture** | Versionamento delle definizioni: cosa accade alle pratiche aperte quando un template cambia. **Assorbita da V2** (modello C: il pin dell'edizione alla creazione la risolve strutturalmente). | DB + design | 🟡 media | → risolta nel brief V2 |
 | **V7** | **AI copilota di configurazione** | L'AI genera/valida il seed dei workflow dal linguaggio naturale, sopra il modello dichiarativo + guard. Visione, non ora. | Visione | 🟢 futura | nota |
 | **V8** | **Bilanciamento dello sforzo** | Regola di metodo: *fermarsi ad aggiungere manopole al motore* finché lo strato-prodotto (V1/V4) non recupera. Trasversale a tutto. | Metodo | — | (principio) |
-| **V9** | **Uniformità pratica ⇄ standalone** | Già in corso ([analisi-uniformita](../work-done/analisi-uniformita-pratica-preventivi.md)). Confermarlo come principio guida **anche per la UX** (V1 ne è un corollario). | Design | (in corso) | esistente |
-| **V10** | **Proiezione generica dello stato di dominio** | Le pratiche non conoscono lo stato dei documenti in corso (preventivo/offerta/ordine/contratto): descrittore normalizzato (`fase`/`esito`/`terminale` + `descrizione`) che ogni dominio produce e la pratica mostra. **Radice profonda del Problema 1** (§2.4). | Design → DB/BE | 🔴 alta | ✅ [design](../work-done/brief-design-proiezione-stato-dominio.md); DB ✅ ([brief chiuso](../work-done/brief-db-proiezione-stato-dominio.md)); **MOSTRA BE+FE ✅ 2026-07-02 su PREVENTIVI**; **GUIDA (D4) ✅ pilota PREVENTIVI E2E-verde 2026-07-07** ([design](../work-done/brief-design-guida-avanza-esito-proiettato.md) + [DB](../work-done/brief-db-guida-avanza-esito-proiettato.md) chiusi; smoke `smoke-test-guida-inversione-preventivi.sh` 7/7). MOSTRA DB su tutti i domini di vendita (2026-07-02); ancora per milestone in DB (2026-11-09). **Design archiviato 2026-11-20** (modello nella guida Gestione Pratiche). Restano, nel [brief GUIDA multi-dominio](brief-design-guida-rollout-multidominio.md): roll-out GUIDA su offerta/ordine/contratto, validazione E2E in-app MOSTRA, D4 (`COLLEGATO` senza flusso sulla card), «azioni» nel descrittore |
-| **V11** | **Home operatore (launcher)** | Pagina d'atterraggio con due gesti affiancati: *comincia* (tile **data-driven da `tipi_prestazione`**, raggruppate per `categoria`) + *continua* (**coda lavoro riusata** dal BB `PraticheCodaLavoro`). Modello menu AS/400. **Decisione 2026-07-01**: la home è un **launcher puro** — ogni elemento fa *deep-link alla dashboard in uno stato preimpostato* (tile → filtro tipo attivo + "Nuova pratica" col tipo pre-impostato; attività → pratica selezionata + percorso), niente create diretto dalla tile (contesto, non verbo). Nessuna attività DB (ricognizione nel brief). | FE (+ lookup BE puro) | 🟡 media | ✅ [brief-fe-home-operatore-launcher.md](../work-done/brief-fe-home-operatore-launcher.md) |
+| **V9** | **Uniformità pratica ⇄ standalone** | Già in corso ([analisi-uniformita](../work-done/2026/analisi-uniformita-pratica-preventivi.md)). Confermarlo come principio guida **anche per la UX** (V1 ne è un corollario). | Design | (in corso) | esistente |
+| **V10** | **Proiezione generica dello stato di dominio** | Le pratiche non conoscono lo stato dei documenti in corso (preventivo/offerta/ordine/contratto): descrittore normalizzato (`fase`/`esito`/`terminale` + `descrizione`) che ogni dominio produce e la pratica mostra. **Radice profonda del Problema 1** (§2.4). | Design → DB/BE | 🔴 alta | ✅ [design](../work-done/2026/brief-design-proiezione-stato-dominio.md); DB ✅ ([brief chiuso](../work-done/2026/brief-db-proiezione-stato-dominio.md)); **MOSTRA BE+FE ✅ 2026-07-02 su PREVENTIVI**; **GUIDA (D4) ✅ pilota PREVENTIVI E2E-verde 2026-07-07** ([design](../work-done/2026/brief-design-guida-avanza-esito-proiettato.md) + [DB](../work-done/2026/brief-db-guida-avanza-esito-proiettato.md) chiusi; smoke `smoke-test-guida-inversione-preventivi.sh` 7/7). MOSTRA DB su tutti i domini di vendita (2026-07-02); ancora per milestone in DB (2026-11-09). **Design archiviato 2026-11-20** (modello nella guida Gestione Pratiche). Restano, nel [brief GUIDA multi-dominio](brief-design-guida-rollout-multidominio.md): roll-out GUIDA su offerta/ordine/contratto, validazione E2E in-app MOSTRA, D4 (`COLLEGATO` senza flusso sulla card), «azioni» nel descrittore |
+| **V11** | **Home operatore (launcher)** | Pagina d'atterraggio con due gesti affiancati: *comincia* (tile **data-driven da `tipi_prestazione`**, raggruppate per `categoria`) + *continua* (**coda lavoro riusata** dal BB `PraticheCodaLavoro`). Modello menu AS/400. **Decisione 2026-07-01**: la home è un **launcher puro** — ogni elemento fa *deep-link alla dashboard in uno stato preimpostato* (tile → filtro tipo attivo + "Nuova pratica" col tipo pre-impostato; attività → pratica selezionata + percorso), niente create diretto dalla tile (contesto, non verbo). Nessuna attività DB (ricognizione nel brief). | FE (+ lookup BE puro) | 🟡 media | ✅ [brief-fe-home-operatore-launcher.md](../work-done/2026/brief-fe-home-operatore-launcher.md) |
 
 ---
 

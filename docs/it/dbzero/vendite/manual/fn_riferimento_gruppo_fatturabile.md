@@ -140,7 +140,7 @@ SELECT vendite.fn_riferimento_gruppo_fatturabile(
 -- il codice della commessa 42, anche se oggi e' chiusa
 ```
 
-> Piano e decisioni: `docs/it/dev/work-done/brief-db-uscita-documento-dal-giro.md` §6.2;
+> Piano e decisioni: `docs/it/dev/work-done/2026/brief-db-uscita-documento-dal-giro.md` §6.2;
 > la commessa del contesto: `brief-db-sorgente-documento-e-riga` §8.22 (V-7-bis, 2026-11-08).
 
 ---

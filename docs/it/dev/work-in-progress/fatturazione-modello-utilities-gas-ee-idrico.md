@@ -12,9 +12,9 @@ Questo documento descrive come gestire questa complessita senza rompere il model
 
 Riferimenti correlati:
 
-- `docs/it/dev/work-done/gestione-commesse-v2.md`
+- `docs/it/dev/work-done/2026/gestione-commesse-v2.md`
 - `docs/it/dev/work-in-progress/sviluppo-listini.md`
-- `docs/it/dev/work-done/pipeline-domini-engine.md`
+- `docs/it/dev/work-done/2026/pipeline-domini-engine.md`
 
 ---
 
@@ -392,7 +392,7 @@ Tutta l'infrastruttura a valle dell'handler e identica per commerciali e utiliti
   >
   > ⚠️ E vale la nota in testa a quel documento: il **come** e' superato. La
   > correzione di **merce** (reso gia' fatturato) non passa di li' — ha il suo
-  > modello in [brief-design-note-credito-resi.md](../work-done/brief-design-note-credito-resi.md).
+  > modello in [brief-design-note-credito-resi.md](../work-done/2026/brief-design-note-credito-resi.md).
 - Un ricalcolo NON modifica righe con `stato_emissione = 'EMESSA'` e `fatturato = TRUE`
   (guard in `fn_upsert_commessa_attivita` e `fn_emit`).
 

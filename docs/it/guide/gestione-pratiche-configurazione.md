@@ -175,7 +175,7 @@ Riferimenti modello: [template_flussi](/dbzero/pratiche/tabelle/template_flussi)
 
 > 🟠 **Convenzione proposta / in adozione** col primo consumatore (pratica PREVENTIVI) —
 > non ancora a catalogo. Riferimento:
-> [brief-db-pratica-preventivi-tipo-unico-flussi.md](../dev/work-done/brief-db-pratica-preventivi-tipo-unico-flussi.md).
+> [brief-db-pratica-preventivi-tipo-unico-flussi.md](../dev/work-done/2026/brief-db-pratica-preventivi-tipo-unico-flussi.md).
 
 Quando una pratica usa un **documento di dominio versionato** (es. un preventivo, che a ogni
 revisione è una **nuova riga** con `uid`/`id` nuovi ma **stesso `numero`**), il legame ROOT in
@@ -207,7 +207,7 @@ Regole:
 
 | Funzionalità | Stato | Riferimento |
 |---|---|---|
-| Esito configurabile (MANUALE / AUTOMATICO / CONTESTUALE) | ✅ disponibile | §3 · [brief design](../dev/work-done/brief-design-esito-configurabile-flussi.md) |
+| Esito configurabile (MANUALE / AUTOMATICO / CONTESTUALE) | ✅ disponibile | §3 · [brief design](../dev/work-done/2026/brief-design-esito-configurabile-flussi.md) |
 | Attività UI da flusso (apri preventivo/offerta/contratto) | ✅ disponibile | §2.2 |
 | Handler di dominio + handler di evento | ✅ disponibile | §2.1 · [Handler Django](gestione-pratiche.md#handler-django-registry-pattern) |
 | Link parametrico a documento versionato (`meta.ref_stable_key`/`follow_active`) | 🟠 in adozione (1° consumatore: preventivi) | §7 |

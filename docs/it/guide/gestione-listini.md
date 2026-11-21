@@ -309,7 +309,7 @@ Il totale della fattura è lo stesso nei tre casi. Le regole complete sono nella
 Logica completa in [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2),
 che è **bundle-aware** tramite `p_articolo_padre_contesto`: il vecchio
 `fn_resolve_prezzo_composito` è stato ritirato e il resolver canonico è uno solo
-(cfr. `dev/work-done/brief-db-drop-fn-resolve-prezzo-composito.md`).
+(cfr. `dev/work-done/2026/brief-db-drop-fn-resolve-prezzo-composito.md`).
 
 Il kit che un contratto **non negozia** (una quota fissa del listino, un'adesione) non ha
 componenti sul documento: componenti e prezzi li prende dal listino del contratto, alla data del

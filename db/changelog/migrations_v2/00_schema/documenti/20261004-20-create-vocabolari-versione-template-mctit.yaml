@@ -20,7 +20,7 @@
 #   frontend, e la copia del frontend divergeva (brief, sezione 2).
 #
 # -- PERCHE' NON CONTRADDICE LE DECISIONI 62-63 DEL 2026-04-29 --
-#   Quelle decisioni (work-done/sviluppo-documenti.md) dicono «tecnici, non
+#   Quelle decisioni (work-done/2026/sviluppo-documenti.md) dicono «tecnici, non
 #   lookup CONFIGURABILI»: e restano vere. Questi vocabolari si LEGGONO e non
 #   si configurano: niente `attivo`, `pannello = false` nella whitelist del
 #   lookup (R-DB-2). Cambia la sede dell'insieme, non chi lo decide.

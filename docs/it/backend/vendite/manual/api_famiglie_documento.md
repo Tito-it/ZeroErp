@@ -12,7 +12,7 @@ CRUD: quali campi si scrivono, con quale verbo, e che cosa il database rifiuta.
 ⚠️ Il gemello dei registri è [api_registri_numerazione.md](/backend/vendite/manual/api_registri_numerazione):
 la famiglia dice ciò che un documento **può** esprimere, il registro ciò che
 quel sezionale **fa**. Il modello e le decisioni stanno in
-[brief-be-fe-crud-registri-di-numerazione](/dev/work-done/brief-be-fe-crud-registri-di-numerazione) §11.
+[brief-be-fe-crud-registri-di-numerazione](/dev/work-done/2026/brief-be-fe-crud-registri-di-numerazione) §11.
 
 ## Endpoint
 
@@ -28,7 +28,7 @@ quel sezionale **fa**. Il modello e le decisioni stanno in
 | `GET` | `/api/v1/vendite/famiglie/sorgenti/` | Le sorgenti fra cui si sceglie la famiglia da creare (dal 2026-10-20): i tipi di documento di `config.sorgenti` con la loro tabella, `famiglia_esistente` e `tabella_numerata_da` (`AdminAPIView`, envelope `{"results": [...]}`) |
 
 ⭐ **Una famiglia è quella di una sorgente** (dal 2026-10-20,
-[brief-db-grammatica-unica-documenti](../../../dev/work-done/brief-db-grammatica-unica-documenti.md)
+[brief-db-grammatica-unica-documenti](../../../dev/work-done/2026/brief-db-grammatica-unica-documenti.md)
 2c, G-5): il suo `codice_interno` è il `codice_interno` di `config.sorgenti`
 (FK `fk_famiglie_documento_sorgenti`) e la tabella dei documenti è la
 `target_table` della sorgente. `schema_tabella` e `nome_tabella` non sono più

@@ -66,7 +66,7 @@ Key points:
 
 Further reading:
 
-- [Manifesto (EN)](./sviluppo-concentrico.md)
+- [Manifesto (EN)](sviluppo-concentrico.md)
 - [Manifesto (IT)](../it/sviluppo-concentrico.md)
 
 ---
@@ -196,7 +196,7 @@ declared debt. Completed work lives in the map's
 
 Main documentation entry points:
 
-- [Documentation Index (EN)](./index.md)
+- [Documentation Index (EN)](index.md)
 - [Documentation Index (IT)](../it/index.md)
 
 ---
@@ -207,7 +207,7 @@ ZeroERP is dual-licensed: **GNU AGPL v3 or later**, or a commercial license (see
 
 References:
 
-- [LICENSE (EN)](./LICENSE.md)
+- [LICENSE (EN)](LICENSE.md)
 - [LICENSE (IT)](../it/LICENSE.md)
 
 ---

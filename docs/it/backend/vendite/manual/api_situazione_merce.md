@@ -14,9 +14,9 @@ GET /api/v1/vendite/ddt/<ddt_id>/situazione-merce/
 ## Contesto
 
 Richiesta **BE-1** del brief
-[brief-design-partita-merce-generalizzata](../../../dev/work-done/brief-design-partita-merce-generalizzata.md)
+[brief-design-partita-merce-generalizzata](../../../dev/work-done/2026/brief-design-partita-merce-generalizzata.md)
 §19.1, consumata dal pannello di
-[brief-design-situazione-merce-ordine](../../../dev/work-done/brief-design-situazione-merce-ordine.md).
+[brief-design-situazione-merce-ordine](../../../dev/work-done/2026/brief-design-situazione-merce-ordine.md).
 
 ⭐ **Il fatto che ha generato il cantiere**: il conto della merce esisteva a DB
 (allora `vw_contatore_merce`, ritirata il 22-09-2026: oggi la partita,

@@ -135,5 +135,5 @@ Cleanup post-F2 (F1-DB-24..28): la vecchia `fn_resolve_prezzo_listino` e
 [listini_repository.py](../../../../backend/apps/vendite/db/listini_repository.py)
 `search_resolve_prezzo`. F2-BE-13 rimuovera' quel path prima che il DB
 faccia `DROP FUNCTION` del wrapper deprecato. Sequenza documentata nel
-[piano v5](/dev/work-done/sviluppo-listini-v5) sezione "Coordinamento
+[piano v5](/dev/work-done/2026/sviluppo-listini-v5) sezione "Coordinamento
 cleanup".

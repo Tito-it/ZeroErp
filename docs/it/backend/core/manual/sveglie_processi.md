@@ -29,7 +29,7 @@ processi su sei, margine 10× e 5× sulle rispettive cadenze, senza il perché
 scritto da nessuna parte). Due scritture prima o poi dissentono, e lì la
 divergenza sarebbe stata **muta**: un pallino verde su un worker fermo.
 
-Brief: [brief-db-sveglia-dei-processi](../../../dev/work-done/brief-db-sveglia-dei-processi.md).
+Brief: [brief-db-sveglia-dei-processi](../../../dev/work-done/2026/brief-db-sveglia-dei-processi.md).
 
 ## Input
 
@@ -83,8 +83,8 @@ sottoprocesso — la stessa riga del timer, per costruzione — e
 `avvio_manuale.py` legge `forma`, `avvio_manuale` e `abilita` per il predicato
 «si può lanciare a mano?» (capability `can_esegui_ora` nel dettaglio del
 processo, rifiuto dell'endpoint `esegui-ora/`, ricontrollo dell'handler).
-Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-done/brief-db-avvio-manuale-di-un-processo.md),
-piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/piano-be-fe-avvio-manuale-di-un-processo.md).
+Brief [brief-db-avvio-manuale-di-un-processo](../../../dev/work-done/2026/brief-db-avvio-manuale-di-un-processo.md),
+piano [piano-be-fe-avvio-manuale-di-un-processo](../../../dev/work-done/2026/piano-be-fe-avvio-manuale-di-un-processo.md).
 
 ## Regole
 

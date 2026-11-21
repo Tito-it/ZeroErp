@@ -140,5 +140,5 @@ fuori dal ciclo di richiesta web.
 - **v3** (2026-07-29) — rimosso `or "-"` da quantità, prezzo, importo di riga e
   dai quattro totali di testata: lo zero non è più stampato come assente.
 
-Storia completa: `docs/it/dev/work-done/brief-fix-importi-riga-fattura-zero.md`
-e `docs/it/dev/work-done/brief-be-fe-importi-riga-fattura.md`.
+Storia completa: `docs/it/dev/work-done/2026/brief-fix-importi-riga-fattura-zero.md`
+e `docs/it/dev/work-done/2026/brief-be-fe-importi-riga-fattura.md`.

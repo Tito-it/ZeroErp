@@ -134,7 +134,7 @@ I nomi dei campi sono quelli già in servizio sul dettaglio operatore
 * `LANGUAGE plpgsql` **STABLE** — *deferred parsing* obbligatorio per i
   riferimenti a `django.*` (in CI Liquibase precede `manage.py migrate`,
   vedi memoria
-  [feedback_django_refs_in_liquibase](/dev/work-done/refactor-operatore-emittenti#7bis6)).
+  [feedback_django_refs_in_liquibase](/dev/work-done/2026/refactor-operatore-emittenti#7bis6)).
   Wrapping minimo: `BEGIN ... RETURN QUERY ... END`.
 * **Read-only**, nessun side effect.
 * **Una veste OPERATORE, non un JOIN** (dal 2026-09-25, `20260925-54`):
@@ -217,7 +217,7 @@ I nomi dei campi sono quelli già in servizio sul dettaglio operatore
 
 ## Riferimenti
 
-* WIP: [refactor operatore-emittenti — Fase 1 capability operatore (P1)](/dev/work-done/refactor-operatore-emittenti)
+* WIP: [refactor operatore-emittenti — Fase 1 capability operatore (P1)](/dev/work-done/2026/refactor-operatore-emittenti)
 * Migration: `db/changelog/migrations_v2/20_code/script/20260429-02-create-fn-get-operatore-detail-mctit.yaml`
 * Helper capability: [fn_check_ultimo_super_admin_attivo](/dbzero/script/funzioni/fn_check_ultimo_super_admin_attivo)
 

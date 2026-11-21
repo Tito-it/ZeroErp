@@ -41,7 +41,7 @@
 # ── 🔴 IL CRITERIO NON E' «GUARD DI PARAMETRO»: E' CHI LEGGE IL MESSAGGIO
 #   La prima stesura mandava TUTTI E SEI i guard di parametro su
 #   `E_PARAMETRO_INVALIDO`, sulla scorta della tabella «Regola operativa» di
-#   `work-done/correzione-e-generico.md` (aprile 2026), che per «parametro
+#   `work-done/2026/correzione-e-generico.md` (aprile 2026), che per «parametro
 #   obbligatorio mancante o non valido» prescrive proprio quel codice.
 #
 #   ⚠️ Rivisto su segnalazione di Tid il 2026-08-21, e la segnalazione centrava un

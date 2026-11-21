@@ -4,9 +4,9 @@
 > all'applicazione e si spunta. Non è il piano: il *perché* sta in
 > [piano-be-fe-magazzino-lotto-3.md](piano-be-fe-magazzino-lotto-3.md) (giri A1 … C2) e nei due
 > brief DB chiusi
-> [brief-db-magazzino-lotto-3-scarico-da-ddt.md](../work-done/brief-db-magazzino-lotto-3-scarico-da-ddt.md)
+> [brief-db-magazzino-lotto-3-scarico-da-ddt.md](../work-done/2026/brief-db-magazzino-lotto-3-scarico-da-ddt.md)
 > (D-L3-a … D-L3-k) e
-> [brief-db-magazzino-lotto-3-bis-carico-da-reso.md](../work-done/brief-db-magazzino-lotto-3-bis-carico-da-reso.md)
+> [brief-db-magazzino-lotto-3-bis-carico-da-reso.md](../work-done/2026/brief-db-magazzino-lotto-3-bis-carico-da-reso.md)
 > (D-3b-a … D-3b-h). Qui c'è solo **cosa fare, cosa deve succedere, e cosa fare se
 > non succede**.
 >
@@ -181,7 +181,7 @@ Non è magazzino, ma è il giro C2 dello stesso piano.
 
 | | Cosa | Dove sta scritto |
 | --- | --- | --- |
-| **Motivi del reso** | Chiuso lato DB (`20261014-07` applicato e pgTAP verde): la «Conferma» porta `reasons` coi `valori`, come la «Emetti» della bolla. Si conferma a video al §5.3 e al §5.7. | [brief-db-reso-motivi-conferma-con-valori](../work-done/brief-db-reso-motivi-conferma-con-valori.md) (archiviato, il collaudo è passato qui) |
+| **Motivi del reso** | Chiuso lato DB (`20261014-07` applicato e pgTAP verde): la «Conferma» porta `reasons` coi `valori`, come la «Emetti» della bolla. Si conferma a video al §5.3 e al §5.7. | [brief-db-reso-motivi-conferma-con-valori](../work-done/2026/brief-db-reso-motivi-conferma-con-valori.md) (archiviato, il collaudo è passato qui) |
 | **Bolle senza merce** | Il permesso all'emissione di una bolla che **non** muove merce lo controlla il backend, non il verbo (D-L3-e affinata, limite dichiarato) | brief del Lotto 3, §9 (28-09) |
 | **Merce presso terzi** | Conto visione, riparazione, conto lavoro non muovono (§1.8): decisione a sé | D-L3-g |
 | **Merce in viaggio** | Nessuna vista la mostra fra il §2.4 e il §2.6: nasce col suo lettore (P-13.2) | [piano §5](piano-be-fe-magazzino-lotto-3.md) |

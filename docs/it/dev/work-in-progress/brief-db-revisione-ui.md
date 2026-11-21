@@ -3,7 +3,7 @@
 ## ⏭️ Chi riparte — aggiornato al 2026-11-21
 
 **Riparte: Tid**, con il via al giro 2: Q40 (b), Q41 (a) e Q42 (a) sono decise (Tid, 2026-11-21, §7.1). Le ricadute BE/FE del giro 1b (la parte 1b di BE7 e BE25, §6) e la risposta a R-BE2 (§3.2-bis) sono fatte dal team BE/FE il 2026-11-21, verdi e committate su `dev/backend-tid` (`78e17ec4f`); per Q40 il team BE ha verificato che nessun componente FE scrive `col` (§3.2-bis, «Verifica per Q40»); BE9 era già verificato. Il giro 2, il cui piano è scritto (§3.2-bis, 2026-11-21). Il residuo di BE22 è chiuso nel CSV (id 665 spento, 2026-11-21), da migrare. Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»); committato (`986baa5d8d`, PR #172) con la doc auto-generata rigenerata. Alla sessione DB resta il `/verifica-db` del giro 1a, da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
-[brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
+[brief del seed](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
 dbdev con i pgTAP verdi il 2026-11-20): i giri che toccano i CSV di `ui` sono sbloccati. Le decisioni Q1-Q36 sono prese
 (2026-11-18 … 2026-11-20); Q27-Q36, dall'analisi critica del 2026-11-20, completano o sostituiscono alcune delle prime, e
 le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e committato (`de25065c21`): le 32 pagine
@@ -41,13 +41,13 @@ quello che lo porta, l'analisi critica e le decisioni del 2026-11-20 col giro 3 
 > **Origine:** revisione della documentazione dello schema `ui` chiesta da Tid: allinearla allo standard e alle
 > funzionalità, togliere le parti stantie, segnalare dove il codice non rispetta ciò che è scritto. Metodo dei brief di
 > revisione di `catalogo`, `dbops` e `documenti`
-> ([brief-db-revisione-documenti](../work-done/brief-db-revisione-documenti.md)).
+> ([brief-db-revisione-documenti](../work-done/2026/brief-db-revisione-documenti.md)).
 > **Brief vicini verificati:** [sviluppo-personalizzazioni-liste_def](sviluppo-personalizzazioni-liste_def.md) tiene
 > gli sviluppi non fatti delle liste (viste nominate, condivisione) e la domanda sulle dashboard: sono funzionalità
 > nuove, non revisione, e qui non si toccano. [piano-be-fe-endpoint-senza-porta](piano-be-fe-endpoint-senza-porta.md)
 > cita una lista di `ui` solo come fatto. Nel [registro dei residui](registro-residui-aperti.md) nessuna voce ha per
 > oggetto le tabelle o le funzioni di `ui`. ⚠️ Mancava, trovato il 2026-11-20:
-> [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md). Le tabelle di catalogo
+> [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md). Le tabelle di catalogo
 > di `ui` sono mirror `runOnChange` (`loadUpdateData`) che l'app scrive dalle pagine admin: il suo caso esatto, e il
 > suo §7 rimanda il censimento di queste tabelle al suo giro 1. Deciso da Tid il 2026-11-20 (Q27): le tabelle si
 > dichiarano nel censimento di quel brief, e i giri di qui che toccano i CSV di `ui` partono dopo.
@@ -270,7 +270,7 @@ oggetti di `ui` (`20261120-01` è su `vendite`).
   evento. Un constraint trigger differito, che vedrebbe la fine della transazione, esiste solo `FOR EACH ROW` (errore
   di sintassi su `FOR EACH STATEMENT`). → Q37.
 * **`contenuto_aggiornato_il` ha un secondo lettore, che il brief non nominava**: il seed di primo impianto (giro 3 del
-  [brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md), §16.15, QU1-QU2). La colonna è
+  [brief del seed](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md), §16.15, QU1-QU2). La colonna è
   dell'installazione nella riga 5 del registro, e una scrittura dell'app che la sposta rende personalizzato il preset:
   da quel momento il migrate non riscrive più la sua composizione. Oggi il DELETE + INSERT identico del BE personalizza
   per finta un preset di seed. Q37 corregge anche questo. Ne segue un vincolo per il giro: la colonna **resta** (cambia
@@ -1039,7 +1039,7 @@ superata è barrata, non resta come alternativa. Q37-Q39 vengono dopo: le ha ape
 
 | # | Domanda | Riapre o completa | Opzioni | Decisione |
 | --- | --- | --- | --- | --- |
-| Q27 | Le tabelle di catalogo di `ui` nel meccanismo del [brief del seed](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md): sono mirror `runOnChange` che l'app scrive dalle pagine admin, e il migrate riscrive le modifiche dell'app (`ricerca_min_caratteri`, preset, colonne, composizione) | Q14; i giri che toccano i CSV di `ui` (Q7, Q9, Q20, Q26) | (a) Le tabelle si dichiarano nel censimento del brief del seed, ognuna con la sua specie, e i giri di `ui` che toccano i CSV partono dopo; (b) il censimento si fa qui, nel giro 4, e il brief del seed lo riceve | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: il meccanismo ha una sede sola. Le cinque tabelle delle dashboard, in sola lettura per l'app (Q19), escono dal censimento |
+| Q27 | Le tabelle di catalogo di `ui` nel meccanismo del [brief del seed](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md): sono mirror `runOnChange` che l'app scrive dalle pagine admin, e il migrate riscrive le modifiche dell'app (`ricerca_min_caratteri`, preset, colonne, composizione) | Q14; i giri che toccano i CSV di `ui` (Q7, Q9, Q20, Q26) | (a) Le tabelle si dichiarano nel censimento del brief del seed, ognuna con la sua specie, e i giri di `ui` che toccano i CSV partono dopo; (b) il censimento si fa qui, nel giro 4, e il brief del seed lo riceve | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: il meccanismo ha una sede sola. Le cinque tabelle delle dashboard, in sola lettura per l'app (Q19), escono dal censimento |
 | Q28 | Un significato solo per la veste NULL: oggi la cascata dei preset unisce le identità (U4, parità fra due PORTALE), i permessi di colonna prendono il livello più restrittivo (Q17) | U4 (lo spareggio sull'id, superato), Q17 | (a) Con la veste NULL il passo del ruolo si salta, e la cascata parte dall'azienda; i permessi restano al più restrittivo; (b) un vincolo impedisce due profili applicabili di pari priorità per lo stesso utente; (c) lo spareggio su un attributo del modello (il tipo del profilo) | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: «il ripiego non allarga mai» vale per preset e permessi, e la parità non può più nascere |
 | Q29 | La forma delle date per chiave dal lato della preferenza: lo snapshot (scritto dal DB, Q1) e l'ignorato sono una colonna ciascuno; le chiavi della dashboard non sono elencate | Q1, Q3, Q4; BE7 | (a) Snapshot e ignorato diventano un JSONB `{chiave: data}` ciascuno, chiavi validate dal guard di forma (Q6); (b) una colonna per chiave e per dato | ✅ **Deciso da Tid il 2026-11-20.** **(a)**: le chiavi sono le stesse della `configurazione`, una chiave nuova non chiede DDL. Le chiavi della dashboard (`widget`, `dimensione_max`) si dichiarano nella decisione |
 | Q30 | Che cosa garantisce «un preset per posto» quando `is_default` si ritira: gli indici `uq_*_default` sono `WHERE is_default = true` | Q26; §3.7 | (a) UNIQUE parziale `WHERE attivo` sulle stesse chiavi; lo scambio con la bozza si fa spegnendo il vecchio prima di accendere la bozza (un indice parziale non si differisce); (b) UNIQUE pieno, e la bozza vive altrove | ✅ **Deciso da Tid il 2026-11-20.** **(a)**, con l'ordine dello scambio scritto nella guida e nel messaggio dell'UNIQUE |

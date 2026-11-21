@@ -6,7 +6,7 @@
 >
 > **Scorporo**: la direzione **vendita** (`vendite.preventivi`) è stata
 > completata (BE+FE) e archiviata in
-> [../work-done/sviluppo-preventivi.md](../work-done/sviluppo-preventivi.md).
+> [../work-done/2026/sviluppo-preventivi.md](../work-done/2026/sviluppo-preventivi.md).
 > Questo documento copre la sola direzione **acquisto** (RFQ —
 > `acquisti.preventivi`), ancora da avviare (tabelle DB da creare).
 >
@@ -18,8 +18,8 @@
 >
 > Riferimenti:
 >
-> * [../work-done/sviluppo-preventivi.md](../work-done/sviluppo-preventivi.md) — preventivo vendita completato (pattern documentale di riferimento: stati, revisioni, note, indirizzi snapshot, integrazione pratiche)
-> * [gestione-commesse-v2.md](../work-done/gestione-commesse-v2.md) — architettura commesse e pipeline
+> * [../work-done/2026/sviluppo-preventivi.md](../work-done/2026/sviluppo-preventivi.md) — preventivo vendita completato (pattern documentale di riferimento: stati, revisioni, note, indirizzi snapshot, integrazione pratiche)
+> * [gestione-commesse-v2.md](../work-done/2026/gestione-commesse-v2.md) — architettura commesse e pipeline
 > * [docs/it/dev/api.md](../api.md) — linee guida API
 > * [docs/it/dev/frontend/frontend-standards.md](../frontend/frontend-standards.md) — standard frontend
 
@@ -175,7 +175,7 @@ Dipendenza: `config.stati_doc_preventivi_acq` deve esporre colonna
 fra righe `(numero, rev)`, non uno stato — quella colonna esiste solo su
 `config.stati_doc_offerte`, dove il superamento e' scritto da un trigger.
 
-Razionale: vedi `docs/it/dev/work-done/brief-db-preventivi-revisione-attiva-derivata.md`
+Razionale: vedi `docs/it/dev/work-done/2026/brief-db-preventivi-revisione-attiva-derivata.md`
 per il modello e i pgTAP applicati su vendite, e
 `brief-db-revisione-attiva-due-domande` per la separazione delle due domande.
 Un flag persistito mantenuto manualmente diverge dai dati strutturali appena uno
@@ -361,7 +361,7 @@ src/acquisti/
 
 Gli elementi infrastrutturali condivisi sono già atterrati con il
 preventivo vendita e documentati lì — vedere
-[../work-done/sviluppo-preventivi.md](../work-done/sviluppo-preventivi.md):
+[../work-done/2026/sviluppo-preventivi.md](../work-done/2026/sviluppo-preventivi.md):
 
 - **Tabella ponte pratiche** `pratiche.pratiche_sorgenti` (unica per
   entrambe le direzioni): qui va aggiunto il `sorgente_tipo`

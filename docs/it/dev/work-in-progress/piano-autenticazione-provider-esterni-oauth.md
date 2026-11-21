@@ -6,7 +6,7 @@
 > decidono le domande aperte di §F.
 >
 > **Da dove viene**: è la Parte B di
-> [autenticazione-due-fattori-e-provider.md](../work-done/autenticazione-due-fattori-e-provider.md),
+> [autenticazione-due-fattori-e-provider.md](../work-done/2026/autenticazione-due-fattori-e-provider.md),
 > estratta il 2026-10-02 quando la Parte A (il secondo fattore TOTP) è stata costruita e quel
 > documento archiviato (decisione di Tid). Il modello di partenza — una persona, una credenziale,
 > più vesti; tre porte di login — sta nel §0 di quel documento e nella guida

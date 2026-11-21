@@ -8,7 +8,7 @@
 # ------------------------------------------------------------
 # IL LEDGER DI MAGAZZINO ACCETTAVA SOLO TRASFERIMENTI
 #   magazzino.movimenti / chk_mag_movimenti_da_destinazione_distinti
-#   Piano: docs/it/dev/work-done/analisi-copertura-doc-manual-dbzero.md §4/F
+#   Piano: docs/it/dev/work-done/2026/analisi-copertura-doc-manual-dbzero.md §4/F
 #
 # ── IL DIFETTO ──────────────────────────────────────────────────────────
 #   Il vincolo nato con la tabella (00_schema/magazzino/20251002-01) e':
