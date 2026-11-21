@@ -19,8 +19,11 @@
 --    4) tabella inesistente (oid 0) -> false
 --    5) l'app su magazzino.inventari -> false
 --   I consumatori (regola del 2: la copia si ritira nello stesso giro)
---    6) ui.trgfn_lista_definizione_guard_multi_emittente: l'app che accende o spegne
---       multi_emittente riceve ancora E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE
+--    6) ui.trgfn_lista_definizione_guard_dichiarazioni: l'app che accende o spegne
+--       multi_emittente riceve E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE
+--       (dal 2026-11-21 il guard copre le tre dichiarazioni della lista e sostituisce
+--       ui.trgfn_lista_definizione_guard_multi_emittente: brief-db-revisione-ui,
+--       giro 4, U23)
 --    7) i tre guard chiamano il BB con TG_RELID, e quello di ui non legge piu'
 --       il proprietario da se' (relowner)
 --
@@ -83,7 +86,7 @@ VALUES ('tst.proprietario.lista_dell_installazione', 'Lista creata dall''install
 SELECT is(
     pg_temp.codice_di($q$ UPDATE ui.lista_definizione SET multi_emittente = NOT multi_emittente
                           WHERE codice = 'tst.proprietario.lista_dell_installazione' $q$),
-    'E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE',
+    'E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE',
     '6) il guard di ui, passato dal BB, rifiuta ancora l''app');
 
 SELECT is(
@@ -96,10 +99,10 @@ SELECT is(
        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE (n.nspname, p.proname) IN (('magazzino', 'trgfn_documento_interno_guard_transizione'),
                                        ('magazzino', 'trgfn_documento_interno_righe_guard_testata'),
-                                       ('ui', 'trgfn_lista_definizione_guard_multi_emittente'))),
+                                       ('ui', 'trgfn_lista_definizione_guard_dichiarazioni'))),
     'magazzino.trgfn_documento_interno_guard_transizione=true '
     'magazzino.trgfn_documento_interno_righe_guard_testata=true '
-    'ui.trgfn_lista_definizione_guard_multi_emittente=true',
+    'ui.trgfn_lista_definizione_guard_dichiarazioni=true',
     '7) i tre guard chiamano il BB con TG_RELID, nessuno legge il proprietario da se''');
 
 SELECT * FROM finish();

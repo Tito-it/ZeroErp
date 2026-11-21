@@ -15,10 +15,12 @@
 --   - il CATALOGO INTERO (test 1 e 2) si guarda qui, perche' i trigger non
 --     vedono una riga che non si riscrive: una vista che cambia colonne, o una
 --     lista che cambia vista, lasciano le colonne vecchie senza che nessun
---     trigger scatti. ⛔ La ri-validazione non si e' messa nel trigger della
---     definizione: il CSV delle definizioni si carica prima di quello delle
---     colonne, e un cambio di vista fatto insieme alle colonne farebbe morire
---     il migrate a meta'.
+--     trigger scatti. ⛔ La ri-validazione nel trigger della definizione vale
+--     solo per l'applicazione (giro 4 di brief-db-revisione-ui, 2026-11-21): il
+--     CSV delle definizioni si carica prima di quello delle colonne, e un cambio
+--     di vista fatto nel seed insieme alle colonne farebbe morire il migrate a
+--     meta'. Per il seed giudicano questo file e il presidio
+--     dbops.vw_liste_colonne_campo_orfano, che vede anche le liste dell'app.
 --
 -- ⚠️ Il test 5 ha bisogno della gemella storica `storico.comuni` (la crea
 --   l'automazione di storicizzazione): se non c'e', skip() dichiarato — senza
@@ -26,8 +28,8 @@
 --
 -- Elenco test (plan 6):
 --   1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati
---   2) ogni campo_sorgente (non azione, non vuoto) di quelle liste e' una colonna della vista
---      o della sintesi della lineage (D-B2, 2026-10-11)
+--   2) ogni campo_sorgente sta dove la colonna dice di leggerlo (origine_campo): la
+--      vista, o la sintesi della lineage su una lista che la dichiara (giro 4, 2026-11-21)
 --   3) le sei liste geografiche dichiarano tutte una vista (decisione §8 punto 6)
 --   4) vista_sql che esiste solo in un ALTRO schema: E_UI_VISTA_SQL_NON_TROVATA
 --   5) campo_sorgente che esiste solo nell'omonima di un altro schema: E_UI_CAMPO_SORGENTE_NON_TROVATO
@@ -45,16 +47,18 @@ SELECT plan(6);
 -- ============================================================
 -- 1-2) Il catalogo intero
 -- ============================================================
+-- ⭐ 2026-11-21 (brief-db-revisione-ui, giro 4, U27 e Q15): la domanda «la
+--   relazione ha il campo?» la fa il BB ui.fn_lista_relazione_ha_attributo, la
+--   stessa regola dei due guard e del presidio dbops.vw_liste_colonne_campo_orfano
+--   (le tabelle partizionate comprese). E la lineage non e' piu' un ripiego per
+--   nome: una colonna dice da dove legge (origine_campo). Una colonna VISTA sta
+--   nella relazione; una LINEAGE sta su una lista che la dichiara e ha un nome
+--   della sintesi.
 SELECT is(
     (SELECT COALESCE(array_agg(ld.codice::text ORDER BY ld.codice), '{}'::text[])
        FROM ui.lista_definizione ld
       WHERE ld.attivo AND ld.vista_sql IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM pg_catalog.pg_class c
-              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = ld.schema_dati
-               AND c.relname = ld.vista_sql
-               AND c.relkind IN ('v', 'm', 'r'))),
+        AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, NULL)),
     '{}'::text[],
     '1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati');
 
@@ -63,26 +67,18 @@ SELECT is(
                      '{}'::text[])
        FROM ui.lista_colonna lc
        JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
-      WHERE ld.attivo AND ld.vista_sql IS NOT NULL
-        AND lc.tipo_colonna <> 'azione'
-        AND COALESCE(lc.campo_sorgente, '') <> ''
-        AND NOT EXISTS (
-            SELECT 1 FROM pg_catalog.pg_class c
-              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-              JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
-             WHERE n.nspname = ld.schema_dati
-               AND c.relname = ld.vista_sql
-               AND a.attname = lc.campo_sorgente
-               AND a.attnum > 0 AND NOT a.attisdropped)
-        -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
-        --    oppure e' una colonna della sintesi della lineage, che il backend
-        --    chiede per le chiavi della pagina. Stessa regola del guard
-        --    trgfn_ui_lista_colonna_a10_valida_campo_sorgente (20261011-99).
-        AND NOT EXISTS (
-            SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
-             WHERE sc.colonna = lc.campo_sorgente)),
+      WHERE lc.campo_sorgente IS NOT NULL
+        AND CASE lc.origine_campo
+              WHEN 'VISTA' THEN
+                ld.attivo AND ld.vista_sql IS NOT NULL
+                AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, lc.campo_sorgente)
+              ELSE
+                NOT ld.legge_lineage
+                OR NOT EXISTS (SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                                WHERE sc.colonna = lc.campo_sorgente)
+            END),
     '{}'::text[],
-    '2) ogni campo_sorgente delle liste con vista e'' una colonna della vista o della sintesi della lineage (anche le colonne spente)');
+    '2) ogni campo_sorgente sta dove la colonna dice di leggerlo: la vista, o la sintesi della lineage su una lista che la dichiara (anche le colonne spente)');
 
 -- ============================================================
 -- 3) Le geografiche: tutte con la vista

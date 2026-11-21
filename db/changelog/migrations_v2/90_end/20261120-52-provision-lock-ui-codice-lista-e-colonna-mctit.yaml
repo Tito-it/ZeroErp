@@ -1,0 +1,75 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: il codice di una lista e quello di una colonna non si riscrivono.
+#   Brief: brief-db-revisione-ui (giro 4: U23 con Q14 e QU4).
+#
+# ⚠️ PERCHE'. Il codice della lista e' la chiave con cui backend, frontend e
+#   preferenze cercano la schermata; il codice della colonna e' la chiave delle
+#   preferenze e dei preset (JSONB per codice). Riscriverli sposta la schermata o
+#   lascia orfane le preferenze, senza errore. Il seed di primo impianto li tiene
+#   gia' sulle righe di seed (colonne del software); il lucchetto li tiene su
+#   ogni riga, anche su quelle create dall'installazione. Una lista o una colonna
+#   col codice sbagliato si spegne e se ne crea un'altra. Il seed li riscrive
+#   uguali, e il lucchetto lo ammette.
+#
+# Le due righe di dbops/automation_lock_columns.csv (codici
+#   E_UI_LISTA_CODICE_IMMUTABILE ed E_UI_COLONNA_CODICE_IMMUTABILE); qui il runner
+#   dei lucchetti su ui monta subito i trigger, come per la misura del catalogo
+#   (20261120-42). Su un database da zero li monta il giro delle automazioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261120-52-provision-lock-ui-codice-lista-e-colonna-mctit.yaml
+
+  - changeSet:
+      id: 20261120-52-provision-lock-ui-codice-lista-e-colonna
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona subito i lock di colonna su ui.lista_definizione.codice e ui.lista_colonna.codice
+        chiamando il runner dei lock sullo schema ui. Brief: brief-db-revisione-ui (giro 4, U23).
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Le righe del registro devono esserci ed essere accese: senza, il
+            # runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND target_schema = 'ui'
+                     AND (target_table, column_name, error_code) IN
+                         (('lista_definizione', 'codice', 'E_UI_LISTA_CODICE_IMMUTABILE'),
+                          ('lista_colonna', 'codice', 'E_UI_COLONNA_CODICE_IMMUTABILE'));
+            # I codici devono essere vivi, o il lock risponderebbe con un
+            # segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice IN ('E_UI_LISTA_CODICE_IMMUTABILE', 'E_UI_COLONNA_CODICE_IMMUTABILE')
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['ui'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spengono le
+              -- righe di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

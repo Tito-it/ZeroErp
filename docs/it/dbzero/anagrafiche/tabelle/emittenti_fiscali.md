@@ -77,6 +77,8 @@
 | trg_emittenti_fiscali_a10_parameter_overrides_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'parameter_overrides', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_pratiche_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'pratiche', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_preventivi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi', 'emittente_fiscale_id', 'id', 'attivo')` |
+| trg_emittenti_fiscali_a10_regimi_fiscali_require_attivo_a46c76 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'regimi_fiscali', 'attivo', 'regime_fiscale_rf', 'codice_interno')` |
+| trg_emittenti_fiscali_a10_regimi_fiscali_require_attivo_a46c76 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'regimi_fiscali', 'attivo', 'regime_fiscale_rf', 'codice_interno')` |
 | trg_emittenti_fiscali_a10_resi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'resi', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_soggetti_titoli_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_template_asset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('documenti', 'template_asset', 'emittente_fiscale_id', 'id', 'attivo')` |
@@ -84,21 +86,21 @@
 | trg_emittenti_fiscali_a10_user_emittente_attivo_block_de_78b189 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittente_attivo', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_user_emittenti_fiscali_block_d_f876e4 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_emittenti_fiscali', 'emittente_fiscale_id', 'id', 'attivo')` |
 | trg_emittenti_fiscali_a10_workflow_definizioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'workflow_definizioni', 'emittente_fiscale_id', 'id', 'attivo')` |
-| trg_emittenti_fiscali_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_emittenti_fiscali_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_emittenti_fiscali_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_emittenti_fiscali_a20_regime_conferma_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma()` |
-| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_emittenti_fiscali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_emittenti_fiscali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_guard_ruolo_emi_fis_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_normalize()` |
 | trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
 | trg_emittenti_fiscali_z90_provision_registri_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_emittenti_fiscali_provision_registri()` |
-| trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 | trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
+| trg_emittenti_fiscali_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('emittenti_fiscali_id')` |
 
 ---
 {% include-markdown "signature-core.md" %}

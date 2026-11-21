@@ -21,6 +21,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_dashboard_definizione_codice_non_vuoto |  |
+| CHECK | chk_dashboard_definizione_descrizione_non_vuota |  |
+| CHECK | chk_dashboard_definizione_note_non_vuote |  |
 | PRIMARY KEY | dashboard_definizione_pkey | id |
 | UNIQUE | uq_ui_dashboard_definizione_codice | codice |
 

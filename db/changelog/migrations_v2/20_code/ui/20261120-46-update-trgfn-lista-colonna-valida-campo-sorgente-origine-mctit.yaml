@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente: il campo si giudica
+#   secondo la sua origine, la lista spenta si giudica all'accensione.
+#   Brief: brief-db-revisione-ui (giro 4: U26 con Q15 e Q48, U27 con Q16, U37,
+#   U24).
+#
+# Che cosa cambia (il corpo di prima e' quello di 20260927-31 e 20261011-99,
+#   letto da dbdev il 2026-11-21):
+#   - una colonna LINEAGE (origine_campo, 20261120-43) sta solo su una lista che
+#     dichiara legge_lineage, su qualunque lista, accesa o spenta:
+#     E_UI_LINEAGE_NON_DICHIARATA. Il NOME del campo non lo verifica piu' questo
+#     guard: la dipendenza da vendite.vw_documento_lineage_sintesi_colonne esce da
+#     ui (Q15), e il nome lo vede il presidio dbops.vw_liste_colonne_campo_orfano
+#     (Q48);
+#   - una colonna VISTA si verifica col BB ui.fn_lista_relazione_ha_attributo
+#     (20261120-45): le tabelle partizionate sono ammesse;
+#   - su una lista spenta la colonna VISTA non si giudica (Q16): la verifica la
+#     fa il guard della definizione quando la lista si riaccende (20261120-47).
+#     Prima una lista spenta registrata prima della sua vista rifiutava ogni
+#     colonna con un campo;
+#   - via il salto delle azioni: un'azione non ha campo per CHECK
+#     (chk_ui_lista_colonna_azione_senza_campo), quindi esce dal salto del campo
+#     NULL (U24);
+#   - il ramo campo_sorgente = '' (U37) cambia ragione, non si toglie: il guard
+#     e' un BEFORE ROW e parla PRIMA dei CHECK. Senza il salto, una stringa vuota
+#     (anche di soli spazi) riceveva «campo non trovato nella vista» invece di
+#     chk_lista_colonna_campo_sorgente_non_vuoto, il vincolo che dice la cosa
+#     giusta e che il backend mappa per nome sul campo. Il controesempio e' il
+#     caso 8 di ui/test-fn-lista-colonne-ricerca-full-v1. Il commento del seed
+#     CSV («'' equivalente a NULL via loadUpdateData») era stantio e si toglie: i
+#     mirror scrivono NULL.
+#
+# Il trigger si rimonta (un solo nome storico, letto dai changelog 20260506-11 e
+#   20260508-03): l'elenco OF prende origine_campo, che il guard ora giudica, e
+#   lascia tipo_colonna, che non legge piu' (linee-guida-trigger, «una colonna
+#   nuova entra anche nell'elenco OF»).
+# Seed (linee-guida-trigger, «un trigger nuovo passa dai seed»): i mirror del CSV
+#   di lista_colonna (20260507-07, 20260806-15) girano dopo quello di
+#   lista_definizione (20260507-06), che porta legge_lineage: le sei colonne
+#   LINEAGE del seed trovano la dichiarazione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-46-update-trgfn-lista-colonna-valida-campo-sorgente-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261120-46-update-trgfn-lista-colonna-valida-campo-sorgente-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente: VISTA dal BB, LINEAGE dalla dichiarazione
+        della lista, salto sulle liste spente. Brief: brief-db-revisione-ui (giro 4, U26, U27, U37).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('ui.lista_colonna')
+                 AND attname = 'origine_campo' AND attnum > 0 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il campo sorgente di una colonna esiste dove la colonna dice di
+              -- leggerlo (origine_campo).
+              --   LINEAGE -> la lista dichiara legge_lineage, su ogni lista;
+              --              il nome lo verifica il presidio
+              --              dbops.vw_liste_colonne_campo_orfano;
+              --   VISTA   -> il campo e' un attributo della relazione della lista
+              --              (ui.fn_lista_relazione_ha_attributo), se la lista e'
+              --              accesa e ha una relazione. Su una lista spenta giudica
+              --              il guard della definizione, all'accensione.
+              -- Senza campo (azione, colonna composta): niente da verificare.
+              -- Un campo vuoto lo rifiuta chk_lista_colonna_campo_sorgente_non_vuoto:
+              -- il salto lascia parlare il vincolo, che dice la cosa giusta.
+              DECLARE
+                v_lista ui.lista_definizione%ROWTYPE;
+              BEGIN
+                IF NEW.campo_sorgente IS NULL OR btrim(NEW.campo_sorgente) = '' THEN
+                  RETURN NEW;
+                END IF;
+
+                SELECT ld.*
+                  INTO v_lista
+                  FROM ui.lista_definizione ld
+                 WHERE ld.id = NEW.lista_id;
+
+                IF NEW.origine_campo = 'LINEAGE' THEN
+                  IF v_lista.legge_lineage IS NOT TRUE THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
+                      'E_UI_LINEAGE_NON_DICHIARATA',
+                      jsonb_build_object(
+                        'campo', 'origine_campo',
+                        'lista_id', NEW.lista_id,
+                        'codice', NEW.codice
+                      ),
+                      NULL,
+                      NEW.codice::text,
+                      v_lista.codice::text
+                    );
+                  END IF;
+                  RETURN NEW;
+                END IF;
+
+                IF v_lista.attivo IS NOT TRUE OR v_lista.vista_sql IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                IF NOT ui.fn_lista_relazione_ha_attributo(v_lista.schema_dati, v_lista.vista_sql,
+                                                          NEW.campo_sorgente) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
+                    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+                    jsonb_build_object(
+                      'campo', 'campo_sorgente',
+                      'lista_id', NEW.lista_id,
+                      'codice', NEW.codice
+                    ),
+                    NULL,
+                    NEW.campo_sorgente::text,
+                    v_lista.schema_dati || '.' || v_lista.vista_sql
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd ON ui.lista_colonna;
+
+              CREATE TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF campo_sorgente, origine_campo, lista_id ON ui.lista_colonna
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente() IS
+                  'Guard BEFORE INSERT OR UPDATE OF campo_sorgente, origine_campo, lista_id su ui.lista_colonna: il campo sorgente esiste dove la colonna dice di leggerlo. Una colonna LINEAGE sta solo su una lista che dichiara legge_lineage (E_UI_LINEAGE_NON_DICHIARATA); il nome lo verifica il presidio dbops.vw_liste_colonne_campo_orfano. Una colonna VISTA ha il campo nella relazione della lista (ui.fn_lista_relazione_ha_attributo, E_UI_CAMPO_SORGENTE_NON_TROVATO), se la lista è accesa e ha una relazione; su una lista spenta giudica ui.trgfn_ui_lista_definizione_a10_valida_vista_sql all''accensione. Una colonna senza campo (azione, composta) passa; un campo vuoto lo rifiuta il vincolo chk_lista_colonna_campo_sorgente_non_vuoto, che il guard lascia parlare.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il corpo precedente e' quello di 20261011-99: si ripristina con un
+              -- changeSet nuovo, dalla doc auto-generata. Qui si rimonta solo il
+              -- trigger con l'elenco OF di prima.
+              DROP TRIGGER IF EXISTS trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd ON ui.lista_colonna;
+              CREATE TRIGGER trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd
+                  BEFORE INSERT OR UPDATE OF campo_sorgente, tipo_colonna, lista_id ON ui.lista_colonna
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente();

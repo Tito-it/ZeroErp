@@ -12,11 +12,13 @@
 >
 > Approfondimento viste:
 >
-> * [vendite.vw_documento_lineage_sintesi_colonne](/dbzero/vendite/views/vw_documento_lineage_sintesi_colonne) — le colonne della lineage, ammesse come sorgente su ogni lista
+> * [vendite.vw_documento_lineage_sintesi_colonne](/dbzero/vendite/views/vw_documento_lineage_sintesi_colonne) — le colonne della sintesi della lineage, che una colonna LINEAGE può leggere
+> * [dbops.vw_liste_colonne_campo_orfano](/dbzero/dbops/views/vw_liste_colonne_campo_orfano) — le colonne che leggono un campo che la sorgente non ha
 >
 > Approfondimento funzioni:
 >
-> * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista della lista
+> * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste dove la colonna dice di leggerlo
+> * [ui.fn_lista_relazione_ha_attributo](/dbzero/ui/funzioni/fn_lista_relazione_ha_attributo) — la relazione di una lista ha il campo?
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello con cui un utente vede ogni colonna
 > * [ui.fn_lista_colonne_ricerca_full](/dbzero/ui/funzioni/fn_lista_colonne_ricerca_full) — le colonne della ricerca libera
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — le colonne nella configurazione della schermata
@@ -36,12 +38,13 @@ nasconderla).
 
 ---
 
-### Il codice della colonna è la chiave delle preferenze
+### Il codice della colonna è la chiave delle preferenze, e non si riscrive
 
 Una colonna si identifica col suo `codice`, unico nella lista (`uq_ui_lista_colonna_lista_codice`).
 Le preferenze degli utenti e la composizione dei preset la ricordano per codice, nel JSONB della
-configurazione: cambiare il codice di una colonna la fa sparire dalle preferenze salvate, che la
-ritrovano come colonna nuova.
+configurazione: per questo il codice non si cambia dopo la nascita, da nessuno (lucchetto di colonna,
+`E_UI_COLONNA_CODICE_IMMUTABILE`). Una colonna col codice sbagliato si spegne e se ne crea un'altra;
+il seed lo riscrive uguale, e il lucchetto lo ammette.
 
 ---
 
@@ -50,8 +53,8 @@ ritrovano come colonna nuova.
 * `identificatore` — sempre visibile e fissata a sinistra: la ragione sociale, il numero del
   documento.
 * `informazione` — l'operatore la mostra, la nasconde, la sposta e la allarga.
-* `azione` — pulsanti e icone. È sempre visibile e non si esporta: lo impone
-  `chk_ui_lista_colonna_azione_non_esportabile`.
+* `azione` — pulsanti e icone. È sempre visibile, non ha campo sorgente
+  (`chk_ui_lista_colonna_azione_senza_campo`) e quindi non si esporta (vedi sotto).
 
 Visibilità e fissaggio di identificatori e azioni li applica la configurazione della schermata
 ([fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)), qualunque cosa dicano
@@ -59,15 +62,30 @@ preset e preferenze.
 
 ---
 
-### Il campo sorgente esiste nella vista della lista
+### ⭐ Il campo sorgente, e da dove si legge
 
-`campo_sorgente` è il nome della colonna della vista da cui la cella legge. Quando la colonna si
-scrive, [valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente)
-lo cerca nella vista della lista, nel suo schema; è ammesso anche un nome della sintesi della
-lineage dei documenti, che il backend unisce alle righe della pagina. Il controllo salta per le
-colonne `azione`, per quelle senza sorgente e per le liste senza vista dichiarata.
+`campo_sorgente` è il nome del campo da cui la cella legge, e `origine_campo` dice dove sta:
 
-Una colonna senza sorgente (un'azione, una cella composta dal frontend) ha `campo_sorgente` NULL.
+* `VISTA` (il default) — un attributo della relazione della lista, nel suo schema. Quando la colonna
+  si scrive,
+  [valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) lo
+  cerca lì, con [fn_lista_relazione_ha_attributo](/dbzero/ui/funzioni/fn_lista_relazione_ha_attributo).
+  Il controllo salta per le liste senza vista dichiarata e per le liste spente: una lista spenta si
+  verifica quando si riaccende, e allora un cambio di vista o una riaccensione che lascerebbero la
+  colonna senza il campo sono rifiutati (vedi [lista_definizione](/dbzero/ui/tabelle/lista_definizione)).
+* `LINEAGE` — una colonna della sintesi della genealogia dei documenti, che il backend unisce alle
+  righe della pagina (il «transito»). La vista non la porta, quindi la colonna sta solo su una lista
+  che dichiara `legge_lineage` (`E_UI_LINEAGE_NON_DICHIARATA`), e non è filtrabile, ordinabile né
+  ricercabile (`chk_ui_lista_colonna_lineage_solo_mostrata`): filtro, ordinamento e ricerca
+  interrogano la vista. Il nome lo verifica il presidio
+  [vw_liste_colonne_campo_orfano](/dbzero/dbops/views/vw_liste_colonne_campo_orfano), non il guard:
+  il catalogo delle liste non dipende da una vista di `vendite`.
+
+Una colonna senza sorgente (un'azione, una cella composta dal frontend) ha `campo_sorgente` NULL, e
+non si esporta: non ha un valore da esportare (`chk_ui_lista_colonna_senza_campo_non_esportabile`).
+
+Dopo la scrittura della colonna nessun trigger vede la vista che perde un campo con un DDL: lo vede
+il presidio, che confronta ogni lista accesa con la sua relazione.
 
 ---
 
@@ -107,8 +125,8 @@ Su una lista senza `vista_sql` le celle le riempie il repository del backend. Un
 cui comincia a proiettare la chiave: accesa prima, la cella sarebbe vuota. Le colonne senza sorgente
 nascono accese.
 
-Una colonna accesa chiede una lista accesa: lo verifica, a fine transazione, la regola ATTIVO verso
-`lista_definizione` (`E_ATTIVO_PADRE_NON_ATTIVO`).
+Una colonna accesa sta anche su una lista spenta: la lista spenta sospende le sue colonne senza
+toccarle, e la FK verso la lista è fra le eccezioni della regola ATTIVO.
 
 ---
 
@@ -146,41 +164,26 @@ legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **Una colonna `azione` può avere un campo sorgente, e nessuno lo verifica.** Il CHECK chiede solo
-  che l'azione non sia esportabile; il controllo del campo sorgente salta per le azioni. Un'azione
-  con un campo inesistente e `ricercabile_full` acceso entra nelle colonne della ricerca libera, e la
-  ricerca interroga un campo che la vista non ha.
-* **La sintesi della lineage vale per ogni lista.** Un nome della lineage dei documenti passa il
-  controllo su qualunque lista, anche su una che non legge documenti, e il catalogo non sa dire
-  quali colonne stanno nella vista e quali no: chi usa `campo_sorgente` per filtrare, ordinare o
-  cercare interroga la vista anche per quelle. Il guard di `ui` dipende da una vista di `vendite`.
-* **Il codice si cambia.** Nessun lucchetto ferma il `codice` di una colonna, che è la chiave delle
-  preferenze e dei preset; il backend lo ammette fra i campi modificabili.
-* **Le colonne non si riverificano quando la lista cambia vista**, né quando la vista perde una
-  colonna: il controllo scatta solo quando si scrive la colonna. Le vede il presidio pgTAP del
-  catalogo, sulle righe del seed.
-* **Su una lista spenta con la vista non ancora creata, una colonna con sorgente non entra**: il
-  controllo del campo non salta sulle liste spente, a differenza di quello della vista.
-
----
-
 ### Codici errore
 
-* `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo sorgente non è nella vista della lista né nella
-  sintesi della lineage.
-* `E_ATTIVO_PADRE_NON_ATTIVO` — una colonna accesa su una lista spenta, a fine transazione.
-* L'unicità del codice nella lista, i CHECK dei testi non vuoti, dell'azione non esportabile e della
-  priorità, e le FK arrivano come violazione di vincolo, e il backend le traduce per nome.
+* `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo di una colonna `VISTA` non è nella relazione della
+  lista.
+* `E_UI_LINEAGE_NON_DICHIARATA` — una colonna `LINEAGE` su una lista che non dichiara la lineage.
+* `E_UI_COLONNA_CODICE_IMMUTABILE` — si riscrive il codice della colonna.
+* L'unicità del codice nella lista, i CHECK dei testi non vuoti, dell'azione senza campo, della
+  colonna senza campo non esportabile, della colonna della lineage e della priorità, e le FK
+  arrivano come violazione di vincolo, e il backend le traduce per nome.
 
 ---
 
 ### Test
 
 * `db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql` — ogni campo sorgente del catalogo
-  sta nella sua vista o nella sintesi della lineage; un campo che esiste solo nell'omonima di un
-  altro schema è rifiutato.
+  sta dove la colonna dice di leggerlo; un campo che esiste solo nell'omonima di un altro schema è
+  rifiutato.
+* `db/pgtap/ui/test-ui-catalogo-liste-v1.sql` — azione senza campo, composta non esportabile, la
+  colonna della lineage, il codice che non si riscrive, la colonna accolta su una lista spenta, il
+  presidio che vede il campo tolto con un DDL, il livello con la veste NULL.
 * `db/pgtap/ui/test-lista-colonna-testi-non-vuoti-v1.sql` — i cinque CHECK della stringa vuota.
 * `db/pgtap/ui/test-fn-lista-colonne-ricerca-full-v1.sql` — attivo, `ricercabile_full`, `sensibile`
   e campo sorgente nella ricerca libera.
@@ -200,6 +203,10 @@ legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista
 * 2026-11-12 — l'assenza di un testo è solo `NULL`: i cinque CHECK della stringa vuota.
 * 2026-11-21 — l'unicità (colonna, lista), che il vincolo della composizione dei preset legge: la
   lista di una colonna citata da un preset non cambia più.
+* 2026-11-21 — nasce `origine_campo`: la lineage non è più ammessa per nome su ogni lista, ma solo
+  sulle colonne `LINEAGE` delle liste che la dichiarano. Un'azione non ha campo, una colonna senza
+  campo non si esporta (il CHECK delle azioni non esportabili si ritira, coperto dai due nuovi); il
+  codice ha il suo lucchetto; una colonna sta accesa anche su una lista spenta.
 
 ---
 

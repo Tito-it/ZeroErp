@@ -133,8 +133,10 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 
 ### Che cosa blocca e che cosa no
 
-* Una lista con preset accesi non si spegne, e un preset nasce o si riaccende solo su una lista
-  accesa (regola ATTIVO, controllo differito a fine transazione).
+* La lista spenta sospende i suoi preset senza toccarli: si spegne anche con preset accesi, e un
+  preset si accende anche sotto una lista spenta (la FK verso la lista è in eccezione ATTIVO). Una
+  lista spenta non risponde, quindi i suoi preset non entrano in nessuna cascata finché non si
+  riaccende.
 * Spegnere un profilo o un'azienda non si ferma sul preset (le due FK sono in eccezione): il
   preset resta, e la cascata non lo usa più, perché il profilo non è più fra quelli dell'utente e
   il preset di un'azienda spenta non si applica.
@@ -151,7 +153,6 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * `E_UI_PRESET_POSTO_IMMUTABILE` — si cambia la lista, l'ambito, il profilo o l'azienda di un preset.
 * `E_UI_CONFIGURAZIONE_FORMA` — `ordinamento_default` senza la forma ammessa (una colonna che non è
   un codice della lista, ripetuta, una direzione fuori dominio).
-* Le regole ATTIVO del framework — preset su una lista spenta, lista spenta con preset accesi.
 * Le unicità (codice per lista, un preset acceso per posto) e il vincolo dell'ambito arrivano come
   violazione di vincolo; il servizio di amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 

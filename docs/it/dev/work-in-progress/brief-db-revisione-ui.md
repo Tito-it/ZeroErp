@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-21
 
-**Riparte: Tid**, con l'apply del giro 3 (`20261120-36` … `-42`, §3.3-bis: le misure; scritto e provato sullo scratch il 2026-11-21, Q44-Q46 decise lo stesso giorno) e la corsa dei pgTAP di `ui`. **In parallelo il team BE/FE**, con tutte le ricadute del giro 2 in un blocco solo (§3.2-bis, «Le ricadute BE/FE del giro 2»: R-BE3, BE8, BE11, BE20, BE25 (2), BE26); dopo l'apply del giro 3, BE10 e FE1. **Alla sessione DB** il `/verifica-db` dei giri 1a, 2 e 3 (in una sessione nuova). Il giro 2 è applicato su dbdev coi pgTAP verdi: 2a (`20261120-21` … `-31`) e 2b (`20261120-32` … `-35`) (Tid, 2026-11-21); R-BE3 non è ancora fatto, quindi la lista admin dei preset legge una colonna che non c'è più: rottura accettata in sviluppo (Tid, 2026-11-21: niente produzione). Q40 (b), Q41 (a) e Q42 (a) sono decise (Tid, 2026-11-21, §7.1). Le ricadute BE/FE del giro 1b (la parte 1b di BE7 e BE25 (1b), §6) e la risposta a R-BE2 (§3.2-bis) sono fatte dal team BE/FE il 2026-11-21, verdi e committate (`78e17ec4f`, in `Tito-dev` con la PR #175); per Q40 il team BE ha verificato che nessun componente FE scrive `col` (§3.2-bis, «Verifica per Q40»); BE9 era già verificato. Il residuo di BE22 è chiuso: id 665 spento nel CSV e migrato su dbdev (2026-11-21). Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»); committato (`986baa5d8d`, PR #172) con la doc auto-generata rigenerata. Alla sessione DB resta il `/verifica-db` del giro 1a, da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
+**Riparte: Tid**, col commit del giro 4 e la rigenerazione della doc auto-generata (§3.4-bis), poi il via al giro 5 (Q49 decisa: (a), entra nel giro 5, §3.5). Il giro 4 (`20261120-43` … `-52`, §3.4-bis: il catalogo delle liste) è applicato su dbdev coi pgTAP verdi (Tid, 2026-11-21). Il giro 3 (`20261120-36` … `-42`, §3.3-bis: le misure) è applicato su dbdev coi pgTAP verdi e committato con la doc auto-generata rigenerata (Tid, 2026-11-21, `ea04ec5f45`). **In parallelo il team BE/FE**, con tutte le ricadute del giro 2 in un blocco solo (§3.2-bis, «Le ricadute BE/FE del giro 2»: R-BE3, BE8, BE11, BE20, BE25 (2), BE26) e da ora quelle del giro 3, BE10 e FE1 (§3.3-bis, §6); da ora anche quelle del giro 4, BE12-BE15 estesi e BE27 (§3.4-bis). **Alla sessione DB** resta anche il `/verifica-db` dei giri 1a, 2, 3 e 4 (in una sessione nuova). Il giro 2 è applicato su dbdev coi pgTAP verdi: 2a (`20261120-21` … `-31`) e 2b (`20261120-32` … `-35`) (Tid, 2026-11-21); R-BE3 non è ancora fatto, quindi la lista admin dei preset legge una colonna che non c'è più: rottura accettata in sviluppo (Tid, 2026-11-21: niente produzione). Q40 (b), Q41 (a) e Q42 (a) sono decise (Tid, 2026-11-21, §7.1). Le ricadute BE/FE del giro 1b (la parte 1b di BE7 e BE25 (1b), §6) e la risposta a R-BE2 (§3.2-bis) sono fatte dal team BE/FE il 2026-11-21, verdi e committate (`78e17ec4f`, in `Tito-dev` con la PR #175); per Q40 il team BE ha verificato che nessun componente FE scrive `col` (§3.2-bis, «Verifica per Q40»); BE9 era già verificato. Il residuo di BE22 è chiuso: id 665 spento nel CSV e migrato su dbdev (2026-11-21). Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»); committato (`986baa5d8d`, PR #172) con la doc auto-generata rigenerata. Alla sessione DB resta il `/verifica-db` del giro 1a, da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
 [brief del seed](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
 dbdev con i pgTAP verdi il 2026-11-20): i giri che toccano i CSV di `ui` sono sbloccati. Le decisioni Q1-Q36 sono prese
 (2026-11-18 … 2026-11-20); Q27-Q36, dall'analisi critica del 2026-11-20, completano o sostituiscono alcune delle prime, e
@@ -21,22 +21,22 @@ le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e c
 | 5 | team BE | Le ricadute «subito» (BE1, BE2, BE4), che non aspettano il DB; e la verifica di BE9 prima del giro 2 (Q35). ✅ BE1, BE2, BE4 fatti e verdi; ✅ BE9 verificato: nessuno applica ordinamento e filtri risolti, ne nasce Q37, decisa (a): li applica il BE, voce BE25 (2026-11-20, esito in §6); rivisti con `/verifica` e committati su `dev/backend-tid` il 2026-11-21 | §6 | — |
 | 6 | ✅ Tid | Il via al giro 1a (2026-11-20) | §2 | 4-ter |
 | 6-bis | ✅ Tid | Q37-Q39 (§7.1) decise come raccomandate e il via all'1b (2026-11-20) | §3.1-ter, §7.1 | — |
-| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20), committato con la doc auto-generata; ✅ il residuo di BE22 (id 665 spento nel CSV, migrato su dbdev il 2026-11-21); ⏳ il `/verifica-db` dell'1a; ✅ il piano del giro 2 (§3.2-bis), riallineato il 2026-11-21 a R-BE2, a Q40-Q42 e al ritiro di Q38/Q39 §6; ✅ Q43 (a) e il via al giro 2 (Tid, 2026-11-21); ✅ 2a scritto e applicato (2026-11-21); ✅ 2b scritto, applicato, pgTAP verdi (Tid, 2026-11-21); ⏳ il `/verifica-db` del giro 2; ✅ il via al giro 3 e Q44-Q46 (Tid, 2026-11-21); ✅ giro 3 scritto e provato (`20261120-36` … `-42`, 2026-11-21); ⏳ apply e pgTAP del giro 3 (Tid); ⏳ il `/verifica-db` del giro 3 | §2, §3.2-bis, §3.3-bis | 6-bis |
+| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20), committato con la doc auto-generata; ✅ il residuo di BE22 (id 665 spento nel CSV, migrato su dbdev il 2026-11-21); ⏳ il `/verifica-db` dell'1a; ✅ il piano del giro 2 (§3.2-bis), riallineato il 2026-11-21 a R-BE2, a Q40-Q42 e al ritiro di Q38/Q39 §6; ✅ Q43 (a) e il via al giro 2 (Tid, 2026-11-21); ✅ 2a scritto e applicato (2026-11-21); ✅ 2b scritto, applicato, pgTAP verdi (Tid, 2026-11-21); ⏳ il `/verifica-db` del giro 2; ✅ il via al giro 3 e Q44-Q46 (Tid, 2026-11-21); ✅ giro 3 scritto e provato (`20261120-36` … `-42`, 2026-11-21); ✅ giro 3 applicato, pgTAP verdi, committato con la doc auto-generata (Tid, 2026-11-21, `ea04ec5f45`); ⏳ il `/verifica-db` del giro 3; ✅ il via al giro 4 (Tid, 2026-11-21); ✅ il piano del giro 4 (§3.4-bis, 2026-11-21); ✅ Q47 (a) e Q48 (a) (Tid, 2026-11-21); ✅ giro 4 scritto e provato (`20261120-43` … `-52`, 2026-11-21); ✅ giro 4 applicato, pgTAP verdi (Tid, 2026-11-21); ✅ Q49 (a) (Tid, 2026-11-21); ⏳ il commit del giro 4 con la doc auto-generata; ⏳ il `/verifica-db` del giro 4; ⏳ il via al giro 5 | §2, §3.2-bis, §3.3-bis, §3.4-bis | 6-bis |
 | 7-bis | team BE/FE | ⏳ Da ora: le ricadute del giro 2, tutte insieme (2b applicato il 2026-11-21): R-BE3, BE8, BE11, BE20, BE25 (2), BE26 | §3.2-bis, «Le ricadute BE/FE del giro 2» | 7 |
-| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6), committati in `7e65518b9`. Giro 1b: ✅ BE7 (parte 1b) e BE25 (1b) fatti e verdi (BE + FE, 2026-11-21, esito in §6), committati in `78e17ec4f`. Giro 2: BE8, BE11, BE20, BE25 (2), dopo l'apply. Giro 3: BE10, FE1, dopo l'apply (§3.3-bis) | §6 | 7 |
+| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6), committati in `7e65518b9`. Giro 1b: ✅ BE7 (parte 1b) e BE25 (1b) fatti e verdi (BE + FE, 2026-11-21, esito in §6), committati in `78e17ec4f`. Giro 2: BE8, BE11, BE20, BE25 (2), dopo l'apply. Giro 3: ⏳ da ora BE10, FE1 (giro 3 applicato il 2026-11-21, §3.3-bis). Giro 4: ⏳ da ora BE12-BE15 (estesi) e BE27 (giro 4 applicato il 2026-11-21, §3.4-bis, «Le ricadute BE/FE del giro 4») | §6 | 7 |
 | 9 | sessione DB | Archiviazione in `work-done/` | §10 | 7, 8 |
 
 **Decisioni di Tid:** Q1-Q11 prese il 2026-11-18, Q12-Q25 il 2026-11-19, Q26 il 2026-11-20 (registrate in §7 e nelle
 schede dei difetti), Q27-Q36 il 2026-11-20 (§7.1). Q37-Q39 §7.1 e Q37-Q39 §6 il 2026-11-20 come raccomandate. Q40 (b),
 Q41 (a) e Q42 (a) il 2026-11-21 (§7.1, dal piano del giro 2). Q43 (a) il 2026-11-21 (chi cambia per primo nel ritiro
-di filtri e ordinamento: il BE, §7.1). Q44-Q46 il 2026-11-21 (§7.1, dal piano del giro 3); nessuna aperta. ⚠️ **Numeri doppi** (trovati il 2026-11-21): Q37, Q38 e Q39 esistono due volte, in §7.1
+di filtri e ordinamento: il BE, §7.1). Q44-Q46 il 2026-11-21 (§7.1, dal piano del giro 3). Q47 (a) e Q48 (a) il 2026-11-21 (§7.1, dal piano del giro 4). Q49 (a) il 2026-11-21 (§7.1, la dashboard spenta come la lista: giro 5). Nessuna decisione aperta. ⚠️ **Numeri doppi** (trovati il 2026-11-21): Q37, Q38 e Q39 esistono due volte, in §7.1
 (l'impronta, l'ignorato, la data per chiave: giro 1b) e in §6 (chi applica l'ordinamento, il ritiro dei filtri, il clic
 che non si ricorda: giro 2); BE25 esiste due volte in §6 (il codice d'errore del giro 1b, l'ordinamento applicato del
 giro 2). I due numeri sono citati in changeSet già committati e nel codice BE, quindi non si rinumera: si scrive
-«Q38 §7.1» / «Q38 §6» e «BE25 (1b)» / «BE25 (2)». I numeri nuovi partono da Q43, BE26 e R-BE3. **Committato:** fino al giro 2
-compreso (`eaed059e6e`, PR #183). **Da committare:** il giro 3 (§3.3-bis: changeSet `20261120-36` … `-42`, CSV, pgTAP,
-pagine `manual/`, guida), Q44-Q46 e questa testata (2026-11-21). ⚠️ Nei CSV dei codici e dei
-lucchetti c'è anche una riga non di questo brief (`E_EMITTENTE_SOGGETTO_IMMUTABILE`, l'altra sessione).
+«Q38 §7.1» / «Q38 §6» e «BE25 (1b)» / «BE25 (2)». I numeri nuovi partono da Q43, BE26 e R-BE3 (dal giro 4: Q47, BE27). **Committato:** fino al giro 3
+compreso (giro 2 in `eaed059e6e`, PR #183; giro 3 con la doc auto-generata in `ea04ec5f45`). **Da committare:**
+questa testata, il §3.3-bis aggiornato all'apply del giro 3, Q47-Q49 e tutto il giro 4, applicato coi pgTAP verdi (§3.4-bis: changeSet
+`20261120-43` … `-52`, CSV, loader, pgTAP, pagine `manual/`, guida; la doc auto-generata da rigenerare) (2026-11-21).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-18; decisioni registrate fino al 2026-11-21. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `ui` chiesta da Tid: allinearla allo standard e alle
@@ -842,10 +842,11 @@ misure_pagina». Il runner gira come applicazione, e la prova sull'estratto gira
 Il test scrive il catalogo, che l'applicazione legge soltanto: marcato `pgtap-runner: owner` col motivo (forma 3 del
 criterio di `scripts/testpgtap.sh`: il guard difende da uno scrittore privilegiato).
 
-⏳ Apply di Tid e corsa dei pgTAP di `ui`; poi il `/verifica-db` del giro e la doc auto-generata da rigenerare. Le
-schede dei due trigger nuovi e dell'enum nascono lì.
+✅ **Applicato** su dbdev con i pgTAP di `ui` verdi, compreso il caso 15 del test nuovo (il lucchetto montato da `-42`),
+e committato con la doc auto-generata rigenerata, schede dei due trigger nuovi comprese (Tid, 2026-11-21,
+`ea04ec5f45`). ⏳ Resta il `/verifica-db` del giro, in una sessione nuova.
 
-**Le ricadute BE/FE del giro 3** (dopo l'apply): BE10 e FE1 (§6). Nessuna garanzia ritirata: il giro aggiunge vincoli
+**Le ricadute BE/FE del giro 3** (⏳ da ora, giro applicato il 2026-11-21): BE10 e FE1 (§6). Nessuna garanzia ritirata: il giro aggiunge vincoli
 e toglie due default. Un `INSERT` del BE in `ui.lista_preset` o `ui.dashboard_preset` che non nomina la misura ora
 scrive NULL (lo standard) invece di 25 o 8: il BE la passa esplicita (`ui_admin_repository.py:622-644`, §3.3 U15),
 quindi niente cambia; se ne passa una, il resolver la rispetta come prima. Il codice nuovo
@@ -983,6 +984,169 @@ quindi niente cambia; se ne passa una, il resolver la rispetta come prima. Il co
   controllo preventivo conta anche i preset; il messaggio di `E_UI_COLONNA_IN_USO` nomina i preset e non i permessi
   (che vanno a cascata); i commenti del BE si correggono. Il gesto ordinario resta lo spegnimento della colonna.
 
+### 3.4-bis Il piano del giro 4 (sessione DB, 2026-11-21) — applicato, pgTAP verdi
+
+Corpi e struttura letti da dbdev il 2026-11-21 (`pg_get_functiondef`, `pg_trigger`, `\d`), dopo l'apply del giro 3:
+nessun changeSet dei giri 1-3 tocca i corpi di U22-U30 (`valida_campo_sorgente`, `valida_vista_sql`, il guard
+multi-emittente, `fn_lista_colonne_livello`). Il via di Tid al giro è del 2026-11-21.
+
+**Che cosa ha trovato la lettura, prima di scrivere.**
+
+* **Q15: il DB non sa quali liste sono documentali.** `config.sorgenti` non porta la lista e `lista_definizione` non
+  porta la sorgente; nessuna colonna lega le due. Q15 dice che allora serve la dichiarazione dal lato della lista
+  (a). → Q47, la forma.
+* **Il nome di una colonna della lineage, senza `vendite`.** Q15 ritira la dipendenza del guard di `ui` da
+  `vendite.vw_documento_lineage_sintesi_colonne`: il guard non può più verificare che `frontiera_codice` esista. →
+  Q48, chi lo verifica.
+* **Il seed rispetta già la forma di Q15.** Le sei colonne `transito` (`frontiera_codice`, sulle liste contratti, DDT,
+  offerte, ordini, preventivi, resi) non sono filtrabili, ordinabili né ricercabili (fatto datato, dbdev 2026-11-21).
+  Si può dire con un CHECK: una colonna della lineage non è filtrabile, ordinabile né `ricercabile_full`. Il CHECK è
+  la sede unica, e `fn_lista_colonne_ricerca_full` non deve leggere il marcatore: con il CHECK non le incontra.
+* **Sulle liste senza vista la verifica del campo non c'è.** `vista_sql` è nullable: una lista servita da una funzione
+  del BE (le pagine admin, i lotti, le distinte) non ha relazione da confrontare, e il guard salta. È il modello, non un
+  difetto nuovo. Le colonne di quelle liste che oggi passano «perché il nome sta nella lineage» (`codice`,
+  `stato_descrizione`…) passano per il salto, non per la lineage: il ritiro di Q15 non le tocca.
+* **Q13 ritira una garanzia.** Oggi `trgfn_child_requires_active_parent` garantisce «una colonna accesa, o un preset
+  acceso, sta su una lista accesa». Con le due FK `lista_id` fra le eccezioni ATTIVO, una lista spenta tiene colonne e
+  preset accesi. → «Garanzie ritirate», sotto.
+* **U23: il codice immutabile ha già lo strumento.** Il registro dei lucchetti (`dbops.automation_lock_columns`) e il
+  runner su `ui` tengono già il posto del preset e la misura del catalogo; il seed riscrive uguale e passa. Il codice
+  della lista e quello della colonna entrano lì, non in un trigger nuovo.
+* **U23: `perimetro_emittente` va nel guard al contrario.** Il guard di `multi_emittente` scatta all'INSERT solo se il
+  flag nasce acceso, perché il pericolo è `true`. Per `perimetro_emittente` il pericolo è `false` (la schermata si apre
+  senza chiedere l'azienda). Il guard comune riceve, per ogni colonna, il valore che si può scrivere senza permesso.
+* **U24 e U25 rendono superfluo `chk_ui_lista_colonna_azione_non_esportabile`.** «Un'azione non ha campo sorgente»
+  (U24) e «senza campo sorgente, non esportabile» (U25) insieme dicono già che un'azione non si esporta: il CHECK di
+  oggi diventa una seconda sede della stessa regola, e si ritira (regola del 2). Il BE lo mappa per nome (BE13).
+* **U28: nessuna bonifica.** Nessuna stringa vuota nelle colonne di U28 (fatto datato, dbdev 2026-11-21): i CHECK
+  entrano senza correzioni del catalogo.
+* **U29: le vesti dell'utente si leggono dalla regola che c'è.** «La veste è utilizzabile» ha il suo BB
+  (`script.fn_veste_utilizzabile`); le vesti di un utente sono le sue identità per cui vale. Con la veste NULL la
+  funzione calcola il livello sotto ciascuna e tiene il più restrittivo. Una veste senza profili conta anche lei: le
+  sue colonne sensibili sono BLOCCATO, e saltarla allargherebbe.
+* **U27: il presidio di Q32 vede anche le liste dell'app.** Il pgTAP di oggi (`test-lista-colonna-campo-sorgente-in-vista-v1`)
+  copre il seed. Il presidio `dbops` legge lo stesso BB e confronta ogni lista accesa con la sua relazione.
+
+**I pezzi** (numeri dal primo libero del progressivo `20261120`, da riverificare con `prossimo_changeset.py` prima di
+ogni file).
+
+| changeSet | Che cosa | Difetto |
+| --- | --- | --- |
+| `-43` (00_schema) | L'enum `ui.origine_campo_lista` (`VISTA`, `LINEAGE`); `lista_colonna.origine_campo` (NOT NULL, iniziale `VISTA`); la dichiarazione della lista di Q47; i CHECK di U24, di U25 e della lineage (né filtrabile, né ordinabile, né ricercabile); il ritiro di `chk_ui_lista_colonna_azione_non_esportabile`; i COMMENT | U24, U25, U26 |
+| `-44` (00_schema) | I CHECK «non vuoto»: `lista_definizione` (`codice`, `descrizione`, `schema_dati`, `vista_sql`, `note`), `dashboard_definizione` (`codice`, `descrizione`, `note`), `widget` (`codice`, `etichetta`, `etichetta_i18n_key`, `contatore_key`) | U28 |
+| `-45` (20_code) | Il BB `ui.fn_lista_relazione_ha_attributo(schema, relazione, attributo)`: la relazione esiste (vista, vista materializzata, tabella, tabella partizionata) e, con l'attributo, ha la colonna | U27 |
+| `-46` (20_code) | `valida_campo_sorgente` riscritta: legge il BB; salta sulle liste spente (la verifica è all'accensione); una colonna `VISTA` sta nella relazione, una `LINEAGE` sta su una lista che la dichiara; via il ramo `= ''` e il salto delle azioni; via la lettura di `vendite`. Il trigger aggiunge `origine_campo` alle colonne di `UPDATE OF` | U26, U27, U37, U24 |
+| `-47` (20_code) | `valida_vista_sql` riscritta: legge il BB, ammette le partizionate; per chi non è il proprietario, al cambio di vista o di schema e all'accensione rifiuta se una colonna accesa `VISTA` resta orfana, e le nomina (Q35) | U27, Q35 |
+| `-48` (20_code) | Il guard delle dichiarazioni di `lista_definizione`: una funzione sola per `multi_emittente`, `perimetro_emittente` e la dichiarazione di Q47, ciascuna col valore ammesso senza permesso; il messaggio nomina la colonna | U23 |
+| `-49` (20_code) | `fn_lista_colonne_livello`: con la veste NULL, per ogni colonna il livello più restrittivo fra le vesti utilizzabili dell'utente; senza vesti, i livelli di ripiego | U29 |
+| `-50` (20_code o 90_end) | Il presidio di Q32: la funzione che confronta le colonne `VISTA` di ogni lista accesa con la sua relazione, col BB; la riga in `presidi.csv` e i testi | U27, Q32 |
+| `-51` (90_end) | Il motore ATTIVO ritira il block su `lista_definizione` e il require su `lista_colonna` e `lista_preset` (le due eccezioni nuove) | U22 |
+| `-52` (90_end) | Il runner dei lucchetti su `ui`: `lista_definizione.codice` e `lista_colonna.codice` | U23 |
+
+CSV: `automazione_attivo_eccezioni.csv` (`ui.lista_colonna.lista_id`, `ui.lista_preset.lista_id`, col motivo di Q13);
+`automation_lock_columns.csv` (le due righe del codice); `lista_definizione.csv` con la dichiarazione di Q47 sulle sei
+liste documentali e `lista_colonna.csv` con `origine_campo = LINEAGE` sulle sei colonne `transito`, coi loro loader; il
+registro del seed con le due colonne nuove fra quelle del software (come `multi_emittente` e `campo_sorgente`, QU4);
+codici e messaggi: le colonne orfane alla riaccensione o al cambio di vista, i due codici immutabili, il testo di
+`E_UI_COLONNA_IN_USO` che nomina i preset e non i permessi (U30, Q18), il testo di
+`E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` che nomina la colonna. pgTAP nuovo `ui/test-ui-catalogo-liste-v1` coi presidi
+di U22-U30 (soggetti costruiti nel test); adeguati `test-lista-colonna-campo-sorgente-in-vista-v1` (legge il BB e il
+marcatore) e il test 7 dei `test-lista-*-seed` (la lineage dal marcatore, non dal nome).
+
+**Garanzie ritirate** (AGENTS.md, «Una garanzia ritirata si censisce in tutti i lettori»).
+
+| Oggetto | Proprietà che i lettori davano per scontata | Lettori DB | Esito |
+| --- | --- | --- | --- |
+| `ui.lista_colonna.attivo`, `ui.lista_preset.attivo` | «Una colonna accesa, un preset acceso, stanno su una lista accesa» | `fn_resolve_lista_config`, `fn_ordinamento_lista`, `fn_lista_colonne_ricerca_full` | Non ne dipendono: entrano dalla lista per codice (`fn_lista_da_codice`), che rifiuta la lista spenta |
+| | | `fn_lista_colonne_livello`, `fn_preset_di_base` | Non ne dipendono: ricevono l'id della lista dai tre sopra |
+| | | `fn_check_forma_configurazione`, `trgfn_ui_lista_preset_guard_ordinamento` | Non ne dipendono: chiedono che il codice sia una colonna della lista, in qualsiasi stato (Q42) |
+| | | `trgfn_preset_contenuto_aggiornato`, `trgfn_preset_riga_*`, `trgfn_preferenza_preset_base_snapshot` | Non ne dipendono: leggono il preset per id, per la data e l'impronta, non per servirlo |
+| | | `dbops.vw_liste_multi_emittente_non_certificate` | Non ne dipende: espone `lista_attiva` accanto alle colonne |
+| | | `vendite.fn_list_lotto_task_runs` | Non ne dipende: cita `lista_colonna` solo in un commento |
+
+Richiesta al team BE/FE (nuova, BE27): **«censisci i lettori di `ui.lista_colonna.attivo` e `ui.lista_preset.attivo`
+che contano su “la lista è accesa”»**. Già noti: le pagine admin di colonne e preset (`lista_colonna_admin_service.py`,
+`ui_admin_repository.py`), che con BE15 smettono di trattare lo spegnimento come rifiutato. Il censimento si fa
+all'arrivo del giro (`/arrivi-db`), prima di cominciare.
+
+**Le ricadute BE/FE del giro 4** (⏳ da ora, giro applicato il 2026-11-21), con l'elenco dei file noti; il team BE censisce anche quelli che non
+conosco (AGENTS.md, «richiesta BE: percorso intero»):
+
+* **BE12** (§6), esteso: `codice` della lista e della colonna fuori dai campi modificabili, coi codici nuovi
+  `E_UI_LISTA_CODICE_IMMUTABILE` ed `E_UI_COLONNA_CODICE_IMMUTABILE`; **`perimetro_emittente` non è più scrivibile
+  dall'app** (oggi lo è: se la pagina admin lo espone, esce); `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` è ritirato
+  (`obsoleto_dal` 2026-11-21) e al suo posto arriva `E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE`, che nomina la colonna
+  (mappa d'errore e `docs/it/backend/ui/manual/api_ui_admin_personalizzazioni.md:647`); `E_UI_LISTA_COLONNE_ORFANE`
+  dal salvataggio di una definizione (cambio di vista o riaccensione) e `E_UI_LINEAGE_NON_DICHIARATA` da quello di
+  una colonna.
+* **BE13** (§6), esteso: in `_CHECK_CONSTRAINTS` esce `chk_ui_lista_colonna_azione_non_esportabile` ed entrano
+  `chk_ui_lista_colonna_azione_senza_campo`, `chk_ui_lista_colonna_senza_campo_non_esportabile`,
+  `chk_ui_lista_colonna_lineage_solo_mostrata` e i cinque `chk_lista_definizione_*_non_vuot*`. Nel drawer delle colonne
+  «Esportabile» spento quando manca il campo sorgente (come già per le azioni).
+* **BE14** (§6), esteso: **chi decide che una colonna legge la lineage legge `origine_campo`**, non più «il nome non
+  sta nella vista ma sta in `vendite.vw_documento_lineage_sintesi_colonne`» (la regola che il DB ha appena ritirato,
+  Q15); e la sintesi si chiede solo per le liste con `legge_lineage`. Con il CHECK della lineage la ricerca libera non
+  riceve più colonne `LINEAGE` dal DB: il BE verifica se `_helpers.py:315-330` ne aggiunge per altra strada.
+  `origine_campo` è nuovo anche nella pagina admin delle colonne (lettura, e scrittura se il drawer lo espone).
+* **BE15** (§6): il toggle «attivo» di una definizione con figli accesi non fallisce più; il ramo che intercetta
+  `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` per le liste si ritira.
+* **BE27** qui sopra: il censimento dei lettori di `attivo` che contano su «la lista è accesa».
+* Il testo di `E_UI_COLONNA_IN_USO` ora dice «preferenze utente o preset» (Q18): se il BE lo ricompone a mano, si
+  allinea.
+
+Un `INSERT` del BE in `ui.lista_definizione` che non nomina le tre dichiarazioni passa come prima (nasce coi valori che
+non promettono niente).
+
+✅ **Scritto e provato** (sessione DB, 2026-11-21, dopo Q47 (a) e Q48 (a), §7.1). I dieci changeSet della tabella sopra,
+numeri `20261120-43` … `-52` come previsti; i CSV (codici e messaggi: cinque codici nuovi con i messaggi 1524-1528,
+`E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` ritirato, i testi di 428, 429 e 744; due eccezioni ATTIVO; due lucchetti; le
+righe 3 e 4 del registro del seed con `legge_lineage` e `origine_campo` fra le colonne del software; `legge_lineage` sulle
+sei liste documentali e `origine_campo = LINEAGE` sulle sei colonne «transito», coi tre loader; il presidio in
+`presidi.csv` e `presidi_testi.csv`). Il guard delle dichiarazioni ha un nome nuovo,
+`ui.trgfn_lista_definizione_guard_dichiarazioni`: il vecchio si toglie con il suo trigger, e il COMMENT di
+`script.fn_is_proprietario_tabella`, che lo nominava, si riscrive al presente. Pagine `manual/`: `lista_definizione`,
+`lista_colonna`, `lista_preset`, `lista_colonna_permesso`, `fn_lista_colonne_livello`, `fn_lista_colonne_ricerca_full`,
+`fn_veste_corrente`, `dashboard_definizione`, `widget`, i due guard del catalogo, quella del guard rinominato (spostata),
+e due nuove (`fn_lista_relazione_ha_attributo`, `dbops/manual/vw_liste_colonne_campo_orfano`); fuori da `ui`
+`automazione_attivo_eccezioni`, `fn_is_proprietario_tabella`, `vw_documento_lineage_sintesi_colonne`; la guida
+`configurazione-liste` (§2.1, §5.1.1, §5.2, §5.2.2, §10.4, §11.3, §11.4, §11.6).
+
+⚠️ **Corretto scrivendo, U37** (controesempio: il caso 8 di `ui/test-fn-lista-colonne-ricerca-full-v1`). Il ramo
+`campo_sorgente = ''` del guard delle colonne **non era morto**: il guard è un `BEFORE ROW` e parla prima dei CHECK.
+Tolto, una stringa vuota riceveva «campo non trovato nella vista» invece di `chk_lista_colonna_campo_sorgente_non_vuoto`,
+il vincolo che dice la cosa giusta e che il BE mappa sul campo. Il ramo resta, con la ragione giusta («lascia parlare il
+vincolo», anche per la stringa di soli spazi); si toglie solo il commento stantio sul seed CSV. La scheda U37 (§3.6) era
+sbagliata nella premessa.
+
+**La prova** (`prova_changeset.py`, sullo scratch, owner). L'estratto `-43` … `-50` gira intero; per provare anche
+`-51` e `-52` un YAML di prova nello scratchpad simula i CSV (registri, codici, le dichiarazioni del seed, il presidio):
+non prova i loader, prova il resto. Pgtap nuovo `ui/test-ui-catalogo-liste-v1` (28 casi): 22 verdi. I sei rossi (9, 10,
+17, 18, 20, 23) sono i casi in cui il guard **esenta il proprietario**: la prova gira da owner, e la differenza si vede
+solo col runner (il test gira come applicazione, come chiede il suo header; il 23 dipende dal 17). Il presidio è a zero
+sul catalogo con il seed simulato. Regressione su tutti i pgTAP di `ui` e sui vicini fuori schema (35 file), senza e con
+l'estratto: verdi, salvo cinque già spiegati.
+
+* `test-lista-definizione-perimetro-emittente-v1` e `test-ui-legami-preset-v1`: si fermano uguali **senza** l'estratto
+  (owner, il seed non lascia cancellare una riga nata dal seed; già visto nei giri 2b e 3).
+* `test-seed-primo-impianto-ui-installazione-v1`, caso 3: il registro del seed non è ricaricato nella prova (lo stesso
+  caso di `uso_misura` nel giro 3); al migrate lo riallinea il giro delle automazioni.
+* `test-catalogo-presidi-v1`, caso 2: la riga del presidio arriva dal CSV; con la riga simulata è verde (provato a parte,
+  insieme a `test-presidi-testi-v1`).
+
+Adeguati, con la ragione sopra la riga: `test-ui-nell-ambito-v1` (le due FK passano fra le eccezioni: tre guard, diciotto
+eccezioni), `test-fn-is-proprietario-tabella-v1` (il guard rinominato e il codice nuovo),
+`test-lista-definizione-perimetro-emittente-v1` (la lista di prova nasce col perimetro di default: `false` ora lo
+rifiuta il guard), `test-lista-colonna-testi-non-vuoti-v1` e `test-fn-lista-colonne-ricerca-full-v1` (le fixture
+costruivano colonne composte esportabili, che U25 rifiuta; la prima ora scrive su una lista senza vista, perché sul campo
+vuoto parli il vincolo), `test-lista-colonna-campo-sorgente-in-vista-v1` e il test 7 dei quattro `test-lista-*-seed` (il
+BB e il marcatore al posto della lineage per nome).
+
+✅ Applicato su dbdev, pgTAP verdi (Tid, 2026-11-21): `ui`, più `script/test-fn-is-proprietario-tabella-v1`,
+`dbops/test-catalogo-presidi-v1`, `dbops/test-presidi-testi-v1`; verdi col runner anche i sei casi del proprietario
+esentato di `test-ui-catalogo-liste-v1` (9, 10, 17, 18, 20, 23), che la prova da owner non poteva vedere. ⏳ Restano il
+commit, il `/verifica-db` del giro e la doc auto-generata da rigenerare (le schede del BB, del
+guard rinominato, del presidio e dell'enum nascono lì; la scheda della funzione ritirata va tolta).
+
 ### 3.5 Giro 5 — il catalogo delle dashboard
 
 **U31 (B) — L'app ha la scrittura sulle tabelle che nessun servizio scrive** · area D · Q19.
@@ -1039,6 +1203,16 @@ quindi niente cambia; se ne passa una, il resolver la rispetta come prima. Il co
 * **Decisione (Q22, Tid, 2026-11-19).** Voluto: le due preferenze restano senza audit (dato personale, di un solo
   utente, ad alta frequenza) e il COMMENT delle due tabelle lo dichiara. `data_update` la scrive il DB, non il BE: una
   sede sola, come lo snapshot del preset di base (Q1). Ricaduta: il BE smette di scriverla.
+
+**Q49 — La dashboard spenta sospende i suoi preset** · area D · la gemella di Q13, trovata scrivendo il giro 4.
+
+* **Fatto.** `dashboard_preset.dashboard_id` tiene il blocco ATTIVO generato: una dashboard con preset accesi non si
+  spegne. Dal giro 4 una lista sì (`lista_colonna.lista_id` e `lista_preset.lista_id` fra le eccezioni, §3.4-bis).
+* **Decisione (Q49, Tid, 2026-11-21).** (a): la stessa forma delle liste. La FK entra fra le eccezioni ATTIVO
+  (`automazione_attivo_eccezioni.csv`, con la ragione) e il ritiro dei guard passa da `dbops.fn_ritira_attivo_eccezioni()`
+  in `90_end`, senza DDL sui trigger generati. La dashboard spenta sospende i preset senza toccarli; riaccesa, tornano.
+  Da censire nel piano del giro: chi legge i preset di una dashboard spenta (resolver e pgTAP dell'ambito, come
+  `test-ui-nell-ambito-v1` per le liste) e `dashboard_widget.dashboard_id`, se ha lo stesso blocco.
 
 ### 3.6 Giro 6 — pulizia
 
@@ -1244,6 +1418,7 @@ superata è barrata, non resta come alternativa. Q37-Q39 vengono dopo: le ha ape
 2026-11-20), e Tid le ha decise lo stesso giorno, come raccomandate. Q40-Q42 le ha aperte il piano del giro 2 (§3.2-bis,
 2026-11-21), e Tid le ha decise lo stesso giorno: Q41 e Q42 come raccomandate, Q40 (b) dopo la verifica del team BE.
 Q44-Q46 le ha aperte il piano del giro 3 (§3.3-bis, 2026-11-21), decise da Tid lo stesso giorno come raccomandate.
+Q47 e Q48 le ha aperte il piano del giro 4 (§3.4-bis, 2026-11-21), decise da Tid lo stesso giorno come raccomandate. Q49 l'ha aperta la scrittura del giro 4 (2026-11-21), decisa da Tid lo stesso giorno come raccomandata.
 
 | # | Domanda | Riapre o completa | Opzioni | Decisione |
 | --- | --- | --- | --- | --- |
@@ -1267,6 +1442,9 @@ Q44-Q46 le ha aperte il piano del giro 3 (§3.3-bis, 2026-11-21), decise da Tid 
 | Q44 | Il vocabolario degli usi di una misura (`COMPATTA`, `PAGINA`): il CHECK di `misure_pagina.uso_default`, la colonna nuova di `lista_definizione` (U20) e il constraint trigger di U18, che li deve elencare | U20, U18 | (a) Un enum `ui.uso_misura_pagina`, come `ui.ambito_preset`, per le due colonne; il trigger lo legge con `enum_range`; (b) un CHECK per colonna e l'elenco nel trigger: tre copie | ✅ **Deciso da Tid il 2026-11-21: (a).** La firma di `ui.fn_misura_pagina_default` resta (`varchar`): cambia solo il confronto |
 | Q45 | Il tetto 1-100 di `dashboard_preset.dimensione_max` (Q12): ha già una sede, `ui.fn_dimensione_max_ammessa` | Q12 | (a) `CHECK (dimensione_max IS NULL OR ui.fn_dimensione_max_ammessa(dimensione_max))`; (b) un CHECK letterale `BETWEEN 1 AND 100`, il 100 in due sedi | ✅ **Deciso da Tid il 2026-11-21: (a).** Il BB è `IMMUTABLE` e nasce con un numero minore (§11.14) |
 | Q46 | La colonna nuova `lista_definizione.uso_misura` nel registro del seed (riga 3, per colonna, QU1) | QU1 | (a) Del software: dove il FE mostra la lista lo decide il codice; (b) dell'installazione, come `ricerca_min_caratteri` | ✅ **Deciso da Tid il 2026-11-21: (a).** |
+| Q47 | La dichiarazione dal lato della lista che Q15 chiede quando il DB non sa quali liste sono documentali: `config.sorgenti` non porta la lista, `lista_definizione` non porta la sorgente (§3.4-bis) | **Completa Q15** | (a) Un flag del software `lista_definizione.legge_lineage` (NOT NULL, `false`): «il BE unisce la sintesi della lineage alle righe»; si scrive solo dal migratore, nel guard di U23. (b) Una FK `lista_definizione.sorgente_id` verso `config.sorgenti` (DOCUMENTO): la lista dichiara quale documento mostra, e la lineage si ammette dove c'è. **Raccomandata (a)**: il guard chiede proprio quella capacità, e una lista può mostrare documenti di più sorgenti (i cruscotti dei documenti aperti); la FK dichiara di più di ciò che serve, e quel di più resta senza lettore | ✅ **Deciso da Tid il 2026-11-21: (a).** |
+| Q48 | Chi verifica il nome di una colonna `LINEAGE`, ritirata la dipendenza del guard di `ui` da `vendite.vw_documento_lineage_sintesi_colonne` (Q15) | **Completa Q15** | (a) Il presidio `dbops` di Q32, che `vendite` la può leggere, e il pgTAP `vendite/test-colonne-lineage-liste-v1` per il seed; il guard di `ui` controlla solo che la lista dichiari la lineage. (b) Il guard di `ui` continua a leggere la vista di `vendite`: Q15 resta a metà. **Raccomandata (a)**: la dipendenza esce da `ui`, e un nome sbagliato lo vede il presidio anche sulle liste dell'app | ✅ **Deciso da Tid il 2026-11-21: (a).** |
+| Q49 | La gemella di Q13 sulle dashboard: `dashboard_preset.dashboard_id` tiene ancora il guard ATTIVO, quindi una dashboard con preset accesi non si spegne, mentre da questo giro una lista sì (§3.4-bis, trovato scrivendo il giro 4) | **Completa Q13** | (a) La stessa forma nel giro 5: la FK fra le eccezioni ATTIVO, la dashboard spenta sospende i suoi preset. (b) Resta il blocco, e la differenza fra liste e dashboard si dichiara. **Raccomandata (a)**: liste e dashboard sono gemelle, e il giro 5 apre comunque quelle tabelle | ✅ **Deciso da Tid il 2026-11-21.** **(a)**: entra nel giro 5 (§3.5) |
 
 ## 8. Giro 0 — la documentazione, 2026-11-18 (fatto)
 

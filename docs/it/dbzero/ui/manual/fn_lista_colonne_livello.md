@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_colonne_livello`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,13 +35,20 @@ la lista non mostra.
 ### La regola
 
 1. I permessi si cercano fra i profili d'accesso che si applicano all'utente sotto la veste data.
-   Senza veste, sotto tutte le vesti dell'utente.
 2. Se più profili danno un permesso sulla stessa colonna, vince il più specifico (AD_HOC, poi
    REPARTO, poi PORTALE); a parità il più restrittivo.
 3. Senza permesso, una colonna sensibile è `BLOCCATO` e le altre `TUTTO`.
 
-Senza utente, o con un utente senza profili, non vale nessun permesso e restano i livelli di
-ripiego: le colonne sensibili sono bloccate.
+⭐ **Senza veste il ripiego non allarga mai.** Con la veste `NULL` (i due chiamanti la passano quando
+la variabile di sessione manca o non è una veste) la regola si applica sotto **ciascuna** veste
+utilizzabile dell'utente ([fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)),
+e per ogni colonna vale il livello **più restrittivo** fra le vesti. Un permesso AD_HOC `TUTTO`
+dell'identità di portale non scavalca più un REPARTO `BLOCCATO` dell'operatore, né il ripiego
+`BLOCCATO` di una colonna sensibile sotto una veste che non ha permessi: anche quella veste conta,
+perché saltarla allargherebbe.
+
+Senza utente, o con un utente senza vesti né profili, non vale nessun permesso e restano i livelli
+di ripiego: le colonne sensibili sono bloccate.
 
 L'azienda non entra: i permessi di colonna sono per profilo d'accesso.
 
@@ -57,11 +64,6 @@ bloccate. Il risolutore dei profili si chiama una volta, qualunque sia il numero
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Senza veste la regola mescola le vesti.** Con la veste `NULL` i profili di tutte le identità
-  dell'utente concorrono insieme, e il più specifico di un'identità batte il più restrittivo di
-  un'altra: un AD_HOC `TUTTO` dell'identità di portale scavalca un REPARTO `BLOCCATO`
-  dell'operatore. I due chiamanti passano `NULL` quando la variabile di sessione manca o non è una
-  veste.
 * **La lista non si verifica**: un `id` inesistente o di una lista spenta dà le colonne che trova, o
   nessuna. La funzione è un mattone: la lista la verificano i chiamanti, con `fn_lista_da_codice`.
 
@@ -80,8 +82,9 @@ Nessuno: la funzione non rifiuta.
   restrittivo, la veste letta dalla sessione, l'utente assente; la stessa decisione del risolutore
   della configurazione.
 
-Nessun test chiama la funzione direttamente, né costruisce il caso della veste `NULL` con due
-identità.
+* `db/pgtap/ui/test-ui-catalogo-liste-v1.sql` — la chiama direttamente: un operatore con una
+  seconda veste di portale e un permesso `TUTTO` su quella; con la veste `NULL` la colonna sensibile
+  resta `BLOCCATO`, sotto la veste del permesso è `TUTTO`.
 
 ---
 
@@ -89,6 +92,8 @@ identità.
 
 * 2026-09-23 — nasce dai passi del risolutore della configurazione che calcolavano il livello, quando
   la ricerca libera è diventata il secondo lettore.
+* 2026-11-21 — con la veste `NULL` vale il livello più restrittivo fra le vesti utilizzabili
+  dell'utente, non più il profilo più specifico fra tutte.
 
 ---
 

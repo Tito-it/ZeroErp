@@ -27,6 +27,10 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_widget_codice_non_vuoto |  |
+| CHECK | chk_widget_contatore_key_non_vuota |  |
+| CHECK | chk_widget_etichetta_i18n_key_non_vuota |  |
+| CHECK | chk_widget_etichetta_non_vuota |  |
 | FOREIGN KEY | fk_ui_widget_aree_funzionali | area_id |
 | FOREIGN KEY | fk_ui_widget_azioni_processo | azione_id |
 | PRIMARY KEY | widget_pkey | id |

@@ -79,3 +79,10 @@ databaseChangeLog:
               # in un dialog, PAGINA sulle altre (default della colonna). Il resolver
               # ripiega sul default di questo uso. Colonna del software (Q46).
               - column: { name: uso_misura, type: STRING }
+              # La lista dichiara che il backend unisce alle sue righe la sintesi della
+              # lineage (colonna da 20261120-43, brief-db-revisione-ui giro 4, Q47):
+              # `t` sulle sei liste documentali che mostrano il «transito», `f` sulle
+              # altre (default della colonna). Solo li' una colonna puo' essere LINEAGE.
+              # Colonna del software; la scrive solo il migrate
+              # (ui.trgfn_lista_definizione_guard_dichiarazioni).
+              - column: { name: legge_lineage, type: BOOLEAN }

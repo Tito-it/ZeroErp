@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.widget`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -77,7 +77,6 @@ da un preset non si cancella.
   un'area diversa da quella della sua azione.
 * **La chiave del contatore non è controllata.** Il database accetta qualunque testo; l'elenco delle chiavi
   che il backend sa calcolare sta solo nel backend.
-* **Codice, etichette e chiavi possono essere vuoti.** Nessun CHECK, a differenza delle colonne delle liste.
 * **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
@@ -102,6 +101,8 @@ da un preset non si cancella.
 
 * 2026-07-21 — nasce la tabella, col catalogo della home.
 * 2026-11-08 — lo schema `ui` entra nell'ambito delle automazioni: audit del framework e regola ATTIVO.
+* 2026-11-21 — codice, etichetta, chiave di traduzione e chiave del contatore non sono mai la
+  stringa vuota (un CHECK per colonna).
 
 ---
 

@@ -112,6 +112,8 @@ Una riga nuova ha effetto al giro successivo del motore: è lì che i trigger es
 * 2026-11-19 — quattro righe, lo storico della posta: `email_log` ed `email_outbox` verso
   account e template. Account e template non si cancellano più: si spengono, anche dopo aver
   spedito (`brief-db-seed-primo-impianto-non-si-riscrive` §16.14, Q24).
+* 2026-11-21 — due righe di `ui`, le FK `lista_id` di `lista_colonna` e `lista_preset`: la lista
+  spenta sospende colonne e preset senza toccarli (`brief-db-revisione-ui`, giro 4).
 
 ---
 

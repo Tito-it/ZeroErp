@@ -260,10 +260,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 - 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q43 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
-  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) il 2026-11-21.
-  Giro 3 (le misure, `20261120-36` … `-42`) scritto e provato il 2026-11-21: ora l'apply di Tid. Il BE/FE con le ricadute
-  del giro 2 (§3.2-bis); al DB il `/verifica-db` dei giri 1a, 2 e 3, poi i giri 4-6.
+  decisioni Q1-Q49 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
+  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) e giro 3 (le misure,
+  `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
+  verdi il 2026-11-21: ora il commit e la doc auto-generata, poi il giro 5 (Q49 (a): la dashboard spenta come la lista). Al DB il `/verifica-db` dei giri 1a, 2, 3 e 4, poi i giri 5-6;
+  al BE/FE le ricadute dei giri 2, 3 e 4 (§3.2-bis, §3.3-bis, §3.4-bis).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

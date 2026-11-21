@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_definizione`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -65,7 +65,6 @@ scrivono; l'audit lo tiene il trigger generico del framework.
 * **L'applicazione ha i privilegi di scrittura.** Il ruolo applicativo ha INSERT, UPDATE e DELETE
   sulla tabella, anche se nessun servizio la scrive: un errore del backend potrebbe aggiungere o
   togliere una dashboard. Lo schema `ui` non è sul modello «una scrittura = un verbo».
-* **Il codice può essere vuoto.** Nessun vincolo rifiuta un codice o una descrizione di soli spazi.
 * **La lettura per codice ha due copie.** La funzione di risoluzione cerca la dashboard accesa per
   codice, e il backend ripete la stessa ricerca prima di scrivere una preferenza. Le liste hanno un
   building block per questa lettura, [fn_lista_da_codice](/dbzero/ui/funzioni/fn_lista_da_codice); le
@@ -93,6 +92,7 @@ scrivono; l'audit lo tiene il trigger generico del framework.
 * 2026-07-21 — nasce la tabella, con la home.
 * 2026-11-08 — lo schema `ui` entra nell'ambito delle automazioni: audit del framework e regola ATTIVO,
   con le eccezioni per pool e preferenze.
+* 2026-11-21 — codice, descrizione e note non sono mai la stringa vuota (un CHECK per colonna).
 
 ---
 

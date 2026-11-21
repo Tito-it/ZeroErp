@@ -27,7 +27,7 @@
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di ogni colonna per un utente
 > * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — la vista della lista esiste
 > * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista
-> * [ui.trgfn_lista_definizione_guard_multi_emittente](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_multi_emittente) — il bollino «multi-emittente» non si scrive dall'applicazione
+> * [ui.trgfn_lista_definizione_guard_dichiarazioni](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_dichiarazioni) — il bollino «multi-emittente», il perimetro e la genealogia non si scrivono dall'applicazione
 >
 > **Vedi anche** — API e service backend:
 >
@@ -102,6 +102,9 @@ Contiene:
 * il **bollino «multi-emittente»** — dice se quella lista è stata collaudata per
   mostrare righe di **più emittenti insieme**. Nasce spento e non si accende
   dall'interfaccia: vedi §11.6
+* la **genealogia dei documenti** — dice se il sistema unisce alle righe la colonna
+  «Transito» (il documento più a valle nella catena). La dichiarano le liste dei
+  documenti che la mostrano, e non si cambia dall'interfaccia: vedi §11.6
 
 ### 2.2 Colonna (`lista_colonna`)
 
@@ -112,10 +115,12 @@ Per ogni lista, l'insieme delle **colonne disponibili**. Ogni colonna ha:
 * il **tipo di colonna**:
   * `identificatore` → sempre visibile e fissata a sinistra, non nascondibile (es. il numero di un contratto)
   * `informazione` → personalizzabile liberamente dall'operatore
-  * `azione` → pulsanti/icone (modifica, dettaglio); sempre visibile, non esportabile per definizione
+  * `azione` → pulsanti/icone (modifica, dettaglio); sempre visibile, senza campo sorgente e quindi non esportabile
 * il **tipo di dato** (testo, numero, data, data e ora, booleano, enumerato)
-* il campo sorgente nella vista SQL (vuoto per le colonne composte dal
-  frontend: vedi §5.2.2)
+* il campo sorgente e da dove si legge: nella vista SQL della lista (il caso
+  normale), oppure nella **genealogia dei documenti** (la colonna «Transito»), che il
+  sistema unisce alle righe solo sulle liste che lo dichiarano; vuoto per le colonne
+  composte dal frontend (vedi §5.2.2)
 * parametri di layout (ordine, larghezza, **priorità di ritiro**, allineamento,
   formato, gruppo) — la *priorità* governa la responsività: decide
   quale colonna scende per prima quando lo spazio si stringe (vedi §7)
@@ -331,16 +336,17 @@ disattivate).
 * **Nuova definizione**: form con codice (`<schema>.<entità>`),
   descrizione, schema dati, **vista SQL** (nome di una view PostgreSQL
   dello schema dati, che alimenta la lista), note, flag attivo.
-* **Modifica definizione**: tutti i campi sono mutabili **tranne uno** — il
-  bollino «multi-emittente», che il database rifiuta di far scrivere
-  dall'applicazione (§11.6). Cambiare la vista SQL su una lista già in uso può
-  rendere stale i campi sorgente delle colonne (la nuova vista deve esporre gli
-  stessi attributi): la scrittura della definizione non ricontrolla le colonne, lo
-  segnala il controllo automatico del catalogo.
-* **Disattiva (soft-disable)**: porta `attivo=false`. La lista
-  scompare dal catalogo runtime. ⚠️ Il database rifiuta di spegnere una lista che ha
-  ancora **colonne o preset attivi**: si spengono prima quelli, poi la lista. Le
-  preferenze utente non lo impediscono, e restano in DB.
+* **Modifica definizione**: sono mutabili descrizione, vista SQL, schema, note, soglia
+  della ricerca e stato. Non si cambiano il **codice**, che è la chiave con cui la
+  schermata si cerca (per un codice sbagliato si spegne la lista e se ne crea un'altra),
+  e le **dichiarazioni** della lista — il bollino «multi-emittente», il perimetro
+  emittente e la genealogia dei documenti — che il database rifiuta di far scrivere
+  dall'applicazione (§11.6). Cambiare la vista SQL di una lista accesa ricontrolla le
+  colonne: se la vista nuova non ha il campo di una colonna, il cambio è rifiutato e il
+  messaggio nomina le colonne da correggere o spegnere.
+* **Disattiva (soft-disable)**: porta `attivo=false`. La lista scompare dal catalogo
+  runtime, e con lei, sospese ma intatte, le sue colonne, i suoi preset e le
+  preferenze degli utenti: alla riattivazione tutto torna com'era.
 * **Elimina definizione**: bloccato dal sistema se ci sono
   colonne, preset o preferenze utente associate. In quel caso, l'unica
   via è il **soft-disable**.
@@ -352,11 +358,12 @@ creata in database:
 
 1. Si crea il record con il campo "vista SQL" vuoto, oppure con `attivo=false`:
    in questi due casi il sistema **non verifica** che la vista esista
-2. Le colonne si possono registrare subito se la vista è vuota (il campo sorgente si
-   verifica solo contro una vista indicata); su una lista spenta si registrano solo
-   colonne spente
+2. Le colonne si possono registrare subito: il campo sorgente si verifica solo su una
+   lista accesa con una vista indicata
 3. Quando la vista è rilasciata, la si indica e si attiva la lista (`attivo=true`):
-   da quel momento la verifica della vista scatta a ogni scrittura
+   all'accensione il sistema verifica la vista e le colonne già registrate, e rifiuta se
+   una colonna ha un campo che la vista non ha. Da quel momento la verifica scatta a
+   ogni scrittura
 
 Questo permette di registrare la struttura senza dover sincronizzare con il deploy DDL.
 
@@ -371,9 +378,10 @@ colonne registrate per quella lista, attive e disattivate.
   * **Generale**: codice, etichetta visibile, etichetta estesa (tooltip), chiave i18n (per traduzioni), tipo colonna, tipo dato, campo sorgente
   * **Comportamento**: filtrabile, ordinabile, esportabile, ricercabile full-text, sensibile, attivo
   * **Layout**: ordine default, larghezza default (px), allineamento (left/right/center), formato (tabella sotto), gruppo, ordine gruppo
-* **Modifica colonna**: tutti i campi del drawer sono mutabili. Il `lista_id` è
-  immutabile (per "spostare" una colonna da una lista all'altra,
-  cancellala e ricreala).
+* **Modifica colonna**: i campi del drawer sono mutabili, tranne il **codice**, che è
+  la chiave con cui preferenze e preset ricordano la colonna (per un codice sbagliato si
+  spegne la colonna e se ne crea un'altra). Anche il `lista_id` è immutabile (per
+  "spostare" una colonna da una lista all'altra, cancellala e ricreala).
 * **Disattiva (soft-disable)**: imposta `attivo=false`. Colonna
   invisibile in runtime; le preferenze utente che la citavano restano, e la colonna
   semplicemente non compare più.
@@ -404,12 +412,17 @@ la cella (`CellaConfigurabile`), a meno che la view non fornisca uno slot
 
 #### 5.2.2 Vincoli automatici e colonne composte
 
-* Le colonne di tipo `azione` non possono essere esportabili (vincolo
-  del database, §11.4). Se selezioni `azione`, il toggle "Esportabile"
-  viene forzato a OFF e disabilitato.
+* Le colonne di tipo `azione` non hanno campo sorgente, e una colonna senza campo
+  sorgente non è esportabile (vincoli del database, §11.4). Se selezioni `azione`, il
+  toggle "Esportabile" viene forzato a OFF e disabilitato.
 * Le colonne con `campo_sorgente` valorizzato vengono validate contro
   la vista SQL della lista padre, nel suo schema: il sistema rifiuta la scrittura se
   l'attributo non esiste. Le colonne senza campo sorgente non sono validate.
+* Una colonna che legge dalla **genealogia dei documenti** sta solo su una lista che lo
+  dichiara, e non è filtrabile, ordinabile né ricercabile: filtri, ordinamento e ricerca
+  interrogano la vista, che quel campo non lo porta. Se una colonna perde il suo campo
+  dopo (una vista cambiata da un aggiornamento), lo segnala il controllo automatico del
+  catalogo delle liste.
 * Una **colonna composta** — un valore che il frontend costruisce da più campi, come
   sospensione e riattivazione del cliente in una cella sola — è una colonna a catalogo
   con il campo sorgente vuoto, resa dallo slot `cell-{codice}` della view. Non ha un
@@ -746,11 +759,11 @@ Se la colonna deve restare nascosta a **tutti tranne** alcuni profili, la si mar
 
 ### 10.4 Disattivare temporaneamente una lista
 
-1. SUPER_ADMIN: pagina tecnica → spegni (`attivo=false`) le colonne attive della
-   lista nel tab "Catalogo colonne"; l'admin operativo spegne i preset attivi
-2. Tab "Definizioni" → modifica la lista → `attivo=false` → Salva
-3. La lista scompare dal runtime. Preset, colonne e preferenze
-   restano in DB: alla riattivazione si riaccende la lista, poi le colonne e i preset.
+1. SUPER_ADMIN: tab "Definizioni" → modifica la lista → `attivo=false` → Salva
+2. La lista scompare dal runtime. Preset, colonne e preferenze restano come sono, accesi
+   o spenti: alla riattivazione si riaccende la sola lista, e tutto torna com'era (se
+   una colonna non trova più il suo campo nella vista, la riaccensione è rifiutata e il
+   messaggio la nomina).
 
 ### 10.5 Riallineare una preferenza dopo modifica del preset
 
@@ -829,20 +842,18 @@ In compenso, alcune cancellazioni sono **a cascata intenzionali**:
 
 ### 11.3 Liste disattivate e figli attivi
 
-Una lista spenta non regge figli accesi: il database rifiuta di spegnere una lista
-con colonne o preset attivi, e di accendere (o creare acceso) una colonna o un
-preset su una lista spenta. Le preferenze utente sono fuori da questa regola: sono
-uno stato dell'utente, restano quando la lista si spegne e tornano a valere quando
-si riaccende.
+Una lista spenta **sospende** le sue parti senza toccarle: colonne, preset e
+preferenze utente restano com'erano, accesi o spenti, e tornano a valere quando la
+lista si riaccende. Si possono anche preparare colonne e preset su una lista spenta,
+prima di accenderla.
 
-### 11.4 Vincolo automatico — colonne `azione` non esportabili
+### 11.4 Vincoli automatici — azioni e colonne senza campo
 
-Il database garantisce con un vincolo che le colonne di tipo
-`azione` (pulsanti UI) non possano essere marcate `esportabile=true`.
-Il drawer collabora: se selezioni `tipo_colonna='azione'` il toggle
-"Esportabile" viene forzato a OFF e disabilitato. Vale anche se cambi
-una colonna esistente da `informazione` a `azione`: il sistema riallinea
-automaticamente il flag senza sollevare errori.
+Il database garantisce con due vincoli che le colonne di tipo `azione` (pulsanti UI)
+non abbiano un campo sorgente, e che una colonna senza campo sorgente (un'azione, una
+colonna composta) non sia esportabile: non ha un valore da esportare. Il drawer
+collabora: se selezioni `tipo_colonna='azione'` il toggle "Esportabile" viene forzato
+a OFF e disabilitato.
 
 ### 11.5 Identificatori e azioni — sempre visibili
 
@@ -920,10 +931,11 @@ La ragione è che un invariante con l'interruttore non è un invariante. Il camp
 si dichiara nel **seed** delle liste, insieme al lavoro che lo giustifica, e
 arriva insieme a quello.
 
-> ⚠️ **Un limite dichiarato**: il presidio copre *questo* campo, non
-> genericamente «i campi di sistema» di una lista. È una difesa stretta che
-> tiene, scelta al posto di una larga che sulla carta copriva tutto e nella
-> pratica non teneva.
+Lo stesso presidio tiene le altre due dichiarazioni della lista, che dicono una
+cosa del software e non una preferenza: il **perimetro emittente** (spegnerlo
+aprirebbe la schermata senza chiedere l'azienda, lo stesso effetto del bollino) e la
+**genealogia dei documenti** (la lista riceve la colonna «Transito»). Una lista nuova
+creata dall'interfaccia nasce col perimetro, senza bollino e senza genealogia.
 
 #### Che cosa succede a video
 
