@@ -17,9 +17,19 @@
 >   PROJECT_CONTEXT, «La matrice di `stato_lotto` in due sedi che dissentono» e «La porta dell'esito
 >   ancora aperta» (le FK `esito*`): la revisione di quelle FK chiede a Tid se aspetta i due cantieri.
 >
-> Nessuno dei due basta a ospitare questo lavoro: il tema qui è la regola del motore, che vale per
+> * [brief-db-fornitore-doppioni-del-soggetto](brief-db-fornitore-doppioni-del-soggetto.md) (aggiunto il
+>   2026-11-22, su segnalazione della sessione del fornitore): il registro delle inclusioni nasce dalla sua D-6/D-7
+>   (§7.2). Il giro D-8 dello stesso brief (§7.4, Tid 2026-11-22) tocca oggetti di questo giro: il motivo
+>   `pgtap-runner` di `dbops/test-automazione-attivo-inclusioni-v1.sql` e `config/manual/regimi_fiscali.md`
+>   (un paragrafo nuovo in «Come si cambia»). Quando parte il §5, quei due file si riprendono dal testo
+>   attuale, per sostituzione. Se il pgTAP si ritira o si riscrive, il motivo aggiornato va portato con sé.
+>   ⛔ Il BLOCK sul regime resta voluto (D-7 «2»): con D-1 deve nascere da solo, ed è una delle 36 FK legate
+>   del §3.2. Al commit, i file del giro D-8 restano separati da questo brief.
+>
+> Nessuno di questi basta a ospitare questo lavoro: il tema qui è la regola del motore, che vale per
 > tutte le FK. Il registro delle inclusioni nasce nel commit `790fc04325` (regime fiscale, la D-6 di
-> quel giro, non la D-6 di questo brief), che non ha un brief.
+> quel giro, non la D-6 di questo brief), dalla D-6/D-7 di `brief-db-fornitore-doppioni-del-soggetto` §7.2.
+> ⚠️ *Correzione del 2026-11-22: qui si leggeva «che non ha un brief».*
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
@@ -42,7 +52,8 @@ Decise D-1 «a», D-2 «b», D-4 «a», D-5 «a», D-6 come proposta col caso in
 | 7 | team BE/FE | I codici d'errore nuovi sui drawer toccati, e il censimento dei lettori | §6 | 6 |
 | 8 | team DB | Chiusura: archiviazione | — | 7 |
 
-Decisioni aperte di Tid: nessuna; resta il via al giro. Il brief è da committare.
+Decisioni aperte di Tid: nessuna; resta il via al giro. Il brief è committato (`9c0e9b6c53`); le correzioni della
+verifica critica del 2026-11-22 (§8) sono da committare.
 
 ## 1. Il problema
 
@@ -82,8 +93,15 @@ copriva è stato tolto ad aprile.
 * **2026-11-21**: la prova sui due `regime_fiscale_rf` conferma che il runner lega una FK verso una
   UNIQUE non primaria (§2).
 
+* **2026-10-19, due changeSet si appoggiano al filtro** (trovati dalla verifica del 2026-11-22): ne
+  scrivono l'effetto come voluto («la FK lega il NOME, non l'accensione»), senza dargli un motivo suo.
+  `20261019-15` (`config.tipi_entita.sorgente_codice_interno` → `config.sorgenti`) è fra le 13 eccezioni
+  del §3.2, col motivo del COMMENT di tabella. `20261019-87` (`vendite.ordini.documento_origine_tipo`)
+  parla di una colonna tolta da `20261106-96`.
+
 Quindi D-1 non **revoca** una decisione: toglie un ripiego rimasto dopo che il limite era stato
-corretto. Nessun brief in `work-done/` e nessuna guida dà al filtro un motivo di modello.
+corretto. Nessun brief in `work-done/` e nessuna guida dà al filtro un motivo di modello; i due changeSet
+del 2026-10-19 ne usano l'effetto, e quello vivo diventa un'eccezione dichiarata.
 
 **Cosa si generalizza, e cosa no.** Il comportamento «un padre usato da un figlio acceso non si spegne,
 e un figlio acceso non sceglie un padre spento» **non è nuovo**: è la regola ATTIVO che vale già per
@@ -376,6 +394,14 @@ regola le due `emittente_soggetto_ruolo_id`.
   che le copre tutte. Nel runner il ramo
   `ATTIVO_SKIP_FK_NO_ID` del dry run diventa codice morto: si toglie, e con lui il token
   `FK_NO_ID_SUFFIX` dalla guida e dai lettori del diario.
+  ⚠️ *Correzione della verifica del 2026-11-22 (§8.1): per il ritiro «salta» è il verbo sbagliato.* Il
+  ritiro deve **togliere** i trigger propri (`tgparentid` = 0) di una FK ereditata e **non toccare mai** i
+  cloni (`tgparentid` ≠ 0): un `DROP TRIGGER` su un clone fallisce, perché il trigger della radice lo
+  richiede. Oggi il ritiro non filtra `tgparentid`, e trova le FK solo per nome con
+  `fn_attivo_fk_esclusa`, che non sa se una FK è ereditata. Proposta: la regola «ereditata» la dà
+  `fn_attivo_fk_esclusa` come terza risposta (`FK_EREDITATA`, letta da `pg_constraint.conparentid` della
+  colonna sulla figlia), così runner e ritiro la leggono da una sede sola. Il ramo del dry run allora non
+  muore: cambia token (`ATTIVO_SKIP_FK_EREDITATA`).
 * ⚠️ L'ordine dei changeSet: `fn_attivo_fk_esclusa` è `BEGIN ATOMIC` e dipende dalla tabella delle
   inclusioni. Prima si riscrive la funzione, poi si fa il `DROP` della tabella.
 * Le righe nuove di `automazione_attivo_eccezioni.csv`, una per FK esclusa, col motivo della sua
@@ -384,6 +410,10 @@ regola le due `emittente_soggetto_ruolo_id`.
   `manual/`, il paragrafo «Le inclusioni» di `guide/automazione-db.md`, il pgTAP
   `dbops/test-automazione-attivo-inclusioni-v1` (riscritto sul registro delle eccezioni, o ritirato).
   Il `CHECK` «solo senza `_id`» perde senso insieme al registro.
+  ⚠️ *Aggiunta della verifica del 2026-11-22:* anche le pagine `manual/` che linkano la tabella o
+  descrivono il filtro, altrimenti restano link rotti: `config/manual/regimi_fiscali.md` (due link),
+  `anagrafiche/manual/fornitori.md` (uno), e `dbops/manual/` di `fn_attivo_fk_esclusa`,
+  `fn_run_automations_attivo`, `fn_ritira_attivo_eccezioni`, `automazione_attivo_eccezioni`.
 * Il provision ATTIVO in `90_end`, con la prova in `ROLLBACK`: l'elenco dei trigger creati deve
   essere uguale a quello delle FK che si legano, nessuno in più.
 * ⚠️ **I dati prima dell'apply:** una riga accesa che oggi cita un padre spento diventa non
@@ -402,7 +432,9 @@ regola le due `emittente_soggetto_ruolo_id`.
     fra le eccezioni. Vale per tutte le FK, non solo per quelle senza `_id`: dopo D-1 il nome non
     decide più niente. Il perimetro è quello del runner (`dbops.fn_resolve_scope`,
     `dbops.fn_table_in_scope`), e la colonna del padre si legge con l'override `ATTIVO_COL`
-    (`dbops.fn_get_override_col`), non con il nome `attivo`;
+    (`dbops.fn_get_override_col`), non con il nome `attivo`. Si guardano le FK con `conparentid` = 0:
+    una FK ereditata è legata dal clone del require della radice ed esclusa dall'eccezione della radice
+    (D-5 «a»);
   * **costruito**: una tabella di prova con una FK senza `_id` verso un padre con `attivo`, un giro del
     motore, e i due trigger ci sono. Senza questo caso il test prova solo le FK che lo schema contiene
     oggi.
@@ -412,6 +444,9 @@ regola le due `emittente_soggetto_ruolo_id`.
   porta», 2026-11-22), nei due versi e coi nomi storici che restano. Restano per il giro l'elenco congelato
   delle 22 FK storiche (§3.2) e il pgTAP strutturale di D-6. La regola dichiara che il presidio non c'è
   ancora: col giro, quella riga si toglie.
+  ⚠️ *Verifica del 2026-11-22:* il pgTAP di D-6 guarda le FK **monocolonna** con `conparentid` = 0.
+  Senza il filtro sulle ereditate, l'elenco congelato dovrebbe portare anche le 40 FK delle partizioni
+  delle note.
 
 **Garanzie ritirate:** nessuna. Il giro ne **aggiunge**: ogni FK legata guadagna le due regole.
 
@@ -451,3 +486,41 @@ Con D-1 «a» il predicato sparisce, e il dubbio con lui.
 di usare lo scope del motore, cerca la colonna `attivo` per nome senza l'override `ATTIVO_COL`, e conta
 ogni partizione come una FK a sé (le 24+24 delle note sono due FK ereditate, §3.1). Va bene per il
 fatto datato del §2, non per il presidio del §5.
+
+## 8. Verifica critica (sessione DB, 2026-11-22)
+
+Rifatta sul catalogo dello scratch `zeroerp_ruoli` (struttura e seed) e, per i dati, su dbdev, in sola
+lettura. Le correzioni stanno nelle loro sezioni, marcate «verifica del 2026-11-22».
+
+**Che cosa regge.** I conti del §3.2 tornano: 30 + 6 FK legate, 13 eccezioni, 49 righe, 40 ereditate, 6 fuori
+perimetro. L'elenco congelato di D-6 conta 22 FK proprie nei due versi, più le 40 ereditate (§5). Le sole radici
+partizionate sono le quattro `note`, con tre FK ciascuna: `id_lingua` e `id_stile`, che vanno fra le eccezioni, e
+`target_tipo`, il cui padre non ha `attivo`. Quindi D-5 «a» oggi non cambia nessun trigger esistente: serve perché
+l'eccezione sulla radice copra le partizioni, e per le partizioni future. Il motore lega già FK autoriferite
+(`parent_id` di unità organizzative e ubicazioni), quindi `config.iva.id_iva_split` non è un caso nuovo. Il token
+`FK_NO_ID_SUFFIX` e il registro delle inclusioni li leggono solo `fn_attivo_fk_esclusa`, il runner, il ritiro e il
+pgTAP delle inclusioni: nessuna vista. Nessuna funzione DB spegne i padri che si legano con un `UPDATE … SET attivo`.
+
+**Fatto datato** (non decide niente: cerca un controesempio, come chiede il §5). Righe vive (accese, o tutte se la
+figlia non ha `attivo`) che citano un padre spento, su ogni FK senza `_id` verso un padre con `attivo`: sullo
+scratch, cioè sul seed, nessuna; su dbdev, solo `vendite.contratti.categoria_cliente_id_snapshot` (115 righe), che
+è fra le eccezioni. Il controllo del §5 prima del provision va rifatto lo stesso: la query è
+`/tmp/claude-1000/-home-tid-software-ZeroErp/8dd95481-f7b8-445b-8c7f-ae2eabd3cbe9/scratchpad/padri_spenti.sql`,
+un file temporaneo da spostare se serve rifarla.
+
+### 8.1 Il ritiro con D-5 «a»
+
+D-5 «a» diceva che runner **e ritiro** «saltano» le FK con `conparentid` ≠ 0. Per il runner è giusto, per il ritiro
+no: il ritiro deve togliere i trigger propri di una FK ereditata, e deve lasciare stare i cloni, che PostgreSQL non
+fa cancellare. La correzione e la proposta (`FK_EREDITATA` come terza risposta di `fn_attivo_fk_esclusa`) sono nel
+§5. Non è una decisione di modello nuova: è come si scrive D-5 «a».
+
+### 8.2 I lettori dei trigger ATTIVO, coi cloni sulle partizioni
+
+Dopo il giro un require su una radice partizionata ha un clone su ogni partizione (`tgparentid` ≠ 0). Oggi non ne
+nasce nessuno, perché le FK delle note vanno fra le eccezioni, ma il modello lo ammette e il pgTAP costruito lo
+crea. Leggono i trigger ATTIVO: `fn_trigger_attivo_orfani`, `fn_trigger_exists_require_by_args`,
+`fn_trigger_padre_stato`, `fn_trigger_attivo_argomenti`, `catalogo.fn_riattiva_articolo`,
+`script.fn_resolve_emittente_for_user`, `vendite.fn_genera_ddt_riconsegna`. Nel giro, per ognuno si scrive se un
+clone sulla partizione gli cambia la risposta, o perché no. `fn_trigger_attivo_orfani` non scambia un clone per un
+orfano: guarda che la tabella e la colonna esistano, e la partizione le ha.

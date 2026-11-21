@@ -17,11 +17,14 @@
 --   il presidio dbops.vw_radici_di_prova_in_produzione    (20261018-62)
 --   il rifiuto del verbo anagrafiche.fn_provisiona_dati_di_sviluppo (20261018-60)
 --   Brief: brief-db-processi-accensione-per-ambiente (R-4, §5.5).
+--   Dal 2026-11-22 anche i regimi fiscali di prova: il builder
+--   dbops.fn_crea_regime_fiscale_di_prova (20261121-17) e il terzo ramo del
+--   presidio (20261121-18). Brief: brief-db-fornitore-doppioni-del-soggetto (D-9).
 --
 -- ⭐ Le etichette si scrivono qui a mano da owner apposta: si prova il GUARD
 --   della tabella, non il verbo (che ha il suo file).
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 17):
 --   la regola, sui valori
 --    1) SVILUPPO: ammessi
 --    2) PRODUZIONE: no
@@ -38,11 +41,12 @@
 --   11) il presidio, in SVILUPPO, e' vuoto
 --   in PRODUZIONE (costruita)
 --   12) un'etichetta nuova: E_DATI_DI_SVILUPPO_IN_PRODUZIONE
---   13) il presidio vede le due etichette nate prima
+--   13) il presidio vede le due etichette e il regime di prova nati prima
 --   14) il verbo non parte: E_DATI_DI_SVILUPPO_IN_PRODUZIONE
+--   15) il builder dei regimi di prova non parte: E_DATI_DI_SVILUPPO_IN_PRODUZIONE
 --   con l'ambiente non dichiarato (costruito)
---   15) un'etichetta nuova: E_CONFIG_MANCANTE (lo dice il lettore)
---   16) il presidio e' vuoto (lo dice vw_ambiente_non_dichiarato)
+--   16) un'etichetta nuova: E_CONFIG_MANCANTE (lo dice il lettore)
+--   17) il presidio e' vuoto (lo dice vw_ambiente_non_dichiarato)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -51,7 +55,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(17);
 
 
 -- ============================================================
@@ -101,6 +105,11 @@ SELECT lives_ok(
       SELECT auth_user_id, 'pgtap.etichetta' FROM t_s$$,
     '7. ... e una di credenziale');
 
+-- Un regime di prova, nato in SVILUPPO dal suo builder: in PRODUZIONE lo vede il
+-- presidio (13).
+CREATE TEMP TABLE t_rf AS
+SELECT dbops.fn_crea_regime_fiscale_di_prova('RF93', 'PGTAP-RF93', 'Regime di prova del presidio', true) AS id;
+
 SELECT is(
     dbops.fn_pgtap_codice_errore($$UPDATE dbops.soggetti_di_prova SET chiave = 'PGTAP-ALTRA' WHERE chiave = 'PGTAP-ETICHETTA-1'$$),
     'E_ETICHETTA_DI_PROVA_IMMUTABILE',
@@ -135,14 +144,20 @@ SELECT is(
 SELECT is(
     (SELECT string_agg(v.tipo || ':' || v.chiave, ',' ORDER BY v.tipo)
        FROM dbops.vw_radici_di_prova_in_produzione v
-      WHERE v.chiave IN ('PGTAP-ETICHETTA-1', 'pgtap.etichetta')),
-    'CREDENZIALE:pgtap.etichetta,SOGGETTO:PGTAP-ETICHETTA-1',
-    '13. il presidio vede le due etichette nate prima');
+      WHERE v.chiave IN ('PGTAP-ETICHETTA-1', 'pgtap.etichetta')
+         OR (v.tipo = 'REGIME' AND v.radice_id = (SELECT id::text FROM t_rf))),
+    'CREDENZIALE:pgtap.etichetta,REGIME:RF93,SOGGETTO:PGTAP-ETICHETTA-1',
+    '13. il presidio vede le due etichette e il regime di prova nati prima');
 
 SELECT is(
     dbops.fn_pgtap_codice_errore($$SELECT * FROM anagrafiche.fn_provisiona_dati_di_sviluppo()$$),
     'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
     '14. il verbo non parte: E_DATI_DI_SVILUPPO_IN_PRODUZIONE');
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$SELECT dbops.fn_crea_regime_fiscale_di_prova('RF92', 'PGTAP-RF92', 'Regime di prova in produzione', true)$$),
+    'E_DATI_DI_SVILUPPO_IN_PRODUZIONE',
+    '15. il builder dei regimi di prova non parte: E_DATI_DI_SVILUPPO_IN_PRODUZIONE');
 
 -- ============================================================
 -- Con l'ambiente non dichiarato, costruito
@@ -155,10 +170,10 @@ SELECT is(
     dbops.fn_pgtap_codice_errore($$INSERT INTO dbops.soggetti_di_prova (soggetto_id, chiave)
                             SELECT soggetto_id2, 'PGTAP-ETICHETTA-3' FROM t_s$$),
     'E_CONFIG_MANCANTE',
-    '15. ambiente non dichiarato: E_CONFIG_MANCANTE, dal lettore');
+    '16. ambiente non dichiarato: E_CONFIG_MANCANTE, dal lettore');
 
 SELECT is((SELECT count(*)::int FROM dbops.vw_radici_di_prova_in_produzione), 0,
-          '16. il presidio e'' vuoto (lo dice vw_ambiente_non_dichiarato)');
+          '17. il presidio e'' vuoto (lo dice vw_ambiente_non_dichiarato)');
 
 SELECT * FROM finish();
 

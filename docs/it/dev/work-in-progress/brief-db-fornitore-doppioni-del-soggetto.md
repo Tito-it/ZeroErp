@@ -3,16 +3,19 @@
 > **Chi scrive:** sessione BE/FE (`dev/backend-tid`), revisione `/verifica` del 2026-11-21. **A chi:** team DB
 > (`dev/db-tid`); Tid per le decisioni aperte.
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-21
+## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, col commit del lavoro BE/FE non committato (il §4, §6; il test e2e del regime spento, §7.2 «Dopo il
-push») e il collaudo a video del drawer; poi **la sessione DB** con la nota sul motivo del pgTAP (§7.2, punto 4 di
-«Dopo il push») e l'archiviazione. La D-6 nella forma della D-7 «2» è applicata e pushata (`20261121-10` … `-15`,
+**Riparte: il team BE/FE**, con la richiesta del §7.4 («La richiesta al BE/FE, con il builder»): il test e2e del
+regime spento costruisce i regimi col builder `dbops.fn_crea_regime_fiscale_di_prova`. ⚠️ Il giro D-8 e D-9 è già
+applicato su dbdev (Tid, 2026-11-22, §7.4 «L'apply»): finché il BE non adegua il test, l'e2e
+`test_regime_fiscale_spento_db` è **rosso** (`42501`). In parallelo **Tid**: il commit del giro DB e la doc
+auto-generata. Poi **la sessione DB**: l'archiviazione. Il lavoro BE/FE dei giri precedenti è
+committato (`ae2336fcfd`, PR #187); il collaudo a video del drawer è fatto (Tid, 2026-11-22). La D-6 nella forma della D-7 «2» è applicata e pushata (`20261121-10` … `-15`,
 `790fc0432`, PR #185), e la sessione BE/FE l'ha provata sui due drawer. Il `/verifica-db` dei giri
 A e B è fatto (§7) e la doc auto-generata è rigenerata (`eaed059e6`).
 Lista e dettaglio dei fornitori tornano a funzionare sul DB vero (§6). I giri A e B (`20261121-01` … `-07`, §5.5 e §5.6)
 sono applicati su dbdev con i pgTAP verdi (§5.7) e committati in `4ea18ba7d1`. D-1 … D-5 decise. Il primo passaggio
-BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 2026-11-21, §7.2: la «1» è stata rivista da Tid nella sessione DB); nessuna decisione aperta.
+BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 2026-11-21, §7.2: la «1» è stata rivista da Tid nella sessione DB). D-8 «a» e D-9 «a» decise (Tid, 2026-11-22, §7.4); nessuna decisione aperta.
 
 | # | Chi | Che cosa | Dipende da |
 | --- | --- | --- | --- |
@@ -22,11 +25,16 @@ BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 
 | 2-ter | ✅ Tid | D-3, D-4, D-5 come raccomandate, e il via al giro A (2026-11-21) | 2-bis |
 | 3 | ✅ sessione DB e Tid | Giro A: via le tre colonne dal catalogo della lista (§3), nella forma del §5.2. Scritto e provato (§5.5); applicato su dbdev, pgTAP verdi (2026-11-21) | 2-ter |
 | 4 | sessione DB e Tid | Giro B: via i sei campi da tabella, vista, madre e guard (§3); il regime su `config.regimi_fiscali` e `acquisti.ordini` sul termine (§5.3, D-3, D-4); il residuo del registro chiuso (D-5). ✅ Scritto e provato (§5.6), anticipato prima del BE (Tid); ✅ applicato su dbdev, pgTAP verdi (2026-11-21, §5.7); ✅ committato (`4ea18ba7d1`); ✅ doc auto-generata rigenerata (`eaed059e6`); ✅ `/verifica-db` (§7, 2026-11-21) | 3 |
-| 5 | ✅ team BE/FE | Il §4 intero, col censimento (§6, 2026-11-21); ⏳ commit di Tid; ⏳ collaudo a video del drawer (Tid) | 4 |
+| 5 | ✅ team BE/FE | Il §4 intero, col censimento (§6, 2026-11-21); ✅ commit di Tid (`ae2336fcfd`, PR #187); ✅ collaudo a video del drawer (Tid, 2026-11-22) | 4 |
 | 5-bis | ✅ Tid | D-6 «a»: il regime spento non si assegna (2026-11-21, §7.2) | 4 |
 | 5-ter | ✅ sessione DB | La D-6 nella forma della D-7 «2»: REQUIRE sulle due FK del regime e BLOCK su `config.regimi_fiscali` (§7.2). Applicato su dbdev e pushato (`20261121-10` … `-15`, `790fc0432`, PR #185); i due pgTAP del §7.3 corretti nello stesso giro | 5-bis |
-| 5-quater | ✅ team BE/FE | La prova del rifiuto `E_ATTIVO_PADRE_NON_ATTIVO` sul campo `regime_fiscale_rf` dei due drawer: nessun codice nuovo, un test e2e (§7.2, «Dopo il push», 2026-11-21); ⏳ commit di Tid | 5-ter |
-| 6 | team DB | Chiusura: archiviazione | 5, 5-ter, 5-quater |
+| 5-quater | ✅ team BE/FE | La prova del rifiuto `E_ATTIVO_PADRE_NON_ATTIVO` sul campo `regime_fiscale_rf` dei due drawer: nessun codice nuovo, un test e2e (§7.2, «Dopo il push», 2026-11-21); ✅ commit di Tid (`ae2336fcfd`) | 5-ter |
+| 5-quinquies | ✅ Tid | D-8 «a»: `config.regimi_fiscali` in sola lettura per l'app (2026-11-22, §7.4) | 5-quater |
+| 5-sexies | ✅ sessione DB | Il giro D-8: `20261121-16`, loop dei grant, provisioning, pgTAP nuovo, pagina `manual/` (§7.4). Scritto e provato, non applicato, da committare | 5-quinquies |
+| 5-septies-bis | ✅ Tid e sessione DB | D-9 «a»: il builder dei regimi di prova, nel giro del `-16` (Tid, 2026-11-22). Scritto e provato: `20261121-17`, `-18` (§7.4) | 5-sexies |
+| 5-septies | ⏳ team BE/FE | Il test e2e del regime spento costruisce i regimi col builder; il censimento di chi scrive la tabella (§7.4). ⚠️ Rosso su dbdev dall'apply, finché non c'è | 5-septies-bis |
+| 5-octies | Tid | ✅ Apply di `20261121-16` … `-18` su dbdev, pgTAP verdi (2026-11-22, prima del BE); ⏳ commit del giro DB; ⏳ doc auto-generata | 5-septies-bis |
+| 6 | team DB | Chiusura: archiviazione | 5-septies, 5-octies |
 
 ## 1. Che cosa ha fatto il BE/FE (2026-11-21)
 
@@ -469,7 +477,8 @@ Garanzie ritirate: nessuna; il giro ne aggiunge due.
    (`pgtap-runner-motivo`) dice che spegnere un regime «lo può solo il migratore». Su dbdev il ruolo applicativo
    `zeroerp_app` ha INSERT e UPDATE su `config.regimi_fiscali`: il test e2e sopra costruisce e spegne regimi con quel
    ruolo. O il privilegio è di troppo (e va tolto, allora il test e2e cambia strada), o il motivo va riscritto. Il
-   catalogo dei regimi non è nel pannello, quindi a video l'operatore non ci arriva.
+   catalogo dei regimi non è nel pannello, quindi a video l'operatore non ci arriva. → Risposta della sessione DB
+   (2026-11-22): §7.4, D-8.
 
 ⚠️ **Superata dalla D-7 «2» (sopra): resta come storia della prima forma.**
 
@@ -514,3 +523,174 @@ se `dbops.trgfn_child_requires_active_parent` lo può già fare passando `codice
 codice d'errore va fatto col campo `regime_fiscale_rf`, perché il BE lo accenda. Ricaduta BE, da scrivere quando il
 guard c'è: il codice nuovo nella policy generata e nel ripiego; il drawer non cambia, propone già i soli attivi.
 
+### 7.4 D-8 — chi scrive `config.regimi_fiscali`? ✅ Decisa: «a» (Tid, 2026-11-22)
+
+È il punto 4 di «Dopo il push» (§7.2). Il motivo del pgTAP `dbops/test-automazione-attivo-inclusioni-v1.sql` dice
+che spegnere un regime «lo può solo il migratore», ma il loop dei grant (`90_end/ci_apply/20260205-41`) dà a
+`zeroerp_app` `SELECT, INSERT, UPDATE, DELETE` su `config.regimi_fiscali`, perché la tabella non è in
+`v_tabelle_sola_lettura_app`. Il motivo dice il vero sul modello e il falso sui privilegi.
+
+Struttura letta (non popolazione): `config.regimi_fiscali` è un vocabolario posseduto dal CSV (mirror
+`loadUpdateData` `runOnChange` di `20261001-15`), e in `config.tabelle_gestibili` ha `lookup` sì e `pannello` no.
+Nel `backend/` fuori dai test nessuno lo scrive. È la stessa forma dei vocabolari di `documenti` e di
+`config.formati_file`, chiusi il 2026-11-14 con la Q10 di Tid (`90_end/20261115-98`): «un valore è ciò che il codice
+sa usare: una riga scritta dall'applicazione sarebbe un valore che nessun codice onora». Il codice RF è quello del
+tracciato FatturaPA.
+
+| Strada | Che cosa | Ricadute |
+| --- | --- | --- |
+| **a** (raccomandata) | `config.regimi_fiscali` in sola lettura per l'app, nelle tre sedi di linee-guida-sql §11.8 (changeSet forward in `90_end`, `v_tabelle_sola_lettura_app` del loop, blocco «POSTURA DICHIARATA» di `provision_zeroerp.sql`), con il suo pgTAP di postura. Applica la Q10 a un vocabolario che ha la stessa forma: completa una decisione, non ne prende una nuova. Il motivo del pgTAP diventa vero com'è scritto | BE/FE: `backend/apps/anagrafiche/tests/db/test_regime_fiscale_spento_db.py` costruisce e spegne i regimi come `zeroerp_app` e diventa rosso (`42501`): deve costruirli per un'altra strada. Da chiedere al BE il censimento di chi scrive la tabella (test, smoke, fixture) |
+| b | Il privilegio resta; si riscrive il motivo del pgTAP: il BLOCK lo fa scattare chi scrive la tabella, oggi il migratore e i test e2e, e nessun entry point dell'applicazione | Nessuna. Resta un vocabolario che l'app può scrivere, unico fra quelli posseduti dal CSV |
+
+Con la «a» il lavoro è un giro DB piccolo e la richiesta al BE va **prima** dell'apply (il test e2e si rompe al
+momento della revoca). Il brief si archivia dopo il giro: resta in `work-in-progress/` finché la richiesta al BE è
+aperta, perché `/arrivi-db` legge solo lì.
+
+#### Il giro D-8, scritto (sessione DB, 2026-11-22)
+
+| File | Che cosa |
+| --- | --- |
+| `90_end/20261121-16-revoke-app-scrittura-regimi-fiscali` | Il forward su dev: a `zeroerp_app` `SELECT`, via `INSERT, UPDATE, DELETE`. Lo stampo di `90_end/20261115-98` |
+| `90_end/ci_apply/20260205-41-apply-runtime-grants-ci` | `config.regimi_fiscali` in `v_tabelle_sola_lettura_app` (il loop è `runOnChange` in `ci_apply`, §11.1) |
+| `scripts/sql/provision_zeroerp.sql` | Il blocco «POSTURA DICHIARATA» col `REVOKE`, la terza sede di §11.8 |
+| pgTAP `config/test-regimi-fiscali-sola-lettura-v1.sql` | Nuovo, plan 3, runner di default (l'app): solo `SELECT` per l'app; `UPDATE` e `INSERT` come app rispondono `42501` |
+| pgTAP `dbops/test-automazione-attivo-inclusioni-v1.sql` | Il motivo del runner owner rimanda alla porta: ora è vero com'è scritto |
+| `manual/` `config/regimi_fiscali.md` | «L'applicazione lo legge e basta», con la regola e il perché |
+
+Nessuna funzione del catalogo scrive `config.regimi_fiscali` (`prosrc`, scratch `zeroerp_ruoli`, 2026-11-22): lo
+scrive solo il mirror del CSV, come migratore.
+
+**La prova** (2026-11-22, scratch `zeroerp_ruoli`). `scripts/prova_changeset.py --pgtap`, come owner: estratto eseguito
+per intero e annullato, test 1 da rosso a verde, catalogo identico prima e dopo. I test 2 e 3 da owner sono rossi
+per costruzione, perché l'owner scrive. Il pgTAP come app, senza l'estratto: 3 rossi attesi, perché oggi l'app scrive.
+Le due istruzioni si leggono senza errore (`caught: no exception`, nessun `42703`), quindi dopo l'apply il `42501`
+arriva per il motivo giusto. ⚠️ **Il verde pieno come app non è provato**: si vede solo dopo l'apply. Verdi i guardrail
+delle forme, `runOnChange`, preCondition, letterali, GRANT ai ruoli batch e preambolo pgTAP.
+
+**Garanzie ritirate:** nessuna. Il giro toglie un privilegio all'app e non allenta nessun vincolo.
+
+#### Prima dell'apply, al team BE/FE
+
+⚠️ **Riscritta dalla D-9 (sotto, «La richiesta al BE/FE, con il builder»)**: i tre punti qui restano come storia.
+
+1. `backend/apps/anagrafiche/tests/db/test_regime_fiscale_spento_db.py` crea e spegne regimi come `zeroerp_app`
+   (§7.2, «Dopo il push», punto 2; casi 6-8 del §6). Dopo l'apply ogni scrittura su `config.regimi_fiscali` risponde
+   `42501`, e il test diventa rosso. Serve un'altra strada per costruire i due regimi (acceso e spento) e il regime con
+   `codice` diverso da `codice_interno`. La scelta è del BE.
+2. **Censimento richiesto**: chi scrive `config.regimi_fiscali` come applicazione in `backend/` e `frontend/`. Vanno
+   compresi test, smoke, fixture, management command e seed di sviluppo, anche fuori dal file del punto 1. Il DB
+   vede solo questo file, che viene dal §7.2, e non è detto che sia l'unico.
+3. Il contratto applicativo non cambia: lookup e dettagli leggono la tabella come prima.
+
+#### D-9 — la proposta del BE: un builder dei regimi di prova ✅ Decisa: «a» (Tid, 2026-11-22)
+
+**La proposta (sessione BE/FE, in chat).** Nello stesso giro del `-16` il DB aggiunge un builder `SECURITY DEFINER`,
+per esempio `dbops.fn_pgtap_crea_regime_fiscale(codice_interno, codice, descrizione, attivo)`, che scrive solo regimi
+di prova riconoscibili (`PGTAP-…`, `E2E-…`). Il test lo chiama al posto dell'`INSERT` e dell'`UPDATE`, e gli otto
+casi restano. Il caso 3 non spegne più un regime: il fornitore spento prende il regime spento, poi si riaccende. Il
+BE stesso nota il rischio: è una porta di scrittura che resta anche fuori dai test.
+
+**La risposta della sessione DB, sulla struttura:**
+
+* ⛔ **Un regime riconoscibile dal codice non si può fare.** `codice_interno` ha il CHECK `^RF[0-9]{2}$`: `PGTAP-…` e
+  `E2E-…` non nascono. Il segno «di prova» deve stare altrove.
+* ⚠️ **Nessuno dei 56 builder `dbops.fn_pgtap_*` è `SECURITY DEFINER`** (scratch, 2026-11-22). Scrivono coi
+  privilegi di chi li chiama, e quindi non aprono porte. Un builder DEFINER con quel prefisso sarebbe il primo, e
+  riaprirebbe proprio la porta che la D-8 chiude. Il nome non deve farlo sembrare uno di loro.
+* ⭐ **Il precedente giusto è la porta dei dati di sviluppo**: `anagrafiche.fn_provisiona_dati_di_sviluppo`, una
+  DEFINER che apre solo in `SVILUPPO` (`script.fn_ambiente_installazione()` e
+  `dbops.fn_dati_di_sviluppo_ammessi_su_valori`, altrimenti `E_DATI_DI_SVILUPPO_IN_PRODUZIONE`). La CI è `SVILUPPO`
+  (provisioning `ambiente=SVILUPPO`), quindi l'e2e lì gira.
+
+**La forma che il DB propone (strada «a» della D-9):** una DEFINER `dbops.fn_crea_regime_fiscale_di_prova(codice_interno,
+codice, descrizione, attivo)`, eseguibile dall'app, con tre limiti nel corpo:
+
+1. si apre solo in `SVILUPPO`, col BB dell'ambiente, nella stessa forma della porta dei dati di sviluppo;
+2. scrive un regime con il segno di prova in `meta` (per esempio `{"di_prova": true}`) e rifiuta un `codice_interno`
+   che esiste già: una riga del catalogo non la tocca mai;
+3. solo inserimento: niente `UPDATE` e niente spegnimento. Il regime spento nasce spento, come propone il BE per il
+   caso 3.
+
+Ricadute:
+
+* il caso «spegnimento di un regime in uso» (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, §7.2, esito, riga 5) **esce dall'e2e**:
+  dopo la D-8 l'app non lo raggiunge per nessuna strada, e la regola la prova il pgTAP
+  `dbops/test-automazione-attivo-inclusioni-v1.sql`, come owner. Restano gli altri casi;
+* un regime di prova scritto in una transazione **confermata** su dbdev resta, e compare nelle tendine. Il test non fa
+  COMMIT (§7.2), e il segno in `meta` lo rende riconoscibile e cancellabile a mano;
+* il giro DB cresce: un codice d'errore nuovo per «il codice esiste già», un pgTAP del builder (si apre solo in
+  `SVILUPPO`, rifiuta un codice del catalogo, il segno c'è) e la pagina `manual/`.
+
+| Strada | Che cosa |
+| --- | --- |
+| **a** (raccomandata dal DB) | Il builder DEFINER nella forma sopra, nello stesso giro del `-16` |
+| b | Nessuna porta: l'e2e costruisce i regimi con una seconda connessione come migratore, e solo nell'arrange. Lato DB non cambia niente; servono le credenziali del migratore nei test, in CI e su dev |
+| c | Nessuna porta: il caso del regime spento esce dall'e2e del BE. La regola la provano i pgTAP; il BE prova la traduzione del campo con un errore costruito. Si perde la prova sul DB vero del canale `COLUMN`
+
+#### Il giro D-9, scritto (sessione DB, 2026-11-22)
+
+Si aggiunge al giro D-8: stessi commit e apply.
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261121-17-create-fn-crea-regime-fiscale-di-prova` | Il builder, `SECURITY DEFINER`, nei tre limiti: solo in `SVILUPPO` (`E_DATI_DI_SVILUPPO_IN_PRODUZIONE`, la stessa regola della porta dei dati di sviluppo, nessun codice nuovo); solo righe nuove con `meta` = `{"di_prova": true}`, mentre un codice esistente lo rifiutano `uq_regimi_fiscali_codice_interno` e `uq_regimi_fiscali_codice`; solo `INSERT`. Firma coi `%TYPE`, restituisce l'id |
+| `20_code/dbops/20261121-18-update-vw-radici-di-prova-in-produzione-regimi` | Il presidio delle radici di prova ha un terzo ramo, `REGIME`: un regime col segno, in un database `PRODUZIONE`. Un dato di prova ha un presidio solo. Corpo dal catalogo, i due rami di prima invariati |
+| `80_data/sql/config/codici_errore.csv` | La descrizione di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` nomina anche il builder |
+| `80_data/sql/dbops/presidi.csv`, `presidi_testi.csv` | La nota e il testo del presidio dicono anche «regimi fiscali di prova» |
+| pgTAP `config/test-regimi-fiscali-sola-lettura-v1.sql` | Plan da 3 a 6: come app, in `SVILUPPO`, il builder crea un regime spento col segno; RF01 e il suo `codice` rifiutati dai due UNIQUE |
+| pgTAP `dbops/test-etichette-di-prova-v1.sql` | Plan da 16 a 17: un regime di prova nato in `SVILUPPO` lo vede il presidio in `PRODUZIONE` (test 13); in `PRODUZIONE` il builder non parte (15 nuovo; i vecchi 15 e 16 sono ora 16 e 17) |
+| `manual/` | Nuova `dbops/fn_crea_regime_fiscale_di_prova.md`; `dbops/vw_radici_di_prova_in_produzione.md`; `config/regimi_fiscali.md` |
+
+**La prova** (`scripts/prova_changeset.py`, scratch `zeroerp_ruoli`, 2026-11-22: `-17`, `-18`, `-16`, nell'ordine di fase).
+
+| pgTAP | Senza | Con |
+| --- | --- | --- |
+| `dbops/test-etichette-di-prova-v1` (owner) | 7 ok, si ferma (il builder non c'è) | 17/17 |
+| `config/test-regimi-fiscali-sola-lettura-v1`, da owner | 1 ok, si ferma | 4 ok; il 2 e il 3 rossi per costruzione (l'owner scrive) |
+| `dbops/test-catalogo-presidi-v1` | 11/11 | 11/11 |
+| `dbops/test-automazione-attivo-inclusioni-v1` | 12/12 | 12/12 |
+| `anagrafiche/test-fn-crea-fornitore-v1` | 21/21 | 21/21 |
+| `config/test-pannello-porta-v1`, da owner | 8 ok, 3 rossi per costruzione | uguale |
+
+Il catalogo è identico prima e dopo ogni prova. I guardrail sono verdi: forme, `runOnChange`, preCondition, letterali,
+GRANT ai ruoli batch, COMMENT al presente (alla prima stesura i due COMMENT nominavano il brief, ora tolto) e preambolo
+pgTAP. ⚠️ **Come app il test della sola lettura non è provato verde**: senza i changeSet il builder non esiste, e la
+prova non sa girare l'estratto come app. Si vede dopo l'apply. Un difetto trovato e corretto provando: `format('%s')`
+su un booleano scrive `f`, non `false`.
+
+**Garanzie ritirate:** nessuna. Il catalogo dei regimi resta in sola lettura per l'app fuori dal builder, e il builder
+non tocca le righe che esistono.
+
+#### L'apply (2026-11-22)
+
+Tid ha applicato `20261121-16` … `-18` su dbdev, con i pgTAP verdi. È il verde come app del test della sola lettura
+che la prova non sapeva dare. L'apply è venuto **prima** del BE: alla stessa data il test e2e
+`backend/apps/anagrafiche/tests/db/test_regime_fiscale_spento_db.py` scrive ancora la tabella direttamente (l'`INSERT`
+dei regimi e l'`UPDATE` che spegne), quindi con `ZEROERP_TEST_DB_E2E=1` è rosso con `42501`, finché non passa al builder.
+L'e2e è spento di default e acceso in `ci-validate.yaml`, che ricostruisce il DB dal branch: la CI diventa rossa quando
+il giro DB entra in `Tito-dev` senza il punto 1 qui sotto. Conviene che le due PR arrivino insieme.
+
+Restano:
+
+* il commit del giro DB, coi soli file di questo cantiere: `brief-db-attivo-fk-senza-suffisso-id.md` è di un'altra
+  sessione e resta fuori;
+* la doc auto-generata, da rigenerare: `config.regimi_fiscali` (privilegi), `dbops.fn_crea_regime_fiscale_di_prova`,
+  `dbops.vw_radici_di_prova_in_produzione`. Finché non c'è, il contratto si legge dal catalogo.
+
+#### La richiesta al BE/FE, con il builder (⚠️ arriva dopo l'apply: l'e2e è rosso finché non c'è)
+
+1. `backend/apps/anagrafiche/tests/db/test_regime_fiscale_spento_db.py`: i regimi di prova si costruiscono con
+   `SELECT dbops.fn_crea_regime_fiscale_di_prova(codice_interno, codice, descrizione, attivo)`, che restituisce l'id,
+   al posto dell'`INSERT` e dell'`UPDATE`. `codice_interno` deve essere `RF` più due cifre e libero (l'e2e ne sceglie
+   uno che il catalogo non ha); `codice` libero anche lui, e per il caso 8 diverso da `codice_interno`. Il regime
+   spento nasce spento: il caso 3 diventa «il fornitore spento prende il regime spento, poi si riaccende».
+2. Il caso «spegnimento di un regime in uso» (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, §7.2, esito, riga 5) **esce
+   dall'e2e**: dopo la D-8 l'app non lo raggiunge per nessuna strada, e il builder non spegne. La regola la prova il
+   pgTAP `dbops/test-automazione-attivo-inclusioni-v1.sql`, come owner.
+3. Il test non fa COMMIT: un regime di prova confermato su dbdev resterebbe nelle tendine. Il segno è
+   `meta ->> 'di_prova' = 'true'`.
+4. **Censimento richiesto**: chi scrive `config.regimi_fiscali` come applicazione in `backend/` e `frontend/`, compresi
+   test, smoke, fixture, management command e seed di sviluppo, anche fuori dal file del punto 1. Ogni scrittura
+   diretta, dopo l'apply, è un `42501`.
+5. Il codice `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` non è nuovo, ed è già nella policy: in CI l'ambiente è `SVILUPPO`, e
+   il builder lì si apre.
