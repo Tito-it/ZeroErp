@@ -26,6 +26,7 @@
 #  16. replace_preset_colonne_chiavi_extra_riga_raises
 #  17. create_preset_is_default_rifiutato (Q26: la chiave e' uscita)
 #  18. update_preset_secondo_acceso_nel_posto (BE23, Q30)
+#  19. create/update_preset_filtri_default_rifiutato (Q38: i filtri si ritirano)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -118,7 +119,6 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
             "ambito": "sistema",
             "pagina_dimensione": 50,
             "ordinamento_default": [{"col": "id", "dir": "asc"}],
-            "filtri_default": {"attivo": True},
         })
 
         self.assertEqual(result["id"], 7)
@@ -147,6 +147,28 @@ class ListaPresetAdminCreateTests(SimpleTestCase):
             })
         self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
         repo.create_preset.assert_not_called()
+
+    # `filtri_default` non si scrive piu' (Q38 di brief-db-revisione-ui): la
+    # colonna la ritira il DB nel giro 2, la whitelist la rifiuta gia' ora.
+    def test_create_update_preset_filtri_default_rifiutato(self) -> None:
+        repo = _repo_with_lista_attiva()
+        svc = ListaPresetAdminService(repo=repo)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.create_preset({
+                "lista_id": 1,
+                "codice": "x",
+                "descrizione": "X",
+                "ambito": "sistema",
+                "filtri_default": {"attivo": True},
+            })
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        repo.create_preset.assert_not_called()
+
+        repo.get_preset.return_value = {"id": 7, "ambito": "sistema"}
+        with self.assertRaises(ServiceError) as ctx:
+            svc.update_preset(7, {"filtri_default": None})
+        self.assertEqual(ctx.exception.code, E_PRESET_VALIDATION)
+        repo.update_preset.assert_not_called()
 
     def test_create_preset_ruolo_richiede_profilo(self) -> None:
         repo = _repo_with_lista_attiva()
@@ -363,20 +385,20 @@ class UiAdminRepositoryUpdateSqlTests(SimpleTestCase):
             {
                 "descrizione": "Base",
                 "ordinamento_default": [{"campo": "codice", "dir": "asc"}],
-                "filtri_default": None,
+                "attivo": True,
             },
         ))
         self.assertTrue(esito)
         sql, params = cursor.execute.call_args.args
         self.assertTrue(sql.startswith("UPDATE ui.lista_preset SET "))
         self.assertIn("ordinamento_default = %s::jsonb", sql)
-        self.assertIn("filtri_default = %s", sql)
+        self.assertIn("attivo = %s", sql)
         self.assertNotIn("user_update", sql)
         self.assertNotIn("data_update", sql)
         self.assertTrue(sql.endswith("WHERE id = %s"))
         self.assertEqual(
             params,
-            ["Base", '[{"campo": "codice", "dir": "asc"}]', None, 5],
+            ["Base", '[{"campo": "codice", "dir": "asc"}]', True, 5],
         )
 
     # ⛔ Un immutabile (`ambito`) che arrivasse fin qui e' un errore di

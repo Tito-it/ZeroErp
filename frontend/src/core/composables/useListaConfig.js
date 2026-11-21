@@ -3,8 +3,9 @@
 //        - fetch della configurazione effettiva (cascata preset+permessi
 //          risolta dal BE);
 //        - fetch lazy del catalogo colonne arricchito (per la modale);
-//        - mutazione locale della config (colonne, ordinamento, filtri,
-//          pagina_dimensione) con tracking dirty;
+//        - mutazione locale della config (colonne, pagina_dimensione) con
+//          tracking dirty; `ordinamento` e `filtri` arrivano dal resolver ma
+//          non si salvano (Q38, Q39 di brief-db-revisione-ui);
 //        - save (PUT preferenza con Idempotency-Key) e reset (DELETE
 //          preferenza), entrambi seguiti da reload della config.
 //
@@ -143,8 +144,11 @@ export function useListaConfig(codice, opzioni = {}) {
   // viene perso, solo lo stato locale e' fuori sync temporaneamente.
   async function save() {
     if (!config.value) return null
-    // Estrai solo i campi accettati dal BE (whitelist allineata a
-    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS).
+    // Estrai solo i campi che si salvano: un sottoinsieme di
+    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS. ⚠️ Dal
+    // 2026-11-20 e' piu' stretta di proposito: il BE accetta ancora
+    // `ordinamento` e `filtri` finche' il DB non li ritira (Q38/Q39 di
+    // brief-db-revisione-ui), il FE non li manda gia' piu'.
     //
     // Drift risk: questa whitelist FE deve restare sincronizzata con
     // quella BE (apps/ui/services/lista_preferenza_service.py). Se il BE
@@ -249,9 +253,15 @@ function _deepClone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
-// Whitelist root del payload BE (allineata a ListaPreferenzaService).
+// Whitelist root del payload BE (sottoinsieme di ListaPreferenzaService).
 // Sotto-whitelist colonna inline in _extractColonna.
-const _PAYLOAD_ROOT_KEYS = ['colonne', 'ordinamento', 'filtri', 'pagina_dimensione']
+// ⛔ `ordinamento` e `filtri` NON si salvano (Q38 e Q39 di
+//    brief-db-revisione-ui, Tid 2026-11-20): i filtri si ritirano, e il clic
+//    sull'intestazione non si ricorda; l'ordinamento di partenza e' del preset.
+//    Il salvataggio e' per chiave: una preferenza vecchia che le porta (salvata
+//    prima del 2026-11-01, quando si salvava la configurazione intera) le perde
+//    al primo salvataggio, ed e' l'esito voluto.
+const _PAYLOAD_ROOT_KEYS = ['colonne', 'pagina_dimensione']
 const _COLONNA_KEYS = ['codice', 'ordine', 'larghezza', 'visibile', 'fissata']
 
 function _extractWritablePayload(config) {

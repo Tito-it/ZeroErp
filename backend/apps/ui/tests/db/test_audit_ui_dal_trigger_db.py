@@ -163,7 +163,7 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
                 [self.preset_id],
             )
         self.assertTrue(self.repo.update_preset(
-            self.preset_id, {"filtri_default": {"stato": "ATTIVO"}},
+            self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
         ))
         self.assertEqual(
             self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il"),
@@ -222,7 +222,7 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
         # Il contenuto cambia: il secondo salvataggio riallinea lo snapshot
         # anche con la stessa base (ramo ON CONFLICT DO UPDATE).
         self.assertTrue(self.repo.update_preset(
-            self.preset_id, {"filtri_default": {"stato": "ATTIVO"}},
+            self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
         ))
         (contenuto_nuovo,) = self._riga(
             "ui.lista_preset", self.preset_id, "contenuto_aggiornato_il",
