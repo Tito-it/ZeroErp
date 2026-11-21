@@ -264,13 +264,15 @@ SELECT f.*
 SELECT is(
     (SELECT fo.regime_fiscale_rf::text
        FROM t_f3 f JOIN anagrafiche.fornitori fo ON fo.id = f.fornitore_id),
-    (SELECT rf FROM t_rf),
+    -- L'atteso non e' mai NULL: con il catalogo vuoto t_rf e t_f3 non hanno
+    -- righe, i due lati sarebbero NULL e is() li darebbe uguali (verde a vuoto).
+    COALESCE((SELECT rf FROM t_rf), '<catalogo regimi vuoto>'),
     '18. regime_fiscale_rf ammesso e scritto');
 
 SELECT is(
     (SELECT format('%s|%s', v.regime_fiscale_rf, v.regime_fiscale_descrizione)
        FROM t_f3 f JOIN anagrafiche.vw_fornitori_dettaglio v ON v.id = f.fornitore_id),
-    (SELECT format('%s|%s', rf, descrizione) FROM t_rf),
+    COALESCE((SELECT format('%s|%s', rf, descrizione) FROM t_rf), '<catalogo regimi vuoto>'),
     '19. la vista espone il regime con la descrizione del catalogo');
 
 SELECT is(

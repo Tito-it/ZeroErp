@@ -5,6 +5,8 @@
 Approfondimento tabelle:
 > • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)
+> • [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
+> • [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni)
 >
 Approfondimento funzioni:
 > • [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)
@@ -13,11 +15,12 @@ Approfondimento funzioni:
 ---
 ### 🎯 Scopo Principale
 
-(rev 2026-10-01 — nata con `20261001-01`, seminata da `20261001-15`)
+(latest review 21-11-2026)
 
-**Il regime fiscale di un emittente**, con i codici `RegimeFiscale` del tracciato
-FatturaPA: RF01 ordinario, RF17 IVA per cassa, RF19 forfettario e gli altri.
-`anagrafiche.emittenti_fiscali.regime_fiscale_rf` la referenzia con una FK su
+**Il regime fiscale di un emittente o di un fornitore**, con i codici
+`RegimeFiscale` del tracciato FatturaPA: RF01 ordinario, RF17 IVA per cassa, RF19
+forfettario e gli altri. `anagrafiche.emittenti_fiscali.regime_fiscale_rf` e
+`anagrafiche.fornitori.regime_fiscale_rf` la referenziano con una FK su
 `codice_interno`.
 
 ---
@@ -40,8 +43,28 @@ codice viene da fuori, ciò che il sistema ne fa sta in una colonna.
 
 * Forma dei vocabolari di `config`: `codice_interno` immutabile (lock automatico),
   `codice` e `descrizione` per l'operatore, `attivo`, `ordine`, `meta`.
-* Un regime spento non si assegna a un emittente, e uno usato non si spegne: la
-  coppia ATTIVO nasce a `ci_apply` dalla FK.
+* ⭐ **Un regime spento non si assegna, e uno in uso non si spegne** (Tid,
+  2026-11-21). Vale per i due ruoli che lo referenziano, l'emittente
+  (`anagrafiche.emittenti_fiscali.regime_fiscale_rf`) e il fornitore
+  (`anagrafiche.fornitori.regime_fiscale_rf`). È la coppia ATTIVO del framework:
+  * assegnare un regime spento a un emittente o a un fornitore acceso è
+    rifiutato con `E_ATTIVO_PADRE_NON_ATTIVO`, col campo `regime_fiscale_rf` nel
+    contesto;
+  * spegnere un regime che un emittente o un fornitore **acceso** usa è
+    rifiutato con `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`;
+  * contano solo i ruoli accesi: un emittente o un fornitore spento tiene il suo
+    regime anche se il regime si spegne, ma **riaccenderlo è rifiutato** finché
+    non gli si dà un regime acceso.
+
+  Le due FK puntano a `codice_interno` e la colonna non finisce in `_id`: per
+  questo la coppia sta in
+  [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni),
+  senza la quale l'automazione le salterebbe. ⚠️ Fino al 2026-11-21 questa pagina
+  dichiarava la regola come già in vigore («la coppia ATTIVO nasce a `ci_apply`
+  dalla FK»), ma nessun trigger la faceva valere: lo stesso errore sta nella
+  testata del changeSet `20261121-03`, che non si tocca. La regola revoca la
+  decisione del 2026-10-01 per cui un emittente poteva tenere un regime che il
+  catalogo spegne.
 * Vocabolario di sistema: nel lookup delle tendine, **fuori dal pannello** di
   configurazione (`config.tabelle_gestibili`, `pannello = false`), come gli altri
   vocabolari che il codice legge per significato.

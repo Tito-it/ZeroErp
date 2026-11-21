@@ -1,12 +1,13 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 19 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO` che queste righe restringono
+> * [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni) — il registro gemello, le FK senza `_id` che si legano comunque; un'eccezione prevale
 >
 > Approfondimento funzioni:
 >

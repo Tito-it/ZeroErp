@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_ritira_attivo_eccezioni: ritira i trigger ATTIVO di OGNI FK che
+#   l'automazione non lega, chiedendolo a dbops.fn_attivo_fk_esclusa
+#   (20261121-11), la stessa sede del runner.
+#
+# ── PERCHE' (Tid, 2026-11-21) ─────────────────────────────────────────
+#   Col registro delle inclusioni (20261121-10) una FK senza _id si lega se
+#   e' dichiarata. Chi genera ritira: togliere la riga deve togliere i suoi
+#   trigger, come togliere un'eccezione li rigenera. Il ritiro rispondeva da
+#   solo alla domanda «la FK si lega?», col solo registro delle eccezioni:
+#   con due registri, due risposte scritte in due posti prima o poi
+#   divergono. Ora la domanda la risponde il building block, per entrambi.
+#
+# ── COSA CAMBIA ───────────────────────────────────────────────────────
+#   * Ritira anche il require e il block di una FK senza _id che non e' in
+#     dbops.automazione_attivo_inclusioni. Sul vivo di dbdev e dello scratch
+#     (2026-11-21) non ce n'e' nessuno: e' il ramo di una riga tolta dal
+#     registro. ⚠️ Un trigger ATTIVO montato A MANO su una FK senza _id si
+#     ritira anch'esso: va dichiarato nel registro delle inclusioni.
+#   * Un montaggio fuori grammatica (valido = false) non si tocca: non e' un
+#     ritiro, e' un errore di scrittura, e lo riporta
+#     dbops.fn_trigger_attivo_orfani. Prima lo escludeva il join sui campi
+#     NULL; ora lo dice il filtro.
+#   * La figlia del require e' la tabella del trigger (tgrelid): la grammatica
+#     la nomina solo per il block.
+#
+# INVARIATI: la firma, il ritorno (quanti ne ha tolti), il NOTICE, chi la
+#   chiama (il runner in testa al giro, e i provision di 90_end). Il nome
+#   resta: tutte e due le cose che ritira sono FK che l'automazione esclude.
+# Corpo di partenza: 20261107-27-update-fn-ritira-attivo-eccezioni-grammatica-condivisa-mctit.yaml,
+#   uguale al vivo di dbdev (2026-11-21). Il ritorno indietro rimette quel
+#   corpo e il suo COMMENT.
+# Presidio: dbops/test-automazione-attivo-inclusioni-v1, dbops/test-automazione-attivo-eccezioni-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261121-13-update-fn-ritira-attivo-eccezioni-inclusioni-mctit.yaml
+
+  - changeSet:
+      id: 20261121-13-update-fn-ritira-attivo-eccezioni-inclusioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_ritira_attivo_eccezioni ritira i trigger ATTIVO di ogni FK che
+        dbops.fn_attivo_fk_esclusa esclude: le eccezioni dichiarate e le FK senza _id fuori dal
+        registro delle inclusioni.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_attivo_fk_esclusa(text,text,text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_ritira_attivo_eccezioni()
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: togliere i trigger ATTIVO gia' generati per le FK che
+              --   l'automazione non lega (dbops.fn_attivo_fk_esclusa): le eccezioni
+              --   dichiarate e le FK senza _id fuori dal registro delle inclusioni.
+              -- Uso: SELECT dbops.fn_ritira_attivo_eccezioni();  -- quanti ne ha tolti
+              DECLARE
+                  v_trigger pg_catalog.pg_trigger.tgname%TYPE;
+                  v_tabella pg_catalog.pg_trigger.tgrelid%TYPE;
+                  -- conteggio: nessuna colonna da ancorare
+                  v_n       integer := 0;
+              BEGIN
+                  FOR v_trigger, v_tabella IN
+                      WITH trg AS (
+                          SELECT t.tgname,
+                                 t.tgrelid,
+                                 -- la figlia: il block la nomina negli argomenti,
+                                 -- il require sta sulla figlia stessa
+                                 CASE WHEN p.proname = 'trgfn_prevent_deactivate_if_children'
+                                      THEN g.figlia_schema  ELSE cn.nspname END AS figlia_schema,
+                                 CASE WHEN p.proname = 'trgfn_prevent_deactivate_if_children'
+                                      THEN g.figlia_tabella ELSE c.relname  END AS figlia_tabella,
+                                 g.fk_col
+                            FROM pg_catalog.pg_trigger t
+                            JOIN pg_catalog.pg_class c      ON c.oid = t.tgrelid
+                            JOIN pg_catalog.pg_namespace cn ON cn.oid = c.relnamespace
+                            JOIN pg_catalog.pg_proc p       ON p.oid = t.tgfoid
+                            JOIN pg_catalog.pg_namespace n  ON n.oid = p.pronamespace
+                            CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+                                p.proname, dbops.fn_trigger_argomenti(t.tgargs)) AS g
+                           WHERE NOT t.tgisinternal
+                             AND n.nspname = 'dbops'
+                             AND p.proname IN ('trgfn_child_requires_active_parent',
+                                               'trgfn_prevent_deactivate_if_children')
+                             -- un montaggio fuori grammatica non e' un ritiro:
+                             -- lo riporta dbops.fn_trigger_attivo_orfani
+                             AND g.valido
+                      )
+                      SELECT trg.tgname, trg.tgrelid
+                        FROM trg
+                       WHERE dbops.fn_attivo_fk_esclusa(trg.figlia_schema, trg.figlia_tabella, trg.fk_col) IS NOT NULL
+                  LOOP
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', v_trigger, v_tabella::regclass);
+                      RAISE NOTICE 'fn_ritira_attivo_eccezioni: ritirato % su %', v_trigger, v_tabella::regclass;
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_ritira_attivo_eccezioni() IS
+                'Toglie i trigger ATTIVO gia'' generati per le FK che l''automazione non lega, chiedendolo a dbops.fn_attivo_fk_esclusa: le FK dichiarate in dbops.automazione_attivo_eccezioni e le FK la cui colonna non finisce in _id e che non sono in dbops.automazione_attivo_inclusioni. Toglie il require sul figlio (dbops.trgfn_child_requires_active_parent, sulla tabella figlia, con quella colonna FK) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, che nomina quella figlia e quella colonna FK); vale anche per un trigger ATTIVO montato a mano, che su una FK senza _id va dichiarato nel registro delle inclusioni. Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono troncati con un hash); gli argomenti li legge per nome dbops.fn_trigger_attivo_argomenti, la grammatica delle funzioni trigger. Un montaggio fuori grammatica non si tocca: lo riporta dbops.fn_trigger_attivo_orfani. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_ritira_attivo_eccezioni()
+               RETURNS integer
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: togliere i trigger ATTIVO gia' generati per le FK dichiarate
+              --   eccezione in dbops.automazione_attivo_eccezioni.
+              -- Uso: SELECT dbops.fn_ritira_attivo_eccezioni();  -- quanti ne ha tolti
+              DECLARE
+                  v_trigger pg_catalog.pg_trigger.tgname%TYPE;
+                  v_tabella pg_catalog.pg_trigger.tgrelid%TYPE;
+                  -- conteggio: nessuna colonna da ancorare
+                  v_n       integer := 0;
+              BEGIN
+                  FOR v_trigger, v_tabella IN
+                      WITH trg AS (
+                          SELECT t.tgname,
+                                 t.tgrelid,
+                                 p.proname,
+                                 g.figlia_schema,
+                                 g.figlia_tabella,
+                                 g.fk_col
+                            FROM pg_catalog.pg_trigger t
+                            JOIN pg_catalog.pg_proc p      ON p.oid = t.tgfoid
+                            JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                            CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
+                                p.proname, dbops.fn_trigger_argomenti(t.tgargs)) AS g
+                           WHERE NOT t.tgisinternal
+                             AND n.nspname = 'dbops'
+                             AND p.proname IN ('trgfn_child_requires_active_parent',
+                                               'trgfn_prevent_deactivate_if_children')
+                      )
+                      SELECT trg.tgname, trg.tgrelid
+                        FROM trg
+                        JOIN dbops.automazione_attivo_eccezioni e
+                          ON (    trg.proname        = 'trgfn_child_requires_active_parent'
+                              AND trg.tgrelid        = to_regclass(format('%I.%I', e.schema_figlia, e.tabella_figlia))
+                              AND trg.fk_col         = e.colonna_fk)
+                          OR (    trg.proname        = 'trgfn_prevent_deactivate_if_children'
+                              AND trg.figlia_schema  = e.schema_figlia
+                              AND trg.figlia_tabella = e.tabella_figlia
+                              AND trg.fk_col         = e.colonna_fk)
+                  LOOP
+                      EXECUTE format('DROP TRIGGER IF EXISTS %I ON %s', v_trigger, v_tabella::regclass);
+                      RAISE NOTICE 'fn_ritira_attivo_eccezioni: ritirato % su %', v_trigger, v_tabella::regclass;
+                      v_n := v_n + 1;
+                  END LOOP;
+
+                  RETURN v_n;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_ritira_attivo_eccezioni() IS
+                'Toglie i trigger ATTIVO gia'' generati per le FK dichiarate eccezione in dbops.automazione_attivo_eccezioni: il require sul figlio (dbops.trgfn_child_requires_active_parent, sulla tabella figlia, con quella colonna FK) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, che nomina quella figlia e quella colonna FK). Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono troncati con un hash); gli argomenti li legge per nome dbops.fn_trigger_attivo_argomenti, la grammatica delle funzioni trigger. Un montaggio fuori grammatica non e'' riconosciuto: lo riporta dbops.fn_trigger_attivo_orfani. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira).';

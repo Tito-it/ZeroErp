@@ -1,12 +1,15 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_ritira_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK dichiarate eccezione, che la funzione legge
+> * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK dichiarate eccezione
+> * [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni) — le FK senza `_id` che il motore lega
+>
+> * [dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) — la domanda «questa FK si lega?», che la funzione chiede per ogni trigger
 >
 > Approfondimento funzioni:
 >
@@ -24,11 +27,15 @@
 
 ### 🎯 Scopo Principale
 
-Toglie i trigger ATTIVO **già generati** per le FK dichiarate in
-`dbops.automazione_attivo_eccezioni`, e restituisce quanti ne ha tolti.
+Toglie i trigger ATTIVO **già generati** per le FK che il motore non lega, e restituisce quanti
+ne ha tolti. Se una FK si lega lo chiede a `dbops.fn_attivo_fk_esclusa`, la stessa sede del motore:
+si ritirano i trigger delle FK dichiarate in `dbops.automazione_attivo_eccezioni` e quelli delle FK
+senza `_id` che non sono in `dbops.automazione_attivo_inclusioni`.
 
-Esiste perché una FK può diventare eccezione dopo che il motore l'ha già legata: dichiararla non
-basta, i trigger che ci sono vanno tolti. Chi genera i trigger li ritira.
+Esiste perché una FK può diventare eccezione, o uscire dalle inclusioni, dopo che il motore l'ha
+già legata: dichiararlo non basta, i trigger che ci sono vanno tolti. Chi genera i trigger li
+ritira. ⚠️ Vale anche per un trigger ATTIVO montato a mano su una FK senza `_id`: va dichiarato
+fra le inclusioni.
 
 ---
 
@@ -38,7 +45,7 @@ I nomi generati oltre i 63 caratteri sono troncati con un hash, quindi il nome n
 La funzione guarda i trigger non interni delle due funzioni del framework ATTIVO, ne legge gli
 argomenti con `dbops.fn_trigger_argomenti`, li interpreta per nome con
 `dbops.fn_trigger_attivo_argomenti` (la grammatica delle funzioni trigger) e li confronta con la
-riga del registro:
+FK che il trigger difende:
 
 | Trigger | Funzione | Dove sta la FK della riga |
 | --- | --- | --- |
@@ -46,7 +53,7 @@ riga del registro:
 | block, sul **padre** | `dbops.trgfn_prevent_deactivate_if_children` | gli argomenti nominano schema, tabella e colonna FK della figlia |
 
 Una riga del registro che nomina una tabella che non esiste non trova trigger e non produce
-errori. Un trigger montato fuori grammatica non si riconosce: non è un'eccezione, è un errore di
+errori. Un trigger montato fuori grammatica non si tocca: non è un ritiro, è un errore di
 scrittura, e lo riporta `dbops.fn_trigger_attivo_orfani`.
 
 ---
