@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.vw_liste_colonne_campo_orfano: il presidio delle colonne di lista che
+#   leggono un campo che la loro sorgente non ha. Brief: brief-db-revisione-ui
+#   (giro 4: U27 con Q32, U26 con Q48).
+#
+# ⚠️ PERCHE'. I guard di ui giudicano la riga che si scrive. Una vista che perde
+#   una colonna con un DDL, o una lista cambiata dal seed (il migrate resta fuori
+#   dalla verifica delle colonne, 20261120-47), lasciano una colonna orfana senza
+#   che nessun trigger scatti. Il pgTAP del catalogo lo vede sulle righe del
+#   seed; questo presidio lo vede su tutte, anche sulle liste create
+#   dall'installazione (Q32).
+#
+# Una riga per caso, con la causa:
+#   RELAZIONE_ASSENTE  la lista accesa dichiara una vista che nel suo schema non
+#                      c'e' (colonna NULL);
+#   CAMPO_ASSENTE      una colonna VISTA, accesa o spenta, di una lista accesa ha
+#                      un campo che la relazione non ha;
+#   LINEAGE_NON_DICHIARATA una colonna LINEAGE sta su una lista che non dichiara
+#                      legge_lineage;
+#   LINEAGE_SCONOSCIUTA una colonna LINEAGE ha un campo che la sintesi della
+#                      lineage non produce (Q48: il nome lo verifica qui, non il
+#                      guard di ui).
+#   La relazione la chiede ui.fn_lista_relazione_ha_attributo (20261120-45), la
+#   stessa regola dei guard. Il presidio dipende da vendite (la vista delle
+#   colonne della sintesi): la dipendenza che Q15 toglie a ui sta qui, in dbops.
+# Natura ZERO, cadenza SETTIMANALE, perimetro LIBERO (nessuna tabella in RLS),
+#   a chi tocca: lo sviluppo (CSV presidi.csv e presidi_testi.csv).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261120-50-create-vw-liste-colonne-campo-orfano-mctit.yaml
+
+  - changeSet:
+      id: 20261120-50-create-vw-liste-colonne-campo-orfano
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_liste_colonne_campo_orfano: le colonne di lista il cui campo non sta nella sorgente.
+        Brief: brief-db-revisione-ui (giro 4, U27, Q32, Q48).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'dbops' AND c.relname = 'vw_liste_colonne_campo_orfano'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_lista_relazione_ha_attributo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW dbops.vw_liste_colonne_campo_orfano
+              WITH (security_invoker = true) AS
+              SELECT ld.id          AS lista_id,
+                     ld.codice      AS lista_codice,
+                     NULL::integer  AS colonna_id,
+                     NULL::varchar  AS colonna_codice,
+                     NULL::varchar  AS campo_sorgente,
+                     (ld.schema_dati || '.' || ld.vista_sql)::text AS sorgente,
+                     'RELAZIONE_ASSENTE'::text AS causa
+                FROM ui.lista_definizione ld
+               WHERE ld.attivo
+                 AND ld.vista_sql IS NOT NULL
+                 AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, NULL)
+              UNION ALL
+              SELECT ld.id, ld.codice, lc.id, lc.codice, lc.campo_sorgente,
+                     (ld.schema_dati || '.' || ld.vista_sql)::text,
+                     'CAMPO_ASSENTE'
+                FROM ui.lista_colonna lc
+                JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+               WHERE ld.attivo
+                 AND ld.vista_sql IS NOT NULL
+                 AND lc.origine_campo = 'VISTA'
+                 AND lc.campo_sorgente IS NOT NULL
+                 AND ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, NULL)
+                 AND NOT ui.fn_lista_relazione_ha_attributo(ld.schema_dati, ld.vista_sql, lc.campo_sorgente)
+              UNION ALL
+              SELECT ld.id, ld.codice, lc.id, lc.codice, lc.campo_sorgente,
+                     'lineage'::text,
+                     CASE WHEN NOT ld.legge_lineage THEN 'LINEAGE_NON_DICHIARATA'
+                          ELSE 'LINEAGE_SCONOSCIUTA' END
+                FROM ui.lista_colonna lc
+                JOIN ui.lista_definizione ld ON ld.id = lc.lista_id
+               WHERE lc.origine_campo = 'LINEAGE'
+                 AND (NOT ld.legge_lineage
+                      OR NOT EXISTS (SELECT 1
+                                       FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                                      WHERE sc.colonna = lc.campo_sorgente));
+
+              COMMENT ON VIEW dbops.vw_liste_colonne_campo_orfano IS
+                  'Presidio: le colonne di lista che leggono un campo che la loro sorgente non ha. DEVE restare a zero righe. Una riga per caso, con la causa: RELAZIONE_ASSENTE (una lista accesa dichiara una vista che nel suo schema non c''è), CAMPO_ASSENTE (una colonna VISTA, accesa o spenta, di una lista accesa ha un campo che la relazione non ha), LINEAGE_NON_DICHIARATA (una colonna LINEAGE su una lista che non dichiara legge_lineage), LINEAGE_SCONOSCIUTA (una colonna LINEAGE con un campo che la sintesi della lineage, vendite.vw_documento_lineage_sintesi_colonne, non produce). Vede ciò che i guard di ui non vedono: una vista che perde colonne con un DDL, una lista cambiata dal migrate. La relazione la chiede ui.fn_lista_relazione_ha_attributo, la regola dei guard.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS dbops.vw_liste_colonne_campo_orfano;

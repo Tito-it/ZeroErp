@@ -100,8 +100,11 @@ La scrive solo il backend, con INSERT, UPDATE e DELETE diretti: il salvataggio (
 utente e dashboard), la cancellazione e l'«ignora». La lettura passa dalla funzione di risoluzione; il
 backend legge la riga direttamente solo per il proprio servizio di preferenza.
 
-`data_update` la scrive il backend: la tabella non ha il trigger d'audit né le colonne `user_insert` e
-`user_update`.
+**Senza audit, per scelta.** La preferenza è un dato personale, scritto solo dal suo proprietario e spesso:
+la tabella non ha il trigger d'audit né le colonne `user_insert` e `user_update`. `data_update` la scrive
+il database a ogni INSERT e UPDATE
+([trgfn_preferenza_data_update](/dbzero/ui/funzioni/trgfn_preferenza_data_update)), e il valore mandato
+da chi scrive non conta.
 
 ---
 
@@ -128,6 +131,8 @@ backend legge la riga direttamente solo per il proprio servizio di preferenza.
   del preset, e resta su quella sola quando cambia la dimensione, che la preferenza segue dal preset.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — la preferenza che vince sul preset, il widget
   spento che sparisce anche dalla preferenza.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — `data_update` scritta dal database all'INSERT e
+  all'UPDATE, la preferenza che resta scrivibile dall'applicazione.
 * `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — un codice fuori dal pool, 101 card e una voce con
   una chiave in più rifiutati; una riga malformata scritta senza il guard che non ferma la risoluzione.
 * `db/pgtap/ui/test-ui-legami-preset-v1.sql` — il preset di base di un'altra dashboard rifiutato.
@@ -157,6 +162,8 @@ backend legge la riga direttamente solo per il proprio servizio di preferenza.
   tetto). Il tetto di 100 voci del backend non si porta: codice unico e del pool lo limitano già.
 * 2026-11-21 — il preset di base è legato alla dashboard della riga da un vincolo composto; le preferenze
   con la base di un'altra dashboard sono tornate senza base.
+* 2026-11-21 — `data_update` la scrive il database, ed è sempre valorizzata: le righe senza hanno preso
+  `data_insert`.
 
 ---
 

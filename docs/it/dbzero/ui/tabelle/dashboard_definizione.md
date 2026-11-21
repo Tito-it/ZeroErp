@@ -21,6 +21,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_dashboard_definizione_codice_non_vuoto |  |
+| CHECK | chk_dashboard_definizione_descrizione_non_vuota |  |
+| CHECK | chk_dashboard_definizione_note_non_vuote |  |
 | PRIMARY KEY | dashboard_definizione_pkey | id |
 | UNIQUE | uq_ui_dashboard_definizione_codice | codice |
 
@@ -33,7 +36,6 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dashboard_definizione_a10_dashboard_preset_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'dashboard_preset', 'dashboard_id', 'id', 'attivo')` |
 | trg_dashboard_definizione_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dashboard_definizione_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

@@ -119,6 +119,8 @@ Nessuno: un contenitore senza preset che valgano dà nessuna riga, non un rifiut
   scelta non legge più `is_default`, ritirato dai preset.
 * 2026-11-20 — si ricrea con la data del contenuto per chiave: la colonna `contenuto_aggiornato_il`
   del risultato è la mappa. Scelta e firma restano le stesse.
+* 2026-11-21 — si ricrea quando l'azienda dei preset di dashboard passa a `bigint`: le due famiglie si
+  leggono senza conversione. Scelta e firma restano le stesse.
 
 ---
 

@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_dashboard_da_codice: la dashboard accesa per codice, in una sede sola.
+#   Brief: brief-db-revisione-ui (giro 5, U34).
+#
+# Perche': «la dashboard accesa con questo codice» stava in due posti, il passo
+#   0 di ui.fn_resolve_dashboard_config e il repository del backend. Due copie
+#   della stessa regola divergono (regola del 2): oggi tutte e due chiedono
+#   attivo = TRUE, ma niente le tiene insieme. Il gemello delle liste,
+#   ui.fn_lista_da_codice, ha la stessa forma: la riga, oppure il rifiuto col
+#   codice nella frase.
+#
+# Il resolver passa di qui da 20261120-59; il backend ci passa con BE17 (chi
+#   vuole «niente» intercetta E_UI_DASHBOARD_NON_TROVATA, come per le liste).
+# Presidio: ui/test-ui-catalogo-dashboard-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-58-create-fn-dashboard-da-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261120-58-create-fn-dashboard-da-codice
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_dashboard_da_codice: la riga della dashboard accesa con questo codice, altrimenti
+        E_UI_DASHBOARD_NON_TROVATA. Brief: brief-db-revisione-ui (giro 5, U34).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_definizione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_dashboard_da_codice(
+                p_dashboard_codice ui.dashboard_definizione.codice%TYPE
+              )
+               RETURNS ui.dashboard_definizione
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la riga della dashboard con questo codice, se esiste ed e' accesa.
+              -- Dashboard assente o spenta: E_UI_DASHBOARD_NON_TROVATA, col codice nella frase.
+              DECLARE
+                v_dashboard ui.dashboard_definizione%ROWTYPE;
+              BEGIN
+                SELECT dd.*
+                  INTO v_dashboard
+                  FROM ui.dashboard_definizione dd
+                 WHERE dd.codice = p_dashboard_codice
+                   AND dd.attivo = TRUE;
+
+                IF NOT FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.fn_dashboard_da_codice',
+                    'E_UI_DASHBOARD_NON_TROVATA',
+                    jsonb_build_object('detail', format('codice dashboard: ''%s''', p_dashboard_codice)),
+                    NULL,
+                    p_dashboard_codice
+                  );
+                END IF;
+
+                RETURN v_dashboard;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_dashboard_da_codice(character varying) IS
+                'La riga di ui.dashboard_definizione con questo codice, se esiste ed e'' accesa; altrimenti '
+                'E_UI_DASHBOARD_NON_TROVATA, col codice nella frase. Building block: sede unica della lettura di una '
+                'dashboard per codice, gemello di ui.fn_lista_da_codice. La usano ui.fn_resolve_dashboard_config e il '
+                'backend; chi vuole «nessuna dashboard» al posto del rifiuto intercetta il codice. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_dashboard_da_codice(character varying);

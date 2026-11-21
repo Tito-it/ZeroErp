@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: data_update delle due preferenze sempre valorizzata, e i COMMENT che
+#   dichiarano le preferenze senza audit. Brief: brief-db-revisione-ui (giro 5,
+#   U36 con Q22, decisa da Tid il 2026-11-19).
+#
+# Perche': Q22 dice che l'assenza dell'audit e' voluta (la preferenza e' un dato
+#   personale, di un solo utente, scritto spesso: chi la scrive e' sempre il suo
+#   proprietario), e che data_update la scrive il DB, non il backend: una sede
+#   sola, come lo snapshot del preset di base. Il trigger che la scrive nasce in
+#   20261120-57. Qui la colonna diventa NOT NULL: dal trigger in poi nessuna
+#   scrittura la lascia vuota.
+#
+# Le righe con data_update NULL (scritte da un INSERT che non la passava)
+#   prendono data_insert: e' l'ultima scrittura che la riga conosce. Il ripieno
+#   gira prima del trigger, che altrimenti scriverebbe l'ora del migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-56-alter-ui-preferenze-data-update-dal-db-mctit.yaml
+
+  - changeSet:
+      id: 20261120-56-alter-ui-preferenze-data-update-dal-db
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: data_update delle due preferenze NOT NULL (ripiena da data_insert), COMMENT di tabella e
+        colonne: senza audit, data_update la scrive il DB. Brief: brief-db-revisione-ui (giro 5, U36, Q22).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preferenza_utente
+        - tableExists:
+            schemaName: ui
+            tableName: dashboard_preferenza_utente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE ui.lista_preferenza_utente
+                 SET data_update = data_insert
+               WHERE data_update IS NULL;
+
+              UPDATE ui.dashboard_preferenza_utente
+                 SET data_update = data_insert
+               WHERE data_update IS NULL;
+
+              ALTER TABLE ui.lista_preferenza_utente     ALTER COLUMN data_update SET NOT NULL;
+              ALTER TABLE ui.dashboard_preferenza_utente ALTER COLUMN data_update SET NOT NULL;
+
+              COMMENT ON TABLE ui.lista_preferenza_utente IS
+                'La personalizzazione di una lista per un utente: una riga per utente e lista. La configurazione '
+                'porta solo le chiavi che l''utente ha scelto (colonne, pagina_dimensione); le altre le dà il preset '
+                'di base (ui.fn_preset_di_base), e ui.fn_resolve_lista_config compone le due. La forma la '
+                'controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e'' un dato personale, scritto '
+                'solo dal suo proprietario e spesso; data_update la scrive il database a ogni scrittura '
+                '(ui.trgfn_preferenza_data_update), e non c''e'' user_update.';
+
+              COMMENT ON TABLE ui.dashboard_preferenza_utente IS
+                'La personalizzazione di una dashboard per un utente: una riga per utente e dashboard. La '
+                'configurazione porta solo le chiavi che l''utente ha scelto (widget, dimensione_max); le altre le '
+                'dà il preset di base (ui.fn_preset_di_base), e ui.fn_resolve_dashboard_config compone le due. La '
+                'forma la controlla ui.trgfn_preferenza_guard_forma. Senza audit, per scelta: e'' un dato '
+                'personale, scritto solo dal suo proprietario e spesso; data_update la scrive il database a ogni '
+                'scrittura (ui.trgfn_preferenza_data_update), e non c''e'' user_update.';
+
+              COMMENT ON COLUMN ui.lista_preferenza_utente.data_insert IS
+                'Quando la preferenza e'' nata.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.data_update IS
+                'L''ultima scrittura della preferenza. La scrive il database (ui.trgfn_preferenza_data_update): '
+                'un valore passato da chi scrive non conta.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.data_insert IS
+                'Quando la preferenza e'' nata.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.data_update IS
+                'L''ultima scrittura della preferenza. La scrive il database (ui.trgfn_preferenza_data_update): '
+                'un valore passato da chi scrive non conta.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.lista_preferenza_utente     ALTER COLUMN data_update DROP NOT NULL;
+              ALTER TABLE ui.dashboard_preferenza_utente ALTER COLUMN data_update DROP NOT NULL;

@@ -147,6 +147,15 @@
 #   terza sede il blocco del provisioning; pgTAP
 #   `db/pgtap/ui/test-misure-pagina-v1.sql`.
 #
+# ── ⭐ IL CATALOGO DELLE DASHBOARD (dal 2026-11-21) ─────────────────────────
+#   Brief: brief-db-revisione-ui, giro 5 (U31)
+#   `ui.dashboard_definizione`, `ui.widget`, `ui.dashboard_widget`,
+#   `ui.dashboard_preset`, `ui.dashboard_preset_widget` entrano in
+#   `v_tabelle_sola_lettura_app`: le possiede il CSV, come `ui.misure_pagina`;
+#   `ui.dashboard_preferenza_utente` resta scrivibile. Forward su dev
+#   `90_end/20261120-60`; terza sede il blocco del provisioning; pgTAP
+#   `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql`.
+#
 # ── ⭐ LA TRACCIA DELLE CREDENZIALI ELIMINATE (dal 2026-10-06) ──────────────
 #   Brief: brief-db-elimina-credenziale-senza-veste, sezione 4.2
 #   `config.credenziali_eliminate` entra in `v_tabelle_sola_lettura_app`: la
@@ -340,7 +349,15 @@ databaseChangeLog:
                   --   Forward 90_end/20261117-21.
                   'dbops.seed_righe',
                   'dbops.porte_manutenzione_passaggi',
-                  'dbops.automazione_seed_primo_impianto'
+                  'dbops.automazione_seed_primo_impianto',
+                  -- ⭐ Dal 2026-11-21 il CATALOGO DELLE DASHBOARD: lo possiede il CSV,
+                  --   come ui.misure_pagina; le preferenze restano scrivibili
+                  --   (brief-db-revisione-ui, giro 5, U31). Forward 90_end/20261120-60.
+                  'ui.dashboard_definizione',
+                  'ui.widget',
+                  'ui.dashboard_widget',
+                  'ui.dashboard_preset',
+                  'ui.dashboard_preset_widget'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

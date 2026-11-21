@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_lista_definizione_guard_dichiarazioni: le dichiarazioni di una lista
+#   le scrive solo il migratore. Sostituisce
+#   ui.trgfn_lista_definizione_guard_multi_emittente.
+#   Brief: brief-db-revisione-ui (giro 4: U23 con Q14 e QU4, Q47).
+#
+# ⚠️ PERCHE'. Il guard di prima copriva solo multi_emittente. Ma
+#   perimetro_emittente portata a false apre la schermata senza chiedere
+#   l'azienda, cioe' lo stesso effetto che il guard impediva; e legge_lineage
+#   (20261120-43) dichiara una capacita' del backend come multi_emittente. Le tre
+#   colonne sono dichiarazioni del software: le scrive il CSV del seed, su ogni
+#   riga, anche quelle create dall'installazione (Q14). Il seed di primo impianto
+#   le tiene gia' sulle righe di seed (E_SEED_COLONNA_DEL_SOFTWARE); questo guard
+#   le tiene su tutte.
+#
+# Che cosa «tocca» una dichiarazione:
+#   INSERT -> il valore differisce da quello che si puo' scrivere senza permesso
+#             (multi_emittente false, perimetro_emittente true, legge_lineage
+#             false: il default della colonna, cioe' la dichiarazione che non
+#             promette niente). Il pericolo di perimetro_emittente e' il false,
+#             quello delle altre due e' il true;
+#   UPDATE -> qualunque cambio di valore.
+#   Scrive solo il proprietario della tabella (script.fn_is_proprietario_tabella).
+#
+# Il nome cambia perche' la funzione non e' piu' di multi_emittente: un nome
+#   che dice una colonna sola mentre il corpo ne giudica tre manda chi cerca a
+#   leggere il posto sbagliato. Si toglie il vecchio trigger (un solo nome
+#   storico, 20260818-17) e poi la vecchia funzione, che nessun altro monta
+#   (pg_trigger, dbdev 2026-11-21). Il codice E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE
+#   si ritira (obsoleto_dal) per E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE, che
+#   nomina la colonna.
+# Lettori del codice vecchio a DB: nessuno, tranne questo guard; i pgTAP
+#   script/test-fn-is-proprietario-tabella-v1 e ui/test-lista-definizione-perimetro-emittente-v1,
+#   riscritti nello stesso giro. Il backend: BE12.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-48-create-trgfn-lista-definizione-guard-dichiarazioni-mctit.yaml
+
+  - changeSet:
+      id: 20261120-48-create-trgfn-lista-definizione-guard-dichiarazioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_lista_definizione_guard_dichiarazioni: multi_emittente, perimetro_emittente e
+        legge_lineage solo dal migratore. Brief: brief-db-revisione-ui (giro 4, U23, Q47).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('ui.lista_definizione')
+                 AND attname = 'legge_lineage' AND attnum > 0 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.trgfn_lista_definizione_guard_dichiarazioni()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: le dichiarazioni di una lista (multi_emittente,
+              -- perimetro_emittente, legge_lineage) le scrive solo il proprietario
+              -- della tabella, cioe' il migrate dal CSV del seed.
+              -- Ogni riga: colonna, valore nuovo, valore di confronto. Il confronto
+              -- e' il valore precedente in UPDATE, quello ammesso senza permesso in
+              -- INSERT.
+              DECLARE
+                v_colonna text;
+              BEGIN
+                SELECT d.colonna
+                  INTO v_colonna
+                  FROM (VALUES
+                          (1, 'multi_emittente', NEW.multi_emittente,
+                           CASE WHEN TG_OP = 'INSERT' THEN false ELSE OLD.multi_emittente END),
+                          (2, 'perimetro_emittente', NEW.perimetro_emittente,
+                           CASE WHEN TG_OP = 'INSERT' THEN true ELSE OLD.perimetro_emittente END),
+                          (3, 'legge_lineage', NEW.legge_lineage,
+                           CASE WHEN TG_OP = 'INSERT' THEN false ELSE OLD.legge_lineage END)
+                       ) AS d(ordine, colonna, nuovo, confronto)
+                 WHERE d.nuovo IS DISTINCT FROM d.confronto
+                 ORDER BY d.ordine
+                 LIMIT 1;
+
+                IF v_colonna IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- La regola «chi e' il proprietario» ha una sede sola, il BB.
+                IF script.fn_is_proprietario_tabella(TG_RELID) THEN
+                  RETURN NEW;
+                END IF;
+
+                PERFORM script.fn_log_and_raise_error(
+                  'database',
+                  'ui.trgfn_lista_definizione_guard_dichiarazioni',
+                  'E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE',
+                  jsonb_build_object(
+                    'campo', v_colonna,
+                    'lista_id', NEW.id,
+                    'lista_codice', NEW.codice,
+                    'current_user', current_user
+                  ),
+                  NULL::uuid,
+                  v_colonna,
+                  NEW.codice::text
+                );
+
+                RETURN NEW;  -- irraggiungibile: la riga sopra solleva
+              END;
+              $function$;
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd ON ui.lista_definizione;
+
+              CREATE TRIGGER trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd
+                  BEFORE INSERT OR UPDATE OF multi_emittente, perimetro_emittente, legge_lineage
+                  ON ui.lista_definizione
+                  FOR EACH ROW EXECUTE FUNCTION ui.trgfn_lista_definizione_guard_dichiarazioni();
+
+              DROP FUNCTION IF EXISTS ui.trgfn_lista_definizione_guard_multi_emittente();
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.trgfn_lista_definizione_guard_dichiarazioni() IS
+                  'Guard BEFORE INSERT OR UPDATE OF multi_emittente, perimetro_emittente, legge_lineage su ui.lista_definizione: le tre dichiarazioni della lista le scrive solo il proprietario della tabella (script.fn_is_proprietario_tabella), cioè il migrate dal CSV del seed, su ogni riga. In INSERT passa il valore che non promette niente (multi_emittente false, perimetro_emittente true, legge_lineage false); in UPDATE ogni cambio di valore da un altro ruolo è rifiutato con E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE, che nomina la colonna.';
+
+              -- Il COMMENT del BB nominava il guard ritirato fra i consumatori, e un
+              -- elenco che non teneva gli altri: si riscrive al presente, senza
+              -- elenco (i consumatori si leggono da pg_proc).
+              COMMENT ON FUNCTION script.fn_is_proprietario_tabella(regclass) IS
+                  'Check pura (non solleva): true se chi esegue l''istruzione (current_user) è il proprietario della tabella o ne ha i privilegi (pg_has_role USAGE: anche un superuser). Il proprietario si legge da pg_class, non si scrive a mano. È il modo in cui un guard riconosce di essere attraversato dal migrate o da un verbo SECURITY DEFINER, e non da una scrittura diretta dell''applicazione. Tabella NULL o inesistente: false (fail-closed). SECURITY INVOKER per costruzione: una DEFINER vedrebbe il proprio proprietario e direbbe sì a chiunque. Un trigger passa TG_RELID.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La funzione di prima (20260925-39) si ripristina con un changeSet
+              -- nuovo, dalla doc auto-generata.
+              DROP TRIGGER IF EXISTS trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd ON ui.lista_definizione;
+              DROP FUNCTION IF EXISTS ui.trgfn_lista_definizione_guard_dichiarazioni();

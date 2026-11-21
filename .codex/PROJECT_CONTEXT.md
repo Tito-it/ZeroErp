@@ -218,7 +218,10 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
+  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): riverificato il 2026-11-21 (§3-bis) e
+  decisioni prese lo stesso giorno (D-M1 C in due lotti, D-M2 nascita sul BB `fn_crea_*` e modifica per delta, D-M4
+  colonne ammesse a DB col gesto, D-M5 verbi comuni dei documenti interni, D-M6 guard di perimetro sulle tabelle). Ora
+  il via di Tid al Lotto 1 (§4), poi il team DB.
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
@@ -257,10 +260,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 - 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q43 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
-  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) il 2026-11-21.
-  Giro 3 (le misure, `20261120-36` … `-42`) scritto e provato il 2026-11-21: ora l'apply di Tid. Il BE/FE con le ricadute
-  del giro 2 (§3.2-bis); al DB il `/verifica-db` dei giri 1a, 2 e 3, poi i giri 4-6.
+  decisioni Q1-Q49 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
+  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) e giro 3 (le misure,
+  `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
+  verdi e committato il 2026-11-21. Giro 5 (il catalogo delle dashboard, `20261120-53` … `-62`, Q49 e Q50 (a): il
+  «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
+  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6;
+  al BE/FE le ricadute dei giri 2, 3, 4 e 5 (§3.2-bis, §3.3-bis, §3.4-bis, §3.5-bis).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

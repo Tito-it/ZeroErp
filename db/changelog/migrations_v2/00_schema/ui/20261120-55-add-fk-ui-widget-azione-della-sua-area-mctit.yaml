@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.widget: se il widget dichiara un'azione, l'area e' nulla oppure quella
+#   dell'azione. Brief: brief-db-revisione-ui (giro 5, U33 con Q21, decisa da
+#   Tid il 2026-11-19).
+#
+# Perche': un'azione appartiene a un'area (config.azioni_processo.area_id, NOT
+#   NULL). Un widget con area e azione di due aree diverse dice due cose sul
+#   permesso che lo mostra, e il resolver le applica tutte e due.
+#
+# Lo strumento e' una FK composita, non un trigger: (azione_id, area_id) del
+#   widget verso (id, area_id) dell'azione, MATCH SIMPLE. Con area_id o
+#   azione_id nullo la FK non si controlla: e' la versione tollerante di Q21
+#   («nulla oppure quella dell'azione»). Con tutti e due valorizzati l'area deve
+#   essere quella dell'azione. La FK tiene anche l'altro verso: un'azione non
+#   cambia area finche' un widget la cita con l'area (NO ACTION).
+#   Il bersaglio chiede un UNIQUE (id, area_id) su config.azioni_processo:
+#   ridondante come unicita' (id e' la PK), necessario come destinazione della
+#   FK. Le FK semplici del widget verso area e azione restano: le legge il motore
+#   ATTIVO, che lavora sulle FK di una colonna sola.
+#
+# Nessun codice d'errore dedicato: dal giro 5 il catalogo dei widget lo scrive
+#   solo l'owner, con un changeSet (U31); la violazione la legge chi scrive il
+#   seed, col nome del vincolo. La FK nuova e' censita in
+#   dbops/fk_index_policy.csv (SENZA_INDICE: ix_ui_widget_azione_id la copre).
+# Presidio: ui/test-ui-catalogo-dashboard-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-55-add-fk-ui-widget-azione-della-sua-area-mctit.yaml
+
+  - changeSet:
+      id: 20261120-55-add-fk-ui-widget-azione-della-sua-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.widget: l'area e' nulla oppure quella dell'azione (FK composita verso
+        config.azioni_processo (id, area_id)). Brief: brief-db-revisione-ui (giro 5, U33, Q21).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: widget
+        - tableExists:
+            schemaName: config
+            tableName: azioni_processo
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.azioni_processo
+                ADD CONSTRAINT uq_azioni_processo_id_area UNIQUE (id, area_id);
+
+              COMMENT ON CONSTRAINT uq_azioni_processo_id_area ON config.azioni_processo IS
+                'Bersaglio della FK composita fk_ui_widget_azione_della_sua_area: l''area di un widget che '
+                'dichiara un''azione e'' quella dell''azione. Come unicita'' ripete la PK.';
+
+              ALTER TABLE ui.widget
+                ADD CONSTRAINT fk_ui_widget_azione_della_sua_area
+                FOREIGN KEY (azione_id, area_id)
+                REFERENCES config.azioni_processo (id, area_id)
+                MATCH SIMPLE;
+
+              COMMENT ON CONSTRAINT fk_ui_widget_azione_della_sua_area ON ui.widget IS
+                'Se il widget dichiara un''azione e un''area, l''area e'' quella dell''azione; con una delle '
+                'due nulla non si controlla (MATCH SIMPLE). Tiene anche l''altro verso: l''azione non cambia '
+                'area finche'' un widget la cita con l''area.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE ui.widget DROP CONSTRAINT IF EXISTS fk_ui_widget_azione_della_sua_area;
+              ALTER TABLE config.azioni_processo DROP CONSTRAINT IF EXISTS uq_azioni_processo_id_area;

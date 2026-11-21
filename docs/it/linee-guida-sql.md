@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -69,6 +69,7 @@ Uniformità e chiarezza nel codice DDL:
 | **Schema**        | minuscolo, plurale                 | `anagrafiche`, `config`, `dbops`      |
 | **Tabella**       | nome plurale, snake_case           | `soggetti`, `gestori_utilities_ruoli` |
 | **Colonna PK**    | `id`                               | `id UUID`, `id SERIAL`                |
+| **Colonna FK**    | `<cosa>_id` se porta un id (§2)    | `articolo_id`, `magazzino_da_id`      |
 | **Sequenza**      | `<table>_id_seq`                   | `storico.comuni_id_seq`               |
 | **Indice**        | `ix_<table>_<column>`              | `ix_contatti_soggetto`                |
 | **Vista**         | prefisso `vw_`                     | `vw_clienti_attivi`                   |
@@ -106,6 +107,34 @@ della rinomina li rinomina tutti (`RENAME CONSTRAINT`, `ALTER SEQUENCE … RENAM
 `plpgsql`.** Il trigger si ricrea senza la colonna in un changeSet con numero inferiore a quello
 del `DROP`, e i corpi che la nominano si riscrivono prima: un riferimento morto in un corpo non
 ferma il `DROP`, e fallisce alla prima chiamata.
+
+### ⛔ La colonna FK dice che cosa porta: `_id` se e solo se porta un id
+
+**Regola (decisione di Tid del 2026-11-21): il nome di una colonna FK finisce in `_id` se e solo se
+la colonna del padre a cui punta porta un id** (`id`, o una colonna che a sua volta finisce in
+`_id`). Vale nei due versi:
+
+* una FK verso un id si chiama `<cosa>_id`, col suffisso **in fondo**. Il nome dice che cosa è il padre,
+  al singolare o col suo ruolo: `articolo_id`, `magazzino_da_id`, `emittente_soggetto_ruolo_id`.
+  ❌ `id_lingua`, `magazzino_id_from`, `categoria_cliente_id_snapshot`: il suffisso va in fondo, e la
+  variante sta prima (`categoria_cliente_snapshot_id`);
+* una FK verso un codice (`codice_interno`, `codice`, una chiave naturale) **non** finisce in `_id`:
+  si chiama come la cosa che porta (`esito`, `causale_magazzino`, `regime_fiscale_rf`). ❌ `lingua_id`
+  verso `config.lingue.codice_iso`: il suffisso direbbe un id, e la colonna porta un codice.
+
+Il criterio è la colonna **referenziata**, non la PK del padre: `emittente_soggetto_ruolo_id` punta
+alla UNIQUE `anagrafiche.emittenti_fiscali.soggetto_ruolo_id`, che non è la PK ma porta un id, e il
+nome dice il vero.
+
+Il motivo sta nel modello: il nome di una colonna è il suo contratto per chi legge. Un `_id` che porta un
+codice, o un id nascosto in mezzo al nome, fa sbagliare il join e il tipo a chi legge, e fa sbagliare gli
+strumenti che leggono i nomi.
+
+**I nomi storici restano** (decisione di Tid del 2026-11-21): la regola vale per le FK nuove, e le FK di
+oggi fuori regola non si rinominano, perché il rinomino costa al backend e al frontend. Le FK storiche
+stanno in un elenco congelato, ciascuna col suo motivo; una FK nuova fuori regola non ci entra.
+⏳ Il presidio, un pgTAP strutturale che confronta ogni FK con l'elenco, non c'è ancora: fino ad allora
+la regola la fa rispettare la revisione.
 
 ### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
 
@@ -161,7 +190,8 @@ lo riceverà in questa forma (D8 del documento di valutazione).
 ## 4. Eccezioni e Alternative
 
 * **UUID vs SERIAL**: usare UUID quando serve unicità globale o sharding; SERIAL su tabelle di log e storicizzazione.
-* **Foreign Key con composti**: preferire surrogate key (`id`) e colonne FK (`<table>_id`) piuttosto che chiavi composte.
+* **Foreign Key con composti**: preferire surrogate key (`id`) a chiavi composte. Il nome della colonna FK non è
+  una preferenza: è la regola di §2, «La colonna FK dice che cosa porta».
 * **Campi tecnici**: evitare prefissi in `dbops`; usare solo `vw_...` e `fn_...` per uniformità
 
 ---

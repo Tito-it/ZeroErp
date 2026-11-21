@@ -106,8 +106,10 @@ FK verso lista e preset sono in eccezione alla regola ATTIVO, così una lista o 
 qualcuno si spengono lo stesso. La preferenza di una lista spenta resta, e torna a valere se la
 lista si riaccende.
 
-Le date: `data_insert` ha il default, `data_update` la scrive il servizio a ogni salvataggio; non
-c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
+Le date: `data_insert` ha il default, `data_update` la scrive il database a ogni INSERT e UPDATE
+([trgfn_preferenza_data_update](/dbzero/ui/funzioni/trgfn_preferenza_data_update)); il valore mandato da
+chi scrive non conta. **Senza audit, per scelta:** la preferenza è un dato personale, scritto solo
+dall'utente della riga e spesso, e non ha `user_insert` né `user_update`.
 
 ---
 
@@ -179,6 +181,8 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 * 2026-11-21 — il preset di base è legato alla lista della riga da un vincolo composto; le preferenze
   con la base di un'altra lista sono tornate senza base. Prima il resolver la trattava come una base che
   non è quella di oggi.
+* 2026-11-21 — `data_update` la scrive il database, ed è sempre valorizzata: le righe senza hanno preso
+  `data_insert`.
 
 ---
 

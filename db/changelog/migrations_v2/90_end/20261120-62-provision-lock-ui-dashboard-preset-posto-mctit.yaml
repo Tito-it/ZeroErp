@@ -1,0 +1,62 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: il lucchetto del posto di ui.dashboard_preset si rimonta dopo il cambio di
+#   tipo di emittente_fiscale_id. Brief: brief-db-revisione-ui (giro 5, U35).
+#
+# ⚠️ PERCHE'. 20261120-53 ha tolto trg_dashboard_preset_a10_lock_columns_upd
+#   (UPDATE OF emittente_fiscale_id bloccava l'ALTER TYPE). Il registro
+#   (dbops.automation_lock_columns, le quattro righe del posto del preset,
+#   codice E_UI_PRESET_POSTO_IMMUTABILE) non cambia: qui il runner dei lucchetti
+#   su ui lo rimonta subito, come in 20261120-52. Su un database da zero lo monta
+#   il giro delle automazioni.
+# Presidio: ui/test-ui-catalogo-dashboard-v1 (il posto del preset resta
+#   immutabile) e ui/test-ui-legami-preset-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261120-62-provision-lock-ui-dashboard-preset-posto-mctit.yaml
+
+  - changeSet:
+      id: 20261120-62-provision-lock-ui-dashboard-preset-posto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Rimonta il lucchetto del posto di ui.dashboard_preset chiamando il runner dei lock sullo
+        schema ui. Brief: brief-db-revisione-ui (giro 5, U35).
+      preConditions:
+        - onFail: HALT
+        # Le righe del registro devono esserci ed essere accese: senza, il runner
+        # non crea niente e il changeSet sarebbe un verde a vuoto.
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT count(*) FROM dbops.automation_lock_columns
+               WHERE enabled IS TRUE
+                 AND upper(btrim(exec_mode)) = 'AUTO'
+                 AND target_schema = 'ui'
+                 AND target_table = 'dashboard_preset'
+                 AND column_name IN ('dashboard_id', 'ambito', 'profilo_accesso_id', 'emittente_fiscale_id')
+                 AND error_code = 'E_UI_PRESET_POSTO_IMMUTABILE';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['ui'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spengono le
+              -- righe di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

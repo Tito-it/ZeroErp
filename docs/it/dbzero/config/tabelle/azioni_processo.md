@@ -30,6 +30,7 @@
 | CHECK | chk_azioni_processo_livello_minimo_area |  |
 | FOREIGN KEY | fk_azioni_processo_aree_funzionali | area_id |
 | PRIMARY KEY | pk_azioni_processo | id |
+| UNIQUE | uq_azioni_processo_id_area | id, area_id |
 | UNIQUE | uq_azioni_processo_permission_codename | permission_codename |
 
 ## 📑 Indici
@@ -37,6 +38,7 @@
 |------|-------------|
 | ix_azioni_processo_area_id | `CREATE INDEX ix_azioni_processo_area_id ON config.azioni_processo USING btree (area_id)` |
 | pk_azioni_processo | `CREATE UNIQUE INDEX pk_azioni_processo ON config.azioni_processo USING btree (id)` |
+| uq_azioni_processo_id_area | `CREATE UNIQUE INDEX uq_azioni_processo_id_area ON config.azioni_processo USING btree (id, area_id)` |
 | uq_azioni_processo_permission_codename | `CREATE UNIQUE INDEX uq_azioni_processo_permission_codename ON config.azioni_processo USING btree (permission_codename)` |
 
 ## 🚨 Trigger

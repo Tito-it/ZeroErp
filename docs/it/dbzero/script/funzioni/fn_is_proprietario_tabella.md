@@ -28,7 +28,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION script.fn_is_proprietario_tabella(p_tabella regclass)
-IS 'Check pura (non solleva): true se chi esegue l''istruzione (current_user) e'' il proprietario della tabella o ne ha i privilegi (pg_has_role USAGE: anche un superuser). Il proprietario si legge da pg_class, non si scrive a mano. E'' il modo in cui un guard riconosce di essere attraversato da un verbo SECURITY DEFINER (modello «una scrittura = un verbo», brief-db-permesso-nel-verbo-di-scrittura) e non da una scrittura diretta dell''applicazione. Tabella NULL o inesistente -> false (fail-closed). SECURITY INVOKER per costruzione: una DEFINER vedrebbe il proprio proprietario e direbbe si'' a chiunque. Un trigger passa TG_RELID. Consumatori: i due guard dei documenti interni di magazzino (porta POSTED, righe in CONFIRM) e ui.trgfn_lista_definizione_guard_multi_emittente. Brief: brief-db-magazzino-verbi-con-permesso, D-V1 / P-7.';
+IS 'Check pura (non solleva): true se chi esegue l''istruzione (current_user) è il proprietario della tabella o ne ha i privilegi (pg_has_role USAGE: anche un superuser). Il proprietario si legge da pg_class, non si scrive a mano. È il modo in cui un guard riconosce di essere attraversato dal migrate o da un verbo SECURITY DEFINER, e non da una scrittura diretta dell''applicazione. Tabella NULL o inesistente: false (fail-closed). SECURITY INVOKER per costruzione: una DEFINER vedrebbe il proprio proprietario e direbbe sì a chiunque. Un trigger passa TG_RELID.';
 ```
 
 </div>

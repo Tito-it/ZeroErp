@@ -60,13 +60,17 @@ La riga non ha `attivo`, e le due FK sono in eccezione alla regola ATTIVO: un wi
 lo stesso, e una dashboard non si ferma sul suo pool. Spegnere il widget lo toglie dalla dashboard alla
 risoluzione. Un widget nel pool non si cancella (FK senza azione), e nemmeno la dashboard.
 
+### Lo scrive solo il migratore
+
+La tabella la possiede il CSV del seed, come il resto del catalogo delle dashboard: l'applicazione la legge
+e non la scrive (ha il solo `SELECT`).
+
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
 * **L'ordine di default può essere uguale per due widget.** Nessun vincolo lo impedisce, e l'ordine fra i
   due non è determinato.
-* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
 
@@ -92,6 +96,7 @@ risoluzione. Un widget nel pool non si cancella (FK senza azione), e nemmeno la 
 * 2026-11-08 — le due FK entrano in eccezione alla regola ATTIVO.
 * 2026-11-21 — un widget proposto da un preset non esce più dal pool: prima il preset continuava a
   nominarlo.
+* 2026-11-21 — l'applicazione perde la scrittura: il pool lo scrive solo il migratore.
 
 ---
 
