@@ -26,7 +26,6 @@ const props = defineProps({
   // si usa anche dove gli accessi web non si applicano).
   entitaTipoWeb: { type: String, default: null },
   entitaIdWeb: { type: [Number, String], default: null },
-  emailInizialeWeb: { type: String, default: '' },
   // Anteprima di creazione: il drawer si apre in sola lettura.
   preview: { type: Boolean, default: false },
 })
@@ -70,7 +69,6 @@ watch(() => [props.entitaTipoWeb, props.entitaIdWeb], caricaConteggio, { immedia
       @update:visible="v => { drawerVisible = v; if (!v) caricaConteggio() }"
       :entita-tipo="entitaTipoWeb"
       :entita-id="entitaIdWeb"
-      :email-iniziale="emailInizialeWeb"
       :readonly="preview"
     />
   </template>

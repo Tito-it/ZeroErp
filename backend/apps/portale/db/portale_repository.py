@@ -18,8 +18,41 @@ from django.db import connection
 from apps.core.db._helpers import row_to_dict
 
 
+# Il tipo di contatto che vince nell'email suggerita dell'invito: per codice
+# (config.tipi_contatti.codice), mai per id.
+TIPO_CONTATTO_PRINCIPALE = "PRINCIPALE"
+
+
 class PortaleRepository:
     """Accesso DB per invito portale + creazione identita portale."""
+
+    # Scopo: L'email da proporre nell'invito al portale, presa dai contatti
+    #        del ruolo. I candidati li sceglie il BB del DB
+    #        `script.fn_get_contatti` (un contatto per tipo: ruolo+istanza,
+    #        poi ruolo, poi soggetto; a parita' `is_default`); qui si sceglie
+    #        tra i tipi: prima il contatto PRINCIPALE, poi quello marcato
+    #        `is_default`. Nessuno dei due, o senza email: None.
+    # ⚠️ Un contatto di un altro tipo, non di default, NON si propone (scelta
+    #    di Tid del 2026-11-21): l'operatore scrive l'email.
+    def get_email_contatto_suggerita(
+        self, soggetto_id: str, soggetto_ruolo_id: int,
+    ) -> str | None:
+        sql = """
+            SELECT NULLIF(btrim(c.email), '')
+              FROM script.fn_get_contatti(%s::uuid, %s::bigint) c
+              LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id
+             WHERE NULLIF(btrim(c.email), '') IS NOT NULL
+               AND (tc.codice = %s OR c.is_default)
+             ORDER BY (tc.codice = %s) DESC NULLS LAST, c.is_default DESC, c.id
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                str(soggetto_id), soggetto_ruolo_id,
+                TIPO_CONTATTO_PRINCIPALE, TIPO_CONTATTO_PRINCIPALE,
+            ])
+            row = cursor.fetchone()
+        return row[0] if row else None
 
     # Scopo: Risolve soggetto_ruolo_id + dati anagrafici di un cliente.
     # Il parametro e' cliente_id = PK di anagrafiche.clienti (coerente con
@@ -60,8 +93,7 @@ class PortaleRepository:
                    s.ragione_sociale_completa   AS ragione_sociale,
                    s.cognome                    AS cognome,
                    s.nome                       AS nome,
-                   s.codice_fiscale             AS codice_fiscale,
-                   f.pec_email                  AS pec_email
+                   s.codice_fiscale             AS codice_fiscale
               FROM anagrafiche.fornitori f
               JOIN anagrafiche.soggetti_ruoli sr ON sr.id = f.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s        ON s.id = sr.soggetto_id

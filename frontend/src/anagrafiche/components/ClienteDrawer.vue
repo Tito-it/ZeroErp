@@ -581,8 +581,7 @@ const eventoStatoDetail = computed(() => {
         :soggetto-ruolo-id="detail.soggetto_ruolo_id"
         :istanza-utility-id="detail.istanza_utility_id"
         entita-tipo-web="cliente"
-        :entita-id-web="props.clienteId"
-        :email-iniziale-web="detail?.soggetto_email || ''" />
+        :entita-id-web="props.clienteId" />
     </template>
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->

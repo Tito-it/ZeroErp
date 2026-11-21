@@ -22,6 +22,7 @@ Indice test eseguiti:
  8) test_update_fornitore_ok — aggiorna campi editabili
  9) test_update_fornitore_not_found — id inesistente → E_ANAG_NOT_FOUND
  9b) test_update_fornitore_vuoto_e_400 — PATCH vuoto su fornitore esistente → 400, non 404 (2026-10-14)
+ 9c) test_update_fornitore_campi_del_soggetto_sono_400 — i doppioni usciti il 2026-11-21 → 400, nessuna scrittura
 """
 
 from unittest import TestCase
@@ -50,10 +51,8 @@ def _fornitore_detail():
         "valuta_id": 1, "valuta_iso": "EUR",
         "modalita_pagamento_id": None, "modalita_pagamento_descrizione": None,
         "termine_pagamento_id": None, "termine_pagamento_descrizione": None,
-        "giorni_pagamento": 30, "fine_mese": True,
-        "split_payment": False, "ritenuta_acconto": False,
+        "ritenuta_acconto": False,
         "ritenuta_aliquota": None, "regime_fiscale": "RF01",
-        "bollo_esente": False, "canale_fe": "0000000", "pec_email": "acme@pec.it",
         "rating": 80, "qualifica_scadenza": None,
         "stato_codice_interno": "AT", "stato_codice": "AT", "stato_descrizione": "Attivo", "blocca_ordini": False,
         "note": None, "data_insert": "2026-01-01", "data_update": "2026-01-01",
@@ -124,7 +123,6 @@ class TestFornitoriCreazione(TestCase):
         payload = _base_payload(
             valuta_id=1, modalita_pagamento_id=3,
             ritenuta_acconto=True, ritenuta_aliquota=20.0,
-            canale_fe="0000000", pec_email="test@pec.it",
         )
         result = FornitoriService().crea_fornitore(payload)
         self.assertEqual(result["id"], 2)
@@ -231,6 +229,25 @@ class TestFornitoriUpdate(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             FornitoriService().update_fornitore(1, {})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.update_fornitore.assert_not_called()
+
+    @patch(FORN_REPO, autospec=True)
+    def test_update_fornitore_campi_del_soggetto_sono_400(self, mock_repo):
+        """⛔ I doppioni del soggetto usciti dal fornitore il 2026-11-21
+        (split payment, canale FE, PEC, bollo; giorni e fine mese stanno nel
+        termine): un PATCH che li porta e' un 400, mai una scrittura sulla
+        colonna rimasta a DB."""
+        mock_repo.return_value.get_fornitore.return_value = _fornitore_detail()
+        from apps.anagrafiche.services.fornitori_service import FornitoriService
+        for campo, valore in (
+            ("giorni_pagamento", 30), ("fine_mese", True),
+            ("split_payment", True), ("bollo_esente", True),
+            ("canale_fe", "0000000"), ("pec_email", "x@pec.it"),
+        ):
+            with self.subTest(campo=campo):
+                with self.assertRaises(ServiceError) as ctx:
+                    FornitoriService().update_fornitore(1, {campo: valore})
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.update_fornitore.assert_not_called()
 
 
