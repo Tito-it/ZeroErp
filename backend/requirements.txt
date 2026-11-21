@@ -112,7 +112,7 @@ pyotp==2.12.1
     # via -r ../requirements.in
 pyphen==0.18.1
     # via weasyprint
-pyyaml==6.0.3
+pyyaml==6.0.4
     # via drf-spectacular
 redis==8.1.0
     # via
