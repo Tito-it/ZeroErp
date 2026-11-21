@@ -89,6 +89,17 @@ def _articolo_write_fields(*, for_create: bool) -> dict[str, serializers.Field]:
         "is_solo_componente": serializers.BooleanField(required=False),
         "requires_serial": serializers.BooleanField(required=False),
         "requires_lotto": serializers.BooleanField(required=False),
+        "listino_tipologia_id": serializers.IntegerField(required=False, allow_null=True),
+        # NOT NULL a DB con default (MERCE / ACQUISTO): si omette, mai null esplicito.
+        "natura_vendita_id": serializers.IntegerField(required=False),
+        "modo_approvvigionamento_id": serializers.IntegerField(required=False),
+        "gestito_a_magazzino": serializers.BooleanField(required=False),
+        # Nullable per modello: NULL = «non si applica», `0` no.
+        "lead_time_giorni": serializers.IntegerField(required=False, allow_null=True, min_value=0),
+        # Il ritiro: NULL = si sceglie, una data futura = ritiro programmato.
+        "obsoleto_dal": serializers.DateField(required=False, allow_null=True),
+        # NULL = merce, un id fa dell'articolo un onere (legame 1:1 con la causale).
+        "causale_onere_id": serializers.IntegerField(required=False, allow_null=True),
         "meta": serializers.JSONField(required=False, allow_null=True),
     }
     if for_create:
@@ -129,6 +140,9 @@ def _componente_write_fields() -> dict[str, serializers.Field]:
         "componente_id": serializers.UUIDField(required=True),
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
         "obbligatorio": serializers.BooleanField(required=False),
+        # Codice di `config.esposizioni_componente` (NASCOSTO / DESCRITTIVO /
+        # VALORIZZATO): lo giudica la FK. Mai null: si omette per il default.
+        "esposizione_in_fattura": serializers.CharField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),
         "attivo": serializers.BooleanField(required=False),
