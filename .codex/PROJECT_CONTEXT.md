@@ -218,7 +218,10 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
+  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): riverificato il 2026-11-21 (§3-bis) e
+  decisioni prese lo stesso giorno (D-M1 C in due lotti, D-M2 nascita sul BB `fn_crea_*` e modifica per delta, D-M4
+  colonne ammesse a DB col gesto, D-M5 verbi comuni dei documenti interni, D-M6 guard di perimetro sulle tabelle). Ora
+  il via di Tid al Lotto 1 (§4), poi il team DB.
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
