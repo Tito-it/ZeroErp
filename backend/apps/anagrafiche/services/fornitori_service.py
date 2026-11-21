@@ -147,9 +147,9 @@ class FornitoriService:
         return extract_optional_fields(
             payload,
             ints=("valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-                  "giorni_pagamento", "rating"),
-            bools=("fine_mese", "split_payment", "ritenuta_acconto", "bollo_esente"),
-            strings=("codice", "regime_fiscale", "canale_fe", "pec_email", "note"),
+                  "rating"),
+            bools=("ritenuta_acconto",),
+            strings=("codice", "regime_fiscale", "note"),
             numeric=("ritenuta_aliquota",),
             dates=("qualifica_scadenza",),
         )

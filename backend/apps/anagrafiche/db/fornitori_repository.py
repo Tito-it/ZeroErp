@@ -59,10 +59,8 @@ _RICERCA_FORNITORI = RicercaFull(
 FORNITORE_UPDATE_ALLOWED: frozenset[str] = frozenset({
     "stato_fornitore_id", "attivo",
     "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-    "giorni_pagamento", "fine_mese",
-    "split_payment", "ritenuta_acconto", "ritenuta_aliquota",
-    "regime_fiscale", "bollo_esente",
-    "canale_fe", "pec_email",
+    "ritenuta_acconto", "ritenuta_aliquota",
+    "regime_fiscale",
     "rating", "qualifica_scadenza",
     "note",
 })
@@ -150,13 +148,19 @@ class FornitoriRepository:
                    v.modalita_pagamento_codice,
                    v.modalita_pagamento_desc,
                    v.termine_pagamento_codice,
-                   v.giorni_pagamento,
-                   v.fine_mese,
-                   v.split_payment,
                    v.ritenuta_acconto,
                    v.regime_fiscale,
                    v.rating,
                    v.qualifica_scadenza,
+                   -- ⚠️ Doppioni del soggetto (soggetti.split_payment,
+                   --    dati_societari) usciti da form e dettaglio il
+                   --    2026-11-21: restano qui SOLO finche' la lista
+                   --    `anagrafiche.fornitori` di ui.lista_colonna li espone
+                   --    (codici pec_email, canale_fe, split_payment). Mostrano
+                   --    il valore del fornitore, non piu' modificabile, non
+                   --    quello del soggetto: richiesta al DB in
+                   --    brief-db-fornitore-doppioni-del-soggetto.md.
+                   v.split_payment,
                    v.canale_fe,
                    v.pec_email,
                    v.data_insert,
@@ -191,17 +195,10 @@ class FornitoriRepository:
                    mp.descrizione         AS modalita_pagamento_descrizione,
                    f.termine_pagamento_id,
                    tp.descrizione         AS termine_pagamento_descrizione,
-                   f.giorni_pagamento,
-                   f.fine_mese,
                    -- Fiscale
-                   f.split_payment,
                    f.ritenuta_acconto,
                    f.ritenuta_aliquota,
                    f.regime_fiscale,
-                   f.bollo_esente,
-                   -- FE/SDI
-                   f.canale_fe,
-                   f.pec_email,
                    -- Rating
                    f.rating,
                    f.qualifica_scadenza,
@@ -246,8 +243,8 @@ class FornitoriRepository:
 
     _UPDATE_NULLABLE = {
         "valuta_id", "modalita_pagamento_id", "termine_pagamento_id",
-        "giorni_pagamento", "ritenuta_aliquota",
-        "regime_fiscale", "canale_fe", "pec_email",
+        "ritenuta_aliquota",
+        "regime_fiscale",
         "rating", "qualifica_scadenza", "note",
     }
 

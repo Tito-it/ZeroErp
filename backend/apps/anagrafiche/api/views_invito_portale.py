@@ -191,6 +191,11 @@ class ClientiStatoAccessiView(DomainAPIView):
 
     @extend_schema(
         summary="Stato accessi portale + shop del cliente",
+        description=(
+            "`portale` e `shop`: lo stato di ciascuna veste. `email_suggerita`: "
+            "l'email da proporre nell'invito (l'identita' esistente, poi il "
+            "contatto PRINCIPALE del ruolo, poi quello di default), o null."
+        ),
         responses={200: inline_serializer(
             name="ClienteStatoAccessiResp",
             fields={"data": serializers.DictField()},
@@ -209,6 +214,11 @@ class FornitoriStatoAccessiView(DomainAPIView):
 
     @extend_schema(
         summary="Stato accesso portale del fornitore",
+        description=(
+            "`portale`: lo stato della veste. `email_suggerita`: l'email da "
+            "proporre nell'invito (l'identita' esistente, poi il contatto "
+            "PRINCIPALE del ruolo, poi quello di default), o null."
+        ),
         responses={200: inline_serializer(
             name="FornitoreStatoAccessiResp",
             fields={"data": serializers.DictField()},

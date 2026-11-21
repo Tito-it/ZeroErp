@@ -183,8 +183,9 @@ a Contatti / Indirizzi / Conti.
       cross-feature, non blocker).
 - [ ] 1.6.7 **Riuso da lista** — il `WebAccessiDrawer` e' gia' pronto
       per essere invocato da `ClientiListView` / `FornitoriListView`
-      via row-action menu (passa `entitaTipo` + `entitaId` +
-      `emailIniziale`, zero dipendenze dal drawer padre). Da integrare
+      via row-action menu (passa `entitaTipo` + `entitaId`, zero
+      dipendenze dal drawer padre: l'email dell'invito la propone il BE
+      con lo stato, `email_suggerita`, dal 2026-11-21). Da integrare
       nei row-action delle due liste per consentire gestione accessi
       senza aprire il drawer completo.
 

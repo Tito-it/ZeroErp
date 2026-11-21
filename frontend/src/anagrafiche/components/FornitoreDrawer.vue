@@ -80,10 +80,8 @@ function defaultForm() {
   return {
     codice: null,
     valuta_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
-    giorni_pagamento: null, fine_mese: false,
-    split_payment: false, ritenuta_acconto: false, ritenuta_aliquota: null,
-    regime_fiscale: null, bollo_esente: false,
-    canale_fe: null, pec_email: null,
+    ritenuta_acconto: false, ritenuta_aliquota: null,
+    regime_fiscale: null,
     rating: null, qualifica_scadenza: null,
     note: null, stato_fornitore_id: null
   }
@@ -104,15 +102,9 @@ function populateFormFromDetail(d) {
     valuta_id: d.valuta_id,
     modalita_pagamento_id: d.modalita_pagamento_id,
     termine_pagamento_id: d.termine_pagamento_id,
-    giorni_pagamento: d.giorni_pagamento,
-    fine_mese: d.fine_mese ?? false,
-    split_payment: d.split_payment ?? false,
     ritenuta_acconto: d.ritenuta_acconto ?? false,
     ritenuta_aliquota: d.ritenuta_aliquota,
     regime_fiscale: d.regime_fiscale,
-    bollo_esente: d.bollo_esente ?? false,
-    canale_fe: d.canale_fe,
-    pec_email: d.pec_email,
     rating: d.rating,
     qualifica_scadenza: parseIsoDate(d.qualifica_scadenza),
     note: d.note,
@@ -150,15 +142,9 @@ function buildEditablePayload() {
     valuta_id: f.valuta_id || null,
     modalita_pagamento_id: f.modalita_pagamento_id || null,
     termine_pagamento_id: f.termine_pagamento_id || null,
-    giorni_pagamento: f.giorni_pagamento || null,
-    fine_mese: f.fine_mese,
-    split_payment: f.split_payment,
     ritenuta_acconto: f.ritenuta_acconto,
     ritenuta_aliquota: f.ritenuta_aliquota,
     regime_fiscale: f.regime_fiscale || null,
-    bollo_esente: f.bollo_esente,
-    canale_fe: f.canale_fe || null,
-    pec_email: f.pec_email || null,
     rating: f.rating,
     // ⛔ Mai `toISOString()` su una data: il DatePicker da' la mezzanotte
     //    LOCALE, e in UTC diventa il giorno prima — fino al 2026-10-04 la
@@ -309,39 +295,22 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
           <LookupSelect v-model="form.valuta_id" rel="config.valute"
             :placeholder="t('anagrafiche.fornitori.select_valuta')" show-clear />
         </div>
-      </div>
-      <div class="form-grid-3col">
         <div class="form-field">
+          <!-- Giorni, fine mese e rate stanno nel termine (config.termini_pagamento). -->
           <label>{{ t('anagrafiche.fornitori.field_termine_pagamento') }}</label>
           <LookupSelect v-model="form.termine_pagamento_id" rel="config.termini_pagamento"
             :placeholder="t('anagrafiche.fornitori.select_termine')" show-clear />
         </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_giorni_pagamento') }}</label>
-          <InputNumber v-model="form.giorni_pagamento" :min="0" :max="999" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_fine_mese') }}</label>
-          <Checkbox v-model="form.fine_mese" :binary="true" input-id="fine_mese" />
-        </div>
       </div>
 
-      <!-- === Fiscale === -->
+      <!-- === Fiscale ===
+           Split payment, canale FE e PEC sono del soggetto (soggetti,
+           dati_societari): qui non si ripetono, come sul cliente. -->
       <h4>{{ t('anagrafiche.fornitori.section_fiscale') }}</h4>
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('anagrafiche.fornitori.field_regime_fiscale') }}</label>
           <InputText v-model="form.regime_fiscale" :placeholder="t('anagrafiche.fornitori.placeholder_regime')" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_split_payment') }}</label>
-          <Checkbox v-model="form.split_payment" :binary="true" input-id="split_payment" />
-        </div>
-      </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_bollo_esente') }}</label>
-          <Checkbox v-model="form.bollo_esente" :binary="true" input-id="bollo_esente" />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.fornitori.field_ritenuta_acconto') }}</label>
@@ -352,19 +321,6 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
         <label>{{ t('anagrafiche.fornitori.field_ritenuta_aliquota') }}</label>
         <InputNumber v-model="form.ritenuta_aliquota" :min="0" :max="100"
           suffix="%" mode="decimal" :min-fraction-digits="2" />
-      </div>
-
-      <!-- === FE / SDI === -->
-      <h4>{{ t('anagrafiche.fornitori.section_fe_sdi') }}</h4>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_canale_fe') }}</label>
-          <InputText v-model="form.canale_fe" maxlength="7" :placeholder="t('anagrafiche.fornitori.placeholder_canale_fe')" />
-        </div>
-        <div class="form-field">
-          <label>{{ t('anagrafiche.fornitori.field_pec_email') }}</label>
-          <InputText v-model="form.pec_email" :placeholder="t('anagrafiche.fornitori.placeholder_pec')" />
-        </div>
       </div>
 
       <!-- === Rating === -->
@@ -429,8 +385,7 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
     <SoggettoPreviewBadges v-else-if="isEdit && detail"
       :soggetto-ruolo-id="detail.soggetto_ruolo_id"
       entita-tipo-web="fornitore"
-      :entita-id-web="props.fornitoreId"
-      :email-iniziale-web="detail?.pec_email || ''" />
+      :entita-id-web="props.fornitoreId" />
 
     <!-- Sotto-drawer: SoggettoResolver (solo creazione) -->
     <SoggettoResolver
