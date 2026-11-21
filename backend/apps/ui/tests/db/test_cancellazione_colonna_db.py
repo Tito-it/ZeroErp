@@ -108,7 +108,9 @@ class CancellazioneColonnaDbTests(unittest.TestCase):
         self.assertTrue(self._colonna_esiste())
 
     def test_la_fk_dei_preset_ha_lo_stesso_rifiuto(self) -> None:
-        with patch.object(UiAdminRepository, "preset_con_colonna", return_value=[]):
+        with patch.object(
+            UiAdminRepository, "preset_con_colonna", autospec=True, return_value=[],
+        ):
             errore = self._rifiuto(lambda: self.svc.delete_colonna(self.colonna_id))
         self.assertEqual(errore.code, E_COLONNA_IN_USE)
         self.assertEqual(ErrorTranslator.get_http_status(errore), 409)
