@@ -61,7 +61,7 @@ Tid e numeri `-82…-83` del 2026-11-15; D-1, D-2 e D-3 decise (a) lo stesso gio
 > 2026-09-21): ha lasciato questi `date_trunc` «fuori perimetro» e dichiarati; questo brief la
 > completa, non la revoca.
 > [brief-db-stati-documento-dal-vocabolario](brief-db-stati-documento-dal-vocabolario.md) e
-> [brief-db-provenienza-prezzo-segue-il-prezzo](../../work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md):
+> [brief-db-provenienza-prezzo-segue-il-prezzo](brief-db-provenienza-prezzo-segue-il-prezzo.md):
 > stesso perimetro di oggetti (viste `vw_dash_*`, `vw_lotti_fase`, lister `*_da_pushare`,
 > `fn_get_or_create_lotto`, `fn_create_fatturazione_lotto`, `fn_genera_scadenze_fattura`,
 > `fn_upsert_commessa_attivita`, `fn_contratti_addebiti_maturati_con_provenienza`), tema diverso.

@@ -23,6 +23,7 @@
 | FOREIGN KEY | fk_lista_preferenza_utente_auth_user | auth_user_id |
 | FOREIGN KEY | fk_lista_preferenza_utente_lista_definizione | lista_id |
 | FOREIGN KEY | fk_lista_preferenza_utente_lista_preset | preset_base_id |
+| FOREIGN KEY | fk_ui_lista_preferenza_utente_preset_della_lista | preset_base_id, lista_id |
 | PRIMARY KEY | lista_preferenza_utente_pkey | id |
 | UNIQUE | uq_ui_lista_preferenza_utente_user_lista | auth_user_id, lista_id |
 
@@ -37,8 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
-| trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione()` |
+| trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
+| trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
 | trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 | trg_ui_lista_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.lista_preset')` |
 

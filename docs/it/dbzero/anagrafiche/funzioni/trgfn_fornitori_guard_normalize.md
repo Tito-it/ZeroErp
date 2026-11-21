@@ -18,25 +18,13 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
 AS $function$
 BEGIN
   -- ============================================================
-  -- Scopo: normalizza e valida campi fornitori prima di INS/UPD.
+  -- Scopo: valida i campi del fornitore prima di INS/UPD.
   -- Regole:
-  --   1) canale_fe → uppercase senza spazi (se valorizzato)
-  --   2) pec_email → lowercase trimmed (se valorizzata)
-  --   3) ritenuta: se acconto = true, aliquota obbligatoria > 0
-  --   4) ritenuta: se acconto <> true, aliquota azzerata
+  --   1) ritenuta: se acconto = true, aliquota obbligatoria > 0
+  --   2) ritenuta: se acconto <> true, aliquota azzerata
   -- ============================================================
 
-  -- 1) Normalizza canale_fe (uppercase, rimozione spazi)
-  IF NEW.canale_fe IS NOT NULL THEN
-    NEW.canale_fe := upper(regexp_replace(NEW.canale_fe, '\s+', '', 'g'));
-  END IF;
-
-  -- 2) Normalizza pec_email (lowercase, trim)
-  IF NEW.pec_email IS NOT NULL THEN
-    NEW.pec_email := lower(btrim(NEW.pec_email));
-  END IF;
-
-  -- 3) Guard: coerenza ritenuta d'acconto
+  -- 1) Guard: coerenza ritenuta d'acconto
   IF NEW.ritenuta_acconto = true
      AND (NEW.ritenuta_aliquota IS NULL OR NEW.ritenuta_aliquota <= 0)
   THEN
@@ -55,7 +43,7 @@ BEGIN
     );
   END IF;
 
-  -- 4) Pulizia: se ritenuta non attiva, azzera aliquota
+  -- 2) Pulizia: se ritenuta non attiva, azzera aliquota
   IF NEW.ritenuta_acconto IS DISTINCT FROM true THEN
     NEW.ritenuta_aliquota := NULL;
   END IF;
@@ -65,7 +53,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
-IS 'Guard/normalize su fornitori: canale_fe (uppercase no spazi), pec_email (lowercase trim), coerenza ritenuta acconto/aliquota.';
+IS 'Guard su anagrafiche.fornitori, BEFORE INSERT OR UPDATE: coerenza della ritenuta d''acconto (con ritenuta_acconto = true serve ritenuta_aliquota > 0, E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA; senza ritenuta l''aliquota si azzera).';
 ```
 
 </div>

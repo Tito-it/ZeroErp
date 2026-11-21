@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Dettaglio fornitore con soggetto, stato, valuta, modalita' e termine pagamento. Include id_fiscale_univoco_cf_piva per lista configurabile DEF-8. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).
+> Dettaglio fornitore con soggetto, stato, valuta, modalita' e termine di pagamento, ritenuta e regime fiscale (regime_fiscale_rf, il codice RF; regime_fiscale_descrizione da config.regimi_fiscali). Sorgente della lista configurabile anagrafiche.fornitori (id_fiscale_univoco_cf_piva). stato_codice_interno = codice_interno (logica), stato_codice = codice (display). Split payment e instradamento FE non stanno qui: sono del soggetto (anagrafiche.soggetti, anagrafiche.dati_societari).
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -33,27 +33,23 @@ SELECT f.id,
     mp.descrizione AS modalita_pagamento_desc,
     f.termine_pagamento_id,
     tp.codice AS termine_pagamento_codice,
-    f.giorni_pagamento,
-    f.fine_mese,
-    f.split_payment,
     f.ritenuta_acconto,
     f.ritenuta_aliquota,
-    f.regime_fiscale,
-    f.bollo_esente,
-    f.canale_fe,
-    f.pec_email,
+    f.regime_fiscale_rf,
+    rf.descrizione AS regime_fiscale_descrizione,
     f.rating,
     f.qualifica_scadenza,
     f.data_insert,
     f.data_update,
     s.id_fiscale_univoco_cf_piva
-   FROM ((((((anagrafiche.fornitori f
+   FROM (((((((anagrafiche.fornitori f
      JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = f.soggetto_ruolo_id)))
      JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
      LEFT JOIN config.stati_fornitore sf ON ((sf.id = f.stato_fornitore_id)))
      LEFT JOIN config.valute v ON ((v.id = f.valuta_id)))
      LEFT JOIN config.modalita_pagamento mp ON ((mp.id = f.modalita_pagamento_id)))
-     LEFT JOIN config.termini_pagamento tp ON ((tp.id = f.termine_pagamento_id)));
+     LEFT JOIN config.termini_pagamento tp ON ((tp.id = f.termine_pagamento_id)))
+     LEFT JOIN config.regimi_fiscali rf ON (((rf.codice_interno)::text = (f.regime_fiscale_rf)::text)));
 ```
 
 </div>

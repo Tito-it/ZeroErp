@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_definizione`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -31,7 +31,8 @@
 ### 🎯 Scopo Principale
 
 `ui.lista_definizione` è il catalogo delle liste configurabili: una riga per ogni schermata a elenco
-che l'operatore può personalizzare (colonne, ordinamento, filtri, righe per pagina).
+che l'operatore può personalizzare (quali colonne, in che ordine, con che larghezza, e quante righe
+per pagina).
 
 La riga dice come si chiama la lista, da quale vista legge i dati, se le sue righe appartengono a
 un'azienda (emittente fiscale), se sa dire da quale azienda arriva ogni riga, e da quanti caratteri

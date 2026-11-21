@@ -1,13 +1,13 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_preset_contenuto_aggiornato`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [ui.lista_preset](/dbzero/ui/tabelle/lista_preset) — preset di lista: contenuto è ordinamento, filtri e righe per pagina
-> * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — preset di dashboard: contenuto è il numero massimo di widget
+> * [ui.lista_preset](/dbzero/ui/tabelle/lista_preset) — preset di lista: contenuto è la composizione e le righe per pagina
+> * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — preset di dashboard: contenuto è la composizione e il numero massimo di widget
 > * [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente) — lo snapshot che la data confronta
 > * [ui.dashboard_preferenza_utente](/dbzero/ui/tabelle/dashboard_preferenza_utente) — lo snapshot delle dashboard
 >
@@ -31,16 +31,17 @@ aggiornato». La usano i preset di lista e quelli di dashboard.
 
 ### Una data per chiave
 
-Le chiavi sono quelle della configurazione della preferenza, e ognuna ha la sua colonna:
+Le chiavi sono quelle che una preferenza può personalizzare, e ognuna ha la sua colonna:
 
 | Famiglia | Chiave | Colonna |
 | --- | --- | --- |
 | [lista_preset](/dbzero/ui/tabelle/lista_preset) | `colonne` | `composizione_impronta` (la composizione) |
-| | `ordinamento` | `ordinamento_default` |
-| | `filtri` | `filtri_default` |
 | | `pagina_dimensione` | `pagina_dimensione` |
 | [dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) | `widget` | `composizione_impronta` (la composizione) |
 | | `dimensione_max` | `dimensione_max` |
+
+L'ordinamento di partenza del preset (`ordinamento_default`) non è una chiave: la preferenza non lo
+personalizza, e il suo cambio non accende il banner. Lo segue subito chiunque abbia il preset come base.
 
 All'INSERT tutte le chiavi nascono all'ora dell'INSERT. All'UPDATE la funzione riparte dalla mappa
 di prima e sposta solo la chiave la cui colonna è cambiata: una preferenza che segue il preset su
@@ -96,13 +97,16 @@ e `attivo` non sono contenuto.
 ### Test
 
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — testata del preset di lista
-  riscritta uguale (nessuna chiave si sposta) e cambiata (solo la sua chiave); la composizione
+  riscritta uguale (nessuna chiave si sposta) e cambiata (solo la sua chiave), un cambio di
+  `ordinamento_default` che non sposta nessuna chiave; la composizione
   cambiata sposta `colonne`; i due trigger sulle funzioni condivise.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config-cascata-per-chiave-v1.sql` — lo stesso sul preset di
   dashboard.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — col trigger d'audit montato, un UPDATE che non tocca il
-  contenuto sposta `data_update` e non la data del contenuto; un UPDATE dell'ordinamento sposta
-  `data_update` e la sola chiave `ordinamento`.
+  contenuto sposta `data_update` e non la data del contenuto; un UPDATE della misura sposta
+  `data_update` e la sola chiave `pagina_dimensione`.
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — la data del contenuto di un preset di lista ha le
+  sole chiavi `colonne` e `pagina_dimensione`.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — l'applicazione che scrive la data, o un'impronta
   finta, riceve `E_UI_PRESET_CONTENUTO_DERIVATO`.
 
@@ -117,6 +121,9 @@ e `attivo` non sono contenuto.
 * 2026-11-20 — la data diventa per chiave, la scrive solo il database
   (`E_UI_PRESET_CONTENUTO_DERIVATO`), il trigger monta anche l'INSERT e non ha più il `WHEN`; la
   composizione passa dall'impronta.
+* 2026-11-21 — le chiavi dei preset di lista sono `colonne` e `pagina_dimensione`: `filtri` esce con la
+  colonna `filtri_default`, `ordinamento` perché la preferenza non personalizza più l'ordinamento. Le
+  date già scritte hanno perso le due chiavi.
 
 ---
 

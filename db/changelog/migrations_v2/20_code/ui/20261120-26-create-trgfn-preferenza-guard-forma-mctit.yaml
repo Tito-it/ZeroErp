@@ -1,0 +1,157 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preferenza_guard_forma: il guard di forma delle due preferenze, e i
+#   suoi due montaggi.
+#   Brief: brief-db-revisione-ui (giro 2: U12 con Q6, U21 con Q12).
+#
+# Che cosa fa: a ogni INSERT, e a ogni UPDATE che cambia la configurazione o il
+#   contenitore (la lista, la dashboard), chiede la forma a
+#   ui.fn_check_forma_configurazione (20261120-24) e al primo motivo solleva
+#   E_UI_CONFIGURAZIONE_FORMA (DATO_ERRATO), con la chiave e il motivo. Sulle
+#   liste poi giudica la misura con ui.fn_guard_misura_pagina (il suo codice,
+#   E_UI_MISURA_PAGINA_NON_AMMESSA).
+# Perche' un UPDATE che non cambia la configurazione passa: «Ignora» e il
+#   riallineamento del banner riscrivono la preferenza nominando preset_base_id;
+#   se l'upsert rimanda la configurazione com'e', una riga scritta prima del
+#   guard non deve essere rifiutata mentre l'utente chiude il banner. Il
+#   backfill di -25 ha comunque portato in forma le righe esistenti.
+# Montaggio: BEFORE INSERT OR UPDATE OF configurazione e del contenitore
+#   (lista_id, dashboard_id), fase a10. Nessun altro trigger BEFORE scrive quelle
+#   colonne (linee-guida-trigger, «UPDATE OF»); il corpo confronta comunque OLD e
+#   NEW. La famiglia si legge dalla tabella.
+# Sulle liste sostituisce trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd
+#   (20260930-09) e la sua funzione, che si tolgono: la misura la giudica questo
+#   guard. Un solo nome storico per quel montaggio (i changelog, 2026-11-21).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-26-create-trgfn-preferenza-guard-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261120-26-create-trgfn-preferenza-guard-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preferenza_guard_forma e i due montaggi a10 sulle preferenze; via il guard della sola misura.
+        Brief: brief-db-revisione-ui (giro 2, U12, Q6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname IN ('fn_check_forma_configurazione', 'fn_guard_misura_pagina')
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'trgfn_preferenza_guard_forma'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.trgfn_preferenza_guard_forma()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la configurazione di una preferenza (ui.lista_preferenza_utente,
+              --   ui.dashboard_preferenza_utente) ha la forma ammessa, e sulle liste
+              --   la misura e' del catalogo.
+              -- Montaggio: BEFORE INSERT OR UPDATE OF configurazione e del contenitore,
+              --   FOR EACH ROW; la famiglia si legge dalla tabella.
+              DECLARE
+                  -- text: 'lista' o 'dashboard', dalla tabella; non il riflesso di una colonna
+                  v_famiglia text;
+                  -- il contenitore della riga, nuovo e vecchio (lista_id o dashboard_id, integer tutti e due)
+                  v_new_id   ui.lista_definizione.id%TYPE;
+                  v_old_id   ui.lista_definizione.id%TYPE;
+                  -- jsonb: il primo motivo {chiave, motivo}, o NULL
+                  v_motivo   jsonb;
+              BEGIN
+                  v_famiglia := CASE TG_RELID
+                                    WHEN 'ui.lista_preferenza_utente'::regclass     THEN 'lista'
+                                    WHEN 'ui.dashboard_preferenza_utente'::regclass THEN 'dashboard'
+                                END;
+                  IF v_famiglia IS NULL OR TG_WHEN <> 'BEFORE' OR TG_LEVEL <> 'ROW'
+                     OR TG_OP NOT IN ('INSERT', 'UPDATE') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente'),
+                          NULL::uuid,
+                          format('%s: atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preferenza_utente o ui.dashboard_preferenza_utente',
+                                 TG_NAME));
+                  END IF;
+
+                  v_new_id := (to_jsonb(NEW) ->> (v_famiglia || '_id'))::integer;
+                  IF TG_OP = 'UPDATE' THEN
+                      v_old_id := (to_jsonb(OLD) ->> (v_famiglia || '_id'))::integer;
+                      IF NEW.configurazione IS NOT DISTINCT FROM OLD.configurazione
+                         AND v_new_id IS NOT DISTINCT FROM v_old_id THEN
+                          RETURN NEW;
+                      END IF;
+                  END IF;
+
+                  v_motivo := ui.fn_check_forma_configurazione(v_famiglia, v_new_id, NEW.configurazione);
+                  IF v_motivo IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'ui', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+                          jsonb_build_object(
+                              'campo',  'configurazione',
+                              'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',     NEW.id,
+                              'chiave', v_motivo ->> 'chiave',
+                              'motivo', v_motivo ->> 'motivo'),
+                          NULL::uuid,
+                          VARIADIC ARRAY[v_motivo ->> 'chiave', v_motivo ->> 'motivo']);
+                  END IF;
+
+                  IF v_famiglia = 'lista' THEN
+                      PERFORM ui.fn_guard_misura_pagina(NEW.configurazione -> 'pagina_dimensione');
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preferenza_guard_forma() IS
+                  'Il guard di forma delle preferenze utente (ui.lista_preferenza_utente, ui.dashboard_preferenza_utente; la famiglia dalla tabella). A ogni INSERT, e a ogni UPDATE che cambia la configurazione o la lista (la dashboard), chiede la forma a ui.fn_check_forma_configurazione e al primo motivo solleva E_UI_CONFIGURAZIONE_FORMA (DATO_ERRATO), con la chiave e il motivo nel contesto e nella frase, campo = configurazione. Sulle liste giudica poi la misura di pagina con ui.fn_guard_misura_pagina (E_UI_MISURA_PAGINA_NON_AMMESSA). Un UPDATE che riscrive la configurazione uguale (il riallineamento del banner, «Ignora») passa senza giudizio. Montata BEFORE INSERT OR UPDATE OF configurazione e del contenitore, fase a10.';
+
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd
+                  ON ui.lista_preferenza_utente;
+              DROP FUNCTION IF EXISTS ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione();
+
+              CREATE TRIGGER trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd
+                  BEFORE INSERT OR UPDATE OF configurazione, lista_id ON ui.lista_preferenza_utente
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma();
+              CREATE TRIGGER trg_ui_dashboard_preferenza_utente_a10_guard_forma_ins_upd
+                  BEFORE INSERT OR UPDATE OF configurazione, dashboard_id ON ui.dashboard_preferenza_utente
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma();
+
+              COMMENT ON TRIGGER trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd ON ui.lista_preferenza_utente IS
+                  'La configurazione della preferenza di lista ha la forma ammessa e la misura di pagina è del catalogo (ui.trgfn_preferenza_guard_forma).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preferenza_utente_a10_guard_forma_ins_upd ON ui.dashboard_preferenza_utente IS
+                  'La configurazione della preferenza di dashboard ha la forma ammessa (ui.trgfn_preferenza_guard_forma).';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.configurazione IS
+                  'La personalizzazione della home dell''utente, per chiave: widget (l''elenco delle voci {codice, ordine, visibile}; solo codice è obbligatorio) e dimensione_max (da 1 a 100, ui.fn_dimensione_max_ammessa). Una chiave che manca segue il preset di base, poi il catalogo; {} segue il preset in tutto. La forma la giudica il trigger di forma (ui.trgfn_preferenza_guard_forma, con ui.fn_check_forma_configurazione): chiavi e campi ammessi, nessun null, codici unici e del pool della dashboard (in qualsiasi stato).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preferenza_utente_a10_guard_forma_ins_upd ON ui.lista_preferenza_utente;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preferenza_utente_a10_guard_forma_ins_upd ON ui.dashboard_preferenza_utente;
+              DROP FUNCTION IF EXISTS ui.trgfn_preferenza_guard_forma();

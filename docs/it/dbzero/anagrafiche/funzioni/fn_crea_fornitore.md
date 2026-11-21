@@ -25,9 +25,8 @@ DECLARE
     -- meno il ruolo e lo stato, che decide la madre.
     c_ammesse  CONSTANT text[] := ARRAY[
         'codice', 'valuta_id', 'modalita_pagamento_id', 'termine_pagamento_id',
-        'giorni_pagamento', 'fine_mese', 'split_payment', 'ritenuta_acconto',
-        'ritenuta_aliquota', 'regime_fiscale', 'bollo_esente', 'canale_fe',
-        'pec_email', 'rating', 'qualifica_scadenza', 'note'];
+        'ritenuta_acconto', 'ritenuta_aliquota', 'regime_fiscale_rf',
+        'rating', 'qualifica_scadenza', 'note'];
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -39,7 +38,9 @@ BEGIN
     --   soggetto_ruolo_id).
     --
     -- Regole:
-    --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO;
+    --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO. Fuori
+    --     elenco anche split payment e instradamento FE, che sono del
+    --     soggetto, e le condizioni di pagamento, che sono del termine;
     --   - contatto e indirizzi: le regole sono dei loro BB;
     --   - duplicati e FK escono dai vincoli.
     -- =========================================================
@@ -88,7 +89,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_fornitore(p_soggetto_id uuid, p_campi jsonb, p_contatto jsonb, p_indirizzi jsonb)
-IS 'Madre (2026-10-18): fa di un soggetto un fornitore in una sola istruzione: il ruolo FO (script.fn_get_or_create_soggetto_ruolo), la riga di anagrafiche.fornitori nello stato iniziale VE, il contatto del ruolo (anagrafiche.fn_crea_contatto, se p_contatto non e'' NULL) e gli indirizzi del ruolo (anagrafiche.fn_crea_indirizzi_ruolo, con l''auto-clone dei tipi obbligatori). p_campi: le chiavi opzionali codice, valuta_id, modalita_pagamento_id, termine_pagamento_id, giorni_pagamento, fine_mese, split_payment, ritenuta_acconto, ritenuta_aliquota, regime_fiscale, bollo_esente, canale_fe, pec_email, rating, qualifica_scadenza, note; le assenti e le null al DEFAULT (il codice lo genera il trigger); una chiave estranea: E_CAMPO_NON_AMMESSO, col campo. Lo stato non e'' un campo: un altro stato e'' un UPDATE dopo. Soggetto mancante o campi non oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA. Contatto e indirizzi rifiutano con i codici dei loro BB; i tipi obbligatori li pretende il guard differito al commit. Duplicati (uq_fornitori_soggetto_ruolo_id, uq_fornitori_codice) e FK escono dai vincoli, che il backend traduce per nome. Non controlla il permesso (dominio anagrafiche, B-5). INVOKER. Ritorna (fornitore_id, soggetto_ruolo_id). Prende il posto di FornitoriService.crea_fornitore (2b-2) e dell''INSERT del pgTAP script/test-search-regola-unica-visibile-v1. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 4).';
+IS 'Madre: fa di un soggetto un fornitore in una sola istruzione: il ruolo FO (script.fn_get_or_create_soggetto_ruolo), la riga di anagrafiche.fornitori nello stato iniziale VE, il contatto del ruolo (anagrafiche.fn_crea_contatto, se p_contatto non e'' NULL) e gli indirizzi del ruolo (anagrafiche.fn_crea_indirizzi_ruolo, con l''auto-clone dei tipi obbligatori). p_campi: le chiavi opzionali codice, valuta_id, modalita_pagamento_id, termine_pagamento_id, ritenuta_acconto, ritenuta_aliquota, regime_fiscale_rf, rating, qualifica_scadenza, note; le assenti e le null al DEFAULT (il codice lo genera il trigger); una chiave estranea: E_CAMPO_NON_AMMESSO, col campo. Split payment e instradamento FE non sono chiavi: sono del soggetto (anagrafiche.soggetti, anagrafiche.dati_societari); le condizioni di pagamento sono del termine. Lo stato non e'' un campo: un altro stato e'' un UPDATE dopo. Soggetto mancante o campi non oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA. Contatto e indirizzi rifiutano con i codici dei loro BB; i tipi obbligatori li pretende il guard differito al commit. Duplicati (uq_fornitori_soggetto_ruolo_id, uq_fornitori_codice) e FK (fk_fornitori_regimi_fiscali compresa) escono dai vincoli, che il backend traduce per nome. Non controlla il permesso (dominio anagrafiche). INVOKER. Ritorna (fornitore_id, soggetto_ruolo_id).';
 ```
 
 </div>

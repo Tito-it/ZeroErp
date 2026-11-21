@@ -1,9 +1,11 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-21 (sera)
+## ⏭️ Chi riparte — aggiornato al 2026-11-21 (notte)
 
-**Riparte: il team DB**, con la chiusura (7): la chiave i18n (8i) e la policy (8l) sono consegnate il 2026-11-21
-sera (§8.22), da committare (Tid). La doc rigenerata era già entrata in `2e867df58` (PR #181) prima della chiave, con
+**Riparte: nessuno. ✅ Brief chiuso e archiviato il 2026-11-21 (§8.23).** La chiave i18n (8i) e la policy (8l) sono
+in `Tito-dev` con la PR #182 (`d3432815a8`); il resto del giro era già entrato con la PR #181. Il testo che segue, fino
+alla tabella, è la storia della ripartenza, lasciata com'era. La chiave i18n (8i) e la policy (8l) sono consegnate il 2026-11-21
+sera (§8.22). La doc rigenerata era già entrata in `2e867df58` (PR #181) prima della chiave, con
 `check_i18n_keys.py` rosso: la chiave del §8.22 lo riporta verde. Il giro 5 e il 5-bis sono applicati e verdi
 (Tid, 2026-11-21, §8.21). Il giro 5 è scritto e provato in transazione il 2026-11-21 (§8.17): chiude il residuo offerta → ordine
 del §8.8 con D-6 «a», e corregge un difetto trovato verificando il caso del §8.16 (l'OVERRIDE su un kit perdeva il
@@ -15,7 +17,7 @@ DDT compresi, con L1/L2 sul prezzo a mano (strada A, decisione di Tid del 2026-1
 precompila dal pricing, il preventivo) e K-7 sul DB vero. Da committare (Tid). I giri 1, 2 e 3 sono applicati, verdi e
 committati (`33f85e641`, `11273227f`). ⚠️ Il commit `a85b76d58` «Chiusura brief
 brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
-`brief-db-coerenza-listino-della-riga-di-commessa`: **questo brief è aperto**.
+`brief-db-coerenza-listino-della-riga-di-commessa`: questo brief è rimasto aperto fino al 2026-11-21 (§8.23).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -59,15 +61,16 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 8i | ✅ team FE | La chiave i18n `vendite.offerte.azione_reason.kit_senza_componenti`, it ed en (2026-11-21) | §8.19, §8.22 | 8h |
 | 8i-bis | ✅ Tid | Commit della doc rigenerata: entrata in `2e867df58` (PR #181), prima della chiave | §8.21, §8.22 | — |
 | 8l | ✅ team BE | La policy di `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` rigenerata, col ripiego (2026-11-21) | §8.19, §8.22 | 8h |
-| 8m | Tid | Commit di 8i e 8l su `dev/backend-tid` | §8.22 | 8i, 8l |
-| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 8m |
+| 8m | ✅ Tid | Commit di 8i e 8l su `dev/backend-tid` (`d3432815a8`), in `Tito-dev` con la PR #182 (2026-11-21) | §8.22 | 8i, 8l |
+| 7 | ✅ team DB | Chiusura: archiviazione in `work-done/2026/` (2026-11-21) | §8.23 | 8m |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-21: D-7-bis «b2», kit a consumo esente, le quattro
 righe da riparare (§8.18); il residuo del §8.8 si chiude qui come
 giro 5; D-6 «a» (§8.16); D-7 «b» (§8.17). Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
 approvata), R-1 e R-2 della revisione (in fondo al §8.13), la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** la chiave del FE e la policy del BE (§8.22, `dev/backend-tid`). Il giro 5 e il 5-bis
+corpo vivo. **Lavoro da committare:** l'archiviazione di questo brief e i link che la seguono (§8.23, `dev/db-tid`).
+La chiave del FE e la policy del BE sono in `d3432815a8` (PR #182). Il giro 5 e il 5-bis
 e la doc rigenerata sono entrati in `2e867df58` (PR #181). Prima della PR #181 restavano da committare: il resto come prima (otto changeSet, due righe di CSV, tre pgTAP nuovi o corretti, le pagine
 `manual/` e la guida delle offerte, §8.17 e §8.19), le quattro
 pagine riallineate del 2026-11-21 e questo brief; l'estrazione del §8.15 e questo brief sono committati su `dev/backend-tid` (2026-11-21). La riga del CSV del §8.14
@@ -79,7 +82,7 @@ pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; prove
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
 > **Origine:** revisione delle modifiche di
-> [brief-db-riga-listino-propagata-dalla-commessa](../work-done/2026/brief-db-riga-listino-propagata-dalla-commessa.md)
+> [brief-db-riga-listino-propagata-dalla-commessa](brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§7). **Decisione:** di Tid, 2026-10-09 (variante «B»): una riga di commessa
 > cita una riga di listino **solo se il suo prezzo è venuto davvero da lì**, non
 > perché il listino, interrogato dopo, darebbe quella riga.
@@ -156,7 +159,7 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
 
 ## 4. Rapporto con gli altri brief
 
-* [brief-db-coerenza-listino-della-riga-di-commessa](../work-done/2026/brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
+* [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
   dice che cosa la colonna `listino_riga_id` **può** contenere (stessa versione,
   stesso emittente, versione in vigore). Questo dice **quando** si scrive. Il guard
   di quel brief va montato anche sulle righe di documento di R-1: la stessa regola,
@@ -1313,3 +1316,15 @@ guard della transizione, sulla strada dell'emissione. **Garanzie ritirate: nessu
 
 **Resta aperta, per Tid:** la check comprende l'AGGIUNTA oltre all'OVERRIDE di D-7 (§8.19, «Le scelte»); se si vuole
 il solo OVERRIDE è una riga della check, lavoro DB.
+
+### 8.23 Chiusura (team DB, 2026-11-21)
+
+* **Arrivo:** la chiave del FE e la policy del BE (8i, 8l, §8.22) sono nel commit `d3432815a8`, in `Tito-dev` con la
+  PR #182. Al DB non resta niente: il passo 7 si chiude e il brief va in `work-done/2026/` (Tid, 2026-11-21: «il BE
+  ha completato, può essere chiuso»).
+* **La domanda del §8.22 sulla check** (AGGIUNTA oltre all'OVERRIDE di D-7): Tid ha chiuso il brief senza chiedere il
+  cambio. La check resta com'è scritta nel §8.19, e copre tutti e due i casi. Non è debito: se un giorno si vuole il
+  solo OVERRIDE, è una decisione nuova.
+* **Debito residuo di questo brief:** nessuno. Il rosso di `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1`
+  (test 2, §8.17) **non è di questo brief**: la fixture dipende dai dati («4 articoli disponibili»), e lo citano già
+  altri brief archiviati. Lo si segnala a Tid alla chiusura, senza aprire un brief.

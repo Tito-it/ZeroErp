@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -9,6 +9,7 @@
 > * [ui.dashboard_definizione](/dbzero/ui/tabelle/dashboard_definizione) — la dashboard personalizzata
 > * [ui.dashboard_preset](/dbzero/ui/tabelle/dashboard_preset) — il preset da cui l'utente è partito
 > * [ui.widget](/dbzero/ui/tabelle/widget) — i widget che la preferenza cita per codice
+> * [ui.dashboard_widget](/dbzero/ui/tabelle/dashboard_widget) — il pool da cui la preferenza prende i codici
 > * [ui.lista_preferenza_utente](/dbzero/ui/tabelle/lista_preferenza_utente) — il gemello delle liste
 >
 > Approfondimento funzioni:
@@ -16,6 +17,9 @@
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — legge la preferenza e la combina con lo standard
 > * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive la fotografia dal preset di base, a ogni salvataggio e a ogni «Ignora»
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — la forma della configurazione, alla scrittura
+> * [ui.fn_check_forma_configurazione](/dbzero/ui/funzioni/fn_check_forma_configurazione) — la regola di forma
+> * [ui.fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa) — il tetto da 1 a 100 delle card
 
 ---
 
@@ -29,16 +33,34 @@ vede, in che ordine, e quante card al massimo. Al più una riga per coppia (uten
 ### La preferenza porta solo le chiavi scelte
 
 `configurazione` ha due chiavi, tutte e due facoltative: `widget` (l'elenco dei widget, ciascuno col suo
-codice, l'ordine e se è visibile) e `dimensione_max`. Una chiave assente, o nulla, vuol dire «come lo
+codice, l'ordine e se è visibile) e `dimensione_max`. Una chiave assente vuol dire «come lo
 standard»: la funzione di risoluzione la prende dal preset di base o dal catalogo. Chi salva rimanda
 solo le chiavi che la risoluzione dice venire dalla preferenza, più quella toccata. Il backend non
 salva una preferenza senza chiavi: si toglie con la cancellazione.
 
-Un widget si cita per `codice`, mai per `id`: l'id cambia da un ambiente all'altro. Un codice che non
-corrisponde più a un widget acceso del pool della dashboard la risoluzione lo salta, senza errore.
+Un widget si cita per `codice`, mai per `id`: l'id cambia da un ambiente all'altro. Un codice di un
+widget spento la risoluzione lo salta, senza errore, e il widget torna se si riaccende.
 
-`dimensione_max` vale solo se è un intero positivo; un valore diverso la risoluzione lo tratta come
-chiave assente.
+---
+
+### La forma la giudica il database
+
+Il guard [trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma), con la
+regola di [fn_check_forma_configurazione](/dbzero/ui/funzioni/fn_check_forma_configurazione), giudica la
+configurazione alla nascita della riga e a ogni modifica che la cambia:
+
+* un oggetto con le sole chiavi `widget` e `dimensione_max`, nessuna a null; la configurazione vuota è
+  ammessa e segue il preset in tutto;
+* `widget` un elenco di voci con le sole chiavi `codice`, `ordine`, `visibile`: solo il codice è
+  obbligatorio, un campo che manca prende il default del pool, nessun campo è null;
+* il codice è di una card del **pool della dashboard**, anche spenta, e non si ripete; l'ordine è un
+  intero positivo, la visibilità vero o falso;
+* `dimensione_max` è un intero da 1 a 100
+  ([fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa)).
+
+Una scrittura che riscrive la configurazione uguale («Ignora») passa senza giudizio. Una riga scritta
+senza passare dal guard non ferma la risoluzione: le voci che non riconosce si saltano, i campi che non
+legge prendono il default del pool, una dimensione fuori dal tetto vale come assente.
 
 ---
 
@@ -66,6 +88,10 @@ FK verso la dashboard e verso il preset sono in eccezione alla regola ATTIVO. Un
 scelti da un utente si spengono lo stesso; la risoluzione ripiega sul livello successivo. Cancellare
 l'utente cancella le sue preferenze.
 
+Il preset di base è un preset **della stessa dashboard**: un vincolo composto lega la base alla dashboard
+della riga, e il preset di un'altra dashboard è rifiutato. Cancellato il preset, la preferenza resta, senza
+base e senza fotografia.
+
 ---
 
 ### Chi la scrive
@@ -81,16 +107,6 @@ backend legge la riga direttamente solo per il proprio servizio di preferenza.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il database non controlla la forma della configurazione.** La controlla solo il backend (chiavi
-  ammesse, codice obbligatorio, ordine intero positivo, nessun codice ripetuto, al più 100 widget). Il
-  gemello delle liste ha un guard sulla misura di pagina; qui non c'è niente. Una riga scritta da altri
-  che il backend:
-  * con `widget` che non è un elenco, o con un ordine o un `visibile` che non si convertono, ferma la
-    funzione di risoluzione: la home di quell'utente non si apre più;
-  * con una voce senza codice, spegne in silenzio l'aggiunta dei widget nuovi del pool;
-  * con un codice ripetuto, mostra la stessa card due volte.
-* **Il preset di base può essere di un'altra dashboard.** Nessun vincolo lega `preset_base_id` alla
-  dashboard della riga: la risoluzione lo tratta come una base che non è quella di oggi.
 * **L'applicazione può scrivere qualunque cosa.** Nessuna RLS e nessun verbo: la riga di un utente la
   può scrivere chiunque abbia i privilegi del ruolo applicativo.
 
@@ -98,8 +114,10 @@ backend legge la riga direttamente solo per il proprio servizio di preferenza.
 
 ### Codici errore
 
-La tabella non solleva codici propri. Una seconda riga per la stessa coppia arriva come violazione di
-`uq_ui_dashboard_preferenza_utente_user_dashboard`; il backend usa l'UPSERT e non la incontra.
+* `E_UI_CONFIGURAZIONE_FORMA` — la configurazione non ha la forma ammessa; il messaggio dice la chiave e
+  il motivo.
+* Una seconda riga per la stessa coppia arriva come violazione di
+  `uq_ui_dashboard_preferenza_utente_user_dashboard`; il backend usa l'UPSERT e non la incontra.
 
 ---
 
@@ -110,8 +128,11 @@ La tabella non solleva codici propri. Una seconda riga per la stessa coppia arri
   del preset, e resta su quella sola quando cambia la dimensione, che la preferenza segue dal preset.
 * `db/pgtap/ui/test-fn-resolve-dashboard-config.sql` — la preferenza che vince sul preset, il widget
   spento che sparisce anche dalla preferenza.
-* Nessun test costruisce, per le dashboard, «Ignora», la fotografia scritta dal trigger né una
-  configurazione malformata: li prova il gemello delle liste, sulla stessa funzione.
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — un codice fuori dal pool, 101 card e una voce con
+  una chiave in più rifiutati; una riga malformata scritta senza il guard che non ferma la risoluzione.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — il preset di base di un'altra dashboard rifiutato.
+* Nessun test costruisce, per le dashboard, «Ignora» né la fotografia scritta dal trigger: li prova il
+  gemello delle liste, sulla stessa funzione.
 
 ---
 
@@ -130,6 +151,12 @@ La tabella non solleva codici propri. Una seconda riga per la stessa coppia arri
 * 2026-11-20 — la fotografia diventa per chiave (`{chiave: data}`, le righe esistenti portate a
   `max(fotografia, ignorato)` per ogni chiave, banner identico), e `preset_aggiornato_ignored_at` si ritira:
   «Ignora» è riscrivere `preset_base_id`.
+* 2026-11-21 — la forma della configurazione la giudica il database, col guard di forma comune alle
+  liste: prima la controllava solo il backend. Le righe esistenti sono state portate in forma (via chiavi
+  e voci estranee, codici fuori dal pool, ripetizioni, campi di tipo sbagliato, dimensioni fuori dal
+  tetto). Il tetto di 100 voci del backend non si porta: codice unico e del pool lo limitano già.
+* 2026-11-21 — il preset di base è legato alla dashboard della riga da un vincolo composto; le preferenze
+  con la base di un'altra dashboard sono tornate senza base.
 
 ---
 

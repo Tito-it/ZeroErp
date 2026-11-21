@@ -484,10 +484,8 @@ SELECT (
                 true
             )
         ),
-        'ordinamento',
-        '[]'::jsonb,
-        'filtri',
-        '{}'::jsonb,
+        -- Dal giro 2 di brief-db-revisione-ui la preferenza non porta ordinamento e
+        -- filtri: il guard di forma le rifiuta.
         'pagina_dimensione',
         100  -- una misura del catalogo ui.misure_pagina (dal 2026-09-30: 99 lo rifiuta il guard)
     ),
@@ -618,10 +616,8 @@ SELECT (
                 false
             )
         ),
-        'ordinamento',
-        '[]'::jsonb,
-        'filtri',
-        '{}'::jsonb,
+        -- Dal giro 2 di brief-db-revisione-ui la preferenza non porta ordinamento e
+        -- filtri: il guard di forma le rifiuta.
         'pagina_dimensione',
         25
     ),

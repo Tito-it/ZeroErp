@@ -1,6 +1,6 @@
 # Guida — Configurare il sistema senza perdere le modifiche agli aggiornamenti
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > **Destinatari**: chi configura il sistema per un'azienda (amministratori, consulenti di avvio),
 > analisti funzionali, chi assiste gli operatori; sviluppatori che vogliono il quadro prima del
@@ -91,7 +91,7 @@ per ritrovare la riga o per farla funzionare. Sulle righe che ha proposto lui qu
 | **Modelli delle mail** | il codice, il reparto, il tipo di pratica, la lingua, le variabili disponibili | l'oggetto, il testo, l'interruttore acceso/spento |
 | **Liste** | il codice, il nome nel catalogo, la vista da cui legge, le regole sull'azienda emittente | le note, l'interruttore, il numero minimo di caratteri della ricerca |
 | **Colonne delle liste** | il codice, il campo che mostrano, il tipo e il formato, se si possono filtrare, ordinare e cercare, se il dato è riservato, la chiave della traduzione | l'etichetta, la larghezza, l'ordine, l'allineamento, il gruppo, l'esportazione, la priorità quando lo spazio manca, l'interruttore |
-| **Viste salvate (preset)** | la lista, il codice e il posto (per tutti, per un profilo, per un'azienda) | il nome, le righe per pagina, l'ordinamento, i filtri, le colonne mostrate, l'interruttore |
+| **Viste salvate (preset)** | la lista, il codice e il posto (per tutti, per un profilo, per un'azienda) | il nome, le righe per pagina, l'ordinamento, le colonne mostrate, l'interruttore |
 
 Sulle pagine che lo mostrano, i campi del programma sono spenti e spiegano perché. Dove non lo
 mostrano, il salvataggio viene rifiutato con un messaggio che dice quale campo il programma non

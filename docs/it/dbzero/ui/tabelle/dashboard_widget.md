@@ -25,5 +25,10 @@
 | ix_ui_dashboard_widget_widget_id | `CREATE INDEX ix_ui_dashboard_widget_widget_id ON ui.dashboard_widget USING btree (widget_id)` |
 | pk_ui_dashboard_widget | `CREATE UNIQUE INDEX pk_ui_dashboard_widget ON ui.dashboard_widget USING btree (dashboard_id, widget_id)` |
 
+## 🚨 Trigger
+| Nome | Timing | Evento | Azione |
+|------|--------|--------|--------|
+| trg_ui_dashboard_widget_a10_guard_in_uso_dlt | BEFORE | DELETE | `EXECUTE FUNCTION ui.trgfn_ui_dashboard_widget_guard_in_uso()` |
+
 ---
 {% include-markdown "signature-core.md" %}

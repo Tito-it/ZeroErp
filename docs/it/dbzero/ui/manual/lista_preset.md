@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,6 +21,8 @@
 > * [ui.trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato) — la data del contenuto, dalla testata
 > * [ui.trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset) — la data del contenuto, dalle colonne
 > * [ui.trgfn_ui_lista_preset_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
+> * [ui.trgfn_ui_lista_preset_guard_ordinamento](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_ordinamento) — la forma dell'ordinamento di partenza
+> * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento di partenza risolto per l'utente
 > * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — un preset nasce solo su una lista accesa
 >
 > Guide:
@@ -32,7 +34,7 @@
 ### 🎯 Scopo Principale
 
 `ui.lista_preset` contiene le configurazioni predefinite di una lista: quali colonne mostrare
-(nelle righe di `lista_preset_colonna`), l'ordinamento, i filtri e le righe per pagina. Un preset
+(nelle righe di `lista_preset_colonna`), l'ordinamento di partenza e le righe per pagina. Un preset
 vale per tutti (sistema), per un'azienda (emittente fiscale) o per un profilo di accesso (ruolo).
 
 ---
@@ -43,8 +45,16 @@ vale per tutti (sistema), per un'azienda (emittente fiscale) o per un profilo di
 il riferimento: un preset di sistema non ha né profilo né azienda, uno di ruolo ha solo il
 profilo, uno di emittente solo l'azienda.
 
-Il database non impedisce di cambiare dopo la nascita la lista, l'ambito, il profilo o l'azienda
-di un preset: lo rifiuta solo il servizio di amministrazione.
+⛔ **Il posto di un preset non cambia.** La lista, l'ambito, il profilo e l'azienda sono fermati da
+un lucchetto di colonna del framework (`E_UI_PRESET_POSTO_IMMUTABILE`): dicono a chi vale il preset, e
+le preferenze che lo hanno come base e le righe della sua composizione ci contano. Riscriverli uguali
+passa, come fa il seed a ogni giro. Un preset nel posto sbagliato si spegne, e se ne crea uno nuovo
+nel posto giusto.
+
+L'unicità `uq_ui_lista_preset_id_lista`, sulla coppia (preset, lista), è la chiave che leggono i
+vincoli composti della composizione e della preferenza: una riga di composizione appartiene a un
+preset della sua lista, e il preset di base di una preferenza è un preset della lista della
+preferenza.
 
 ---
 
@@ -70,12 +80,19 @@ catalogo delle colonne.
 [fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) sceglie un solo **preset di base** per
 l'utente: un preset acceso con almeno una colonna attiva, il ruolo (solo con la veste), poi
 l'azienda (solo se accesa), poi il sistema. [fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)
-ne prende, chiave per chiave, ciò che la preferenza dell'utente non sceglie: colonne, ordinamento,
-filtri e righe per pagina.
+ne prende, chiave per chiave, ciò che la preferenza dell'utente non sceglie: colonne e righe per
+pagina.
 
 * Le colonne sono quelle accese del catalogo citate dalle righe del preset.
-* `ordinamento_default` e `filtri_default` passano così come sono scritti: il database non
-  verifica che nominino colonne della lista, ordinabili o filtrabili.
+* `ordinamento_default` è l'ordinamento con cui la lista parte, e la preferenza non lo
+  personalizza: il clic sull'intestazione di una colonna vale per la sessione. È un elenco di
+  colonne, citate per **codice**, ciascuna con la sua direzione; la forma la giudica alla scrittura
+  [trgfn_ui_lista_preset_guard_ordinamento](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_ordinamento),
+  che rifiuta anche il campo sorgente al posto del codice. Vuoto vuol dire che il preset non dice da
+  che colonna partire. Per l'utente lo risolve
+  [fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista), che toglie le colonne spente, non
+  ordinabili o bloccate per lui.
+* I filtri di partenza non sono del preset: li decide l'interfaccia di ogni lista.
 * `pagina_dimensione` è una misura del catalogo
   [misure_pagina](/dbzero/ui/tabelle/misure_pagina) (FK e guard). Vuota vale il default `PAGINA`
   del catalogo, ma la colonna ha un `DEFAULT` proprio di 25: un preset che nasce senza indicarla
@@ -86,14 +103,15 @@ filtri e righe per pagina.
 ### ⭐ `contenuto_aggiornato_il`: la data del contenuto, per chiave, non dell'audit
 
 `contenuto_aggiornato_il` dice quando è cambiato l'ultima volta ciò che il preset **mostra**, una
-data per chiave: un oggetto `{chiave: data}` con `colonne`, `ordinamento`, `filtri` e
-`pagina_dimensione`, le chiavi della configurazione della preferenza. Il banner «preset
+data per chiave: un oggetto `{chiave: data}` con `colonne` e `pagina_dimensione`, le chiavi che
+una preferenza può personalizzare. Il banner «preset
 aggiornato» la confronta, chiave per chiave, con lo snapshot salvato nella preferenza, e guarda
 solo le chiavi che la preferenza imposta. La scrive solo il database, con la funzione condivisa con
 i preset delle dashboard,
 [trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato): alla
-nascita della riga tutte le chiavi, poi la chiave la cui colonna cambia (`ordinamento_default`,
-`filtri_default`, `pagina_dimensione`, e per `colonne` l'impronta della composizione). Chi la
+nascita della riga tutte le chiavi, poi la chiave la cui colonna cambia (`pagina_dimensione`, e
+per `colonne` l'impronta della composizione). Un cambio di `ordinamento_default` non sposta niente:
+non è una chiave della preferenza, e lo segue subito chi ha il preset come base. Chi la
 scrive riceve `E_UI_PRESET_CONTENUTO_DERIVATO`.
 
 `composizione_impronta` è l'impronta della composizione
@@ -119,20 +137,15 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * Spegnere un profilo o un'azienda non si ferma sul preset (le due FK sono in eccezione): il
   preset resta, e la cascata non lo usa più, perché il profilo non è più fra quelli dell'utente e
   il preset di un'azienda spenta non si applica.
-* Cancellare un preset cancella le sue colonne; le preferenze che lo avevano come base perdono il
-  riferimento e il loro snapshot.
+* Cancellare un preset cancella le sue colonne; le preferenze che lo avevano come base restano,
+  senza base e senza snapshot.
+* Le righe della composizione nominano solo colonne della lista del preset (lo dice la pagina di
+  [lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna)).
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La lista di una colonna.** Nessun vincolo chiede che le colonne di un preset appartengano
-  alla lista del preset (lo dice la pagina di
-  [lista_preset_colonna](/dbzero/ui/tabelle/lista_preset_colonna)).
-* **Ordinamento e filtri non verificati.** `ordinamento_default` e `filtri_default` possono
-  nominare colonne spente, non ordinabili, non filtrabili o bloccate per l'utente, e passano così
-  al frontend. Nel seed l'ordinamento usa due convenzioni (il codice della colonna o il campo
-  sorgente).
 * **Il `DEFAULT` 25.** È una seconda sede del default `PAGINA` del catalogo: se il default del
   catalogo cambia, i preset nati senza misura restano a 25.
 
@@ -141,6 +154,9 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 ### Codici errore
 
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` fuori dal catalogo delle misure.
+* `E_UI_PRESET_POSTO_IMMUTABILE` — si cambia la lista, l'ambito, il profilo o l'azienda di un preset.
+* `E_UI_CONFIGURAZIONE_FORMA` — `ordinamento_default` senza la forma ammessa (una colonna che non è
+  un codice della lista, ripetuta, una direzione fuori dominio).
 * Le regole ATTIVO del framework — preset su una lista spenta, lista spenta con preset accesi.
 * Le unicità (codice per lista, un preset acceso per posto) e il vincolo dell'ambito arrivano come
   violazione di vincolo; il servizio di amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
@@ -158,6 +174,12 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
 * `db/pgtap/ui/test-liste-preset-default-v1.sql` — ogni lista del seed ha il suo preset di sistema.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — audit NOT NULL, eccezioni ATTIVO, trigger del contenuto.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura del preset nel catalogo.
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — la forma dell'ordinamento, l'ordinamento
+  risolto per l'utente, la data del contenuto con le sole chiavi `colonne` e `pagina_dimensione`, la
+  colonna `filtri_default` che non c'è più.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — cambiare la lista di un preset è rifiutato, riscrivere
+  il posto uguale passa; il preset di base di un'altra lista rifiutato sulla preferenza; cancellato il
+  preset, la preferenza resta senza base.
 * `db/pgtap/dbops/test-codice-maiuscolo-v1.sql`, `db/pgtap/dbops/test-user-update-not-null-v1.sql`
   — le regole trasversali sulla tabella.
 
@@ -177,6 +199,13 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
   `uq_ui_lista_preset_posto`, sui soli preset accesi.
 * 2026-11-20 — `contenuto_aggiornato_il` diventa per chiave e la scrive solo il database; nasce
   `composizione_impronta`, e la composizione riscritta uguale non sposta più la data.
+* 2026-11-21 — `filtri_default` si ritira: i filtri di partenza sono dell'interfaccia. Nasce il guard
+  di `ordinamento_default`; gli ordinamenti scritti col campo sorgente sono stati portati al codice
+  della colonna, e quelli che non dicevano una colonna sola sono stati tolti. La data del contenuto
+  perde le chiavi `ordinamento` e `filtri`.
+* 2026-11-21 — il posto del preset si chiude col lucchetto di colonna: prima lo rifiutava solo il
+  servizio di amministrazione. Nasce l'unicità (preset, lista) per i vincoli composti della composizione
+  e della preferenza.
 
 ---
 

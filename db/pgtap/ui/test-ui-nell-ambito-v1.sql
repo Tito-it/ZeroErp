@@ -30,9 +30,10 @@
 --   8) i due trigger a20 dei preset sono sulla funzione nuova
 --   9) ⭐ con l'audit montato, un UPDATE che non tocca il contenuto sposta
 --      data_update e NON contenuto_aggiornato_il (caso COSTRUITO)
---  10) ⭐ ... e un UPDATE dell'ordinamento sposta data_update e la sola chiave
---      ordinamento della data del contenuto (per chiave, dal giro 1b di
---      brief-db-revisione-ui)
+--  10) ⭐ ... e un UPDATE della misura sposta data_update e la sola chiave
+--      pagina_dimensione della data del contenuto (per chiave, dal giro 1b di
+--      brief-db-revisione-ui; dal giro 2 le chiavi delle liste sono colonne e
+--      pagina_dimensione: l'ordinamento non e' piu' una chiave)
 --
 -- ⚠️ I montaggi veri della convergenza (ci_apply) non si provano qui: dipendono
 --   da quando la convergenza e' girata. Il caso 9-10 monta il trigger come lo
@@ -196,8 +197,6 @@ UPDATE ui.lista_preset
    SET data_update = TIMESTAMPTZ '2026-01-01 10:00:00+00',
        contenuto_aggiornato_il = jsonb_build_object(
            'colonne',           '2026-01-01T10:00:00+00:00',
-           'ordinamento',       '2026-01-01T10:00:00+00:00',
-           'filtri',            '2026-01-01T10:00:00+00:00',
            'pagina_dimensione', '2026-01-01T10:00:00+00:00')
  WHERE id = (SELECT preset_id FROM _p);
 ALTER TABLE ui.lista_preset ENABLE TRIGGER trg_ui_lista_preset_a20_contenuto_aggiornato_ins_upd;
@@ -214,7 +213,7 @@ SELECT is(
     'true|true',
     '9) con l''audit montato, cambiare la descrizione sposta data_update e non la data del contenuto');
 
-UPDATE ui.lista_preset SET ordinamento_default = '[{"col": "x", "dir": "asc"}]'::jsonb
+UPDATE ui.lista_preset SET pagina_dimensione = (SELECT max(m.misura) FROM ui.misure_pagina m)
  WHERE id = (SELECT preset_id FROM _p);
 
 SELECT is(
@@ -223,8 +222,8 @@ SELECT is(
                       FROM jsonb_each_text(contenuto_aggiornato_il) AS e(k, v)
                      WHERE v::timestamptz > TIMESTAMPTZ '2026-01-01 10:00:00+00'))
        FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p)),
-    'true|ordinamento',
-    '10) ... e cambiare l''ordinamento sposta data_update e la sola chiave ordinamento');
+    'true|pagina_dimensione',
+    '10) ... e cambiare la misura sposta data_update e la sola chiave pagina_dimensione');
 
 SELECT * FROM finish();
 ROLLBACK;

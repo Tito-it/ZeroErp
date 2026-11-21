@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset_colonna`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -12,6 +12,7 @@
 >
 > Approfondimento funzioni:
 >
+> * [ui.trgfn_preset_riga_contenitore](/dbzero/ui/funzioni/trgfn_preset_riga_contenitore) — scrive la lista della riga, dal preset
 > * [ui.trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset) — ogni cambio di riga sposta la data del contenuto del preset
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge le righe del preset di base
 >
@@ -41,6 +42,21 @@ La chiave è (preset, colonna): una colonna compare al più una volta per preset
 
 ---
 
+### ⭐ La colonna è della lista del preset
+
+`lista_id` è la lista del preset, e la scrive il database
+([trgfn_preset_riga_contenitore](/dbzero/ui/funzioni/trgfn_preset_riga_contenitore)): chi scrive la
+riga non la passa, e un valore passato è sostituito. La leggono due vincoli composti:
+
+* la riga appartiene a un preset di quella lista;
+* la colonna nominata è una colonna di quella lista.
+
+Una colonna di un'altra lista è quindi rifiutata alla scrittura, e il vincolo vale anche dall'altro
+lato: la lista di una colonna che un preset nomina non cambia. Accanto restano le FK semplici verso
+il preset e verso la colonna, che dicono l'esistenza; quelle composte dicono il legame.
+
+---
+
 ### Che cosa ne fa la cascata
 
 Il resolver prende le righe del preset di base che citano colonne **accese** del catalogo, in
@@ -66,15 +82,6 @@ tutte le righe e reinserendole, e una composizione salvata uguale non sposta nie
 
 ---
 
-### ⚠️ Che cosa oggi non copre
-
-* **La colonna di un'altra lista.** Nessun vincolo chiede che la colonna appartenga alla stessa
-  lista del preset. Una riga che cita la colonna di un'altra lista entra; il resolver la abbina per
-  codice alle colonne della lista del preset, e se un codice uguale c'è prende ordine e larghezza
-  di una colonna diversa, altrimenti la scarta in silenzio.
-
----
-
 ### Codici errore
 
 Nessuno proprio. Le violazioni di chiave e di FK arrivano come errori di vincolo; il servizio di
@@ -93,6 +100,9 @@ amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 * `db/pgtap/ui/test-liste-preset-default-v1.sql` — il preset di default di ogni lista del seed ha
   le sue colonne.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — le due FK in eccezione ATTIVO.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — la lista della riga scritta dal database, un valore
+  passato sostituito, una colonna di un'altra lista rifiutata, la lista di una colonna nominata che
+  non cambia.
 
 ---
 
@@ -103,6 +113,10 @@ amministrazione le traduce in `E_UI_PRESET_VALIDAZIONE`.
 * 2026-11-08 — le due FK entrano fra le eccezioni ATTIVO come righe di composizione.
 * 2026-11-20 — la composizione si giudica a fine transazione, sull'impronta: la sostituzione in
   blocco di una composizione uguale non sposta più la data.
+* 2026-11-21 — nasce `lista_id`, scritta dal database, con i due vincoli composti verso il preset e
+  la colonna della stessa lista. Le righe che citavano una colonna di un'altra lista sono state tolte;
+  prima il resolver le abbinava per codice, e con un codice uguale prendeva ordine e larghezza di una
+  colonna diversa.
 
 ---
 

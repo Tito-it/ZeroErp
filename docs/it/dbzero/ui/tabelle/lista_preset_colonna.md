@@ -14,12 +14,15 @@
 | larghezza | integer | YES |  |
 | visibile | boolean | NO | true |
 | fissata | boolean | NO | false |
+| lista_id | integer | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | FOREIGN KEY | fk_lista_preset_colonna_lista_colonna | colonna_id |
 | FOREIGN KEY | fk_lista_preset_colonna_lista_preset | preset_id |
+| FOREIGN KEY | fk_ui_lista_preset_colonna_colonna_della_lista | colonna_id, lista_id |
+| FOREIGN KEY | fk_ui_lista_preset_colonna_preset_della_lista | preset_id, lista_id |
 | PRIMARY KEY | pk_ui_lista_preset_colonna | preset_id, colonna_id |
 
 ## 📑 Indici
@@ -34,9 +37,11 @@
 | trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
 | trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
 | trg_lista_preset_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('FIGLIA', 'preset_id', 'ui.lista_preset')` |
+| trg_ui_lista_preset_colonna_a20_contenitore_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore()` |
+| trg_ui_lista_preset_colonna_a20_contenitore_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore()` |
+| trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
 | trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
 | trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
-| trg_ui_lista_preset_colonna_z10_tocca_preset_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_riga_tocca_preset('ui.lista_preset')` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -17,7 +17,9 @@
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge la preferenza chiave per chiave
 > * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive lo snapshot dal preset di base, a ogni salvataggio e a ogni «Ignora»
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
-> * [ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — la forma della configurazione e la misura di pagina, alla scrittura
+> * [ui.fn_check_forma_configurazione](/dbzero/ui/funzioni/fn_check_forma_configurazione) — la regola di forma
+> * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento di partenza, che la preferenza non porta
 >
 > Guide:
 >
@@ -28,17 +30,22 @@
 ### 🎯 Scopo Principale
 
 `ui.lista_preferenza_utente` conserva la personalizzazione di una lista fatta da un utente: le
-colonne, l'ordinamento, i filtri e le righe per pagina che ha scelto. Una riga per coppia
-(utente, lista); ciò che l'utente non ha scelto segue lo standard.
+colonne e le righe per pagina che ha scelto. Una riga per coppia (utente, lista); ciò che l'utente
+non ha scelto segue lo standard.
 
 ---
 
 ### ⭐ Una chiave assente vuol dire «come lo standard»
 
-`configurazione` porta solo le chiavi che l'utente ha scelto, fra `colonne`, `ordinamento`,
-`filtri` e `pagina_dimensione`. Il resolver le legge una per una: una chiave presente prevale sul
-preset, una chiave assente (o null) viene dal preset di base o dal catalogo. Così un cambio del
-preset arriva anche a chi ha personalizzato altro.
+`configurazione` porta solo le chiavi che l'utente ha scelto, fra `colonne` e
+`pagina_dimensione`. Il resolver le legge una per una: una chiave presente prevale sul preset, una
+chiave assente viene dal preset di base o dal catalogo. Così un cambio del preset arriva anche a chi
+ha personalizzato altro.
+
+⛔ L'ordinamento e i filtri non si salvano. Il clic sull'intestazione di una colonna vale per la
+sessione, e la lista riparte dall'ordinamento del preset
+([fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista)); i filtri di partenza sono
+dell'interfaccia di ogni lista.
 
 Chi salva rimanda solo le chiavi che il resolver dice di origine `preferenza`, più quella appena
 toccata: rimandare la configurazione risolta per intero trasformerebbe in «scelta» una copia del
@@ -71,10 +78,26 @@ porta `preset_base_id` a nessuno (`ON DELETE SET NULL`) e lo snapshot torna vuot
 
 ### Che cosa il database controlla
 
+* **La forma di `configurazione`**, alla nascita e a ogni modifica che la cambia: il guard
+  [trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma), con la regola di
+  [fn_check_forma_configurazione](/dbzero/ui/funzioni/fn_check_forma_configurazione). Un oggetto con
+  le sole chiavi `colonne` e `pagina_dimensione`, nessuna a null; `colonne` un elenco di voci con le
+  sole chiavi `codice`, `ordine`, `larghezza`, `visibile`, `fissata`. Solo il codice è obbligatorio,
+  e un campo che manca prende il default della colonna; nessun campo è null. Il codice è di una
+  colonna della lista, anche spenta, e non si ripete; ordine e larghezza sono interi positivi,
+  visibilità e fissaggio vero o falso. La configurazione vuota è ammessa: segue il preset in tutto.
 * `pagina_dimensione`, se c'è, è un intero del catalogo
-  [misure_pagina](/dbzero/ui/tabelle/misure_pagina) (guard alla scrittura). Una preferenza salvata
-  con una misura poi uscita dal catalogo non rompe niente: la lista risponde lo standard.
+  [misure_pagina](/dbzero/ui/tabelle/misure_pagina), giudicato dallo stesso guard. Una preferenza
+  salvata con una misura poi uscita dal catalogo non rompe la lettura: la lista risponde lo standard.
+* Una scrittura che riscrive la configurazione uguale (chiudere il banner, riallinearsi alla base)
+  passa senza giudizio.
+* Una riga scritta senza passare dal guard non rende la lista inapribile: il resolver salta le voci
+  che non riconosce e dà il default ai campi che non legge.
 * Una preferenza per utente e lista (`uq_ui_lista_preferenza_utente_user_lista`).
+* Il preset di base è un preset **della stessa lista**: un vincolo composto lega la base alla lista
+  della riga, e il preset di un'altra lista è rifiutato. Cancellato il preset, la preferenza resta, senza
+  base e senza snapshot: le scelte dell'utente non si perdono, e ciò che non ha scelto viene dal nuovo
+  preset di base.
 * L'utente cancellato porta via le sue preferenze; la FK verso `django.auth_user` si aggiunge in
   coda all'installazione, perché la tabella la crea Django dopo Liquibase.
 
@@ -90,23 +113,19 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **La forma di `configurazione`.** Il database verifica solo la misura di pagina. Non chiede che
-  sia un oggetto, né che `colonne` sia un elenco di voci con un codice, un ordine e una larghezza
-  interi e due booleani: lo fa solo il servizio. Una voce con un ordine non numerico rende la lista
-  inapribile per quell'utente (il resolver si ferma su un errore di conversione); una voce senza
-  `visibile` esce con la visibilità vuota; un codice ripetuto esce due volte.
 * **Le colonne che non ci sono più.** Una preferenza di colonne i cui codici sono tutti spariti
   dal catalogo vale ancora come scelta: il resolver aggiunge le colonne del catalogo in coda,
   nascoste, e la lista parte con le sole colonne identificatore e azione.
-* **Ordinamento e filtri** passano così come sono salvati: possono nominare colonne spente, non
-  ordinabili, non filtrabili o bloccate per l'utente.
-* **Il preset di base di un'altra lista.** Nessun vincolo chiede che `preset_base_id` sia un preset
-  della stessa lista: il resolver lo tratta come una base che non è quella di oggi.
+* **Una misura uscita dal catalogo blocca la modifica.** Una misura citata solo da preferenze si
+  toglie dal catalogo senza rifiuto; da quel momento il guard rifiuta ogni modifica della
+  configurazione che la conservi, anche se tocca soltanto le colonne.
 
 ---
 
 ### Codici errore
 
+* `E_UI_CONFIGURAZIONE_FORMA` — la configurazione non ha la forma ammessa; il messaggio dice la
+  chiave e il motivo.
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non intera o fuori catalogo.
 * Dal servizio, non dal database: `E_UI_PREFERENZA_VALIDAZIONE` (forma del payload, preferenza
   vuota), `E_UI_PREFERENZA_NON_TROVATA` («Ignora» senza una preferenza), `E_UI_LISTA_NON_TROVATA`.
@@ -115,8 +134,13 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 
 ### Test
 
-* `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — chiavi presenti, assenti
-  e null.
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — ogni forma rifiutata (le chiavi `filtri` e
+  `ordinamento`, un campo a null, un codice di un'altra lista o ripetuto, un ordine scritto come
+  stringa, un `visibile` non booleano, una radice che non è un oggetto), la configurazione vuota e la
+  voce di una colonna spenta che passano, l'UPDATE che non cambia la configurazione su una riga
+  malformata, il resolver che non cade su una riga scritta senza il guard.
+* `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — chiavi presenti e
+  assenti; una chiave null rifiutata dal guard di forma.
 * `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — snapshot, «Ignora» che
   riallinea, il cambio dopo che riaccende, base portata a nessuno.
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — una preferenza di sole
@@ -126,6 +150,8 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
   servizio; la base salvata diversa da quella di oggi (`preset_base_cambiato`).
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — la preferenza prevale sui preset.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura della preferenza nel catalogo.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — il preset di base di un'altra lista rifiutato;
+  cancellato il preset, la preferenza resta senza base.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — lo snapshot rinominato e per chiave, le FK in eccezione
   ATTIVO.
 
@@ -145,6 +171,14 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 * 2026-11-20 — lo snapshot diventa per chiave (`{chiave: data}`, le righe esistenti portate a
   `max(snapshot, ignorato)` per ogni chiave, banner identico), e `preset_aggiornato_ignored_at` si
   ritira: «Ignora» è riscrivere `preset_base_id`.
+* 2026-11-21 — `ordinamento` e `filtri` escono dalla configurazione e dallo snapshot: le preferenze
+  esistenti le hanno perse. La forma della configurazione la giudica il database, col guard di forma
+  che prende il posto di quello della sola misura; le righe esistenti sono state portate in forma
+  (via chiavi e voci estranee, voci con un codice che non è della lista, ripetizioni, campi di tipo
+  sbagliato).
+* 2026-11-21 — il preset di base è legato alla lista della riga da un vincolo composto; le preferenze
+  con la base di un'altra lista sono tornate senza base. Prima il resolver la trattava come una base che
+  non è quella di oggi.
 
 ---
 

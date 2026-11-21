@@ -3,7 +3,7 @@
 > Questo file è pensato per essere letto all'inizio di ogni sessione Claude Code,
 > su qualsiasi server (DB o backend). Integra AGENTS.md con lo stato corrente del progetto.
 >
-> Ultima revisione: 2026-11-18.
+> Ultima revisione: 2026-11-21.
 
 ## Identità del Progetto
 
@@ -257,20 +257,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 - 📝 **Revisione dello schema `ui`** (`work-in-progress/brief-db-revisione-ui.md`): giro 0 fatto il 2026-11-18 (32
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
-  decisioni Q1-Q39 prese da Tid dal 2026-11-18 al 2026-11-20; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20.
-  Ora il BE/FE con le ricadute dell'1b (BE7, BE25), poi il via al giro 2 di sei.
-- ⏳ **La provenienza del prezzo segue il prezzo** (`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`,
-  decisione B di Tid del 2026-10-09): la riga di listino si cita solo se il prezzo viene davvero da lì. Riverificato
-  il 2026-11-13 (§7): R-3/R-4 corretti; D-1 … D-3 decise lo stesso giorno (parte, su un pezzo comune). Progetto al
-  §8, quattro giri: giro 1 applicato e verde; giro 2 (il push, D-4: `20261113-13 … -22`) applicato e verde.
-  Giro 3 (le copie a valle, `20261113-23 … -37`) applicato e verde il 2026-11-14; giro 4 (R-7, R-8) il
-  2026-11-15. BE/FE consegnati il 2026-11-15 (§8.13: K-1 … K-7 nei cinque documenti, ordine e DDT dal gate con
-  L1/L2 per la strada A di Tid); `note` del codice 409 corretta dal DB (§8.14); l'estrazione della regola del 2
-  consegnata dal BE il 2026-11-21 (§8.15), guide e manuali riallineati lo stesso giorno. Giro 5 (offerta → ordine,
-  il residuo del §8.8, con D-6 «a»; corretto anche l'OVERRIDE su un kit, che perdeva il prezzo negoziato) scritto e
-  provato il 2026-11-21 (§8.17); giro 5-bis (D-7-bis: un kit col prezzo negoziato esce dalla bozza coi suoi
-  componenti) scritto e provato lo stesso giorno (§8.19). Applicati e verdi lo stesso giorno (§8.21). Ora FE (chiave i18n, che sblocca il commit della doc rigenerata), BE (policy) e
-  la chiusura DB.
+  decisioni Q1-Q43 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
+  giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) il 2026-11-21.
+  Ora il BE/FE con le ricadute del giro 2 (§3.2-bis); al DB il `/verifica-db` dei giri 1a e 2, poi i giri 3-6.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

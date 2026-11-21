@@ -4,13 +4,14 @@
 -- Test: ui.fn_resolve_lista_config — il banner del preset aggiornato
 --   La data del contenuto del preset e lo snapshot della preferenza sono mappe
 --   {chiave: data} scritte dal DB; «Ignora» e' riscrivere preset_base_id
---   (giro 1b di brief-db-revisione-ui, Q38). La preferenza imposta tutte e
---   quattro le chiavi, quindi le guarda tutte.
+--   (giro 1b di brief-db-revisione-ui, Q38). La preferenza imposta le due
+--   chiavi (colonne, pagina_dimensione: dal giro 2 la preferenza non porta
+--   ordinamento e filtri), quindi le guarda tutte e due.
 -- ------------------------------------------------------------
 -- Indice test (1..6):
 -- Caso A) snapshot allineato (lo scrive il DB al salvataggio)
 --         → preset_aggiornato = FALSE
--- Caso B) admin modifica l'ordinamento del preset dopo lo snapshot
+-- Caso B) admin modifica la misura del preset dopo lo snapshot
 --         → preset_aggiornato = TRUE
 -- Caso C) utente preme "Ignora" (riscrive lo stesso preset_base_id)
 --         → preset_aggiornato = FALSE
@@ -123,8 +124,6 @@ WITH ins AS (
           'larghezza', 100, 'visibile', true, 'fissata', false
         )
       ),
-      'ordinamento', '[]'::jsonb,
-      'filtri', '{}'::jsonb,
       'pagina_dimensione', 25
     )
   FROM _t_au_pa u, _t_lista_pa l, _t_preset_pa p
@@ -148,7 +147,7 @@ SELECT is(
 -- La data la sposta il DB, all'ora del cambio.
 -- ============================================================
 UPDATE ui.lista_preset
-   SET ordinamento_default = '[{"col": "col_pa", "dir": "desc"}]'::jsonb
+   SET pagina_dimensione = (SELECT max(m.misura) FROM ui.misure_pagina m WHERE m.misura <> 25)
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(
@@ -179,7 +178,7 @@ SELECT is(
 -- CASO D) admin modifica il preset di nuovo dopo l'ignore → TRUE
 -- ============================================================
 UPDATE ui.lista_preset
-   SET ordinamento_default = '[{"col": "col_pa", "dir": "asc"}]'::jsonb
+   SET pagina_dimensione = 25
  WHERE id = (SELECT preset_id FROM _t_preset_pa);
 
 SELECT is(

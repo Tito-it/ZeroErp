@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_dimensione_max_ammessa: il tetto delle card della home, in una sede.
+#   Brief: brief-db-revisione-ui (giro 2: U21 sulla preferenza, con Q12 decisa
+#   da Tid il 2026-11-18: il tetto 1-100 sta nel DB).
+#
+# Perche': il tetto 100 vive oggi nel BE (_MAX_WIDGET_PAYLOAD,
+#   dashboard_preferenza_service.py), che lo ritira con BE11; il resolver delle
+#   dashboard non lo conosce e accetta qualunque intero. Lo leggono il guard di
+#   forma (-24) e il resolver delle dashboard (-30). Il CHECK sul preset e l'8
+#   del catalogo restano al giro 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-22-create-fn-dimensione-max-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20261120-22-create-fn-dimensione-max-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_dimensione_max_ammessa: il tetto 1-100 delle card della home, una sede per guard e resolver.
+        Brief: brief-db-revisione-ui (giro 2, U21, Q12).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_dimensione_max_ammessa'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_dimensione_max_ammessa(
+                  p_valore ui.dashboard_preset.dimensione_max%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  SELECT COALESCE(p_valore BETWEEN 1 AND 100, false);
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_dimensione_max_ammessa(integer) IS
+                  'Vero se il numero di card della home è ammesso: da 1 a 100. NULL e ogni altro valore: falso. «Nessun tetto» non esiste: una dashboard ha sempre un massimo. La leggono il guard di forma delle preferenze (ui.fn_check_forma_configurazione, chiave dimensione_max) e ui.fn_resolve_dashboard_config, che a un valore non ammesso preferisce quello del preset o del catalogo. IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_dimensione_max_ammessa(integer);

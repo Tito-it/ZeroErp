@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -22,6 +22,8 @@
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — la configurazione effettiva di una lista per un utente
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base, per liste e dashboard
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il banner «preset aggiornato»
+> * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento con cui una lista parte, per un utente
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — che cosa una preferenza può contenere
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di ogni colonna per un utente
 > * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — la vista della lista esiste
 > * [ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente](/dbzero/ui/funzioni/trgfn_ui_lista_colonna_a10_valida_campo_sorgente) — il campo sorgente esiste nella vista
@@ -137,9 +139,11 @@ Un preset porta:
 * la **composizione** delle colonne: quali includere, in che ordine, con quale
   larghezza, quali sono visibili di default e quali sono "fissate" (sticky a
   sinistra, non scrollano)
-* l'**ordinamento** e i **filtri** di partenza
+* l'**ordinamento** di partenza: da quali colonne la lista parte ordinata, e in che verso
 * le **righe per pagina**, scelte fra le misure del catalogo (§2.6); vuoto vuol dire
   «la misura di default»
+
+I **filtri** di partenza non sono del preset: li decide la schermata di ogni lista.
 
 Ogni combinazione (lista, ambito, profilo, emittente) è un **posto**, e un posto ha
 **un solo preset acceso**: è lo **standard** della lista per chi rientra in
@@ -177,9 +181,15 @@ La **personalizzazione che l'operatore salva** dalla modale "Personalizza
 colonne". Conserva **solo ciò che l'operatore ha scelto**, chiave per chiave:
 
 * le colonne: ordine, visibilità, larghezza
-* l'ordinamento
-* i filtri
 * le righe per pagina
+
+L'ordinamento e i filtri **non si salvano**. Un clic sull'intestazione di una colonna riordina la
+lista per la sessione; riaprendola, la lista riparte dall'ordinamento del preset. I filtri ripartono
+da quelli che la schermata propone.
+
+Che cosa una preferenza può contenere lo controlla il database al salvataggio: solo colonne della
+lista, ciascuna una volta, e una misura del catalogo. Le regole sono nella scheda di
+[ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma).
 
 Una chiave che l'operatore non ha toccato non si salva: continua a venire dal preset,
 così una modifica del preset arriva anche a chi ha personalizzato altro. La
@@ -204,9 +214,8 @@ dettaglio è in [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
 
 ## 3. La cascata di risoluzione
 
-Quando l'operatore apre una lista, il sistema risolve **ogni chiave per conto suo** —
-colonne, ordinamento, filtri, righe per pagina — prendendola dal primo livello che
-la contiene:
+Quando l'operatore apre una lista, il sistema risolve **ogni scelta per conto suo** —
+le colonne e le righe per pagina — prendendola dal primo livello che la contiene:
 
 1. **La preferenza personale**, se l'operatore ha scelto quella chiave
 2. Altrimenti, il **preset di base**: il primo preset acceso, in quest'ordine, che ha almeno
@@ -217,12 +226,16 @@ la contiene:
    3. il preset di **sistema**
 
    Un preset senza colonne attive non conta, a nessun livello: la cascata passa al
-   successivo, e da quel preset non prende nemmeno ordinamento, filtri o righe per pagina.
+   successivo, e da quel preset non prende nemmeno le righe per pagina o l'ordinamento.
 3. Altrimenti, il **catalogo grezzo**: tutte le colonne attive, visibili, nell'ordine
-   di catalogo; nessun ordinamento, nessun filtro, la misura di default
+   di catalogo, e la misura di default
 
-Così una preferenza che tocca solo le colonne non congela l'ordinamento, i filtri e
-le righe per pagina del preset.
+Così una preferenza che tocca solo le colonne non congela le righe per pagina del preset.
+
+L'**ordinamento di partenza** viene sempre dal preset di base, perché la preferenza non lo
+porta; senza un preset che lo dica, la lista non ha un ordinamento di partenza. Dall'ordinamento del
+preset si tolgono le colonne spente, quelle che non si possono ordinare e quelle che l'operatore
+non può vedere (§2.4): una lista non si ordina per un dato nascosto.
 
 Sopra qualunque livello valgono poi tre regole:
 
@@ -263,9 +276,9 @@ attivo.
   condizionali (profilo se ambito=ruolo, emittente se ambito=emittente
   fiscale), righe per pagina (una misura del catalogo, o il default), flag
   attivo. Un preset nuovo per un posto che ne ha già uno acceso nasce spento (§2.3).
-* **Modifica preset**: aggiorna i campi mutabili. L'ambito e i
-  riferimenti sono immutabili dopo la creazione (per cambiarli si
-  crea un nuovo preset).
+* **Modifica preset**: aggiorna i campi mutabili. La lista, l'ambito e i
+  riferimenti sono immutabili dopo la creazione, e lo garantisce il database:
+  per cambiarli si spegne il preset e se ne crea uno nuovo.
 * **Gestisci composizione**: drawer dedicato per definire quali colonne
   includere, in che ordine (frecce ▲▼), con quale larghezza, quali visibili e
   quali fissate. Il salvataggio sostituisce la composizione intera in un colpo solo.
@@ -438,6 +451,8 @@ L'operatore vede ogni lista personalizzabile con due affordance:
   Le colonne arrivate nel catalogo dopo l'ultimo salvataggio sono contate e
   segnalate come nuove. Quali colonne restano fissate a sinistra lo decidono il
   preset e il tipo di colonna, non la modale.
+* **Intestazione delle colonne** — un clic ordina la lista per quella colonna. L'ordinamento vale
+  per la sessione e non si salva: riaprendo la lista si riparte da quello del preset.
 * **Banner "preset aggiornato"** — appare quando l'admin modifica il
   preset da cui partiva la preferenza dell'utente. "Vedi novità" apre la modale
   con le novità; "Ignora" lo nasconde finché il preset non cambia di nuovo.
@@ -647,8 +662,8 @@ Mario (profilo "Amministrativo") apre `/anagrafiche/clienti`:
   spente, le colonne del catalogo che il preset non elenca: le può accendere dalla modale)
 
 Mario decide che gli serve anche `comune` e nasconde `codice_fiscale`.
-Salva. Ora ha una sua preferenza personale **sulle colonne**: ordinamento, filtri e
-righe per pagina continuano a venire dal preset.
+Salva. Ora ha una sua preferenza personale **sulle colonne**: le righe per pagina e
+l'ordinamento di partenza continuano a venire dal preset.
 
 Luca (profilo "Tecnico") apre la stessa lista:
 
@@ -736,10 +751,11 @@ Se la colonna deve restare nascosta a **tutti tranne** alcuni profili, la si mar
 Quando l'admin modifica un preset di base (aggiunge una colonna,
 cambia l'ordine), il banner "preset aggiornato" lo vedono gli utenti che hanno
 personalizzato proprio quella parte: chi ha scelto le sue colonne lo vede quando
-cambiano le colonne del preset, non quando cambia solo l'ordinamento, che gli
-arriva già. Le parti che l'utente non ha personalizzato seguono il preset senza
-bisogno di nulla. "Vedi novità" apre la modale con le novità, "Ignora" lo nasconde
-finché il preset non cambia di nuovo. Salvare un preset senza cambiarlo non accende
+cambiano le colonne del preset, non quando cambiano solo le righe per pagina, che gli
+arrivano già. Cambiare l'ordinamento di partenza non accende il banner a nessuno: la
+lista parte subito col nuovo ordinamento. Le parti che l'utente non ha personalizzato
+seguono il preset senza bisogno di nulla. "Vedi novità" apre la modale con le novità,
+"Ignora" lo nasconde finché il preset non cambia di nuovo. Salvare un preset senza cambiarlo non accende
 niente.
 
 Quando invece il preset da cui l'utente era partito non è più il suo standard (l'admin

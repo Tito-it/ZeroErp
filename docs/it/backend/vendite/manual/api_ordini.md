@@ -380,7 +380,7 @@ il risolutore): inviato, come ogni chiave fuori contratto, è un 400
 è il BB `richiedi_righe_in_bozza` → 409 `E_RIGA_DOC_NON_BOZZA`.
 ⛔ **`uom_operativa_id` è obbligatorio per un articolo non composito, anche col
 prezzo scritto a mano** (dal 2026-11-15, gate della provenienza del prezzo,
-`work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md`): il prezzo
+`work-done/2026/brief-db-provenienza-prezzo-segue-il-prezzo.md`): il prezzo
 della riga passa sempre dal gate, che lo chiede al listino o ne verifica i
 limiti L1/L2, e il listino risponde per unità. Senza → 400 `E_ORD_VALIDAZIONE`
 sul campo `uom_operativa_id`. Nella PATCH che cambia il prezzo vale l'unità

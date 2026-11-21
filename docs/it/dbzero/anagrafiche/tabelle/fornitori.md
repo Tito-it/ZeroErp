@@ -14,15 +14,9 @@
 | attivo | boolean | NO | true |
 | valuta_id | integer | YES |  |
 | modalita_pagamento_id | integer | YES |  |
-| giorni_pagamento | smallint | YES |  |
-| fine_mese | boolean | YES |  |
-| split_payment | boolean | YES |  |
 | ritenuta_acconto | boolean | YES |  |
 | ritenuta_aliquota | numeric(5,2) | YES |  |
-| regime_fiscale | character varying(8) | YES |  |
-| bollo_esente | boolean | YES |  |
-| canale_fe | character varying(7) | YES |  |
-| pec_email | character varying(256) | YES |  |
+| regime_fiscale_rf | character varying(8) | YES |  |
 | rating | smallint | YES |  |
 | qualifica_scadenza | date | YES |  |
 | note | text | YES |  |
@@ -40,11 +34,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
-| CHECK | chk_fornitori_canale_fe_len |  |
 | CHECK | chk_fornitori_rating |  |
 | CHECK | chk_fornitori_ritenuta_aliquota |  |
 | CHECK | chk_fornitori_ritenuta_aliquota_finito |  |
 | FOREIGN KEY | fk_fornitori_modalita_pagamento | modalita_pagamento_id |
+| FOREIGN KEY | fk_fornitori_regimi_fiscali | regime_fiscale_rf |
 | FOREIGN KEY | fk_fornitori_soggetti_ruoli | soggetto_ruolo_id |
 | FOREIGN KEY | fk_fornitori_stati_fornitore | stato_fornitore_id |
 | FOREIGN KEY | fk_fornitori_termini_pagamento | termine_pagamento_id |
