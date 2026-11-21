@@ -1,0 +1,282 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_espandi_listino_versione: LA RIGA DI LISTINO DEL PREZZO, IN CODA
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16 (giro 5, passo 5-1).
+#
+#   La riga d'ordine presa dal listino dell'offerta deve citare la riga di listino
+#   da cui il suo prezzo viene (decisione B), e l'espansione non la restituiva.
+#   Colonna nuova IN CODA (linee-guida-sql §5f): listino_riga_id, lr.id per la riga
+#   semplice, NULL per il kit (il suo prezzo sta in listini_righe_componenti, che
+#   nessuna riga cita: R-7.3). Cambia il RETURNS TABLE: DROP + CREATE, COMMENT e
+#   GRANT di nuovo (PUBLIC resta col default, com'era al vivo).
+#   Chiamanti, censiti il 2026-11-21 (pg_get_functiondef, pgTAP, backend):
+#   · vendite.fn_offerta_righe_espanse e vendite.fn_documento_righe_preview,
+#     plpgsql, leggono le colonne per nome (base.<colonna>): niente da riscrivere;
+#     il primo la usa dal 20261120-16;
+#   · script.fn_articolo_riga_contesto, plpgsql, legge il solo articolo_id per nome
+#     (gli articoli del listino nel contesto della regola sulle righe);
+#   · pgTAP vendite/test-offerta-righe-espanse (6-8, per nome),
+#     vendite/test-righe-eccezioni-articolo-ammesso-v1 (il bundle «nel listino»);
+#   · backend: nessuno.
+#   Corpo: il vivo di dbdev (2026-11-21) piu' la colonna; testata ri-ancorata da
+#   20261009-50. Nessun COST, ROWS o SET da ripetere (§13.7). COMMENT riscritto al
+#   presente (§5d: il vivo portava un marcatore di revisione). Rollback: il vivo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261120-14-update-fn-espandi-listino-versione-riga-di-listino-mctit.yaml
+
+  - changeSet:
+      id: 20261120-14-update-fn-espandi-listino-versione-riga-di-listino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_espandi_listino_versione: + listino_riga_id in coda. Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_espandi_listino_versione';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE);
+
+              CREATE FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id vendite.listini_versioni.id%TYPE, p_tipo_var vendite.contratti.tipo_variazione_globale%TYPE, p_valore_var vendite.contratti.valore_variazione_globale%TYPE)
+               RETURNS TABLE(articolo_id catalogo.articoli.id%TYPE, articolo_codice catalogo.articoli.codice%TYPE, articolo_descrizione catalogo.articoli.descrizione%TYPE, is_composito catalogo.articoli.is_composito%TYPE, uom_id vendite.listini_righe.uom_id%TYPE, uom_codice catalogo.unita_misura.codice%TYPE, prezzo_listino vendite.listini_righe.prezzo%TYPE, prezzo_da_listino vendite.listini_righe.prezzo%TYPE, componenti jsonb, listino_riga_id vendite.listini_righe.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: espande una versione di listino in righe piatte.
+              --   STANDALONE (is_composito=FALSE): prezzo_da_listino = listino +/- variazione globale.
+              --   BUNDLE (is_composito=TRUE): prezzo_da_listino = SUM(componenti) (NO variazione,
+              --     come fn_contratto_righe_preview); componenti aggregati in jsonb.
+              --   prezzo_listino: prezzo unitario di riga listino (NULL per bundle).
+              --   listino_riga_id: la riga di listino da cui il prezzo viene (NULL per bundle:
+              --     il suo prezzo sta in listini_righe_componenti, non in listini_righe).
+              -- Core condiviso: nessuna eccezione di dominio.
+              BEGIN
+                  IF p_listino_versione_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  -- STANDALONE: articoli semplici dal listino, prezzo con variazione globale.
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      FALSE,
+                      lr.uom_id,
+                      um.codice,
+                      lr.prezzo,
+                      CASE
+                          WHEN p_tipo_var = 'PERCENTUALE'  THEN lr.prezzo * (1 + p_valore_var / 100.0)
+                          WHEN p_tipo_var = 'VALORE_FISSO' THEN lr.prezzo + p_valore_var
+                          ELSE                                  lr.prezzo
+                      END,
+                      NULL::jsonb,
+                      lr.id
+                    FROM vendite.listini_righe lr
+                    JOIN catalogo.articoli a
+                      ON a.id           = lr.articolo_id
+                     AND a.is_composito = FALSE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = lr.uom_id
+                   WHERE lr.listino_versione_id = p_listino_versione_id
+                     AND lr.attivo              = TRUE;
+
+                  -- BUNDLE: padri compositi; prezzo = SUM(componenti) (NO variazione).
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      TRUE,
+                      a.uom_id,
+                      um.codice,
+                      NULL::numeric,
+                      bsum.somma,
+                      bcomp.componenti,
+                      NULL::bigint
+                    FROM (
+                        SELECT DISTINCT lrc_p.articolo_padre_id
+                          FROM vendite.listini_righe_componenti lrc_p
+                         WHERE lrc_p.listino_versione_id = p_listino_versione_id
+                           AND lrc_p.attivo              = TRUE
+                           AND lrc_p.validita           @> (SELECT script.fn_data_operativa())
+                    ) padri
+                    JOIN catalogo.articoli a
+                      ON a.id           = padri.articolo_padre_id
+                     AND a.is_composito = TRUE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                    CROSS JOIN LATERAL (
+                        SELECT SUM(lrc2.prezzo * ac2.coeff_qta) AS somma
+                          FROM vendite.listini_righe_componenti lrc2
+                          JOIN catalogo.articoli_componenti ac2
+                            ON ac2.id = lrc2.articolo_componente_id
+                         WHERE lrc2.listino_versione_id = p_listino_versione_id
+                           AND lrc2.articolo_padre_id   = a.id
+                           AND lrc2.attivo              = TRUE
+                           AND lrc2.validita           @> (SELECT script.fn_data_operativa())
+                    ) bsum
+                    CROSS JOIN LATERAL (
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'articolo_componente_id', ac.id,
+                            'componente_id',          af.id,
+                            'componente_codice',      af.codice,
+                            'componente_descrizione', af.descrizione,
+                            'uom_id',                 af.uom_id,
+                            'uom_codice',             umf.codice,
+                            'coeff_qta',              ac.coeff_qta,
+                            'prezzo',                 lrc.prezzo,
+                            'obbligatorio',           ac.obbligatorio,
+                            'esposizione_in_fattura', ac.esposizione_in_fattura
+                        ) ORDER BY lrc.id) AS componenti
+                          FROM vendite.listini_righe_componenti lrc
+                          JOIN catalogo.articoli_componenti ac
+                            ON ac.id = lrc.articolo_componente_id
+                          JOIN catalogo.articoli af
+                            ON af.id = lrc.articolo_figlio_id
+                          JOIN catalogo.unita_misura umf
+                            ON umf.id = af.uom_id
+                         WHERE lrc.listino_versione_id = p_listino_versione_id
+                           AND lrc.articolo_padre_id   = a.id
+                           AND lrc.attivo              = TRUE
+                           AND lrc.validita           @> (SELECT script.fn_data_operativa())
+                    ) bcomp;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE) IS
+                'Core condiviso: espande una versione di listino in righe piatte, una per articolo. Le semplici hanno il prezzo della riga di listino (prezzo_listino) con la variazione globale data (PERCENTUALE o VALORE_FISSO; altrimenti nessuna) in prezzo_da_listino, e in listino_riga_id la riga di listino da cui il prezzo viene. I kit (padri compositi con righe in listini_righe_componenti valide alla data operativa) hanno prezzo_da_listino = somma prezzo x coefficiente dei componenti, senza variazione, prezzo_listino e listino_riga_id NULL, e i componenti in jsonb (articolo_componente_id, componente, unita'', coeff_qta, prezzo, obbligatorio, esposizione_in_fattura). Versione NULL: nessuna riga. Nessuna eccezione di dominio. La leggono vendite.fn_offerta_righe_espanse, vendite.fn_documento_righe_preview e script.fn_articolo_riga_contesto (gli articoli del listino). STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE);
+
+              CREATE FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id vendite.listini_versioni.id%TYPE, p_tipo_var vendite.contratti.tipo_variazione_globale%TYPE, p_valore_var vendite.contratti.valore_variazione_globale%TYPE)
+               RETURNS TABLE(articolo_id catalogo.articoli.id%TYPE, articolo_codice catalogo.articoli.codice%TYPE, articolo_descrizione catalogo.articoli.descrizione%TYPE, is_composito catalogo.articoli.is_composito%TYPE, uom_id vendite.listini_righe.uom_id%TYPE, uom_codice catalogo.unita_misura.codice%TYPE, prezzo_listino vendite.listini_righe.prezzo%TYPE, prezzo_da_listino vendite.listini_righe.prezzo%TYPE, componenti jsonb)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              -- Scopo: espande una versione di listino in righe piatte.
+              --   STANDALONE (is_composito=FALSE): prezzo_da_listino = listino +/- variazione globale.
+              --   BUNDLE (is_composito=TRUE): prezzo_da_listino = SUM(componenti) (NO variazione,
+              --     come fn_contratto_righe_preview); componenti aggregati in jsonb.
+              --   prezzo_listino: prezzo unitario di riga listino (NULL per bundle).
+              -- Core condiviso: nessuna eccezione di dominio.
+              BEGIN
+                  IF p_listino_versione_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  -- STANDALONE: articoli semplici dal listino, prezzo con variazione globale.
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      FALSE,
+                      lr.uom_id,
+                      um.codice,
+                      lr.prezzo,
+                      CASE
+                          WHEN p_tipo_var = 'PERCENTUALE'  THEN lr.prezzo * (1 + p_valore_var / 100.0)
+                          WHEN p_tipo_var = 'VALORE_FISSO' THEN lr.prezzo + p_valore_var
+                          ELSE                                  lr.prezzo
+                      END,
+                      NULL::jsonb
+                    FROM vendite.listini_righe lr
+                    JOIN catalogo.articoli a
+                      ON a.id           = lr.articolo_id
+                     AND a.is_composito = FALSE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = lr.uom_id
+                   WHERE lr.listino_versione_id = p_listino_versione_id
+                     AND lr.attivo              = TRUE;
+
+                  -- BUNDLE: padri compositi; prezzo = SUM(componenti) (NO variazione).
+                  RETURN QUERY
+                  SELECT
+                      a.id,
+                      a.codice,
+                      a.descrizione,
+                      TRUE,
+                      a.uom_id,
+                      um.codice,
+                      NULL::numeric,
+                      bsum.somma,
+                      bcomp.componenti
+                    FROM (
+                        SELECT DISTINCT lrc_p.articolo_padre_id
+                          FROM vendite.listini_righe_componenti lrc_p
+                         WHERE lrc_p.listino_versione_id = p_listino_versione_id
+                           AND lrc_p.attivo              = TRUE
+                           AND lrc_p.validita           @> (SELECT script.fn_data_operativa())
+                    ) padri
+                    JOIN catalogo.articoli a
+                      ON a.id           = padri.articolo_padre_id
+                     AND a.is_composito = TRUE
+                     AND a.attivo       = TRUE
+                    JOIN catalogo.unita_misura um ON um.id = a.uom_id
+                    CROSS JOIN LATERAL (
+                        SELECT SUM(lrc2.prezzo * ac2.coeff_qta) AS somma
+                          FROM vendite.listini_righe_componenti lrc2
+                          JOIN catalogo.articoli_componenti ac2
+                            ON ac2.id = lrc2.articolo_componente_id
+                         WHERE lrc2.listino_versione_id = p_listino_versione_id
+                           AND lrc2.articolo_padre_id   = a.id
+                           AND lrc2.attivo              = TRUE
+                           AND lrc2.validita           @> (SELECT script.fn_data_operativa())
+                    ) bsum
+                    CROSS JOIN LATERAL (
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'articolo_componente_id', ac.id,
+                            'componente_id',          af.id,
+                            'componente_codice',      af.codice,
+                            'componente_descrizione', af.descrizione,
+                            'uom_id',                 af.uom_id,
+                            'uom_codice',             umf.codice,
+                            'coeff_qta',              ac.coeff_qta,
+                            'prezzo',                 lrc.prezzo,
+                            'obbligatorio',           ac.obbligatorio,
+                            'esposizione_in_fattura', ac.esposizione_in_fattura
+                        ) ORDER BY lrc.id) AS componenti
+                          FROM vendite.listini_righe_componenti lrc
+                          JOIN catalogo.articoli_componenti ac
+                            ON ac.id = lrc.articolo_componente_id
+                          JOIN catalogo.articoli af
+                            ON af.id = lrc.articolo_figlio_id
+                          JOIN catalogo.unita_misura umf
+                            ON umf.id = af.uom_id
+                         WHERE lrc.listino_versione_id = p_listino_versione_id
+                           AND lrc.articolo_padre_id   = a.id
+                           AND lrc.attivo              = TRUE
+                           AND lrc.validita           @> (SELECT script.fn_data_operativa())
+                    ) bcomp;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE) IS
+                'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura).';
+              GRANT EXECUTE ON FUNCTION vendite.fn_espandi_listino_versione(vendite.listini_versioni.id%TYPE, vendite.contratti.tipo_variazione_globale%TYPE, vendite.contratti.valore_variazione_globale%TYPE) TO zeroerp_app;

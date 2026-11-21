@@ -1,5 +1,7 @@
 # fn_offerta_righe_espanse
 
+> **Ultimo aggiornamento**: 21 novembre 2026
+
 ### Scopo
 
 Espande un'offerta commerciale nelle **righe effettive ordine-ready** = listino base + variazione globale + eccezioni applicate, pronte per la **conversione offerta → ordine**. È l'analogo per le offerte di [vendite.fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_righe_preview), ma con output orientato alla creazione di `ordini_righe` (non al drawer).
@@ -33,7 +35,13 @@ RETURNS TABLE (
     iva_id            vendite.ordini_righe.iva_id%TYPE,
     tipo_eccezione    vendite.tipo_eccezione_contratto,
     origine           varchar,
-    componenti        jsonb
+    componenti        jsonb,
+    eccezione_id      vendite.offerte_commerciali_eccezioni.id%TYPE,
+    -- la provenienza del prezzo, che la riga d'ordine copia
+    origine_prezzo          vendite.ordini_righe.origine_prezzo%TYPE,
+    listino_versione_id     vendite.ordini_righe.listino_versione_id%TYPE,
+    listino_riga_id         vendite.ordini_righe.listino_riga_id%TYPE,
+    prezzo_resolver_context vendite.ordini_righe.prezzo_resolver_context%TYPE
 )
 LANGUAGE plpgsql STABLE
 ```
@@ -43,6 +51,33 @@ LANGUAGE plpgsql STABLE
 1. Legge dalla testata offerta: `listino_id` (NOT NULL), `listino_versione_id`, variazione globale. Se lo snapshot versione è NULL (offerta BOZZA), risolve la versione operativa (`stato IN ('ATTIVA','CHIUSA') AND validita @> CURRENT_DATE`). **Nessun ramo "senza listino"**: le offerte hanno sempre il listino.
 2. **Parte 1**: righe dal core `fn_espandi_listino_versione` + LEFT JOIN `offerte_commerciali_eccezioni` (OVERRIDE/ESCLUSIONE). OVERRIDE → `prezzo_unitario = ecc.prezzo_unitario`; **ESCLUSIONE → riga rimossa** (non copiabile in ordine); DA_LISTINO → `prezzo_da_listino`.
 3. **Parte 2a/2b**: AGGIUNTA standalone e bundle da `offerte_commerciali_eccezioni` (+ `_componenti` per i bundle).
+
+## La provenienza del prezzo
+
+Ogni riga dice **da dove viene il suo prezzo**, nella forma delle righe di documento, e
+[vendite.fn_genera_ordine_da_offerta](/dbzero/vendite/funzioni/fn_genera_ordine_da_offerta) la
+copia sulla riga d'ordine così com'è:
+
+| Riga | `origine_prezzo` | Versione e riga di listino | Contesto |
+| --- | --- | --- | --- |
+| dal listino dell'offerta (`DA_LISTINO`, anche con l'ADESIONE) | `CONTRATTO_LISTINO`: il listino fissato dal documento, la stessa origine che il resolver dà alle righe dell'offerta | la versione operativa; la riga di listino se l'unità della riga è la sua | `prezzo_base_snapshot` (il prezzo della riga di listino), `tipo_variazione_applicata` e `valore_variazione_applicata` (la variazione globale; `NESSUNA` e 0 senza) |
+| `OVERRIDE`, `AGGIUNTA` semplice | quella dell'eccezione | quelle dell'eccezione | quello dell'eccezione |
+| kit | nessuna: il prezzo del padre è la somma dei componenti, e lo scrive `COMPONENTI` | — | — |
+
+Sul kit, `componenti` porta per ogni componente il prezzo **e la sua provenienza**
+(`origine_prezzo`, `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`):
+l'elemento è già un override che [vendite.fn_componente_override](/dbzero/vendite/funzioni/fn_componente_override)
+legge.
+
+* **AGGIUNTA composita, e OVERRIDE su un kit che ha componenti suoi**: i componenti
+  dell'eccezione ([vendite.fn_offerta_eccezione_componenti_espansi](/dbzero/vendite/funzioni/fn_offerta_eccezione_componenti_espansi)),
+  coi prezzi negoziati. Il prezzo forzato del kit è la loro somma, e l'ordine lo ritrova.
+* **Kit dal listino**: i componenti del listino, `LISTINO_BUNDLE` con la versione, senza riga
+  di listino (il prezzo sta in `listini_righe_componenti`) e senza variazione.
+* Un OVERRIDE su un kit **senza** componenti suoi prenderebbe i componenti del listino.
+  Non succede: un'offerta con un kit col prezzo negoziato senza componenti attivi non si
+  emette ([script.fn_check_offerta_kit_con_componenti](/dbzero/script/funzioni/fn_check_offerta_kit_con_componenti)),
+  e fuori dalla bozza i componenti non si toccano.
 
 ## Differenze rispetto a fn_contratto_righe_preview
 

@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI DI UN'ECCEZIONE D'OFFERTA, CON LA LORO PROVENIENZA: vendite.fn_offerta_eccezione_componenti_espansi
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16 (giro 5, R3 e il kit col prezzo forzato).
+#
+#   Il jsonb dei componenti dell'AGGIUNTA composita stava scritto dentro
+#   vendite.fn_offerta_righe_espanse (parte 2b), col solo prezzo. Il giro 5 lo
+#   chiede in due punti (l'AGGIUNTA e l'OVERRIDE su un kit, che fin qui prendeva i
+#   componenti del listino invece dei suoi) e con la provenienza: diventa un BB,
+#   e i due rami lo chiamano (regola del 2). Le chiavi di prima restano, piu' le
+#   quattro della provenienza nella forma di vendite.fn_componente_override.
+#   LANGUAGE sql BEGIN ATOMIC (linee-guida-sql §5c): da solo nel suo sql:, COMMENT
+#   e GRANT nel secondo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261120-13-create-fn-offerta-eccezione-componenti-espansi-mctit.yaml
+
+  - changeSet:
+      id: 20261120-13-create-fn-offerta-eccezione-componenti-espansi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_eccezione_componenti_espansi: i componenti di un'eccezione d'offerta con la loro provenienza. Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_offerta_eccezione_componenti_espansi(
+                  p_eccezione_id vendite.offerte_commerciali_eccezioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT jsonb_agg(jsonb_build_object(
+                             'articolo_componente_id',  oecc_c.articolo_componente_id,
+                             'componente_id',           af.id,
+                             'componente_codice',       af.codice,
+                             'componente_descrizione',  af.descrizione,
+                             'uom_id',                  af.uom_id,
+                             'uom_codice',              umf.codice,
+                             'coeff_qta',               oecc_c.coeff_qta_snapshot,
+                             'prezzo',                  oecc_c.prezzo_unitario,
+                             'qta_operativa',           oecc_c.qta_operativa,
+                             'uom_operativa_id',        oecc_c.uom_operativa_id,
+                             'factor_to_base',          oecc_c.factor_to_base,
+                             'origine_prezzo',          oecc_c.origine_prezzo,
+                             'listino_versione_id',     oecc_c.listino_versione_id,
+                             'listino_riga_id',         oecc_c.listino_riga_id,
+                             'prezzo_resolver_context', oecc_c.prezzo_resolver_context
+                         ) ORDER BY oecc_c.ordine, oecc_c.id)
+                    FROM vendite.offerte_commerciali_eccezioni_componenti oecc_c
+                    JOIN catalogo.articoli af ON af.id = oecc_c.componente_id
+                    JOIN catalogo.unita_misura umf ON umf.id = af.uom_id
+                   WHERE oecc_c.eccezione_offerta_id = p_eccezione_id
+                     AND oecc_c.attivo = TRUE;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_offerta_eccezione_componenti_espansi(vendite.offerte_commerciali_eccezioni.id%TYPE) IS
+                'I componenti attivi di un''eccezione d''offerta composita (vendite.offerte_commerciali_eccezioni_componenti), nell''ordine della riga, come array jsonb: articolo_componente_id, componente (id, codice, descrizione), unita'' del componente (uom_id, uom_codice), coeff_qta (quello fotografato sulla riga), prezzo, qta_operativa, uom_operativa_id, factor_to_base e la provenienza del prezzo (origine_prezzo, listino_versione_id, listino_riga_id, prezzo_resolver_context). Un elemento e'' gia'' un override che vendite.fn_componente_override legge con la sua provenienza. NULL = l''eccezione non ha componenti attivi. La leggono le righe espanse dell''offerta (vendite.fn_offerta_righe_espanse) per il kit aggiunto e per il kit col prezzo forzato. STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_offerta_eccezione_componenti_espansi(vendite.offerte_commerciali_eccezioni.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_offerta_eccezione_componenti_espansi(vendite.offerte_commerciali_eccezioni.id%TYPE);

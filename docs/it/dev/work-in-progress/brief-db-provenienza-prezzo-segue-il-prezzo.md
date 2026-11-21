@@ -1,8 +1,13 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-21
+## ⏭️ Chi riparte — aggiornato al 2026-11-21 (sera)
 
-**Riparte: il team DB**, con la chiusura (passo 7: archiviazione). Il BE
+**Riparte: il team FE**, con la chiave i18n del §8.19 (8i): sblocca il commit della doc rigenerata, che oggi
+`check_i18n_keys.py` ferma. Poi il BE (la policy, 8l) e la chiusura DB. Il giro 5 e il 5-bis sono applicati e verdi
+(Tid, 2026-11-21, §8.21). Il giro 5 è scritto e provato in transazione il 2026-11-21 (§8.17): chiude il residuo offerta → ordine
+del §8.8 con D-6 «a», e corregge un difetto trovato verificando il caso del §8.16 (l'OVERRIDE su un kit perdeva il
+prezzo negoziato). La documentazione rimasta alle regole di prima (due guide, due manuali) è
+riallineata il 2026-11-21 (§8.16). Il BE
 ha consegnato l'estrazione il 2026-11-21 (§8.15), rivista con `/verifica` e committata lo stesso giorno su `dev/backend-tid`; la policy era già rigenerata dal 2026-11-15 (`940a4e6b6`). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
 R-8.3 (policy rigenerata, ripiego), la metà BE di R-7 (6b), K-5 con D-5 nel gate dei **cinque** documenti — ordine e
 DDT compresi, con L1/L2 sul prezzo a mano (strada A, decisione di Tid del 2026-11-15) —, K-6 (il solo form che
@@ -39,12 +44,31 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 6d | ✅ Tid | Estrazione della regola del 2 approvata (2026-11-15) | §8.13 «Da decidere» | — |
 | 6e | ✅ team BE | L'estrazione: `_resolve_prezzo_riga` + `_gate_prezzo_riga` di ordine e DDT (con `_resolve_emittente_sr_id` e `_data_riferimento`) in `RegolePrezzoTestata`; i due wrapper di offerta e contratto su `resolve_or_check_override_prezzo_con_listino`. La policy era già rigenerata (`940a4e6b6`, 2026-11-15) (2026-11-21) | §8.15 | 6c, 6d |
 | 6f | ✅ Tid | Commit dell'estrazione su `dev/backend-tid`, dopo la revisione `/verifica` (2026-11-21) | §8.15 | 6e |
-| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 6f |
+| 6g | ✅ team DB | Guide e manuali riallineati alla provenienza (`gestione-commesse`, `gestione-listini`, `api_run_commesse_push`, `api_commesse_pricing`) (2026-11-21) | §8.16 | 6f |
+| 6h | ✅ Tid | Il residuo offerta → ordine (§8.8) si chiude in questo brief, come giro 5 (2026-11-21) | §8.16 | — |
+| 8a | ✅ Tid | D-6 «a» (`CONTRATTO_LISTINO`) e il via al giro 5, «verifica anche il caso» (2026-11-21) | §8.16 | 6h |
+| 8b | ✅ team DB | Giro 5: `20261120-13 … -17`, un pgTAP nuovo e uno corretto; prova in transazione (2026-11-21) | §8.17 | 8a |
+| 8c | ✅ Tid | Apply del giro 5: fatto in 8h, col giro 5-bis | §8.17 | 8b |
+| 8d | ✅ Tid | D-7 «b»: un OVERRIDE su un kit nasce coi componenti; prima scoprire chi crea quelle eccezioni (2026-11-21) | §8.17, §8.18 | — |
+| 8e | ✅ team DB | Chi crea gli OVERRIDE su un kit senza componenti: la revisione di prima del 2026-10-05, e oggi lo svuotamento dei componenti (2026-11-21) | §8.18 | 8d |
+| 8f | ✅ Tid | D-7-bis «b2»: la regola all'emissione, kit a consumo esente; riparare le quattro righe (2026-11-21) | §8.18 | 8e |
+| 8g | ✅ team DB | Le quattro righe di dbdev riparate; giro 5-bis `20261120-18 … -20`, codice nuovo, pgTAP; prova in transazione (2026-11-21) | §8.19 | 8f |
+| 8g-bis | ✅ team DB | Revisione `/verifica-db` del giro 5 e 5-bis: due pgTAP estesi, chiamanti della `-14` completati (2026-11-21) | §8.20 | 8g |
+| 8h | ✅ Tid | Apply di `-13 … -20` e dei CSV, pgTAP del §8.17, del §8.19 e del §8.20 verdi; doc auto-generata rigenerata, non committata (2026-11-21) | §8.21 | 8b, 8g-bis |
+| 8i | **team FE** ⏭️ | La chiave i18n `vendite.offerte.azione_reason.kit_senza_componenti`, it ed en: senza, `check_i18n_keys.py` è rosso sulla doc rigenerata | §8.19, §8.21 | 8h |
+| 8i-bis | Tid | Commit della doc rigenerata, con la chiave del FE o dopo | §8.21 | 8i |
+| 8l | team BE | La policy di `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` rigenerata | §8.19 | 8h |
+| 7 | team DB | Chiusura: archiviazione | — | 8i-bis, 8l |
 
-**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
+**Decisioni aperte di Tid:** nessuna. Decise il 2026-11-21: D-7-bis «b2», kit a consumo esente, le quattro
+righe da riparare (§8.18); il residuo del §8.8 si chiude qui come
+giro 5; D-6 «a» (§8.16); D-7 «b» (§8.17). Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
 approvata), R-1 e R-2 della revisione (in fondo al §8.13), la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** niente; l'estrazione del §8.15 e questo brief sono committati su `dev/backend-tid` (2026-11-21). La riga del CSV del §8.14
+corpo vivo. **Lavoro da committare:** il giro 5 e il 5-bis, applicati e verdi (§8.21); la doc auto-generata rigenerata, che
+aspetta la chiave del FE (8i); il resto come prima (otto changeSet, due righe di CSV, tre pgTAP nuovi o corretti, le pagine
+`manual/` e la guida delle offerte, §8.17 e §8.19), le quattro
+pagine riallineate del 2026-11-21 e questo brief; l'estrazione del §8.15 e questo brief sono committati su `dev/backend-tid` (2026-11-21). La riga del CSV del §8.14
 è nel commit `f4959f97d`; la consegna del §8.13 nel commit `d16a9a973d` (PR #126).
 Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
 pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 1-3 e la PATCH dei componenti sono committati (`33f85e641`,
@@ -57,8 +81,8 @@ pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; prove
 > (§7). **Decisione:** di Tid, 2026-10-09 (variante «B»): una riga di commessa
 > cita una riga di listino **solo se il suo prezzo è venuto davvero da lì**, non
 > perché il listino, interrogato dopo, darebbe quella riga.
-> **Stato:** 🟡 da progettare (DB). Il BE ha già tolto la parte che contraddice la
-> decisione (§6.0); il resto attende.
+> **Stato:** ⚠️ superato, vedi «Chi riparte». Al 2026-10-09: 🟡 da progettare (DB). Il BE ha già tolto la
+> parte che contraddice la decisione (§6.0); il resto attende.
 
 ## 1. Il difetto, con un esempio
 
@@ -535,6 +559,7 @@ copiate da un documento a monte prenderanno la provenienza dalla copia (giro 3, 
   listino: quella riga nasce `MANUALE`, e così i componenti del kit (override numerici). Non mente, tace:
   la decisione B è rispettata. Per chiuderlo l'espansione dovrebbe restituire versione e riga di listino
   (e il risultato della variazione come contesto). Va al giro 4 o a un brief suo: lo decide Tid alla chiusura.
+  ⚠️ Deciso da Tid il 2026-11-21: si chiude in questo brief, giro 5 (§8.16).
 
 **Un fatto trovato provando: un rosso del giro 1.** `vendite/test-fn-crea-revisione-preventivo-riga-completa-v1`,
 test 1, presidia che ogni colonna di `preventivi_righe` sia nominata nella copia della revisione o
@@ -937,3 +962,322 @@ della data; dopo la revisione senza alias, 2732 verdi (il sesto test del BB comp
 cricchetto (`check_mypy_baseline.py`): nessun rilievo nuovo; ruff sui file toccati: pulito. `apps.core`: 1861, un rosso
 solo e non di questo lavoro, il presidio autospec su `apps/ui/tests/db/test_cancellazione_colonna_db.py:111`, file non
 tracciato di un'altra sessione (brief-db-revisione-ui) che lavora sullo stesso tree.
+
+### 8.16 Giro 5 — offerta → ordine: la provenienza dal listino dell'offerta (team DB, 2026-11-21)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid, per D-6 e il via allo sviluppo.
+> **Origine:** il residuo del §8.8; Tid il 2026-11-21: «invece di aprire un nuovo brief prosegui l'attività
+> aggiornando questo con quello che manca».
+
+**Prima, la documentazione (6g, fatta).** Quattro pagine descrivevano ancora il push di prima di K-1/K-2: le
+origini in cinque, `_resolve_pricing_audit`, l'audit «diagnostico, best-effort», `LISTINO_BUNDLE` ridotto a
+`NULL`, la provenienza nel `meta`, il prezzo uguale al suggerito che «passa sempre». Riallineate:
+`guide/gestione-commesse.md` (§«La provenienza del prezzo», già «Snapshot pricing v5 — 8 colonne audit», e
+il flusso del push), `guide/gestione-listini.md` (§6: i tre casi del gate e D-5),
+`backend/vendite/manual/api_run_commesse_push.md` e `api_commesse_pricing.md`.
+
+**Il residuo, letto sul corpo vivo** (`20261112-09` per `vendite.fn_offerta_righe_espanse`, `20261113-34` per
+`vendite.fn_genera_ordine_da_offerta`). Le righe d'ordine che oggi nascono `MANUALE` senza che nessuno abbia
+scritto il prezzo sono tre casi, non uno:
+
+| Caso | Da dove viene il prezzo | Oggi sulla riga d'ordine | Che cosa manca |
+| --- | --- | --- | --- |
+| **R1** riga semplice dal listino (`DA_LISTINO`, anche con l'`ADESIONE`) | `listini_righe.prezzo` della versione operativa dell'offerta, ± la variazione globale (`fn_espandi_listino_versione`) | `MANUALE` | l'espansione non restituisce la riga di listino; nessuna origine dice «listino del documento con la sua variazione» (D-6) |
+| **R2** kit dal listino (`DA_LISTINO`, `is_composito`) | i prezzi di `listini_righe_componenti`, senza variazione | il padre `COMPONENTI` (giusto), i componenti `MANUALE` (override numerici) | il componente è `LISTINO_BUNDLE` con la versione e senza riga, come nel kit dal listino del contratto (R-7.3) |
+| **R3** kit in `AGGIUNTA` | `offerte_commerciali_eccezioni_componenti.prezzo_unitario` | i componenti `MANUALE` | i componenti dell'eccezione hanno la provenienza in colonna dal giro 1, ma il `jsonb` dell'espansione porta il solo prezzo |
+
+Le righe da eccezione (`OVERRIDE`, `AGGIUNTA` semplice) copiano già la provenienza dal giro 3: non cambiano.
+
+**D-6 — l'origine di R1 (da decidere, Tid).** Il prezzo è il listino fissato dal documento a monte, con la
+variazione globale che l'offerta ha negoziato. Un fatto che pesa: per le righe dell'offerta stessa il resolver
+risponde già con il fast path `CONTRATTO_LISTINO` (`listino_versione_id_preferito`, `offerte_service`, «come
+contratti»; senza contratto e con variazione `NESSUNA`). Cioè nel modello di oggi `CONTRATTO_LISTINO` vuol dire
+«il listino fissato dal documento», non «il listino di un contratto».
+
+* **(a) — proposta: `CONTRATTO_LISTINO`, con versione, riga e la variazione dell'offerta nel contesto.** È
+  l'origine che la stessa offerta dà alle sue righe quando le prezza col resolver: un'origine sola per lo stesso
+  fatto, e il dominio (`vendite.fn_origine_prezzo_ammessa`) non cambia. Il nome resta impreciso («contratto»
+  per un'offerta), ma lo è già nel fast path: correggerlo è rinominare un'origine in tutta la catena, cioè un
+  cambio di modello da fare a parte se Tid lo vuole.
+* (b) un'origine nuova (`OFFERTA_LISTINO`, otto valori nel dominio). Il nome è più preciso, ma le righe
+  dell'offerta prezzate dal resolver resterebbero `CONTRATTO_LISTINO`: due origini per lo stesso fatto, a meno
+  di cambiare anche il fast path del resolver.
+* Scartata: `CATEGORIA`. Il prezzo non viene dalla matrice delle categorie, e direbbe il falso.
+
+**Il progetto (dopo D-6; i numeri al via, da `scripts/prossimo_changeset.py`).**
+
+| Passo | Che cosa |
+| --- | --- |
+| 5-1 | `vendite.fn_espandi_listino_versione`: in coda `listino_riga_id` (`lr.id` per la riga semplice, `NULL` per il kit). Cambia il `RETURNS`, quindi `DROP` + `CREATE`, con il censimento di `pg_depend` prima. I due chiamanti (`fn_offerta_righe_espanse` e `fn_documento_righe_preview`, che fa da corpo a `fn_offerta_righe_preview` e `fn_contratto_righe_preview`) sono `plpgsql` e leggono le colonne per nome (`base.<colonna>`): niente da riscrivere, ma si riprovano i loro pgTAP |
+| 5-2 | `vendite.fn_offerta_righe_espanse` restituisce la provenienza della riga: `origine_prezzo`, `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`. R1: l'origine di D-6, versione e riga dal listino, contesto con base e variazione dal BB `vendite.fn_prezzo_resolver_contesto`. `OVERRIDE` e `AGGIUNTA`: la provenienza dell'eccezione (la lettura che oggi sta in `fn_genera_ordine_da_offerta` si sposta qui: una sede sola). Il kit: nessuna, il padre lo scrive `COMPONENTI` la somma. Nel `jsonb` dei componenti, per R2 e R3, la provenienza di ciascuno nella forma che `vendite.fn_componente_override` già legge (`origine_prezzo`, `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`) |
+| 5-3 | `vendite.fn_genera_ordine_da_offerta`: copia la provenienza della riga espansa così com'è, e passa a `fn_ordine_riga_componenti_init` override oggetto, non numeri. Restano esclusi gli override a 0, che la init rifiuta |
+| 5-4 | pgTAP: `vendite/test-offerta-righe-espanse` (le colonne nuove, i tre casi) e `vendite/test-provenienza-prezzo-copie-v1` (offerta → ordine: R1 cita la riga e la versione, R propagata per D-4; R2 `LISTINO_BUNDLE` con la versione; R3 la provenienza dell'eccezione); si riprovano quelli dei chiamanti di 5-1 e i presidi della revisione |
+
+**Da sapere prima del via.**
+
+* ⛔ **Effetto voluto di D-4:** dopo il giro 5 la riga di listino di R1 citata da un ordine è «propagata»: in una
+  versione attiva non si rettifica e non si cancella. Oggi non lo è, perché l'ordine non la cita.
+* Le righe d'ordine già scritte restano `MANUALE` (§5): niente recupero.
+* ⚠️ **Verificato il 2026-11-21: il difetto c'è**, ed è corretto nel giro (§8.17, Tid: «verifica anche il caso»).
+  Da verificare scrivendo 5-2: un `OVERRIDE` su un kit prende oggi i componenti dal listino (`base.componenti`)
+  e il prezzo del padre dall'eccezione, ma il padre nasce a 0 e lo riscrive la somma. Se l'offerta ammette
+  l'`OVERRIDE` su un composito, il prezzo negoziato del padre si perde già oggi: è un fatto da accertare e, se
+  c'è, da portare a Tid, non da correggere nel giro.
+* ⚠️ Il progetto diceva cinque passi su tre funzioni: sono diventati cinque changeSet su cinque, §8.17
+  (il BB dei componenti dell'eccezione e `script.fn_check_righe_offerta_in_ordine`).
+* **Ricaduta BE: nessuna richiesta.** Né `fn_offerta_righe_espanse` né `fn_espandi_listino_versione` hanno
+  chiamanti nel BE o nel FE (verificato con `grep` il 2026-11-21), e con (a) il dominio non cambia. Un solo
+  commento fermo alle cinque origini, `backend/apps/vendite/db/commesse_repository.py:353`
+  (`origine_prezzo: … # PROMO|CONTRATTO_OVERRIDE|CONTRATTO_LISTINO|CATEGORIA|MANUALE`): il team BE lo allinea
+  al prossimo passaggio sul file. Con (b) si aggiunge la verifica dei badge dell'origine nel FE.
+
+### 8.17 Giro 5 — scritto e provato il 2026-11-21 (team DB)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid, per l'apply, i pgTAP e D-7.
+> D-6 «a» e il via allo sviluppo: Tid, 2026-11-21 («D-6 opzione a, procedi con lo sviluppo del giro 5, verifica
+> anche il caso»). Numerazione da `scripts/prossimo_changeset.py`.
+
+**Il caso, verificato: il difetto c'è.** Un `OVERRIDE` su un kit ha i suoi componenti negoziati in
+`offerte_commerciali_eccezioni_componenti` (li crea `fn_offerta_eccezione_componenti_init`, e il trigger del padre
+ne fa la somma), ma `fn_offerta_righe_espanse` passava all'ordine quelli **del listino** (`base.componenti`). L'ordine
+nasceva col prezzo del listino, non con quello negoziato. Su dbdev, il 2026-11-21: offerta 57, `ART-COMP-001` forzato a
+25,90 (componenti dell'eccezione per 25,90), componenti espansi per 6,00. Il gemello `fn_push_offerta_a_contratto`
+copia invece i componenti dell'eccezione: l'ordine era l'unico fuori regola. Corretto nel giro, perché la correzione
+sta nella stessa espressione che il giro riscrive (i componenti del kit) e il modello è già deciso: il prezzo forzato
+prevale, e un kit vale la somma dei suoi componenti.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261120-13` | BB `vendite.fn_offerta_eccezione_componenti_espansi(eccezione)`: i componenti attivi di un'eccezione composita in `jsonb`, con la provenienza di ciascuno nella forma di `fn_componente_override`. Era scritto dentro la parte 2b dell'espansione col solo prezzo; ora lo chiamano due rami (AGGIUNTA composita, OVERRIDE su un kit): regola del 2. `BEGIN ATOMIC` |
+| `20261120-14` | `vendite.fn_espandi_listino_versione`: `listino_riga_id` in coda (`lr.id` per la riga semplice, `NULL` per il kit). `DROP` + `CREATE`; COMMENT riscritto al presente |
+| `20261120-15` | `script.fn_check_righe_offerta_in_ordine`: le righe espanse **per nome**, la posizione da `r.ordinality`. Con l'elenco di alias posizionale `riga_nr` sarebbe finito, senza errore, sulla prima colonna nuova: era la seconda volta (`20261106-50`). Viene prima del `-16` e regge le due forme |
+| `20261120-16` | `vendite.fn_offerta_righe_espanse`: la provenienza in coda (`origine_prezzo`, `listino_versione_id`, `listino_riga_id`, `prezzo_resolver_context`, coi tipi della riga d'ordine). R1 `CONTRATTO_LISTINO` (D-6) con versione, riga e nel contesto prezzo base e variazione globale; OVERRIDE e AGGIUNTA semplice quella dell'eccezione (la lettura che stava nell'ordine si sposta qui); il kit nessuna. Componenti: dell'eccezione per AGGIUNTA e OVERRIDE (il caso), del listino `LISTINO_BUNDLE` con la versione. `DROP` + `CREATE` |
+| `20261120-17` | `vendite.fn_genera_ordine_da_offerta`: copia la provenienza della riga espansa e passa ai componenti l'override-oggetto (l'elemento del `jsonb`); le righe espanse per nome |
+
+**Le scelte.**
+
+* **La riga di listino si cita solo se l'unità della riga è la sua.** Il guard F-8 confronta la riga citata con
+  `uom_operativa_id`: un'ADESIONE con un'altra unità fermerebbe «Genera ordine» su un dettaglio di provenienza. In quel
+  caso restano origine e versione, che la coerenza ammette. Su dbdev nessuna ADESIONE così (fatto datato).
+* **Il contesto della riga dal listino** ha le chiavi che `fn_provenienza_prezzo_esplosa` legge
+  (`prezzo_base_snapshot`, `tipo_variazione_applicata`, `valore_variazione_applicata`), `NESSUNA` e 0 senza variazione.
+  Nessuna chiave di listino nel contesto (D-3; il presidio 8 di `test-provenienza-prezzo-copie-v1` lo pretende).
+* **Il componente del kit dal listino** è `LISTINO_BUNDLE` con la versione, senza riga e senza variazione, come quello
+  del kit dal listino del contratto (R-7.3).
+* **Nessun alias posizionale sulle righe espanse**, nei due lettori: la prossima colonna in coda non sposta niente.
+
+**D-7 — da decidere (Tid): l'OVERRIDE su un kit senza componenti suoi.** Se l'eccezione non ha componenti (nessuno ha
+chiamato la init), il kit resta sui componenti del listino, com'era: il prezzo forzato non ha componenti da cui
+ricomporsi, e l'ordine nasce con la somma del listino. Su dbdev, il 2026-11-21, quattro eccezioni così (42, 43, 45,
+46), a quantità fissa, canone. Le strade: (a) l'ordine rifiuta l'offerta con un motivo in
+`fn_check_righe_offerta_in_ordine` («kit col prezzo forzato senza componenti»), come già fa per il kit senza distinta;
+(b) un guard sull'eccezione: un OVERRIDE su un kit nasce coi componenti, o non nasce; (c) com'è oggi. Il team DB
+propone (b) con (a) come rete: il difetto sta dove l'eccezione nasce, non dove si copia. Prima serve sapere chi crea
+quelle eccezioni senza init (BE, revisione dell'offerta, seed): è il prossimo passo, se Tid sceglie (a) o (b).
+
+**Prova** (`scripts/prova_changeset.py` sullo scratch, transazione ritirata, catalogo identico prima e dopo):
+
+* l'estratto dei cinque changeSet passa per intero; attributi (`provolatile`, `prosecdef`, `proparallel`, `procost`,
+  `prorows`, `proconfig`) e privilegi delle cinque funzioni identici prima e dopo, una firma per nome;
+* ⚠️ esteso dalla revisione (§8.20: 10 test, K2 a 70 con un componente `LISTINO_BUNDLE`, il kit aggiunto K3). Il pgTAP nuovo `vendite/test-provenienza-prezzo-offerta-ordine-v1` (9): senza l'estratto muore al test 1, con
+  l'estratto 9/9. Tutto costruito: A dal listino a 100 con -10 % (l'ordine cita la riga, `CONTRATTO_LISTINO`, 90),
+  B forzato a 80 (la provenienza dell'eccezione), il kit K dal listino (`COMPONENTI` a 50, componenti
+  `LISTINO_BUNDLE` con la versione), il kit K2 forzato coi componenti a 20 e 25 (l'ordine vale 65, non 50: il caso);
+* `vendite/test-offerta-righe-espanse`: i test 6-8 (il nucleo) erano rossi senza l'estratto, perché la fixture
+  prendeva «il primo listino attivo» e «il primo articolo» del database, che sullo scratch non ci sono. La fixture ora
+  si costruisce il suo mondo, e c'è il test 10 sulla colonna nuova: 10/10;
+* i 21 pgTAP che nominano le funzioni toccate o i loro lettori (anteprime di contratto e offerta, ADESIONE,
+  esclusioni, provenienza documentale, commenti al presente, il rubinetto, le copie): uguali con e senza l'estratto.
+  Un rosso già presente, `vendite/test-fn-contratto-righe-preview-nuovi-campi-v1` test 2, è la stessa fixture legata
+  ai dati («4 articoli disponibili»), e salta 3-5: non tocca l'espansione dell'offerta, e l'anteprima dei contratti è
+  provata verde da `test-contratto-righe-lista-v1` e `-uom-riga-v1`. Debito di quel file, non di questo giro;
+* guardrail (forme, COMMENT al presente, letterali, timestamp, runOnChange, preCondition) e `pre-commit` sui file del
+  giro: puliti.
+
+**Per Tid, dopo l'apply:** `vendite/test-provenienza-prezzo-offerta-ordine-v1`, `vendite/test-offerta-righe-espanse`,
+`vendite/test-provenienza-prezzo-copie-v1`, `vendite/test-sorgente-righe-vendita-v1`, `script/test-rubinetto-primo-motivo-v1`,
+`vendite/offerte_commerciali/test-righe-ammesse-ai-passi-e-annullo-v1`; poi la rigenerazione della doc auto-generata
+(la pagina del BB nuovo non c'è ancora, e la pagina `manual/` dell'espansione la cita).
+
+**Doc scritta a mano, riallineata:** `dbzero/vendite/manual/fn_offerta_righe_espanse.md` (firma e la sezione «La
+provenienza del prezzo»), `dbzero/vendite/manual/fn_espandi_listino_versione.md` (la colonna nuova),
+`guide/gestione-offerte-commerciali.md` (§«Cosa viene copiato»).
+
+**Ricaduta BE: nessuna.** Le funzioni toccate non hanno chiamanti nel BE né nel FE; il commento fermo alle cinque
+origini in `backend/apps/vendite/db/commesse_repository.py:353` resta la sola nota del §8.16.
+
+### 8.18 D-7 «b»: chi crea un OVERRIDE su un kit senza componenti (team DB, 2026-11-21)
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid, per D-7-bis.
+> D-7 «b» di Tid, 2026-11-21: «D-7 opzione b, prima scopri chi crea quelle eccezioni».
+
+**Chi scrive `offerte_commerciali_eccezioni`** (censito sul vivo, `pg_get_functiondef`, e nel backend): due strade sole.
+
+* **Il backend** (`offerte_service.crea_eccezione` → `OfferteRepository.create_eccezione`, poi
+  `init_componenti_eccezione`): su un composito OVERRIDE o AGGIUNTA chiama sempre la init, nella stessa transazione,
+  in una **seconda istruzione**.
+* **La revisione dell'offerta** (`vendite.fn_crea_revisione_offerta`): copia le eccezioni e poi, una per una, i loro
+  componenti, anche qui in un'istruzione successiva. Nessun seed e nessun'altra funzione del DB scrive la tabella.
+
+**Le quattro eccezioni di dbdev (42, 43, 45, 46): la revisione di prima del 2026-10-05.** Sono nate nella stessa
+transazione delle loro offerte, 83 e 84, coi prezzi dell'offerta 63 (5,99 e 67,20), che i componenti li ha. 83 è la
+revisione 2 di 63, 84 la 3 di 83, del 2026-05-28. Fino a `20261005-19-update-fn-crea-revisione-offerta-copia-componenti`
+la revisione non copiava i componenti («una revisione di un'offerta con un bundle nasceva senza componenti»): il
+difetto è già corretto, le righe sono quello che ha lasciato. ⚠️ 84 è ACCETTATA: oggi «Genera ordine» su 84 dà i kit al
+prezzo del listino.
+
+**Le strade che oggi lasciano un kit col prezzo forzato senza componenti** (dal modello, non dai dati):
+
+* **Svuotarlo**: il backend spegne o toglie i componenti uno per uno (`delete_componente_eccezione`), e il guard
+  `trg_oce_comp_a10_guard_obbligatorio_upd` ferma solo gli obbligatori. Un kit coi soli opzionali si spegne tutto:
+  il padre va a 0 (`fn_ricalcola_prezzo_padre_da_componenti`: «nessun figlio attivo → 0»), e dal giro 5 l'ordine
+  ricadrebbe sui componenti del listino.
+* **L'eccezione a consumo**: la init non fa niente quando la quantità è NULL, cioè con una fonte diversa da `FISSA`
+  (`chk_offerte_eccezioni_quantita_per_fonte`). Su dbdev nessun kit così (fatto datato): resta da dire se il modello
+  ammette un kit a consumo col prezzo forzato.
+
+**Perché la regola non può stare alla nascita dell'eccezione.** Tutte e due le strade scrivono l'eccezione **prima**
+dei suoi componenti, in due istruzioni. Un guard sull'`INSERT` dell'eccezione la fermerebbe sempre. Le forme possibili:
+
+* **(b1) un vincolo differito al commit** (constraint trigger `DEFERRABLE INITIALLY DEFERRED` sull'eccezione e sui suoi
+  componenti): giudica la transazione finita, e vede anche lo svuotamento. Costo: i pgTAP girano con
+  `SET CONSTRAINTS ALL IMMEDIATE`, e ogni fixture che crea un OVERRIDE su un kit in due istruzioni andrebbe riscritta;
+  in più ogni scrittura dei componenti rifà il controllo.
+* **(b2) — proposta: la regola al passaggio fuori dalla bozza.** Un'offerta si modifica solo in bozza
+  (`E_RIGA_DOC_NON_BOZZA` su eccezioni e componenti): basta giudicarla quando la si emette. La sede c'è già: i motivi
+  di «Emetti» (`script.fn_available_actions_offerta`, oggi `fn_check_listino_congelabile` e
+  `fn_check_prezzi_autorizzati`) e il guard della transizione che li rilegge
+  (`vendite.trgfn_offerte_commerciali_guard_transizione`): una check nuova entra in tutti e due, come le altre. Copre in un punto solo il backend, la revisione e lo svuotamento,
+  e non dipende dall'ordine delle istruzioni. Con **(a) come rete** in `script.fn_check_righe_offerta_in_ordine` per le
+  offerte già accettate (84), e lo stesso motivo nel push a contratto, che copierebbe un kit senza componenti.
+
+Se Tid sceglie (b2), il giro dice anche che cosa fare del kit a consumo (esente, o rifiutato) e delle quattro righe di
+dbdev (non è produzione: la init sulle due offerte, o niente).
+
+### 8.19 Giro 5-bis — un kit col prezzo negoziato esce dalla bozza coi suoi componenti; scritto e provato il 2026-11-21
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid per l'apply; team FE e BE per le due
+> richieste in fondo. Decisione di Tid, 2026-11-21: «D-7-bis opzione b2, kit a consumo esente, sistema le quattro righe».
+
+**Le quattro righe di dbdev, riparate (2026-11-21).** Si è fatto ciò che la revisione corretta avrebbe fatto: alle
+eccezioni 42, 43 (offerta 83) e 45, 46 (offerta 84) sono stati copiati i componenti delle loro origini nell'offerta
+radice 63 (36 e 40, stesso articolo e stesso tipo), con le colonne di `fn_crea_revisione_offerta`. Il ricalcolo del padre
+le porta a `COMPONENTI`, come le origini, allo stesso prezzo (5,99 e 67,20). Le due offerte sono fuori bozza: i due lock
+di riga (`trg_oce_comp_a05_doc_bozza_ins_upd_dlt`, `trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt`) sono
+stati spenti **solo dentro la transazione**, con `SET CONSTRAINTS ALL IMMEDIATE` perché i trigger differiti scattassero
+e non restassero in sospeso; provata prima con ROLLBACK, poi eseguita, trigger riaccesi e verificati. Componenti nuovi:
+id 1990 … 1999. Disfarla: `DELETE` di quegli id, coi due lock spenti nello stesso modo. Non è un changeSet: sono dati di
+sviluppo, e da zero non ci sono.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261120-18` | `script.fn_check_offerta_kit_con_componenti(offerta)`, `BEGIN ATOMIC`: un motivo per ogni eccezione attiva OVERRIDE o AGGIUNTA su un composito, a quantità fissa, senza componenti attivi. Codice `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` (`DATO_ERRATO`: il rimedio è nella stessa offerta), reason `KIT_SENZA_COMPONENTI`, valori offerta e articolo |
+| `20261120-19` | `vendite.trgfn_offerte_commerciali_guard_transizione`: all'emissione dallo stato iniziale, dopo le righe, il primo motivo della check |
+| `20261120-20` | `script.fn_available_actions_offerta`: «Emetti» spento con lo stesso motivo, per ultimo, come il guard (§12.2) |
+| CSV | `config/codici_errore.csv` e `config/messaggi_errore.csv` (id 1518): li carica `20260614-08` (`loadUpdateData`), senza changeSet nuovo |
+
+**Le scelte.**
+
+* ⚠️ **AGGIUNTA compresa, oltre all'OVERRIDE di D-7.** È l'altro tipo col prezzo negoziato (`_TIPI_ECCEZIONE_CON_GATE`
+  del backend): un kit aggiunto senza componenti ha lo stesso difetto, e lo stesso modello. Se Tid vuole il solo
+  OVERRIDE, è una riga della check.
+* **Il kit a consumo, esente (D-7-bis).** Un fatto del modello trovato scrivendo il test: un composito si vende solo a
+  quantità fissa (`vendite.fn_articolo_erogazioni`, I-D6 del 2026-10-21), quindi un kit a consumo oggi non nasce.
+  L'esenzione sta nella check lo stesso (`quantita IS NOT NULL`), perché la decisione resti scritta se I-D6 cambiasse;
+  il pgTAP non può costruire il caso, e lo dice.
+* ⚠️ **Niente rete su «Genera ordine» e sul push a contratto**, che il §8.18 proponeva. ACCETTATA si raggiunge solo da
+  EMESSA (matrice `config.stati_doc_offerte_transizioni`), e in EMESSA si entra dalla bozza (il controllo nuovo) o
+  rientrando da SUPERATA, a contenuto invariato: fuori dalla bozza eccezioni e componenti non si scrivono. Riparate le
+  quattro righe, un'offerta accettata con un kit così non può esistere: una rete non scatterebbe mai.
+* **Lo svuotamento** (componenti tolti o spenti uno per uno in bozza) è coperto: lo vede l'emissione.
+
+**Prova** (`scripts/prova_changeset.py` sullo scratch, estratto degli otto changeSet `-13 … -20`, transazione ritirata,
+catalogo identico prima e dopo):
+
+* ⚠️ esteso dalla revisione (§8.20: l'AGGIUNTA e l'OVERRIDE semplice). Il pgTAP nuovo `vendite/test-offerta-emissione-kit-con-componenti-v1` (7): con l'estratto 7/7, senza muore al primo
+  test. Il kit forzato coi componenti non dà motivi; tolti i componenti, un motivo che nomina il kit, «Emetti» spento con
+  `KIT_SENZA_COMPONENTI`, emissione rifiutata col codice nuovo; rimessi i componenti, l'emissione passa. ⚠️ Nella prova le
+  due righe dei CSV sono state inserite in testa alla copia del test (lo scratch non carica i CSV fuori da Liquibase): il
+  file nel repo non le ha, e dopo l'apply le trova nel catalogo;
+* 74 pgTAP che emettono offerte, ne leggono la capability o toccano le funzioni del giro 5: uguali con e senza
+  l'estratto. I rossi già presenti sono quelli da owner per costruzione (`magazzino/test-documenti-interni-guard-v1`
+  7, 7b, 10; `vendite/test-annullo-documento-con-legami-v1` 27; `script/test-fn-is-proprietario-tabella-v1`), le misure
+  sui documenti presenti di `script/test-capability-annulla-aspetto-e-stato-leggibile-v1` (zero sullo scratch) e la
+  fixture di `test-fn-contratto-righe-preview-nuovi-campi-v1` (§8.17);
+* guardrail sugli otto changeSet e `pre-commit` sui file del giro, CSV compresi: puliti. `%TYPE` su ogni parametro e su
+  ogni colonna nuova dei `RETURNS TABLE`.
+
+**Per Tid, dopo l'apply:** i pgTAP del §8.17 più `vendite/test-offerta-emissione-kit-con-componenti-v1`; poi la
+rigenerazione della doc auto-generata (le pagine dei due BB nuovi non ci sono ancora, e le pagine `manual/` e la guida
+le citano). ⚠️ La doc rigenerata porta la reason_key nuova: `scripts/check_i18n_keys.py` (pre-commit e CI frontend) la
+pretende nei locales, quindi il commit della doc va **dopo** la richiesta FE qui sotto.
+
+**Doc scritta a mano:** `guide/gestione-offerte-commerciali.md` (§3.2, il quinto controllo dell'emissione, e la tabella
+dei codici), `dbzero/vendite/manual/fn_offerta_righe_espanse.md`.
+
+#### Richiesta FE (`dev/backend-tid`) — elenco chiuso
+
+**Chi cambia per primo:** il FE, prima del commit della doc rigenerata. Oggi il DB non emette la chiave finché il giro
+non è applicato; dopo, «Emetti» spento mostra `{reason_key}` grezzo senza la traduzione.
+
+| File | Chiave | Testo |
+| --- | --- | --- |
+| `frontend/src/locales/it.json` | `vendite.offerte.azione_reason.kit_senza_componenti` | «Un kit col prezzo negoziato non ha componenti attivi: aggiungili o riattivali prima di emettere l'offerta.» |
+| `frontend/src/locales/en.json` | stessa | «A kit with a negotiated price has no active components: add or re-enable them before issuing the offer.» |
+
+Accanto alle sorelle `listino_senza_versione_in_vigore`, `listino_versione_non_attiva`, `documenti_vivi`. Nessun
+componente cambia: «Emetti» legge già `reason_key` dalla capability.
+
+#### Richiesta BE (`dev/backend-tid`) — elenco chiuso
+
+**Chi cambia per primo:** il DB (il codice nasce nel catalogo con l'apply). Poi il BE rigenera la policy degli errori
+col DB allineato a git: `backend/apps/core/services/error_policies_generated.py` e il ripiego
+`error_messages_fallback.py` per `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` (classe `DATO_ERRATO`, due valori: codice
+dell'offerta, codice dell'articolo). Nessun service cambia: il rifiuto viene dal guard della transizione, sulla strada
+che l'emissione già percorre.
+
+### 8.20 Revisione del giro 5 e del 5-bis (`/verifica-db`, 2026-11-21)
+
+> **Chi scrive:** sessione DB di revisione (`dev/db-tid`), 2026-11-21. **A chi:** Tid, per l'apply.
+
+**Regge.** Gli otto changeSet non sono applicati (né dbdev né scratch, `databasechangelog`). I sei rollback
+coincidono col corpo vivo di dbdev; i corpi nuovi sono il vivo più le modifiche dichiarate; numerazione senza doppi;
+guard e capability leggono la stessa check, nello stesso ordine (§12.2); id 1518 libero, CSV in LF, due segnaposti per
+due valori.
+
+**Corretto.**
+
+* `vendite/test-provenienza-prezzo-offerta-ordine-v1`: i componenti di K2 erano tutti e due `MANUALE`, che è anche il
+  ripiego di `vendite.fn_componente_override` quando l'override non porta l'origine: il test 8 non distingueva la
+  provenienza copiata dall'eccezione da quella persa. Ora F2 è `LISTINO_BUNDLE` con la versione (al prezzo del
+  listino, 30: K2 vale 70), e il test 8 la ritrova sul componente d'ordine. Mancava R3 (§8.16, 5-4): il kit K3, fuori
+  listino, in `AGGIUNTA` coi componenti a 15 e 5, test 10 (`COMPONENTI` a 35). Plan 10.
+* `vendite/test-offerta-emissione-kit-con-componenti-v1`: l'`AGGIUNTA` compresa dalla check (§8.19, «Le scelte») non
+  era costruita, né il caso che non deve dare motivi (un OVERRIDE su un articolo semplice). Ora l'offerta ha anche B
+  forzato (test 2: nessun motivo), e il test 3 aspetta due motivi, K2 in OVERRIDE e K3 aggiunto senza componenti, con
+  il codice dell'offerta oltre all'articolo. Plan invariato, 7.
+* `20261120-14`: chiamanti e `COMMENT` dimenticavano `script.fn_articolo_riga_contesto`, che legge il solo
+  `articolo_id` per nome (nessun effetto), e il pgTAP `vendite/test-righe-eccezioni-articolo-ammesso-v1`.
+  L'intestazione diceva «le due colonne»: è una.
+
+**Prova** (`scripts/prova_changeset.py`, gli otto changeSet, sullo scratch): i due pgTAP estesi 10/10 e 7/7 (il
+secondo con le due righe dei CSV in testa a una copia, come nel §8.19), tutti e due morti al primo test senza
+l'estratto; `test-offerta-righe-espanse` 10/10; uguali con e senza l'estratto `test-provenienza-prezzo-copie-v1`,
+`test-sorgente-righe-vendita-v1`, `script/test-rubinetto-primo-motivo-v1`,
+`offerte_commerciali/test-righe-ammesse-ai-passi-e-annullo-v1`, `test-righe-adesione-v1`,
+`test-righe-esclusione-solo-non-si-vende-v1`, `test-righe-eccezioni-articolo-ammesso-v1`,
+`test-listino-versione-in-vigore-v1`, `test-sorgente-commenti-al-presente-v1`. `pre-commit` sui file del perimetro:
+pulito. Da owner: la row security non entra nella prova.
+
+### 8.21 Apply e pgTAP del giro 5 e del 5-bis — verdi (Tid, 2026-11-21)
+
+* **Apply** di `20261120-13 … -20` su dbdev (`databasechangelog`, 2026-11-21 14:54) e delle due righe dei CSV:
+  `E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI` è nel catalogo dei messaggi.
+* **pgTAP verdi** (Tid): quelli del §8.17, del §8.19 e quelli estesi dalla revisione del §8.20
+  (`vendite/test-provenienza-prezzo-offerta-ordine-v1`, 10; `vendite/test-offerta-emissione-kit-con-componenti-v1`, 7).
+* **Doc auto-generata rigenerata, non ancora committata.** Ci sono le pagine dei due BB nuovi
+  (`fn_offerta_eccezione_componenti_espansi`, `fn_check_offerta_kit_con_componenti`), e le pagine `manual/` e la guida
+  che li citano ora risolvono. ⚠️ Come previsto al §8.19, `scripts/check_i18n_keys.py` è rosso su un punto solo:
+  `vendite.offerte.azione_reason.kit_senza_componenti`, emessa dalla check e assente dai locales (verificato il
+  2026-11-21 sera). Il pre-commit fermerebbe il commit della doc: si committa insieme alla chiave del FE (8i), o dopo.
+* Per la chiusura (7) restano la chiave del FE e la policy del BE: niente di DB.

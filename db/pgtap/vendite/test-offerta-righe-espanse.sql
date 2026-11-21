@@ -21,6 +21,14 @@
 --   8) nessuna variazione -> prezzo_da_listino = 100
 --   Comportamentale offerta (COND, data-dependent):
 --   9) fn_offerta_righe_espanse non restituisce righe ESCLUSIONE
+--   Core, la riga di listino del prezzo (brief-db-provenienza-prezzo-segue-il-prezzo §8.16):
+--  10) la riga semplice cita la sua riga di listino
+--
+-- rev 2026-11-21 (giro 5 della provenienza del prezzo): la fixture si costruisce il
+--   suo mondo. Prendeva «il primo listino attivo» e «il primo articolo» del
+--   database: sullo scratch vuoto non c'erano, e 6-8 erano rossi (NULL) per i dati,
+--   non per il codice che provano. Ora listino, versione e articolo li fanno le
+--   fixture comuni (dbops.fn_pgtap_crea_listino in bozza, fn_pgtap_crea_articolo).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -43,46 +51,29 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 -- Setup fixture: listino + versione + 1 riga standalone prezzo 100
 -- ============================================================
-CREATE TEMP TABLE tmp_ole_ctx AS
-SELECT
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
-;
-
-CREATE TEMP TABLE tmp_ole_art AS
-SELECT a.id
-  FROM catalogo.articoli a
- WHERE a.attivo = TRUE AND a.is_composito = FALSE
- ORDER BY a.id
- LIMIT 1;
-
-CREATE TEMP TABLE tmp_ole_lst AS
-WITH ins AS (
-    INSERT INTO vendite.listini(codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP_OLE_' || substr(gen_random_uuid()::text, 1, 8),
-           'Test offerta righe espanse', l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
-      FROM vendite.listini l WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1
-    RETURNING id
-)
-SELECT id FROM ins;
+CREATE TEMP TABLE tmp_ole_lis AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT min(u.id) FROM config.utilities u
+      WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                     WHERE ltu.utility_id = u.id AND ltu.attivo)),
+    'offerta righe espanse', p_in_bozza => true);
 
 CREATE TEMP TABLE tmp_ole_ver AS
-WITH ins AS (
-    INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal)
-    SELECT id, 'PGTAP-OLE-V1', script.fn_data_operativa()
-      FROM tmp_ole_lst
-    RETURNING id
-)
-SELECT id FROM ins;
+SELECT listino_versione_id AS id FROM tmp_ole_lis;
 
-INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
-SELECT v.id, a.id, ctx.uom_id, 100.00
-  FROM tmp_ole_ver v, tmp_ole_art a, tmp_ole_ctx ctx;
+CREATE TEMP TABLE tmp_ole_art AS
+SELECT dbops.fn_pgtap_crea_articolo(
+           ('PGT-OLE-' || substr(md5(clock_timestamp()::text), 1, 10))::varchar, false,
+           p_listino_tipologia_id => (SELECT tipologia_id FROM tmp_ole_lis)) AS id;
+
+SELECT dbops.fn_pgtap_listino_aggiungi_articoli(
+    (SELECT id FROM tmp_ole_ver), ARRAY[(SELECT id FROM tmp_ole_art)], 100);
 
 SELECT dbops.fn_pgtap_porta_a_stato('vendite.listini_versioni', v.id, 'ATTIVA')
   FROM tmp_ole_ver v;
 
 -- ============================================================
-SELECT plan(9);
+SELECT plan(10);
 -- ============================================================
 
 -- 1) core presente
@@ -166,6 +157,17 @@ SELECT CASE
         '9) fn_offerta_righe_espanse: nessuna riga ESCLUSIONE in output (rimosse)'
     )
 END;
+
+-- 10) la riga semplice cita la sua riga di listino
+SELECT is(
+    (SELECT e.listino_riga_id
+       FROM vendite.fn_espandi_listino_versione((SELECT id FROM tmp_ole_ver), NULL, 0) e
+      WHERE e.articolo_id = (SELECT id FROM tmp_ole_art)),
+    (SELECT lr.id FROM vendite.listini_righe lr
+      WHERE lr.listino_versione_id = (SELECT id FROM tmp_ole_ver)
+        AND lr.articolo_id = (SELECT id FROM tmp_ole_art)),
+    '10) core: la riga semplice cita la sua riga di listino (listino_riga_id)'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,467 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_offerta_righe_espanse: LA PROVENIENZA DEL PREZZO DI OGNI RIGA
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16 (giro 5, passo 5-2; D-6 di Tid,
+#   2026-11-21: opzione a).
+#
+# -- IL DIFETTO ---------------------------------------------------------------------------------
+#   L'ordine generato dall'offerta (vendite.fn_genera_ordine_da_offerta) scriveva
+#   MANUALE dove nessuno aveva scritto il prezzo, in tre casi:
+#   R1 la riga dal listino dell'offerta (DA_LISTINO, anche con l'ADESIONE): il prezzo
+#      e' la riga di listino con la variazione globale, ma l'espansione non diceva
+#      quale riga;
+#   R2 il kit dal listino: i componenti passavano come numeri;
+#   R3 il kit in AGGIUNTA: i componenti dell'eccezione hanno la provenienza in
+#      colonna, ma il jsonb portava il solo prezzo.
+#   E, trovato verificando il caso del §8.16: l'OVERRIDE su un kit prendeva i
+#   componenti DEL LISTINO (base.componenti), non i suoi. L'ordine nasceva con la
+#   somma del listino, non col prezzo negoziato (su dbdev, 2026-11-21: offerta 57,
+#   ART-COMP-001 forzato a 25,90, componenti del listino per 6,00). Il gemello
+#   vendite.fn_push_offerta_a_contratto copia invece i componenti dell'eccezione.
+#
+# -- LA FORMA -----------------------------------------------------------------------------------
+#   Quattro colonne IN CODA (linee-guida-sql §5f), coi nomi e i tipi della riga
+#   d'ordine che le copia: origine_prezzo, listino_versione_id, listino_riga_id,
+#   prezzo_resolver_context.
+#   · R1: CONTRATTO_LISTINO (D-6 a: e' l'origine che il resolver gia' da' al listino
+#     fissato dal documento, offerta compresa, col fast path listino_versione_id_
+#     preferito), la versione operativa, la riga di listino (dal 20261120-14) e
+#     nel contesto prezzo_base_snapshot, tipo e valore della variazione globale
+#     (NESSUNA e 0 senza), le chiavi che vendite.fn_provenienza_prezzo_esplosa legge.
+#     La riga si cita solo se l'unita' della riga e' quella della riga di listino:
+#     il guard F-8 la confronta con uom_operativa_id, e un'ADESIONE con un'altra
+#     unita' fermerebbe la generazione dell'ordine su un dettaglio di provenienza.
+#     In quel caso restano origine e versione (coerenti: una versione senza riga e'
+#     ammessa). Su dbdev, 2026-11-21: nessuna ADESIONE cosi' (fatto, non motivo).
+#   · OVERRIDE e AGGIUNTA semplice: la provenienza dell'eccezione. La lettura che
+#     stava in vendite.fn_genera_ordine_da_offerta si sposta qui: una sede sola.
+#   · Il kit (le tre parti): provenienza NULL, la scrive COMPONENTI la somma.
+#   · I componenti: dall'eccezione (AGGIUNTA, e OVERRIDE quando ne ha) col BB
+#     vendite.fn_offerta_eccezione_componenti_espansi (20261120-13); dal listino
+#     LISTINO_BUNDLE con la versione, senza riga, contesto senza variazione (come il
+#     kit dal listino del contratto, R-7.3). Le quattro chiavi sono quelle che
+#     vendite.fn_componente_override legge: l'elemento e' gia' l'override.
+#     ⚠️ Un OVERRIDE su un kit senza componenti suoi resta sui componenti del
+#     listino, com'era: il prezzo forzato non ha componenti da cui ricomporsi. Su
+#     dbdev, 2026-11-21, quattro eccezioni cosi', nate dalla revisione di prima di
+#     20261005-19, riparate lo stesso giorno (§8.18). Da 20261120-18 … -20 un'offerta
+#     con un kit cosi' non si emette (D-7-bis), e il ramo non si raggiunge.
+#
+#   Cambia il RETURNS TABLE: DROP + CREATE, COMMENT e GRANT di nuovo (PUBLIC resta
+#   col default, com'era al vivo). Chiamanti, censiti il 2026-11-21:
+#   · script.fn_check_righe_offerta_in_ordine: per nome dal 20261120-15;
+#   · vendite.fn_genera_ordine_da_offerta: riscritta nel 20261120-17;
+#   · pgTAP test-righe-adesione-v1 (12), test-righe-esclusione-solo-non-si-vende-v1
+#     (26), test-offerta-righe-espanse (9): per nome; test-sorgente-commenti-al-
+#     presente-v1 la firma (invariata) e il COMMENT al presente;
+#   · backend: nessuno.
+#   Corpo: il vivo di dbdev (2026-11-21); testata da 20261112-09. Nessun COST, ROWS o
+#   SET da ripetere (§13.7). Rollback: il vivo, col suo COMMENT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261120-16-update-fn-offerta-righe-espanse-provenienza-mctit.yaml
+
+  - changeSet:
+      id: 20261120-16-update-fn-offerta-righe-espanse-provenienza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_offerta_righe_espanse: la provenienza del prezzo in coda; i componenti dell'eccezione per l'OVERRIDE su un kit. Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.16.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_offerta_righe_espanse';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_offerta_righe_espanse(
+                   p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS TABLE(
+                              articolo_id        catalogo.articoli.id%TYPE,
+                              articolo_codice    catalogo.articoli.codice%TYPE,
+                              descrizione        catalogo.articoli.descrizione%TYPE,
+                              is_composito       catalogo.articoli.is_composito%TYPE,
+                              quantita           vendite.offerte_commerciali_eccezioni.quantita%TYPE,
+                              uom_operativa_id   vendite.offerte_commerciali_eccezioni.uom_operativa_id%TYPE,
+                              qta_operativa      vendite.offerte_commerciali_eccezioni.qta_operativa%TYPE,
+                              factor_to_base     vendite.offerte_commerciali_eccezioni.factor_to_base%TYPE,
+                              prezzo_unitario    vendite.offerte_commerciali_eccezioni.prezzo_unitario%TYPE,
+                              sconto_percentuale vendite.ordini_righe.sconto_percentuale%TYPE,
+                              iva_id             vendite.ordini_righe.iva_id%TYPE,
+                              tipo_eccezione     vendite.offerte_commerciali_eccezioni.tipo_eccezione%TYPE,
+                              origine            character varying,
+                              componenti         jsonb,
+                              -- La riga di offerte_commerciali_eccezioni da cui la riga viene; NULL per
+                              -- la riga del solo listino. E' la sorgente_riga della riga d'ordine.
+                              eccezione_id       vendite.offerte_commerciali_eccezioni.id%TYPE,
+                              -- La provenienza del prezzo, nella forma delle righe di documento: la
+                              -- riga d'ordine la copia cosi' com'e'. NULL sul kit (la scrive la somma).
+                              origine_prezzo          vendite.ordini_righe.origine_prezzo%TYPE,
+                              listino_versione_id     vendite.ordini_righe.listino_versione_id%TYPE,
+                              listino_riga_id         vendite.ordini_righe.listino_riga_id%TYPE,
+                              prezzo_resolver_context vendite.ordini_righe.prezzo_resolver_context%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+               AS $function$
+
+
+              -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
+              --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
+              --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
+              --   iva_id risolta dall'articolo (listino non porta iva; iva_perc non esiste
+              --   su ordini_righe: la percentuale si deriva da iva_id). sconto NULL: lo
+              --   sconto e' espresso come prezzo override (prezzo_unitario = prezzo netto).
+              --   quantita default 1 per righe da-listino senza eccezione.
+              -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la versione
+              --   operativa e la variazione dalla sede unica vendite.fn_documento_listino_
+              --   operativo('OFFERTA_COMMERCIALE', id), comune con la lista delle righe e coi guard di
+              --   contratto e offerta. Stessa regola di prima (versione fissata, o in
+              --   vigore oggi). Firma e colonne invariate, ora ancorate con %TYPE (iva_id e
+              --   sconto_percentuale alla riga d'ordine, che e' la loro destinazione).
+              -- La provenienza del prezzo (origine_prezzo, versione, riga di listino, contesto)
+              --   e' quella che la riga d'ordine copia:
+              --   · dal listino dell'offerta (anche con l'ADESIONE): CONTRATTO_LISTINO, l'origine
+              --     del listino fissato dal documento (la stessa che il resolver da' alle righe
+              --     dell'offerta), con la versione, la riga di listino se l'unita' della riga e'
+              --     la sua, e nel contesto il prezzo base e la variazione globale;
+              --   · OVERRIDE e AGGIUNTA semplice: quella dell'eccezione;
+              --   · il kit: nessuna, perche' la riga la scrive COMPONENTI la somma. I suoi
+              --     componenti portano ciascuno la sua: quelli dell'eccezione (AGGIUNTA, e OVERRIDE
+              --     quando l'eccezione ha componenti suoi: il prezzo forzato e' la loro somma) da
+              --     vendite.fn_offerta_eccezione_componenti_espansi; quelli del listino
+              --     LISTINO_BUNDLE con la versione, senza riga e senza variazione.
+              DECLARE
+                  v_trovato             boolean := false;
+                  v_listino_versione_id vendite.listini_versioni.id%TYPE;
+                  v_tipo_var            vendite.offerte_commerciali.tipo_variazione_globale%TYPE;
+                  v_valore_var          vendite.offerte_commerciali.valore_variazione_globale%TYPE;
+              BEGIN
+                  SELECT true, lo.listino_versione_id,
+                         lo.tipo_variazione_globale, lo.valore_variazione_globale
+                    INTO v_trovato, v_listino_versione_id, v_tipo_var, v_valore_var
+                    FROM vendite.fn_documento_listino_operativo('OFFERTA_COMMERCIALE', p_offerta_id) lo;
+
+                  -- Offerta assente (o fuori perimetro): nessuna riga.
+                  IF NOT COALESCE(v_trovato, false) THEN
+                      RETURN;
+                  END IF;
+
+                  -- PARTE 1: righe dal listino (core) + overlay OVERRIDE; ESCLUSIONE rimossa.
+                  RETURN QUERY
+                  SELECT
+                      base.articolo_id,
+                      base.articolo_codice,
+                      base.articolo_descrizione,
+                      base.is_composito,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, base.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      CASE
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.prezzo_unitario
+                          ELSE                                      base.prezzo_da_listino
+                      END,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      CASE
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN 'OVERRIDE'
+                          ELSE                                      'DA_LISTINO'
+                      END::varchar,
+                      CASE
+                          WHEN NOT base.is_composito THEN base.componenti
+                          ELSE COALESCE(
+                                   CASE WHEN ecc.tipo_eccezione = 'OVERRIDE'
+                                        THEN vendite.fn_offerta_eccezione_componenti_espansi(ecc.id) END,
+                                   (SELECT jsonb_agg(c.e || jsonb_build_object(
+                                               'origine_prezzo',          'LISTINO_BUNDLE',
+                                               'listino_versione_id',     v_listino_versione_id,
+                                               'prezzo_resolver_context', jsonb_build_object(
+                                                   'prezzo_base_snapshot',        c.e -> 'prezzo',
+                                                   'tipo_variazione_applicata',   'NESSUNA',
+                                                   'valore_variazione_applicata', 0))
+                                               ORDER BY c.n)
+                                      FROM jsonb_array_elements(base.componenti) WITH ORDINALITY AS c(e, n)))
+                      END,
+                      ecc.id,
+                      CASE
+                          WHEN base.is_composito                THEN NULL
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.origine_prezzo
+                          ELSE                                      'CONTRATTO_LISTINO'
+                      END::varchar,
+                      CASE
+                          WHEN base.is_composito                THEN NULL
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.listino_versione_id
+                          ELSE                                      v_listino_versione_id
+                      END,
+                      CASE
+                          WHEN base.is_composito                THEN NULL
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.listino_riga_id
+                          WHEN COALESCE(ecc.uom_operativa_id, base.uom_id) = base.uom_id
+                                                                THEN base.listino_riga_id
+                      END,
+                      CASE
+                          WHEN base.is_composito                THEN NULL
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.prezzo_resolver_context
+                          ELSE jsonb_build_object(
+                                   'prezzo_base_snapshot',        base.prezzo_listino,
+                                   'tipo_variazione_applicata',   COALESCE(v_tipo_var, 'NESSUNA'),
+                                   'valore_variazione_applicata', COALESCE(v_valore_var, 0))
+                      END
+                    FROM vendite.fn_espandi_listino_versione(
+                             v_listino_versione_id, v_tipo_var, v_valore_var
+                         ) base
+                    JOIN catalogo.articoli a ON a.id = base.articolo_id
+                    LEFT JOIN vendite.offerte_commerciali_eccezioni ecc
+                           ON ecc.offerta_id            = p_offerta_id
+                          AND ecc.articolo_id           = base.articolo_id
+                          AND ecc.tipo_eccezione        IN (
+                                  'OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                  'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                  -- rev 2026-10-29 (G-0-ter): l'ADESIONE porta la sua quantita'.
+                                  'ADESIONE'::vendite.tipo_eccezione_contratto
+                              )
+                          AND ecc.attivo
+                   WHERE ecc.tipo_eccezione IS DISTINCT FROM 'ESCLUSIONE'::vendite.tipo_eccezione_contratto;
+
+                  -- PARTE 2a: AGGIUNTA standalone (articolo non a listino).
+                  RETURN QUERY
+                  SELECT
+                      a.id, a.codice, a.descrizione, FALSE,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, a.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      ecc.prezzo_unitario,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      NULL::jsonb,
+                      ecc.id,
+                      ecc.origine_prezzo, ecc.listino_versione_id, ecc.listino_riga_id,
+                      ecc.prezzo_resolver_context
+                    FROM vendite.offerte_commerciali_eccezioni ecc
+                    JOIN catalogo.articoli a
+                      ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
+                   WHERE ecc.offerta_id           = p_offerta_id
+                     AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND ecc.attivo;
+
+                  -- PARTE 2b: AGGIUNTA bundle. Componenti da offerte_commerciali_eccezioni_componenti
+              --   (vendite.fn_offerta_eccezione_componenti_espansi).
+                  RETURN QUERY
+                  SELECT
+                      a.id, a.codice, a.descrizione, TRUE,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, a.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      ecc.prezzo_unitario,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      vendite.fn_offerta_eccezione_componenti_espansi(ecc.id),
+                      ecc.id,
+                      NULL::varchar, NULL::bigint, NULL::bigint, NULL::jsonb
+                    FROM vendite.offerte_commerciali_eccezioni ecc
+                    JOIN catalogo.articoli a
+                      ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
+                   WHERE ecc.offerta_id           = p_offerta_id
+                     AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND ecc.attivo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE) IS
+                'Le righe che riceve un ordine generato dall''offerta, nell''ordine in cui le copia vendite.fn_genera_ordine_da_offerta. Prima le righe del listino operativo dell''offerta (versione e variazione globale da vendite.fn_documento_listino_operativo, espanse da vendite.fn_espandi_listino_versione), con sopra le eccezioni OVERRIDE (il prezzo) e ADESIONE (la quantita''), senza le ESCLUSE; poi le AGGIUNTE, semplici e composte. iva_id e'' quella dell''articolo; sconto_percentuale e'' NULL, perche'' il prezzo e'' gia'' netto; senza eccezione la quantita'' e'' 1. origine dice da dove viene il prezzo (DA_LISTINO, OVERRIDE, AGGIUNTA). eccezione_id e'' la riga di offerte_commerciali_eccezioni da cui la riga viene, NULL per la riga del solo listino: e'' la sorgente_riga della riga d''ordine. origine_prezzo, listino_versione_id, listino_riga_id e prezzo_resolver_context sono la provenienza del prezzo che la riga d''ordine copia: per la riga dal listino CONTRATTO_LISTINO (il listino fissato dal documento) con la versione, la riga di listino quando l''unita'' della riga e'' la sua, e nel contesto prezzo base e variazione globale; per OVERRIDE e AGGIUNTA semplice quella dell''eccezione; per il kit nessuna, perche'' il suo prezzo e'' la somma dei componenti. componenti (solo sul kit) porta per ogni componente prezzo e provenienza, nella forma di un override di vendite.fn_componente_override: quelli dell''eccezione per l''AGGIUNTA e per l''OVERRIDE che ne ha (vendite.fn_offerta_eccezione_componenti_espansi), altrimenti quelli del listino, LISTINO_BUNDLE con la versione. Offerta assente o fuori perimetro: nessuna riga. Non e'' la lista del drawer, che e'' vendite.fn_offerta_righe_preview. STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE);
+
+              CREATE FUNCTION vendite.fn_offerta_righe_espanse(
+                   p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS TABLE(
+                              articolo_id        catalogo.articoli.id%TYPE,
+                              articolo_codice    catalogo.articoli.codice%TYPE,
+                              descrizione        catalogo.articoli.descrizione%TYPE,
+                              is_composito       catalogo.articoli.is_composito%TYPE,
+                              quantita           vendite.offerte_commerciali_eccezioni.quantita%TYPE,
+                              uom_operativa_id   vendite.offerte_commerciali_eccezioni.uom_operativa_id%TYPE,
+                              qta_operativa      vendite.offerte_commerciali_eccezioni.qta_operativa%TYPE,
+                              factor_to_base     vendite.offerte_commerciali_eccezioni.factor_to_base%TYPE,
+                              prezzo_unitario    vendite.offerte_commerciali_eccezioni.prezzo_unitario%TYPE,
+                              sconto_percentuale vendite.ordini_righe.sconto_percentuale%TYPE,
+                              iva_id             vendite.ordini_righe.iva_id%TYPE,
+                              tipo_eccezione     vendite.offerte_commerciali_eccezioni.tipo_eccezione%TYPE,
+                              origine            character varying,
+                              componenti         jsonb,
+                              -- La riga di offerte_commerciali_eccezioni da cui la riga viene; NULL per
+                              -- la riga del solo listino. E' la sorgente_riga della riga d'ordine.
+                              eccezione_id       vendite.offerte_commerciali_eccezioni.id%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+               AS $function$
+
+
+              -- Scopo: righe effettive ordine-ready di un'offerta (listino + variazione
+              --   globale + eccezioni). Parte 1 dal core fn_espandi_listino_versione +
+              --   overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle.
+              --   iva_id risolta dall'articolo (listino non porta iva; iva_perc non esiste
+              --   su ordini_righe: la percentuale si deriva da iva_id). sconto NULL: lo
+              --   sconto e' espresso come prezzo override (prezzo_unitario = prezzo netto).
+              --   quantita default 1 per righe da-listino senza eccezione.
+              -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la versione
+              --   operativa e la variazione dalla sede unica vendite.fn_documento_listino_
+              --   operativo('OFFERTA_COMMERCIALE', id), comune con la lista delle righe e coi guard di
+              --   contratto e offerta. Stessa regola di prima (versione fissata, o in
+              --   vigore oggi). Firma e colonne invariate, ora ancorate con %TYPE (iva_id e
+              --   sconto_percentuale alla riga d'ordine, che e' la loro destinazione).
+              DECLARE
+                  v_trovato             boolean := false;
+                  v_listino_versione_id vendite.listini_versioni.id%TYPE;
+                  v_tipo_var            vendite.offerte_commerciali.tipo_variazione_globale%TYPE;
+                  v_valore_var          vendite.offerte_commerciali.valore_variazione_globale%TYPE;
+              BEGIN
+                  SELECT true, lo.listino_versione_id,
+                         lo.tipo_variazione_globale, lo.valore_variazione_globale
+                    INTO v_trovato, v_listino_versione_id, v_tipo_var, v_valore_var
+                    FROM vendite.fn_documento_listino_operativo('OFFERTA_COMMERCIALE', p_offerta_id) lo;
+
+                  -- Offerta assente (o fuori perimetro): nessuna riga.
+                  IF NOT COALESCE(v_trovato, false) THEN
+                      RETURN;
+                  END IF;
+
+                  -- PARTE 1: righe dal listino (core) + overlay OVERRIDE; ESCLUSIONE rimossa.
+                  RETURN QUERY
+                  SELECT
+                      base.articolo_id,
+                      base.articolo_codice,
+                      base.articolo_descrizione,
+                      base.is_composito,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, base.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      CASE
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN ecc.prezzo_unitario
+                          ELSE                                      base.prezzo_da_listino
+                      END,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      CASE
+                          WHEN ecc.tipo_eccezione = 'OVERRIDE' THEN 'OVERRIDE'
+                          ELSE                                      'DA_LISTINO'
+                      END::varchar,
+                      base.componenti,
+                      ecc.id
+                    FROM vendite.fn_espandi_listino_versione(
+                             v_listino_versione_id, v_tipo_var, v_valore_var
+                         ) base
+                    JOIN catalogo.articoli a ON a.id = base.articolo_id
+                    LEFT JOIN vendite.offerte_commerciali_eccezioni ecc
+                           ON ecc.offerta_id            = p_offerta_id
+                          AND ecc.articolo_id           = base.articolo_id
+                          AND ecc.tipo_eccezione        IN (
+                                  'OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                  'ESCLUSIONE'::vendite.tipo_eccezione_contratto,
+                                  -- rev 2026-10-29 (G-0-ter): l'ADESIONE porta la sua quantita'.
+                                  'ADESIONE'::vendite.tipo_eccezione_contratto
+                              )
+                          AND ecc.attivo
+                   WHERE ecc.tipo_eccezione IS DISTINCT FROM 'ESCLUSIONE'::vendite.tipo_eccezione_contratto;
+
+                  -- PARTE 2a: AGGIUNTA standalone (articolo non a listino).
+                  RETURN QUERY
+                  SELECT
+                      a.id, a.codice, a.descrizione, FALSE,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, a.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      ecc.prezzo_unitario,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      NULL::jsonb,
+                      ecc.id
+                    FROM vendite.offerte_commerciali_eccezioni ecc
+                    JOIN catalogo.articoli a
+                      ON a.id = ecc.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
+                   WHERE ecc.offerta_id           = p_offerta_id
+                     AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND ecc.attivo;
+
+                  -- PARTE 2b: AGGIUNTA bundle. Componenti da offerte_commerciali_eccezioni_componenti.
+                  RETURN QUERY
+                  SELECT
+                      a.id, a.codice, a.descrizione, TRUE,
+                      COALESCE(ecc.quantita, 1)::numeric,
+                      COALESCE(ecc.uom_operativa_id, a.uom_id),
+                      COALESCE(ecc.qta_operativa, COALESCE(ecc.quantita, 1))::numeric,
+                      COALESCE(ecc.factor_to_base, 1)::numeric,
+                      ecc.prezzo_unitario,
+                      NULL::numeric,
+                      a.iva_id::integer,
+                      ecc.tipo_eccezione,
+                      'AGGIUNTA'::varchar,
+                      (
+                          SELECT jsonb_agg(jsonb_build_object(
+                              'articolo_componente_id', oecc_c.articolo_componente_id,
+                              'componente_id',          af.id,
+                              'componente_codice',      af.codice,
+                              'componente_descrizione', af.descrizione,
+                              'uom_id',                 af.uom_id,
+                              'uom_codice',             umf.codice,
+                              'coeff_qta',              oecc_c.coeff_qta_snapshot,
+                              'prezzo',                 oecc_c.prezzo_unitario,
+                              'qta_operativa',          oecc_c.qta_operativa,
+                              'uom_operativa_id',       oecc_c.uom_operativa_id,
+                              'factor_to_base',         oecc_c.factor_to_base
+                          ) ORDER BY oecc_c.ordine, oecc_c.id)
+                            FROM vendite.offerte_commerciali_eccezioni_componenti oecc_c
+                            JOIN catalogo.articoli af ON af.id = oecc_c.componente_id
+                            JOIN catalogo.unita_misura umf ON umf.id = af.uom_id
+                           WHERE oecc_c.eccezione_offerta_id = ecc.id
+                             AND oecc_c.attivo               = TRUE
+                      ),
+                      ecc.id
+                    FROM vendite.offerte_commerciali_eccezioni ecc
+                    JOIN catalogo.articoli a
+                      ON a.id = ecc.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
+                   WHERE ecc.offerta_id           = p_offerta_id
+                     AND ecc.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                     AND ecc.attivo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE) IS
+                'Le righe che riceve un ordine generato dall''offerta, nell''ordine in cui le copia vendite.fn_genera_ordine_da_offerta. Prima le righe del listino operativo dell''offerta (versione e variazione globale da vendite.fn_documento_listino_operativo, espanse da vendite.fn_espandi_listino_versione), con sopra le eccezioni OVERRIDE (il prezzo) e ADESIONE (la quantita''), senza le ESCLUSE; poi le AGGIUNTE, semplici e composte (componenti da offerte_commerciali_eccezioni_componenti). iva_id e'' quella dell''articolo; sconto_percentuale e'' NULL, perche'' il prezzo e'' gia'' netto; senza eccezione la quantita'' e'' 1. origine dice da dove viene il prezzo (DA_LISTINO, OVERRIDE, AGGIUNTA). eccezione_id e'' la riga di offerte_commerciali_eccezioni da cui la riga viene, NULL per la riga del solo listino: e'' la sorgente_riga della riga d''ordine. Offerta assente o fuori perimetro: nessuna riga. Non e'' la lista del drawer, che e'' vendite.fn_offerta_righe_preview. STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION vendite.fn_offerta_righe_espanse(vendite.offerte_commerciali.id%TYPE) TO zeroerp_app;

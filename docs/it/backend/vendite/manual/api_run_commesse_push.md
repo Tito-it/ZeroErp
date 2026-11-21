@@ -1,5 +1,7 @@
 # API run_commesse_push (Django)
 
+> **Ultimo aggiornamento**: 21 novembre 2026
+
 ## Scopo
 
 Esporre via HTTP l'avvio dell'orchestratore push commesse, che sincronizza documenti sorgente
@@ -74,23 +76,22 @@ View: `ApiRunCommessePush` `ApiRunCommessePush` (`apps.vendite.api.views`).
 
 Il push, oltre a creare commessa e righe, arricchisce e materializza:
 
-- **Snapshot audit pricing v5** — per ogni riga il push popola su `commesse_attivita`
-  8 colonne di **derivazione del prezzo** (`prezzo_base_snapshot`, `origine_prezzo`,
-  `tipo_variazione_applicata`, `valore_variazione_applicata`, `promo_id`, `contratto_id`,
-  `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`), ricostruite via
-  `PricingService.resolve_prezzo` (`fn_resolve_prezzo_listino_v2`). Caratteristiche:
-  - **`prezzo_snapshot` (prezzo negoziato) resta autoritativo**: NON viene sovrascritto;
-    l'audit è puramente diagnostico (ricostruzione della derivazione alla data di
-    competenza, può divergere da un prezzo negoziato manualmente);
-  - **best-effort**: input insufficienti (es. consumi senza articolo/uom) o errore
-    resolver → audit a `NULL`, il push NON si blocca;
-  - **whitelist `origine_prezzo`**: un valore fuori dal CHECK DB (es. resolver
-    `LISTINO_BUNDLE`) viene normalizzato a `NULL` invece di far fallire l'upsert;
-  - per i **componenti BoM** l'`origine_prezzo` già negoziato (in `meta`) prevale sulla
-    ricostruzione del resolver;
-  - **propagazione a valle**: la pull `fn_emit_attivita_fatturabili_da_commessa`
-    (changeset DB `20260616-01`) copia le 8 colonne 1:1 su `attivita_fatturabili`, quindi
-    l'audit è completo fino al livello di emissione.
+- **La provenienza del prezzo** (dal 2026-11-14, brief della provenienza del prezzo, K-1 e
+  K-2) — per ogni riga il push copia su `commesse_attivita` la provenienza della riga del
+  documento, **così com'è**: `origine_prezzo`, `listino_versione_id`, `listino_riga_id`,
+  `prezzo_base_snapshot`, la variazione applicata, `promo_id`, `contratto_id`,
+  `categoria_cliente_id_snapshot`, `classe_utenza_id_snapshot`. Le restituiscono tutti i
+  lister `fn_list_*_da_pushare` (obbligatorie in `_PUSHABLE_SHARED_COLS`; i consumi vuote,
+  il loro prezzo lo dà il listino più tardi). Caratteristiche:
+  - **niente ricostruzione**: il push non chiede al resolver da dove *verrebbe* oggi il
+    prezzo (`_resolve_pricing_audit`, ritirato); cita la riga di listino solo se il prezzo
+    è venuto davvero da lì;
+  - **un elenco solo di origini** (`vendite.fn_origine_prezzo_ammessa`): `LISTINO_BUNDLE` e
+    `COMPONENTI` entrano in commessa, niente più normalizzazione a `NULL`;
+  - i **componenti BoM** portano la **loro** provenienza (colonne `prov_*` del loader),
+    non quella del padre e non più dal `meta`;
+  - **propagazione a valle**: la pull `fn_emit_attivita_fatturabili_da_commessa` copia la
+    provenienza su `attivita_fatturabili`, fino al livello di emissione.
 - **Fan-out compositi (modello unico)** — un articolo composito entra in commessa come
   N righe componente, leggendo i componenti negoziati dalla rispettiva tabella
   `*_righe_componenti`. Vale ora per **tutte** le sorgenti documento (preventivi,

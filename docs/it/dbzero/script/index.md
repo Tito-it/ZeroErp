@@ -76,6 +76,7 @@ search:
 - [fn_check_lotto_fatture_pre_fiscali](funzioni/fn_check_lotto_fatture_pre_fiscali.md) — (latest review 12-11-2026) Dice se le fatture di un lotto sono ancora **demolibili**, cioè se nessuna ha superato lo stato pre-fiscale. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando tutte le fatture del lotto sono pre-fiscali.
 - [fn_check_lotto_riportabile_a_draft](funzioni/fn_check_lotto_riportabile_a_draft.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono il ritorno in bozza** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando il ritorno è lecito.
 - [fn_check_offerta_annullabile](funzioni/fn_check_offerta_annullabile.md)
+- [fn_check_offerta_kit_con_componenti](funzioni/fn_check_offerta_kit_con_componenti.md)
 - [fn_check_operatore_invitabile](funzioni/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](funzioni/fn_check_ordine_annullabile.md) — Elenca i motivi che impediscono di **annullare** un ordine: merce già uscita con una bolla figlia viva, oppure righe di commessa già `EMESSA`. Un elenco vuoto vuol dire che l'annullamento è lecito.
 - [fn_check_ordine_confermabile](funzioni/fn_check_ordine_confermabile.md) — (rev 2026-11-03 — il motivo dei soli oneri · funzione nata il 2026-08-29)
