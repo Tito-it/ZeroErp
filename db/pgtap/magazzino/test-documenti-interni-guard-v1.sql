@@ -130,9 +130,12 @@ SELECT throws_like($$ DELETE FROM magazzino.inventari WHERE id = (SELECT inv FRO
     '14) una POSTED non si elimina: E_MAG_DOCUMENTO_NON_ELIMINABILE');
 
 -- La forma
+-- ⚠️ Testo di PostgreSQL 19 (dal 2026-11-21): su una colonna varchar `IN (...)` si
+--   scrive `ANY (ARRAY[('X'::character varying)::text, ...])`; la 18 scriveva
+--   `ANY ((ARRAY['X'::character varying, ...])::text[])`. Stesso vincolo, altro testo.
 SELECT is(
     (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'magazzino.inventari'::regclass AND conname = 'chk_mag_inventari_stato'),
-    'CHECK (((stato_mag_inventario)::text = ANY ((ARRAY[''DRAFT''::character varying, ''CONFIRM''::character varying, ''POSTED''::character varying, ''CANCEL''::character varying])::text[])))',
+    'CHECK (((stato_mag_inventario)::text = ANY (ARRAY[(''DRAFT''::character varying)::text, (''CONFIRM''::character varying)::text, (''POSTED''::character varying)::text, (''CANCEL''::character varying)::text])))',
     '15) il CHECK degli stati ha quattro valori e si chiama chk_mag_inventari_stato (COUNTING e'' uscito, D-L2-h)');
 
 -- ============================================================

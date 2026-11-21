@@ -30,7 +30,7 @@ SELECT id,
             ELSE COALESCE(prossimo_tentativo, data_insert)
         END AS dovuta_dal
    FROM config.email_log l
-  WHERE (((stato)::text = 'PENDING'::text) OR (((stato)::text = ANY ((ARRAY['FAILED'::character varying, 'RETRY'::character varying])::text[])) AND (tentativi < max_tentativi) AND ((prossimo_tentativo IS NULL) OR (prossimo_tentativo <= now()))));
+  WHERE (((stato)::text = 'PENDING'::text) OR (((stato)::text = ANY (ARRAY[('FAILED'::character varying)::text, ('RETRY'::character varying)::text])) AND (tentativi < max_tentativi) AND ((prossimo_tentativo IS NULL) OR (prossimo_tentativo <= now()))));
 ```
 
 </div>

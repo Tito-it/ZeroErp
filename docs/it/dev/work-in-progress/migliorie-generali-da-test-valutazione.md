@@ -1,30 +1,34 @@
 # Migliorie generali da test valutazione
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-17
+## ⏭️ Chi riparte — aggiornato al 2026-11-21
 
-**Riparte: il team DB** sulla CI di `Tito-dev`, che dal 2026-11-11 è **rossa a ogni corsa della
-suite** (§3 D7, «La CI di `Tito-dev` dall'11-11»); poi i 21 rossi noti e il brief di Q-2. **Tid**
-ha le decisioni che tengono ferme D18, D7 e D31.
+**Riparte: Tid** col rientrato da togliere (riga 1); poi **il team DB** sui 21 rossi noti della CI e
+sul brief di Q-2. **Tid** ha le decisioni che tengono ferme D18, D7 e D31. Il cancello pgTAP di
+`Tito-dev` è di nuovo **verde**: la corsa `44780756701` (20-11, `cab3b88d6`) dà 21 rossi su 1.101,
+tutti noti, nessuna regressione (§3 D7).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
-| 1 | team DB | D7: la regressione `catalogo/test-comment-al-presente-catalogo-v1` (`ASSERZIONE`), rossa in CI a ogni corsa dall'11-11 e verde su dbdev. ✍️ Causa letta e corretta dal `20261114-98`; il file è tolto il 2026-11-17 (giro 5 di `brief-db-revisione-documenti`), il perimetro è in `dbops/test-comment-al-presente-v1`. Si chiude alla prima corsa verde della suite dopo l'apply di quel giro | §3 D7 | l'apply del giro 5 |
-| 2 | Tid | committare la riga di contesto di `config/test-stati-raggiungibili-v1` (già nell'albero di `dev/db-tid`): senza, il «Guardrail preambolo pgTAP» tiene rosso `e10c71f1d` (merge della PR #114) | §3 D7 | — |
-| 3 | Tid | `pgtap-baseline-ci-rientrati.sh 43577800656`: toglie il rientrato `vendite/test-documento-trattenuto-da-lotto-v1` (22 → 21); la regressione la segnala e non la registra. Il log della corsa scade in pochi giorni | §3 D7 | — |
-| 4 | team DB | D7: i 21 rossi noti della CI (16 `ASSERZIONE`, 5 `ERRORE_FIXTURE`), uno per uno | §3 D7 | — |
-| 5 | Tid | D18: le cinque decisioni della catena delle istanze (ferma dal 2026-10-05) | `brief-db-catena-istanze-pdp.md` §6 | — |
-| 6 | team DB | D17 Q-2: le GUC di bypass legate al proprietario — via di Tid il 2026-11-03; serve un brief suo (decisioni aperte, ~45 pgTAP). Non aperto al 14-11 | §3 D17 | — |
-| 7 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
-| 8 | Tid | D31: le sorgenti di orario e consumo (le domande le prepara il team DB) | §3 D31 | le sorgenti |
+| 1 | Tid | `pgtap-baseline-ci-rientrati.sh 44780756701`: toglie il rientrato `vendite/test-documento-trattenuto-da-lotto-v1` (22 → 21). Letto in `--dry-run` il 21-11; la corsa `43577800656` citata prima va sostituita con questa, il cui log è recente | §3 D7 | — |
+| 2 | team DB | D7: i 21 rossi noti della CI (16 `ASSERZIONE`, 5 `ERRORE_FIXTURE`), uno per uno | §3 D7 | la riga 1 |
+| 3 | Tid | D18: le cinque decisioni della catena delle istanze (ferma dal 2026-10-05) | `brief-db-catena-istanze-pdp.md` §6 | — |
+| 4 | team DB | D17 Q-2: le GUC di bypass legate al proprietario — via di Tid il 2026-11-03; serve un brief suo (decisioni aperte, ~45 pgTAP). Non aperto al 21-11 | §3 D17 | — |
+| 5 | Tid | D7: i test legati a dati di macchina; il ramo «ultimo SUPER_ADMIN» | §3 D7 | — |
+| 6 | Tid | D31: le sorgenti di orario e consumo (le domande le prepara il team DB) | §3 D31 | le sorgenti |
 
-Decisioni aperte di Tid: righe 5, 7 e 8. Lavoro da committare: questo
-riallineamento (con D6-bis, D16 e D24 spostate nell'archivio) e la correzione di
-`scripts/indicatori-qualita-db.sh`, che dal 03-11 stampava «? / ?» per D6-bis; le tre righe `SENZA_INDICE` di `80_data/sql/dbops/fk_index_policy.csv` e il changeSet `20261114-21` (D11, applicati e a 0 il 14-11), con le quattro pagine `manual/` che nominavano gli indici tolti. ⚠️ Fuori dal
-perimetro di questo documento, ma nella stessa catena: i test Django in CI sono rossi in più corse
-dall'11-11 (all'ultima con la suite, `43577800656`: 13 su 7.266, `E_DOCUMENTI_TEMPLATE_NON_RISOLTO`
-in `apps.documenti.tests.db`); verdi alla corsa `43584113226` del 14-11.
+✅ **Chiuse dalla testata il 21-11**: la regressione `catalogo/test-comment-al-presente-catalogo-v1`
+(corretta dal `20261114-98`, file tolto col giro 5 di `brief-db-revisione-documenti`, `edb39da230`;
+dalla corsa `44780756701` non è più fra i rossi) e la riga di contesto di
+`config/test-stati-raggiungibili-v1` (committata in `696df79038`, 14-11, ed entrata in `Tito-dev`).
 
-> **Ultima revisione: 2026-11-14.** Valutazione dello strato DB, aperta il 2026-09-08. Qui sta
+Decisioni aperte di Tid: righe 3, 5 e 6. Lavoro da committare: questo riallineamento della testata.
+⚠️ Fuori dal perimetro di questo documento, ma è la stessa catena: `CI-Validate` su `Tito-dev` resta
+**rossa** per il passo «Django tests». Alla corsa `44828025882` (20-11, PR #171) è rosso 1 test su
+7.409, `apps.core.tests.db.test_lista_proiezione_campo_sorgente`
+(`test_ogni_campo_sorgente_a_catalogo_arriva_nella_riga`). È del team BE, ma tocca la proiezione delle
+liste, che è anche lavoro DB (`brief-db-revisione-ui`).
+
+> **Ultima revisione: 2026-11-21** (solo la testata; il corpo e i numeri sono del 2026-11-14). Valutazione dello strato DB, aperta il 2026-09-08. Qui sta
 > **solo ciò che è vivo**: chi riparte, i difetti aperti (§3), cosa non è un difetto (§4), la
 > scorecard (§5) e la checklist delle voci aperte (§6). La valutazione di febbraio (§1), ciò che è
 > nato in sette mesi (§2), la valutazione del design del 04-10 (§2-bis), le voci chiuse (§7) e i

@@ -17,9 +17,11 @@ CREATE OR REPLACE FUNCTION ui.trgfn_preferenza_preset_base_snapshot()
  LANGUAGE plpgsql
 AS $function$
 -- Scopo: lo snapshot del preset di base della preferenza lo scrive
---   il DB: la data del contenuto del preset di base, letta dalla
---   tabella dei preset (TG_ARGV[0]). Il valore che arriva da chi
---   scrive non conta. Se la base cambia, l'ignorato si azzera.
+--   il DB: la copia della data del contenuto per chiave del preset di
+--   base ({chiave: data}), letta dalla tabella dei preset
+--   (TG_ARGV[0]). Il valore che arriva da chi scrive non conta: ogni
+--   scrittura che nomina preset_base_id o lo snapshot riallinea, ed e'
+--   cosi' che si chiude il banner del preset aggiornato.
 -- Montaggio: BEFORE INSERT OR UPDATE OF preset_base_id,
 --   preset_base_contenuto_aggiornato_il FOR EACH ROW.
 DECLARE
@@ -52,16 +54,12 @@ BEGIN
 
     NEW.preset_base_contenuto_aggiornato_il := v_contenuto;
 
-    IF TG_OP = 'INSERT' OR NEW.preset_base_id IS DISTINCT FROM OLD.preset_base_id THEN
-        NEW.preset_aggiornato_ignored_at := NULL;
-    END IF;
-
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_preferenza_preset_base_snapshot()
-IS 'Sulle due preferenze (ui.lista_preferenza_utente, ui.dashboard_preferenza_utente) lo snapshot del preset di base lo scrive il DB: preset_base_contenuto_aggiornato_il = la data del contenuto del preset preset_base_id, letta dalla tabella dei preset TG_ARGV[0] (ui.lista_preset o ui.dashboard_preset); NULL senza base. Il valore che arriva da chi scrive non conta: ogni scrittura che nomina preset_base_id o lo snapshot e'' un riallineamento. Se la base cambia (o all''INSERT), preset_aggiornato_ignored_at si azzera: si riferiva alla base di prima. BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il FOR EACH ROW. Argomento fuori dai due: E_TRIGGER_ARGOMENTI_INVALIDI.';
+IS 'Sulle due preferenze (ui.lista_preferenza_utente, ui.dashboard_preferenza_utente) lo snapshot del preset di base lo scrive il DB: preset_base_contenuto_aggiornato_il = la copia di contenuto_aggiornato_il del preset preset_base_id, un oggetto {chiave: data}, letta dalla tabella dei preset TG_ARGV[0] (ui.lista_preset o ui.dashboard_preset); NULL senza base. Il valore che arriva da chi scrive non conta: ogni scrittura che nomina preset_base_id o lo snapshot e'' un riallineamento, e riscrivere lo stesso preset_base_id e'' il modo di chiudere il banner del preset aggiornato (ui.fn_preset_aggiornato). BEFORE INSERT OR UPDATE OF preset_base_id, preset_base_contenuto_aggiornato_il FOR EACH ROW. Argomento fuori dai due: E_TRIGGER_ARGOMENTI_INVALIDI.';
 ```
 
 </div>

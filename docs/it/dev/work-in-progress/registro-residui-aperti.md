@@ -240,7 +240,7 @@
   `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
   decidere col team DB se il mirror debba smettere di riscrivere le colonne che
   l'operatore può cambiare. ⏭️ Dal 2026-11-17 il tema generale sta in
-  [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md)
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md)
   (§7, Q5). ⚠️ **Aggiornato il 2026-11-20: quel brief ha costruito il
   meccanismo, ma non ha iscritto questa tabella.** Il meccanismo è la forma per
   colonna: il registro `dbops.seed_righe`, le colonne del software lette da
@@ -254,7 +254,7 @@
   superficie, come per la posta (§16.14 del brief)
 - **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata**
   [DB + BE/FE] (Q7 di
-  [brief-db-seed-primo-impianto-non-si-riscrive](brief-db-seed-primo-impianto-non-si-riscrive.md),
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md),
   rinviata il 2026-11-17 fuori dal giro 1, §15.10; ereditata qui il 2026-11-20).
   Quando l'installazione modifica una riga di seed, la riga diventa
   personalizzata: il migrate non la riscrive più e mette i valori del CSV in

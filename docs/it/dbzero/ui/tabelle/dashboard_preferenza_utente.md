@@ -12,8 +12,7 @@
 | auth_user_id | integer | NO |  |
 | dashboard_id | integer | NO |  |
 | preset_base_id | integer | YES |  |
-| preset_base_contenuto_aggiornato_il | timestamp with time zone | YES |  |
-| preset_aggiornato_ignored_at | timestamp with time zone | YES |  |
+| preset_base_contenuto_aggiornato_il | jsonb | YES |  |
 | configurazione | jsonb | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES |  |
@@ -38,8 +37,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
-| trg_ui_dashboard_preferenza_utente_z90_preset_base_snapshot_ins | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
+| trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
+| trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
 
 ---
 {% include-markdown "signature-core.md" %}

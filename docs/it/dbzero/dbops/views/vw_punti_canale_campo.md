@@ -174,18 +174,18 @@ WITH funzioni AS MATERIALIZED (
          SELECT diretti_variabile.oid,
             diretti_variabile.funzione,
             diretti_variabile.codice,
-            'DIRETTO'::text,
+            'DIRETTO'::text AS text,
             diretti_variabile.n,
             diretti_variabile.canale,
             diretti_variabile.chiave,
             diretti_variabile.nome_in_chiave,
-            NULL::text
+            NULL::text AS text
            FROM diretti_variabile
         UNION ALL
          SELECT primo_motivo.oid,
             primo_motivo.funzione,
             primo_motivo.codice,
-            'PRIMO_MOTIVO'::text,
+            'PRIMO_MOTIVO'::text AS text,
             primo_motivo.n,
             primo_motivo.canale,
             primo_motivo.chiave,

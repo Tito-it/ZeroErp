@@ -15,8 +15,8 @@
 > Approfondimento funzioni:
 >
 > * [ui.fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config) — legge la preferenza chiave per chiave
-> * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive lo snapshot dal preset di base, azzera l'«ignora» al cambio di base
-> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il flag del banner
+> * [ui.trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot) — scrive lo snapshot dal preset di base, a ogni salvataggio e a ogni «Ignora»
+> * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
 > * [ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
 >
 > Guide:
@@ -55,15 +55,17 @@ dalla lista risolta senza errore.
 Al salvataggio il servizio scrive in `preset_base_id` il preset di base che il resolver gli ha dato
 (`preset_base`). Lo snapshot `preset_base_contenuto_aggiornato_il` lo scrive il database: il
 trigger [trgfn_preferenza_preset_base_snapshot](/dbzero/ui/funzioni/trgfn_preferenza_preset_base_snapshot)
-legge la data del contenuto del preset a ogni scrittura che nomina la base o lo snapshot, e il
-valore mandato dal servizio non conta. Se poi la data del preset si sposta, il resolver accende
-`preset_aggiornato`: il frontend propone di vedere le novità. `preset_aggiornato_ignored_at` è il
-«non mostrarmelo più»: il flag resta spento finché il preset non cambia di nuovo dopo quel momento.
+copia la data del contenuto del preset, una per chiave (`{chiave: data}`), a ogni scrittura che
+nomina la base o lo snapshot, e il valore mandato dal servizio non conta. Se poi il preset cambia
+una chiave che la preferenza imposta, il resolver la mette in `preset_aggiornato_chiavi` e accende
+`preset_aggiornato`: il frontend propone di vedere le novità. Una chiave che la preferenza non
+imposta la segue già dal preset, e non accende niente.
 
-Quando `preset_base_id` cambia (anche perché il preset si cancella, con l'`ON DELETE SET NULL`), lo
-stesso trigger azzera l'«ignora», che si riferiva alla base di prima. Se la base salvata non è più
-la base di oggi (spenta, cancellata o scavalcata), il resolver non accende `preset_aggiornato` ma
-`preset_base_cambiato`, che propone il riallineamento.
+«Non mostrarmelo più» è una scrittura che nomina `preset_base_id`, anche con lo stesso valore: lo
+snapshot si riallinea e il banner si spegne, finché il preset non cambia di nuovo. Se la base
+salvata non è più la base di oggi (spenta, cancellata o scavalcata), il resolver non accende
+`preset_aggiornato` ma `preset_base_cambiato`, che propone il riallineamento. Il preset cancellato
+porta `preset_base_id` a nessuno (`ON DELETE SET NULL`) e lo snapshot torna vuoto.
 
 ---
 
@@ -100,9 +102,6 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
   ordinabili, non filtrabili o bloccate per l'utente.
 * **Il preset di base di un'altra lista.** Nessun vincolo chiede che `preset_base_id` sia un preset
   della stessa lista: il resolver lo tratta come una base che non è quella di oggi.
-* **Il banner per chiavi che seguono già il preset.** Il flag guarda la data del preset intero:
-  una preferenza di sola misura vede il banner quando il preset cambia l'ordinamento, che le arriva
-  già da solo.
 
 ---
 
@@ -110,7 +109,7 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 
 * `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non intera o fuori catalogo.
 * Dal servizio, non dal database: `E_UI_PREFERENZA_VALIDAZIONE` (forma del payload, preferenza
-  vuota), `E_UI_PREFERENZA_NON_TROVATA` («ignora» senza una preferenza), `E_UI_LISTA_NON_TROVATA`.
+  vuota), `E_UI_PREFERENZA_NON_TROVATA` («Ignora» senza una preferenza), `E_UI_LISTA_NON_TROVATA`.
 
 ---
 
@@ -118,13 +117,17 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 
 * `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — chiavi presenti, assenti
   e null.
-* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — snapshot, «ignora», base
-  azzerata dal trigger.
+* `db/pgtap/ui/test-fn-resolve-lista-config-preset-aggiornato-v1.sql` — snapshot, «Ignora» che
+  riallinea, il cambio dopo che riaccende, base portata a nessuno.
+* `db/pgtap/ui/test-fn-resolve-lista-config-cascata-per-chiave-v1.sql` — una preferenza di sole
+  colonne non vede il banner quando cambia la misura del preset; lo vede, sulla chiave `colonne`,
+  quando cambia la composizione.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — lo snapshot scritto dal database e non dal
   servizio; la base salvata diversa da quella di oggi (`preset_base_cambiato`).
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — la preferenza prevale sui preset.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura della preferenza nel catalogo.
-* `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — lo snapshot rinominato, le FK in eccezione ATTIVO.
+* `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — lo snapshot rinominato e per chiave, le FK in eccezione
+  ATTIVO.
 
 ---
 
@@ -139,6 +142,9 @@ c'è un trigger d'audit, e chi scrive è l'utente stesso della riga.
 * 2026-11-20 — lo snapshot lo scrive il database, e il trigger `z90` che lo azzerava al cambio di
   base è tolto: azzerava anche lo snapshot nuovo portato dallo stesso salvataggio. Il resolver espone
   il preset di base da salvare (`preset_base`), e la copia della cascata nel servizio si ritira.
+* 2026-11-20 — lo snapshot diventa per chiave (`{chiave: data}`, le righe esistenti portate a
+  `max(snapshot, ignorato)` per ogni chiave, banner identico), e `preset_aggiornato_ignored_at` si
+  ritira: «Ignora» è riscrivere `preset_base_id`.
 
 ---
 

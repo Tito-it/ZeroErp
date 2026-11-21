@@ -152,6 +152,9 @@ SELECT lives_ok(
 -- ============================================================
 -- 12-13. I vincoli
 -- ============================================================
+-- ⚠️ Testo di PostgreSQL 19 (dal 2026-11-21): su una colonna varchar `IN (...)` si
+--   scrive `ANY (ARRAY[('X'::character varying)::text, ...])`; la 18 scriveva
+--   `ANY ((ARRAY['X'::character varying, ...])::text[])`. Stesso vincolo, altro testo.
 SELECT is(
     (SELECT string_agg(k.conname || ' ' || pg_get_constraintdef(k.oid), E'\n' ORDER BY k.conname)
        FROM pg_constraint k
@@ -161,7 +164,7 @@ SELECT is(
                           'chk_dati_societari_destinatario_fe_canale')),
     'chk_dati_societari_canale_fe_coerente CHECK (((((destinatario_fe)::text IS DISTINCT FROM ''P''::text) OR (COALESCE(btrim((pec_fatturazione)::text), ''''::text) <> ''''::text)) AND (((destinatario_fe)::text IS DISTINCT FROM ''C''::text) OR (codice_sdi IS NOT NULL))))' || E'\n' ||
     'chk_dati_societari_codice_sdi_forma CHECK (((codice_sdi)::text ~ ''^[A-Z0-9]{6,7}$''::text))' || E'\n' ||
-    'chk_dati_societari_destinatario_fe_canale CHECK (((destinatario_fe)::text = ANY ((ARRAY[''P''::character varying, ''C''::character varying])::text[])))',
+    'chk_dati_societari_destinatario_fe_canale CHECK (((destinatario_fe)::text = ANY (ARRAY[(''P''::character varying)::text, (''C''::character varying)::text])))',
     '12) i tre CHECK del canale FE ci sono, nella forma esatta'
 );
 

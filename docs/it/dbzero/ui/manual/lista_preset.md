@@ -83,18 +83,29 @@ filtri e righe per pagina.
 
 ---
 
-### ⭐ `contenuto_aggiornato_il`: la data del contenuto, non dell'audit
+### ⭐ `contenuto_aggiornato_il`: la data del contenuto, per chiave, non dell'audit
 
-`contenuto_aggiornato_il` dice quando è cambiato l'ultima volta ciò che il preset **mostra**, e la
-confronta il flag «preset aggiornato» con lo snapshot salvato nella preferenza. Nasce con la riga
-e la spostano due trigger, sulle funzioni condivise con i preset delle dashboard:
+`contenuto_aggiornato_il` dice quando è cambiato l'ultima volta ciò che il preset **mostra**, una
+data per chiave: un oggetto `{chiave: data}` con `colonne`, `ordinamento`, `filtri` e
+`pagina_dimensione`, le chiavi della configurazione della preferenza. Il banner «preset
+aggiornato» la confronta, chiave per chiave, con lo snapshot salvato nella preferenza, e guarda
+solo le chiavi che la preferenza imposta. La scrive solo il database, con la funzione condivisa con
+i preset delle dashboard,
+[trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato): alla
+nascita della riga tutte le chiavi, poi la chiave la cui colonna cambia (`ordinamento_default`,
+`filtri_default`, `pagina_dimensione`, e per `colonne` l'impronta della composizione). Chi la
+scrive riceve `E_UI_PRESET_CONTENUTO_DERIVATO`.
 
-* [trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato),
-  quando cambiano `ordinamento_default`, `filtri_default` o `pagina_dimensione`;
-* [trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset), quando
-  una colonna del preset si aggiunge, si toglie o cambia.
+`composizione_impronta` è l'impronta della composizione
+([fn_preset_impronta](/dbzero/ui/funzioni/fn_preset_impronta)). La scrive a fine transazione il
+trigger differito delle colonne del preset,
+[trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset), solo quando
+la composizione è davvero cambiata: il servizio di amministrazione la riscrive cancellando e
+reinserendo le righe, e una riscrittura uguale non sposta niente. Un valore diverso dall'impronta di
+oggi è rifiutato con lo stesso codice. Per il seed di primo impianto le due colonne sono
+dell'installazione: una composizione cambiata dall'installazione personalizza il preset di seed.
 
-Una riscrittura uguale non la sposta: il seed riscrive ogni riga a ogni giro, e il banner si
+Una riscrittura uguale non sposta la data: il seed riscrive ogni riga a ogni giro, e il banner si
 accenderebbe a tutti. `data_update` e `user_update` restano l'audit del framework, che si sposta a
 ogni scrittura. Non sono contenuto codice, descrizione, ambito e `attivo`: accendere
 o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che cosa dice.
@@ -124,8 +135,6 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
   sorgente).
 * **Il `DEFAULT` 25.** È una seconda sede del default `PAGINA` del catalogo: se il default del
   catalogo cambia, i preset nati senza misura restano a 25.
-* **La data del contenuto si scrive a mano.** Un INSERT o un UPDATE dell'applicazione può
-  scrivere `contenuto_aggiornato_il` a qualunque valore senza cambiare il contenuto.
 
 ---
 
@@ -166,6 +175,8 @@ o spegnere un preset cambia **quale** preset sta sotto una preferenza, non che c
   anche i preset spenti: la cascata leggeva solo i preset di default accesi, e un preset acceso non
   di default non lo leggeva nessuno. I preset in quello stato sono stati spenti. Al suo posto
   `uq_ui_lista_preset_posto`, sui soli preset accesi.
+* 2026-11-20 — `contenuto_aggiornato_il` diventa per chiave e la scrive solo il database; nasce
+  `composizione_impronta`, e la composizione riscritta uguale non sposta più la data.
 
 ---
 

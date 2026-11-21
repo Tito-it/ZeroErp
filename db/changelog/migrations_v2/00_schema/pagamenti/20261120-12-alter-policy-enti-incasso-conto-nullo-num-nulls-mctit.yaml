@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA POLICY DEI CANALI TORNA A TACERE DOVE PARLA IL NOT NULL — su PostgreSQL 19
+#   pagamenti.enti_incasso · policy rls_enti_incasso_perimetro_incasso
+#   Ripristina la decisione di 20260828-21 sulla forma di 20261018-33.
+#
+# ── 🔴 IL DIFETTO: PostgreSQL 19 spegne il ramo `IS NULL` ───────────
+#   Il -21 aveva dato alla policy il ramo
+#   `soggetto_ruolo_conto_bancario_id IS NULL OR …`, perché un canale creato
+#   SENZA conto lo rifiutasse il NOT NULL della colonna (23502, «manca un
+#   campo», 400) e non la policy (42501, «non ti e' consentito», 403).
+#   ⛔ Su PostgreSQL 19 (dbdev dal 2026-11-21) il ramo non c'e' piu': su una
+#   colonna NOT NULL il planner riduce `col IS NULL` a FALSO anche dentro la
+#   WITH CHECK, e la RLS — che PostgreSQL valuta PRIMA dei vincoli — torna a
+#   rifiutare la riga con 42501. Il -21 e' annullato senza che nessuno abbia
+#   toccato la policy.
+#   Trovato da `test-enti-incasso-conto-incasso.sql` test 2 (`caught: 42501,
+#   wanted: 23502`) alla prima corsa sullo scratch migrato alla 19. È l'unica
+#   policy del database con `IS NULL` su una colonna NOT NULL (censimento su
+#   pg_policy di zeroerp e zeroerp_ruoli, 2026-11-21).
+#
+# ── ⭐ LA CURA: `num_nulls(col) = 1` ────────────────────────────────
+#   Stesso significato di `col IS NULL`, ma è una chiamata di funzione: il
+#   planner non la ragiona con il NOT NULL della colonna e la lascia valutare
+#   sulla riga. Provato su PostgreSQL 19, in transazione annullata, su una
+#   tabella minima NOT NULL con FORCE RLS:
+#     · `x IS NULL OR …`                  → 42501 (la policy copre il vincolo)
+#     · `x IS NOT DISTINCT FROM NULL OR …` → 42501 (ridotta allo stesso modo)
+#     · `num_nulls(x) = 1 OR …`           → 23502 (parla il vincolo)
+#     · `num_nulls(x) = 1 OR …`, x fuori perimetro → 42501 (il perimetro regge)
+#   ⛔ Non e' un buco, per la stessa ragione del -21: la colonna e' NOT NULL,
+#   una riga col conto nullo non puo' esistere — in lettura il ramo non
+#   seleziona niente, in scrittura lascia rifiutare il vincolo.
+#   ⚠️ Se una major futura imparasse a ridurre anche `num_nulls`, il test 2
+#   torna rosso: e' lui il presidio, non questo commento.
+#
+#   Cambia SOLO il ramo, in USING e in WITH CHECK (identiche, FOR ALL). Gate
+#   della veste OPERATORE, perimetro, comando e ruoli: invariati, dal testo
+#   vivo di dbdev e dello scratch (identico sui due, 2026-11-21). Il COMMENT
+#   si riscrive al presente (linee-guida-sql §5d).
+#
+# Verifica: db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql (test 2)
+#           db/pgtap/rls/test-rls-pagamenti-perimetro.sql (15-18, invariati)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20261120-12-alter-policy-enti-incasso-conto-nullo-num-nulls-mctit.yaml
+
+  - changeSet:
+      id: 20261120-12-alter-policy-enti-incasso-conto-nullo-num-nulls
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Su PostgreSQL 19 il ramo IS NULL della policy dei canali di incasso e' ridotto a falso
+        (la colonna e' NOT NULL), e un canale senza conto torna a essere rifiutato dalla RLS
+        (42501) invece che dal NOT NULL (23502). Il ramo si scrive num_nulls(col) = 1, che il
+        planner non riduce: parla di nuovo il vincolo.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_policies
+               WHERE schemaname = 'pagamenti' AND tablename = 'enti_incasso'
+                 AND policyname = 'rls_enti_incasso_perimetro_incasso'
+                 AND cmd = 'ALL'
+                 AND qual       ~ 'soggetto_ruolo_conto_bancario_id IS NULL'
+                 AND with_check ~ 'soggetto_ruolo_conto_bancario_id IS NULL'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND ((num_nulls(soggetto_ruolo_conto_bancario_id) = 1) OR (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src WHERE ((src.id = enti_incasso.soggetto_ruolo_conto_bancario_id) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_resolve_emittente_fiscale_id('soggetto_ruolo'::text, src.soggetto_ruolo_id))))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND ((num_nulls(soggetto_ruolo_conto_bancario_id) = 1) OR (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src WHERE ((src.id = enti_incasso.soggetto_ruolo_conto_bancario_id) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_resolve_emittente_fiscale_id('soggetto_ruolo'::text, src.soggetto_ruolo_id))))))));
+
+              COMMENT ON POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+              IS 'Il perimetro dei canali di incasso: un operatore vede e scrive solo i canali il cui conto appartiene a un emittente del suo scope. Il canale porta il conto su cui atterra il denaro, cioè di chi sono i soldi prima che esista una fattura. Il predicato sta sul conto e non sull''id del canale: un''espressione che rilegge pagamenti.enti_incasso per il proprio id non vede la riga che il comando sta inserendo, e ogni INSERT sarebbe rifiutato. Il ramo num_nulls(soggetto_ruolo_conto_bancario_id) = 1 lascia che un canale senza conto lo rifiuti il NOT NULL della colonna (23502, «manca un campo») e non la policy (42501, «non ti è consentito»): una policy non risponde a una domanda che un vincolo risponde meglio. Non è un buco: la colonna è NOT NULL, quindi in lettura il ramo non seleziona niente. Si scrive num_nulls e non IS NULL: su una colonna NOT NULL PostgreSQL riduce IS NULL (e IS NOT DISTINCT FROM NULL) a falso anche dentro la policy, che tornerebbe a coprire il vincolo; lo prova db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql. FOR ALL e non FOR SELECT: la RLS nega ciò che nessuna policy permette. Senza la veste OPERATORE in app.ruolo_applicativo la policy non ammette nessuna riga.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Si torna al ramo IS NULL di 20261018-33: su PostgreSQL 19 e'
+              --    ridotto a falso e la policy torna a coprire il NOT NULL.
+              --    E' un passo indietro su un difetto, non su una scelta.
+              ALTER POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+                  USING (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND ((soggetto_ruolo_conto_bancario_id IS NULL) OR (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src WHERE ((src.id = enti_incasso.soggetto_ruolo_conto_bancario_id) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_resolve_emittente_fiscale_id('soggetto_ruolo'::text, src.soggetto_ruolo_id))))))))
+                  WITH CHECK (((current_setting('app.ruolo_applicativo'::text, true) = 'OPERATORE'::text) AND ((soggetto_ruolo_conto_bancario_id IS NULL) OR (EXISTS ( SELECT 1 FROM anagrafiche.soggetti_ruoli_conti_bancari src WHERE ((src.id = enti_incasso.soggetto_ruolo_conto_bancario_id) AND script.fn_scope_ef_perimetro((SELECT script.fn_get_emittenti_scope_pk_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer)), script.fn_resolve_emittente_fiscale_id('soggetto_ruolo'::text, src.soggetto_ruolo_id))))))));
+
+              COMMENT ON POLICY rls_enti_incasso_perimetro_incasso ON pagamenti.enti_incasso
+              IS 'Il perimetro dei canali di incasso: un operatore vede e scrive solo i canali il cui conto appartiene a un emittente del suo scope. Il canale porta il conto su cui atterra il denaro, cioè di chi sono i soldi prima che esista una fattura. Il predicato sta sul conto e non sull''id del canale: un''espressione che rilegge pagamenti.enti_incasso per il proprio id non vede la riga che il comando sta inserendo, e ogni INSERT sarebbe rifiutato. Il ramo soggetto_ruolo_conto_bancario_id IS NULL vuole lasciare al NOT NULL della colonna il rifiuto di un canale senza conto; su PostgreSQL 19 è ridotto a falso, e quel rifiuto lo dà la policy (42501). FOR ALL e non FOR SELECT: la RLS nega ciò che nessuna policy permette. Senza la veste OPERATORE in app.ruolo_applicativo la policy non ammette nessuna riga.';

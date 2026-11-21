@@ -633,6 +633,25 @@ bonifica voluta e il `DELETE` forward-only, solo per la sessione del migratore; 
 personalizzata. Come tutte le porte di manutenzione passa da
 [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta).
 
+**La lettura del segno.** Le pagine che mostrano una tabella iscritta dicono se la riga è nata
+dal seed e quali campi restano del software: il segno si legge dal DB, e l'elenco delle colonne
+non si ricopia nel backend né nel frontend.
+
+* [dbops.fn_seed_riga](/dbzero/dbops/funzioni/fn_seed_riga) dà la voce di `dbops.seed_righe`
+  di una riga (la chiave `id` come testo): una riga se è nata dal seed, nessuna se l'ha creata
+  l'installazione o se la tabella non è iscritta;
+* [dbops.fn_seed_colonne_del_software](/dbzero/dbops/funzioni/fn_seed_colonne_del_software)
+  dà le colonne del software di una tabella, lette dagli argomenti del trigger montato (vuoto,
+  mai `NULL`, se la forma non ne ha o il trigger manca);
+* [dbops.fn_seed_superficie](/dbzero/dbops/funzioni/fn_seed_superficie) dà la superficie di una
+  riga: `nata_dal_seed` e `campi_del_software`, vuoto e mai `NULL` su una riga
+  dell'installazione. Le colonne non dipendono dalla riga: il chiamante le legge una volta per
+  tabella con `fn_seed_colonne_del_software`, in una sottoquery non correlata, e le passa come
+  terzo argomento ([linee-guida-sql §13.2](/linee-guida-sql)). La leggono
+  [config.vw_email_account_seed](/dbzero/config/views/vw_email_account_seed),
+  [config.vw_email_template_seed](/dbzero/config/views/vw_email_template_seed) e le liste admin
+  di `ui`; una tabella iscritta in un giro nuovo la espone allo stesso modo.
+
 ### Le porte di manutenzione
 
 Le porte di manutenzione dei trigger del framework (`zeroerp.allow_lock_columns_override` del

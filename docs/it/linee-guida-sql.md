@@ -1,6 +1,6 @@
 **Best Practice e Convenzioni**
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche:**   
 > Per come applicare queste best practice nelle migrazioni, consulta il documento  
@@ -2025,6 +2025,33 @@ Due clausole distinte, con semantica diversa:
   (es. un cliente che modifica `billing_account_id` per rubare una fattura).
 * Se `WITH CHECK` e' omesso su UPDATE, PostgreSQL usa `USING` anche per la verifica post-update
   — spesso non e' quello che serve. **Esplicitare sempre** `WITH CHECK` per evitare ambiguita'.
+
+### 10.6-bis ⛔ Una policy non copre un vincolo: il ramo «nullo» si scrive `num_nulls`
+
+PostgreSQL valuta la `WITH CHECK` **prima** dei vincoli della tabella. Se la riga nuova viola sia
+la policy sia un `NOT NULL`, risponde la policy: `42501` («non ti è consentito», un 403) al posto di
+`23502` («manca un campo», un 400). Chi compila un form riceve la frase sbagliata. **Una policy non
+deve rispondere a una domanda a cui un vincolo risponde meglio**: dove il predicato nomina una
+colonna `NOT NULL`, la policy lascia passare il valore nullo, e lo rifiuta il vincolo.
+
+⛔ **Il ramo non si scrive `col IS NULL OR …`.** Su una colonna `NOT NULL` PostgreSQL 19 riduce
+`col IS NULL` a falso anche dentro la policy, e così anche `col IS NOT DISTINCT FROM NULL`: il ramo
+sparisce e la policy torna a coprire il vincolo, senza che nessuno l'abbia toccata. Si scrive con
+una funzione, che il planner non ragiona col `NOT NULL`:
+
+```sql
+WITH CHECK (
+    current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+    AND (num_nulls(conto_id) = 1          -- tace: rifiuta il NOT NULL
+         OR EXISTS (SELECT 1 FROM … WHERE … = conto_id AND <perimetro>))
+)
+```
+
+Non è un buco: con la colonna `NOT NULL` una riga col valore nullo non può esistere, quindi in
+lettura il ramo non seleziona niente, e in scrittura lascia parlare il vincolo. Il caso **«senza
+valore»** si prova in un pgTAP, che si aspetta `23502` con la RLS attiva: è lui il presidio, se
+una versione futura riducesse anche `num_nulls`. Esempio: `rls_enti_incasso_perimetro_incasso` e
+`db/pgtap/pagamenti/test-enti-incasso-conto-incasso.sql`.
 
 ### 10.7 Defense-in-depth, non sostituzione
 

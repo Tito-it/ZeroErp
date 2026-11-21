@@ -25,7 +25,7 @@ del §8.9 e questo brief; il giro DB è nel merge #1991.
 > dichiarato nel §8.6 del giro 6). Tid, 2026-10-25: «brief separato».
 > **Brief vicini verificati:** [brief-modello-documento-vendita](brief-modello-documento-vendita.md) (il
 > verbo e i passaggi di processo: questo brief ne usa i pezzi comuni, non li cambia);
-> [brief-design-proiezione-stato-dominio](../work-in-progress/brief-design-proiezione-stato-dominio.md) (legge SCADUTO come stato
+> [brief-design-proiezione-stato-dominio](brief-design-proiezione-stato-dominio.md) (legge SCADUTO come stato
 > chiuso negativo: è un lettore, non uno scrittore). Nessun brief aperto scrive la scadenza.
 
 ## 1. Il caso

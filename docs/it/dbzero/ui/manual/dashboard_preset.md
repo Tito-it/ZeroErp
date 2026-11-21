@@ -69,13 +69,17 @@ dimensione lascia lo standard al ripiego del catalogo, 8. La preferenza dell'ute
 
 ### ⭐ La data del contenuto, non quella dell'audit
 
-`contenuto_aggiornato_il` è la data dell'ultimo cambio del **contenuto** del preset, quella che il banner
-«preset aggiornato» confronta con la fotografia della preferenza. La spostano due trigger, sulle funzioni
-condivise con i preset di lista: il cambio di `dimensione_max`
-([trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato)) e una riga
-di widget aggiunta, tolta o cambiata
-([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset)). Una riscrittura
-uguale, come quella del seed, non la sposta. `data_update` resta l'audit del framework, che si sposta a
+`contenuto_aggiornato_il` è la data dell'ultimo cambio del **contenuto** del preset, per chiave: un
+oggetto `{chiave: data}` con `widget` e `dimensione_max`, le chiavi della configurazione della
+preferenza. Il banner «preset aggiornato» la confronta, chiave per chiave, con la fotografia della
+preferenza, e guarda solo le chiavi che la preferenza imposta. La scrive solo il database, con la
+funzione condivisa con i preset di lista
+([trgfn_preset_contenuto_aggiornato](/dbzero/ui/funzioni/trgfn_preset_contenuto_aggiornato)): chi la
+scrive riceve `E_UI_PRESET_CONTENUTO_DERIVATO`. La chiave `widget` si sposta quando cambia
+`composizione_impronta`, l'impronta dei widget del preset, che il trigger differito della
+composizione ([trgfn_preset_riga_tocca_preset](/dbzero/ui/funzioni/trgfn_preset_riga_tocca_preset))
+scrive a fine transazione, solo se è cambiata. Una riscrittura uguale, come quella del seed o un
+DELETE seguito dall'INSERT delle stesse righe, non sposta niente. `data_update` resta l'audit del framework, che si sposta a
 ogni UPDATE.
 
 ---
@@ -135,6 +139,8 @@ lo legge.
 * 2026-11-20 — `is_default` si ritira, e con lui l'indice `uq_ui_dashboard_preset_default`: un preset
   acceso non di default non lo leggeva nessuno, e i preset in quello stato sono stati spenti. Al suo posto
   `uq_ui_dashboard_preset_posto`, sui soli preset accesi.
+* 2026-11-20 — `contenuto_aggiornato_il` diventa per chiave e la scrive solo il database; nasce
+  `composizione_impronta`.
 
 ---
 

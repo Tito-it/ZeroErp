@@ -46,8 +46,8 @@
 | trg_iva_stati_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('aliquota_override', 'E_IVA_TRATTAMENTO_IMMUTABILE', 'assoggettamento_id_override', 'E_IVA_TRATTAMENTO_IMMUTABILE')` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_iva_stati_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_iva_stati_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 | trg_iva_stati_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
+| trg_iva_stati_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_iva_stati_normalize()` |
 | trg_iva_stati_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_stati_id')` |
 | trg_iva_stati_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('iva_stati_id')` |
 
