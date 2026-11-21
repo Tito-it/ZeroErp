@@ -1,0 +1,453 @@
+# Brief DB — la regola ATTIVO sulle FK senza `_id`
+
+> **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid per le decisioni; poi team DB.
+> **Stato:** aperto, non iniziato; tutte le decisioni prese (D-1, D-2, D-4, D-5, D-6 il 2026-11-21; D-3 sulle
+> righe incerte il 2026-11-22). Revisione FK per FK chiusa (§3.2). Cantiere a parte, chiesto da Tid il 2026-11-21: «lo facciamo dopo».
+>
+> **Brief vicini verificati** (rifatto il 2026-11-21 sugli **oggetti**, non solo sul filtro): nessuno
+> in `work-in-progress/` tocca il filtro `_id` del motore ATTIVO; due toccano FK dell'elenco del §2.
+>
+> * [brief-db-revisione-ui](brief-db-revisione-ui.md): scrive anche lui in `automazione_attivo_eccezioni.csv`,
+>   coi giri 5-6 ancora da fare. Le righe del CSV si aggiungono per sostituzione del testo attuale.
+>   ⚠️ *Correzione del 2026-11-21 (§3.2): qui si leggeva che toccava «le FK di `ui` (`ambito`, `vista`)».
+>   Non è così: `ambito` è di `config.tipi_indirizzi_allowed`, `vista` di `dbops.presidi_*`, e nessuna FK
+>   di `ui` è nell'elenco. Il vicino è solo il CSV in comune.*
+> * [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md):
+>   `ubicazione_id_da`/`_a`, `causale_magazzino`, `stato_lotto`. Si incrociano due voci aperte del
+>   PROJECT_CONTEXT, «La matrice di `stato_lotto` in due sedi che dissentono» e «La porta dell'esito
+>   ancora aperta» (le FK `esito*`): la revisione di quelle FK chiede a Tid se aspetta i due cantieri.
+>
+> Nessuno dei due basta a ospitare questo lavoro: il tema qui è la regola del motore, che vale per
+> tutte le FK. Il registro delle inclusioni nasce nel commit `790fc04325` (regime fiscale, la D-6 di
+> quel giro, non la D-6 di questo brief), che non ha un brief.
+
+## ⏭️ Chi riparte — aggiornato al 2026-11-22
+
+**Riparte: la sessione DB**, col giro del §5, quando Tid dà il via. La regola dei nomi è già scritta nelle
+linee guida (2026-11-22). La storia del filtro `_id` è verificata: era un ripiego tecnico, non una decisione
+(§1.1). La revisione è chiusa: delle 49 FK da
+decidere, 36 si legano (le 6 incerte per decisione di Tid del 2026-11-22) e 13 vanno fra le eccezioni; 6 FK
+stanno fuori dal perimetro del motore (§3.2).
+Decise D-1 «a», D-2 «b», D-4 «a», D-5 «a», D-6 come proposta col caso inverso «sì», e il metodo di D-3 (Tid,
+2026-11-21, §4).
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ Tid | D-1 «a», D-2 «b», D-3 come metodo (2026-11-21) | §4 | — |
+| 2 | ✅ sessione DB | La prova sullo scratch delle FK ereditate da una tabella partizionata (2026-11-21) | §3.1 | 1 |
+| 3 | ✅ Tid | D-4 «a», D-5 «a», D-6 come proposta, caso inverso «sì» (2026-11-21) | §4 | 2 |
+| 4 | ✅ sessione DB | La revisione FK per FK, sulla radice per le ereditate (2026-11-21) | §3.2 | 3 |
+| 5 | ✅ Tid | D-3 sulle 6 incerte: si legano, senza aspettare i cantieri vicini (2026-11-22) | §3.2 | 4 |
+| 6 | **sessione DB** ⏭️ | Il giro: motore senza filtro e con le FK ereditate sulla radice, 13 eccezioni, inclusioni ritirate, dati e seed verificati, presidio, regola dei nomi | §5 | 5, il via di Tid |
+| 7 | team BE/FE | I codici d'errore nuovi sui drawer toccati, e il censimento dei lettori | §6 | 6 |
+| 8 | team DB | Chiusura: archiviazione | — | 7 |
+
+Decisioni aperte di Tid: nessuna; resta il via al giro. Il brief è da committare.
+
+## 1. Il problema
+
+Il motore ATTIVO (`dbops.fn_run_automations_attivo`) mette la coppia di regole su ogni FK a una
+colonna verso un padre con `attivo`:
+
+* **require** sul figlio: a un figlio acceso non si dà un padre spento (`E_ATTIVO_PADRE_NON_ATTIVO`);
+* **block** sul padre: un padre che un figlio acceso usa non si spegne (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`).
+
+Ma salta, **in silenzio**, ogni FK la cui colonna non finisce in `_id`
+(`dbops.fn_attivo_fk_esclusa`, risposta `FK_NO_ID_SUFFIX`). Quel filtro è un'**esclusione
+implicita**: niente elenco, niente motivo, e chi crea una FK senza `_id` non sa di averla lasciata
+fuori.
+
+Va contro il principio di Tid del 2026-11-04: le regole si fanno **per esclusione**. Un'eccezione
+dimenticata si vede, perché la regola scatta e dà errore. Un'inclusione dimenticata no: la regola
+manca e nessuno se ne accorge.
+
+Il registro `dbops.automazione_attivo_inclusioni` (2026-11-21, regime fiscale) è una pezza **per
+inclusione** sopra quel filtro. Questo cantiere la rende inutile.
+
+### 1.1 Da dove viene il filtro (verificato il 2026-11-22, `git log -S`)
+
+Il filtro **non** nasce da una decisione di modello: era un **ripiego tecnico**, e il limite che
+copriva è stato tolto ad aprile.
+
+* **2026-01-15, commit `1f0ff0fdf2`** (changeSet `20260113-04-update-fn-run-automations-attivo-require`).
+  Nasce il passo «2.1) applica automations solo su FK con suffisso _id», senza nessun motivo scritto
+  (né nel changeSet né nella guida). Il runner di allora passava alla funzione trigger la **PK del
+  padre** («PK monocolonna del padre (fallback 'id')»), non la colonna che la FK referenzia. Su una FK
+  verso un codice il trigger avrebbe cercato il padre per `id` con un valore di codice, e non avrebbe
+  funzionato. Il suffisso `_id` faceva da indizio per «questa FK punta alla PK»: un modo per stare
+  sul caso che il runner sapeva trattare.
+* **2026-04-08, commit `7e51d01575`**: il runner e le due funzioni trigger passano alla **colonna
+  realmente referenziata** dalla FK («può essere una UNIQUE diversa dalla PK»: `confkey`, non la PK).
+  Da qui il motivo tecnico non c'è più, ma il filtro resta.
+* **2026-11-21**: la prova sui due `regime_fiscale_rf` conferma che il runner lega una FK verso una
+  UNIQUE non primaria (§2).
+
+Quindi D-1 non **revoca** una decisione: toglie un ripiego rimasto dopo che il limite era stato
+corretto. Nessun brief in `work-done/` e nessuna guida dà al filtro un motivo di modello.
+
+**Cosa si generalizza, e cosa no.** Il comportamento «un padre usato da un figlio acceso non si spegne,
+e un figlio acceso non sceglie un padre spento» **non è nuovo**: è la regola ATTIVO che vale già per
+ogni FK con `_id` nel perimetro del motore. D-1 la estende alle 36 FK che il nome escludeva, e le
+eccezioni (13, §3.2) restano dove il modello dice altro. La forma più forte, «usato **una volta**, non
+si spegne più», vale dove la figlia non ha `attivo`. Per le 6 FK decise il 2026-11-22 è la stessa scelta
+che le loro sorelle con `_id` avevano già.
+
+## 2. Perché esistono FK senza `_id`
+
+La regola dei nomi (`linee-guida-sql.md` §4, «Eccezioni e Alternative») diceva solo di **preferire** colonne
+`<tabella>_id`, e solo per non usare le chiavi composte. ⚠️ *Dal 2026-11-22 è una regola obbligatoria, in
+`linee-guida-sql.md` §2, «La colonna FK dice che cosa porta» (D-2 «b», D-6).* Le FK senza `_id` sono di due specie.
+
+**a) Puntano all'`id` del padre, con un nome fuori regola.** Il suffisso è un prefisso o sta in mezzo:
+`id_lingua`, `id_stile`, `id_iva_split`, `magazzino_id_from`, `magazzino_id_to`, `ubicazione_id_da`,
+`ubicazione_id_a`, `assoggettamento_id_override`, `categoria_cliente_id_snapshot`. Sono legami
+padre/figlio come gli altri: il motore li salta per il nome, non per il modello. Fuori dal perimetro
+ATTIVO, perché il padre non ha `attivo`, la stessa forma hanno anche `id_prov_iscri_rea` e
+`classe_utenza_id_snapshot`: contano per D-6 (§4), non per D-1.
+
+**b) Puntano a un codice del padre, per scelta.** È la forma ammessa per gli stati e i cataloghi
+(`linee-guida-sql.md`, §Framework `dbops.automazione_chiusura_scadenze`: lo stato come FK a un
+catalogo, coi codici in `codice_interno`): `esito`, `esito_richiesto`,
+`esito_default`, `regime_fiscale_rf`, `lingua` (→ `codice_iso`), `processo_codice`, `job_type`,
+`azione_processo_codename` (→ `permission_codename`), `vista`, `famiglia_documento`, `ambito`,
+`causale_magazzino`, `destinazione_tipo`, `stato_lotto`, `sorgente_codice_interno`, `codice_interno`.
+
+Il motore dal 2026-11-21 sa già legare una FK verso una colonna UNIQUE non primaria: è provato sui
+due `regime_fiscale_rf`.
+
+**Fatto datato** (dbdev, 2026-11-21; il perimetro lo decide il modello, non questo conteggio): 140
+FK a una colonna senza `_id`, 95 verso un padre con `attivo`. Di queste 95, 59 sono della specie a)
+(per lo più `id_lingua` e `id_stile` delle 24+24 tabelle `note*`) e 36 della specie b). La query è in §7.
+
+## 3. La revisione FK per FK (dopo D-1)
+
+Ogni FK della specie a) e b) verso un padre con `attivo` riceve una delle due risposte:
+
+* **si lega**: nessuna riga, il motore genera la coppia;
+* **eccezione**: una riga in `dbops.automazione_attivo_eccezioni`, col motivo del modello (per esempio:
+  «il figlio è uno storico, deve poter citare un padre spento»).
+
+⚠️ **Una figlia senza `attivo` conta per intero** (`dbops.trgfn_prevent_deactivate_if_children`): il
+block conta **ogni riga** della figlia e risponde `E_ATTIVO_BLOCK_CHILDREN_EXIST`, e il require vale per
+ogni riga. Un padre citato una volta da una figlia senza `attivo` non si spegne più. È il primo dato da
+leggere su ogni FK, dalla doc auto-generata della figlia.
+
+### Le famiglie di motivo già decise
+
+La revisione non dà 95 giudizi nuovi: ogni FK si mette prima in una delle famiglie che
+`automazione_attivo_eccezioni.csv` porta già, col motivo deciso da Tid. A Tid va solo ciò che non ci
+rientra (D-3).
+
+| Famiglia | Il motivo, in breve | Decisione |
+| --- | --- | --- |
+| Preferenza dell'utente | uno stato dell'utente, non un'entità col suo ciclo di vita; i risolutori ripiegano | Tid 2026-11-08 (revisione-dbops, §23.12) |
+| Riga di composizione | una parte, non un figlio: senza `attivo` il padre non si spegnerebbe mai | Tid 2026-11-08 (revisione-dbops, §23.12) |
+| Nota d'anagrafica | annota l'oggetto, non lo tiene in vita | Tid 2026-11-08 (revisione-catalogo, Q12) |
+| Storia (stampa, log, bozza) | la fotografia del momento; chi può usare cosa oggi lo dice il risolutore | Tid 2026-11-14 (revisione-documenti, Q1); 2026-11-19 (Q24) |
+| Si lega | un figlio vivo, con `attivo`, che dipende dal padre | il default di D-1 «a» |
+
+### Da guardare con cura
+
+La coppia cambia cosa si può spegnere:
+
+* ⚠️ *Correzione del 2026-11-21: la riga diceva «una lingua usata da una nota accesa non si spegne».
+  Le note non hanno `attivo`.* **Lingue e stili delle note** (`id_lingua`, `id_stile`): con la coppia,
+  una lingua o uno stile usati da **una nota qualsiasi** non si spengono più, e una nota in una lingua
+  spenta non si modifica più. La famiglia vicina è «nota d'anagrafica», ma lì l'annotato è il padre e
+  qui la lingua è un attributo della nota: va deciso (D-3). Con D-4 «a» la coppia resta intera.
+  Sono FK ereditate da una tabella partizionata (§3.1), quindi si decidono sulla radice (D-5 «a»).
+  ⭐ **Una terza via, ammessa da Tid (2026-11-21): dare alle note la colonna `attivo`**, se la revisione
+  la trova necessaria. Con `attivo` sulla nota, il block conta solo le note accese
+  (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`) e il require non chiede niente a una nota spenta: «si lega» diventa
+  sostenibile. Si aggiunge sulla radice partizionata e la ereditano le partizioni. Se la si sceglie, la
+  revisione deve censire:
+  * le righe di `automazione_attivo_eccezioni.csv` su `target_id` delle note, il cui motivo dice «la
+    partizione non ha attivo». Il motivo va riscritto, oppure la decisione Q12 del 2026-11-08 va
+    riaperta: con `attivo`, un articolo spento con note accese non si spegnerebbe;
+  * i lettori delle note lato DB (funzioni, viste) che dovrebbero filtrare le note spente, e la
+    richiesta al BE/FE (il campo nel drawer delle note, le liste);
+  * le altre automazioni che si accendono sulla colonna `attivo`, che la nota erediterebbe.
+
+  ⚠️ *Esito della revisione (§3.2, 2026-11-21): la terza via non serve.* Con `attivo` sulla nota, per
+  spegnere una lingua bisognerebbe spegnere tutte le note scritte in quella lingua. È la stessa
+  confusione fra «non si usa più» e «chi l'ha usata si spegne» che l'eccezione evita;
+* **cataloghi di configurazione fra loro** (transizioni → permessi, stati → esiti): spegnere una voce
+  diventa rifiutato finché un'altra voce accesa la cita;
+* ⚠️ *Correzione del 2026-11-21 (§3.2): le due righe che seguono parlavano di FK che il motore non
+  vede.* **Giornali e code** (`maintenance.job_run_log.processo_codice`, `dbops.coda_lavori.job_type`):
+  stanno **fuori dal perimetro del motore**, come `dbops.presidi_testi.lingua`, quindi D-1 non li tocca
+  (§3.2, «Fuori dal perimetro»);
+* **`config.messaggi_errore.lingua`**: catalogo seed, da verificare anche sui CSV (§5).
+
+### 3.1 Le FK ereditate dalle tabelle partizionate (provato il 2026-11-21)
+
+`catalogo.note` (e le gemelle degli altri schemi) è partizionata: `fk_cat_note_id_lingua` e
+`fk_cat_note_id_stile` stanno sul padre partizionato e ogni partizione le eredita (`conparentid` ≠ 0).
+Il cursore di `dbops.fn_run_automations_attivo` non guarda né `conparentid` né `relkind`, quindi tratta
+la FK della radice e ogni FK ereditata come FK a sé.
+
+**La prova** (scratch `zeroerp_ruoli`, come `zeroerp_owner`, `scripts/prova_changeset.py` con un estratto
+in `ROLLBACK`; catalogo identico prima e dopo). Il soggetto è `catalogo.note.id_lingua` → `config.lingue`:
+radice partizionata (`relkind = p`), due partizioni (`note_articoli`, `note_articoli_componenti`),
+nessuna con `attivo`, il padre con `attivo`. Le FK si sono rese eleggibili con righe del registro delle
+inclusioni, che oggi è l'unico modo di farlo senza cambiare il runner.
+
+| Caso | Righe nei registri | Require | Block su `config.lingue` |
+| --- | --- | --- | --- |
+| A | inclusione sulla sola radice | 1 sulla radice, che PostgreSQL **clona** sulle 2 partizioni (`tgparentid` ≠ 0) | 1, che nomina la radice |
+| B | inclusione sulla radice e sulle 2 partizioni: è ciò che fa il runner **senza il filtro** | 1 sulla radice + 2 cloni + 2 propri delle partizioni: **ogni partizione ha due require** | 3: la radice e ciascuna partizione |
+| C | come B, più un'eccezione sulla sola radice | spariscono quello della radice e i cloni; **restano i 2 propri delle partizioni** | 2, sulle partizioni |
+
+Che cosa dice:
+
+* `CREATE CONSTRAINT TRIGGER` su una radice partizionata **funziona**: nessun errore, e PostgreSQL lo
+  propaga da sé alle partizioni, anche a quelle future. La radice basta da sola (caso A).
+* Col filtro tolto e il runner invariato, i controlli si **raddoppiano** (caso B): due require per
+  partizione e un block per partizione in più della radice. Il risultato è giusto ma ripetuto, e ogni
+  partizione nuova ne aggiunge uno.
+* ⛔ **Un'eccezione sulla radice non copre le partizioni** (caso C): la FK resta legata partizione per
+  partizione. Per escludere davvero una FK ereditata servirebbe una riga per partizione, tutte col motivo
+  uguale, e una partizione nuova nascerebbe legata.
+
+Quindi D-5 «b» non è una scelta neutra: lascia i doppioni e un'eccezione che non dice ciò che dichiara.
+⚠️ D-5 «a» cambia il runner e il ritiro (si salta `conparentid` ≠ 0), quindi non vale più la riga del §5
+«il runner e il ritiro non si toccano».
+
+**Limiti della prova:** una sola radice e una sola FK. Il conteggio delle figlie fatto dal block sulla
+radice non è stato messo alla prova con righe costruite: si dà per buono che una lettura sulla tabella
+partizionata veda le partizioni, ed è da coprire nel pgTAP costruito del §5. La prova gira da owner.
+L'estratto è in
+`/tmp/claude-1000/-home-tid-software-ZeroErp/b0ca8875-d2e9-4183-b40b-effb4646f9b4/scratchpad/prova-fk-ereditate.yaml`,
+che è un file temporaneo: va spostato se serve rifarla.
+
+### 3.2 La revisione (sessione DB, 2026-11-21)
+
+**Da dove** (2026-11-21, scratch `zeroerp_ruoli`, sola lettura). Il perimetro è quello del runner:
+schemi di `dbops.fn_resolve_scope(NULL)`, tabelle di `dbops.fn_table_in_scope`, padre con la colonna
+`attivo` letta con l'override `ATTIVO_COL`, FK monocolonna. Le FK senza `_id` sono 89 dentro, di cui
+40 ereditate dalle partizioni delle note, e 6 fuori. Il conto torna con le 95 del §2. Le 40 ereditate
+seguono la loro radice (D-5 «a»), quindi le righe da decidere sono 49.
+
+**Il criterio che decide, oltre alle famiglie del §3: le sorelle.** Una FK senza `_id` fa come le FK
+con `_id` **della stessa figlia**, che il motore lega già, a meno che la colonna non dica una cosa
+diversa (per esempio uno snapshot). Il nome non ha mai deciso il modello: la sorella legata è la
+decisione già presa su quella tabella.
+
+#### Si lega (30)
+
+| Figlia · colonna | Padre (colonna) | Figlia con `attivo` | Perché |
+| --- | --- | --- | --- |
+| `config.stati_doc_offerte_transizioni`, `config.transizioni_stati_{contratti,ddt,listino_versioni,ordini,preventivi,reso}`, `vendite.transizioni_stati_commessa` · `azione_processo_codename` (8) | `config.azioni_processo` (`permission_codename`) | sì | Una transizione accesa con l'azione spenta è una porta che non si apre; le sorelle `stato_da_id`/`stato_a_id` sono legate |
+| `config.stati_doc_fiscale_transizioni` · `azione_processo_codename` | `config.azioni_processo` (`permission_codename`) | **no** | Come sopra. Senza `attivo` conta ogni transizione, ed è la stessa scelta delle sorelle `stato_from_id`/`stato_to_id`, già legate |
+| `config.stati_doc_{contratti,ddt,offerte,ordini,preventivi,reso}` · `esito` (6) | `config.esiti_flussi_pratiche` (`codice_interno`) | sì | Uno stato acceso non porta a un esito spento |
+| `pratiche.template_flussi` · `esito_default` | `config.esiti_flussi_pratiche` (`codice_interno`) | sì | Il modello di flusso è configurazione viva |
+| `pratiche.template_flussi_handler_eventi` · `esito_richiesto` | `config.esiti_flussi_pratiche` (`codice_interno`) | sì | Come sopra |
+| `pratiche.template_flussi_avanzamento_proiezione` · `esito_richiesto` | `config.esiti_flussi_pratiche` (**`codice`**) | sì | Come sopra. ⚠️ È l'unica FK verso `codice` e non verso `codice_interno`: da segnalare a parte, non decide qui |
+| `pratiche.template_flussi_prerequisiti` · `esito_richiesto` | `config.esiti_flussi_pratiche` (`codice_interno`) | no | Le sorelle `template_flusso_id`/`prerequisito_id` sono legate. L'esito è un valore richiesto, non il padre di cui il prerequisito è parte, quindi la famiglia «composizione» non vale |
+| `config.tipi_indirizzi_allowed` · `ambito` | `config.sorgenti` (`codice_interno`) | sì | Configurazione viva |
+| `vendite.famiglie_documento` · `codice_interno` | `config.sorgenti` (`codice_interno`) | sì | La famiglia **è** una sorgente (1:1): una famiglia accesa su una sorgente spenta non ha senso |
+| `config.nature_vendita` · `destinazione_tipo` | `config.sorgenti` (`codice_interno`) | sì | Configurazione viva |
+| `vendite.registri_fatturazione` · `famiglia_documento` | `vendite.famiglie_documento` (`codice_interno`) | sì | Un registro acceso non numera una famiglia spenta |
+| `config.causali_trasporto` · `causale_magazzino` | `magazzino.causali` (`codice_interno`) | sì | Configurazione viva |
+| `config.iva` · `id_iva_split` | `config.iva` (`id`), autoriferita | sì | Un'aliquota accesa non rimanda a uno split spento; la sorella `assoggettamento_id` è legata |
+| `config.iva_stati` · `assoggettamento_id_override` | `config.iva_assoggettamenti` (`id`) | no | L'override per Paese; la sorella `iva_id` è legata |
+| `magazzino.eventi_assets` · `magazzino_id_from`, `magazzino_id_to` (2) | `magazzino.magazzini` (`id`) | sì | Le sorelle `asset_id`, `tipo_evento_id` sono legate |
+| `anagrafiche.emittenti_fiscali`, `anagrafiche.fornitori` · `regime_fiscale_rf` (2) | `config.regimi_fiscali` (`codice_interno`) | sì / no | Già legate oggi per inclusione (D-6 del regime fiscale): con D-1 si legano da sole, e l'inclusione si ritira |
+
+#### Eccezione (13)
+
+| Figlia · colonna | Padre | Famiglia | Motivo da scrivere nel CSV, in breve |
+| --- | --- | --- | --- |
+| `vendite.{attivita_fatturabili,commesse_attivita,contratti}` · `categoria_cliente_id_snapshot` (3) | `anagrafiche.categorie_clienti` | Storia (provenienza) | Lo snapshot è la categoria del cliente **al momento** del documento: è la provenienza di un dato già scritto, come `listino_riga_id` delle righe di contratto. Spegnere la categoria dopo non rende lo snapshot sbagliato |
+| `{acquisti,catalogo,magazzino,vendite}.note` · `id_lingua`, `id_stile` (8, sulla radice) | `config.lingue`, `config.note_stili` | Nota | Lingua e stile sono attributi di presentazione di una nota, che non ha `attivo`. Col block una lingua o uno stile usati una volta non si spegnerebbero più; col require una nota in una lingua poi spenta non si correggerebbe più. Che cosa si sceglie per una nota nuova lo dice l'elenco delle voci accese |
+| `config.messaggi_errore` · `lingua` | `config.lingue` (`codice_iso`) | **Nuova: traduzione** | Un testo tradotto non è un figlio vivo della lingua. Col require non si potrebbe preparare la traduzione prima di accendere la lingua; col block una lingua tradotta non si spegnerebbe. `script.fn_get_messaggio` sceglie la lingua dalla sessione e ripiega su `it` |
+| `config.tipi_entita` · `sorgente_codice_interno` | `config.sorgenti` (`codice_interno`) | Registro senza `attivo` per scelta | Lo dice il COMMENT della tabella: è senza `attivo` perché un lucchetto ATTIVO fermerebbe il giornale, e la deprecazione si fa con `obsoleto_dal`. Col block una sorgente registrata come tipo non si spegnerebbe mai |
+
+#### Incerte (6): ✅ si legano (Tid, 2026-11-22)
+
+✅ **Deciso (Tid, 2026-11-22): le sei si legano**, per coerenza con le sorelle. Non aspettano i cantieri vicini:
+l'analisi magazzino, «La porta dell'esito» e la matrice di `stato_lotto` trovano la coppia già al suo posto. Le
+FK che si legano sono quindi **36**, e le eccezioni restano 13.
+
+Tutte e sei hanno la stessa forma: una figlia **operativa senza `attivo`** (un documento, un flusso, un
+lotto), le cui sorelle con `_id` sono già legate. Se si legano, valgono le sorelle: un magazzino, un esito
+o uno stato usati una volta non si spengono più. Se la risposta è «storia», sono le sorelle a essere un
+debito, e l'eccezione su una colonna sola lascerebbe la tabella a metà.
+
+| Figlia · colonna | Padre | Sorelle già legate | Cantiere vicino |
+| --- | --- | --- | --- |
+| `magazzino.trasferimenti` · `magazzino_id_from`, `magazzino_id_to` (2) | `magazzino.magazzini` | `sorgente_tipo_id` | analisi magazzino |
+| `magazzino.trasferimenti_righe` · `ubicazione_id_da`, `ubicazione_id_a` (2) | `magazzino.ubicazioni` | `articolo_id`, `lotto_id`, `asset_id` | analisi magazzino |
+| `pratiche.flussi` · `esito` | `config.esiti_flussi_pratiche` | `stato_id`, `template_flusso_id`, `risorsa_umana_id`, `unita_organizzativa_id` | «La porta dell'esito ancora aperta» |
+| `vendite.fatturazione_lotti` · `stato_lotto` | `config.stati_lotto_job` | `stato_doc_fiscale_id`, `tipo_doc_fiscale_id`, `area_geografica_id` | «La matrice di `stato_lotto`» |
+
+**Proposta** (accolta il 2026-11-22): si legano, per coerenza con le sorelle. Se Tid pensa che queste figlie siano storia, la
+domanda è più larga di questo cantiere: riguarda tutte le FK di quelle tabelle, e va in un brief suo.
+
+#### Fuori dal perimetro (6): D-1 non le tocca
+
+| Figlia · colonna | Padre | Perché fuori |
+| --- | --- | --- |
+| `maintenance.job_run_log` · `processo_codice` | `dbops.processi` | lo schema `maintenance` non è nello scope, e `dbops.processi` non è fra le tabelle in scope |
+| `dbops.coda_lavori` · `job_type`; `dbops.coda_lavori_tipi` · `processo_codice` | `dbops.coda_lavori_tipi`, `dbops.processi` | tabelle di `dbops` fuori da `fn_table_in_scope` |
+| `dbops.presidi_cause` · `vista`; `dbops.presidi_testi` · `vista`, `lingua` | `dbops.presidi`, `config.lingue` | come sopra (le figlie) |
+
+È una scelta di contratto, lo scope del motore, e non la rimette in discussione questo giro. Il
+presidio del §5 usa lo stesso perimetro, quindi non le chiede.
+
+#### Per D-6: i nomi fuori regola (stessa data, tutte le FK, non solo quelle ATTIVO)
+
+* **Verso una colonna che porta un id, senza `_id` nel nome** (l'elenco congelato): `id_lingua` e
+  `id_stile` delle quattro radici `note`, `id_iva_split`, `assoggettamento_id_override`,
+  `magazzino_id_from`/`_to` (trasferimenti, eventi_assets), `ubicazione_id_da`/`_a`,
+  `categoria_cliente_id_snapshot` (3), `classe_utenza_id_snapshot` (2),
+  `anagrafiche.dati_societari.id_prov_iscri_rea`: 22 FK.
+* **Il caso inverso** (deciso «sì» da Tid, 2026-11-21): oggi nessuna. Le due `emittente_soggetto_ruolo_id`
+  (billing account e utilities degli emittenti) puntano a `emittenti_fiscali.soggetto_ruolo_id`, che non
+  è la PK ma **porta un id**: il nome dice il vero.
+* Le FK verso una PK naturale (`target_tipo`/`entity_type` → `config.tipi_entita.codice`,
+  `codici_errore.classe`, `messaggi_errore.codice`, `dbops.emittente_modi.modo`) sono della specie b):
+  la regola non le riguarda.
+
+Il criterio di D-6 quindi si precisa così: **una colonna FK finisce in `_id` se e solo se la colonna
+referenziata porta un id** (`id`, o un nome che finisce in `_id`). Detto «la PK `id`», avrebbe messo fuori
+regola le due `emittente_soggetto_ruolo_id`.
+
+## 4. Decisioni di Tid
+
+* ✅ **D-1 — Il filtro `_id` si toglie?** Deciso «a» (Tid, 2026-11-21).
+  * a) Sì: il motore lega ogni FK a una colonna verso un padre con `attivo`. Chi non si lega sta fra
+    le eccezioni, col motivo. Le inclusioni si ritirano. *(raccomandata: è il principio del 2026-11-04)*
+  * b) No: resta il filtro, e le inclusioni crescono una riga alla volta.
+* ✅ **D-2 — I nomi della specie a) si correggono?** Deciso «b» (Tid, 2026-11-21): i nomi di oggi restano,
+  la regola diventa obbligatoria per le FK nuove. (`id_lingua` → `lingua_id`, `magazzino_id_from` →
+  `magazzino_da_id`…)
+  * a) Sì, in un giro dedicato: tocca BE e FE (campi delle note, dei trasferimenti, dell'IVA) e va
+    concordato con loro.
+  * b) No: con D-1 «a» il nome non decide più niente per ATTIVO. Si rende **obbligatoria** la regola
+    `<cosa>_id` per le FK **nuove** verso un `id`, con un controllo che la fa rispettare.
+    *(raccomandata: separa il rinomino, che costa al BE, dalla regola, che non costa niente)*
+* ✅ **D-3 — Le righe incerte del §3.** Chiusa (Tid, 2026-11-22): le 6 incerte del §3.2 si legano. Metodo accettato (Tid, 2026-11-21): la sessione DB propone, FK per FK,
+  «si lega» o «eccezione» col motivo; Tid decide solo le righe che la proposta marca come incerte. Le risposte
+  si scrivono qui, nel §3, prima di scrivere il giro. La proposta parte dalle famiglie di motivo del §3.
+* ✅ **D-4 — La coppia si può dividere?** Deciso «a» (Tid, 2026-11-21): la coppia resta intera. Un'eccezione
+  toglie block **e** require insieme; il registro delle inclusioni lo motivava con «nessuna riga chiede una
+  parte sola». Con la specie b) una riga potrebbe chiederla: «non si scrive una nota nuova in una lingua
+  spenta, ma la lingua si spegne anche se citata» (solo require), o il contrario.
+  * a) No: la coppia resta intera, e una FK che ne vorrebbe metà sceglie fra legarsi ed eccezione.
+    *(raccomandata, se la revisione del §3 non trova una riga che la chiede: lo dice il brief, e la domanda si chiude)*
+  * b) Sì: le eccezioni prendono una colonna «quale parte» (`BLOCK`, `REQUIRE`, entrambe), letta dal runner e dal
+    ritiro.
+
+  Nella revisione del §3, una FK che vorrebbe una parte sola lo scrive nella sua riga e sceglie fra «si lega»
+  ed «eccezione». Se una riga non regge nessuna delle due, torna a Tid come incerta: è l'unico modo di
+  riaprire D-4.
+* ✅ **D-5 — Le FK ereditate dalle partizioni** (§3.1, provato il 2026-11-21). Deciso «a» (Tid, 2026-11-21): si
+  legano e si escludono sulla radice; il runner e il ritiro cambiano (§5).
+  * a) Si legano e si escludono **sulla radice**: il runner e il ritiro saltano le FK con `conparentid` ≠ 0, e
+    un'eccezione sulla radice vale per tutte le partizioni. Il require della radice lo clona PostgreSQL (caso A).
+    *(raccomandata: una regola, una riga; una partizione nuova eredita la decisione)*
+  * b) Il runner resta com'è: ogni controllo si ripete sulla radice e su ogni partizione (caso B), e per escludere
+    una FK ereditata serve una riga per partizione (caso C).
+  * Le FK **proprie** di una partizione (`target_id` delle note, `conparentid` = 0) restano come oggi in tutti e due
+    i casi.
+* ✅ **D-6 — Come si fa rispettare la regola dei nomi di D-2 «b».** Accettata la proposta (Tid, 2026-11-21):
+  * Il criterio sta sulla colonna **referenziata**: una FK verso la PK `id` del padre si chiama `<cosa>_id`. Il
+    nome della figlia non decide.
+  * I nomi di oggi restano (D-2 «b»), quindi il controllo ha bisogno di un **elenco congelato** delle FK fuori
+    regola (le 22 del §3.2): un registro per esclusione, col motivo «nome storico, D-2 b».
+  * Il predicato è `LIKE '%\_id'` (col `_` protetto), non quello del motore.
+  * Il controllo è un pgTAP strutturale, non un guard sulla creazione.
+  * ✅ **Il caso inverso: sì** (Tid, 2026-11-21). Una colonna `x_id` che punta a un codice è fuori regola,
+    perché il suffisso dichiara che la colonna porta un `id`. Il controllo è a due versi. Oggi non ce n'è
+    nessuna (§3.2).
+  * ⚠️ Il criterio, precisato dalla revisione (§3.2): «finisce in `_id` se e solo se la colonna referenziata
+    porta un id», non «se e solo se punta alla PK `id`». Detto così, la regola non mette fuori regola
+    `emittente_soggetto_ruolo_id`, che punta a una UNIQUE `soggetto_ruolo_id`. L'elenco congelato ha 22 FK.
+
+## 5. Il giro (dopo le decisioni)
+
+* `dbops.fn_attivo_fk_esclusa` senza il ramo `_id`: risponde solo `ECCEZIONE_DICHIARATA`.
+* Per D-5 «a», il runner e il ritiro cambiano: il cursore del runner salta le FK ereditate
+  (`conparentid` ≠ 0) e lega la radice, il cui require PostgreSQL clona sulle partizioni. Il ritiro
+  toglie i trigger propri che una FK ereditata ha avuto prima del giro, se ce ne sono. Il pgTAP
+  costruito del §5 prova una radice con due partizioni: un require sulla radice, nessun doppione sulle
+  partizioni, un block sul padre che conta le figlie di tutte le partizioni, un'eccezione sulla radice
+  che le copre tutte. Nel runner il ramo
+  `ATTIVO_SKIP_FK_NO_ID` del dry run diventa codice morto: si toglie, e con lui il token
+  `FK_NO_ID_SUFFIX` dalla guida e dai lettori del diario.
+* ⚠️ L'ordine dei changeSet: `fn_attivo_fk_esclusa` è `BEGIN ATOMIC` e dipende dalla tabella delle
+  inclusioni. Prima si riscrive la funzione, poi si fa il `DROP` della tabella.
+* Le righe nuove di `automazione_attivo_eccezioni.csv`, una per FK esclusa, col motivo della sua
+  famiglia (§3). Il CSV lo tocca anche `brief-db-revisione-ui`: si rilegge prima di scrivere.
+* Il ritiro di `dbops.automazione_attivo_inclusioni`: tabella, CSV, changeSet di carico, pagina
+  `manual/`, il paragrafo «Le inclusioni» di `guide/automazione-db.md`, il pgTAP
+  `dbops/test-automazione-attivo-inclusioni-v1` (riscritto sul registro delle eccezioni, o ritirato).
+  Il `CHECK` «solo senza `_id`» perde senso insieme al registro.
+* Il provision ATTIVO in `90_end`, con la prova in `ROLLBACK`: l'elenco dei trigger creati deve
+  essere uguale a quello delle FK che si legano, nessuno in più.
+* ⚠️ **I dati prima dell'apply:** una riga accesa che oggi cita un padre spento diventa non
+  modificabile. Il require scatta a `INSERT OR UPDATE OF <fk>, <attivo>`, quindi anche a valore
+  invariato, ogni volta che l'UPDATE nomina la colonna. Prima del provision si cercano quelle righe,
+  FK per FK, e si decide se riaccendere il padre, cambiare il figlio o fare un'eccezione.
+* ⚠️ **I seed, che sono contratto e non fotografia.** Molte figlie della specie b) sono seed (transizioni,
+  `presidi_testi`, `messaggi_errore`). Un `loadUpdateData` scrive tutte le colonne e fa scattare il
+  require: un CSV con una figlia accesa che cita un padre seminato spento non si ricarica più, e lo si
+  scopre al giro di seed successivo, in CI. Al primo impianto non si vede, perché il seed passa prima
+  del `90_end`. Allo stesso modo, un CSV che spegne un padre citato da figlie accese del seed viene
+  rifiutato dal block. Per ogni FK legata si verificano i CSV di `80_data`: nessuna figlia accesa del
+  seed cita un padre spento del seed.
+* Il pgTAP, in due parti:
+  * **strutturale**: ogni FK verso un padre con `attivo` **nel perimetro del motore** è legata oppure è
+    fra le eccezioni. Vale per tutte le FK, non solo per quelle senza `_id`: dopo D-1 il nome non
+    decide più niente. Il perimetro è quello del runner (`dbops.fn_resolve_scope`,
+    `dbops.fn_table_in_scope`), e la colonna del padre si legge con l'override `ATTIVO_COL`
+    (`dbops.fn_get_override_col`), non con il nome `attivo`;
+  * **costruito**: una tabella di prova con una FK senza `_id` verso un padre con `attivo`, un giro del
+    motore, e i due trigger ci sono. Senza questo caso il test prova solo le FK che lo schema contiene
+    oggi.
+
+  È il presidio che impedisce di ricreare un'esclusione silenziosa.
+* Per D-2 «b»: ✅ la regola dei nomi è scritta in `linee-guida-sql.md` §2 («La colonna FK dice che cosa
+  porta», 2026-11-22), nei due versi e coi nomi storici che restano. Restano per il giro l'elenco congelato
+  delle 22 FK storiche (§3.2) e il pgTAP strutturale di D-6. La regola dichiara che il presidio non c'è
+  ancora: col giro, quella riga si toglie.
+
+**Garanzie ritirate:** nessuna. Il giro ne **aggiunge**: ogni FK legata guadagna le due regole.
+
+## 6. Ricadute sul BE/FE (da scrivere per intero quando il giro è deciso)
+
+I drawer che scrivono una delle FK legate ricevono `E_ATTIVO_PADRE_NON_ATTIVO`, con `campo` = la
+colonna FK nel contesto. Le maschere che spengono un padre in uso ricevono
+`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, oppure `E_ATTIVO_BLOCK_CHILDREN_EXIST` quando la figlia non ha
+`attivo` (conta ogni riga, §3). La richiesta al BE porterà l'elenco delle FK legate e chiederà di
+censire i lettori che contano su «questo padre si spegne anche se in uso».
+
+Per le FK verso un codice scelto dall'utente (esito, causale, regime) si incrocia la voce aperta del
+PROJECT_CONTEXT «`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona»: la
+richiesta la cita, e dice come arriva l'errore all'operatore.
+
+## 7. La query della misura
+
+```sql
+SELECT a.attname AS colonna, pa.attname AS colonna_padre,
+       c.conrelid::regclass AS figlia, c.confrelid::regclass AS padre
+  FROM pg_constraint c
+  JOIN pg_attribute a  ON a.attrelid  = c.conrelid  AND a.attnum  = c.conkey[1]
+  JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = c.confkey[1]
+  JOIN pg_namespace n  ON n.oid = c.connamespace
+ WHERE c.contype = 'f' AND array_length(c.conkey, 1) = 1
+   AND lower(a.attname) NOT LIKE '%\_id'
+   AND n.nspname NOT IN ('django', 'pg_catalog', 'public', 'pgagent')
+   AND EXISTS (SELECT 1 FROM pg_attribute x
+                WHERE x.attrelid = c.confrelid AND x.attname = 'attivo' AND NOT x.attisdropped)
+ ORDER BY 1, 3;
+```
+
+⚠️ Il motore usa `LIKE '%_id'`, col `_` jolly: una colonna come `xid` passerebbe per «con `_id`».
+Con D-1 «a» il predicato sparisce, e il dubbio con lui.
+
+⚠️ La query misura un'approssimazione del perimetro, non il perimetro. Esclude gli schemi a mano invece
+di usare lo scope del motore, cerca la colonna `attivo` per nome senza l'override `ATTIVO_COL`, e conta
+ogni partizione come una FK a sé (le 24+24 delle note sono due FK ereditate, §3.1). Va bene per il
+fatto datato del §2, non per il presidio del §5.

@@ -74,23 +74,10 @@ DECLARE
   v_preset_base_cambiato   BOOLEAN := FALSE;
 BEGIN
   -- -------------------------------------------------------
-  -- 0. Recupera dashboard_id dal codice
+  -- 0. La dashboard accesa per codice (ui.fn_dashboard_da_codice): assente
+  --    o spenta, E_UI_DASHBOARD_NON_TROVATA.
   -- -------------------------------------------------------
-  SELECT id INTO v_dashboard_id
-    FROM ui.dashboard_definizione
-   WHERE codice = p_dashboard_codice
-     AND attivo = TRUE;
-
-  IF v_dashboard_id IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database',
-      'ui.fn_resolve_dashboard_config',
-      'E_UI_DASHBOARD_NON_TROVATA',
-      jsonb_build_object('detail', format('codice dashboard: ''%s''', p_dashboard_codice)),
-      NULL,
-      p_dashboard_codice
-    );
-  END IF;
+  v_dashboard_id := (ui.fn_dashboard_da_codice(p_dashboard_codice)).id;
 
   -- -------------------------------------------------------
   -- 1. Mappe permessi (resolve once). Le mappe sono l'autorita' per il
@@ -162,9 +149,10 @@ BEGIN
 
   v_config_widget := COALESCE(v_pref_widget, v_preset_widget);
 
-  -- 2e. Catalogo grezzo (fallback finale "mai vuota"), solo per i widget:
-  --     tutti i widget attivi del pool della dashboard, ordinati per
-  --     ordine_default, se ne' la preferenza ne' un preset li hanno.
+  -- 2e. Catalogo grezzo, solo per i widget: tutti i widget attivi del pool
+  --     della dashboard, ordinati per ordine_default, se ne' la preferenza ne'
+  --     un preset li hanno. Dopo il filtro dei permessi l'elenco puo' restare
+  --     vuoto: e' un esito, e lo stato vuoto lo dice il frontend.
   IF v_config_widget IS NULL THEN
     SELECT jsonb_agg(
       jsonb_build_object(
