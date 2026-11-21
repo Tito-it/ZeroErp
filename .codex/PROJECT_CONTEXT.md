@@ -259,7 +259,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   pagine `manual/` allo standard, guida `configurazione-liste` riallineata); censimento di 39 difetti, tre di classe A;
   decisioni Q1-Q43 prese da Tid dal 2026-11-18 al 2026-11-21; giri 1a e 1b applicati con i pgTAP verdi il 2026-11-20,
   giro 2 (2a e 2b: forma delle preferenze, ritiro di filtri e ordinamento, legami di preset e pool) il 2026-11-21.
-  Ora il BE/FE con le ricadute del giro 2 (§3.2-bis); al DB il `/verifica-db` dei giri 1a e 2, poi i giri 3-6.
+  Giro 3 (le misure, `20261120-36` … `-42`) scritto e provato il 2026-11-21: ora l'apply di Tid. Il BE/FE con le ricadute
+  del giro 2 (§3.2-bis); al DB il `/verifica-db` dei giri 1a, 2 e 3, poi i giri 4-6.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

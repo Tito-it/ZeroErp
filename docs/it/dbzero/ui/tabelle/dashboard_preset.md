@@ -15,7 +15,7 @@
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | integer | YES |  |
-| dimensione_max | integer | YES | 8 |
+| dimensione_max | integer | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO |  |
@@ -28,6 +28,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ui_dashboard_preset_ambito_refs |  |
+| CHECK | chk_ui_dashboard_preset_dimensione_max |  |
 | FOREIGN KEY | fk_ui_dashboard_preset_dashboard_definizione | dashboard_id |
 | FOREIGN KEY | fk_ui_dashboard_preset_emittenti_fiscali | emittente_fiscale_id |
 | FOREIGN KEY | fk_ui_dashboard_preset_profili_accesso | profilo_accesso_id |

@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: le misure dei preset senza un default di colonna; il tetto della
+#   dashboard con un CHECK.
+#   Brief: brief-db-revisione-ui (giro 3: U15 con Q9, U21 con Q12 e Q45; il
+#   COMMENT M1).
+#
+# Che cosa cambia:
+#   - ui.lista_preset.pagina_dimensione DROP DEFAULT (U15, Q9): il 25 era una
+#     seconda sede del default PAGINA, e un INSERT che non nominava la colonna
+#     fissava il preset a 25 invece di fargli seguire il catalogo. Da qui NULL =
+#     lo standard: il default dell'uso della lista (20261120-41).
+#   - ui.dashboard_preset.dimensione_max DROP DEFAULT (U21, Q12): l'8 resta in
+#     una sede sola, il ripiego di ui.fn_resolve_dashboard_config. NULL = lo
+#     standard.
+#   - CHECK chk_ui_dashboard_preset_dimensione_max (Q12, Q45): NULL, oppure un
+#     tetto ammesso da ui.fn_dimensione_max_ammessa (da 1 a 100, 20261120-22),
+#     la stessa regola del guard di forma della preferenza. «≤0 = nessun tetto»
+#     non esiste. Il BB e' IMMUTABLE e nasce con un numero minore: 00_schema e
+#     20_code girano mescolati per numero (linee-guida-sql §11.14).
+# Chi scrive le due colonne (linee-guida-sql §11.14, le quattro sedi): i CSV
+#   del seed (lista_preset.csv, dashboard_preset.csv) le portano NULL da questo
+#   giro; le fixture pgTAP che non le nominano ricevono NULL (si adeguano quelle
+#   che asserivano 25 o 8); nessuna funzione DB scrive i preset; il BE passa la
+#   misura esplicita (ui_admin_repository.py:622-644, brief §3.3 U15). Le righe
+#   di oggi (dbdev, 2026-11-21) hanno dimensione_max 8: il CHECK le ammette.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-37-alter-ui-preset-misure-senza-default-mctit.yaml
+
+  - changeSet:
+      id: 20261120-37-alter-ui-preset-misure-senza-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: DROP DEFAULT su lista_preset.pagina_dimensione e dashboard_preset.dimensione_max; il CHECK del
+        tetto della dashboard col BB. Brief: brief-db-revisione-ui (giro 3, U15, U21, Q9, Q12, Q45).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_dimensione_max_ammessa'
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = to_regclass('ui.dashboard_preset')
+                 AND conname = 'chk_ui_dashboard_preset_dimensione_max'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_preset ALTER COLUMN pagina_dimensione DROP DEFAULT;
+
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN dimensione_max DROP DEFAULT;
+
+              ALTER TABLE ui.dashboard_preset
+                  ADD CONSTRAINT chk_ui_dashboard_preset_dimensione_max
+                  CHECK (dimensione_max IS NULL OR ui.fn_dimensione_max_ammessa(dimensione_max));
+
+              COMMENT ON CONSTRAINT chk_ui_dashboard_preset_dimensione_max ON ui.dashboard_preset IS
+                  'Il tetto di card del preset è NULL (lo standard) o un valore ammesso da ui.fn_dimensione_max_ammessa, la stessa regola del guard di forma della preferenza.';
+
+              COMMENT ON COLUMN ui.lista_preset.pagina_dimensione IS
+                  'Righe per pagina del preset: una misura del catalogo ui.misure_pagina (FK fk_lista_preset_misure_pagina, e il guard della misura che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA). NULL = lo standard: il default dell''uso della lista (ui.lista_definizione.uso_misura), che risponde ui.fn_resolve_lista_config. Nessun default di colonna: un preset che non dice la misura segue il catalogo.';
+
+              COMMENT ON COLUMN ui.dashboard_preset.dimensione_max IS
+                  'Il massimo di card della home per chi ha questo preset come base: da 1 a 100 (chk_ui_dashboard_preset_dimensione_max, con ui.fn_dimensione_max_ammessa). NULL = lo standard, che risponde ui.fn_resolve_dashboard_config. Nessun default di colonna.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.dashboard_preset DROP CONSTRAINT chk_ui_dashboard_preset_dimensione_max;
+              ALTER TABLE ui.dashboard_preset ALTER COLUMN dimensione_max SET DEFAULT 8;
+              ALTER TABLE ui.lista_preset ALTER COLUMN pagina_dimensione SET DEFAULT 25;

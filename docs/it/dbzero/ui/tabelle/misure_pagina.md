@@ -3,14 +3,14 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo delle misure «righe per pagina» ammesse, e dei loro due default: la sede UNICA per DB, backend e frontend (decisioni di Tid del 2026-09-29). Le citano ui.lista_preset.pagina_dimensione (FK) e le preferenze utente (guard); il resolver delle liste non risponde mai una misura che non sta qui. L'applicazione la legge con ui.fn_get_misure_pagina(). Posseduta dal CSV (80_data/sql/ui/misure_pagina.csv): all'app solo SELECT. Brief: brief-db-misure-pagina-catalogo.
+> Il catalogo delle misure «righe per pagina» ammesse e dei loro default, uno per uso (ui.uso_misura_pagina). Le citano ui.lista_preset.pagina_dimensione (FK e guard) e le preferenze di lista (guard di forma); il resolver delle liste non risponde mai una misura che non sta qui. L'applicazione lo legge con ui.fn_get_misure_pagina e non lo scrive: le righe le porta il CSV del seed.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | misura | integer | NO |  |
-| uso_default | character varying(20) | YES |  |
+| uso_default | ui.uso_misura_pagina | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -20,7 +20,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_misure_pagina_misura |  |
-| CHECK | chk_misure_pagina_uso_default |  |
 | PRIMARY KEY | pk_misure_pagina | id |
 | UNIQUE | uq_misure_pagina_misura | misura |
 
@@ -34,8 +33,13 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso()` |
+| trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso()` |
+| trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso()` |
+| trg_misure_pagina_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('misura', 'E_UI_MISURA_PAGINA_IMMUTABILE')` |
 | trg_misure_pagina_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_misure_pagina_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_misure_pagina_z10_ritira_dalle_preferenze_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_misure_pagina_ritira_dalle_preferenze()` |
 
 ---
 {% include-markdown "signature-core.md" %}

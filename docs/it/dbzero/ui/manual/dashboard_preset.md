@@ -72,8 +72,11 @@ Cancellare un preset cancella i suoi widget; le preferenze che lo avevano come b
 
 ### `dimensione_max`: quante card al massimo
 
-È il numero massimo di card che la dashboard mostra; il taglio lo fa il frontend. Un preset senza
-dimensione lascia lo standard al ripiego del catalogo, 8. La preferenza dell'utente, se la porta, vince.
+È il numero massimo di card che la dashboard mostra; il taglio lo fa il frontend. Vale da 1 a 100,
+la stessa regola della preferenza ([fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa),
+letta da un CHECK): «nessun limite» non esiste. Un preset senza dimensione lascia lo standard, il
+ripiego di [fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config); la colonna non
+ha un default proprio. La preferenza dell'utente, se la porta, vince.
 
 ---
 
@@ -105,10 +108,6 @@ lo legge.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **`dimensione_max` accetta zero e i negativi.** Nessun CHECK, nessun catalogo delle misure come per le
-  liste: la risoluzione restituisce il valore così com'è, e il frontend tratta un valore non positivo come
-  «nessun limite». La preferenza, invece, accetta solo un intero da 1 a 100
-  ([fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa)).
 * **Il preset di base conta i widget accesi, non quelli che l'utente può vedere.** Un preset i cui widget
   l'utente non ha il permesso di vedere vince lo stesso, e la dashboard resta con le sole card aggiunte
   invisibili.
@@ -122,8 +121,8 @@ lo legge.
 
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un preset acceso su una dashboard spenta, a fine transazione.
 * `E_UI_PRESET_POSTO_IMMUTABILE` — si cambia la dashboard, l'ambito, il profilo o l'azienda di un preset.
-* Il CHECK dell'ambito, il secondo preset acceso nello stesso posto e il codice ripetuto nella stessa
-  dashboard arrivano come violazioni di vincolo.
+* Il CHECK dell'ambito, il CHECK del tetto (`chk_ui_dashboard_preset_dimensione_max`), il secondo preset
+  acceso nello stesso posto e il codice ripetuto nella stessa dashboard arrivano come violazioni di vincolo.
 
 ---
 
@@ -139,6 +138,8 @@ lo legge.
 * `db/pgtap/ui/test-ui-legami-preset-v1.sql` — cambiare l'ambito di un preset è rifiutato; un widget fuori
   dal pool rifiutato nella composizione; il preset di base di un'altra dashboard rifiutato sulla
   preferenza.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — il tetto 0 e 101 rifiutati, il preset senza tetto
+  che risponde lo standard.
 
 ---
 

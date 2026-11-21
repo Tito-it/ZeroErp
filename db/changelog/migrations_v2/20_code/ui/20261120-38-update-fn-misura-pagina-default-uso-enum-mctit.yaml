@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_misura_pagina_default: l'uso si confronta con l'enum.
+#   Brief: brief-db-revisione-ui (giro 3: U20 con Q44).
+#
+# Che cosa cambia: ui.misure_pagina.uso_default e' ora un ui.uso_misura_pagina
+#   (20261120-36), e un enum non si confronta con un varchar. Il confronto si fa
+#   sul testo dell'enum: un uso fuori vocabolario non trova la riga e solleva
+#   E_UI_MISURA_PAGINA_DEFAULT_MANCANTE come prima, invece di un errore di cast.
+# Firma invariata (varchar): la chiamano fn_get_misure_pagina, il resolver delle
+#   liste (che le passa l'uso della lista, 20261120-41) e il constraint trigger
+#   del catalogo (20261120-39). Volatilita' e sicurezza invariate: CREATE OR
+#   REPLACE. Il COMMENT dice i chiamanti di dopo il giro.
+# Corpo preso dal vivo (dbdev, 2026-11-21), uguale alla doc auto-generata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-38-update-fn-misura-pagina-default-uso-enum-mctit.yaml
+
+  - changeSet:
+      id: 20261120-38-update-fn-misura-pagina-default-uso-enum
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_misura_pagina_default: il confronto con l'enum ui.uso_misura_pagina.
+        Brief: brief-db-revisione-ui (giro 3, U20, Q44).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = to_regclass('ui.misure_pagina')
+                 AND a.attname = 'uso_default'
+                 AND a.atttypid = to_regtype('ui.uso_misura_pagina')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_misura_pagina_default(
+                  -- varchar e non ui.misure_pagina.uso_default%TYPE (la forma di 20260930-04):
+                  --   la colonna e' ora l'enum, e il %TYPE darebbe un secondo overload invece di
+                  --   sostituire questa funzione. L'uso arriva come lo scrive il chiamante, anche
+                  --   fuori vocabolario (si risponde col codice, non con un errore di cast)
+                  p_uso character varying)
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la misura «righe per pagina» di default per un uso.
+              --   Mai NULL: un default che manca e' un catalogo rotto.
+              DECLARE
+                  v_misura ui.misure_pagina.misura%TYPE;
+              BEGIN
+                  -- Sul testo dell'enum: un uso fuori vocabolario non trova la riga.
+                  SELECT m.misura
+                    INTO v_misura
+                    FROM ui.misure_pagina m
+                   WHERE m.uso_default::text = p_uso;
+
+                  IF v_misura IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'ui.fn_misura_pagina_default', 'E_UI_MISURA_PAGINA_DEFAULT_MANCANTE',
+                          jsonb_build_object('uso_default', p_uso),
+                          NULL::uuid,
+                          VARIADIC ARRAY[COALESCE(p_uso, 'NULL')]);
+                  END IF;
+
+                  RETURN v_misura;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_misura_pagina_default(character varying) IS
+                  'La misura «righe per pagina» di default per un uso (ui.uso_misura_pagina: COMPATTA, drawer e dialog; PAGINA, pagine), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default, o l''uso è fuori vocabolario, solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_get_misure_pagina, ui.fn_resolve_lista_config (col default dell''uso della lista) e il trigger differito del catalogo, che a fine transazione pretende un default per ogni uso. STABLE, INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.fn_misura_pagina_default(p_uso character varying)
+               RETURNS integer
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la misura «righe per pagina» di default per un uso.
+              --   Mai NULL: un default che manca e' un catalogo rotto.
+              DECLARE
+                  v_misura ui.misure_pagina.misura%TYPE;
+              BEGIN
+                  SELECT m.misura
+                    INTO v_misura
+                    FROM ui.misure_pagina m
+                   WHERE m.uso_default = p_uso;
+
+                  IF v_misura IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'ui.fn_misura_pagina_default', 'E_UI_MISURA_PAGINA_DEFAULT_MANCANTE',
+                          jsonb_build_object('uso_default', p_uso),
+                          NULL::uuid,
+                          VARIADIC ARRAY[COALESCE(p_uso, 'NULL')]);
+                  END IF;
+
+                  RETURN v_misura;
+              END;
+              $function$;

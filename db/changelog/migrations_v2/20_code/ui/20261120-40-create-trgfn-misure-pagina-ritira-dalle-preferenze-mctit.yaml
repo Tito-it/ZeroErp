@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.misure_pagina: il ritiro di una misura la toglie dalle preferenze di lista
+#   che la citano.
+#   Brief: brief-db-revisione-ui (giro 3: U16 con Q10 (b); chiude il «Trovato
+#   scrivendo» del giro 2, §3.2-bis).
+#
+# Il difetto: la FK verso il catalogo arriva solo dai preset. Una misura citata
+#   solo da preferenze si toglieva senza rifiuto, e da li' il guard di forma
+#   (ui.trgfn_preferenza_guard_forma, che giudica la misura a ogni cambio della
+#   configurazione) rifiutava ogni salvataggio dell'utente, anche delle sole
+#   colonne, finche' non cambiava la misura.
+# La correzione (Q10 (b)): AFTER DELETE, per riga, la chiave pagina_dimensione
+#   esce dalle preferenze di lista che citano quella misura; il resto della
+#   configurazione non si tocca. L'utente torna allo standard, come il resolver
+#   gia' rispondeva. La riscrittura passa dai trigger della preferenza (e' un
+#   dato di dominio): il guard di forma giudica la configurazione che resta.
+# Solo il DELETE: la misura non si riscrive (lucchetto, 20261120-42), e un
+#   cambio di uso_default non tocca le preferenze, che citano il numero.
+# La misura si legge col BB (ui.fn_intero_da_jsonb), la stessa domanda del guard
+#   e del resolver. Le preferenze di dashboard non citano misure_pagina.
+# Nessuna bonifica: il backfill 20261120-25 ha portato in forma le preferenze,
+#   il guard tiene le scritture, e nessun changeSet cancella righe di
+#   misure_pagina (la struttura dei changelog).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-40-create-trgfn-misure-pagina-ritira-dalle-preferenze-mctit.yaml
+
+  - changeSet:
+      id: 20261120-40-create-trgfn-misure-pagina-ritira-dalle-preferenze
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.misure_pagina: AFTER DELETE toglie pagina_dimensione dalle preferenze di lista che citano la
+        misura ritirata. Brief: brief-db-revisione-ui (giro 3, U16, Q10 (b)).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_intero_da_jsonb'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_misure_pagina_ritira_dalle_preferenze()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una misura tolta dal catalogo esce dalle preferenze di
+              --   lista che la citano (la chiave pagina_dimensione); il resto
+              --   della configurazione resta.
+              -- Montaggio: AFTER DELETE FOR EACH ROW su ui.misure_pagina.
+              DECLARE
+                  v_misura ui.misure_pagina.misura%TYPE;
+              BEGIN
+                  IF TG_RELID <> 'ui.misure_pagina'::regclass OR TG_WHEN <> 'AFTER'
+                     OR TG_LEVEL <> 'ROW' OR TG_OP <> 'DELETE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso AFTER DELETE FOR EACH ROW su ui.misure_pagina'),
+                          NULL::uuid,
+                          format('%s: atteso AFTER DELETE FOR EACH ROW su ui.misure_pagina', TG_NAME));
+                  END IF;
+
+                  v_misura := OLD.misura;
+
+                  UPDATE ui.lista_preferenza_utente pu
+                     SET configurazione = pu.configurazione - 'pagina_dimensione'
+                   WHERE ui.fn_intero_da_jsonb(pu.configurazione -> 'pagina_dimensione') = v_misura;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_misure_pagina_ritira_dalle_preferenze() IS
+                  'Sul catalogo ui.misure_pagina, AFTER DELETE FOR EACH ROW: la misura ritirata esce dalle preferenze di lista che la citano (la chiave pagina_dimensione di ui.lista_preferenza_utente.configurazione, letta con ui.fn_intero_da_jsonb); il resto della configurazione resta, e l''utente torna allo standard. La riscrittura passa dai trigger della preferenza: il guard di forma giudica ciò che resta. Montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              DROP TRIGGER IF EXISTS trg_misure_pagina_z10_ritira_dalle_preferenze_dlt ON ui.misure_pagina;
+
+              CREATE TRIGGER trg_misure_pagina_z10_ritira_dalle_preferenze_dlt
+                  AFTER DELETE ON ui.misure_pagina
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_misure_pagina_ritira_dalle_preferenze();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_misure_pagina_z10_ritira_dalle_preferenze_dlt ON ui.misure_pagina;
+              DROP FUNCTION IF EXISTS ui.trgfn_misure_pagina_ritira_dalle_preferenze();

@@ -15,7 +15,7 @@
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
 | emittente_fiscale_id | bigint | YES |  |
-| pagina_dimensione | integer | YES | 25 |
+| pagina_dimensione | integer | YES |  |
 | ordinamento_default | jsonb | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

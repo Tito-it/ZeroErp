@@ -62,8 +62,9 @@
 # arriva mai al catalogo grezzo. Sarebbe il bug piu' probabile qui.
 # ============================================================
 #
-# dimensione_max = 8 (brief DB §3c): respiro oltre le 4 card attuali, tunabile
-# per ruolo/emittente. Un preset acceso per (dashboard, ambito, profilo,
+# dimensione_max NULL: il preset segue lo standard, l'8 del ripiego di
+# ui.fn_resolve_dashboard_config (brief-db-revisione-ui, giro 3, Q12: la
+# colonna non ha piu' un default, e l'8 sta in una sede sola). Un preset acceso per (dashboard, ambito, profilo,
 # emittente): UNIQUE parziale uq_ui_dashboard_preset_posto (20261119-09).
 #
 # NULL da CSV: token letterale NULL + nullValue "NULL" (profilo_accesso_id ed
@@ -84,7 +85,7 @@ databaseChangeLog:
         - ANY
       failOnError: true
       comment: >
-        Preset di sistema 'home_default' (dimensione_max 8) con tutti
+        Preset di sistema 'home_default' (dimensione_max dello standard) con tutti
         e 4 i widget. Nessun preset di ruolo: stesso pattern della famiglia liste
         (11 preset su 11 ambito 'sistema'), e il filtro permessi lo rende
         superfluo. Vedi il blocco DIVERGENZA in testa al file.

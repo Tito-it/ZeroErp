@@ -28,19 +28,14 @@ falso per ogni altro valore e per nessun valore.
 
 `dimensione_max` dice quante card al più una dashboard mostra. Non è una misura di un catalogo come
 le righe per pagina delle liste: è un tetto, e il tetto ha una regola sola, scritta qui. La leggono il
-guard di forma della preferenza, che rifiuta alla scrittura un numero fuori dal tetto, e il resolver
+guard di forma della preferenza, che rifiuta alla scrittura un numero fuori dal tetto, il CHECK del
+preset ([dashboard_preset](/dbzero/ui/tabelle/dashboard_preset), `chk_ui_dashboard_preset_dimensione_max`,
+dove un valore vuoto vuol dire «lo standard»), e il resolver
 delle dashboard, che a un valore non ammesso trovato in una riga preferisce quello del preset o del
 catalogo.
 
 ⛔ «Nessun tetto» non esiste: una dashboard ha sempre un massimo. Zero o un negativo non vogliono dire
 «senza limite», sono valori non ammessi.
-
----
-
-### ⚠️ Che cosa oggi non copre
-
-* **Il preset non passa da qui.** `ui.dashboard_preset.dimensione_max` non ha ancora un vincolo che
-  la leghi a questa regola, e il ripiego del catalogo (8) è scritto nel resolver.
 
 ---
 
@@ -54,13 +49,14 @@ Nessuno.
 
 * `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — una preferenza di dashboard con 101 card
   rifiutata.
+* `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — un preset a 0 e uno a 101 rifiutati dal CHECK.
 
 ---
 
 ### Note di migrazione
 
 * 2026-11-21 — nasce: il tetto di 100 stava solo nel backend, e il resolver accettava qualunque
-  intero positivo della preferenza.
+  intero positivo della preferenza. Lo stesso giorno la legge anche il CHECK del preset.
 
 ---
 

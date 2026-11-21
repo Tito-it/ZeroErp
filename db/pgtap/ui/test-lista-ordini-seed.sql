@@ -17,7 +17,7 @@
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
 --   8.  Preset ordini_default presente e acceso
---   9.  Preset: pagina_dimensione=25, ambito=sistema
+--   9.  Preset: pagina_dimensione NULL (lo standard), ambito=sistema
 --   10. Esattamente 10 colonne visibili nel preset ordini_default
 --   11. Colonna numero ha fissata=true nel preset (identificatore)
 --   12. priorita di dominio applicata (numero=100, ragione_sociale=95, stato=90)
@@ -160,7 +160,7 @@ SELECT ok(
     '8. Preset ordini_default presente e acceso'
 );
 
--- 9. Preset: pagina_dimensione=25, ambito=sistema
+-- 9. Preset: pagina_dimensione NULL (lo standard), ambito=sistema
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -168,10 +168,12 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice = 'vendite.ordini'
            AND lp.codice = 'ordini_default'
-           AND lp.pagina_dimensione = 25
+           -- NULL: il preset segue lo standard della lista (brief-db-revisione-ui,
+           --   giro 3, Q9: il seed non scrive piu' 25, la misura e' del catalogo).
+           AND lp.pagina_dimensione IS NULL
            AND lp.ambito::TEXT = 'sistema'
     ),
-    '9. Preset ordini_default: pagina_dimensione=25, ambito=sistema'
+    '9. Preset ordini_default: pagina_dimensione NULL (lo standard), ambito=sistema'
 );
 
 -- 10. ⭐ Qui il conteggio esatto RESTA, e la differenza col 5 e' di merito.

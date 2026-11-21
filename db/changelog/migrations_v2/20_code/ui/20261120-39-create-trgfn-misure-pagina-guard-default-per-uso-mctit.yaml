@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.misure_pagina: a fine transazione ogni uso ha il suo default.
+#   Brief: brief-db-revisione-ui (giro 3: U18 con Q31 (a) e Q44).
+#
+# Il difetto: uq_misure_pagina_uso_default dice «al piu' una» riga per uso, non
+#   «esattamente una». Togliere il default riusciva, e da li' ogni lettura delle
+#   misure (ui.fn_get_misure_pagina, il resolver delle liste) sollevava
+#   E_UI_MISURA_PAGINA_DEFAULT_MANCANTE: un catalogo rotto scoperto dal primo
+#   utente che apre una pagina.
+# La forma (Q31 (a)): un constraint trigger differito, perche' spostare un
+#   default da una misura a un'altra passa per uno stato intermedio senza
+#   default (l'indice unico parziale vieta il contrario, due default insieme).
+#   A fine transazione, per ogni valore di ui.uso_misura_pagina (enum_range: il
+#   vocabolario ha una sede sola, Q44), chiede a ui.fn_misura_pagina_default,
+#   che solleva il codice di oggi se manca. Nessun codice nuovo: e' la stessa
+#   regola, detta prima che qualcuno la scopra leggendo.
+# Montaggio: AFTER INSERT OR UPDATE OF uso_default OR DELETE, DEFERRABLE
+#   INITIALLY DEFERRED, FOR EACH ROW. Anche INSERT: un catalogo nato senza default
+#   e' rotto quanto uno che lo perde. Da zero il seed (80_data) scrive le quattro
+#   righe nella stessa transazione, coi due default: il controllo al commit passa.
+# Scrittori della tabella: il solo CSV del seed (all'app solo SELECT, 90_end
+#   20260930-13); fixture pgTAP: test-misure-pagina-v1 la legge soltanto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-39-create-trgfn-misure-pagina-guard-default-per-uso-mctit.yaml
+
+  - changeSet:
+      id: 20261120-39-create-trgfn-misure-pagina-guard-default-per-uso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.misure_pagina: constraint trigger differito, a fine transazione ogni uso di ui.uso_misura_pagina
+        ha la sua misura di default. Brief: brief-db-revisione-ui (giro 3, U18, Q31, Q44).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_type t
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'ui' AND t.typname = 'uso_misura_pagina'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: a fine transazione il catalogo delle misure ha un default
+              --   per ogni uso. Lo chiede a ui.fn_misura_pagina_default, che
+              --   solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE se manca.
+              -- Montaggio: CONSTRAINT TRIGGER AFTER INSERT OR UPDATE OF uso_default
+              --   OR DELETE, DEFERRABLE INITIALLY DEFERRED, FOR EACH ROW.
+              DECLARE
+                  v_uso ui.misure_pagina.uso_default%TYPE;
+              BEGIN
+                  IF TG_RELID <> 'ui.misure_pagina'::regclass OR TG_WHEN <> 'AFTER'
+                     OR TG_LEVEL <> 'ROW' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso AFTER … FOR EACH ROW su ui.misure_pagina'),
+                          NULL::uuid,
+                          format('%s: atteso AFTER … FOR EACH ROW su ui.misure_pagina', TG_NAME));
+                  END IF;
+
+                  FOREACH v_uso IN ARRAY enum_range(NULL::ui.uso_misura_pagina) LOOP
+                      PERFORM ui.fn_misura_pagina_default(v_uso::text);
+                  END LOOP;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso() IS
+                  'Sul catalogo ui.misure_pagina: a fine transazione ogni valore di ui.uso_misura_pagina ha la sua misura di default. Lo chiede a ui.fn_misura_pagina_default, che solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO) se manca: togliere un default senza spostarlo è rifiutato al commit, spostarlo nella stessa transazione passa. CONSTRAINT TRIGGER AFTER INSERT OR UPDATE OF uso_default OR DELETE, DEFERRABLE INITIALLY DEFERRED, FOR EACH ROW: con SET CONSTRAINTS IMMEDIATE scatta a fine istruzione. Montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              DROP TRIGGER IF EXISTS trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt ON ui.misure_pagina;
+
+              CREATE CONSTRAINT TRIGGER trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt
+                  AFTER INSERT OR UPDATE OF uso_default OR DELETE ON ui.misure_pagina
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_misure_pagina_guard_default_per_uso();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_misure_pagina_a10_guard_default_per_uso_ins_upd_dlt ON ui.misure_pagina;
+              DROP FUNCTION IF EXISTS ui.trgfn_misure_pagina_guard_default_per_uso();
