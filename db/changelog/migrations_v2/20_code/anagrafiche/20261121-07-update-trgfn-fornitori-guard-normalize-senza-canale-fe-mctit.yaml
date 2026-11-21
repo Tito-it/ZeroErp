@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il guard del fornitore perde la normalizzazione di canale_fe e pec_email
+#   (brief-db-fornitore-doppioni-del-soggetto, giro B, D-1 di Tid, 2026-11-21).
+#
+#   Corpo dal catalogo (pg_get_functiondef, 2026-11-21). Le regole 1 e 2
+#   normalizzavano canale_fe e pec_email, che 20261121-03 toglie dalla
+#   tabella: con le colonne fuori, NEW.canale_fe e' un errore a runtime alla
+#   prima scrittura. L'instradamento FE ha i suoi controlli nei dati
+#   societari del soggetto. Restano, invariate, le regole sulla ritenuta
+#   d'acconto. Il trigger (trg_fornitori_guard_normalize_ins_upd) non cambia.
+#   Nessuna variabile: niente da ancorare con %TYPE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261121-07-update-trgfn-fornitori-guard-normalize-senza-canale-fe-mctit.yaml
+
+  - changeSet:
+      id: 20261121-07-update-trgfn-fornitori-guard-normalize-senza-canale-fe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_fornitori_guard_normalize: via la normalizzazione di
+        canale_fe e pec_email, colonne ritirate da 20261121-03; restano le regole
+        della ritenuta d'acconto. Brief: brief-db-fornitore-doppioni-del-soggetto,
+        giro B.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: fornitori
+                columnName: canale_fe
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_fornitori_guard_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- ============================================================
+                -- Scopo: valida i campi del fornitore prima di INS/UPD.
+                -- Regole:
+                --   1) ritenuta: se acconto = true, aliquota obbligatoria > 0
+                --   2) ritenuta: se acconto <> true, aliquota azzerata
+                -- ============================================================
+
+                -- 1) Guard: coerenza ritenuta d'acconto
+                IF NEW.ritenuta_acconto = true
+                   AND (NEW.ritenuta_aliquota IS NULL OR NEW.ritenuta_aliquota <= 0)
+                THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'anagrafiche.trgfn_fornitori_guard_normalize',
+                    'E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA',
+                    jsonb_build_object(
+                        'campo', 'ritenuta_aliquota',
+                      'detail', 'Se ritenuta_acconto = true, ritenuta_aliquota deve essere > 0',
+                      'ritenuta_acconto', NEW.ritenuta_acconto,
+                      'ritenuta_aliquota', NEW.ritenuta_aliquota
+                    ),
+                    NULL::uuid,
+                    'ritenuta_aliquota obbligatoria quando ritenuta_acconto = true'
+                  );
+                END IF;
+
+                -- 2) Pulizia: se ritenuta non attiva, azzera aliquota
+                IF NEW.ritenuta_acconto IS DISTINCT FROM true THEN
+                  NEW.ritenuta_aliquota := NULL;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_fornitori_guard_normalize() IS
+                  'Guard su anagrafiche.fornitori, BEFORE INSERT OR UPDATE: coerenza della ritenuta '
+                  'd''acconto (con ritenuta_acconto = true serve ritenuta_aliquota > 0, '
+                  'E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA; senza ritenuta l''aliquota si azzera).';
+      rollback:
+        - empty: {}

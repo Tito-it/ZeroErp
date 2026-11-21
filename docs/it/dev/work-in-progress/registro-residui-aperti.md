@@ -87,10 +87,7 @@
     come app la RLS non mostra nessun titolo. I titoli fuori regola non bloccano niente, ma alla prossima
     modifica il guard li rifiuta;
   - **`SGT-0000121` con `cliente_pa = 'S'`** (§8.1): un privato, il caso della segnalazione. Il guard lo rifiuterà
-    alla prossima modifica dei flag o della natura. Da riportare a `N` a mano (Tid);
-  - **`anagrafiche.fornitori.split_payment`** (§7): nullable, senza regola sulla natura, senza lettori oltre
-    `vw_fornitori_dettaglio`. Sul passivo la scissione dipende dall'emittente, non dal fornitore: forse è nella
-    sede sbagliata. Da verificare; se confermato, brief suo.
+    alla prossima modifica dei flag o della natura. Da riportare a `N` a mano (Tid).
 - **La commessa vuota lasciata dal push batch** (DB + BE, ereditata il 2026-10-13 dalla chiusura di
   `work-done/2026/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
   best-effort per riga) la commessa nasce prima che il batch delle righe le accetti; se una riga e'

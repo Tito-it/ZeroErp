@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_preset_aggiornato`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -35,8 +35,8 @@ contenuto nel preset di base è cambiato dopo lo snapshot salvato con la prefere
 ### Due mappe e le chiavi da guardare
 
 Il preset di base porta la data del suo contenuto **per chiave**: una mappa `{chiave: data}`, con
-le stesse chiavi della configurazione della preferenza (`colonne`, `ordinamento`, `filtri`,
-`pagina_dimensione` per le liste; `widget`, `dimensione_max` per le dashboard). Lo **snapshot**
+le stesse chiavi della configurazione della preferenza (`colonne` e `pagina_dimensione` per le
+liste; `widget` e `dimensione_max` per le dashboard). Lo **snapshot**
 della preferenza è la copia di quella mappa, presa quando l'utente ha salvato.
 
 Il chiamante passa le due mappe e le chiavi da guardare: quelle che la preferenza imposta
@@ -48,8 +48,8 @@ contenuto, o quando la chiave non c'è in una delle due mappe.
 
 ### ⭐ Una chiave che segue il preset non accende niente
 
-Una preferenza che imposta solo la misura riceve l'ordinamento dal preset: se l'ordinamento del
-preset cambia, lo vede già, e non c'è niente da proporle. Per questo il chiamante passa solo le
+Una preferenza che imposta solo la misura riceve le colonne dal preset: se le colonne del preset
+cambiano, le vede già, e non c'è niente da proporle. Per questo il chiamante passa solo le
 chiavi di origine `preferenza`, e la funzione non guarda le altre.
 
 ---

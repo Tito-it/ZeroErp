@@ -28,11 +28,8 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 27,3,azioni,Azioni,NULL,NULL,azione,string,NULL,NULL,999,center,NULL,99,f,f,f,f,f,t,2026-05-24 00:00:00,SEED,common.col_azioni,50
 28,3,codice_fiscale,Codice fiscale,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),codice_fiscale,informazione,string,NULL,140,70,left,extra,20,t,f,t,f,f,f,2026-05-24 00:00:00,SEED,common.codice_fiscale,50
 29,3,partita_iva,Partita IVA,Campo grezzo del soggetto — a video vale id_fiscale (col. 23),partita_iva,informazione,string,NULL,140,80,left,extra,20,t,f,t,f,f,f,2026-05-24 00:00:00,SEED,common.partita_iva,50
-30,3,pec_email,PEC,Indirizzo PEC del fornitore,pec_email,informazione,string,NULL,220,90,left,extra,20,f,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_pec_email,50
-31,3,canale_fe,Canale FE,Canale di fatturazione elettronica,canale_fe,informazione,string,NULL,100,100,left,extra,20,t,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_canale_fe,50
-32,3,split_payment,Split payment,Fornitore soggetto a split payment,split_payment,informazione,boolean,yesno,110,110,center,extra,20,t,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_split_payment,50
 33,3,ritenuta_acconto,Ritenuta,Fornitore soggetto a ritenuta d'acconto,ritenuta_acconto,informazione,boolean,yesno,110,120,center,extra,20,t,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_ritenuta_acconto,50
-34,3,regime_fiscale,Regime fiscale,Codice del regime fiscale del fornitore,regime_fiscale,informazione,string,NULL,130,130,left,extra,20,f,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_regime_fiscale,50
+34,3,regime_fiscale,Regime fiscale,Codice del regime fiscale del fornitore,regime_fiscale_rf,informazione,string,NULL,130,130,left,extra,20,f,f,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_regime_fiscale,50
 35,3,data_update,Aggiornamento,Data ultimo aggiornamento del fornitore,data_update,informazione,date,date_short,110,140,center,extra,20,t,t,t,f,f,t,2026-05-24 00:00:00,SEED,anagrafiche.fornitori.col_data_update,50
 36,4,numero,Numero,Numero del contratto,numero,identificatore,string,NULL,140,10,left,Identificazione,1,t,t,t,t,f,t,2026-06-02 00:00:00,SEED,vendite.contratti.col_numero,100
 37,4,ragione_sociale_completa,Cliente,Ragione sociale completa del cliente,ragione_sociale_completa,informazione,string,NULL,220,20,left,Cliente,2,t,t,t,t,f,t,2026-06-02 00:00:00,SEED,vendite.contratti.col_ragione_sociale,95

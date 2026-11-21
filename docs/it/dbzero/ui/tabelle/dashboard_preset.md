@@ -33,6 +33,7 @@
 | FOREIGN KEY | fk_ui_dashboard_preset_profili_accesso | profilo_accesso_id |
 | PRIMARY KEY | dashboard_preset_pkey | id |
 | UNIQUE | uq_ui_dashboard_preset_dashboard_codice | dashboard_id, codice |
+| UNIQUE | uq_ui_dashboard_preset_id_dashboard | id, dashboard_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -41,6 +42,7 @@
 | ix_ui_dashboard_preset_emittente_fiscale_id | `CREATE INDEX ix_ui_dashboard_preset_emittente_fiscale_id ON ui.dashboard_preset USING btree (emittente_fiscale_id) WHERE (emittente_fiscale_id IS NOT NULL)` |
 | ix_ui_dashboard_preset_profilo_accesso_id | `CREATE INDEX ix_ui_dashboard_preset_profilo_accesso_id ON ui.dashboard_preset USING btree (profilo_accesso_id) WHERE (profilo_accesso_id IS NOT NULL)` |
 | uq_ui_dashboard_preset_dashboard_codice | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_dashboard_codice ON ui.dashboard_preset USING btree (dashboard_id, codice)` |
+| uq_ui_dashboard_preset_id_dashboard | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_id_dashboard ON ui.dashboard_preset USING btree (id, dashboard_id)` |
 | uq_ui_dashboard_preset_posto | `CREATE UNIQUE INDEX uq_ui_dashboard_preset_posto ON ui.dashboard_preset USING btree (dashboard_id, ambito, profilo_accesso_id, emittente_fiscale_id) NULLS NOT DISTINCT WHERE attivo` |
 
 ## 🚨 Trigger
@@ -48,10 +50,11 @@
 |------|--------|--------|--------|
 | trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
 | trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
-| trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_dashboard_preset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('ambito', 'E_UI_PRESET_POSTO_IMMUTABILE', 'dashboard_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'emittente_fiscale_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'profilo_accesso_id', 'E_UI_PRESET_POSTO_IMMUTABILE')` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
 
 ---
 {% include-markdown "signature-core.md" %}

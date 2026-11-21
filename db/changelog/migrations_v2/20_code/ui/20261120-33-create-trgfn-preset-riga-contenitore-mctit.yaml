@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.trgfn_preset_riga_contenitore: la lista (o la dashboard) di una riga di
+#   composizione la scrive il DB, dal preset.
+#   Brief: brief-db-revisione-ui (giro 2b: U14 con Q41 (a)).
+#
+# Perche': lista_id su ui.lista_preset_colonna e dashboard_id su
+#   ui.dashboard_preset_widget (20261120-32) sono derivate dal preset: le
+#   leggono le FK composite, nessuno le scrive. Il BE scrive la composizione
+#   (ui_admin_repository.py, DELETE + INSERT) senza la colonna, e il seed la
+#   carica dal CSV senza: il trigger la riempie, e un valore passato si
+#   sostituisce (la colonna e' il riflesso del preset, non una scelta). La
+#   coerenza fra preset e colonna (o pool) la giudicano le FK, non questo trigger.
+# Montaggio: BEFORE INSERT OR UPDATE, fase a20 (derivazione), senza OF: la
+#   colonna dipende da preset_id, e un UPDATE che scrive la sola colonna
+#   derivata va riportato al preset. Gira dopo il seed (a00), che non la
+#   giudica (riga 6 del registro: la composizione e' figlia, senza colonne).
+#   La famiglia si legge dalla tabella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-33-create-trgfn-preset-riga-contenitore-mctit.yaml
+
+  - changeSet:
+      id: 20261120-33-create-trgfn-preset-riga-contenitore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.trgfn_preset_riga_contenitore e i due montaggi a20: lista_id e dashboard_id delle composizioni dal
+        preset. Brief: brief-db-revisione-ui (giro 2b, U14, Q41).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE ((attrelid = to_regclass('ui.lista_preset_colonna') AND attname = 'lista_id')
+                   OR (attrelid = to_regclass('ui.dashboard_preset_widget') AND attname = 'dashboard_id'))
+                 AND attnum > 0 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.trgfn_preset_riga_contenitore()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: la lista (ui.lista_preset_colonna) o la dashboard
+              --   (ui.dashboard_preset_widget) di una riga di composizione e'
+              --   quella del suo preset.
+              -- Montaggio: BEFORE INSERT OR UPDATE FOR EACH ROW, fase a20.
+              BEGIN
+                  IF TG_WHEN <> 'BEFORE' OR TG_LEVEL <> 'ROW' OR TG_OP NOT IN ('INSERT', 'UPDATE')
+                     OR TG_RELID NOT IN ('ui.lista_preset_colonna'::regclass, 'ui.dashboard_preset_widget'::regclass) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preset_colonna o ui.dashboard_preset_widget'),
+                          NULL::uuid,
+                          format('%s: atteso BEFORE INSERT OR UPDATE FOR EACH ROW su ui.lista_preset_colonna o ui.dashboard_preset_widget',
+                                 TG_NAME));
+                  END IF;
+
+                  -- Un preset che non c'e' lascia NULL: risponde la FK del preset.
+                  IF TG_RELID = 'ui.lista_preset_colonna'::regclass THEN
+                      NEW.lista_id := (SELECT lp.lista_id FROM ui.lista_preset lp WHERE lp.id = NEW.preset_id);
+                  ELSE
+                      NEW.dashboard_id := (SELECT dp.dashboard_id FROM ui.dashboard_preset dp WHERE dp.id = NEW.preset_id);
+                  END IF;
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_preset_riga_contenitore() IS
+                  'Scrive la lista (ui.lista_preset_colonna.lista_id) o la dashboard (ui.dashboard_preset_widget.dashboard_id) di una riga di composizione: quella del suo preset. Chi scrive la riga non la passa; un valore passato è sostituito. La coerenza fra il preset e la colonna nominata (o il widget del pool) la giudicano le FK composite che leggono la colonna. BEFORE INSERT OR UPDATE FOR EACH ROW, fase a20; montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              CREATE TRIGGER trg_ui_lista_preset_colonna_a20_contenitore_ins_upd
+                  BEFORE INSERT OR UPDATE ON ui.lista_preset_colonna
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore();
+              CREATE TRIGGER trg_ui_dashboard_preset_widget_a20_contenitore_ins_upd
+                  BEFORE INSERT OR UPDATE ON ui.dashboard_preset_widget
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_preset_riga_contenitore();
+
+              COMMENT ON TRIGGER trg_ui_lista_preset_colonna_a20_contenitore_ins_upd ON ui.lista_preset_colonna IS
+                  'La lista della riga è quella del preset (ui.trgfn_preset_riga_contenitore).';
+              COMMENT ON TRIGGER trg_ui_dashboard_preset_widget_a20_contenitore_ins_upd ON ui.dashboard_preset_widget IS
+                  'La dashboard della riga è quella del preset (ui.trgfn_preset_riga_contenitore).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ui_lista_preset_colonna_a20_contenitore_ins_upd ON ui.lista_preset_colonna;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_preset_widget_a20_contenitore_ins_upd ON ui.dashboard_preset_widget;
+              DROP FUNCTION IF EXISTS ui.trgfn_preset_riga_contenitore();

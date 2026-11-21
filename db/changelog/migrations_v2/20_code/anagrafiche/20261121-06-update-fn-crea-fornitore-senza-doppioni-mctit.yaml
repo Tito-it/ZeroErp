@@ -1,0 +1,142 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# La madre del fornitore non accetta piu' i doppioni
+#   (brief-db-fornitore-doppioni-del-soggetto, giro B; D-1, D-2, D-4 di Tid,
+#   2026-11-21).
+#
+#   Corpo dal catalogo (pg_get_functiondef, 2026-11-21: uguale alla doc
+#   auto-generata, ultima scrittura 20261018-30); la firma e il RETURNS
+#   TABLE da 20261018-30, perche' il catalogo scioglie i %TYPE. Cambia solo
+#   c_ammesse:
+#   - escono giorni_pagamento, fine_mese, split_payment, bollo_esente,
+#     canale_fe, pec_email, colonne che 20261121-03 toglie dalla tabella:
+#     passate in p_campi ora sono E_CAMPO_NON_AMMESSO, col campo;
+#   - regime_fiscale diventa regime_fiscale_rf, il nome nuovo della colonna;
+#     un valore fuori catalogo esce da fk_fornitori_regimi_fiscali.
+#   Firma, volatilita', INVOKER e costo invariati. Il COMMENT si riscrive
+#   con l'elenco nuovo e senza la storia (linee-guida-sql 5d).
+#   Ricaduta BE (brief §5.4): la creazione manda regime_fiscale_rf.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261121-06-update-fn-crea-fornitore-senza-doppioni-mctit.yaml
+
+  - changeSet:
+      id: 20261121-06-update-fn-crea-fornitore-senza-doppioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_crea_fornitore: dall'elenco delle chiavi di p_campi escono i
+        sei doppioni ritirati dalla tabella (ora E_CAMPO_NON_AMMESSO) e
+        regime_fiscale diventa regime_fiscale_rf; COMMENT riscritto. Brief:
+        brief-db-fornitore-doppioni-del-soggetto, giro B.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: anagrafiche
+                tableName: fornitori
+                columnName: regime_fiscale_rf
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_crea_fornitore';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_fornitore(
+                  p_soggetto_id anagrafiche.soggetti.id%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb,
+                  p_contatto    jsonb DEFAULT NULL::jsonb,
+                  p_indirizzi   jsonb DEFAULT '[]'::jsonb)
+               RETURNS TABLE(fornitore_id      anagrafiche.fornitori.id%TYPE,
+                             soggetto_ruolo_id anagrafiche.fornitori.soggetto_ruolo_id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
+                  v_estranea text;
+                  v_sr_id    anagrafiche.fornitori.soggetto_ruolo_id%TYPE;
+                  v_fo_id    anagrafiche.fornitori.id%TYPE;
+                  -- Le chiavi opzionali: quelle del backend (_CREATE_ALLOWED),
+                  -- meno il ruolo e lo stato, che decide la madre.
+                  c_ammesse  CONSTANT text[] := ARRAY[
+                      'codice', 'valuta_id', 'modalita_pagamento_id', 'termine_pagamento_id',
+                      'ritenuta_acconto', 'ritenuta_aliquota', 'regime_fiscale_rf',
+                      'rating', 'qualifica_scadenza', 'note'];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Fare di un soggetto un fornitore: il ruolo FO
+                  --   (get_or_create), la riga di fornitori nello stato
+                  --   iniziale VE con le chiavi di p_campi (le assenti, e le
+                  --   null, al DEFAULT), il contatto del ruolo (se c'e') e gli
+                  --   indirizzi del ruolo. Ritorna (fornitore_id,
+                  --   soggetto_ruolo_id).
+                  --
+                  -- Regole:
+                  --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO. Fuori
+                  --     elenco anche split payment e instradamento FE, che sono del
+                  --     soggetto, e le condizioni di pagamento, che sono del termine;
+                  --   - contatto e indirizzi: le regole sono dei loro BB;
+                  --   - duplicati e FK escono dai vincoli.
+                  -- =========================================================
+                  IF p_soggetto_id IS NULL OR jsonb_typeof(v_campi) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('soggetto_id', p_soggetto_id,
+                                             'tipo_campi',  jsonb_typeof(v_campi)),
+                          NULL::uuid,
+                          'anagrafiche.fn_crea_fornitore',
+                          'soggetto mancante o campi che non sono un oggetto');
+                  END IF;
+
+                  v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'anagrafiche.fn_crea_fornitore', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  v_sr_id := script.fn_get_or_create_soggetto_ruolo(
+                                 p_soggetto_id  := p_soggetto_id,
+                                 p_cd_int_ruolo := 'FO');
+
+                  -- Lo stato iniziale: VE, «in verifica» (la regola del backend).
+                  v_fo_id := (script.fn_scrivi_riga_da_jsonb(
+                                  'anagrafiche.fornitori'::regclass,
+                                  jsonb_strip_nulls(v_campi)
+                                  || jsonb_build_object(
+                                         'soggetto_ruolo_id',  v_sr_id,
+                                         'stato_fornitore_id', (SELECT sf.id
+                                                                  FROM config.stati_fornitore sf
+                                                                 WHERE sf.codice_interno = 'VE')))
+                              ->> 'id')::bigint;
+
+                  IF p_contatto IS NOT NULL THEN
+                      PERFORM anagrafiche.fn_crea_contatto(p_soggetto_id, v_sr_id, p_contatto);
+                  END IF;
+
+                  PERFORM anagrafiche.fn_crea_indirizzi_ruolo(v_sr_id, p_indirizzi);
+
+                  RETURN QUERY SELECT v_fo_id, v_sr_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_crea_fornitore(uuid, jsonb, jsonb, jsonb) IS
+              'Madre: fa di un soggetto un fornitore in una sola istruzione: il ruolo FO (script.fn_get_or_create_soggetto_ruolo), la riga di anagrafiche.fornitori nello stato iniziale VE, il contatto del ruolo (anagrafiche.fn_crea_contatto, se p_contatto non e'' NULL) e gli indirizzi del ruolo (anagrafiche.fn_crea_indirizzi_ruolo, con l''auto-clone dei tipi obbligatori). p_campi: le chiavi opzionali codice, valuta_id, modalita_pagamento_id, termine_pagamento_id, ritenuta_acconto, ritenuta_aliquota, regime_fiscale_rf, rating, qualifica_scadenza, note; le assenti e le null al DEFAULT (il codice lo genera il trigger); una chiave estranea: E_CAMPO_NON_AMMESSO, col campo. Split payment e instradamento FE non sono chiavi: sono del soggetto (anagrafiche.soggetti, anagrafiche.dati_societari); le condizioni di pagamento sono del termine. Lo stato non e'' un campo: un altro stato e'' un UPDATE dopo. Soggetto mancante o campi non oggetto: E_SCRIPT_CHIAMATA_NON_VALIDA. Contatto e indirizzi rifiutano con i codici dei loro BB; i tipi obbligatori li pretende il guard differito al commit. Duplicati (uq_fornitori_soggetto_ruolo_id, uq_fornitori_codice) e FK (fk_fornitori_regimi_fiscali compresa) escono dai vincoli, che il backend traduce per nome. Non controlla il permesso (dominio anagrafiche). INVOKER. Ritorna (fornitore_id, soggetto_ruolo_id).';
+      rollback:
+        - empty: {}

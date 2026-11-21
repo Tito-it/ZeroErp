@@ -1,0 +1,48 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il regime fiscale del fornitore si prepara alla FK sul catalogo
+#   (brief-db-fornitore-doppioni-del-soggetto, giro B, D-4 di Tid, 2026-11-21).
+#
+#   regime_fiscale era un varchar(8) libero: spazi e minuscolo passavano.
+#   Qui si tolgono gli spazi, si porta al maiuscolo e il vuoto diventa NULL;
+#   la FK la mette 20261121-03. Changeset separato perche' l'UPDATE lascia
+#   eventi trigger in sospeso, e un ALTER TABLE nella stessa transazione
+#   muore. Un valore che anche normalizzato non e' nel catalogo fa fallire
+#   la FK del -03, al suo posto (fail-fast).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261121-02-update-fornitori-normalizza-regime-fiscale-mctit.yaml
+
+  - changeSet:
+      id: 20261121-02-update-fornitori-normalizza-regime-fiscale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fornitori.regime_fiscale: spazi tolti, maiuscolo, il vuoto a
+        NULL, prima della FK su config.regimi_fiscali di 20261121-03.
+        Brief: brief-db-fornitore-doppioni-del-soggetto, giro B (D-4).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: anagrafiche
+            tableName: fornitori
+            columnName: regime_fiscale
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE anagrafiche.fornitori
+                 SET regime_fiscale = NULLIF(upper(btrim(regime_fiscale)), '')
+               WHERE regime_fiscale IS DISTINCT FROM NULLIF(upper(btrim(regime_fiscale)), '');
+      rollback:
+        - empty: {}

@@ -23,6 +23,7 @@
 | FOREIGN KEY | fk_ui_dashboard_preferenza_utente_auth_user | auth_user_id |
 | FOREIGN KEY | fk_ui_dashboard_preferenza_utente_dashboard_definizione | dashboard_id |
 | FOREIGN KEY | fk_ui_dashboard_preferenza_utente_dashboard_preset | preset_base_id |
+| FOREIGN KEY | fk_ui_dashboard_preferenza_utente_preset_della_dashboard | preset_base_id, dashboard_id |
 | PRIMARY KEY | dashboard_preferenza_utente_pkey | id |
 | UNIQUE | uq_ui_dashboard_preferenza_utente_user_dashboard | auth_user_id, dashboard_id |
 
@@ -37,6 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_ui_dashboard_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
+| trg_ui_dashboard_preferenza_utente_a10_guard_forma_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_guard_forma()` |
 | trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
 | trg_ui_dashboard_preferenza_utente_z90_snapshot_base_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preferenza_preset_base_snapshot('ui.dashboard_preset')` |
 

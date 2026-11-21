@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.misure_pagina`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -62,7 +62,8 @@ vuoto: un uso senza riga è un catalogo rotto, e la funzione solleva.
 * **Il preset di una lista** ha una FK verso la misura, e un guard che rifiuta prima della FK con un
   codice parlante. Nessuna misura vuol dire «il default».
 * **La preferenza di una persona** porta la misura dentro un campo JSONB: una FK non ci arriva, e la
-  controlla il guard alla scrittura della preferenza.
+  controlla alla scrittura il guard di forma della preferenza
+  ([trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma)).
 * **La lista configurabile**, quando si apre, risponde sempre una misura del catalogo: quella della
   preferenza se è nel catalogo, altrimenti quella del preset di base se è nel catalogo, altrimenti il
   default `PAGINA`.
@@ -82,7 +83,8 @@ misura nasce, si sposta di uso o si toglie con un changeSet.
 
 `ui.dashboard_preset.dimensione_max` e la `dimensione_max` della preferenza di dashboard non sono
 misure di questo catalogo. Non dicono quante righe offre un paginatore, ma **quante card al più** la
-dashboard mostra: un tetto, non una voce di un menu. Il catalogo non le controlla.
+dashboard mostra: un tetto, non una voce di un menu. Il catalogo non le controlla: il tetto da 1 a 100
+della preferenza lo dice [fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa).
 
 ---
 

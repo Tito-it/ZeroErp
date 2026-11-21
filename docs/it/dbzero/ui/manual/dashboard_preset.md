@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preset`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,6 +58,16 @@ risoluzione e non occupano il posto.
 Una bozza si prepara spenta. Per sostituire il preset di un posto si spegne il vecchio **prima** di
 accendere il nuovo: l'indice non si differisce a fine transazione.
 
+⛔ **Il posto di un preset non cambia.** La dashboard, l'ambito, il profilo e l'azienda sono fermati da
+un lucchetto di colonna del framework (`E_UI_PRESET_POSTO_IMMUTABILE`): le preferenze che hanno il preset
+come base e i widget della sua composizione ci contano. Riscriverli uguali passa, come fa il seed. Un
+preset nel posto sbagliato si spegne, e se ne crea uno nuovo.
+
+L'unicità `uq_ui_dashboard_preset_id_dashboard`, sulla coppia (preset, dashboard), è la chiave che
+leggono i vincoli composti della composizione e della preferenza: un widget del preset è nel pool della
+sua dashboard, e il preset di base di una preferenza è un preset della dashboard della preferenza.
+Cancellare un preset cancella i suoi widget; le preferenze che lo avevano come base restano, senza base.
+
 ---
 
 ### `dimensione_max`: quante card al massimo
@@ -97,9 +107,8 @@ lo legge.
 
 * **`dimensione_max` accetta zero e i negativi.** Nessun CHECK, nessun catalogo delle misure come per le
   liste: la risoluzione restituisce il valore così com'è, e il frontend tratta un valore non positivo come
-  «nessun limite». La preferenza, invece, accetta solo un intero positivo.
-* **Un preset può proporre widget fuori dal pool della dashboard.** Nessun vincolo lo impedisce; la
-  risoluzione li toglie, e un preset fatto solo di widget fuori dal pool non è base.
+  «nessun limite». La preferenza, invece, accetta solo un intero da 1 a 100
+  ([fn_dimensione_max_ammessa](/dbzero/ui/funzioni/fn_dimensione_max_ammessa)).
 * **Il preset di base conta i widget accesi, non quelli che l'utente può vedere.** Un preset i cui widget
   l'utente non ha il permesso di vedere vince lo stesso, e la dashboard resta con le sole card aggiunte
   invisibili.
@@ -112,6 +121,7 @@ lo legge.
 ### Codici errore
 
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un preset acceso su una dashboard spenta, a fine transazione.
+* `E_UI_PRESET_POSTO_IMMUTABILE` — si cambia la dashboard, l'ambito, il profilo o l'azienda di un preset.
 * Il CHECK dell'ambito, il secondo preset acceso nello stesso posto e il codice ripetuto nella stessa
   dashboard arrivano come violazioni di vincolo.
 
@@ -126,6 +136,9 @@ lo legge.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — i trigger e le eccezioni della regola ATTIVO.
 * `db/pgtap/ui/test-fn-preset-di-base-v1.sql` — il preset fatto di widget fuori dal pool che non è base, e
   quello con un widget del pool che lo è.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — cambiare l'ambito di un preset è rifiutato; un widget fuori
+  dal pool rifiutato nella composizione; il preset di base di un'altra dashboard rifiutato sulla
+  preferenza.
 
 ---
 
@@ -141,6 +154,9 @@ lo legge.
   `uq_ui_dashboard_preset_posto`, sui soli preset accesi.
 * 2026-11-20 — `contenuto_aggiornato_il` diventa per chiave e la scrive solo il database; nasce
   `composizione_impronta`.
+* 2026-11-21 — il posto del preset si chiude col lucchetto di colonna; nasce l'unicità (preset, dashboard)
+  per i vincoli composti della composizione e della preferenza. Prima un preset poteva proporre widget fuori
+  dal pool: quelle righe sono state tolte.
 
 ---
 

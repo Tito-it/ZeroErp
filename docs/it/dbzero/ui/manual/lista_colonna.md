@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -137,6 +137,15 @@ che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in 
 
 ---
 
+### La lista di una colonna che un preset nomina non cambia
+
+Una riga di un preset nomina la colonna insieme alla lista del preset, e un vincolo composto chiede
+che la colonna sia di quella lista. Il vincolo vale da tutti e due i lati: spostare su un'altra lista
+una colonna che un preset nomina è rifiutato, come violazione di vincolo. La chiave che il vincolo
+legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista).
+
+---
+
 ### ⚠️ Che cosa oggi non copre
 
 * **Una colonna `azione` può avere un campo sorgente, e nessuno lo verifica.** Il CHECK chiede solo
@@ -177,6 +186,8 @@ che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in 
   e campo sorgente nella ricerca libera.
 * `db/pgtap/vendite/test-colonne-lineage-liste-v1.sql` — le colonne della lineage sulle liste dei
   documenti.
+* `db/pgtap/ui/test-ui-legami-preset-v1.sql` — la lista di una colonna che un preset nomina non
+  cambia.
 
 ---
 
@@ -187,6 +198,8 @@ che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in 
 * 2026-10-11 — è ammesso come sorgente anche un nome della sintesi della lineage, uscito dalle viste
   di lista.
 * 2026-11-12 — l'assenza di un testo è solo `NULL`: i cinque CHECK della stringa vuota.
+* 2026-11-21 — l'unicità (colonna, lista), che il vincolo della composizione dei preset legge: la
+  lista di una colonna citata da un preset non cambia più.
 
 ---
 

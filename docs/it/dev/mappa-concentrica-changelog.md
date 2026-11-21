@@ -193,7 +193,7 @@ La **revisione dello schema `documenti`** ha il giro 0 (la documentazione, 36 pa
 decisioni del 14-11; i giri 1-5 aspettano il via. Su **PrimeVue** Tid decide il 14-11: si resta
 sulla 4.5.5 e si predispone l'uscita, con OpenVue (fork MIT) come strada preferita e Vuetify di
 riserva; nasce il presidio `guard:classi-interne`. Vedi
-[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md),
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-done/2026/brief-db-provenienza-prezzo-segue-il-prezzo.md),
 [brief-db-revisione-documenti.md](work-done/2026/brief-db-revisione-documenti.md),
 [piano-migrazione-primevue-5.md](work-in-progress/piano-migrazione-primevue-5.md).
 
@@ -438,7 +438,7 @@ provenienza del prezzo). Vedi
 [brief-db-modelli-documento-standard.md](work-done/2026/brief-db-modelli-documento-standard.md),
 [brief-db-articoli-ammessi-per-documento.md](work-done/2026/brief-db-articoli-ammessi-per-documento.md),
 [brief-db-coerenza-listino-della-riga-di-commessa.md](work-done/2026/brief-db-coerenza-listino-della-riga-di-commessa.md),
-[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-in-progress/brief-db-provenienza-prezzo-segue-il-prezzo.md).
+[brief-db-provenienza-prezzo-segue-il-prezzo.md](work-done/2026/brief-db-provenienza-prezzo-segue-il-prezzo.md).
 
 ### Anagrafiche, indirizzi e magazzino — 26 ottobre
 

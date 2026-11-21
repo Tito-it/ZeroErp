@@ -1,0 +1,259 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: filtri e ordinamento escono dalla preferenza di lista, filtri_default
+#   esce dal preset; le preferenze e l'ordinamento dei preset prendono la forma
+#   che il guard del giro giudica.
+#   Brief: brief-db-revisione-ui (giro 2: il passo (2) di Q38 §6 e Q39 §6,
+#   decise da Tid il 2026-11-20; Q7 con Q40 (b) e Q42 (a), del 2026-11-18 e
+#   2026-11-21; il backfill di forma prima del guard di Q6).
+#
+# Che cosa cambia:
+#   - ui.lista_preferenza_utente.configurazione: via le chiavi ordinamento e
+#     filtri (Q38/Q39 §6: il clic sull'intestazione non si ricorda, i filtri
+#     di partenza sono dello store). Il FE non le manda piu' dal 2026-11-20.
+#   - Le due preferenze: la configurazione nella forma del guard di forma
+#     (ui.fn_check_forma_configurazione, 20261120-24; il trigger in -26). Si
+#     tolgono le chiavi fuori famiglia e quelle a null, le voci che non sono
+#     oggetti, senza codice o con un codice che non e' del contenitore, le
+#     ripetizioni dello stesso codice (vale la prima), e nella voce i campi
+#     fuori famiglia o di tipo sbagliato (la voce segue il default per quel
+#     campo). pagina_dimensione fuori catalogo e dimensione_max fuori tetto
+#     escono (vale il preset). Una riga che il guard rifiuterebbe bloccherebbe
+#     il prossimo salvataggio dell'utente: il modello la ammette, e il backfill
+#     la porta in forma. Le righe gia' in forma non cambiano (jsonb confronta per
+#     valore). In coda il blocco verifica che nessuna riga resti fuori forma.
+#     Fatto datato (dbdev, 2026-11-21): quattro voci con un codice che non e'
+#     della lista.
+#   - ui.lista_preset.ordinamento_default: ogni col diventa il codice della
+#     colonna (Q7). Un col che e' gia' un codice resta; uno che e' il
+#     campo_sorgente di una sola colonna della lista prende il suo codice; ogni
+#     altro esce (Q40 (b): nessuno traduce dopo). Escono anche le voci che non
+#     sono {col, dir} con dir asc o desc, e le ripetizioni (vale la prima). Il
+#     CSV del seed porta gia' i codici (80_data/sql/ui/lista_preset.csv).
+#   - La data del contenuto dei preset di lista e lo snapshot delle
+#     preferenze di lista: via le chiavi ordinamento e filtri, che una
+#     preferenza non personalizza piu' (il banner non ha da confrontarle). La
+#     mappa nuova la scrive il trigger (-28).
+#   - DROP COLUMN ui.lista_preset.filtri_default. Lettori a DB (dbdev,
+#     2026-11-21, pg_get_functiondef e pg_views): ui.fn_resolve_lista_config e
+#     ui.trgfn_preset_contenuto_aggiornato, riscritti in -29 e -28; nessuna
+#     vista, nessuna dipendenza in pg_depend. Il registro del seed la nomina
+#     fra le colonne dell'installazione (riga 5): esce dal CSV in questo giro, e
+#     il trigger del seed legge le colonne per nome (to_jsonb), quindi finche'
+#     il giro delle automazioni non lo rimonta la colonna che manca vale null
+#     dai due lati. Nessuna fase tardiva (80_data, 90_end) la pretende: il
+#     loader di lista_preset.csv non la nomina.
+# Il backfill non passa dai trigger (linee-guida-trigger, «Il backfill di una
+#   colonna derivata»): non e' una scrittura di dominio, e audit, seed e banner
+#   non devono spostarsi. Si spengono per nome quelli accesi, si riaccendono
+#   ciascuno nel suo modo.
+# ⚠️ Lettore BE della colonna: ui_admin_repository.py:82 (la lettura admin dei
+#   preset). Q43 (a): il BE la toglie prima dell'apply (R-BE3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-25-alter-preferenza-preset-ritira-filtri-ordinamento-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261120-25-alter-preferenza-preset-ritira-filtri-ordinamento-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: via ordinamento e filtri dalla preferenza di lista e filtri_default dal preset; le preferenze e
+        l'ordinamento dei preset nella forma del guard. Brief: brief-db-revisione-ui (giro 2, Q38/Q39 §6, Q7, Q6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('ui.lista_preset')
+                 AND attname = 'filtri_default' AND attnum > 0 AND NOT attisdropped
+        - sqlCheck:
+            expectedResult: 3
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui'
+                 AND p.proname IN ('fn_check_forma_configurazione', 'fn_intero_da_jsonb', 'fn_misura_pagina_ammessa')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- DML e ALTER TABLE sulle stesse tabelle (linee-guida-sql §11.12).
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              DO $do$
+              DECLARE
+                  -- i trigger accesi delle tre tabelle, colonna per colonna di pg_trigger
+                  v_tabelle pg_catalog.pg_trigger.tgrelid%TYPE[];
+                  v_nomi    pg_catalog.pg_trigger.tgname%TYPE[];
+                  v_modi    pg_catalog.pg_trigger.tgenabled%TYPE[];
+                  -- integer: un indice di ciclo e un conteggio, non il riflesso di una colonna
+                  i         integer;
+                  v_fuori   integer;
+              BEGIN
+                  SELECT array_agg(t.tgrelid   ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgname    ORDER BY t.tgrelid, t.tgname),
+                         array_agg(t.tgenabled ORDER BY t.tgrelid, t.tgname)
+                    INTO v_tabelle, v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid IN ('ui.lista_preferenza_utente'::regclass,
+                                       'ui.dashboard_preferenza_utente'::regclass,
+                                       'ui.lista_preset'::regclass)
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s DISABLE TRIGGER %I', v_tabelle[i]::regclass, v_nomi[i]);
+                  END LOOP;
+
+                  -- La preferenza di lista, nella forma del guard: colonne e
+                  -- pagina_dimensione, nient'altro.
+                  WITH n AS (
+                      SELECT p.id,
+                             jsonb_strip_nulls(jsonb_build_object(
+                                 'colonne', CASE WHEN jsonb_typeof(p.configurazione -> 'colonne') = 'array' THEN
+                                     (SELECT COALESCE(jsonb_agg(v.voce ORDER BY v.ord), '[]'::jsonb)
+                                        FROM (SELECT DISTINCT ON (e.value ->> 'codice') e.ord,
+                                                     (SELECT jsonb_object_agg(f.key, f.value)
+                                                        FROM jsonb_each(e.value) AS f
+                                                       WHERE f.key = 'codice'
+                                                          OR (f.key IN ('ordine', 'larghezza')
+                                                              AND COALESCE(ui.fn_intero_da_jsonb(f.value), 0) >= 1)
+                                                          OR (f.key IN ('visibile', 'fissata')
+                                                              AND jsonb_typeof(f.value) = 'boolean')) AS voce
+                                                FROM jsonb_array_elements(p.configurazione -> 'colonne')
+                                                     WITH ORDINALITY AS e(value, ord)
+                                               WHERE jsonb_typeof(e.value) = 'object'
+                                                 AND jsonb_typeof(e.value -> 'codice') = 'string'
+                                                 AND btrim(e.value ->> 'codice') <> ''
+                                                 AND EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                                              WHERE lc.lista_id = p.lista_id
+                                                                AND lc.codice   = e.value ->> 'codice')
+                                               ORDER BY e.value ->> 'codice', e.ord) AS v)
+                                 END,
+                                 'pagina_dimensione', CASE WHEN ui.fn_misura_pagina_ammessa(
+                                                               ui.fn_intero_da_jsonb(p.configurazione -> 'pagina_dimensione'))
+                                                          THEN p.configurazione -> 'pagina_dimensione' END)) AS cfg,
+                             p.preset_base_contenuto_aggiornato_il - 'ordinamento' - 'filtri' AS snap
+                        FROM ui.lista_preferenza_utente p)
+                  UPDATE ui.lista_preferenza_utente p
+                     SET configurazione                      = n.cfg,
+                         preset_base_contenuto_aggiornato_il = n.snap
+                    FROM n
+                   WHERE n.id = p.id
+                     AND (p.configurazione IS DISTINCT FROM n.cfg
+                          OR p.preset_base_contenuto_aggiornato_il IS DISTINCT FROM n.snap);
+
+                  -- La preferenza di dashboard, nella forma del guard: widget e
+                  -- dimensione_max.
+                  WITH n AS (
+                      SELECT p.id,
+                             jsonb_strip_nulls(jsonb_build_object(
+                                 'widget', CASE WHEN jsonb_typeof(p.configurazione -> 'widget') = 'array' THEN
+                                     (SELECT COALESCE(jsonb_agg(v.voce ORDER BY v.ord), '[]'::jsonb)
+                                        FROM (SELECT DISTINCT ON (e.value ->> 'codice') e.ord,
+                                                     (SELECT jsonb_object_agg(f.key, f.value)
+                                                        FROM jsonb_each(e.value) AS f
+                                                       WHERE f.key = 'codice'
+                                                          OR (f.key = 'ordine'
+                                                              AND COALESCE(ui.fn_intero_da_jsonb(f.value), 0) >= 1)
+                                                          OR (f.key = 'visibile'
+                                                              AND jsonb_typeof(f.value) = 'boolean')) AS voce
+                                                FROM jsonb_array_elements(p.configurazione -> 'widget')
+                                                     WITH ORDINALITY AS e(value, ord)
+                                               WHERE jsonb_typeof(e.value) = 'object'
+                                                 AND jsonb_typeof(e.value -> 'codice') = 'string'
+                                                 AND btrim(e.value ->> 'codice') <> ''
+                                                 AND EXISTS (SELECT 1 FROM ui.dashboard_widget dw
+                                                               JOIN ui.widget w ON w.id = dw.widget_id
+                                                              WHERE dw.dashboard_id = p.dashboard_id
+                                                                AND w.codice        = e.value ->> 'codice')
+                                               ORDER BY e.value ->> 'codice', e.ord) AS v)
+                                 END,
+                                 'dimensione_max', CASE WHEN ui.fn_dimensione_max_ammessa(
+                                                            ui.fn_intero_da_jsonb(p.configurazione -> 'dimensione_max'))
+                                                       THEN p.configurazione -> 'dimensione_max' END)) AS cfg
+                        FROM ui.dashboard_preferenza_utente p)
+                  UPDATE ui.dashboard_preferenza_utente p
+                     SET configurazione = n.cfg
+                    FROM n
+                   WHERE n.id = p.id
+                     AND p.configurazione IS DISTINCT FROM n.cfg;
+
+                  -- L'ordinamento dei preset: col = codice della colonna (Q7).
+                  WITH n AS (
+                      SELECT lp.id,
+                             (SELECT COALESCE(jsonb_agg(jsonb_build_object('col', v.col, 'dir', v.dir) ORDER BY v.ord),
+                                              '[]'::jsonb)
+                                FROM (SELECT DISTINCT ON (t.col) t.ord, t.col, t.dir
+                                        FROM (SELECT e.ord,
+                                                     COALESCE(
+                                                         (SELECT lc.codice FROM ui.lista_colonna lc
+                                                           WHERE lc.lista_id = lp.lista_id
+                                                             AND lc.codice   = e.value ->> 'col'),
+                                                         (SELECT min(lc.codice) FROM ui.lista_colonna lc
+                                                           WHERE lc.lista_id       = lp.lista_id
+                                                             AND lc.campo_sorgente = e.value ->> 'col'
+                                                          HAVING count(*) = 1)) AS col,
+                                                     e.value ->> 'dir' AS dir
+                                                FROM jsonb_array_elements(lp.ordinamento_default)
+                                                     WITH ORDINALITY AS e(value, ord)
+                                               WHERE jsonb_typeof(e.value) = 'object'
+                                                 AND jsonb_typeof(e.value -> 'col') = 'string'
+                                                 AND e.value ->> 'dir' IN ('asc', 'desc')) AS t
+                                       WHERE t.col IS NOT NULL
+                                       ORDER BY t.col, t.ord) AS v) AS ord_def
+                        FROM ui.lista_preset lp
+                       WHERE jsonb_typeof(lp.ordinamento_default) = 'array')
+                  UPDATE ui.lista_preset lp
+                     SET ordinamento_default = n.ord_def
+                    FROM n
+                   WHERE n.id = lp.id
+                     AND lp.ordinamento_default IS DISTINCT FROM n.ord_def;
+
+                  -- Un ordinamento che non e' un elenco non ha voci da salvare.
+                  UPDATE ui.lista_preset
+                     SET ordinamento_default = NULL
+                   WHERE ordinamento_default IS NOT NULL
+                     AND jsonb_typeof(ordinamento_default) <> 'array';
+
+                  -- La data del contenuto dei preset di lista, senza le due chiavi.
+                  UPDATE ui.lista_preset
+                     SET contenuto_aggiornato_il = contenuto_aggiornato_il - 'ordinamento' - 'filtri'
+                   WHERE jsonb_exists_any(contenuto_aggiornato_il, ARRAY['ordinamento', 'filtri']);
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE %s ENABLE %s TRIGGER %I', v_tabelle[i]::regclass,
+                                     CASE v_modi[i] WHEN 'R' THEN 'REPLICA' WHEN 'A' THEN 'ALWAYS' ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+
+                  -- Nessuna riga resta fuori dalla forma che il guard giudichera'.
+                  SELECT (SELECT count(*) FROM ui.lista_preferenza_utente p
+                           WHERE ui.fn_check_forma_configurazione('lista', p.lista_id, p.configurazione) IS NOT NULL)
+                       + (SELECT count(*) FROM ui.dashboard_preferenza_utente p
+                           WHERE ui.fn_check_forma_configurazione('dashboard', p.dashboard_id, p.configurazione) IS NOT NULL)
+                    INTO v_fuori;
+                  IF v_fuori > 0 THEN
+                      RAISE EXCEPTION 'ui: % preferenze restano fuori dalla forma del guard dopo il backfill', v_fuori;
+                  END IF;
+              END
+              $do$;
+
+              ALTER TABLE ui.lista_preset DROP COLUMN filtri_default;
+
+              COMMENT ON COLUMN ui.lista_preferenza_utente.configurazione IS
+                  'La personalizzazione della lista dell''utente, per chiave: colonne (l''elenco delle voci {codice, ordine, larghezza, visibile, fissata}; solo codice è obbligatorio, un campo che manca prende il default della colonna a catalogo) e pagina_dimensione (una misura di ui.misure_pagina). Una chiave che manca segue il preset di base, poi il catalogo; {} segue il preset in tutto. La forma la giudica il trigger di forma (ui.trgfn_preferenza_guard_forma, con ui.fn_check_forma_configurazione e ui.fn_guard_misura_pagina): chiavi e campi ammessi, nessun null, codici unici e della lista (in qualsiasi stato). L''ordinamento e i filtri non si salvano: l''ordinamento di partenza è del preset (ui.fn_ordinamento_lista), i filtri di partenza sono dell''interfaccia.';
+              COMMENT ON COLUMN ui.lista_preset.ordinamento_default IS
+                  'L''ordinamento di partenza della lista per chi ha questo preset come base: un elenco di {col, dir}, col il codice di una colonna della lista (in qualsiasi stato), dir asc o desc, nessun col ripetuto. NULL: il preset non dice l''ordinamento. Lo giudica il trigger del preset (ui.trgfn_ui_lista_preset_guard_ordinamento); lo risolve per l''utente, senza le colonne spente, non ordinabili o bloccate, ui.fn_ordinamento_lista.';

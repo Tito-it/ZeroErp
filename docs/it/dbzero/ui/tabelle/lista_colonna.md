@@ -47,12 +47,14 @@
 | CHECK | chk_ui_lista_colonna_priorita_non_negativa |  |
 | FOREIGN KEY | fk_lista_colonna_lista_definizione | lista_id |
 | PRIMARY KEY | lista_colonna_pkey | id |
+| UNIQUE | uq_ui_lista_colonna_id_lista | id, lista_id |
 | UNIQUE | uq_ui_lista_colonna_lista_codice | lista_id, codice |
 
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
 | lista_colonna_pkey | `CREATE UNIQUE INDEX lista_colonna_pkey ON ui.lista_colonna USING btree (id)` |
+| uq_ui_lista_colonna_id_lista | `CREATE UNIQUE INDEX uq_ui_lista_colonna_id_lista ON ui.lista_colonna USING btree (id, lista_id)` |
 | uq_ui_lista_colonna_lista_codice | `CREATE UNIQUE INDEX uq_ui_lista_colonna_lista_codice ON ui.lista_colonna USING btree (lista_id, codice)` |
 
 ## 🚨 Trigger

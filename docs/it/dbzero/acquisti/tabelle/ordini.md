@@ -20,8 +20,6 @@
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric(18,8) | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
-| giorni_pagamento | smallint | YES |  |
-| fine_mese | boolean | YES |  |
 | indirizzo_consegna_id | bigint | NO |  |
 | indirizzo_cons_snapshot | jsonb | NO | '{}'::jsonb |
 | causale_trasporto_id | bigint | YES |  |
@@ -46,6 +44,7 @@
 | hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
 | sorgente_id | bigint | YES |  |
+| termine_pagamento_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -67,6 +66,7 @@
 | FOREIGN KEY | fk_ordini_ao_fornitore_ruolo | soggetto_ruolo_id |
 | FOREIGN KEY | fk_ordini_ao_indir_cons | indirizzo_consegna_id |
 | FOREIGN KEY | fk_ordini_ao_modpag | modalita_pagamento_id |
+| FOREIGN KEY | fk_ordini_ao_termini_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_ordini_ao_valute | valuta_id |
 | PRIMARY KEY | pk_ordini_a | id |
 
@@ -98,6 +98,8 @@
 | trg_ordini_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_ordini_a10_stati_doc_ordini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_doc_ordine_id', 'id')` |
 | trg_ordini_a10_stati_doc_ordini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_doc_ordine_id', 'id')` |
+| trg_ordini_a10_termini_pagamento_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
+| trg_ordini_a10_termini_pagamento_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'termini_pagamento', 'attivo', 'termine_pagamento_id', 'id')` |
 | trg_ordini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ordini_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ordini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |

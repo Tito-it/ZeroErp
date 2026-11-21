@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_ordinamento_lista: l'ordinamento di partenza di una lista per un utente.
+#   Brief: brief-db-revisione-ui (giro 2: la richiesta di BE25 (2), con Q37 §6
+#   decisa (a) da Tid il 2026-11-20; U13 con Q7; Q39 §6).
+#
+# Perche': con Q37 §6 il BE di ogni lista configurabile, quando la richiesta non
+#   porta order_by, ordina con l'ordinamento del preset, e la risposta dice
+#   l'ordinamento applicato. Il BE chiede la sola chiave, senza la risoluzione
+#   intera (colonne e permessi) a ogni pagina. Con Q39 §6 la preferenza non
+#   porta piu' l'ordinamento: la cascata e' il preset di base, poi niente.
+# Che cosa risponde: un elenco di {col, dir, campo_sorgente}, nell'ordine del
+#   preset di base (la scelta di ui.fn_preset_di_base, la stessa del resolver).
+#   Escono le voci di una colonna spenta, non ordinabile, senza campo sorgente o
+#   BLOCCATO per l'utente (ui.fn_lista_colonne_livello, lo stesso calcolo del
+#   resolver e della ricerca): U13. campo_sorgente e' cio' che il BE passa alla
+#   sua whitelist d'ordinamento (Q7: col e' il codice, il campo si legge qui).
+#   Nessun preset, o un preset senza ordinamento: [].
+# E' la sola sede dell'ordinamento risolto: il resolver delle liste non lo da'
+#   piu' (20261120-29).
+# plpgsql STABLE: legge la riga della lista dal BB (che solleva
+#   E_UI_LISTA_NON_TROVATA) e la veste dalla GUC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-31-create-fn-ordinamento-lista-mctit.yaml
+
+  - changeSet:
+      id: 20261120-31-create-fn-ordinamento-lista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_ordinamento_lista: l'ordinamento di partenza di una lista per un utente, dal preset di base, senza le
+        colonne non ammesse. Brief: brief-db-revisione-ui (giro 2, BE25 (2), U13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_ordinamento_lista'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_ordinamento_lista(
+                  p_lista_codice ui.lista_definizione.codice%TYPE,
+                  -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
+                  -- la cita con %TYPE (lo schema django e' del provisioning)
+                  p_auth_user_id integer,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+               -- jsonb: l'elenco {col, dir, campo_sorgente} calcolato qui; non il riflesso di una colonna
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: l'ordinamento di partenza di una lista per un utente: quello del
+              --   preset di base, senza le voci delle colonne che l'utente non puo'
+              --   ordinare, con il campo sorgente di ogni voce.
+              DECLARE
+                  v_lista   ui.lista_definizione%ROWTYPE;
+                  -- La veste corrente dalla GUC: senza veste il preset di ruolo non concorre.
+                  v_ruolo   config.ruolo_applicativo := ui.fn_veste_corrente();
+                  v_base_id ui.lista_preset.id%TYPE;
+                  v_ord     ui.lista_preset.ordinamento_default%TYPE;
+              BEGIN
+                  -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal BB.
+                  v_lista := ui.fn_lista_da_codice(p_lista_codice);
+
+                  SELECT b.preset_id INTO v_base_id
+                    FROM ui.fn_preset_di_base('lista', v_lista.id, p_auth_user_id, v_ruolo,
+                                              p_emittente_fiscale_id) b;
+                  IF v_base_id IS NULL THEN
+                      RETURN '[]'::jsonb;
+                  END IF;
+
+                  SELECT lp.ordinamento_default INTO v_ord
+                    FROM ui.lista_preset lp
+                   WHERE lp.id = v_base_id;
+                  IF v_ord IS NULL OR jsonb_typeof(v_ord) <> 'array' THEN
+                      RETURN '[]'::jsonb;
+                  END IF;
+
+                  RETURN COALESCE(
+                      (SELECT jsonb_agg(jsonb_build_object('col',            lc.codice,
+                                                           'dir',            e.value ->> 'dir',
+                                                           'campo_sorgente', lc.campo_sorgente)
+                                        ORDER BY e.ord)
+                         FROM jsonb_array_elements(v_ord) WITH ORDINALITY AS e(value, ord)
+                         JOIN ui.lista_colonna lc
+                           ON lc.lista_id = v_lista.id
+                          AND lc.codice   = e.value ->> 'col'
+                          AND lc.attivo
+                          AND lc.ordinabile
+                          AND lc.campo_sorgente IS NOT NULL
+                         JOIN ui.fn_lista_colonne_livello(v_lista.id, p_auth_user_id, v_ruolo) lv
+                           ON lv.colonna_id = lc.id
+                        WHERE lv.livello_accesso <> 'BLOCCATO'
+                          AND e.value ->> 'dir' IN ('asc', 'desc')),
+                      '[]'::jsonb);
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_ordinamento_lista(character varying, integer, bigint) IS
+                  'L''ordinamento di partenza di una lista per un utente: un elenco di {col, dir, campo_sorgente}, nell''ordine dell''ordinamento_default del preset di base (lo sceglie ui.fn_preset_di_base, come per ui.fn_resolve_lista_config). col è il codice della colonna, campo_sorgente il campo con cui il backend ordina, dir asc o desc. Escono le voci di una colonna spenta, non ordinabile, senza campo sorgente o BLOCCATO per l''utente (ui.fn_lista_colonne_livello, lo stesso calcolo della lista e della ricerca). Nessun preset di base, o un preset senza ordinamento: []. La preferenza non porta l''ordinamento: il clic sull''intestazione vale per la sessione. Lista assente o spenta: E_UI_LISTA_NON_TROVATA (ui.fn_lista_da_codice). La veste la legge ui.fn_veste_corrente. STABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_ordinamento_lista(character varying, integer, bigint);

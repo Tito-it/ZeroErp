@@ -36,7 +36,10 @@
 --   15) all'app SELECT si', INSERT/UPDATE/DELETE no
 --   16) come app, UPDATE del catalogo -> 42501
 --   17) i BB sono INVOKER; l'app li esegue
---   18) i due trigger ci sono, in fase a10
+--   18) i due trigger che giudicano la misura ci sono, in fase a10: sul preset
+--       quello della misura, sulla preferenza quello di forma (che chiama
+--       ui.fn_guard_misura_pagina; brief-db-revisione-ui, giro 2). Cercati per
+--       funzione e tabella, non per nome (linee-guida-trigger)
 --
 -- ⚠️ Gira come l'APPLICAZIONE (il backend scrive preset e preferenze). Il 16 e'
 --   rosso da owner per costruzione.
@@ -204,12 +207,17 @@ SELECT is(
     '17) i quattro BB sono INVOKER, e l''app li esegue');
 
 SELECT is(
-    (SELECT string_agg(t.tgname, ',' ORDER BY t.tgname COLLATE "C")
+    (SELECT string_agg(format('%s:%s:%s', t.tgrelid::regclass, t.tgfoid::regproc,
+                              substring(t.tgname from '_(a10)_')),
+                       ',' ORDER BY t.tgrelid::regclass::text COLLATE "C")
        FROM pg_trigger t
-      WHERE t.tgname IN ('trg_ui_lista_preset_a10_guard_pagina_ins_upd',
-                         'trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd')),
-    'trg_ui_lista_preferenza_utente_a10_guard_pagina_ins_upd,trg_ui_lista_preset_a10_guard_pagina_ins_upd',
-    '18) i due trigger dei guard ci sono, in fase a10');
+      WHERE NOT t.tgisinternal
+        AND (t.tgrelid, t.tgfoid) IN (('ui.lista_preset'::regclass,
+                                       'ui.trgfn_ui_lista_preset_guard_pagina_dimensione'::regproc),
+                                      ('ui.lista_preferenza_utente'::regclass,
+                                       'ui.trgfn_preferenza_guard_forma'::regproc))),
+    'ui.lista_preferenza_utente:ui.trgfn_preferenza_guard_forma:a10,ui.lista_preset:ui.trgfn_ui_lista_preset_guard_pagina_dimensione:a10',
+    '18) i due trigger che giudicano la misura ci sono, in fase a10');
 
 SELECT * FROM finish();
 ROLLBACK;

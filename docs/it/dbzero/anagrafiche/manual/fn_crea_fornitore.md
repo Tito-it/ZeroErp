@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_fornitore()`
 
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 
 > 👀 **Vedi anche**
 >
@@ -21,11 +21,15 @@ fornitori), i pgTAP e il provisioning dei dati di sviluppo.
 ### I campi
 
 * **La scheda**: facoltativi `codice`, valuta, modalità e termine di
-  pagamento, giorni, fine mese, split payment, ritenuta d'acconto e aliquota,
-  regime fiscale, bollo, canale e PEC della fatturazione elettronica, rating,
-  scadenza della qualifica, note. Quelli assenti (o vuoti) prendono il
-  default; senza codice lo genera il sistema dei codici. Un campo diverso è
-  rifiutato col suo nome (`E_CAMPO_NON_AMMESSO`).
+  pagamento, ritenuta d'acconto e aliquota, regime fiscale
+  (`regime_fiscale_rf`, un codice del catalogo dei regimi), rating, scadenza
+  della qualifica, note. Quelli assenti (o vuoti) prendono il default; senza
+  codice lo genera il sistema dei codici. Un campo diverso è rifiutato col suo
+  nome (`E_CAMPO_NON_AMMESSO`).
+* **Non sono campi del fornitore** lo split payment e l'instradamento della
+  fatturazione elettronica (sono del soggetto), né giorni e fine mese (sono del
+  termine di pagamento): passati qui, sono rifiutati come gli altri campi
+  estranei.
 * **Lo stato non è un campo**: un fornitore nasce sempre **in verifica**
   (`VE`). Qualificarlo è un passaggio di stato successivo.
 * **Il contatto**: facoltativo. Se c'è, valgono le regole del contatto
@@ -45,7 +49,8 @@ subito: il ruolo e i suoi indirizzi nascono nella stessa transazione.
 
 * **Il permesso**: nel dominio anagrafiche lo decide il backend.
 * I **duplicati** (un secondo fornitore sullo stesso soggetto, un codice già
-  usato) escono dai vincoli della tabella, col loro nome.
+  usato) e un regime fuori catalogo escono dai vincoli della tabella, col loro
+  nome.
 
 ### Test
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_resolve_lista_config`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,6 +23,9 @@
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello di ogni colonna per l'utente
 > * [ui.fn_misura_pagina_ammessa](/dbzero/ui/funzioni/fn_misura_pagina_ammessa) — una misura è del catalogo?
 > * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — la misura di default `PAGINA`
+> * [ui.fn_intero_da_jsonb](/dbzero/ui/funzioni/fn_intero_da_jsonb) — ordine, larghezza e misura letti senza cast che cadono
+> * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento di partenza, che questa funzione non porta
+> * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — la forma della preferenza, alla scrittura
 > * [ui.fn_resolve_dashboard_config](/dbzero/ui/funzioni/fn_resolve_dashboard_config) — la gemella delle dashboard
 >
 > Guide:
@@ -34,9 +37,13 @@
 ### 🎯 Scopo Principale
 
 `ui.fn_resolve_lista_config` risponde come si presenta una lista a un utente: quali colonne, in
-che ordine e con che permessi, l'ordinamento, i filtri e le righe per pagina, e da dove viene
-ciascuna di queste scelte. È l'unica sede della cascata preferenza → preset → catalogo; il backend
-la chiama a ogni apertura di lista e passa il risultato al frontend.
+che ordine e con che permessi, e quante righe per pagina, e da dove viene ciascuna di queste
+scelte. È l'unica sede della cascata preferenza → preset → catalogo; il backend la chiama a ogni
+apertura di lista e passa il risultato al frontend.
+
+L'ordinamento di partenza non è qui: lo risponde
+[fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista), la sua sede. I filtri di partenza
+sono dell'interfaccia, e il database non li conosce.
 
 ---
 
@@ -55,13 +62,13 @@ livello di colonna, che leggono i profili dell'utente ciascuno nella propria sed
 
 ### ⭐ La cascata è per chiave
 
-Le quattro chiavi (`colonne`, `ordinamento`, `filtri`, `pagina_dimensione`) si risolvono ognuna per
-conto suo, dal primo di questi livelli che la contiene:
+Le due chiavi (`colonne` e `pagina_dimensione`) si risolvono ognuna per conto suo, dal primo di
+questi livelli che la contiene:
 
 1. **la preferenza dell'utente**, se ha quella chiave (una chiave null vale come assente);
 2. **il preset di base**;
-3. **il catalogo**: tutte le colonne accese, visibili, con l'identificatore fissato; nessun
-   ordinamento, nessun filtro, la misura di default `PAGINA`.
+3. **il catalogo**: tutte le colonne accese, visibili, con l'identificatore fissato; la misura di
+   default `PAGINA`.
 
 Il preset di base si cerca sempre, anche quando c'è una preferenza: dà le chiavi che la
 preferenza non ha. Lo sceglie [fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base), la sede
@@ -73,7 +80,7 @@ comune a liste e dashboard: un preset acceso con almeno una colonna attiva, cerc
 * poi il preset di sistema.
 
 Un preset senza colonne attive non conta a nessun livello, e la ricerca scende. Il preset scelto
-dà tutte e quattro le chiavi; se nessuno vale, tutte vengono dal catalogo.
+dà tutte e due le chiavi; se nessuno vale, tutte e due vengono dal catalogo.
 
 ```mermaid
 flowchart TD
@@ -100,7 +107,7 @@ frontend lo mostra come «come lo standard (N)». La misura che risponde non è 
 
 ### L'origine di ogni chiave
 
-Per ognuna delle quattro chiavi il risultato dice da dove viene: `preferenza`, l'ambito del preset
+Per ognuna delle due chiavi il risultato dice da dove viene: `preferenza`, l'ambito del preset
 di base (`ruolo`, `emittente_fiscale`, `sistema`) o `catalogo`. Il frontend, al salvataggio,
 rimanda solo le chiavi di origine `preferenza` più quella toccata: così salvare una chiave non
 congela le altre. Una misura della preferenza fuori catalogo non ha origine `preferenza`, e quindi
@@ -132,6 +139,24 @@ Ordine, larghezza, visibilità e fissaggio vengono dal livello che ha dato le co
 
 ---
 
+### ⭐ Una preferenza scritta male non ferma la lista
+
+La forma della preferenza la giudica alla scrittura il guard
+[trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma). La lettura non conta
+su di lui: una riga scritta prima del guard, o senza passare dal trigger, non fa cadere la funzione e
+non rende la lista inapribile per quell'utente.
+
+* `colonne` che non è un elenco vale «nessuna scelta»: le colonne vengono dal preset o dal catalogo.
+* Ordine, larghezza e misura passano da [fn_intero_da_jsonb](/dbzero/ui/funzioni/fn_intero_da_jsonb):
+  un valore che intero non è (anche il testo «25») vale come assente.
+* Un campo che manca, o di tipo sbagliato, prende il default del catalogo: l'ordine e la larghezza
+  della colonna, visibile, non fissata. Non esce mai vuoto.
+* Una voce senza codice, o il cui codice non è una colonna accesa della lista, si salta; un codice
+  ripetuto vale una volta, con la prima voce.
+* Una voce senza codice non impedisce l'aggiunta delle colonne nuove del catalogo.
+
+---
+
 ### Il preset di base nel risultato, e il banner
 
 Il risultato porta `preset_base`: l'id, l'ambito e la data del contenuto per chiave del preset di
@@ -156,12 +181,9 @@ sono spenti.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Ordinamento e filtri non filtrati.** Passano così come sono, dalla preferenza o dal preset:
-  possono nominare colonne spente, non ordinabili, non filtrabili o bloccate per l'utente.
-* **La forma della preferenza.** Una voce di colonna con un ordine o una larghezza non interi
-  ferma la funzione con un errore di conversione, e la lista non si apre per quell'utente; una voce
-  senza visibilità esce con la visibilità vuota; un codice ripetuto esce due volte. Una preferenza
-  di colonne i cui codici sono tutti spariti lascia visibili solo identificatore e azioni.
+* **Le colonne che non ci sono più.** Una preferenza di colonne i cui codici sono tutti spariti
+  vale ancora come scelta: lascia visibili solo identificatore e azioni, e le altre colonne arrivano
+  in coda, nascoste.
 
 ---
 
@@ -174,6 +196,9 @@ sono spenti.
 
 ### Test
 
+* `db/pgtap/ui/test-ui-forma-configurazione-v1.sql` — una riga malformata scritta senza il guard che
+  non ferma la funzione (codice ripetuto preso una volta, ordine non intero e campi mancanti col
+  default del catalogo), la voce senza codice che non spegne le colonne nuove.
 * `db/pgtap/ui/test-fn-resolve-lista-config.sql` — lista inesistente, catalogo, preset di sistema e
   di profilo, preferenza, colonna sensibile con e senza grant, identificatore normalizzato, colonna
   nuova, priorità dei profili, veste, priorità di ritiro.
@@ -214,6 +239,11 @@ sono spenti.
 * 2026-11-20 — il banner diventa per chiave: guarda solo le chiavi di origine `preferenza`, e nel
   risultato `preset_aggiornato_chiavi`; `preset_base.contenuto_aggiornato_il` è la mappa per chiave.
   L'«ignora» non c'è più: è la riscrittura di `preset_base_id`.
+* 2026-11-21 — `ordinamento` e `filtri` escono dalla cascata, dal risultato e da `origine`: la
+  preferenza non li porta più, l'ordinamento di partenza lo dà `ui.fn_ordinamento_lista` e i filtri di
+  partenza sono dell'interfaccia. Prima passavano così com'erano scritti, anche con colonne spente o
+  bloccate per l'utente. Nello stesso giorno la lettura smette di cadere su una preferenza malformata, e
+  le colonne nuove non si spengono più per una voce senza codice.
 
 ---
 

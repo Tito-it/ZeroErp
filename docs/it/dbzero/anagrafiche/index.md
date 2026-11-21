@@ -19,7 +19,7 @@ search:
 - [emittenti_fiscali](tabelle/emittenti_fiscali.md) — (last review) `anagrafiche.emittenti_fiscali` rappresenta l’anagrafica **degli emittenti fiscali** disponibili nel sistema. Ogni emittente e` un ruolo (`soggetti_ruoli`) con configurazioni operative utili al ciclo di fatturazione.
 - [emittenti_fiscali_billing_account](tabelle/emittenti_fiscali_billing_account.md) — (latest review 08-04-2026) La tabella `anagrafiche.emittenti_fiscali_billing_account` definisce l’associazione tra **billing account** e **emittente fiscale** (ruolo), garantendo che ogni documento abbia un emittente coerente e deterministico.
 - [emittenti_fiscali_utilities](tabelle/emittenti_fiscali_utilities.md) — La tabella **`anagrafiche.emittenti_fiscali_utilities`** definisce i parametri specifici di fatturazione per **emittente fiscale** e **utility**:
-- [fornitori](tabelle/fornitori.md) — `anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
+- [fornitori](tabelle/fornitori.md) — (rev 2026-11-21)
 - [gestori](tabelle/gestori.md) — (latest update 05-12-25) - **Identificare il gestore del sistema**     Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 - [gestori_utilities](tabelle/gestori_utilities.md) — La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
 - [identita_digitali](tabelle/identita_digitali.md) — (latest revision 20-04-2026 — modello SSO multi-veste)
@@ -174,7 +174,7 @@ search:
 - [trgfn_emittenti_fiscali_normalize](funzioni/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_emittenti_fiscali_regime_conferma](funzioni/trgfn_emittenti_fiscali_regime_conferma.md)
 - [trgfn_fornitori_gen_codice](funzioni/trgfn_fornitori_gen_codice.md) — (rev 2026-08-21)
-- [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`** normalizza i dati minimi del fornitore prima del salvataggio, con focus sul campo `canale_fe`.
+- [trgfn_fornitori_guard_normalize](funzioni/trgfn_fornitori_guard_normalize.md) — (rev 2026-11-21)
 - [trgfn_fornitori_guard_ruolo_fornitore](funzioni/trgfn_fornitori_guard_ruolo_fornitore.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore()`** assicura che ogni record di `anagrafiche.fornitori` punti a un `soggetto_ruolo_id` coerente con il ruolo **fornitore** (`codice_interno = 'FO'`).
 - [trgfn_gestori_guard](funzioni/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](funzioni/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
@@ -246,7 +246,7 @@ search:
 - [vw_clienti_lista](views/vw_clienti_lista.md) — (rev 2026-08-21)
 - [vw_conti_bancari_per_ruolo](views/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)
 - [vw_dati_societari](views/vw_dati_societari.md) — (latest review 23-12-25) La vista **`anagrafiche.vw_dati_societari`** offre una lettura unificata dei dati societari con:
-- [vw_fornitori_dettaglio](views/vw_fornitori_dettaglio.md) — (rev 2026-08-21)
+- [vw_fornitori_dettaglio](views/vw_fornitori_dettaglio.md) — (rev 2026-11-21)
 - [vw_indirizzi_dettaglio](views/vw_indirizzi_dettaglio.md) — (latest review 28-11-25) La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
 - [vw_indirizzi_resolved_all](views/vw_indirizzi_resolved_all.md) — (latest review 20-12-25) La vista **`anagrafiche.vw_indirizzi_resolved_all`** rappresenta il **punto unico e canonico di lettura** degli indirizzi in Zero ERP.
 - [vw_indirizzi_resolved_base](views/vw_indirizzi_resolved_base.md) — (latest review 25-03-26) La vista **`anagrafiche.vw_indirizzi_resolved_base`** è il **layer comune** per la risoluzione degli indirizzi, e unifica in un solo output:

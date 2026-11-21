@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_intero_da_jsonb: il numero intero scritto in un valore jsonb, o NULL.
+#   Brief: brief-db-revisione-ui (giro 2: U19, il BB della misura; U12, i cast
+#   sicuri dei resolver).
+#
+# Perche': la stessa domanda («questo valore jsonb e' un intero?») ha oggi tre
+#   risposte diverse. ui.fn_guard_misura_pagina vuole un number di sole cifre;
+#   il resolver delle liste accetta anche la stringa "25" ((->>)::integer); il
+#   resolver delle dashboard un testo di cifre senza zero in testa. E i cast
+#   nudi dei resolver ((elem ->> 'ordine')::INTEGER) cadono con un 22P02 su una
+#   riga scritta prima del guard di forma. Una sede: la leggono il guard di
+#   forma (-24), fn_guard_misura_pagina (-23) e i due resolver (-29, -30).
+# La forma: un jsonb di tipo number scritto con sole cifre, al piu' nove (resta
+#   dentro integer). Un number negativo, decimale o in notazione esponenziale,
+#   una stringa, null, NULL: NULL. Mai un cast che cade.
+# LANGUAGE sql a stringa, IMMUTABLE: non legge tabelle (linee-guida-sql §5c), e
+#   il planner la puo' espandere nel chiamante.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-21-create-fn-intero-da-jsonb-mctit.yaml
+
+  - changeSet:
+      id: 20261120-21-create-fn-intero-da-jsonb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_intero_da_jsonb: il numero intero di un valore jsonb, o NULL; una sede per guard e resolver.
+        Brief: brief-db-revisione-ui (giro 2, U19).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_intero_da_jsonb'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_intero_da_jsonb(
+                  -- jsonb: un valore qualunque di una configurazione; non il riflesso di una colonna
+                  p_valore jsonb)
+               -- integer: una misura, un ordine, una larghezza scritti in un jsonb; non una colonna
+               RETURNS integer
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- CASE e non AND: l'ordine di valutazione e' garantito, e il cast
+                  -- avviene solo su un testo di sole cifre.
+                  SELECT CASE
+                      WHEN jsonb_typeof(p_valore) = 'number'
+                       AND (p_valore #>> '{}') ~ '^[0-9]{1,9}$'
+                      THEN (p_valore #>> '{}')::integer
+                  END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_intero_da_jsonb(jsonb) IS
+                  'Il numero intero non negativo scritto in un valore jsonb, o NULL: un jsonb di tipo number scritto con sole cifre, al più nove. Una stringa (anche "25"), un number negativo, decimale o esponenziale, il null jsonb e NULL danno NULL; la funzione non solleva mai. È la sede unica della domanda «questo valore è un intero?» per le configurazioni di ui: la leggono il guard di forma delle preferenze (ui.fn_check_forma_configurazione), ui.fn_guard_misura_pagina e i due resolver (ui.fn_resolve_lista_config, ui.fn_resolve_dashboard_config). Chi la usa decide il dominio (positivo, una misura del catalogo, il tetto della dashboard). IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_intero_da_jsonb(jsonb);
