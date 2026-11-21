@@ -737,6 +737,7 @@ class TestGetEmittenteFormDefaults(TestCase):
         patcher = patch(
             "apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable",
             return_value=["soggetto_ruolo_id", "codice"],
+            autospec=True,
         )
         self.mock_locks = patcher.start()
         self.addCleanup(patcher.stop)

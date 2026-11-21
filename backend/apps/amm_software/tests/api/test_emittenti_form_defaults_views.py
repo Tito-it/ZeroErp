@@ -51,6 +51,7 @@ class TestEmittentiFormDefaultsView(TestCase):
     @patch(
         "apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable",
         return_value=["soggetto_ruolo_id", "codice"],
+        autospec=True,
     )
     @patch(PARAM_SVC)
     def test_form_defaults_admin_ok(self, mock_ps_cls: MagicMock, _mock_locks: MagicMock) -> None:
