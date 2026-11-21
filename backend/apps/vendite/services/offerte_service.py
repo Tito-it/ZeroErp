@@ -99,9 +99,10 @@ from apps.vendite.services._pricing_gate_helpers import (
     guard_uom_id_positive,
     prezzo_invariato,
     provenienza_dichiarata,
-    resolve_or_check_override_prezzo,
-    rifiuta_provenienza_dichiarata,
     validate_componenti_overrides_authorization,
+)
+from apps.vendite.services._prezzo_riga_testata import (
+    resolve_or_check_override_prezzo_con_listino,
 )
 from apps.vendite.services._campi_canone import check_campi_canone, con_campi_canone
 from apps.vendite.services._righe_codici import normalizza_codici_riga
@@ -1859,12 +1860,14 @@ def offerta_suggerisci_prezzo_riga(
     return {k: _normalize(v) for k, v in result.items()}
 
 
-# Scopo: Thin wrapper sul BB `resolve_or_check_override_prezzo` per le eccezioni
-#        offerta. Mirror di `resolve_or_check_override_prezzo_riga_contratto`.
-#        Normalizza la testata aliasando `data`←`validita_dal` (il BB usa
-#        `testata["data"]` nel guard skip-context). Skip gate se l'offerta
-#        e' senza listino (per coerenza col contratto, anche se sull'offerta
-#        `listino_id` e' obbligatorio).
+# Scopo: il gate prezzi di una riga dell'offerta (le eccezioni): il BB
+#        `resolve_or_check_override_prezzo_con_listino`, lo stesso del
+#        contratto (regola del 2, ok Tid 2026-11-15), col resolver
+#        dell'offerta e la data della testata (`validita_dal`). Senza listino il
+#        gate si salta come sul contratto, anche se sull'offerta `listino_id` e'
+#        obbligatorio.
+# ⚠️ `offerta_suggerisci_prezzo_riga` si legge qui, a ogni chiamata: e' il punto
+#    che i test patchano.
 def resolve_or_check_override_prezzo_riga_offerta(
     *,
     testata: dict[str, Any],
@@ -1876,24 +1879,9 @@ def resolve_or_check_override_prezzo_riga_offerta(
     richiesta_approvazione: bool = False,
     dichiarata: ProvenienzaDichiarata | None = None,
 ) -> EsitoPrezzoRiga:
-    # Senza listino non c'e' gate: il prezzo e' del payload e la provenienza la
-    # decide il DB (MANUALE). ⛔ Una dichiarazione «dal listino» qui non si puo'
-    # verificare: 409, come il gate senza contesto (R-2 della revisione del
-    # 2026-11-15; prima diventava MANUALE in silenzio).
-    if testata.get("listino_id") is None:
-        if dichiarata is not None and payload_prezzo is not None:
-            rifiuta_provenienza_dichiarata(
-                dichiarata, dettaglio="Il documento non ha un listino da cui il prezzo possa venire.",
-                function_name=function_name,
-            )
-        return EsitoPrezzoRiga(prezzo=payload_prezzo)
-
-    testata_normalized = (
-        testata if testata.get("data") is not None
-        else {**testata, "data": testata.get("validita_dal")}
-    )
-    return resolve_or_check_override_prezzo(
-        testata=testata_normalized,
+    return resolve_or_check_override_prezzo_con_listino(
+        testata=testata,
+        campo_data="validita_dal",
         articolo_id=articolo_id,
         uom_id=uom_id,
         payload_prezzo=payload_prezzo,

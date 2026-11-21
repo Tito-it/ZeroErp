@@ -23,6 +23,11 @@ from apps.vendite.services import ordini_service
 from apps.vendite.services.ordini_service import _db_errors
 
 _REPO = "apps.vendite.services.ordini_service.OrdiniRepository"
+# ⚠️ Emittente e data della testata si patchano sulla CLASSE del BB: i metodi si
+#    chiamano fra loro (il gate passa da `resolve_prezzo_riga`, che passa da
+#    `emittente_sr_id`), e solo la patch sulla classe li raggiunge tutti.
+#    L'istanza `_REGOLE_PREZZO` e' `frozen`, e non si patcha.
+_REGOLE = "apps.vendite.services._prezzo_riga_testata.RegolePrezzoTestata"
 # Helper auto-completamento step pratica (CONFERMA_ORDINE/INVIO_COMMESSA): usa
 # PraticheRepository reale → patchato a no-op nei test di transizione stato ordine
 # (SimpleTestCase, DB vietato). L'auto-completamento e' testato a parte.
@@ -360,8 +365,8 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
     #    mock questi test — che parlano di componenti BoM — aprirebbero una
     #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
     @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_REGOLE}.data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_REGOLE}.emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO, autospec=True)
@@ -394,8 +399,8 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
     #    mock questi test — che parlano di componenti BoM — aprirebbero una
     #    connessione vera e in CI fallirebbero per un motivo che non c'entra.
     @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_REGOLE}.data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_REGOLE}.emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO, autospec=True)
@@ -428,8 +433,8 @@ class OrdiniRigaComponentiOverrideTests(SimpleTestCase):
     #        errori sono best-effort — cioe' una riga si salverebbe anche
     #        quando l'IVA non e' determinabile.
     @patch(f"{_SVC}._risolvi_iva_riga", return_value=(9, {"iva_origine": "TITOLO"}))
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_REGOLE}.data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_REGOLE}.emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO, autospec=True)
@@ -921,7 +926,7 @@ class OrdiniPrezzoInvariatoTests(SimpleTestCase):
         }
 
         with self.assertRaises(ServiceError) as cm:
-            ordini_service._resolve_prezzo_riga(
+            ordini_service._REGOLE_PREZZO.resolve_prezzo_riga(
                 repo, testata, articolo_id="ART1", uom_id=5,
             )
 
@@ -954,8 +959,8 @@ class OrdiniRigaDateConsegnaTests(SimpleTestCase):
         return repo
 
     @patch(f"{_SVC}._risolvi_iva_riga", return_value=(None, {}))
-    @patch(f"{_SVC}._data_riferimento", return_value=date(2026, 6, 5))
-    @patch(f"{_SVC}._resolve_emittente_sr_id", return_value=99)
+    @patch(f"{_REGOLE}.data_riferimento", return_value=date(2026, 6, 5))
+    @patch(f"{_REGOLE}.emittente_sr_id", return_value=99)
     @patch(f"{_SVC}.validate_componenti_overrides_authorization")
     @patch(f"{_SVC}.transaction")
     @patch(_REPO, autospec=True)

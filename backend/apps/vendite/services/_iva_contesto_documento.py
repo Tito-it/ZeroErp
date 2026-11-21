@@ -42,6 +42,7 @@ __all__ = [
     "TIPI_DOCUMENTO_AMMESSI",
     "carica_testata",
     "contesto_da_testata",
+    "data_di_riferimento",
     "make_risolvi_iva_riga",
     "normalizza_iva_id",
 ]
@@ -131,6 +132,28 @@ def carica_testata(
     return dict(testata)
 
 
+# Scopo: la data di riferimento di un documento: la sua `data`, ISO o `date`.
+#        Senza, ci si ferma con un errore di dominio, non con un `ValueError`
+#        grezzo da `fromisoformat`. ⭐ Sede unica (regola del 2, ok Tid
+#        2026-11-21): la leggono il risolutore IVA (`contesto_da_testata`) e il
+#        prezzo di riga (`_prezzo_riga_testata.RegolePrezzoTestata`); la frase e'
+#        del chiamante, perche' dice che cosa non si puo' determinare.
+# Perimetro: PURA.
+def data_di_riferimento(
+    testata: Mapping[str, Any], *, error_code: str, message: str, function_name: str,
+) -> date:
+    raw = testata.get("data")
+    if isinstance(raw, date):
+        return raw
+    ErrorManager.require(
+        raw is not None,
+        code=error_code,
+        message=message,
+        function_name=function_name,
+    )
+    return date.fromisoformat(str(raw))
+
+
 # Scopo: Estrae dalla testata i quattro valori che il risolutore vuole —
 #        emittente (PK), billing account, utility e data di riferimento.
 # Perimetro: PURA, nessun I/O tranne il ripiego sull'operatore quando la
@@ -166,13 +189,11 @@ def contesto_da_testata(
     )
     assert fiscale_id is not None
 
-    data_raw = testata.get("data")
     # ⚠️ Il risolutore prende una data e non legge mai l'«oggi» (D14):
-    #    senza, non c'e' niente da passargli. Errore di dominio, non un
-    #    `ValueError` grezzo da `fromisoformat`.
-    ErrorManager.require(
-        data_raw is not None,
-        code=error_code,
+    #    senza, non c'e' niente da passargli.
+    data_rif = data_di_riferimento(
+        testata,
+        error_code=error_code,
         message="Documento senza data: il trattamento IVA non e' determinabile.",
         function_name=function_name,
     )
@@ -181,11 +202,7 @@ def contesto_da_testata(
         "emittente_fiscale_id": int(fiscale_id),
         "billing_account_id": testata.get("billing_account_id"),
         "utility_id": testata.get("utility_id"),
-        "data_riferimento": (
-            data_raw
-            if isinstance(data_raw, date)
-            else date.fromisoformat(str(data_raw))
-        ),
+        "data_riferimento": data_rif,
     }
 
 
