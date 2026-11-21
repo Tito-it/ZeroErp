@@ -536,6 +536,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # E_CONTRATTO_EMITTENTE_NON_RISOLTO, che restano qui perche' ritirati, non
     # cancellati. Stessa frase dei ripieghi delle sorelle.
     "E_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_EMITTENTE_SOGGETTO_IMMUTABILE": "Un emittente fiscale appartiene per sempre al suo soggetto: se e' sul soggetto sbagliato si ritira e si ricrea.",
     "E_EMITTENTE_REGIME_CONFERMA_DERIVATA": "La conferma del regime fiscale la scrive il database. Per confermare il regime si scrive il regime, anche con lo stesso valore.",
     "E_ENTE_INCASSO_CONTO_NON_DI_INCASSO": "Il conto indicato per questo canale di incasso non e' un conto di incasso.",
     "E_ENTE_INCASSO_NON_TROVATO": "Il canale di incasso indicato non esiste, oppure appartiene a un emittente fuori dal tuo perimetro.",
@@ -1500,6 +1501,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_COLONNA_IN_USO": "La colonna e' in uso (preferenze utente, preset o permessi). Disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",
+    "E_UI_CONFIGURAZIONE_FORMA": "La personalizzazione non si puo' salvare: non ha la forma ammessa.",
     "E_UI_DASHBOARD_NON_TROVATA": "Dashboard non trovata.",
     "E_UI_DEFINIZIONE_IN_USO": "La definizione lista e' in uso (preferenze utente, colonne o preset). Disattivala con attivo=false invece di eliminarla.",
     "E_UI_DEFINIZIONE_NON_TROVATA": "Definizione lista non trovata.",
@@ -1512,6 +1514,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_LISTA_NON_TROVATA": "Lista non trovata.",
     "E_UI_MISURA_PAGINA_DEFAULT_MANCANTE": "Manca la misura di default delle righe per pagina: anomalia di catalogo.",
     "E_UI_MISURA_PAGINA_NON_AMMESSA": "La misura di righe per pagina non e' fra quelle ammesse.",
+    "E_UI_MISURA_PAGINA_IMMUTABILE": "Una misura di righe per pagina non si riscrive: una misura nuova e' una riga nuova.",
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "Il flag multi_emittente di una lista non si imposta dall'applicazione: si dichiara dal seed, insieme al lavoro che lo rende vero.",
     "E_UI_PERMESSO_NON_TROVATO": "Permesso colonna non trovato.",
     "E_UI_PERMESSO_VALIDAZIONE": "Permesso colonna non valido.",
@@ -1519,8 +1522,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PREFERENZA_VALIDAZIONE": "Preferenza lista non valida.",
     "E_UI_PRESET_CONTENUTO_DERIVATO": "La data del contenuto e l'impronta della composizione del preset le scrive il database.",
     "E_UI_PRESET_NON_TROVATO": "Preset lista non trovato.",
+    "E_UI_PRESET_POSTO_IMMUTABILE": "Il posto del preset (lista, ambito, profilo, azienda) non si puo' cambiare: spegnilo e creane uno nuovo nel posto giusto.",
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",
+    "E_UI_WIDGET_IN_USO": "La card non si puo' togliere dalla dashboard: la propone un preset. Toglila prima dai preset.",
     "E_UOM_CALENDARIO_NON_TEMPO": "Un'unita' si puo' contare dal calendario solo se e' un'unita' di tempo.",
     # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): la storia delle
     #    conversioni (mappature dell'articolo e conversioni generali). Il

@@ -17,6 +17,7 @@ import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, DATE_FORMAT } from '../../core/
 import { NAV_ICONS } from '../../core/navigation'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
 import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { voceRegimeFiscale } from '../../core/utils/voceRegimeFiscale'
 import SoggettoResolver from './SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
@@ -81,7 +82,9 @@ function defaultForm() {
     codice: null,
     valuta_id: null, modalita_pagamento_id: null, termine_pagamento_id: null,
     ritenuta_acconto: false, ritenuta_aliquota: null,
-    regime_fiscale: null,
+    // Codice del catalogo `config.regimi_fiscali` (FK, RF01…). Facoltativo:
+    // un fornitore privato non ha regime.
+    regime_fiscale_rf: null,
     rating: null, qualifica_scadenza: null,
     note: null, stato_fornitore_id: null
   }
@@ -104,13 +107,18 @@ function populateFormFromDetail(d) {
     termine_pagamento_id: d.termine_pagamento_id,
     ritenuta_acconto: d.ritenuta_acconto ?? false,
     ritenuta_aliquota: d.ritenuta_aliquota,
-    regime_fiscale: d.regime_fiscale,
+    regime_fiscale_rf: d.regime_fiscale_rf ?? null,
     rating: d.rating,
     qualifica_scadenza: parseIsoDate(d.qualifica_scadenza),
     note: d.note,
     stato_fornitore_id: d.stato_fornitore_id
   }
 }
+
+// La voce del regime del fornitore come la conosce il dettaglio: un regime
+// disattivato dopo la scelta resta del fornitore. BB `voceRegimeFiscale`, lo
+// stesso del drawer emittente.
+const voceRegimeCorrente = computed(() => voceRegimeFiscale(detail.value))
 
 function onSoggettoSelezionato(data) { soggettoSelezionato.value = data }
 function onSoggettoCreato(data) { soggettoSelezionato.value = data }
@@ -144,7 +152,7 @@ function buildEditablePayload() {
     termine_pagamento_id: f.termine_pagamento_id || null,
     ritenuta_acconto: f.ritenuta_acconto,
     ritenuta_aliquota: f.ritenuta_aliquota,
-    regime_fiscale: f.regime_fiscale || null,
+    regime_fiscale_rf: f.regime_fiscale_rf || null,
     rating: f.rating,
     // ⛔ Mai `toISOString()` su una data: il DatePicker da' la mezzanotte
     //    LOCALE, e in UTC diventa il giorno prima — fino al 2026-10-04 la
@@ -310,7 +318,18 @@ const canSave = computed(() => isEdit.value || !!soggettoSelezionato.value)
       <div class="form-grid-2col">
         <div class="form-field">
           <label>{{ t('anagrafiche.fornitori.field_regime_fiscale') }}</label>
-          <InputText v-model="form.regime_fiscale" :placeholder="t('anagrafiche.fornitori.placeholder_regime')" />
+          <!-- Dal catalogo dei regimi, come sull'emittente; un codice fuori
+               catalogo e' un 400 sul campo. -->
+          <LookupSelect
+            v-model="form.regime_fiscale_rf"
+            rel="config.regimi_fiscali"
+            value-field="codice_interno"
+            show-code
+            show-clear
+            :voce-corrente="voceRegimeCorrente"
+            :placeholder="t('anagrafiche.fornitori.field_regime_fiscale')"
+            :invalid="campiErrati.includes('regime_fiscale_rf')"
+          />
         </div>
         <div class="form-field">
           <label>{{ t('anagrafiche.fornitori.field_ritenuta_acconto') }}</label>

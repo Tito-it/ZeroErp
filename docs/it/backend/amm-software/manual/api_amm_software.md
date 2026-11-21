@@ -1596,7 +1596,7 @@ Defaults pre-compilazione del form di creazione anagrafica emittente fiscale. Ce
 **Note**:
 
 - Il campo `attivo` **non** passa per `parameters`: la colonna `anagrafiche.emittenti_fiscali.attivo` ha gia' `DEFAULT true`. Il FE non lo include nei defaults.
-- `non_editable_fields` ritornato statico oggi (`['codice', 'soggetto_id']`). In attesa che `dbops.vw_non_editable_fields` (Fase 5) includa anche le tabelle anagrafiche, il FE legge gia' la chiave per non avere breaking change quando la fonte diventera' DB-driven.
+- `non_editable_fields` e' il lock vivo di `dbops.vw_non_editable_fields` per `anagrafiche.emittenti_fiscali`, letto dal BB `compute_non_editable_fields` come nel dettaglio emittente, senza gap: `codice` e `soggetto_ruolo_id` li blocca il DB. ⚠️ Fino al 2026-11-21 era una lista fissa `['codice', 'soggetto_id']` nel service di amm-software, seconda sede della stessa regola; `soggetto_id` non e' una colonna dell'emittente, e il DB non lo bloccava.
 - Best-effort sui cast: parameters mancanti, malformati o fuori enum non sollevano errore. Il form mostra comunque, l'utente compila/seleziona manualmente.
 
 **Response:**
@@ -1609,7 +1609,7 @@ Defaults pre-compilazione del form di creazione anagrafica emittente fiscale. Ce
       "bollo_soglia": null,
       "rounding_policy": "HALF_UP"
     },
-    "non_editable_fields": ["codice", "soggetto_id"]
+    "non_editable_fields": ["codice", "soggetto_ruolo_id"]
   }
 }
 ```
@@ -1769,7 +1769,9 @@ il test `test_processi_presidi_conteggi_api.py` pinna che risolva a questa view
 e non al dettaglio di un processo chiamato «presidi».
 
 **Dipendenze DB.** `dbops.presidi` (catalogo), `dbops.fn_conta_presidio`
-(`SECURITY DEFINER`, attraversa la RLS).
+(`SECURITY INVOKER`: somma i gruppi di `dbops.fn_conta_presidio_per_variante`,
+che e' la sede del perimetro e del filtro, `SECURITY DEFINER`, e attraversa lei
+la RLS).
 
 ### 6.2 POST /api/v1/amm-software/processi/{codice}/esegui-ora/ — «Esegui ora» su una sveglia
 

@@ -2,7 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, con la doc auto-generata del giro 5 da rigenerare e committare. Il giro 5 (§3.5-bis: `20261120-53` … `-62`) è applicato su dbdev coi pgTAP verdi (Tid, 2026-11-22), dopo la correzione del caso 11 di `test-ui-legami-preset-v1`, e committato senza la doc auto-generata. **Al team BE/FE** da ora BE17, BE21 e BE28 (§3.5-bis, §6). **Alla sessione DB** il `/verifica-db` dei giri 1a, 2, 3, 4 e 5 (in una sessione nuova), poi il giro 6. Q50 decisa (a) da Tid il 2026-11-21 (§7.1: il «mai vuota» resta quello del 2026-07-22, niente trigger per U32). Via al giro 5 e numeri dal progressivo `20261120` dati da Tid il 2026-11-21; il giro 4 è committato con la doc auto-generata (`2959cc7396`). Il giro 4 (`20261120-43` … `-52`, §3.4-bis: il catalogo delle liste) è applicato su dbdev coi pgTAP verdi (Tid, 2026-11-21). Il giro 3 (`20261120-36` … `-42`, §3.3-bis: le misure) è applicato su dbdev coi pgTAP verdi e committato con la doc auto-generata rigenerata (Tid, 2026-11-21, `ea04ec5f45`). **In parallelo il team BE/FE**, con tutte le ricadute del giro 2 in un blocco solo (§3.2-bis, «Le ricadute BE/FE del giro 2»: R-BE3, BE8, BE11, BE20, BE25 (2), BE26) e da ora quelle del giro 3, BE10 e FE1 (§3.3-bis, §6); da ora anche quelle del giro 4, BE12-BE15 estesi e BE27 (§3.4-bis). **Alla sessione DB** resta anche il `/verifica-db` dei giri 1a, 2, 3 e 4 (in una sessione nuova). Il giro 2 è applicato su dbdev coi pgTAP verdi: 2a (`20261120-21` … `-31`) e 2b (`20261120-32` … `-35`) (Tid, 2026-11-21); R-BE3 non è ancora fatto, quindi la lista admin dei preset legge una colonna che non c'è più: rottura accettata in sviluppo (Tid, 2026-11-21: niente produzione). Q40 (b), Q41 (a) e Q42 (a) sono decise (Tid, 2026-11-21, §7.1). Le ricadute BE/FE del giro 1b (la parte 1b di BE7 e BE25 (1b), §6) e la risposta a R-BE2 (§3.2-bis) sono fatte dal team BE/FE il 2026-11-21, verdi e committate (`78e17ec4f`, in `Tito-dev` con la PR #175); per Q40 il team BE ha verificato che nessun componente FE scrive `col` (§3.2-bis, «Verifica per Q40»); BE9 era già verificato. Il residuo di BE22 è chiuso: id 665 spento nel CSV e migrato su dbdev (2026-11-21). Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»); committato (`986baa5d8d`, PR #172) con la doc auto-generata rigenerata. Alla sessione DB resta il `/verifica-db` del giro 1a, da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
+**Riparte: il team BE/FE**, con le ricadute del giro 2 che restano (BE8, BE11, BE20, BE25 (2), §3.2-bis, «Le ricadute BE/FE del giro 2») e quelle del giro 3 (BE10, FE1, §3.3-bis). R-BE3 e BE26 sono fatti e verdi sul DB provvisto (team BE, 2026-11-21, §3.2-bis, «Esito di R-BE3 e BE26»), da committare: dbdev non è più rotto. Il giro 3 (`20261120-36` … `-42`, §3.3-bis: le misure; Q44-Q46 decise il 2026-11-21) è committato (`ea04ec5f4`, PR #184) con la doc auto-generata, che lo mostra applicato su dbdev (l'enum, `lista_definizione.uso_misura`, il lucchetto di `misure_pagina.misura`): ⏳ la sessione DB registra qui l'apply e la corsa dei pgTAP di `ui` (rilevato dal team BE all'arrivo, 2026-11-21). **Alla sessione DB** il `/verifica-db` dei giri 1a, 2 e 3 (in una sessione nuova). Il giro 2 è applicato su dbdev coi pgTAP verdi: 2a (`20261120-21` … `-31`) e 2b (`20261120-32` … `-35`) (Tid, 2026-11-21); ~~R-BE3 non è ancora fatto, quindi la lista admin dei preset legge una colonna che non c'è più: rottura accettata in sviluppo~~ (chiusa con R-BE3, 2026-11-21). Q40 (b), Q41 (a) e Q42 (a) sono decise (Tid, 2026-11-21, §7.1). Le ricadute BE/FE del giro 1b (la parte 1b di BE7 e BE25 (1b), §6) e la risposta a R-BE2 (§3.2-bis) sono fatte dal team BE/FE il 2026-11-21, verdi e committate (`78e17ec4f`, in `Tito-dev` con la PR #175); per Q40 il team BE ha verificato che nessun componente FE scrive `col` (§3.2-bis, «Verifica per Q40»); BE9 era già verificato. Il residuo di BE22 è chiuso: id 665 spento nel CSV e migrato su dbdev (2026-11-21). Il giro 1b (`20261120-02` … `-11`, §3.1-ter) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20), dopo il `/verifica-db` dello stesso giorno (quattro correzioni di testo, nessuna al codice: §3.1-ter, «La verifica»); committato (`986baa5d8d`, PR #172) con la doc auto-generata rigenerata. Alla sessione DB resta il `/verifica-db` del giro 1a, da fare. Il giro 2 parte col via di Tid. Le ricadute del giro 1a (BE5-BE7, BE22-BE24, §6) sono fatte e verdi. Il giro 1a (`20261119-09` … `-14`, §3.1-bis) è applicato su dbdev con i pgTAP verdi (Tid, 2026-11-20). Le tabelle di `ui` sono iscritte al seed di primo impianto (Q27, nel
 [brief del seed](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md) §16.15, changeSet `20261119-01` … `-05`, applicati su
 dbdev con i pgTAP verdi il 2026-11-20): i giri che toccano i CSV di `ui` sono sbloccati. Le decisioni Q1-Q36 sono prese
 (2026-11-18 … 2026-11-20); Q27-Q36, dall'analisi critica del 2026-11-20, completano o sostituiscono alcune delle prime, e
@@ -21,9 +21,9 @@ le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e c
 | 5 | team BE | Le ricadute «subito» (BE1, BE2, BE4), che non aspettano il DB; e la verifica di BE9 prima del giro 2 (Q35). ✅ BE1, BE2, BE4 fatti e verdi; ✅ BE9 verificato: nessuno applica ordinamento e filtri risolti, ne nasce Q37, decisa (a): li applica il BE, voce BE25 (2026-11-20, esito in §6); rivisti con `/verifica` e committati su `dev/backend-tid` il 2026-11-21 | §6 | — |
 | 6 | ✅ Tid | Il via al giro 1a (2026-11-20) | §2 | 4-ter |
 | 6-bis | ✅ Tid | Q37-Q39 (§7.1) decise come raccomandate e il via all'1b (2026-11-20) | §3.1-ter, §7.1 | — |
-| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20), committato con la doc auto-generata; ✅ il residuo di BE22 (id 665 spento nel CSV, migrato su dbdev il 2026-11-21); ⏳ il `/verifica-db` dell'1a; ✅ il piano del giro 2 (§3.2-bis), riallineato il 2026-11-21 a R-BE2, a Q40-Q42 e al ritiro di Q38/Q39 §6; ✅ Q43 (a) e il via al giro 2 (Tid, 2026-11-21); ✅ 2a scritto e applicato (2026-11-21); ✅ 2b scritto, applicato, pgTAP verdi (Tid, 2026-11-21); ⏳ il `/verifica-db` del giro 2; ✅ il via al giro 3 e Q44-Q46 (Tid, 2026-11-21); ✅ giro 3 scritto e provato (`20261120-36` … `-42`, 2026-11-21); ✅ giro 3 applicato, pgTAP verdi, committato con la doc auto-generata (Tid, 2026-11-21, `ea04ec5f45`); ⏳ il `/verifica-db` del giro 3; ✅ il via al giro 4 (Tid, 2026-11-21); ✅ il piano del giro 4 (§3.4-bis, 2026-11-21); ✅ Q47 (a) e Q48 (a) (Tid, 2026-11-21); ✅ giro 4 scritto e provato (`20261120-43` … `-52`, 2026-11-21); ✅ giro 4 applicato, pgTAP verdi (Tid, 2026-11-21); ✅ Q49 (a) (Tid, 2026-11-21); ✅ il commit del giro 4 con la doc auto-generata (`2959cc7396`); ⏳ il `/verifica-db` del giro 4; ✅ il via al giro 5 (Tid, 2026-11-21, progressivo `20261120` da `-53`); ✅ il piano del giro 5 (§3.5-bis, 2026-11-21); ✅ Q50 (a) (Tid, 2026-11-21); ✅ giro 5 scritto e provato (`20261120-53` … `-62`, 2026-11-21); ✅ giro 5 applicato, pgTAP verdi (Tid, 2026-11-22); ✅ il commit del giro 5; ⏳ la doc auto-generata del giro 5; ⏳ il `/verifica-db` del giro 5 | §2, §3.2-bis, §3.3-bis, §3.4-bis, §3.5-bis | 6-bis |
-| 7-bis | team BE/FE | ⏳ Da ora: le ricadute del giro 2, tutte insieme (2b applicato il 2026-11-21): R-BE3, BE8, BE11, BE20, BE25 (2), BE26 | §3.2-bis, «Le ricadute BE/FE del giro 2» | 7 |
-| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6), committati in `7e65518b9`. Giro 1b: ✅ BE7 (parte 1b) e BE25 (1b) fatti e verdi (BE + FE, 2026-11-21, esito in §6), committati in `78e17ec4f`. Giro 2: BE8, BE11, BE20, BE25 (2), dopo l'apply. Giro 3: ⏳ da ora BE10, FE1 (giro 3 applicato il 2026-11-21, §3.3-bis). Giro 4: ⏳ da ora BE12-BE15 (estesi) e BE27 (giro 4 applicato il 2026-11-21, §3.4-bis, «Le ricadute BE/FE del giro 4»). Giro 5: ⏳ da ora BE17, BE21, BE28 (giro 5 applicato il 2026-11-22, §3.5-bis, «Le ricadute BE/FE del giro 5») | §6 | 7 |
+| 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20), committato con la doc auto-generata; ✅ il residuo di BE22 (id 665 spento nel CSV, migrato su dbdev il 2026-11-21); ⏳ il `/verifica-db` dell'1a; ✅ il piano del giro 2 (§3.2-bis), riallineato il 2026-11-21 a R-BE2, a Q40-Q42 e al ritiro di Q38/Q39 §6; ✅ Q43 (a) e il via al giro 2 (Tid, 2026-11-21); ✅ 2a scritto e applicato (2026-11-21); ✅ 2b scritto, applicato, pgTAP verdi (Tid, 2026-11-21); ⏳ il `/verifica-db` del giro 2; ✅ il via al giro 3 e Q44-Q46 (Tid, 2026-11-21); ✅ giro 3 scritto e provato (`20261120-36` … `-42`, 2026-11-21), committato (`ea04ec5f4`, PR #184), applicato secondo la doc auto-generata; ⏳ registrare apply e pgTAP del giro 3 (Tid); ⏳ il `/verifica-db` del giro 3 | §2, §3.2-bis, §3.3-bis | 6-bis |
+| 7-bis | team BE/FE | Le ricadute del giro 2, tutte insieme (2b applicato il 2026-11-21). ✅ R-BE3 e BE26 fatti e verdi sul DB provvisto (2026-11-21, esito in §3.2-bis, «Esito di R-BE3 e BE26»), da committare; ⏳ BE8, BE11, BE20, BE25 (2) | §3.2-bis, «Le ricadute BE/FE del giro 2» | 7 |
+| 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6), committati in `7e65518b9`. Giro 1b: ✅ BE7 (parte 1b) e BE25 (1b) fatti e verdi (BE + FE, 2026-11-21, esito in §6), committati in `78e17ec4f`. Giro 2: BE8, BE11, BE20, BE25 (2), dopo l'apply. Giro 3: BE10, FE1, dopo l'apply (§3.3-bis) | §6 | 7 |
 | 9 | sessione DB | Archiviazione in `work-done/` | §10 | 7, 8 |
 
 **Decisioni di Tid:** Q1-Q11 prese il 2026-11-18, Q12-Q25 il 2026-11-19, Q26 il 2026-11-20 (registrate in §7 e nelle
@@ -33,11 +33,11 @@ di filtri e ordinamento: il BE, §7.1). Q44-Q46 il 2026-11-21 (§7.1, dal piano 
 (l'impronta, l'ignorato, la data per chiave: giro 1b) e in §6 (chi applica l'ordinamento, il ritiro dei filtri, il clic
 che non si ricorda: giro 2); BE25 esiste due volte in §6 (il codice d'errore del giro 1b, l'ordinamento applicato del
 giro 2). I due numeri sono citati in changeSet già committati e nel codice BE, quindi non si rinumera: si scrive
-«Q38 §7.1» / «Q38 §6» e «BE25 (1b)» / «BE25 (2)». I numeri nuovi partono da Q43, BE26 e R-BE3 (dal giro 4: Q47, BE27; dal giro 5: Q50, BE28). **Committato:** fino al giro 4
-compreso (giro 2 in `eaed059e6e`, PR #183; giro 3 con la doc auto-generata in `ea04ec5f45`; giro 4 con la doc
-auto-generata in `2959cc7396`). Il giro 5, applicato coi pgTAP verdi, è committato senza la doc auto-generata (§3.5-bis: changeSet `20261120-53` …
-`-62`, CSV, loop dei grant e provisioning, pgTAP, pagine `manual/`, la guida nuova `configurazione-dashboard`)
-(2026-11-22). **Da rigenerare e committare:** la doc auto-generata del giro 5.
+«Q38 §7.1» / «Q38 §6» e «BE25 (1b)» / «BE25 (2)». I numeri nuovi partono da Q43, BE26 e R-BE3. **Committato:** fino al giro 2
+compreso (`eaed059e6e`, PR #183) e il giro 3 (§3.3-bis: changeSet `20261120-36` … `-42`, CSV, pgTAP, pagine `manual/`,
+guida, Q44-Q46: `ea04ec5f4`, PR #184). **Da committare** (`dev/backend-tid`): R-BE3 e BE26 del team BE, e questa testata
+(2026-11-21). ⚠️ Nei CSV dei codici e dei lucchetti c'è anche una riga non di questo brief
+(`E_EMITTENTE_SOGGETTO_IMMUTABILE`, l'altra sessione).
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-18; decisioni registrate fino al 2026-11-21. **A chi:** Tid e team DB.
 > **Origine:** revisione della documentazione dello schema `ui` chiesta da Tid: allinearla allo standard e alle
@@ -685,6 +685,47 @@ intero, elenco chiuso dei punti noti; per ogni garanzia ritirata il censimento d
 Dopo l'apply, non prima: BE8 (la copia della forma si ritira, resta la regola dell'API), BE11, BE20 (la lettura di
 `campo_sorgente` e il 400 di `E_UI_CONFIGURAZIONE_FORMA`), BE25 (2) su `ui.fn_ordinamento_lista`; i codici nuovi in
 policy e ripiego.
+
+**Esito di R-BE3 e BE26 (team BE, 2026-11-21).** Prima del giro, sul DB provvisto (`ZEROERP_TEST_DB_E2E=1`), 8 test di
+`apps.ui.tests.db` erano rossi, e la suite unitaria mockata verde: la lettura admin dei preset cadeva su
+`p.filtri_default` (`UndefinedColumn`, anche dentro l'UPDATE, che rilegge il preset: per questo una misura fuori
+catalogo usciva `E_DATABASE`), il DELETE di una colonna in un preset incontrava la FK composita nuova al posto di
+quella mappata, e tre test di audit muovevano la chiave `ordinamento`. Dopo: 26 su 26 verdi.
+
+* **R-BE3, punto 1.** Via `filtri_default` dalla SELECT e dai commenti (`ui_admin_repository.py`,
+  `lista_preset_admin_service.py`): lo schema OpenAPI non lo esponeva. Via `ordinamento` e `filtri` dalla whitelist
+  della preferenza (`lista_preferenza_service.py`) e dal serializer di `ApiListaPreferenzaView`: nel corpo sono un 400
+  `E_UI_PREFERENZA_VALIDAZIONE`; test unitario nuovo.
+* **R-BE3, punto 2, il censimento.** Letti `backend/` e `frontend/`: **nessun lettore** di `ordinamento`, `filtri`,
+  `origine.ordinamento`, `origine.filtri` in uscita da `ui.fn_resolve_lista_config`. `preferenzaPerChiave.js` scorre
+  le chiavi che il chiamante gli passa (`colonne`, `pagina_dimensione`), `ListaColonneModal` legge solo
+  `origine.pagina_dimensione`, `BannerPreset` mostra le chiavi che il DB manda in `preset_aggiornato_chiavi` senza un
+  elenco suo. Restavano solo commenti stantii in `useListaConfig.js`, riallineati. `widget_nuovi`: lo leggono
+  `useDashboardConfig` (badge in `HomeView`, conteggio in `DashboardWidgetModal`) come numero da mostrare; nessuno ci
+  conta su un conteggio prima del filtro d'area (il conteggio dopo il filtro è quello giusto per il badge). Nessuna
+  richiesta torna al DB.
+* **BE26.** `genera_error_policies` rigenerato col catalogo in git (`--check` allineato): le sole tre voci nuove,
+  `E_UI_CONFIGURAZIONE_FORMA` (`DATO_ERRATO`), `E_UI_PRESET_POSTO_IMMUTABILE` e `E_UI_WIDGET_IN_USO`
+  (`CONFLITTO_STATO`); i tre ripieghi senza segnaposto in `error_messages_fallback.py`; nessun override di
+  `ui_action` (`E_UI_COLONNA_IN_USO`, il gemello, usa il default della classe). FK composite: il DELETE di una colonna
+  (`lista_colonna_admin_service.py`) mappa anche `fk_ui_lista_preset_colonna_colonna_della_lista` sullo stesso rifiuto
+  della FK sulla sola colonna; il replace della composizione (`lista_preset_admin_service.py`, mappa nuova
+  `_FK_COMPOSIZIONE`) dà `400 E_UI_PRESET_VALIDAZIONE` sul campo `colonne` per una colonna inesistente o di un'altra
+  lista (test sul DB nuovo, `test_cancellazione_colonna_db` 4). Le FK composite delle preferenze non hanno un punto da
+  mappare: il BE scrive `preset_base_id` dalla risoluzione della stessa lista, e non mappa per nome l'upsert. Il pool
+  dei widget e i preset di dashboard il BE non li scrive: per `E_UI_WIDGET_IN_USO` bastano policy e ripiego.
+* **Il presidio del seed sull'ordinamento** (`apps/core/tests/test_liste_configurabili_seed.py`, 5-bis e 5-ter) era
+  rosso: chiedeva che `col` fosse un `campo_sorgente` (K-4 di brief-db-lista-colonna-campo-sorgente-null). Q40 (b) e
+  Q42 lo revocano: ora chiede il **codice** di una colonna della lista in qualsiasi stato, e il rosso costruito usa il
+  campo sorgente di una colonna divergente.
+* **Doc.** `api_ui_admin_personalizzazioni.md` (via `filtri_default`, la forma di `ordinamento_default`, il lucchetto
+  del posto, la FK della composizione) e `api_ui_liste.md` (cascata a due chiavi, preferenza senza `ordinamento` e
+  `filtri`); il catalogo BB alle voci `UiRepository.resolve_lista_config` e `ListaPreferenzaService.upsert`, con
+  l'indice rigenerato.
+* ⚠️ **Per BE8, trovato leggendo.** Oggi il BE toglie dalla voce un campo a `null` (il FE manda `larghezza: null`
+  quando l'operatore la svuota) e salva come intero una stringa di sole cifre; il guard del DB rifiuta l'uno e l'altra.
+  Ritirare la copia per intero farebbe di «svuota la larghezza» un 400: quella conversione è trasporto, non forma, e
+  va decisa con BE8 (resta nel BE, o il FE smette di mandare il `null`).
 
 ### 3.3 Giro 3 — le misure
 

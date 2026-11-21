@@ -27,6 +27,7 @@ La view usa `DomainAPIView` con `area_funzionale = "anagrafiche"` e permesso
 | `anagrafiche.fornitori` | Tabella | Tabella master fornitore |
 | `anagrafiche.vw_fornitori_dettaglio` | Vista | Source per lista/search (join soggetto + config) |
 | `config.stati_fornitore` | Tabella | Stati operativi (VE, AT, SO, CE, BL) |
+| `config.regimi_fiscali` | Tabella | Catalogo dei regimi (FK di `regime_fiscale_rf`; la vista ne espone la descrizione) |
 | `anagrafiche.fn_crea_fornitore` | Funzione | Creazione in un'istruzione: ruolo FO (get or create), fornitore in stato `VE`, contatto e indirizzi del ruolo |
 | `config.sistema_codici` + `script.fn_generate_codice` | Funzione | Auto-generazione codice fornitore |
 | `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` | Trigger | Verifica indirizzi obbligatori su assegnazione ruolo |
@@ -92,15 +93,10 @@ whitelist ripiega sul default.
         "modalita_pagamento_codice": "BB",
         "modalita_pagamento_desc": "Bonifico Bancario",
         "termine_pagamento_codice": "30GG",
-        "giorni_pagamento": 30,
-        "fine_mese": true,
-        "split_payment": false,
         "ritenuta_acconto": false,
-        "regime_fiscale": "RF01",
+        "regime_fiscale_rf": "RF01",
         "rating": 80,
         "qualifica_scadenza": null,
-        "canale_fe": "0000000",
-        "pec_email": "acme@pec.it",
         "data_insert": "2026-01-15T10:30:00+01:00",
         "data_update": "2026-03-20T14:00:00+01:00"
       }
@@ -142,15 +138,9 @@ presente) e gli indirizzi del ruolo.
 | `valuta_id` | int | No | FK `config.valute` |
 | `modalita_pagamento_id` | int | No | FK `config.modalita_pagamento` |
 | `termine_pagamento_id` | int | No | FK `config.termini_pagamento` |
-| `giorni_pagamento` | int | No | Giorni pagamento (override manuale) |
-| `fine_mese` | bool | No | Scadenza a fine mese |
-| `split_payment` | bool | No | Split payment attivo |
 | `ritenuta_acconto` | bool | No | Soggetto a ritenuta d'acconto |
 | `ritenuta_aliquota` | float | No | Aliquota ritenuta (obbligatoria se `ritenuta_acconto = true`, validato da trigger DB) |
-| `regime_fiscale` | string | No | Codice regime fiscale SDI (es. `RF01`) |
-| `bollo_esente` | bool | No | Esente da bollo |
-| `canale_fe` | string | No | Codice destinatario SDI (7 caratteri, normalizzato uppercase dal trigger) |
-| `pec_email` | string | No | PEC per fatturazione elettronica (normalizzata lowercase dal trigger) |
+| `regime_fiscale_rf` | string | No | Codice del catalogo `config.regimi_fiscali` (`codice_interno`, es. `RF01`), FK `fk_fornitori_regimi_fiscali` |
 | `rating` | int | No | Rating qualifica 0-100 |
 | `qualifica_scadenza` | date | No | Data scadenza qualifica (ISO 8601) |
 | `note` | string | No | Note libere |
@@ -159,6 +149,13 @@ presente) e gli indirizzi del ruolo.
 
 I booleani vanno inviati come booleani JSON (`true`/`false`); stringhe o numeri → 400 `E_VALIDATION_INPUT`.
 Le stringhe vuote e i `null` valgono come campo assente (default DB).
+Una chiave fuori da questa tabella → 400 `E_ANAG_VALIDAZIONE` (dal 2026-11-21: prima veniva
+scartata in silenzio).
+
+⚠️ **Campi ritirati il 2026-11-21** (brief-db-fornitore-doppioni-del-soggetto): `giorni_pagamento` e
+`fine_mese` stanno nel termine (`termine_pagamento_id`); `split_payment` sul soggetto; `canale_fe` e
+`pec_email` nei dati societari del soggetto; `bollo_esente` non ha sede sul fornitore. `regime_fiscale`
+e' diventato `regime_fiscale_rf`. Mandarli e' un 400.
 
 ### Risposta (200)
 
@@ -176,8 +173,9 @@ Le stringhe vuote e i `null` valgono come campo assente (default DB).
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido; `indirizzi` non lista; elemento indirizzo non oggetto |
+| `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id` mancante o non valido; chiave fuori contratto; `indirizzi` non lista; elemento indirizzo non oggetto; `regime_fiscale_rf` fuori catalogo (campo `regime_fiscale_rf`) |
 | `E_ANAG_DUPLICATO` | 409 | Il soggetto ha gia' il ruolo FORNITORE |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` di un regime del catalogo **spento** (`attivo = false`): un regime spento non si assegna (D-6 di brief-db-fornitore-doppioni-del-soggetto, require del DB). `error.fields` = `regime_fiscale_rf` |
 | `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` | 400 | Indirizzi obbligatori mancanti per il ruolo FO (trigger DB) |
 | `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` | 400 | `ritenuta_acconto = true` senza `ritenuta_aliquota > 0` (trigger DB `trgfn_fornitori_guard_normalize`) |
 | `E_CONTATTO_INCOMPLETO` | 400 | Payload `contatto` parziale: almeno un campo valorizzato MA mancano `nominativo` o `tipo_contatto_id`. Il `context.missing` lista i campi mancanti |
@@ -198,8 +196,6 @@ Il contatto e' opzionale per il fornitore. Stati possibili applicati da
 
 Il trigger `trgfn_fornitori_guard_normalize` applica:
 
-- `canale_fe` → uppercase senza spazi
-- `pec_email` → lowercase trimmed
 - se `ritenuta_acconto = false` → `ritenuta_aliquota` forzato a `NULL`
 - se `ritenuta_acconto = true` con aliquota non valida → solleva
   `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA`
@@ -236,15 +232,11 @@ Restituisce il dettaglio completo di un fornitore con dati soggetto e decodifich
     "modalita_pagamento_descrizione": "Bonifico Bancario",
     "termine_pagamento_id": null,
     "termine_pagamento_descrizione": null,
-    "giorni_pagamento": 30,
-    "fine_mese": true,
-    "split_payment": false,
     "ritenuta_acconto": false,
     "ritenuta_aliquota": null,
-    "regime_fiscale": "RF01",
-    "bollo_esente": false,
-    "canale_fe": "0000000",
-    "pec_email": "acme@pec.it",
+    "regime_fiscale_rf": "RF01",
+    "regime_fiscale_codice": "RF01",
+    "regime_fiscale_descrizione": "Ordinario",
     "rating": 80,
     "qualifica_scadenza": null,
     "stato_codice_interno": "AT",
@@ -288,15 +280,9 @@ oggetto JSON con sole chiavi della tabella sotto: una chiave fuori contratto →
 | `valuta_id` | int | Nullable |
 | `modalita_pagamento_id` | int | Nullable |
 | `termine_pagamento_id` | int | Nullable (trigger require_attivo) |
-| `giorni_pagamento` | int | Nullable |
-| `fine_mese` | bool | |
-| `split_payment` | bool | |
 | `ritenuta_acconto` | bool | |
 | `ritenuta_aliquota` | float | Nullable (obbligatoria se ritenuta_acconto, trigger DB) |
-| `regime_fiscale` | string | Nullable |
-| `bollo_esente` | bool | |
-| `canale_fe` | string | Nullable, 7 char, uppercase (trigger normalize) |
-| `pec_email` | string | Nullable, lowercase (trigger normalize) |
+| `regime_fiscale_rf` | string | Nullable; codice di `config.regimi_fiscali` (FK `fk_fornitori_regimi_fiscali`) |
 | `rating` | int | Nullable, 0-100 (check DB) |
 | `qualifica_scadenza` | date | Nullable |
 | `note` | string | Nullable |
@@ -316,8 +302,9 @@ oggetto JSON con sole chiavi della tabella sotto: una chiave fuori contratto →
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori contratto; corpo vuoto (dal 2026-10-14: prima 404) |
+| `E_ANAG_VALIDAZIONE` | 400 | Chiave fuori contratto (anche i campi ritirati il 2026-11-21, vedi la creazione); corpo vuoto (dal 2026-10-14: prima 404); `regime_fiscale_rf` fuori catalogo (campo `regime_fiscale_rf`) |
 | `E_VALIDATION_INPUT` | 400 | Corpo non JSON o non oggetto |
+| `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` di un regime del catalogo **spento** (`attivo = false`): un regime spento non si assegna (D-6 di brief-db-fornitore-doppioni-del-soggetto, require del DB). `error.fields` = `regime_fiscale_rf`; anche `attivo: true` su un fornitore che tiene un regime spento nel frattempo |
 | `E_ANAG_NOT_FOUND` | 404 | Fornitore non trovato |
 
 ---
@@ -330,7 +317,6 @@ backend Python:
 | Regola | Oggetto DB |
 | --- | --- |
 | Validazione ruolo FO | `trgfn_fornitori_guard_ruolo_fornitore` |
-| Normalizzazione canale_fe (uppercase) e pec_email (lowercase) | `trgfn_fornitori_guard_normalize` |
 | Coerenza ritenuta (aliquota obbligatoria se ritenuta_acconto = true) | `trgfn_fornitori_guard_normalize` |
 | Blocco modifica codice | `script.trgfn_lock_columns('codice')` |
 | Blocco delete senza GUC | `script.trgfn_delete_block_by_guc('zeroerp.maintenance_ruoli_delete')` |
@@ -339,7 +325,7 @@ backend Python:
 | Indirizzi obbligatori per ruolo FO | `trgfn_soggetti_ruoli_guard_indirizzi_required` |
 | Rating range 0-100 | `chk_fornitori_rating` |
 | Ritenuta aliquota range | `chk_fornitori_ritenuta_aliquota` |
-| Canale FE lunghezza 7 | `chk_fornitori_canale_fe_len` |
+| Regime fiscale dal catalogo | `fk_fornitori_regimi_fiscali` → `config.regimi_fiscali(codice_interno)` |
 | Auto-generazione codice | `config.sistema_codici` + `script.fn_generate_codice` |
 | Storicizzazione | `script.trgfn_storico_generic('fornitori_id')` |
 | Audit timestamp/user | `script.trgfn_audit_data_user_generic` |

@@ -165,11 +165,6 @@ class ApiListaPreferenzaView(DomainAPIView):
                     child=serializers.DictField(),
                     required=False,
                 ),
-                "ordinamento": serializers.ListField(
-                    child=serializers.DictField(),
-                    required=False,
-                ),
-                "filtri": serializers.DictField(required=False),
                 "pagina_dimensione": serializers.IntegerField(required=False),
             },
         ),

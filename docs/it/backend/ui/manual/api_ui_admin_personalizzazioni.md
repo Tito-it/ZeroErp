@@ -181,7 +181,6 @@ Errori:
       "emittente_ragione_sociale": null,
       "pagina_dimensione": 25,
       "ordinamento_default": [{"col": "ragione_sociale", "dir": "asc"}],
-      "filtri_default": {"attivo": true},
       "attivo": true,
       "colonne_count": 14,
       "nata_dal_seed": true,
@@ -247,14 +246,16 @@ Errori:
   "emittente_fiscale_id": null,
   "pagina_dimensione": 25,
   "ordinamento_default": [{"col": "ragione_sociale", "dir": "asc"}],
-  "filtri_default": {"attivo": true},
   "attivo": true
 }
 ```
 
 Whitelist payload: `lista_id`, `codice`, `descrizione`, `ambito`,
 `profilo_accesso_id`, `emittente_fiscale_id`,
-`pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo`.
+`pagina_dimensione`, `ordinamento_default`, `attivo`. ⛔ `filtri_default` non
+esiste più (Q38 di brief-db-revisione-ui; colonna ritirata dal DB col giro 2,
+2026-11-21): i filtri di partenza di una lista sono dello store, e la chiave
+nel payload è un `400` della whitelist.
 `lista_id` viene dal path: il valore in body e' sovrascritto dalla view.
 
 Vincoli:
@@ -278,8 +279,12 @@ Vincoli:
   applicava un suo tetto a `500`. Il drawer la sceglie da un `Select` sulle
   misure del catalogo, e la manda sempre (anche `null`: e' il modo di tornare
   al default)
-- `ordinamento_default` (lista o null) / `filtri_default` (oggetto o
-  null) — formato trasparente al BE
+- `ordinamento_default` (lista o `null` = il preset non dice l'ordinamento) —
+  il backend ne controlla solo che sia una lista; la forma la giudica il DB
+  (giro 2 di brief-db-revisione-ui): ogni voce `{col, dir}` con le sole due
+  chiavi, `col` il **codice** di una colonna della lista (accesa o spenta, mai
+  il campo sorgente: Q40 (b)), unico nell'elenco, `dir` `asc` o `desc`.
+  Altrimenti `400 E_UI_CONFIGURAZIONE_FORMA`, con la voce e il motivo
 - `attivo` (bool stretto) — default `false`: la bozza nasce spenta, si
   compone e poi si accende. ⭐ Un posto (lista, ambito, profilo, azienda) ha
   al più **un** preset acceso: l'UNIQUE parziale `uq_ui_lista_preset_posto`
@@ -312,7 +317,7 @@ Errori:
 - Body JSON: subset dei campi mutabili presenti nel payload.
 
 Whitelist update: `codice`, `descrizione`,
-`pagina_dimensione`, `ordinamento_default`, `filtri_default`, `attivo`.
+`pagina_dimensione`, `ordinamento_default`, `attivo`.
 
 Su un preset nato dal seed, `codice` è una colonna del programma: il guard
 risponde `409 E_SEED_COLONNA_DEL_SOFTWARE` col campo acceso (R-UI2).
@@ -320,7 +325,10 @@ risponde `409 E_SEED_COLONNA_DEL_SOFTWARE` col campo acceso (R-UI2).
 Campi **immutabili** (rifiutati con `E_UI_PRESET_VALIDAZIONE` se
 presenti nel payload, prima della validazione altri campi):
 `lista_id`, `ambito`, `profilo_accesso_id`, `emittente_fiscale_id`.
-Per cambiare ambito o riferimenti si crea un nuovo preset.
+Per cambiare ambito o riferimenti si crea un nuovo preset. ⭐ Dal giro 2b di
+brief-db-revisione-ui (U14) il posto lo tiene anche il DB, col lucchetto
+`E_UI_PRESET_POSTO_IMMUTABILE` (`409`): la rete per chi scrive senza passare dal
+service.
 
 #### Output
 
@@ -330,6 +338,8 @@ Errori:
 
 - `400` `E_UI_PRESET_VALIDAZIONE` — payload invalido o campi immutabili,
   o un secondo preset acceso nello stesso posto (campo `attivo`)
+- `400` `E_UI_CONFIGURAZIONE_FORMA` — `ordinamento_default` fuori forma
+  (vedi §4)
 - `400` — payload vuoto (`Nessun campo aggiornabile presente`)
 - `404` `E_UI_PRESET_NON_TROVATO`
 - `409` `E_SEED_COLONNA_DEL_SOFTWARE` — una colonna del programma su un
@@ -436,7 +446,11 @@ Vincoli:
 - `colonna_id` (int positivo, FK su `ui.lista_colonna.id`) — obbligatorio;
   duplicati in payload rifiutati con `E_UI_PRESET_VALIDAZIONE` (PK
   `(preset_id, colonna_id)` farebbe scattare un IntegrityError, ma
-  filtriamo presto per messaggio parlante)
+  filtriamo presto per messaggio parlante). ⭐ La colonna è **della lista del
+  preset**: dal giro 2b di brief-db-revisione-ui (U14) lo garantisce la FK
+  composita `fk_ui_lista_preset_colonna_colonna_della_lista`, e il service la
+  traduce in `400 E_UI_PRESET_VALIDAZIONE` sul campo `colonne`. Il `lista_id`
+  della riga lo scrive il DB dal preset: il backend non lo passa
 - `ordine` (int positivo) — obbligatorio
 - `larghezza` (int positivo) — opzionale, default null
 - `visibile`, `fissata` (bool stretto) — opzionali; default `visibile=true`,

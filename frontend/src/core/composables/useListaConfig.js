@@ -4,8 +4,8 @@
 //          risolta dal BE);
 //        - fetch lazy del catalogo colonne arricchito (per la modale);
 //        - mutazione locale della config (colonne, pagina_dimensione) con
-//          tracking dirty; `ordinamento` e `filtri` arrivano dal resolver ma
-//          non si salvano (Q38, Q39 di brief-db-revisione-ui);
+//          tracking dirty (`ordinamento` e `filtri` non sono piu' nella
+//          configurazione: Q38/Q39 §6 di brief-db-revisione-ui, giro 2);
 //        - save (PUT preferenza con Idempotency-Key) e reset (DELETE
 //          preferenza), entrambi seguiti da reload della config.
 //
@@ -43,7 +43,7 @@ import { chiaviScelte } from '../preferenzaPerChiave'
 export function useListaConfig(codice, opzioni = {}) {
   // Configurazione corrente (mutata localmente da applyChange).
   // Shape allineata al payload accettato da PUT /preferenza/:
-  //   {colonne[], ordinamento[], filtri{}, pagina_dimensione}
+  //   {colonne[], pagina_dimensione}
   // + colonne_nuove (read-only dal BE) per il badge UX.
   const config = ref(null)
 
@@ -145,10 +145,8 @@ export function useListaConfig(codice, opzioni = {}) {
   async function save() {
     if (!config.value) return null
     // Estrai solo i campi che si salvano: un sottoinsieme di
-    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS. ⚠️ Dal
-    // 2026-11-20 e' piu' stretta di proposito: il BE accetta ancora
-    // `ordinamento` e `filtri` finche' il DB non li ritira (Q38/Q39 di
-    // brief-db-revisione-ui), il FE non li manda gia' piu'.
+    // ListaPreferenzaService._PAYLOAD_KEYS / _COLONNA_KEYS (`ordinamento` e
+    // `filtri` li hanno ritirati DB e BE col giro 2 di brief-db-revisione-ui).
     //
     // Drift risk: questa whitelist FE deve restare sincronizzata con
     // quella BE (apps/ui/services/lista_preferenza_service.py). Se il BE
@@ -265,9 +263,8 @@ function _deepClone(obj) {
 // ⛔ `ordinamento` e `filtri` NON si salvano (Q38 e Q39 di
 //    brief-db-revisione-ui, Tid 2026-11-20): i filtri si ritirano, e il clic
 //    sull'intestazione non si ricorda; l'ordinamento di partenza e' del preset.
-//    Il salvataggio e' per chiave: una preferenza vecchia che le porta (salvata
-//    prima del 2026-11-01, quando si salvava la configurazione intera) le perde
-//    al primo salvataggio, ed e' l'esito voluto.
+//    Col giro 2 (2026-11-21) il DB le ha tolte dalle preferenze salvate e il
+//    suo guard di forma le rifiuta (`E_UI_CONFIGURAZIONE_FORMA`).
 const _PAYLOAD_ROOT_KEYS = ['colonne', 'pagina_dimensione']
 const _COLONNA_KEYS = ['codice', 'ordine', 'larghezza', 'visibile', 'fissata']
 

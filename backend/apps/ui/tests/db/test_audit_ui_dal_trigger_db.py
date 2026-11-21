@@ -167,21 +167,26 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
     #    transazione darebbe un istante nuovo, e il test la vedrebbe.
     def test_contenuto_fermo_se_cambia_solo_la_descrizione(self) -> None:
         prima = self._contenuto()
-        self.assertIn("ordinamento", prima)
+        self.assertIn("pagina_dimensione", prima)
         self.assertTrue(self.repo.update_preset(self.preset_id, {"descrizione": "Altra"}))
         self.assertTrue(self.repo.update_preset(self.preset_id, {"attivo": True}))
         self.assertEqual(self._contenuto(), prima)
 
-    # Si sposta la sola chiave cambiata.
+    # Si sposta la sola chiave cambiata. ⭐ Dal giro 2 di brief-db-revisione-ui
+    # (Q38/Q39 §6) le chiavi di una lista sono `colonne` e `pagina_dimensione`:
+    # `ordinamento_default` resta del preset ma non e' una chiave del banner,
+    # quindi cambiarlo non sposta niente (era la chiave che questo test muoveva).
     def test_contenuto_si_sposta_se_cambia_il_contenuto(self) -> None:
         prima = self._contenuto()
         self.assertTrue(self.repo.update_preset(
             self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
         ))
+        self.assertEqual(self._contenuto(), prima)
+
+        self.assertTrue(self.repo.update_preset(self.preset_id, {"pagina_dimensione": 100}))
         dopo = self._contenuto()
-        self.assertGreater(dopo["ordinamento"], prima["ordinamento"])
-        # Le altre chiavi, quali che siano (il giro 2 ritira `filtri`).
-        for chiave in set(prima) - {"ordinamento"}:
+        self.assertGreater(dopo["pagina_dimensione"], prima["pagina_dimensione"])
+        for chiave in set(prima) - {"pagina_dimensione"}:
             with self.subTest(chiave=chiave):
                 self.assertEqual(dopo[chiave], prima[chiave])
 
@@ -217,9 +222,7 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
 
         # Il contenuto cambia: il secondo salvataggio riallinea lo snapshot
         # anche con la stessa base (ramo ON CONFLICT DO UPDATE).
-        self.assertTrue(self.repo.update_preset(
-            self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
-        ))
+        self.assertTrue(self.repo.update_preset(self.preset_id, {"pagina_dimensione": 100}))
         (contenuto_nuovo,) = self._contenuto_jsonb()
         self.assertNotEqual(contenuto_nuovo, contenuto)
         repo.upsert_preferenza(

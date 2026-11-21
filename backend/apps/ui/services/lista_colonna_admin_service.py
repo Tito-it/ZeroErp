@@ -308,10 +308,18 @@ class ListaColonnaAdminService:
         except IntegrityError as exc:
             # La FK NO ACTION dei preset, se un preset e' nato fra il
             # controllo preventivo e il DELETE; il ripiego per FK future.
+            # ⭐ Le FK dei preset verso la colonna sono DUE dal giro 2b di
+            #    brief-db-revisione-ui (U14): quella sulla sola colonna e la
+            #    composita (colonna, lista), entrambe NO ACTION. Quale delle
+            #    due scatti per prima non e' un contratto: dicono la stessa
+            #    cosa, e hanno lo stesso rifiuto.
             map_integrity_error(
                 exc,
                 fk_constraints={
                     "fk_lista_preset_colonna_lista_colonna": (
+                        E_COLONNA_IN_USE, _MSG_COLONNA_IN_PRESET,
+                    ),
+                    "fk_ui_lista_preset_colonna_colonna_della_lista": (
                         E_COLONNA_IN_USE, _MSG_COLONNA_IN_PRESET,
                     ),
                 },

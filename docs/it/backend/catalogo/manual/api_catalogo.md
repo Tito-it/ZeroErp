@@ -1065,7 +1065,8 @@ del catalogo non lo chiedono. Le `PATCH` leggono il corpo con
     `catalogo.note_articoli_componenti` (dal 2026-11-11, §5)
   - `config.parameters` (`CATALOGO_UOM_OP_DEFAULT_*`,
     `CATALOGO_BOM_DEFAULT_*`, `DEFAULT_IVA`, `NOTE_DEFAULT_*`)
-  - `dbops.automation_lock_columns` (registro lock_columns)
+  - `dbops.automation_lock_columns` (registro da cui nascono i trigger di lock:
+    il backend non lo legge, legge la vista qui sotto)
 - Viste/funzioni:
   - `catalogo.vw_articoli_dettaglio`
   - `catalogo.vw_articoli_uom_operativa_dettaglio` (capability da
@@ -1081,7 +1082,9 @@ del catalogo non lo chiedono. Le `PATCH` leggono il corpo con
     `vendite.fn_prezzi_legame_oltre_la_fine` (§4.5)
   - `catalogo.fn_get_uom_base(...)`
   - `catalogo.fn_get_uom_factor(...)`
-  - `dbops.vw_non_editable_fields` (alias semantico filtrato)
+  - `dbops.vw_non_editable_fields` (il lock **vivo**: ogni colonna che un trigger
+    di lock montato blocca, con `trigger_name`; dal 2026-11-09 non elenca piu' le
+    righe del registro, che nessun trigger poteva non applicare)
 
 ## Note di migrazione
 

@@ -730,6 +730,18 @@ class TestCastParamHelpers(TestCase):
 class TestGetEmittenteFormDefaults(TestCase):
     """Test AmmSoftwareService.get_emittente_form_defaults()."""
 
+    # Scopo: I lock del DB li legge il BB `compute_non_editable_fields`, la
+    #        stessa lettura del dettaglio emittente, senza gap: la lista e'
+    #        quella del lock vivo.
+    def setUp(self):
+        patcher = patch(
+            "apps.core.services.non_editable_fields_helper.LockColumnsRepository.list_non_editable",
+            return_value=["soggetto_ruolo_id", "codice"],
+            autospec=True,
+        )
+        self.mock_locks = patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(PARAM_SVC)
     def test_get_emittente_form_defaults_ok(self, mock_ps_cls):
         # Happy path con i 3 valori seedati (brief DB 2026-04-29).
@@ -750,7 +762,8 @@ class TestGetEmittenteFormDefaults(TestCase):
             "bollo_soglia": None,
             "rounding_policy": "HALF_UP",
         })
-        self.assertEqual(result["non_editable_fields"], ["codice", "soggetto_id"])
+        self.assertEqual(result["non_editable_fields"], ["codice", "soggetto_ruolo_id"])
+        self.mock_locks.assert_called_once_with("anagrafiche", "emittenti_fiscali")
         # Verifica chiamata ParameterService col contesto utente.
         mock_ps_cls.return_value.get_defaults.assert_called_once_with(
             ["EMITTENTE_DEFAULT_BOLLO_AUTO", "EMITTENTE_DEFAULT_BOLLO_SOGLIA", "EMITTENTE_DEFAULT_ROUNDING_POLICY"],

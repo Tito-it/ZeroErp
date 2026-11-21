@@ -6,7 +6,11 @@
 #        DATABASE VERO (BE4 di brief-db-revisione-ui, Q18 decisa da Tid il
 #        2026-11-19): la FK `fk_lista_preset_colonna_lista_colonna` e' NO
 #        ACTION, e il service rifiuta con E_UI_COLONNA_IN_USO nominando i
-#        preset, sia dal controllo preventivo sia dalla FK.
+#        preset, sia dal controllo preventivo sia dalla FK. Dal giro 2b
+#        (U14, 2026-11-21) le FK dei preset verso la colonna sono due, la
+#        sola colonna e la composita (colonna, lista): la mappa le porta
+#        tutte e due, e la composita rifiuta anche una colonna di un'altra
+#        lista nella composizione.
 # Note: ⭐ Prova la GIUNTURA che i mock non vedono: la query dei preset che
 #       compongono la colonna, e il testo dell'IntegrityError di PostgreSQL che
 #       la mappa `fk_constraints` deve riconoscere per nome.
@@ -24,6 +28,10 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
    ferma il DELETE e arriva lo stesso codice, non il ripiego generico.
 3) CancellazioneColonnaDbTests.test_colonna_fuori_dai_preset_si_cancella
    tolta dal preset, la colonna si cancella: il preset vuoto non la ferma.
+4) CancellazioneColonnaDbTests.test_colonna_di_un_altra_lista_fuori_dal_preset
+   l'altro lato della stessa FK composita (giro 2b, U14): una colonna di
+   un'altra lista non entra nel preset; 400 E_UI_PRESET_VALIDAZIONE col campo
+   `colonne`, non il ripiego generico.
 """
 from __future__ import annotations
 
@@ -40,6 +48,10 @@ from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.services.lista_colonna_admin_service import (
     E_COLONNA_IN_USE,
     ListaColonnaAdminService,
+)
+from apps.ui.services.lista_preset_admin_service import (
+    E_PRESET_VALIDATION,
+    ListaPresetAdminService,
 )
 
 
@@ -122,3 +134,28 @@ class CancellazioneColonnaDbTests(unittest.TestCase):
         esito = self.svc.delete_colonna(self.colonna_id)
         self.assertEqual(esito, {"deleted": True, "id": self.colonna_id})
         self.assertFalse(self._colonna_esiste())
+
+    def test_colonna_di_un_altra_lista_fuori_dal_preset(self) -> None:
+        altra_lista_id = self.repo.create_definizione({
+            "codice": "ui.test_cancella_colonna_altra",
+            "descrizione": "L'altra lista del test",
+            "schema_dati": "ui",
+            "vista_sql": None,
+            "attivo": False,
+        })
+        altra_colonna_id = self.repo.create_colonna({
+            "lista_id": altra_lista_id,
+            "codice": "test_canc_altra",
+            "etichetta": "Altra",
+            "tipo_colonna": "informazione",
+            "tipo_dato": "string",
+            "ordine_default": 1,
+            "attivo": False,
+        })
+        errore = self._rifiuto(lambda: ListaPresetAdminService().replace_preset_colonne(
+            self.preset_id, {"colonne": [{"colonna_id": altra_colonna_id, "ordine": 1}]},
+        ))
+        self.assertEqual(errore.code, E_PRESET_VALIDATION)
+        self.assertEqual(ErrorTranslator.get_http_status(errore), 400)
+        self.assertIn("della lista del preset", errore.message)
+        self.assertEqual(errore.fields, ("colonne",))

@@ -77,7 +77,11 @@ class FornitoriView(DomainAPIView):
             "termine_pagamento_id": serializers.IntegerField(required=False),
             "ritenuta_acconto": serializers.BooleanField(required=False),
             "ritenuta_aliquota": serializers.FloatField(required=False),
-            "regime_fiscale": serializers.CharField(required=False),
+            "regime_fiscale_rf": serializers.CharField(
+                required=False, allow_null=True,
+                help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
+                          "Fuori catalogo: 400 sul campo.",
+            ),
             "rating": serializers.IntegerField(required=False),
             "qualifica_scadenza": serializers.DateField(required=False),
             "note": serializers.CharField(required=False),
@@ -116,14 +120,18 @@ class FornitoriDetailView(DomainAPIView):
             "termine_pagamento_id": serializers.IntegerField(required=False),
             "ritenuta_acconto": serializers.BooleanField(required=False),
             "ritenuta_aliquota": serializers.FloatField(required=False),
-            "regime_fiscale": serializers.CharField(required=False),
+            "regime_fiscale_rf": serializers.CharField(
+                required=False, allow_null=True,
+                help_text="Codice del catalogo config.regimi_fiscali (es. RF01). "
+                          "Fuori catalogo: 400 sul campo.",
+            ),
             "rating": serializers.IntegerField(required=False),
             "qualifica_scadenza": serializers.DateField(required=False),
             "note": serializers.CharField(required=False),
         }),
         responses={200: inline_serializer(name="FornitoreUpdateResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, FE, rating, note).
+    # Scopo: Aggiorna campi editabili del fornitore (pagamento, fiscale, rating, note).
     def patch(self, request: Request, fornitore_id: int) -> JsonResponse:
         svc = FornitoriService()
         result = svc.update_fornitore(fornitore_id, corpo_oggetto(request))

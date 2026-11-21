@@ -5,11 +5,14 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-21
 
-**Riparte: il team BE/FE** col §4, dopo `/arrivi-db`: da adesso lista e dettaglio dei fornitori leggono colonne che
-la vista non ha più, finché il BE non passa (accettato da Tid). I giri A e B (`20261121-01` … `-07`, §5.5 e §5.6) sono
-applicati su dbdev con i pgTAP verdi (Tid, 2026-11-21, §5.7). Committati in `4ea18ba7d1` (2026-11-21). Alla sessione DB restano il
-`/verifica-db` e, con Tid, la doc auto-generata rigenerata. D-3, D-4 e D-5 sono decise (Tid, 2026-11-21, §5.4). Il lato BE/FE
-del primo passaggio è fatto (§1) e committato (`56c7fee9f6`, PR #182).
+**Riparte: Tid**, col commit del lavoro BE/FE non committato (il §4, §6; il test e2e del regime spento, §7.2 «Dopo il
+push») e il collaudo a video del drawer; poi **la sessione DB** con la nota sul motivo del pgTAP (§7.2, punto 4 di
+«Dopo il push») e l'archiviazione. La D-6 nella forma della D-7 «2» è applicata e pushata (`20261121-10` … `-15`,
+`790fc0432`, PR #185), e la sessione BE/FE l'ha provata sui due drawer. Il `/verifica-db` dei giri
+A e B è fatto (§7) e la doc auto-generata è rigenerata (`eaed059e6`).
+Lista e dettaglio dei fornitori tornano a funzionare sul DB vero (§6). I giri A e B (`20261121-01` … `-07`, §5.5 e §5.6)
+sono applicati su dbdev con i pgTAP verdi (§5.7) e committati in `4ea18ba7d1`. D-1 … D-5 decise. Il primo passaggio
+BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 2026-11-21, §7.2: la «1» è stata rivista da Tid nella sessione DB); nessuna decisione aperta.
 
 | # | Chi | Che cosa | Dipende da |
 | --- | --- | --- | --- |
@@ -18,9 +21,12 @@ del primo passaggio è fatto (§1) e committato (`56c7fee9f6`, PR #182).
 | 2-bis | ✅ sessione DB | Ricognizione dei lettori DB e dei presidi (§5) | 2 |
 | 2-ter | ✅ Tid | D-3, D-4, D-5 come raccomandate, e il via al giro A (2026-11-21) | 2-bis |
 | 3 | ✅ sessione DB e Tid | Giro A: via le tre colonne dal catalogo della lista (§3), nella forma del §5.2. Scritto e provato (§5.5); applicato su dbdev, pgTAP verdi (2026-11-21) | 2-ter |
-| 4 | sessione DB e Tid | Giro B: via i sei campi da tabella, vista, madre e guard (§3); il regime su `config.regimi_fiscali` e `acquisti.ordini` sul termine (§5.3, D-3, D-4); il residuo del registro chiuso (D-5). ✅ Scritto e provato (§5.6), anticipato prima del BE (Tid); ✅ applicato su dbdev, pgTAP verdi (2026-11-21, §5.7); ✅ committato (`4ea18ba7d1`); ⏳ `/verifica-db` in una sessione nuova; ⏳ doc auto-generata rigenerata (Tid) | 3 |
-| 5 | **team BE/FE** ⏭️ | Il §4 intero, dopo `/arrivi-db` | 4 |
-| 6 | team DB | Chiusura: archiviazione | 5 |
+| 4 | sessione DB e Tid | Giro B: via i sei campi da tabella, vista, madre e guard (§3); il regime su `config.regimi_fiscali` e `acquisti.ordini` sul termine (§5.3, D-3, D-4); il residuo del registro chiuso (D-5). ✅ Scritto e provato (§5.6), anticipato prima del BE (Tid); ✅ applicato su dbdev, pgTAP verdi (2026-11-21, §5.7); ✅ committato (`4ea18ba7d1`); ✅ doc auto-generata rigenerata (`eaed059e6`); ✅ `/verifica-db` (§7, 2026-11-21) | 3 |
+| 5 | ✅ team BE/FE | Il §4 intero, col censimento (§6, 2026-11-21); ⏳ commit di Tid; ⏳ collaudo a video del drawer (Tid) | 4 |
+| 5-bis | ✅ Tid | D-6 «a»: il regime spento non si assegna (2026-11-21, §7.2) | 4 |
+| 5-ter | ✅ sessione DB | La D-6 nella forma della D-7 «2»: REQUIRE sulle due FK del regime e BLOCK su `config.regimi_fiscali` (§7.2). Applicato su dbdev e pushato (`20261121-10` … `-15`, `790fc0432`, PR #185); i due pgTAP del §7.3 corretti nello stesso giro | 5-bis |
+| 5-quater | ✅ team BE/FE | La prova del rifiuto `E_ATTIVO_PADRE_NON_ATTIVO` sul campo `regime_fiscale_rf` dei due drawer: nessun codice nuovo, un test e2e (§7.2, «Dopo il push», 2026-11-21); ⏳ commit di Tid | 5-ter |
+| 6 | team DB | Chiusura: archiviazione | 5, 5-ter, 5-quater |
 
 ## 1. Che cosa ha fatto il BE/FE (2026-11-21)
 
@@ -87,6 +93,8 @@ uscirebbe 500 fino al commit del BE. Quindi: giro A (il catalogo non le chiede p
 giro B (vista e tabella).
 
 ## 4. Dopo l'apply, al team BE
+
+✅ **Fatto il 2026-11-21 (sessione BE/FE), §6.**
 
 ⚠️ **Rivisto il 2026-11-21 (sessione DB):** i giri A e B vanno sul DB insieme, e il BE passa **dopo** tutti e due
 (Tid). La richiesta è una sola, ed è questa. Dal momento dell'apply fino al passaggio del BE la lista e il dettaglio
@@ -261,6 +269,8 @@ DDL su trigger di `ci_apply` e GRANT ai ruoli batch sono verdi sui sette file.
   Se esce qualcosa, si corregge a mano.
 * **Il trigger «termine attivo» su `acquisti.ordini` e la coppia ATTIVO sul regime** nascono da `ci_apply`. La prova
   non li ha visti, e nessun pgTAP di questo giro li cita.
+  ⚠️ **Smentito per il regime il 2026-11-21 (§7.1):** il motore ATTIVO salta la FK, perché `regime_fiscale_rf` non
+  finisce in `_id`. Il «termine attivo» su `acquisti.ordini` invece c'è.
 * **I valori delle sei colonne si perdono.** Le loro sedi vere (soggetto, dati societari, termine) esistono già, e
   nessuno le scriveva più. Lo stesso vale per i giorni e il fine mese degli ordini di acquisto: non dicono quale
   termine del catalogo sia.
@@ -283,4 +293,224 @@ Restano aperti:
   catalogo, non dal markdown;
 * ✅ il commit: `4ea18ba7d1` (2026-11-21), coi soli file di questo cantiere. Da PROJECT_CONTEXT è entrata la sola
   riga del residuo (D-5); le altre modifiche presenti nell'albero sono di altre sessioni e restano fuori;
-* il §4, del team BE/FE: fino al suo passaggio lista e dettaglio dei fornitori sono in errore.
+* ✅ il §4, del team BE/FE: fatto il 2026-11-21 (§6).
+
+## 6. Il passaggio BE/FE (sessione BE/FE, 2026-11-21)
+
+Fatto il §4 per intero. Lista e dettaglio provati sul DB vero; PATCH e creazione provate con chiamate reali al service, in
+transazione annullata: RF99 → 400 sul campo `regime_fiscale_rf`, RF01 e RF19 scritti, il vuoto della PATCH a `NULL`.
+
+| Punto del §4 | Che cosa |
+| --- | --- |
+| 1 | `FornitoriRepository.list_fornitori`: via `v.split_payment`, `v.canale_fe`, `v.pec_email` e il commento che le teneva; via le chiavi i18n `anagrafiche.fornitori.col_pec_email`, `col_canale_fe`, `col_split_payment` (it, en) |
+| 2 | `regime_fiscale_rf` nella SELECT della lista e del dettaglio; il dettaglio porta anche `regime_fiscale_descrizione` (join su `config.regimi_fiscali`), per la voce della combo quando il regime è stato disattivato dopo la scelta; la chiave nella whitelist della PATCH (`FORNITORE_UPDATE_ALLOWED`), nei nullable, nei campi della creazione e nello schema OpenAPI delle due view. FE: `FornitoreDrawer.vue` passa dal campo di testo a `LookupSelect` su `config.regimi_fiscali` (`codice_interno`, `show-clear`, campo acceso dal 400), come nel drawer dell'emittente; via la chiave `placeholder_regime` |
+| 2, la FK | `fk_fornitori_regimi_fiscali` → 400 `E_ANAG_VALIDAZIONE` sul campo, in creazione e in PATCH. **Regola del 2 (ok Tid, 2026-11-21):** la traduzione era una copia privata del service dell'emittente (`_regime_nel_catalogo`); ora è il BB `regime_nel_catalogo(fk)` in `anagrafiche/services/_validators.py`, usato dai due service. La copia è ritirata nello stesso giro, la voce è nel catalogo BB backend e l'indice è rigenerato. Resta fuori, ed è voluto, la regola sul vuoto: sull'emittente il regime è NOT NULL, sul fornitore è nullable |
+| 3 | La colonna `regime_fiscale` della lista mantiene codice e chiave i18n; legge `regime_fiscale_rf` dalla SELECT |
+| 4 | Censimento, sotto |
+| 5 | `acquisti.ordini`: niente, come scritto |
+
+**Il censimento (punto 4).** Lettori di `regime_fiscale` sul fornitore e delle sei colonne ritirate, cercati in tutto
+`backend/` e `frontend/src`. Esito:
+
+* da adeguare, e adeguati: repository, service e view dei fornitori, `FornitoreDrawer.vue`, le chiavi i18n, i test del
+  service (`test_fornitori_service`), la doc API `docs/it/backend/anagrafiche/manual/api_fornitori.md`. La doc portava
+  ancora i sei campi anche nel contratto di creazione e PATCH, rimasta indietro già dal primo passaggio (§1);
+* non ne dipendono: `soggetti_repository`, `soggetti_service`, `views_soggetti` e `lookup_repository` leggono
+  `split_payment` del **soggetto**, che è la sede vera; `clienti_repository` cita i fornitori solo in un commento; il
+  portale non legge più `pec_email` dal §1; export (`test_fornitori_export_api`) e store/view FE della lista non nominano
+  le colonne, perché le prendono dal catalogo `ui.lista_colonna`.
+
+**Un difetto trovato lavorando, chiuso nello stesso giro.** La creazione del fornitore non controllava le chiavi del
+payload, unica fra le creazioni dell'anagrafica (il cliente ha `_CREATE_KEYS_CLIENTE`, l'emittente
+`_CREA_EMITTENTE_KEYS`), e `extract_optional_fields` scarta in silenzio quelle che non conosce. Col regime rinominato,
+un payload con `regime_fiscale` creava un fornitore **senza regime** e rispondeva 200: provato con una chiamata reale
+prima della correzione. Ora `_CREA_FORNITORE_KEYS` lo rende un 400 che nomina la chiave, e lo stesso vale per i sei
+campi ritirati. Le chiavi sono quelle che il drawer manda, e un test lo tiene fermo.
+
+**Test.** `apps.anagrafiche` 649 verdi, `apps.amm_software` compreso 859 (i test su DB reale sono spenti di default).
+Con `ZEROERP_TEST_DB_E2E=1` sono verdi anche `test_regime_fiscale_conferma_db` (la FK dell'emittente, dopo l'estrazione),
+`test_clienti_fornitori_scrittura_db`, `test_creazioni_dalle_madri_db`, `test_scritture_bb_db`, `test_ricerca_liste_db`:
+36 su 36. I test nuovi: il regime che arriva alla madre col suo nome; il fuori catalogo in creazione e in PATCH; un'altra
+FK rilanciata; le chiavi ignote della creazione a 400; il payload del drawer ammesso; `RegimeNelCatalogoTest` per il BB.
+Verdi anche ruff, la baseline di mypy, eslint, oxlint e il guard i18n. Gunicorn ricaricato (HUP).
+
+⚠️ **Non provati:** il drawer a video (combo dei regimi, voce di un regime disattivato, campo acceso dal 400). Questo è
+il collaudo di Tid del passo 5.
+
+**La revisione `/verifica` del 2026-11-21/22 (sessione BE/FE).** Corretti nello stesso giro:
+
+* lo smoke notturno `backend/scripts/tests/smoke-test-fornitori.sh` mandava ancora `pec_email` e `regime_fiscale`
+  (creazione e PATCH), che col contratto nuovo sono 400: ora manda `regime_fiscale_rf` e `note`;
+* il nome `fk_fornitori_regimi_fiscali`, che il service nomina per testo, era provato solo coi mock: ora lo provano sul
+  DB vero i casi 6 e 7 di `test_regime_fiscale_spento_db` (rosso provato con un nome sbagliato);
+* il 409 `E_ATTIVO_PADRE_NON_ATTIVO` del regime spento (D-6) entra nelle tabelle d'errore di `api_fornitori.md` e
+  `api_emittenti_fiscali.md`;
+* **regola del 2 (ok Tid, 2026-11-22):** la voce del regime corrente della combo era ricopiata identica nei drawer
+  dell'emittente e del fornitore, e tutte e due mettevano il `codice_interno` al posto del `codice` a video. Ora è il BB
+  FE `voceRegimeFiscale` (`src/core/utils/`, catalogo BB frontend, indice rigenerato), e i due dettagli BE portano
+  `regime_fiscale_codice` (`rf.codice`). Prova sul DB vero: il caso 8 di `test_regime_fiscale_spento_db`, su un regime
+  costruito con `codice` diverso da `codice_interno` (rosso provato).
+
+## 7. La verifica DB dei giri A e B (2026-11-21)
+
+Fatta da una sessione che non ha scritto i giri A e B. È la sessione BE/FE del §6, quindi non ha corretto file `db/`:
+le correzioni stanno al §7.3 come richiesta.
+
+**Pulito:**
+
+* nessun numero di changeSet doppio, nessun changelog pushato modificato;
+* `-06` rispetto a `20261018-30`: cambiano solo l'elenco delle chiavi e il COMMENT;
+* `-07` rispetto a `20260808-08`: cambia solo la rimozione delle due normalizzazioni; il trigger non ha `UPDATE OF`;
+* `-05`: le colonne giuste, il GRANT a `zeroerp_app` c'è;
+* nessuna funzione né vista del catalogo vivo nomina le colonne ritirate, `fn_provisiona_dati_di_sviluppo` compresa;
+  nessun CSV di seed le scrive;
+* doc auto-generata rigenerata (`eaed059e6`); il trigger «termine attivo» su `acquisti.ordini` c'è.
+
+### 7.1 La coppia ATTIVO sul regime non c'è
+
+Il `-03` (commento in testata) e il §5.6 dicevano che a `ci_apply` nasce la coppia ATTIVO fra fornitore e regime.
+`ci_apply` è girato su dbdev il 2026-11-21 alle 19:46, dopo l'apply, e su `anagrafiche.fornitori` non c'è nessun
+trigger sul regime. `dbops.fn_run_automations_attivo` lanciato in prova a vuoto, in transazione annullata, dice
+perché: `ATTIVO_SKIP_FK_NO_ID`, «FK column has no _id suffix», per `fornitori.regime_fiscale_rf` **e** per
+`emittenti_fiscali.regime_fiscale_rf`. Il motore lega solo le FK la cui colonna finisce in `_id`. Il `-03` è pushato e
+non si corregge: la correzione è questa sezione.
+
+### 7.2 D-6 — un regime spento si può scegliere? ✅ Decisa: «a» (Tid, 2026-11-21)
+
+Oggi il database **accetta** che a un fornitore, o a un emittente, si assegni un regime spento. La combo del drawer
+propone solo i regimi attivi, ma la regola non sta a DB. Lo spegnimento di un regime già in uso resta libero, ed è
+voluto: un regime spento dopo la scelta resta di chi l'aveva (Tid, 2026-10-01, sull'emittente).
+
+| Strada | Che cosa |
+| --- | --- |
+| a | Un guard a DB che rifiuta la **scrittura** di un regime spento, sull'emittente e sul fornitore. ⚠️ La forma «scritto a mano» è superata dalla D-7, sotto |
+| b | Si lascia così, e si scrive nella pagina `manual/` del regime che la regola la fa la combo |
+
+#### La risposta della sessione DB (in chat, 2026-11-21)
+
+* La regola dichiarata dalla pagina `docs/it/dbzero/config/manual/regimi_fiscali.md` («un regime spento non si assegna,
+  e uno usato non si spegne: la coppia ATTIVO nasce a `ci_apply`») non la applica il database, né su dbdev né su uno
+  scratch costruito da zero. Il motivo è il filtro `ATTIVO_SKIP_FK_NO_ID` del runner, presente da gennaio. Le
+  funzioni generiche seguono già una FK su `codice_interno`: le ferma solo quel filtro.
+* Il filtro esclude oggi circa 90 FK monocolonna (fatto datato, 2026-11-21): toglierlo è un cambio su tutte quelle
+  tabelle, non una correzione.
+* Contro la «a» scritta a mano: sarebbe una seconda copia della regola ATTIVO, contro la regola del 2.
+* La proposta: un registro delle FK da **includere** nel runner, simmetrico a `dbops.automazione_attivo_eccezioni`,
+  con le due righe del regime e il loro motivo.
+
+⚠️ **La proposta generava anche il BLOCK sul padre** (un regime in uso non si spegne), e il BLOCK **revoca** una
+decisione presa: *«un emittente può TENERE un regime che il catalogo disattiva (la FK non guarda `attivo`, e va bene
+così)»* (Tid, 2026-10-01, `work-done/2026/brief-db-esigibilita-iva-per-cassa-emittente.md` §R-1). È la pagina
+`regimi_fiscali.md`, scritta il 2026-10-02, a dire il contrario della decisione: sbaglia la pagina.
+
+#### D-7 — un regime in uso si spegne? ✅ Decisa: «2» (Tid, 2026-11-21, rivista)
+
+> ⚠️ **Prima decisa «1», poi rivista da Tid in «2»** nella sessione DB, lo stesso giorno. Valgono la tabella e il
+> paragrafo «D-7 rivista» qui sotto; la richiesta in forma «1» resta come storia, marcata superata.
+
+
+| Strada | Che cosa |
+| --- | --- |
+| 1 ⚠️ superata | Sì, si spegne anche se in uso (la decisione del 2026-10-01 resta): chi lo ha lo tiene, un nuovo non lo sceglie. Serve la sola parte REQUIRE |
+| **2** ✅ | **No, finché un emittente o un fornitore acceso lo usa**: REQUIRE e BLOCK, la «b» piena della sessione DB, con la revoca della decisione del 2026-10-01 |
+
+**D-7 rivista — la regola applicata (sessione DB, `20261121-10` … `-15`, applicati su dbdev, push in arrivo).**
+
+* Un regime spento **non si assegna**, né a un emittente né a un fornitore.
+* Un regime usato da un emittente o da un fornitore **acceso** **non si spegne**. È revocata la decisione del
+  2026-10-01 (`work-done/2026/brief-db-esigibilita-iva-per-cassa-emittente.md` §R-1) per cui un emittente poteva
+  tenere un regime spento: per i ruoli accesi quella proprietà non vale più.
+
+| Caso | Codice | Classe | Contesto |
+| --- | --- | --- | --- |
+| Regime spento assegnato a un emittente o fornitore acceso: in creazione, in PATCH o alla riaccensione | `E_ATTIVO_PADRE_NON_ATTIVO` | `CONFLITTO_STATO` | `campo = "regime_fiscale_rf"`, `ref_val` = il codice RF |
+| Riaccendere un emittente o fornitore che tiene un regime spento | lo stesso | lo stesso | lo stesso; il rimedio è scegliere un regime acceso |
+| Spegnere un regime in uso | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` | `CONFLITTO_STATO` | — il catalogo dei regimi non è nel pannello: oggi l'operatore non lo incontra |
+
+Garanzie ritirate: nessuna; il giro ne aggiunge due.
+
+**Dopo il push, al team BE/FE.** ✅ Fatto il 2026-11-21 (sessione BE/FE): esito sotto, dopo i tre punti.
+
+1. La tendina del regime resta filtrata sui soli regimi accesi: il DB fa da rete, non sostituisce il filtro.
+2. Il campo: se il DB lo manda nel canale strutturato `COLUMN`, il BE lo porta già nel `field` della risposta
+   (`backend/apps/core/services/db_error_fields.py`) e i due drawer accendono il regime senza codice nuovo. Si prova
+   con una chiamata vera, in transazione annullata: regime spento su fornitore ed emittente, in creazione, in PATCH e
+   alla riaccensione. Codice nuovo solo se il campo non si accende.
+3. Il censimento dei lettori di `regime_fiscale_rf` che contano su «si può tenere un regime spento» (sessione BE/FE,
+   2026-11-21): `backend/`, `frontend/` e i manuali BE non ne hanno. Il `:voce-corrente` del drawer del fornitore
+   resta: un fornitore **spento** può ancora tenere un regime spento, e il drawer lo deve mostrare.
+
+**Esito (sessione BE/FE, 2026-11-21, dopo `/arrivi-db` di `790fc0432`).**
+
+1. **Nessun codice BE/FE nuovo.** Il DB manda il campo nel canale strutturato: il traduttore generale
+   (`ErrorTranslator._from_database_error`, via middleware) lo porta nei `fields` dell'envelope, e i due drawer
+   accendono già il regime da `campiErrati` (`frontend/src/anagrafiche/components/FornitoreDrawer.vue`,
+   `frontend/src/amministrazione/components/EmittenteFiscaleDrawer.vue`). `regime_nel_catalogo` rilancia l'errore
+   (non è la FK) senza tradurlo in «fuori catalogo»; lo stesso fa `create_with_constraint_mapping` in creazione.
+   I due codici erano già nella policy generata e nel ripiego.
+
+   | Caso, dal service vero | Codice | HTTP | `fields` |
+   | --- | --- | --- | --- |
+   | PATCH del fornitore con un regime spento | `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` |
+   | Creazione del fornitore con un regime spento | `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` |
+   | Riaccensione di un fornitore che tiene un regime spento | `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` |
+   | PATCH dell'emittente con un regime spento | `E_ATTIVO_PADRE_NON_ATTIVO` | 409 | `regime_fiscale_rf` |
+   | Spegnimento di un regime in uso (SQL) | `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` | 409 | `attivo` |
+
+2. **Il presidio:** `backend/apps/anagrafiche/tests/db/test_regime_fiscale_spento_db.py` (e2e, cinque test: i primi
+   quattro casi sopra più il controcampione «un regime acceso si assegna»). I due regimi li costruisce il test. ⚠️ I
+   require sono `DEFERRABLE INITIALLY DEFERRED`: nella richiesta vera (autocommit) giudicano alla fine
+   dell'istruzione; nel test, che non fa COMMIT, si rendono `IMMEDIATE` i **soli** due require del regime, cercati per
+   funzione e argomenti, e il test è rosso se non sono due.
+3. **Garanzie ritirate:** nessuna. Da sapere: dal giro, il ritiro del motore toglie anche i trigger ATTIVO di una FK
+   senza `_id` fuori dal registro. Censiti su dbdev: gli unici trigger ATTIVO su FK senza `_id` sono i quattro nuovi del
+   regime, tutti nel registro; oggi non se ne perde nessuno.
+4. **Alla sessione DB, una nota (nessuna urgenza).** Il motivo di `db/pgtap/dbops/test-automazione-attivo-inclusioni-v1.sql`
+   (`pgtap-runner-motivo`) dice che spegnere un regime «lo può solo il migratore». Su dbdev il ruolo applicativo
+   `zeroerp_app` ha INSERT e UPDATE su `config.regimi_fiscali`: il test e2e sopra costruisce e spegne regimi con quel
+   ruolo. O il privilegio è di troppo (e va tolto, allora il test e2e cambia strada), o il motivo va riscritto. Il
+   catalogo dei regimi non è nel pannello, quindi a video l'operatore non ci arriva.
+
+⚠️ **Superata dalla D-7 «2» (sopra): resta come storia della prima forma.**
+
+
+**Richiesta alla sessione DB (sostituisce quella della D-6 sotto).**
+
+1. Il registro delle FK da includere nel runner ATTIVO, come ha proposto la sessione DB, con in più **quale parte** si
+   genera per ogni riga (REQUIRE, BLOCK, o tutte e due). Le due righe: `anagrafiche.emittenti_fiscali.regime_fiscale_rf`
+   e `anagrafiche.fornitori.regime_fiscale_rf`, **solo REQUIRE**, col motivo (D-6 e D-7). Nessuna logica di controllo
+   nuova: il trigger è quello generico.
+2. Sul padre `config.regimi_fiscali` **nessun BLOCK**: un regime in uso si spegne. ⚠️ Rovesciato dalla D-7 «2»: il BLOCK c'è.
+3. La pagina `docs/it/dbzero/config/manual/regimi_fiscali.md` corretta: un regime spento non si assegna, e uno in uso
+   si spegne, e resta di chi l'aveva (D-7).
+4. Da sapere, detto dalla sessione DB: il REQUIRE generico scatta anche quando si **riaccende** un emittente o un
+   fornitore. Riaccendere un fornitore che ha un regime spento diventa un rifiuto, finché non gli si dà un regime
+   acceso. Se questo non va, lo si dice prima di scrivere il registro.
+5. Un pgTAP che costruisce i due casi: il regime spento assegnato è rifiutato, e il regime in uso si spegne.
+
+**Ricaduta BE/FE, da scrivere quando il registro c'è:** il codice d'errore del REQUIRE (`E_ATTIVO_PADRE_NON_ATTIVO`)
+sul campo `regime_fiscale_rf` dei due drawer. Il drawer propone già i soli regimi attivi, quindi a video il rifiuto si
+vede solo riaccendendo un fornitore o un emittente col regime spento.
+
+### 7.3 Richiesta alla sessione DB: due pgTAP che possono passare a vuoto
+
+✅ **Fatto** nel giro `790fc0432` (PR #185): il `COALESCE` sull'atteso nei test 18 e 19 di
+`test-fn-crea-fornitore-v1.sql` e nei test 3 e 4 di `test-ordini-termine-pagamento-v1.sql`, `plan` invariati.
+
+* `db/pgtap/anagrafiche/test-fn-crea-fornitore-v1.sql`, test 18 e 19: l'atteso è il primo regime attivo del catalogo
+  (`t_rf`). Con il catalogo vuoto `t_rf` non ha righe, `t_f3` resta vuota e il test confronta `NULL` con `NULL`: passa.
+  Correzione: l'atteso con `COALESCE((SELECT rf FROM t_rf), '<catalogo regimi vuoto>')`, e lo stesso nel 19. Il
+  `plan` resta 21.
+* `db/pgtap/acquisti/test-ordini-termine-pagamento-v1.sql`, test 3 e 4: l'atteso viene da `vendite.ordini`. Se quella
+  FK o quella colonna mancassero, `NULL` contro `NULL`: passa. Correzione: il `COALESCE` sull'atteso. Il `plan` resta 4.
+
+⚠️ **Superata dalla D-7 (§7.2, sotto): la forma è il registro di inclusione del motore, non un guard a mano.**
+
+**Richiesta alla sessione DB per la D-6 «a».** Un guard su `anagrafiche.fornitori` e uno su
+`anagrafiche.emittenti_fiscali` che rifiutano la scrittura di un `regime_fiscale_rf` con `attivo = false` in
+`config.regimi_fiscali`, all'INSERT e all'UPDATE che **cambia** il regime: un regime spento dopo la scelta resta di
+chi l'aveva, e la riga si salva lo stesso. Il predicato è uno solo per le due tabelle (regola del 2), e si cerca prima
+se `dbops.trgfn_child_requires_active_parent` lo può già fare passando `codice_interno` come colonna del padre. Il
+codice d'errore va fatto col campo `regime_fiscale_rf`, perché il BE lo accenda. Ricaduta BE, da scrivere quando il
+guard c'è: il codice nuovo nella policy generata e nel ripiego; il drawer non cambia, propone già i soli attivi.
+

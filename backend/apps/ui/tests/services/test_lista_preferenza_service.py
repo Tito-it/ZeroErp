@@ -24,6 +24,7 @@
 #  14. ignore_preset_update_lista_inesistente_raises (DEF-2)
 #  15. ignore_preset_update_senza_preferenza_raises (DEF-2)
 #  16. ignore_preset_update_pref_senza_preset_base_id (DEF-2 — edge)
+#  17. upsert_ordinamento_e_filtri_ritirati_raises (Q38/Q39 §6, giro 2)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -60,8 +61,6 @@ _VALID_PAYLOAD: dict[str, Any] = {
         },
         {"codice": "partita_iva", "ordine": 2, "visibile": True},
     ],
-    "ordinamento": [{"col": "ragione_sociale", "dir": "asc"}],
-    "filtri": {"attivo": True},
     "pagina_dimensione": 50,
 }
 
@@ -140,6 +139,30 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         with self.assertRaises(ServiceError) as ctx:
             svc.upsert(_make_user(), "anagrafiche.clienti", bad_payload)
         self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+
+    # ⭐ `ordinamento` e `filtri` sono usciti dalla preferenza (Q38/Q39 §6 di
+    #    brief-db-revisione-ui, giro 2): fuori whitelist, prima del DB.
+    @patch(
+        "apps.ui.services.lista_preferenza_service.PermissionResolver"
+        ".get_emittente_for_user",
+        return_value=11,
+    )
+    def test_upsert_ordinamento_e_filtri_ritirati_raises(self, _mock_em) -> None:
+        repo = MagicMock()
+        repo.get_lista_id.return_value = 1
+        svc = ListaPreferenzaService(repository=repo)
+
+        for chiave, valore in (
+            ("ordinamento", [{"col": "ragione_sociale", "dir": "asc"}]),
+            ("filtri", {"attivo": True}),
+        ):
+            with self.subTest(chiave=chiave):
+                payload = dict(_VALID_PAYLOAD)
+                payload[chiave] = valore
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.upsert(_make_user(), "anagrafiche.clienti", payload)
+                self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        repo.upsert_preferenza.assert_not_called()
 
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
