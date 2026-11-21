@@ -1516,6 +1516,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PERMESSO_VALIDAZIONE": "Permesso colonna non valido.",
     "E_UI_PREFERENZA_NON_TROVATA": "Preferenza utente non trovata per questa lista.",
     "E_UI_PREFERENZA_VALIDAZIONE": "Preferenza lista non valida.",
+    "E_UI_PRESET_CONTENUTO_DERIVATO": "La data del contenuto e l'impronta della composizione del preset le scrive il database.",
     "E_UI_PRESET_NON_TROVATO": "Preset lista non trovato.",
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",

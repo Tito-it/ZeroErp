@@ -11,6 +11,8 @@
 //   1. `preset_base_cambiato` dal DB, passthrough (assente = falso)
 //   2. «Riallinea» rimanda le chiavi della preferenza, senza toccarle
 //   3. «Riallinea» senza chiavi scelte: DELETE, non un PUT vuoto
+//   4. giro 1b: `preset_aggiornato_chiavi` dal DB, passthrough (assente =
+//      elenco vuoto)
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -64,6 +66,15 @@ describe('useDashboardConfig — base del preset cambiata (BE7, giro 1a)', () =>
     expect((await caricata()).presetBaseCambiato.value).toBe(false)
     const dash = await caricata({ widget: 'preferenza' }, { preset_base_cambiato: true })
     expect(dash.presetBaseCambiato.value).toBe(true)
+  })
+
+  it('4. `preset_aggiornato_chiavi` dal DB, passthrough (assente = vuoto)', async () => {
+    expect((await caricata()).presetAggiornatoChiavi.value).toEqual([])
+    const dash = await caricata(
+      { widget: 'preferenza' },
+      { preset_aggiornato: true, preset_aggiornato_chiavi: ['widget'] },
+    )
+    expect(dash.presetAggiornatoChiavi.value).toEqual(['widget'])
   })
 
   it('2. «Riallinea» rimanda le chiavi della preferenza, senza toccarle', async () => {

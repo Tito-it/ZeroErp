@@ -39,9 +39,11 @@ class DashboardRepository:
     # Risultato: dict con `widget[]`, `dimensione_max`,
     #        `dimensione_max_standard` (la dimensione senza la preferenza),
     #        `origine` (`{widget, dimensione_max}` -> il livello da cui viene
-    #        ogni chiave), `widget_nuovi`, `preset_aggiornato`, `preset_base`
-    #        (`{id, ambito, contenuto_aggiornato_il}` del preset di base di
-    #        oggi, o None) e `preset_base_cambiato`. Ogni widget porta
+    #        ogni chiave), `widget_nuovi`, `preset_aggiornato`,
+    #        `preset_aggiornato_chiavi` (le chiavi cambiate, elenco),
+    #        `preset_base` (`{id, ambito, contenuto_aggiornato_il}` del preset
+    #        di base di oggi, la data del contenuto per chiave, o None) e
+    #        `preset_base_cambiato`. Ogni widget porta
     #        codice/ordine/visibile + i campi freschi del catalogo
     #        (etichetta, etichetta_i18n_key, tipo_widget, deep_link,
     #        contatore_key, soglia). Il contratto e' la pagina
@@ -112,7 +114,8 @@ class DashboardRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_contenuto_aggiornato_il": row[3],
+            # Lo snapshot e' per chiave (`{chiave: data}`, giro 1b): jsonb.
+            "preset_base_contenuto_aggiornato_il": jsonb_out(row[3]),
             "data_insert": row[4],
             "data_update": row[5],
         }
@@ -158,17 +161,19 @@ class DashboardRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Tombstone "ignora banner preset aggiornato". Ritorna False se
-    #        la preferenza non esiste (il service traduce in 404).
-    def set_preset_aggiornato_ignored(
+    # Scopo: «Ignora» del banner preset aggiornato: riallinea lo snapshot
+    #        riscrivendo `preset_base_id` col valore che ha gia', come per
+    #        le liste (`UiRepository.riallinea_snapshot_base`). Ritorna False
+    #        se la preferenza non esiste (il service traduce in 404).
+    def riallinea_snapshot_base(
         self, auth_user_id: int, dashboard_id: int
     ) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ui.dashboard_preferenza_utente
-                   SET preset_aggiornato_ignored_at = now(),
-                       data_update                  = now()
+                   SET preset_base_id = preset_base_id,
+                       data_update    = now()
                  WHERE auth_user_id = %s
                    AND dashboard_id = %s
                 """,

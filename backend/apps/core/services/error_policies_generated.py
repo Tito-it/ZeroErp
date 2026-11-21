@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1252, di cui 132 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1253, di cui 132 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -2015,6 +2015,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # DEF-2 "preset aggiornato": l'endpoint POST /preferenza/ignore-preset-update/ · solleva quando l'utente non ha ancora una preferenza salvata sulla lista · (banner non dovrebbe essere visibile, ma l'errore lato BE e' parlante).
     "E_UI_PREFERENZA_NON_TROVATA": "NON_TROVATO",
     "E_UI_PREFERENZA_VALIDAZIONE": "DATO_ERRATO",
+    # ui.trgfn_preset_contenuto_aggiornato (a20, su ui.lista_preset e ui.dashboard_preset): un INSERT che valorizza contenuto_aggiornato_il o composizione_impronta, un UPDATE che cambia contenuto_aggiornato_il, o un UPDATE che scrive in composizione_impronta un valore diverso dall'impronta della composizione di oggi (ui.fn_preset_impronta). Le due colonne le deriva il database: la data per chiave dal contenuto cambiato, l'impronta dal trigger differito della composizione. Si rifiuta invece di sovrascrivere, perche' il seed di primo impianto giudica la personalizzazione sul valore scritto, prima della derivazione: una scrittura ignorata personalizzerebbe per finta un preset di seed. TECNICO: lo produce solo un chiamante rimasto alla forma in cui la data si scriveva, non chi compila un modulo. Segnaposto: il codice del preset.
+    "E_UI_PRESET_CONTENUTO_DERIVATO": "TECNICO",
     "E_UI_PRESET_NON_TROVATO": "NON_TROVATO",
     "E_UI_PRESET_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_VISTA_SQL_NON_TROVATA": "DATO_ERRATO",

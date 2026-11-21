@@ -133,9 +133,10 @@ class DashboardPreferenzaService:
         )
         return {"deleted": deleted}
 
-    # Scopo: Tombstone "Ignora banner preset aggiornato". Il flag
-    #        `preset_aggiornato` della fn torna FALSE finche' il preset
-    #        non viene modificato di nuovo.
+    # Scopo: «Ignora» del banner preset aggiornato: riallinea lo snapshot
+    #        del preset di base (come `ListaPreferenzaService`). Il flag
+    #        `preset_aggiornato` della fn torna FALSE finche' il contenuto
+    #        del preset non cambia di nuovo.
     def ignore_preset_update(
         self,
         user: Any,
@@ -143,7 +144,7 @@ class DashboardPreferenzaService:
     ) -> dict[str, Any]:
         dashboard_id = self._require_dashboard_id(dashboard_codice)
 
-        ignored = self._repo.set_preset_aggiornato_ignored(
+        ignored = self._repo.riallinea_snapshot_base(
             auth_user_id=user.id,
             dashboard_id=dashboard_id,
         )

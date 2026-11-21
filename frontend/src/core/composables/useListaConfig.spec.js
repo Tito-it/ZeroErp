@@ -14,6 +14,8 @@
 //      se vengono dalla preferenza: una riga vecchia li perde
 //   4. BE7: `preset_base_cambiato` dal DB, passthrough (assente = falso)
 //   5. BE7: «Riallinea» rimanda le chiavi della preferenza, senza toccarle
+//   6. BE7 (giro 1b): `preset_aggiornato_chiavi` dal DB, passthrough
+//      (assente = elenco vuoto)
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -115,6 +117,15 @@ describe('useListaConfig — base del preset cambiata (BE7, giro 1a)', () => {
     expect((await caricata()).presetBaseCambiato.value).toBe(false)
     const lista = await caricata({ colonne: 'preferenza' }, { preset_base_cambiato: true })
     expect(lista.presetBaseCambiato.value).toBe(true)
+  })
+
+  it('6. `preset_aggiornato_chiavi` dal DB, passthrough (assente = vuoto)', async () => {
+    expect((await caricata()).presetAggiornatoChiavi.value).toEqual([])
+    const lista = await caricata(
+      { colonne: 'preferenza' },
+      { preset_aggiornato: true, preset_aggiornato_chiavi: ['colonne'] },
+    )
+    expect(lista.presetAggiornatoChiavi.value).toEqual(['colonne'])
   })
 
   it('5. «Riallinea» rimanda le chiavi della preferenza, senza toccarle', async () => {

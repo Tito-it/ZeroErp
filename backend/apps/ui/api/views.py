@@ -202,11 +202,11 @@ class ApiListaIgnorePresetUpdateView(DomainAPIView):
     """
     POST /api/v1/ui/liste/<codice>/preferenza/ignore-preset-update
 
-    Tombstone "Ignora banner preset aggiornato" (DEF-2): setta
-    `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente per
-    (request.user, lista_codice). Il flag `preset_aggiornato` di
-    `fn_resolve_lista_config` torna FALSE finche' il preset non viene
-    modificato di nuovo.
+    «Ignora» del banner preset aggiornato (DEF-2): riallinea lo snapshot
+    del preset di base della preferenza di (request.user, lista_codice) al
+    contenuto di oggi. Il flag `preset_aggiornato` di
+    `fn_resolve_lista_config` torna FALSE finche' il contenuto del preset
+    non cambia di nuovo.
 
     Body vuoto ammesso. `handle_post_json` + `require_idempotency_key=True`
     per allineamento al pattern POST di api.md (envelope uniforme, strong
@@ -219,7 +219,7 @@ class ApiListaIgnorePresetUpdateView(DomainAPIView):
         request=None,
         responses={200: _DATA_RESPONSE},
     )
-    # Scopo: Setta il tombstone "ignore" del banner DEF-2 per (user, lista).
+    # Scopo: «Ignora» del banner DEF-2 per (user, lista).
     def post(self, request: Request, codice: str) -> JsonResponse:
         def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return ListaPreferenzaService().ignore_preset_update(

@@ -168,9 +168,9 @@ class UiRepository:
         return rows
 
     # Scopo: Preferenza utente per (auth_user, lista). None se non esiste.
-    #        Inclusi metadati (`preset_base_id`, `preset_base_contenuto_aggiornato_il`,
-    #        `data_update`) per permettere al FE/service il check del
-    #        badge "preset aggiornato" (DEF-2).
+    #        Inclusi metadati (`preset_base_id`, lo snapshot per chiave
+    #        `preset_base_contenuto_aggiornato_il` come dict `{chiave: data}`
+    #        o None, `data_update`).
     def get_preferenza(
         self, auth_user_id: int, lista_id: int
     ) -> dict[str, Any] | None:
@@ -197,7 +197,8 @@ class UiRepository:
             # Lettura per posizione: il jsonb arriva come testo.
             "configurazione": jsonb_out(row[1]),
             "preset_base_id": row[2],
-            "preset_base_contenuto_aggiornato_il": row[3],
+            # Lo snapshot e' per chiave (`{chiave: data}`, giro 1b): jsonb.
+            "preset_base_contenuto_aggiornato_il": jsonb_out(row[3]),
             "data_insert": row[4],
             "data_update": row[5],
         }
@@ -245,20 +246,26 @@ class UiRepository:
         assert row is not None
         return int(row[0])
 
-    # Scopo: Setta `preset_aggiornato_ignored_at = NOW()` sulla preferenza
-    #        utente (DEF-2 "Ignora" banner preset aggiornato). Ritorna True
-    #        se ha aggiornato una riga, False se la preferenza non esiste
-    #        (il chiamante service trasforma False in
-    #        E_UI_PREFERENZA_NON_TROVATA 404).
-    def set_preset_aggiornato_ignored(
+    # Scopo: «Ignora» del banner preset aggiornato (DEF-2): riallinea lo
+    #        snapshot del preset di base al contenuto di oggi, riscrivendo
+    #        `preset_base_id` col valore che ha gia'. Ritorna True se ha
+    #        aggiornato una riga, False se la preferenza non esiste (il
+    #        service lo traduce in E_UI_PREFERENZA_NON_TROVATA 404).
+    # ⭐ Lo snapshot lo scrive `ui.trgfn_preferenza_preset_base_snapshot`
+    #    (`BEFORE UPDATE OF preset_base_id`): e' nominare la colonna, non
+    #    cambiarla, a farlo scattare. Dal giro 1b di brief-db-revisione-ui
+    #    l'ignorato (`preset_aggiornato_ignored_at`) non c'e' piu'.
+    # ⛔ La base resta quella salvata: con la base cambiata il banner e'
+    #    «Riallinea», che salva la base di oggi (`upsert_preferenza`).
+    def riallinea_snapshot_base(
         self, auth_user_id: int, lista_id: int
     ) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ui.lista_preferenza_utente
-                   SET preset_aggiornato_ignored_at = now(),
-                       data_update                  = now()
+                   SET preset_base_id = preset_base_id,
+                       data_update    = now()
                  WHERE auth_user_id = %s
                    AND lista_id     = %s
                 """,

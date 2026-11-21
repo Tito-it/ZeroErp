@@ -55,7 +55,8 @@ class DashboardService:
     #        dall'utente (admin globale -> None: la fn DB lo gestisce).
     # Risultato: il dict della fn, gia' filtrato per permessi: `{widget[],
     #        dimensione_max, dimensione_max_standard, origine, widget_nuovi,
-    #        preset_aggiornato, preset_base, preset_base_cambiato}` (dettaglio
+    #        preset_aggiornato, preset_aggiornato_chiavi, preset_base,
+    #        preset_base_cambiato}` (dettaglio
     #        delle chiavi in `DashboardRepository.resolve_dashboard_config`).
     def get_dashboard_config(
         self,

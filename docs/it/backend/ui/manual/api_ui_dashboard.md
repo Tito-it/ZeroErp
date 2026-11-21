@@ -69,8 +69,13 @@ riparte dal preset di ruolo/emittente/sistema.
 
 ## 4. `POST /api/v1/ui/dashboard/{codice}/preferenza/ignore-preset-update/`
 
-Tombstone del banner **«il preset e' stato aggiornato»**: scrive
-`preset_aggiornato_ignored_at = NOW()` sulla preferenza dell'utente. Body vuoto
+«Ignora» del banner **«il preset e' stato aggiornato»**: riscrive
+`preset_base_id` della preferenza col valore che ha già, e il trigger
+`ui.trgfn_preferenza_preset_base_snapshot` riallinea lo snapshot al contenuto
+di oggi, chiave per chiave (`widget`, `dimensione_max`). ⛔ Dal giro 1b di
+brief-db-revisione-ui (2026-11-20) l'ignorato `preset_aggiornato_ignored_at`
+non esiste più. La risoluzione dice anche quali parti sono cambiate
+(`preset_aggiornato_chiavi`). Body vuoto
 ammesso, **`Idempotency-Key` obbligatoria**. Risposta `{"ignored": true}`; senza
 preferenza: `404 E_UI_PREFERENZA_NON_TROVATA`.
 

@@ -7,10 +7,12 @@
 #        - L'audit (`user_insert`, `data_update`, `user_update`) lo scrive il
 #          trigger generico dal JWT (`app.jwt_user`): il repository admin non
 #          lo nomina piu', e i suoi INSERT/UPDATE devono legare lo stesso.
-#        - La data del CONTENUTO di un preset e' `contenuto_aggiornato_il`:
-#          si sposta solo quando cambia il contenuto (il WHEN del trigger
-#          `a20`), non a ogni UPDATE. Lo snapshot della preferenza la legge,
-#          e dal giro 1a di brief-db-revisione-ui lo scrive il DB.
+#        - La data del CONTENUTO di un preset e' `contenuto_aggiornato_il`,
+#          per chiave dal giro 1b di brief-db-revisione-ui (`{chiave: data}`):
+#          si sposta solo la chiave il cui contenuto cambia, non a ogni
+#          UPDATE, e la scrive solo il DB (`E_UI_PRESET_CONTENUTO_DERIVATO`
+#          a chi la scrive). Lo snapshot della preferenza la copia, e lo
+#          scrive il DB (giro 1a); «Ignora» e' riscrivere `preset_base_id`.
 #        - Spegnere una lista con colonne attive e' un 409 del guard ATTIVO,
 #          non un fallback di validazione del service.
 # Note: ⭐ La giuntura, non la regola: la regola la provano i pgTAP di `ui`
@@ -27,8 +29,11 @@ Indice test eseguiti:
 2) AuditUiDalTriggerDbTests.test_contenuto_fermo_se_cambia_solo_la_descrizione
 3) AuditUiDalTriggerDbTests.test_contenuto_si_sposta_se_cambia_il_contenuto
 4) AuditUiDalTriggerDbTests.test_snapshot_e_preferenza_sulla_data_del_contenuto
-5) AuditUiDalTriggerDbTests.test_upsert_permesso_audit_dal_trigger
-6) AuditUiDalTriggerDbTests.test_spegnere_lista_con_colonne_attive_409
+5) AuditUiDalTriggerDbTests.test_ignora_riallinea_lo_snapshot
+6) AuditUiDalTriggerDbTests.test_ignora_riallinea_lo_snapshot_della_dashboard
+7) AuditUiDalTriggerDbTests.test_data_del_contenuto_scritta_dall_app_rifiutata
+8) AuditUiDalTriggerDbTests.test_upsert_permesso_audit_dal_trigger
+9) AuditUiDalTriggerDbTests.test_spegnere_lista_con_colonne_attive_409
 """
 from __future__ import annotations
 
@@ -37,8 +42,10 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.core.db._helpers import jsonb_out
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.ui.db.dashboard_repository import DashboardRepository
 from apps.ui.db.ui_admin_repository import UiAdminRepository
 from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services._preferenza import preset_base_id_di_oggi
@@ -102,6 +109,25 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
         assert riga is not None, f"{tabella} id={riga_id} non trovato"
         return tuple(riga)
 
+    # La data del contenuto per chiave, come istanti: la mappa e' un jsonb di
+    # stringhe, e due stringhe non si confrontano come due date.
+    def _contenuto(self) -> dict[str, Any]:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT c.key, c.value::timestamptz "
+                "  FROM ui.lista_preset lp, "
+                "       jsonb_each_text(lp.contenuto_aggiornato_il) c "
+                " WHERE lp.id = %s",
+                [self.preset_id],
+            )
+            return dict(cur.fetchall())
+
+    # La mappa intera come la legge il BE (`jsonb_out`): e' la forma che
+    # `get_preferenza` restituisce per lo snapshot.
+    def _contenuto_jsonb(self) -> tuple[Any]:
+        (grezzo,) = self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il")
+        return (jsonb_out(grezzo),)
+
     def _adesso(self) -> Any:
         with connection.cursor() as cur:
             cur.execute("SELECT now()")
@@ -137,38 +163,27 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
 
     # ⭐ Il cuore di N1: `descrizione` non e' contenuto, quindi l'UPDATE muove
     #    l'audit ma non la data che il badge «preset aggiornato» confronta.
+    #    L'ora e' `clock_timestamp()`: una riscrittura dentro la stessa
+    #    transazione darebbe un istante nuovo, e il test la vedrebbe.
     def test_contenuto_fermo_se_cambia_solo_la_descrizione(self) -> None:
-        (prima,) = self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il")
-        with connection.cursor() as cur:
-            # La riga nasce con `now()`: la si porta indietro per distinguere
-            # «fermo» da «riscritto con lo stesso istante della transazione».
-            cur.execute(
-                "UPDATE ui.lista_preset SET contenuto_aggiornato_il = %s - interval '1 day' "
-                "WHERE id = %s",
-                [prima, self.preset_id],
-            )
-        (indietro,) = self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il")
+        prima = self._contenuto()
+        self.assertIn("ordinamento", prima)
         self.assertTrue(self.repo.update_preset(self.preset_id, {"descrizione": "Altra"}))
         self.assertTrue(self.repo.update_preset(self.preset_id, {"attivo": True}))
-        self.assertEqual(
-            self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il"),
-            (indietro,),
-        )
+        self.assertEqual(self._contenuto(), prima)
 
+    # Si sposta la sola chiave cambiata.
     def test_contenuto_si_sposta_se_cambia_il_contenuto(self) -> None:
-        with connection.cursor() as cur:
-            cur.execute(
-                "UPDATE ui.lista_preset SET contenuto_aggiornato_il = now() - interval '1 day' "
-                "WHERE id = %s",
-                [self.preset_id],
-            )
+        prima = self._contenuto()
         self.assertTrue(self.repo.update_preset(
             self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
         ))
-        self.assertEqual(
-            self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il"),
-            (self._adesso(),),
-        )
+        dopo = self._contenuto()
+        self.assertGreater(dopo["ordinamento"], prima["ordinamento"])
+        # Le altre chiavi, quali che siano (il giro 2 ritira `filtri`).
+        for chiave in set(prima) - {"ordinamento"}:
+            with self.subTest(chiave=chiave):
+                self.assertEqual(dopo[chiave], prima[chiave])
 
     # BE5 + BE6 di brief-db-revisione-ui (giro 1a): la base viene dalla
     # risoluzione (`preset_base`, ramo «sistema»), e lo snapshot lo scrive il
@@ -176,27 +191,8 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
     # CONTENUTO. L'upsert del BE nomina solo `preset_base_id`: un mock non vede
     # che e' quella colonna, nel SET, a far scattare il trigger.
     def test_snapshot_e_preferenza_sulla_data_del_contenuto(self) -> None:
-        with connection.cursor() as cur:
-            cur.execute(
-                "INSERT INTO auth_user (password, is_superuser, username, first_name, "
-                "last_name, email, is_staff, is_active, date_joined) "
-                "VALUES ('!', false, %s, '', '', '', false, true, now()) RETURNING id",
-                [_ATTORE],
-            )
-            auth_user_id = int(cur.fetchone()[0])
-        # Un preset vale come base solo con contenuto (U3): una colonna ACCESA
-        # nella composizione (la colonna del setUp nasce spenta).
-        self.assertTrue(self.repo.update_colonna(self.colonna_id, {"attivo": True}))
-        self.repo.replace_preset_colonne(
-            self.preset_id, [{"colonna_id": self.colonna_id, "ordine": 1}],
-        )
-        with connection.cursor() as cur:
-            cur.execute(
-                "UPDATE ui.lista_preset SET contenuto_aggiornato_il = now() - interval '1 day' "
-                "WHERE id = %s",
-                [self.preset_id],
-            )
-        (contenuto,) = self._riga("ui.lista_preset", self.preset_id, "contenuto_aggiornato_il")
+        auth_user_id = self._utente_con_base()
+        (contenuto,) = self._contenuto_jsonb()
         # Un UPDATE che non tocca il contenuto non sposta la data.
         self.assertTrue(self.repo.update_preset(self.preset_id, {"descrizione": "Altra"}))
 
@@ -224,9 +220,7 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
         self.assertTrue(self.repo.update_preset(
             self.preset_id, {"ordinamento_default": [{"col": "be11_info", "dir": "desc"}]},
         ))
-        (contenuto_nuovo,) = self._riga(
-            "ui.lista_preset", self.preset_id, "contenuto_aggiornato_il",
-        )
+        (contenuto_nuovo,) = self._contenuto_jsonb()
         self.assertNotEqual(contenuto_nuovo, contenuto)
         repo.upsert_preferenza(
             auth_user_id=auth_user_id,
@@ -237,6 +231,142 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
         preferenza = repo.get_preferenza(auth_user_id, self.lista_id)
         assert preferenza is not None
         self.assertEqual(preferenza["preset_base_contenuto_aggiornato_il"], contenuto_nuovo)
+
+    # BE7 (parte 1b) di brief-db-revisione-ui: «Ignora» riscrive
+    # `preset_base_id` col valore che ha gia', e il trigger riallinea lo
+    # snapshot. Prima del giro 1b scriveva `preset_aggiornato_ignored_at`,
+    # colonna che non c'e' piu': il mock del service non lo vedeva.
+    def test_ignora_riallinea_lo_snapshot(self) -> None:
+        auth_user_id = self._utente_con_base()
+        repo = UiRepository()
+        repo.upsert_preferenza(
+            auth_user_id=auth_user_id,
+            lista_id=self.lista_id,
+            configurazione={"pagina_dimensione": 50},
+            preset_base_id=self.preset_id,
+        )
+        # L'amministratore cambia la chiave che la preferenza ha scelto.
+        self.assertTrue(self.repo.update_preset(self.preset_id, {"pagina_dimensione": 10}))
+
+        def _banner() -> tuple[Any, Any]:
+            risoluzione = repo.resolve_lista_config(
+                lista_codice="ui.test_be11_audit",
+                auth_user_id=auth_user_id,
+                emittente_fiscale_id=None,
+            )
+            return risoluzione["preset_aggiornato"], risoluzione["preset_aggiornato_chiavi"]
+
+        self.assertEqual(_banner(), (True, ["pagina_dimensione"]))
+        self.assertTrue(repo.riallinea_snapshot_base(auth_user_id, self.lista_id))
+        self.assertEqual(_banner(), (False, []))
+        preferenza = repo.get_preferenza(auth_user_id, self.lista_id)
+        assert preferenza is not None
+        self.assertEqual(preferenza["preset_base_id"], self.preset_id)
+        self.assertEqual(preferenza["preset_base_contenuto_aggiornato_il"], self._contenuto_jsonb()[0])
+        # Senza preferenza non c'e' riga da riallineare: il service da' 404.
+        self.assertFalse(repo.riallinea_snapshot_base(auth_user_id + 1, self.lista_id))
+
+    # Il gemello della dashboard: un UPDATE suo, su un'altra tabella e con un
+    # altro montaggio del trigger, e i mock del service non lo vedono (prima
+    # del giro 1b era un 500 anche qui). La dashboard si fabbrica: quella di
+    # seed porterebbe la prova sui dati di oggi.
+    def test_ignora_riallinea_lo_snapshot_della_dashboard(self) -> None:
+        auth_user_id = self._utente_con_base()
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO ui.dashboard_definizione (codice, descrizione) "
+                "VALUES ('test_be11_audit', 'Dashboard del test') RETURNING id",
+            )
+            dashboard_id = int(cur.fetchone()[0])
+            cur.execute(
+                "INSERT INTO ui.widget (codice, etichetta) "
+                "VALUES ('test_be11_audit', 'Card del test') RETURNING id",
+            )
+            widget_id = int(cur.fetchone()[0])
+            cur.execute(
+                "INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default) "
+                "VALUES (%s, %s, 1)",
+                [dashboard_id, widget_id],
+            )
+            cur.execute(
+                "INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito) "
+                "VALUES (%s, 'be11_sistema', 'Preset di sistema', 'sistema') RETURNING id",
+                [dashboard_id],
+            )
+            preset_id = int(cur.fetchone()[0])
+            # Un preset vale come base solo con contenuto (U3): un widget del pool.
+            cur.execute(
+                "INSERT INTO ui.dashboard_preset_widget (preset_id, widget_id, ordine) "
+                "VALUES (%s, %s, 1)",
+                [preset_id, widget_id],
+            )
+        repo = DashboardRepository()
+
+        def _banner() -> tuple[Any, Any]:
+            risoluzione = repo.resolve_dashboard_config(
+                dashboard_codice="test_be11_audit",
+                auth_user_id=auth_user_id,
+                emittente_fiscale_id=None,
+            )
+            return risoluzione["preset_aggiornato"], risoluzione["preset_aggiornato_chiavi"]
+
+        def _contenuto() -> Any:
+            (grezzo,) = self._riga("ui.dashboard_preset", preset_id, "contenuto_aggiornato_il")
+            return jsonb_out(grezzo)
+
+        repo.upsert_preferenza(
+            auth_user_id=auth_user_id,
+            dashboard_id=dashboard_id,
+            configurazione={"dimensione_max": 4},
+            preset_base_id=preset_id,
+        )
+        # L'amministratore cambia la chiave che la preferenza ha scelto.
+        with connection.cursor() as cur:
+            cur.execute(
+                "UPDATE ui.dashboard_preset SET dimensione_max = 6 WHERE id = %s",
+                [preset_id],
+            )
+        self.assertEqual(_banner(), (True, ["dimensione_max"]))
+        self.assertTrue(repo.riallinea_snapshot_base(auth_user_id, dashboard_id))
+        self.assertEqual(_banner(), (False, []))
+        preferenza = repo.get_preferenza(auth_user_id, dashboard_id)
+        assert preferenza is not None
+        self.assertEqual(preferenza["preset_base_id"], preset_id)
+        self.assertEqual(preferenza["preset_base_contenuto_aggiornato_il"], _contenuto())
+        self.assertFalse(repo.riallinea_snapshot_base(auth_user_id + 1, dashboard_id))
+
+    # BE25 di brief-db-revisione-ui: la data del contenuto la scrive solo il
+    # DB. Chi la scrive (un chiamante rimasto alla forma di prima) riceve il
+    # codice nuovo, con la sua policy: un TECNICO, non un 500 anonimo.
+    def test_data_del_contenuto_scritta_dall_app_rifiutata(self) -> None:
+        with self.assertRaises(Exception) as ctx, transaction.atomic():
+            with connection.cursor() as cur:
+                cur.execute(
+                    "UPDATE ui.lista_preset SET contenuto_aggiornato_il = '{}'::jsonb "
+                    "WHERE id = %s",
+                    [self.preset_id],
+                )
+        api_error = ErrorTranslator.to_api_error(ctx.exception)
+        self.assertEqual(api_error.code, "E_UI_PRESET_CONTENUTO_DERIVATO")
+        self.assertEqual(ErrorTranslator.get_http_status(api_error), 500)
+
+    # Un utente e una lista col preset di sistema come base: un preset vale
+    # come base solo con contenuto (U3), cioe' una colonna ACCESA nella
+    # composizione (la colonna del setUp nasce spenta).
+    def _utente_con_base(self) -> int:
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO auth_user (password, is_superuser, username, first_name, "
+                "last_name, email, is_staff, is_active, date_joined) "
+                "VALUES ('!', false, %s, '', '', '', false, true, now()) RETURNING id",
+                [_ATTORE],
+            )
+            auth_user_id = int(cur.fetchone()[0])
+        self.assertTrue(self.repo.update_colonna(self.colonna_id, {"attivo": True}))
+        self.repo.replace_preset_colonne(
+            self.preset_id, [{"colonna_id": self.colonna_id, "ordine": 1}],
+        )
+        return auth_user_id
 
     def test_upsert_permesso_audit_dal_trigger(self) -> None:
         # Il profilo si FABBRICA: «il primo che c'e'» dipendeva dai seed e,

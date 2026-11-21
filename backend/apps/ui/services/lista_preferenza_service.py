@@ -129,11 +129,12 @@ class ListaPreferenzaService:
         )
         return {"deleted": deleted}
 
-    # Scopo: Tombstone "Ignora banner preset aggiornato" (DEF-2). Setta
-    #        `preset_aggiornato_ignored_at = NOW()` sulla preferenza utente.
-    #        Il flag `preset_aggiornato` di `fn_resolve_lista_config` torna
-    #        FALSE finche' il preset non viene modificato di nuovo
-    #        (`preset.contenuto_aggiornato_il > ignored_at`).
+    # Scopo: «Ignora» del banner preset aggiornato (DEF-2). Riallinea lo
+    #        snapshot del preset di base al contenuto di oggi (il DB lo
+    #        riscrive quando la preferenza nomina `preset_base_id`): il flag
+    #        `preset_aggiornato` di `fn_resolve_lista_config` torna FALSE
+    #        finche' il contenuto del preset non cambia di nuovo, chiave per
+    #        chiave (`preset_aggiornato_chiavi`).
     #        Solleva E_UI_LISTA_NON_TROVATA se la lista non esiste e
     #        E_UI_PREFERENZA_NON_TROVATA se l'utente non ha ancora una
     #        preferenza (caso patologico: il banner non sarebbe visibile,
@@ -145,7 +146,7 @@ class ListaPreferenzaService:
     ) -> dict[str, Any]:
         lista_id = self._require_lista_id(lista_codice)
 
-        ignored = self._repo.set_preset_aggiornato_ignored(
+        ignored = self._repo.riallinea_snapshot_base(
             auth_user_id=user.id,
             lista_id=lista_id,
         )

@@ -67,6 +67,7 @@ vi.mock('../composables/useListaConfig', () => ({
     loading: ref(false),
     colonneNuove: ref([]),
     presetAggiornato: ref(false),
+    presetAggiornatoChiavi: ref([]),
     load: vi.fn().mockResolvedValue(undefined),
     ensureCatalogo: vi.fn().mockResolvedValue(undefined),
     applyChange: vi.fn(),
