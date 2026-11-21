@@ -57,7 +57,7 @@
 #   · Firma, `RETURNS` e `STABLE` invariati.
 #   · `E_PARAMETRO_INVALIDO` e' gia' a catalogo e ha un solo segnaposto: si
 #     passa un valore solo, coerentemente con l'arita' (vedi
-#     docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md).
+#     docs/it/dev/work-done/2026/brief-db-segnaposti-messaggi-errore.md).
 # ------------------------------------------------------------
 
 databaseChangeLog:

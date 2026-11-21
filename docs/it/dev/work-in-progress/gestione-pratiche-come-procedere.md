@@ -10,8 +10,8 @@
 > point-in-time (ora consolidati in un unico handoff + storia git).
 >
 > **Documenti collegati**: [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md)
-> (visione integrazione domini), [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md)
-> (motore workflow), [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md) (piano v1→v2,
+> (visione integrazione domini), [analisi-pratiche-workflow-v2.md](../work-done/2026/analisi-pratiche-workflow-v2.md)
+> (motore workflow), [gestione-pratiche-v2.md](../work-done/2026/gestione-pratiche-v2.md) (piano v1→v2,
 > ormai storico), brief PREVENTIVI in `work-done/` (db/be/fe).
 
 ---
@@ -64,7 +64,7 @@ smoke-verificata** moltiplica il rischio. Da chiudere per primi:
 | Pri | Item | Dettaglio | Fonte |
 |---|---|---|---|
 | 🔴 | **Smoke UI E2E pratiche MAI eseguito** | esiste solo smoke BE/unit; il giro UI reale (crea pratica → avanza flussi → accetta → conferma → commessa/fattura, su app+DB seedato+auth) non è mai stato fatto | handoff 0609, 0615, 0618 (ricorrente) |
-| ✅ | **Push→commessa→fatturazione (prev/ord/contratto)** | **CHIUSO 2026-06-29** → doc in `work-done`. Smoke verdi: §1 preventivo, §2 ordine (super admin + operatore reale), §3b contratto addebito standard. §3a contratto ricorrente rinviato (utilities). 4 bug reali risolti (DB gate EVASO commessa; BE `priorita_operativa`, `codice_interno` PDF contratto, `emittente_fiscale_id` in `create_contratto`). Resta fuori: ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619), UX FE | [a-test-push-commesse-fatturazione.md](../work-done/a-test-push-commesse-fatturazione.md) |
+| ✅ | **Push→commessa→fatturazione (prev/ord/contratto)** | **CHIUSO 2026-06-29** → doc in `work-done`. Smoke verdi: §1 preventivo, §2 ordine (super admin + operatore reale), §3b contratto addebito standard. §3a contratto ricorrente rinviato (utilities). 4 bug reali risolti (DB gate EVASO commessa; BE `priorita_operativa`, `codice_interno` PDF contratto, `emittente_fiscale_id` in `create_contratto`). Resta fuori: ultimo miglio lotto→fattura (blocco DB `1→8`, handoff 0619), UX FE | [a-test-push-commesse-fatturazione.md](../work-done/2026/a-test-push-commesse-fatturazione.md) |
 | 🟡 | **Part B audit giornale** (append-only) | audit utente reale su `pratiche.*` — la parte giornale/append-only resta aperta lato **team DB** | handoff 0618 |
 
 ---
@@ -82,7 +82,7 @@ Oltre alle urgenze §2, item minori tracciati negli handoff (tutti su funzionali
   fatto (testare con pratiche **nuove**); handler accetta/push ancora **per-pratica**
   (da generalizzare quando nascono offerta/contratto).
 - **La bozza abbandonata dal flusso resta agganciata** (aggiunto il 2026-11-08, dal
-  giro P.1 di [brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md),
+  giro P.1 di [brief-db-sorgente-documento-e-riga](../work-done/2026/brief-db-sorgente-documento-e-riga.md),
   §8.16 BE-P.1-e). Dal passo PREVENTIVAZIONE il drawer crea la bozza del preventivo e al
   primo salvataggio automatico la aggancia al flusso come ROOT (`collegaPratica`). Se
   l'operatore la abbandona vuota, la cancellazione e' rifiutata: un documento collegato a
@@ -105,7 +105,7 @@ Oltre alle urgenze §2, item minori tracciati negli handoff (tutti su funzionali
   - Fino ad allora il comportamento e' il blocco, con la sola frase del DB (il pre-check BE
     «pratiche collegate» si ritira: BE-P.1-e, scelta A).
 - **Le segnalazioni della revisione delle pagine `manual/` di `pratiche`** (aggiunto il 2026-11-08, dal giro
-  DOC.4 di [brief-db-sorgente-documento-e-riga](../work-done/brief-db-sorgente-documento-e-riga.md); verificate sul DB, non
+  DOC.4 di [brief-db-sorgente-documento-e-riga](../work-done/2026/brief-db-sorgente-documento-e-riga.md); verificate sul DB, non
   provate in transazione). Le 99 pagine `pratiche/manual` sono allineate al DB; restano questi difetti, che sono
   del dominio e si chiudono qui (Tid, 2026-11-08: «tutte le segnalazioni pratiche vanno in quel brief»):
   - ⚠️ **`pratiche.flussi.data_fine` non la scrive nessuno** (né una funzione DB né il BE: nel BE `data_fine` è
@@ -261,10 +261,10 @@ priorità di business: estensione **in profondità** (vendite: offerta/contratto
 ## 7. Riferimenti
 
 - [analisi-pratiche-domini-anello3.md](analisi-pratiche-domini-anello3.md) — §2 (pattern aggancio), §5 (caso vendite), §8 (roadmap).
-- [analisi-pratiche-workflow-v2.md](../work-done/analisi-pratiche-workflow-v2.md) — motore workflow (ripetibilità, bivi, lenti contesto, guard chiusura).
+- [analisi-pratiche-workflow-v2.md](../work-done/2026/analisi-pratiche-workflow-v2.md) — motore workflow (ripetibilità, bivi, lenti contesto, guard chiusura).
 - Brief PREVENTIVI (work-done): db / be / fe — il template implementativo.
-- [brief-preventivi-ordini.md](../work-done/brief-preventivi-ordini.md) — split per natura.
-- [a-test-push-commesse-fatturazione.md](../work-done/a-test-push-commesse-fatturazione.md) — smoke OdV residuo.
+- [brief-preventivi-ordini.md](../work-done/2026/brief-preventivi-ordini.md) — split per natura.
+- [a-test-push-commesse-fatturazione.md](../work-done/2026/a-test-push-commesse-fatturazione.md) — smoke OdV residuo.
 
 ---
 

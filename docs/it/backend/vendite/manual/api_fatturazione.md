@@ -437,7 +437,7 @@ guide funzionali `docs/it/guide/gestione-code-di-lavoro.md` +
 **Emissione mirata (2026-07-27)**: additiva su `fatturazione/run/`. Senza
 `gruppi` il comportamento — corsia, chiave di dedup, esito — è **bit-identico**
 a prima. Substrato DB `20260727-10..19`; brief BE/FE
-`dev/work-done/brief-be-fe-emissione-fattura-mirata.md`.
+`dev/work-done/2026/brief-be-fe-emissione-fattura-mirata.md`.
 
 **Data documento e cancello di sequenza (2026-08-25)**: additivo su tutti e tre i
 verbi — senza `data_documento` il comportamento è quello di prima, con la sola

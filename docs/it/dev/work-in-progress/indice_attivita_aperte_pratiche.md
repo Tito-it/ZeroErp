@@ -49,7 +49,7 @@
 
 ## Importanza MEDIA
 
-### 4. [brief-design-proiezione-stato-dominio.md](../work-done/brief-design-proiezione-stato-dominio.md) — archiviato
+### 4. [brief-design-proiezione-stato-dominio.md](../work-done/2026/brief-design-proiezione-stato-dominio.md) — archiviato
 
 **Descrizione**: brief di design (2026-07-01) sulla proiezione di `fase`/`esito`/`terminale` del documento nella pratica. Archiviato il 2026-11-20: il modello sta nella guida Gestione Pratiche (§«Lo stato del documento nella pratica (MOSTRA)»), i residui aperti sono passati al doc 2. Chiuse le due voci tecniche che erano qui: la regola d'ancora ha le sue sedi DB (`script.vw_pratica_doc_sorgente`, `script.vw_flusso_doc_sorgente`); gli indici `((uid::text))` non servono più, perché i lettori cercano sulle chiavi native.
 
@@ -90,7 +90,7 @@
 
 ## Importanza BASSA / sostanzialmente chiusi (spostati in `work-done/` il 2026-07-11)
 
-### 8. [gestione-pratiche-v2.md](../work-done/gestione-pratiche-v2.md)
+### 8. [gestione-pratiche-v2.md](../work-done/2026/gestione-pratiche-v2.md)
 
 **Descrizione**: piano v1→v2 del modulo pratiche, header "✅ COMPLETATO + in gran parte STORICO" (Fasi 1–7 atterrate). Non più riferimento corrente; alcune sezioni note come stale.
 
@@ -100,7 +100,7 @@
 - G16 — SLA alert WARNING/CRITICO da `calcoli_tempo` (priorità bassa)
 - G17/G18 — tabelle `ext_*` e handler registry: futuro
 
-### 9. [nota-be-backfill-data-apertura-pratiche.md](../work-done/nota-be-backfill-data-apertura-pratiche.md)
+### 9. [nota-be-backfill-data-apertura-pratiche.md](../work-done/2026/nota-be-backfill-data-apertura-pratiche.md)
 
 **Descrizione**: nota di decisione (2026-06-29): backfill `data_apertura` sulle pratiche storiche **non da eseguire ora** (solo DB di test; protezioni già attive). Sostanzialmente chiusa.
 

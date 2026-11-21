@@ -14,7 +14,7 @@ documento**. L'evasione (genera DDT da ordine) vive sul dominio ORDINE:
 > Stato: BE completo (brief-be-ddt-vendita + slice riepilogo IVA/indirizzi
 > 2026-07-11/12). Per il modello e la state machine
 > (DRAFT→EMESSO→SPEDITO→CONSEGNATO→RESO, +ANNULLATO) vedi
-> [brief-db-ddt-vendita-evasione-e-stati.md](../../../dev/work-done/brief-db-ddt-vendita-evasione-e-stati.md).
+> [brief-db-ddt-vendita-evasione-e-stati.md](../../../dev/work-done/2026/brief-db-ddt-vendita-evasione-e-stati.md).
 
 ## Endpoints
 
@@ -71,7 +71,7 @@ scartava in silenzio).
   (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23). Accanto,
   `contatori` (dal 2026-10-25): `{"note": <n>}`, il numero sul pulsante «Gestisci note» del drawer, dal BB `contatori_documento` — contato **dopo** il cancello di testata, con lo stesso perimetro della lista note. Forma e ragioni in [api_fattura_dettaglio §`contatori`](/backend/vendite/manual/api_fattura_dettaglio).
-- Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
+- Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
   destinatario **si scelgono in bozza** (`billing_account_id`,
   `destinatario_soggetto_ruolo_id`; `utility_id` ed `emittente_fiscale_id`
   fuori contratto → 400). Corpo senza campi → 400. Risposta `{ddt_id, updated}`: al cambio di
@@ -234,7 +234,7 @@ lato DB mette `NULL` se anche un solo figlio è scoperto.
 Il BE non fa `COALESCE(false)` di proposito: al client serve distinguere «non
 vende» da «non lo so ancora» (DEC-5).
 
-Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
+Riferimento: `docs/it/dev/work-done/2026/brief-ddt-righe-senza-prezzo.md`.
 
 ## Codici errore principali
 

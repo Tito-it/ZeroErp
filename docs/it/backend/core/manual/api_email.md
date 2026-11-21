@@ -488,7 +488,7 @@ account si risolve la chiamata fallisce con `E_EMAIL_ACCOUNT_NON_CONFIGURATO`
 (500: manca la configurazione, chi invia non puo' rimediare) e la bozza **resta `DRAFT`**,
 quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
 bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
-[analisi difetti](../../../dev/work-done/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+[analisi difetti](../../../dev/work-done/2026/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 ### Annulla bozza
 
@@ -676,7 +676,7 @@ da `script.fn_scope_email_ambito`, in lettura e in scrittura. Su `REPARTO` e
 `OPERATORE` l'emittente della mail deve essere anche nel perimetro di chi guarda
 (`AND`). Gli allegati si vedono se si vede la bozza o il log a cui appartengono.
 Il backend non ne tiene una copia. Brief:
-[brief-db-email-visibilita-per-ambito](../../../dev/work-done/brief-db-email-visibilita-per-ambito.md).
+[brief-db-email-visibilita-per-ambito](../../../dev/work-done/2026/brief-db-email-visibilita-per-ambito.md).
 
 ⚠️ `auth_user_id` **non** e' l'autore: e' l'utente **di cui la mail parla**
 (l'operatore invitato, l'utente del reset password).

@@ -9,7 +9,7 @@
 # Presidio riferimenti morti — 🔴 la classe FP_VARIADIC poggiava su una
 #   premessa FALSA. Segnalazione del team BE, verificata il 2026-08-05.
 #   Guida: docs/it/guide/presidi-e-registri-del-debito.md
-#   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §3.1
+#   Brief: docs/it/dev/work-done/2026/brief-db-bonifica-riferimenti-morti.md §3.1
 #
 # ── COSA DICEVA v1, E PERCHE' ERA SBAGLIATO ─────────────────────────────
 #   «`script.fn_log_and_raise_error(..., VARIADIC text[])` ammette di

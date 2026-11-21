@@ -66,10 +66,10 @@ con checklist dedicata). Include:
 - [catalogo-building-block-backend.md](../backend/catalogo-building-block-backend.md) sezione "Portale + Shop — Invito veste"
 - [architettura-multi-face-auth](../../guide/architettura-multi-face-auth.md)
 
-**WIP originali archiviati in** [work-done/](../work-done/):
+**WIP originali archiviati in** [work-done/](../work-done/2026/):
 
-- [pr-b-shop-b2c-cambio-modello.md](../work-done/pr-b-shop-b2c-cambio-modello.md) — piano sprint PR-B + changelog §8.9
-- [sviluppo-multi-face-auth.md](../work-done/sviluppo-multi-face-auth.md) — architettura, storico modifiche, blocker risolti
+- [pr-b-shop-b2c-cambio-modello.md](../work-done/2026/pr-b-shop-b2c-cambio-modello.md) — piano sprint PR-B + changelog §8.9
+- [sviluppo-multi-face-auth.md](../work-done/2026/sviluppo-multi-face-auth.md) — architettura, storico modifiche, blocker risolti
 
 **Smoke e2e** in corso — checklist operativa in
 [smoke-b1-invito-shop-checklist.md](smoke-b1-invito-shop-checklist.md).

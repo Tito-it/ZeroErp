@@ -3,7 +3,7 @@
 **Stato:** WIP
 **Data:** 2026-03-31 · **riletto sul codice il 2026-09-25** · aggiornato il 2026-09-26
 **Autore:** Michele Carlo / Claude Code
-**Prerequisito:** [integrazione-ai-sviluppo.md](../work-done/integrazione-ai-sviluppo.md) (v1 completato)
+**Prerequisito:** [integrazione-ai-sviluppo.md](../work-done/2026/integrazione-ai-sviluppo.md) (v1 completato)
 
 ---
 
@@ -17,7 +17,7 @@ dei tool, configurazione) lo dice la
 Due cantieri successivi hanno cambiato le regole con cui si aggiunge un tool:
 
 * ✅ **Permessi di un tool = permessi del suo endpoint gemello** (2026-09-24,
-  [brief-db-area-funzionale-assistente-ai.md](../work-done/brief-db-area-funzionale-assistente-ai.md)
+  [brief-db-area-funzionale-assistente-ai.md](../work-done/2026/brief-db-area-funzionale-assistente-ai.md)
   §5.2). Un tool non dichiara più area, livello o azione: dichiara l'endpoint
   della UI che fa la stessa cosa (`endpoint=EndpointGemello(view, metodo)`), e
   il permesso si deriva da lì. Un tool **senza** gemello è un'eccezione da
@@ -120,7 +120,7 @@ Incrementalmente, quando l'endpoint gemello del dominio è stabile e testato.
 ## Debiti dei tool esistenti — fatti che hanno già una sede
 
 > Emersi il 2026-09-26 dalla chiusura di
-> [brief-db-be-fe-ricerca-soglia-per-lista](../work-done/brief-db-be-fe-ricerca-soglia-per-lista.md)
+> [brief-db-be-fe-ricerca-soglia-per-lista](../work-done/2026/brief-db-be-fe-ricerca-soglia-per-lista.md)
 > (§6 a-bis e §8), rimasti fuori da quel perimetro. Stessa natura in tutti e
 > due i casi: lo schema o il guard di un tool ripete un fatto che nel modello
 > ha già una sede, e la copia diverge in silenzio al primo cambio.
@@ -180,7 +180,7 @@ Incrementalmente, quando l'endpoint gemello del dominio è stabile e testato.
   Il rendering arricchito resta su **testo strutturato e azioni interne** (rotte
   Vue). **Mai** immagini o risorse esterne caricate a partire dall'output del
   modello: sarebbe una via di **esfiltrazione**. Vedi
-  [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md)
+  [analisi-sicurezza-aggiornata.md](../work-done/2026/analisi-sicurezza-aggiornata.md)
   §3 e guida AI §4.5.
 
 * [ ] Rendering risultati lista come mini-tabella nel widget (righe cliccabili)
@@ -201,7 +201,7 @@ Dopo le prime prove con operatori reali: le priorità emergono dall'uso.
 ## Durabilità conversazioni (multi-worker)
 
 > Emerso durante l'hardening sicurezza 2026-06-26 (vedi
-> [analisi-sicurezza-aggiornata.md](../work-done/analisi-sicurezza-aggiornata.md)).
+> [analisi-sicurezza-aggiornata.md](../work-done/2026/analisi-sicurezza-aggiornata.md)).
 
 * ✅ Le **conferme pendenti** sono in `django.core.cache` (Redis in produzione),
   con la chiave che include conversazione e proprietario.
@@ -222,7 +222,7 @@ Dopo le prime prove con operatori reali: le priorità emergono dall'uso.
   retention.
 * [ ] Campo `ai_initiated` nelle tabelle `storico.*`, per marcare le **scritture**
   originate dall'AI. Rilevante anche per
-  [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md)
+  [analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/2026/analisi-diagnostica-produzione-senza-accesso-db.md)
   §7.3. Valutare dopo le prime settimane di uso.
 
 ---
@@ -255,7 +255,7 @@ grezzi invece di ricostruirli.
 ⛔ **Prima di qualunque installazione con un provider esterno** c'è una
 decisione che non è un'evoluzione: il perimetro dei dati inviati al fornitore.
 Sta nella guida AI §9 (requisito R7 di
-[analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/analisi-diagnostica-produzione-senza-accesso-db.md)).
+[analisi-diagnostica-produzione-senza-accesso-db.md](../work-done/2026/analisi-diagnostica-produzione-senza-accesso-db.md)).
 
 | Priorità | Attività | Perché |
 |---|---|---|

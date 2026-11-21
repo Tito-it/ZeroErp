@@ -7,7 +7,7 @@
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
 # La funzione che riporta l'errore non puo' essere quella che lo distrugge
-#   Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md §8, D-2
+#   Brief: docs/it/dev/work-done/2026/brief-db-segnaposti-messaggi-errore.md §8, D-2
 #   Decisione: Tid, 2026-08-18 — «si', ma come changeSet a se'»
 #   Segue: il lotto 20260818-47 .. -54, che ha azzerato i punti disallineati
 #

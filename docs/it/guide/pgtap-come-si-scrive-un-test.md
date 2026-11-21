@@ -3,7 +3,7 @@
 > **A chi serve**: chiunque aggiunga o modifichi un test in `db/pgtap/`.
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
-> `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
+> `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
 > **Ultimo aggiornamento**: 17 novembre 2026
 
 ## La cosa da sapere per prima

@@ -115,7 +115,7 @@ che la funzione chiude. Si legge il `default_value` **nudo**, apposta.
   della colonna `vendite.fatture.data`. `CURRENT_DATE` resta in **25 tabelle e 67
   funzioni**: sostituirlo ovunque è un cantiere a sé, non un effetto collaterale
   di questo.
-* Brief: `docs/it/dev/work-done/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-2.
+* Brief: `docs/it/dev/work-done/2026/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-2.
 
 ---
 

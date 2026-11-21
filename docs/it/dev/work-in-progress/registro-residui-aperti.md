@@ -11,16 +11,16 @@
 
 - **Briciole lasciate aperte da brief chiusi** (raccolte il 2026-11-11, quando le voci dei cantieri chiusi sono
   uscite da § «Altri cantieri aperti»; il dettaglio è nel documento citato):
-  - **D31 resta aperta per ORARIO e CONSUMO** (G-4 di `work-done/brief-db-contratto-righe-periodiche-in-commessa.md`):
+  - **D31 resta aperta per ORARIO e CONSUMO** (G-4 di `work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md`):
     aspettano timesheet e letture;
-  - **collaudo a video dei form di DDT e ordine** (`work-done/brief-db-esecutivi-ba-coppia.md`, D21). Di Tid;
-  - **il «perché» nel tooltip di `RIGA_NON_AMMESSA`** (`work-done/brief-db-offerta-emissione-ed-erogazione.md` §J.4):
+  - **collaudo a video dei form di DDT e ordine** (`work-done/2026/brief-db-esecutivi-ba-coppia.md`, D21). Di Tid;
+  - **il «perché» nel tooltip di `RIGA_NON_AMMESSA`** (`work-done/2026/brief-db-offerta-emissione-ed-erogazione.md` §J.4):
     proposta aperta, non bloccante;
-  - **la sorgente sugli acquisti** (`work-done/brief-db-sorgente-documento-e-riga.md`): le quattro tabelle restano
+  - **la sorgente sugli acquisti** (`work-done/2026/brief-db-sorgente-documento-e-riga.md`): le quattro tabelle restano
     nella grammatica precedente, elenco dichiarato del presidio; si allineano col cantiere `acquisti`;
-  - **i residui del cliente manuale** (§7 di `work-done/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`, D33):
+  - **i residui del cliente manuale** (§7 di `work-done/2026/brief-db-cliente-manuale-uno-per-soggetto-e-utility.md`, D33):
     fanno parte dello sviluppo delle utility (Tid, 2026-10-15).
-- **Residui di `work-done/brief-db-contratto-righe-periodiche-in-commessa.md`** (ereditati il 2026-11-01
+- **Residui di `work-done/2026/brief-db-contratto-righe-periodiche-in-commessa.md`** (ereditati il 2026-11-01
   dalla chiusura, §7.14), nessuno bloccante:
   - **il collaudo a video** del form della riga a canone (contratto e offerta) e della colonna «Periodicità»
     della lista 37 (anche sul composito, e nell'export). Di Tid;
@@ -28,14 +28,14 @@
     nella proiezione del repository), e se ordinabile (sul ritmo `config.periodicita.mesi`, con la voce in
     `RIGHE_ORDER_COLUMNS` e `ordinabile = t` insieme). Di Tid; poi team DB e BE;
   - gli smoke di `backend/scripts/tests/` non lanciati nel giro BE del §7.13.6.
-- **Residui di `work-done/brief-db-scadenza-preventivi.md`** (ereditati il 2026-11-01 dalla chiusura, §8.10),
+- **Residui di `work-done/2026/brief-db-scadenza-preventivi.md`** (ereditati il 2026-11-01 dalla chiusura, §8.10),
   nessuno bloccante:
   - **`validita_al` dice due cose**: la scadenza dell'offerta e, come ripiego dietro `competenza_mese`, il periodo
     di competenza (`fn_list_preventivi_da_pushare`, `vw_dash_fatturazione_preventivi`). Se la competenza debba
     avere una sede sua lo decide Tid; poi team DB;
   - **il verbo di chiusura del listino** (`vendite.fn_chiudi_versioni_listino_scadute`) legge ancora i letterali
     `'ATTIVA'`/`'CHIUSA'`, mentre il gemello del preventivo legge il vocabolario. Team DB.
-- **Residui di `work-done/brief-modello-documento-vendita.md`** (ereditati il 2026-10-31 dalla chiusura, §18.6),
+- **Residui di `work-done/2026/brief-modello-documento-vendita.md`** (ereditati il 2026-10-31 dalla chiusura, §18.6),
   nessuno bloccante:
   - **i permessi `emetti_offerta`, `emetti_contratto`, `emetti_ordine`, `attiva_listino` ai profili** su dbdev:
     al 2026-10-26 nessun profilo li aveva, e senza nessuno emette, attiva o cessa quei documenti. Di Tid;
@@ -45,7 +45,7 @@
   - **`DocumentoDrawerHost` tace sul drawer che non si carica** (`catch { return }`): il click su una tappa dei
     «Passaggi» non fa niente, senza avviso né console (visto a video il 2026-10-31). Proposto un avviso. FE, con
     l'ok di Tid.
-- **Residui di `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`** (ereditati il
+- **Residui di `work-done/2026/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`** (ereditati il
   2026-10-24 dal collaudo passato, §3):
   - **il reset del rifiuto sta solo nel BE del preventivo** (`preventivi_service.py` `aggiorna_riga`,
     «Auto-reset stato approvazione»), nessun trigger a DB: una correzione del prezzo che non passa da lì
@@ -55,7 +55,7 @@
   - **la riga `test-preventivi-approvazione-prezzo.sql`** è ancora in `db/pgtap/baseline-rossi-ci.tsv`
     (`ERRORE_FIXTURE`): si toglie dopo la corsa CI su `Tito-dev` (`scripts/pgtap-baseline-ci-rientrati.sh`).
     Team DB.
-- **Residui di `work-done/brief-db-modelli-documento-standard.md`** (ereditati il 2026-10-21 dalla
+- **Residui di `work-done/2026/brief-db-modelli-documento-standard.md`** (ereditati il 2026-10-21 dalla
   chiusura, §11.5.4 e riga 10):
   - **il giro degli smoke su `dev.smoke`** (§7, B-11): DEVA emette con lo standard e chiude una
     fattura. Non fatto: il brief si è chiuso col collaudo a video. BE;
@@ -65,7 +65,7 @@
     di Tid;
   - **`vendite.fatture.utility_id NOT NULL`** (§10.9, facoltativa): l'unico creatore applicativo la
     pretende già, molte fixture pgTAP inseriscono fatture senza. Di Tid.
-- **Residui di `work-done/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
+- **Residui di `work-done/2026/brief-db-presidio-job-run-a-chi-tocca.md`** (ereditati il 2026-10-18 dalla chiusura),
   nessuno bloccante:
   - **errori lato client senza SQLSTATE** (§12): una connessione che cade dentro un command arriva come
     `OperationalError` senza SQLSTATE e va a `PROGRAMMA`. Se servirà, la strada è riconoscere la classe Python
@@ -76,7 +76,7 @@
     `registered_job` scrive `str(exc)`, che porta il `CONTEXT` del driver su una riga nuova, e il digest stampa la
     voce spezzata. BE;
   - **il `%TYPE` mancato del giro 1** (§10.1-bis): debito noto, deciso di non riscrivere (Tid, 2026-10-16). DB.
-- **Residui di `work-done/brief-db-dati-fiscali-e-societari-del-soggetto.md`** (ereditati il 2026-10-14 dalla
+- **Residui di `work-done/2026/brief-db-dati-fiscali-e-societari-del-soggetto.md`** (ereditati il 2026-10-14 dalla
   chiusura):
   - **D-4, che cosa registra il titolo IVA `COOPERATIVA`** (§4): l'aliquota agevolata delle cooperative sociali
     riguarda di solito le prestazioni rese **dalla** cooperativa, ma il titolo sta sul cliente. Finché non è
@@ -92,36 +92,36 @@
     `vw_fornitori_dettaglio`. Sul passivo la scissione dipende dall'emittente, non dal fornitore: forse è nella
     sede sbagliata. Da verificare; se confermato, brief suo.
 - **La commessa vuota lasciata dal push batch** (DB + BE, ereditata il 2026-10-13 dalla chiusura di
-  `work-done/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
+  `work-done/2026/brief-db-annullo-a-valle-riapre-a-monte.md` §10.8): nel push batch (`pr_run_commesse_push`,
   best-effort per riga) la commessa nasce prima che il batch delle righe le accetti; se una riga e'
   rifiutata, per qualunque causa, la commessa resta vuota e aperta e il ponte di emittibilita' scrive un
   errore nel report. Strade di modello: (a) il fan-out chiede al DB la commessa aperta del documento prima di
   crearne una; (b) le righe di un documento si scrivono dentro il suo savepoint; (c) il DB non crea la
   commessa vuota. Da decidere, di Tid con il team DB.
-- **Residui di `work-done/brief-db-istanza-nasce-col-ba.md`** (ereditati il 2026-10-10 dalla chiusura):
+- **Residui di `work-done/2026/brief-db-istanza-nasce-col-ba.md`** (ereditati il 2026-10-10 dalla chiusura):
   - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
     utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla
     pratica. Rimandato da Tid: si fa alla ripresa del cantiere pratiche;
 - **La coerenza tra codice fiscale e sesso ha una sede sola, e parziale** (DB + BE, ereditata il 2026-10-10
-  dalla chiusura di `work-done/brief-db-sesso-senza-default.md`, D5, rimandata da Tid il 2026-10-09): la
+  dalla chiusura di `work-done/2026/brief-db-sesso-senza-default.md`, D5, rimandata da Tid il 2026-10-09): la
   controlla solo `SoggettiService._valida_cf_congruenza`, e solo nella **creazione** di una persona fisica.
   Una modifica (`PATCH`) di sesso o CF, o chi scrive senza passare dal BE, può mettere un CF da donna con
   sesso `M`. `X` e i CF esteri non si possono confrontare. Da decidere, di Tid: se la regola scende nel
   guard del DB, o resta nel BE estesa alla modifica.
 - **La corsa appesa non è «in corso» nella liveness del BE** (BE/FE, ereditata il 2026-10-10 dalla chiusura
-  di `work-done/brief-db-corsa-saltata-non-e-una-corsa.md` §8.7): una corsa col processo vivo che tiene il
+  di `work-done/2026/brief-db-corsa-saltata-non-e-una-corsa.md` §8.7): una corsa col processo vivo che tiene il
   lock, seguita da skip, ha come riga più recente la skip, chiusa; `job_liveness`/`list_job_summary` dicono
   `in_corso = false`, e badge e digest non la mostrano. Il caso lo vede `maintenance.vw_job_run_da_guardare`
   («presa e mai chiusa»), coerente con D3 di quel brief. Se la si vuole anche nel BE: `in_corso` dall'ultima
   corsa **vera**, con la sua data di avvio — un campo in più nella forma condivisa con la coda lavori. Da
   decidere, di Tid.
 - **La lista dei processi non dice se un processo gira adesso** (ereditato il 2026-10-10 dalla chiusura di
-  `work-done/brief-db-presidio-processi-testo-per-causa.md` §6.6): «Attivo» è il flag del catalogo, «Esito»
+  `work-done/2026/brief-db-presidio-processi-testo-per-causa.md` §6.6): «Attivo» è il flag del catalogo, «Esito»
   quello dell'ultima corsa registrata (per un servizio `SESSIONE`, l'avvio). Lo stato vivo (`OK`, `MUTO`,
   `JOB_SPENTO`…) lo calcola già `dbops.vw_processi_programmazione`: una colonna «Stato» in `amm.processi`
   vuole la riga nel seed della lista (DB) e la lettura nel repository. Proposta, da decidere di Tid.
 - **Presidi, i residui del brief dei testi per chi agisce** (ereditati il 2026-10-06 dalla chiusura di
-  `work-done/brief-db-presidi-cosa-significa-cosa-fare.md`):
+  `work-done/2026/brief-db-presidi-cosa-significa-cosa-fare.md`):
   - **D-4**, le quattro misure larghe per costruzione (`vw_codici_errore_forme_condizione`,
     `vw_codici_errore_da_dichiarare`, `vw_punti_primo_motivo`, `vw_punti_canale_campo`): il pannello le mostra
     come un numero da guardare. O diventano `INVENTARIO`, o la natura del pannello si separa da quella del
@@ -129,7 +129,7 @@
   - la **postura in sola lettura** di `dbops.presidi` e `dbops.presidi_testi` per l'app (§8.1): oggi il loop
     dei grant di `ci_apply` dà anche la scrittura. Non chiesta, da decidere.
 - **`HTML_MARKDOWN_BLOCKS` si sceglie ma non fa niente** (BE `documenti`, ereditato il 2026-10-04
-  dalla chiusura di `work-done/brief-db-vocabolari-versione-template.md` §5.6): il valore sta nel
+  dalla chiusura di `work-done/2026/brief-db-vocabolari-versione-template.md` §5.6): il valore sta nel
   vocabolario `documenti.formati_template` (la Decisione 4, «markdown solo per blocchi controllati»),
   ma il render tratta ogni versione come HTML e non legge `markdown_template`. Da decidere se
   implementarlo o ritirarlo, quando si tocca il trattamento del markdown.
@@ -138,12 +138,12 @@
   servono versioni nuove con i margini nelle colonne; l'`@page` di formato e margini nel loro CSS
   non ha più effetto (restano i piè di pagina). Le ristampe dei documenti già emessi escono coi 15 mm.
 - 🟡 **L'editor dei workflow perde le righe in compilazione senza chiedere** (FE, ereditato il
-  2026-10-03 dalla chiusura di `work-done/analisi-fe-chrome-drawer.md`, D-13): `DefinizioneEditorView`
+  2026-10-03 dalla chiusura di `work-done/2026/analisi-fe-chrome-drawer.md`, D-13): `DefinizioneEditorView`
   e i pannelli di passi e archi (`useEditableCollection`) non tengono la fotografia del form di riga,
   quindi cambiare riga o uscire butta cio' che si e' scritto. Il rimedio esiste ed e' provato sui
   documenti: fotografia nel form (`useDrawerFormPreserve`) + `confermaCambio` di `useFormInline`.
   Non fatto con il resto perche' non e' un drawer documento e ha form propri: un giro a se'.
-- **Residui di `work-done/brief-db-stati-documento-dal-vocabolario.md`** (FE, ereditati il 2026-11-15 dalla
+- **Residui di `work-done/2026/brief-db-stati-documento-dal-vocabolario.md`** (FE, ereditati il 2026-11-15 dalla
   chiusura, giro 6f-ter):
   - ⏭️ **i prezzi del kit di una versione non in bozza non si vedono**: `VersioneDrawer.openBundleDialog` non
     apre il dialog quando `prezzi_bundle_blocco_*` della versione dice un motivo, quindi su una versione attiva o
@@ -154,13 +154,13 @@
     `RETTIFICA_RIGA_LISTINO`) leggono il motivo con `useAzioneRiga`, che ha il suo spec; il cablaggio nel drawer
     (quale riga, versione o riga di listino, dà il motivo a quale gesto) non ne ha uno.
 - **`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona**
-  (DB, `dbops`; residuo di `work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): il
+  (DB, `dbops`; residuo di `work-done/2026/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md`): il
   codice del require generato dal framework ATTIVO è candidato allo split, per **tutte** le coppie
   ATTIVO: oggi un riferimento a un dato disattivato scelto dall'operatore esce come 500, lo
   stesso codice di un trigger montato male. Cantiere `dbops`, non di dominio; intanto il BE
   pre-verifica «attivo» e risponde 400 col campo (§5.5 nota 2 e tabella dei residui, voce 4).
 - 🟡 **IVA per cassa: i residui del cantiere** (DB, ereditati il 2026-10-03 dalla chiusura
-  di `work-done/brief-db-esigibilita-iva-per-cassa-emittente.md` §12):
+  di `work-done/2026/brief-db-esigibilita-iva-per-cassa-emittente.md` §12):
   **R-DB-1** — i riepiloghi IVA **memorizzati** dei preventivi non si ricalcolano
   quando cambia la regola che li produce (rimandato da Tid, SQL a mano nel §9.5;
   si riapre al prossimo cambio della regola: ricalcolo del pregresso o riepilogo
@@ -170,20 +170,20 @@
   contabile, RF19) come righe di `vendite.fn_annotazioni_fattura`.
 - 🟡 **Le variabili di una versione di template non si validano alla pubblicazione**
   (DB + BE, ereditata il 2026-10-01 dalla chiusura di
-  `work-done/brief-db-documenti-versione-contesto-template.md`, D-C3 §7 e §14): le
-  decisioni 35-36 del 2026-04-29 (`work-done/sviluppo-documenti.md`) volevano
+  `work-done/2026/brief-db-documenti-versione-contesto-template.md`, D-C3 §7 e §14): le
+  decisioni 35-36 del 2026-04-29 (`work-done/2026/sviluppo-documenti.md`) volevano
   `context_schema` «contratto leggero delle variabili attese», validato prima di
   pubblicare; il campo è ancora `'{}'` ovunque e nessuno lo legge. Il caso grave
   (pezzi mancanti in silenzio per un cambio di forma) lo chiude già
   `versione_contesto`; questo è il raffinamento per variabile. Sede naturale: la
   pubblicazione, la stessa della verifica degli asset citati
-  (`work-done/brief-be-documenti-risorse-esterne-render-pdf.md` §5.3). Con la stessa
+  (`work-done/2026/brief-be-documenti-risorse-esterne-render-pdf.md` §5.3). Con la stessa
   chiusura, facoltativa al team DB: la colonna «Forma dei dati»
   (`versione_contesto`) nella lista configurabile `documenti.template_versioni`
   (88) — il campo viaggia già nelle righe (§12.1 del brief).
 - ⏳ **«Annulla» e «Porta a Bozza» sulle distinte non manuali: spenti col motivo**
   (DB poi BE/FE, ereditata il 2026-09-30 dalla chiusura di
-  `work-done/brief-db-righe-distinta-annullata-fuori-dalle-code.md`, R-3 + D-6 §11.3-§11.4,
+  `work-done/2026/brief-db-righe-distinta-annullata-fuori-dalle-code.md`, R-3 + D-6 §11.3-§11.4,
   D-6 approvata da Tid). Oggi le due voci si propongono accese su una GENERATA
   e finiscono in 409 (`E_CONTABILE_ANNULLO_NON_MANUALE`,
   `E_CONTABILE_RIAPERTURA_NON_MANUALE`): le regole vivono solo nel corpo del
@@ -192,7 +192,7 @@
   la chiama (P-9 … P-12). Poi il BE espone `transizioni_blocco` e il drawer spegne
   le voci col motivo.
 - 🟡 **Colori PrimeVue ancora scritti nei componenti** (FE, registrato il
-  2026-09-26 alla chiusura di `work-done/analisi-fe-regole-standard-violate-dal-codice.md`
+  2026-09-26 alla chiusura di `work-done/2026/analisi-fe-regole-standard-violate-dal-codice.md`
   R-3): circa 60 `var(--p-*)` — `primary-700/500/50`, `yellow-*`, `blue-*`,
   `surface-200/400`, `border-radius-sm`… — che non hanno ancora un token
   `--app-*` perché il loro **significato** non è nominato. Si decide caso per
@@ -212,7 +212,7 @@
   in meno e del codice nostro in più. È una scelta di Tid.
 - ❓ **Le FK verso `django.auth_user` non nascono su un'installazione nuova**
   (DB, domanda di forma per Tid, ereditata il 2026-09-27 dalla chiusura di
-  `work-done/brief-db-blocco-login-per-credenziale.md`, §11.5): con
+  `work-done/2026/brief-db-blocco-login-per-credenziale.md`, §11.5): con
   `onFail: MARK_RAN` il changeSet del «ponte django» si segna quando Liquibase
   gira prima di `manage.py migrate` (la tabella non esiste ancora) e non si
   riprova più. In CI nessuna FK del ponte esiste e
@@ -227,20 +227,20 @@
 - 🟡 **Tetto d'area dei permessi — due decisioni residue di Tid**, non
   bloccanti (brief §9.6). Il cantiere è ✅ **chiuso il 2026-10-06** (DB
   `20261004-50 → -59`, BE/FE in `b8ac544fe`, collaudo a video verde):
-  `work-done/brief-db-permessi-tetto-area.md`. Restano: ritiro del parametro
+  `work-done/2026/brief-db-permessi-tetto-area.md`. Restano: ritiro del parametro
   morto `p_area_schema_db` da `fn_resolve_livello_oggetto` (raccomandato:
   tenerlo finché un cantiere non tocca quella firma) e raggruppamento
   «Trasversali» delle aree (servirebbe una colonna su `aree_funzionali`, brief
   al team DB)
 - **Il `codice` delle sei famiglie di documento di seed si perde al migrate**
   (DB, ereditata il 2026-09-24 dalla chiusura di
-  `work-done/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il
+  `work-done/2026/brief-be-ricerca-full-liste-residue.md`, §13.5): dal 24-09 il
   `codice` dell'operatore si modifica dal CRUD, ma il mirror del CSV
   `vendite.famiglie_documento` lo riscrive a ogni migrate, come già la
   `descrizione`. Una modifica dal CRUD dura fino al migrate successivo. Da
   decidere col team DB se il mirror debba smettere di riscrivere le colonne che
   l'operatore può cambiare. ⏭️ Dal 2026-11-17 il tema generale sta in
-  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md)
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md)
   (§7, Q5). ⚠️ **Aggiornato il 2026-11-20: quel brief ha costruito il
   meccanismo, ma non ha iscritto questa tabella.** Il meccanismo è la forma per
   colonna: il registro `dbops.seed_righe`, le colonne del software lette da
@@ -254,7 +254,7 @@
   superficie, come per la posta (§16.14 del brief)
 - **Il «ripristina il valore di fabbrica» di una riga di seed personalizzata**
   [DB + BE/FE] (Q7 di
-  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/brief-db-seed-primo-impianto-non-si-riscrive.md),
+  [brief-db-seed-primo-impianto-non-si-riscrive](../work-done/2026/brief-db-seed-primo-impianto-non-si-riscrive.md),
   rinviata il 2026-11-17 fuori dal giro 1, §15.10; ereditata qui il 2026-11-20).
   Quando l'installazione modifica una riga di seed, la riga diventa
   personalizzata: il migrate non la riscrive più e mette i valori del CSV in
@@ -275,7 +275,7 @@
   ricerca non ha un rosso che la presidi
 - **La matrice di `stato_lotto` in due sedi che dissentono** (BE + DB,
   ereditata il 2026-09-23 dalla chiusura di
-  `work-done/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette
+  `work-done/2026/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette
   `COMPLETATO → ERRORE`, `vendite.fn_set_fatturazione_lotto_stato` no — e
   quella funzione è di fatto **morta**, il runner scrive `stato_lotto` con un
   `UPDATE` diretto (è per questo che la guardia su `COMPLETATO` sta su un
@@ -289,7 +289,7 @@
   restare vuoto); chiuderla a DB è una decisione a sé, di Tid
 - **`zeroerp_log` in CI non ha `USAGE` su `dbops`: ogni test Django lavora con
   `tx_id = uuid_nil`** (DB+CI, ereditata il 2026-09-19 dalla chiusura di
-  `work-done/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
+  `work-done/2026/brief-db-privilegio-app-job-run-log.md`, §5). La sede del
   privilegio esiste — `scripts/sql/provision_dblink_log_channel.sql` — ma la CI
   non la esegue (il vecchio changeSet `90_end/20260205-42`, `context:
   disabled`, è stato ritirato il 2026-10-15), il bootstrap di `ci-validate.yaml` crea il ruolo e il
@@ -308,7 +308,7 @@
   trovare) e `check_db_role_access.sql` che esclude `maintenance` per intero
   (§3.4, da verificare)
 - **La distinta del fondo fattura fuori lotto** (DB, ereditata il 2026-09-17
-  dalla chiusura di `work-done/brief-db-distinta-numerata-sul-registro.md`,
+  dalla chiusura di `work-done/2026/brief-db-distinta-numerata-sul-registro.md`,
   §4-bis.19): `fn_sync_contabili_fondo_fattura` passa `p_lotto_id = NULL` se la
   fattura non è in nessun lotto, e la distinta del fondo cade al **livello 3**
   di `fn_get_emittente_distinta` (l'emittente di chi agisce) invece che a
@@ -318,7 +318,7 @@
   **fattura**. Da decidere con Tid, un changeSet
 - **`runOnChange` + `dbms:` in `80_data`/`90_end`: la ri-esecuzione una-tantum**
   (DB, ereditata il 2026-09-17 dalla chiusura di
-  `work-done/brief-db-distinta-numerata-sul-registro.md`, §9 riga del 17-09
+  `work-done/2026/brief-db-distinta-numerata-sul-registro.md`, §9 riga del 17-09
   pomeriggio): in Liquibase 5.0.4 un `runOnChange` con un change `dbms:` viene
   ri-eseguito **una volta** all'update successivo alla prima esecuzione — il
   filtro ricalcola il checksum senza `Database` nello `Scope` e salta il
@@ -333,7 +333,7 @@
   in `ci-validate.yaml`, che nomina `runOnChange` come causa quando la causa è
   `runOnChange` **+ `dbms:`**. Cantiere `dbops`, non di dominio
 - **La scala di `vendite_contabili_righe.importo`** (DB, **P-8**, ereditata il
-  2026-09-18 dalla chiusura di `work-done/brief-db-distinta-ricerca-rate.md`,
+  2026-09-18 dalla chiusura di `work-done/2026/brief-db-distinta-ricerca-rate.md`,
   §4-bis.10): la colonna è `numeric` **senza scala** (`20260213-10`), quindi una
   riga con quattordici decimali — la sottrazione in virgola mobile di un client —
   entra com'è, e il guard di capienza la rifiuta su un importo che *era* lo
@@ -368,10 +368,10 @@
   cancello** — il guard della riga non chiede ancora lo stato del documento e il
   buco dichiarato è intatto: cambia solo che la regola non dipende più dal client
   che si ricorda di mandarla. Regola generale in
-  [api.md §«Un PERIMETRO non è un filtro»](../../dev/api.md)
+  [api.md §«Un PERIMETRO non è un filtro»](../api.md)
 - **«Riavvia» un servizio dall'interfaccia** (DB + deploy + BE, **decisione
   D1 di Tid**; ereditata il 2026-09-18 dalla chiusura di
-  `work-done/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
+  `work-done/2026/analisi-riavvio-processi-da-interfaccia.md`): «Esegui ora» è in
   esercizio dal 15-09 e non aveva bisogno di sapere su quale macchina gira —
   un timer è un comando che parla col DB. `systemctl restart` di un servizio
   (oggi il solo `listen_permessi`) **sì**: senza un *host* nel modello
@@ -386,24 +386,24 @@
   processo riavviato (D6). Zero righe scritte al 18-09, per scelta. Sta anche
   fra le «Decisioni aperte» della mappa concentrica
 - **Il Giornale eventi non è multi-emittente** (DB, **non urgente**, ereditata
-  il 2026-09-19 dalla chiusura di `work-done/piano-be-fe-osservabilita-pallino-e-superfici.md`,
+  il 2026-09-19 dalla chiusura di `work-done/2026/piano-be-fe-osservabilita-pallino-e-superfici.md`,
   §10 pezzo G): `vendite.giornale` è `multi_emittente = false` perché
   `script.vw_giornale_entita` non proietta l'emittente della riga — su «Tutti
   gli emittenti» la lista chiede di sceglierne uno (422), come `Fatture`. Per
   certificarla serve `emittente_soggetto_ruolo_id` nei **quattro rami** della
   vista (le tabelle lo hanno o lo raggiungono) + la colonna a catalogo. Il
-  collaudo in-app dell'osservabilità (`work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
+  collaudo in-app dell'osservabilità (`work-done/2026/collaudo-in-app-osservabilita-giornale-errori-pallino.md`,
   chiuso il 2026-10-06) lo dichiara al §3.15
 - **Tendine del lookup generico senza `page_size`** (FE, residuo di
-  `work-done/brief-db-registri-giornale-catalogo.md` §5.1): i siti che chiamano
+  `work-done/2026/brief-db-registri-giornale-catalogo.md` §5.1): i siti che chiamano
   `lookupCodici(rel)` senza `page_size` ricevono la pagina di default (50) e la
   tendina si tronca in silenzio — da rivedere uno per uno, o da far passare da
   `useLookupCodici`
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
-- **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
+- **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/2026/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
 - **Pratica di approvazione prezzo su revisione superata** (BE,
-  `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
+  `work-done/2026/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
   ricopia `stato_approvazione_prezzo` e la pratica 1:1, e una riga `PENDING`
   può trovarsi con la pratica già chiusa sulla rev N. ⚠️ **Dal 2026-09-24 il
@@ -411,26 +411,26 @@
   (building block `script.fn_check_prezzi_autorizzati`, cinque documenti di
   vendita), non più la sola accettazione — la revisione con quella riga non si
   emette, e resta solo l'annullamento. ✅ **Deciso da Tid lo stesso giorno**
-  (§10 di `work-done/brief-db-preventivi-congelamento-pricing.md`,
+  (§10 di `work-done/2026/brief-db-preventivi-congelamento-pricing.md`,
   `20260924-33…-37`, applicati il 24-09 con test verdi; collaudo a video
-  passato il 2026-10-24, `work-done/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
+  passato il 2026-10-24, `work-done/2026/collaudo-in-app-capability-annidata-e-prezzi-autorizzati.md`):
   una revisione **non si crea** finché un
   prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
   approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita
   della pratica su una rev superata (il suo `meta` nomina la riga della rev N)
-  ⚠️ **Dal 2026-10-08 anche sul preventivo annullato** (`work-done/brief-db-righe-e-componenti-debiti-residui.md`
+  ⚠️ **Dal 2026-10-08 anche sul preventivo annullato** (`work-done/2026/brief-db-righe-e-componenti-debiti-residui.md`
   §4.4, §5): con le righe chiuse fuori bozza l'esito di una pratica su un preventivo annullato con una riga in
   attesa è respinto dal lock (`E_RIGA_DOC_NON_BOZZA`), e la pratica resta `APERTA` in coda. Debito dichiarato da
   Tid il 2026-10-09: si chiude con il resto del ciclo di vita della pratica
 - **L'L3 dei componenti non esiste** (DB + BE, ereditata il 2026-10-09 dalla chiusura di
-  `work-done/brief-db-righe-e-componenti-debiti-residui.md` §3): nessun verbo mette un componente in attesa
+  `work-done/2026/brief-db-righe-e-componenti-debiti-residui.md` §3): nessun verbo mette un componente in attesa
   né gli dà un esito, e non c'è il controllo L2. Dal `20261008-87`/`-88` uno spento in attesa si copia nella
   revisione senza marca: la nuova richiesta alla riaccensione è di quel ciclo. Un brief suo quando si costruisce
 - **`user_update` nullable su nove tabelle senza audit** (DB, stessa origine, §2 e §4.6): `dbops.fk_index_policy`,
   `dbops.transaction_ids` e sette di `ui`. Il presidio `dbops/test-user-update-not-null-v1` le tiene a vista nel
   registro del debito; da decidere chi scrive la colonna
 - **`data_update` nullable e senza default su tabelle che hanno l'audit** (DB, ereditata il 2026-11-13 dalla
-  chiusura di `work-done/brief-db-nullvalue-vuoto-cinque-mirror.md` §8, note): `magazzino.causali.data_update` è
+  chiusura di `work-done/2026/brief-db-nullvalue-vuoto-cinque-mirror.md` §8, note): `magazzino.causali.data_update` è
   fuori da `linee-guida-sql` §7, e il suo mirror la riempie con `defaultValue: "NOW()"`. Il buco è nel contratto,
   non nel dato: `trgfn_audit_data_user_generic` la scrive sempre, in INSERT e in UPDATE. La stessa forma, letta
   dalla doc auto-generata il 2026-11-12, ce l'hanno altre tabelle, fra cui `config.tipi_soggetto*`,
@@ -439,7 +439,7 @@
   della voce qui sopra su `user_update`
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
-`docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di
+`docs/it/dev/work-done/2026/fatturazione-roadmap.md`, dove sta il *perché* di
 ciascuna; qui solo la riga, perché un promemoria di stato lungo marcisce —
 lezione della §Nota di metodo di quel file):
 

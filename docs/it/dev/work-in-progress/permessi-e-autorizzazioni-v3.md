@@ -3,7 +3,7 @@
 > Documento di pianificazione per l'evoluzione del sistema permessi oltre il livello model piatto.
 > Data creazione: 2026-04-22
 > Stato: **IN PIANIFICAZIONE — dormiente** (nessun lavoro dal 2026-04-22)
-> Prerequisito: v2 completata (in work-done/permessi-e-autorizzazioni-v2.md)
+> Prerequisito: v2 completata (in work-done/2026/permessi-e-autorizzazioni-v2.md)
 > Guida architetturale: `docs/it/guide/architettura-permessi-e-autorizzazioni.md`
 >
 > 🔎 **Riletto il 2026-09-26 contro il codice.** Cosa è cambiato da aprile:
@@ -14,9 +14,9 @@
 > - il modello **piatto** su cui la v3 costruisce è **allineato dal
 >   2026-09-28**: catalogo, BE, FE e pannello DB dicono la stessa cosa su ogni
 >   oggetto personalizzabile, e un test lo presidia
->   ([brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md), chiuso);
+>   ([brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md), chiuso);
 > - ✅ **il tetto d'area, da cui la gerarchia padre/figlio dipende, è CHIUSO
->   dal 2026-10-04** ([brief-db-permessi-tetto-area.md](../work-done/brief-db-permessi-tetto-area.md)):
+>   dal 2026-10-04** ([brief-db-permessi-tetto-area.md](../work-done/2026/brief-db-permessi-tetto-area.md)):
 >   un permesso specifico (oggetto, azione di processo) **può solo restringere**
 >   quello della sua area — `script.fn_livello_con_tetto_area` per gli oggetti,
 >   `script.fn_area_consente_azione` per le azioni. La gerarchia ha quindi una
@@ -67,7 +67,7 @@ Aggiungere un sotto-oggetto al sistema permessi richiede tre passi coordinati:
 Aggiungere una riga al catalogo `config.area_model_overrides` per il sotto-model
 (es. `('anagrafiche', 'indirizzo')` sull'area `anagrafiche`): una riga nel CSV
 `80_data/sql/config/area_model_overrides.csv` (D-3 del
-[brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md)), mai un `INSERT` in una migration.
+[brief del catalogo](../work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md)), mai un `INSERT` in una migration.
 ⚠️ **L'ordine è BE e FE prima, catalogo dopo**: un oggetto a catalogo che il BE
 non chiede ancora nasconde i pulsanti e lascia aperta l'API. Nell'attesa
 l'oggetto sta in `_IN_ATTESA_DI_CATALOGO`
@@ -111,8 +111,8 @@ a seconda del profilo dell'operatore, indipendentemente dal drawer padre.
 
 ## Problema UX: la lista piatta non scala
 
-> ✅ **Superato in parte il 2026-09-05** (`work-done/analisi-ui-permessi-operatore.md`,
-> `work-done/piano-be-fe-ui-permessi-operatore.md`). La tab Permessi del drawer operatore
+> ✅ **Superato in parte il 2026-09-05** (`work-done/2026/analisi-ui-permessi-operatore.md`,
+> `work-done/2026/piano-be-fe-ui-permessi-operatore.md`). La tab Permessi del drawer operatore
 > non è più una DataTable Model / Livello / Elimina con un form di aggiunta: è il
 > BB `MatriceOverride`, con **tutte** le voci del catalogo, lo stato
 > «Override» / «Ereditato», la colonna «ereditato» (per un oggetto: il livello
@@ -207,7 +207,7 @@ Piu' flessibile, supporta N:M. Un indirizzo puo' essere figlio sia di soggetto c
 > `backend/apps/core/tests/test_catalogo_oggetti_rotte.py` fallisce se BE o FE
 > non li applicano tutti, o ne applicano uno fuori catalogo. L'elenco sta lì, e
 > qui non si ricopia: due copie divergerebbero al primo aggiornamento. Come ci
-> si è arrivati: [brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md).
+> si è arrivati: [brief del catalogo](../work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md).
 
 Candidati per la v3 **non ancora** a catalogo né applicati (sotto-oggetti veri):
 - `anagrafiche.indirizzo` — figlio di soggetto/cliente/fornitore
@@ -237,7 +237,7 @@ cliente, e il permesso è `cliente` — D-5 del brief del catalogo.)
              i suoi oggetti col livello risolto; manca `is_override`. La matrice FE lo
              ricava dagli override. Da riaprire solo se la gerarchia lo richiede
 - [x] BE-3 — ~~Registrare `model_permission` sulle view mancanti~~ — spostato nel
-             [brief del catalogo](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md) §3.2, chiuso il 2026-09-28
+             [brief del catalogo](../work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md) §3.2, chiuso il 2026-09-28
 
 ### Frontend
 
@@ -256,9 +256,9 @@ cliente, e il permesso è `cliente` — D-5 del brief del catalogo.)
 
 - v2 completata ✅
 - ✅ **Modello piatto allineato** il 2026-09-28:
-  [brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/brief-db-be-fe-catalogo-oggetti-permessi.md)
+  [brief-db-be-fe-catalogo-oggetti-permessi.md](../work-done/2026/brief-db-be-fe-catalogo-oggetti-permessi.md)
 - ✅ **Tetto d'area** — chiuso il 2026-10-04
-  ([brief-db-permessi-tetto-area.md](../work-done/brief-db-permessi-tetto-area.md)):
+  ([brief-db-permessi-tetto-area.md](../work-done/2026/brief-db-permessi-tetto-area.md)):
   un permesso specifico può solo restringere quello della sua area. È la
   semantica che la gerarchia padre/figlio estende un livello più in giù
 - I tre passi (DB/BE/FE) per ogni sotto-oggetto restano applicabili dominio per

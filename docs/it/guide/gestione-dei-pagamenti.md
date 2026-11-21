@@ -734,7 +734,7 @@ il giro successivo ne fa una nuova sul residuo di adesso — e **non tocca** que
 >
 > ✅ ~~**Due cose stanno per cambiare**~~ — **entrambe sono fatte**, e il
 > cantiere che le ha portate e' chiuso
-> ([brief-db-fondo-fattura…](/dev/work-done/brief-db-fondo-fattura-ricalcolo-e-governo)):
+> ([brief-db-fondo-fattura…](/dev/work-done/2026/brief-db-fondo-fattura-ricalcolo-e-governo)):
 >
 > * ~~oggi il fondo di una fattura non ancora assegnato viene **riallineato** dai
 >   giri successivi. Diventera fisso~~ → ✅ **fatto il 15-08-2026**: una fattura

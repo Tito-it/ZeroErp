@@ -45,7 +45,7 @@ in vigore di ogni giorno: l'opposto di «congela all'attivazione» (§4.4 del
 anche se nel frattempo si e' chiusa. Il negoziato puro (`listino_id` NULL)
 resta fuori.
 
-Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-modalita) §3-bis-A/A-schema.
+Riferimento: [refactor-contratti-modalita.md](/dev/work-done/2026/refactor-contratti-modalita) §3-bis-A/A-schema.
 
 ## Contesto
 
@@ -295,7 +295,7 @@ Risposta: il dettaglio completo.
   rifà il DB dal contatore nuovo (`trg_contratti_m50_fornitura_segue_cliente_upd`)
   e il dettaglio restituito porta quella.
 **Fuori bozza decide il DB** (dal 2026-10-10,
-[brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)):
+[brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)):
 il service non ha piu' una tabella dei campi ammessi per stato. In ATTIVO
 restano aperti `valido_al`, `codice_cig`/`codice_cup`/`codice_commessa` e
 `meta`; il resto lo ferma il lock di testata con un 409 per famiglia —
@@ -605,7 +605,7 @@ ricopiava la matrice (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`) e i default
 rifiuta il DB (`E_RIGA_EROGAZIONE_FUORI_PERIMETRO`, sopra).
 
 Riferimento doc dominio:
-[docs/it/dev/work-done/refactor-contratti-fonte-quantita.md](../../../dev/work-done/refactor-contratti-fonte-quantita.md).
+[docs/it/dev/work-done/2026/refactor-contratti-fonte-quantita.md](../../../dev/work-done/2026/refactor-contratti-fonte-quantita.md).
 
 #### Workflow autorizzazioni prezzo L1+L2+L3 (refactor 2026-05-19)
 

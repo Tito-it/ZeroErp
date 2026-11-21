@@ -2,7 +2,7 @@
 -- ============================================================================
 -- ZeroErp — Provisioning dei RUOLI DI SISTEMA (modello unico)
 -- ----------------------------------------------------------------------------
--- Brief: docs/it/dev/work-done/brief-db-ruoli-di-sistema.md §3, §4
+-- Brief: docs/it/dev/work-done/2026/brief-db-ruoli-di-sistema.md §3, §4
 --
 -- I nomi dei ruoli sono di SISTEMA e non si configurano: il database li nomina
 -- (grant, policy, presidi). Chi installa e vuole un utente suo lo AGGIUNGE come

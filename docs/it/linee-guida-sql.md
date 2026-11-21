@@ -306,7 +306,7 @@ pulsante nel frontend?»**. Se si', il predicato va in una `fn_check_*` e il
 guard la CHIAMA (§12.5.2) — e allora ti ritrovi i motivi in mano. Se no,
 valuti li' e sollevi il codice diretto.
 
-Brief: `docs/it/dev/work-done/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
+Brief: `docs/it/dev/work-done/2026/brief-db-coda-primo-motivo-in-un-posto-solo.md`.
 
 #### Il bersaglio — *«su quale cosa»*, e perché non va nella frase
 
@@ -352,7 +352,7 @@ perde, e lascia un `W_BERSAGLIO_MALFORMATO` nel log.
 in 16 punti, dove porta il **nome di una tabella**.
 
 Piano e decisioni:
-[brief-db-bersaglio-errore.md](dev/work-done/brief-db-bersaglio-errore.md).
+[brief-db-bersaglio-errore.md](dev/work-done/2026/brief-db-bersaglio-errore.md).
 
 ⚠️ Il terzo è quello che sfugge, perché **non lo vede nessun cancello**: il codice
 è registrato, la classe c'è, il campo viaggia — e il messaggio è illeggibile lo
@@ -470,10 +470,10 @@ delle scritture precedenti sopravviva).
 > l'elenco di cosa **esclude**, è nell'intestazione di `scripts/testpgtap.sh`.
 >
 > Guida operativa: [pgtap-come-si-scrive-un-test](/guide/pgtap-come-si-scrive-un-test) ·
-> storia e misure: `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md`.
+> storia e misure: `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
 
 > Caso di studio completo, catalogo dei finding e criterio esteso (madre DB *vs* `transaction.atomic()`
-> *vs* outbox): [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
+> *vs* outbox): [analisi-fix-transazioni](/dev/work-done/2026/analisi-fix-transazioni).
 
 ---
 
@@ -484,7 +484,7 @@ quando legge tabelle che altri possono rinominare o mettere sotto RLS. Così le 
 stanno in `pg_depend`: una rinomina a monte viene **rifiutata** (il presidio dei riferimenti morti
 compila solo il plpgsql), e la catena vista → funzione → tabelle resta leggibile dal criterio di
 `rls/test-rls-viste-security-invoker`. Nasce col `20260921-21` (`fn_partite_merce`,
-[brief-db-partita-merce-per-documento](/dev/work-done/brief-db-partita-merce-per-documento) §2-bis.3);
+[brief-db-partita-merce-per-documento](/dev/work-done/2026/brief-db-partita-merce-per-documento) §2-bis.3);
 oggi la usano la partita e la situazione merce, la lineage, la diagnosi del push, i lettori delle
 vesti.
 
@@ -511,7 +511,7 @@ colonna, ogni chiamata fallisce con «troppe colonne» senza che nessuna migrazi
   `prosrc` **non vede queste funzioni** e risponde «zero occorrenze». Si cerca nel testo di
   `pg_get_functiondef(oid)`, che le copre tutte. Successo al censimento del lotto 2a della
   grammatica unica: quattro funzioni mai viste
-  ([brief-db-grammatica-unica-documenti](/dev/work-done/brief-db-grammatica-unica-documenti)
+  ([brief-db-grammatica-unica-documenti](/dev/work-done/2026/brief-db-grammatica-unica-documenti)
   §12.3).
 * **⛔ Un valore passato come argomento di trigger non sta in nessun corpo.** Quando la funzione
   trigger è generica (`script.trgfn_lock_columns`), codice d'errore e colonne stanno in
@@ -795,7 +795,7 @@ grep -rEn "[^_]codice[[:space:]]+AS[[:space:]]+[a-z_]*codice_interno\b" db/ && e
 
 > **Bonifica completata (2026-06-28)**: i mislabel DB sono stati corretti (sweep
 > `20260628-02..11`) e la regola è applicata da un guardrail CI bloccante
-> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/brief-naming-stato-codice-interno.md).
+> (`scripts/sql/check_naming_stato_codice.sql`). Storia in [brief-naming-stato-codice-interno.md](dev/work-done/2026/brief-naming-stato-codice-interno.md).
 
 ⚠️ **Il guardrail legge le definizioni vive del database**: un alias infedele scritto in una query
 del backend non lo vede. Quando una traduzione duplicata passa dal backend a una vista entra nella
@@ -823,7 +823,7 @@ WHERE s.codice_interno  = 'PREVENTIVO'   -- ✅ chiave immutabile
 0 righe, state-machine che non risolve, documento che non si genera, **in silenzio**. ⚠️ Il
 guardrail di §6c (sugli alias) **NON** intercetta questo pattern: serve un controllo a parte,
 necessariamente euristico (`codice_fiscale`/`codice_iva`/`codice_articolo`/`codice_ba`/… sono
-usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-done/analisi-hardcoded-codice.md)
+usi legittimi di `codice`). Caso di studio completo: [analisi-hardcoded-codice.md](dev/work-done/2026/analisi-hardcoded-codice.md)
 (§3a 21 occorrenze BUG_DUAL bonificate).
 
 **Se la tabella NON espone `codice_interno`** (CANDIDATE_ADD_CI) — decisione, in quest'ordine:
@@ -995,7 +995,7 @@ ALTER TABLE schema.tabella
 > ⚠️ **Trappola storica (mag 2026).** Lo Step 2b di `piano-miglioramenti-db-pg18`
 > ha ricreato 5 di questi vincoli come `CREATE INDEX` invece che `EXCLUDE`,
 > perdendo silenziosamente l'enforcement (nome `ex_*` identico). Vedi
-> `dev/work-done/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
+> `dev/work-done/2026/refactor-overlap.md`. Un `CREATE INDEX ... USING gist`
 > **non enforça mai**: per un anti-overlap serve sempre un `ADD CONSTRAINT ...
 > EXCLUDE`.
 >
@@ -1004,7 +1004,7 @@ ALTER TABLE schema.tabella
 > `where_predicate` (es. `attivo IS TRUE`) — vedi `guide/automazione-db.md §4.3`.
 > Lo scrivi a mano (come qui sotto) oppure lo deleghi al framework; in entrambi i
 > casi l'oggetto finale è un `EXCLUDE` vero. Migrazione dei vincoli esistenti al
-> framework: vedi `dev/work-done/refactor-overlap-v2.md` (Fase 2).
+> framework: vedi `dev/work-done/2026/refactor-overlap-v2.md` (Fase 2).
 
 **Entita' con stati annullabili (`UNIQUE WITHOUT OVERLAPS` + `is_abortito`):**
 
@@ -1074,11 +1074,11 @@ ALTER TABLE schema.figlio
 
 Per la gestione automatizzata degli EXCLUDE con WHERE: `dbops.automazione_overlap` e `dbops.fn_apply_automazione_overlap`.
 
-> Riferimento: `docs/it/dev/work-done/piano-miglioramenti-db-pg18.md` per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
+> Riferimento: `docs/it/dev/work-done/2026/piano-miglioramenti-db-pg18.md` per verifica empirica (STORED generated, temporal UNIQUE/FK) e piano di migrazione.
 >
 > ⚠️ **Non usare quel piano come modello per i vincoli anti-overlap.** Il suo
 > Step 2b ha ricreato gli `ex_*_no_overlap` parziali come `CREATE INDEX` (non
-> enforçanti) — bug tracciato in `dev/work-done/refactor-overlap.md`. Per
+> enforçanti) — bug tracciato in `dev/work-done/2026/refactor-overlap.md`. Per
 > un vincolo "niente sovrapposizioni" segui **questa** sezione (Pathway 1 senza
 > `WHERE`, EXCLUDE parziale esplicito con `WHERE`), non le migration `20260514-*`.
 
@@ -1155,7 +1155,7 @@ sotto la porta senza verbo di chiusura e' una configurazione non valida
 (`E_AUTOMAZIONE_CHIUSURA_CONFIG_INVALIDA`). La regola del modello sta nella
 [guida del modello del documento](/guide/modello-documento-di-vendita), §5.
 
-**Riferimento**: `docs/it/dev/work-done/automazione-chiusure-scadenze.md`.
+**Riferimento**: `docs/it/dev/work-done/2026/automazione-chiusure-scadenze.md`.
 
 ---
 
@@ -2115,7 +2115,7 @@ Prima di attivare RLS su una tabella esistente:
   ⚠️ Fino al 2026-09-11 queste due righe dicevano *«Benchmark `EXPLAIN`
   pre/post attivazione»* e *«indici funzionali se `EXPLAIN` lo richiede»*: un
   gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
-  `dev/work-done/analisi-attivazione-rls-db.md` §12.
+  `dev/work-done/2026/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
 * La tabella è del migratore e **senza** `FORCE` (invariante di §10.5, presidiato da `dbops/test-postura-proprietario-rls-v1`)
 * Policy testata in staging con dati realistici prima del merge

@@ -1089,4 +1089,4 @@ del catalogo non lo chiedono. Le `PATCH` leggono il corpo con
 - Le query lista usano viste DB per evitare join Python ripetitivi.
 - Fasi 4+5 (28-04-2026): fallback `valido_dal=today` lato service, metadata
   `non_editable_fields` (perimetro in §Regole trasversali). Vedi
-  [analisi-refactor.frontend-catalogo](/dev/work-done/analisi-refactor.frontend-catalogo).
+  [analisi-refactor.frontend-catalogo](/dev/work-done/2026/analisi-refactor.frontend-catalogo).

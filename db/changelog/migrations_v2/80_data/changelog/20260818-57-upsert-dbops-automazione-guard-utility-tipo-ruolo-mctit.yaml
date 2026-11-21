@@ -9,7 +9,7 @@
 # La configurazione della guard utility->tipo_ruolo passa al CSV
 #   Accompagna: 20260818-56 (il seed smette di scrivere: era lui l'altra sorgente)
 #   Rosso di partenza: db/pgtap/dbops/test-automazione-guard-utility-tipo-ruolo.sql, test 2
-#   Brief: docs/it/dev/work-done/brief-db-automazione-guard-utility-righe-sfuggite.md
+#   Brief: docs/it/dev/work-done/2026/brief-db-automazione-guard-utility-righe-sfuggite.md
 #
 # ── PERCHE' UN CSV E NON UNA BONIFICA SQL ──────────────────────────────
 #   Decisione di Tid, 2026-08-18: **tutti i seed girano da CSV**. Un misto di

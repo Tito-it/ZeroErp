@@ -198,7 +198,7 @@ rifiuta, gli altri accettano).
 > in modo **simmetrico su tutti** i `*_righe_componenti` + listino, non su
 > uno solo. Storia: in origine il listino aveva un proprio "Guard 5" IVA,
 > rimosso il 2026-06-03 proprio per togliere l'asimmetria (vedi brief
-> `work-done/brief-db-listini-rimozione-guard5-iva.md`).
+> `work-done/2026/brief-db-listini-rimozione-guard5-iva.md`).
 
 ## 7. Esposizione in fattura = regola di presentazione (non di pricing)
 
@@ -481,8 +481,8 @@ Riferimento: [fn_contratto_righe_preview](/dbzero/vendite/manual/fn_contratto_ri
 
 - Iterazioni storiche: [changelog-decisioni-componenti.md](changelog-decisioni-componenti.md)
 - Piano operativo 2026-05 (⛔ **storico, superato** — non usarlo per stimare):
-  `docs/it/dev/work-done/refactor-componenti.md`
-- Brief DB: `docs/it/dev/work-done/brief-db-componenti-modello-unificato.md`
+  `docs/it/dev/work-done/2026/refactor-componenti.md`
+- Brief DB: `docs/it/dev/work-done/2026/brief-db-componenti-modello-unificato.md`
 - Modello tabelle: [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti)
 - Resolver pricing v5: `docs/it/dbzero/vendite/manual/fn_resolve_prezzo_listino_v2.md`
 - Guida BoM: `docs/it/guide/gestione-listini.md` §6

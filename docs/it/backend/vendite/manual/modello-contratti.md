@@ -5,7 +5,7 @@
 > attuale del modello, non lo storico delle decisioni.
 >
 > Per il razionale del refactor e le decisioni di modello vedi
-> [`refactor-contratti-modalita.md`](/dev/work-done/refactor-contratti-modalita).
+> [`refactor-contratti-modalita.md`](/dev/work-done/2026/refactor-contratti-modalita).
 > Per il contratto HTTP delle API vedi [`api_contratti.md`](api_contratti.md).
 
 ## 1. Cos'e' un contratto
@@ -162,7 +162,7 @@ Quando il prezzo del listino cambia dopo la creazione:
 - nel **contratto ATTIVO** la versione e' fissata: il pricing resta blindato.
 
 Approfondimento dominio:
-[`analisi-offerta-commerciale.md`](/dev/work-done/analisi-offerta-commerciale)
+[`analisi-offerta-commerciale.md`](/dev/work-done/2026/analisi-offerta-commerciale)
 discute la simmetria mancante (predecessore "offerta commerciale" non ancora
 modellato).
 
@@ -171,7 +171,7 @@ modellato).
 Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale.
 ⭐ Dal 2026-10-10 la regola ha **una sede sola**, il lock di testata del DB
 (`vendite.trgfn_doc_testata_lock_fuori_bozza`, montato colonna per colonna e per
-stato: [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)).
+stato: [brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)).
 Il backend non ha piu' la sua tabella per stato (`_CONTRATTO_PATCH_ALLOWED_BY_STATE`,
 ritirata): passa la scrittura e il 409 del lock arriva com'e'. Il form spegne i
 campi prima, leggendo `can_edit_testata` e `non_editable_fields` dalla capability,
@@ -309,5 +309,5 @@ Stesse regole sull'offerta: le due tabelle di riga hanno gli stessi trigger.
 - [api_contratti.md](api_contratti.md) — contratto HTTP completo
 - [api_preventivi.md](api_preventivi.md) — pattern simmetrico (snapshot riga)
 - [fn_resolve_prezzo_listino_v2](../../../dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver DB
-- [refactor-contratti-modalita](/dev/work-done/refactor-contratti-modalita) — decisioni di modello
+- [refactor-contratti-modalita](/dev/work-done/2026/refactor-contratti-modalita) — decisioni di modello
 - [catalogo-building-block-backend](../../../dev/backend/catalogo-building-block-backend) — sezione "Vendite — Gate autorizzazioni prezzi" per il BB `_pricing_gate_helpers`

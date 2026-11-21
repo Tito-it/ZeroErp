@@ -4,7 +4,7 @@
 --
 -- Test: script.fn_log_and_raise_error — il CODICE di dominio esce nel campo
 -- strutturato CONSTRAINT dell'eccezione. Riferimento: migration 20260805-05.
--- Brief: docs/it/dev/work-done/brief-db-codice-errore-strutturato.md
+-- Brief: docs/it/dev/work-done/2026/brief-db-codice-errore-strutturato.md
 --
 -- Contesto: prima del 05-08-2026 il codice non partiva in nessun campo
 -- dell'eccezione. Arrivava lo stesso al backend nel 91% dei casi, ma perche'
@@ -64,7 +64,7 @@ SELECT plan(5);
 --   `config.codici_errore`: la FRASE non puo' esistere senza il CODICE. I
 --   codici di fixture vanno creati PRIMA, con la loro classe — `classe` e'
 --   NOT NULL e senza default, di proposito.
---   Piano: docs/it/dev/work-done/piano-db-classe-codici-errore.md (D-7/D-8)
+--   Piano: docs/it/dev/work-done/2026/piano-db-classe-codici-errore.md (D-7/D-8)
 INSERT INTO config.codici_errore (codice, classe) VALUES
     ('TEST_CN_SEEDED', 'DATO_ERRATO');
 

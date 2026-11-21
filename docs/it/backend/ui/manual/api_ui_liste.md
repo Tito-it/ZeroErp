@@ -610,4 +610,4 @@ In `apps/core/services/error_policies.py`:
   `apps/ui/tests/`. Tutti basati su `SimpleTestCase`/`JwtMockedApiTest`
   con repository mockato (CI senza DB reale).
 - Brief team DB DB-1..DB-4 atterrato 2026-05-07
-  (vedi [`brief-db-ui-personalizzazioni-liste.md`](../../../dev/work-done/brief-db-ui-personalizzazioni-liste.md)).
+  (vedi [`brief-db-ui-personalizzazioni-liste.md`](../../../dev/work-done/2026/brief-db-ui-personalizzazioni-liste.md)).

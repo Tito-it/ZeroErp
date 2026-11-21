@@ -5,9 +5,9 @@
 «**Cosa è andato storto, su tutto, nell'ultimo periodo**»: la Storia di tutte
 le entità insieme, filtrata per gravità, con il salto al lotto e al documento.
 È la «vista errori trasversale (non legata al mese di competenza)» del Passo B
-di [analisi-osservabilita-log](../../../dev/work-done/analisi-osservabilita-log.md),
+di [analisi-osservabilita-log](../../../dev/work-done/2026/analisi-osservabilita-log.md),
 scritta come pezzo **G** del
-[piano BE/FE dell'osservabilità](../../../dev/work-done/piano-be-fe-osservabilita-pallino-e-superfici.md) §3.
+[piano BE/FE dell'osservabilità](../../../dev/work-done/2026/piano-be-fe-osservabilita-pallino-e-superfici.md) §3.
 
 ## Contesto
 
@@ -32,7 +32,7 @@ dominio va in `core`» — il prossimo (pratiche) lo sposta.
 | Query param | Tipo | Note |
 | --- | --- | --- |
 | `gravita` | csv di `ERROR` \| `WARN` \| `INFO` | default `ERROR`. ⚠️ Con `ERROR` si **include** la gravità `NULL` — la riga che dichiara un difetto («un vincolo si è allargato e la mappa è rimasta indietro»), come nel pannello lotto. Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`context.field = "gravita"`) |
-| `registro` | csv di `codice_interno` di **`config.registri_giornale`** (al 2026-09-19: `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`) | default tutti; fuori **catalogo** → `400 E_VENDITE_VALIDATION` (`context.field = "registro"`). ⭐ Il vocabolario si **legge dal catalogo** a ogni richiesta che porta il filtro (`VenditeRepository.registri_giornale_ammessi()`, tutte le righe, ritirate comprese): non c'è una costante nel backend — il quinto registro entra con un `UNION ALL` nella vista e una riga di CSV, e qui non cambia niente. La tendina del frontend legge lo stesso catalogo dal lookup generico (`rel=config.registri_giornale`, specializzato con `etichetta_key`). Brief: `work-done/brief-db-registri-giornale-catalogo.md` |
+| `registro` | csv di `codice_interno` di **`config.registri_giornale`** (al 2026-09-19: `EVENT_LOG`, `LOTTO_LOG`, `TASK_RUN`, `FATTURA_LOG`) | default tutti; fuori **catalogo** → `400 E_VENDITE_VALIDATION` (`context.field = "registro"`). ⭐ Il vocabolario si **legge dal catalogo** a ogni richiesta che porta il filtro (`VenditeRepository.registri_giornale_ammessi()`, tutte le righe, ritirate comprese): non c'è una costante nel backend — il quinto registro entra con un `UNION ALL` nella vista e una riga di CSV, e qui non cambia niente. La tendina del frontend legge lo stesso catalogo dal lookup generico (`rel=config.registri_giornale`, specializzato con `etichetta_key`). Brief: `work-done/2026/brief-db-registri-giornale-catalogo.md` |
 | `entity_type` | codice di `config.tipi_entita` | esatto (portato in maiuscolo). Fuori vocabolario → `400 E_VENDITE_VALIDATION` (`context.field = "entity_type"`); i tipi ritirati (`obsoleto_dal`) sono ammessi, il diario li porta. ⚠️ 2026-10-20: prima un codice ignoto rispondeva zero righe |
 | `data_da` / `data_a` | date ISO | su `quando`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso; malformate → `400`. Il floor standard lo mette il frontend |
 | `filo` | uuid | `tx_id` **oppure** `correlation_id` (R-2: filtrare per filo tiene `EVENT_LOG` + `TASK_RUN` e butta le righe scritte per una persona — il default non filtra per filo). Non uuid → `400` |

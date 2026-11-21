@@ -15,7 +15,7 @@ note via `PartitionedNoteRepository`, lista/export via `ListaExportService`.
 Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testata.
 
 > Stato: **scheletro BE** (analisi
-> [analisi-ordini-vendita.md](../../../dev/work-done/analisi-ordini-vendita.md)
+> [analisi-ordini-vendita.md](../../../dev/work-done/2026/analisi-ordini-vendita.md)
 > §5) + stampa PDF (§Documenti) + **conversione preventivo/offerta→ordine**
 > (2026-06-04, endpoint `genera-ordine` sui domini upstream — valorizza
 > `documento_origine` A1). Fulfillment/DDT: vedi [api_ddt.md](api_ddt.md) (evasione `genera-ddt`). Indirizzi documento: vedi [api_indirizzi_documento.md](api_indirizzi_documento.md).
@@ -63,7 +63,7 @@ Rispetto a preventivi/offerte l'ordine **non ha revisioni** né listino in testa
 La transizione si innesca **solo** da `/emetti/` (conferma + generazione
 documento, vedi sezione Emetti): la conferma senza PDF (`POST /<id>/conferma/`) è
 ritirata dal 2026-10-25 (M-2 e Z-2 di
-[brief-modello-documento-vendita](../../../dev/work-done/brief-modello-documento-vendita.md) §9).
+[brief-modello-documento-vendita](../../../dev/work-done/2026/brief-modello-documento-vendita.md) §9).
 Lo stato lo scrive il verbo `vendite.fn_cambia_stato_ordine` (un UPDATE diretto
 della colonna lo rifiuta la porta, `E_DOC_STATO_SOLO_DAL_VERBO`), e la
 transizione è **autoritativa lato DB** (trigger `trgfn_ordini_guard_transizione`; dal
@@ -195,7 +195,7 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
-In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
+In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
 aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
 `modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
 `agente_soggetto_ruolo_id`, `data`, `fatturazione_immediata`, `meta`. Una chiave
@@ -217,7 +217,7 @@ diretta che bypassa il service). Conseguenza correlata: `trgfn_ordini_normalize`
 ora ri-eredita `fatturazione_trigger` dal BA **solo su INSERT** (il ramo UPDATE era
 diventato logica morta). Override straordinario:
 `SET LOCAL zeroerp.allow_lock_columns_override = 'on'`. Brief:
-[db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md).
+[db-brief-ordini-lock-cliente.md](../../../dev/work-done/2026/db-brief-ordini-lock-cliente.md).
 
 ### Delete `DELETE /api/v1/vendite/ordini/<id>/`
 
@@ -232,7 +232,7 @@ con righe **non si cancella, si annulla** (`cambia-stato → ANNULLATO`). Rispos
 ### Emetti `POST /api/v1/vendite/ordini/<id>/emetti/` (multipart)
 
 **Flusso target della famiglia vendite**
-([§6 brief-ordini-stampa.md](../../../dev/work-done/brief-ordini-stampa.md)): emissione =
+([§6 brief-ordini-stampa.md](../../../dev/work-done/2026/brief-ordini-stampa.md)): emissione =
 conferma documentale. Clone di `ApiPreventivoEmetti`/`ApiOffertaEmetti`. Orchestra in
 **una transazione atomica** (savepoint annidato):
 
@@ -403,7 +403,7 @@ lista ordini espone `data_consegna_richiesta_cliente_min` dalla vista
 `DRAFT`; la promessa, che si decide alla conferma, ha il verbo suo (sotto).
 
 ⭐ **Il verbo della promessa dopo la conferma** (dal 2026-10-10,
-[brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)
+[brief-db-testata-dopo-emissione](/dev/work-done/2026/brief-db-testata-dopo-emissione)
 fase 1): `POST /<id>/righe/<riga_id>/data-consegna-confermata/`, corpo
 `{"data_consegna_confermata": "AAAA-MM-GG" | null}` (`null` toglie la promessa).
 Scrive la **sola** colonna; ogni altra chiave è un 400. ⛔ Nessun pre-check di
@@ -416,7 +416,7 @@ si scrive modificando la riga). Risposta: `{ordine_id, riga_id, data_consegna_co
 `PATCH /<id>/righe/<riga_id>/` resta «solo in bozza» per tutte le colonne.
 ⛔ Dal 2026-10-12 una riga **già spedita** (un DDT uscito dalla bozza, anche per
 una parte) tiene la sua data: 409 `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA` del guard
-di riga ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/brief-db-date-consegna-righe-in-blocco) D-7).
+di riga ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/2026/brief-db-date-consegna-righe-in-blocco) D-7).
 Lo si sa prima dalla lista righe: `data_consegna_confermata_blocco` (il `reason`
 del primo motivo, `NULL` = si cambia; chiave i18n
 `vendite.ordini.data_consegna_confermata_reason.<reason minuscolo>`).
@@ -468,7 +468,7 @@ altri cinque domini (testata + riga via `target_riga_id`): payload, filtri,
 
 Stampa conferma d'ordine via motore `documenti` (sorgente `ORDINE_VENDITA`,
 quarto dominio dopo preventivo/offerta/contratto). Flusso **allineato alla famiglia**
-([§6 brief-ordini-stampa.md](../../../dev/work-done/brief-ordini-stampa.md)): in `DRAFT` solo anteprima on-demand; la generazione
+([§6 brief-ordini-stampa.md](../../../dev/work-done/2026/brief-ordini-stampa.md)): in `DRAFT` solo anteprima on-demand; la generazione
 documentale avviene nel passaggio `DRAFT → CONFERMATO` via `POST /<id>/emetti/`
 (vedi sopra). Gli endpoint sotto coprono ristampa e gestione documentale post-bozza.
 
@@ -493,7 +493,7 @@ render restano in `DocumentGenerationService` (invariato). Permessi: oggetto
 senza, `genera`/`anteprima` falliscono con `E_DOCUMENTI_*`.
 
 **Contratto di stampa — forma dei dati 3** (dal 2026-10-20,
-[brief-db-grammatica-unica-documenti §12.10](../../../dev/work-done/brief-db-grammatica-unica-documenti.md)).
+[brief-db-grammatica-unica-documenti §12.10](../../../dev/work-done/2026/brief-db-grammatica-unica-documenti.md)).
 Chiavi di primo livello: `ordine`, `cliente`, `indirizzi`, `righe`, `riepilogo_iva`, `_meta`.
 La provenienza è `ordine.origine`, con tre chiavi **sempre presenti** (`null` senza origine, il render gira
 con `StrictUndefined`):
@@ -622,13 +622,13 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
 
 ## Riferimenti
 
-- Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-done/analisi-ordini-vendita.md)
+- Analisi BE/FE: [analisi-ordini-vendita.md](../../../dev/work-done/2026/analisi-ordini-vendita.md)
   (§12 stampa, §8 decisioni)
-- Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/db-brief-ordini-vendita.md)
-  e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/db-brief-ordini-lock-cliente.md)
+- Brief DB: [db-brief-ordini-vendita.md](../../../dev/work-done/2026/db-brief-ordini-vendita.md)
+  e [db-brief-ordini-lock-cliente.md](../../../dev/work-done/2026/db-brief-ordini-lock-cliente.md)
   (lock cliente)
 - Stampa/documenti: [documenti-e-stampe.md](../../../guide/documenti-e-stampe.md)
-- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-done/documenti-non-fiscali-iva-db.md)
+- Riepilogo IVA ordine (DB + BE + FE): [documenti-non-fiscali-iva-db.md](../../../dev/work-done/2026/documenti-non-fiscali-iva-db.md)
   (§12 modello, §13 sviluppo BE/FE)
 - Tabella testata: [vendite.ordini](../../../dbzero/vendite/manual/ordini.md)
 - Linee guida API: [api.md](../../../dev/api.md)

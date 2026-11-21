@@ -641,7 +641,7 @@ Gli anelli esterni possono dipendere direttamente da anelli non adiacenti — ve
   e le due `analisi-db-magazzino-*`
 - **Secondo consumatore di `pratiche`** (Fase F, candidata assistenza/CRM): è ciò
   che promuove le sue astrazioni da *proposte* a *contratti* (manifesto §7)
-- **ORARIO e CONSUMO del contratto in commessa** (G-4 del brief del canone, chiuso il 2026-11-01 in `work-done/brief-db-contratto-righe-periodiche-in-commessa`): le ore lavorate aspettano il timesheet, i consumi le letture. Il canone è fatto; la voce D31 del registro resta aperta per loro
+- **ORARIO e CONSUMO del contratto in commessa** (G-4 del brief del canone, chiuso il 2026-11-01 in `work-done/2026/brief-db-contratto-righe-periodiche-in-commessa`): le ore lavorate aspettano il timesheet, i consumi le letture. Il canone è fatto; la voce D31 del registro resta aperta per loro
 - **Rettifiche prezzi (DB-L4)**: motore delta + canali manuale/automatico
 - **Permessi v3** — sotto-oggetti padre/figlio (v2 a livello oggetto è operativa)
 - **Provider di autenticazione esterni** (OAuth, il [piano](dev/work-in-progress/piano-autenticazione-provider-esterni-oauth.md)): il secondo fattore è fatto, i provider no
@@ -681,7 +681,7 @@ operativo può prenderle al posto di una persona.
   (`frontend/scripts/datatable.baseline.json`), **nessuno senza
   motivazione**: ogni file rimasto porta il suo motivo in un commento attaccato all'import.
   Il secondo giro, che ha portato a catalogo le sei liste vere che restavano, è chiuso il 2026-11-03
-  ([brief del secondo giro](dev/work-done/brief-db-liste-datatable-grezze-secondo-giro.md)).
+  ([brief del secondo giro](dev/work-done/2026/brief-db-liste-datatable-grezze-secondo-giro.md)).
   ⚠️ **Il contatore non misura le liste**: drawer, dialog e pannelli annidati sono
   l'eccezione che `AGENTS.md` ammette, e i wrapper stessi contano come file; il debito vero
   sta nelle **view di lista** e nelle `*SearchTable` di dominio che non passano dal

@@ -30,13 +30,13 @@
 > che **non esiste più**: il ragionamento resta valido, lo stato no. Lo stato di
 > oggi, decisione per decisione, è nella tabella «Realizzato» in coda a §8.
 >
-> * ✅ **Lotto 1** ([brief](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+> * ✅ **Lotto 1** ([brief](../work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md),
 >   chiuso il 15-09, PR #1593): D-1, D-2, D-3, D-4, D-6, D-7, D-8;
-> * ✅ **Lotto 2** ([brief](../work-done/brief-db-magazzino-lotto-2-motore.md),
+> * ✅ **Lotto 2** ([brief](../work-done/2026/brief-db-magazzino-lotto-2-motore.md),
 >   DB applicato il 18-09, archiviato il 24-09): D-9 (vista degli orfani), la
 >   primitiva `fn_scrivi_movimento` come unica porta sul ledger, e il **rinvio**
 >   di `causali.sorgente_tipo_id` (D-L2-i, vedi D-8);
-> * ✅ **Verbi con permesso** ([brief](../work-done/brief-db-magazzino-verbi-con-permesso.md),
+> * ✅ **Verbi con permesso** ([brief](../work-done/2026/brief-db-magazzino-verbi-con-permesso.md),
 >   24/25-09): l'app scrive il ledger **solo** da `fn_posta_inventario` /
 >   `fn_posta_rettifica`, sotto l'azione `registra_magazzino`.
 >
@@ -52,7 +52,7 @@
 > ⛔ **Di questo documento non esce nessuna modifica certa**, ed è il suo esito
 > vero: ogni voce qui dentro è agganciata a una delle D-1 → D-9. Il piano
 > operativo delle sole modifiche **certe** vive in
-> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
+> [brief-db-modifiche-certe-ciclo-vendita-e-articolo.md](../work-done/2026/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md),
 > e sta quasi tutto su `vendite` e `catalogo`.
 >
 > ⚠️ **Perimetro di questa analisi:** solo l'**aggancio al documento di origine** e
@@ -599,15 +599,15 @@ l'aggancio al documento di origine.
 - Convenzione della sorgente polimorfa:
   [sorgente-polimorfa.md](../../guide/sorgente-polimorfa.md)
 - Il precedente in cui il guard esisteva e non era agganciato:
-  [brief-db-guard-sorgente-polimorfa.md](../work-done/brief-db-guard-sorgente-polimorfa.md)
+  [brief-db-guard-sorgente-polimorfa.md](../work-done/2026/brief-db-guard-sorgente-polimorfa.md)
   e la bonifica dei test che ne seguì,
-  [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-done/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
+  [brief-db-bonifica-pgtap-sorgente-polimorfa.md](../work-done/2026/brief-db-bonifica-pgtap-sorgente-polimorfa.md)
 - Stato del dominio nella mappa: [mappa-concentrica.md](../../mappa-concentrica.md)
   § Anello 3
 - Dove le decisioni sono diventate DDL:
-  [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md) (D-1 → D-4,
-  D-6 → D-8), [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (D-9,
-  D-L2-g, D-L2-i), [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md)
+  [Lotto 1](../work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md) (D-1 → D-4,
+  D-6 → D-8), [Lotto 2](../work-done/2026/brief-db-magazzino-lotto-2-motore.md) (D-9,
+  D-L2-g, D-L2-i), [verbi con permesso](../work-done/2026/brief-db-magazzino-verbi-con-permesso.md)
   (la porta del ledger)
 
 ---

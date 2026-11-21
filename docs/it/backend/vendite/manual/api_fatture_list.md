@@ -18,7 +18,7 @@ Il caso che l'ha resa urgente — rilievo di Tid, nato sul campo — è una comm
 di **competenza giugno** fatturata **ad agosto**: il documento porta la data di
 **agosto** dentro un lotto di **giugno**, e chi lo cerca lo cerca per *quella*
 data. Il racconto completo è nel **§11-bis** di
-[brief-db-event-log-scope-e-riga-parlante.md](../../../dev/work-done/brief-db-event-log-scope-e-riga-parlante.md).
+[brief-db-event-log-scope-e-riga-parlante.md](../../../dev/work-done/2026/brief-db-event-log-scope-e-riga-parlante.md).
 
 Sorgente: la vista canonica **`vendite.vw_fatture_lista`**, `security_invoker`.
 

@@ -33,7 +33,7 @@
 --    proxy sul numero di segnaposto puo' dire quanti valori passa un
 --    chiamante. Con quel test verde, il 2026-08-18 il catalogo aveva 2 punti
 --    del primo tipo e 8 del secondo.
---    Brief: docs/it/dev/work-done/brief-db-segnaposti-messaggi-errore.md
+--    Brief: docs/it/dev/work-done/2026/brief-db-segnaposti-messaggi-errore.md
 --
 -- ⭐ E DAL 2026-09-08 I TEST 4 E 5 NON HANNO PIU' IL LORO RAMO CIECO.
 --    Lo scanner si fermava su una riga sola — `CONTINUE WHEN v_code IS NULL`,

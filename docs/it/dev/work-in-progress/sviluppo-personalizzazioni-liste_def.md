@@ -2,9 +2,9 @@
 
 > **Scopo**: le sole voci DEF **non realizzate**. Tutto ciò che è atterrato —
 > DEF-1, DEF-2, DEF-5b, DEF-6, DEF-8, DEF-10 — vive nel
-> [consuntivo in work-done](../work-done/consuntivo-personalizzazioni-liste-def.md),
+> [consuntivo in work-done](../work-done/2026/consuntivo-personalizzazioni-liste-def.md),
 > con i numeri misurati e le convenzioni da rispettare per ogni lista nuova.
-> **Piano madre**: [sviluppo-personalizzazioni-liste.md](../work-done/sviluppo-personalizzazioni-liste.md) (Blocchi A..F).
+> **Piano madre**: [sviluppo-personalizzazioni-liste.md](../work-done/2026/sviluppo-personalizzazioni-liste.md) (Blocchi A..F).
 > **Ultima verifica contro il sistema vivo**: 2026-08-09 (DEF-3/DEF-4);
 > revisione del perimetro 2026-08-22.
 

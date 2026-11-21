@@ -14,7 +14,7 @@ Viste collegate:
 [vw_af_merce_per_riga](vw_af_merce_per_riga.md)
 > [vw_resi_righe_effettive](vw_resi_righe_effettive.md)
 > [vw_resi_da_accreditare](vw_resi_da_accreditare.md)
-> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md`
+> Brief autorevole: `docs/it/dev/work-done/2026/brief-design-partita-merce-generalizzata.md`
 
 ---
 ### 🎯 Scopo Principale
@@ -370,7 +370,7 @@ risparmia il doppio.
 ⚠️ **Non è la chiusura di D14.** La vista resta senza parametro, e la lettura
 di *un* documento continua a pagare le partite di *tutti*: quella è la quarta
 leva — la partita per chiusura del documento — e ha il suo brief,
-`work-done/brief-db-partita-merce-per-documento.md`.
+`work-done/2026/brief-db-partita-merce-per-documento.md`.
 
 Presidi: gli stessi di sempre (`test-vw-partite-merce-v1`,
 `test-vw-partite-merce-riconsegna-dopo-nc-v1` — dove `acc_origine` e `migra`
@@ -382,7 +382,7 @@ leggono le rettifiche —, `test-fn-list-ddt-da-pushare-contatore-v1`,
 ### 🔄 rev 2026-09-21 — il conto sta nella funzione, la vista ne è la proiezione (D14, quarta leva)
 
 ChangeSet `20260921-21` (la funzione) e `20260921-22` (la vista). Brief:
-`work-done/brief-db-partita-merce-per-documento.md`, decisioni D1 e D2
+`work-done/2026/brief-db-partita-merce-per-documento.md`, decisioni D1 e D2
 di Tid. **Niente cambia nel risultato**: stesse 23 colonne, stessi tipi, stesse
 righe, stessi numeri. Cambia **dove sta il conto** e **chi lo paga**.
 

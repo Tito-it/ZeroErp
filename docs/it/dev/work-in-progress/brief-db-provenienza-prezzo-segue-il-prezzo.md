@@ -77,7 +77,7 @@ pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; prove
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§6), che **attende** la consegna DB.
 > **Origine:** revisione delle modifiche di
-> [brief-db-riga-listino-propagata-dalla-commessa](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md)
+> [brief-db-riga-listino-propagata-dalla-commessa](../work-done/2026/brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§7). **Decisione:** di Tid, 2026-10-09 (variante «B»): una riga di commessa
 > cita una riga di listino **solo se il suo prezzo è venuto davvero da lì**, non
 > perché il listino, interrogato dopo, darebbe quella riga.
@@ -154,7 +154,7 @@ versione precedente risulta «diverso» pur essendo venuto dal listino.
 
 ## 4. Rapporto con gli altri brief
 
-* [brief-db-coerenza-listino-della-riga-di-commessa](../work-done/brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
+* [brief-db-coerenza-listino-della-riga-di-commessa](../work-done/2026/brief-db-coerenza-listino-della-riga-di-commessa.md) (chiuso il 2026-10-17)
   dice che cosa la colonna `listino_riga_id` **può** contenere (stessa versione,
   stesso emittente, versione in vigore). Questo dice **quando** si scrive. Il guard
   di quel brief va montato anche sulle righe di documento di R-1: la stessa regola,

@@ -805,15 +805,15 @@ Le storie dei singoli cantieri — i casi che hanno insegnato le regole di quest
 guida, con date e numeri — stanno nei documenti di lavoro (solo nel repository,
 non nel sito pubblicato):
 
-* `docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md` — il primo giro sui riferimenti morti
-* `docs/it/dev/work-done/brief-db-codice-errore-strutturato.md` — il codice errore nel campo dedicato, e le misure che lo presidiano
-* `docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md` — il tipo di risposta e lo svuotamento del suo registro
-* `docs/it/dev/work-done/brief-db-be-classe-codici-errore.md` — la classe dei codici e il presidio delle famiglie di condizione
-* `docs/it/dev/work-done/brief-db-pgtap-runner-rls-baseline.md` — la baseline per ruolo di connessione
-* `docs/it/dev/work-done/brief-db-presidio-stati-mai-scritti.md` — gli stati ammessi e mai scritti
-* `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md` — il catalogo dei presidi e il digest
-* `docs/it/dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md` — `chi_agisce` e i testi per chi agisce
-* `docs/it/dev/work-done/analisi-presidi-percorso-storto.md` — l'analisi trasversale sui presidi
+* `docs/it/dev/work-done/2026/brief-db-bonifica-riferimenti-morti.md` — il primo giro sui riferimenti morti
+* `docs/it/dev/work-done/2026/brief-db-codice-errore-strutturato.md` — il codice errore nel campo dedicato, e le misure che lo presidiano
+* `docs/it/dev/work-done/2026/brief-db-be-terzo-lato-presidio-codici.md` — il tipo di risposta e lo svuotamento del suo registro
+* `docs/it/dev/work-done/2026/brief-db-be-classe-codici-errore.md` — la classe dei codici e il presidio delle famiglie di condizione
+* `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md` — la baseline per ruolo di connessione
+* `docs/it/dev/work-done/2026/brief-db-presidio-stati-mai-scritti.md` — gli stati ammessi e mai scritti
+* `docs/it/dev/work-done/2026/brief-db-un-destinatario-per-i-presidi.md` — il catalogo dei presidi e il digest
+* `docs/it/dev/work-done/2026/brief-db-presidi-cosa-significa-cosa-fare.md` — `chi_agisce` e i testi per chi agisce
+* `docs/it/dev/work-done/2026/analisi-presidi-percorso-storto.md` — l'analisi trasversale sui presidi
 
 ---
 {% include-markdown "signature-core.md" %}

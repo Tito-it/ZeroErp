@@ -8,7 +8,7 @@
 ## Stato del modello
 
 Tutti gli sprint v5 sono **chiusi end-to-end** (DB+BE+FE+DOC). Vedi
-[sviluppo-listini-v5.md §14.9](../work-done/sviluppo-listini-v5) per il tracking
+[sviluppo-listini-v5.md §14.9](../work-done/2026/sviluppo-listini-v5) per il tracking
 completo. La presente checklist è il complemento operativo che esercita
 le funzionalità in UI.
 
@@ -317,7 +317,7 @@ Funziona quindi senza translator dedicato lato service.
 ### 3.4 Espansione compositi — modello unificato (riscritto 2026-05-13)
 
 > **Riferimenti**: [`manual/modello-componenti-bom.md`](../manual/modello-componenti-bom.md),
-> [refactor-componenti.md](../work-done/refactor-componenti.md) §2 Fase F
+> [refactor-componenti.md](../work-done/2026/refactor-componenti.md) §2 Fase F
 > (⛔ documento storico superato: resta valido solo l'elenco dei 4 scenari).
 >
 > **Pre-requisito**: migration `20260513-01..32` applicate su `dev/db-tid`

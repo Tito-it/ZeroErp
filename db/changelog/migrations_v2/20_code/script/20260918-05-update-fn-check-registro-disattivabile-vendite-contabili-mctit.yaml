@@ -26,7 +26,7 @@
 #
 #   `pagamenti.vendite_contabili` — la DISTINTA contabile di incasso — ha
 #   guadagnato `registro_id` il 2026-09-17 (changeSet `20260915-21`, cantiere
-#   `work-done/brief-db-distinta-numerata-sul-registro.md`: il codice della
+#   `work-done/2026/brief-db-distinta-numerata-sul-registro.md`: il codice della
 #   distinta passa dalla numerazione standard `DIS-<SIGLA>-<ANNO>-<NNNNNNN>`).
 #   L'automazione ATTIVO monta il guard di disattivazione DA SOLA a partire
 #   dalla FK, alla passata `ci_apply`: il brief lo aveva PREVISTO in P-1 («il

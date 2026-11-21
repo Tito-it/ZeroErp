@@ -32,7 +32,7 @@ Regola unica di chi si vede (con la lista):
 >
 Documento di design:
 >
-[Contesto Globale Ricerca Universale](/dev/work-done/frontend/contesto-globale-ricerca-universale)
+[Contesto Globale Ricerca Universale](/dev/work-done/2026/frontend/contesto-globale-ricerca-universale)
 
 La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della ricerca universale soggetti. Dato un soggetto e un tipo ruolo, restituisce un JSONB con tutte le righe specifiche di quel soggetto per il ruolo richiesto, pensato per la row expansion nella tabella di ricerca.
 

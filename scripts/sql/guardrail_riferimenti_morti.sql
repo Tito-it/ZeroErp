@@ -1,7 +1,7 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- Guardrail CI — riferimenti morti nelle funzioni plpgsql
---   Brief: docs/it/dev/work-done/brief-db-bonifica-riferimenti-morti.md §5
+--   Brief: docs/it/dev/work-done/2026/brief-db-bonifica-riferimenti-morti.md §5
 --
 -- FALLISCE (RAISE EXCEPTION) se trova:
 --   A-bis) una funzione che plpgsql_check NON HA POTUTO controllare

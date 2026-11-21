@@ -131,7 +131,7 @@ iterando sull'esistente: un caso per addendo, la ritirata, l'`ESCLUSO`, la
 precedenza, l'orologio, la parità funzione ↔ vista, la spartizione, la soglia, il
 `DEFINER` onesto.
 
-Origine: `docs/it/dev/work-done/brief-db-osservabilita-lotto-fermo-r6-indici.md` §2;
+Origine: `docs/it/dev/work-done/2026/brief-db-osservabilita-lotto-fermo-r6-indici.md` §2;
 changeSet `20260919-01`.
 
 {% include-markdown "signature-core.md" %}

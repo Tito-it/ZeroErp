@@ -3,7 +3,7 @@
 > **Tipo**: promemoria operativo (TODO doc). · **Stato**: 🟡 **DA FARE**.
 > **Data**: 2026-06-20.
 > **Origine**: chiusura del piano
-> [ristrutturazione-documentale.md](../work-done/ristrutturazione-documentale.md)
+> [ristrutturazione-documentale.md](../work-done/2026/ristrutturazione-documentale.md)
 > (punto b.1). Quel piano è completo e in `work-done/`; questo è l'**unico
 > deliverable rimasto**, scorporato qui perché bloccato da una decisione utente.
 

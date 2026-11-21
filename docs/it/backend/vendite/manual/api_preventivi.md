@@ -163,7 +163,7 @@ i motivi nel tooltip del pulsante spento, col conteggio (`valori`). ⛔ Fino a q
 `available_actions`/`can_edit_*` in Python e aggiungeva sulla testata quattro
 riepiloghi (`frozen_for_*`, `*_pricing_count`) che contavano le sole righe:
 tutti ritirati
-([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-done/brief-db-preventivi-congelamento-pricing.md)).
+([brief-db-preventivi-congelamento-pricing §6.1](../../../dev/work-done/2026/brief-db-preventivi-congelamento-pricing.md)).
 
 ---
 
@@ -311,7 +311,7 @@ Nuovo endpoint 2026-05-28. Mirror di `GET /api/v1/vendite/offerte/<id>/revisioni
 
 ### 6c. Genera ordine da preventivo (smistamento MERCE) `POST /api/v1/vendite/preventivi/{id}/genera-ordine/`
 
-**Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-done/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
+**Modello split per natura** (brief [brief-preventivi-ordini.md](../../../dev/work-done/2026/brief-preventivi-ordini.md) D8 — sostituisce il vecchio copia-tutto 1:1).
 Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 (natura con `destinazione_tipo='ORDINE_VENDITA'`), valorizzando `documento_origine =
 ('PREVENTIVO', preventivo_id)` sull'ordine.
@@ -357,7 +357,7 @@ Smista a un **ordine di vendita DRAFT** **solo le righe MERCE** del preventivo
 
 > **Offerta → ordine**: non disponibile (l'offerta non ha righe materializzate,
 > solo eccezioni su listino). Prerequisito DB: brief
-> [db-brief-offerta-righe-espanse.md](../../../dev/work-done/db-brief-offerta-righe-espanse.md).
+> [db-brief-offerta-righe-espanse.md](../../../dev/work-done/2026/db-brief-offerta-righe-espanse.md).
 
 ---
 
@@ -433,7 +433,7 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 - Metodo: `POST`
 - Path: `/api/v1/vendite/preventivi/{id}/righe/date-consegna/`
 - Body JSON: `colonna` (`data_consegna_richiesta_cliente`, l'unica data della riga di preventivo), `data` (`AAAA-MM-GG`, **obbligatoria**), `modalita` (`TUTTE` | `SOLO_VUOTE`), `anteprima` (bool, opzionale: esegue lo stesso UPDATE e lo annulla — i numeri della scrittura, il rifiuto del DB già qui, niente resta scritto)
-- Scopo: scrive la stessa data richiesta su più righe attive, in un solo UPDATE ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/brief-db-date-consegna-righe-in-blocco) §5, §8). La giudica il lock delle righe: solo in `DRAFT`. Nessun pre-check di stato nel backend
+- Scopo: scrive la stessa data richiesta su più righe attive, in un solo UPDATE ([brief-db-date-consegna-righe-in-blocco](/dev/work-done/2026/brief-db-date-consegna-righe-in-blocco) §5, §8). La giudica il lock delle righe: solo in `DRAFT`. Nessun pre-check di stato nel backend
 - Output `200`: `{ "data": { "documento_id": 9, "colonna": "data_consegna_richiesta_cliente", "data": "2026-11-20", "modalita": "SOLO_VUOTE", "anteprima": false, "aggiornate": 3, "saltate_spedite": 0 } }`
 - Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400, col campo), `E_RIGA_DOC_NON_BOZZA` (409), `E_RIGA_PREZZO_PENDENTE` (409: una riga col prezzo in attesa di approvazione ferma il gesto per intero)
 
@@ -583,7 +583,7 @@ inesistente o fuori perimetro → 404 `E_PREV_NOT_FOUND`. Usato dal pannello
 - Auth: `post_permission = "push_commessa_preventivi"`, `Idempotency-Key` obbligatoria
 - Body JSON (opzionale): `{ "righe_ids": [int, ...] }` — sottoinsieme di righe
   **servizio** da pushare (smistamento selettivo dal Pannello Smistamento,
-  [brief-db-smistamento-preventivi.md](../../../dev/work-done/brief-db-smistamento-preventivi.md) C).
+  [brief-db-smistamento-preventivi.md](../../../dev/work-done/2026/brief-db-smistamento-preventivi.md) C).
   **Assente/null** = tutte le righe servizio eleggibili; **lista vuota** =
   `E_PREV_VALIDAZIONE` (non degrada a "tutte" — stessa regola su
   `/genera-ordine/`, helper `_parse_righe_ids`). Il filtro arriva alla fn DB
@@ -665,7 +665,7 @@ natura-aware il 2026-06-12: `vw_preventivi_smistamento` + `_righe`, le vecchie
 Completa lo step **SMISTAMENTO** della pratica con un **esito di RAMO calcolato dal
 dominio** (`MERCE_PRESENTE` / `SOLO_SERVIZI`), **non scelto dall'operatore**. È il
 fix di PRA-0000225 (bivio-per-esito rev.3,
-[brief-db-chiusura-pratica-nessun-lavoro-pendente.md](../../../dev/work-done/brief-db-chiusura-pratica-nessun-lavoro-pendente.md)):
+[brief-db-chiusura-pratica-nessun-lavoro-pendente.md](../../../dev/work-done/2026/brief-db-chiusura-pratica-nessun-lavoro-pendente.md)):
 l'esito viene scritto nella **stessa UPDATE** che completa il flusso, così il check
 di chiusura template-based lo legge subito.
 

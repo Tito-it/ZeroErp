@@ -13,7 +13,7 @@ Viste collegate:
 >
 [vw_partite_merce](vw_partite_merce.md)
 > [vw_af_merce_per_riga](vw_af_merce_per_riga.md)
-> Brief autorevole: `docs/it/dev/work-done/brief-design-partita-merce-generalizzata.md` §20.4
+> Brief autorevole: `docs/it/dev/work-done/2026/brief-design-partita-merce-generalizzata.md` §20.4
 
 ---
 ### 🎯 Scopo Principale
@@ -275,7 +275,7 @@ Brief: `brief-db-modifiche-certe-ciclo-vendita-e-articolo`, sezione 5.2.
 ### 🔄 rev 2026-09-21 — l'aggregato sta nella funzione, la vista ne è la proiezione (D14, giro 2 — D3)
 
 ChangeSet `20260921-26` (la funzione) e `20260921-27` (la vista). Brief:
-`work-done/brief-db-partita-merce-per-documento.md`, decisione D3 di
+`work-done/2026/brief-db-partita-merce-per-documento.md`, decisione D3 di
 Tid. **Niente cambia nel risultato**: stesse 21 colonne, stessi tipi, stesse
 righe, stessi numeri. Cambia **dove sta l'aggregato** e **chi lo paga**.
 

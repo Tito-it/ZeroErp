@@ -36,7 +36,7 @@ del progetto è *«RLS come cancello uniforme, filtro Python sulle liste di
 testata e ordine di lettura sui satelliti»* ([api.md §«Scope
 emittente»](../api.md)). Il doppio filtro su ogni endpoint è esattamente il
 pattern che l'analisi RLS ha dichiarato fragile
-([analisi-attivazione-rls-operatori.md §2.3](../work-done/analisi-attivazione-rls-operatori.md)).
+([analisi-attivazione-rls-operatori.md §2.3](../work-done/2026/analisi-attivazione-rls-operatori.md)).
 Quello che il censimento ha trovato in `pratiche` sono **tre anomalie di
 forma**, non venti buchi.
 

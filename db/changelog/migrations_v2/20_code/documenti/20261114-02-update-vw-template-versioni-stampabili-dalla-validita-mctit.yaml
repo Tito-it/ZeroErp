@@ -16,7 +16,7 @@
 #   anche quando la nuova parte da una data futura: da quel momento alla
 #   partenza nessuna delle due stampava, e lo standard non subentrava a una
 #   copia dell'emittente. Contro la decisione 51 del 2026-04-29
-#   (work-done/sviluppo-documenti.md: «se la nuova versione e' futura, la
+#   (work-done/2026/sviluppo-documenti.md: «se la nuova versione e' futura, la
 #   vecchia resta pubblicata fino alla scadenza») e contro §7c delle linee
 #   guida SQL: le date comandano, lo stato separa l'operativo (PUBBLICATA,
 #   OBSOLETA) dalla preparazione (BOZZA), con la whitelist degli stati

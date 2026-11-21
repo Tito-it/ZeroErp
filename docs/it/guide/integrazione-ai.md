@@ -178,7 +178,7 @@ Le tabelle sensibili (`vendite.fatture`, `vendite.fatturazione_lotti`, ...) hann
 
 ### 4.3 Conferma sulle scritture — *(pilastro 3)*
 
-Ogni operazione che modifica dati passa da preview + conferma esplicita. I parametri sono ripresi dallo **stato server** della conversazione (il client non puo' alterarli tra preview e conferma). I permessi sono **ri-verificati a execution-time**, non solo alla preview: il ri-check e' stato introdotto in `preview` e in `_execute_confirmation` il 2026-06-26 (P1 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md) §2 — Step 2 applicato), chiudendo la finestra TOCTOU fra offerta del catalogo ed esecuzione.
+Ogni operazione che modifica dati passa da preview + conferma esplicita. I parametri sono ripresi dallo **stato server** della conversazione (il client non puo' alterarli tra preview e conferma). I permessi sono **ri-verificati a execution-time**, non solo alla preview: il ri-check e' stato introdotto in `preview` e in `_execute_confirmation` il 2026-06-26 (P1 di [analisi-sicurezza-aggiornata.md](../dev/work-done/2026/analisi-sicurezza-aggiornata.md) §2 — Step 2 applicato), chiudendo la finestra TOCTOU fra offerta del catalogo ed esecuzione.
 
 ### 4.4 Trattamento dei dati dal DB — *(igiene, NON difesa principale)*
 
@@ -194,7 +194,7 @@ L'assistente risponde solo a domande relative a ZeroERP. Riduce la superficie di
 
 ### 4.7 Audit come rilevamento
 
-Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**. Per le **scritture confermate** il logging e' stato reso affidabile il 2026-06-26 (P2 di [analisi-sicurezza-aggiornata.md](../dev/work-done/analisi-sicurezza-aggiornata.md), Step 2 applicato): un fallimento non passa piu' in silenzio. Per le sole **letture** il best-effort resta accettabile. Le righe scadono dopo novanta giorni, come gli altri registri: la regola e il trigger stanno nella scheda di [dbops.ai_query_log](/dbzero/dbops/tabelle/ai_query_log). Quando arriveranno MCP e profilo supporto, quegli accessi ricadono nella prima categoria, non nella seconda.
+Ogni interazione e' loggata in `dbops.ai_query_log` (input, strumenti+parametri, risposta, provider, modello, token, durata; `request_id` correla con `request_log`; scritture marcate `confirmed: true`). Oltre alla tracciabilita', e' il modo per **accorgersi di comportamenti anomali**. Per le **scritture confermate** il logging e' stato reso affidabile il 2026-06-26 (P2 di [analisi-sicurezza-aggiornata.md](../dev/work-done/2026/analisi-sicurezza-aggiornata.md), Step 2 applicato): un fallimento non passa piu' in silenzio. Per le sole **letture** il best-effort resta accettabile. Le righe scadono dopo novanta giorni, come gli altri registri: la regola e il trigger stanno nella scheda di [dbops.ai_query_log](/dbzero/dbops/tabelle/ai_query_log). Quando arriveranno MCP e profilo supporto, quegli accessi ricadono nella prima categoria, non nella seconda.
 
 ### 4.8 Cosa NON e' una difesa
 
@@ -309,7 +309,7 @@ Queste garanzie sono esplicite nel system prompt e nell'architettura:
 ordinario, e `dbops.ai_query_log.input_text` conserva in chiaro le domande degli operatori per novanta giorni. La scelta del
 provider di produzione (esterno con DPA, opzione EU, o modello self-hosted) e le sue implicazioni di
 trattamento vanno decise **prima** della prima installazione, non dopo: e' il requisito R7 di
-[analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-done/analisi-diagnostica-produzione-senza-accesso-db.md)
+[analisi-diagnostica-produzione-senza-accesso-db.md](../dev/work-done/2026/analisi-diagnostica-produzione-senza-accesso-db.md)
 (§5.6), che osserva come non abbia senso progettare la minimizzazione sul canale diagnostico lasciando
 aperto quello ordinario. Non e' un'evoluzione facoltativa come le voci sotto.
 

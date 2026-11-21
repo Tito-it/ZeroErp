@@ -954,7 +954,7 @@ unifica la lettura; motivi, chiavi i18n e sotto-oggetti (`pdf`) si leggono dal
 suo `capabilities`, mai da `detail.x`.
 ✅ **Il pregresso è convertito** (2026-09-23, tutti i dettagli in un giro, senza
 doppia lettura):
-[brief-be-fe-capability-annidata.md](work-done/brief-be-fe-capability-annidata.md).
+[brief-be-fe-capability-annidata.md](work-done/2026/brief-be-fe-capability-annidata.md).
 
 ⚠️ **La chiave c'è sempre**: un dettaglio che ripiega quando la capability
 fallisce (offerte, lotto) consegna `capabilities: {}`, non la omette — la
@@ -1152,7 +1152,7 @@ ragione nel test. ⚠️ Vale anche il verso opposto: `highlight_form_fields`
 promette un input **nella pagina in cui l'operatore si trova** — un id
 dall'URL, una query string, un header, un parametro di firma **non** lo sono,
 e lì la promessa è sbagliata, non il canale: l'override esce. Brief:
-`work-done/brief-be-presidio-ui-action-e-canale-campi.md`.
+`work-done/2026/brief-be-presidio-ui-action-e-canale-campi.md`.
 
 ⭐ **`targets` — dal 2026-08-24.** È l'**altra metà** di `fields`, e la
 differenza vale la riga: `fields` dice quale campo correggere **dentro la
@@ -1174,7 +1174,7 @@ porta in un vicolo cieco.
 quindi non c'è nessun gesto da offrirgli: `_apply_policy` lo toglie, anche se il
 database ce l'avesse messo.
 
-Brief: `docs/it/dev/work-done/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
+Brief: `docs/it/dev/work-done/2026/brief-db-bersaglio-errore.md` (§2, §4.4, §7-bis).
 
 ### 🔴 I cinque punti di traduzione, e perché contano
 
@@ -1270,7 +1270,7 @@ un codice applicativo darebbe un 500; `column_name` contiene sempre e solo un
 nome di **colonna**. Non c'è un secondo significato da cui difendersi.
 
 Analisi e ordine dei passi:
-`docs/it/dev/work-done/piano-be-classe-codici-errore.md` §12.
+`docs/it/dev/work-done/2026/piano-be-classe-codici-errore.md` §12.
 
 Gli errori sono generati da:
 
@@ -1330,7 +1330,7 @@ flag **non compare in nessun file del backend** (analisi-software-per-dati-morti
 
 ### Namespace per tipo di utente (multi-face auth)
 
-Il refactor multi-face auth (`work-done/sviluppo-multi-face-auth.md`; il residuo in
+Il refactor multi-face auth (`work-done/2026/sviluppo-multi-face-auth.md`; il residuo in
 `work-in-progress/sviluppo-multi-face-da-completare.md`) introduce
 la distinzione formale tra namespace per tipo di consumatore:
 
@@ -1402,8 +1402,8 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 #### Pagamenti, magazzino e documenti
 
 * **Pagamenti — il giro degli incassi** (registrato qui il 2026-09-12: le 25 rotte erano in esercizio dal 2026-08-24 e nessuna pagina le nominava — `copertura_doc_api` dava l'area al **4%**): [api_pagamenti.md](/backend/pagamenti/manual/api_pagamenti) — una pagina sola per il dominio, come per la generazione documenti: la **distinta** (`distinte/`, `<id>/stato/`, e dal 2026-09-18 le righe come **lista configurabile** `distinte/<id>/righe/` + `export/` — lista `pagamenti.distinta_righe`, paginata, «la contabile in CSV/Excel»; fino a quel giorno viaggiavano dentro il dettaglio, su una `DataTable` grezza senza pagina né export), la **registrazione** (`anteprima-registrazione/`, `registra/` — una sola `SELECT` sulla madre, esito `NULLA_DA_POSTARE` che risale intatto — e la **correzione guidata** `correggi/`), l'**abbinamento** (`righe/<id>/abbina/` con la forzatura a due tempi: `E_RIGA_CONTABILE_CAPIENZA_SUPERATA` è il primo codice con `ui_action = confirm_and_retry`), le due **code** (`righe/?coda=`), `rate/fuori-capienza/`, la **base dei saldi** a tre livelli (`rate/<id>/saldo/`, `fatture/<id>/saldo/`, `fatture/<id>/rate/` — sede unica, forma unica `residuo · in_lavorazione · incassato`; `escludi_riga_id` = «prima di sé» sulla rata dal 17/09 e sul documento dal 18/09, stesso parametro dichiarato una volta) e dal 2026-09-17 la sua **quarta lettura**, `rate/` — l'elenco paginato delle rate col saldo (lista `pagamenti.rate`), sorgente del **picker** della distinta e dello scadenzario: pagina prima, saldo dopo dal nucleo `fn_get_saldi_rate` con l'array degli id, numero fattura **esatto** (101 non porta 1010), «aperta» = `residuo <> 0`, e dal 18/09 `solo_numerate` — le rate delle **bozze** fuori, il picker lo passa sempre; e il verbo di collezione `distinte/<id>/righe/da-rate/` — **N rate scelte → N righe** con esito **PARZIALE per riga** via `run_fan_out`, ogni fallita col suo errore intero (`ui_action` compresa: il secondo tempo della capienza è per riga) —, le **sistemazioni** (`eccedenze/`, `sistemazioni/` + `conferma/`/`annulla/`, `fatture/<id>/sistemazioni/` + `export/`) e i **canali di incasso** (`enti-incasso/`, `conti-incasso/`). ⚠️ Le quattro rotte `fatture/<id>/…` hanno `skip_area_check`: le consuma il drawer fattura di `vendite`, che non può chiamare `pagamenti` lateralmente. 🔴 `registra/` e `correggi/` sono gated su `registra_distinta`, fail-closed finché l'azione non è assegnata a un profilo
-* **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<uid>/`), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), `lotti` senza perimetro (`perimetro_emittente = false`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
-* **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
+* **Magazzino — le anagrafiche** (2026-09-21, [piano](work-done/2026/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)): [api_anagrafiche_magazzino.md](/backend/magazzino/manual/api_anagrafiche_magazzino) — `GET/POST /magazzino/magazzini/` (+ `export/`, `<id>/` GET/PATCH), le ubicazioni **sotto il padre** `GET/POST /magazzino/magazzini/<id>/ubicazioni/` (+ `export/`, `<uid>/`), i lotti **per articolo** `GET/POST /magazzino/lotti/?articolo_id=` (+ `export/`, `<id>/`). Liste a catalogo 80-82; RLS sull'emittente del magazzino (404 no-leak, `E_MAG_*_NON_TROVAT*`), `lotti` senza perimetro (`perimetro_emittente = false`). Il documento interno, i lookup di riga e la consultazione hanno la loro pagina (riga sotto).
+* **Magazzino — il documento interno e la consultazione** (2026-09-25, [piano Lotto 2](work-done/2026/piano-be-fe-magazzino-lotto-2-motore.md)): [api_magazzino.md](/backend/magazzino/manual/api_magazzino) — inventario e rettifica come **una famiglia** (`FamigliaDocumentoInterno`, rotte sotto `/magazzino/{inventari|rettifiche}/` dalla stessa factory): lista + `export/`, crea/dettaglio/`PATCH`/`DELETE`, `<id>/stato/`, **`<id>/registra/`** (il gesto irreversibile: `post_permission = registra_magazzino` **e** lo stesso controllo dentro il verbo a DB), righe (lista, `export/`, CRUD), e solo per l'inventario `<id>/piano/` (+ `export/`). Il dettaglio porta il blob `capabilities` di `fn_available_actions_<famiglia>` **intatto**, con la terna `can_registra*`. L'anteprima `righe/motivi/` è `fn_check_riga_magazzino` così com'è; tre lookup di riga dedicati (ubicazioni, lotti, seriali). Consultazione: `disponibilita/` (+ `articoli/`, `blocchi/`), `movimenti/` (con `inventario_id`/`rettifica_id` per il deep-link dal documento registrato). Liste a catalogo 70-77. Scritta il 2026-09-25: le rotte erano in esercizio dal 2026-09-18 senza una pagina che le nominasse.
 * **Documenti**: [api_documenti_templates.md](/backend/documenti/manual/api_documenti_templates) — il motore documentale: template (CRUD della testata, i modelli **standard** senza emittente e `personalizza/` che ne copia uno per un emittente), versioni (CRUD, `clona`, `pubblica`), asset (upload multipart, PATCH, download, miniatura) e `context-builders`. [api_documenti_per_sorgente.md](/backend/documenti/manual/api_documenti_per_sorgente) — le rotte documenti dei sei domini sorgente. Building block trasversali per view "per sorgente" (offerta/preventivo/contratto): [api_documenti_helpers.md](/backend/documenti/manual/api_documenti_helpers) — `resolve_contesto_documentale` + `extract_allegati` (2026-05-28). **Ristampa fedele** (2026-08-03): [api_ristampa_fedele.md](/backend/documenti/manual/api_ristampa_fedele) — `GET .../documenti/<id>/ristampa/` sui 6 domini sorgente: ri-renderizza il documento **com'era** (versione di template pinnata, anche OBSOLETA + `context_json` congelato), senza persistere nulla. È il terzo percorso, distinto dallo **scarica originale** (`file/`, richiede il file su storage: la persistenza è iniziata il 2026-07-21) e dal **genera nuovo documento** (`genera/`, modello e dati di oggi — che fino al 2026-08-03 si chiamava impropriamente «ristampa»). Fedeltà dichiarata in header `X-Ristampa-Pdf-Hash-Match`: byte diversi = fedele nel contenuto, non un errore.
 * **Core — Gestione code (tracciamento)**: [api_gestione_code.md](/backend/core/manual/api_gestione_code) — badge conteggi code + liveness worker (`tracciamento/code/conteggi/`), liste coda lavori/stampa (`tracciamento/coda-lavori/`, `tracciamento/coda-stampa/`, scope operatore, `?ambito=tutti` con `code_manage`), dettaglio job e azioni `annulla/`/`requeue/` (ownership scope-based BE, 404 no-leak). ⭐ Dal 2026-09-04 anche l'**archiviazione** — `archivia/` e `ripristina/` su **entrambe** le code, rotte di **collezione** (`{"ids": [...]}`, tetto 200, dedup) perché il gesto è di massa e il menu di riga manda un elenco di uno: toglie una riga dall'**elenco** senza toccarne lo **stato**, perché i conteggi del pannello «Esiti fatturazione» sono un `GROUP BY` sullo stato **senza filtro di visibilità** e qualunque cancellazione o annullamento li sposterebbe. ⛔ Gate **`code_manage`** e non l'ownership degli altri due verbi: l'effetto è **globale** (chi archivia toglie la riga anche all'amministratore), e un verbo globale in un modello di permessi per-proprietario non compone. ⛔ Il criterio «solo una riga non viva si archivia» sta nel **trigger** (`dbops.trgfn_coda_archiviazione`, una funzione per due code) più il `CHECK`: il backend traduce `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` (409) e passa, senza tenerne una copia — e nemmeno scrive `archiviato_il`/`archiviato_da`, che le deriva il trigger dalla GUC. ⚠️ Le liste nascondono le archiviate di default (`?archiviate=1` le chiede) e dichiarano **`archiviate_count`**: senza quel numero «coda pulita» e «tre righe messe via» si leggono uguali. ⛔ E la bandiera **non entra** nel `WHERE` di claim, drainer, reaper, `mark_*` e `count_*`: è la cosa che distingue l'archiviazione da un annullamento silenzioso. ⛔ **Esito PARZIALE via `run_fan_out`** (un savepoint per riga): il rifiuto è per riga, quindi venti archiviazioni buone non si perdono per una riga tornata al lavoro — chi consuma guarda `esito` e `falliti[]`, non lo status. È anche la ragione per cui non si fa un solo `UPDATE … WHERE id = ANY(…)` col predicato di stato: sarebbe la seconda copia di «riga viva». ⭐ **Dal 2026-09-06 la soglia di liveness del badge non è più un numero nel backend**: arriva dal *dichiarato di deploy* (`backend/deploy/sveglie.json`, campo `tolleranza_minuti`) via `apps.core.services.sveglie` — vedi [sveglie_processi.md](/backend/core/manual/sveglie_processi). Il valore a video non cambia (10 minuti per entrambi i drainer): cambia **chi lo dice**. Prima era `WORKER_ATTIVO_SOGLIA_MINUTI = 10` accanto a un commento che spiegava la scelta con l'`OnCalendar` scritto in un ALTRO file — cioè lo stesso fatto in due sedi che non si conoscevano, e la divergenza sarebbe stata **muta**: un pallino verde su un worker fermo. ⚠️ Il contratto della risposta per worker è `{last_run_at, attivo, in_corso, ultima_conclusa}` — dal 2026-09-14 senza `last_ok`, che era l'esito di una corsa accanto alla data di un'altra (dettaglio in [api_gestione_code.md](/backend/core/manual/api_gestione_code) §1)
 * **UI — Personalizzazioni liste (runtime)**: [api_ui_liste.md](/backend/ui/manual/api_ui_liste) — risoluzione configurazione lista, catalogo modale, UPSERT/DELETE preferenza utente, e dal 2026-09-30 `GET /ui/misure-pagina/`: le misure «righe per pagina» e i due default dal catalogo DB `ui.misure_pagina`, per **tutti** i paginatori (il frontend le legge una volta per sessione). Meta-API trasversale (`skip_area_check=True`).
@@ -1412,7 +1412,7 @@ Per l'inventario completo degli endpoint attivi per dominio, consultare la docum
 * **UI — Personalizzazioni liste (admin Blocco F)**: [api_ui_admin_personalizzazioni.md](/backend/ui/manual/api_ui_admin_personalizzazioni) — Fase 1: CRUD preset (testata + composizione atomica) + UPSERT/DELETE permessi colonna; auth via azioni di processo `ui_preset_manage`/`ui_permesso_manage` o SUPER_ADMIN. Fase 2 (DEF-5b 2026-05-10): CRUD `ui.lista_definizione` + `ui.lista_colonna` SUPER_ADMIN-only via `AdminAPIView`.
 * **UI — Export liste (DEF-1, 2026-05-10)**: endpoint dedicato per dominio (`GET /api/v1/anagrafiche/clienti/export/?formato=csv|xlsx`, `GET /api/v1/anagrafiche/soggetti/export/?formato=csv|xlsx` dal 2026-05-11, `GET /api/v1/anagrafiche/fornitori/export/?formato=csv|xlsx` dal 2026-05-24, `GET /api/v1/vendite/contratti/export/?formato=csv|xlsx` dal 2026-06-02; estensione altre liste in DEF-8). Renderer puro generico `apps.ui.services.lista_export_service.ListaExportService` no-fetch: riceve righe + config colonne + filtri applicati, produce bytes CSV (BOM UTF-8 + header `#` JSON filtri) o XLSX (foglio "Dati" + foglio "Filtri applicati", styling header bold). Hard cap 10.000 righe, errori `E_UI_EXPORT_LIMIT_EXCEEDED` (422) / `E_UI_EXPORT_FORMAT_INVALID` (400) / `E_UI_EXPORT_FAILED` (500). Niente SQL dinamico sulla `vista_sql`: ogni dominio chiama il proprio repository esistente e delega al renderer. **Coda invariante estratta** (regola del 2, 2026-06-02) in `apps.ui.api.export_helpers.{parse_export_format,build_export_response}`: ogni view export mantiene solo il parsing dei propri filtri + la chiamata al service con `limit=EXPORT_MAX_ROWS+1`; validazione formato, guard limite, risoluzione colonne dalla config runtime, render e `HttpResponse` vivono nel building block. ⭐ **La view `…/export/` dichiara LO STESSO `lista_codice` della lista accanto** — e dal 2026-09-18 lo pretende un presidio che legge le coppie dalle rotte (`apps/core/tests/test_export_lista_codice_pari.py`, 28 coppie): due letterali uguali divergono al primo rename senza nessun errore, e il file avrebbe le colonne di un'altra lista. La forma che non diverge è `lista_codice = ApiLista.lista_codice` (`distinta_righe`, `sistemazioni_fattura`). ⭐ **La ricerca libera nel file la dichiara il BB, non la view** (2026-09-29, regola del 2): `build_export_response` passa al renderer `filtri_export_con_ricerca(request, …)`, che legge `search` dalla richiesta e lo scrive come `"Ricerca"` **solo se ha filtrato davvero** (dopo lo `strip`, alla soglia della lista — `soglia_ricerca`, la stessa di `add_ricerca_full_condition`); le chiavi `search`/`Ricerca` eventualmente messe dal caller si tolgono, così non compare due volte. Le view dichiarano solo i **propri** filtri (i `resolve_filtri_export_label` non hanno più il parametro `search`). Prima la dichiaravano le view, a modo loro, e chi se ne dimenticava (righe distinta, righe inventario/rettifica, righe dei documenti di vendita) consegnava un file filtrato con `# Filtri applicati: {}`. ⚠️ Invariante: una lista con colonne `ricercabile_full` applica `search` anche nell'export — il file è la lista che l'operatore vede.
 
-* **AI Assistant** (registrato qui il 2026-09-09: l'app esisteva e questo elenco non la nominava): [api_ai_query.md](/backend/ai-assistant/manual/api_ai_query) | [api_ai_status.md](/backend/ai-assistant/manual/api_ai_status) | [ai_tool_registry.md](/backend/ai-assistant/manual/ai_tool_registry) — `POST /api/v1/ai-assistant/query/` (linguaggio naturale + function calling su 18 tool di dominio) e `GET .../status/`. ⛔ **Le rotte sono montate solo se `AI_ENABLED=1`**: a flag spento l'app non e' nemmeno in `INSTALLED_APPS`. ⭐ L'assistente si concede per area come ogni dominio: `ai_assistant` e' a catalogo dal 2026-09-25 (riga 14 di `config.aree_funzionali`). `LETTURA` consulta, `TUTTO` anche agisce (i tool di scrittura, sempre con conferma), `BLOCCATO` non entra; vale sempre il piu' stretto fra questo livello e quello del dominio del tool. L'ingresso chiede `view` (`post_accesso = "view"`: una domanda e' una lettura), e `status/` dice in anticipo se l'utente e' dentro (`utilizzabile`), cosi' la topbar mostra la chat solo a lui. ⭐ I tool non aggirano niente: il permesso e se il tool scrive si **derivano** dal suo endpoint gemello (`valuta_accesso_endpoint`, `chiamata_in_scrittura`), leggono con la connessione dell'utente (RLS attiva), e ogni lettura — anche l'anteprima di una scrittura — gira in `transazione_sola_lettura`, quindi una scrittura li' dentro la ferma il DB (`25006`). Dettaglio in [brief-db-area-funzionale-assistente-ai](work-done/brief-db-area-funzionale-assistente-ai.md).
+* **AI Assistant** (registrato qui il 2026-09-09: l'app esisteva e questo elenco non la nominava): [api_ai_query.md](/backend/ai-assistant/manual/api_ai_query) | [api_ai_status.md](/backend/ai-assistant/manual/api_ai_status) | [ai_tool_registry.md](/backend/ai-assistant/manual/ai_tool_registry) — `POST /api/v1/ai-assistant/query/` (linguaggio naturale + function calling su 18 tool di dominio) e `GET .../status/`. ⛔ **Le rotte sono montate solo se `AI_ENABLED=1`**: a flag spento l'app non e' nemmeno in `INSTALLED_APPS`. ⭐ L'assistente si concede per area come ogni dominio: `ai_assistant` e' a catalogo dal 2026-09-25 (riga 14 di `config.aree_funzionali`). `LETTURA` consulta, `TUTTO` anche agisce (i tool di scrittura, sempre con conferma), `BLOCCATO` non entra; vale sempre il piu' stretto fra questo livello e quello del dominio del tool. L'ingresso chiede `view` (`post_accesso = "view"`: una domanda e' una lettura), e `status/` dice in anticipo se l'utente e' dentro (`utilizzabile`), cosi' la topbar mostra la chat solo a lui. ⭐ I tool non aggirano niente: il permesso e se il tool scrive si **derivano** dal suo endpoint gemello (`valuta_accesso_endpoint`, `chiamata_in_scrittura`), leggono con la connessione dell'utente (RLS attiva), e ogni lettura — anche l'anteprima di una scrittura — gira in `transazione_sola_lettura`, quindi una scrittura li' dentro la ferma il DB (`25006`). Dettaglio in [brief-db-area-funzionale-assistente-ai](work-done/2026/brief-db-area-funzionale-assistente-ai.md).
 
 Per i building block backend riutilizzabili (helpers, services, repository), consultare il [Catalogo Building Block Backend](backend/catalogo-building-block-backend.md).
 
@@ -1472,7 +1472,7 @@ nell'envelope `{"data": {"access", "password_change_required"?,
 un'altra porta o provenienza → 401 `E_TOTP_SFIDA_NON_VALIDA` (si riparte dalla
 password); codice sbagliato → 400 `E_TOTP_CODICE_NON_VALIDO`, e conta come una
 password sbagliata. Il successo sul freno si registra solo al secondo passo.
-Brief: [sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+Brief: [sicurezza](work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
 
 La configurazione è della persona, su `/api/v1/auth/secondo-fattore/`: `GET` lo
 stato, `POST registra/` (QR come data URI di un SVG, segreto e codici di recupero **una volta**),
@@ -1495,7 +1495,7 @@ Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 
 ### ⛔ Il refresh token viaggia nel cookie, mai nel corpo
 
-Dal 2026-09-28 ([brief sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md)
+Dal 2026-09-28 ([brief sicurezza](work-done/2026/brief-be-fe-sicurezza-header-token-mfa.md)
 §2). Il refresh vale un giorno e rinnova la sessione: in `localStorage` o in un
 corpo JSON lo legge qualunque script giri nella pagina. Ora sta in un cookie
 che il JavaScript non vede, e l'access (10 minuti) vive solo nella memoria del
@@ -1564,7 +1564,7 @@ l'auth class li ripopoli e prima di qualunque query. È **incondizionato**
 richiesta NON viene servita (500 `E_GUC_RESET_FAILED`). Chiude il leak
 cross-request sulle connessioni persistenti (`CONN_MAX_AGE > 0` / pooling),
 critico ora che la RLS filtra in base ai GUC. Vedi
-`docs/it/dev/work-done/analisi-attivazione-rls-operatori-be-fe.md` §1.
+`docs/it/dev/work-done/2026/analisi-attivazione-rls-operatori-be-fe.md` §1.
 
 **L'audit lo scrive il DB, non il repository.** Sulle tabelle che montano
 `script.trgfn_audit_data_user_generic` (lo dice la scheda auto-generata
@@ -1686,7 +1686,7 @@ quelle di `vendite` e `anagrafiche`, offerte comprese dal 21-09) e l'ordine di
 lettura sui satelliti. `pratiche` resta da allineare: brief
 `work-in-progress/brief-be-pratiche-perimetro-emittente-lato-python.md`.
 
-Vedi `docs/it/dev/work-done/analisi-attivazione-rls-operatori.md`.
+Vedi `docs/it/dev/work-done/2026/analisi-attivazione-rls-operatori.md`.
 
 ---
 
@@ -1797,7 +1797,7 @@ verificabile, non sostituisce la disciplina in review.
 
 > Faccia DB della stessa regola (come scrivere la funzione madre): [linee-guida-sql §5b](/linee-guida-sql).
 > Caso di studio, criterio esteso e catalogo dei finding:
-> [analisi-fix-transazioni](/dev/work-done/analisi-fix-transazioni).
+> [analisi-fix-transazioni](/dev/work-done/2026/analisi-fix-transazioni).
 
 ### Tassonomia errori
 
@@ -1965,7 +1965,7 @@ il classificatore non l'ha segnalata — ma è una domanda aperta, non una svist
 Vale la pena scriverlo lo stesso: è ciò che ha reso la segnalazione leggibile in
 un minuto invece che in un'indagine.
 
-Storia completa: `docs/it/dev/work-done/brief-db-sveglia-dei-processi.md` §23.
+Storia completa: `docs/it/dev/work-done/2026/brief-db-sveglia-dei-processi.md` §23.
 
 ⚠️ **`ui_action` non si deriva dalla classe, e il numero conta.** Gli override
 stanno per lo più sulla classe **`DATO_ERRATO`** (al 2026-10-25: 99 su 156): lì il
@@ -1986,7 +1986,7 @@ messaggio e `ui_action`. `E_AI_PROVIDER_ERROR` oggi non raggiunge il client: l'e
 del provider finisce nel log delle domande all'assistente (`dbops.ai_query_log`) e
 l'utente riceve una risposta di cortesia.
 
-> Perché tutto questo: `docs/it/dev/work-done/brief-db-be-classe-codici-errore.md`.
+> Perché tutto questo: `docs/it/dev/work-done/2026/brief-db-be-classe-codici-errore.md`.
 > In una riga: il significato di un errore viveva **solo** in un dizionario
 > Python, quindi il catalogo DB non aveva il campo dove la contraddizione si
 > sarebbe vista.
@@ -2313,7 +2313,7 @@ Due conseguenze pratiche:
   fra il seed DB e la classificazione BE. *Un registro vuoto non è un registro
   inutile: è un registro in pari.*
 
-> Storia completa, criteri e casi: `docs/it/dev/work-done/brief-db-be-terzo-lato-presidio-codici.md`
+> Storia completa, criteri e casi: `docs/it/dev/work-done/2026/brief-db-be-terzo-lato-presidio-codici.md`
 > e [Presidi e registri del debito §3.4](/guide/presidi-e-registri-del-debito).
 
 #### Come il codice arriva dal DB al backend (dal 2026-08-05)
