@@ -11,11 +11,12 @@ Approfondimento tabelle:
 Approfondimento funzioni:
 > • [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)
 > • [vendite.fn_annotazioni_fattura](/dbzero/vendite/funzioni/fn_annotazioni_fattura)
+> • [dbops.fn_crea_regime_fiscale_di_prova](/dbzero/dbops/funzioni/fn_crea_regime_fiscale_di_prova)
 
 ---
 ### 🎯 Scopo Principale
 
-(latest review 21-11-2026)
+(latest review 22-11-2026)
 
 **Il regime fiscale di un emittente o di un fornitore**, con i codici
 `RegimeFiscale` del tracciato FatturaPA: RF01 ordinario, RF17 IVA per cassa, RF19
@@ -78,6 +79,18 @@ codice viene da fuori, ciò che il sistema ne fa sta in una colonna.
 
 Nel CSV `80_data/sql/config/regimi_fiscali.csv`, mai con un `INSERT` o un `UPDATE` a
 parte: il mirror `runOnChange` rilegge il file.
+
+⭐ **L'applicazione lo legge e basta** (Tid, 2026-11-22): `zeroerp_app` ha solo
+`SELECT`, come i vocabolari di `documenti` e `config.formati_file`. Un valore è
+ciò che il codice sa usare, e il codice RF è quello del tracciato: una riga
+scritta dall'applicazione sarebbe un regime che nessuna regola onora. Per questo
+spegnere un regime in uso, e quindi incontrare `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`,
+lo può solo il migratore.
+
+L'unica eccezione è per i test: in un'installazione di sviluppo
+[dbops.fn_crea_regime_fiscale_di_prova](/dbzero/dbops/funzioni/fn_crea_regime_fiscale_di_prova)
+crea regimi **nuovi**, acceso o spento, col segno `meta` `di_prova`. Non modifica e non
+spegne, e un regime del catalogo non lo tocca.
 
 Brief: `brief-db-esigibilita-iva-per-cassa-emittente`, sezioni 4.1 e 8.4 (D-9, D-10).
 

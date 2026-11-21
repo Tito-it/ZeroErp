@@ -357,7 +357,11 @@ databaseChangeLog:
                   'ui.widget',
                   'ui.dashboard_widget',
                   'ui.dashboard_preset',
-                  'ui.dashboard_preset_widget'
+                  'ui.dashboard_preset_widget',
+                  -- ⭐ Dal 2026-11-22 il CATALOGO DEI REGIMI FISCALI: lo possiede il CSV,
+                  --   il codice RF e' del tracciato FatturaPA (Q10 applicata,
+                  --   brief-db-fornitore-doppioni-del-soggetto, D-8). Forward 90_end/20261121-16.
+                  'config.regimi_fiscali'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

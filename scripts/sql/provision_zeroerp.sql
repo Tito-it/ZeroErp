@@ -594,6 +594,17 @@ FROM (VALUES ('dbops.seed_righe'), ('dbops.porte_manutenzione_passaggi'),
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ IL CATALOGO DEI REGIMI FISCALI (dal 2026-11-22): brief
+--   brief-db-fornitore-doppioni-del-soggetto, D-8 (la Q10 applicata). Lo possiede
+--   il CSV, il codice RF e' del tracciato FatturaPA. Stesso elenco di
+--   `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20261121-16; `db/pgtap/config/test-regimi-fiscali-sola-lettura-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('config.regimi_fiscali')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

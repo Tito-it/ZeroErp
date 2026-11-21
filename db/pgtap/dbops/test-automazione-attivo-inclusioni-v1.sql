@@ -7,7 +7,7 @@
 -- Vedi LICENSE.md per il testo completo della licenza.
 -- ------------------------------------------------------------
 -- pgtap-runner: owner
--- pgtap-runner-motivo: spegnere un regime fiscale lo puo' solo il migratore (config.regimi_fiscali e' un catalogo scritto dal seed): il block che il test collauda nessun entry point dell'applicazione lo puo' far scattare (forma 3 di scripts/testpgtap.sh)
+-- pgtap-runner-motivo: spegnere un regime fiscale lo puo' solo il migratore (config.regimi_fiscali e' un catalogo scritto dal seed, in sola lettura per l'app da 90_end/20261121-16): il block che il test collauda nessun entry point dell'applicazione lo puo' far scattare (forma 3 di scripts/testpgtap.sh)
 --
 -- Test: le INCLUSIONI dell'automazione ATTIVO, e le prime: un regime fiscale
 --   spento non si assegna, e uno in uso non si spegne (Tid, 2026-11-21).
