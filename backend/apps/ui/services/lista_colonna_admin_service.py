@@ -23,15 +23,18 @@
 #
 #        Validazione lato DB:
 #          - UNIQUE (lista_id, codice) -> map_integrity_error
-#          - FK CASCADE su lista_preset_colonna / lista_colonna_permesso
+#          - FK: lista_colonna_permesso ON DELETE CASCADE (i permessi
+#            vanno con la colonna); lista_preset_colonna NO ACTION (una
+#            colonna in un preset non si cancella, Q18 di
+#            brief-db-revisione-ui) -> E_UI_COLONNA_IN_USO
 #          - trigger guard valida_campo_sorgente -> E_UI_CAMPO_SORGENTE_NON_TROVATO
 #          - CHECK chk_ui_lista_colonna_azione_non_esportabile (defense in depth)
 #
-#        Soft-block DELETE: il service conta le preferenze utente che
-#        referenziano la colonna per codice nel JSONB
-#        `configurazione->colonne` e blocca con E_UI_COLONNA_IN_USO.
-#        Soft-disable via PATCH `attivo=false` resta l'alternativa
-#        raccomandata (decisione 5 _def.md).
+#        Soft-block DELETE: prima del DELETE il service conta le preferenze
+#        utente che nominano la colonna per codice nel JSONB
+#        `configurazione->colonne`, poi i preset che la compongono, e blocca
+#        con E_UI_COLONNA_IN_USO. Soft-disable via PATCH `attivo=false`
+#        resta il gesto ordinario (decisione 5 _def.md).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -130,6 +133,14 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         "Le colonne di tipo 'azione' non possono essere esportabili.",
     ),
 }
+
+# Il rifiuto della colonna che sta in un preset: lo dicono il controllo
+# preventivo (coi codici dei preset) e la FK NO ACTION, se il preset nasce
+# fra il controllo e il DELETE.
+_MSG_COLONNA_IN_PRESET = (
+    "La colonna fa parte di un preset. Toglila prima dai preset, oppure "
+    "disattivala con attivo=false invece di eliminarla."
+)
 
 
 class ListaColonnaAdminService:
@@ -272,16 +283,60 @@ class ListaColonnaAdminService:
         )
         return self.get_colonna(colonna_id)
 
-    # Scopo: Cancella colonna. Soft-block applicativo se ci sono
-    #        preferenze utente che referenziano il `codice` colonna nel
-    #        JSONB configurazione->colonne. La FK CASCADE su
-    #        lista_preset_colonna / lista_colonna_permesso fa il pulito
-    #        automatico. Soft-disable disponibile via PATCH attivo=false.
+    # Scopo: Cancella colonna. Due soft-block prima del DELETE, ognuno col
+    #        suo messaggio: le preferenze utente che nominano il `codice`
+    #        nel JSONB configurazione->colonne (nessuna FK le protegge), e
+    #        i preset che compongono la colonna (FK NO ACTION, Q18: il
+    #        messaggio li nomina, perche' vanno tolti prima da li'). I
+    #        permessi di colonna vanno a cascata e non fermano niente.
+    #        ⚠️ Una colonna nata dal seed salta i due controlli: non si
+    #        cancella comunque, e il rifiuto vero e' quello del DB
+    #        (E_SEED_RIGA_NON_CANCELLABILE, trigger BEFORE DELETE, che a DB
+    #        scatta prima della FK). Rimandare l'operatore a togliere la
+    #        colonna dai preset, per farlo poi fermare dal seed, sarebbe
+    #        un rimedio falso. Soft-disable via PATCH attivo=false.
     def delete_colonna(self, colonna_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(colonna_id, field="colonna_id")
         # 404 + serve il codice + lista_id per il count preferenze.
         current = self.get_colonna(colonna_id)
 
+        if not current.get("nata_dal_seed"):
+            self._richiedi_colonna_non_in_uso(colonna_id, current)
+
+        try:
+            deleted = self._repo.delete_colonna(colonna_id)
+        except IntegrityError as exc:
+            # La FK NO ACTION dei preset, se un preset e' nato fra il
+            # controllo preventivo e il DELETE; il ripiego per FK future.
+            map_integrity_error(
+                exc,
+                fk_constraints={
+                    "fk_lista_preset_colonna_lista_colonna": (
+                        E_COLONNA_IN_USE, _MSG_COLONNA_IN_PRESET,
+                    ),
+                },
+                fallback_code=E_COLONNA_IN_USE,
+                fallback_message=(
+                    "La colonna e' in uso. Rimuovere i riferimenti oppure disattivarla."
+                ),
+                context={"colonna_id": colonna_id},
+            )
+        ErrorManager.require(
+            deleted,
+            code=E_COLONNA_NOT_FOUND,
+            message="Colonna lista non trovata.",
+            detail=f"colonna_id={colonna_id}",
+        )
+        return {"deleted": True, "id": colonna_id}
+
+    # Scopo: I due soft-block della cancellazione di una colonna, nell'ordine
+    #        in cui l'operatore li risolve: le preferenze utente (che nessuna
+    #        FK protegge), poi i preset che la compongono (FK NO ACTION).
+    #        Ognuno solleva E_UI_COLONNA_IN_USO col suo messaggio; quello dei
+    #        preset li nomina per codice.
+    def _richiedi_colonna_non_in_uso(
+        self, colonna_id: int, current: dict[str, Any],
+    ) -> None:
         n_pref = self._repo.count_preferenze_referenced_by_colonna(
             lista_id=int(current["lista_id"]),
             codice=str(current["codice"]),
@@ -303,25 +358,22 @@ class ListaColonnaAdminService:
             },
         )
 
-        try:
-            deleted = self._repo.delete_colonna(colonna_id)
-        except IntegrityError as exc:
-            # Eventuali FK aggiuntive future non CASCADE: messaggio parlante.
-            map_integrity_error(
-                exc,
-                fallback_code=E_COLONNA_IN_USE,
-                fallback_message=(
-                    "La colonna e' in uso. Rimuovere i riferimenti oppure disattivarla."
-                ),
-                context={"colonna_id": colonna_id},
-            )
+        preset = self._repo.preset_con_colonna(colonna_id)
         ErrorManager.require(
-            deleted,
-            code=E_COLONNA_NOT_FOUND,
-            message="Colonna lista non trovata.",
-            detail=f"colonna_id={colonna_id}",
+            not preset,
+            code=E_COLONNA_IN_USE,
+            message=(
+                f"{_MSG_COLONNA_IN_PRESET} Preset: {', '.join(preset)}."
+            ),
+            detail=(
+                f"preset={preset!r}, lista_id={current['lista_id']}, "
+                f"codice={current['codice']!r}"
+            ),
+            context={
+                "colonna_id": colonna_id,
+                "preset": preset,
+            },
         )
-        return {"deleted": True, "id": colonna_id}
 
     # =================================================================
     # Helpers privati - validazione payload

@@ -11,8 +11,10 @@
 #        Divergenza dalle liste (brief DB §3a): il widget e' GLOBALE
 #        (`ui.widget`, codice unico) e la membership in una dashboard
 #        vive in `ui.dashboard_widget`. Nessuna tabella permessi
-#        dedicata (§3b): il filtro e' dentro la fn via i resolver
-#        `script.fn_resolve_livello_area` / `fn_check_azione_processo`.
+#        dedicata (§3b): il filtro e' dentro la fn, sulle due mappe
+#        dell'utente `script.fn_get_user_permissions_map` (area non
+#        BLOCCATA) e `script.fn_get_user_actions_map` (azione abilitata),
+#        lette una volta per chiamata.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -30,14 +32,20 @@ class DashboardRepository:
 
     # Scopo: Risolve la configurazione effettiva di una dashboard per
     #        l'utente. Wrapper 1:1 di `ui.fn_resolve_dashboard_config`.
-    #        La fn applica: cascata preferenza/preset ruolo/emittente/
-    #        sistema/catalogo grezzo, merge widget nuovi, filtro permessi
-    #        (area + azione). Veste corrente letta dalla GUC
-    #        `app.ruolo_applicativo` dentro la fn.
-    # Risultato: dict con `widget[]`, `dimensione_max`, `widget_nuovi`,
-    #        `preset_aggiornato`. Ogni widget porta codice/ordine/visibile
-    #        + i campi freschi del catalogo (etichetta, etichetta_i18n_key,
-    #        tipo_widget, deep_link, contatore_key, soglia).
+    #        La fn applica: cascata per chiave (preferenza, preset di base
+    #        scelto da `ui.fn_preset_di_base`, catalogo del pool), merge
+    #        widget nuovi, filtro permessi (area + azione). Veste corrente
+    #        letta dentro la fn (`ui.fn_veste_corrente`).
+    # Risultato: dict con `widget[]`, `dimensione_max`,
+    #        `dimensione_max_standard` (la dimensione senza la preferenza),
+    #        `origine` (`{widget, dimensione_max}` -> il livello da cui viene
+    #        ogni chiave), `widget_nuovi`, `preset_aggiornato`, `preset_base`
+    #        (`{id, ambito, contenuto_aggiornato_il}` del preset di base di
+    #        oggi, o None) e `preset_base_cambiato`. Ogni widget porta
+    #        codice/ordine/visibile + i campi freschi del catalogo
+    #        (etichetta, etichetta_i18n_key, tipo_widget, deep_link,
+    #        contatore_key, soglia). Il contratto e' la pagina
+    #        `docs/it/dbzero/ui/manual/fn_resolve_dashboard_config.md`.
     def resolve_dashboard_config(
         self,
         dashboard_codice: str,

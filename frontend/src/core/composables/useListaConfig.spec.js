@@ -10,6 +10,8 @@
 //   1. toccate le sole colonne: il PUT porta solo le colonne
 //   2. le chiavi gia' della preferenza si rimandano, con quella toccata
 //   3. ⭐ nessuna chiave scelta: DELETE, non un PUT vuoto
+//   3-bis. ⭐ `ordinamento` e `filtri` non si salvano mai (Q38, Q39), nemmeno
+//      se vengono dalla preferenza: una riga vecchia li perde
 //   4. BE7: `preset_base_cambiato` dal DB, passthrough (assente = falso)
 //   5. BE7: «Riallinea» rimanda le chiavi della preferenza, senza toccarle
 // ------------------------------------------------------------
@@ -91,6 +93,18 @@ describe('useListaConfig.save — per chiave', () => {
     await lista.save()
     expect(api.putListaPreferenza).not.toHaveBeenCalled()
     expect(api.deleteListaPreferenza).toHaveBeenCalledWith('vendite.listini')
+  })
+
+  it('3-bis. ordinamento e filtri della preferenza non si rimandano (Q38, Q39)', async () => {
+    const lista = await caricata({
+      colonne: 'preferenza', ordinamento: 'preferenza', filtri: 'preferenza',
+    })
+    lista.applyChange((c) => { c.pagina_dimensione = 50 })
+    await lista.save()
+    expect(api.putListaPreferenza).toHaveBeenCalledWith('vendite.listini', {
+      colonne: [{ codice: 'codice', ordine: 1, visibile: true }],
+      pagina_dimensione: 50,
+    })
   })
 })
 

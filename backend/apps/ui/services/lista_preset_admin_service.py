@@ -70,10 +70,14 @@ CREATE_KEYS: frozenset[str] = frozenset(
         "emittente_fiscale_id",
         "pagina_dimensione",
         "ordinamento_default",
-        "filtri_default",
         "attivo",
     }
 )
+
+# ⛔ `filtri_default` non e' piu' in nessuna delle due whitelist (Q38 di
+#    brief-db-revisione-ui, Tid 2026-11-20): i filtri di partenza di una
+#    lista restano dello store, la colonna la ritira il DB nel giro 2. Fino
+#    ad allora la si legge ancora (dettaglio admin), non la si scrive.
 
 # Whitelist chiavi del payload update. Esclude gli immutabili. Per
 # cambiare ambito/refs si crea un nuovo preset.
@@ -83,7 +87,6 @@ UPDATE_KEYS: frozenset[str] = frozenset(
         "descrizione",
         "pagina_dimensione",
         "ordinamento_default",
-        "filtri_default",
         "attivo",
     }
 )
@@ -259,9 +262,14 @@ class ListaPresetAdminService:
         return self.get_preset(preset_id)
 
     # Scopo: Cancella preset. ON DELETE SET NULL su lista_preferenza_utente
-    #        (DB-2) preserva le preferenze: il badge "preset aggiornato"
-    #        sparira' e l'utente lavorera' direttamente sul catalogo grezzo
-    #        finche' non sceglie un altro preset.
+    #        (DB-2) preserva le preferenze, con `preset_base_id` NULL: il
+    #        trigger `ui.trgfn_preferenza_preset_base_snapshot` lo vede come
+    #        un cambio di base e azzera snapshot e «ignora». Da li' vale il
+    #        preset di base DI OGGI, che sceglie la risoluzione
+    #        (`ui.fn_preset_di_base`), non il catalogo grezzo: se la cascata
+    #        da' un altro preset il resolver risponde `preset_base_cambiato`
+    #        e il banner propone il riallineamento; il catalogo resta solo
+    #        quando nessun preset vale (brief-db-revisione-ui, BE1).
     def delete_preset(self, preset_id: int) -> dict[str, Any]:
         self._v.guard_positive_int(preset_id, field="preset_id")
         deleted = self._repo.delete_preset(preset_id)
@@ -340,9 +348,9 @@ class ListaPresetAdminService:
     # Scopo: Normalizza il payload create. Default applicativo: la bozza
     #        nasce SPENTA (`attivo=False`, Q26 di brief-db-revisione-ui): si
     #        compone e poi si accende, e accenderla e' il gesto che incontra
-    #        il preset gia' acceso nello stesso posto. I campi JSONB
-    #        ordinamento_default/filtri_default sono accettati come
-    #        liste/dict; conversione a JSON la fa il repository.
+    #        il preset gia' acceso nello stesso posto. Il JSONB
+    #        ordinamento_default e' accettato come lista; conversione a
+    #        JSON la fa il repository.
     def _build_create_data(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
         data["lista_id"] = self._v.require_positive_int(payload, "lista_id")
@@ -400,15 +408,6 @@ class ListaPresetAdminService:
             )
             data["ordinamento_default"] = value
 
-        if "filtri_default" in payload:
-            value = payload["filtri_default"]
-            ErrorManager.require(
-                value is None or isinstance(value, dict),
-                code=E_PRESET_VALIDATION,
-                message="filtri_default deve essere un oggetto o null.",
-            )
-            data["filtri_default"] = value
-
         return data
 
     # Scopo: Normalizza il payload update sui soli campi mutabili
@@ -446,14 +445,6 @@ class ListaPresetAdminService:
                 message="ordinamento_default deve essere una lista o null.",
             )
             data["ordinamento_default"] = value
-        if "filtri_default" in payload:
-            value = payload["filtri_default"]
-            ErrorManager.require(
-                value is None or isinstance(value, dict),
-                code=E_PRESET_VALIDATION,
-                message="filtri_default deve essere un oggetto o null.",
-            )
-            data["filtri_default"] = value
         return data
 
     # Scopo: Valida una singola riga di composizione preset.

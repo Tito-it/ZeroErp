@@ -1,9 +1,9 @@
 # Brief DB — La provenienza del prezzo viaggia con il prezzo, dal documento alla commessa
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-15
+## ⏭️ Chi riparte — aggiornato al 2026-11-21
 
-**Riparte: il team BE**, con l'estrazione della regola del 2 (approvata da Tid il 2026-11-15, §8.13 «Da decidere») e la
-policy rigenerata sulla `note` corretta dal team DB (§8.14); poi il team DB archivia (passo 7). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
+**Riparte: il team DB**, con la chiusura (passo 7: archiviazione). Il BE
+ha consegnato l'estrazione il 2026-11-21 (§8.15), rivista con `/verifica` e committata lo stesso giorno su `dev/backend-tid`; la policy era già rigenerata dal 2026-11-15 (`940a4e6b6`). Il BE/FE ha consegnato il 2026-11-15 (§8.13):
 R-8.3 (policy rigenerata, ripiego), la metà BE di R-7 (6b), K-5 con D-5 nel gate dei **cinque** documenti — ordine e
 DDT compresi, con L1/L2 sul prezzo a mano (strada A, decisione di Tid del 2026-11-15) —, K-6 (il solo form che
 precompila dal pricing, il preventivo) e K-7 sul DB vero. Da committare (Tid). I giri 1, 2 e 3 sono applicati, verdi e
@@ -37,14 +37,15 @@ brief-db-provenienza-prezzo-segue-il-prezzo» chiude in realtà
 | 6b | ✅ team BE | La metà BE di R-7: loader del kit dal listino con le colonne `prov_*`, un ramo solo in `_provenienza_componente` (2026-11-15) | §8.13 | 6a |
 | 6c | ✅ team DB | La `note` di `E_PRICING_PROVENIENZA_SUPERATA` dice i cinque documenti (strada A); dal CSV, senza changeSet (2026-11-15) | §8.14 | 4b-bis |
 | 6d | ✅ Tid | Estrazione della regola del 2 approvata (2026-11-15) | §8.13 «Da decidere» | — |
-| 6e | **team BE** ⏭️ | L'estrazione: `_resolve_prezzo_riga` + `_gate_prezzo_riga` di ordine e DDT in un BB del contesto di testata; i due wrapper `resolve_or_check_override_prezzo_riga_offerta` / `_contratto`. Poi la policy rigenerata (la `note` di 6c, e i cinque codici `E_INDIRIZZO_*` di brief-db-copia-indirizzo-soggetto, ora in git) | §8.13, §8.14 | 6c, 6d, apply di 6c |
-| 7 | team DB | Chiusura: archiviazione | — | 6e, commit di Tid |
+| 6e | ✅ team BE | L'estrazione: `_resolve_prezzo_riga` + `_gate_prezzo_riga` di ordine e DDT (con `_resolve_emittente_sr_id` e `_data_riferimento`) in `RegolePrezzoTestata`; i due wrapper di offerta e contratto su `resolve_or_check_override_prezzo_con_listino`. La policy era già rigenerata (`940a4e6b6`, 2026-11-15) (2026-11-21) | §8.15 | 6c, 6d |
+| 6f | ✅ Tid | Commit dell'estrazione su `dev/backend-tid`, dopo la revisione `/verifica` (2026-11-21) | §8.15 | 6e |
+| 7 | **team DB** ⏭️ | Chiusura: archiviazione | — | 6f |
 
 **Decisioni aperte di Tid:** nessuna. Decise il 2026-11-15: l'estrazione della regola del 2 (§8.13 «Da decidere»,
 approvata), R-1 e R-2 della revisione (in fondo al §8.13), la strada A (§8.13). Decisa il 2026-11-14: D-5 (§8.11). Decise il 2026-11-13: D-1, D-2, D-3 (§7.3), D-4 (§8.5). F-9 non è
 servita: il cantiere degli stati non ha toccato `fn_list_ordini_da_pushare`, e il giro 2 riparte dal suo
-corpo vivo. **Lavoro da committare:** su `dev/db-tid` la riga del CSV del §8.14 e questo brief. La consegna del §8.13 è
-nel commit `d16a9a973d` (PR #126).
+corpo vivo. **Lavoro da committare:** niente; l'estrazione del §8.15 e questo brief sono committati su `dev/backend-tid` (2026-11-21). La riga del CSV del §8.14
+è nel commit `f4959f97d`; la consegna del §8.13 nel commit `d16a9a973d` (PR #126).
 Il giro 4 (il changeSet `20261114-73`, due righe di CSV, due pgTAP adeguati, la
 pagina `manual/`) è nel commit «Stati dal vocabolario: giri 6g e 6g-bis; provenienza del prezzo: giro 4» (2026-11-15). I giri 1-3 e la PATCH dei componenti sono committati (`33f85e641`,
 `11273227f`, `c4b0915f3`).
@@ -807,7 +808,7 @@ e una violazione L2 è un rifiuto.
   (`test_righe_erogazione_obbligatoria_db`, i test IVA del DDT): con K-5 è un prezzo a mano. Il gate L1 vi è neutralizzato,
   dichiarandolo.
 
-**Da decidere (regola del 2, proposta — non estratta):** `_resolve_prezzo_riga` di ordine e DDT erano già due copie (stessi
+**Da decidere (regola del 2, proposta — non estratta):** ⚠️ approvata da Tid il 2026-11-15 ed estratta il 2026-11-21 (§8.15). `_resolve_prezzo_riga` di ordine e DDT erano già due copie (stessi
 controlli di testata, stessa chiamata al `PricingService`), e ora hanno accanto due `_gate_prezzo_riga` gemelli. Le
 differenze sono di dominio (guscio contro nucleo, codice d'errore), quindi sono parametri: si estraggono in un BB del
 contesto di testata. Lo stesso vale per i due wrapper `resolve_or_check_override_prezzo_riga_offerta` / `_contratto` (il
@@ -878,4 +879,61 @@ puliti.
   `E_INDIRIZZO_COPIA_NESSUN_TIPO`. È probabile che siano loro i 4 rossi della suite del §8.13. Una rigenerazione sola, dopo
   l'apply della `note`, li porta tutti.
 * **La chiusura (7)** aspetta l'estrazione 6e, approvata da Tid il 2026-11-15: un brief con un debito aperto non si
-  archivia.
+  archivia. ⚠️ Fatta il 2026-11-21, §8.15.
+
+### 8.15 L'estrazione della regola del 2 (6e) — consegnata (sessione BE, 2026-11-21)
+
+> **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-21. **A chi:** Tid per il commit; team DB per la chiusura (7).
+> Nessuna richiesta nuova al DB.
+
+**Prima di cominciare, riverificato** che dopo la consegna del §8.13 (`d16a9a973`) nessuno avesse toccato il gate: sui
+file del gate e del pricing c'è un solo commit (`44ba001ec`, `scadenza_mese` nei contratti, estraneo); il brief l'ha
+toccato solo il §8.14; `origin` non aveva niente di nuovo su `dev/backend-tid` né su `dev/db-tid`. La policy chiesta in
+6e era già rigenerata dal 2026-11-15 (`940a4e6b6`: `E_PRICING_PROVENIENZA_SUPERATA` e i cinque `E_INDIRIZZO_*`, coi
+ripieghi); la `note` del §8.14 non cambia la classe, e non c'è niente da rigenerare.
+
+| Che cosa | Dove |
+| --- | --- |
+| **`RegolePrezzoTestata`**: dataclass immutabile coi parametri di dominio (`documento`, `error_code`, `function_name`, `prezzo_assente_ammesso`); metodi `emittente_sr_id`, `data_riferimento`, `resolve_prezzo_riga`, `gate_prezzo_riga`. Ordine e DDT la costruiscono una volta (`_REGOLE_PREZZO`) e ne chiamano i metodi. ⚠️ Fino alla revisione del 2026-11-21 i quattro nomi privati restavano come alias dei metodi: tolti, vedi «Le scelte» | `apps/vendite/services/_prezzo_riga_testata.py`; `ordini_service`, `ddt_service` |
+| **`resolve_or_check_override_prezzo_con_listino`**: il salto senza listino col 409 sulla dichiarazione e la data dal `campo_data`. I due wrapper di offerta e contratto restano come nomi del dominio e lo chiamano col loro resolver | stesso modulo; `offerte_service`, `contratti_service` |
+| Test del BB: il flag guscio/nucleo e l'obbligo del prezzo (provati per mutazione: rossi con il ramo invertito), le frasi col nome del documento, l'alias della data | `tests/services/test_prezzo_riga_testata` (6: il sesto, dalla revisione, prova che una patch sulla classe arriva al gate) |
+| `data_di_riferimento`: la data della testata in una sede, per il risolutore IVA e per il prezzo di riga | `_iva_contesto_documento.py` |
+| Catalogo BB (riga nuova accanto al gate, caller e riga del contratto aggiornati, riga del contesto IVA) e indice rigenerato | `catalogo-building-block-backend.md`, `indice-building-block-backend.md` |
+
+**Le scelte.**
+
+* **Le copie erano quattro, non due.** Accanto a `_resolve_prezzo_riga` e `_gate_prezzo_riga`, ordine e DDT avevano
+  gemelle anche `_resolve_emittente_sr_id` e `_data_riferimento` (usate pure dall'init dei componenti): stessa regola,
+  diverse solo nel codice e nel soggetto della frase. Sono entrate nello stesso BB, dichiarate a Tid prima di farlo.
+* ⛔ **Un flag solo per la differenza fra i due domini** (`prezzo_assente_ammesso`): guscio + prezzo obbligatorio
+  sull'ordine, nucleo + prezzo assente ammesso sul DDT. Due flag potrebbero divergere, e darebbero un ordine che accetta
+  una riga senza prezzo o un DDT che ferma una riga che brief-ddt-righe-senza-prezzo ammette.
+* **Il resolver di offerta e contratto non si fissa in una factory**: il wrapper lo passa a ogni chiamata, leggendolo dal
+  suo modulo. È il punto che i test patchano (`contratti_service.contratti_suggerisci_prezzo_riga`); fissato all'import,
+  i patch non lo intercetterebbero e i test chiamerebbero il resolver vero.
+* **Cambiato, voluto:** le frasi dicono «… impossibile risolvere prezzi e componenti» per tutti e due i domini
+  (l'ordine diceva «i componenti», il DDT spiegava il trigger normalize, ora nel commento del service); l'unità di
+  misura mancante accende il campo anche nel resolver dell'ordine, come già nel DDT.
+* **Nome del gate invariato**: `resolve_or_check_override_prezzo` resta, quindi la `note` del §8.14 resta giusta.
+* Un test (`test_offerte_service` 57) patchava il gate col nome importato in `offerte_service`: ora lo chiama il BB, e
+  il patch è sul modulo del BB.
+* ⛔ **Niente alias di modulo per i metodi** (revisione `/verifica` del 2026-11-21, ok Tid). La prima stesura teneva
+  `_gate_prezzo_riga = _REGOLE_PREZZO.gate_prezzo_riga` e gli altri tre nomi. Ma i metodi si chiamano fra loro (il gate
+  passa da `resolve_prezzo_riga`, che passa da `emittente_sr_id` e `data_riferimento`): una patch su
+  `ordini_service._resolve_emittente_sr_id` non sarebbe arrivata al gate, e col repository mockato `int(MagicMock)` dà
+  `1`, un test verde su un emittente inventato. Ora il service chiama `_REGOLE_PREZZO.<metodo>`, e i test di
+  `test_ordini_service` patchano la classe (`RegolePrezzoTestata.<metodo>`; l'istanza è `frozen`). Il presidio è
+  `test_la_patch_sulla_classe_arriva_al_gate`, rosso se un metodo ricopia la regola invece di chiamare il gemello
+  (provato per mutazione).
+
+**La terza sede della data (ok Tid, 2026-11-21).** `_iva_contesto_documento.contesto_da_testata` leggeva la stessa data
+della testata (`data` obbligatoria, ISO o `date`) con una frase sua sull'IVA. La regola sta ora nel BB
+`data_di_riferimento` dello stesso modulo, puro, con la frase passata dal chiamante; lo chiamano `contesto_da_testata` e
+`RegolePrezzoTestata.data_riferimento`. La sede è il modulo IVA, che è già il BB del contesto di testata ed è leggero: il
+verso dell'import (prezzo → IVA) non chiude cicli. Le frasi non cambiano.
+
+**Verifiche (2026-11-21):** `apps.vendite` col DB vero (`ZEROERP_TEST_DB_E2E=1`): 2731 verdi, i 5 nuovi compresi, rilanciata dopo la terza sede
+della data; dopo la revisione senza alias, 2732 verdi (il sesto test del BB compreso); mypy a
+cricchetto (`check_mypy_baseline.py`): nessun rilievo nuovo; ruff sui file toccati: pulito. `apps.core`: 1861, un rosso
+solo e non di questo lavoro, il presidio autospec su `apps/ui/tests/db/test_cancellazione_colonna_db.py:111`, file non
+tracciato di un'altra sessione (brief-db-revisione-ui) che lavora sullo stesso tree.

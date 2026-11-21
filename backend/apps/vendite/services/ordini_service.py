@@ -68,12 +68,11 @@ from apps.vendite.services._pricing_gate_helpers import (
     CHIAVE_PROVENIENZA_DICHIARATA,
     COLONNE_PROVENIENZA_RIGA,
     EsitoPrezzoRiga,
-    ProvenienzaDichiarata,
     prezzo_invariato,
     provenienza_dichiarata,
-    resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
+from apps.vendite.services._prezzo_riga_testata import RegolePrezzoTestata
 
 logger = logging.getLogger(__name__)
 
@@ -773,7 +772,7 @@ def gestisci_riga(
     # composito: il padre ha il prezzo dei figli.
     esito_prezzo: EsitoPrezzoRiga | None = None
     if not is_composito:
-        esito_prezzo = _gate_prezzo_riga(
+        esito_prezzo = _REGOLE_PREZZO.gate_prezzo_riga(
             repo, testata, articolo_id=str(articolo_id),
             uom_id=data.get("uom_operativa_id"), payload_prezzo=prezzo_unitario,
             dichiarata=dichiarata, auth_user_id=auth_user_id,
@@ -831,8 +830,8 @@ def gestisci_riga(
         # dal dialog pre-save (se presenti); altrimenti la fn DB risolve i
         # prezzi componente dal pricing corrente.
         if is_composito:
-            emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
-            data_rif = _data_riferimento(testata)
+            emittente_sr_id = _REGOLE_PREZZO.emittente_sr_id(repo, testata)
+            data_rif = _REGOLE_PREZZO.data_riferimento(testata)
             repo.init_componenti_riga(
                 riga_id=riga_id,
                 emittente_soggetto_ruolo_id=emittente_sr_id,
@@ -875,7 +874,7 @@ def aggiorna_riga(
     if prezzo_invariato(data, riga_esistente):
         data.pop("prezzo_unitario")
     if "prezzo_unitario" in data and not repo.is_articolo_composito(str(riga_esistente["articolo_id"])):
-        esito_prezzo = _gate_prezzo_riga(
+        esito_prezzo = _REGOLE_PREZZO.gate_prezzo_riga(
             repo, testata, articolo_id=str(riga_esistente["articolo_id"]),
             uom_id=data.get("uom_operativa_id") or riga_esistente.get("uom_operativa_id"),
             payload_prezzo=data["prezzo_unitario"], dichiarata=dichiarata,
@@ -982,12 +981,12 @@ def preview_componenti_riga(
 ) -> list[dict[str, Any]]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="preview_componenti_riga")
-    emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
+    emittente_sr_id = _REGOLE_PREZZO.emittente_sr_id(repo, testata)
     return repo.preview_componenti_riga(
         articolo_id=articolo_id,
         uom_id=uom_operativa_id,
         quantita_padre=quantita,
-        data_riferimento=_data_riferimento(testata),
+        data_riferimento=_REGOLE_PREZZO.data_riferimento(testata),
         ba_id=testata.get("billing_account_id"),
         utility_id=testata.get("utility_id"),
         emittente_soggetto_ruolo_id=emittente_sr_id,
@@ -1182,24 +1181,22 @@ def _get_riga_or_raise(
     )
 
 
-def _resolve_emittente_sr_id(repo: OrdiniRepository, testata: dict[str, Any]) -> int:
-    fiscale_id = testata.get("emittente_fiscale_id")
-    ErrorManager.require(
-        fiscale_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Ordine senza emittente fiscale: impossibile risolvere i componenti.",
-        function_name=f"{_FN}._resolve_emittente_sr_id",
-    )
-    assert fiscale_id is not None
-    sr_id = repo.get_emittente_sr_id_by_fiscale_id(int(fiscale_id))
-    ErrorManager.require(
-        sr_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Soggetto-ruolo emittente non risolvibile.",
-        function_name=f"{_FN}._resolve_emittente_sr_id",
-    )
-    assert sr_id is not None
-    return int(sr_id)
+# Scopo: le regole del prezzo di riga dell'ordine: emittente e data dalla
+#        testata, il resolver del listino, il gate (BB `RegolePrezzoTestata`,
+#        lo stesso del DDT; regola del 2, ok Tid 2026-11-15). Il service ne
+#        chiama i metodi direttamente (`_REGOLE_PREZZO.gate_prezzo_riga`, …).
+# ⛔ Niente alias di modulo (`_gate_prezzo_riga = _REGOLE_PREZZO…`): i metodi si
+#    chiamano fra loro (`gate` -> `resolve_prezzo_riga` -> `emittente_sr_id`),
+#    e una patch sull'alias non arriverebbe al gate, senza errore. I test
+#    patchano la classe (`RegolePrezzoTestata.<metodo>`).
+#        ⛔ Sull'ordine il prezzo e' obbligatorio: il resolver e' il GUSCIO, e un
+#        gate senza prezzo e' un errore (BE-3/DEC-2 di brief-ddt-righe-senza-prezzo).
+_REGOLE_PREZZO = RegolePrezzoTestata(
+    documento="Ordine",
+    error_code="E_ORD_VALIDAZIONE",
+    function_name=_FN,
+    prezzo_assente_ammesso=False,
+)
 
 
 # Scopo: risolve il trattamento IVA di una riga ordine dal contesto della
@@ -1218,20 +1215,6 @@ _risolvi_iva_riga = make_risolvi_iva_riga(
 )
 
 
-
-def _data_riferimento(testata: dict[str, Any]) -> date:
-    raw = testata.get("data")
-    if isinstance(raw, date):
-        return raw
-    ErrorManager.require(
-        raw is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Ordine senza data: impossibile risolvere prezzi/componenti.",
-        function_name=f"{_FN}._data_riferimento",
-    )
-    return date.fromisoformat(str(raw))
-
-
 # Scopo: Converte IN LOCO le date di consegna presenti in `data` (gia'
 #        normalizzato con `empty_to_none`): stringa ISO -> `date`, `None`
 #        invariato (assente o azzeramento). Malformata -> 400 col campo.
@@ -1241,91 +1224,3 @@ def _parse_date_riga(data: dict[str, Any], *, function_name: str) -> None:
             data[chiave] = _V.optional_date(
                 data, chiave, function_name=function_name,
             )
-
-
-# Scopo: il gate prezzi di una riga ordine (BB `resolve_or_check_override_prezzo`),
-#        col resolver del listino sul contesto della testata. Un prezzo che il
-#        gate non sa dare e' un errore: sull'ordine il prezzo e' obbligatorio,
-#        e il motivo e' quello del resolver, che solleva (guscio).
-#        Senza L3: l'ordine non ha il workflow di approvazione, e una
-#        violazione L2 e' un rifiuto.
-def _gate_prezzo_riga(
-    repo: OrdiniRepository, testata: dict[str, Any], *,
-    articolo_id: str, uom_id: int | None, payload_prezzo: Any,
-    dichiarata: ProvenienzaDichiarata | None, auth_user_id: int | None,
-    function_name: str,
-) -> EsitoPrezzoRiga:
-    # Senza unita' di misura il listino non si interroga, e il gate tratterebbe
-    # ogni prezzo come scritto a mano (L1): qui si dice al form quale campo
-    # manca.
-    ErrorManager.require(
-        uom_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="uom_operativa_id obbligatorio per risolvere il prezzo.",
-        context={"field": "uom_operativa_id"},
-        function_name=function_name,
-    )
-
-    def _resolver(_ordine_id: int, *, articolo_id: str, uom_id: int, auth_user_id: int | None) -> dict[str, Any]:
-        del auth_user_id
-        return _resolve_prezzo_riga(repo, testata, articolo_id=articolo_id, uom_id=uom_id)
-
-    esito = resolve_or_check_override_prezzo(
-        testata=testata, articolo_id=articolo_id, uom_id=uom_id,
-        payload_prezzo=payload_prezzo, auth_user_id=auth_user_id,
-        function_name=function_name, resolver_fn=_resolver,
-        error_code_validazione="E_ORD_VALIDAZIONE", dichiarata=dichiarata,
-    )
-    if esito.prezzo is None:
-        # Il resolver che non risolve SOLLEVA (guscio), e l'errore risale dal
-        # gate col suo codice: qui resta il contesto che manca alla testata.
-        ErrorManager.raise_error(
-            code="E_ORD_VALIDAZIONE",
-            message="Prezzo unitario non risolvibile dal listino: indicarlo.",
-            context={"field": "prezzo_unitario"},
-            function_name=function_name,
-        )
-    return esito
-
-
-# Scopo: Risolve il prezzo unitario riga via PricingService (BB condiviso,
-#        mai query dirette su listini — memoria feedback_pricing_centralizzato):
-#        la riga intera del resolver, provenienza e contesto compresi.
-#        ⛔ Sul GUSCIO (`resolve_prezzo`), che SOLLEVA quando non risolve:
-#        sull'ordine il prezzo assente non e' un esito ammesso (BE-3/DEC-2 di
-#        brief-ddt-righe-senza-prezzo; il nucleo e' del solo DDT).
-def _resolve_prezzo_riga(
-    repo: OrdiniRepository, testata: dict[str, Any], *,
-    articolo_id: str, uom_id: int | None,
-) -> dict[str, Any]:
-    from apps.vendite.services.pricing_service import PricingService
-
-    fn = f"{_FN}._resolve_prezzo_riga"
-    ErrorManager.require(
-        testata.get("billing_account_id") is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Ordine senza billing_account: impossibile risolvere il prezzo.",
-        function_name=fn,
-    )
-    ErrorManager.require(
-        testata.get("utility_id") is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Ordine senza utility: impossibile risolvere il prezzo.",
-        function_name=fn,
-    )
-    ErrorManager.require(
-        uom_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="uom_operativa_id obbligatorio per risolvere il prezzo.",
-        function_name=fn,
-    )
-    emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
-    assert uom_id is not None
-    return PricingService().resolve_prezzo(
-        articolo_id=articolo_id,
-        uom_id=int(uom_id),
-        data_riferimento=_data_riferimento(testata),
-        ba_id=int(testata["billing_account_id"]),
-        utility_id=int(testata["utility_id"]),
-        emittente_soggetto_ruolo_id=emittente_sr_id,
-    )

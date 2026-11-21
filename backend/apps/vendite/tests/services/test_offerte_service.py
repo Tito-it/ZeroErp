@@ -1889,8 +1889,10 @@ class OfferteGatePrezzoTests(TestCase):
         mock_orch.assert_called_once()
 
     # 57) resolve_or_check_override_prezzo_riga_offerta: offerta senza listino
-    #     → ritorna il prezzo as-is, gate BB non invocato.
-    @patch("apps.vendite.services.offerte_service.resolve_or_check_override_prezzo")
+    #     → ritorna il prezzo as-is, gate BB non invocato. Il gate si patcha
+    #     dove lo chiama il BB del salto senza listino (`_prezzo_riga_testata`,
+    #     regola del 2 del 2026-11-15): li' il wrapper non lo nomina piu'.
+    @patch("apps.vendite.services._prezzo_riga_testata.resolve_or_check_override_prezzo")
     def test_resolve_override_prezzo_offerta_skip_senza_listino(self, mock_bb):
         from apps.vendite.services.offerte_service import (
             resolve_or_check_override_prezzo_riga_offerta,

@@ -539,13 +539,16 @@ class UiAdminRepository:
             casts=self._COLONNA_CASTS,
         )
 
-    # Scopo: DELETE lista_colonna. Le FK su lista_preset_colonna e
-    #        lista_colonna_permesso hanno ON DELETE CASCADE: vengono
-    #        ripulite automaticamente. Le preferenze utente referenziano
-    #        per CODICE colonna nel JSONB `configurazione->colonne` e
-    #        non hanno FK: il service esegue prima un soft-block via
-    #        `count_preferenze_referenced_by_colonna` per evitare
-    #        configurazioni stale silenziose.
+    # Scopo: DELETE lista_colonna. I permessi di colonna
+    #        (`fk_lista_colonna_permesso_lista_colonna`, ON DELETE CASCADE)
+    #        se ne vanno con lei. La composizione dei preset
+    #        (`fk_lista_preset_colonna_lista_colonna`) e' NO ACTION: una
+    #        colonna che sta in un preset non si cancella, si toglie prima
+    #        dal preset (Q18 di brief-db-revisione-ui). Le preferenze utente
+    #        la nominano per CODICE nel JSONB `configurazione->colonne`,
+    #        senza FK. I due controlli preventivi del service
+    #        (`count_preferenze_referenced_by_colonna`,
+    #        `preset_con_colonna`) danno il rifiuto parlante prima del DELETE.
     def delete_colonna(self, colonna_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -584,6 +587,25 @@ class UiAdminRepository:
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: I codici dei preset che compongono la colonna, accesi o spenti,
+    #        in ordine di codice. Sono le righe che fermerebbero il DELETE
+    #        sulla FK NO ACTION `fk_lista_preset_colonna_lista_colonna`: il
+    #        service li nomina nel rifiuto, perche' l'operatore sappia da
+    #        quali preset togliere la colonna. Lista vuota = nessun preset.
+    def preset_con_colonna(self, colonna_id: int) -> list[str]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT p.codice
+                  FROM ui.lista_preset_colonna pc
+                  JOIN ui.lista_preset p ON p.id = pc.preset_id
+                 WHERE pc.colonna_id = %s
+                 ORDER BY p.codice
+                """,
+                [colonna_id],
+            )
+            return [str(r[0]) for r in cursor.fetchall()]
 
     # =================================================================
     # ui.lista_preset - CRUD
@@ -637,13 +659,14 @@ class UiAdminRepository:
     # Scopo: Crea preset (testata). I campi `lista_id`/`ambito`/refs sono
     #        obbligatori e validati dal service; FK + CHECK ambito_refs
     #        sono enforced lato DB (IntegrityError -> mapping service).
-    #        `user_insert` lo scrive il trigger di audit.
+    #        `user_insert` lo scrive il trigger di audit. `filtri_default`
+    #        non si scrive (Q38 di brief-db-revisione-ui): resta NULL finche'
+    #        il DB non ritira la colonna.
     def create_preset(
         self,
         data: dict[str, Any],
     ) -> int:
         ordinamento_default = data.get("ordinamento_default")
-        filtri_default = data.get("filtri_default")
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -656,14 +679,13 @@ class UiAdminRepository:
                     emittente_fiscale_id,
                     pagina_dimensione,
                     ordinamento_default,
-                    filtri_default,
                     attivo
                 )
                 VALUES (
                     %s, %s, %s, %s::ui.ambito_preset,
                     %s, %s,
                     %s,
-                    %s::jsonb, %s::jsonb,
+                    %s::jsonb,
                     %s
                 )
                 RETURNING id
@@ -677,7 +699,6 @@ class UiAdminRepository:
                     data.get("emittente_fiscale_id"),
                     data.get("pagina_dimensione"),
                     json.dumps(ordinamento_default) if ordinamento_default is not None else None,
-                    json.dumps(filtri_default) if filtri_default is not None else None,
                     data.get("attivo", False),
                 ],
             )
@@ -690,13 +711,13 @@ class UiAdminRepository:
     # ambito/profilo/emittente) restano fuori anche qui.
     _PRESET_UPDATE_COLS: frozenset[str] = frozenset({
         "codice", "descrizione", "pagina_dimensione",
-        "ordinamento_default", "filtri_default", "attivo",
+        "ordinamento_default", "attivo",
     })
 
     # Scopo: Aggiorna preset sui soli campi presenti in `data`. SET
-    #        dinamico via BB `execute_dynamic_update`: i JSONB
-    #        `ordinamento_default` (lista) / `filtri_default` (oggetto) vanno
-    #        a `::jsonb` dal BB, None azzera. Gli immutabili (lista_id/
+    #        dinamico via BB `execute_dynamic_update`: il JSONB
+    #        `ordinamento_default` (lista) va a `::jsonb` dal BB, None azzera.
+    #        `filtri_default` e' fuori whitelist (Q38). Gli immutabili (lista_id/
     #        ambito/profilo/emittente) NON sono in whitelist update lato
     #        service, quindi non arrivano qui.
     def update_preset(

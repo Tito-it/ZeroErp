@@ -30,7 +30,6 @@ TIPI_UI: Tipi = {
     "emittente_fiscale_id": (intero, True),
     "pagina_dimensione": (intero, True),
     "ordinamento_default": (json, True),
-    "filtri_default": (json, True),
     # ── colonna ──────────────────────────────────────────────
     "etichetta": (testo, False),
     "etichetta_estesa": (testo, True),
