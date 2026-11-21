@@ -7,8 +7,8 @@
 
 **Riparte: il team BE/FE** col §4, dopo `/arrivi-db`: da adesso lista e dettaglio dei fornitori leggono colonne che
 la vista non ha più, finché il BE non passa (accettato da Tid). I giri A e B (`20261121-01` … `-07`, §5.5 e §5.6) sono
-applicati su dbdev con i pgTAP verdi (Tid, 2026-11-21, §5.7). Alla sessione DB restano il `/verifica-db` e,
-con Tid, la doc auto-generata rigenerata e il commit. D-3, D-4 e D-5 sono decise (Tid, 2026-11-21, §5.4). Il lato BE/FE
+applicati su dbdev con i pgTAP verdi (Tid, 2026-11-21, §5.7). Committati in `4ea18ba7d1` (2026-11-21). Alla sessione DB restano il
+`/verifica-db` e, con Tid, la doc auto-generata rigenerata. D-3, D-4 e D-5 sono decise (Tid, 2026-11-21, §5.4). Il lato BE/FE
 del primo passaggio è fatto (§1) e committato (`56c7fee9f6`, PR #182).
 
 | # | Chi | Che cosa | Dipende da |
@@ -18,7 +18,7 @@ del primo passaggio è fatto (§1) e committato (`56c7fee9f6`, PR #182).
 | 2-bis | ✅ sessione DB | Ricognizione dei lettori DB e dei presidi (§5) | 2 |
 | 2-ter | ✅ Tid | D-3, D-4, D-5 come raccomandate, e il via al giro A (2026-11-21) | 2-bis |
 | 3 | ✅ sessione DB e Tid | Giro A: via le tre colonne dal catalogo della lista (§3), nella forma del §5.2. Scritto e provato (§5.5); applicato su dbdev, pgTAP verdi (2026-11-21) | 2-ter |
-| 4 | sessione DB e Tid | Giro B: via i sei campi da tabella, vista, madre e guard (§3); il regime su `config.regimi_fiscali` e `acquisti.ordini` sul termine (§5.3, D-3, D-4); il residuo del registro chiuso (D-5). ✅ Scritto e provato (§5.6), anticipato prima del BE (Tid); ✅ applicato su dbdev, pgTAP verdi (2026-11-21, §5.7); ⏳ `/verifica-db` in una sessione nuova; ⏳ doc auto-generata rigenerata e commit (Tid) | 3 |
+| 4 | sessione DB e Tid | Giro B: via i sei campi da tabella, vista, madre e guard (§3); il regime su `config.regimi_fiscali` e `acquisti.ordini` sul termine (§5.3, D-3, D-4); il residuo del registro chiuso (D-5). ✅ Scritto e provato (§5.6), anticipato prima del BE (Tid); ✅ applicato su dbdev, pgTAP verdi (2026-11-21, §5.7); ✅ committato (`4ea18ba7d1`); ⏳ `/verifica-db` in una sessione nuova; ⏳ doc auto-generata rigenerata (Tid) | 3 |
 | 5 | **team BE/FE** ⏭️ | Il §4 intero, dopo `/arrivi-db` | 4 |
 | 6 | team DB | Chiusura: archiviazione | 5 |
 
@@ -281,5 +281,6 @@ Restano aperti:
 * la doc auto-generata, da rigenerare: `anagrafiche.fornitori`, `vw_fornitori_dettaglio`, `fn_crea_fornitore`,
   `trgfn_fornitori_guard_normalize`, `acquisti.ordini`. Finché non c'è, il contratto degli oggetti toccati si legge dal
   catalogo, non dal markdown;
-* il commit, che tiene fuori i file della sessione `ui` presenti nello stesso albero (§5.6);
+* ✅ il commit: `4ea18ba7d1` (2026-11-21), coi soli file di questo cantiere. Da PROJECT_CONTEXT è entrata la sola
+  riga del residuo (D-5); le altre modifiche presenti nell'albero sono di altre sessioni e restano fuori;
 * il §4, del team BE/FE: fino al suo passaggio lista e dettaglio dei fornitori sono in errore.
