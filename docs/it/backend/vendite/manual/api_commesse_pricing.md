@@ -1,5 +1,7 @@
 # API Commesse — Operazioni Pricing (Vendite)
 
+> **Ultimo aggiornamento**: 21 novembre 2026
+
 ## Scopo
 
 Esporre via HTTP le operazioni di gestione prezzo su attivita` di commessa:
@@ -94,8 +96,9 @@ Il frontend mostra un dialog di conferma e ripete la chiamata con
   - dalla commessa padre: `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`.
 - Il prezzo e' `prezzo_finale` del resolver; con il prezzo si riscrive la sua
   **provenienza**: `listino_versione_id`, `prezzo_base_snapshot`, `origine_prezzo`,
-  variazione applicata, promo, contratto, categoria e classe utenza. L'origine dello stadio
-  kit (`LISTINO_BUNDLE`) non e' fra quelle ammesse dal CHECK della colonna e resta `NULL`.
+  variazione applicata, promo, contratto, categoria e classe utenza. L'origine si scrive
+  com'e', anche quella dello stadio kit (`LISTINO_BUNDLE`, con la versione e senza riga di
+  listino): l'elenco delle origini e' uno solo, `vendite.fn_origine_prezzo_ammessa`.
 - La versione confrontata e' quella registrata sulla riga (dal push, o dall'ultimo
   riallineamento): dopo un riallineamento confermato la riga porta la versione nuova, e il
   successivo non chiede piu' conferma.

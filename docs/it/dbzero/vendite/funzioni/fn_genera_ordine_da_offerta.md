@@ -48,7 +48,9 @@ AS $function$
 --      loro ordine, coi prezzi NEGOZIATI: il non composito col suo prezzo;
 --      il composito a 0, perche' il prezzo del padre lo ricalcola il DB dai
 --      componenti, che nascono da vendite.fn_ordine_riga_componenti_init
---      coi prezzi dell'offerta come override.
+--      coi prezzi dell'offerta come override. Riga e componenti portano la
+--      provenienza del prezzo che l'espansione da' loro: la riga la copia,
+--      il componente la passa come override-oggetto (vendite.fn_componente_override).
 --
 -- ⚠️ Override a zero: fn_ordine_riga_componenti_init rifiuta un override
 --   0 su un componente obbligatorio. Come faceva il Python, un componente
@@ -72,11 +74,6 @@ DECLARE
     v_bersagli      jsonb;
     v_overrides     jsonb;
     v_riga          record;
-    -- La provenienza del prezzo della riga, se il prezzo e' dell'eccezione.
-    v_p_origine     vendite.ordini_righe.origine_prezzo%TYPE;
-    v_p_versione    vendite.ordini_righe.listino_versione_id%TYPE;
-    v_p_riga        vendite.ordini_righe.listino_riga_id%TYPE;
-    v_p_contesto    vendite.ordini_righe.prezzo_resolver_context%TYPE;
 BEGIN
     IF p_offerta_id IS NULL OR p_offerta_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
@@ -197,29 +194,14 @@ BEGIN
      WHERE ef.id = v_emittente_fiscale_id;
 
     FOR v_riga IN
-        SELECT r.*
-          FROM vendite.fn_offerta_righe_espanse(p_offerta_id)
-               WITH ORDINALITY AS r(articolo_id, articolo_codice, descrizione, is_composito,
-                                    quantita, uom_operativa_id, qta_operativa, factor_to_base,
-                                    prezzo_unitario, sconto_percentuale, iva_id,
-                                    tipo_eccezione, origine, componenti, eccezione_id,
-                                    riga_nr)
-         ORDER BY r.riga_nr
+        -- Le colonne per nome, la posizione da ordinality: una colonna nuova in coda
+        -- alle righe espanse non sposta riga_nr.
+        SELECT r.*, r.ordinality AS riga_nr
+          FROM vendite.fn_offerta_righe_espanse(p_offerta_id) WITH ORDINALITY AS r
+         ORDER BY r.ordinality
     LOOP
-        -- La provenienza (R-4): quella dell'eccezione quando il prezzo e' il suo
-        -- (OVERRIDE, AGGIUNTA). Il prezzo DA_LISTINO viene dall'espansione del
-        -- listino dell'offerta, che non porta la riga: MANUALE (residuo, brief §8.8).
-        -- Il kit: COMPONENTI, dalla somma.
-        SELECT e.origine_prezzo, e.listino_versione_id, e.listino_riga_id, e.prezzo_resolver_context
-          INTO v_p_origine, v_p_versione, v_p_riga, v_p_contesto
-          FROM vendite.offerte_commerciali_eccezioni e
-         WHERE e.id = v_riga.eccezione_id
-           AND v_riga.is_composito IS NOT TRUE
-           AND v_riga.origine IN ('OVERRIDE', 'AGGIUNTA');
-        IF NOT FOUND THEN
-            v_p_origine := NULL; v_p_versione := NULL; v_p_riga := NULL; v_p_contesto := NULL;
-        END IF;
-
+        -- La provenienza del prezzo la dice l'espansione (dal listino dell'offerta,
+        -- dall'eccezione; nessuna sul kit, che la scrive COMPONENTI la somma).
         INSERT INTO vendite.ordini_righe (
             ordine_id, riga_nr, articolo_id, descrizione,
             quantita, qta_operativa, uom_operativa_id, factor_to_base,
@@ -231,14 +213,17 @@ BEGIN
             v_riga.quantita, v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
             CASE WHEN v_riga.is_composito THEN 0 ELSE v_riga.prezzo_unitario END,
             v_riga.sconto_percentuale, v_riga.iva_id,
-            v_p_origine, v_p_versione, v_p_riga, v_p_contesto,
+            v_riga.origine_prezzo, v_riga.listino_versione_id, v_riga.listino_riga_id,
+            v_riga.prezzo_resolver_context,
             -- La provenienza: l'offerta e l'eccezione da cui la riga viene
             -- (NULL per la riga del solo listino: la provenienza e' l'offerta).
             v_prov_tipo_id, v_prov_id, v_prov_uid, v_riga.eccezione_id)
         RETURNING id INTO v_riga_id;
 
         IF v_riga.is_composito IS TRUE THEN
-            SELECT jsonb_object_agg(c ->> 'componente_id', c ->> 'prezzo')
+            -- L'override e' l'elemento intero: prezzo e provenienza
+            -- (vendite.fn_componente_override legge le sue chiavi).
+            SELECT jsonb_object_agg(c ->> 'componente_id', c)
               INTO v_overrides
               FROM jsonb_array_elements(
                        CASE WHEN jsonb_typeof(v_riga.componenti) = 'array'
@@ -257,7 +242,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ordine_da_offerta(p_offerta_id bigint)
-IS 'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza nella stessa INSERT: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe); l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati, ognuna con la sua provenienza: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' la tiene uq_ordini_v_sorgente_offerta, sulla provenienza.';
+IS 'Genera un ordine DRAFT da un''offerta in uno stato di accettazione, in una transazione, e ne restituisce l''id. Gemello di vendite.fn_push_offerta_a_contratto. Passi: l''offerta FOR UPDATE, sotto RLS (assente: E_OFFERTA_NON_TROVATA); solo da uno stato di accettazione del vocabolario (E_ORD_ORIGINE_NON_CONVERTIBILE); i documenti vivi da vendite.fn_offerta_documenti_vivi, un ordine (E_ORD_OFFERTA_GIA_CONVERTITA) o un contratto (E_OFFERTA_CONTRATTO_GIA_GENERATO), col bersaglio nel contesto; il primo motivo di script.fn_check_righe_offerta_in_ordine (E_DOC_RIGA_NON_AMMESSA), lo stesso della capability, prima di scrivere; la testata con cliente, emittente e valuta dell''offerta e la provenienza nella stessa INSERT: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza (letta una volta per testata e righe); l''indirizzo di default (vendite.fn_doc_indirizzo_default); le righe di vendite.fn_offerta_righe_espanse nel loro ordine (riga_nr dalla posizione), coi prezzi negoziati e la provenienza del prezzo che l''espansione da'' loro (origine, versione e riga di listino, contesto), ognuna con la sua provenienza documentale: OFFERTA_COMMERCIALE con la chiave dell''offerta da script.fn_sorgente_provenienza, e in sorgente_riga l''eccezione da cui viene, NULL per la riga del solo listino. Il composito nasce a 0 e prende il prezzo dai componenti, che crea vendite.fn_ordine_riga_componenti_init coi prezzi dell''offerta come override, ciascuno con la sua provenienza (esclusi quelli a 0, che la init rifiuta). SECURITY INVOKER: sotto RLS e coi guard dell''ordine, come se scrivesse l''operatore. L''unicita'' la tiene uq_ordini_v_sorgente_offerta, sulla provenienza.';
 ```
 
 </div>

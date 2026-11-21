@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I KIT COL PREZZO NEGOZIATO HANNO I LORO COMPONENTI: script.fn_check_offerta_kit_con_componenti
+#   Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.18-§8.19 (D-7 «b», D-7-bis «b2» di Tid,
+#   2026-11-21: la regola al passaggio fuori dalla bozza, kit a consumo esente).
+#
+#   Un OVERRIDE (o un'AGGIUNTA) su un kit vale la somma dei suoi componenti: senza
+#   componenti attivi il prezzo negoziato non ha da dove ricomporsi, e dal giro 5
+#   l'ordine generato ricade sui componenti del listino. Le strade che lo producono
+#   (§8.18): la revisione di prima di 20261005-19, e oggi lo svuotamento dei
+#   componenti opzionali. Non si giudica alla nascita dell'eccezione (i componenti
+#   arrivano in un'istruzione dopo, dal backend e dalla revisione): si giudica
+#   all'emissione, perche' un'offerta si modifica solo in bozza.
+#   ⚠️ AGGIUNTA compresa, oltre all'OVERRIDE della decisione: e' l'altro tipo col prezzo
+#   negoziato (_TIPI_ECCEZIONE_CON_GATE del backend), lo stesso modello e lo stesso
+#   difetto. Dichiarato a Tid nel brief §8.19.
+#   Esente il kit a consumo (D-7-bis): quantita' NULL, che la init dei componenti
+#   salta per costruzione.
+#   Codice nuovo E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI nei CSV di config (loadUpdateData).
+#   LANGUAGE sql BEGIN ATOMIC (linee-guida-sql §5c): da solo nel suo sql:.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261120-18-create-fn-check-offerta-kit-con-componenti-mctit.yaml
+
+  - changeSet:
+      id: 20261120-18-create-fn-check-offerta-kit-con-componenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_offerta_kit_con_componenti: i kit col prezzo negoziato senza componenti attivi. Brief: brief-db-provenienza-prezzo-segue-il-prezzo §8.19.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_check_offerta_kit_con_componenti(
+                  p_offerta_id vendite.offerte_commerciali.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE sql
+               STABLE
+               SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                             'codice',     'E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI',
+                             'reason',     'KIT_SENZA_COMPONENTI',
+                             'reason_key', 'vendite.offerte.azione_reason.kit_senza_componenti',
+                             'valori',     jsonb_build_array(COALESCE(o.codice, o.id::text), a.codice),
+                             'dettaglio',  jsonb_build_object(
+                                               'campo',          'componenti',
+                                               'offerta_id',     o.id,
+                                               'eccezione_id',   e.id,
+                                               'articolo_id',    e.articolo_id,
+                                               'tipo_eccezione', e.tipo_eccezione))
+                             ORDER BY e.ordine, e.id), '[]'::jsonb)
+                    FROM vendite.offerte_commerciali o
+                    JOIN vendite.offerte_commerciali_eccezioni e ON e.offerta_id = o.id
+                    JOIN catalogo.articoli a ON a.id = e.articolo_id
+                   WHERE o.id = p_offerta_id
+                     AND e.attivo
+                     AND a.is_composito
+                     AND e.tipo_eccezione IN ('OVERRIDE'::vendite.tipo_eccezione_contratto,
+                                              'AGGIUNTA'::vendite.tipo_eccezione_contratto)
+                     AND e.quantita IS NOT NULL
+                     AND NOT EXISTS (SELECT 1 FROM vendite.offerte_commerciali_eccezioni_componenti c
+                                      WHERE c.eccezione_offerta_id = e.id AND c.attivo);
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_check_offerta_kit_con_componenti(vendite.offerte_commerciali.id%TYPE) IS
+                'Check (fn_check_*): i kit col prezzo negoziato di un''offerta che non hanno componenti attivi. Un kit in OVERRIDE o in AGGIUNTA vale la somma dei suoi componenti (vendite.offerte_commerciali_eccezioni_componenti): senza, il prezzo negoziato non ha da dove ricomporsi, e l''ordine o il contratto generati dall''offerta non lo ritroverebbero. Esente il kit a consumo (quantita'' NULL, una fonte diversa da FISSA), che i componenti non li ha per costruzione. Un motivo per eccezione, nell''ordine delle righe; ''[]'' = nessuno. Motivo: codice E_OFFERTA_EMISSIONE_KIT_SENZA_COMPONENTI, reason KIT_SENZA_COMPONENTI, reason_key vendite.offerte.azione_reason.kit_senza_componenti, valori [codice dell''offerta, codice dell''articolo], dettaglio {campo componenti, offerta_id, eccezione_id, articolo_id, tipo_eccezione}. Lettori: vendite.trgfn_offerte_commerciali_guard_transizione all''emissione dallo stato iniziale e script.fn_available_actions_offerta, che spegne «Emetti» con lo stesso motivo. STABLE, SECURITY INVOKER.';
+              GRANT EXECUTE ON FUNCTION script.fn_check_offerta_kit_con_componenti(vendite.offerte_commerciali.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_offerta_kit_con_componenti(vendite.offerte_commerciali.id%TYPE);
