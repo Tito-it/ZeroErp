@@ -1,5 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture fabbrica una dashboard col suo pool e i suoi preset, e il catalogo
+--   delle dashboard l'applicazione non lo scrive: lo scrive solo il migratore, dal CSV (U31, la porta
+--   di 90_end/20261120-60). Nessun caso del test dipende dall'identita' di chi scrive: i guard che
+--   prova (legami, lucchetti, snapshot, scelta del preset) non esentano il proprietario. Il
+--   preset di lista che la fixture scrive nasce dal seed: il caso 11 lo cancella dalla porta.
 -- pgTAP test per Zero ERP
 --
 -- Test: i LEGAMI fra preset, composizioni, pool e preferenze (U14).
@@ -178,7 +184,12 @@ SELECT is(dbops.fn_pgtap_codice_errore($$
 
 INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, preset_base_id, configurazione)
 VALUES ((SELECT auth_user_id FROM _u), (SELECT lista_id FROM _l WHERE n = 2), (SELECT preset_id FROM _p WHERE n = 2), '{}');
+-- Il runner e' il migratore: il preset che la fixture ha scritto e' nato dal seed
+-- (script.trgfn_seed_primo_impianto), e il migratore lo cancella solo dalla porta di
+-- manutenzione, il DELETE forward-only. E' la strada vera: il caso prova la FK, non chi cancella.
+SET LOCAL zeroerp.allow_seed_primo_impianto_override = 'on';
 DELETE FROM ui.lista_preset WHERE id = (SELECT preset_id FROM _p WHERE n = 2);
+RESET zeroerp.allow_seed_primo_impianto_override;
 SELECT is((SELECT pu.preset_base_id FROM ui.lista_preferenza_utente pu
             WHERE pu.auth_user_id = (SELECT auth_user_id FROM _u) AND pu.lista_id = (SELECT lista_id FROM _l WHERE n = 2)),
           NULL::integer,

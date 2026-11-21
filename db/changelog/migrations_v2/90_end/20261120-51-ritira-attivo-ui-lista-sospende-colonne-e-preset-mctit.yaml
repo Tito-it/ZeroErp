@@ -1,0 +1,71 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: la lista spenta sospende colonne e preset. Brief: brief-db-revisione-ui
+#   (giro 4: U22 con Q13 e Q35).
+#
+# ⚠️ PERCHE'. Il block sul padre (trgfn_prevent_deactivate_if_children) rifiutava
+#   lo spegnimento di una lista con colonne o preset accesi: per spegnerla si
+#   spegnevano prima tutte le parti, e alla riaccensione non restava traccia di
+#   quali erano accese. Q13 (a): le due FK lista_id entrano fra le eccezioni
+#   ATTIVO (righe nuove di dbops/automazione_attivo_eccezioni.csv, col motivo),
+#   nella forma della decisione del 2026-11-08 sulle righe di composizione. Una
+#   lista spenta non risponde gia' (ui.fn_lista_da_codice): le sue parti restano
+#   com'erano e tornano con lei. Le preferenze sono gia' in eccezione (Q35).
+#
+# Qui il motore toglie i trigger gia' generati per le due FK: il block su
+#   ui.lista_definizione per lista_colonna e per lista_preset, e il require su
+#   ui.lista_colonna e ui.lista_preset. Sono trigger del framework: nessun DDL a
+#   mano (linee-guida-sql §11.5). Su un database da zero il motore delle
+#   automazioni, in ci_apply, legge il registro e non li genera.
+#
+# ⚠️ GARANZIA RITIRATA (AGENTS.md): «una colonna accesa, un preset acceso, stanno
+#   su una lista accesa». Censimento dei lettori DB nel brief, §3.4-bis: nessuno
+#   ne dipende (entrano dalla lista per codice, o leggono il preset per id).
+#   Richiesta al BE: BE27.
+# Presidio: ui/test-ui-nell-ambito-v1 (le due FK passano fra le eccezioni) e
+#   ui/test-ui-catalogo-liste-v1 (la lista si spegne con le parti accese).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261120-51-ritira-attivo-ui-lista-sospende-colonne-e-preset-mctit.yaml
+
+  - changeSet:
+      id: 20261120-51-ritira-attivo-ui-lista-sospende-colonne-e-preset
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: il motore ATTIVO ritira block e require delle FK lista_id di lista_colonna e lista_preset,
+        entrate fra le eccezioni. Brief: brief-db-revisione-ui (giro 4, U22, Q13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT count(*) FROM dbops.automazione_attivo_eccezioni
+               WHERE schema_figlia = 'ui'
+                 AND (tabella_figlia, colonna_fk) IN (('lista_colonna', 'lista_id'),
+                                                      ('lista_preset', 'lista_id'))
+                 AND btrim(motivo) <> '';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_ritira_attivo_eccezioni();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger li governa il registro: per tornare indietro si tolgono le
+              -- due righe di automazione_attivo_eccezioni e si rigira il motore
+              -- ATTIVO, che li rigenera. Qui non si tocca niente.
+              SELECT 1;

@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui.fn_lista_relazione_ha_attributo: il BB «relazione e attributo di una lista».
+#   Brief: brief-db-revisione-ui (giro 4, U27 con Q16 e Q32).
+#
+# ⚠️ PERCHE'. La stessa domanda — la relazione di una lista esiste nel suo
+#   schema, e ha questa colonna? — stava in due trigger (valida_vista_sql e
+#   valida_campo_sorgente) e nel pgTAP del catalogo, ciascuno con la sua lista di
+#   relkind ('v', 'm', 'r': le tabelle partizionate restavano fuori). Ora ha una
+#   sede: la leggono i due trigger (20261120-46, -47), il presidio di Q32
+#   (dbops.vw_liste_colonne_campo_orfano, 20261120-50) e il pgTAP.
+#
+# Contratto: vero se in p_schema esiste una relazione p_relazione che una lista
+#   puo' leggere (vista, vista materializzata, tabella, tabella partizionata) e,
+#   con p_attributo valorizzato, se quella relazione ha la colonna (viva, non di
+#   sistema). p_attributo NULL = si chiede solo la relazione. Schema o relazione
+#   NULL: falso. Nomi esatti, senza normalizzazione (come pg_catalog).
+# SQL BEGIN ATOMIC (linee-guida-sql §5c): il corpo e' risolto al CREATE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261120-45-create-fn-lista-relazione-ha-attributo-mctit.yaml
+
+  - changeSet:
+      id: 20261120-45-create-fn-lista-relazione-ha-attributo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui.fn_lista_relazione_ha_attributo: la relazione di una lista esiste nel suo schema e ha la colonna.
+        Brief: brief-db-revisione-ui (giro 4, U27).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_lista_relazione_ha_attributo'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_lista_relazione_ha_attributo(
+                  p_schema    ui.lista_definizione.schema_dati%TYPE,
+                  p_relazione ui.lista_definizione.vista_sql%TYPE,
+                  p_attributo ui.lista_colonna.campo_sorgente%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE PARALLEL SAFE
+              BEGIN ATOMIC
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM pg_catalog.pg_class c
+                        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                       WHERE n.nspname = p_schema
+                         AND c.relname = p_relazione
+                         -- vista, vista materializzata, tabella, tabella partizionata
+                         AND c.relkind IN ('v', 'm', 'r', 'p')
+                         AND (p_attributo IS NULL
+                              OR EXISTS (
+                                  SELECT 1
+                                    FROM pg_catalog.pg_attribute a
+                                   WHERE a.attrelid = c.oid
+                                     AND a.attname  = p_attributo
+                                     AND a.attnum   > 0
+                                     AND NOT a.attisdropped)));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION ui.fn_lista_relazione_ha_attributo(
+                  ui.lista_definizione.schema_dati%TYPE,
+                  ui.lista_definizione.vista_sql%TYPE,
+                  ui.lista_colonna.campo_sorgente%TYPE) IS
+                  'Vero se nello schema p_schema esiste la relazione p_relazione che una lista può leggere (vista, vista materializzata, tabella, tabella partizionata) e, con p_attributo valorizzato, se ha quella colonna. p_attributo NULL: si chiede solo la relazione. Schema o relazione NULL: falso. Sede unica della domanda «la relazione della lista ha il campo?»: la leggono i guard ui.trgfn_ui_lista_definizione_a10_valida_vista_sql e ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente, il presidio dbops.vw_liste_colonne_campo_orfano e il pgTAP del catalogo.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS ui.fn_lista_relazione_ha_attributo(character varying, character varying, character varying);

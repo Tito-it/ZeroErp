@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PORTA DEL CATALOGO DELLE DASHBOARD
+#   A zeroerp_app solo SELECT su:
+#     ui.dashboard_definizione, ui.widget, ui.dashboard_widget,
+#     ui.dashboard_preset, ui.dashboard_preset_widget
+#   Le preferenze (ui.dashboard_preferenza_utente) restano scrivibili.
+#   Brief: brief-db-revisione-ui (giro 5, U31 con Q19, decisa da Tid il
+#   2026-11-19).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il catalogo delle dashboard lo possiede il CSV di 80_data, come
+#   ui.misure_pagina: nessun servizio lo scrive (il backend scrive solo la
+#   preferenza dell'utente), e un privilegio che nessuno usa e' una porta
+#   aperta. Una futura pagina admin delle dashboard riapre la scrittura,
+#   insieme a se', sulle sole tabelle che scrive.
+#
+# ── 🔴 TRE SEDI (linee-guida §11.8) ─────────────────────────────────
+#   · QUESTO changeSet (subito su dev);
+#   · v_tabelle_sola_lettura_app del loop 90_end/ci_apply/20260205-41;
+#   · il blocco della porta del pannello in scripts/sql/provision_zeroerp.sql.
+#   Le tiene allineate db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261120-60-revoke-app-scrittura-catalogo-dashboard-mctit.yaml
+
+  - changeSet:
+      id: 20261120-60-revoke-app-scrittura-catalogo-dashboard
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        La porta del catalogo delle dashboard: a zeroerp_app SELECT soltanto sulle cinque tabelle
+        di catalogo (le scrive il mirror del CSV). Postura resa stabile dal loop 20260205-41 e dal
+        provisioning. Brief: brief-db-revisione-ui (giro 5, U31, Q19).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $porta$
+              DECLARE
+                  v_tabella text;
+              BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      RAISE NOTICE 'Ruolo zeroerp_app non presente: skip porta del catalogo delle dashboard.';
+                      RETURN;
+                  END IF;
+
+                  FOREACH v_tabella IN ARRAY ARRAY[
+                      'ui.dashboard_definizione',
+                      'ui.widget',
+                      'ui.dashboard_widget',
+                      'ui.dashboard_preset',
+                      'ui.dashboard_preset_widget'
+                  ] LOOP
+                      EXECUTE format('GRANT SELECT ON TABLE %s TO zeroerp_app', v_tabella);
+                      EXECUTE format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM zeroerp_app', v_tabella);
+                  END LOOP;
+              END
+              $porta$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Senza togliere le voci dal loop 20260205-41 e dal provisioning la
+              -- passata ci_apply successiva richiude la porta.
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+                  ui.dashboard_definizione, ui.widget, ui.dashboard_widget,
+                  ui.dashboard_preset, ui.dashboard_preset_widget
+                  TO zeroerp_app;

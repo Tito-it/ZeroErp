@@ -152,7 +152,10 @@ SELECT v.id, c.lista_id, v.codice, 'Prova ricerca libera',
                        ELSE NULL END,
        'informazione', 'string',
        9900 + (v.id - 900100), 'left', false, v.ricercabile, v.sensibile,
-       true, v.attivo, 80, 'pgtap'
+       -- Senza campo sorgente la colonna non si esporta (U25, brief-db-revisione-ui
+       -- giro 4, 2026-11-21): la 107 col campo NULL era una riga che il modello
+       -- non ammette.
+       v.sorgente = 'reale', v.attivo, 80, 'pgtap'
   FROM _t_ctx c
  CROSS JOIN (VALUES
    (900101, 'zz_rf_sensibile',       'reale', true,  true,  true),

@@ -141,20 +141,23 @@ SELECT is(
            AND lc.attivo = TRUE
            AND lc.tipo_colonna <> 'azione'
            AND COALESCE(lc.campo_sorgente, '') <> ''
-           AND NOT EXISTS (
-                 SELECT 1
-                   FROM information_schema.columns ic
-                  WHERE ic.table_schema = 'vendite'
-                    AND ic.table_name   = 'vw_contratti_lista'
-                    AND ic.column_name  = lc.campo_sorgente
-               )
-           -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
-           --    oppure e' una colonna della SINTESI della lineage, che il backend
-           --    chiede per le chiavi della pagina (frontiera, transito…).
-           AND NOT EXISTS (
-                 SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
-                  WHERE sc.colonna = lc.campo_sorgente
-               )
+           -- ⭐ 2026-11-21 (brief-db-revisione-ui, giro 4, Q15): la colonna dice da
+           --    dove legge (origine_campo). Una VISTA sta nella vista della lista, una
+           --    LINEAGE nella sintesi della lineage, che il backend chiede per le
+           --    chiavi della pagina (frontiera, transito…). Prima la sintesi era un
+           --    ripiego per nome, buono per qualunque colonna.
+           AND CASE lc.origine_campo
+                 WHEN 'VISTA' THEN NOT EXISTS (
+                     SELECT 1
+                       FROM information_schema.columns ic
+                      WHERE ic.table_schema = 'vendite'
+                        AND ic.table_name   = 'vw_contratti_lista'
+                        AND ic.column_name  = lc.campo_sorgente
+                   )
+                 ELSE NOT EXISTS (
+                     SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                      WHERE sc.colonna = lc.campo_sorgente)
+               END
     ),
     0,
     '7. Tutti i campo_sorgente del catalogo contratti esistono nella vista o nella sintesi della lineage'

@@ -65,7 +65,7 @@ SELECT is(
 -- 4/5) ⛔ «Non ho emittenti, e so dirti quale sono» — DUE muri
 -- ============================================================
 -- 🔴 DAVANTI A `multi_emittente` CI SONO DUE PRESIDI, E NON DICONO LA STESSA
---   COSA. Il primo e' il guard trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd:
+--   COSA. Il primo e' il guard trg_ui_lista_definizione_a10_guard_dichiarazioni_ins_upd:
 --   quel flag non si scrive DALL'APPLICAZIONE, punto — si dichiara nel seed.
 --   Il secondo e' il CHECK di coerenza, che vale per tutti, migrate compreso.
 --
@@ -75,13 +75,17 @@ SELECT is(
 --   ottiene. In esercizio arriva un P0001, e il test diventa rosso su un
 --   database sano. ⛔ Un presidio che passa solo nella veste sbagliata non
 --   presidia: prova la veste.
--- ⚠️ Su una lista dell'installazione, creata qui con perimetro_emittente =
---   false: su una lista del seed (era vendite.famiglie_documento) rifiuta
---   prima il seed di primo impianto, anche lui con un P0001
---   (E_SEED_COLONNA_DEL_SOFTWARE), e il test passerebbe per la ragione
---   sbagliata.
-INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert, perimetro_emittente)
-VALUES ('tst.perimetro.lista_globale', 'Lista globale creata dall''installazione', 'vendite', true, 'pgtap', false);
+-- ⚠️ Su una lista dell'installazione, creata qui: su una lista del seed (era
+--   vendite.famiglie_documento) rifiuta prima il seed di primo impianto, anche
+--   lui con un P0001 (E_SEED_COLONNA_DEL_SOFTWARE), e il test passerebbe per la
+--   ragione sbagliata.
+-- ⚠️ Dal 2026-11-21 la lista nasce col perimetro di default (true): anche
+--   perimetro_emittente = false e' una dichiarazione che l'applicazione non scrive
+--   (ui.trgfn_lista_definizione_guard_dichiarazioni, brief-db-revisione-ui giro 4,
+--   U23), e l'INSERT di prima si fermava li'. Il caso 4 resta lo stesso: il guard
+--   rifiuta multi_emittente dall'applicazione.
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, attivo, user_insert)
+VALUES ('tst.perimetro.lista_globale', 'Lista globale creata dall''installazione', 'vendite', true, 'pgtap');
 
 PREPARE incoerente AS
 UPDATE ui.lista_definizione SET multi_emittente = TRUE

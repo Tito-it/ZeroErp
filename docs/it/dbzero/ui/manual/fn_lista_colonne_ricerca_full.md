@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_lista_colonne_ricerca_full`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -59,10 +59,9 @@ verifica il backend, che rifiuta la chiamata se il contesto di sessione è vuoto
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Il campo sorgente non è sempre un campo della vista.** Su una lista senza vista non è verificato
-  da niente; su un'azione non è verificato; un nome della lineage dei documenti è ammesso senza stare
-  nella vista. La funzione lo restituisce comunque, e la ricerca interroga un campo che può non
-  esserci.
+* **Su una lista senza vista il campo sorgente non è verificato da niente**: la funzione lo
+  restituisce comunque. Le azioni non hanno campo, e una colonna della lineage non è ricercabile per
+  vincolo, quindi non arrivano qui.
 * **Un utente di sessione che non è un numero** fa fallire la lettura con l'errore grezzo del cast,
   mentre la veste sbagliata ripiega in silenzio.
 * **Il filtro sul campo sorgente accetta ancora anche la stringa vuota**, che il vincolo della

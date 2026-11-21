@@ -37,7 +37,7 @@ BEGIN ATOMIC
           SELECT dp.id,
              dp.ambito,
              dp.profilo_accesso_id,
-             (dp.emittente_fiscale_id)::bigint AS emittente_fiscale_id,
+             dp.emittente_fiscale_id,
              dp.contenuto_aggiornato_il
             FROM ui.dashboard_preset dp
            WHERE ((fn_preset_di_base.p_famiglia = 'dashboard'::text) AND (dp.dashboard_id = fn_preset_di_base.p_contenitore_id) AND dp.attivo AND (EXISTS ( SELECT 1

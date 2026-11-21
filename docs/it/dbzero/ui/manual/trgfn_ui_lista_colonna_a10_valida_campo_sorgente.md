@@ -1,22 +1,22 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
-> * [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) — la colonna che si scrive
-> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la vista e lo schema della lista
+> * [ui.lista_colonna](/dbzero/ui/tabelle/lista_colonna) — la colonna che si scrive, e la sua `origine_campo`
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la vista, lo schema e la dichiarazione della lineage
 >
 > Approfondimento viste:
 >
-> * [vendite.vw_documento_lineage_sintesi_colonne](/dbzero/vendite/views/vw_documento_lineage_sintesi_colonne) — i nomi della lineage, ammessi anche se la vista non li ha
+> * [dbops.vw_liste_colonne_campo_orfano](/dbzero/dbops/views/vw_liste_colonne_campo_orfano) — ciò che il guard non vede: il DDL sulla vista, i nomi della lineage
 >
 > Approfondimento funzioni:
 >
-> * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — il controllo gemello sulla vista della lista
-> * [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) — da dove il backend prende le colonne della lineage
+> * [ui.fn_lista_relazione_ha_attributo](/dbzero/ui/funzioni/fn_lista_relazione_ha_attributo) — la domanda «la relazione ha il campo?»
+> * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — il controllo gemello sulla vista, che riverifica le colonne
 >
 > Guide:
 >
@@ -26,60 +26,50 @@
 
 ### 🎯 Scopo Principale
 
-Il trigger verifica, quando una colonna di lista si scrive, che il suo `campo_sorgente` sia una
-colonna vera della vista della lista, cercata nel suo schema: un nome sbagliato si ferma al
-salvataggio invece che alla prima apertura della lista.
+Il trigger verifica, quando una colonna di lista si scrive, che il suo `campo_sorgente` esista dove
+la colonna dice di leggerlo (`origine_campo`): un nome sbagliato si ferma al salvataggio invece che
+alla prima apertura della lista.
 
 ---
 
 ### Quando controlla
 
-Parte alla nascita della colonna e quando cambiano `campo_sorgente`, `tipo_colonna` o `lista_id`, i
-tre campi da cui dipende la risposta. Non controlla:
-
-* le colonne `azione`;
-* le colonne senza sorgente;
-* le colonne di una lista che non dichiara una vista: lì le celle le riempie il backend, e non c'è
-  niente contro cui verificare.
+Parte alla nascita della colonna e quando cambiano `campo_sorgente`, `origine_campo` o `lista_id`, i
+tre campi da cui dipende la risposta. Non controlla le colonne senza campo (un'azione, una cella
+composta dal frontend). Un campo vuoto non lo giudica lui: lo rifiuta il vincolo
+`chk_lista_colonna_campo_sorgente_non_vuoto`, che il guard lascia parlare perché dice la cosa giusta.
 
 ---
 
 ### Che cosa vale come campo vero
 
-* Una colonna non di sistema e non cancellata della relazione `vista_sql` nello schema
-  `schema_dati` della lista; la relazione è una vista, una vista materializzata o una tabella. Una
-  omonima in un altro schema non conta.
-* Oppure un nome della sintesi della lineage dei documenti: quelle colonne sono uscite dalle viste
-  di lista, e il backend le chiede alla funzione della lineage per le righe della pagina, unendole
-  con lo stesso nome.
+* **Colonna `VISTA`**: una colonna non di sistema e non cancellata della relazione della lista
+  (`vista_sql` nello schema `schema_dati`), chiesta a
+  [fn_lista_relazione_ha_attributo](/dbzero/ui/funzioni/fn_lista_relazione_ha_attributo): vista,
+  vista materializzata, tabella o tabella partizionata. Un'omonima in un altro schema non conta. Il
+  controllo salta su una lista senza vista (le celle le riempie il backend) e su una lista spenta:
+  una lista registrata prima della sua vista accoglie le colonne, e le verifica quando si riaccende
+  ([valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql)).
+* **Colonna `LINEAGE`**: la lista dichiara `legge_lineage`, su ogni lista, accesa o spenta. Il nome
+  del campo non lo verifica il guard: il catalogo delle liste non dipende da una vista di `vendite`,
+  e il nome lo confronta con la sintesi della lineage il presidio
+  [vw_liste_colonne_campo_orfano](/dbzero/dbops/views/vw_liste_colonne_campo_orfano).
 
 ---
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Una vista che cambia, o una lista che cambia vista, non fa ripartire il controllo**: le colonne
-  già scritte restano anche se la vista non le ha più. Il controllo non è stato messo sul trigger
-  della definizione perché il seed delle definizioni si carica prima di quello delle colonne, e un
-  cambio di vista fatto insieme alle colonne fermerebbe la migrazione a metà. Le vede il presidio
-  pgTAP del catalogo, solo sulle righe del seed; un cambio di vista fatto dalla pagina tecnica
-  sfugge.
-* **Le azioni non si controllano anche quando hanno un campo sorgente.** Il modello ammette
-  un'azione con `campo_sorgente`, e un nome inventato passa.
-* **I nomi della lineage passano su ogni lista**, anche su una che non legge documenti. Il guard di
-  `ui` dipende da una vista di `vendite`.
-* **Il controllo non salta sulle liste spente.** Una lista registrata prima che la sua vista esista
-  non accetta colonne con sorgente finché la vista non c'è: il gemello della vista, invece, sulle
-  liste spente salta.
-* **Una sorgente partizionata è rifiutata**: le tabelle partizionate non sono fra i tipi ammessi.
-* **Il corpo tratta ancora la stringa vuota come assenza.** Non è più raggiungibile: il CHECK di
-  `campo_sorgente` la rifiuta prima.
+* **Una vista che perde una colonna con un DDL non fa ripartire il controllo**: nessun trigger di
+  `ui` lo vede. Lo vede il presidio, che confronta ogni lista accesa con la sua relazione.
 
 ---
 
 ### Codici errore
 
-* `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo non è nella vista della lista, nel suo schema, né fra
-  i nomi della lineage. La frase porta il campo e la vista qualificata.
+* `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo di una colonna `VISTA` non è nella relazione della
+  lista, nel suo schema. La frase porta il campo e la relazione qualificata.
+* `E_UI_LINEAGE_NON_DICHIARATA` — una colonna `LINEAGE` su una lista che non dichiara la lineage.
+  La frase porta la colonna e la lista.
 
 ---
 
@@ -87,7 +77,10 @@ tre campi da cui dipende la risposta. Non controlla:
 
 * `db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql` — un campo che esiste solo
   nell'omonima di un altro schema è rifiutato (saltato, e dichiarato, se la gemella storica non
-  c'è); la colonna vera passa; ogni campo del catalogo sta nella sua vista o nella lineage.
+  c'è); la colonna vera passa; ogni campo del catalogo sta dove la colonna dice di leggerlo.
+* `db/pgtap/ui/test-ui-catalogo-liste-v1.sql` — la colonna `LINEAGE` su una lista che non la
+  dichiara, la colonna accolta su una lista spenta, la tabella partizionata.
+* `db/pgtap/ui/test-fn-lista-colonne-ricerca-full-v1.sql` — il campo vuoto lo rifiuta il vincolo.
 * `db/pgtap/vendite/test-colonne-lineage-liste-v1.sql` — le colonne della lineage sulle liste dei
   documenti.
 
@@ -98,6 +91,9 @@ tre campi da cui dipende la risposta. Non controlla:
 * 2026-05-06 — nasce, col catalogo delle colonne.
 * 2026-09-27 — la vista si cerca nel suo schema: prima bastava un'omonima in qualunque schema.
 * 2026-10-11 — sono ammessi i nomi della sintesi della lineage, usciti dalle viste di lista.
+* 2026-11-21 — il campo si giudica secondo `origine_campo`: la lineage solo dove la lista la
+  dichiara, senza leggere la vista di `vendite`; la relazione dal building block, partizionate
+  comprese; salto sulle liste spente; via il salto delle azioni, che non hanno campo per vincolo.
 
 ---
 

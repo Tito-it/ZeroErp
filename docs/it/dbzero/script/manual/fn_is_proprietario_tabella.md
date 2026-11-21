@@ -2,7 +2,7 @@
 
 > 👀 **Vedi anche**
 >
-> **Chi la chiama:** [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) · [magazzino.trgfn_documento_interno_righe_guard_testata](/dbzero/magazzino/funzioni/trgfn_documento_interno_righe_guard_testata) · [ui.trgfn_lista_definizione_guard_multi_emittente](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_multi_emittente)
+> **Chi la chiama:** [magazzino.trgfn_documento_interno_guard_transizione](/dbzero/magazzino/funzioni/trgfn_documento_interno_guard_transizione) · [magazzino.trgfn_documento_interno_righe_guard_testata](/dbzero/magazzino/funzioni/trgfn_documento_interno_righe_guard_testata) · [ui.trgfn_lista_definizione_guard_dichiarazioni](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_dichiarazioni)
 >
 > **I guard che chiedono chi agisce (non chi esegue):** [script.fn_guard_azione](/dbzero/script/funzioni/fn_guard_azione) · [script.fn_guard_super_admin](/dbzero/script/funzioni/fn_guard_super_admin)
 

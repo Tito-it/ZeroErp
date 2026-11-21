@@ -1,5 +1,10 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
+-- pgtap-runner: owner
+-- pgtap-runner-motivo: la fixture fabbrica una dashboard col suo pool e i suoi preset, e il catalogo
+--   delle dashboard l'applicazione non lo scrive: lo scrive solo il migratore, dal CSV (U31, la porta
+--   di 90_end/20261120-60). Nessun caso del test dipende dall'identita' di chi scrive: i guard che
+--   prova (legami, lucchetti, snapshot, scelta del preset) non esentano il proprietario.
 -- pgTAP test per Zero ERP
 --
 -- Test: il preset di base e il banner (giro 1a del brief-db-revisione-ui).
@@ -9,8 +14,8 @@
 --   ChangeSet: 20261119-09 … -14; il banner per chiave e il lucchetto, giro
 --   1b (20261120-02 … -11).
 --
--- Gira come l'applicazione (runner di default). Tutti i soggetti si
---   costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
+-- Gira da owner (marcatore in testa): il catalogo delle dashboard lo scrive
+--   solo il migratore. Tutti i soggetti si costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
 --   operatore con un profilo AD_HOC, i preset e le preferenze.
 --
 -- Elenco test (plan 20):

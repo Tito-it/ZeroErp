@@ -1,9 +1,9 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: AGPL-3.0-or-later
 -- pgtap-runner: owner
--- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno
---   (ne' una funzione DB ne' il backend): e' seed di migrazione, e il SELECT-only del ruolo
---   applicativo e' corretto. Stessa ragione del gemello test-fn-resolve-dashboard-config.sql.
+-- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che l'applicazione non scrive:
+--   lo scrive solo il migratore, dal CSV, e al ruolo applicativo resta il SELECT (la porta di
+--   90_end/20261120-60). Stessa ragione del gemello test-fn-resolve-dashboard-config.sql.
 -- pgTAP test per Zero ERP
 --
 -- Test: la cascata PER CHIAVE di ui.fn_resolve_dashboard_config e la data del

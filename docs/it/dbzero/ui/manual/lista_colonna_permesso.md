@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna_permesso`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 21 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -75,13 +75,6 @@ restituisce.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Senza veste in sessione il permesso più specifico può venire da un'altra veste.** La regola
-  cerca i profili sotto la veste della sessione; se la variabile manca o non è una veste, li cerca
-  sotto tutte le vesti dell'utente. Un utente con due identità (operatore e cliente del portale) e
-  un permesso AD_HOC `TUTTO` su una delle due vede la colonna che un permesso REPARTO `BLOCCATO`
-  gli nasconde come operatore. Il ripiego è voluto per la presentazione
-  ([fn_veste_corrente](/dbzero/ui/funzioni/fn_veste_corrente)), ma qui il livello `BLOCCATO` fa da
-  riservatezza.
 * **Nulla impedisce righe che non dicono niente**: `TUTTO` su una colonna non sensibile, o un
   permesso su un'azione.
 * **Il `BLOCCATO` nasconde la colonna, non il dato.** La vista della lista porta il valore comunque:

@@ -14,7 +14,7 @@
 | descrizione | character varying(200) | NO |  |
 | ambito | ui.ambito_preset | NO |  |
 | profilo_accesso_id | integer | YES |  |
-| emittente_fiscale_id | integer | YES |  |
+| emittente_fiscale_id | bigint | YES |  |
 | dimensione_max | integer | YES |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
@@ -49,13 +49,11 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
-| trg_dashboard_preset_a10_dashboard_definizione_require_a_2e061f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('ui', 'dashboard_definizione', 'attivo', 'dashboard_id', 'id')` |
 | trg_dashboard_preset_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('ambito', 'E_UI_PRESET_POSTO_IMMUTABILE', 'dashboard_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'emittente_fiscale_id', 'E_UI_PRESET_POSTO_IMMUTABILE', 'profilo_accesso_id', 'E_UI_PRESET_POSTO_IMMUTABILE')` |
-| trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_dashboard_preset_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_dashboard_preset_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
+| trg_ui_dashboard_preset_a20_contenuto_aggiornato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_preset_contenuto_aggiornato()` |
 
 ---
 {% include-markdown "signature-core.md" %}

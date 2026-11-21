@@ -97,12 +97,19 @@ ogni UPDATE.
 
 ---
 
-### Attivo: la dashboard deve essere accesa
+### Attivo: la dashboard spenta sospende i preset
 
-Un preset acceso chiede una dashboard accesa, a fine transazione; la dashboard non si spegne finché ha
-preset accesi. Le FK verso profilo e azienda sono in eccezione alla regola ATTIVO: spegnere un profilo o
+Una dashboard si spegne anche coi preset accesi, e li sospende senza toccarli: una dashboard spenta non
+risponde, e alla riaccensione i preset tornano com'erano. Un preset si accende anche su una dashboard
+spenta. È la forma delle liste: la FK verso la dashboard è in eccezione alla regola ATTIVO. Le FK verso
+profilo e azienda sono in eccezione alla regola ATTIVO: spegnere un profilo o
 un'azienda è un gesto del loro dominio, e non si ferma su un preset. Un preset spento la risoluzione non
 lo legge.
+
+### Lo scrive solo il migratore
+
+La tabella la possiede il CSV del seed, come il resto del catalogo delle dashboard: l'applicazione la legge
+e non la scrive (ha il solo `SELECT`).
 
 ---
 
@@ -111,15 +118,11 @@ lo legge.
 * **Il preset di base conta i widget accesi, non quelli che l'utente può vedere.** Un preset i cui widget
   l'utente non ha il permesso di vedere vince lo stesso, e la dashboard resta con le sole card aggiunte
   invisibili.
-* **`emittente_fiscale_id` è un intero**, mentre l'id dell'azienda è un `bigint`; nel gemello delle liste
-  la colonna è `bigint`.
-* **L'applicazione ha i privilegi di scrittura** senza che nessun servizio scriva la tabella.
 
 ---
 
 ### Codici errore
 
-* `E_ATTIVO_PADRE_NON_ATTIVO` — un preset acceso su una dashboard spenta, a fine transazione.
 * `E_UI_PRESET_POSTO_IMMUTABILE` — si cambia la dashboard, l'ambito, il profilo o l'azienda di un preset.
 * Il CHECK dell'ambito, il CHECK del tetto (`chk_ui_dashboard_preset_dimensione_max`), il secondo preset
   acceso nello stesso posto e il codice ripetuto nella stessa dashboard arrivano come violazioni di vincolo.
@@ -140,6 +143,8 @@ lo legge.
   preferenza.
 * `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — il tetto 0 e 101 rifiutati, il preset senza tetto
   che risponde lo standard.
+* `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — la dashboard spenta coi preset accesi e il preset che
+  torna base alla riaccensione; il tipo dell'azienda; il lucchetto del posto.
 
 ---
 
@@ -158,6 +163,8 @@ lo legge.
 * 2026-11-21 — il posto del preset si chiude col lucchetto di colonna; nasce l'unicità (preset, dashboard)
   per i vincoli composti della composizione e della preferenza. Prima un preset poteva proporre widget fuori
   dal pool: quelle righe sono state tolte.
+* 2026-11-21 — `emittente_fiscale_id` passa a `bigint`, il tipo dell'azienda; la dashboard spenta sospende
+  i preset invece di non spegnersi; l'applicazione perde la scrittura.
 
 ---
 

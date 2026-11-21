@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: da dove una colonna di lista legge il suo campo, e la lista che dichiara
+#   di leggere la lineage. Brief: brief-db-revisione-ui (giro 4: U24, U25, U26
+#   con Q15 e Q47).
+#
+# Che cosa cambia:
+#   - CREATE TYPE ui.origine_campo_lista AS ENUM ('VISTA', 'LINEAGE') (Q15 (b)):
+#     il marcatore della colonna. VISTA = il campo sta nella relazione della
+#     lista; LINEAGE = il campo e' una colonna della sintesi della genealogia dei
+#     documenti, che il backend unisce alle righe della pagina.
+#   - ui.lista_colonna.origine_campo: NOT NULL, iniziale VISTA. Il CSV del seed
+#     segna LINEAGE le colonne «transito» delle liste documentali.
+#   - ui.lista_definizione.legge_lineage (Q47 (a)): NOT NULL, iniziale false. La
+#     lista dichiara che il backend unisce la sintesi della lineage alle sue righe;
+#     una colonna LINEAGE sta solo li' (il guard 20261120-46). Si scrive solo dal
+#     migratore (il guard delle dichiarazioni, 20261120-48). Colonna del software
+#     nel registro del seed, come multi_emittente.
+#   - Tre CHECK su ui.lista_colonna:
+#       chk_ui_lista_colonna_azione_senza_campo (U24): un'azione non ha campo
+#         sorgente;
+#       chk_ui_lista_colonna_senza_campo_non_esportabile (U25): senza campo
+#         sorgente la colonna non si esporta (le composte e le azioni);
+#       chk_ui_lista_colonna_lineage_solo_mostrata (Q15): una colonna LINEAGE ha
+#         il campo, e non e' filtrabile, ordinabile ne' ricercabile: la vista non
+#         la porta, quindi filtro, ordinamento e ricerca non hanno dove cercarla.
+#   - Si ritira chk_ui_lista_colonna_azione_non_esportabile: U24 e U25 insieme
+#     dicono gia' che un'azione non si esporta, e due vincoli per la stessa regola
+#     sono due sedi (regola del 2).
+#
+# ℹ️ PERCHE' QUI, IN 00_schema (linee-guida-sql §11.14). Chi scrive la tabella,
+#   censito il 2026-11-21: i due mirror del CSV (20260507-07 e 20260806-15), che
+#   scrivono righe gia' conformi (nessuna azione con campo, nessuna composta
+#   esportabile, nessuna stringa vuota: il CSV porta NULL); i sei UPDATE della
+#   priorita' di 80_data, che non toccano le colonne giudicate; nessuna funzione
+#   del database; il backend dalle pagine admin (BE13). Le fixture dei pgTAP sono
+#   provate dalla regressione del giro.
+# Lettori del CHECK ritirato: il backend lo mappa per nome (BE13,
+#   _CHECK_CONSTRAINTS); nessun pgTAP lo nomina.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261120-43-alter-ui-lista-colonna-origine-campo-e-lineage-mctit.yaml
+
+  - changeSet:
+      id: 20261120-43-alter-ui-lista-colonna-origine-campo-e-lineage
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: l'enum ui.origine_campo_lista, lista_colonna.origine_campo, lista_definizione.legge_lineage
+        e tre CHECK sulle colonne. Brief: brief-db-revisione-ui (giro 4, U24, U25, U26, Q15, Q47).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_type t
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+               WHERE n.nspname = 'ui' AND t.typname = 'origine_campo_lista'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = to_regclass('ui.lista_colonna')
+                 AND conname = 'chk_ui_lista_colonna_azione_non_esportabile'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TYPE ui.origine_campo_lista AS ENUM ('VISTA', 'LINEAGE');
+
+              COMMENT ON TYPE ui.origine_campo_lista IS
+                  'Da dove una colonna di lista legge il suo campo sorgente: VISTA (la relazione della lista, schema_dati.vista_sql) o LINEAGE (la sintesi della genealogia dei documenti, che il backend unisce alle righe della pagina). Lo usa ui.lista_colonna.origine_campo.';
+
+              ALTER TABLE ui.lista_colonna
+                  ADD COLUMN origine_campo ui.origine_campo_lista NOT NULL DEFAULT 'VISTA';
+
+              ALTER TABLE ui.lista_definizione
+                  ADD COLUMN legge_lineage boolean NOT NULL DEFAULT false;
+
+              ALTER TABLE ui.lista_colonna DROP CONSTRAINT chk_ui_lista_colonna_azione_non_esportabile;
+
+              ALTER TABLE ui.lista_colonna
+                  ADD CONSTRAINT chk_ui_lista_colonna_azione_senza_campo
+                  CHECK (tipo_colonna <> 'azione' OR campo_sorgente IS NULL);
+
+              ALTER TABLE ui.lista_colonna
+                  ADD CONSTRAINT chk_ui_lista_colonna_senza_campo_non_esportabile
+                  CHECK (campo_sorgente IS NOT NULL OR esportabile = false);
+
+              ALTER TABLE ui.lista_colonna
+                  ADD CONSTRAINT chk_ui_lista_colonna_lineage_solo_mostrata
+                  CHECK (origine_campo <> 'LINEAGE'
+                         OR (campo_sorgente IS NOT NULL
+                             AND filtrabile = false
+                             AND ordinabile = false
+                             AND ricercabile_full = false));
+
+              COMMENT ON COLUMN ui.lista_colonna.origine_campo IS
+                  'Da dove la colonna legge campo_sorgente (ui.origine_campo_lista). VISTA: il campo è un attributo della relazione della lista, e lo verifica il guard ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente. LINEAGE: il campo è una colonna della sintesi della lineage, ammessa solo su una lista che dichiara legge_lineage; non è filtrabile, ordinabile né ricercabile (chk_ui_lista_colonna_lineage_solo_mostrata), e il nome lo verifica il presidio dbops.vw_liste_colonne_campo_orfano.';
+
+              COMMENT ON COLUMN ui.lista_colonna.campo_sorgente IS
+                  'Il campo che la colonna mostra, nella relazione della lista o nella sintesi della lineage secondo origine_campo. NULL per un''azione (chk_ui_lista_colonna_azione_senza_campo) e per una colonna composta dal frontend; senza campo la colonna non si esporta (chk_ui_lista_colonna_senza_campo_non_esportabile). Mai la stringa vuota.';
+
+              COMMENT ON COLUMN ui.lista_colonna.esportabile IS
+                  'La colonna entra nell''export della lista. Solo con un campo sorgente: una colonna composta o un''azione non hanno un valore da esportare (chk_ui_lista_colonna_senza_campo_non_esportabile).';
+
+              COMMENT ON COLUMN ui.lista_definizione.legge_lineage IS
+                  'La lista dichiara che il backend unisce alle sue righe la sintesi della lineage (la genealogia dei documenti): solo qui una colonna può avere origine_campo = LINEAGE. Colonna del software: la dichiara il CSV del seed e la scrive solo il migratore (ui.trgfn_lista_definizione_guard_dichiarazioni).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE ui.lista_colonna DROP CONSTRAINT chk_ui_lista_colonna_lineage_solo_mostrata;
+              ALTER TABLE ui.lista_colonna DROP CONSTRAINT chk_ui_lista_colonna_senza_campo_non_esportabile;
+              ALTER TABLE ui.lista_colonna DROP CONSTRAINT chk_ui_lista_colonna_azione_senza_campo;
+              ALTER TABLE ui.lista_colonna
+                  ADD CONSTRAINT chk_ui_lista_colonna_azione_non_esportabile
+                  CHECK (tipo_colonna <> 'azione'::ui.tipo_colonna OR esportabile = false);
+              ALTER TABLE ui.lista_definizione DROP COLUMN legge_lineage;
+              ALTER TABLE ui.lista_colonna DROP COLUMN origine_campo;
+              DROP TYPE ui.origine_campo_lista;

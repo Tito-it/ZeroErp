@@ -7,10 +7,9 @@
 --   ⚠️ Da riguardare: le esclusioni `rls/` furono fatte IN BLOCCO, e almeno
 --   una non ne aveva diritto (brief pgtap-runner-rls-baseline §30.2).
 -- pgtap-runner: owner
--- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che a runtime NON scrive nessuno:
---   ne' una funzione DB ne' il backend. E' seed di migrazione, e il SELECT-only del
---   ruolo applicativo e' corretto. Verificato cercando gli scrittori, non dedotto
---   (brief §29.2).
+-- pgtap-runner-motivo: la fixture semina su ui.dashboard_definizione, che l'applicazione non scrive:
+--   lo scrive solo il migratore, dal CSV, e al ruolo applicativo resta il SELECT (la porta di
+--   90_end/20261120-60, brief-db-revisione-ui giro 5, U31).
 -- pgTAP test per Zero ERP
 --
 -- Test: ui.fn_resolve_dashboard_config
@@ -18,7 +17,7 @@
 --
 -- Semantica attesa (brief-db-dashboard-home §4):
 --   - Dashboard inesistente -> errore E_UI_DASHBOARD_NON_TROVATA (P0001)
---   - Nessuna preferenza/preset -> catalogo grezzo (mai vuota), gated esclusi
+--   - Nessuna preferenza/preset -> catalogo grezzo, gated esclusi
 --   - Widget gated (area) senza permesso -> non compare (§4.5)
 --   - Preset sistema -> applicato; preset ruolo prevale su sistema
 --   - Preferenza utente -> prevale su tutto (§4.2)
@@ -32,13 +31,15 @@
 -- producono BLOCCATO: i widget gated risultano sempre nascosti -> copre il
 -- caso negativo §4.5. Il caso positivo di gating (widget visibile con permesso)
 -- richiederebbe una identita OPERATORE con grant d'area ed e' fuori da questo
--- test (i widget non-gated coprono comunque la garanzia "mai vuota").
+-- test. ⚠️ Un elenco vuoto dopo il filtro dei permessi e' un esito ammesso: la home
+-- non promette una card (Tid, 2026-07-22, confermato il 2026-11-21, Q50 di
+-- brief-db-revisione-ui), lo stato vuoto lo dice il frontend.
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
 -- Indice test (1..12):
 --   1.  Setup (dashboard + widget + pool + utente + identita + profilo AD_HOC)
 --   2.  Dashboard inesistente -> eccezione P0001
---   3.  Catalogo grezzo: 2 widget (non-gated); gated escluso ("mai vuota")
+--   3.  Catalogo grezzo: 2 widget (non-gated); gated escluso
 --   4.  §4.5: widget gated (area) assente dal risultato
 --   5.  Preset sistema -> dimensione_max=6
 --   6.  Preset ruolo AD_HOC -> dimensione_max=5 (prevale su sistema)
@@ -230,7 +231,7 @@ SELECT is(
         )->'widget'
     )),
     2,
-    '3. Catalogo grezzo: 2 widget non-gated (mai vuota); gated escluso'
+    '3. Catalogo grezzo: 2 widget non-gated; gated escluso'
 );
 
 -- =========================================================

@@ -605,9 +605,15 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   Dal 2026-09-30 anche `ui.misure_pagina` (brief-db-misure-pagina-catalogo §2):
 --   le misure «righe per pagina», possedute dal CSV. Forward 90_end/20260930-13,
 --   pgTAP `db/pgtap/ui/test-misure-pagina-v1.sql`.
+--   Dal 2026-11-21 anche le cinque tabelle del catalogo delle dashboard
+--   (brief-db-revisione-ui, giro 5, U31): le possiede il CSV; la preferenza resta
+--   scrivibile. Forward 90_end/20261120-60, pgTAP
+--   `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql`.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('magazzino.causali'), ('config.tabelle_gestibili'),
-             ('config.aree_funzionali'), ('ui.misure_pagina')) AS t(nome)
+             ('config.aree_funzionali'), ('ui.misure_pagina'),
+             ('ui.dashboard_definizione'), ('ui.widget'), ('ui.dashboard_widget'),
+             ('ui.dashboard_preset'), ('ui.dashboard_preset_widget')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
