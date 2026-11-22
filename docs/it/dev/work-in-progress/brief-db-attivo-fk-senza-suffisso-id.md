@@ -33,7 +33,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: il team BE/FE**, con la richiesta del §6; in parallelo Tid rigenera la doc auto-generata. Il giro DB è
+**Riparte: il team BE/FE**, con la richiesta del §6. Al DB resta solo l'archiviazione, quando il BE/FE chiude. Il giro DB è
 applicato da Tid coi pgTAP verdi (2026-11-22, §9): 36 FK si legano (68 trigger nuovi, nessuno in più), 13 vanno fra
 le eccezioni, il registro delle inclusioni è ritirato.
 
@@ -46,11 +46,12 @@ le eccezioni, il registro delle inclusioni è ritirato.
 | 5 | ✅ Tid | D-3 sulle 6 incerte: si legano, senza aspettare i cantieri vicini (2026-11-22) | §3.2 | 4 |
 | 6 | ✅ sessione DB | Il giro scritto e provato in `ROLLBACK` (2026-11-22) | §9 | 5 |
 | 7 | ✅ Tid | Apply di `20261121-21` … `-25` e i pgTAP del §9.3, verdi (2026-11-22) | §9 | 6 |
-| 7-bis | **Tid** | La rigenerazione della doc auto-generata (le tre funzioni, la tabella ritirata) | §9.4 | 7 |
+| 7-bis | ✅ Tid | Il commit del giro e la rigenerazione della doc auto-generata (2026-11-22) | §9.4 | 7 |
 | 8 | **team BE/FE** ⏭️ | I codici d'errore sulle maschere toccate, e il censimento dei lettori | §6 | 7 |
-| 9 | team DB | Dopo la rigenerazione: togliere la pagina `manual/` del registro ritirato; chiusura e archiviazione | §9.4 | 7-bis, 8 |
+| 9 | ✅ sessione DB | Tolta la pagina `manual/` del registro ritirato e la sua voce in `dbops/index.ci.md` (2026-11-22) | §9.4 | 7-bis |
+| 10 | team DB | Chiusura e archiviazione del brief | — | 8 |
 
-Decisioni aperte di Tid: nessuna. Il giro (changeSet, CSV, pgTAP, doc) è applicato e da committare.
+Decisioni aperte di Tid: nessuna. Il giro (changeSet, CSV, pgTAP, doc) è applicato e committato.
 
 ## 1. Il problema
 
@@ -609,7 +610,6 @@ nell'elenco, marcata «può mancare». Le 22 del §3.2 erano misurate sul solo s
 Aggiornate: `guide/automazione-db.md` (§1.3 e §4.2), le pagine `manual/` di `fn_attivo_fk_esclusa`,
 `fn_run_automations_attivo`, `fn_ritira_attivo_eccezioni`, `automazione_attivo_eccezioni`, `regimi_fiscali` (per
 sostituzione sul testo del giro D-8), `fornitori`, e `linee-guida-sql.md` §2 (la riga «il presidio non c'è ancora»
-diventa il pgTAP). La pagina `manual/automazione_attivo_inclusioni.md` resta, marcata «ritirata»: la include la pagina
-auto-generata della tabella, e si toglie quando la rigenerazione la fa sparire. La doc auto-generata delle tre funzioni
-è da rigenerare dopo l'apply.
+diventa il pgTAP). La doc auto-generata è rigenerata (Tid, 2026-11-22): la pagina della tabella ritirata non c'è più, e con lei
+sono state tolte la pagina `manual/automazione_attivo_inclusioni.md` e la sua voce in `dbops/index.ci.md`.
 
