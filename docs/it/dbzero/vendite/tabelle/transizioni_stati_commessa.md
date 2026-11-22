@@ -40,10 +40,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_transizioni_stati_commessa_a10_azioni_processo_requi_2def66 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
+| trg_transizioni_stati_commessa_a10_azioni_processo_requi_2def66 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
 | trg_transizioni_stati_commessa_a10_stati_commessa_requir_22e024 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_commessa_a10_stati_commessa_requir_22e024 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_a_id', 'id')` |
-| trg_transizioni_stati_commessa_a10_stati_commessa_requir_97909d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_commessa_a10_stati_commessa_requir_97909d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_da_id', 'id')` |
+| trg_transizioni_stati_commessa_a10_stati_commessa_requir_97909d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'stati_commessa', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_commessa_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_transizioni_stati_commessa_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

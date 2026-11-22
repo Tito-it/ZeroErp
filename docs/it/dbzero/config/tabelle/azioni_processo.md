@@ -44,13 +44,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_azioni_processo_a10_aree_funzionali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id', 'id')` |
 | trg_azioni_processo_a10_aree_funzionali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id', 'id')` |
+| trg_azioni_processo_a10_aree_funzionali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'aree_funzionali', 'attivo', 'area_id', 'id')` |
 | trg_azioni_processo_a10_profili_accesso_azioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'profili_accesso_azioni', 'azione_id', 'id', 'attivo')` |
+| trg_azioni_processo_a10_stati_doc_fiscale_transizioni_bl_8bc4e2 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_fiscale_transizioni', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_stati_doc_offerte_transizioni_bl_848c75 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte_transizioni', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_commessa_block_711b6c | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'transizioni_stati_commessa', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_contratti_bloc_5e7d14 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_contratti', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ddt', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_listino_versio_b0ef73 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_listino_versioni', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_ordini_block_d_5bfc98 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_ordini', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_preventivi_blo_69cb17 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_preventivi', 'azione_processo_codename', 'permission_codename', 'attivo')` |
+| trg_azioni_processo_a10_transizioni_stati_reso_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_reso', 'azione_processo_codename', 'permission_codename', 'attivo')` |
 | trg_azioni_processo_a10_user_override_azioni_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_override_azioni', 'azione_id', 'id', 'attivo')` |
 | trg_azioni_processo_a10_widget_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('ui', 'widget', 'azione_id', 'id', 'attivo')` |
-| trg_azioni_processo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_azioni_processo_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_azioni_processo_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_azioni_processo_z90_notify_permessi_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
 | trg_azioni_processo_z90_notify_permessi_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
 | trg_azioni_processo_z90_notify_permessi_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |

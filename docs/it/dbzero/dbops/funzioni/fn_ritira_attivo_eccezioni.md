@@ -18,7 +18,9 @@ CREATE OR REPLACE FUNCTION dbops.fn_ritira_attivo_eccezioni()
 AS $function$
 -- Scopo: togliere i trigger ATTIVO gia' generati per le FK che
 --   l'automazione non lega (dbops.fn_attivo_fk_esclusa): le eccezioni
---   dichiarate e le FK senza _id fuori dal registro delle inclusioni.
+--   dichiarate e le FK ereditate da una radice partizionata.
+--   ⛔ Un clone (tgparentid <> 0) non si tocca: lo governa il trigger
+--   della radice, e PostgreSQL ne rifiuta il DROP.
 -- Uso: SELECT dbops.fn_ritira_attivo_eccezioni();  -- quanti ne ha tolti
 DECLARE
     v_trigger pg_catalog.pg_trigger.tgname%TYPE;
@@ -45,6 +47,7 @@ BEGIN
               CROSS JOIN LATERAL dbops.fn_trigger_attivo_argomenti(
                   p.proname, dbops.fn_trigger_argomenti(t.tgargs)) AS g
              WHERE NOT t.tgisinternal
+               AND t.tgparentid = 0
                AND n.nspname = 'dbops'
                AND p.proname IN ('trgfn_child_requires_active_parent',
                                  'trgfn_prevent_deactivate_if_children')
@@ -66,7 +69,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_ritira_attivo_eccezioni()
-IS 'Toglie i trigger ATTIVO gia'' generati per le FK che l''automazione non lega, chiedendolo a dbops.fn_attivo_fk_esclusa: le FK dichiarate in dbops.automazione_attivo_eccezioni e le FK la cui colonna non finisce in _id e che non sono in dbops.automazione_attivo_inclusioni. Toglie il require sul figlio (dbops.trgfn_child_requires_active_parent, sulla tabella figlia, con quella colonna FK) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, che nomina quella figlia e quella colonna FK); vale anche per un trigger ATTIVO montato a mano, che su una FK senza _id va dichiarato nel registro delle inclusioni. Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono troncati con un hash); gli argomenti li legge per nome dbops.fn_trigger_attivo_argomenti, la grammatica delle funzioni trigger. Un montaggio fuori grammatica non si tocca: lo riporta dbops.fn_trigger_attivo_orfani. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira).';
+IS 'Toglie i trigger ATTIVO gia'' generati per le FK che l''automazione non lega, chiedendolo a dbops.fn_attivo_fk_esclusa: le FK dichiarate in dbops.automazione_attivo_eccezioni e le FK ereditate da una radice partizionata, che si legano o si escludono sulla radice. Toglie il require sul figlio (dbops.trgfn_child_requires_active_parent, sulla tabella figlia, con quella colonna FK) e il block sul padre (dbops.trgfn_prevent_deactivate_if_children, che nomina quella figlia e quella colonna FK); vale anche per un trigger ATTIVO montato a mano. Non tocca un clone (tgparentid <> 0), il trigger che PostgreSQL copia su una partizione da quello della radice: lo governa la radice. Li riconosce per FUNZIONE e ARGOMENTI, non per nome (i nomi generati oltre 63 caratteri sono troncati con un hash); gli argomenti li legge per nome dbops.fn_trigger_attivo_argomenti, la grammatica delle funzioni trigger. Un montaggio fuori grammatica non si tocca: lo riporta dbops.fn_trigger_attivo_orfani. Torna quanti ne ha tolti. Chiamata in testa da dbops.fn_run_automations_attivo (chi genera ritira).';
 ```
 
 </div>

@@ -37,11 +37,22 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_esiti_flussi_pratiche_a10_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'flussi', 'esito', 'codice_interno', 'attivo')` |
 | trg_esiti_flussi_pratiche_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_esiti_flussi_pratiche_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_contratti_block_bac3f6 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_contratti', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_ddt_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_ddt', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_offerte_block_de_d7c20a | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_offerte', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_ordini', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_preventivi_block_f297ae | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_preventivi', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_stati_doc_reso_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'stati_doc_reso', 'esito', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_template_flussi_avanzament_76b1f7 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_avanzamento_proiezione', 'esito_richiesto', 'codice', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_template_flussi_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi', 'esito_default', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_template_flussi_handler_ev_bf23f3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_handler_eventi', 'esito_richiesto', 'codice_interno', 'attivo')` |
+| trg_esiti_flussi_pratiche_a10_template_flussi_prerequisi_9e39f8 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('pratiche', 'template_flussi_prerequisiti', 'esito_richiesto', 'codice_interno', 'attivo')` |
 | trg_esiti_flussi_pratiche_a15_codice_maiuscolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
-| trg_esiti_flussi_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_esiti_flussi_pratiche_a15_codice_maiuscolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_codice_maiuscolo()` |
 | trg_esiti_flussi_pratiche_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_esiti_flussi_pratiche_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -40,10 +40,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_transizioni_stati_ordini_a10_azioni_processo_require_876939 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
+| trg_transizioni_stati_ordini_a10_azioni_processo_require_876939 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
 | trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_705aa8 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_da_id', 'id')` |
 | trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_705aa8 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_da_id', 'id')` |
-| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_ee5148 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_ee5148 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_a_id', 'id')` |
+| trg_transizioni_stati_ordini_a10_stati_doc_ordini_requir_ee5148 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_ordini', 'attivo', 'stato_a_id', 'id')` |
 | trg_transizioni_stati_ordini_a10_terminale_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ordini')` |
 | trg_transizioni_stati_ordini_a10_terminale_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_terminale_senza_uscita_manuale('vendite.ordini')` |
 | trg_transizioni_stati_ordini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

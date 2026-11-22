@@ -52,6 +52,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_ordini_a10_esiti_flussi_pratiche_require_a_f9192f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'esiti_flussi_pratiche', 'attivo', 'esito', 'codice_interno')` |
+| trg_stati_doc_ordini_a10_esiti_flussi_pratiche_require_a_f9192f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'esiti_flussi_pratiche', 'attivo', 'esito', 'codice_interno')` |
 | trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_ordini_a10_guard_esito_verdetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_stati_doc_guard_esito_verdetto()` |
 | trg_stati_doc_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |

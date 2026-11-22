@@ -298,6 +298,72 @@ dopo la chiusura. È la trappola «ERRORE_FIXTURE in CI»: la fixture si porta s
 verbo (o diventa DEFINER) **nello stesso changeSet** della postura. Lo stesso
 vale per ogni pgTAP del censimento che fabbrica i suoi soggetti con un `INSERT`.
 
+### 5.1 Il P-0 rifatto — 2026-11-22
+
+Letto su dbdev (catalogo) e sui file del ramo. Fatti datati: si rifà se il lavoro slitta.
+
+**Funzioni DB che scrivono le tabelle del Lotto 1**
+
+| Funzione | Sicurezza | Scrive | Dopo la chiusura |
+| --- | --- | --- | --- |
+| `magazzino.fn_crea_magazzino` | INVOKER (BB) | `magazzini` | la chiama il verbo di nascita; legge le colonne ammesse (D-M4) |
+| `dbops.fn_pgtap_crea_magazzino` | INVOKER | `magazzini`, via il BB | come app riceve `42501`: si porta sul verbo (sotto) |
+| `anagrafiche.fn_provisiona_dati_di_sviluppo` | DEFINER, solo in SVILUPPO | `magazzini`, via il BB, con `dev.smoke` (super admin) in sessione | non la tocca: resta sul BB. Il suo cancello è l'ambiente, non un permesso d'operatore |
+| `magazzino.fn_posta_inventario`, `_rettifica`, `_trasferimento` | DEFINER | lo stato della testata | non le tocca; il guard della D-M6 salta un `UPDATE` che non cambia il magazzino |
+
+Nessuna funzione DB scrive `ubicazioni`, `lotti`, `assets`, `eventi_assets`, le note, né crea un
+`trasferimento`. I changeSet girano da proprietario e non sono toccati; i CSV di
+`80_data/sql/magazzino/` (tranne `causali`) non li carica nessun changelog.
+
+**pgTAP.** I file che scrivono **direttamente** le tabelle del Lotto 1:
+
+* **come proprietario** (marcatore `pgtap-runner: owner`), non toccati: `dbops/test-presidi-magazzino-grana-v1`,
+  `dbops/test-sorgenti-orfane-v1`, `magazzino/test-fn-scrivi-movimento-controlli-v1`,
+  `magazzino/test-fn-scrivi-movimento-disponibilita-v1`, `magazzino/test-fn-scrivi-movimento-seriali-v1`,
+  `magazzino/test-movimenti-vincoli-v2`, `magazzino/test-sorgente-registro-v1`, `rls/test-rls-magazzino-perimetro-v1`;
+* **come app**, da portare sui verbi o sui builder (14):
+
+| File | Tabelle |
+| --- | --- |
+| `magazzino/test-capability-documenti-interni-v1` | ubicazioni |
+| `magazzino/test-ddt-scarico-v1` | lotti |
+| `magazzino/test-fn-posta-inventario-v1` | lotti, ubicazioni |
+| `magazzino/test-fn-posta-trasferimento-v1` | **trasferimenti e righe**, ubicazioni |
+| `magazzino/test-reso-carico-kit-seriali-v1` | **assets**, lotti, ubicazioni |
+| `magazzino/test-reso-carico-v1` | lotti |
+| `magazzino/test-sorgente-testate-v1` | **assets, eventi_assets, trasferimenti** |
+| `magazzino/test-ubicazioni-guard-parent-v1` | ubicazioni |
+| `magazzino/test-valore-giacenza-forma-v1` | ubicazioni |
+| `script/test-guard-sorgente-v1` | lotti |
+| `script/test-sorgente-in-uscita-v1` | lotti |
+| `script/test-trgfn-default-emittente-fiscale-v1` | magazzini |
+| `vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1` | magazzini |
+| `vendite/test-ddt-magazzino-testata-v1` | **assets**, magazzini |
+
+* **attraverso `dbops.fn_pgtap_crea_magazzino`**: 29 file, 21 come app. Si cambia il builder, non i file:
+  dopo la chiusura chiama il verbo di nascita, che vuole `TUTTO` sull'oggetto. L'operatore costruito non ha
+  righe d'area (`BLOCCATO`), e l'override d'oggetto non supera il tetto d'area: il builder apre l'area
+  `magazzino` al livello che serve, come `fn_pgtap_concedi_azione` apre quello di un'azione (e si ferma se il
+  test ha già chiuso l'area con un suo override). Lo stesso per i builder nuovi di ubicazione e lotto.
+
+**Backend** (richiesta, non lettura: il BE censisce i suoi): `magazzino/db/anagrafiche_magazzino_repository.py`;
+nei test `magazzino/tests/db/test_documento_interno_db.py`, `vendite/tests/db/test_ddt_cambia_stato_db.py`,
+`backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py`.
+
+**⚠️ Il controesempio alla D-M1.** «Chiudere le tabelle senza scrittore costa solo una voce nel loop» (§3) è
+**smentito**. Uno scrittore c'è: i pgTAP come app che fabbricano un seriale (`assets`), un evento o un
+trasferimento, per provare cose che l'applicazione fa davvero (il reso di un kit coi seriali, la testata della
+bolla, la registrazione di un trasferimento). Chiusa la tabella, il soggetto non si fabbrica più come app, e
+nessun verbo lo crea:
+
+| Tabella | Chi la fabbrica oggi come app | Che cosa serve |
+| --- | --- | --- |
+| `trasferimenti` e righe | `test-fn-posta-trasferimento-v1`, `test-sorgente-testate-v1` | i verbi comuni dei documenti interni (Lotto 2, D-M5) |
+| `assets` | `test-reso-carico-kit-seriali-v1`, `test-ddt-magazzino-testata-v1`, `test-sorgente-testate-v1` | un verbo di nascita del seriale; oggi il collaudo a video li inserisce in SQL |
+| `eventi_assets` | `test-sorgente-testate-v1` | il soggetto è il guard della sorgente su una testata che solo un verbo scriverebbe: marcatore owner legittimo (forma 3 di `testpgtap.sh`) |
+
+⇒ Decisione a Tid: **D-M7** al §3-bis.
+
 ## 6. I pgTAP — i casi si fabbricano
 
 Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
