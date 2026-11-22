@@ -20,20 +20,25 @@
 -- di test-fn-get-profili-accesso-applicabili.sql).
 -- BEGIN; + ROLLBACK implicito a fine file.
 --
--- Indice test (1..13):
+-- Indice test (plan 13; le etichette delle asserzioni, che saltano il 10):
 --   1.  Setup dati di test (lista + colonne + utente + identita)
 --   2.  Lista inesistente -> eccezione P0001
 --   3.  Catalogo grezzo: 2 colonne (sensibile BLOCCATA senza grant)
---   4.  Catalogo grezzo 3b: conferma is(2)
---   5.  Preset di sistema -> pagina_dimensione=10
---   6.  Preset di profilo -> pagina_dimensione=50 (prevale su sistema)
---   7.  Preferenza utente -> pagina_dimensione=100 (prevale su tutto; 99 fino al 2026-09-30, fuori dal catalogo delle misure)
---   8.  Colonna sensibile con grant LETTURA -> esportabile=false
---   9.  Colonna identificatore con visibile:false -> normalizzata a true
---   10. Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
---   11. DB-3: cascata preset deterministica (AD_HOC prio=1 vs profilo prio>1 da DB reale)
---   12. DB-4: GUC-aware (veste OPERATORE -> nessun profilo -> fallback sistema)
---   13. DB-A: ogni colonna dell'output espone la chiave priorita
+--   3b. Catalogo grezzo: la sensibile senza grant resta fuori
+--   4.  Preset di sistema -> pagina_dimensione=10
+--   5.  Preset di profilo -> pagina_dimensione=50 (prevale su sistema)
+--   6.  Preferenza utente -> pagina_dimensione=100 (prevale su tutto)
+--   7.  Colonna sensibile con grant LETTURA -> esportabile=false
+--   8.  Colonna identificatore con visibile:false -> normalizzata a true
+--   9.  Nuova colonna nel catalogo non in preferenza -> colonne_nuove=1
+--   11. Cascata dei preset di ruolo: AD_HOC (priorita' 1) batte PORTALE (priorita' 3)
+--   12. Veste OPERATORE -> nessun profilo -> preset di sistema
+--   13. Ogni colonna dell'output espone la chiave priorita
+--
+-- ⚠️ Le misure (10, 25, 50, 100) sono scritte a mano: servono quattro misure
+--   diverse, e il catalogo per contratto ne garantisce due. Se una esce dal
+--   catalogo il guard ferma la fixture (E_UI_MISURA_PAGINA_NON_AMMESSA): un rosso,
+--   non un verde a vuoto.
 -- ------------------------------------------------------------
 BEGIN;
 
@@ -45,20 +50,6 @@ BEGIN;
 --   cleanup, su righe ormai cancellate.
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
-
--- ⚠️ QUESTO FILE NON USA script.fn_pgtap_set_contesto_operatore(), a differenza
--- degli altri, e non e' una dimenticanza. Stessa ragione del gemello
--- test-fn-resolve-dashboard-config.sql, dove e' spiegata per esteso.
--- In breve: la fixture costruisce un'identita' CLIENTE_PORTALE (riga ~192, per
--- evitare il guard PF pura) e la funzione filtra i profili per la veste
--- corrente. Dichiarare OPERATORE in testa esclude — correttamente — quel
--- profilo, e cadono le asserzioni 5, 7 e 11.
--- Qui c'e' un indizio in piu': l'asserzione 12 manipola gia' `app.ruolo_applicativo`
--- da sola, per verificare proprio che la veste filtri. Il file conosce la GUC e
--- sceglie di tenerla vuota altrove — ma «veste vuota» e' una condizione che
--- l'applicazione non produce mai. Correzione vera: dichiarare CLIENTE_PORTALE,
--- decisione del cantiere `ui`.
--- Brief: brief-db-pgtap-runner-rls-baseline §11.
 
 -- ⚠️ Due vesti, in ordine, e l'ordine e' il punto.
 --   La fixture deve prima VEDERE (billing_account e' sotto RLS: senza una veste
@@ -693,12 +684,23 @@ SELECT is(
         '9. Nuova colonna nel catalogo non in preferenza -> colonne_nuove = 1'
     );
 -- =========================================================
--- 11. DB-3: cascata preset di ruolo deterministica
---     Usa il profilo prio>1 GIA' applicabile all'utente di test
---     (via binding globale esistente nel DB, es. PORTALE CLIENTE_PORTALE).
---     Non creiamo un nuovo binding: uq_profili_accesso_bindings_ruolo
---     ammette UN SOLO profilo per ruolo_applicativo.
+-- 11. Cascata dei preset di ruolo: vince il profilo piu' prioritario
+--     Il secondo profilo e' il PORTALE della veste CLIENTE_PORTALE (priorita'
+--     3). uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il
+--     seed lo porta gia' si usa quello, altrimenti si costruisce qui. Il caso
+--     dice anche di averlo trovato: senza, il preset di ruolo non nascerebbe e
+--     il caso passerebbe senza provare niente.
 -- =========================================================
+WITH p AS (
+    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
+    SELECT 'PORTALE', '_PGTAP_RESOLVE_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo PORTALE test fn_resolve_lista_config', TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
+                        WHERE b.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo)
+    RETURNING id
+)
+INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
+SELECT p.id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, TRUE FROM p;
 -- Cancella preferenza utente per tornare alla cascata preset
 DELETE FROM ui.lista_preferenza_utente
 WHERE auth_user_id = (
@@ -719,11 +721,7 @@ FROM script.fn_get_profili_accesso_applicabili(
 WHERE priorita > 1
 LIMIT 1;
 
--- Crea preset per il profilo prio>1 con pagina=25 sulla lista di test
--- (77 fino al 2026-09-30: fuori dal catalogo ui.misure_pagina, oggi lo rifiuta il
--- guard; serve solo una misura DIVERSA da 50).
--- Se non esiste nessun profilo prio>1, il INSERT produce 0 righe
--- e il test verifica comunque che AD_HOC (prio=1) dia pagina=50.
+-- Il preset del profilo prio>1, con pagina=25: una misura del catalogo DIVERSA da 50.
 INSERT INTO ui.lista_preset (
         lista_id,
         codice,
@@ -759,23 +757,15 @@ WHERE lp.codice   = 'preset_prio2_pgtap'
     );
 
 SELECT is(
-        (
-            SELECT (
-                    ui.fn_resolve_lista_config(
-                        (
-                            SELECT lista_codice
-                            FROM _t_lista
-                        ),
-                        (
-                            SELECT auth_user_id
-                            FROM _t_au
-                        ),
-                        NULL
-                    )->>'pagina_dimensione'
-                )::INTEGER
-        ),
-        50,
-        '11. DB-3: AD_HOC (prio=1, pagina=50) prevale su profilo prio>1 (pagina=25)'
+        (SELECT format('%s|%s',
+                       (SELECT count(*) FROM ui.lista_preset lp
+                         WHERE lp.codice = 'preset_prio2_pgtap'
+                           AND lp.lista_id = (SELECT lista_id FROM _t_lista)),
+                       ui.fn_resolve_lista_config((SELECT lista_codice FROM _t_lista),
+                                                  (SELECT auth_user_id FROM _t_au),
+                                                  NULL)->>'pagina_dimensione')),
+        '1|50',
+        '11. Il preset del profilo prio>1 c''e'', e AD_HOC (prio=1, pagina=50) prevale (pagina=25)'
     );
 -- =========================================================
 -- 12. DB-4: GUC app.ruolo_applicativo filtra la veste corrente

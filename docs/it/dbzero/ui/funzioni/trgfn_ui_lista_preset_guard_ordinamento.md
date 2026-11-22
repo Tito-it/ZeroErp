@@ -68,7 +68,7 @@ BEGIN
 
     IF v_motivo IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
-            'ui', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
+            'database', TG_NAME::text, 'E_UI_CONFIGURAZIONE_FORMA',
             jsonb_build_object(
                 'campo',  'ordinamento_default',
                 'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,

@@ -223,12 +223,17 @@ UPDATE ui.lista_preferenza_utente
    SET preset_base_id = NULL
  WHERE id = (SELECT pref_id FROM _t_pref_pa);
 
+-- ⭐ Il banner sarebbe spento comunque (vale solo sulla base di oggi, e la base
+--   salvata e' NULL): quello che il caso prova e' lo snapshot, che lo scrive il
+--   database e torna NULL con la base.
 SELECT is(
-  (SELECT ui.fn_resolve_lista_config(l.lista_codice, u.user_id, NULL)->>'preset_aggiornato'
-     FROM _t_lista_pa l, _t_au_pa u
+  (SELECT format('%s|%s', (pu.preset_base_contenuto_aggiornato_il IS NULL)::text,
+                 ui.fn_resolve_lista_config(l.lista_codice, u.user_id, NULL)->>'preset_aggiornato')
+     FROM ui.lista_preferenza_utente pu, _t_lista_pa l, _t_au_pa u
+    WHERE pu.id = (SELECT pref_id FROM _t_pref_pa)
   ),
-  'false',
-  'Caso F: preset_base_id → NULL (lo snapshot diventa NULL) → preset_aggiornato = FALSE'
+  'true|false',
+  'Caso F: preset_base_id → NULL: lo snapshot torna NULL, e preset_aggiornato = FALSE'
 );
 
 SELECT * FROM finish();

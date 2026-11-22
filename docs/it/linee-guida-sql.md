@@ -617,7 +617,7 @@ un marcatore di revisione (`rev`), l'id di un changeSet, l'hash di un commit.
   (dal `20261111-18`) non le porta, in nessuno schema. Ferma il debito **nuovo**; il pregresso non
   blocca. Un'eccezione vera si dichiara in testa al file: `# comment-al-presente: ammesso — <perché>`.
 * `db/pgtap/dbops/test-comment-al-presente-v1.sql`, sul database vivo: nessun COMMENT degli schemi
-  la cui famiglia è riscritta (`dbops`, `maintenance`, `catalogo`, `documenti`), degli oggetti fuori
+  la cui famiglia è riscritta (`dbops`, `maintenance`, `catalogo`, `documenti`, `ui`), degli oggetti fuori
   schema riscritti con loro, né di quelli che `dbops.fn_storico_arma_scope` scrive sulle shadow di
   `storico`, le porta. Uno schema entra nella lista del file quando la sua famiglia è riscritta: il
   presidio è uno, col perimetro in elenco, non un file per schema. ⚠️ Lo schema di un trigger e di una

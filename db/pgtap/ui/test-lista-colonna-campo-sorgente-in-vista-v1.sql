@@ -22,9 +22,13 @@
 --     meta'. Per il seed giudicano questo file e il presidio
 --     dbops.vw_liste_colonne_campo_orfano, che vede anche le liste dell'app.
 --
--- ⚠️ Il test 5 ha bisogno della gemella storica `storico.comuni` (la crea
---   l'automazione di storicizzazione): se non c'e', skip() dichiarato — senza
---   omonima il caso non si puo' costruire, e un verde lo direbbe per sottrazione.
+-- ⭐ I casi 1-3 sono un PRESIDIO DEL CATALOGO SEMINATO: guardano le liste che ci
+--   sono, ed e' il loro scopo (i trigger non vedono una riga che non si riscrive).
+--   Il seed c'e' anche in CI; su un database senza liste non avrebbero niente da
+--   guardare. I casi 4-6 costruiscono i loro soggetti.
+-- ⭐ Il caso 5 costruisce l'omonima: una tabella temporanea `comuni`, senza la
+--   colonna `descrizione` che config.comuni ha. Una colonna che la nomina, su una
+--   lista che legge l'omonima, sta solo nell'altro schema: va rifiutata.
 --
 -- Elenco test (plan 6):
 --   1) ogni lista attiva con vista_sql ha la vista nel proprio schema_dati
@@ -32,7 +36,8 @@
 --      vista, o la sintesi della lineage su una lista che la dichiara (giro 4, 2026-11-21)
 --   3) le sei liste geografiche dichiarano tutte una vista (decisione §8 punto 6)
 --   4) vista_sql che esiste solo in un ALTRO schema: E_UI_VISTA_SQL_NON_TROVATA
---   5) campo_sorgente che esiste solo nell'omonima di un altro schema: E_UI_CAMPO_SORGENTE_NON_TROVATO
+--   5) campo_sorgente che esiste solo nell'omonima di un altro schema (config.comuni,
+--      e la lista legge la sua omonima temporanea): E_UI_CAMPO_SORGENTE_NON_TROVATO
 --   6) la vista giusta nello schema giusto passa
 -- ------------------------------------------------------------
 
@@ -112,21 +117,20 @@ INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, a
 VALUES ('_pgtap.vista_schema_giusto', 'Lista pgTAP: vista nel suo schema',
         'config', 'comuni', TRUE, 'pgtap');
 
-SELECT CASE
-    WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
-                  JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-                  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                 WHERE n.nspname = 'storico' AND c.relname = 'comuni'
-                   AND a.attname = 'valid_from' AND NOT a.attisdropped)
-    THEN throws_like(
-        $$ INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,
-                                         tipo_dato, ordine_default, user_insert)
-           SELECT ld.id, 'valid_from', 'Valido dal', 'valid_from', 'informazione', 'date', 10, 'pgtap'
-             FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.vista_schema_giusto' $$,
-        '%valid_from%config.comuni%',
-        '5) campo_sorgente che esiste solo in storico.comuni: rifiutato su config.comuni')
-    ELSE skip('5) storico.comuni non c''e'' (storicizzazione non applicata): l''omonima non si puo'' costruire', 1)
-END;
+-- L'omonima: pg_temp.comuni, con un solo campo. config.comuni ha `descrizione`.
+CREATE TEMP TABLE comuni (codice_istat varchar);
+INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+SELECT '_pgtap.vista_omonima', 'Lista pgTAP: l''omonima temporanea', n.nspname, 'comuni', TRUE, 'pgtap'
+  FROM pg_catalog.pg_namespace n WHERE n.oid = pg_my_temp_schema();
+
+SELECT is(
+    dbops.fn_pgtap_codice_errore($$
+        INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,
+                                      tipo_dato, ordine_default, user_insert)
+        SELECT ld.id, 'descrizione', 'Comune', 'descrizione', 'informazione', 'string', 10, 'pgtap'
+          FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.vista_omonima' $$),
+    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+    '5) campo_sorgente che esiste solo nell''omonima di config: rifiutato sulla lista che legge la temporanea');
 
 SELECT lives_ok(
     $$ INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_colonna,

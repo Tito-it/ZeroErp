@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_resolve_lista_config`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -21,8 +21,8 @@
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — le chiavi del banner
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello di ogni colonna per l'utente
-> * [ui.fn_misura_pagina_ammessa](/dbzero/ui/funzioni/fn_misura_pagina_ammessa) — una misura è del catalogo?
-> * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — la misura di default `PAGINA`
+> * [ui.fn_misura_pagina_risolta](/dbzero/ui/funzioni/fn_misura_pagina_risolta) — la regola delle righe per pagina
+> * [ui.fn_misura_lista](/dbzero/ui/funzioni/fn_misura_lista) — la sola misura, con la stessa regola
 > * [ui.fn_intero_da_jsonb](/dbzero/ui/funzioni/fn_intero_da_jsonb) — ordine, larghezza e misura letti senza cast che cadono
 > * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento di partenza, che questa funzione non porta
 > * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — la forma della preferenza, alla scrittura
@@ -104,6 +104,10 @@ di base se è nel catalogo, altrimenti il default del catalogo per l'uso della l
 si mostra in un drawer parte dalla misura compatta. Risponde la misura della preferenza se
 è nel catalogo, altrimenti lo standard. Il risultato porta anche lo standard da solo, perché il
 frontend lo mostra come «come lo standard (N)». La misura che risponde non è mai vuota.
+
+La regola sta in [fn_misura_pagina_risolta](/dbzero/ui/funzioni/fn_misura_pagina_risolta), che legge
+anche [fn_misura_lista](/dbzero/ui/funzioni/fn_misura_lista): il numero che l'utente vede nella
+configurazione è quello con cui il backend serve la lista a chi non dice quante righe vuole.
 
 ---
 
@@ -217,6 +221,8 @@ sono spenti.
 * `db/pgtap/ui/test-misure-pagina-v1.sql` — la misura sempre del catalogo.
 * `db/pgtap/ui/test-ui-misure-catalogo-e-uso-v1.sql` — il ripiego sul default dell'uso della lista,
   `PAGINA` e `COMPATTA`, con l'origine `catalogo`.
+* `db/pgtap/ui/test-ui-misura-lista-e-contesto-ricerca-v1.sql` — la misura, l'origine e lo standard
+  uguali a quelli di `fn_misura_lista`, sul preset, sul default e sulla preferenza.
 * `db/pgtap/ui/test-lista-ricerca-min-caratteri-v1.sql`,
   `db/pgtap/ui/test-lista-definizione-multi-emittente-v1.sql`,
   `db/pgtap/ui/test-lista-definizione-perimetro-emittente-v1.sql` — le proprietà della lista nel
@@ -251,6 +257,8 @@ sono spenti.
   le colonne nuove non si spengono più per una voce senza codice.
 * 2026-11-21 — senza preferenza né preset la misura è il default dell'uso della lista: prima sempre
   il default `PAGINA`, e una lista compatta aveva il 10 scritto nel preset.
+* 2026-11-22 — la regola delle righe per pagina passa in `ui.fn_misura_pagina_risolta`, letta anche
+  da `ui.fn_misura_lista`. Il risultato non cambia.
 
 ---
 

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo delle dashboard configurabili. Una riga per dashboard personalizzabile (prima: home). Senza vista_sql: nessuna vista sorgente unica.
+> Il catalogo delle dashboard configurabili: una riga per ogni griglia di card che l'utente può personalizzare, cercata per codice (la home è home). Non ha una relazione sorgente: ogni widget porta il suo collegamento e il suo contatore. La lettura per codice è ui.fn_dashboard_da_codice. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

@@ -22,20 +22,41 @@ AS $function$
 --
 -- Condizioni, tutte insieme:
 --   - colonna attiva e `ricercabile_full`;
---   - campo_sorgente valorizzato (NULL e '' sono entrambi «vuoto»);
+--   - campo_sorgente valorizzato (il CHECK della colonna vieta il vuoto);
 --   - livello effettivo <> BLOCCATO (LETTURA entra: si vede, si cerca).
 --
 -- Contesto dalla sessione: utente da app.current_user_id, veste da
 -- ui.fn_veste_corrente(). L'emittente non entra nel livello di colonna.
 -- ⚠️ Senza utente: nessun grant, le colonne sensibili escono.
--- 2026-09-25: la lista dal codice la legge ui.fn_lista_da_codice(), il BB
--- condiviso col risolutore delle liste (stesso E_UI_LISTA_NON_TROVATA).
+-- Un id utente che non e' un intero e' una chiamata fuori contesto:
+-- E_UI_CHIAMATA_NON_VALIDA, non il 22P02 del cast.
 DECLARE
   v_lista_id     ui.lista_definizione.id%TYPE;
-  v_auth_user_id ui.lista_preferenza_utente.auth_user_id%TYPE := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+  -- text: il valore della GUC com'e' scritto, prima di leggerlo come id
+  v_guc          text := NULLIF(current_setting('app.current_user_id', true), '');
+  -- integer: l'id di django.auth_user, tabella dell'applicazione: un changeSet non
+  -- la cita con %TYPE (lo schema django e' del provisioning)
+  v_auth_user_id integer;
 BEGIN
   -- Lista assente o spenta: E_UI_LISTA_NON_TROVATA, sollevato dal BB.
   v_lista_id := (ui.fn_lista_da_codice(p_lista_codice)).id;
+
+  IF v_guc IS NOT NULL THEN
+    -- Il CASE garantisce l'ordine: il confronto numerico solo su sole cifre.
+    IF (CASE WHEN v_guc ~ '^[0-9]{1,10}$' THEN v_guc::bigint > 2147483647
+             ELSE TRUE END) THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database',
+        'ui.fn_lista_colonne_ricerca_full',
+        'E_UI_CHIAMATA_NON_VALIDA',
+        jsonb_build_object(
+          'lista_codice',        p_lista_codice,
+          'app_current_user_id', v_guc),
+        NULL::uuid,
+        VARIADIC ARRAY[]::text[]);
+    END IF;
+    v_auth_user_id := v_guc::integer;
+  END IF;
 
   RETURN QUERY
   SELECT lc.codice,
@@ -46,14 +67,14 @@ BEGIN
    WHERE lc.lista_id         = v_lista_id
      AND lc.attivo           = TRUE
      AND lc.ricercabile_full = TRUE
-     AND COALESCE(btrim(lc.campo_sorgente), '') <> ''
+     AND lc.campo_sorgente IS NOT NULL
      AND lv.livello_accesso <> 'BLOCCATO'
    ORDER BY lc.ordine_default, lc.codice;
 END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_lista_colonne_ricerca_full(p_lista_codice character varying)
-IS 'Colonne di una lista in cui l''utente corrente puo'' fare la ricerca libera, con il campo_sorgente da interrogare: attive, ricercabile_full, campo_sorgente valorizzato (NULL e stringa vuota sono vuoto), livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente nessun grant: le colonne sensibili escono. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice (2026-09-25), lo stesso del risolutore. Richiesta del team BE, 2026-09-23. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'Le colonne di una lista in cui l''utente corrente può fare la ricerca libera, con il campo_sorgente da interrogare: accese, ricercabile_full, con un campo sorgente, a un livello effettivo diverso da BLOCCATO (LETTURA entra). Il livello viene da ui.fn_lista_colonne_livello, lo stesso di ui.fn_resolve_lista_config: non si cerca in una colonna che la lista non mostra. Utente da app.current_user_id, veste da ui.fn_veste_corrente(); l''emittente non entra nel livello di colonna. Senza utente (GUC assente o vuota) nessun grant: le colonne sensibili escono. Un app.current_user_id che non è un intero è una chiamata fuori contesto: E_UI_CHIAMATA_NON_VALIDA. Lista assente o spenta: E_UI_LISTA_NON_TROVATA, dal building block ui.fn_lista_da_codice. STABLE.';
 ```
 
 </div>

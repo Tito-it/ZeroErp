@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo colonne disponibili per ciascuna lista. Definisce tutto cio che la lista puo mostrare.
+> Il catalogo delle colonne che ogni lista configurabile può mostrare: per ciascuna l'etichetta, il campo da cui legge (nella relazione della lista o nella sintesi della lineage), il tipo e il formato, la posizione e la larghezza di partenza, e che cosa se ne può fare (filtrare, ordinare, esportare, cercarci). Il livello di ogni colonna per un utente è ui.fn_lista_colonne_livello.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

@@ -46,7 +46,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_lista_da_codice(p_lista_codice character varying)
-IS 'La riga di ui.lista_definizione con questo codice, se esiste ed e'' attiva; altrimenti E_UI_LISTA_NON_TROVATA (il codice nella frase). Building block: sede unica della lettura di una lista per codice. La usano ui.fn_resolve_lista_config (id, multi_emittente, perimetro_emittente, ricerca_min_caratteri, da una lettura sola), ui.fn_lista_colonne_ricerca_full (id) e il building block di ricerca del backend, che ne legge la soglia: SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(codice). Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
+IS 'La riga di ui.lista_definizione con questo codice, se esiste ed è accesa; altrimenti E_UI_LISTA_NON_TROVATA (il codice nella frase). Building block: la sede unica della lettura di una lista per codice. La usano ui.fn_resolve_lista_config, ui.fn_ordinamento_lista, ui.fn_misura_lista, ui.fn_lista_colonne_ricerca_full e il backend, che ne legge la soglia della ricerca: SELECT ricerca_min_caratteri FROM ui.fn_lista_da_codice(codice).';
 ```
 
 </div>

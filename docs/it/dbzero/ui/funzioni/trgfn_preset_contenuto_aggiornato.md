@@ -66,7 +66,7 @@ BEGIN
     IF TG_OP = 'INSERT' THEN
         IF NEW.contenuto_aggiornato_il IS NOT NULL OR NEW.composizione_impronta IS NOT NULL THEN
             PERFORM script.fn_log_and_raise_error(
-                'ui', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
+                'database', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
                 jsonb_build_object(
                     'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                     'id',    NEW.id),
@@ -85,7 +85,7 @@ BEGIN
        OR (NEW.composizione_impronta IS DISTINCT FROM OLD.composizione_impronta
            AND NEW.composizione_impronta IS DISTINCT FROM ui.fn_preset_impronta(v_famiglia, NEW.id)) THEN
         PERFORM script.fn_log_and_raise_error(
-            'ui', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
+            'database', TG_NAME::text, 'E_UI_PRESET_CONTENUTO_DERIVATO',
             jsonb_build_object(
                 'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                 'id',    NEW.id),

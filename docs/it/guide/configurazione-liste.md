@@ -1,6 +1,6 @@
 # Guida — Configurazione, Personalizzazione e Responsività delle Liste
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: amministratori del sistema (SUPER_ADMIN), tenant admin
 > con azioni `ui_preset_manage` / `ui_permesso_manage`, operatori finali
@@ -23,6 +23,7 @@
 > * [ui.fn_preset_di_base](/dbzero/ui/funzioni/fn_preset_di_base) — la scelta del preset di base, per liste e dashboard
 > * [ui.fn_preset_aggiornato](/dbzero/ui/funzioni/fn_preset_aggiornato) — il banner «preset aggiornato»
 > * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento con cui una lista parte, per un utente
+> * [ui.fn_misura_lista](/dbzero/ui/funzioni/fn_misura_lista) — le righe per pagina di una lista, per un utente
 > * [ui.trgfn_preferenza_guard_forma](/dbzero/ui/funzioni/trgfn_preferenza_guard_forma) — che cosa una preferenza può contenere
 > * [ui.fn_lista_colonne_livello](/dbzero/ui/funzioni/fn_lista_colonne_livello) — il livello (`TUTTO`, `LETTURA`, `BLOCCATO`) di ogni colonna per un utente
 > * [ui.trgfn_ui_lista_definizione_a10_valida_vista_sql](/dbzero/ui/funzioni/trgfn_ui_lista_definizione_a10_valida_vista_sql) — la vista della lista esiste
@@ -221,6 +222,10 @@ risponde **sempre** una misura del catalogo. Quando una misura si toglie dal cat
 esce anche dalle preferenze che la usavano, e quegli operatori tornano allo standard.
 Una misura non si cambia di valore: se ne aggiunge una nuova. Il dettaglio è in
 [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina).
+
+La misura che l'operatore vede è anche quella con cui il programma serve la lista a chi
+non dice quante righe vuole: la regola è una sola
+([ui.fn_misura_pagina_risolta](/dbzero/ui/funzioni/fn_misura_pagina_risolta)).
 
 ---
 

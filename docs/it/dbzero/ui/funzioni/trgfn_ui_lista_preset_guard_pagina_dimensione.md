@@ -24,7 +24,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione()
-IS 'Guard di ui.lista_preset: pagina_dimensione deve stare nel catalogo ui.misure_pagina (NULL = il default). Chiede a ui.fn_guard_misura_pagina, che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA invece del 23503 della FK (che resta come rete). Il trigger nasce in 90_end/20260930-12, dopo il seed dei preset. Brief: brief-db-misure-pagina-catalogo §2-3.';
+IS 'Guard di ui.lista_preset: pagina_dimensione è NULL (lo standard) o una misura del catalogo ui.misure_pagina. Chiede a ui.fn_guard_misura_pagina, che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA invece dell''errore della FK fk_lista_preset_misure_pagina, che resta come rete. Il trigger è trg_ui_lista_preset_a10_guard_pagina_ins_upd.';
 ```
 
 </div>

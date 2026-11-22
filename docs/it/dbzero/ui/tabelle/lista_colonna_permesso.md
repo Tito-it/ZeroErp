@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Permessi a livello colonna per profilo_accesso. deny-list per non sensibili, allow-list per sensibili.
+> Il livello con cui chi ha un profilo di accesso vede una colonna di lista: TUTTO, LETTURA (si vede, non si esporta) o BLOCCATO (non c'è). Su una colonna non sensibile le righe scrivono restrizioni, su una sensibile concessioni. È una parte della colonna, senza attivo. La regola del livello sta in ui.fn_lista_colonne_livello.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

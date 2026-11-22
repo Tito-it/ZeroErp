@@ -9,14 +9,17 @@
 --   20260930-03 → -10, 90_end/20260930-11 → -13; loop ci_apply 20260205-41 e
 --   provisioning (la porta, tre sedi).
 --
--- ⭐ Preset e preferenza si COSTRUISCONO (un operatore umano, un preset e una
---   preferenza sulla prima lista del catalogo delle liste). Nessuna misura
---   letta dai preset esistenti.
+-- ⭐ Il mondo si COSTRUISCE: un operatore umano, una lista con una colonna e
+--   il suo preset di base (che dice la misura di default COMPATTA), i preset e
+--   la preferenza dei casi. Le misure attese sono i due default del catalogo,
+--   letti con ui.fn_misura_pagina_default: nessuna lista, nessun preset e
+--   nessun numero del seed decide un'asserzione.
 --
 -- Elenco test (plan 18):
 --   Il catalogo
 --    1) un default per uso: COMPATTA e PAGINA, una riga ciascuno
---    2) fn_get_misure_pagina: misure in ordine crescente, i due default fra loro
+--    2) fn_get_misure_pagina: misure strettamente crescenti, le stesse del catalogo,
+--       e i due default quelli di ui.fn_misura_pagina_default
 --    3) un uso fuori vocabolario -> E_UI_MISURA_PAGINA_DEFAULT_MANCANTE
 --   Il preset
 --    4) una misura fuori catalogo -> E_UI_MISURA_PAGINA_NON_AMMESSA (non 23503)
@@ -29,8 +32,8 @@
 --   10) un valore che numero non e' ("25") -> E_UI_MISURA_PAGINA_NON_AMMESSA
 --   11) senza misura passa (e' il default)
 --   Il resolver
---   12) preferenza senza misura: risponde lo standard (cascata per chiave, 2026-11-01)
---   13) preferenza con una misura del catalogo: risponde quella
+--   12) preferenza senza misura: risponde lo standard, la misura del preset di base
+--   13) preferenza con un'altra misura del catalogo: risponde quella, non lo standard
 --   14) il corpo non ha piu' un numero di default scritto a mano
 --   La porta
 --   15) all'app SELECT si', INSERT/UPDATE/DELETE no
@@ -56,10 +59,33 @@ SELECT plan(18);
 CREATE TEMP TABLE _u AS SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-misure-pagina', false);
 DO $f$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _u)); END $f$;
 
--- Una lista qualunque del catalogo delle liste: serve solo come appoggio.
+-- I due default del catalogo: righe diverse (un default per uso), quindi numeri diversi.
+CREATE TEMP TABLE _m AS
+SELECT ui.fn_misura_pagina_default('PAGINA') AS d_pag, ui.fn_misura_pagina_default('COMPATTA') AS d_com;
+
+-- La lista d'appoggio, con una colonna e il suo preset di base: acceso, con la
+--   colonna, e la misura di default COMPATTA (la lista e' PAGINA: lo standard
+--   viene dal preset, non dall'uso).
 CREATE TEMP TABLE _l AS
-SELECT ld.id AS lista_id, ld.codice AS lista_codice
-  FROM ui.lista_definizione ld WHERE ld.attivo ORDER BY ld.id LIMIT 1;
+WITH ins AS (
+  INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+  VALUES ('_pgtap.misure_pagina_' || substr(md5(clock_timestamp()::text), 1, 6),
+          'Lista test pgTAP misure di pagina', 'pgtap', NULL, TRUE, 'pgtap')
+  RETURNING id, codice
+)
+SELECT id AS lista_id, codice AS lista_codice FROM ins;
+
+INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_dato, ordine_default, user_insert)
+SELECT lista_id, 'c_1', 'c_1', 'campo_1', 'string', 10, 'pgtap' FROM _l;
+
+WITH p AS (
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, pagina_dimensione, attivo, user_insert)
+  SELECT lista_id, 'P_BASE', 'Preset di base test misure', 'sistema', (SELECT d_com FROM _m), TRUE, 'pgtap'
+    FROM _l
+  RETURNING id, lista_id
+)
+INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fissata)
+SELECT p.id, lc.id, 1, TRUE, FALSE FROM p JOIN ui.lista_colonna lc ON lc.lista_id = p.lista_id;
 
 CREATE OR REPLACE FUNCTION pg_temp.preset(p_misura integer) RETURNS void
 LANGUAGE sql AS $$
@@ -95,15 +121,24 @@ SELECT is(
     'COMPATTA=1,PAGINA=1',
     '1) un default per uso: COMPATTA e PAGINA, una riga ciascuno');
 
+-- ⭐ Le proprieta' della risposta, non la stessa query rifatta: l'ordine si
+--   giudica coppia per coppia, l'insieme contro il catalogo in tutti e due i
+--   versi, i default contro il BB che li sceglie.
 SELECT is(
     -- ::text esplicito: format('%s') su un booleano stampa t/f.
-    (SELECT format('%s|%s|%s',
-                   (g -> 'misure' = (SELECT jsonb_agg(m.misura ORDER BY m.misura) FROM ui.misure_pagina m))::text,
-                   ((g -> 'misure') @> jsonb_build_array(g -> 'default_compatta'))::text,
-                   ((g -> 'misure') @> jsonb_build_array(g -> 'default_pagina'))::text)
+    (SELECT format('%s|%s|%s|%s',
+                   (SELECT bool_and(a.v::int < b.v::int)
+                      FROM jsonb_array_elements_text(g -> 'misure') WITH ORDINALITY a(v, i)
+                      JOIN jsonb_array_elements_text(g -> 'misure') WITH ORDINALITY b(v, i) ON b.i = a.i + 1)::text,
+                   (NOT EXISTS (SELECT m.misura::text FROM ui.misure_pagina m
+                                EXCEPT SELECT jsonb_array_elements_text(g -> 'misure'))
+                    AND NOT EXISTS (SELECT jsonb_array_elements_text(g -> 'misure')
+                                    EXCEPT SELECT m.misura::text FROM ui.misure_pagina m))::text,
+                   ((g ->> 'default_compatta')::int = (SELECT d_com FROM _m))::text,
+                   ((g ->> 'default_pagina')::int = (SELECT d_pag FROM _m))::text)
        FROM (SELECT ui.fn_get_misure_pagina() AS g) x),
-    'true|true|true',
-    '2) fn_get_misure_pagina: le misure in ordine, e i due default fra loro');
+    'true|true|true|true',
+    '2) fn_get_misure_pagina: misure crescenti, le stesse del catalogo, i due default del BB');
 
 SELECT throws_like(
     $$ SELECT ui.fn_misura_pagina_default('ALTRO') $$,
@@ -157,24 +192,21 @@ SELECT lives_ok($$ SELECT pg_temp.preferenza('{"colonne": []}'::jsonb) $$,
 -- ============================================================
 -- 12-14 Il resolver
 -- ============================================================
--- ⚠️ 2026-11-01 (cascata per chiave, 20_code/ui/20261101-26): senza misura la
---   preferenza segue lo STANDARD, cioe' la misura del preset di base della lista
---   d'appoggio, o il default PAGINA se il preset non ne ha. Fino al 2026-10-31 qui
---   si asseriva il default PAGINA: dopo il cambio sarebbe stato verde solo quando
---   il preset della prima lista ha proprio quella misura. Il ripiego sul default lo
---   prova, con un mondo costruito, test-fn-resolve-lista-config-cascata-per-chiave-v1 (9).
+-- Senza misura la preferenza segue lo STANDARD: la misura del preset di base
+--   (COMPATTA), non il default dell'uso della lista (PAGINA). Il ripiego sul
+--   default dell'uso lo prova test-ui-misure-catalogo-e-uso-v1.
 SELECT is(
-    -- ::text esplicito: format('%s') su un booleano stampa t/f.
-    (SELECT format('%s|%s', ((r ->> 'pagina_dimensione') = (r ->> 'pagina_dimensione_standard'))::text,
-                   (r -> 'origine' ->> 'pagina_dimensione' <> 'preferenza')::text)
+    (SELECT format('%s|%s|%s', r ->> 'pagina_dimensione', r ->> 'pagina_dimensione_standard',
+                   r -> 'origine' ->> 'pagina_dimensione')
        FROM (SELECT ui.fn_resolve_lista_config((SELECT lista_codice FROM _l), (SELECT auth_user_id FROM _u), NULL) AS r) x),
-    'true|true',
-    '12) preferenza senza misura: il resolver risponde lo standard, e non la dice una scelta');
+    (SELECT format('%s|%s|sistema', d_com, d_com) FROM _m),
+    '12) preferenza senza misura: risponde lo standard del preset di base, origine sistema');
 
+-- ⭐ Una misura diversa dallo standard: il verde dice che vince la preferenza.
 SELECT pg_temp.preferenza(jsonb_build_object('colonne', jsonb_build_array(),
-                                             'pagina_dimensione', (SELECT max(misura) FROM ui.misure_pagina)));
-SELECT is(pg_temp.risolta(), (SELECT max(misura) FROM ui.misure_pagina),
-    '13) preferenza con una misura del catalogo: il resolver risponde quella');
+                                             'pagina_dimensione', (SELECT d_pag FROM _m)));
+SELECT is(pg_temp.risolta(), (SELECT d_pag FROM _m),
+    '13) preferenza con un''altra misura del catalogo: il resolver risponde quella, non lo standard');
 
 -- Commenti tolti: il corpo SPIEGA il 25 che non c'e' piu'.
 SELECT ok(

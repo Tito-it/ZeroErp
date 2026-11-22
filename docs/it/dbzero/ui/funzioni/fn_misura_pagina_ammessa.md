@@ -22,7 +22,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION ui.fn_misura_pagina_ammessa(p_misura integer)
-IS 'La misura «righe per pagina» e'' nel catalogo ui.misure_pagina? NULL -> false. La chiedono ui.fn_guard_misura_pagina (per rifiutare una scrittura) e ui.fn_resolve_lista_config (per non rispondere una misura che il paginatore non offre). STABLE, INVOKER, inlineabile. Brief: brief-db-misure-pagina-catalogo §2.';
+IS 'La misura «righe per pagina» è nel catalogo ui.misure_pagina? NULL: falso. La chiedono ui.fn_guard_misura_pagina, per rifiutare una scrittura, e ui.fn_misura_pagina_risolta, per non rispondere una misura che il paginatore non offre. STABLE, INVOKER, inlineabile.';
 ```
 
 </div>

@@ -13,7 +13,7 @@
 --   ui.misure_pagina per RUOLO (default, la piu' piccola diversa, la piu'
 --   grande diversa), mai scritte a mano.
 --
--- Elenco test (plan 19):
+-- Elenco test (plan 22):
 --   La cascata
 --    1) preferenza di sole colonne: la misura dal preset, e l'uscita non porta
 --       ordinamento ne' filtri (giro 2 di brief-db-revisione-ui, Q38/Q39 §6)
@@ -69,6 +69,20 @@ SELECT ui.fn_misura_pagina_default('PAGINA') AS pag,
          WHERE misura <> ui.fn_misura_pagina_default('PAGINA')
            AND misura <> (SELECT min(misura) FROM ui.misure_pagina
                            WHERE misura <> ui.fn_misura_pagina_default('PAGINA'))) AS pref;
+
+-- ⚠️ Il caso chiede TRE misure diverse, e il catalogo per contratto ne garantisce
+--   due (i default COMPATTA e PAGINA). L'applicazione non scrive il catalogo, quindi
+--   la terza non si costruisce: con due sole misure pref sarebbe NULL e i casi
+--   della preferenza passerebbero senza provare niente. Il file si ferma e dice
+--   perche': un rosso dichiarato, non un verde a vuoto.
+DO $tre$
+BEGIN
+    IF (SELECT pref FROM _m) IS NULL THEN
+        RAISE EXCEPTION 'Il test chiede tre misure diverse in ui.misure_pagina: il catalogo ne ha %',
+            (SELECT count(*) FROM ui.misure_pagina);
+    END IF;
+END
+$tre$;
 
 CREATE TEMP TABLE _l AS
 WITH ins AS (
@@ -200,7 +214,7 @@ SELECT is(
 -- ============================================================
 -- jsonb_build_object con NULL scrive un null JSON: e' il caso. Dal giro 2 il
 -- guard di forma lo rifiuta (una riga scritta prima del guard la tollera il
--- resolver: lo prova test-fn-resolve-config-forma-v1).
+-- resolver: lo prova test-ui-forma-configurazione-v1).
 SELECT is(
     dbops.fn_pgtap_codice_errore($$
         SELECT pg_temp.preferenza(jsonb_build_object('colonne', (SELECT colonne FROM _pref_colonne),

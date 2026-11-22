@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DI ui CHE UNA FASE TARDIVA RISCRIVEVA
+#   Brief: brief-db-revisione-ui (giro 6b: i metadati, §4.1).
+#
+# Il difetto: 90_end/20260930-11 scrive il COMMENT di ui.lista_preset.pagina_dimensione
+#   col testo di allora (un brief e «NULL = il default PAGINA»). Il giro 3 lo ha
+#   riscritto in 00_schema (20261120-37), ma su un database da zero 90_end gira dopo
+#   00_schema e 20_code (linee-guida-sql §11.14), e il testo vecchio vinceva: in CI il
+#   COMMENT era ancora quello sbagliato, su dbdev quello giusto (linee-guida-sql §5d).
+#   Qui, in 90_end e dopo 20260930-11, si riscrive il testo vivo di dbdev.
+# Con lui gli oggetti di ui che nascono in 90_end: la FK della misura
+#   (fk_lista_preset_misure_pagina, 20260930-11) e il trigger del guard della misura
+#   (trg_ui_lista_preset_a10_guard_pagina_ins_upd, 20260930-12); e il COMMENT della
+#   funzione del guard, che diceva in quale changeSet nasce il trigger.
+# Nessun comportamento cambia. Rollback: i COMMENT di prima, letti dal catalogo di
+#   dbdev il 2026-11-22. Per pagina_dimensione e' lo stesso testo del changeSet: su
+#   dbdev la riga non cambia niente, e su un database da zero corregge il testo che
+#   20260930-11 ha appena scritto. La rollback non lo riporta di proposito.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261121-37-comment-ui-dopo-la-fase-tardiva-mctit.yaml
+
+  - changeSet:
+      id: 20261121-37-comment-ui-dopo-la-fase-tardiva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: i COMMENT che 90_end/20260930-11 riscriveva col testo vecchio su un database da zero, e degli oggetti di ui nati in 90_end. Brief: brief-db-revisione-ui (giro 6b, §4.1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint co JOIN pg_namespace n ON n.oid = co.connamespace
+               WHERE n.nspname = 'ui' AND co.conname = 'fk_lista_preset_misure_pagina'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN ui.lista_preset.pagina_dimensione IS
+                  'Righe per pagina del preset: una misura del catalogo ui.misure_pagina (FK fk_lista_preset_misure_pagina, e il guard della misura che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA). NULL = lo standard: il default dell''uso della lista (ui.lista_definizione.uso_misura), che risponde ui.fn_resolve_lista_config. Nessun default di colonna: un preset che non dice la misura segue il catalogo.';
+              COMMENT ON CONSTRAINT fk_lista_preset_misure_pagina ON ui.lista_preset IS
+                  'La misura del preset è una misura del catalogo, citata per numero (ui.misure_pagina.misura, la chiave naturale). È la rete dietro al guard del preset, che rifiuta prima con E_UI_MISURA_PAGINA_NON_AMMESSA.';
+              COMMENT ON TRIGGER trg_ui_lista_preset_a10_guard_pagina_ins_upd ON ui.lista_preset IS
+                  'La misura del preset è NULL (lo standard) o una misura del catalogo, con E_UI_MISURA_PAGINA_NON_AMMESSA invece dell''errore della FK (ui.trgfn_ui_lista_preset_guard_pagina_dimensione).';
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione() IS
+                  'Guard di ui.lista_preset: pagina_dimensione è NULL (lo standard) o una misura del catalogo ui.misure_pagina. Chiede a ui.fn_guard_misura_pagina, che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA invece dell''errore della FK fk_lista_preset_misure_pagina, che resta come rete. Il trigger è trg_ui_lista_preset_a10_guard_pagina_ins_upd.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON COLUMN ui.lista_preset.pagina_dimensione IS
+                  'Righe per pagina del preset: una misura del catalogo ui.misure_pagina (FK fk_lista_preset_misure_pagina, e il guard della misura che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA). NULL = lo standard: il default dell''uso della lista (ui.lista_definizione.uso_misura), che risponde ui.fn_resolve_lista_config. Nessun default di colonna: un preset che non dice la misura segue il catalogo.';
+              COMMENT ON CONSTRAINT fk_lista_preset_misure_pagina ON ui.lista_preset IS
+                  NULL;
+              COMMENT ON TRIGGER trg_ui_lista_preset_a10_guard_pagina_ins_upd ON ui.lista_preset IS
+                  NULL;
+              COMMENT ON FUNCTION ui.trgfn_ui_lista_preset_guard_pagina_dimensione() IS
+                  'Guard di ui.lista_preset: pagina_dimensione deve stare nel catalogo ui.misure_pagina (NULL = il default). Chiede a ui.fn_guard_misura_pagina, che rifiuta con E_UI_MISURA_PAGINA_NON_AMMESSA invece del 23503 della FK (che resta come rete). Il trigger nasce in 90_end/20260930-12, dopo il seed dei preset. Brief: brief-db-misure-pagina-catalogo §2-3.';

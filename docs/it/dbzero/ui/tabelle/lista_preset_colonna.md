@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Colonne di un preset: ordine, larghezza, visibilita di default e freeze.
+> La composizione di un preset di lista: una riga per ogni colonna del catalogo che il preset include, con la posizione, la larghezza, se si vede subito e se è fissata. Una riga per preset e colonna. È una parte del preset, senza attivo né audit. Una composizione cambiata sposta la chiave colonne della data del contenuto del preset, a fine transazione (ui.trgfn_preset_riga_tocca_preset).
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |
