@@ -2,8 +2,10 @@
 
 ## Scopo
 
-Helper condivisi `apps/documenti/api/` riusabili dalle view documentali
-"per sorgente" (offerta, preventivo, contratto, ...) per:
+Helper condivisi di `apps/documenti/api/` per le view documentali «per
+sorgente»: il contesto comune di ogni endpoint e gli allegati multipart.
+
+In dettaglio:
 
 1. risolvere il **contesto comune** richiesto da ogni endpoint
    `documenti/...` (entità sorgente esistente, emittente fiscale

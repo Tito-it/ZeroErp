@@ -104,8 +104,13 @@ standard. Rifiuti della risoluzione: `409` `E_DOCUMENTI_TEMPLATE_SENZA_PREDEFINI
 `E_DOCUMENTI_TEMPLATE_NON_RISOLTO` (né modello dell'emittente né standard
 utilizzabile), `500` `E_DOCUMENTI_TEMPLATE_AMBIGUO` (senza
 `tipo_documento_output_id` su una sorgente con più tipi).
-Risposta **200** con il documento (lo schema OpenAPI dichiara ancora 201); scrive
-il record e l'evento `GENERATO`. Stessa risoluzione per `emetti/` e `anteprima/`.
+Con `template_documento_id` il modello non si sceglie, **si verifica** con la
+stessa funzione: `400` `E_DOCUMENTI_TEMPLATE_NON_COERENTE` (non adatto al
+documento: sorgente, tipo o emittente; motivo nel `context`), `409`
+`E_DOCUMENTI_TEMPLATE_NON_STAMPABILE` (oggi non può stampare: spento, senza
+versione in vigore; motivo nel `context`).
+Risposta **200** con il documento (anche nello schema OpenAPI); scrive il record
+e l'evento `GENERATO`. Stessa risoluzione per `emetti/` e `anteprima/`.
 
 ### 3.3 `POST /api/v1/vendite/<dominio>/{id}/documenti/anteprima/`
 
@@ -208,10 +213,11 @@ al modello (guida `modello-documento-di-vendita` §6) passa
 matrice verso lo **stato di emissione**, la stessa del verbo. Lo stato non è
 scritto nel codice: si chiede al vocabolario a ogni richiesta
 (`script.fn_doc_stato_codice(t, script.fn_stato_emissione_id(t))`, letto da
-`DocumentoModelloRepository.stato_di_emissione`). Oggi lo fanno il **DDT**
-(`"vendite.ddt"`), il **preventivo** (`"vendite.preventivi"`) e l'**ordine**
-(`"vendite.ordini"`); offerte e contratti non dichiarano un'azione (livello sul
-documento) finché il loro giro del cantiere non li porta al modello.
+`DocumentoModelloRepository.stato_di_emissione`). Lo fanno tutti e cinque i
+documenti che si emettono: **DDT** (`"vendite.ddt"`), **preventivo**
+(`"vendite.preventivi"`), **ordine** (`"vendite.ordini"`), **offerta**
+(`"vendite.offerte_commerciali"`) e **contratto** (`"vendite.contratti"`); la
+fattura non ha `emetti/`.
 `emetti_post_permission`, l'azione dichiarata a mano, è ritirato: il preventivo era
 l'ultimo a usarlo. Anche lo stato che il dominio scrive all'emissione viene dallo
 stesso lettore (BB `stato_di_emissione` di `core/services/documento_modello`),
@@ -227,4 +233,4 @@ stato al vocabolario, e la sua testata ce l'ha).
 | i delta di dominio | `apps/vendite/api/<dominio>_documenti_views.py` |
 | guard di contesto e allegati | `apps/documenti/api/contesto_helpers.py`, `multipart_helpers.py` |
 | generazione, download, ristampa | `apps/documenti/services/document_generation_service.py` |
-| rotte | `apps/vendite/api/urls_<dominio>.py` (e `urls_v1.py` per preventivi/offerte/contratti) |
+| rotte | `apps/vendite/api/urls_<dominio>.py` (`urls_offerte`, `urls_contratti`, `urls_ordini`, `urls_ddt`, `urls_fatture`); per i preventivi `preventivi_urls.py` |
