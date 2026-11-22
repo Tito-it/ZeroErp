@@ -50,9 +50,7 @@ const { eliminaSpenta, motivoEliminaSpenta, chiediElimina } = useEliminaCredenzi
 const {
   searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'nome_visualizzato' },
-})
+} = useListaConfigurabilePage(store)
 
 // I filtri passano dai binder (frontend-standards §«Un filtro si lega con un
 // binder»): la casella segue lo store anche quando lo cambia «Pulisci filtri».

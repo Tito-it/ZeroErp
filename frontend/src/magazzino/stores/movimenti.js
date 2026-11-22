@@ -39,7 +39,9 @@ export const useMovimentiStore = createListaStore('magazzino-movimenti', {
     inventario_id: null,
     rettifica_id: null,
   },
-  orderBy: 'data_mov',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (BE29 di brief-db-revisione-ui):
+  //  lo dichiara il preset della lista, il backend lo applica e lo dice in
+  //  `meta.ordinamento`, da cui la tabella accende l'intestazione.
+  // Il ripiego del verso, quando `order_by` arriva senza verso.
   orderDirDefault: 'desc',
 })

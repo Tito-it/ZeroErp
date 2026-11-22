@@ -247,11 +247,13 @@ class ProcessiRepository:
     #    ⛔ Fino a quel giorno una LATERAL locale dava `ultimo_run` (anche una
     #    saltata) accanto a `ultimo_ok` (l'ultima vera): a video «ieri 07:30 ✓»
     #    poteva essere la data di una corsa saltata con l'esito di quella prima.
-    # ⚠️ `ultimo_ok` resta nella proiezione SOLO perche' la colonna «Esito»
-    #    della lista (`ui.lista_colonna` 722) ha quel `campo_sorgente`, e il BE
-    #    non rinomina prima del DB. E' `ultima_conclusa.ok`, dalla STESSA riga
-    #    (CTE `conclusa`): non puo' divergere. Si ritira quando il team DB porta
-    #    la colonna su `ultima_conclusa` (brief-db-lista-processi-esito-con-la-sua-data).
+    # ⭐ `ultimo_ok` e' il campo della colonna «Esito» della lista
+    #    (`ui.lista_colonna` 722, `campo_sorgente` booleano): l'esito dell'ultima
+    #    corsa CONCLUSA, cioe' `ultima_conclusa.ok` dalla STESSA riga (CTE
+    #    `conclusa`), quindi non puo' divergere. La data non e' del campo: la
+    #    mostra lo slot FE leggendo `ultima_conclusa`, e l'export scrive l'esito
+    #    senza la data (decisione di Tid del 2026-11-22, D-1 e D-2 di
+    #    brief-db-lista-processi-esito-con-la-sua-data, in `work-done/2026/`).
     def list_processi(
         self,
         *,

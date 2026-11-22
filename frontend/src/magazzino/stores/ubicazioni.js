@@ -31,8 +31,9 @@ export const useUbicazioniStore = createListaStore('magazzino-ubicazioni', {
   // Il magazzino e' gia' scelto quando il drawer si apre.
   startsEmpty: false,
   filterDefaults: { attivo: true },
-  orderBy: 'codice',
-  orderDir: 'asc',
+  // ⭐ Nessun ordinamento di partenza qui (BE29 di brief-db-revisione-ui):
+  //  lo dichiara il preset della lista, il backend lo applica e lo dice in
+  //  `meta.ordinamento`, da cui la tabella accende l'intestazione.
   extend: (base) => {
     const { emitDataChanged } = useTabEvents()
 

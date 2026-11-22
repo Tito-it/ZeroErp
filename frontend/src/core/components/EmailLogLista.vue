@@ -45,13 +45,7 @@ const store = props.store
 const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: {
-    defaultSortField: 'data_insert',
-    // 'desc', NON -1: il contratto di useSearchTable e' 'asc'/'desc'.
-    defaultSortOrder: 'desc',
-  },
-})
+} = useListaConfigurabilePage(store)
 
 // Il periodo e' UN filtro con due estremi: un binding, un componente, con
 // l'invariante `da <= a`.

@@ -92,7 +92,6 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn,
   getExportParams: (fmt) => buildExportParams(fmt),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
   // Closure lazy: legge `selezione`/`canAccreditare`, definiti sotto.
   extraActions: () => azioniAccredito(),
 })

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 import re
 from datetime import date, datetime
@@ -11,7 +12,10 @@ from rest_framework.exceptions import ParseError
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
 from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN, PayloadValidator
+from apps.core.services.request_context import get_misura_di_partenza
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
+
+logger = logging.getLogger(__name__)
 
 # Validator centralizzati payload API (riusabili cross-domain).
 
@@ -255,10 +259,31 @@ def richiedi_limit_offset(qp) -> None:
 #    troncata senza dirlo. La policy lo dichiarava gia' (rifiuto, non
 #    riduzione); il clamp di `limiti_pagina` resta la difesa dei repository,
 #    non la risposta all'utente.
+# ⭐ Senza `limit`, una lista configurabile pagina con la sua MISURA DI
+#    PARTENZA (BE10 di brief-db-revisione-ui, 2026-11-22): le righe per pagina
+#    della configurazione della lista, che la base view registra
+#    (`applica_misura_di_partenza`). Vince sul `default_limit` del chiamante,
+#    che resta la regola dell'API per gli endpoint fuori catalogo.
+# ⚠️ La misura OLTRE il tetto della view non e' il fuori limite di sopra: il
+#    client non ha chiesto niente, e il numero viene dal catalogo. Si riporta
+#    al tetto con un warning che nomina il difetto (Tid, 2026-11-22); la
+#    risposta dice comunque la pagina vera (`page_size`).
 def pagina_da_query(
     qp, *, default_limit: int = DEFAULT_LIMIT, max_limit: int = MAX_LIMIT,
 ) -> tuple[int, int]:
     richiedi_limit_offset(qp)
+    if qp.get("limit") is None:
+        misura = get_misura_di_partenza()
+        if misura is not None:
+            if misura > max_limit:
+                logger.warning(
+                    "misura_di_partenza.oltre_il_tetto misura=%s max_limit=%s: la "
+                    "misura della lista supera il tetto della view; si pagina col "
+                    "tetto.",
+                    misura, max_limit,
+                )
+                misura = max_limit
+            default_limit = misura
     limit = qp_int_strict(qp.get("limit"), "limit", default_limit)
     offset = qp_int_strict(qp.get("offset"), "offset", 0)
     if not 1 <= limit <= max_limit:

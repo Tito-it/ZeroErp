@@ -24,10 +24,8 @@ import { createRevisioniStore } from './createRevisioniStore'
 const vuota = () => Promise.resolve({ data: { data: { results: [], count: 0 } } })
 const fetchA = vi.fn(vuota)
 const fetchB = vi.fn(vuota)
-const useA = createRevisioniStore('test-revisioni-a', { fetchRevisioni: fetchA, orderBy: 'rev' })
-const useB = createRevisioniStore('test-revisioni-b', {
-  fetchRevisioni: fetchB, orderBy: 'revisione_numero',
-})
+const useA = createRevisioniStore('test-revisioni-a', { fetchRevisioni: fetchA })
+const useB = createRevisioniStore('test-revisioni-b', { fetchRevisioni: fetchB })
 
 describe('createRevisioniStore', () => {
   beforeEach(() => {
@@ -52,9 +50,11 @@ describe('createRevisioniStore', () => {
     expect(fetchA).toHaveBeenCalledTimes(1)
     const [documentoId, params] = fetchA.mock.calls[0]
     expect(documentoId).toBe(12)
-    expect(params).toMatchObject({
-      emittente_fiscale_id: 3, order_by: 'rev', order_dir: 'asc', offset: 0,
-    })
+    expect(params).toMatchObject({ emittente_fiscale_id: 3, offset: 0 })
+    // L'ordinamento di partenza lo applica il backend dal preset: lo store
+    // non lo scrive (residuo di BE25 (2) di brief-db-revisione-ui).
+    expect(params.order_by ?? null).toBeNull()
+    expect(params.order_dir ?? null).toBeNull()
   })
 
   it('3. due store dalla stessa factory non condividono stato', async () => {
@@ -66,7 +66,7 @@ describe('createRevisioniStore', () => {
     b.emittenteId = 3
     await b.fetchList()
     expect(fetchA).not.toHaveBeenCalled()
-    expect(fetchB.mock.calls[0][1]).toMatchObject({ order_by: 'revisione_numero' })
+    expect(fetchB.mock.calls[0][1].order_by ?? null).toBeNull()
   })
 
   it('4. rileggiSeAgganciato: rilegge solo il documento agganciato', async () => {

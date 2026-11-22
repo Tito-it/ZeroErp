@@ -173,8 +173,8 @@ class CorsaRiuscitaDalDbTests(TestCase):
     #    2026-11-22 dava `ultimo_run` (la riga piu' recente, qui la SKIP) accanto
     #    a `ultimo_ok` (l'esito dell'ultima corsa vera, qui la FALLITA): due
     #    colonne affiancate che si leggono come una corsa sola. Ora l'esito
-    #    viaggia in `ultima_conclusa` con la SUA data, e `ultimo_ok` (resta per la
-    #    colonna a catalogo) e' preso dalla stessa riga.
+    #    viaggia in `ultima_conclusa` con la SUA data, e `ultimo_ok` (il campo della
+    #    colonna «Esito» a catalogo) e' preso dalla stessa riga.
     def test_la_lista_processi_non_cuce_la_saltata_con_l_esito_di_prima(self) -> None:
         from apps.core.db.processi_repository import ProcessiRepository
 

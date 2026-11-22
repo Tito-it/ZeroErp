@@ -99,8 +99,14 @@ _ESENZIONI: dict[str, str] = {
     #    ⚠️ Le IDENTITA' un emittente ce l'hanno, ma stanno nel DETTAGLIO (una
     #    riga per azienda servita), non in questa lista.
     "amm.processi": "AdminAPIView — registro di catalogo, senza perimetro emittente (perimetro_emittente = false)",
+    # ⭐ Le edizioni dei workflow (2026-10-31): `AdminAPIView` che dichiarava
+    #    `lista_codice` quando l'attributo accendeva qualcosa solo su
+    #    `DomainAPIView` — il presidio la contava «coperta» e non lo era.
+    #    Dal 2026-11-22 la dichiarazione le da' la partenza, non il cancello
+    #    (`_scansione`), e la ragione e' quella degli operatori: la riga dice
+    #    di quale emittente e', `multi_emittente` certificata.
+    "pratiche.definizioni_workflow": "AdminAPIView — edizioni dei workflow; `multi_emittente` certificata: la riga dice di quale emittente e'",
     "config.email_account": "AdminAPIView — configurazione tecnica",
-    "config.email_log": "AdminAPIView — diario tecnico di sistema; `multi_emittente` certificata (colonna 872 `emittente_fiscale`)",
     # ⭐ La consultazione di `dbops.error_log` (pezzo E dell'osservabilita',
     #    2026-09-19): il diario degli errori TECNICI, letto dalla stessa porta
     #    dei due accanto. Un errore sollevato da una funzione non ha un'azienda
@@ -160,6 +166,11 @@ _ESENZIONI: dict[str, str] = {
     #    tabelle ha `emittente_fiscale_id`, e il seed le dichiara
     #    `perimetro_emittente = false`. Le view sono `DomainAPIView` (area
     #    anagrafiche): la ragione e' il modello, non la sede.
+    # ⚠️ Dal 2026-11-22 (residuo di BE25 (2) di brief-db-revisione-ui) le loro
+    #    view dichiarano `lista_codice` per la PARTENZA (ordinamento e misura
+    #    del preset), come le UoM dell'articolo e le sessioni: il cancello che
+    #    ne segue non chiede niente, e la ragione resta vera. Il test 1 lo sa:
+    #    un'esenzione «globale» non e' superata da una dichiarazione.
     "config.stati": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "config.regioni": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
     "config.province": "catalogo globale — territorio, nessun `emittente_fiscale_id` in tabella (perimetro_emittente = false)",
@@ -205,10 +216,22 @@ _ESENZIONI: dict[str, str] = {
 #        l'intero albero DENTRO un ciclo sulle classi, e i quattro test
 #        impiegavano 34 secondi invece di uno. Un presidio lento e' un presidio
 #        che qualcuno prima o poi toglie dalla corsa veloce.
+# ⭐ Dal 2026-11-22 (residuo di BE25 (2) di brief-db-revisione-ui) `lista_codice`
+#    sta su `_ApiViewBase` e accende su ogni porta la PARTENZA della lista
+#    (ordinamento e misura); il CANCELLO lo accende solo su `DomainAPIView`.
+#    Una `AdminAPIView` che dichiara la lista resta quindi ESENTE: la scansione
+#    tiene da parte le classi che discendono da `AdminAPIView` (per nome delle
+#    basi, in chiusura transitiva su tutto `apps/`), e il primo dei due
+#    risultati conta solo i cancelli veri. Il terzo, tutte le dichiarazioni,
+#    serve all'accoppiamento lista/export, che vale per la partenza come per
+#    il cancello.
 @lru_cache(maxsize=1)
-def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
-    cancelli: dict[str, list[str]] = {}
+def _scansione() -> tuple[
+    dict[str, tuple[str, ...]], frozenset[str], frozenset[str],
+]:
+    dichiarazioni: dict[str, list[str]] = {}
     classi: set[str] = set()
+    basi: dict[str, set[str]] = {}
     for percorso in _APPS.rglob("*.py"):
         if "/tests/" in str(percorso):
             continue
@@ -238,6 +261,11 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
             if not isinstance(nodo, ast.ClassDef):
                 continue
             classi.add(nodo.name)
+            basi.setdefault(nodo.name, set()).update(
+                b.id if isinstance(b, ast.Name) else b.attr
+                for b in nodo.bases
+                if isinstance(b, (ast.Name, ast.Attribute))
+            )
             for stmt in nodo.body:
                 if (
                     isinstance(stmt, ast.Assign)
@@ -255,8 +283,22 @@ def _scansione() -> tuple[dict[str, tuple[str, ...]], frozenset[str]]:
                         except ValueError:  # pragma: no cover - valore dinamico
                             continue
                     if isinstance(codice, str):
-                        cancelli.setdefault(codice, []).append(nodo.name)
-    return ({k: tuple(v) for k, v in cancelli.items()}, frozenset(classi))
+                        dichiarazioni.setdefault(codice, []).append(nodo.name)
+    admin = {"AdminAPIView"}
+    while True:
+        nuove = {c for c, b in basi.items() if b & admin} - admin
+        if not nuove:
+            break
+        admin |= nuove
+    cancelli = {
+        codice: tuple(c for c in nomi if c not in admin)
+        for codice, nomi in dichiarazioni.items()
+    }
+    return (
+        {k: v for k, v in cancelli.items() if v},
+        frozenset(classi),
+        frozenset(c for nomi in dichiarazioni.values() for c in nomi),
+    )
 
 
 # Scopo: `lista_codice` dichiarati nelle view, per codice -> nomi delle classi.
@@ -310,7 +352,11 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
         dove si mettono le cose per farle passare.
         """
         coperte = set(_cancelli_dichiarati())
-        superate = sorted(set(_ESENZIONI) & coperte)
+        # ⚠️ Un'esenzione «globale» (`_RAGIONI_SENZA_PERIMETRO`) resta vera
+        #    anche con una `DomainAPIView` che dichiara la lista per la
+        #    partenza: su `perimetro_emittente = false` il cancello non chiede
+        #    niente, e il test 5 vuole la ragione nel registro.
+        superate = sorted((set(_ESENZIONI) & coperte) - _esenzioni_senza_perimetro())
         self.assertEqual(
             superate, [],
             "liste esentate che ORA hanno il cancello: togliere la riga da "
@@ -349,8 +395,9 @@ class PerimetroEmittenteCoperturaTests(unittest.TestCase):
         della classe — l'unica cosa che lega staticamente una lista al suo
         export.
         """
-        cancelli, tutte_le_classi = _scansione()
-        con_cancello = {c for classi in cancelli.values() for c in classi}
+        # Tutte le dichiarazioni, admin comprese: lista ed export hanno la
+        # stessa partenza come lo stesso cancello.
+        _cancelli, tutte_le_classi, con_cancello = _scansione()
 
         # Coppie (lista, export) presenti nel codice, comunque dichiarate.
         # ⚠️ L'accoppiamento va fatto sulla RADICE del nome, non per prefisso:

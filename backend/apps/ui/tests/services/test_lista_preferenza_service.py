@@ -8,7 +8,7 @@
 #
 # Indice test (0..N):
 #   0. upsert_happy_path
-#   1. upsert_lista_inesistente_raises
+#   1. (ritirato: la lista inesistente la rifiuta il DB, test_lista_da_codice_db)
 #   2. upsert_pagina_dimensione_la_decide_il_db
 #   3. upsert_una_chiave_sola_arriva_da_sola
 #   4. upsert_senza_chiavi_raises
@@ -16,10 +16,10 @@
 #   6. upsert_payload_non_dict_raises
 #   7. upsert_snapshot_preset_none_quando_nessun_preset
 #   8. delete_happy_path
-#   9. delete_lista_inesistente_raises
+#   9. (ritirato, come l'1)
 #  10. delete_idempotente_se_pref_assente
 #  11. ignore_preset_update_happy_path (DEF-2)
-#  12. ignore_preset_update_lista_inesistente_raises (DEF-2)
+#  12. (ritirato, come l'1)
 #  13. ignore_preset_update_senza_preferenza_raises (DEF-2)
 #  14. ignore_preset_update_pref_senza_preset_base_id (DEF-2 — edge)
 # ------------------------------------------------------------
@@ -33,7 +33,6 @@ from django.test import SimpleTestCase
 
 from apps.core.services.service_errors import ServiceError
 from apps.ui.services.lista_preferenza_service import (
-    E_UI_LISTA_NON_TROVATA,
     E_UI_PREFERENZA_NON_TROVATA,
     E_UI_PREFERENZA_VALIDAZIONE,
     ListaPreferenzaService,
@@ -105,21 +104,6 @@ class ListaPreferenzaUpsertTests(SimpleTestCase):
         cfg = kwargs["configurazione"]
         self.assertEqual(cfg["pagina_dimensione"], 50)
         self.assertEqual(len(cfg["colonne"]), 2)
-
-    @patch(
-        "apps.ui.services.lista_preferenza_service.PermissionResolver"
-        ".get_emittente_for_user",
-        return_value=11,
-    )
-    def test_upsert_lista_inesistente_raises(self, _mock_em) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "non.esiste", dict(_VALID_PAYLOAD))
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.upsert_preferenza.assert_not_called()
 
     @patch(
         "apps.ui.services.lista_preferenza_service.PermissionResolver"
@@ -253,16 +237,6 @@ class ListaPreferenzaDeleteTests(SimpleTestCase):
             auth_user_id=42, lista_id=1,
         )
 
-    def test_delete_lista_inesistente_raises(self) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.delete(_make_user(), "non.esiste")
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.delete_preferenza.assert_not_called()
-
     def test_delete_idempotente_se_pref_assente(self) -> None:
         repo = MagicMock()
         repo.get_lista_id.return_value = 1
@@ -290,16 +264,6 @@ class ListaPreferenzaIgnorePresetUpdateTests(SimpleTestCase):
         repo.riallinea_snapshot_base.assert_called_once_with(
             auth_user_id=42, lista_id=1,
         )
-
-    def test_ignore_preset_update_lista_inesistente_raises(self) -> None:
-        repo = MagicMock()
-        repo.get_lista_id.return_value = None
-        svc = ListaPreferenzaService(repository=repo)
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.ignore_preset_update(_make_user(), "non.esiste")
-        self.assertEqual(ctx.exception.code, E_UI_LISTA_NON_TROVATA)
-        repo.riallinea_snapshot_base.assert_not_called()
 
     def test_ignore_preset_update_senza_preferenza_raises(self) -> None:
         repo = MagicMock()

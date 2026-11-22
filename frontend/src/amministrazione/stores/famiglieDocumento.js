@@ -32,7 +32,10 @@ export const useFamiglieDocumentoStore = createListaStore('amm-famiglie-document
   fetchPage: listFamiglie,
   // Parte piena: e' un catalogo, non una ricerca.
   startsEmpty: false,
-  orderBy: 'codice_interno',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   filterDefaults: {
     // ⛔ `null` = TUTTE, spente comprese, ed e' il default voluto: una famiglia
     //    spenta e' la riga che spiega perche' una tabella non e' disponibile.

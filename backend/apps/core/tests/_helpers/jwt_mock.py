@@ -26,6 +26,8 @@ from uuid import uuid4
 
 from django.test import Client, SimpleTestCase
 
+from apps.core.api.constants import DEFAULT_LIMIT
+
 
 class ClientApi(Client):
     """Il client di test che si comporta come il frontend: ogni POST porta
@@ -167,6 +169,16 @@ class JwtMockedApiTest(SimpleTestCase):
         )
         self.mock_ordinamento_risolto = ordinamento_patcher.start()
         self.addCleanup(ordinamento_patcher.stop)
+        # La misura di partenza (BE10, stesso brief): stessa ragione, si mocka
+        # la LETTURA (`misura_risolta`). Lo scenario neutro e' la misura
+        # standard di una lista (`DEFAULT_LIMIT`, 25). Il BB attivo ha i suoi
+        # test in `apps/core/tests/api/test_misura_di_partenza.py`.
+        misura_patcher = patch(
+            "apps.core.services.ordinamento_di_partenza.misura_risolta",
+            return_value=DEFAULT_LIMIT,
+        )
+        self.mock_misura_risolta = misura_patcher.start()
+        self.addCleanup(misura_patcher.stop)
 
         scope_patcher = patch(
             "apps.core.services.perimetro_emittente.PermissionResolver"

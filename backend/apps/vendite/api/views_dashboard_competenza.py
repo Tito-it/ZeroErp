@@ -26,7 +26,7 @@ from rest_framework.request import Request
 
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.openapi_params import parametri_finestra, param_ricerca_full
+from apps.core.api.openapi_params import parametri_finestra, param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     pagina_da_query,
     qp_bool_optional,
@@ -240,24 +240,7 @@ class ApiDashboardCompetenzaCommesse(DomainAPIView):
                 required=False,
                 description="Se true, solo attivita' emesse in ritardo (recuperi tardivi).",
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (whitelist): commessa_codice | "
-                    "cliente_display | n_attivita | valore_tot (default) | "
-                    "data_attivita_max. Colonna non ammessa -> 400."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
-            ),
+            *parametri_ordinamento("commessa_codice | cliente_display | n_attivita | valore_tot | data_attivita_max.", senza="valore_tot", nota="Colonna o verso non ammessi -> 400."),
             *parametri_finestra(),
         ],
         responses={
@@ -383,26 +366,7 @@ class ApiDashboardCompetenzaResidui(DomainAPIView):
                 required=True,
                 description="Mese di competenza ISO (YYYY-MM-DD, normalizzato al 1° del mese).",
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (whitelist): commessa_codice | "
-                    "cliente_display | articolo_codice | articolo_descrizione | "
-                    "competenza_mese (default, asc) | data_attivita | valore | "
-                    "lotto_provenienza_codice | motivo_non_fatturata | "
-                    "emittente_ragione_sociale. Colonna non ammessa -> 400."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
-            ),
+            *parametri_ordinamento("commessa_codice | cliente_display | articolo_codice | articolo_descrizione | competenza_mese | data_attivita | valore | lotto_provenienza_codice | motivo_non_fatturata | emittente_ragione_sociale.", senza="competenza_mese ASC", nota="Colonna o verso non ammessi -> 400."),
             *parametri_finestra(),
         ],
         responses={
@@ -675,28 +639,7 @@ class ApiDashboardCompetenzaGruppi(DomainAPIView):
                 ),
             ),
             param_ricerca_full(),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento, da WHITELIST "
-                    "(`VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS`); "
-                    "la chiave e' il `campo_sorgente` del catalogo liste, non "
-                    "il `codice` logico. Default: `valore` discendente. Colonna "
-                    "non ammessa -> 400. "
-                    "⚠️ L'elenco NON e' ricopiato qui di proposito: la copia "
-                    "precedente si era fermata a nove voci su undici."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Direzione ordinamento: asc | desc. Valore diverso -> 400.",
-            ),
+            *parametri_ordinamento("Da WHITELIST (`VenditeRepository.DASH_COMPETENZA_GRUPPI_SORT_COLUMNS`): la chiave e' il `campo_sorgente` del catalogo liste, non il `codice` logico. ⚠️ L'elenco NON e' ricopiato qui di proposito: la copia precedente si era fermata a nove voci su undici.", senza="valore DESC", nota="Colonna o verso non ammessi -> 400."),
             *parametri_finestra(),
         ],
         responses={
@@ -767,24 +710,7 @@ class ApiDashboardCompetenzaErrori(DomainAPIView):
                     "assente = errori vivi di tutti i mesi."
                 ),
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (tipo_evento, lotto_codice, "
-                    "fattura_numero, error_code, data_evento). Assente = "
-                    "eventi recenti prima."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Direzione ordinamento: asc | desc.",
-            ),
+            *parametri_ordinamento("tipo_evento | lotto_codice | fattura_numero | error_code | data_evento.", senza="gli eventi recenti prima"),
             *parametri_finestra(),
         ],
         responses={
@@ -883,8 +809,7 @@ class ApiDashboardCompetenzaGruppiExport(DomainAPIView):
             OpenApiParameter(name="registro_id", type=int, required=False),
             OpenApiParameter(name="registro_non_risolvibile", type=bool, required=False),
             param_ricerca_full(),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )
@@ -935,8 +860,7 @@ class ApiDashboardCompetenzaCommesseExport(DomainAPIView):
             OpenApiParameter(name="competenza_mese", type=str, required=True),
             OpenApiParameter(name="stadio", type=str, required=False),
             OpenApiParameter(name="solo_ritardo", type=bool, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )
@@ -988,8 +912,7 @@ class ApiDashboardCompetenzaResiduiExport(DomainAPIView):
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
             OpenApiParameter(name="competenza_mese", type=str, required=True),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )
@@ -1031,8 +954,7 @@ class ApiDashboardCompetenzaErroriExport(DomainAPIView):
             OpenApiParameter(name="formato", type=str, required=False,
                              description="csv (default) | xlsx"),
             OpenApiParameter(name="competenza_mese", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )

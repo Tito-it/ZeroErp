@@ -19,7 +19,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_int_optional
 from apps.core.api.success_responses import success_response
 from apps.pratiche.services import definizioni_service
@@ -45,8 +45,7 @@ class ApiDefinizioniWorkflow(AdminAPIView):
                              description="Filtra per emittente; assente = tutte, preset inclusi."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="PraticheDefinizioniListResp",

@@ -15,7 +15,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
@@ -55,8 +55,7 @@ class SoggettiView(DomainAPIView):
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(name="SoggettiListResp", fields={"data": serializers.DictField()})},
     )
@@ -612,8 +611,7 @@ class SoggettiExportView(DomainAPIView):
                              description="csv (default) | xlsx"),
             param_ricerca_full(),
             OpenApiParameter(name="tipo_soggetto_dettaglio_id", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,

@@ -31,8 +31,9 @@ export const useContrattiClienteStore = storePerIstanza('vendite-contratti-clien
     // Il cliente e' gia' scelto quando il drawer si apre.
     startsEmpty: false,
     filterDefaults: { stato_doc_contratto_id: null },
-    // Il piu' recente in cima, come nella lista contratti.
-    orderBy: 'valido_dal',
-    orderDir: 'desc',
+    // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+    //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+    //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+    //    l'intestazione.
   },
 ))

@@ -81,7 +81,9 @@ export const useRateStore = createListaStore('pagamenti-rate', {
   },
   gateKeys: ['billing_account_id', 'fattura_numero'],
   startsEmpty: true,
-  orderBy: 'data_scadenza',
-  orderDir: 'asc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   misura: USO_MISURA.COMPATTA,
 })

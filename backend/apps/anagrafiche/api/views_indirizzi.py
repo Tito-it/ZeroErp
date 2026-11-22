@@ -17,7 +17,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import corpo_oggetto, optional_int, paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.geo_service import GeoService
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 
 class IndirizziView(DomainAPIView):
@@ -32,8 +32,7 @@ class IndirizziView(DomainAPIView):
             OpenApiParameter(name="comune_id", type=int, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(name="IndirizziListResp", fields={"data": serializers.DictField()})},
     )

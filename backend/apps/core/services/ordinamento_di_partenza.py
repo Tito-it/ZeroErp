@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: L'ORDINAMENTO DI PARTENZA di una lista configurabile, applicato dal
+# Scopo: LA PARTENZA di una lista configurabile — l'ordinamento e la misura —
+#        applicata dal backend in un punto solo. La misura (BE10, 2026-11-22)
+#        e' in fondo al file; qui sotto l'ordinamento.
+#        L'ORDINAMENTO DI PARTENZA di una lista configurabile, applicato dal
 #        backend in un punto solo (BE25 (2) di brief-db-revisione-ui, Q37 (a)
 #        di Tid del 2026-11-20; la sede centrale approvata da Tid il
 #        2026-11-22). Una GET di una lista che dichiara `lista_codice` e non
@@ -48,9 +51,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from apps.core.db.lista_catalogo_repository import fetch_ordinamento_lista
+from apps.core.db.lista_catalogo_repository import fetch_misura_lista, fetch_ordinamento_lista
 from apps.core.services.permissions_resolver import PermissionResolver
-from apps.core.services.request_context import proponi_ordinamento
+from apps.core.services.request_context import imposta_misura_di_partenza, proponi_ordinamento
 
 logger = logging.getLogger(__name__)
 
@@ -58,18 +61,25 @@ logger = logging.getLogger(__name__)
 _METODI_DI_LETTURA = frozenset({"GET", "HEAD"})
 
 
+# Scopo: per CHI si risolve la partenza della lista: l'utente e l'emittente
+#        della risoluzione della configurazione
+#        (`PermissionResolver.get_emittente_for_user`, lo stesso di
+#        `UiService.get_lista_config`: ordine e misura sono quelli che l'utente
+#        vede). Regola del 2 (ok Tid, 2026-11-22): la leggono l'ordinamento e
+#        la misura.
+def _per_chi(user: Any) -> dict[str, Any]:
+    return {
+        "auth_user_id": user.id,
+        "emittente_fiscale_id": PermissionResolver.get_emittente_for_user(user),
+    }
+
+
 # Scopo: la LETTURA dei fatti, in una funzione sola: l'ordinamento risolto
-#        della lista per l'utente, con l'emittente della risoluzione della
-#        configurazione (`PermissionResolver.get_emittente_for_user`, lo stesso
-#        di `UiService.get_lista_config`: l'ordine e' quello che l'utente vede).
+#        della lista per l'utente.
 # ⭐ E' il punto che i test API senza DB mockano (`JwtMockedApiTest`), come lo
 #    scope del cancello di perimetro: si spegne la lettura, non il BB.
 def ordinamento_risolto(lista_codice: str, *, user: Any) -> list[dict[str, str]]:
-    return fetch_ordinamento_lista(
-        lista_codice,
-        auth_user_id=user.id,
-        emittente_fiscale_id=PermissionResolver.get_emittente_for_user(user),
-    )
+    return fetch_ordinamento_lista(lista_codice, **_per_chi(user))
 
 
 # Scopo: applica alla richiesta l'ordinamento di partenza della lista, se la
@@ -134,3 +144,35 @@ def ritira_ordinamento_di_partenza(request: Any, *, lista_codice: str) -> None:
         django_request.GET = originale
         del django_request._query_senza_ordinamento_di_partenza
     proponi_ordinamento(None)
+
+
+# Scopo: la LETTURA della misura di partenza: quante righe per pagina mostra
+#        la lista all'utente (`ui.fn_misura_lista`, la regola della
+#        configurazione della lista).
+# ⭐ Come `ordinamento_risolto`, e' il punto che `JwtMockedApiTest` mocka.
+def misura_risolta(lista_codice: str, *, user: Any) -> int:
+    return fetch_misura_lista(lista_codice, **_per_chi(user))
+
+
+# Scopo: LA MISURA DI PARTENZA di una lista configurabile (BE10 di
+#        brief-db-revisione-ui, Q11-bis; sede decisa da Tid il 2026-11-22):
+#        una GET che non porta `limit` riceve le righe per pagina della
+#        configurazione della lista, non la costante `DEFAULT_LIMIT`, che resta
+#        la regola dell'API per gli endpoint fuori catalogo.
+# Note: ⭐ NON si scrive nella query, a differenza dell'ordinamento. `limit` ha
+#       un lettore solo, `pagina_da_query`, e lui deve sapere da dove viene il
+#       numero: un `limit` del client oltre il tetto della view e' un 400, la
+#       misura oltre il tetto e' un difetto del catalogo, e si riporta al tetto
+#       con un warning (Tid, 2026-11-22). Qui si registra la LETTURA, non il
+#       numero: la paga solo la richiesta che pagina davvero.
+#       ⚠️ Il `default_limit` di una view con `lista_codice` non vale piu':
+#       vince la misura della lista (Tid, 2026-11-22). Il tetto (`max_limit`)
+#       resta della view.
+# Perimetro: solo GET/HEAD di un utente autenticato, senza `limit` in query.
+def applica_misura_di_partenza(request: Any, *, lista_codice: str) -> None:
+    if request.method not in _METODI_DI_LETTURA:
+        return
+    if request._request.GET.get("limit") is not None:
+        return
+    user = request.user
+    imposta_misura_di_partenza(lambda: misura_risolta(lista_codice, user=user))

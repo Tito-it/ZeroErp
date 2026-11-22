@@ -40,7 +40,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.famiglie_service import FamiglieDocumentoService
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 # Il codice della lista a catalogo. ⚠️ Vive in una costante perche' lo leggono
 # in tre: la lista, l'export e — indirettamente — il presidio di copertura.
@@ -65,11 +65,7 @@ _PARAMETRI_FILTRO = [
         description="Derivato da `colonna_serie IS NOT NULL`, non una colonna.",
     ),
     param_ricerca_full(),
-    OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY,
-                     required=False,
-                     description="Whitelist; fuori whitelist → ordine di default."),
-    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                     required=False, description="asc (default) | desc"),
+    *parametri_ordinamento(verso="asc"),
 ]
 
 
@@ -85,6 +81,8 @@ def _filtri(request: Request) -> dict:
 
 class ApiFamiglieList(AdminAPIView):
     """GET/POST /api/v1/vendite/famiglie/ — lista e creazione."""
+
+    lista_codice = _LISTA_CODICE
 
     is_search_endpoint = True
 
@@ -168,6 +166,8 @@ class ApiFamiglieExport(AdminAPIView):
     ⚠️ Il parametro e' `formato`, non `format`: `format` e' un magic query
     parameter di DRF e intercetterebbe la chiamata prima della view.
     """
+
+    lista_codice = _LISTA_CODICE
 
     is_search_endpoint = True
 

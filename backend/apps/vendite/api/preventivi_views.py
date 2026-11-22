@@ -38,7 +38,7 @@ from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import preventivi_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.preventivi_repository import TESTATA_PREVENTIVI, PreventiviRepository
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 from apps.vendite.api._componenti_schema import (
@@ -134,10 +134,7 @@ class ApiPreventiviList(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente colonna (default 'data')"),
-            OpenApiParameter(name="order_dir", type=str, required=False,
-                             description="asc | desc (default desc)"),
+            *parametri_ordinamento(senza="data", verso="desc"),
         ],
         responses={200: inline_serializer(
             name="PreventiviListResponse",
@@ -225,8 +222,7 @@ class ApiPreventiviExportView(DomainAPIView):
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_al", type=str, required=False),
             OpenApiParameter(name="solo_ultima_revisione", type=bool, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -665,10 +661,7 @@ class ApiPreventivoRevisioniList(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="rev (default) | data | totale_documento"),
-            OpenApiParameter(name="order_dir", type=str, required=False,
-                             description="asc | desc (assente: asc; desc sulle date)"),
+            *parametri_ordinamento("rev | data | totale_documento.", senza="rev", verso="asc; desc sulle date"),
         ],
         responses={200: inline_serializer(
             name="PreventivoRevisioniListResponse",

@@ -23,9 +23,11 @@ export const useEmailLogsStore = createListaStore('amm-email-logs', {
     data_da: defaultFiltroDataDaString(),
     data_a: null,
   },
-  // Il piu' recente in cima; il ripiego del verso segue, e' un registro.
-  orderBy: 'data_insert',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
+  // Il ripiego del verso, quando `order_by` arriva senza verso.
   orderDirDefault: 'desc',
   extend: () => {
     const currentLog = ref(null)

@@ -34,8 +34,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'catalogo.nuova_uom',
   onNew: () => emit('new'),
-  // Allineato al preset default del seed (`codice asc`) e al filtro dello
-  // store: la lista parte ordinata per codice.
 })
 
 // ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`

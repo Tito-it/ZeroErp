@@ -30,11 +30,10 @@ export const useEmittentiFiscaliStore = createCrudStore('amm-emittenti-fiscali',
     update: updateEmittenteFiscale,
   },
   tabEntity: TAB_ENTITIES.EMITTENTE_FISCALE,
-  // Allineato all'`ordinamento_default` del preset `emittenti_fiscali_default`
-  // (seed lista 18): era `descrizione`, colonna droppata il 2026-08-02.
-  // Lo store e' la verita' sull'ordine iniziale — il `defaultSortField` del
-  // componente e' dormiente quando lo store preimposta `order_by`.
-  orderBy: 'ragione_sociale_completa',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   startsEmpty: false,
   filterDefaults: { attivo: null },
   // Sotto-risorsa utilities caricata on demand dal tab e tenuta qui (il tab

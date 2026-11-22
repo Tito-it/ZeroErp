@@ -363,11 +363,40 @@ def soglia_ricerca(lista_codice: str) -> int:
 # ⭐ Regola del 2 (2026-09-24, brief-be-ricerca-full-liste-residue §12): la
 #    leggevano `pagamenti_repository.emittente_nel_perimetro` e la guardia di
 #    contesto di `ui_service.get_lista_config_per_video`.
-def utente_di_sessione() -> int | None:
+# ⭐ Un valore che non e' un id utente (non solo cifre, o oltre l'`integer` di
+#    `auth_user.id`) e' una chiamata fuori contesto, non un 22P02 del cast:
+#    `codice_errore` (TECNICO, frase chiusa) del dominio che chiede. E' il
+#    contratto di `ui.fn_lista_colonne_ricerca_full` sulla stessa GUC (U38 e
+#    BE31 di brief-db-revisione-ui, 2026-11-22): il cast si fa solo su un
+#    valore gia' riconosciuto, quindi il 22P02 non puo' nascere qui.
+# ⚠️ `codice_errore` e `function_name` sono obbligatori: il codice e' del
+#    dominio del chiamante (`E_UI_…`, `E_PAGAMENTI_…`), non di `core`.
+def utente_di_sessione(*, codice_errore: str, function_name: str) -> int | None:
     with connection.cursor() as cursor:
-        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')::int")
+        cursor.execute("SELECT NULLIF(current_setting('app.current_user_id', true), '')")
         row = cursor.fetchone()
-    return int(row[0]) if row and row[0] is not None else None
+    valore = row[0] if row else None
+    if valore is None:
+        return None
+    ErrorManager.require(
+        _ID_UTENTE_DI_SESSIONE.fullmatch(valore) is not None
+        and int(valore) <= _ID_UTENTE_MASSIMO,
+        code=codice_errore,
+        message=(
+            "Chiamata non valida: il contesto della richiesta non e' quello "
+            "di un utente."
+        ),
+        context={"app_current_user_id": valore},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    return int(valore)
+
+
+# Le cifre di un id di `auth_user` (colonna `integer`): la stessa forma che
+# `ui.fn_lista_colonne_ricerca_full` riconosce prima del cast.
+_ID_UTENTE_DI_SESSIONE = re.compile(r"[0-9]{1,10}")
+_ID_UTENTE_MASSIMO = 2_147_483_647
 
 
 # Scopo: le colonne in cui si cerca ADESSO in una lista: quelle che la

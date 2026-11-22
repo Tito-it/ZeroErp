@@ -79,10 +79,12 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
     search: '',
     limit: misuraDefault(USO_MISURA.PAGINA),
     offset: 0,
-    // Default allineato all'ordine storico del BE (`fl.data_insert DESC`): la
-    // lista si apre come si e' sempre aperta, il giro piu' recente in cima.
-    order_by: 'data_insert',
-    order_dir: 'desc',
+    // ⭐ Nessun ordinamento di partenza (BE29 di brief-db-revisione-ui): il
+    //    giro piu' recente in cima lo dichiara il preset della lista
+    //    (`data_insert desc`), il backend lo applica e lo dice in
+    //    `meta.ordinamento`.
+    order_by: null,
+    order_dir: null,
   })
 
   // Ripartizione per stato del perimetro corrente — `[{stato_lotto, n_lotti}]`
@@ -127,8 +129,8 @@ export const useLottiStore = defineStore('vendite-lotti', () => {
       // 2026-08-28 come `paramsFinestra` alla terza sede: questa era la prima).
       // ⛔ `orderDirDefault: 'asc'` NON e' una svista da uniformare: e' il
       //    ripiego che questo store aveva, diverso da quello degli altri due
-      //    consumatori (`desc`). Oggi non scatta — `order_dir` e' sempre
-      //    valorizzato nei filtri — ma appianarlo avrebbe cambiato il verso di
+      //    consumatori (`desc`). Oggi non scatta — `order_by` e `order_dir`
+      //    arrivano insieme (`useSearchTable.onSort`), o nessuno dei due — ma appianarlo avrebbe cambiato il verso di
       //    questa lista in silenzio il giorno in cui quel ramo si accendesse.
       return { ...paramsFinestra(f, { orderDirDefault: 'asc' }), ...paramsPerimetro(f) }
     },

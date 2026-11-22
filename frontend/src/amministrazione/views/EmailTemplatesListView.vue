@@ -28,9 +28,7 @@ const drawer = useDrawerState()
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'codice' },
-})
+} = useListaConfigurabilePage(store)
 
 useTabFreshness(store, TAB_ENTITIES.EMAIL_TEMPLATES)
 

@@ -85,7 +85,6 @@ const {
   newTooltipKey: `${f.i18n}.nuovo`,
   newLabelKey: `${f.i18n}.nuovo`,
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri ---

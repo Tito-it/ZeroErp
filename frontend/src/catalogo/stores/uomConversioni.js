@@ -27,9 +27,9 @@ export const useUomConversioniStore = storePerIstanza('catalogo-uom-conversioni'
     fetchPage: (uomId, params) => listConversioniUom({ ...params, uom_id: uomId }),
     parentField: 'uomId',
     startsEmpty: false,
-    // Regola di dominio sulle liste con date di validita': `valido_al` DESC,
-    // come la lista Conversioni (vedi `conversioniUom.js`).
-    orderBy: 'valido_al',
-    orderDir: 'desc',
+    // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+    //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+    //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+    //    l'intestazione.
   },
 ))

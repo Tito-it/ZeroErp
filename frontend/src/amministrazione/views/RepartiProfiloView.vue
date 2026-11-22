@@ -37,10 +37,7 @@ const { onDataChanged } = useTabEvents()
 const {
   searchText, paginatorProps, onPage, onSort, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
-  // Allineato al preset `reparti_default` (`descrizione asc`).
-  searchTableOptions: { defaultSortField: 'descrizione' },
-})
+} = useListaConfigurabilePage(store)
 
 const editorVisible = ref(false)
 const selectedUoId = ref(null)

@@ -46,7 +46,7 @@ from apps.vendite.services.vendite_service import (
     get_fattura_giornale,
     list_fatture_rows,
 )
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.services import vendite_service
@@ -228,9 +228,7 @@ _PARAMETRI_LISTA_FATTURE = [
     OpenApiParameter(name="data_a", type=str, required=False),
     OpenApiParameter(name="limit", type=int, required=False),
     OpenApiParameter(name="offset", type=int, required=False),
-    OpenApiParameter(name="order_by", type=str, required=False,
-                     description="`campo_sorgente` del catalogo `vendite.fatture`."),
-    OpenApiParameter(name="order_dir", type=str, required=False),
+    *parametri_ordinamento(),
 ]
 
 

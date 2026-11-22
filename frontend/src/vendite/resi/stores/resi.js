@@ -54,11 +54,10 @@ export const useResiStore = defineStore('vendite-resi', () => {
       data_a: null,
     },
     gateKeys: ['stato_codice_interno', 'billing_account_id', 'data_da', 'data_a'],
-    // Default `data desc`: resi con data piu' recente in cima (allineato al
-    // default backend e al defaultSortField della ResiSearchTable). Il ripiego
-    // del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
+    // ⭐ Nessun ordinamento di partenza qui (BE29 di brief-db-revisione-ui):
+    //    lo dichiara il preset della lista, il backend lo applica e lo dice in
+    //    `meta.ordinamento`, da cui la tabella accende l'intestazione.
+    // Il ripiego del verso, quando `order_by` arriva senza verso.
     orderDirDefault: 'desc',
   })
 

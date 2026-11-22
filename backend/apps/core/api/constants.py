@@ -19,15 +19,16 @@
 #    di brief-db-revisione-ui): quella la dice il DB, dalla configurazione
 #    risolta (`pagina_dimensione`, lo standard dal catalogo `ui.misure_pagina`
 #    secondo l'uso che la lista dichiara), e il frontend la manda come `limit`.
-# ⚠️ Una lista configurabile chiamata SENZA `limit` riceve ancora questa
-#    misura. Il ripiego sulla misura risolta puo' stare nella stessa sede
-#    dell'ordinamento di partenza (`apps.core.services.ordinamento_di_partenza`,
-#    BE25 (2) dello stesso brief), ma chiede al DB una lettura della sola
-#    misura che oggi non c'e': residuo di BE10.
+#    Chiamata SENZA `limit`, una lista configurabile pagina con la misura
+#    della sua configurazione (`ui.fn_misura_lista`), registrata dalla base
+#    view nella stessa sede dell'ordinamento di partenza
+#    (`apps.core.services.ordinamento_di_partenza`) e letta da
+#    `pagina_da_query`: BE10, giro 6 dello stesso brief (2026-11-22).
 DEFAULT_LIMIT = 25
 
-# Righe per pagina di una lista di EVENTI (il giornale di una pratica, il
-# registro di una commessa, i task run di un lotto): un registro si legge a
+# Righe per pagina di una lista di EVENTI fuori catalogo (il giornale di una
+# pratica, il registro di una commessa; i task run di un lotto, lista
+# configurabile, prendono la misura della loro configurazione): si legge a
 # blocchi piu' lunghi di una lista anagrafica. Una costante e non un `100`
 # scritto nella view e ripetuto nelle firme di service e repository (§9.6
 # punto 3 del brief-db-liste-righe-documento, Tid 2026-10-04: «riportare le

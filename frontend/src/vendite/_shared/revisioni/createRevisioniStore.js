@@ -31,18 +31,17 @@ import { createListaStore } from '../../../core/stores/createListaStore'
 //   - storeId: id Pinia dello store (uno per documento).
 //   - fetchRevisioni: `(documentoId, params) => Promise<response axios>` con
 //       l'envelope paginato standard.
-//   - orderBy: il `campo_sorgente` dell'ordinamento di partenza — la colonna
-//       `rev` del catalogo, che sul preventivo legge `rev` e sull'offerta
-//       `revisione_numero`. ASC: la catena si legge dalla prima revisione.
-export function createRevisioniStore(storeId, { fetchRevisioni, orderBy }) {
+// ⭐ L'ordinamento di partenza (la colonna `rev`, ASC: la catena si legge dalla
+//    prima revisione) lo dichiara il preset di ciascuna lista, il backend lo
+//    applica e lo dice in `meta.ordinamento` (residuo di BE25 (2) di
+//    brief-db-revisione-ui): fino al 2026-11-22 lo store lo riceveva qui.
+export function createRevisioniStore(storeId, { fetchRevisioni }) {
   return createListaStore(storeId, {
     fetchPage: fetchRevisioni,
     parentField: 'documentoId',
     emittenteParam: 'emittente_fiscale_id',
     // Dentro un drawer la lista parte piena: il padre c'e' gia'.
     startsEmpty: false,
-    orderBy,
-    orderDir: 'asc',
     // Scopo: rileggere la catena dopo un'azione di stato sul documento
     //        (emissione, esito, annullo, nuova revisione) — che cambia lo
     //        stato di una riga della catena senza cambiare il padre.
