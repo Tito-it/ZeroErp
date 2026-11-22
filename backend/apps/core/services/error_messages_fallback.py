@@ -335,7 +335,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATA_ERRATA": "Data errata o mancante.",
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "La data finale deve essere successiva alla data iniziale.",
     "E_DATE_VALIDITA": "Automazione del guard sulle date di validita' fallita: il trigger non e' stato montato. Non dipende dai dati: segnalalo a chi mantiene il database.",
-    "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti e soggetti di prova) non si creano in un'installazione di produzione.",
+    "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "I dati di sviluppo (utenti, soggetti e regimi fiscali di prova) non si creano in un'installazione di produzione.",
     "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "Hai scelto di inviare la fattura elettronica con il codice SDI, ma il codice manca.",
     "E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO": "Il codice destinatario SDI non e' valido: 7 caratteri, lettere maiuscole e cifre (6 per una pubblica amministrazione).",
     "E_DATI_SOCIETARI_NON_ELIMINABILI": "Il tipo soggetto richiede i dati societari: non si possono eliminare.",
