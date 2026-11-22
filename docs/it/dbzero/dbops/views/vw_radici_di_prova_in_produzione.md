@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> PRESIDIO: le radici di prova (le righe di dbops.credenziali_di_prova e dbops.soggetti_di_prova) in un database dichiarato PRODUZIONE. DEVE restare vuota: il guard dbops.trgfn_etichette_di_prova_guard impedisce che un'etichetta nasca in PRODUZIONE e l'ambiente non cambia; questa e' l'ultima rete per cio' che i guard non vedono (un dump di sviluppo ripristinato su un server di produzione con l'ambiente riscritto a mano, un trigger disattivato). Legge script.fn_ambiente_dichiarato(), che non solleva: su un'installazione non dichiarata e' vuota. Legge solo dbops: in CI non e' rotta.
+> PRESIDIO: le radici di prova (le righe di dbops.credenziali_di_prova e dbops.soggetti_di_prova, e i regimi di config.regimi_fiscali col segno meta di_prova) in un database dichiarato PRODUZIONE. DEVE restare vuota: il guard dbops.trgfn_etichette_di_prova_guard impedisce che un'etichetta nasca in PRODUZIONE, dbops.fn_crea_regime_fiscale_di_prova in PRODUZIONE non si apre, e l'ambiente non cambia; questa e' l'ultima rete per cio' che i guard non vedono (un dump di sviluppo ripristinato su un server di produzione con l'ambiente riscritto a mano, un trigger disattivato). Legge script.fn_ambiente_dichiarato(), che non solleva: su un'installazione non dichiarata e' vuota. Legge dbops e config.regimi_fiscali, che nascono prima della vista: in CI non e' rotta.
 
 > 🔐 **Sicurezza**: definer (default delle viste) — le tabelle sotto si leggono con i privilegi dell'owner `zeroerp_owner`, e la RLS che vale e' la sua, non quella di chi interroga.
 
@@ -23,7 +23,14 @@ UNION ALL
     (s.soggetto_id)::text AS radice_id,
     s.data_insert
    FROM dbops.soggetti_di_prova s
-  WHERE (script.fn_ambiente_dichiarato() = 'PRODUZIONE'::text);
+  WHERE (script.fn_ambiente_dichiarato() = 'PRODUZIONE'::text)
+UNION ALL
+ SELECT 'REGIME'::text AS tipo,
+    (r.codice_interno)::text AS chiave,
+    (r.id)::text AS radice_id,
+    r.data_insert
+   FROM config.regimi_fiscali r
+  WHERE (((r.meta ->> 'di_prova'::text) = 'true'::text) AND (script.fn_ambiente_dichiarato() = 'PRODUZIONE'::text));
 ```
 
 </div>

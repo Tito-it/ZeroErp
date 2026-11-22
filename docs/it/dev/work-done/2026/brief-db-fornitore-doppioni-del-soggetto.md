@@ -5,7 +5,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, col commit del test e2e corretto e del ripiego (§7.5), nella stessa PR del giro DB perché la CI resti verde, e con la doc auto-generata del giro D-8/D-9 (ancora da rigenerare: c'è solo `manual/`). Poi **la sessione DB**: il messaggio a catalogo di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` (§7.5) e l'archiviazione. Lato BE/FE il brief è chiuso: la richiesta del §7.4 è fatta (2026-11-22, 8/8 verdi su dbdev). Il lavoro BE/FE dei giri precedenti è
+**Brief chiuso e archiviato (sessione DB, 2026-11-22, §7.6). Non riparte nessuno**: l'ultimo passo, la riga 1356
+di `messaggi_errore.csv` (5-novies), è applicato su dbdev (Tid, 2026-11-22) e committato con l'archiviazione. Il giro D-8/D-9 è committato (`e00a3c7279`, PR #188), il test e2e e il ripiego del BE pure
+(`e9d5cde2a8`, PR #189); la doc auto-generata del giro è rigenerata (§7.6). Il lavoro BE/FE dei giri precedenti è
 committato (`ae2336fcfd`, PR #187); il collaudo a video del drawer è fatto (Tid, 2026-11-22). La D-6 nella forma della D-7 «2» è applicata e pushata (`20261121-10` … `-15`,
 `790fc0432`, PR #185), e la sessione BE/FE l'ha provata sui due drawer. Il `/verifica-db` dei giri
 A e B è fatto (§7) e la doc auto-generata è rigenerata (`eaed059e6`).
@@ -28,10 +30,10 @@ BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 
 | 5-quinquies | ✅ Tid | D-8 «a»: `config.regimi_fiscali` in sola lettura per l'app (2026-11-22, §7.4) | 5-quater |
 | 5-sexies | ✅ sessione DB | Il giro D-8: `20261121-16`, loop dei grant, provisioning, pgTAP nuovo, pagina `manual/` (§7.4). Scritto e provato, non applicato, da committare | 5-quinquies |
 | 5-septies-bis | ✅ Tid e sessione DB | D-9 «a»: il builder dei regimi di prova, nel giro del `-16` (Tid, 2026-11-22). Scritto e provato: `20261121-17`, `-18` (§7.4) | 5-sexies |
-| 5-septies | ✅ team BE/FE | Il test e2e del regime spento costruisce i regimi col builder; il censimento di chi scrive la tabella (§7.4). Fatto il 2026-11-22: 8/8 verdi su dbdev con `ZEROERP_TEST_DB_E2E=1`, nessun regime di prova rimasto; censimento: l'unico scrittore era questo test. ⏳ commit di Tid, nella stessa PR del giro DB | 5-septies-bis |
-| 5-octies | Tid | ✅ Apply di `20261121-16` … `-18` su dbdev, pgTAP verdi (2026-11-22, prima del BE); ⏳ commit del giro DB; ⏳ doc auto-generata | 5-septies-bis |
-| 5-novies | ⏳ sessione DB | Il messaggio a catalogo di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` nomina anche i regimi fiscali di prova (§7.5). Il ripiego del BE è già allineato (2026-11-22) | 5-septies-bis |
-| 6 | team DB | Chiusura: archiviazione | 5-septies, 5-octies, 5-novies |
+| 5-septies | ✅ team BE/FE | Il test e2e del regime spento costruisce i regimi col builder; il censimento di chi scrive la tabella (§7.4). Fatto il 2026-11-22: 8/8 verdi su dbdev con `ZEROERP_TEST_DB_E2E=1`, nessun regime di prova rimasto; censimento: l'unico scrittore era questo test. ✅ commit di Tid (`e9d5cde2a8`, PR #189) | 5-septies-bis |
+| 5-octies | Tid | ✅ Apply di `20261121-16` … `-18` su dbdev, pgTAP verdi (2026-11-22, prima del BE); ✅ commit del giro DB (`e00a3c7279`, PR #188); ✅ doc auto-generata (sessione DB, 2026-11-22, §7.6) | 5-septies-bis |
+| 5-novies | ✅ sessione DB | Il messaggio a catalogo di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` nomina anche i regimi fiscali di prova (§7.5, §7.6). Scritto il 2026-11-22; ✅ applicato su dbdev (Tid, 2026-11-22); ✅ committato con l'archiviazione | 5-septies-bis |
+| 6 | ✅ sessione DB | Chiusura: archiviazione (2026-11-22, §7.6) | 5-septies, 5-octies, 5-novies |
 
 ## 1. Che cosa ha fatto il BE/FE (2026-11-21)
 
@@ -712,3 +714,21 @@ service, repository, drawer, `voceRegimeFiscale.js`) leggono e basta. Il lookup 
 
 Il ripiego del BE (`error_messages_fallback.py`) ha già il messaggio senza segnaposto, nella stessa forma. Nessun
 codice nuovo e nessuna policy da rigenerare.
+
+### 7.6 La chiusura (sessione DB, 2026-11-22)
+
+* **Il messaggio (passo 5-novies).** La riga `it` di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` in
+  `80_data/sql/config/messaggi_errore.csv` (id 1356) porta i due testi proposti nel §7.5, senza ritocchi: il messaggio
+  tiene il suo `%s`, che il VARIADIC riempie con l'ambiente. Il loader `20260614-08` è un `loadUpdateData` con
+  `runOnChange: true` sulla chiave `id`: niente changeSet nuovo. Applicato su dbdev da Tid il 2026-11-22. Nessun pgTAP,
+  test o guida citava il testo vecchio.
+* **La doc auto-generata** del giro D-8/D-9 è rigenerata da dbdev: nasce la pagina di
+  `dbops.fn_crea_regime_fiscale_di_prova`, si aggiornano `dbops.vw_radici_di_prova_in_produzione` e gli indici di
+  `config` e `dbops`. `check_i18n_keys.py` pulito.
+* **Il giro D-8/D-9 non chiede un `/verifica-db` a parte** (Tid, 2026-11-22): `20261121-16` … `-18` sono stati
+  scritti e provati prima dell'apply, applicati su dbdev coi pgTAP verdi e committati (`e00a3c7279`, PR #188). Non si
+  ripropone alla prossima chiusura.
+* **Niente debito.** Il solo punto lasciato a dopo, `acquisti.ordini` sul termine lato BE/FE (§4, punto 5), è parte
+  dello sviluppo del BE/FE degli acquisti, che non esiste ancora: resta qui come promemoria e non apre un brief.
+* **Archiviato** in `work-done/2026/`; i due rimandi per percorso (`brief-db-attivo-fk-senza-suffisso-id`,
+  `analisi-simmetria-ordini-acquisto`) puntano alla sede nuova.

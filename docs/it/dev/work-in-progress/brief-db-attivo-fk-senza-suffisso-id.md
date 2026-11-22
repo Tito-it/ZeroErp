@@ -17,7 +17,7 @@
 >   PROJECT_CONTEXT, «La matrice di `stato_lotto` in due sedi che dissentono» e «La porta dell'esito
 >   ancora aperta» (le FK `esito*`): la revisione di quelle FK chiede a Tid se aspetta i due cantieri.
 >
-> * [brief-db-fornitore-doppioni-del-soggetto](brief-db-fornitore-doppioni-del-soggetto.md) (aggiunto il
+> * [brief-db-fornitore-doppioni-del-soggetto](../work-done/2026/brief-db-fornitore-doppioni-del-soggetto.md) (aggiunto il
 >   2026-11-22, su segnalazione della sessione del fornitore): il registro delle inclusioni nasce dalla sua D-6/D-7
 >   (§7.2). Il giro D-8 dello stesso brief (§7.4, Tid 2026-11-22) tocca oggetti di questo giro: il motivo
 >   `pgtap-runner` di `dbops/test-automazione-attivo-inclusioni-v1.sql` e `config/manual/regimi_fiscali.md`
