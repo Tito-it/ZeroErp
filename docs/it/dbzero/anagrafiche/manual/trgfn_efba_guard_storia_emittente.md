@@ -1,86 +1,98 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_efba_guard_storia_emittente`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_efba_guard_storia_emittente`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente)
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — la tabella su cui è montato
 >
-[anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente)
+> Approfondimento funzioni:
 >
-Approfondimenti tabelle:
->
-[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
+> * [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente) — il controllo su un billing account
+> * [anagrafiche.fn_guard_ba_gestore_globale_storia](/dbzero/anagrafiche/funzioni/fn_guard_ba_gestore_globale_storia) — il controllo sullo spostamento della predefinita
+> * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — il cancello dell'albero sugli stessi movimenti
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 26-08-26)
 
-È il cancello sull'unica tabella che decide **a quale emittente appartiene un
-cliente**: sorveglia tutti i modi in cui quel legame può cambiare, e li blocca
-se il cliente ha già una storia.
-
----
-
-### ⚠️ Il movimento che si dimentica è la **cancellazione**
-
-Sembra che «spostare un cliente da un emittente all'altro» sia una modifica. Non
-lo è: il gestionale non ha nessuna modifica su quel legame. Lo spostamento si fa
-in due tempi:
-
-1. **si cancella** l'aggancio all'emittente A — e da quel momento il cliente
-   ricade sull'emittente generale dell'installazione, che è **già** un cambio;
-2. **si crea** l'aggancio all'emittente B.
-
-⇒ Un controllo che guardasse solo la creazione lascerebbe passare tutto, perché
-**il danno lo fa il primo passo**.
+`anagrafiche.trgfn_efba_guard_storia_emittente` è il cancello della storia sul collegamento fra billing account
+e azienda: a ogni movimento che cambia l'azienda di un billing account ricava l'azienda di prima e quella di
+dopo, e lascia decidere ai controlli della storia.
 
 ---
 
-### I casi che sorveglia
+### ⚠️ Il movimento che si dimentica è la cancellazione
 
-| Movimento | Prima | Dopo |
-|---|---|---|
-| si crea un aggancio | l'emittente generale | quello scelto |
-| si cambia l'aggancio | il precedente | il nuovo |
-| si sposta l'aggancio su un altro cliente | si controllano **entrambi** | |
-| si cancella l'aggancio | quello che c'era | l'emittente generale |
-| si tocca l'**emittente generale** | — | riguarda **tutti** i clienti non agganciati |
-
-L'ultimo caso è quello con il raggio più largo: una riga sola può ri-attribuire
-retroattivamente l'emittente di un numero arbitrario di documenti.
+Spostare un cliente da un'azienda all'altra si fa togliendo il collegamento e creandone uno nuovo. Il primo
+passo, da solo, è già un cambio: il billing account ricade sulla predefinita. Un controllo sulla sola creazione
+lascerebbe passare tutto, perché il danno lo fa la cancellazione.
 
 ---
 
-### Due trappole tecniche che valgono per chiunque scriva un controllo così
+### Prima e dopo, movimento per movimento
 
-**La prima**: quando si cancella un aggancio, per sapere «dove ricadrà il
-cliente» **non si può chiedere al risolutore**. In quel momento la riga che si
-sta cancellando c'è ancora, quindi il risolutore risponderebbe proprio quella:
-«prima» e «dopo» coinciderebbero, e il controllo non scatterebbe mai.
-
-**La seconda**: un controllo che sorveglia anche le cancellazioni deve
-restituire la riga *vecchia*. Restituire «niente» **annulla la cancellazione in
-silenzio** — che è la differenza fra un cancello che blocca dicendolo e uno che
-fa sparire il gesto senza errori.
+| Movimento | Prima | Dopo | Controllo |
+| --- | --- | --- | --- |
+| nasce un collegamento | la predefinita | l'azienda scelta | sul billing account |
+| il collegamento cambia azienda | quella di prima | quella nuova | sul billing account |
+| la riga passa a un altro billing account | il vecchio: la sua; il nuovo: la predefinita | il vecchio: la predefinita; il nuovo: quella della riga | sui due billing account |
+| si cancella un collegamento | quella che c'era | la predefinita | sul billing account |
+| nasce, cambia o sparisce la predefinita | la predefinita di prima | quella nuova, o nessuna | sui billing account senza collegamento |
 
 ---
 
-### Convive con il fratello, e non si sovrappongono
+### Due accorgimenti
 
-Sulla stessa tabella c'è già un controllo che sorveglia **l'omogeneità
-dell'albero** dei clienti: padre e figli devono stare sullo stesso emittente.
+**La predefinita si legge dalla sua riga, non dal risolutore.** Il cancello scatta prima della scrittura: in
+una cancellazione la riga che sta sparendo c'è ancora, e il risolutore risponderebbe proprio quella. «Prima» e
+«dopo» coinciderebbero e il controllo non scatterebbe mai. Per questo legge la riga predefinita, escludendo
+quella che si cancella.
 
-Sono complementari, e le due frasi si leggono bene una accanto all'altra:
+**Su una cancellazione restituisce la riga vecchia.** Restituire niente annullerebbe la cancellazione in
+silenzio: la differenza fra un cancello che blocca dicendolo e uno che fa sparire il gesto senza errori.
 
-* l'uno dice **«l'albero non può diventare misto»**;
-* l'altro dice **«la storia non si sposta»**.
+Scatta prima della scrittura, nella fase dei guard di blocco; i controlli dell'albero e dell'istanza scattano
+dopo, perché rileggono il collegamento. Rispondono a domande diverse e si sommano.
 
 ---
 
-### Impatto e Vantaggi
+### ⚠️ Che cosa oggi non copre
 
-* la regola vale per ogni percorso che tocca quella tabella, non solo per quello
-  previsto dal gestionale oggi;
-* la decisione non vive qui: questo è solo l'aggancio, e delega a chi la sa —
-  una implementazione, cinque movimenti.
+* **Una modifica che trasforma la predefinita in un collegamento, o un collegamento nella predefinita,**
+  controlla solo il billing account nominato: la storia dei billing account senza collegamento, che cambiano
+  azienda con la predefinita, non si guarda.
+* **Sostituire la predefinita cancellandola e reinserendola** è respinto alla cancellazione, anche se la nuova
+  riga riporterà la stessa azienda, quando un billing account senza collegamento ha storia: il «dopo» della
+  cancellazione è «nessuna azienda». Cambiare l'azienda sulla riga predefinita non ha questo limite.
+* Sui movimenti della predefinita vale il limite di `fn_guard_ba_gestore_globale_storia`, che sceglie il
+  billing account da guardare con un'altra definizione di storia.
+
+---
+
+### Codici errore
+
+* `E_BA_EMITTENTE_CON_STORIA` — dai due controlli che chiama.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-ba-cambio-emittente-storia-v1.sql` — il trigger è montato su inserimento, modifica
+  e cancellazione; il controllo che chiama passa sul cliente appena nato e respinge il cambio dopo una commessa.
+
+---
+
+### Note di migrazione
+
+* 2026-08-26 — nasce: prima il collegamento di un cliente si toglieva e si ricreava senza condizioni.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

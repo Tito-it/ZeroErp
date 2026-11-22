@@ -1,73 +1,56 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_pdp`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> • [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)
+> Approfondimento tabelle:
 >
-Approfondimento viste:
-> • [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — la tabella di partenza
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — letta senza esporne niente
+> * [config.utilities](/dbzero/config/tabelle/utilities) — la utility del punto
+> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp) — lo stato tecnico
+>
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — l'indirizzo già normalizzato
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Unisce il **punto di prelievo** al suo indirizzo già normalizzato e alla sua utility, in modo
-che chi cerca un PdP non debba ricomporre la catena
-`pdp → indirizzo_dettaglio → stradario → comune`.
-
-L'indirizzo non è ricostruito qui: arriva per intero da `anagrafiche.vw_indirizzi_dettaglio`,
-compresi `indirizzo_normalizzato`, `via_norm` e le due geolocalizzazioni
-(`civic_geoloc` del civico, `street_geoloc` della via). La normalizzazione vive in un posto
-solo e questa vista la consuma.
+`anagrafiche.vw_pdp` mostra un punto di prelievo con la sua utility, il suo stato tecnico e il suo indirizzo
+già normalizzato, senza ricomporre la catena dall'indirizzo al comune.
 
 ---
 
-### Il PdP può non avere un cliente
+### L'indirizzo arriva intero da un posto solo
 
-Il legame verso `anagrafiche.clienti` è un **`LEFT JOIN`**, ed è corretto così: un punto di
-prelievo esiste come entità fisica sul territorio **prima** di essere associato a un cliente,
-e continua a esistere dopo che il cliente se n'è andato.
+L'indirizzo non si ricostruisce qui: viene da `anagrafiche.vw_indirizzi_dettaglio`, compresi l'indirizzo
+normalizzato, la via normalizzata e le due geolocalizzazioni, del civico e della via. I campi tecnici
+dell'indirizzo hanno il prefisso `indirizzo_` (`indirizzo_attivo`, `indirizzo_tx_id`, …) perché non si
+confondano con quelli del PDP.
 
-Le altre tre relazioni — indirizzo, utility, stato — sono `JOIN` interni: un PdP senza uno di
-quelli non compare affatto. In particolare **un PdP il cui `indirizzo_dettaglio_id` non
-risolve sparisce dalla vista**, e sparisce in silenzio.
-
-⚠️ La colonna `cliente_id` c'è, ma **nessun dato del cliente** viene esposto: il `LEFT JOIN`
-su `clienti` serve solo a non perdere righe. Per l'anagrafica del cliente si passa da
-`vw_clienti_lista`.
+Indirizzo, utility e stato sono legami obbligatori: un PDP senza uno dei tre non compare. In particolare un
+PDP il cui indirizzo non si risolve nella vista degli indirizzi sparisce, in silenzio.
 
 ---
 
-### ⚠️ Non è `security_invoker` — oggi innocuo
+### Chi la vede
 
-La vista **non** dichiara `WITH (security_invoker = on)`: gira con i diritti del proprietario.
-Verificato il 2026-08-21: nessuna delle tabelle lette — `pdp`, `clienti`,
-`indirizzi_dettaglio` — ha la RLS attiva, quindi la differenza oggi non produce effetti.
-
-⚠️ Resta la rete mancante: se un domani il PdP entrasse nel perimetro emittente, questa vista
-continuerebbe a mostrare tutto, senza errori. Vale lo stesso avvertimento di
-`vw_fornitori_dettaglio`.
+La vista è `security_invoker`: si legge con i diritti di chi interroga. `pdp` non ha la RLS; `clienti` sì, ma
+il legame con i clienti è esterno e non porta nessuna colonna, e la RLS dei clienti non toglie righe alla
+vista.
 
 ---
 
-### I nomi delle colonne sono prefissati apposta
+### ⚠️ Che cosa oggi non copre
 
-`indirizzo_attivo`, `indirizzo_storicizza`, `indirizzo_tx_id`, `indirizzo_data_insert`… Il
-prefisso non è decorativo: distingue i campi tecnici **dell'indirizzo** da quelli del PdP, che
-in una vista piatta finirebbero altrimenti a collidere. Chi legge `attivo` senza prefisso sta
-guardando un campo che qui non esiste.
-
----
-
-### Consumatori
-
-Nessun consumo diretto dal backend: è letta dentro il livello DB. Come per
-`vw_clienti_codice_ba`, cambiarne le colonne non rompe un endpoint — rompe le viste e le
-funzioni che la compongono, e quelle non falliscono: restituiscono meno righe.
+* **Il «cliente corrente» non lo è.** La vista espone `cliente_id` dalla riga del PDP, una colonna che nessun
+  oggetto del database scrive. Chi occupa il PDP in una data lo dicono i periodi dei clienti.
+* **Il legame con i clienti non serve.** È esterno e non porta colonne: non toglie e non aggiunge niente.
+* **Lo stato attivo del PDP non c'è.** La vista non espone `attivo`, né `meta`, né i campi tecnici del PDP: un
+  PDP disattivato non si distingue da uno attivo.
 
 ---
 

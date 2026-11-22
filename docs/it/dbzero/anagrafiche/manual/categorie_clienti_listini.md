@@ -1,156 +1,111 @@
-## Documentazione – Tabella `anagrafiche.categorie_clienti_listini`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.categorie_clienti_listini`
 
-> Vedi anche
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-Guide generali:
+> 👀 **Vedi anche**
 >
-[Gestione listini](/guide/gestione-listini)
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
+> * [anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti) — le categorie che la matrice mappa
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — porta la categoria del cliente
+> * [vendite.listini](/dbzero/vendite/tabelle/listini) — il listino scelto dalla riga
+> * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze) — la classe d'utenza, quando la riga la distingue
 >
-[anagrafiche.categorie_clienti](/dbzero/anagrafiche/tabelle/categorie_clienti)
-> [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> [vendite.listini](/dbzero/vendite/tabelle/listini)
-> [config.utilities](/dbzero/config/tabelle/utilities)
-> [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_categorie_clienti_listini_guard_listino](/dbzero/anagrafiche/funzioni/trgfn_categorie_clienti_listini_guard_listino) — il listino è della utility e dell'azienda della riga
+> * [script.fn_check_listino_documento](/dbzero/script/funzioni/fn_check_listino_documento) — la stessa domanda per contratti e offerte
+> * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — l'ordine delle due date
+> * [vendite.fn_resolve_prezzo_listino_v2_esito](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2_esito) — il calcolo del prezzo che legge la matrice
+>
+> Guide:
+>
+> * [Gestione listini](/guide/gestione-listini) — dove la matrice sta nel calcolo del prezzo
 
 ---
 
 ### 🎯 Scopo Principale
-(latest review 14-04-26)
 
-Matrice che mappa una **categoria commerciale** cliente a un **listino** concreto, filtrata per dimensioni di contesto (utility, emittente fiscale, classe utenza). E' la chiave primaria di lookup dello **STADIO 2** del resolver prezzi v5: un BA senza contratto individuale trova qui il listino da usare per la propria utility.
+`anagrafiche.categorie_clienti_listini` è la matrice che porta da una categoria di clienti al listino da
+usare: per una categoria, una utility, un'azienda e (se serve) una classe d'utenza, in un periodo, dice quale
+listino vale e con quale variazione.
 
-Caratteristiche principali:
-
-* Ogni riga esprime una relazione *(categoria, utility, emittente, classe_utenza)* -> *listino* valida su un periodo
-* La **variazione** (sconto o maggiorazione) e' opzionale: se `tipo_variazione` e' NULL, il prezzo base del listino vale tal quale
-* Il campo `classe_utenza_id` ammette NULL con significato speciale di **fallback**: vale per ogni classe utenza non specificata altrove nella quadrupla
-* Nessuna sovrapposizione temporale per la stessa quadrupla (vincolo di esclusione GIST)
+Il calcolo del prezzo la legge per un billing account senza contratto individuale: se non trova una riga,
+risponde `E_CATEGORIA_LISTINO_NON_MAPPATA`.
 
 ---
 
-### Collegamenti con altre tabelle
+### Una riga per contesto e periodo
 
-| Campo                         | Tabella di riferimento                   | Azione                               |
-| ----------------------------- | ---------------------------------------- | ------------------------------------ |
-| `categoria_cliente_id`        | `anagrafiche.categorie_clienti(id)`      | ON UPDATE CASCADE, ON DELETE NO ACTION |
-| `utility_id`                  | `config.utilities(id)`                   | ON UPDATE CASCADE, ON DELETE NO ACTION |
-| `emittente_soggetto_ruolo_id` | `anagrafiche.soggetti_ruoli(id)`         | ON UPDATE CASCADE, ON DELETE NO ACTION |
-| `classe_utenza_id` (nullable) | `config.classi_utenze(id)`               | ON UPDATE CASCADE, ON DELETE NO ACTION |
-| `listino_id`                  | `vendite.listini(id)`                    | ON UPDATE CASCADE, ON DELETE NO ACTION |
+Il contesto della riga è la quadrupla categoria, utility, azienda (`emittente_soggetto_ruolo_id`) e classe
+d'utenza. Fra le righe **attive** di uno stesso contesto i periodi non si sovrappongono
+(`ex_categ_cli_listini_no_overlap`); una riga spenta non conta, e si tiene come memoria di una configurazione
+passata. Il periodo è `validita`, calcolata da `valido_dal` e `valido_al` (aperto senza fine); l'ordine delle
+due date lo controlla il guard comune delle date di validità.
 
 ---
 
-### Campi principali
+### ⭐ La classe d'utenza vuota vale per tutte le altre
 
-| Colonna                       | Tipo          | Nullable | Descrizione                                                                 |
-| ----------------------------- | ------------- | -------- | --------------------------------------------------------------------------- |
-| `id`                          | bigint        | NO       | PK surrogata                                                                |
-| `categoria_cliente_id`        | smallint      | NO       | Categoria commerciale di riferimento                                        |
-| `utility_id`                  | integer       | NO       | Utility (Gas, EE, Base per commercio, ...)                                  |
-| `emittente_soggetto_ruolo_id` | bigint        | NO       | Emittente fiscale (dimensione obbligatoria del contesto)                    |
-| `classe_utenza_id`            | integer       | YES      | Classe utenza specifica, oppure NULL come **fallback** su tutte le classi   |
-| `listino_id`                  | bigint        | NO       | Listino selezionato per la quadrupla                                        |
-| `tipo_variazione`             | varchar(16)   | YES      | `PERCENTUALE` o `VALORE_FISSO`; NULL = prezzo base tal quale                |
-| `valore_variazione`           | numeric(10,4) | YES      | Coerente con `tipo_variazione` (vincolo CHECK)                              |
-| `valido_dal`                  | date          | NO       | Inizio validita                                                             |
-| `valido_al`                   | date          | YES      | Fine validita (NULL = +infinity)                                            |
-| `validita`                    | daterange     | NO       | Colonna generata da `valido_dal`/`valido_al` (linee-guida-sql §7b)          |
-| `meta` / `attivo` / audit     | —             | —        | Campi standard                                                              |
+Una riga senza classe d'utenza è il **ripiego** del contesto: vale per ogni classe che non ha una riga sua. Il
+calcolo del prezzo, fra le righe valide alla data, preferisce quella della classe del cliente e ricade su
+quella senza classe. Per il vincolo di esclusione la classe vuota è un valore a sé: una riga specifica e il
+ripiego convivono nello stesso periodo.
+
+Dove le classi d'utenza non esistono (il commercio) le righe hanno sempre la classe vuota.
 
 ---
 
-### Regole di validazione
+### La variazione è facoltativa
 
-* **`chk_categ_cli_listini_tipo_variazione`**: `tipo_variazione` ∈ {`PERCENTUALE`, `VALORE_FISSO`} oppure NULL. `PREZZO_FISSO` **non** e' ammesso qui (e' una semantica riservata alla promo, dove rappresenta un prezzo assoluto temporale).
-* **`chk_categ_cli_listini_variazione_coerente`**: `tipo_variazione` e `valore_variazione` sono entrambi NULL o entrambi NOT NULL.
-* **`chk_categ_cli_listini_valido_al_ge_dal`**: `valido_al IS NULL OR valido_al >= valido_dal`.
-* **`ex_categ_cli_listini_no_overlap`**: nessuna sovrapposizione di `validita` per la stessa quadrupla `(categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id, COALESCE(classe_utenza_id, -1))` quando `attivo IS TRUE`. Implementato come `EXCLUDE USING gist` (richiede `btree_gist`, attivo dalla baseline).
-
-Il sentinel `-1` per `classe_utenza_id` NULL e' sicuro: `config.classi_utenze.id` e' `serial` e parte da 1.
-
-⭐ **Il listino è della utility e dell'azienda della riga** (rev 16-10-2026, decisione di Tid).
-Una riga «clienti dell'azienda A, utility Gas» può puntare solo a un listino dell'azienda A per
-il Gas. È la stessa regola che contratti e offerte hanno già, con lo stesso controllo
-(`script.fn_check_listino_documento`) e codici propri della matrice:
-`E_CATEGORIA_LISTINO_UTILITY_DIVERSA` ed `E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO`. Prima la
-configurazione sbagliata entrava, il resolver sceglieva il listino dell'altra azienda e lo
-sbaglio veniva fuori solo al push in commessa, come errore tecnico. Guard:
-[anagrafiche.trgfn_categorie_clienti_listini_guard_listino](/dbzero/anagrafiche/manual/trgfn_categorie_clienti_listini_guard_listino).
+Senza variazione vale il prezzo del listino così com'è. Con la variazione, il tipo è una percentuale o un
+valore fisso, e tipo e valore ci sono tutti e due o mancano tutti e due. Il prezzo fisso, che le promozioni
+conoscono, qui non c'è: la matrice sposta un prezzo di listino, non lo sostituisce.
 
 ---
 
-### Semantica del fallback `classe_utenza_id`
+### ⭐ Il listino è della utility e dell'azienda della riga
 
-Il resolver, in STADIO 2, esegue due tentativi in sequenza:
-
-1. **Match specifico**: `classe_utenza_id = <classe_derivata_dal_BA_o_contratto>`.
-2. **Match fallback**: `classe_utenza_id IS NULL`.
-
-Se nessun match: errore `E_CATEGORIA_LISTINO_NON_MAPPATA`.
-
-Esempio:
-
-| categoria | utility | emittente | classe_utenza | listino      |
-| --------- | ------- | --------- | ------------- | ------------ |
-| SILVER    | GAS     | EF1       | DOM-BTA       | GAS-DOM-2026 |
-| SILVER    | GAS     | EF1       | NULL          | GAS-GEN-2026 |
-
-Un BA SILVER con classe `DOM-BTA` risolve su `GAS-DOM-2026`; un BA SILVER con classe `COND-BTA` (non presente in tabella) cade sul fallback `GAS-GEN-2026`.
-
-Per il dominio commercio (utility `Base`) il campo e' **sempre NULL**: non esistono classi utenza commerciali.
+Una riga «clienti dell'azienda A, servizio gas» può puntare solo a un listino dell'azienda A per il gas: lo
+controlla `anagrafiche.trgfn_categorie_clienti_listini_guard_listino`, con la stessa domanda che contratti e
+offerte fanno sul loro listino. Accanto, il guard comune utility-ruolo controlla che il tipo di ruolo
+dell'azienda sia ammesso per quella utility, dove la utility lo dichiara, e due controlli al commit vogliono la categoria e il listino attivi.
 
 ---
 
-### Trigger coinvolti
+### Chi vede la matrice
 
-Nessun trigger di tabella per `validita`: e' una colonna generata. L'ordine delle
-due date lo verifica il guard comune `script.trgfn_guard_date_validita`, montato
-dall'automazione `DATE_VALIDITA` su ogni tabella con `valido_dal`/`valido_al`.
-
-`trg_categorie_clienti_listini_a10_guard_listino_ins` e `_upd` (dal 16-10-2026): il listino è
-della utility e dell'azienda della riga. In modifica scattano solo se cambiano listino, utility
-o azienda.
-
-Trigger di audit e `tx_id` si applicano per policy globale del progetto (vedi `linee-guida-trigger.md`).
+La tabella è in RLS, con una policy sola: l'**operatore** vede e scrive le righe dei listini delle aziende del
+suo perimetro (`rls_categorie_clienti_listini_ef_whitelist`). L'azienda di una riga è letta dal suo listino.
+Nessun altro ruolo applicativo vede la matrice.
 
 ---
 
-### Ruolo nel resolver prezzi v5 (STADIO 2)
+### Codici errore
 
-```
-BA ha categoria_cliente_id -> sempre vero per v5 (NOT NULL)
-    Cerca in categorie_clienti_listini con:
-        (categoria_cliente_id, utility_id, emittente, validita @> data)
-        1) tentativo con classe_utenza_id = <derivata>
-        2) fallback con classe_utenza_id IS NULL
-    Match trovato:
-        prezzo_base   = riga listino per (listino_id, versione attiva, articolo, uom)
-        prezzo_finale = applica tipo_variazione/valore_variazione (se presenti)
-        origine       = 'CATEGORIA'
-```
+* `E_CATEGORIA_LISTINO_UTILITY_DIVERSA`, `E_CATEGORIA_LISTINO_EMITTENTE_DIVERSO` — il listino non è della
+  utility o dell'azienda della riga (dal guard del listino).
+* `E_UTILITY_RUOLO_NON_AMMESSO` — l'azienda della riga non è ammessa per la utility.
+* `E_DATA_AL_MINORE_DAL` — la fine della validità precede l'inizio.
 
 ---
 
-### Diagramma ER
+### Test
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    categorie_clienti         ||--o{ categorie_clienti_listini : segmenta
-    utilities                 ||--o{ categorie_clienti_listini : per_utility
-    soggetti_ruoli            ||--o{ categorie_clienti_listini : emittente
-    classi_utenze             ||--o{ categorie_clienti_listini : specializza
-    listini                   ||--o{ categorie_clienti_listini : mappa_a
+* `db/pgtap/anagrafiche/test-categorie-clienti-listini-v1.sql` — variazione, date, esclusione fra righe attive
+  (anche con la classe vuota), la riga spenta che non partecipa, il periodo calcolato.
+* `db/pgtap/anagrafiche/test-categorie-clienti-listini-guard-listino-v1.sql` — il listino della utility e
+  dell'azienda della riga.
+* `db/pgtap/rls/test-rls-listini-satelliti.sql` — il perimetro dell'operatore.
+* `db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-v1.sql` — la matrice dentro il calcolo del prezzo.
 
-    categorie_clienti         { smallint id PK }
-    utilities                 { integer  id PK }
-    soggetti_ruoli            { bigint   id PK }
-    classi_utenze             { integer  id PK }
-    listini                   { bigint   id PK }
-    categorie_clienti_listini { bigint   id PK }
-```
+---
+
+### Note di migrazione
+
+* 2026-05-14 — `validita` diventa una colonna generata da `valido_dal` e `valido_al`.
+* 2026-10-16 — nasce il guard del listino: prima una riga verso il listino di un'altra azienda entrava, e lo
+  sbaglio emergeva solo al passaggio in commessa.
 
 ---
 

@@ -1,278 +1,173 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_utilities`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
-> 
-Guide generali:
 >
-[Generazione di un cliente](/guide/generazione-cliente)   
+> Approfondimento tabelle:
 >
-Approfondimeto tabelle:
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il titolare della fornitura
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — uno per utility dell'istanza, nasce con lei
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — un cliente per billing account
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il punto fisico a cui l'istanza si lega
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il luogo della fornitura
+> * [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali) — i dati tecnici per coppia (istanza, utility)
+> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — l'unità catastale dell'istanza
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)   
-> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)   
+> Approfondimento viste:
 >
-Approfondimeto funzioni:
+> * [anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio) — l'istanza con soggetto, PDP e indirizzo
 >
-[anagrafiche.trgfn_istanze_utilities_normalize](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize)   
-> [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice)   
-> [script.trgfn_audit_data_user_generic](/dbzero/script/funzioni/trgfn_audit_data_user_generic)   
-> [config.sistema_codici](/dbzero/config/manual/sistema_codici)   
-> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — l'istanza nasce col suo billing account
+> * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ba_emittente) — un'istanza, un'azienda emittente
+> * [anagrafiche.trgfn_clienti_set_parent_istanza](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza) — chi scrive la catena `parent_istanza_id`
+> * [anagrafiche.trgfn_clienti_sync_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp) — il cliente copia il PDP dell'istanza
+> * [anagrafiche.trgfn_istanze_utilities_guard_clienti_chiave](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_guard_clienti_chiave) — l'istanza che entra o esce dalle fittizie
+> * [anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) — il catasto segue l'indirizzo
+> * [anagrafiche.trgfn_iu_clone_catasto_from_parent](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent) — il catasto clonato dall'istanza precedente
+> * [anagrafiche.trgfn_istanze_utilities_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice) — il codice generato
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — il racconto del modello
+> * [Generazione di un cliente](/guide/generazione-cliente) — come l'istanza diventa cliente
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
-* Registrare ogni **attivazione** di servizio (volta) per un soggetto su un punto di erogazione.
-* Gestire la **gerarchia** delle attivazioni successive (subentri/volture) tramite `parent_istanza_id`.
-* Supportare record **fittizi**, ossia senza indirizzo obbligatorio.
+
+`anagrafiche.istanze_utilities` registra una fornitura: un soggetto, in un luogo, con una o più utility. È il
+punto di giunzione a cui si agganciano billing account, clienti, dati precontrattuali, indirizzi, contatti,
+conti, pratiche e documenti di vendita.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### Un'istanza ha un billing account per utility, e un cliente per billing account
 
-| Colonna                  | Riferimento                           | Azione                                |
-| ------------------------ | ------------------------------------- | ------------------------------------- |
-| `parent_istanza_id`      | `anagrafiche.istanze_utilities(id)`   | ON UPDATE CASCADE, ON DELETE SET NULL |
-| `soggetto_id`            | `anagrafiche.soggetti(id)`            | ON UPDATE CASCADE, ON DELETE RESTRICT |
-| `indirizzo_dettaglio_id` | `anagrafiche.indirizzi_dettaglio(id)` | ON UPDATE CASCADE, ON DELETE RESTRICT |
+Le utility di un'istanza non stanno sulla riga: le dichiarano i suoi billing account, uno per utility. Un
+cliente è di un billing account (`uq_clienti_billing_account`), e un'istanza ha quindi tanti clienti quante
+sono le sue utility attivate, nel tempo anche di più.
 
----
-
-### 🚩 Regole di Validazione Condizionale
-
-* **Record fittizio**: `fittizia = true` consente `indirizzo_dettaglio_id IS NULL`; se `fittizia = false`, l’indirizzo è **obbligatorio**.
-* **Proprietario/Inquilino**: `proprietario_inquilino` accetta solo `P` o `I`.
-* **Gerarchia**: `parent_istanza_id` deve riferirsi a un’istanza valida (non sé stessa).
-* **Nasce col suo billing account** (dal 2026-10-08): alla conferma dell'operazione l'istanza deve avere almeno un billing account, e l'ultimo non si cancella da solo ([`fn_guard_istanza_ha_ba`](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba), `E_ISTANZA_SENZA_BA`). Tutti i suoi billing account sono della stessa azienda emittente ([`fn_guard_istanza_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente)). Vedi [Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account).
+* **L'istanza nasce col suo billing account.** Al COMMIT un'istanza appena nata deve averne almeno uno
+  (`E_ISTANZA_SENZA_BA`), e l'ultimo non si cancella se l'istanza resta; istanza e BA si cancellano insieme.
+* **Un'istanza, un'azienda.** I billing account di un'istanza sono tutti della stessa azienda emittente.
+* **Sullo stesso PDP non si sovrappongono due clienti.** Lo dice l'esclusione per periodo
+  `ex_clienti_no_overlap_stesso_pdp` su `clienti`, non un vincolo dell'istanza: due istanze possono puntare
+  allo stesso PDP, con clienti in periodi diversi.
 
 ---
 
-### Indicizzazione
+### ⛔ La fornitura non cambia titolare
 
-* **`ix_istanze_utilities_soggetto_id`**: ricerca rapida per soggetto.
-* **`ix_istanze_utilities_indirizzo_dettaglio_id`**: filtri per indirizzo di dettaglio.
-* **`uq_istanze_utilities_codice`**: garantisce l’unicità di `codice`.
+Il soggetto dell'istanza è bloccato (`E_ISTANZA_SOGGETTO_IMMUTABILE`), come il codice
+(`E_CODICE_NON_MODIFICABILE`). Un nuovo intestatario è una nuova istanza, il subentro; una fornitura creata
+sul soggetto sbagliato si annulla e si ricrea. Su questo blocco si appoggiano i guard che chiedono «questa
+istanza è dello stesso soggetto della riga?» su indirizzi, conti del ruolo, contatti e billing account: dato
+che il soggetto dell'istanza non cambia, basta giudicare la riga che si scrive.
 
----
-
-### Vantaggi Operativi
-
-* **Tracciabilità subentri**: `parent_istanza_id` consente di ricostruire facilmente la sequenza di attivazioni.
-* **Flessibilità**: supporto per istanze senza indirizzo tramite flag `fittizia`.
-* **Coerenza**: `codice` e `tx_id` generati automaticamente via trigger (sistema_codici + tx_id).
+Il soggetto deve essere attivo, e così l'indirizzo, alla nascita e a ogni cambio della colonna: i due
+controlli sono differiti al COMMIT.
 
 ---
 
-### Trigger e Funzioni Coinvolte
+### Istanza vera e istanza fittizia
 
-| Trigger                                     | Evento                  | Funzione                                              |
-| ------------------------------------------- | ----------------------- | ----------------------------------------------------- |
-| `trg_istanze_utilities_normalize_ins_upd`   | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_normalize()`    |
-| `trg_istanze_utilities_a10_gen_codice_ins_upd` | BEFORE INSERT OR UPDATE | `anagrafiche.trgfn_istanze_utilities_gen_codice()` |
-| `trg_istanze_utilities_gen_tx_id_ins_upd`   | BEFORE INSERT OR UPDATE | `dbops.trgfn_tx_id_managed()`                         |
-| `trg_istanze_utilities_audit_data_user_upd` | BEFORE UPDATE           | `script.trgfn_audit_data_user_generic()`              |
+* Un'istanza **vera** (`fittizia = false`) ha sempre un indirizzo (`chk_istanza_fittizia_indirizzo`).
+* Un'istanza **fittizia** nasce per la creazione manuale del cliente, senza un luogo da dichiarare:
+  l'indirizzo può mancare, e non può avere un PDP (`chk_iu_pdp_not_fittizia`).
+* Il passaggio fra le due rigiudica al COMMIT la chiave unica dei clienti dell'istanza, perché fra le
+  fittizie vale la regola «un cliente manuale per soggetto, utility e azienda».
 
----
-
-### Controlli di Coerenza
-
-* `parent_istanza_id`, `soggetto_id` e `indirizzo_dettaglio_id` garantiscono integrità referenziale.
-* Vincolo `CHECK (fittizia = true OR indirizzo_dettaglio_id IS NOT NULL)` assicura coerenza tra flag e indirizzo.
-* Unicità di `codice` evita duplicazioni su punti di erogazione.
+`proprietario_inquilino` dice se il titolare occupa il luogo da proprietario (`P`) o da inquilino (`I`, il
+default).
 
 ---
 
-## ➕ Integrazione con **PDP** (`anagrafiche.pdp`)
+### Il PDP è dello stesso indirizzo
 
-**Obiettivo**: permettere all’istanza di riferirsi a un **Punto di Prelievo** (PDP) dello **stesso indirizzo**.
+`pdp_id` è facoltativo e, quando c'è, richiede l'indirizzo (`chk_iu_pdp_requires_address`). La chiave
+esterna composta `fk_iu_pdp_id_addr` lo lega alla coppia (PDP, indirizzo): il PDP collegato è per forza
+quello del luogo dell'istanza. Con un PDP per utility e indirizzo (`uq_pdp_addr_utility`), un luogo ha al più
+un PDP per ogni utility.
 
-**Campi e vincoli aggiuntivi**
-
-* `pdp_id BIGINT NULL` (campo opzionale): l’associazione al PDP è possibile **solo** quando l’istanza è riferita a un indirizzo.
-* **FK composita** `fk_iu_pdp_id_addr (pdp_id, indirizzo_dettaglio_id)` → `anagrafiche.pdp(id, indirizzo_dettaglio_id)`
-
-  * 🔒 Garantisce che il PDP collegato abbia **il medesimo `indirizzo_dettaglio_id`** dell’istanza.
-* **CHECK** `chk_iu_pdp_requires_address: (pdp_id IS NULL OR indirizzo_dettaglio_id IS NOT NULL)`
-
-  * 🔎 Impone che **se c’è un PDP**, l’istanza **debba** avere l’indirizzo valorizzato (pur mantenendolo nullable in fase di pre‑attivazione).
-
-**Motivazioni progettuali**
-
-1. **Coerenza fisica**: il PDP è un’entità **ancorata** all’indirizzo; il link con la stessa `istanze_utilities` evita mismatch.
-2. **Pre‑attivazione supportata**: istanze senza PDP sono lecite; l’associazione avviene solo quando disponibile.
-3. **Cardinalità controllata**: grazie a `UNIQUE (indirizzo_dettaglio_id, utility_id)` su `anagrafiche.pdp`, per uno stesso indirizzo esiste **al più un PDP per utility**; l’istanza si lega quindi ad **al più un PDP** coerente con il proprio indirizzo.
-4. **Query più semplici**: la FK composita consente join diretti e sicuri senza ulteriori condizioni sull’indirizzo.
+Il collegamento non giudica la utility né lo stato del PDP: che il PDP sia della utility del cliente lo
+controlla la scrittura del cliente, che copia il PDP dell'istanza sulla sua riga. Lo stato del PDP lo
+ricalcola la scrittura del cliente, dall'occupazione per periodo.
 
 ---
 
-## 6. Diagramma ER
+### La catena delle istanze
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti             ||--o{ istanze_utilities  : has
-    indirizzi_dettaglio  ||--o{ istanze_utilities  : has
+`parent_istanza_id` lega un'istanza a quella che l'ha preceduta. Non la sceglie chi scrive l'istanza: la
+riscrive il trigger dei clienti a ogni nascita del cliente e a ogni cambio del suo PDP o della sua data di
+attivazione.
 
-    utilities            ||--o{ pdp                : has
-    indirizzi_dettaglio  ||--o{ pdp                : has
+* **Con un PDP**, la precedente è l'istanza del cliente più recente sullo stesso PDP, attivato non dopo.
+* **Su un'istanza fittizia**, è l'ultima istanza con la stessa chiave soggetto, utility e azienda.
+* **Su un'istanza vera senza PDP**, la catena non si tocca.
+* Un cliente annullato o senza data di attivazione toglie la sua istanza dalla catena.
 
-    istanze_utilities    }o--|| pdp                : uses  
-    %% FK composita: (pdp_id, indirizzo_dettaglio_id) -> pdp(id, indirizzo_dettaglio_id)
-```
-
----
-
-## 🆕 7. Regole Strutturali dell’Istanza (Nuovo Modello 2025)
-
-Questa sezione introduce le nuove regole funzionali e di dominio rese necessarie dall’evoluzione del modello Zero ERP, in particolare dall’integrazione dei **PDP**, dall’allineamento con la gestione multi-utility e dall’introduzione del vincolo **1 istanza ⇄ 1 cliente**.
-
-Le regole valgono per tutte le istanze, incluse quelle utilizzate in fase pre‑contrattuale.
+Quando la catena si allunga e l'istanza ha un indirizzo ma non ancora un'unità catastale, l'unità della
+precedente si clona sulla nuova (`trg_iu_z50_clone_catasto_from_parent_aft_upd`). Un cambio di unità o di
+indirizzo tiene allineato l'indirizzo del catasto (`trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd`).
+Il racconto del catasto sta nelle sue schede.
 
 ---
 
-### 🎯 7.1 Identità dell’Istanza
+### Il codice
 
-Un record in `anagrafiche.istanze_utilities` rappresenta:
-
-* una **singola attivazione tecnica o commerciale** su un indirizzo e (quando presente) un PDP;
-* un **ciclo di servizio unitario**, che può includere pre‑attivazione, attivazione e chiusura;
-* l’unità minima su cui è possibile agganciare **un cliente**, **un billing account**, e i relativi aspetti tecnici.
-
-#### 🔒 Vincolo di dominio
-
-È garantito che:
-
-> **per ogni istanza può esistere al massimo un cliente**.
-
-Questo è espresso dal vincolo DB:
-
-```
-UNIQUE (istanza_utility_id)
-```
-
-in `anagrafiche.clienti`.
-
-L’istanza è quindi la *contenitore unico* del ciclo contrattuale associato a un singolo soggetto.
+Il codice si genera dalla configurazione `istanze_utilities` di `config.sistema_codici` quando chi scrive non
+lo passa, si salva nella forma normalizzata (maiuscolo) ed è unico (`uq_istanze_utilities_codice`).
 
 ---
 
-### 7.2 Relazione con il Billing Account
+### ⚠️ Che cosa oggi non copre
 
-Il `billing_account` è sempre collegato alla medesima istanza tramite una **FK composita**:
-
-```
-(clienti.billing_account_id, clienti.istanza_utility_id)
-    → billing_account(id, istanza_utility_id)
-```
-
-Questa regola assicura che:
-
-1. un cliente può utilizzare **solo** un billing account della **sua** istanza;
-2. un billing account è definitivamente associato al contesto tecnico dell’istanza;
-3. anche in fase **pre‑contrattuale** è possibile emettere fatture referenziando correttamente l’istanza.
-
-> Nota operativa
-> Per attività non-utility, istanza + billing account + cliente possono nascere simultaneamente, senza impatto sul modello.
-
----
-
-### 🧬 7.3 Relazione con il Cliente
-
-La tabella `anagrafiche.clienti` rappresenta la **specializzazione commerciale** di un ruolo del soggetto.
-
-Regole introdotte:
-
-* il cliente vive *dentro* l’istanza: **un cliente per billing account**, quindi un'istanza ha tanti clienti quante sono le sue utility;
-* la fornitura **non cambia intestatario**: il soggetto dell'istanza è bloccato (`E_ISTANZA_SOGGETTO_IMMUTABILE`), come il ruolo del billing account e la fornitura del cliente. Un nuovo intestatario è una **nuova istanza** (il subentro); una fornitura creata sul soggetto sbagliato si annulla e si ricrea;
-* l'istanza fornisce al cliente:
-
-  * indirizzo tecnico;
-  * PDP (se presente);
-  * contesto proprietario/inquilino;
-  * utility coerente.
-
-Il cliente, a sua volta, può agganciare:
-
-* storico periodi (`periodo`),
-* stato commerciale,
-* billing account coerente.
+* **Niente vieta che un'istanza sia la precedente di sé stessa.** La chiave esterna di `parent_istanza_id`
+  non esclude la riga stessa, e una scrittura diretta della colonna passa; il trigger dei clienti la
+  riscrive solo alla prossima scrittura di un cliente dell'istanza.
+* **Il PDP dell'istanza non è bloccato, e il cliente non lo vede cambiare.** Un cambio di `pdp_id` dopo la
+  nascita del cliente arriva sulla riga del cliente, e sullo stato dei PDP, solo alla sua prossima scrittura.
+* **Una sola unità catastale per istanza vale solo per la clonazione.** Nessun vincolo unico su
+  `catasto_unita_immobiliare_id`: due istanze possono puntare alla stessa unità.
+* **Nessuno storico.** La tabella non ha il trigger di storico: una modifica dell'istanza (indirizzo, PDP,
+  catena) non lascia la versione di prima.
+* **Un trigger che non fa niente.** `trgfn_istanze_utilities_normalize` scatta a ogni scrittura e restituisce
+  la riga com'è.
+* **Le chiavi esterne non dicono che cosa succede alla cancellazione.** Hanno solo `ON UPDATE CASCADE`: la
+  cancellazione di un'istanza ancora nominata da un'altra tabella la ferma la chiave esterna della figlia,
+  con un errore tecnico e non con un codice di catalogo.
 
 ---
 
-### 🔌 7.4 Relazione con il PDP
+### Codici errore
 
-Quando collegata a un PDP, l’istanza diviene l’unità di verità per la gestione del servizio.
-
-Regole:
-
-* `pdp_id` può essere valorizzato **solo** se l’istanza ha `indirizzo_dettaglio_id`;
-* un PDP appartiene a **un solo indirizzo e una sola utility**, quindi non possono coesistere due istanze con cliente attivo sullo stesso PDP;
-* la presenza del PDP rende l’istanza **tecnicamente vincolata**: non è possibile avere più clienti attivi per la stessa istanza o per lo stesso PDP.
+* `E_ISTANZA_SENZA_BA` — al COMMIT, un'istanza appena nata senza billing account.
+* `E_ISTANZA_SOGGETTO_IMMUTABILE` — cambio del soggetto.
+* `E_CODICE_NON_MODIFICABILE` — cambio del codice.
 
 ---
 
-### 🪢 7.5 Catena delle Istanze (parent_istanza_id)
+### Test
 
-Ogni nuova istanza generata in seguito a un subentro / voltura / cambio di intestatario su un PDP deve collegarsi alla precedente tramite:
-
-```
-parent_istanza_id → istanza precedente
-```
-
-Regole:
-
-1. la catena deve essere **lineare** (no rami): ogni istanza ha 0 o 1 parent;
-2. il parent deve essere scelto come l’**istanza con cliente attivo più recente** per quel PDP;
-3. la catena consente di ricostruire l’intero ciclo tecnico del punto di prelievo.
-
-> Questa struttura sarà fondamentale per la gestione storica, analisi tecniche, subentri e migrazioni.
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — l'istanza senza BA, l'ultimo BA che non si
+  cancella, istanza e BA cancellati insieme, un'istanza un'azienda.
+* `db/pgtap/anagrafiche/test-create-istanza-from-pdp.sql` — l'istanza legata al PDP del suo indirizzo.
+* `db/pgtap/anagrafiche/test-istanza-cliente-chain.sql` — la catena delle istanze sullo stesso PDP.
+* `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro: nuova istanza sullo stesso PDP, la catena e
+  il catasto clonato.
 
 ---
 
-### 🚦 7.6 Nuove Regole di Coerenza Introdotte
+### Note di migrazione
 
-Questa sezione sintetizza i vincoli ora garantiti a livello DB:
-
-#### ✔ 1 cliente per istanza
-
-`UNIQUE (istanza_utility_id)` in `clienti`.
-
-#### ✔ Billing account appartenente alla stessa istanza del cliente
-
-FK composita tra `clienti` e `billing_account`.
-
-#### ✔ Un solo cliente attivo per PDP
-
-Deriva dalla combinazione:
-
-* istanza → massimo un cliente;
-* PDP → massimo un’istanza attiva.
-
-#### ✔ Creazione nuova istanza a ogni nuovo cliente
-
-Specialmente in presenza di PDP, ogni nuovo intestatario genera una nuova istanza.
-
----
-
-### 7.7 Obiettivi del Nuovo Modello
-
-Le nuove regole permettono di:
-
-* modellare correttamente il ciclo tecnico e commerciale del servizio;
-* supportare utility con pre‑contrattuale, fatturazione anticipata e contratti non ancora attivi;
-* mantenere un modello coerente anche per settori non-utility;
-* ottenere una catena storica affidabile per analisi tecniche e amministrative;
-* prevenire anomalie come più clienti attivi sullo stesso PDP.
-
----
-
-### Nota Finale
-
-Questo insieme di regole costituisce la base del **nuovo modello operativo delle istanze**.
-L’integrazione con clienti, PDP e billing account viene ora gestita **in modo deterministico e verificabile a livello DB**, riducendo ambiguità e casi limite.
-
+* 2026-10-08 — l'istanza nasce col suo billing account; prima bastava un satellite qualunque fra BA, dati
+  precontrattuali e cliente.
+* 2026-10-14 — la catena vale anche fra le istanze fittizie, per chiave soggetto, utility e azienda.
+* Il modello «un'istanza, al massimo un cliente», con un vincolo unico sull'istanza in `clienti`, non c'è
+  più: il vincolo unico del cliente è sul billing account.
 
 ---
 

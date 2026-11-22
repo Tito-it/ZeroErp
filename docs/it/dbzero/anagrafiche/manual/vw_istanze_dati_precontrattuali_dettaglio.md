@@ -1,75 +1,59 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)  
-> [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)  
-> [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)  
+> * [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali) — la tabella di partenza, con la sua RLS
+> * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze) — la classe d'utenza
+> * [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze) — il tipo d'utenza, letto dalla classe
 >
-Approfondimenti viste:
+> Approfondimento viste:
 >
-[anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio)  
+> * [anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio) — l'istanza, il titolare, il PDP e l'indirizzo
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 09-01-26) 
-La vista **`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio`** unisce i dati pre‑contrattuali
-con i dettagli dell’istanza utility e le decodifiche di **classe** e **tipo utenza**.
-Il **tipo utenza** è derivato dalla classe (`config.classi_utenze.tipo_utenza_id`).
 
-È pensata per **consultazione** e **reportistica**, evitando join ripetitivi in applicazione.
+`anagrafiche.vw_istanze_dati_precontrattuali_dettaglio` mostra i dati precontrattuali di una coppia
+(istanza, utility) con la decodifica della classe e del tipo d'utenza e con il dettaglio dell'istanza.
 
 ---
 
-### Struttura logica della vista
+### Che cosa porta
 
-La vista parte da `anagrafiche.istanze_dati_precontrattuali` e aggiunge:
-
-* join a `anagrafiche.vw_istanze_utilities_dettaglio` per i dati dell’istanza utility;
-* join a `config.classi_utenze` per descrizione/codice classe;
-* join a `config.tipi_utenze` per descrizione/codice tipo utenza (derivato).
-
----
-
-### 📑 Campi esposti (principali)
-
-| Colonna                           | Tipo      | Descrizione                                                 |
-| --------------------------------- | --------- | ----------------------------------------------------------- |
-| `istanza_dati_precontrattuali_id` | `bigint`  | Identificativo riga pre‑contrattuale.                       |
-| `istanza_utility_id`              | `bigint`  | Istanza utility collegata.                                  |
-| `classe_utenza_id`                | `integer` | Classe utenza.                                              |
-| `classe_utenza_descrizione`       | `text`    | Descrizione classe.                                         |
-| `classe_utenza_codice`            | `text`    | Codice classe.                                              |
-| `tipo_utenza_id`                  | `integer` | Tipo utenza (derivato dalla classe).                        |
-| `tipo_utenza_descrizione`         | `text`    | Descrizione tipo utenza.                                    |
-| `tipo_utenza_codice`              | `text`    | Codice tipo utenza.                                         |
-| `param_1_num`                     | `numeric` | Parametro numerico core.                                    |
-| `param_2_txt`                     | `text`    | Parametro testuale core.                                    |
-| `meta`                            | `jsonb`   | Estensioni specifiche per utility.                          |
-| `istanza_id`                      | `bigint`  | Identificativo istanza (da vw_istanze_utilities_dettaglio). |
-| `utility_codice`                  | `text`    | Codice utility (da vw_istanze_utilities_dettaglio).         |
-| `utility_descrizione`             | `text`    | Descrizione utility (da vw_istanze_utilities_dettaglio).    |
-
-(Sono esposti anche i campi di audit di `istanze_dati_precontrattuali` e i campi di dettaglio istanza.)
+* **I dati della riga**: la classe d'utenza con codice e descrizione, i due parametri, `meta`, e la utility
+  della riga in `istanza_dati_utility_id`.
+* **Il tipo d'utenza**, che non sta sulla riga: si legge dalla classe.
+* **L'istanza**, per intero da `vw_istanze_utilities_dettaglio`: titolare, PDP, indirizzo. I campi tecnici
+  dell'istanza hanno il prefisso `istanza_` (`istanza_tx_id`, `istanza_data_insert`, …).
 
 ---
 
-### Modalita' d'uso tipiche
+### Chi la vede
 
-```sql
-SELECT *
-FROM anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
-WHERE istanza_utility_id = :istanza_utility_id;
-```
+La vista è `security_invoker`: la RLS dei dati precontrattuali vale anche qui, e un operatore vede solo le
+righe delle coppie il cui billing account è di un'azienda del suo perimetro.
 
 ---
 
-### Best practice e raccomandazioni
+### ⚠️ Che cosa oggi non copre
 
-* Usare la vista per letture e reportistica.
-* Per aggiornamenti/modifiche operare sempre sulle tabelle base.
+* **Due utility con nomi che ingannano.** La utility della riga è `istanza_dati_utility_id`; `utility_id`,
+  `utility_codice` e `utility_descrizione` sono quelle del PDP dell'istanza. Su un'istanza con più utility
+  tutte le righe mostrano la stessa utility, quella del PDP; su un'istanza senza PDP non ne mostrano
+  nessuna.
 
 ---
+
+### Test
+
+* `db/pgtap/rls/test-rls-istanze-dati-precontrattuali-v1.sql` — la vista è `security_invoker` e non scavalca
+  la regola della tabella.
+
+---
+
 {% include-markdown "signature-core.md" %}

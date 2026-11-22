@@ -1,57 +1,86 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_istanza_ba_emittente`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/manual/fn_check_ba_coppia_emittente_omogenea)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — i billing account dell'istanza, uno per utility
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza nominata nel rifiuto
 >
-[anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente) — il gemello sull'albero padre/figlio
+> Approfondimento funzioni:
 >
-[anagrafiche.fn_guard_istanza_ba_gestore_globale](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_gestore_globale)
+> * [anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/funzioni/fn_check_ba_coppia_emittente_omogenea) — il confronto di una coppia
+> * [anagrafiche.trgfn_billing_account_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_istanza_emittente) — chiamante: nasce un billing account
+> * [anagrafiche.trgfn_efba_guard_istanza_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_istanza_emittente) — chiamante: cambia il collegamento all'azienda
+> * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — il gemello sull'albero padre/figli
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — un'istanza, un'azienda
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 08-10-26)
 
-Verifica che un billing account appartenga alla **stessa azienda emittente**
-di tutti gli altri billing account della sua istanza, e blocca l'operazione se
-non e' cosi'.
+`anagrafiche.fn_guard_istanza_ba_emittente` verifica che un billing account sia della stessa azienda di tutti
+gli altri billing account della sua istanza, e ferma l'operazione con `E_ISTANZA_EMITTENTI_DIVERSI` se non lo è.
 
 ---
 
-### Perche' conta davvero
+### ⭐ Un'istanza, un'azienda
 
-«Di chi e' questa istanza?» ha una risposta sola: dell'azienda del suo billing
-account. E' la regola con cui l'applicazione decide chi puo' vedere
-un'istanza. Un'istanza con due billing account di due aziende diverse sarebbe
-di entrambe, e la risposta smetterebbe di esistere.
-
-Decisione di Tid del 2026-10-08: un'istanza ha billing account di una sola
-azienda.
+«Di chi è questa istanza?» ha una risposta sola: dell'azienda dei suoi billing account. È la regola con cui si
+decide chi vede un'istanza; un'istanza con billing account di due aziende sarebbe di tutte e due, e la
+risposta smetterebbe di esistere. Un'istanza ha un billing account per utility: il guard li confronta tutti
+con quello toccato, in ordine, e si ferma alla prima coppia di aziende diverse.
 
 ---
 
 ### Lo stesso confronto dell'albero
 
-Il controllo e' il gemello di quello sull'albero padre/figlio dei billing
-account: cambia l'insieme guardato — qui i **fratelli di istanza**, la' padre e
-figli — e il confronto e' lo stesso,
-[`fn_check_ba_coppia_emittente_omogenea`](/dbzero/anagrafiche/manual/fn_check_ba_coppia_emittente_omogenea).
-L'azienda confrontata e' quella **risolta** (collegamento proprio oppure azienda
-predefinita), come la usa la fatturazione: due controlli che la calcolassero in
-modo diverso potrebbero dire cose diverse sullo stesso billing account.
+È il gemello del guard sull'albero padre/figli: cambia l'insieme guardato, qui gli altri billing account della
+stessa istanza, e il confronto è lo stesso, `fn_check_ba_coppia_emittente_omogenea`, sull'azienda risolta a tre
+livelli come la usa la fatturazione. Due controlli che la calcolassero in modo diverso potrebbero dire cose
+diverse sullo stesso billing account.
+
+Un billing account che non esiste più (cancellato nella stessa transazione) non ha niente da presidiare. Il
+guard gira coi privilegi del proprietario: coi permessi di chi scrive, un billing account di un'altra azienda
+sarebbe invisibile e il controllo direbbe «a posto» proprio nel caso da fermare.
 
 ---
 
-### Perche' e' privilegiata
+### ⚠️ Che cosa oggi non copre
 
-Legge la tabella dei billing account, protetta da regole di visibilita' per
-emittente: con i permessi di chi scrive, un fratello di un'altra azienda sarebbe
-invisibile, e il controllo direbbe «a posto» proprio nel caso da bloccare.
+* **Lo scollegamento fatto in sessione.** Tolto il collegamento da un utente in sessione, il billing account
+  si confronta con l'azienda di chi agisce, non con la predefinita su cui ricade: l'istanza può restare su due
+  aziende per l'installazione (vedi `fn_check_ba_coppia_emittente_omogenea`).
 
 ---
 
-### Errore
+### Codici errore
 
-`E_ISTANZA_EMITTENTI_DIVERSI` — nomina i due billing account e l'istanza.
+* `E_ISTANZA_EMITTENTI_DIVERSI` — due billing account della stessa istanza risolvono a due aziende. Il
+  messaggio nomina i due billing account e l'istanza per codice.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — un secondo billing account della stessa istanza e
+  della stessa azienda vive; spostato su un'altra azienda è rifiutato.
+
+---
+
+### Note di migrazione
+
+* 2026-10-08 — nasce con la regola «un'istanza, un'azienda».
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

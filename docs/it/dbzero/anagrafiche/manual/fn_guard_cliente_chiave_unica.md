@@ -1,72 +1,62 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_cliente_chiave_unica`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — il cliente controllato
 >
-[anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente)
+> Approfondimento funzioni:
 >
-Guide:
+> * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/funzioni/fn_clienti_stessa_chiave) — chi occupa la chiave, la lettura su cui decide
+> * [anagrafiche.fn_guard_clienti_chiave_unica_di](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_di) — lo applica ai clienti di un billing account o di un'istanza
+> * [anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_clienti_chiave_unica_gestore_globale) — lo applica ai clienti che seguono l'azienda predefinita
 >
-[Un cliente manuale per soggetto, servizio e azienda](/it/guide/gestione-delle-istanze-utility#un-cliente-manuale-per-soggetto-servizio-e-azienda)
+> Guide:
+>
+> * [Un cliente manuale per soggetto, servizio e azienda](/guide/gestione-delle-istanze-utility#un-cliente-manuale-per-soggetto-servizio-e-azienda) — la regola raccontata a chi usa il gestionale
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-10-26)
 
-Impedisce di scrivere **due volte la stessa fornitura** quando non c'è un punto di fornitura.
-
----
-
-### La regola
-
-Decisioni del 2026-10-13: fra i clienti delle istanze fittizie, due clienti con lo stesso
-soggetto, lo stesso servizio e la stessa azienda, attivi in periodi che si sovrappongono, sono un
-doppione. È la regola sorella di quella sul punto di fornitura (un punto, un cliente alla volta).
-
-Chi occupa la fornitura lo dice
-[anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave): un
-sospeso la occupa ancora, un chiuso la libera dalla sua data di chiusura, un annullato o un
-pre-contrattuale non la occupano.
+`anagrafiche.fn_guard_cliente_chiave_unica` è il controllo della chiave unica su **un** cliente: rifiuta il
+cliente se un altro cliente con lo stesso soggetto, servizio e azienda occupa la stessa fornitura in un
+periodo che si sovrappone al suo.
 
 ---
 
-### Quando si controlla
+### Un cliente alla volta, su una sola lettura
 
-La fornitura dipende da quattro tabelle (cliente, istanza, billing account, collegamento
-all'azienda), e la regola si può rompere da ognuna:
+Il controllo prende la chiave del cliente (soggetto, servizio e l'azienda del suo billing account per
+l'installazione) e chiede a `anagrafiche.fn_clienti_stessa_chiave` chi la occupa. Confronta il periodo del
+cliente con quello degli altri: non ripete il criterio degli stati, che sta tutto nella lettura. Un cliente
+che non occupa la chiave (istanza non fittizia, annullato, pre-contrattuale, aggregante, senza periodo) non
+esce dalla lettura, quindi non si sovrappone a nessuno e passa.
 
-| Che cosa cambia | Chi controlla |
-| --- | --- |
-| si scrive un cliente (nascita, stato, date) | il controllo sul cliente |
-| cambia l'azienda di un billing account | i clienti di quel billing account |
-| un'istanza diventa fittizia | i clienti di quell'istanza |
-| si sposta l'azienda predefinita | tutti i clienti fittizi dei billing account senza collegamento |
-
-Le altre colonne della fornitura sul cliente (soggetto, servizio, billing account) non si
-cambiano: lo impedisce il blocco delle colonne.
-
-Il controllo avviene **alla conferma dell'operazione**: dentro la stessa operazione si può
-chiudere il cliente vecchio e aprire il nuovo in qualunque ordine.
+Un cliente che non esiste più nella stessa operazione non ha niente da presidiare, e un id vuoto non
+controlla niente.
 
 ---
 
-### Le funzioni sorelle
+### Codici errore
 
-* `anagrafiche.fn_guard_clienti_chiave_unica_di` — applica il controllo ai clienti di un billing
-  account o di un'istanza;
-* `anagrafiche.fn_guard_clienti_chiave_unica_gestore_globale` — lo applica a tutti i clienti
-  fittizi dei billing account senza collegamento, quando si sposta l'azienda predefinita.
-
-Sono privilegiate per lo stesso motivo del controllo: un cliente fuori dal perimetro di chi
-scrive sarebbe invisibile.
+* `E_CLIENTE_STESSA_CHIAVE` — un altro cliente occupa la stessa chiave in un periodo che si sovrappone. Il
+  messaggio porta il codice del billing account di quel cliente, il primo per data di attivazione se sono
+  più d'uno.
 
 ---
 
-### Errore
+### Note di migrazione
 
-`E_CLIENTE_STESSA_CHIAVE` — *«Per questo soggetto, servizio e azienda esiste già il cliente %s,
-attivo nello stesso periodo.»*, col codice del billing account del cliente che esiste già (il
-cliente non ha un codice suo).
+* 2026-10-14 — nasce con la regola del cliente manuale (decisioni di Tid del 2026-10-13).
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_chiave-unica-cliente.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,171 +1,58 @@
-## 📘 Documentazione Tecnica – Trigger Function `anagrafiche.trgfn_pdp_set_default_stato`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_pdp_set_default_stato`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)    
-> [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)    
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il PDP che nasce
+> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp) — gli stati tecnici
 >
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_clienti_sync_stato_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp) — chi muove lo stato dopo la nascita
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 16-12-25)
-La trigger function **`anagrafiche.trgfn_pdp_set_default_stato()`** imposta automaticamente lo **stato tecnico** di un PDP a **DISP** (*Disponibile*) quando il campo `stato_pdp_id` non è stato valorizzato.
 
-Regola:
-
-* Se `NEW.stato_pdp_id` è `NULL` → assegna lo stato con `config.stati_pdp.codice_interno = 'DISP'`.
-* Se `NEW.stato_pdp_id` è già valorizzato → non modifica nulla.
+`anagrafiche.trgfn_pdp_set_default_stato` dà lo stato tecnico «disponibile» (`DISP`) a un PDP che nasce senza
+stato.
 
 ---
 
-### Contesto
+### Lo stato di nascita
 
-Il PDP deve avere sempre uno stato tecnico coerente:
+Un PDP nasce senza clienti, e quindi disponibile. Il trigger scatta solo alla nascita: se chi scrive passa
+uno stato, lo tiene; se non lo passa, scrive `DISP`, cercato per codice interno nel catalogo degli stati.
+Dopo la nascita lo stato lo muove la scrittura dei clienti del PDP, secondo l'occupazione per periodo, e
+nessun altro trigger della tabella lo tocca.
 
-* il default iniziale è **DISP** (Disponibile)
-* altri stati (es. ATT, DTEC, DISM, ecc.) vengono gestiti da processi e regole specifiche
-
-Questa trigger function garantisce che l’inserimento non lasci PDP “senza stato”.
-
----
-
-### Firma
-
-```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_set_default_stato()
-RETURNS trigger
-LANGUAGE plpgsql;
-```
+Che lo stato sia attivo nel catalogo lo controlla al COMMIT il trigger generico del genitore attivo.
 
 ---
 
-### Input (Record Trigger)
+### ⚠️ Che cosa oggi non copre
 
-Utilizza:
-
-* `NEW.stato_pdp_id`
-* `NEW.tx_id`
-
-E legge da:
-
-* `config.stati_pdp` filtrando `codice_interno = 'DISP'`
+* **Uno stato passato non si giudica.** Un PDP può nascere `ATT` senza nessun cliente, o `DISM`: il trigger
+  non confronta lo stato con l'occupazione, e la scrittura dei clienti lo corregge solo fra `DISP` e `ATT`, e
+  solo quando un cliente del PDP si scrive.
+* **Il contesto dell'errore è malformato.** Quando manca `DISP`, il contesto porta come chiave una frase e
+  come valore un nulla.
 
 ---
 
-### Output
+### Codici errore
 
-* Ritorna `NEW`.
-* Può modificare `NEW.stato_pdp_id` quando è `NULL`.
-
-> Tipicamente si aggancia a un trigger `BEFORE INSERT` (o `BEFORE INSERT OR UPDATE`) perché modifica `NEW`.
+* `E_CODICE` — manca lo stato `DISP` nel catalogo; nella frase il codice cercato e la tabella.
 
 ---
 
-### Logica Operativa
+### Test
 
- **1) Guardia: stato già impostato**
-
-Se `NEW.stato_pdp_id IS NOT NULL`:
-
-* `RETURN NEW;`
-
- **2) Lookup stato DISP**
-
-Recupera l’id dello stato tecnico DISPONIBILE:
-
-```sql
-SELECT id
-INTO v_stato_disp_id
-FROM config.stati_pdp
-WHERE codice_interno = 'DISP';
-```
-
- **3) Gestione anomalia: stato DISP mancante in config**
-
-Se lo stato non è presente (`v_stato_disp_id IS NULL`), la funzione genera errore applicativo con `script.fn_log_and_raise_error`.
-
-Caratteristiche:
-
-* codice errore: `E_CODICE`
-* contesto: `anagrafiche.trgfn_pdp_set_default_stato`
-* payload JSONB include un messaggio descrittivo e il valore (NULL) di `v_stato_disp_id`
-* tx context: `NEW.tx_id`
-* parametri extra: `'DISP'`, `'config.stati_pdp'`
-
-> Questo scenario è considerato **bloccante**: senza un record DISP in configurazione, il default non può essere applicato.
-
- **4) Assegnazione default**
-
-Se il lookup ha successo:
-
-* `NEW.stato_pdp_id := v_stato_disp_id;`
-* `RETURN NEW;`
+* `db/pgtap/anagrafiche/test-create-pdp.sql` — i PDP creati senza stato nascono `DISP`.
 
 ---
 
-### ⚠️ Error Handling
-
-Errore gestito:
-
-| Codice     | Scenario                                               | Effetto                        |
-| ---------- | ------------------------------------------------------ | ------------------------------ |
-| `E_CODICE` | manca `config.stati_pdp` con `codice_interno = 'DISP'` | errore applicativo (bloccante) |
-
----
-
-### Side Effects
-
-* Nessun DML diretto.
-* Modifica del record `NEW` (assegnazione default), quindi la funzione è **BEFORE-oriented**.
-
----
-
-### Considerazioni di Performance
-
-* 1 lookup su tabella di configurazione (`config.stati_pdp`) per ogni evento.
-
-Consigliato:
-
-* indice/unique su `config.stati_pdp.codice_interno` (o vincolo unico) per garantire lookup veloce e deterministico.
-
----
-
-### Esempi di Comportamento
-
- **Caso A – Stato già presente**
-
-* `NEW.stato_pdp_id = 5`
-
-👉 nessuna modifica.
-
- **Caso B – Stato mancante**
-
-* `NEW.stato_pdp_id = NULL`
-* `config.stati_pdp` contiene `DISP` con `id = 2`
-
-👉 `NEW.stato_pdp_id := 2`.
-
- **Caso C – Config incompleta**
-
-* `NEW.stato_pdp_id = NULL`
-* nessun record `codice_interno='DISP'`
-
-👉 errore `E_CODICE` (bloccante).
-
----
-
-### Note per Test (pgTAP / SQL)
-
-Casi minimi consigliati:
-
-1. Inserimento PDP con `stato_pdp_id` valorizzato → invariato.
-2. Inserimento PDP con `stato_pdp_id NULL` e config DISP presente → default valorizzato.
-3. Inserimento PDP con `stato_pdp_id NULL` e config DISP assente → errore `E_CODICE`.
-
----
-
-### Best Practice
-
-* Assicurare un record di configurazione con `codice_interno='DISP'` (meglio con vincolo UNIQUE su `codice_interno`).
-* Collegare questa function a un trigger `BEFORE INSERT` sulla tabella `anagrafiche.pdp`.
-* Limit
+{% include-markdown "signature-core.md" %}

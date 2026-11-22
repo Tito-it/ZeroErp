@@ -1,57 +1,104 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_billing_account()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_billing_account`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/manual/fn_crea_cliente) ·
-> [script.fn_scrivi_riga_da_jsonb](/dbzero/script/manual/fn_scrivi_riga_da_jsonb)
+> Approfondimento tabelle:
+>
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il billing account che crea
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza fittizia che crea, se non se ne indica una
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il collegamento all'azienda
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/funzioni/fn_crea_cliente) — il verbo del cliente, che la usa
+> * [script.fn_scrivi_riga_da_jsonb](/dbzero/script/funzioni/fn_scrivi_riga_da_jsonb) — la scrittura delle due righe
+> * [anagrafiche.trgfn_billing_account_link_ef](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) — il collegamento scritto dal trigger, con un operatore in sessione
 
-### 🎯 Scopo
-(18-10-2026 — brief `brief-db-processi-accensione-per-ambiente`, 2b-1 lotto 5)
+---
 
-**Aprire il conto di fatturazione (billing account) di un cliente per una
-utility.** In un'operazione sola:
+### 🎯 Scopo Principale
 
-1. l'**istanza utility** fittizia del soggetto, se non se ne indica una
-   esistente;
-2. il **billing account**;
-3. se chiesto, il **legame del BA a un'azienda emittente**.
+`anagrafiche.fn_crea_billing_account` apre il billing account di un ruolo per una utility in una sola
+chiamata: l'istanza fittizia del soggetto, se non se ne indica una, il billing account e, se chiesto, il suo
+collegamento a un'azienda. Restituisce il billing account e l'istanza.
 
-Un BA può esistere anche senza la riga del cliente: è la catena minima che i
-documenti pretendono. Per il cliente completo c'è
-[fn_crea_cliente](/dbzero/anagrafiche/manual/fn_crea_cliente), che usa questa.
+Un billing account può esistere senza il cliente: è la catena minima che i documenti pretendono. Per il cliente
+completo c'è `fn_crea_cliente`, che la chiama.
+
+---
 
 ### I campi
 
-* **Il BA**: la categoria del cliente (obbligatoria: non ha un default, come
-  vuole il listino), e facoltativi il codice (altrimenti generato), la modalità
-  di fatturazione degli ordini, il conto padre, la valuta.
-* **L'istanza nuova**: facoltativi il codice e l'indirizzo. Nasce sempre
-  fittizia: un'istanza vera nasce dal motore delle pratiche. Con un'istanza
-  esistente questi campi non si passano.
-* Un campo diverso è rifiutato col suo nome (`E_CAMPO_NON_AMMESSO`).
+* **Il billing account** (`p_campi`): la categoria del cliente, obbligatoria; facoltativi il codice (se no lo
+  genera il trigger), il momento di fatturazione degli ordini, il conto padre, la valuta. Una chiave a `null`
+  vale come assente, e la colonna prende il suo default.
+* **L'istanza nuova** (`p_istanza`): facoltativi il codice e l'indirizzo. Nasce sempre fittizia: un'istanza
+  vera nasce dal motore delle pratiche. Con un'istanza esistente (`p_istanza_utility_id`) questi campi non si
+  passano.
+* Una chiave che non è fra queste è rifiutata col suo nome (`E_CAMPO_NON_AMMESSO`).
 
-### Il legame all'azienda
+Il billing account si rilegge per la coppia (istanza, utility) a istruzione finita: sotto la RLS la riga si
+vede solo dopo il collegamento che il trigger scrive dopo l'inserimento.
 
-* **Con un operatore collegato**, il legame lo scrive il sistema, verso
-  l'azienda su cui l'operatore lavora. Se si chiede un'azienda diversa, è un
-  errore.
-* **Senza nessuno collegato** (il provisioning, le fixture di test), il legame
-  lo scrive questa funzione, se l'azienda è indicata.
+---
 
-⚠️ **Un limite di oggi.** Un'istanza ha i BA di una sola azienda, e il
-controllo scatta quando il BA nasce, prima del legame chiesto. Senza nessuno
-collegato, quindi, un secondo BA su un'istanza esistente con un'azienda
-indicata diversa da quella di default non passa. Con un operatore collegato
-non succede.
+### L'azienda del billing account
 
-### Che cosa non controlla
+* **Con un operatore in sessione** il collegamento lo scrive il trigger della nascita, verso l'azienda di chi
+  agisce. Un'azienda chiesta (`p_emittente_soggetto_ruolo_id`) uguale a quella passa; diversa è un errore.
+* **Senza sessione** (il provisioning, i builder dei test) il collegamento lo scrive questa funzione, verso
+  l'azienda chiesta, come collegamento proprio del billing account. Senza azienda chiesta il billing account
+  non ha collegamento, e segue l'azienda predefinita.
 
-Il permesso, il caso «amministratore senza azienda scelta», la coerenza fra il
-soggetto e l'istanza: li dicono i controlli della tabella e il backend.
+---
+
+### Che cosa lascia alle tabelle
+
+Il permesso di creare (`E_BA_ADMIN_GLOBALE_VIETATO`), il ruolo cliente dello stesso soggetto dell'istanza,
+l'albero e l'istanza di un'azienda sola, l'unicità della coppia: li dicono i guard e i vincoli di
+`billing_account`. Una categoria assente urta il NOT NULL della colonna. La funzione non cambia il modo dei
+vincoli differiti: l'istanza nuova vuole il suo billing account al commit, e la finestra è di chi chiama.
+
+Gira coi permessi di chi chiama.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Senza sessione, l'azienda chiesta arriva dopo i guard dell'azienda.** I controlli «un'istanza, un'azienda»
+  e «albero omogeneo» girano subito dopo l'inserimento, prima del collegamento che la funzione scrive: in quel
+  momento il billing account nuovo è dell'azienda predefinita. Un secondo billing account su un'istanza
+  esistente, o un figlio sotto un padre, collegati a un'azienda diversa dalla predefinita sono quindi rifiutati
+  anche quando l'azienda chiesta è quella giusta. Con un operatore in sessione non succede: il collegamento lo
+  scrive il trigger, prima dei controlli.
+
+---
+
+### Codici errore
+
+* `E_SCRIPT_CHIAMATA_NON_VALIDA` — ruolo o utility mancanti, campi che non sono oggetti, un'istanza esistente
+  insieme ai campi di una nuova, o un'azienda chiesta diversa da quella a cui il trigger ha già collegato il
+  billing account.
+* `E_CAMPO_NON_AMMESSO` — una chiave fuori elenco, nei campi del billing account o dell'istanza.
+* `E_SOGGETTO_RUOLO_NON_TROVATO` — il ruolo non esiste.
+
+---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-fn-crea-cliente-v1.sql`.
+* `db/pgtap/anagrafiche/test-fn-crea-cliente-v1.sql` — l'istanza fittizia del soggetto del ruolo, il codice
+  generato e il default della fatturazione, il collegamento chiesto senza sessione, un secondo billing account
+  su un'istanza esistente, le chiamate malformate, le chiavi estranee, il ruolo inesistente; con un operatore in
+  sessione il collegamento del trigger e il rifiuto di un'azienda diversa.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — nasce, e prende il posto delle scritture a mano di istanza, billing account e collegamento nel
+  servizio dei clienti e nei builder dei test.
 
 ---
 

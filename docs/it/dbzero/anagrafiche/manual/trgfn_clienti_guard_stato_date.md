@@ -1,33 +1,42 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_clienti_guard_stato_date`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_clienti_guard_stato_date`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
+> Approfondimento tabelle:
 >
-[config.transizioni_stati_cliente](/dbzero/config/manual/transizioni_stati_cliente)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — la tabella su cui scatta
+> * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente) — gli stati del cliente
+> * [config.transizioni_stati_cliente](/dbzero/config/tabelle/transizioni_stati_cliente) — il percorso ammesso fra gli stati
 >
-Guide:
+> Approfondimento funzioni:
 >
-[Gli stati del cliente e le loro date](/it/guide/gestione-delle-istanze-utility#gli-stati-del-cliente-e-le-loro-date)
+> * [anagrafiche.trgfn_clienti_set_periodo](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_periodo) — il periodo calcolato dalle stesse date
+> * [script.fn_disdetta_cliente](/dbzero/script/funzioni/fn_disdetta_cliente) — la chiusura del cliente
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — gli stati del cliente e le loro date
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-10-26)
 
-Tiene in regola **lo stato del cliente e le date** che lo accompagnano, ogni volta che un cliente
-si crea o si modifica.
+`anagrafiche.trgfn_clienti_guard_stato_date` tiene in regola lo stato del cliente e le date che lo
+accompagnano, a ogni nascita e a ogni modifica: il percorso degli stati, la data di chiusura che non cambia,
+la data che ogni stato pretende.
 
 ---
 
-### Le tre regole
+### Le regole
 
-| Regola | Errore |
+| Regola | Codice |
 | --- | --- |
-| lo stato cambia solo lungo il percorso ammesso: da un chiuso si va solo a «Chiuso e fatturato», che è finale come l'annullato | `E_CLIENTE_STATO_TRANSIZIONE_INVALIDA` |
-| un cliente chiuso non cambia più la data di chiusura, nemmeno quando diventa «Chiuso e fatturato» | `E_CLIENTE_DATA_CHIUSURA_IMMUTABILE` |
+| lo stato cambia solo lungo il percorso di `config.transizioni_stati_cliente` (le transizioni attive) | `E_CLIENTE_STATO_TRANSIZIONE_INVALIDA` |
+| un cliente chiuso, in qualunque forma, non cambia più la data di chiusura, nemmeno quando diventa «chiuso e fatturato» | `E_CLIENTE_DATA_CHIUSURA_IMMUTABILE` |
 | ogni stato pretende la sua data | `E_CLIENTE_STATO_SENZA_DATA` |
-
-E la chiusura non può precedere l'attivazione (`E_DATA_CHIUSURA`).
+| la chiusura non precede l'attivazione (l'annullato escluso: il periodo gli toglie le date) | `E_DATA_CHIUSURA` |
 
 Le date che ogni stato pretende:
 
@@ -35,25 +44,50 @@ Le date che ogni stato pretende:
 | --- | --- |
 | attivo, richiesta di sospensione | attivazione |
 | sospeso (fatturabile o no) | attivazione, sospensione |
-| chiuso (in ogni forma) | attivazione, chiusura |
+| chiuso (`CH`, `CM`, `CW`, `CF`) | attivazione, chiusura |
 | attivo dopo una sospensione | anche la riattivazione |
 | pre-contrattuale, annullato, aggregante | nessuna |
 
-Il percorso vale per i **cambi** di stato. Un cliente si può creare direttamente in qualunque
-stato, purché abbia le date che lo stato pretende.
+Il percorso vale per i **cambi** di stato. Un cliente nasce in qualunque stato, purché abbia le date che lo
+stato pretende. Quando mancano più date, il rifiuto nomina la prima nell'ordine in cui la vita del cliente le
+scrive.
+
+Il messaggio riconosce il cliente dal codice del suo billing account, quello che l'operatore conosce.
 
 ---
 
-### Perché un cliente chiuso non si riapre
+### ⭐ Un cliente chiuso non si riapre
 
-Decisione del 2026-10-13: chi torna dopo una chiusura apre una **catena nuova** (istanza, billing
-account e cliente nuovi), collegata alla precedente. Il cliente chiuso resta com'è, perché la sua
-data di chiusura dice fino a quando ha occupato la fornitura.
+Dal chiuso si va solo a «chiuso e fatturato», che è finale come l'annullato. Chi torna dopo una chiusura apre
+una fornitura nuova (istanza, billing account e cliente), collegata alla precedente. Il cliente chiuso resta
+com'è, perché la sua data di chiusura dice fino a quando ha occupato la fornitura: è la misura del periodo, del
+vincolo sul PDP e della chiave del cliente manuale.
 
 ---
 
-### Che cosa ha sostituito
+### Codici errore
 
-Fino al 2026-10-14 due pezzi di queste regole stavano nella funzione che calcola il periodo del
-cliente (l'attivo senza data di attivazione, il chiuso con la chiusura prima dell'attivazione), e
-la disdetta accettava solo un cliente attivo. Ora la regola sta tutta qui, per tutti gli stati.
+* `E_CLIENTE_STATO_TRANSIZIONE_INVALIDA` — un cambio di stato fuori percorso. Campo `stato_cliente_id`.
+* `E_CLIENTE_DATA_CHIUSURA_IMMUTABILE` — la data di chiusura di un cliente chiuso cambia. Campo `data_chiusura`.
+* `E_CLIENTE_STATO_SENZA_DATA` — manca la data che lo stato pretende. Il campo è la data mancante.
+* `E_DATA_CHIUSURA` — la chiusura precede l'attivazione. Campo `data_chiusura`.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-cliente-manuale-chiave-unica-v1.sql` — le date pretese da sospeso, riattivato e
+  chiuso, il chiuso che non torna attivo, la data di chiusura che non cambia, il passaggio a «chiuso e
+  fatturato» e il ritorno indietro rifiutato, la disdetta di un sospeso.
+
+---
+
+### Note di migrazione
+
+* 2026-10-14 — nasce, e raccoglie per tutti gli stati i controlli che stavano nel calcolo del periodo (l'attivo
+  senza attivazione, il chiuso con la chiusura prima dell'attivazione). Prima la disdetta accettava solo un
+  cliente attivo.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -1,134 +1,113 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.istanze_dati_precontrattuali`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Guide generali:
+> Approfondimento tabelle:
 >
-[Generazione di un cliente](/guide/generazione-cliente)
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza dei dati
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — la coppia (istanza, utility) che i dati richiedono
+> * [config.classi_utenze](/dbzero/config/tabelle/classi_utenze) — la classe d'utenza, da cui viene il tipo
+> * [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze) — il tipo d'utenza, letto attraverso la classe
+> * [vendite.contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities) — il contratto che congela i dati
+> * [storico.istanze_dati_precontrattuali](/dbzero/storico/tabelle/istanze_dati_precontrattuali) — le versioni di prima
 >
-Approfondimento tabelle:
+> Approfondimento viste:
 >
-[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> [config.utilities](/dbzero/config/tabelle/utilities)
-> [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze)
-> [config.classi_utenze](/dbzero/config/tabelle/classi_utenze)
-> [vendite.contratti](/dbzero/vendite/tabelle/contratti)
-> [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe)
-> [vendite.regole_fatturazione_articolo](/dbzero/vendite/tabelle/articolo_regole_fatturazione)
+> * [anagrafiche.vw_istanze_dati_precontrattuali_dettaglio](/dbzero/anagrafiche/views/vw_istanze_dati_precontrattuali_dettaglio) — i dati con l'istanza e le decodifiche
 >
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update](/dbzero/anagrafiche/funzioni/trgfn_istanze_dati_precontrattuali_protect_update) — il blocco dopo il contratto
+> * [script.fn_get_ba_id_da_coppia](/dbzero/script/funzioni/fn_get_ba_id_da_coppia) — il BA della coppia, per la policy
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — l'istanza e i suoi billing account
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 09-01-26)
-La tabella `anagrafiche.istanze_dati_precontrattuali` raccoglie **tutte le informazioni pre‑contrattuali** relative ad una specifica **istanza utility** (fornitura/utenza). Il campo **`meta` (JSONB)** consente di archiviare attributi **specifici per tipo di utility** (es. potenza impegnata, pressione, soglie tecniche, parametri di profilazione).
 
-Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
-
-* propagate al **contratto** (per la configurazione tecnica e commerciale),
-* riutilizzate in **fatturazione** per i **calcoli di prezzo/consumi** quando rappresentano parametri tariffari.
-* eventuali comunicazioni da sistemi esterni sono tracciate in tabelle dedicate, separate dal dato definitivo.
+`anagrafiche.istanze_dati_precontrattuali` raccoglie i dati tecnici di una fornitura per una sua utility:
+la classe d'utenza, due parametri di uso comune e le estensioni proprie della utility. Il contratto li
+legge e, da quel momento, non si cambiano più.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### Una riga per coppia (istanza, utility), e solo col suo billing account
 
-| Campo                | Riferimento                         | Cardinalità | ON UPDATE | ON DELETE |
-| -------------------- | ----------------------------------- | ----------- | --------- | --------- |
-| `istanza_utility_id` | `anagrafiche.istanze_utilities(id)` | N:1         | CASCADE   | RESTRICT  |
-| `utility_id`         | `config.utilities(id)`              | N:1         | CASCADE   | RESTRICT  |
-| `classe_utenza_id`   | `config.classi_utenze(id)`          | N:1         | CASCADE   | RESTRICT  |
-
-> **Nota**: le RESTRICT impediscono cancellazioni che lascerebbero orfani i dati pre‑contrattuali.
-> Il **tipo utenza** è reperito tramite la classe (`config.classi_utenze.tipo_utenza_id`).
+La chiave è la coppia (`uq_istanze_dati_precontrattuali_id_utility_id`): una fornitura ha al più una riga di
+dati per ogni utility. La coppia deve essere quella di un billing account (`fk_idp_billing_account_coppia`):
+i dati precontrattuali sono dati, non dichiarano la utility dell'istanza, e senza il BA di quella utility
+non esistono.
 
 ---
 
-### Campi Chiave e Regole
+### I campi
 
-* `param_1_num` / `param_2_txt` → placeholder **core** per parametri più comuni (es. **potenza impegnata**, **tensione/pressione**).
-* `classe_utenza_id` → determina il **tipo utenza** tramite la relazione con `config.classi_utenze`.
-* `meta JSONB` → estensioni **per‑utility** (chiavi definite dal dominio). Consigli:
-
-  * versionare lo schema (`meta.schema_version`),
-  * mantenere **descrizioni** sintetiche (`meta._descr`),
-  * usare tipi nativi (numeri, boolean) per abilitare aggregazioni.
-* Audit e tracciabilità: `tx_id`, `storicizza` (predefinito **true**), `data_*`, `user_*`.
+* `classe_utenza_id` — la classe d'utenza; il tipo d'utenza non sta sulla riga, si legge dalla classe.
+* `param_1_num` e `param_2_txt` — due parametri di uso comune, per esempio la potenza impegnata e la
+  tensione o la pressione. Il numero è finito (`chk_istanze_dati_precontrattuali_param_1_num_finito`).
+* `meta` — le estensioni proprie della utility, in JSONB.
 
 ---
 
-### Vincoli & Integrità
+### ⛔ Dopo il contratto non si toccano
 
-* **PK**: `id`.
-* **FK**: verso `istanze_utilities`, `utilities`, `tipi_utenze`, `classi_utenze` come da tabella collegamenti.
-* **Solo col billing account della coppia** (dal 2026-10-08, `fk_idp_billing_account_coppia`): una riga per la coppia (istanza, utility) esiste solo se quella coppia ha il suo billing account. I dati precontrattuali sono **dati**, non dichiarano la utility dell'istanza: lo fa il billing account, che nasce con l'istanza. Fino a quel giorno una riga qui bastava a far nascere un'istanza senza BA. Vedi [Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account).
-* **Visibilità per azienda** (dal 2026-10-08, RLS `rls_istanze_dati_precontrattuali_ef_whitelist`): un operatore vede e scrive i dati precontrattuali solo se vede il billing account della loro coppia: la policy trova il BA con [`fn_get_ba_id_da_coppia`](/dbzero/script/manual/fn_get_ba_id_da_coppia) e calcola il perimetro dell'operatore una volta per istruzione (dal 2026-10-21). La vista `vw_istanze_dati_precontrattuali_dettaglio` è `security_invoker`, così non scavalca la regola.
-* **Immutabilità consigliata**: i campi **sensibili** dovrebbero essere **bloccati** dopo il consolidamento applicativo (es. tramite trigger), salvo `meta` per correzioni controllate.
-
----
-
-
-### Query Tipiche
-
-**1) Ultimo snapshot per istanza**
-
-```sql
-SELECT *
-FROM anagrafiche.istanze_dati_precontrattuali idp
-WHERE idp.istanza_utility_id = :istanza_id
-  AND idp.utility_id = :utility_id
-ORDER BY idp.data_update DESC
-LIMIT 1;
-```
-
-**2) Aggiornamento dati tecnici**
-
-```sql
-UPDATE anagrafiche.istanze_dati_precontrattuali
-   SET data_update = now()
- WHERE id = :id
-;
-```
-
-**3) Upsert di un attributo tecnico in `meta`**
-
-```sql
-UPDATE anagrafiche.istanze_dati_precontrattuali
-   SET meta = jsonb_set(meta, '{elettrico,potenza_impegnata_kw}', to_jsonb(:kw)::jsonb, true),
-       data_update = now()
- WHERE id = :id;
-```
-
-**4) Ricavo parametri per pricing in fatturazione**
-
-```sql
-SELECT c.id AS contratto_id,
-       idp.meta -> 'elettrico' ->> 'potenza_impegnata_kw' AS pot_kw
-FROM vendite.contratti c
-JOIN anagrafiche.istanze_dati_precontrattuali idp
-  ON idp.istanza_utility_id = c.istanza_utility_id
-WHERE c.id = :contratto_id
-;
-```
+Quando un contratto utility ha letto la riga (`vendite.contratti_utilities` la nomina), la riga non si
+modifica e non si cancella (`E_COLONNA_NON_MODIFICABILE`): il contratto resta coerente con i dati su cui è
+nato, e una correzione passa da un contratto nuovo. Finché nessun contratto la nomina, si modifica e si
+cancella; ogni versione di prima va nello storico, quando `storicizza` è acceso.
 
 ---
 
-### Esempi d’Uso (flusso)
+### Visibilità per azienda
 
-1. **Inserimento**: arrivano dati da CRM/portale/api → popolazione campi base + `meta`.
-2. **Validazione**: controlli automatici/umani (range, coerenza con `istanze_utilities`, esistenza codifiche).
-3. **Consolidamento applicativo**: dati definitivi → disponibili per **contratto** e **fatturazione**.
+La tabella ha la RLS: la vede e la scrive solo un operatore, quando l'azienda emittente del billing account
+della coppia è nel suo perimetro (`rls_istanze_dati_precontrattuali_ef_whitelist`). Il perimetro si calcola
+una volta per istruzione; il BA della coppia lo trova `script.fn_get_ba_id_da_coppia`, che non dipende dalla
+RLS del BA. Chi non ha la veste di operatore non vede niente. La vista di dettaglio è `security_invoker`, e
+non scavalca la regola.
 
 ---
 
-### Best Practice
+### ⚠️ Che cosa oggi non copre
 
-* Definisci un **mini‑schema per utility** (chiavi JSON standard, es. `elettrico.*`, `gas.*`).
-* **Versiona** lo schema (`meta.schema_version`) e mantieni una pagina di mapping in documentazione.
-* Valuta una **unique parziale** per `(istanza_utility_id, utility_id)` se serve vincolare una sola riga definitiva.
-* Prevedi funzioni di **validazione** (PL/pgSQL) richiamate da job pgAgent.
-* Evita DELETE; preferisci storicizzazione.
+* **Il blocco guarda solo i contratti.** Anche un'offerta commerciale nomina la riga
+  (`vendite.offerte_commerciali_utilities`): la cancellazione la ferma la chiave esterna, la modifica passa,
+  e l'offerta si ritrova dati diversi da quelli su cui è nata.
+* **Il rifiuto non nomina un campo.** Il blocco risponde con il codice di una colonna non modificabile anche
+  per una cancellazione, e senza il campo da evidenziare nel form.
+
+---
+
+### Codici errore
+
+* `E_COLONNA_NON_MODIFICABILE` — modifica o cancellazione di una riga che un contratto nomina.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-istanze-dati-precontrattuali.sql` — le chiavi esterne verso istanza, utility e
+  classe.
+* `db/pgtap/anagrafiche/test-istanza-nasce-col-ba-v1.sql` — la chiave esterna verso la coppia del BA.
+* `db/pgtap/vendite/test-contratti-utilities-snapshot.sql` — il contratto che legge la riga, e la modifica
+  bloccata dopo.
+* `db/pgtap/rls/test-rls-istanze-dati-precontrattuali-v1.sql` — la policy, la vista che non scavalca, la
+  scrittura sulla coppia di un'altra azienda rifiutata, chi non ha veste che non vede niente.
+
+---
+
+### Note di migrazione
+
+* 2026-10-08 — nascono la chiave esterna verso la coppia del BA e la RLS; prima una riga di dati bastava a
+  far nascere un'istanza senza billing account.
+* 2026-10-21 — la policy trova il BA con `script.fn_get_ba_id_da_coppia` e calcola il perimetro una volta per
+  istruzione.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

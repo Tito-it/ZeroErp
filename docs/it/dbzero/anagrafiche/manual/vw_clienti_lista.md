@@ -1,81 +1,58 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_clienti_lista`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti)
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> • [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
-> • [config.stati_cliente](/dbzero/config/tabelle/stati_cliente)
+> Approfondimento tabelle:
 >
-Approfondimento viste:
-> • [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — una riga per cliente
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — il codice del cliente
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza, da cui si arriva al soggetto
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — l'anagrafica del cliente
+> * [ui.lista_definizione](/dbzero/ui/tabelle/lista_definizione) — la lista configurabile che la legge
+>
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_clienti_codice_ba](/dbzero/anagrafiche/views/vw_clienti_codice_ba) — il cliente col codice, per la ricerca
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Vista **flat** dei clienti per la lista UI `anagrafiche.clienti`. Denormalizza in una riga
-sola ciò che nel modello sta su cinque tabelle: anagrafica del soggetto (compreso
-`id_fiscale_univoco_cf_piva`), codice del billing account, utility, stato del cliente e le
-quattro date del ciclo di vita (attivazione, sospensione, riattivazione, chiusura).
-
-Esiste per una ragione precisa: una lista configurabile deve poter **ordinare e filtrare su
-qualunque colonna mostrata** senza che il backend ricostruisca i join a ogni richiesta.
+`anagrafiche.vw_clienti_lista` è la sorgente della lista dei clienti: per ogni cliente l'anagrafica del soggetto,
+il codice del billing account, la utility, lo stato e le quattro date del ciclo di vita, in una riga sola.
 
 ---
 
-### ⚠️ Lo scope non lo applica lei: lo eredita
+### Una riga per cliente, cioè per billing account
 
-La vista è dichiarata `WITH (security_invoker = on)`. Le policy RLS delle tabelle sottostanti
-si applicano quindi **a chi interroga**, non al proprietario della vista. Non c'è nessun
-filtro di perimetro scritto nel corpo, e non deve esserci: sarebbe una seconda sorgente di
-verità accanto alle policy.
+La granularità è il cliente, che ha un solo billing account: un soggetto compare una volta per ogni sua
+fornitura (gas a casa, luce in ufficio), anche con lo stesso ruolo e la stessa utility su due conti diversi.
+La vista non raggruppa e non ordina: lo fa la lista.
 
-Fra le tabelle lette, **`anagrafiche.billing_account` ha la RLS attiva** (quattro policy).
+Il soggetto si legge dall'istanza del cliente. È lo stesso del ruolo, perché il billing account tiene ruolo e
+istanza dello stesso soggetto (`anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza`).
 
----
-
-### ⚠️ Un cliente fuori perimetro non compare «senza codice»: **sparisce**
-
-È la conseguenza che conta, e non si vede leggendo l'elenco delle colonne. Il billing account
-è agganciato con un **`JOIN` interno**:
-
-```sql
-JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
-```
-
-`JOIN` interno + RLS significa che, se il BA non è visibile a chi interroga, **l'intera riga
-del cliente non esiste** per quella query. Lo stesso vale per istanza utility, soggetto,
-utility e stato, tutti agganciati con `JOIN` interno — ma quelle tabelle oggi non hanno RLS.
-
-Quindi: **un conteggio più basso del previsto su questa vista può essere il perimetro, non i
-dati.** Prima di inseguire un cliente «sparito», si controlla se il suo billing account è
-dentro il perimetro emittente di chi sta guardando.
-
-⭐ Il comportamento è deliberatamente **opposto** a quello della vista gemella
-`vw_clienti_codice_ba`, che sullo stesso legame usa un `LEFT JOIN`: là il cliente resta e il
-codice arriva `NULL`. Due viste sullo stesso dominio, due risposte diverse alla stessa
-domanda — sapere quale si sta usando è la differenza fra un elenco completo e uno filtrato.
+Nessun filtro di stato: chiusi e annullati ci sono, e la lista li filtra se vuole.
 
 ---
 
-### Cosa **non** garantisce
+### Il perimetro è quello di chi legge
 
-* **Nessuna deduplicazione**: la granularità è la riga di `anagrafiche.clienti`, cioè
-  soggetto × utility. Lo stesso soggetto compare più volte se è cliente su più utility.
-* **Nessun ordinamento**: non c'è `ORDER BY`. Lo decide chi interroga.
-* **Nessuna nozione di "attivo"**: non filtra per stato. Un cliente chiuso c'è, con il suo
-  `stato_codice_interno`. Il filtro è della lista, non della vista.
+La vista è `security_invoker`, e non scrive un filtro di perimetro suo: valgono le policy delle tabelle per chi
+interroga. Delle tabelle unite hanno la RLS i clienti e i billing account, e le loro policy guardano la stessa
+azienda e lo stesso ruolo: un cliente che chi legge vede ha il suo billing account visibile, e i join interni non
+fanno sparire righe per perimetro.
+
+Una colonna nuova della lista si aggiunge qui prima che nella configurazione della lista: la lista non può
+mostrare ciò che la vista non espone.
 
 ---
 
-### Consumatori
+### Test
 
-Lista configurabile `anagrafiche.clienti` (`ui.lista_colonna`) e il repository del dominio
-anagrafiche. ⚠️ Aggiungere una colonna alla lista significa aggiungerla **qui** e poi
-registrarla in `ui.lista_colonna`: la lista non può mostrare ciò che la vista non espone.
+* `db/pgtap/rls/test-rls-viste-security-invoker.sql` — la vista eredita la RLS di chi legge.
 
 ---
 

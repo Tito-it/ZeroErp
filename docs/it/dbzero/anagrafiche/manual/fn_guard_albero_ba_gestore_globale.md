@@ -1,78 +1,97 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_albero_ba_gestore_globale`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente)
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — la riga della predefinita
 >
-Approfondimenti tabelle:
+> Approfondimento funzioni:
 >
-[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
+> * [script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id_installazione) — l'azienda per l'installazione
+> * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — lo stesso controllo, su un billing account
+> * [anagrafiche.fn_guard_istanza_ba_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_istanza_ba_gestore_globale) — il gemello sull'istanza
+> * [anagrafiche.fn_guard_ba_gestore_globale_storia](/dbzero/anagrafiche/funzioni/fn_guard_ba_gestore_globale_storia) — il cancello della storia sullo stesso movimento
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 18-08-26)
 
-Presidia l'**unica operazione del sistema che puo' cambiare l'emittente di molti
-billing account in una volta sola**: lo spostamento del gestore globale.
-
----
-
-### Cos'e' il gestore globale
-
-Molti billing account non hanno un'assegnazione esplicita a un emittente. Per
-loro vale una regola di ripiego: **appartengono al gestore globale**, cioe'
-all'emittente marcato come predefinito. Ce n'e' uno solo in tutto il sistema.
-
-Spostare quel marchio da un emittente a un altro cambia proprietario a **tutti**
-quelli senza assegnazione. In silenzio, e senza che nessuno abbia scritto un
-emittente da nessuna parte.
+`anagrafiche.fn_guard_albero_ba_gestore_globale` impedisce che lo spostamento dell'azienda predefinita lasci un
+albero di billing account su due aziende, e lo ferma con `E_ALBERO_EMITTENTE_MISTO`.
 
 ---
 
-### Cosa controlla, e cosa NON controlla
+### Una riga sposta molti billing account
 
-Si guardano **solo** i billing account senza assegnazione esplicita **che stanno
-in un albero**. Il motivo e' preciso:
+Un billing account senza collegamento appartiene all'azienda predefinita. Spostare la predefinita cambia in
+un colpo l'azienda di tutti quelli senza collegamento, senza che nessuno abbia scritto un'azienda su di loro.
+La chiama il trigger dell'albero quando la riga toccata è quella senza billing account.
 
-| Situazione | Cosa succede spostando il gestore globale |
+---
+
+### Conta la coppia mista
+
+| Padre e figlio | Spostando la predefinita |
 | --- | --- |
-| entrambi i lati senza assegnazione | si spostano **insieme**: l'albero resta sano ✅ |
-| entrambi i lati assegnati | non si sposta nessuno dei due ✅ |
-| **uno assegnato e uno no** | ⚠️ **solo questo si spacca** |
+| tutti e due senza collegamento | si spostano insieme: l'albero resta omogeneo |
+| tutti e due collegati | non si sposta nessuno dei due |
+| uno collegato e uno no | ⚠️ si separano |
 
-La condizione da presidiare e' quindi la **coppia mista**, non «esiste un
-albero». Un controllo scritto largo bloccherebbe operazioni legittime, e una
-funzione che infastidisce e' una funzione che qualcuno prima o poi disattiva.
-
-L'azienda di ogni billing account si chiede **per l'installazione**
-([`script.fn_get_ba_emittente_sr_id_installazione`](/dbzero/script/manual/fn_get_ba_emittente_sr_id_installazione)),
-non per chi sta agendo: dal 10-10-2026, perché con il risolutore di sessione uno
-spostamento fatto da un utente con la sua azienda passava sopra un albero misto.
-Il rifiuto è lo stesso di
-[`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente):
-`E_ALBERO_EMITTENTE_MISTO`. Prova: `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql`
-(test 6) e `test-guard-albero-ba-omogeneo-v1.sql` (test 10-11).
+Il controllo cerca quindi la prima coppia padre/figlio in cui almeno uno è senza collegamento e le cui aziende,
+a spostamento fatto, sono diverse, e la nomina nel rifiuto, con gli stessi valori del guard sul singolo billing
+account. Un controllo più largo («esiste un albero») fermerebbe spostamenti legittimi.
 
 ---
 
-### Impatto e Vantaggi
+### ⭐ L'azienda per l'installazione, non per chi agisce
 
-* costa quasi nulla nell'uso quotidiano: dall'interfaccia il gestore globale
-  **non si sposta** (lo impediscono gia' un vincolo di unicita' e un controllo
-  di quantita'), quindi il caso passa solo da un intervento deliberato sul
-  database;
-* e proprio per questo il valore e' alto: e' l'operazione rara, ampia e mai
-  collaudata — quella in cui un errore e' silenzioso e grande.
+L'azienda di ogni billing account si chiede con `script.fn_get_ba_emittente_sr_id_installazione`: il
+collegamento, altrimenti la predefinita. Col livello di sessione, a un utente con la sua azienda il billing
+account senza collegamento sembrerebbe restare alla sua azienda, e lo spostamento passerebbe sopra un albero
+misto. Il rifiuto non dipende da chi sposta.
+
+Gira coi privilegi del proprietario: legge `billing_account`, che ha regole di visibilità per azienda.
+
 ---
 
-### ⚠️ Una nota del 2026-08-26: adesso c'è un secondo cancello
+### ⚠️ Che cosa oggi non copre
 
-Lo stesso movimento — spostare l'emittente generale — ha ora un controllo in più:
-[`fn_guard_ba_gestore_globale_storia`](/dbzero/anagrafiche/manual/fn_guard_ba_gestore_globale_storia),
-che lo vieta se **anche un solo** cliente non agganciato ha già fatture o
-commesse. Su un'installazione che ha già fatturato, cioè quasi sempre.
+* **Una coppia già mista prima dello spostamento.** Il controllo guarda lo stato dopo lo spostamento, non la
+  differenza: una coppia mista che c'era già (per esempio dopo uno scollegamento fatto in sessione, vedi
+  `fn_check_ba_coppia_emittente_omogenea`) ferma ogni spostamento della predefinita che non vada sull'azienda
+  del billing account collegato, anche quando lo spostamento non c'entra.
 
-Non è una duplicazione: questo chiede *«l'albero può diventare misto?»*, l'altro
-*«c'è storia da proteggere?»*. Il secondo, di norma, risponde per primo.
+---
+
+### Codici errore
+
+* `E_ALBERO_EMITTENTE_MISTO` — dopo lo spostamento, un padre e un figlio, di cui almeno uno senza collegamento,
+  sono di due aziende.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` — predefinita spostata con una coppia mista:
+  rifiutata; con una coppia omogenea: passa.
+* `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql` — lo stesso rifiuto da un operatore con la sua
+  azienda; la predefinita portata sull'azienda del collegato passa.
+
+---
+
+### Note di migrazione
+
+* 2026-08-18 — nasce col controllo dell'albero omogeneo.
+* 2026-10-10 — chiede l'azienda per l'installazione: prima delegava al guard del singolo billing account, che
+  risolve per chi agisce, e uno spostamento fatto da un utente con la sua azienda passava sopra un albero misto.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

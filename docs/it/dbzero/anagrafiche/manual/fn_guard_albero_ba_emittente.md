@@ -1,78 +1,90 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_albero_ba_emittente`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/manual/fn_check_ba_coppia_emittente_omogenea)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — l'albero padre/figli
 >
-Approfondimenti tabelle:
+> Approfondimento funzioni:
 >
-[anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> * [anagrafiche.fn_check_ba_coppia_emittente_omogenea](/dbzero/anagrafiche/funzioni/fn_check_ba_coppia_emittente_omogenea) — il confronto di una coppia
+> * [anagrafiche.trgfn_billing_account_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) — chiamante: nasce un billing account, o cambia il padre
+> * [anagrafiche.trgfn_efba_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_albero_emittente) — chiamante: cambia il collegamento all'azienda
+> * [anagrafiche.fn_guard_albero_ba_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_gestore_globale) — lo stesso controllo, quando si sposta la predefinita
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 18-08-26)
 
-Verifica che un billing account sia coerente per emittente **con il genitore e
-con tutti i figli**, e blocca l'operazione se non lo e'.
-
----
-
-### Perche' conta davvero
-
-Quando si emette una fattura, l'emittente si prende **dal genitore**. Un albero
-che attraversa due emittenti produce quindi un documento **emesso da un
-emittente che chi ha fatto il lavoro non puo' nemmeno vedere**, con una
-numerazione che non e' la sua.
-
-Non da' errore, non avvisa nessuno: si scopre a fine mese, e non si sa da dove
-venga.
+`anagrafiche.fn_guard_albero_ba_emittente` verifica che un billing account sia della stessa azienda del suo
+padre e di tutti i suoi figli, e ferma l'operazione con `E_ALBERO_EMITTENTE_MISTO` se non lo è.
 
 ---
 
-### Il verso che si dimentica
+### Perché un albero misto è un danno muto
 
-Il controllo guarda in **due** direzioni:
-
-1. **verso il genitore** — quello a cui si pensa subito;
-2. **verso i figli** — quello che si dimentica sempre. Cambiare l'emittente di
-   un billing account non spacca solo il legame verso l'alto: spacca anche tutti
-   quelli verso il basso, e in un colpo solo.
+L'azienda che emette la fattura di un albero si prende dal padre. Un albero che attraversa due aziende produce
+quindi documenti emessi da un'azienda che chi ha lavorato sul figlio non vede, su una numerazione che non è la
+sua. Nessun dato è sbagliato da solo, e nessun errore compare: per questo il controllo sta nel database.
 
 ---
 
-### Perche' e' privilegiata
+### Due versi: il padre e i figli
 
-La funzione legge la tabella dei billing account, che e' protetta da regole di
-visibilita' per emittente. Se girasse con i permessi di chi sta scrivendo, un
-genitore o un figlio **di un altro emittente sarebbe invisibile** — e
-«non lo vedo» diventerebbe indistinguibile da «e' a posto».
+Il controllo guarda prima **verso il padre**, poi **verso ogni figlio**, in ordine. Il secondo è quello che si
+dimentica: cambiare l'azienda di un billing account non spezza solo il legame verso l'alto, ma tutti quelli
+verso il basso in un colpo. Il primo rifiuto trovato dice il verso, i due billing account e le due aziende.
 
-Sarebbe il difetto peggiore possibile: un controllo che risponde *«tutto bene»*
-proprio nel caso che deve bloccare. Gira quindi con i privilegi del
-proprietario della tabella, che vede tutto.
+L'azienda confrontata è quella risolta, sui tre livelli; un billing account che non esiste più (cancellato
+nella stessa transazione) non ha niente da presidiare.
 
 ---
 
-### Impatto e Vantaggi
+### ⭐ Coi privilegi del proprietario, senza interruttori
 
-* nessuna eccezione per i dati preesistenti e nessun interruttore di
-  disattivazione: **un invariante con l'interruttore non e' un invariante**;
-* l'errore nomina i due billing account **e** i due emittenti, cosi' chi lo
-  legge sa cosa sistemare senza andarlo a cercare.
+`billing_account` ha regole di visibilità per azienda: coi permessi di chi scrive, un padre o un figlio di
+un'altra azienda sarebbe invisibile, e «non lo vedo» diventerebbe «è a posto». Il guard gira quindi coi
+privilegi del proprietario. Non ha eccezioni per i dati preesistenti né un modo per spegnerlo.
+
+Risponde a una domanda diversa da quella della storia: un cambio di azienda ammesso perché il cliente non ha
+documenti numerati resta vietato se rende misto l'albero. I due cancelli si sommano.
+
 ---
 
-### ⚠️ Una nota del 2026-08-26: il movimento non è più ordinario
+### ⚠️ Che cosa oggi non copre
 
-Questo controllo descrive «cambiare l'emittente di un billing account» come un
-movimento normale — e fino al 2026-08-26 lo era.
+* **Lo scollegamento fatto in sessione.** Tolto il collegamento da un utente in sessione, il billing account
+  si confronta con l'azienda di chi agisce, non con la predefinita su cui ricade: l'albero può restare misto
+  per l'installazione (vedi `fn_check_ba_coppia_emittente_omogenea`).
 
-Da allora quel movimento è ammesso **solo finché il cliente non ha storia**:
-nessuna fattura, nessuna commessa. Dopo, i documenti già emessi congelano chi li
-ha emessi, e spostare il cliente li lascerebbe orfani.
+---
 
-⭐ **Questo controllo non cambia e resta indispensabile**: risponde a un'altra
-domanda — *l'albero può diventare misto?* — e i due cancelli si sommano invece
-di sovrapporsi. Vedi
-[`trgfn_efba_guard_storia_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_storia_emittente).
+### Codici errore
+
+* `E_ALBERO_EMITTENTE_MISTO` — il billing account e il padre, o un figlio, risolvono a due aziende diverse.
+  Il contesto porta il verso (`padre` o `figlio`) e il campo `parent_account_id`.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-guard-albero-ba-omogeneo-v1.sql` — padre di un'altra azienda, azienda cambiata sul
+  figlio e sul padre, collegamento del figlio cancellato: tutti rifiutati; due alberi separati dello stesso
+  soggetto ammessi; il guard vede un figlio fuori dal perimetro di chi scrive.
+
+---
+
+### Note di migrazione
+
+* 2026-08-18 — nasce col perimetro dell'azienda sulle liste e sulla gerarchia dei billing account.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}
