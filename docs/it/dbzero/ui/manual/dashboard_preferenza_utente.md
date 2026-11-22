@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -61,6 +61,11 @@ configurazione alla nascita della riga e a ogni modifica che la cambia:
 Una scrittura che riscrive la configurazione uguale («Ignora») passa senza giudizio. Una riga scritta
 senza passare dal guard non ferma la risoluzione: le voci che non riconosce si saltano, i campi che non
 legge prendono il default del pool, una dimensione fuori dal tetto vale come assente.
+
+Una card tolta dal pool esce anche dalle preferenze della dashboard che la nominano
+([trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)); se era
+l'unica, la chiave `widget` esce e segue il preset. Così una preferenza non resta con un codice che il
+guard rifiuterebbe al salvataggio successivo.
 
 ---
 
@@ -164,6 +169,8 @@ da chi scrive non conta.
   con la base di un'altra dashboard sono tornate senza base.
 * 2026-11-21 — `data_update` la scrive il database, ed è sempre valorizzata: le righe senza hanno preso
   `data_insert`.
+* 2026-11-22 — la card tolta dal pool esce dalle preferenze della dashboard: prima la preferenza restava
+  con il codice, e il guard di forma ne rifiutava ogni salvataggio.
 
 ---
 

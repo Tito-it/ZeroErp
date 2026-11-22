@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: i lucchetti dell'appartenenza di colonne e card.
+#   Brief: brief-db-revisione-ui (Q55 (a), decisa da Tid il 2026-11-22, con la
+#   forma «solo lucchetti» dello stesso giorno).
+#
+# Perche': il ritiro di una colonna o di una card dal pool toglie la voce dalle
+#   preferenze solo col DELETE (20_code/ui/20261122-26). Le strade che con un
+#   UPDATE fanno uscire un codice dal suo contenitore sono identita' e si
+#   chiudono col lucchetto (linee-guida-trigger, «Una FK di appartenenza non si
+#   presidia con un ramo UPDATE OF»): ui.lista_colonna.lista_id (accanto a
+#   codice, gia' chiuso dal giro 4, con lo stesso codice
+#   E_UI_COLONNA_CODICE_IMMUTABILE), ui.dashboard_widget.dashboard_id e
+#   widget_id, ui.widget.codice (E_UI_WIDGET_IMMUTABILE). Le quattro righe sono
+#   in 80_data/sql/dbops/automation_lock_columns.csv; il runner rimonta il
+#   trigger dei lucchetti di ogni tabella di ui dal registro.
+# Scrittori controllati (2026-11-22): nessun changeSet e nessun seed cambia quelle
+#   colonne (i loader dei CSV le riscrivono uguali, e il lucchetto confronta il
+#   valore); l'app non scrive ui.widget ne' ui.dashboard_widget. Un pgTAP le
+#   cambiava: ui/test-ui-legami-preset-v1, caso 4, riscritto in questo giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261122-28-provision-lock-ui-widget-codice-mctit.yaml
+
+  - changeSet:
+      id: 20261122-28-provision-lock-ui-widget-codice
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona subito i lucchetti di ui.lista_colonna.lista_id, ui.dashboard_widget.dashboard_id e widget_id,
+        ui.widget.codice chiamando il runner dei lock sullo schema ui. Brief: brief-db-revisione-ui (Q55).
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Le quattro righe del registro devono esserci ed essere accese:
+            # senza, il runner non crea niente e il changeSet sarebbe un verde a vuoto.
+            - sqlCheck:
+                expectedResult: 4
+                sql: |
+                  SELECT count(*) FROM dbops.automation_lock_columns
+                   WHERE enabled IS TRUE
+                     AND upper(btrim(exec_mode)) = 'AUTO'
+                     AND target_schema = 'ui'
+                     AND ((target_table = 'lista_colonna'    AND column_name = 'lista_id'
+                           AND error_code = 'E_UI_COLONNA_CODICE_IMMUTABILE')
+                       OR (target_table = 'dashboard_widget' AND column_name IN ('dashboard_id', 'widget_id')
+                           AND error_code = 'E_UI_WIDGET_IMMUTABILE')
+                       OR (target_table = 'widget'           AND column_name = 'codice'
+                           AND error_code = 'E_UI_WIDGET_IMMUTABILE'));
+            # I due codici devono essere vivi, o il lucchetto risponderebbe con
+            # un segnaposto irrisolto invece che con la sua frase.
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT count(*) FROM config.codici_errore
+                   WHERE codice IN ('E_UI_COLONNA_CODICE_IMMUTABILE', 'E_UI_WIDGET_IMMUTABILE')
+                     AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_lock_columns('AUTO', ARRAY['ui'], false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il trigger lo governa il registro: per toglierlo si spengono le
+              -- righe di automation_lock_columns e si rigira il runner, che
+              -- converge. Qui non si tocca niente.
+              SELECT 1;

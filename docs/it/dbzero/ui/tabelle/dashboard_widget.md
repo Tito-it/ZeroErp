@@ -28,7 +28,9 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_dashboard_widget_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('dashboard_id', 'E_UI_WIDGET_IMMUTABILE', 'widget_id', 'E_UI_WIDGET_IMMUTABILE')` |
 | trg_ui_dashboard_widget_a10_guard_in_uso_dlt | BEFORE | DELETE | `EXECUTE FUNCTION ui.trgfn_ui_dashboard_widget_guard_in_uso()` |
+| trg_ui_dashboard_widget_z10_ritira_dalle_preferenze_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_voce_ritira_dalle_preferenze()` |
 
 ---
 {% include-markdown "signature-core.md" %}

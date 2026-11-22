@@ -129,11 +129,14 @@ SELECT is(dbops.fn_pgtap_codice_errore($$
           'fk_ui_lista_preset_colonna_colonna_della_lista',
           '3) una colonna di un''altra lista e'' rifiutata');
 
+-- Dal 2026-11-22 (Q55, 90_end/20261122-28) lista_colonna.lista_id e' sotto
+-- lucchetto, che parla prima della FK composita: la FK resta la rete (la prova
+-- l'INSERT del caso 3), e la frase che l'operatore legge e' quella del lucchetto.
 SELECT is(dbops.fn_pgtap_codice_errore($$
         UPDATE ui.lista_colonna SET lista_id = (SELECT lista_id FROM _l WHERE n = 2)
          WHERE id = (SELECT colonna_id FROM _c WHERE n = 1)$$),
-          'fk_ui_lista_preset_colonna_colonna_della_lista',
-          '4) la lista di una colonna che un preset nomina non cambia');
+          'E_UI_COLONNA_CODICE_IMMUTABILE',
+          '4) la lista di una colonna che un preset nomina non cambia (il lucchetto, poi la FK)');
 
 -- ============================================================
 -- 5-8 La composizione delle dashboard
