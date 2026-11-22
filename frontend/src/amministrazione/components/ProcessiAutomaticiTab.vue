@@ -29,7 +29,8 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import { displayTimestamp } from '../../core/utils/date'
+import { displayTimestamp, parseIstante } from '../../core/utils/date'
+import { esitoCorsa } from '../../core/utils/esitoCorsa'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
@@ -80,6 +81,18 @@ const classeOptions = computed(() => opzioni(
 const canaleOptions = computed(() => opzioni(
   t('amministrazione.processi.canale_tutti'), vocabolari.items.value.canali,
 ))
+// Scopo: l'esito mostrato è di una corsa DIVERSA da quella in «Ultima corsa»
+//        (l'ultima è saltata o ancora aperta)? Allora la cella porta anche la
+//        data della SUA corsa, perché le due colonne affiancate non si leggano
+//        come una corsa sola. Si confrontano gli ISTANTI, non le stringhe: le
+//        due date arrivano serializzate in due forme.
+function esitoDiUnAltraCorsa(riga) {
+  const conclusa = parseIstante(riga.ultima_conclusa?.started_at)
+  const recente = parseIstante(riga.ultimo_run)
+  if (!conclusa || !recente) return false
+  return conclusa.getTime() !== recente.getTime()
+}
+
 // «Vivo» lo decide il DB sulla data del ritiro (`obsoleto_dal`), non `attivo`.
 const vivoOptions = computed(() => [
   { label: t('amministrazione.processi.vivo_tutti'), value: null },
@@ -186,26 +199,44 @@ onMounted(() => {
         />
       </template>
 
+      <!-- ⭐ LE CORSE NELLA FORMA UNICA (2026-11-22): «Ultima corsa» è la riga
+           più recente, segno di vita (anche una saltata), con «in corso» se è
+           ancora aperta; «Esito» è l'ultima corsa VERA conclusa, e porta la
+           SUA data. ⛔ Fino a quel giorno le due colonne affiancate potevano
+           essere di due corse diverse e si leggevano come una. -->
       <template #cell-ultimo_run="{ data }">
         <span v-if="!data.ultimo_run" class="app-proc-na">
           {{ t('amministrazione.processi.mai_girato') }}
         </span>
-        <span v-else>{{ displayTimestamp(data.ultimo_run) }}</span>
+        <span v-else>
+          {{ displayTimestamp(data.ultimo_run) }}
+          <Tag
+            v-if="data.in_corso"
+            class="ml-05"
+            :value="t('common.corsa.in_corso')"
+            severity="secondary"
+          />
+        </span>
       </template>
 
+      <!-- ⚠️ Lo slot porta il nome della colonna a catalogo (`ultimo_ok`), ma
+           legge `ultima_conclusa`: esito e data della stessa riga. `null` non
+           è «fallito»: nessuna corsa vera conclusa (mai girato, o solo saltate). -->
       <template #cell-ultimo_ok="{ data }">
-        <!-- ⚠️ `null` non è «fallito»: nessuna corsa vera conclusa (mai
-             girato, solo corse saltate, o l'ultima ancora in corso). -->
-        <Tag
-          v-if="data.ultimo_ok === true"
-          :value="t('amministrazione.processi.esito_ok')"
-          severity="success"
-        />
-        <Tag
-          v-else-if="data.ultimo_ok === false"
-          :value="t('amministrazione.processi.esito_ko')"
-          severity="danger"
-        />
+        <span
+          v-if="data.ultima_conclusa"
+          v-tooltip.top="t('amministrazione.processi.esito_della_corsa', { quando: displayTimestamp(data.ultima_conclusa.started_at) })"
+        >
+          <!-- La faccia dell'esito dal BB `esitoCorsa` (regola del 2). -->
+          <Tag
+            :value="t(esitoCorsa(data.ultima_conclusa).chiave)"
+            :severity="esitoCorsa(data.ultima_conclusa).severity"
+          />
+          <span
+            v-if="esitoDiUnAltraCorsa(data)"
+            class="app-text-muted ml-05"
+          >{{ displayTimestamp(data.ultima_conclusa.started_at) }}</span>
+        </span>
         <span v-else class="app-proc-na">—</span>
       </template>
     </ListaConfigurabile>

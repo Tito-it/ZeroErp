@@ -17,12 +17,16 @@
 #       la lingua di `<ListaConfigurabile>`; `order_by`/`order_dir` passano
 #       GREZZI (api.md §parse_list_params), come in `views.py`.
 #
-#       ⭐ `lista_codice` su magazzini e ubicazioni (il perimetro e' l'emittente
-#       del magazzino). ⛔ NON sui lotti: `magazzino.lotti` e' a catalogo con
-#       `perimetro_emittente = false` (un lotto e' dell'articolo, nessun
-#       `emittente_fiscale_id` in tabella) e l'export riceve il codice da una
-#       costante di modulo — la forma di `views_famiglie.py`. Registro:
-#       `test_perimetro_emittente_copertura._ESENZIONI`.
+#       ⭐ `lista_codice` sulle tre liste: il perimetro e' l'emittente del
+#       magazzino (per le ubicazioni, via il magazzino) e del lotto. Il lotto e'
+#       dell'azienda dal 2026-11-22 (brief-db-magazzino-lotto-dell-azienda,
+#       R-1): prima era esente, «figlio dell'articolo».
+#
+#       ⏳ R-4 di brief-db-magazzino-tutte-le-scritture-dal-verbo (l'oggetto del
+#       permesso dichiarato sulle view) NON e' fatta: gli oggetti di magazzino
+#       non sono a catalogo (`config.area_model_overrides`), e il presidio
+#       `test_catalogo_oggetti_rotte` vuole BE, FE e catalogo allineati. Oggi
+#       il verbo, senza override possibili sull'oggetto, risponde come l'area.
 #
 #       Piano: piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config §4-6.
 # ------------------------------------------------------------
@@ -281,7 +285,7 @@ class ApiUbicazioneDetail(DomainAPIView):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  Lotti (figli dell'articolo)
+#  Lotti (dell'articolo e dell'azienda)
 # ══════════════════════════════════════════════════════════════════
 
 _PARAM_ARTICOLO = OpenApiParameter(
@@ -295,6 +299,7 @@ class ApiLottiList(DomainAPIView):
 
     area_funzionale = AREA
     is_search_endpoint = True
+    lista_codice = _LISTA_LOTTI
 
     @extend_schema(
         operation_id="magazzino_lotti_list",
@@ -306,6 +311,7 @@ class ApiLottiList(DomainAPIView):
         qp = request.query_params
         p = parse_list_params(qp)
         return success_response(svc.list_lotti(
+            auth_user_id=get_scope_user_id(request),
             articolo_id=qp.get("articolo_id"),
             **_filtri_anagrafica(qp), **_ordinamento(qp),
             limit=p["limit"], offset=p["offset"],
@@ -321,6 +327,7 @@ class ApiLottiExport(DomainAPIView):
     """GET /api/v1/magazzino/lotti/export/?articolo_id= — CSV/XLSX."""
 
     area_funzionale = AREA
+    lista_codice = _LISTA_LOTTI
 
     @extend_schema(
         operation_id="magazzino_lotti_export",
@@ -332,9 +339,12 @@ class ApiLottiExport(DomainAPIView):
         fmt = parse_export_format(request)
         qp = request.query_params
         filtri = {"articolo_id": qp.get("articolo_id"), **_filtri_anagrafica(qp)}
-        dati = svc.list_lotti(**filtri, **_ordinamento(qp), limit=EXPORT_MAX_ROWS + 1, offset=0)
+        dati = svc.list_lotti(
+            auth_user_id=get_scope_user_id(request), **filtri, **_ordinamento(qp),
+            limit=EXPORT_MAX_ROWS + 1, offset=0,
+        )
         return build_export_response(
-            request, lista_codice=_LISTA_LOTTI,
+            request, lista_codice=self.lista_codice,
             results=dati["results"], total=dati["count"],
             filtri_applicati=filtri_label(filtri) or None, fmt=fmt,
         )
@@ -346,7 +356,7 @@ class ApiLottoDetail(DomainAPIView):
     area_funzionale = AREA
 
     @extend_schema(operation_id="magazzino_lotti_detail", responses={200: RISPOSTA_GENERICA})
-    # Scopo: Il lotto; 404.
+    # Scopo: Il lotto; 404 no-leak fuori perimetro.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         return success_response(svc.get_lotto(lotto_id))
 

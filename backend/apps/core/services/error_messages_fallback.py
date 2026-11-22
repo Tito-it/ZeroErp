@@ -897,6 +897,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "piu' attivo: scegliere un lotto attivo dell'articolo, o correggere "
         "l'articolo."
     ),
+    "E_MAG_LOTTO_DI_ALTRO_EMITTENTE": (
+        "Il lotto indicato non appartiene all'emittente del magazzino: "
+        "scegliere un lotto dell'emittente del magazzino, oppure un "
+        "magazzino dello stesso emittente del lotto."
+    ),
     "E_MAG_LOTTO_NON_AMMESSO": (
         "L'articolo non si movimenta per lotti: il lotto sulla riga non va "
         "indicato. Toglierlo, oppure attivare «per lotti» nella scheda "
@@ -1289,6 +1294,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_RESO_STATO_SOLO_DA_VERBO": "Il reso fa rientrare merce: il cambio di stato si fa solo dall'operazione del reso, che registra i movimenti di magazzino.",
     "E_RESO_STATO_TRANSIZIONE": "Operazione non ammessa nello stato corrente del reso.",
     "E_RESO_VALIDAZIONE": "Parametri reso non validi.",
+    "E_RIFERIMENTO_DI_ALTRO_EMITTENTE": "L'elemento indicato (lotto o seriale) non appartiene all'azienda del documento: sceglierne uno dell'azienda.",
     "E_RIGA_CANONE_SENZA_PERIODICITA": "Manca la periodicita': una riga a canone deve dire ogni quanto si addebita.",
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "La riga era gia` stata annullata.",
     "E_RIGA_COMMESSA_GIA_EMESSA": "Riga gia` entrata nella catena di fatturazione: la correzione passa dalla nota di credito.",

@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Facciata delle tre ANAGRAFICHE di `magazzino` — magazzini, ubicazioni
-#        (figlie del magazzino), lotti (figli dell'articolo). Orchestrazione
-#        sottile: validazione del payload, 404 no-leak, traduzione degli errori
-#        del database, composizione della risposta paginata.
+#        (figlie del magazzino), lotti (dell'articolo e dell'azienda).
+#        Orchestrazione sottile: validazione del trasporto, 404 no-leak,
+#        traduzione degli errori del database, risposta paginata.
 # Note: 🔴 Le regole vivono nel database e qui NON si riscrivono: il codice
 #       del magazzino e' lockato (`E_CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
 #       si cambia solo a registro vuoto (`E_MAG_MAGAZZINO_CON_GIACENZA`), la
@@ -23,13 +23,24 @@
 #       globale su «tutti gli emittenti» prende `E_EMITTENTE_NON_RISOLTO` (400
 #       col campo) — la regola e' del DB (piano §4.1).
 #
+#       ⭐ 2026-11-22 — le scritture dal VERBO (R-1 di
+#       brief-db-magazzino-tutte-le-scritture-dal-verbo): il repository chiama
+#       `magazzino.fn_aggiungi_*` / `fn_modifica_*`, che controllano il livello
+#       `TUTTO` sull'oggetto e il perimetro. Le chiavi AMMESSE le dice il DB
+#       (`fn_<tabella>_colonne_ammesse`, D-M4), lette a ogni scrittura; qui
+#       resta il TRASPORTO (tipo, obbligo, lunghezza di ogni chiave). Se il DB
+#       ammette una chiave che qui non si sa leggere, o viceversa,
+#       `campi_per_presenza` alza un `RuntimeError` (500): mai uno scarto
+#       silenzioso. Lo stesso controllo, sul DB vero, e' nei test `tests/db/`.
+#
 #       Piano: piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config §4-6;
 #       codici: brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici R-2.
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable, Collection, Mapping
+from typing import Any, TypedDict
 
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import (
@@ -37,11 +48,8 @@ from apps.core.services.payload_helpers import (
     make_db_errors_translator,
 )
 from apps.magazzino.db.anagrafiche_magazzino_repository import (
-    LOTTI_COLONNE,
     LOTTI_SORT_COLUMNS,
-    MAGAZZINI_COLONNE,
     MAGAZZINI_SORT_COLUMNS,
-    UBICAZIONI_COLONNE,
     UBICAZIONI_SORT_COLUMNS,
     AnagraficheMagazzinoRepository,
 )
@@ -81,7 +89,9 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple] = {
     "uq_mag_ubicazioni_mag_codice": (
         E_DUPLICATO, "Esiste gia' un'ubicazione con questo codice nel magazzino.", "codice",
     ),
-    "uq_mag_lotti_articolo_codice": (
+    # Dal 2026-11-22 il codice del lotto e' unico nell'AZIENDA (D-L2 di
+    # brief-db-magazzino-lotto-dell-azienda, `20261122-14`).
+    "uq_mag_lotti_emittente_articolo_codice": (
         E_DUPLICATO, "Esiste gia' un lotto con questo codice per l'articolo.", "codice",
     ),
 }
@@ -160,18 +170,82 @@ def _lotto_o_404(repository: AnagraficheMagazzinoRepository, lotto_id: int) -> L
 
 
 # ══════════════════════════════════════════════════════════════════
+#  Il contratto delle scritture: le chiavi dal DB, il trasporto da qui
+# ══════════════════════════════════════════════════════════════════
+
+_Lettore = Callable[[dict[str, Any], str], Any]
+
+
+# I lettori del trasporto di un gesto, nei gruppi di `campi_per_presenza`.
+class _Lettura(TypedDict, total=False):
+    testi: Mapping[str, tuple[bool, int | None]]
+    interi: Mapping[str, bool]
+    flag: Collection[str]
+    altri: Mapping[str, _Lettore]
+
+
+# Scopo: Le chiavi che una lettura sa leggere: lo schema OpenAPI del corpo.
+def _chiavi(lettura: _Lettura) -> frozenset[str]:
+    return frozenset({
+        *lettura.get("testi", {}), *lettura.get("interi", {}),
+        *lettura.get("flag", ()), *lettura.get("altri", {}),
+    })
+
+
+# Scopo: Il payload di un gesto, letto sul contratto del DB: le chiavi ammesse
+#        sono `fn_<tabella>_colonne_ammesse(gesto)` (piu' le `identita` che il
+#        payload porta e il verbo riceve come argomento, l'articolo del
+#        lotto). Gli `obbligatori` della nascita devono esserci; il resto lo
+#        legge `campi_per_presenza`, che rifiuta (400) la chiave fuori
+#        contratto e alza un `RuntimeError` se il DB e i lettori divergono.
+def _campi_del_gesto(
+    repository: AnagraficheMagazzinoRepository,
+    payload: dict[str, Any],
+    *,
+    tabella: str,
+    gesto: str,
+    lettura: _Lettura,
+    obbligatori: tuple[str, ...] = (),
+    identita: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    for chiave in obbligatori:
+        ErrorManager.require(
+            chiave in payload,
+            code=E_VALIDAZIONE,
+            message=f"Campo '{chiave}' obbligatorio.",
+            context={"field": chiave},
+            function_name=_FN,
+        )
+    ammesse = repository.colonne_ammesse(tabella, gesto) | identita
+    return _PAYLOAD.campi_per_presenza(payload, ammesse=ammesse, function_name=_FN, **lettura)
+
+
+# ══════════════════════════════════════════════════════════════════
 #  Magazzini
 # ══════════════════════════════════════════════════════════════════
 
-# Le chiavi ammesse nel payload SONO le colonne scrivibili del repository: un
-# solo elenco (rilettura del 2026-09-21 — erano due copie identiche, e una
-# chiave aggiunta a una sola delle due sarebbe stata validata e poi scartata in
-# silenzio dal filtro dell'altra).
-_CHIAVI_MAGAZZINO = MAGAZZINI_COLONNE
-# I contratti di scrittura, con un nome: li legge anche lo schema OpenAPI
-# (`magazzino/api/views_anagrafiche.py`). `attivo` nasce vero: non si manda.
-CREATE_KEYS_MAGAZZINO: frozenset[str] = _CHIAVI_MAGAZZINO - {"attivo"}
-UPDATE_KEYS_MAGAZZINO: frozenset[str] = _CHIAVI_MAGAZZINO
+# Il trasporto delle chiavi, per gesto. ⛔ `attivo` non si sceglie alla
+# nascita (un magazzino nasce attivo): non e' nella lista `'crea'` del DB.
+_NASCITA_MAGAZZINO: _Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
+    "interi": {"indirizzo_dettaglio_id": False},
+    "altri": {
+        "usa_ubicazioni": _PAYLOAD.optional_bool,
+        "predefinito": _PAYLOAD.optional_bool,
+        "meta": _PAYLOAD.optional_meta,
+    },
+}
+_MODIFICA_MAGAZZINO: _Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
+    "interi": {"indirizzo_dettaglio_id": False},
+    "flag": frozenset({"usa_ubicazioni", "predefinito", "attivo"}),
+    "altri": {"meta": _PAYLOAD.optional_meta},
+}
+# I contratti di scrittura, con un nome: li legge lo schema OpenAPI
+# (`magazzino/api/views_anagrafiche.py`). Sono le chiavi che il backend sa
+# LEGGERE; quelle AMMESSE le dice il DB, e un test sul DB vero le confronta.
+CREATE_KEYS_MAGAZZINO: frozenset[str] = _chiavi(_NASCITA_MAGAZZINO)
+UPDATE_KEYS_MAGAZZINO: frozenset[str] = _chiavi(_MODIFICA_MAGAZZINO)
 
 
 # Scopo: L'elenco paginato dei magazzini del perimetro.
@@ -201,42 +275,32 @@ def get_magazzino(magazzino_id: int) -> MagazzinoRow:
 
 
 # Scopo: Crea il magazzino: `codice`, `descrizione`, `indirizzo_dettaglio_id`
-#        obbligatori; i flag opzionali (default del DB). ⛔ `attivo` non si
-#        sceglie alla nascita: un magazzino nasce attivo.
+#        obbligatori; i flag opzionali (default del DB).
 def crea_magazzino(payload: dict[str, Any]) -> MagazzinoRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=CREATE_KEYS_MAGAZZINO)
-    valori: dict[str, Any] = {
-        "codice": _PAYLOAD.require_string(payload, "codice", max_len=_MAX_CODICE),
-        "descrizione": _PAYLOAD.require_string(payload, "descrizione", max_len=_MAX_DESCRIZIONE),
-        "indirizzo_dettaglio_id": _PAYLOAD.require_positive_int(payload, "indirizzo_dettaglio_id"),
-    }
-    for flag in ("usa_ubicazioni", "predefinito"):
-        valore = _PAYLOAD.optional_bool(payload, flag)
-        if valore is not None:
-            valori[flag] = valore
-    meta = _PAYLOAD.optional_meta(payload, "meta")
-    if meta is not None:
-        valori["meta"] = meta
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="magazzini", gesto="crea", lettura=_NASCITA_MAGAZZINO,
+        obbligatori=("codice", "descrizione", "indirizzo_dettaglio_id"),
+    )
     with _db_errors("crea_magazzino"):
-        magazzino_id = repository.create_magazzino(valori)
+        magazzino_id = repository.create_magazzino(
+            codice=campi.pop("codice"),
+            descrizione=campi.pop("descrizione"),
+            indirizzo_dettaglio_id=campi.pop("indirizzo_dettaglio_id"),
+            campi=campi,
+        )
     return _magazzino_o_404(repository, magazzino_id)
 
 
 # Scopo: Aggiorna il magazzino per DELTA: solo le chiavi presenti viaggiano,
 #        cosi' il lock su `codice` scatta solo se il codice cambia davvero e
-#        il guard su `usa_ubicazioni` solo se lo si tocca.
+#        il guard su `usa_ubicazioni` solo se lo si tocca. Chiave fuori
+#        contratto e PATCH senza campi sono un 400 (Tid, 2026-10-20).
 def aggiorna_magazzino(magazzino_id: int, payload: dict[str, Any]) -> MagazzinoRow:
-    # Il payload per presenza (BB): chiave fuori contratto e PATCH senza campi
-    # sono un 400 (Tid, 2026-10-20, brief-be-verifica-documentazione-api §A2).
-    campi = _PAYLOAD.campi_per_presenza(
-        payload, ammesse=UPDATE_KEYS_MAGAZZINO,
-        testi={"codice": (False, _MAX_CODICE), "descrizione": (False, _MAX_DESCRIZIONE)},
-        interi={"indirizzo_dettaglio_id": False},
-        flag=frozenset({"usa_ubicazioni", "predefinito", "attivo"}),
-        altri={"meta": _PAYLOAD.optional_meta},
-    )
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="magazzini", gesto="modifica", lettura=_MODIFICA_MAGAZZINO,
+    )
     _magazzino_o_404(repository, magazzino_id)
     with _db_errors("aggiorna_magazzino"):
         repository.update_magazzino(magazzino_id, campi)
@@ -247,11 +311,27 @@ def aggiorna_magazzino(magazzino_id: int, payload: dict[str, Any]) -> MagazzinoR
 #  Ubicazioni
 # ══════════════════════════════════════════════════════════════════
 
-_CHIAVI_UBICAZIONE = UBICAZIONI_COLONNE
-CREATE_KEYS_UBICAZIONE: frozenset[str] = _CHIAVI_UBICAZIONE - {"attivo"}
-UPDATE_KEYS_UBICAZIONE: frozenset[str] = _CHIAVI_UBICAZIONE
 _POSIZIONE = {"area": _MAX_POSIZIONE, "corsia": _MAX_POSIZIONE, "scaffale": _MAX_POSIZIONE,
               "piano": _MAX_POSIZIONE, "posizione": _MAX_POSIZIONE}
+# ⛔ `magazzino_id` non e' fra le chiavi: un'ubicazione nasce dentro il
+# magazzino del path (argomento del verbo) e non ne esce (lock a DB).
+_TESTI_UBICAZIONE: dict[str, tuple[bool, int | None]] = {
+    "codice": (False, _MAX_CODICE), "descrizione": (True, _MAX_DESCRIZIONE),
+    **{key: (True, max_len) for key, max_len in _POSIZIONE.items()},
+}
+_NASCITA_UBICAZIONE: _Lettura = {
+    "testi": _TESTI_UBICAZIONE,
+    "interi": {"tipo_id": False, "parent_id": True},
+    "altri": {"meta": _PAYLOAD.optional_meta},
+}
+_MODIFICA_UBICAZIONE: _Lettura = {
+    "testi": _TESTI_UBICAZIONE,
+    "interi": {"tipo_id": False, "parent_id": True},
+    "flag": frozenset({"attivo"}),
+    "altri": {"meta": _PAYLOAD.optional_meta},
+}
+CREATE_KEYS_UBICAZIONE: frozenset[str] = _chiavi(_NASCITA_UBICAZIONE)
+UPDATE_KEYS_UBICAZIONE: frozenset[str] = _chiavi(_MODIFICA_UBICAZIONE)
 
 
 # Scopo: Le ubicazioni di UN magazzino, paginate. Il perimetro e' la testata:
@@ -290,46 +370,25 @@ def get_ubicazione(magazzino_id: int, ubicazione_id: int) -> UbicazioneRow:
 #        obbligatori, `parent_id` facoltativo (stesso magazzino, senza cicli:
 #        lo decide `trgfn_ubicazioni_guard_parent`).
 def crea_ubicazione(magazzino_id: int, payload: dict[str, Any]) -> UbicazioneRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=CREATE_KEYS_UBICAZIONE)
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="ubicazioni", gesto="crea", lettura=_NASCITA_UBICAZIONE,
+        obbligatori=("codice", "tipo_id"),
+    )
     _magazzino_o_404(repository, magazzino_id)
-    valori: dict[str, Any] = {
-        "codice": _PAYLOAD.require_string(payload, "codice", max_len=_MAX_CODICE),
-        "tipo_id": _PAYLOAD.require_positive_int(payload, "tipo_id"),
-    }
-    descrizione = _PAYLOAD.optional_string(payload, "descrizione", max_len=_MAX_DESCRIZIONE)
-    if descrizione is not None:
-        valori["descrizione"] = descrizione
-    parent_id = _PAYLOAD.optional_positive_int(payload, "parent_id")
-    if parent_id is not None:
-        valori["parent_id"] = parent_id
-    for key, max_len in _POSIZIONE.items():
-        valore = _PAYLOAD.optional_string(payload, key, max_len=max_len)
-        if valore is not None:
-            valori[key] = valore
-    meta = _PAYLOAD.optional_meta(payload, "meta")
-    if meta is not None:
-        valori["meta"] = meta
     with _db_errors("crea_ubicazione"):
-        ubicazione_id = repository.create_ubicazione(magazzino_id, valori)
+        ubicazione_id = repository.create_ubicazione(
+            magazzino_id, codice=campi.pop("codice"), tipo_id=campi.pop("tipo_id"), campi=campi,
+        )
     return _ubicazione_o_404(repository, magazzino_id, ubicazione_id)
 
 
-# Scopo: Aggiorna l'ubicazione per DELTA. ⛔ `magazzino_id` non e' fra le
-#        chiavi: un'ubicazione nasce dentro il suo magazzino (lock a DB).
+# Scopo: Aggiorna l'ubicazione per DELTA, dentro il SUO magazzino.
 def aggiorna_ubicazione(magazzino_id: int, ubicazione_id: int, payload: dict[str, Any]) -> UbicazioneRow:
-    # Il payload per presenza (BB), come `aggiorna_magazzino`.
-    campi = _PAYLOAD.campi_per_presenza(
-        payload, ammesse=UPDATE_KEYS_UBICAZIONE,
-        testi={
-            "codice": (False, _MAX_CODICE), "descrizione": (True, _MAX_DESCRIZIONE),
-            **{key: (True, max_len) for key, max_len in _POSIZIONE.items()},
-        },
-        interi={"tipo_id": False, "parent_id": True},
-        flag=frozenset({"attivo"}),
-        altri={"meta": _PAYLOAD.optional_meta},
-    )
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="ubicazioni", gesto="modifica", lettura=_MODIFICA_UBICAZIONE,
+    )
     _magazzino_o_404(repository, magazzino_id)
     _ubicazione_o_404(repository, magazzino_id, ubicazione_id)
     with _db_errors("aggiorna_ubicazione"):
@@ -341,19 +400,39 @@ def aggiorna_ubicazione(magazzino_id: int, ubicazione_id: int, payload: dict[str
 #  Lotti
 # ══════════════════════════════════════════════════════════════════
 
-# Piu' `articolo_id`: nel CREATE viaggia nel payload (non nel path), e il
-# repository lo aggiunge lui alle colonne dell'INSERT.
-_CHIAVI_LOTTO = LOTTI_COLONNE | {"articolo_id"}
-# In modifica l'articolo non cambia: un lotto e' di quell'articolo.
-CREATE_KEYS_LOTTO: frozenset[str] = _CHIAVI_LOTTO - {"attivo"}
-UPDATE_KEYS_LOTTO: frozenset[str] = _CHIAVI_LOTTO - {"articolo_id"}
+# `articolo_id` viaggia nel payload della nascita (non nel path) ed e' un
+# argomento del verbo, non una colonna ammessa: per questo e' un'IDENTITA'
+# del gesto. In modifica l'articolo non cambia: un lotto e' di quell'articolo.
+# ⛔ L'azienda del lotto non si sceglie: la mette il DB dalla sessione.
+_IDENTITA_LOTTO: frozenset[str] = frozenset({"articolo_id"})
+_NASCITA_LOTTO: _Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE)},
+    "altri": {
+        "articolo_id": _PAYLOAD.require_uuid,
+        "data_arrivo": _PAYLOAD.require_date,
+        "data_scadenza": _PAYLOAD.optional_date,
+        "meta": _PAYLOAD.optional_meta,
+    },
+}
+_MODIFICA_LOTTO: _Lettura = {
+    "testi": {"codice": (False, _MAX_CODICE)},
+    "flag": frozenset({"attivo"}),
+    "altri": {
+        "data_arrivo": _PAYLOAD.require_date,
+        "data_scadenza": _PAYLOAD.optional_date,
+        "meta": _PAYLOAD.optional_meta,
+    },
+}
+CREATE_KEYS_LOTTO: frozenset[str] = _chiavi(_NASCITA_LOTTO)
+UPDATE_KEYS_LOTTO: frozenset[str] = _chiavi(_MODIFICA_LOTTO)
 
 
-# Scopo: I lotti di UN articolo, paginati. `articolo_id` OBBLIGATORIO: un
-#        elenco di tutti i lotti di tutti gli articoli non e' una domanda di
-#        nessuno (piano §6).
+# Scopo: I lotti di UN articolo nel perimetro, paginati. `articolo_id`
+#        OBBLIGATORIO: un elenco di tutti i lotti di tutti gli articoli non e'
+#        una domanda di nessuno (piano §6).
 def list_lotti(
     *,
+    auth_user_id: int | None,
     articolo_id: Any,
     search: str | None = None,
     attivo: bool | None = None,
@@ -368,7 +447,7 @@ def list_lotti(
         order_by, order_dir, colonne=LOTTI_SORT_COLUMNS, function_name=f"{_FN}.list_lotti",
     )
     results, total = AnagraficheMagazzinoRepository().list_lotti(
-        articolo_id=articolo, search=search, attivo=attivo,
+        auth_user_id=auth_user_id, articolo_id=articolo, search=search, attivo=attivo,
         order_by=order_by, order_dir=order_dir, limit=limit, offset=offset,
     )
     return _risposta(results, total)
@@ -383,39 +462,26 @@ def get_lotto(lotto_id: int) -> LottoRow:
 #        obbligatori; `data_scadenza` facoltativa (>= arrivo: lo dice il CHECK,
 #        il BE traduce e non ricontrolla).
 def crea_lotto(payload: dict[str, Any]) -> LottoRow:
-    _PAYLOAD.validate_allowed_keys(payload, allowed=CREATE_KEYS_LOTTO)
-    articolo = _PAYLOAD.require_uuid(payload, "articolo_id")
-    valori: dict[str, Any] = {
-        "codice": _PAYLOAD.require_string(payload, "codice", max_len=_MAX_CODICE),
-        "data_arrivo": _PAYLOAD.require_date(payload, "data_arrivo"),
-    }
-    scadenza = _PAYLOAD.optional_date(payload, "data_scadenza")
-    if scadenza is not None:
-        valori["data_scadenza"] = scadenza
-    meta = _PAYLOAD.optional_meta(payload, "meta")
-    if meta is not None:
-        valori["meta"] = meta
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="lotti", gesto="crea", lettura=_NASCITA_LOTTO,
+        obbligatori=("articolo_id", "codice", "data_arrivo"), identita=_IDENTITA_LOTTO,
+    )
     with _db_errors("crea_lotto"):
-        lotto_id = repository.create_lotto(str(articolo), valori)
+        lotto_id = repository.create_lotto(
+            str(campi.pop("articolo_id")),
+            codice=campi.pop("codice"), data_arrivo=campi.pop("data_arrivo"), campi=campi,
+        )
     return _lotto_o_404(repository, lotto_id)
 
 
 # Scopo: Aggiorna il lotto per DELTA. ⛔ `articolo_id` non e' fra le chiavi:
 #        un lotto nasce del suo articolo. `data_scadenza: null` la toglie.
 def aggiorna_lotto(lotto_id: int, payload: dict[str, Any]) -> LottoRow:
-    # Il payload per presenza (BB), come `aggiorna_magazzino`.
-    campi = _PAYLOAD.campi_per_presenza(
-        payload, ammesse=UPDATE_KEYS_LOTTO,
-        testi={"codice": (False, _MAX_CODICE)},
-        flag=frozenset({"attivo"}),
-        altri={
-            "data_arrivo": _PAYLOAD.require_date,
-            "data_scadenza": _PAYLOAD.optional_date,
-            "meta": _PAYLOAD.optional_meta,
-        },
-    )
     repository = AnagraficheMagazzinoRepository()
+    campi = _campi_del_gesto(
+        repository, payload, tabella="lotti", gesto="modifica", lettura=_MODIFICA_LOTTO,
+    )
     _lotto_o_404(repository, lotto_id)
     with _db_errors("aggiorna_lotto"):
         repository.update_lotto(lotto_id, campi)

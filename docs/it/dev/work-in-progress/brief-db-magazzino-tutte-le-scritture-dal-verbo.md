@@ -2,9 +2,9 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-22**
 >
-> **Riparte: sessione BE**, con la R-1 (§7). Il P-3 e il P-4 sono applicati, i pgTAP verdi col
-> runner (Tid, 2026-11-22). ⚠️ Da ora il backend non scrive più magazzini, ubicazioni e lotti
-> (`42501`) finché la R-1 non porta il repository sui verbi.
+> **Riparte: team DB** col P-5 (Lotto 2). La R-1 è fatta dalla sessione BE il 2026-11-22
+> (repository sui verbi, colonne ammesse lette dal DB, test e smoke verdi) e committata su
+> `dev/backend-tid`. La R-4 aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
@@ -13,7 +13,8 @@
 > | 3 | team DB | ✅ P-4 (`20261122-09` … `-11`, il loop, il provisioning, 2 pgTAP nuovi e 17 adattati, §5.3) | §5.3 | — |
 > | 4 | Tid | ✅ apply del P-4, pgTAP verdi col runner (2026-11-22) | §5.3 | — |
 > | 4-bis | Tid | ✅ apply di `20261122-12` e `-13` (il cliente del seriale), pgTAP verdi col runner (2026-11-22) | §5.3 | — |
-> | 5 | sessione BE | R-1 (⚠️ urgente: il backend riceve `42501`), R-4 | §7 | — |
+> | 5 | sessione BE | ✅ R-1 (2026-11-22); R-3: nessun codice nuovo da questo brief. ⏳ R-4 non fatta: vuole gli oggetti di magazzino a catalogo (§7, R-4) | §7 | — |
+> | 5-bis | Tid | ✅ R-4 «al giorno del catalogo» (2026-11-22): la fa la sessione BE/FE quando le righe `(magazzino, …)` entrano in `area_model_overrides` | §7 | catalogo |
 > | 6 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 5 |
 > | 7 | team DB | P-6, archiviazione | §5 | 6 |
 >
@@ -577,6 +578,13 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
   `magazzino/tests/db/test_anagrafiche_magazzino_db.py` passa dal repository: si rilegge dopo la R-1. Nessuno
   scrittore BE di seriali, eventi e note (§5.1). Il pannello non scrive magazzini né ubicazioni
   (`config.tabelle_gestibili`: `pannello = false`).
+  ✅ **Fatta dalla sessione BE il 2026-11-22.** Il repository chiama i sei verbi; `colonne_ammesse(tabella,
+  gesto)` legge `fn_<tabella>_colonne_ammesse`, e le costanti `*_COLONNE` / `_CAMPI_MADRE_MAGAZZINO` sono
+  ritirate. Il service tiene il solo trasporto: `campi_per_presenza` con `ammesse` = la lista del DB, e una
+  divergenza fra DB e lettori del BE è un `RuntimeError`, non uno scarto (presidio sul DB vero in
+  `test_anagrafiche_magazzino_db`, caso 8). Il rifiuto del verbo senza livello è provato (caso 9). Portati sui
+  builder: `test_documento_interno_db`, `test_ddt_cambia_stato_db`, `test_magazzino_spento_con_trasferimenti_db`
+  e lo smoke del primo carico.
 * **R-2** (Lotto 2) `magazzino_repository.py`: testate, righe e cambio di stato
   dai verbi; il registro `FAMIGLIE` si riduce a ciò che il DB non sa (il brief del
   Lotto 2 lo dirà).
@@ -588,6 +596,16 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
   dell'endpoint e il rifiuto del verbo leggono la stessa regola, override sull'oggetto compreso.
   Con R-1, il BE **censisce** i propri scrittori e lettori di queste tabelle: l'elenco dei file
   qui sopra è quello noto al DB, non un elenco chiuso.
+  ⏳ **Non fatta (sessione BE, 2026-11-22). ✅ Tid, 2026-11-22: si fa il giorno in cui gli oggetti entrano a catalogo.** Dichiarare `model_permission` sulle view fa
+  rosso `test_catalogo_oggetti_rotte`: un oggetto chiesto dal BE deve essere a catalogo
+  (`80_data/sql/config/area_model_overrides.csv`), oppure stare in `_IN_ATTESA_DI_CATALOGO` con il FE
+  allineato (`READONLY_MODELS` e il readonly per oggetto nei drawer, compreso quello dei lotti dentro il
+  drawer dell'articolo). Senza la riga di catalogo la dichiarazione non cambia niente (vale l'area), come dice
+  il §3-bis.5. Per farla servono: le righe `(magazzino, magazzini|ubicazioni|lotti)` nel catalogo (DB), il
+  perimetro delle rotte nel presidio e `model_permission` (BE), `READONLY_MODELS` e i drawer (FE). Censimento
+  BE fatto: gli scrittori sono solo il repository delle anagrafiche; i lettori sono il repository stesso, i
+  lookup di riga (`magazzino_repository`) e le proiezioni di bolla e reso (`ddt_repository`,
+  `resi_repository`, `LEFT JOIN` per decodifica).
 
 ## 8. Che cosa NON entra
 
@@ -629,3 +647,5 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-22 | Tid | Estrazione del controllo di `p_campi` (`script.fn_guard_campi_ammessi`): sì, in un giro a parte dopo la R-1. Debito `%TYPE` del P-3: resta per ora |
 | 2026-11-22 | Tid + DB | «lotto b»: brief nuovo `brief-db-magazzino-lotto-dell-azienda`. «seriale a»: `20261122-12` (il BB emittente ↔ BA sul seriale) e `-13` (il codice del BA nella frase solo nel perimetro), pgTAP nuovo e censimento aggiornato, da applicare |
 | 2026-11-22 | Tid | `20261122-12` e `-13` applicati, pgTAP verdi col runner |
+| 2026-11-22 | BE | R-1 fatta: repository delle anagrafiche sui verbi, colonne ammesse dal DB, test sui builder; R-4 non fatta (vuole il catalogo) |
+| 2026-11-22 | Tid | R-4 al giorno del catalogo |

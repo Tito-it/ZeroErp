@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2025 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Repository per accesso in lettura a maintenance.job_run_log
-#        (tracciamento esecuzioni job pgAgent).
+# Scopo: Repository per accesso in lettura a maintenance.job_run_log, il
+#        giornale delle corse di job del database e comandi del backend
+#        (colonna `origine`), e a `maintenance.fn_sveglia_accesa`.
 # Note: ⭐ LE CORSE DI UN JOB SI RACCONTANO IN UNA FORMA SOLA (2026-09-14, dalla
 #        nota del team DB sul giornale delle 11:47): la riga PIU' RECENTE come
 #        segno di vita (`last_run_at`, `attivo`, `in_corso`) e l'ultima
@@ -36,9 +37,9 @@ from apps.core.db._helpers import (
 from apps.core.types import JobRunLogRow
 
 
-# Scopo: le due CTE che leggono, per jobname, la riga PIU' RECENTE (`recente`)
-#        e l'ultima CONCLUSA (`conclusa`), ciascuna come UNA riga intera con
-#        `DISTINCT ON`. E' la forma che rende la cucitura impossibile: tre
+# Scopo: le due CTE che leggono, per CHIAVE (il jobname, oppure il codice del
+#        processo), la riga PIU' RECENTE (`recente`) e l'ultima CONCLUSA
+#        (`conclusa`), ciascuna come UNA riga intera con `DISTINCT ON`. E' la forma che rende la cucitura impossibile: tre
 #        aggregati con lo stesso `ORDER BY` restano d'accordo finche' nessuno ne
 #        tocca uno; una riga intera non ha niente da tenere allineato.
 # ⚠️ `conditions` sono frammenti SQL costanti del chiamante (whitelist, mai
@@ -48,6 +49,15 @@ from apps.core.types import JobRunLogRow
 #    entrambe: e' la ragione per cui il frammento sta qui e non dentro una
 #    delle due — prima erano due copie di `MAX` + `ARRAY_AGG … FILTER`, e il
 #    difetto stava in tutte e due.
+# ⭐ LA CHIAVE (2026-11-22, regola del 2, ok Tid): `jobname` per le corsie,
+#    `processo_codice` per la lista dei processi (`ProcessiRepository
+#    .list_processi`), che fino a quel giorno teneva una copia sua — e la copia
+#    cuciva la data della riga piu' recente con l'esito di un'altra corsa.
+#    La CTE proietta la chiave col suo nome: si unisce con `USING (<chiave>)`
+#    o `ON <alias>.<chiave> = …`.
+# ⛔ La chiave finisce nell'SQL come identificatore: whitelist chiusa, mai
+#    input. Per `processo_codice` le corse senza attore (le storiche, nate
+#    prima della colonna) restano fuori: non sono di nessun processo.
 # ⭐ LA CORSA SALTATA (dal 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa
 #    §8): la riga che `fn_job_run_start` scrive sul lock occupato nasce CHIUSA,
 #    senza esito (`ok` NULL) e con `saltata = true`. Per `recente` e' un segno di
@@ -55,23 +65,30 @@ from apps.core.types import JobRunLogRow
 #    risulta «in corso». Per `conclusa` NO: non ha fatto il lavoro, e
 #    l'ultima conclusa e' l'ultima corsa VERA. Senza il filtro una skip diventava
 #    l'ultima conclusa con «esito non scritto», e copriva l'esito di quella vera.
-def _cte_corse(conditions: list[str]) -> str:
+CHIAVI_CORSE = ("jobname", "processo_codice")
+
+
+def cte_corse(conditions: list[str], *, chiave: str = "jobname") -> str:
+    if chiave not in CHIAVI_CORSE:
+        raise ValueError(f"cte_corse: chiave non ammessa {chiave!r}")
+    if chiave == "processo_codice":
+        conditions = [*conditions, "processo_codice IS NOT NULL"]
     where_recente = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL", "NOT saltata"])
     return f"""
         recente AS (
-            SELECT DISTINCT ON (jobname) jobname, started_at, ended_at
+            SELECT DISTINCT ON ({chiave}) {chiave}, started_at, ended_at
               FROM maintenance.job_run_log
               {where_recente}
-             ORDER BY jobname, started_at DESC, id DESC
+             ORDER BY {chiave}, started_at DESC, id DESC
         ),
         conclusa AS (
-            SELECT DISTINCT ON (jobname) jobname, started_at, ended_at, ok
+            SELECT DISTINCT ON ({chiave}) {chiave}, started_at, ended_at, ok
               FROM maintenance.job_run_log
               {where_conclusa}
-             ORDER BY jobname, started_at DESC, id DESC
+             ORDER BY {chiave}, started_at DESC, id DESC
         )
-    """  # noqa: S608 — conditions: frammenti letterali dei chiamanti (chiave meta validata in list_job_summary), valori come parametri
+    """  # noqa: S608 — chiave in whitelist; conditions: frammenti letterali dei chiamanti (chiave meta validata in list_job_summary), valori come parametri
 
 
 class MaintenanceRepository:
@@ -259,7 +276,7 @@ class MaintenanceRepository:
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                WITH {_cte_corse([filtro])}
+                WITH {cte_corse([filtro])}
                 SELECT r.jobname,
                        r.started_at AS last_run_at,
                        r.started_at > now() - make_interval(mins => %s) AS attivo,
@@ -361,7 +378,7 @@ class MaintenanceRepository:
                   {where}
                  GROUP BY jobname
             ),
-            {_cte_corse(conditions)}
+            {cte_corse(conditions)}
             SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count, s.saltate_count,
                    r.started_at::text AS last_run_at,
                    r.ended_at IS NULL AS in_corso,

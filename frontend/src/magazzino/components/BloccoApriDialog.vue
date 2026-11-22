@@ -54,7 +54,7 @@ const form = ref(defaultForm())
 watch(() => props.visible, (aperto) => {
   if (!aperto || !props.riga) return
   form.value = defaultForm()
-  lotti.carica(props.riga.articolo_id)
+  lotti.carica(props.riga.articolo_id, props.riga.magazzino_id)
   assets.carica(props.riga.articolo_id, props.riga.magazzino_id)
   ubicazioni.carica(props.riga.magazzino_id)
 })

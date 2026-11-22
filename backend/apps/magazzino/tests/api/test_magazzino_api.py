@@ -283,8 +283,8 @@ class LookupApiTests(_Base):
         self.assertEqual(resp.json()["data"]["results"][0]["codice"], "UX")
         mock_ub.assert_called_once_with(3)
         mock_lotti.return_value = {"results": []}
-        self.client.get("/api/v1/magazzino/lotti/lookup/?articolo_id=abc&search=L-")
-        mock_lotti.assert_called_once_with(articolo_id="abc", search="L-")
+        self.client.get("/api/v1/magazzino/lotti/lookup/?articolo_id=abc&magazzino_id=3&search=L-")
+        mock_lotti.assert_called_once_with(articolo_id="abc", magazzino_id=3, search="L-")
         mock_assets.return_value = {"results": []}
         resp = self.client.get("/api/v1/magazzino/assets/lookup/?articolo_id=abc&magazzino_id=3")
         self.assertIn("results", resp.json()["data"])

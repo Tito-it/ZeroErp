@@ -109,7 +109,7 @@ function ricaricaPosizione(articoloId) {
   lotti.azzera()
   assets.azzera()
   if (!articoloId) return
-  if (richiedeLotto.value) lotti.carica(articoloId)
+  if (richiedeLotto.value) lotti.carica(articoloId, props.documento.magazzino_id)
   if (richiedeSeriale.value) assets.carica(articoloId, props.documento.magazzino_id)
 }
 

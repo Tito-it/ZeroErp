@@ -33,6 +33,7 @@ import Tag from 'primevue/tag'
 import { useNotify } from '../../core/composables/useNotify'
 import { extractApiError } from '../../core/utils/apiError'
 import { displayTimestamp } from '../../core/utils/date'
+import { esitoCorsa } from '../../core/utils/esitoCorsa'
 import { statoCodaStampaSeverity } from '../../core/utils/severity'
 import { getFatturazioneEsiti } from '../api/lotti'
 import { MANAGE_ICONS } from '../../core/constants'
@@ -97,13 +98,13 @@ function etichettaOrigine(origine) {
 // job IN_CORSO usciva «Errore». Ora «in corso» è un Tag a parte (`in_corso`)
 // e l'esito ha tre facce: ok, errore, e «esito non scritto» — `ok` è nullable
 // sul giornale dei run, e un null reso come «Errore» sarebbe un'invenzione.
-// Chiavi i18n ESPLICITE (mai costruite), come le altre mappe di questo file.
+// ⭐ Dal 2026-11-22 le tre facce sono del BB `esitoCorsa` (regola del 2: la
+// stessa lettura stava nella lista e nel drawer dei processi); qui resta solo
+// la resa del giro mai concluso.
 function esitoGiro(g) {
-  const c = g.ultima_conclusa
-  if (!c) return { label: t('vendite.fatturazione.giro_mai_concluso'), severity: 'secondary' }
-  if (c.ok === true) return { label: t('vendite.fatturazione.giro_ok'), severity: 'success' }
-  if (c.ok === false) return { label: t('vendite.fatturazione.giro_ko'), severity: 'danger' }
-  return { label: t('vendite.fatturazione.giro_esito_non_scritto'), severity: 'warn' }
+  const faccia = esitoCorsa(g.ultima_conclusa)
+  if (!faccia) return { label: t('vendite.fatturazione.giro_mai_concluso'), severity: 'secondary' }
+  return { label: t(faccia.chiave), severity: faccia.severity }
 }
 
 async function load() {

@@ -396,10 +396,15 @@ class ProcessiService:
         assert accensione is not None
         return accensione
 
-    # Scopo: Le corse recenti di un processo (tab «Ultimi run» del drawer).
+    # Scopo: Le corse recenti di un processo (tab «Ultime corse» del drawer).
+    # ⛔ Prima il processo, poi le corse (2026-11-22): fino a quel giorno un
+    #    codice che il registro non conosce rispondeva 200 con lista vuota —
+    #    «non e' mai girato» detto di un processo che non esiste. Il 404 e' lo
+    #    stesso di dettaglio e verbi: `_require_processo`, una sede sola.
     def list_run(
         self, codice: str, *, limit: int = DEFAULT_LIMIT, offset: int = 0,
     ) -> dict[str, Any]:
+        self._require_processo(codice, fn=f"{_FN}.list_run")
         limit, offset = limiti_pagina(limit, offset)
         righe, totale = self._repo.list_run_processo(
             codice, limit=limit, offset=offset,
