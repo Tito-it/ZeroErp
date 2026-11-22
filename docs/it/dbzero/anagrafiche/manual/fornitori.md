@@ -86,9 +86,9 @@ Questo disaccoppiamento consente di mantenere separati i **dati di identità** d
   campo `regime_fiscale_rf` nel contesto. Un regime che un fornitore acceso usa non si spegne
   (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`). Un fornitore spento tiene il suo regime anche se il regime
   si spegne, ma riaccenderlo è rifiutato finché non gli si dà un regime acceso. Un fornitore senza
-  regime non controlla niente. È la coppia ATTIVO del framework, dichiarata in
-  [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni):
-  la regola completa sta in [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali).
+  regime non controlla niente. È la coppia ATTIVO del framework, che lega la FK anche se la
+  colonna non finisce in `_id`: la regola completa sta in
+  [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali).
 
 * **Referential Integrity**
   Cancellazione **NO ACTION** su FK per evitare orfani; usare `attivo=false` o storicizzazione per dismettere.

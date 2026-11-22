@@ -1,13 +1,12 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.fn_ritira_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni) — le FK dichiarate eccezione
-> * [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni) — le FK senza `_id` che il motore lega
 >
 > * [dbops.fn_attivo_fk_esclusa](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) — la domanda «questa FK si lega?», che la funzione chiede per ogni trigger
 >
@@ -29,13 +28,17 @@
 
 Toglie i trigger ATTIVO **già generati** per le FK che il motore non lega, e restituisce quanti
 ne ha tolti. Se una FK si lega lo chiede a `dbops.fn_attivo_fk_esclusa`, la stessa sede del motore:
-si ritirano i trigger delle FK dichiarate in `dbops.automazione_attivo_eccezioni` e quelli delle FK
-senza `_id` che non sono in `dbops.automazione_attivo_inclusioni`.
+si ritirano i trigger delle FK dichiarate in `dbops.automazione_attivo_eccezioni` e i trigger
+propri che una partizione ha per una FK ereditata dalla sua radice, che si decide sulla radice.
 
-Esiste perché una FK può diventare eccezione, o uscire dalle inclusioni, dopo che il motore l'ha
-già legata: dichiararlo non basta, i trigger che ci sono vanno tolti. Chi genera i trigger li
-ritira. ⚠️ Vale anche per un trigger ATTIVO montato a mano su una FK senza `_id`: va dichiarato
-fra le inclusioni.
+Esiste perché una FK può diventare eccezione dopo che il motore l'ha già legata: dichiararlo non
+basta, i trigger che ci sono vanno tolti. Chi genera i trigger li ritira. Vale anche per un
+trigger ATTIVO montato a mano.
+
+⛔ **Le copie della radice non si toccano.** Su una tabella partizionata il require della radice
+PostgreSQL lo copia su ogni partizione. La copia la governa la radice, e PostgreSQL ne rifiuta il
+`DROP`: la funzione guarda solo i trigger propri (`tgparentid` uguale a zero). Quando la FK della
+radice diventa eccezione, toglie il trigger della radice e le copie se ne vanno con lui.
 
 ---
 
@@ -77,6 +80,9 @@ delle tabelle.
 
 * `db/pgtap/dbops/test-automazione-attivo-eccezioni-v1.sql` — sulla FK dichiarata non resta né
   il require né il block, e le altre FK della stessa figlia sono ancora legate.
+* `db/pgtap/dbops/test-automazione-attivo-senza-filtro-nome-v1.sql`, test 11-13 — il ritiro non
+  tocca le copie sulle partizioni, toglie il require proprio di una partizione per una FK
+  ereditata, e un'eccezione sulla radice toglie radice e copie.
 
 ---
 
@@ -88,6 +94,10 @@ delle tabelle.
   decodifica locale di `tgargs`.
 * 2026-11-07 — gli argomenti si interpretano per nome con `dbops.fn_trigger_attivo_argomenti`,
   non più per posizione.
+* 2026-11-21 — la domanda «questa FK si lega?» la risponde `dbops.fn_attivo_fk_esclusa`.
+* 2026-11-22 — al posto delle FK senza `_id` si ritirano i trigger propri delle partizioni per le
+  FK ereditate, e le copie della radice non si toccano (`20261121-23`,
+  brief-db-attivo-fk-senza-suffisso-id).
 
 ---
 

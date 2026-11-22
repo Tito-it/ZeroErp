@@ -1,6 +1,12 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_inclusioni`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
+> ⛔ **Tabella ritirata** il 2026-11-22 (`90_end/20261121-25`): il motore ATTIVO lega ogni FK,
+> qualunque sia il nome della colonna, e chi non si lega sta in
+> [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni). La pagina
+> resta finché la documentazione auto-generata non viene rigenerata, poi si toglie. Quello che segue
+> descrive il registro com'era.
 >
 > 👀 **Vedi anche**
 >

@@ -1,8 +1,8 @@
 # Brief DB — la regola ATTIVO sulle FK senza `_id`
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-21. **A chi:** Tid per le decisioni; poi team DB.
-> **Stato:** aperto, non iniziato; tutte le decisioni prese (D-1, D-2, D-4, D-5, D-6 il 2026-11-21; D-3 sulle
-> righe incerte il 2026-11-22). Revisione FK per FK chiusa (§3.2). Cantiere a parte, chiesto da Tid il 2026-11-21: «lo facciamo dopo».
+> **Stato:** giro DB applicato da Tid coi pgTAP verdi il 2026-11-22 (§9); tutte le decisioni prese (D-1,
+> D-2, D-4, D-5, D-6 il 2026-11-21; D-3 sulle righe incerte il 2026-11-22). Revisione FK per FK chiusa (§3.2).
 >
 > **Brief vicini verificati** (rifatto il 2026-11-21 sugli **oggetti**, non solo sul filtro): nessuno
 > in `work-in-progress/` tocca il filtro `_id` del motore ATTIVO; due toccano FK dell'elenco del §2.
@@ -33,13 +33,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: la sessione DB**, col giro del §5, quando Tid dà il via. La regola dei nomi è già scritta nelle
-linee guida (2026-11-22). La storia del filtro `_id` è verificata: era un ripiego tecnico, non una decisione
-(§1.1). La revisione è chiusa: delle 49 FK da
-decidere, 36 si legano (le 6 incerte per decisione di Tid del 2026-11-22) e 13 vanno fra le eccezioni; 6 FK
-stanno fuori dal perimetro del motore (§3.2).
-Decise D-1 «a», D-2 «b», D-4 «a», D-5 «a», D-6 come proposta col caso inverso «sì», e il metodo di D-3 (Tid,
-2026-11-21, §4).
+**Riparte: il team BE/FE**, con la richiesta del §6; in parallelo Tid rigenera la doc auto-generata. Il giro DB è
+applicato da Tid coi pgTAP verdi (2026-11-22, §9): 36 FK si legano (68 trigger nuovi, nessuno in più), 13 vanno fra
+le eccezioni, il registro delle inclusioni è ritirato.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -48,12 +44,13 @@ Decise D-1 «a», D-2 «b», D-4 «a», D-5 «a», D-6 come proposta col caso in
 | 3 | ✅ Tid | D-4 «a», D-5 «a», D-6 come proposta, caso inverso «sì» (2026-11-21) | §4 | 2 |
 | 4 | ✅ sessione DB | La revisione FK per FK, sulla radice per le ereditate (2026-11-21) | §3.2 | 3 |
 | 5 | ✅ Tid | D-3 sulle 6 incerte: si legano, senza aspettare i cantieri vicini (2026-11-22) | §3.2 | 4 |
-| 6 | **sessione DB** ⏭️ | Il giro: motore senza filtro e con le FK ereditate sulla radice, 13 eccezioni, inclusioni ritirate, dati e seed verificati, presidio, regola dei nomi | §5 | 5, il via di Tid |
-| 7 | team BE/FE | I codici d'errore nuovi sui drawer toccati, e il censimento dei lettori | §6 | 6 |
-| 8 | team DB | Chiusura: archiviazione | — | 7 |
+| 6 | ✅ sessione DB | Il giro scritto e provato in `ROLLBACK` (2026-11-22) | §9 | 5 |
+| 7 | ✅ Tid | Apply di `20261121-21` … `-25` e i pgTAP del §9.3, verdi (2026-11-22) | §9 | 6 |
+| 7-bis | **Tid** | La rigenerazione della doc auto-generata (le tre funzioni, la tabella ritirata) | §9.4 | 7 |
+| 8 | **team BE/FE** ⏭️ | I codici d'errore sulle maschere toccate, e il censimento dei lettori | §6 | 7 |
+| 9 | team DB | Dopo la rigenerazione: togliere la pagina `manual/` del registro ritirato; chiusura e archiviazione | §9.4 | 7-bis, 8 |
 
-Decisioni aperte di Tid: nessuna; resta il via al giro. Il brief è committato (`9c0e9b6c53`); le correzioni della
-verifica critica del 2026-11-22 (§8) sono da committare.
+Decisioni aperte di Tid: nessuna. Il giro (changeSet, CSV, pgTAP, doc) è applicato e da committare.
 
 ## 1. Il problema
 
@@ -320,6 +317,7 @@ presidio del §5 usa lo stesso perimetro, quindi non le chiede.
   `magazzino_id_from`/`_to` (trasferimenti, eventi_assets), `ubicazione_id_da`/`_a`,
   `categoria_cliente_id_snapshot` (3), `classe_utenza_id_snapshot` (2),
   `anagrafiche.dati_societari.id_prov_iscri_rea`: 22 FK.
+  ⚠️ *Correzione del 2026-11-22 (§9.3): sono 23, con `config.credenziali.bloccata_da`, che lo scratch non ha.*
 * **Il caso inverso** (deciso «sì» da Tid, 2026-11-21): oggi nessuna. Le due `emittente_soggetto_ruolo_id`
   (billing account e utilities degli emittenti) puntano a `emittenti_fiscali.soggetto_ruolo_id`, che non
   è la PK ma **porta un id**: il nome dice il vero.
@@ -382,6 +380,7 @@ regola le due `emittente_soggetto_ruolo_id`.
   * ⚠️ Il criterio, precisato dalla revisione (§3.2): «finisce in `_id` se e solo se la colonna referenziata
     porta un id», non «se e solo se punta alla PK `id`». Detto così, la regola non mette fuori regola
     `emittente_soggetto_ruolo_id`, che punta a una UNIQUE `soggetto_ruolo_id`. L'elenco congelato ha 22 FK.
+    ⚠️ *Correzione del 2026-11-22 (§9.3): 23.*
 
 ## 5. Il giro (dopo le decisioni)
 
@@ -450,17 +449,54 @@ regola le due `emittente_soggetto_ruolo_id`.
 
 **Garanzie ritirate:** nessuna. Il giro ne **aggiunge**: ogni FK legata guadagna le due regole.
 
-## 6. Ricadute sul BE/FE (da scrivere per intero quando il giro è deciso)
+## 6. Ricadute sul BE/FE (richiesta al team, 2026-11-22)
 
-I drawer che scrivono una delle FK legate ricevono `E_ATTIVO_PADRE_NON_ATTIVO`, con `campo` = la
-colonna FK nel contesto. Le maschere che spengono un padre in uso ricevono
-`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`, oppure `E_ATTIVO_BLOCK_CHILDREN_EXIST` quando la figlia non ha
-`attivo` (conta ogni riga, §3). La richiesta al BE porterà l'elenco delle FK legate e chiederà di
-censire i lettori che contano su «questo padre si spegne anche se in uso».
+⚠️ *Il titolo diceva «da scrivere per intero quando il giro è deciso»: è scritta qui, col giro del §9.*
 
-Per le FK verso un codice scelto dall'utente (esito, causale, regime) si incrocia la voce aperta del
-PROJECT_CONTEXT «`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona»: la
-richiesta la cita, e dice come arriva l'errore all'operatore.
+**Che cosa cambia per chi scrive.** Dopo l'apply, 34 FK in più hanno la coppia ATTIVO (le 36 del §3.2 meno le due
+`regime_fiscale_rf`, che l'avevano già). I codici sono quelli di sempre, e nessuno è nuovo:
+
+* chi **scrive la figlia** con un padre spento riceve `E_ATTIVO_PADRE_NON_ATTIVO`, col `campo` = la colonna FK nel
+  contesto. Il require scatta al commit, e su ogni `UPDATE` che nomina la colonna, anche se il valore non cambia;
+* chi **spegne il padre** in uso riceve `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` se la figlia ha `attivo` (conta le figlie
+  accese), `E_ATTIVO_BLOCK_CHILDREN_EXIST` se non ce l'ha (conta ogni riga). Nessuno dei padri ha `obsoleto_dal`,
+  quindi `E_ATTIVO_BLOCK_SI_RITIRA` non esce.
+
+| Padre che non si spegne più se in uso | Figlie nuove | Figlia senza `attivo` (conta ogni riga) | Padre nel pannello |
+| --- | --- | --- | --- |
+| `config.azioni_processo` | le 9 tabelle di transizione (`azione_processo_codename`) | `config.stati_doc_fiscale_transizioni` | no |
+| `config.esiti_flussi_pratiche` | 6 `config.stati_doc_*` (`esito`), `pratiche.template_flussi` (`esito_default`), 3 tabelle di `pratiche.template_flussi_*` (`esito_richiesto`), `pratiche.flussi` (`esito`) | `template_flussi_prerequisiti`, `flussi` | no |
+| `config.sorgenti` | `config.tipi_indirizzi_allowed` (`ambito`), `vendite.famiglie_documento` (`codice_interno`), `config.nature_vendita` (`destinazione_tipo`) | — | sì |
+| `vendite.famiglie_documento` | `vendite.registri_fatturazione` (`famiglia_documento`) | — | no |
+| `magazzino.causali` | `config.causali_trasporto` (`causale_magazzino`) | — | sì |
+| `config.iva` | `config.iva` (`id_iva_split`, autoriferita) | — | sì |
+| `config.iva_assoggettamenti` | `config.iva_stati` (`assoggettamento_id_override`) | `config.iva_stati` | sì |
+| `magazzino.magazzini` | `magazzino.eventi_assets`, `magazzino.trasferimenti` (`magazzino_id_from`, `_to`) | `trasferimenti` | no |
+| `magazzino.ubicazioni` | `magazzino.trasferimenti_righe` (`ubicazione_id_da`, `_a`) | `trasferimenti_righe` | no |
+| `config.stati_lotto_job` | `vendite.fatturazione_lotti` (`stato_lotto`) | `fatturazione_lotti` | no |
+
+«Padre nel pannello» è `config.tabelle_gestibili.pannello` (scratch, 2026-11-22): lì lo spegnimento passa dal
+pannello generico (`config.fn_pannello_scrivi`), che riceve il codice come per ogni altra coppia ATTIVO.
+Dove la figlia non ha `attivo`, un padre usato **una volta** non si spegne più: un magazzino che ha un
+trasferimento, un esito che ha chiuso un flusso, un'aliquota usata come override.
+
+**Garanzie ritirate.** Nessuna proprietà che un lettore dava per scontata sparisce. Sparisce una **possibilità**: «il
+padre si spegne anche se in uso», per i dieci padri della tabella. È la richiesta al team:
+
+1. **Censisci i lettori e gli scrittori che contano su «questo padre si spegne anche se in uso»**: maschere,
+   import, comandi o job che spengono una voce dei dieci padri, e i test che lo fanno nelle fixture. L'elenco dei
+   padri sopra è chiuso; **dove lo si spegne no**, ed è quello che il DB non vede.
+2. Dove una maschera **scrive la figlia**, che `E_ATTIVO_PADRE_NON_ATTIVO` arrivi all'operatore sul campo giusto (il
+   `campo` è il nome della colonna FK, anche quando non finisce in `_id`: `esito`, `causale_magazzino`,
+   `azione_processo_codename`, `magazzino_id_from`…).
+3. Dove una maschera **spegne il padre**, che i due codici del block arrivino col loro testo.
+4. ⚠️ La voce aperta «`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona» (PROJECT_CONTEXT) non
+   cambia: `E_ATTIVO_REQUIRE` è l'errore del **montaggio** di un trigger, non del dato. Con questo giro non esce
+   all'operatore.
+
+Lato DB il censimento è fatto (2026-11-22): nessuna funzione spegne uno dei dieci padri con un `UPDATE … SET attivo`,
+e nessuna vista legge il registro delle inclusioni. Il seed e i dati di dbdev non hanno figlie vive con un padre
+spento (§8).
 
 ## 7. La query della misura
 
@@ -524,3 +560,56 @@ crea. Leggono i trigger ATTIVO: `fn_trigger_attivo_orfani`, `fn_trigger_exists_r
 `script.fn_resolve_emittente_for_user`, `vendite.fn_genera_ddt_riconsegna`. Nel giro, per ognuno si scrive se un
 clone sulla partizione gli cambia la risposta, o perché no. `fn_trigger_attivo_orfani` non scambia un clone per un
 orfano: guarda che la tabella e la colonna esistano, e la partizione le ha.
+
+## 9. Il giro (sessione DB, 2026-11-22)
+
+✅ **Applicato da Tid il 2026-11-22, pgTAP verdi.**
+
+Scritto col via di Tid del 2026-11-22, numeri da `20261121-21` (dati da Tid). Provato in `ROLLBACK` sullo scratch e
+su dbdev con `scripts/prova_changeset.py`. Il mirror del CSV non è SQL estraibile: nella prova le 13 righe sono
+entrate da un `INSERT` equivalente.
+
+### 9.1 I changeSet
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261121-21` | `dbops.fn_attivo_fk_esclusa` senza il ramo `_id` e senza il registro delle inclusioni: risponde `ECCEZIONE_DICHIARATA` o `FK_EREDITATA` (§8.1). `BEGIN ATOMIC`, provato anche attraverso il driver JDBC |
+| `20_code/dbops/20261121-22` | Il motore: cambia solo il dry run (`ATTIVO_SKIP_FK_EREDITATA` al posto di `ATTIVO_SKIP_FK_NO_ID`). Il cursore non cambia, e i nomi dei trigger esistenti nemmeno |
+| `20_code/dbops/20261121-23` | Il ritiro guarda solo i trigger propri (`tgparentid = 0`): le copie della radice non si toccano |
+| CSV `80_data/sql/dbops/automazione_attivo_eccezioni.csv` | Le 13 eccezioni del §3.2 (mirror `20260925-49`, `runOnChange`) |
+| `90_end/20261121-24` | Provision: il motore su tutto l'ambito. preCondition sul building block nuovo e sulle 13 righe |
+| `90_end/20261121-25` | `DROP TABLE dbops.automazione_attivo_inclusioni`, in `90_end` perché `90_end/20261121-15` la pretende (linee-guida §11.14). ⛔ Il mirror `80_data/20261121-14` e il suo CSV restano intatti: ha `runOnChange`, e toccarli lo farebbe rigirare su una tabella che non c'è più |
+
+### 9.2 Le prove (scratch `zeroerp_ruoli`, salvo dove detto)
+
+* Prima del giro, il presidio strutturale trova 47 FK non legate: le 34 nuove più le 13 eccezioni, nessun buco fra le
+  FK con `_id`.
+* Dopo il giro: 68 trigger ATTIVO in più (834 → 902), cioè le 34 coppie, nessuno in più.
+* Le preCondition di `-24` e `-25`, lette **dopo** l'estratto che le precede: verdi.
+* L'estratto intero gira anche su dbdev, coi suoi dati.
+* Il test 11 del pgTAP nuovo, **senza** `-23`, si ferma su `2BP01` (il `DROP` rifiutato sul clone): il ritiro di
+  prima avrebbe fermato ogni giro su una radice legata.
+
+### 9.3 I pgTAP
+
+| pgTAP | Esito nella prova (dopo l'apply: verdi, Tid 2026-11-22) |
+| --- | --- |
+| `dbops/test-automazione-attivo-senza-filtro-nome-v1` (nuovo, 13 test, runner owner) | 13/13 con l'estratto |
+| `dbops/test-automazione-attivo-inclusioni-v1` (test 1, 2 e 6 riscritti senza il registro; il motivo del runner di D-8 resta) | 12/12 |
+| `dbops/test-automazione-attivo-eccezioni-v1` | 9/9, invariato |
+| `dbops/test-fk-nome-dice-cosa-porta-v1` (nuovo, D-6) | 2/2 sullo scratch e su dbdev. ⚠️ Lanciato dalla sessione con psql, in sola lettura del catalogo: un'eccezione alla regola «i pgTAP li lancia Tid», da non ripetere |
+
+⚠️ **Correzione di D-6: l'elenco congelato ha 23 FK, non 22.** Su dbdev c'è anche `config.credenziali.bloccata_da` →
+`django.auth_user.id`, che lo scratch e la CI non hanno: la FK nasce solo dove esiste lo schema `django` (il residuo
+aperto «Le FK verso `django.auth_user` non nascono su un'installazione nuova»). Il modello la ammette, quindi è
+nell'elenco, marcata «può mancare». Le 22 del §3.2 erano misurate sul solo scratch.
+
+### 9.4 La documentazione
+
+Aggiornate: `guide/automazione-db.md` (§1.3 e §4.2), le pagine `manual/` di `fn_attivo_fk_esclusa`,
+`fn_run_automations_attivo`, `fn_ritira_attivo_eccezioni`, `automazione_attivo_eccezioni`, `regimi_fiscali` (per
+sostituzione sul testo del giro D-8), `fornitori`, e `linee-guida-sql.md` §2 (la riga «il presidio non c'è ancora»
+diventa il pgTAP). La pagina `manual/automazione_attivo_inclusioni.md` resta, marcata «ritirata»: la include la pagina
+auto-generata della tabella, e si toglie quando la rigenerazione la fa sparire. La doc auto-generata delle tre funzioni
+è da rigenerare dopo l'apply.
+

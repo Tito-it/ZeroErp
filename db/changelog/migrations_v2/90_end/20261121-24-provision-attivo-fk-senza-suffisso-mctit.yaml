@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PROVISIONA SUBITO LA COPPIA ATTIVO DELLE FK SENZA IL SUFFISSO _id
+#   Tid, 2026-11-21 (D-1 «a»): il motore lega ogni FK monocolonna verso un
+#   padre con attivo, qualunque sia il nome della colonna; chi non si lega
+#   sta in dbops.automazione_attivo_eccezioni. Dal giro si legano 36 FK che
+#   il filtro _id saltava (34 nuove, piu' le due regime_fiscale_rf che il
+#   registro delle inclusioni legava gia'); 13 vanno fra le eccezioni
+#   (80_data/sql/dbops/automazione_attivo_eccezioni.csv, mirror 20260925-49).
+#   Brief: brief-db-attivo-fk-senza-suffisso-id §3.2 e §5.
+#
+# -- PERCHE' SUBITO -----------------------------------------------------------------
+#   Su dbdev il ci_apply non rigira le automazioni: senza questo passo le
+#   coppie nascerebbero al giro successivo, e i pgTAP del giro sarebbero
+#   rossi. Da zero il ci_apply le monta comunque; il runner converge (crea,
+#   rigenera, ritira), e rigirarlo non fa danni.
+#
+# -- LA FORMA -------------------------------------------------------------------------
+#   Si chiama il RUNNER su tutto l'ambito (NULL, come il ci_apply
+#   20250627-31): le 36 FK stanno in cinque schemi, e il ritiro in testa al
+#   giro guarda comunque tutto il database. Nessun CREATE TRIGGER a mano.
+#   Le preCondition chiedono che il runner sia quello nuovo e che le
+#   eccezioni ci siano: senza, il giro legherebbe le 13 FK da escludere.
+#
+# -- I DATI PRIMA DELL'APPLY (verificato il 2026-11-22, sola lettura) ---------------
+#   Nessuna riga viva (accesa, o qualunque se la figlia non ha attivo) cita
+#   un padre spento su una delle 36 FK: ne' sullo scratch (il seed) ne' su
+#   dbdev. L'unico caso trovato, vendite.contratti.categoria_cliente_id_snapshot,
+#   e' fra le eccezioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261121-24-provision-attivo-fk-senza-suffisso-mctit.yaml
+
+  - changeSet:
+      id: 20261121-24-provision-attivo-fk-senza-suffisso
+      author: mctit
+      runOnChange: false
+      comment: >
+        Provisiona la coppia ATTIVO delle FK senza il suffisso _id (D-1 «a» del brief
+        brief-db-attivo-fk-senza-suffisso-id), chiamando il runner su tutto l'ambito.
+      preConditions:
+        - onFail: HALT
+        - and:
+            # Il building block e' quello senza il filtro _id (20261121-21):
+            # una FK senza _id fuori da ogni registro si lega.
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT count(*)
+                   WHERE dbops.fn_attivo_fk_esclusa('config', 'iva', 'id_iva_split') IS NULL
+                     AND dbops.fn_attivo_fk_esclusa('catalogo', 'note_articoli', 'id_lingua') = 'FK_EREDITATA';
+            # Le 13 eccezioni del giro sono nel registro (mirror 20260925-49).
+            - sqlCheck:
+                expectedResult: 13
+                sql: |
+                  SELECT count(*) FROM dbops.automazione_attivo_eccezioni
+                   WHERE (schema_figlia, tabella_figlia, colonna_fk) IN (
+                         ('vendite',   'attivita_fatturabili', 'categoria_cliente_id_snapshot'),
+                         ('vendite',   'commesse_attivita',    'categoria_cliente_id_snapshot'),
+                         ('vendite',   'contratti',            'categoria_cliente_id_snapshot'),
+                         ('acquisti',  'note',                 'id_lingua'),
+                         ('acquisti',  'note',                 'id_stile'),
+                         ('catalogo',  'note',                 'id_lingua'),
+                         ('catalogo',  'note',                 'id_stile'),
+                         ('magazzino', 'note',                 'id_lingua'),
+                         ('magazzino', 'note',                 'id_stile'),
+                         ('vendite',   'note',                 'id_lingua'),
+                         ('vendite',   'note',                 'id_stile'),
+                         ('config',    'messaggi_errore',      'lingua'),
+                         ('config',    'tipi_entita',          'sorgente_codice_interno'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SELECT dbops.fn_run_automations_attivo('AUTO', NULL, false);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger li governa il registro delle eccezioni: per toglierne
+              -- uno si aggiunge la sua riga e si rigira il runner, che lo ritira
+              -- (dbops.fn_ritira_attivo_eccezioni). Qui non si tocca niente.
+              SELECT 1;

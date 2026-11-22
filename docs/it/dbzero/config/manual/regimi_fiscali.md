@@ -6,7 +6,7 @@ Approfondimento tabelle:
 > • [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali)
 > • [config.iva_natura](/dbzero/config/tabelle/iva_natura)
 > • [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
-> • [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni)
+> • [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni)
 >
 Approfondimento funzioni:
 > • [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)
@@ -57,10 +57,13 @@ codice viene da fuori, ciò che il sistema ne fa sta in una colonna.
     regime anche se il regime si spegne, ma **riaccenderlo è rifiutato** finché
     non gli si dà un regime acceso.
 
-  Le due FK puntano a `codice_interno` e la colonna non finisce in `_id`: per
-  questo la coppia sta in
-  [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni),
-  senza la quale l'automazione le salterebbe. ⚠️ Fino al 2026-11-21 questa pagina
+  Le due FK puntano a `codice_interno`: è la coppia ATTIVO del framework, che
+  lega ogni FK qualunque sia il nome della colonna, e le due FK non sono fra le
+  eccezioni di
+  [dbops.automazione_attivo_eccezioni](/dbzero/dbops/tabelle/automazione_attivo_eccezioni).
+  Dal 2026-11-21 al 2026-11-22 la coppia nasceva da un registro delle inclusioni,
+  ritirato quando il motore ha smesso di saltare le colonne senza `_id`.
+  ⚠️ Fino al 2026-11-21 questa pagina
   dichiarava la regola come già in vigore («la coppia ATTIVO nasce a `ci_apply`
   dalla FK»), ma nessun trigger la faceva valere: lo stesso errore sta nella
   testata del changeSet `20261121-03`, che non si tocca. La regola revoca la

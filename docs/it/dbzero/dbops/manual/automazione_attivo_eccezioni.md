@@ -1,13 +1,12 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_attivo_eccezioni`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
 > Approfondimento tabelle:
 >
 > * [dbops.automation_rules_tbl](/dbzero/dbops/tabelle/automation_rules_tbl) — la regola `ATTIVO` che queste righe restringono
-> * [dbops.automazione_attivo_inclusioni](/dbzero/dbops/tabelle/automazione_attivo_inclusioni) — il registro gemello, le FK senza `_id` che si legano comunque; un'eccezione prevale
 >
 > Approfondimento funzioni:
 >
@@ -65,6 +64,10 @@ legittimo il legame avrebbe impedito.
 | `config.email_log.email_account_id` e `.email_template_id` | La mail spedita è **storia**: la fotografia dell'account e del template con cui è partita, e resta. Col block, un account o un template che hanno spedito non si spegnerebbero più, e siccome non si cancellano non ci sarebbe nessun gesto per toglierli dall'uso. Con quale account e template si spedisce lo decidono i risolutori, che leggono solo le righe accese |
 | `config.email_outbox.email_account_id` e `.email_template_id` | La bozza cita l'account e il template con cui è stata composta: è la **provenienza** del testo, non un legame vivo. Col block conterebbe anche la bozza annullata o spedita. L'account di invio si risolve di nuovo alla conferma |
 | `documenti.template_documenti_versioni.derivata_da_versione_id` | L'origine di una copia è la sua **provenienza**, non un padre vivo: una versione dello standard da cui deriva una copia si ritira lo stesso. Che cosa fare di una copia il cui standard non stampa lo dice la vista dello scarto |
+| `vendite.{attivita_fatturabili,commesse_attivita,contratti}.categoria_cliente_id_snapshot` | Lo snapshot è la categoria del cliente **al momento** del documento: la **provenienza** di un dato già scritto, come `listino_riga_id` delle righe di contratto. Spegnere la categoria dopo non lo rende sbagliato |
+| `{acquisti,catalogo,magazzino,vendite}.note.id_lingua` e `.id_stile` | Lingua e stile sono attributi di **presentazione** di una nota, che non ha `attivo`: col block una lingua o uno stile usati una volta non si spegnerebbero più, col require una nota in una lingua poi spenta non si correggerebbe più. La riga sta sulla **radice** partizionata e vale per tutte le partizioni, anche future |
+| `config.messaggi_errore.lingua` | Un testo **tradotto** non è un figlio vivo della lingua: col require non si preparerebbe la traduzione prima di accendere la lingua, col block una lingua tradotta non si spegnerebbe. Quale testo si mostra lo decide `script.fn_get_messaggio`, che ripiega su `it` |
+| `config.tipi_entita.sorgente_codice_interno` | Il catalogo dei tipi d'entità è **senza `attivo` per scelta**: un lucchetto fermerebbe il giornale che lo cita, e la deprecazione si fa con `obsoleto_dal`. La FK lega il nome della sorgente, non la sua accensione |
 
 ---
 
@@ -117,6 +120,10 @@ Una riga nuova ha effetto al giro successivo del motore: è lì che i trigger es
   spenta sospende colonne e preset senza toccarli (`brief-db-revisione-ui`, giro 4).
 * 2026-11-21 — una riga di `ui`, la FK `dashboard_id` di `dashboard_preset`: la dashboard spenta sospende
   i preset come la lista (`brief-db-revisione-ui`, giro 5, Q49).
+* 2026-11-22 — tredici righe, le FK senza `_id` che non si legano, ora che il motore lega ogni FK
+  qualunque sia il nome della colonna: gli snapshot della categoria cliente, lingua e stile delle
+  note (sulla radice), la lingua dei messaggi d'errore, la sorgente dei tipi d'entità. Il registro
+  gemello delle inclusioni esce (`brief-db-attivo-fk-senza-suffisso-id` §3.2).
 
 ---
 
