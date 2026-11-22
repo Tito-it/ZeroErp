@@ -16,8 +16,12 @@
 # ⚠️ Il token NULL, non la cella vuota: con nullValue "" Liquibase scrive ''
 #   su una colonna STRING, e uso_default = '' viola il CHECK (linee-guida §11.7).
 # ⚠️ Spostare un default da una misura a un'altra: il mirror scrive riga per
-#   riga, e per un momento l'uso sarebbe su due righe (indice unico parziale).
-#   Si fa in due giri del CSV: prima si toglie, poi si mette.
+#   riga, nell'ordine del CSV, e l'indice unico parziale giudica ogni riga
+#   subito: per un momento l'uso non puo' stare su due righe. Il trigger
+#   differito (ui.trgfn_misure_pagina_guard_default_per_uso) rifiuta invece, al
+#   commit, un uso senza default: due giri del CSV (prima si toglie, poi si
+#   mette) non passano. Si fa in un giro solo, e passa se la riga che perde
+#   l'uso viene prima, nel CSV, di quella che lo prende.
 # ⚠️ Una misura tolta dal CSV NON sparisce dalla tabella (loadUpdateData non
 #   cancella): serve un DELETE forward-only, che la FK dei preset rifiuta
 #   finche' un preset la usa.

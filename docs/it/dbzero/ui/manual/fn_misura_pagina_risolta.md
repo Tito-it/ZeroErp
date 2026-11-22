@@ -61,8 +61,10 @@ La misura non è mai `NULL`.
 ### Codici errore
 
 * `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — il catalogo non ha il default dell'uso della lista. Si chiede
-  solo quando serve: con una preferenza o un preset nel catalogo, un catalogo senza default non ferma
-  la risposta.
+  quando il preset non dà una misura del catalogo, perché serve allo standard: in quel caso un catalogo
+  senza default ferma la risposta **anche con una preferenza valida**. Con un preset nel catalogo il
+  default non si chiede. Un catalogo senza il default di un uso non si salva (lo rifiuta il trigger
+  differito di [ui.misure_pagina](/dbzero/ui/tabelle/misure_pagina)): l'errore dice un catalogo rotto.
 
 ---
 

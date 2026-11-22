@@ -22,7 +22,8 @@
 -- Elenco test (plan 14):
 --   La cascata dei preset
 --    1) ui.fn_lista_da_codice(NULL): E_UI_LISTA_NON_TROVATA
---    2) ⭐ il preset dell'azienda accesa vince su quello di sistema, nel resolver
+--    2) ⭐ il preset dell'azienda accesa vince su quello di sistema, nel resolver e in
+--       ui.fn_misura_lista (la stessa misura, con l'emittente passato)
 --    3) ... ed e' il preset di base per ui.fn_preset_di_base
 --    4) ⭐ cambiare base e snapshot nella stessa UPDATE: lo snapshot e' quello della
 --       base nuova, non il valore passato
@@ -113,9 +114,12 @@ SELECT is(dbops.fn_pgtap_codice_errore($$ SELECT ui.fn_lista_da_codice(NULL) $$)
     'E_UI_LISTA_NON_TROVATA',
     '1) ui.fn_lista_da_codice(NULL): E_UI_LISTA_NON_TROVATA');
 
-SELECT is(format('%s|%s', pg_temp.cfg() ->> 'pagina_dimensione', pg_temp.cfg() -> 'origine' ->> 'pagina_dimensione'),
-    (SELECT format('%s|emittente_fiscale', d_com) FROM _m),
-    '2) ⭐ il preset dell''azienda accesa vince su quello di sistema, nel resolver');
+SELECT is(format('%s|%s|%s',
+                 ui.fn_misura_lista((SELECT lista_codice FROM _l), (SELECT auth_user_id FROM _u),
+                                    (SELECT emittente_fiscale_id FROM _az)),
+                 pg_temp.cfg() ->> 'pagina_dimensione', pg_temp.cfg() -> 'origine' ->> 'pagina_dimensione'),
+    (SELECT format('%s|%s|emittente_fiscale', d_com, d_com) FROM _m),
+    '2) ⭐ il preset dell''azienda accesa vince su quello di sistema, nel resolver e in ui.fn_misura_lista');
 
 SELECT is(pg_temp.base(), pg_temp.p('P_AZ'),
     '3) ... ed e'' il preset di base per ui.fn_preset_di_base');

@@ -62,7 +62,8 @@ forma giudica la configurazione che resta.
 * `db/pgtap/ui/test-ui-ritiro-voce-preferenze-v1.sql` — la voce della colonna ritirata esce dalla
   preferenza della lista e non da quella di un'altra lista con lo stesso codice; dopo il ritiro la
   persona cambia la sola misura e salva; la preferenza che aveva solo quella colonna segue il preset;
-  lo stesso per la card tolta dal pool; il montaggio sulle due tabelle.
+  lo stesso per la card tolta dal pool, che non esce dalle preferenze di un'altra dashboard che ha
+  la stessa card; il montaggio sulle due tabelle.
 
 ---
 
