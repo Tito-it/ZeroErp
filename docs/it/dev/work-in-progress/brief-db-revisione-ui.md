@@ -1,8 +1,10 @@
 # Brief DB — Revisione dello schema `ui`: la documentazione, i difetti di codice, i metadati
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-23 (sessione DB, dopo l'apply della regola del 2)
+## ⏭️ Chi riparte — aggiornato al 2026-11-23 (sessione DB, dopo le verifiche dei giri 7 e 5)
 
-**Riparte: la sessione DB, in sessioni nuove: il `/verifica-db` del giro 7 intero** (Q57, Q58, Q54 e la regola del 2: `20261122-34` … `-39` e `-41` … `-43`, applicati su dbdev coi pgTAP verdi, Tid, 2026-11-22 e 2026-11-23; §3.6-quinquies), **poi quello del giro 5** (`/verifica-db d75ff94dab`), poi la chiusura (§10). Tid: la doc auto-generata di `dbops` e `script`. Il team BE riparte con BE32 e BE33 (§6). Q60 (a) va in un brief nuovo (§7.1). Nessuna decisione aperta. Il giro 7 è committato su `dev/db-tid` (2026-11-23), con la doc auto-generata di `ui`. ⚠️ Il `20261122-40` (`dbops.fn_pgtap_definizione_vincolo`) non è di questo brief: è dell'altra sessione DB attiva il 2026-11-22.
+**Riparte: la sessione DB con la chiusura** (§10). I due pgTAP toccati dalle verifiche dei giri 7 e 5 (`ui/test-seed-primo-impianto-ui-software-v1`, 22/0; `ui/test-ui-catalogo-dashboard-v1`, 29/0) sono verdi (Tid, 2026-11-23). Le verifiche sono fatte (2026-11-23): giro 7 in §3.6-quinquies, «La verifica del giro 7»; giro 5 in §3.5-bis, «La verifica». Nessun changeSet toccato. Il team BE riparte con BE32 e BE33 (§6). Q60 (a) va in un brief nuovo (§7.1). Nessuna decisione aperta. Il COMMENT ON TABLE delle due preferenze aspetta il prossimo changeSet di `ui` (§3.5-bis). Le verifiche sono committate su `dev/db-tid` (2026-11-23).
+
+Lo stato di prima (sessione DB, dopo l'apply della regola del 2): **Riparte: la sessione DB, in sessioni nuove: il `/verifica-db` del giro 7 intero** (Q57, Q58, Q54 e la regola del 2: `20261122-34` … `-39` e `-41` … `-43`, applicati su dbdev coi pgTAP verdi, Tid, 2026-11-22 e 2026-11-23; §3.6-quinquies), **poi quello del giro 5** (`/verifica-db d75ff94dab`), poi la chiusura (§10). Tid: la doc auto-generata di `dbops` e `script`. Il team BE riparte con BE32 e BE33 (§6). Q60 (a) va in un brief nuovo (§7.1). Nessuna decisione aperta. Il giro 7 è committato su `dev/db-tid` (2026-11-23), con la doc auto-generata di `ui`. ⚠️ Il `20261122-40` (`dbops.fn_pgtap_definizione_vincolo`) non è di questo brief: è dell'altra sessione DB attiva il 2026-11-22.
 
 Lo stato di prima (sessione DB, dopo la scrittura della regola del 2): **Riparte: Tid con l'apply della regola del 2** (`20261122-41` … `-43`: il BB `dbops.fn_seed_elenco_colonne` e le due sedi che lo leggono, scritti e provati sullo scratch; §3.6-quinquies, «Q54, la regola del 2»), col pgTAP nuovo `dbops/test-fn-seed-elenco-colonne-v1` e quelli del seed, e la doc auto-generata di `dbops` e `script`; **poi la sessione DB, in sessioni nuove: il `/verifica-db` del giro 7 intero** (Q57, Q58, Q54 e la regola del 2: `20261122-34` … `-39` e `-41` … `-43`), **poi quello del giro 5** (`/verifica-db d75ff94dab`), poi la chiusura (§10). Il team BE riparte con BE32 e BE33 (§6). Q60 (a) va in un brief nuovo (§7.1). Nessuna decisione aperta. Da committare: il giro 7 (nove changeSet, i CSV dei messaggi e del registro del seed col suo caricatore, quattro pgTAP, sette pagine `manual/`, linee-guida-sql, la guida `automazione-db`, questo brief) e la doc auto-generata di `ui` rigenerata. ⚠️ Il `20261122-40` (`dbops.fn_pgtap_definizione_vincolo`) non è di questo brief: è dell'altra sessione DB attiva il 2026-11-22.
 
@@ -52,9 +54,9 @@ le scelte superate sono barrate (§7, §7.1 e le schede). Il giro 0 è fatto e c
 | 7 | sessione DB | I giri 1a, 1b, 2-6, uno per volta, ciascuno con apply e pgTAP di Tid. ✅ 1a applicato, pgTAP verdi (2026-11-20); ✅ 1b (`20261120-02` … `-11`, §3.1-ter) verificato, applicato, pgTAP verdi (2026-11-20), committato con la doc auto-generata; ✅ il residuo di BE22 (id 665 spento nel CSV, migrato su dbdev il 2026-11-21); ✅ il `/verifica-db` dell'1a (2026-11-22); ✅ il piano del giro 2 (§3.2-bis), riallineato il 2026-11-21 a R-BE2, a Q40-Q42 e al ritiro di Q38/Q39 §6; ✅ Q43 (a) e il via al giro 2 (Tid, 2026-11-21); ✅ 2a scritto e applicato (2026-11-21); ✅ 2b scritto, applicato, pgTAP verdi (Tid, 2026-11-21); ⏳ il `/verifica-db` del giro 2; ✅ il via al giro 3 e Q44-Q46 (Tid, 2026-11-21); ✅ giro 3 scritto e provato (`20261120-36` … `-42`, 2026-11-21), committato (`ea04ec5f4`, PR #184), applicato secondo la doc auto-generata; ✅ apply e pgTAP del giro 3 (Tid, 2026-11-21, §3.3-bis); ✅ il `/verifica-db` del giro 3 (2026-11-22, §3.3-bis: due correzioni di testo, Q58 a Tid) | §2, §3.2-bis, §3.3-bis | 6-bis |
 | 7-bis | team BE/FE | Le ricadute del giro 2, tutte insieme (2b applicato il 2026-11-21). ✅ R-BE3 e BE26 fatti e verdi sul DB provvisto (2026-11-21, esito in §3.2-bis, «Esito di R-BE3 e BE26»), committati (`ae2336fcf`); ✅ BE8, BE11, BE20 e BE25 (2) fatti e verdi (2026-11-22, §6), committati (`2caffd1ee0`); ✅ il residuo di BE25 (2) (2026-11-22, §6) | §3.2-bis, «Le ricadute BE/FE del giro 2» | 7 |
 | 8 | team BE/FE | Le ricadute di ogni giro, dopo il suo apply. Giro 1a: ✅ BE5, BE6, BE7 (parte 1a), BE22, BE23, BE24 fatti e verdi (2026-11-20, esito in §6), committati in `7e65518b9`. Giro 1b: ✅ BE7 (parte 1b) e BE25 (1b) fatti e verdi (BE + FE, 2026-11-21, esito in §6), committati in `78e17ec4f`. Giro 2: ✅ BE8, BE11, BE20, BE25 (2) (2026-11-22; residuo di BE25 (2) in §6). Giro 3: ✅ BE10, FE1 (2026-11-22). Giro 4: ✅ BE12-BE15, BE27 (2026-11-22; BE13 e BE14 decisi da Tid lo stesso giorno). Giro 5: ✅ BE17, BE21, BE28 (2026-11-22). Giri 2-5 committati in `2caffd1ee0` | §6 | 7 |
-| 8-bis | sessione DB | Giro 6 (via di Tid, 2026-11-22, con BE10). ✅ 6a scritto, provato, applicato coi pgTAP verdi (`20261121-26` … `-33`, U40 nel seed, §3.6-bis; Tid, 2026-11-22); ✅ 6b, i metadati, applicato coi pgTAP verdi (`20261121-34` … `-37`, §3.6-ter; Tid, 2026-11-22); ✅ Q52 (b), Q53 (a); ✅ il 6c, i pgTAP, verdi come app (§3.6-quater; Tid, 2026-11-22); ✅ committato il 2026-11-22; ⏳ `/verifica-db` un giro per volta, ciascuno sul suo commit e in una sessione nuova (Tid, 2026-11-22; vale anche per le verifiche dell'1a, del 2 e del 3 della riga 7): 1a ✅ (2026-11-22, un caso aggiunto al pgTAP, verde, §3.1-bis), 1b ✅ (2026-11-22, §3.1-ter; Q54 decisa (a) da Tid il 2026-11-22, da scrivere nel giro 7), 2 ✅ (2026-11-22, §3.2-bis; ne nascono Q55 e il COMMENT di `fn_intero_da_jsonb`, scritti in `20261122-26` … `-28` e migrati coi pgTAP verdi, Tid, 2026-11-22; ⏳ il loro `/verifica-db` ✅, 2026-11-22: un caso aggiunto al pgTAP, verde, Q57 a Tid), 3 ✅ (2026-11-22, §3.3-bis: Q58), 4 ✅ (2026-11-22, §3.4-bis: tre pgTAP rafforzati, quattro test del seed col BB, quattro riferimenti a oggetti ritirati), 5 ⏳, 6a-6c ✅ (2026-11-22, §3.6-quater «La verifica»: due pgTAP rafforzati e verdi nella corsa di Tid, una pagina `manual/` e il riepilogo dei ritiri corretti, Q60 decisa (a) da Tid il 2026-11-22) | §3.6-bis | 7 |
+| 8-bis | sessione DB | Giro 6 (via di Tid, 2026-11-22, con BE10). ✅ 6a scritto, provato, applicato coi pgTAP verdi (`20261121-26` … `-33`, U40 nel seed, §3.6-bis; Tid, 2026-11-22); ✅ 6b, i metadati, applicato coi pgTAP verdi (`20261121-34` … `-37`, §3.6-ter; Tid, 2026-11-22); ✅ Q52 (b), Q53 (a); ✅ il 6c, i pgTAP, verdi come app (§3.6-quater; Tid, 2026-11-22); ✅ committato il 2026-11-22; ⏳ `/verifica-db` un giro per volta, ciascuno sul suo commit e in una sessione nuova (Tid, 2026-11-22; vale anche per le verifiche dell'1a, del 2 e del 3 della riga 7): 1a ✅ (2026-11-22, un caso aggiunto al pgTAP, verde, §3.1-bis), 1b ✅ (2026-11-22, §3.1-ter; Q54 decisa (a) da Tid il 2026-11-22, da scrivere nel giro 7), 2 ✅ (2026-11-22, §3.2-bis; ne nascono Q55 e il COMMENT di `fn_intero_da_jsonb`, scritti in `20261122-26` … `-28` e migrati coi pgTAP verdi, Tid, 2026-11-22; ⏳ il loro `/verifica-db` ✅, 2026-11-22: un caso aggiunto al pgTAP, verde, Q57 a Tid), 3 ✅ (2026-11-22, §3.3-bis: Q58), 4 ✅ (2026-11-22, §3.4-bis: tre pgTAP rafforzati, quattro test del seed col BB, quattro riferimenti a oggetti ritirati), 5 ✅ (2026-11-23, §3.5-bis «La verifica»: un pgTAP rafforzato, tre pagine `manual/` e una guida corrette, il COMMENT delle preferenze a un changeSet futuro), 6a-6c ✅ (2026-11-22, §3.6-quater «La verifica»: due pgTAP rafforzati e verdi nella corsa di Tid, una pagina `manual/` e il riepilogo dei ritiri corretti, Q60 decisa (a) da Tid il 2026-11-22) | §3.6-bis | 7 |
 | 8-ter | team BE/FE | Le ricadute del 6a, dopo l'apply: BE10, BE29, BE31; del 6b: BE18 (le note dei codici `E_UI_*`). ✅ Tutte fatte e verdi (2026-11-22), committate (`ecc51bf31a`, PR #204); ⏳ BE29 e il residuo di BE25 (2) a video | §6 | 8-bis |
-| 8-quater | sessione DB | Giro 7, le decisioni dalle verifiche (via di Tid, 2026-11-22). ✅ Q57 (`20261122-34`), Q58 (`-35`, con BE33), il COMMENT di `ui.fn_misura_pagina_default` e la soluzione di `E_UI_CHIAMATA_NON_VALIDA`: scritti e provati sullo scratch, ✅ applicati su dbdev coi pgTAP verdi (Tid, 2026-11-22), doc auto-generata di `ui` rigenerata da Tid; ✅ Q54 (a) (`-36` … `-39`, il CSV del registro): scritto e provato sullo scratch, ✅ applicato su dbdev coi pgTAP verdi (Tid, 2026-11-22); ✅ la regola del 2, decisa da Tid il 2026-11-22 (il BB `dbops.fn_seed_elenco_colonne`, `-41` … `-43`): scritta e provata sullo scratch, ✅ applicata su dbdev coi pgTAP verdi (Tid, 2026-11-23); ⏳ la doc auto-generata di `dbops` e `script`, il `/verifica-db` del giro intero in una sessione nuova | §3.6-quinquies | 8-bis |
+| 8-quater | sessione DB | Giro 7, le decisioni dalle verifiche (via di Tid, 2026-11-22). ✅ Q57 (`20261122-34`), Q58 (`-35`, con BE33), il COMMENT di `ui.fn_misura_pagina_default` e la soluzione di `E_UI_CHIAMATA_NON_VALIDA`: scritti e provati sullo scratch, ✅ applicati su dbdev coi pgTAP verdi (Tid, 2026-11-22), doc auto-generata di `ui` rigenerata da Tid; ✅ Q54 (a) (`-36` … `-39`, il CSV del registro): scritto e provato sullo scratch, ✅ applicato su dbdev coi pgTAP verdi (Tid, 2026-11-22); ✅ la regola del 2, decisa da Tid il 2026-11-22 (il BB `dbops.fn_seed_elenco_colonne`, `-41` … `-43`): scritta e provata sullo scratch, ✅ applicata su dbdev coi pgTAP verdi (Tid, 2026-11-23); ✅ la doc auto-generata di `dbops` e `script` (`b006c276ec`); ✅ il `/verifica-db` del giro intero (2026-11-23, §3.6-quinquies «La verifica del giro 7»: un caso aggiunto al pgTAP del seed, una guida corretta) | §3.6-quinquies | 8-bis |
 | 9 | sessione DB | Archiviazione in `work-done/`; Q60 (a) in un brief nuovo, aperto prima dell'archiviazione | §10, §7.1 | 7, 8, 8-quater |
 
 **Decisioni di Tid:** Q1-Q11 prese il 2026-11-18, Q12-Q25 il 2026-11-19, Q26 il 2026-11-20 (registrate in §7 e nelle
@@ -1616,6 +1618,23 @@ nei «Vedi anche» della guida delle liste.
 `test-ui-catalogo-liste-v1` da app), il commit, la doc auto-generata da rigenerare (nascono le schede del BB e della
 trigger function nuove) e il `/verifica-db` del giro.
 
+**La verifica** (sessione DB, 2026-11-23, `/verifica-db d75ff94dab`). Nei dieci changeSet nessun difetto di codice. Il
+corpo di `fn_preset_di_base` in `-54` è quello di `-08` salvo il cast. Le preCondition e l'ordine da zero reggono
+(§11.14). Le tre sedi della porta U31 sono allineate: `-60`, il loop `20260205-41`, il provisioning. I CSV sono integri
+e la doc auto-generata è rigenerata. Corretto `ui/test-ui-catalogo-dashboard-v1`, che passa da plan 26 a 29:
+* i casi 6 e 9 asseriscono il nome della FK composita (`fk_ui_widget_azione_della_sua_area`), non il solo 23503;
+* il caso 27 è nuovo, per Q49: un preset nasce acceso sotto una dashboard spenta;
+* i casi 28-29 sono nuovi, per U36: `trgfn_preferenza_data_update` anche sulla preferenza di lista, che il test costruisce.
+
+29/0 sullo scratch con `prova_changeset.py`, senza e con l'estratto di `-62`. Corrette anche le pagine `manual/`
+`trgfn_preferenza_data_update`, `dashboard_preferenza_utente` e `lista_preferenza_utente`, e la guida
+`configurazione-dashboard` (§3 la card tolta dal pool, §6 chi scrive la preferenza). Dicevano che la preferenza la
+scrive solo il proprietario, o solo il backend. La riscrive anche il database, quando ritira una voce uscita dal
+catalogo (`trgfn_misure_pagina_ritira_dalle_preferenze`, `trgfn_voce_ritira_dalle_preferenze`). ⏳ Il COMMENT ON TABLE
+delle due preferenze (`-56`) ha la stessa frase («scritto solo dal suo proprietario»), ma dice già che `data_update` la
+scrive il database a ogni scrittura. Da correggere col prossimo changeSet di `ui` (Tid). Nessuna ricaduta BE: nessuna
+garanzia è ritirata.
+
 ### 3.6 Giro 6 — pulizia
 
 | # | Dove | Fatto | Correzione proposta |
@@ -2078,6 +2097,24 @@ BB, la grammatica) e di `script` (il trigger); il `/verifica-db` insieme al rest
 un elenco `NULL` non passa più per valido. Lettori lato DB della grammatica: il trigger, `fn_seed_primo_impianto_divergenze`,
 `fn_seed_colonne_del_software` e il runner. Tutti passano argomenti letti da un montaggio o composti dal registro, e
 non danno mai un elemento `NULL`: per loro non cambia niente. Nessuna ricaduta BE.
+
+**La verifica del giro 7** (sessione DB, 2026-11-23, sul commit `f2e702ac86`). Nessun difetto nei nove changeSet.
+* I corpi vivi sono uguali agli YAML, e gli attributi sono quelli dichiarati.
+* Nessun numero è doppio. Nell'autogen `-36` precede `-37`, `-38`, `-39`, e `-41` precede `-42` e `-43`: da zero le
+  preCondition reggono.
+* Il caricatore `80_data/20261117-19` è `runOnChange` e nomina la colonna nuova. Il CSV ha 14 campi su ogni riga.
+* L'eccezione delle derivate non apre una strada per scrivere l'impronta da fuori: il lucchetto di
+  `ui.trgfn_preset_contenuto_aggiornato` (`a20`, dopo `a00`) accetta solo il valore vero di `ui.fn_preset_impronta`.
+
+Corretti:
+* `ui/test-seed-primo-impianto-ui-software-v1` (plan 22). Il caso 22 è il comportamento che Q54 voleva e che nessun
+  caso provava: il ritiro del caso 5 sposta la chiave `colonne` della data del contenuto, e il banner si accende al
+  ritiro. 22/0 su dbdev, in una transazione chiusa da ROLLBACK. Il caso «la riscrittura uguale dell'installazione
+  dopo il ritiro non sposta `colonne`», che il piano prevedeva, non si costruisce in un pgTAP. Il software e
+  l'installazione si distinguono da `session_user`, e il test gira come migratore. Il caso 17 prova la premessa:
+  dopo il ritiro l'impronta è già vera, quindi non resta niente da spostare.
+* La guida `configurazione-iniziale-e-aggiornamenti` (§3, «Le viste salvate e le loro colonne»). Una colonna che il
+  programma ritira esce anche dalle viste dell'azienda, e l'avviso si accende subito.
 
 ### 3.7 Chiusi senza modifiche (proposti)
 

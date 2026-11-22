@@ -21,7 +21,7 @@
 -- ⚠️ I casi 4-5 (il lucchetto) chiedono il runner dei lucchetti (20261120-62) e
 --   il 16 il ritiro dei trigger ATTIVO (20261120-61).
 --
--- Elenco test (plan 21):
+-- Elenco test (plan 29):
 --   U31: la porta
 --    1) all'app SELECT soltanto sulle cinque tabelle di catalogo
 --    2) ... e la preferenza resta scrivibile
@@ -30,10 +30,10 @@
 --    4) il lucchetto del posto e' montato, anche sull'azienda
 --    5) ... e il posto non si riscrive: E_UI_PRESET_POSTO_IMMUTABILE
 --   U33: area e azione del widget
---    6) ⭐ un'area diversa da quella dell'azione e' rifiutata (23503)
+--    6) ⭐ un'area diversa da quella dell'azione e' rifiutata (fk_ui_widget_azione_della_sua_area)
 --    7) l'area nulla con l'azione passa
 --    8) l'area dell'azione passa
---    9) ⭐ l'azione citata con l'area non cambia area (23503)
+--    9) ⭐ l'azione citata con l'area non cambia area (fk_ui_widget_azione_della_sua_area)
 --   U34: la dashboard per codice
 --   10) il building block da' la riga della dashboard accesa
 --   11) un codice assente: E_UI_DASHBOARD_NON_TROVATA
@@ -54,13 +54,19 @@
 --       (aggiunti dal /verifica-db del 2026-11-22): codice, chiave i18n
 --       dell'etichetta e chiave del contatore del widget; codice e note della
 --       dashboard
+--   Aggiunti dal /verifica-db del giro 5 (2026-11-23):
+--   27) Q49: un preset nasce acceso anche sotto una dashboard spenta (il
+--       require ritirato)
+--   28) U36: anche sulla preferenza di LISTA data_update la scrive il DB
+--       all'INSERT
+--   29) ... e all'UPDATE
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(26);
+SELECT plan(29);
 
 -- ============================================================
 -- Fixture: due dashboard, un widget nel pool, un preset di sistema
@@ -164,10 +170,10 @@ SELECT is(
 -- Un caso per istruzione: ognuno parte dallo stato lasciato dal precedente.
 SELECT CASE WHEN (SELECT altra_area_id FROM _az) IS NULL
   THEN skip('nessuna azione accesa con un''altra area accesa nel catalogo dei permessi', 1)
-  ELSE throws_ok(
+  ELSE is(dbops.fn_pgtap_codice_errore(
         format($$ UPDATE ui.widget SET azione_id = %s, area_id = %s WHERE id = %s $$,
-               (SELECT azione_id FROM _az), (SELECT altra_area_id FROM _az), (SELECT widget_id FROM _w)),
-        '23503', NULL,
+               (SELECT azione_id FROM _az), (SELECT altra_area_id FROM _az), (SELECT widget_id FROM _w))),
+        'fk_ui_widget_azione_della_sua_area',
         '6) un''area diversa da quella dell''azione e'' rifiutata (fk_ui_widget_azione_della_sua_area)')
   END;
 
@@ -189,10 +195,10 @@ SELECT CASE WHEN (SELECT altra_area_id FROM _az) IS NULL
 
 SELECT CASE WHEN (SELECT altra_area_id FROM _az) IS NULL
   THEN skip('nessuna azione accesa con un''altra area accesa nel catalogo dei permessi', 1)
-  ELSE throws_ok(
+  ELSE is(dbops.fn_pgtap_codice_errore(
         format($$ UPDATE config.azioni_processo SET area_id = %s WHERE id = %s $$,
-               (SELECT altra_area_id FROM _az), (SELECT azione_id FROM _az)),
-        '23503', NULL,
+               (SELECT altra_area_id FROM _az), (SELECT azione_id FROM _az))),
+        'fk_ui_widget_azione_della_sua_area',
         '9) l''azione citata con l''area non cambia area (fk_ui_widget_azione_della_sua_area)')
   END;
 
@@ -326,6 +332,57 @@ SELECT is(dbops.fn_pgtap_codice_errore(
            VALUES ('_pgtap.dash_note_vuote', 'Dashboard test pgTAP', ' ', TRUE, '_pgtap') $$),
     'chk_dashboard_definizione_note_non_vuote',
     '26) una nota di dashboard vuota e'' rifiutata dal CHECK (NULL resta ammesso)');
+
+-- ============================================================
+-- 27) Q49: il require ritirato (/verifica-db del giro 5, 2026-11-23)
+-- ============================================================
+-- Il caso 16 prova il block sul padre; questo il require sul figlio, che il
+--   motore ATTIVO ha tolto con lui (20261120-61): sulla dashboard 2, spenta, un
+--   preset nasce acceso.
+UPDATE ui.dashboard_definizione SET attivo = false WHERE id = (SELECT dashboard_id FROM _d WHERE n = 2);
+
+SELECT is(dbops.fn_pgtap_codice_errore(format(
+        $$ INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito, attivo, user_insert)
+           VALUES (%s, 'dp_cat_sotto_spenta', 'Preset test catalogo, dashboard spenta', 'sistema', TRUE, '_pgtap') $$,
+        (SELECT dashboard_id FROM _d WHERE n = 2))),
+    NULL,
+    '27) un preset nasce acceso anche sotto una dashboard spenta (il require e'' ritirato)');
+
+-- ============================================================
+-- 28-29) U36: la preferenza di lista (/verifica-db del giro 5, 2026-11-23)
+-- ============================================================
+-- La stessa funzione e' montata anche sulla preferenza di lista: i casi 13-14
+--   la provavano solo sulla dashboard. La lista si costruisce, senza vista.
+CREATE TEMP TABLE _l AS
+WITH ins AS (
+  INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+  VALUES ('_pgtap.cat_dash_' || substr(md5(clock_timestamp()::text), 1, 6),
+          'Lista test pgTAP data_update', 'pgtap', NULL, TRUE, '_pgtap')
+  RETURNING id
+)
+SELECT id AS lista_id FROM ins;
+
+INSERT INTO ui.lista_preferenza_utente (auth_user_id, lista_id, configurazione, data_update)
+SELECT c.auth_user_id, l.lista_id, '{}'::jsonb, '2000-01-01 00:00:00+00'
+  FROM _ctx c CROSS JOIN _l l;
+
+SELECT is(
+    (SELECT pu.data_update FROM ui.lista_preferenza_utente pu
+      WHERE pu.auth_user_id = (SELECT auth_user_id FROM _ctx)
+        AND pu.lista_id = (SELECT lista_id FROM _l)),
+    now(),
+    '28) anche sulla preferenza di lista, all''INSERT data_update la scrive il DB');
+
+UPDATE ui.lista_preferenza_utente SET data_update = '2000-01-01 00:00:00+00'
+ WHERE auth_user_id = (SELECT auth_user_id FROM _ctx)
+   AND lista_id = (SELECT lista_id FROM _l);
+
+SELECT is(
+    (SELECT pu.data_update FROM ui.lista_preferenza_utente pu
+      WHERE pu.auth_user_id = (SELECT auth_user_id FROM _ctx)
+        AND pu.lista_id = (SELECT lista_id FROM _l)),
+    now(),
+    '29) ... e all''UPDATE');
 
 SELECT * FROM finish();
 ROLLBACK;
