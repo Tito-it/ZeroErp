@@ -17,9 +17,6 @@ import { useStepOptions } from '../composables/useStepOptions'
 import CollectionEditorPanel from './CollectionEditorPanel.vue'
 
 const props = defineProps({
-  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
-  // Arrivano dal padre: questo componente non chiama le API da solo.
-  campiErrati: { type: Array, default: () => [] },
   definizioneId: { type: Number, required: true },
   rows: { type: Array, default: () => [] },
   steps: { type: Array, default: () => [] },
@@ -44,6 +41,11 @@ const coll = useArchiCollection({
     }),
   onChanged: () => emit('changed'),
 })
+// I campi che il rifiuto dell'ultimo salvataggio di QUESTO tab nomina
+// (`error.fields`): vengono dall'`execute` della collezione, che e' quello
+// che chiama le API. ⛔ Non una prop della vista: la vista ha un altro
+// `useApiHandler`, e la prop restava vuota (useEditableCollection).
+const { campiErrati } = coll
 
 const form = reactive({
   template_flusso_da_id: null,

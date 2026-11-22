@@ -23,7 +23,23 @@
 //     confirmDelete: (row) => t('...'),
 //     onChanged: () => emit('changed'),
 //   })
-import { ref } from 'vue'
+//
+// ⭐ `campiErrati` (dal 2026-11-22) e' quello del SUO `useApiHandler`, cioe'
+// dell'`execute` con cui salva: il tab lo lega agli input
+// (`:invalid="campiErrati.includes('esito_richiesto')"`).
+// ⛔ Fino a quella data i tab lo ricevevano come prop dalla vista
+// (`DefinizioneEditorView`), che ha un `useApiHandler` suo: i campi nominati
+// dal rifiuto di un salvataggio del tab finivano nell'istanza di qui, che non
+// li esponeva, e la prop restava vuota. Nessun campo dei tab diventava mai
+// rosso, e niente lo segnalava. Il campo in errore si legge dall'istanza che
+// ha fatto la chiamata, non da un'altra.
+// ⚠️ `campiErrati` e' del FORM: lo riempie solo `save`. Il toggle `attivo` e
+// l'eliminazione partono da una riga dell'elenco, che puo' non essere quella
+// nel form (il require ATTIVO esce proprio riaccendendo una figlia), e hanno
+// un `useApiHandler` loro: il loro rifiuto parla col toast. E si azzera a
+// ogni apertura o chiusura del form, perche' `useApiHandler` lo azzera solo
+// alla chiamata dopo: il campo di un rifiuto non resta rosso su un'altra riga.
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
@@ -32,12 +48,14 @@ import { MANAGE_ICONS } from '../../core/constants'
 
 export function useEditableCollection({ create, update, del, messages, confirmDelete, onChanged }) {
   const { t } = useI18n()
-  const { execute } = useApiHandler()
+  const { execute, campiErrati } = useApiHandler()
+  const { execute: executeRiga } = useApiHandler()
   const { confirmAction } = useConfirmAction()
 
   const form = useFormInline()
   const { rigaInModifica, apriRiga, chiudiForm } = form
   const saving = ref(false)
+  watch([form.formMode, rigaInModifica], () => { campiErrati.value = [] })
 
   async function save(payload) {
     const isEdit = !!rigaInModifica.value?.id
@@ -61,7 +79,7 @@ export function useEditableCollection({ create, update, del, messages, confirmDe
       header: t('confirm.delete_title'),
       message: confirmDelete(row),
       onAccept: async () => {
-        const res = await execute(() => del(row.id), { successMessage: messages.deleted })
+        const res = await executeRiga(() => del(row.id), { successMessage: messages.deleted })
         if (res === null) return
         if (rigaInModifica.value?.id === row.id) chiudiForm()
         await onChanged()
@@ -71,7 +89,7 @@ export function useEditableCollection({ create, update, del, messages, confirmDe
 
   // Toggle rapido attivo/inattivo (PATCH attivo). Silenzioso (no toast success).
   async function toggleAttivo(row) {
-    const res = await execute(() => update(row.id, { attivo: !row.attivo }), {})
+    const res = await executeRiga(() => update(row.id, { attivo: !row.attivo }), {})
     if (res !== null) await onChanged()
   }
 
@@ -84,7 +102,7 @@ export function useEditableCollection({ create, update, del, messages, confirmDe
   }
 
   return {
-    ...form, saving,
+    ...form, saving, campiErrati,
     save, remove, toggleAttivo, buildRowActions,
   }
 }

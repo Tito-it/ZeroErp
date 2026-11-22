@@ -36,6 +36,11 @@ const coll = useArchiCollection({
     t('amministrazione.definizioni_workflow.ed_conferma_elimina_figlio', { nome: stepCodice(row.prerequisito_id) }),
   onChanged: () => emit('changed'),
 })
+// I campi che il rifiuto dell'ultimo salvataggio di QUESTO tab nomina
+// (`error.fields`): vengono dall'`execute` della collezione, che e' quello
+// che chiama le API. ⛔ Non una prop della vista: la vista ha un altro
+// `useApiHandler`, e la prop restava vuota (useEditableCollection).
+const { campiErrati } = coll
 
 // Opzioni prerequisito: step dell'edizione, escluso lo step corrente
 // (auto-prerequisito = ciclo banale → escluso per feedback immediato).
@@ -97,7 +102,7 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :invalid="campiErrati.includes('esito_richiesto')" :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
     </template>
   </CollectionEditorPanel>
