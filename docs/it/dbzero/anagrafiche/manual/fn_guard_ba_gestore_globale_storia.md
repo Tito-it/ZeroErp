@@ -1,75 +1,92 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_guard_ba_gestore_globale_storia`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente)
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — la riga della predefinita
+> * [vendite.fatture](/dbzero/vendite/tabelle/fatture) — guardata per scegliere il billing account
+> * [vendite.commesse](/dbzero/vendite/tabelle/commesse) — guardata per scegliere il billing account
 >
-[anagrafiche.fn_guard_albero_ba_gestore_globale](/dbzero/anagrafiche/manual/fn_guard_albero_ba_gestore_globale)
+> Approfondimento funzioni:
 >
-Approfondimenti tabelle:
->
-[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
+> * [anagrafiche.fn_guard_ba_cambio_emittente](/dbzero/anagrafiche/funzioni/fn_guard_ba_cambio_emittente) — decide e compone il rifiuto
+> * [anagrafiche.fn_ba_ha_storia_emittente](/dbzero/anagrafiche/funzioni/fn_ba_ha_storia_emittente) — la definizione di storia della delegata
+> * [anagrafiche.trgfn_efba_guard_storia_emittente](/dbzero/anagrafiche/funzioni/trgfn_efba_guard_storia_emittente) — chiamante
+> * [anagrafiche.fn_guard_albero_ba_gestore_globale](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_gestore_globale) — l'altro cancello sullo stesso movimento
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 26-08-26)
 
-Impedisce di cambiare **l'emittente generale dell'installazione** quando ci sono
-clienti, agganciati a lui per difetto, che hanno già una storia.
-
----
-
-### Perché ha un raggio diverso da tutti gli altri controlli
-
-Gli altri riguardano **un** cliente. Questo riguarda **tutti quelli che non
-hanno un aggancio proprio**.
-
-L'emittente generale è quello su cui ricade chiunque non sia stato agganciato
-esplicitamente. Cambiarlo non è una configurazione: è **ri-attribuire
-retroattivamente l'emittente di tutto ciò che quei clienti hanno prodotto**. Una
-riga sola, un numero arbitrario di documenti.
+`anagrafiche.fn_guard_ba_gestore_globale_storia` impedisce di spostare l'azienda predefinita quando un billing
+account senza collegamento, che la segue, ha già una storia.
 
 ---
 
-### Come risponde, e perché non li visita tutti
+### Il raggio più largo del dominio
 
-La domanda è *«esiste della storia?»*, e la risposta non cambia dopo il primo
-cliente che ne ha. Quindi ne cerca **uno** — il primo, con un ordine
-deterministico — e lascia a lui comporre il messaggio.
-
-⭐ Il vantaggio non è la velocità: è che l'errore **nomina un cliente vero**
-invece di dire «da qualche parte». Chi lo legge sa dove guardare.
-
-⚠️ L'ordine esplicito non è pedanteria: senza, sarebbe il caso a decidere quale
-cliente compare nell'errore, e lo stesso rifiuto racconterebbe due storie
-diverse a due tentativi consecutivi.
+Gli altri controlli guardano un billing account. Spostare la predefinita cambia l'azienda di **tutti** quelli
+senza collegamento: una riga sola può riattribuire l'azienda di un numero qualunque di documenti già emessi.
+La chiama il trigger della storia quando la riga toccata è quella senza billing account: quando la predefinita
+cambia azienda, quando ne nasce una nuova, quando sparisce. Se l'azienda non cambia davvero esce subito.
 
 ---
 
-### ⚠️ In pratica questo cancello chiude quasi sempre
+### Cerca un billing account e delega
 
-Ed è corretto. Su un'installazione che ha già fatturato, spostare l'emittente
-generale non è un'impostazione da rivedere: è una riscrittura della storia.
+La risposta a «c'è storia?» non cambia dopo il primo cliente che ne ha: il guard cerca **il primo** billing
+account senza collegamento con fatture o commesse, in ordine di id, e lo passa a `fn_guard_ba_cambio_emittente`
+con le due aziende della predefinita, prima e dopo. Il messaggio è quindi quello del singolo billing account,
+e nomina un cliente vero invece di dire «da qualche parte»; l'ordine fisso fa sì che due tentativi uguali
+nominino lo stesso cliente.
 
-Se serve davvero un secondo emittente, la strada è agganciare **esplicitamente**
-i clienti che devono passare — e per quelli con documenti già emessi vale la
-regola di sempre: non si spostano, si apre una fornitura nuova.
+Su un'installazione che ha già fatturato questo cancello chiude quasi sempre, ed è corretto: spostare la
+predefinita lì è una riscrittura della storia. Se serve un'altra azienda, si collegano esplicitamente i
+clienti che devono passarci, e per quelli con documenti numerati vale la regola di sempre: una fornitura nuova
+presso la nuova azienda.
 
----
-
-### Il fratello che sorveglia la stessa riga
-
-Lo stesso movimento è già presidiato per un'altra ragione: l'**omogeneità
-dell'albero** dei clienti. Le due funzioni si assomigliano molto e rispondono a
-due domande diverse — *«l'albero può diventare misto?»* e *«c'è storia da
-proteggere?»* — sulla stessa riga di configurazione.
+Gira coi privilegi del proprietario: legge billing account, fatture e commesse, che hanno regole di visibilità.
 
 ---
 
-### Impatto e Vantaggi
+### ⚠️ Che cosa oggi non copre
 
-* il caso con il raggio più largo del dominio non è lasciato scoperto;
-* il messaggio è quello del controllo sul singolo cliente: **una
-  implementazione, due superfici** — e nessuna frase da tenere allineata a mano.
+* **Sceglie con una definizione di storia diversa da quella con cui si decide.** Il billing account da
+  guardare è il primo che ha **una fattura o una commessa**, in qualunque stato; la delegata decide invece sul
+  **documento numerato di qualunque famiglia**. Le due definizioni divergono in due versi:
+  * un billing account senza collegamento che ha solo ordini, DDT o resi numerati non viene scelto, e lo
+    spostamento passa;
+  * se il primo scelto ha solo una fattura o una commessa senza numero, la delegata non solleva, e gli altri
+    billing account non si guardano: lo spostamento passa anche se uno di loro ha documenti numerati.
+
+---
+
+### Codici errore
+
+* `E_BA_EMITTENTE_CON_STORIA` — dalla delegata, col billing account scelto.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql` e
+  `db/pgtap/anagrafiche/test-cliente-manuale-chiave-unica-v1.sql` — spostano la predefinita in scene costruite
+  e attraversano questo cancello; nessuno dei due prova il rifiuto per storia.
+
+---
+
+### Note di migrazione
+
+* 2026-08-26 — nasce, quando «storia» erano fatture e commesse. Dal 2026-08-31 la delegata decide sui documenti
+  numerati di qualunque famiglia, e la scelta del billing account qui non è cambiata.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_emittente-del-billing-account.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

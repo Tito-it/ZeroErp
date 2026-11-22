@@ -1,66 +1,65 @@
 ## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_clienti_stessa_chiave`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti funzioni:
+> Approfondimento tabelle:
 >
-[anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/manual/fn_guard_cliente_chiave_unica)
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — i clienti che la lettura restituisce
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — da dove viene l'azienda di un billing account
 >
-Guide:
+> Approfondimento funzioni:
 >
-[Un cliente manuale per soggetto, servizio e azienda](/it/guide/gestione-delle-istanze-utility#un-cliente-manuale-per-soggetto-servizio-e-azienda)
+> * [anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/funzioni/fn_guard_cliente_chiave_unica) — il rifiuto del doppione, primo lettore
+> * [anagrafiche.trgfn_clienti_set_parent_istanza](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza) — la catena delle istanze fittizie, che ne cerca il predecessore
+> * [script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/funzioni/fn_get_ba_emittente_sr_id_installazione) — l'azienda di un billing account per l'installazione
+>
+> Guide:
+>
+> * [Un cliente manuale per soggetto, servizio e azienda](/guide/gestione-delle-istanze-utility#un-cliente-manuale-per-soggetto-servizio-e-azienda) — la regola raccontata a chi usa il gestionale
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 14-10-26)
 
-Risponde alla domanda **«chi occupa già questa fornitura?»** per i clienti senza punto di
-fornitura (le istanze fittizie della creazione manuale).
-
-Senza un punto fisico, una fornitura è fatta di tre cose: **il soggetto** che la riceve, **il
-servizio** (la utility) e **l'azienda** che la fornisce. La funzione riceve queste tre cose e
-restituisce i clienti che le hanno, con il codice del loro billing account, lo stato e il periodo
-in cui sono stati attivi.
+`anagrafiche.fn_clienti_stessa_chiave` risponde alla domanda «chi occupa già questa fornitura?» per i
+clienti senza punto di fornitura: dati un soggetto, un servizio e un'azienda, restituisce i clienti delle
+istanze fittizie che li hanno, col codice del loro billing account, lo stato e il periodo.
 
 ---
 
-### Chi conta
+### La risposta porta il periodo, non il giudizio
 
-Conta un cliente che **è o è stato una fornitura**: attivo, in richiesta di sospensione, sospeso,
-o chiuso (in tutte le forme di chiusura). Non contano:
-
-* l'annullato, che non è mai esistito come fornitura;
-* il pre-contrattuale, che si sta ancora preparando;
-* l'aggregante, che non è una fornitura.
-
-Il periodo resta nella risposta: decide chi legge se due periodi si sovrappongono (il controllo
-del doppione lo confronta con il periodo del cliente nuovo, l'avviso con la data di oggi).
+La lettura dice chi occupa la chiave, non se c'è un conflitto: restituisce il periodo di ciascun cliente, e
+la sovrapposizione la decide chi legge. Il rifiuto del doppione confronta i periodi col periodo del cliente
+che si sta scrivendo; l'avviso del pre-contrattuale li confronta col giorno in cui l'operatore lo prepara;
+la catena delle istanze cerca il cliente più recente. Per questo i clienti escono dal più recente: per data
+di attivazione e poi per id, a scendere.
 
 ---
 
-### L'azienda
+### L'azienda è un dato della domanda
 
-L'azienda di un billing account è quella **dell'installazione**: quella a cui il billing account
-è collegato o, se non è collegato, l'azienda predefinita. Non dipende da chi sta lavorando.
+Il soggetto e il servizio sono colonne del cliente; l'azienda no: la lettura la ricava per ogni cliente dal
+suo billing account, per l'installazione, e la confronta con quella chiesta. Chi chiama passa l'azienda
+che vuole controllare (il rifiuto, quella del cliente che sta scrivendo), mai quella di chi sta lavorando.
 
----
-
-### Chi la usa
-
-Tre lettori, una sola regola: se fossero due, prima o poi l'avviso direbbe una cosa e il
-rifiuto un'altra.
-
-| Chi | Per cosa |
-| --- | --- |
-| il controllo del doppione | rifiuta un secondo cliente nello stesso periodo |
-| l'avviso del pre-contrattuale (backend) | dice all'operatore che la fornitura esiste già, senza bloccare |
-| la catena delle istanze | collega l'istanza di una fornitura che riparte a quella precedente |
+Se l'installazione non ha ancora un'azienda predefinita, un billing account senza collegamento non ha
+azienda, e i suoi clienti non escono da nessuna domanda. È lo stato di un'installazione appena nata: da
+quando esiste la prima azienda, la predefinita è obbligatoria (`E_EMITTENTE_DEFAULT_SINGLETON`).
 
 ---
 
-### Perché è privilegiata
+### Note di migrazione
 
-Clienti e billing account sono visibili per azienda. Con i permessi di chi chiama, un cliente
-fuori dal suo perimetro sarebbe invisibile, e il controllo direbbe «a posto» proprio nel caso da
-rifiutare. Gira quindi con i privilegi del proprietario; l'azienda è uno dei tre dati della
-domanda.
+* 2026-10-14 — nasce con la regola del cliente manuale (decisione di Tid del 2026-10-13), come predicato
+  unico del rifiuto, dell'avviso e della catena.
+
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_chiave-unica-cliente.md" %}
+
+---
+
+{% include-markdown "signature-core.md" %}

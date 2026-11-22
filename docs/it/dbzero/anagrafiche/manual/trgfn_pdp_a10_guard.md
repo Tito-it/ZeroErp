@@ -1,103 +1,67 @@
-## 📘 Documentazione – Funzione trigger `anagrafiche.trgfn_pdp_a10_guard`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_pdp_a10_guard`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [`anagrafiche.pdp`](/dbzero/anagrafiche/tabelle/pdp)  
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — la tabella protetta
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)  
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il blocco di colonna sullo stesso codice
+> * [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error) — il rifiuto col diario
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-01-2026)
-Impedire la **modifica** dei campi **identitari** del PDP:
 
-* `pdp` (codice univoco globale)
-* `indirizzo_dettaglio_id` (ancoraggio fisico)
-
-La regola è **immutabilità dopo prima valorizzazione**: è consentito impostare il valore da `NULL → valore`, ma **qualunque modifica successiva** viene bloccata con eccezione applicativa tracciata via `script.fn_log_and_raise_error`.
-
-**Nota naming**: in versioni precedenti la funzione era `anagrafiche.trgfn_pdp_protect_cols` con trigger `trg_pdp_protect_cols_upd`.
+`anagrafiche.trgfn_pdp_a10_guard` impedisce di cambiare il codice di un PDP e il suo indirizzo: un punto
+fisico non cambia nome e non si sposta.
 
 ---
 
-### Firma
+### Il PDP è un punto reale
 
-```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_pdp_a10_guard()
-RETURNS trigger
-LANGUAGE plpgsql
-VOLATILE
-```
+Il codice è il riferimento con cui i sistemi esterni conoscono il punto (POD, PDR); l'indirizzo è il luogo
+dove il punto sta. Cambiarli romperebbe l'allineamento con fuori e la chiave esterna composta con cui
+un'istanza si lega al PDP del suo indirizzo. Un punto in un altro luogo è un PDP nuovo.
 
-**Perché `VOLATILE`**: la funzione può lanciare eccezioni e scrivere log; inoltre dipende da variabili di contesto del trigger (`TG_OP`, `TG_NAME`).
-
----
-
-
-**Effetti pratici**
-
-* Consentito: `pdp: NULL → 'IT001...'` (prima valorizzazione).
-* Vietato: `pdp: 'IT001...' → 'IT002...'` (cambio codice).
-* Consentito: `indirizzo_dettaglio_id: NULL → 123` (prima valorizzazione).
-* Vietato: `indirizzo_dettaglio_id: 123 → 456` (spostamento di luogo).
-
-> **Variante più restrittiva**: per **vietare anche** `NULL → valore`, rimuovi le condizioni `OLD.<col> IS NOT NULL`.
+Scatta prima di una modifica che nomina il codice o l'indirizzo, e rifiuta se il valore cambia. Le due
+colonne sono obbligatorie dalla nascita: non c'è una prima valorizzazione dopo la nascita, e ogni cambio è
+rifiutato.
 
 ---
 
-### Dipendenze
+### ⚠️ Che cosa oggi non copre
 
-* `script.fn_log_and_raise_error` – registra l’evento e genera l’eccezione applicativa con **codice** `E_COLONNA_NON_MODIFICABILE` e payload JSON (colonna/id).
-
----
-
-### Esempi d’uso
-
-**DDL trigger su tabella `anagrafiche.pdp`**
-
-```sql
--- Ricrea il trigger di protezione
-DROP TRIGGER IF EXISTS trg_pdp_a10_guard_upd ON anagrafiche.pdp;
-CREATE TRIGGER trg_pdp_a10_guard_upd
-BEFORE UPDATE OF pdp, indirizzo_dettaglio_id
-ON anagrafiche.pdp
-FOR EACH ROW
-EXECUTE FUNCTION anagrafiche.trgfn_pdp_a10_guard();
-```
-
-**Test rapido**
-
-```sql
--- 1) Prima valorizzazione: OK
-UPDATE anagrafiche.pdp SET pdp = 'IT001ABCDEF' WHERE id = 100 AND pdp IS NULL;
-
--- 2) Tentativo di cambio codice: ERRORE atteso
-UPDATE anagrafiche.pdp SET pdp = 'IT002XYZ' WHERE id = 100; -- raise E_COLONNA_NON_MODIFICABILE
-
--- 3) Tentativo di spostare indirizzo: ERRORE atteso
-UPDATE anagrafiche.pdp SET indirizzo_dettaglio_id = 999 WHERE id = 100; -- raise E_COLONNA_NON_MODIFICABILE
-```
+* **Il blocco di colonna sul codice non parla mai.** Sul codice è montato anche il blocco generico di colonna,
+  che scatta dopo questo guard: il rifiuto è sempre `E_COLONNA_NON_MODIFICABILE`, mai il suo
+  `E_CODICE_NON_MODIFICABILE`, e la sua porta di manutenzione non apre niente perché il guard ha già
+  rifiutato.
+* **Il rifiuto non nomina il campo.** Il contesto porta la colonna sotto una chiave che il form non legge: il
+  campo da evidenziare non arriva.
 
 ---
 
-### Motivazioni progettuali
+### Codici errore
 
-1. **Stabilità dei riferimenti**: `pdp` è chiave esterna per sistemi esterni (POD/PDR). Cambiarlo romperebbe l’allineamento.
-2. **Coerenza fisica**: un PDP rappresenta un **punto reale**; spostarlo di indirizzo equivale a creare **un nuovo PDP**, non a modificare quello esistente.
-3. **Audit e governance**: in caso di tentativi di modifica, l’errore viene **loggato** con contesto (`TG_NAME`) e payload strutturato.
-4. **Sicurezza by‑design**: la protezione è a livello DB, non delegata al solo applicativo.
+* `E_COLONNA_NON_MODIFICABILE` — cambio del codice o dell'indirizzo; nella frase la colonna e il valore di
+  prima.
 
 ---
 
-### ⚠️ Note operative
+### Test
 
-* Il trigger deve essere **`BEFORE UPDATE OF pdp, indirizzo_dettaglio_id`** per intercettare solo gli update rilevanti, riducendo overhead.
-* In **migrazione dati** (bulk load): applicare le valorizzazioni iniziali **prima** di attivare il trigger, o disabilitarlo temporaneamente, se serve caricare codici/indirizzi già definitivi.
-* In caso di refactor del dominio: se una riga necessita cambio di indirizzo, procedere con **nuova riga PDP** e, se necessario, storicizzare la precedente.
+* `db/pgtap/anagrafiche/test-trgfn-pdp-a10-guard.sql` — il cambio del codice e quello dell'indirizzo
+  rifiutati, e i valori che restano quelli di prima.
+
+---
+
+### Note di migrazione
+
+* Prima si chiamava `anagrafiche.trgfn_pdp_protect_cols`, col trigger `trg_pdp_protect_cols_upd`.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `maintenance.job_run_log`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -190,6 +190,32 @@ schema per concedere una lettura.
 
 ---
 
+### Come si legge: per chiave, mai per intero
+
+Il giornale cresce a ogni corsa, quindi chi lo legge non lo percorre tutto: cerca le corse di **un**
+job o di **un** processo, dalla più recente, o le corse di un periodo. Quattro indici servono
+queste domande, tutti nell'ordine «dalla più recente» (`started_at` e `id` decrescenti), così
+l'ultima corsa è la prima riga che l'indice trova.
+
+| Indice | Serve |
+| --- | --- |
+| `ix_job_run_log_jobname_started_at` | le corse di un job: l'ultima corsa per job dei presidi e della liveness del backend, «c'è una corsa da…» dei timer, l'elenco dei job |
+| `ix_job_run_log_processo_codice_started_at` | le corse di un processo: la lista dei processi, le corse di un processo, il panorama `dbops.vw_processi_programmazione`. Copre la FK verso `dbops.processi` |
+| `ix_job_run_log_started_at` | il giornale per data, senza chiave: l'elenco delle corse e le finestre di tempo dei presidi |
+| `ix_job_run_log_jobname_senza_processo` | le righe senza processo, che sono solo storiche (vedi sopra): la chiave «processo o, dove manca, job» di `vw_job_run_da_superuser` |
+
+* **Un indice non basta a «l'ultima corsa di ognuno».** Raggruppare tutto il giornale costa quanto
+  il giornale, con o senza indice. Le viste che vogliono l'ultima corsa di ogni job la cercano
+  **una chiave alla volta**: prima l'elenco delle chiavi, saltando nell'indice da un valore al
+  successivo, poi la prima riga per ciascuna.
+* **La FK non passa dalla policy degli indici FK.** `maintenance` non è fra gli schemi che la
+  policy governa (`dbops.automation_scope`), quindi l'indice che la copre nasce col changeSet della
+  tabella.
+* **La ricerca di un job per prefisso del nome non è servita**, apposta: la collation del database
+  non lo permette a un indice normale, e un indice dedicato non servirebbe l'ordine.
+
+---
+
 ### Test
 
 * `db/pgtap/maintenance/test-job-run-registrazione.sql` — `origine` e `meta`, l'apertura e la
@@ -208,6 +234,8 @@ schema per concedere una lettura.
 * `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — l'esito in `meta.esito`, la
   riuscita con scarti scritta con `ok` falso ed `E_JOB_ESITO_CON_SCARTI`, `rows_affected` di una
   `SELECT`.
+* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql` — i quattro indici, e le due viste di
+  presidio che cercano l'ultima corsa una chiave alla volta.
 
 ---
 
@@ -233,6 +261,9 @@ schema per concedere una lettura.
   ultima corsa non aveva processo. Dopo il CHECK del 2026-09-05 il debito che misurava non poteva
   più nascere, e in vista restavano solo lavori con l'ultima corsa anteriore al vincolo: non
   poteva né accendersi né svuotarsi (`brief-db-revisione-dbops`).
+* 2026-11-22 — i quattro indici di lettura. Fino ad allora la tabella aveva la sola chiave
+  primaria, e ogni lettura per job o per processo percorreva tutto il giornale
+  (`brief-db-giornale-corse-indici`).
 
 ---
 

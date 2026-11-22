@@ -1,96 +1,112 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_billing_account_guard_normalize`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_guard_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle: 
+> Approfondimento tabelle:
 >
-[anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — la tabella su cui è montata
+> * [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — le attività che fermano il distacco dal padre
 >
-Approfondimenti funzioni:
+> Approfondimento funzioni:
 >
-[config.sistema_codici](/dbzero/config/manual/sistema_codici)
+> * [script.trgfn_guard_date_validita](/dbzero/script/funzioni/trgfn_guard_date_validita) — l'ordine delle due date, che non è qui
+> * [anagrafiche.trgfn_billing_account_guard_albero_emittente](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) — padre e figli della stessa azienda, l'altra domanda sull'albero
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
-Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
+
+`anagrafiche.trgfn_billing_account_guard_normalize` tiene le regole del conto padre di un billing account: il
+padre non è il conto stesso, è della stessa identità fiscale, porta una data d'inizio, e non si toglie finché
+ci sono attività da fatturare.
+
+Nonostante il nome non normalizza niente: non tocca il codice né altre colonne, e restituisce la riga com'è.
+Gira prima di ogni inserimento e modifica del billing account.
 
 ---
 
-### Contesto di Esecuzione
+### Il padre non è il conto stesso
 
-* **Tipo**: `BEFORE INSERT OR UPDATE` trigger sulla tabella `anagrafiche.billing_account`
-* **Oggetto**: opera sul record `NEW`
-
----
-
-
-### Logica Operativa
-
-1. **Genitore diverso da se stesso** — un billing account non puo' essere
-   genitore di se stesso.
-
-2. **Data di inizio obbligatoria** — se c'e' un genitore, la validita' deve
-   partire da una data.
-
-3. **Coerenza del soggetto fiscale fra genitore e figlio** *(rivisto 18-08-26)*
-
-   E' il controllo che impedisce di appendere un billing account sotto quello di
-   **un'altra persona o azienda**. Procede in tre gradini:
-
-   * **il genitore non si raggiunge** → si rifiuta. Puo' voler dire che non
-     esiste, oppure che **esiste ma e' fuori dal perimetro di chi sta
-     scrivendo**: la lettura passa dalle regole di visibilita' per emittente, e
-     il controllo non finge di distinguere due cose che non puo' distinguere.
-     ⚠️ Prima di questa revisione il caso cadeva sull'errore *«identificativi
-     fiscali diversi»* — su due codici fiscali **identici**. Un messaggio che
-     nominava la causa sbagliata;
-   * **manca il codice fiscale da una delle due parti** → il confronto fiscale
-     non e' utilizzabile come prova, quindi si confronta il **soggetto**, che
-     c'e' sempre. Due billing account della **stessa** persona senza codice
-     fiscale restano legittimi; due di persone **diverse** vengono rifiutati.
-     ⚠️ Prima passavano entrambi: `NULL` confrontato con `NULL` non risulta
-     diverso, ed era il classico buco del dato mancante in una chiave;
-   * **entrambi i codici fiscali presenti** → si confrontano. Due soggetti
-     diversi con lo **stesso** codice fiscale continuano a passare, ed e'
-     voluto: quella e' identita' fiscale, che e' cio' che il controllo presidia.
-
-4. **Coerenza delle date di validita'** — la fine non puo' precedere l'inizio.
-
-5. **Distacco dal genitore** — non si puo' togliere il genitore a un billing
-   account che ha ancora attivita' da fatturare: spezzerebbe la catena che porta
-   al documento.
-
-6. **Restituzione record** — il record viene ritornato al motore, che prosegue
-   l'operazione.
-
-> ℹ️ La normalizzazione del `codice` e' rimasta un posto riservato: la
-> generazione vera e' demandata al sistema automatico dei codici.
+Un billing account con sé stesso come padre è rifiutato (`E_PARENT_SELF`). È l'unico controllo sulla forma
+dell'albero: un padre che ha a sua volta un padre, o due conti che si fanno da padre l'un l'altro, passano.
 
 ---
 
-### Impatto e Vantaggi
+### Le date: solo la regola di questa tabella
 
-* **Consistenza**: garantisce che nessun record venga creato senza un codice di fatturazione.
-* **Automazione**: la generazione del codice e' gestita dal trigger automatico su `config.sistema_codici`.
-* **Estendibilita**: la configurazione e' centralizzata in `config.sistema_codici` per tutte le tabelle.
-* **Nessun dato mancante che apre una porta** *(18-08-26)*: dove il codice
-  fiscale non c'e', il controllo ripiega sul soggetto invece di lasciar passare.
-  E dove il genitore non si vede, lo dice — invece di attribuire il rifiuto a
-  una causa che non c'entra.
-
-> ℹ️ **Questo controllo non guarda l'emittente.** Che un albero non attraversi
-> due emittenti fiscali e' presidiato a parte, da
-> [`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente):
-> sono due domande diverse — *«e' la stessa persona?»* e *«e' lo stesso
-> emittente?»* — e tenerle separate e' voluto.
+Con un padre, `valido_dal` è obbligatorio; e `valido_al` senza `valido_dal` è rifiutato. Tutti e due i casi
+rispondono `E_VALORE_MANCANTE`, col campo che manca. Che la fine non preceda l'inizio non lo guarda questo
+trigger: ha una sede sola, il guard comune delle date montato dall'automazione (`script.trgfn_guard_date_validita`).
 
 ---
 
-### ⚠️ Note Operative
+### ⭐ Padre e figlio: la stessa identità fiscale
 
-* Assicurarsi che in `config.sistema_codici` sia presente la riga per `codice_interno = 'billing_account'` con `usa_sequenza = TRUE`.
-* La generazione del codice avviene nel trigger automatico sulla tabella target.
+Il controllo impedisce di appendere un billing account sotto quello di un'altra persona o azienda. Il
+soggetto di ciascuno dei due si legge **dall'istanza** del billing account, e si procede in tre gradini:
+
+* **il padre non si raggiunge** → `E_PARENT_NON_RAGGIUNGIBILE`. La lettura passa dalla RLS di chi scrive
+  (la funzione non è privilegiata): un padre che non esiste e un padre fuori dal perimetro danno lo stesso
+  rifiuto, perché il trigger non li può distinguere;
+* **manca il codice fiscale da una delle due parti** → il codice non vale come prova, e si confronta il
+  soggetto: due billing account dello stesso soggetto senza codice fiscale passano, di soggetti diversi no
+  (`E_PARENT_SOGGETTO_DIVERSO`);
+* **i due codici fiscali ci sono** → si confrontano (`E_ID_FISCALI_DIVERSI`). Due soggetti diversi con lo
+  stesso codice fiscale passano, ed è voluto: la regola è sull'identità fiscale.
+
+Il confronto avviene a ogni scrittura con un padre, anche quando il padre non cambia.
+
+---
+
+### Il padre non si toglie con attività da fatturare
+
+Se una modifica svuota il padre e il billing account ha attività fatturabili non ancora fatturate, è
+rifiutata (`E_DISSOCIAZIONE_PARENT_CON_ATTIVITA`): quelle attività finiranno in una fattura intestata al padre,
+e il distacco le farebbe uscire con un'altra intestazione a metà del ciclo.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il cambio di padre non è giudicato come il distacco.** Da un padre a un altro il legame si sposta anche con
+  attività non fatturate: il controllo guarda solo il padre che diventa vuoto.
+* **Nessun controllo di profondità o di ciclo** oltre al padre uguale a sé (vedi sopra).
+* **Il nome del trigger non ha fascia** (`trg_billing_account_guard_normalize_ins_upd`): gira, per ordine
+  alfabetico, dopo i guard di fascia `a` e prima di quelli di fascia `z`.
+* **Il COMMENT della funzione** dice che controlla le date e normalizza il codice: non lo fa.
+
+---
+
+### Codici errore
+
+* `E_PARENT_SELF` — il padre è il billing account stesso.
+* `E_VALORE_MANCANTE` — con un padre manca `valido_dal`, o c'è `valido_al` senza `valido_dal`.
+* `E_PARENT_NON_RAGGIUNGIBILE` — il padre non esiste o non è visibile a chi scrive.
+* `E_PARENT_SOGGETTO_DIVERSO` — manca un codice fiscale e i soggetti sono diversi.
+* `E_ID_FISCALI_DIVERSI` — i due codici fiscali sono diversi.
+* `E_DISSOCIAZIONE_PARENT_CON_ATTIVITA` — si toglie il padre con attività non fatturate.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-billing-account-guard-cf-confrontabile-v1.sql` — i tre gradini dell'identità
+  fiscale, il padre fuori perimetro e quello inesistente.
+* `db/pgtap/anagrafiche/test-billing-account-guard-parent.sql` — il distacco con attività non fatturate,
+  con attività fatturate, senza attività.
+* `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — il campo dell'errore sul padre uguale a sé.
+
+---
+
+### Note di migrazione
+
+* 2026-08-18 — il confronto fiscale non usa più solo il codice: due billing account senza codice fiscale
+  passavano anche se di soggetti diversi, e un padre fuori perimetro cadeva su «identificativi fiscali
+  diversi» con due codici identici.
+* 2026-09-23 — l'ordine delle date passa al guard comune; resta qui la regola «`valido_al` richiede
+  `valido_dal`».
 
 ---
 

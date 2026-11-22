@@ -1,99 +1,79 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_billing_account_gen_codice()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_billing_account_gen_codice`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)
-> • [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> • [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — la tabella su cui è montata
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — prefisso, separatore e lunghezza del codice
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — il generatore comune
+> * [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) — chi crea questa funzione e il suo trigger
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il blocco del codice dopo la nascita
+> * [script.trgfn_codice_maiuscolo](/dbzero/script/funzioni/trgfn_codice_maiuscolo) — il codice salvato in maiuscolo
+>
+> Guide:
+>
+> * [Numerazione dei documenti e codici](/guide/numerazione-documenti-e-codici) — i codici generati delle anagrafiche
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
+`anagrafiche.trgfn_billing_account_gen_codice` assegna il codice di un billing account quando chi scrive non lo
+fornisce, o lo fornisce vuoto: lo chiede a `script.fn_generate_codice('billing_account')`, che compone prefisso
+`BAC`, separatore `/` e un numero a sette cifre dalla sequenza della tabella.
 
-Assegna il **codice interno** di `anagrafiche.billing_account` quando chi scrive non lo
-fornisce. Non calcola niente da sé: delega a `script.fn_generate_codice('billing_account')`,
-che legge prefisso, separatore e lunghezza da `config.sistema_codici` e consuma la
-sequenza dedicata. È il pattern comune a tutte le anagrafiche con codice generato.
-
----
-
-### Aggancio
-
-Trigger `trg_billing_account_a10_gen_codice_ins_upd` — fase `_a10_`, `BEFORE INSERT OR UPDATE`
-su `anagrafiche.billing_account`.
+Un codice fornito non si tocca; lo porta in maiuscolo un altro trigger, in fascia `a15`.
 
 ---
 
-### Regole applicate
+### ⭐ Una funzione generata, non scritta a mano
 
-1. Se `NEW.codice` è `NULL` **oppure** stringa vuota dopo `btrim`, viene valorizzato
-   con `script.fn_generate_codice('billing_account')`.
-2. Se `NEW.codice` è già valorizzato, **non viene toccato**: un codice fornito
-   dall'applicazione o da un import vince sempre sulla generazione.
+Funzione, sequenza e trigger nascono da soli dalla riga `billing_account` di `config.sistema_codici`: li crea
+con DDL dinamico il trigger di quella tabella, `script.trgfn_config_sistema_codici_sync_gen_codice`, e tutte le
+funzioni `trgfn_*_gen_codice` hanno lo stesso corpo. Ne seguono tre cose:
 
-La configurazione vive in `config.sistema_codici` alla riga `codice_interno = 'billing_account'`
-(prefisso `BAC`, separatore `/`, numero a 7 cifre).
-
----
-
-### ⚠️ Note e trappole
-
-* **La chiave di configurazione è `'billing_account'`, non il nome della tabella.** Rinominare
-  quella riga in `config.sistema_codici` senza toccare la funzione fa fallire ogni
-  inserimento con `E_SEQUENZA_NON_CONFIGURATA`: il legame è per stringa, non per FK.
-* **`usa_sequenza = false` non è un errore: è un `NULL`.** In quel caso
-  `fn_generate_codice` **restituisce `NULL`** senza sollevare niente, e la riga prosegue
-  senza codice. Qui la colonna è `NOT NULL`, quindi si trasforma subito in una violazione di vincolo (SQLSTATE `23502`) — un errore tecnico, non un errore di dominio: nel log non c'è nessun codice `E_*` che spieghi la causa.
-* **In `UPDATE` la generazione è di fatto inerte, ma solo grazie al lock.** Sulla stessa
-  tabella agisce `trg_billing_account_a10_lock_columns_upd`
-  (`script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')`), e i trigger `BEFORE ROW`
-  scattano in **ordine alfabetico**: `gen_codice` gira *prima* di `lock_columns`. Chi svuota
-  `codice` in un `UPDATE` ottiene quindi un codice nuovo, che il lock intercetta subito dopo
-  come modifica e rifiuta.
-  ⚠️ Con `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` il lock si spegne e questa
-  rete sparisce: in manutenzione, svuotare `codice` **cambia davvero l'identità della riga**
-  e consuma un valore di sequenza.
+* un ritocco a mano non dura: la funzione si riscrive col modello quando si riscrive la riga di configurazione;
+* si spegne dalla configurazione (`usa_sequenza` a falso), non con un `DROP`;
+* il legame fra la tabella e la sua riga è il nome `billing_account`, una stringa e non una FK: senza la riga
+  ogni inserimento senza codice risponde `E_SEQUENZA_NON_CONFIGURATA`.
 
 ---
 
-### ⚠️ Questa funzione è **generata**, non scritta a mano
+### Il codice non cambia: lo tiene il blocco
 
-Il corpo compresso su una riga sola non è una svista di formattazione. La funzione, la
-sequenza e il trigger che la invoca sono creati con DDL dinamico da
-`script.trgfn_config_sistema_codici_sync_gen_codice` — il trigger
-`AFTER INSERT OR UPDATE OR DELETE` di `config.sistema_codici`. Basta la riga
-`codice_interno = 'billing_account'` con `schema_tabella`, `nome_tabella`, `nome_colonna` valorizzati
-e `usa_sequenza = true`, e i tre oggetti nascono da soli.
+Il trigger scatta anche alla modifica del codice. Il codice però è bloccato dopo la nascita
+(`trg_billing_account_a10_lock_columns_upd`, `E_CODICE_NON_MODIFICABILE`), e il blocco gira dopo questo trigger
+nella stessa fascia: chi svuota il codice ne riceve uno nuovo, che il blocco rifiuta come modifica. Con
+l'override del blocco attivo (manutenzione) questa rete non c'è, e svuotare il codice cambia davvero l'identità
+del billing account.
 
-È il motivo per cui **tutte** le `trgfn_*_gen_codice` del progetto hanno corpo identico: non
-sono sette funzioni simili, sono la stessa funzione parametrizzata sette volte.
+---
 
-Conseguenze pratiche:
+### ⚠️ Che cosa oggi non copre
 
-* **Modificarla a mano non serve a niente.** Il loader del CSV `sistema_codici` è
-  `runOnChange`, quindi ripassa a ogni migrate: la funzione viene riscritta col template e
-  qualunque ritocco locale sparisce senza lasciare traccia.
-* **Non si spegne con un `DROP`, si spegne dalla configurazione.** Portando `usa_sequenza`
-  a `false` il trigger di sync cancella da sé trigger e funzione; un `DROP` manuale li fa
-  ricomparire al primo migrate.
-* **Cambiare `schema_tabella`/`nome_tabella`/`nome_colonna` sposta gli oggetti**: il sync
-  fa `DROP` di quelli vecchi e ricrea altrove. Nessun errore, nessun avviso.
+* **Con `usa_sequenza` a falso** il generatore restituisce un valore vuoto senza errore, e la riga senza codice
+  urta il NOT NULL della colonna: un errore tecnico, senza un codice di dominio che dica la causa.
 
 ---
 
 ### Codici errore
 
-| Codice | Sollevato da | Quando |
-|--------|--------------|--------|
-| `E_SEQUENZA_NON_CONFIGURATA` | `script.fn_generate_codice` | Nessuna riga `codice_interno = 'billing_account'` in `config.sistema_codici` |
-| `CODICE_NON_MODIFICABILE` | `script.trgfn_lock_columns` | Tentativo di cambiare `codice` in `UPDATE` |
+La funzione non solleva errori propri.
 
-La funzione **non solleva errori propri**: ogni errore viene dalle funzioni che invoca.
+* `E_SEQUENZA_NON_CONFIGURATA` — da `script.fn_generate_codice`, senza la riga di configurazione o la sequenza.
+* `E_CODICE_NON_MODIFICABILE` — dal blocco di colonna, a una modifica del codice.
+
+---
+
+### Test
+
+Nessun file suo. Il codice generato alla nascita lo verifica `db/pgtap/anagrafiche/test-fn-crea-cliente-v1.sql`.
 
 ---
 

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `maintenance.vw_job_run_da_guardare`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -221,6 +221,8 @@ e il rimedio cambiano con la causa della riga.
   contro parziale, con la stessa storia di corse.
 * `db/pgtap/maintenance/test-vw-job-run-da-guardare-corse-distinte-v1.sql` — una corsa fallita con
   due righe rosse dello stesso `run_uuid` conta una volta in `falliti_ultimi_7_giorni`.
+* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql`, test 5-6 — la vista vede ogni job, e
+  l'ultima corsa vera salta la saltata che la segue, anche cercata una chiave alla volta.
 
 ---
 
@@ -244,6 +246,10 @@ e il rimedio cambiano con la causa della riga.
   transazione che lo chiama (`brief-db-revisione-maintenance` D10).
 * 2026-11-03 — le corse riuscite con scarti diventano rosse (`E_JOB_ESITO_CON_SCARTI`) e la vista
   le vede: prima risultavano verdi (`brief-db-revisione-maintenance` D5).
+* 2026-11-22 — l'ultima corsa vera si cerca job per job, sull'indice: l'elenco dei job saltando da
+  un nome al successivo, poi la prima corsa vera di ciascuno. Prima la vista raggruppava tutto il
+  giornale, e il suo costo cresceva con la storia. Il risultato non cambia
+  (`brief-db-giornale-corse-indici`).
 
 ---
 

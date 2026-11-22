@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GIORNALE DELLE CORSE SI LEGGE PER CHIAVE: quattro indici su
+#   maintenance.job_run_log.
+#   Brief: brief-db-giornale-corse-indici §6.2.
+#
+#   Il giornale e' append-only e cresce per costruzione; chi lo legge lo
+#   legge per chiave (jobname, processo) e per recenza. Con la sola chiave
+#   primaria ogni lettura per chiave percorreva tutta la storia.
+#
+#   ix_job_run_log_jobname_started_at        (jobname, started_at DESC, id DESC)
+#   ix_job_run_log_processo_codice_started_at (processo_codice, started_at DESC, id DESC)
+#   ix_job_run_log_started_at                 (started_at DESC, id DESC)
+#   ix_job_run_log_jobname_senza_processo     parziale, processo_codice IS NULL
+#
+# ⭐ L'ORDINE (started_at DESC, id DESC) e' quello di tutti i lettori:
+#   «l'ultima corsa» e' la prima riga dell'indice per la chiave.
+#
+# ⭐ NON PARZIALI su NOT saltata: alcuni lettori leggono anche le corse
+#   saltate (l'ultima riga del giornale, il presidio dei superuser).
+#
+# ⭐ IL PARZIALE serve la chiave COALESCE(processo_codice, jobname) di
+#   maintenance.vw_job_run_da_superuser per le righe senza processo. Per
+#   costruzione tiene solo le righe storiche: chk_job_run_log_processo_dichiarato
+#   pretende il processo da ogni corsa nuova.
+#
+# ℹ️ La FK fk_job_run_log_processi la copre per prefisso il secondo indice.
+#   Non e' della policy degli indici FK: maintenance non e' in
+#   dbops.automation_scope (linee-guida-sql §8.7), quindi l'indice si scrive
+#   qui, col changeSet della tabella, e non chiede una riga di policy.
+#
+# ⚠️ Il LIKE '<prefisso>%' sul jobname non e' servito, apposta: la collation
+#   del database non e' C, e un text_pattern_ops non servirebbe l'ordine.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261122-20-create-indici-job-run-log-mctit.yaml
+
+  - changeSet:
+      id: 20261122-20-create-indici-job-run-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log: quattro indici di lettura per chiave e per recenza
+        (jobname, processo_codice, started_at; parziale sulle righe senza processo).
+        Brief: brief-db-giornale-corse-indici §6.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_job_run_log_jobname_started_at
+                  ON maintenance.job_run_log USING btree (jobname, started_at DESC, id DESC);
+              COMMENT ON INDEX maintenance.ix_job_run_log_jobname_started_at IS
+                'Le corse di un job, dalla piu'' recente: l''ultima corsa per jobname (maintenance.vw_job_run_da_guardare, la liveness del backend), «c''e'' una corsa dal» del timer (e_dovuto), l''elenco dei jobname distinti.';
+
+              CREATE INDEX ix_job_run_log_processo_codice_started_at
+                  ON maintenance.job_run_log USING btree (processo_codice, started_at DESC, id DESC);
+              COMMENT ON INDEX maintenance.ix_job_run_log_processo_codice_started_at IS
+                'Le corse di un processo, dalla piu'' recente: la lista dei processi e le corse di un processo, il panorama dbops.vw_processi_programmazione, maintenance.vw_job_run_da_superuser. Copre per prefisso la FK fk_job_run_log_processi.';
+
+              CREATE INDEX ix_job_run_log_started_at
+                  ON maintenance.job_run_log USING btree (started_at DESC, id DESC);
+              COMMENT ON INDEX maintenance.ix_job_run_log_started_at IS
+                'Il giornale per recenza, senza chiave: l''elenco delle corse senza filtri e le finestre di tempo (i sette giorni di maintenance.vw_job_run_da_guardare).';
+
+              CREATE INDEX ix_job_run_log_jobname_senza_processo
+                  ON maintenance.job_run_log USING btree (jobname, started_at DESC, id DESC)
+               WHERE processo_codice IS NULL;
+              COMMENT ON INDEX maintenance.ix_job_run_log_jobname_senza_processo IS
+                'Le corse senza processo, per jobname: la chiave COALESCE(processo_codice, jobname) di maintenance.vw_job_run_da_superuser. Tiene solo righe storiche: chk_job_run_log_processo_dichiarato pretende il processo da ogni corsa nuova.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX maintenance.ix_job_run_log_jobname_started_at;
+              DROP INDEX maintenance.ix_job_run_log_processo_codice_started_at;
+              DROP INDEX maintenance.ix_job_run_log_started_at;
+              DROP INDEX maintenance.ix_job_run_log_jobname_senza_processo;

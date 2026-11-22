@@ -1,184 +1,130 @@
-## 📘 Documentazione concettuale – Tabella `anagrafiche.pdp`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.pdp`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)  
-> • [`anagrafiche.clienti`](/dbzero/anagrafiche/tabelle/clienti)   
-> • [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)   
-> • [`config.utilities`](/dbzero/config/tabelle/utilities)   
-> • [`config.stati_pdp`](/dbzero/config/tabelle/stati_pdp)   
-> • [`storico.pdp`](/dbzero/storico/tabelle/pdp)   
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il luogo a cui il PDP è ancorato
+> * [config.utilities](/dbzero/config/tabelle/utilities) — la utility del punto
+> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp) — gli stati tecnici
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — le forniture che si legano al punto
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — i clienti del punto, per periodo
+> * [storico.pdp](/dbzero/storico/tabelle/pdp) — le versioni di prima
 >
-**Approfondimento funzioni:**
+> Approfondimento viste:
 >
-• [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic)  
-> • [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed)  
-> • [`anagrafiche.trgfn_pdp_a10_guard`](/dbzero/anagrafiche/manual/trgfn_pdp_a10_guard)  
+> * [anagrafiche.vw_pdp](/dbzero/anagrafiche/views/vw_pdp) — il PDP con utility, stato e indirizzo
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_pdp_set_default_stato](/dbzero/anagrafiche/funzioni/trgfn_pdp_set_default_stato) — lo stato di nascita
+> * [anagrafiche.trgfn_pdp_a10_guard](/dbzero/anagrafiche/funzioni/trgfn_pdp_a10_guard) — codice e indirizzo non cambiano
+> * [anagrafiche.trgfn_clienti_sync_stato_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp) — lo stato segue l'occupazione
+> * [anagrafiche.fn_check_pdp_occupato](/dbzero/anagrafiche/funzioni/fn_check_pdp_occupato) — il PDP è occupato in una data?
+>
+> Guide:
+>
+> * [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility) — istanze e PDP
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
-La tabella **`anagrafiche.pdp`** rappresenta i **Punti di Prelievo (PDP)**, entità fisiche ancorate a un indirizzo e identificate da un codice univoco globale (POD/PDR/altro). Ogni PDP appartiene a una utility (GAS, ENERGIA, ecc.) ed espone **lo stato tecnico corrente**, distinto dagli stati commerciali del cliente.
 
-La progettazione segue tre principi chiave:
-
-1. **Il PDP è una struttura fisica**, non dipende dai clienti.
-2. **Il PDP ha uno stato tecnico** gestito in `config.stati_pdp`.
-3. **La storia è separata dallo stato corrente**, in `storico.pdp`.
-
-Questo modello consente di:
-
-* censire punti di prelievo anche senza istanza o cliente,
-* mantenere coerenza infrastrutturale (il PDP non cambia indirizzo),
-* gestire attivazioni/disattivazioni tecniche indipendenti dal ciclo commerciale.
+`anagrafiche.pdp` registra i punti di prelievo: punti fisici ancorati a un indirizzo, con un codice univoco
+globale (POD, PDR o altro), una utility e uno stato tecnico. Il PDP esiste prima dei clienti e dopo di loro.
 
 ---
 
-### 2. Schema e colonne principali
+### Un punto fisico non si sposta e non cambia nome
 
-  **2.1 Stato corrente (`anagrafiche.pdp`)**
+Il codice `pdp` è unico in tutto il database (`uq_pdp_codice`) e non si modifica; l'indirizzo non si
+modifica: un punto in un altro luogo è un altro PDP. Un luogo ha al più un PDP per utility
+(`uq_pdp_addr_utility`), e la chiave unica (`id`, `indirizzo_dettaglio_id`) serve la chiave esterna composta
+con cui l'istanza si lega solo a un PDP del suo indirizzo.
 
-* **PK**: `id BIGINT IDENTITY`
-* **Codice PDP**: `pdp VARCHAR(30)`, **univoco globale e immutabile**
-* **Utility**: `utility_id BIGINT NOT NULL` → FK `config.utilities(id)`
-* **Indirizzo fisico**: `indirizzo_dettaglio_id BIGINT NOT NULL` → FK
-* **Cliente corrente**: `cliente_id BIGINT NULL` → FK
-* **Stato tecnico**: `stato_pdp_id BIGINT NOT NULL` → FK `config.stati_pdp(id)`
-* **Audit**: `tx_id`, `data_insert/update`, `user_insert/update`
-* **Storicizzazione**: `storicizza BOOLEAN DEFAULT TRUE`
-* **Extra info**: JSONB
-
-### 2.2 Nota naming
-
-Nel modello attuale:
-
-* `anagrafiche.pdp` usa **`utility_id`**;
-* la documentazione e le viste applicative sono allineate allo stesso naming.
-
-Il riferimento funzionale resta unico: FK verso `config.utilities.id`.
+L'indirizzo e lo stato devono essere attivi, controllati al COMMIT. Un PDP non si disattiva finché un
+cliente lo nomina, di qualunque stato e periodo (`E_ATTIVO_BLOCK_CHILDREN_EXIST`): `clienti` non ha la
+colonna `attivo`, e il rimedio sarebbe togliere i clienti.
 
 ---
 
-### Stato tecnico del PDP
+### Lo stato tecnico segue l'occupazione
 
-Con le modifiche concordate, il PDP ora include il campo:
+Lo stato tecnico è distinto dallo stato commerciale del cliente: un punto può essere staccato con il
+cliente ancora attivo, o disponibile con il cliente chiuso.
 
- **`stato_pdp_id` → FK verso `config.stati_pdp`**
+| Stato | Significato |
+| --- | --- |
+| `DISP` | Disponibile: presente e utilizzabile, senza cliente attivo |
+| `ATT` | Attivo: in servizio con almeno un cliente |
+| `DTEC` | Disattivo tecnico: lavori, sospensione, stacco |
+| `DISM` | Dismesso: il punto non è più utilizzabile |
 
-Gli stati tecnici attualmente previsti sono:
-
-| Codice   | Nome              | Descrizione sintetica                             |
-| -------- | ----------------- | ------------------------------------------------- |
-| **DISP** | Disponibile       | Punto fisicamente presente, senza cliente attivo  |
-| **ATT**  | Attivo            | Punto tecnicamente in servizio con cliente attivo |
-| **DTEC** | Disattivo tecnico | Stacco tecnico, lavori, sospensione fisica        |
-| **DISM** | Dismesso          | Punto non più utilizzabile, derivazione rimossa   |
-
-Questa separazione evita la confusione tra **stato tecnico del punto** e **stato commerciale della fornitura**.
-
- **Perché è corretto avere *entrambi* gli stati (tecnico vs commerciale)**
-
-* Il PDP può essere tecnicamente **DTEC** anche se il cliente è ancora attivo (morosità o guasto).
-* Il PDP può essere tecnicamente **DISP** con cliente commerciale chiuso.
-* Il PDP può essere **DISMESSO**, mentre lo storico dei clienti rimane valido.
-
-Questo modello consente coerenza e accuratezza anche in domini complessi (gas/energia).
+Un PDP nasce `DISP` quando chi lo crea non dice altro. Poi lo muove la scrittura dei clienti: quando nasce o
+cambia un cliente del PDP (stato, PDP, date), lo stato diventa `ATT` se il PDP è occupato oggi (un cliente
+il cui periodo contiene la data operativa) e torna `DISP` se non lo è più. Il calcolo vale anche per il PDP
+che il cliente ha lasciato. `DTEC` e `DISM` non li tocca nessuno: sono stati che pone chi gestisce la rete.
 
 ---
 
-### Vincoli e Relazioni
+### Il cliente del punto lo dice il periodo dei clienti
 
-* **UNIQUE (pdp)** → codice univoco globale
-* **UNIQUE (indirizzo_dettaglio_id, utility_id)** → massimo un PDP per utility per indirizzo
-* **UNIQUE (id, indirizzo_dettaglio_id)** → supporto alla FK composita da istanze
-* **CHECK length(pdp)** → verifica formale
-* **FK stato_pdp_id → config.stati_pdp**
-* Indici: `ix_anagrafiche_pdp_utility_id`, `ix_anagrafiche_pdp_indirizzo_dettaglio_id`, `ix_anagrafiche_pdp_cliente_id`
+Chi occupa un PDP in una data lo dicono le righe di `clienti` con quel PDP e il loro periodo; due clienti
+sullo stesso PDP non si sovrappongono (`ex_clienti_no_overlap_stesso_pdp`). Il PDP sulla riga del cliente è
+la copia di quello della sua istanza.
 
 ---
 
+### Storico
 
-### Considerazioni architetturali aggiornate
-
- **1. Stato tecnico distinto da cliente**
-
-La presenza di `stato_pdp_id` permette di modellare:
-
-* disponibilità tecnica vera, indipendente dal contratto,
-* lavori/disattivi tecnici,
-* dismissioni fisiche della rete.
-
- **2. Coerenza operativa**
-
-Lo stato del PDP può essere aggiornato:
-
-* da processi tecnici (es. interventi sul campo),
-* da eventi commerciali coerenti (es. attivazione cliente → PDP passa a *ATTIVO*),
-* da validazioni in backend.
-
- **3. Allineamento con istanze**
-
-L’istanza (`anagrafiche.istanze_utilities`) può collegarsi solo a PDP **dello stesso indirizzo**.
-
-Ne deriva un modello coerente tra:
-
-* **luogo fisico** (indirizzo_dettaglio),
-* **punto fisico** (pdp),
-* **fornitura** (istanza),
-* **soggetto/cliente**.
+Ogni modifica e cancellazione lascia la versione di prima in `storico.pdp`, quando `storicizza` è acceso.
+`meta` è un oggetto JSONB libero, sempre presente.
 
 ---
 
-### 6. Operatività – Query tipiche
+### ⚠️ Che cosa oggi non copre
 
-**PDP per indirizzo**
-
-```sql
-SELECT *
-FROM anagrafiche.pdp
-WHERE indirizzo_dettaglio_id = :id;
-```
-
-**Timeline storico**
-
-```sql
-SELECT *
-FROM storico.pdp
-WHERE pdp_id = :id
-ORDER BY valid_from;
-```
-
-**Stato tecnico del PDP**
-
-```sql
-SELECT p.pdp, sp.codice, sp.descrizione
-FROM anagrafiche.pdp p
-JOIN config.stati_pdp sp ON sp.id = p.stato_pdp_id
-WHERE p.id = :id;
-```
+* **`cliente_id` non lo scrive nessuno.** Il COMMENT e `vw_pdp` la presentano come «cliente corrente», ma
+  nessun oggetto del database la valorizza: la scrittura dei clienti aggiorna lo stato del PDP, non questa
+  colonna. Chi la legge trova il valore che vi ha scritto qualcun altro, o niente.
+* **Lo stato non si ricalcola al passare dei giorni.** Si ricalcola solo quando si scrive un cliente del
+  PDP: un cliente con l'attivazione futura lascia il PDP `DISP` anche dopo quella data, un cliente chiuso
+  nel futuro lo lascia `ATT` anche dopo la chiusura, finché un cliente del PDP non si riscrive.
+* **Due presìdi per la stessa immutabilità del codice.** Sul cambio di `pdp` scattano il guard della tabella
+  e il blocco di colonna, in quest'ordine: risponde sempre il guard (`E_COLONNA_NON_MODIFICABILE`), e il
+  blocco di colonna, che avrebbe `E_CODICE_NON_MODIFICABILE` e la porta di manutenzione, non parla mai.
+* **Un PDP che ha avuto un cliente non si disattiva più.** Il blocco conta anche i clienti chiusi e
+  annullati, che restano sulla tabella.
+* **Una dismissione non chiude niente.** `DISM` non impedisce a un'istanza di legarsi al PDP né a un cliente
+  di nascervi.
 
 ---
 
-### 7. Diagramma ER relazioni
+### Codici errore
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    stati_pdp           ||--o{ pdp                 : has
-    utilities           ||--o{ pdp                 : has
-    indirizzi_dettaglio ||--o{ pdp                 : located_at
-    clienti             ||--o| pdp                 : current_client
+* `E_COLONNA_NON_MODIFICABILE` — cambio del codice o dell'indirizzo.
+* `E_ATTIVO_BLOCK_CHILDREN_EXIST` — disattivazione di un PDP che un cliente nomina.
+* `E_CODICE` — alla nascita senza stato, manca lo stato `DISP` nel catalogo.
 
-    pdp                 ||--o{ storico_pdp         : history
+---
 
-    indirizzi_dettaglio ||--o{ istanze_utilities   : has
-    istanze_utilities   }o--|| pdp                 : uses
-```
+### Test
+
+* `db/pgtap/anagrafiche/test-create-pdp.sql` — i PDP nascono `DISP`.
+* `db/pgtap/anagrafiche/test-trgfn-pdp-a10-guard.sql` — codice e indirizzo non si cambiano.
+* `db/pgtap/dbops/test-trgfn-prevent-deactivate-if-children-pdp.sql` — lo stato tecnico disattivato con PDP
+  attivi.
+
+---
+
+### Note di migrazione
+
+* 2026-10-14 — lo stato del PDP segue l'occupazione per periodo; prima seguiva lo stato del cliente (attivo
+  o chiuso).
+* Il NOT NULL di `meta` porta ancora il nome della colonna di prima, `extra_info` (`pdp_extra_info_not_null`).
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

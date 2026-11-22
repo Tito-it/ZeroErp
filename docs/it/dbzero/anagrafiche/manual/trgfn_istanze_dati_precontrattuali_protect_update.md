@@ -1,58 +1,58 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**    
+> Approfondimento tabelle:
 >
-• [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali)    
-> • [vendite.contratti_utilities](/dbzero/vendite/manual/contratti_utilities)    
->
-**Approfondimento funzioni:**
->
-• [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)   
+> * [anagrafiche.istanze_dati_precontrattuali](/dbzero/anagrafiche/tabelle/istanze_dati_precontrattuali) — la tabella protetta
+> * [vendite.contratti_utilities](/dbzero/vendite/tabelle/contratti_utilities) — il contratto che nomina la riga
+> * [vendite.offerte_commerciali_utilities](/dbzero/vendite/tabelle/offerte_commerciali_utilities) — l'offerta che nomina la riga, e che il blocco non guarda
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 20-01-26)
-La funzione `anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update()` impedisce la modifica
-o cancellazione dei dati precontrattuali quando sono gia` stati **congelati** in
-`vendite.contratti_utilities`.
 
-La funzione e` eseguita da un trigger **BEFORE UPDATE OR DELETE** su
-`anagrafiche.istanze_dati_precontrattuali`.
+`anagrafiche.trgfn_istanze_dati_precontrattuali_protect_update` impedisce di modificare o cancellare i dati
+precontrattuali di una fornitura quando un contratto utility li ha già letti.
 
 ---
 
-### Regola di protezione
+### Dopo il contratto il dato è definitivo
 
-Se esiste almeno uno snapshot collegato:
+Scatta prima di ogni modifica e di ogni cancellazione di una riga. Se una riga di
+`vendite.contratti_utilities` nomina la riga, il rifiuto è `E_COLONNA_NON_MODIFICABILE`: il contratto resta
+coerente con i dati su cui è nato, e una correzione passa da un contratto nuovo. Se nessun contratto la
+nomina, la scrittura passa.
 
-* **UPDATE** → viene bloccato con `script.fn_log_and_raise_error`
-* **DELETE** → viene bloccato con `script.fn_log_and_raise_error`
-
-In questo modo si garantisce che:
-
-* il contratto rimanga coerente con lo snapshot;
-* ogni correzione richieda la creazione di un **nuovo contratto**.
+Il blocco viene prima dello storico: una scrittura rifiutata non lascia una versione nello storico.
 
 ---
 
-### Contesto operativo
+### ⚠️ Che cosa oggi non copre
 
-**Tabella controllata:** `anagrafiche.istanze_dati_precontrattuali`  
-**Condizione:** esistenza di righe in `vendite.contratti_utilities`
-con `istanza_dati_precontrattuali_id = OLD.id`.
+* **L'offerta non protegge.** Una riga che solo un'offerta commerciale nomina si modifica: la cancellazione
+  la ferma la chiave esterna dell'offerta, la modifica no.
+* **La cancellazione risponde da colonna.** Il codice è quello di una colonna non modificabile anche per una
+  cancellazione, e il contesto non porta il campo da evidenziare nel form: nella frase c'è la parola
+  «record».
+* **Nessuna porta di manutenzione.** A differenza dei blocchi di colonna, non c'è un modo controllato di
+  correggere una riga già letta da un contratto.
 
 ---
 
-### Ruolo nel processo
+### Codici errore
 
-La funzione protegge la stabilita` dei dati che alimentano la fase contrattuale,
-imponendo una regola chiara: una volta creato lo snapshot, il dato precontrattuale
-non e` piu` modificabile.
+* `E_COLONNA_NON_MODIFICABILE` — modifica o cancellazione di una riga che un contratto utility nomina.
+
+---
+
+### Test
+
+* `db/pgtap/vendite/test-contratti-utilities-snapshot.sql` — la modifica della riga rifiutata dopo la
+  nascita del contratto.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

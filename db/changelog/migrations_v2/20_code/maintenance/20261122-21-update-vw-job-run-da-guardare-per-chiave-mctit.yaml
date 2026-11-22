@@ -1,0 +1,183 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_job_run_da_guardare cerca l'ultima corsa PER CHIAVE, non percorrendo
+#   tutto il giornale.
+#   Brief: brief-db-giornale-corse-indici §6.3 (decisione di Tid, 2026-11-22).
+#
+# ⚠️ IL DIFETTO. La CTE ultima era un DISTINCT ON (jobname) su tutto il
+#   giornale: anche con un indice il costo cresce con la storia, non con il
+#   numero dei job.
+#
+# ⭐ LA FORMA. I jobname distinti si leggono saltando da un valore al
+#   successivo sull'indice ix_job_run_log_jobname_started_at (CTE ricorsiva
+#   jobs, una discesa nell'indice per jobname); per ciascuno, l'ultima corsa
+#   vera e' una LATERAL … ORDER BY started_at DESC, id DESC LIMIT 1 sullo
+#   stesso indice. Filtro e join verso dbops.processi sono quelli di prima,
+#   riga per riga: il risultato non cambia.
+#
+# ⚠️ Stesse colonne, stesso ordine: CREATE OR REPLACE VIEW. Corpo dal catalogo
+#   (pg_get_viewdef, 2026-11-22, = 20261103-60); cambia solo la CTE ultima.
+#   Il COMMENT descrive che cosa dice la vista, non come la legge: resta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-21-update-vw-job-run-da-guardare-per-chiave-mctit.yaml
+
+  - changeSet:
+      id: 20261122-21-update-vw-job-run-da-guardare-per-chiave
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_da_guardare: l'ultima corsa vera per jobname con una LATERAL
+        sull'indice, i jobname distinti con una discesa ricorsiva; risultato invariato.
+        Brief: brief-db-giornale-corse-indici §6.3.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'maintenance'
+                AND c.relname = 'vw_job_run_da_guardare'
+                AND c.relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW maintenance.vw_job_run_da_guardare AS
+              WITH RECURSIVE jobs AS (
+                       SELECT min(j0.jobname) AS jobname
+                         FROM maintenance.job_run_log j0
+                       UNION ALL
+                       SELECT ( SELECT min(j1.jobname) AS min
+                                  FROM maintenance.job_run_log j1
+                                 WHERE (j1.jobname > jobs.jobname)) AS jobname
+                         FROM jobs
+                        WHERE (jobs.jobname IS NOT NULL)
+                      ), ultima AS (
+                       SELECT u_1.id,
+                          u_1.jobname,
+                          u_1.stepname,
+                          u_1.processo_codice,
+                          u_1.origine,
+                          u_1.started_at,
+                          u_1.ended_at,
+                          u_1.ok,
+                          u_1.error_code,
+                          u_1.message,
+                          u_1.error_detail,
+                          u_1.run_uuid,
+                          u_1.auth_user_id,
+                          u_1.meta,
+                          u_1.sqlstate,
+                          u_1.verdetto_completo
+                         FROM (jobs j
+                           CROSS JOIN LATERAL ( SELECT l.id,
+                                  l.jobname,
+                                  l.stepname,
+                                  l.processo_codice,
+                                  l.origine,
+                                  l.started_at,
+                                  l.ended_at,
+                                  l.ok,
+                                  l.error_code,
+                                  l.message,
+                                  l.error_detail,
+                                  l.run_uuid,
+                                  l.auth_user_id,
+                                  l.meta,
+                                  l.sqlstate,
+                                  COALESCE(pr_1.corsa_verdetto_completo, false) AS verdetto_completo
+                                 FROM (maintenance.job_run_log l
+                                   LEFT JOIN dbops.processi pr_1 ON ((pr_1.codice = l.processo_codice)))
+                                WHERE ((l.jobname = j.jobname) AND (NOT l.saltata) AND (NOT (COALESCE(pr_1.corsa_verdetto_completo, false) AND (l.ok IS NULL) AND (l.ended_at IS NULL) AND (l.started_at >= (now() - '01:00:00'::interval)))))
+                                ORDER BY l.started_at DESC, l.id DESC
+                               LIMIT 1) u_1)
+                        WHERE (j.jobname IS NOT NULL)
+                      ), tratti AS (
+                       SELECT s.jobname,
+                          count(*) FILTER (WHERE ((s.ok IS FALSE) AND (s.precedente IS DISTINCT FROM false))) AS tratti_rossi
+                         FROM ( SELECT p.jobname,
+                                  p.ok,
+                                  lag(p.ok) OVER (PARTITION BY p.jobname ORDER BY p.started_at, p.id) AS precedente
+                                 FROM maintenance.job_run_log p
+                                WHERE ((NOT p.saltata) AND (p.ok IS NOT NULL) AND (p.started_at >= (now() - '7 days'::interval)))) s
+                        GROUP BY s.jobname
+                      ), da_guardare AS (
+                       SELECT u.id,
+                          u.jobname,
+                          u.stepname,
+                          u.processo_codice,
+                          u.origine,
+                          u.started_at,
+                          u.ended_at,
+                          u.ok,
+                          u.error_code,
+                          u.message,
+                          u.error_detail,
+                          u.run_uuid,
+                          u.sqlstate,
+                          ((u.ok IS NULL) AND (u.ended_at IS NULL) AND (u.started_at < (now() - '01:00:00'::interval))) AS appesa,
+                          u.verdetto_completo
+                         FROM (ultima u
+                           LEFT JOIN tratti t ON ((t.jobname = u.jobname)))
+                        WHERE ((u.ok IS FALSE) OR ((NOT u.verdetto_completo) AND (EXISTS ( SELECT 1
+                                 FROM maintenance.job_run_log p
+                                WHERE ((p.jobname = u.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (now() - '7 days'::interval)))))) OR (u.verdetto_completo AND (COALESCE(t.tratti_rossi, (0)::bigint) >= 2)) OR ((u.ok IS NULL) AND (u.ended_at IS NULL) AND (u.started_at < (now() - '01:00:00'::interval))))
+                      )
+               SELECT g.jobname,
+                  g.processo_codice,
+                  g.origine,
+                  g.started_at,
+                  g.ended_at,
+                      CASE
+                          WHEN (g.ok IS FALSE) THEN 'l''ultima corsa e'' FALLITA'::text
+                          WHEN g.appesa THEN 'presa e mai chiusa: il job e'' morto senza dire niente'::text
+                          WHEN g.verdetto_completo THEN 'ultima corsa OK, ma e'' ricaduto dopo essere tornato verde: instabile'::text
+                          WHEN ((g.ok IS NULL) AND (g.ended_at IS NULL)) THEN 'in corso adesso, ma ha fallito di recente: intermittente'::text
+                          ELSE 'ultima corsa OK, ma ha fallito di recente: intermittente'::text
+                      END AS motivo,
+                  g.error_code,
+                  g.message,
+                  g.error_detail,
+                  (now() - g.started_at) AS da_quanto,
+                  g.run_uuid,
+                  g.id AS job_run_id,
+                  ( SELECT count(DISTINCT p.run_uuid) AS count
+                         FROM maintenance.job_run_log p
+                        WHERE ((p.jobname = g.jobname) AND (p.ok IS FALSE) AND (p.started_at >= (g.started_at - '7 days'::interval)))) AS falliti_ultimi_7_giorni,
+                  g.sqlstate,
+                      CASE
+                          WHEN g.appesa THEN 'AMBIENTE'::text
+                          WHEN script.fn_sqlstate_di_ambiente(r.sqlstate) THEN 'AMBIENTE'::text
+                          ELSE COALESCE(ce.causa_fallimento, pr.causa_fallimento, 'PROGRAMMA'::text)
+                      END AS causa,
+                  r.id AS ultimo_rosso_job_run_id
+                 FROM (((da_guardare g
+                   LEFT JOIN LATERAL ( SELECT p.id,
+                          p.error_code,
+                          p.sqlstate,
+                          p.processo_codice
+                         FROM maintenance.job_run_log p
+                        WHERE ((p.jobname = g.jobname) AND (p.ok IS FALSE))
+                        ORDER BY p.started_at DESC, p.id DESC
+                       LIMIT 1) r ON (true))
+                   LEFT JOIN config.codici_errore ce ON ((ce.codice = r.error_code)))
+                   LEFT JOIN dbops.processi pr ON ((pr.codice = COALESCE(r.processo_codice, g.processo_codice))));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20261103-60).
+              SELECT 1;

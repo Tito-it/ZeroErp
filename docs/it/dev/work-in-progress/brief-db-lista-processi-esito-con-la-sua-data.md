@@ -2,13 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: team DB** (`dev/db-tid`). Il lato BE/FE è già fatto (§2); manca il catalogo della lista (§3).
+**Riparte: sessione BE/FE**: chiude le ricadute del §6.5, poi il brief si archivia. Il lato DB è
+chiuso: il seed della riga 722 è applicato (Tid, 2026-11-22).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione BE | Le corse della lista nella forma unica, `ultimo_ok` tenuto come ponte | §2 | — |
-| 2 | **team DB** ⏭️ | La colonna 722 portata su `ultima_conclusa` | §3 | 1 |
-| 3 | sessione BE/FE | Ritirare `ultimo_ok` dalla proiezione e dallo slot FE, decidere l'export | §5 | 2 |
+| 2 | ✅ team DB | Verifica critica: il codice della colonna non si cambia; il vocabolario non ha un tipo oggetto | §6 | 1 |
+| 3 | ✅ Tid | D-2: che cosa è il valore della colonna «Esito» | §6.3 | 2 |
+| 4 | ✅ team DB | La riga 722 nel seed: l'etichetta estesa | §6.4 | 3 |
+| 5 | ✅ Tid | Applicare il seed (`lista_colonna.csv`, mirror `20260806-15`); rigenerare la doc `ui` | §6.4 | 4 |
+| 6 | **sessione BE/FE** ⏭️ | Le ricadute del §6.5 | §6.5 | 5 |
+
+**Decisioni di Tid:** ✅ D-1 (2026-11-22): strada (b), il codice resta `ultimo_ok` (§6.2). ✅ D-2 (2026-11-22):
+strada (ii), un solo valore booleano (§6.3). Nessuna decisione aperta.
+**Committato** (2026-11-22, `dev/db-tid`): la riga 722 di `lista_colonna.csv` e questo brief.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
 > **Origine:** allineamento della lista `amm.processi` alla forma unica delle corse, chiesto da Tid
@@ -43,6 +51,9 @@ cucitura che `MaintenanceRepository` aveva già tolto il 2026-09-14 con `ultima_
 
 ## 3. La richiesta
 
+⚠️ Corretta dal §6: il punto 1 non si può fare per il `codice` (§6.2), il punto 3 non serve più, il
+punto 2 aspetta D-2 (§6.3).
+
 1. Portare la colonna 722 da `ultimo_ok` a `ultima_conclusa` (`codice` e `campo_sorgente`; sono campi del
    software sotto `trgfn_seed_primo_impianto`, quindi passano dal seed).
 2. `tipo_dato` e `formato` di una colonna il cui valore è un oggetto `{started_at, ended_at, ok}`: li
@@ -59,6 +70,8 @@ cucitura che `MaintenanceRepository` aveva già tolto il 2026-09-14 con `ultima_
 
 ## 5. Ricadute BE/FE, al ritorno (`/arrivi-db`)
 
+⚠️ Corrette dal §6.5: con la strada (b) lo slot FE non si rinomina.
+
 La sessione BE, nello stesso giro:
 
 * toglie `ultimo_ok` da `list_processi`, insieme al commento del ponte;
@@ -67,3 +80,76 @@ La sessione BE, nello stesso giro:
   base del §3.2;
 * corregge [api_amm_software.md](../../backend/amm-software/manual/api_amm_software.md) §6.6, riga
   `ultimo_ok`.
+
+## 6. Verifica DB — 2026-11-22
+
+Fatta sul catalogo dello scratch `zeroerp_ruoli`.
+
+### 6.1 Che cosa si è trovato
+
+* **Il `codice` della colonna non si riscrive.** `ui.lista_colonna.codice` ha il lucchetto
+  `trg_lista_colonna_a10_lock_columns_upd` (`E_UI_COLONNA_CODICE_IMMUTABILE`, U23 di
+  [brief-db-revisione-ui](brief-db-revisione-ui.md)): il codice è la chiave con cui preferenze e preset
+  citano la colonna. Il punto 1 del §3, così come è scritto, si ferma su quel lucchetto.
+* **Il §3.3 aveva una premessa sbagliata.** `ui.lista_preset_colonna` cita la colonna per **id**
+  (`66,722` in `lista_preset_colonna.csv`), non per codice. Per codice la citano solo le preferenze utente
+  (`lista_preferenza_utente.configurazione`) e l'`ordinamento_default` dei preset.
+* **Il vocabolario non ha un tipo oggetto.** `ui.tipo_dato` vale `string`, `numeric`, `date`, `datetime`,
+  `boolean`, `enum`.
+* La lista 66 non ha `vista_sql`: il validatore del `campo_sorgente` non lo confronta con una vista, e
+  `ultima_conclusa` passa.
+
+### 6.2 D-1 ✅ (Tid, 2026-11-22): strada (b), il codice resta `ultimo_ok`
+
+La colonna «Esito» resta la stessa colonna: cambia da dove legge, non che cosa è. Quindi il codice resta
+`ultimo_ok`, cambiano `campo_sorgente` (un campo del software, che passa dal seed) e l'etichetta estesa.
+Preferenze e preset non si toccano: il §3.3 non serve più.
+
+Scartata: la strada (a), che spegneva la 722 e creava una colonna nuova `ultima_conclusa`, portandoci
+sopra preset e preferenze.
+
+### 6.3 D-2 ✅ (Tid, 2026-11-22): strada (ii), un solo valore
+
+La colonna resta un booleano: `campo_sorgente` `ultimo_ok`, `tipo_dato` `boolean`. Non è più un ponte
+ma il campo della colonna. La data la mostra lo slot, che legge `ultima_conclusa`; l'export scrive
+l'esito senza la data. Scartate: la (i), che toglieva la colonna dall'export, e la (iii), un cambio
+di modello di `ui` per una sola cella. Se più colonne avranno lo stesso bisogno, la (iii) si
+riprende allora.
+
+Le strade come erano state poste:
+
+La cella mostra due cose insieme, l'esito e la sua data. Il vocabolario dei tipi non ha una forma per
+«due cose insieme». Il tipo serve all'export, che lo usa per scrivere la cella nel file. Le strade:
+
+| | Che cosa | A video | Export |
+| --- | --- | --- | --- |
+| (i) | Colonna **composta**, come i precedenti 394 `esito` (`vendite.fatture_stampa_coda`) e 690 `validita` (`anagrafiche.soggetto_titoli_iva`): `campo_sorgente` NULL, `tipo_dato` `string` | lo slot compone esito e data | ⛔ no: `chk_ui_lista_colonna_senza_campo_non_esportabile` la rende non esportabile |
+| (ii) | **Un solo valore**: `campo_sorgente` resta `ultimo_ok` (`boolean`), che non è più un ponte ma il campo della colonna; la data la aggiunge lo slot | esito e data | esito senza la data |
+| (iii) | **Un tipo nuovo** in `ui.tipo_dato` per un valore con più parti | esito e data | esito e data, se l'export impara il tipo nuovo |
+
+La (iii) è un cambio di modello di `ui`: tocca tutti i lettori del tipo, BE e FE, e il brief
+`revisione-ui` ancora aperto. Con la (ii) il §6.4 si riduce all'etichetta estesa.
+
+### 6.4 Il giro DB ✅ (2026-11-22)
+
+Con D-1 e D-2 della riga 722 cambia solo `etichetta_estesa`: «Esito dell ultima corsa» diventa
+«Esito dell'ultima corsa conclusa», in `80_data/sql/ui/lista_colonna.csv`. Codice, `campo_sorgente`,
+`tipo_dato` e `formato` restano. Nessun changeSet nuovo: il CSV lo rilegge il suo mirror
+`runOnChange` (`20260806-15-riancora-mirror-ui-lista-colonna`), come vuole §11.2.
+
+⚠️ `etichetta_estesa` è un campo dell'installazione per `script.trgfn_seed_primo_impianto`: il seed la
+riscrive solo dove la riga è ancora intatta. Su un'installazione che l'ha personalizzata resta la
+sua, ed è voluto.
+
+✅ Tid, 2026-11-22: seed applicato sullo scratch (la riga 722 porta l'etichetta nuova). La doc
+auto-generata di `ui` non riporta `etichetta_estesa`: nessuna pagina cambia.
+
+### 6.5 Le ricadute BE/FE del §5, corrette da D-1 e D-2
+
+* lo slot FE resta `#cell-ultimo_ok`, perché il codice non cambia (D-1), e continua a leggere
+  `ultima_conclusa` per la data;
+* `ultimo_ok` **resta** in `list_processi`: è il campo della colonna (D-2), quindi il commento «ponte»
+  diventa la descrizione del campo. È `ultima_conclusa.ok`, dalla stessa riga, quindi non c'è cucitura;
+* l'export scrive l'esito senza la data, per scelta (D-2), e `ListaExportService` non cambia;
+* `api_amm_software.md` §6.6, riga `ultimo_ok`: l'esito dell'ultima corsa **conclusa**, lo stesso di
+  `ultima_conclusa.ok`.

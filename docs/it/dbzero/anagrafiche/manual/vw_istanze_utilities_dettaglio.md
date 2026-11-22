@@ -1,104 +1,56 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_istanze_utilities_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)  
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp)  
-> [config.stati_pdp](/dbzero/config/tabelle/stati_pdp)  
-> [config.utilities](/dbzero/config/tabelle/utilities)  
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — la tabella di partenza
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il titolare
+> * [anagrafiche.pdp](/dbzero/anagrafiche/tabelle/pdp) — il PDP e la sua utility
+> * [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account) — dove stanno davvero le utility dell'istanza
 >
-Approfondimenti viste:
+> Approfondimento viste:
 >
-[anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio)  
-> [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo)  
+> * [anagrafiche.vw_indirizzi_dettaglio](/dbzero/anagrafiche/views/vw_indirizzi_dettaglio) — l'indirizzo normalizzato
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — comune, provincia, CAP e strada
+> * [anagrafiche.vw_istanze_dati_precontrattuali_dettaglio](/dbzero/anagrafiche/views/vw_istanze_dati_precontrattuali_dettaglio) — chi la compone
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 15-02-26)
-La vista **`anagrafiche.vw_istanze_utilities_dettaglio`** aggrega le informazioni di un'istanza utility con:
 
-* dati soggetto (ragione sociale, identificativo fiscale),
-* dati PDP e stato PDP,
-* utility associata,
-* dettaglio indirizzo normalizzato e decodifiche di comune/strada.
-
-E' pensata per **consultazione applicativa** e reportistica, riducendo il numero di join necessari.
-
-Nota naming utility:
-
-* la vista espone `utility_id` (allineato a `anagrafiche.pdp.utility_id`);
-* le altre tabelle del dominio (`clienti`, `billing_account`) usano lo stesso naming.
+`anagrafiche.vw_istanze_utilities_dettaglio` mostra un'istanza con il suo titolare, il suo PDP con lo stato
+tecnico e la utility, e il suo indirizzo con le decodifiche di comune e strada. Una riga per istanza.
 
 ---
 
-### Struttura logica della vista
+### Che cosa porta
 
-La vista parte da `anagrafiche.istanze_utilities` e aggiunge:
+* **Il titolare**: ragione sociale e identificativo fiscale del soggetto; ogni istanza ha il suo.
+* **Il PDP**, quando c'è: codice, stato tecnico, e la utility **del PDP**.
+* **L'indirizzo**, quando c'è: i campi normalizzati e le geolocalizzazioni da `vw_indirizzi_dettaglio`;
+  comune, provincia, CAP, toponimo e nome della strada da `script.vw_indirizzo_completo`.
 
-* join a `anagrafiche.soggetti` per ragione sociale e identificativo fiscale;
-* join a `anagrafiche.pdp`, `config.stati_pdp`, `config.utilities` per stato e utility;
-* join a `anagrafiche.vw_indirizzi_dettaglio` per i campi di indirizzo dettagliato;
-* join a `script.vw_indirizzo_completo` per decodifiche di comune/strada.
-
----
-
-### 📑 Campi esposti (principali)
-
-| Colonna                      | Tipo       | Descrizione                        |
-| ---------------------------- | ---------- | ---------------------------------- |
-| `istanza_id`                 | `bigint`   | Identificativo istanza utility.    |
-| `istanza_codice`             | `text`     | Codice istanza.                    |
-| `proprietario_inquilino`     | `text`     | Indicatore proprietario/inquilino. |
-| `fittizia`                   | `boolean`  | Flag istanza fittizia.             |
-| `soggetto_id`                | `uuid`     | Soggetto associato.                |
-| `ragione_sociale_completa`   | `text`     | Ragione sociale del soggetto.      |
-| `id_fiscale_univoco_cf_piva` | `text`     | Identificativo fiscale univoco.    |
-| `pdp_id`                     | `bigint`   | Identificativo PDP.                |
-| `pdp_codice`                 | `text`     | Codice PDP.                        |
-| `stato_pdp_id`               | `integer`  | Stato PDP (ID).                    |
-| `stato_pdp_codice`           | `text`     | Codice interno stato PDP.          |
-| `stato_pdp_descrizione`      | `text`     | Descrizione stato PDP.             |
-| `utility_id`                 | `bigint`   | Utility associata.                  |
-| `utility_codice`             | `text`     | Codice utility.                    |
-| `utility_descrizione`        | `text`     | Descrizione utility.               |
-| `indirizzo_dettaglio_id`     | `bigint`   | Riferimento indirizzo dettaglio.   |
-| `indirizzo_normalizzato`     | `text`     | Indirizzo completo normalizzato.   |
-| `via_norm`                   | `text`     | Via normalizzata.                  |
-| `civico`                     | `integer`  | Civico.                            |
-| `estensione_civico`          | `text`     | Estensione civico.                 |
-| `palazzina`                  | `text`     | Palazzina.                         |
-| `scala`                      | `text`     | Scala.                             |
-| `piano`                      | `text`     | Piano.                             |
-| `interno`                    | `text`     | Interno.                           |
-| `altro`                      | `text`     | Altro dettaglio indirizzo.         |
-| `civic_geoloc`               | `geometry` | Geolocalizzazione civico.          |
-| `street_geoloc`              | `geometry` | Geolocalizzazione strada.          |
-| `indirizzo_comune_id`        | `integer`  | Comune indirizzo (ID).             |
-| `comune_descrizione`         | `text`     | Descrizione comune.                |
-| `provincia_sigla`            | `text`     | Sigla provincia.                   |
-| `cap`                        | `text`     | CAP.                               |
-
-(Sono esposti anche i campi di audit `tx_id`, `data_insert`, `user_insert`, `data_update`, `user_update`.)
+Un'istanza senza PDP o senza indirizzo compare lo stesso, con quei campi vuoti.
 
 ---
 
-### Modalita' d'uso tipiche
+### Chi la vede
 
-```sql
-SELECT *
-FROM anagrafiche.vw_istanze_utilities_dettaglio
-WHERE istanza_id = :istanza_id;
-```
+La vista non è `security_invoker`, e si legge coi diritti del proprietario. Nessuna delle tabelle che legge
+ha la RLS, e oggi la differenza non toglie né aggiunge righe. La compone
+`vw_istanze_dati_precontrattuali_dettaglio`.
 
 ---
 
-### Best practice e raccomandazioni
+### ⚠️ Che cosa oggi non copre
 
-* Usare questa vista per letture applicative e reportistica.
-* Per modifiche, operare sempre sulle tabelle base.
+* **La utility è quella del PDP.** `utility_id`, il codice e la descrizione vengono dal PDP dell'istanza, non
+  dai suoi billing account: un'istanza senza PDP non ha utility nella vista, e un'istanza con più utility ne
+  mostra una sola, quella del PDP.
+* **Se una delle tabelle avesse la RLS**, la vista la scavalcherebbe senza errori.
 
 ---
 

@@ -1,23 +1,27 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_istanza_di_altro_soggetto()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_istanza_di_altro_soggetto`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.fn_ruolo_di_altro_soggetto](/dbzero/anagrafiche/manual/fn_ruolo_di_altro_soggetto) — la gemella per il ruolo
-> [anagrafiche.trgfn_guard_istanza_del_ruolo](/dbzero/anagrafiche/manual/trgfn_guard_istanza_del_ruolo) — il guard di indirizzi e conti del ruolo
-> [anagrafiche.trgfn_contatti_guard_contesto_soggetto](/dbzero/anagrafiche/manual/trgfn_contatti_guard_contesto_soggetto) — il guard dei contatti
+> Approfondimento tabelle:
+>
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — il soggetto dell'istanza, che non cambia
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_ruolo_di_altro_soggetto](/dbzero/anagrafiche/funzioni/fn_ruolo_di_altro_soggetto) — la stessa domanda per il ruolo
+> * [anagrafiche.trgfn_guard_istanza_del_ruolo](/dbzero/anagrafiche/funzioni/trgfn_guard_istanza_del_ruolo) — il guard di indirizzi e conti del ruolo
+> * [anagrafiche.trgfn_contatti_guard_contesto_soggetto](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_contesto_soggetto) — il guard dei contatti
+> * [anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza) — il guard del billing account
+> * [pratiche.trgfn_pratiche_guard_contesto](/dbzero/pratiche/funzioni/trgfn_pratiche_guard_contesto) — il guard delle pratiche
 
 ---
 
 ### 🎯 Scopo Principale
 
-(19-10-2026 — R-BE-15 del backend, decisioni D-17a … D-17d di Tid,
-`brief-db-processi-accensione-per-ambiente` §6.17)
-
-**Risponde alla domanda «questa istanza è di un altro soggetto?».**
-
-Un'istanza (una fornitura) appartiene a un soggetto. Quando una riga porta un'istanza — un
-indirizzo, un contatto, un conto, un billing account, una pratica — l'istanza deve essere del
-soggetto della riga, o del suo ruolo. Altrimenti il dato di un soggetto finirebbe a un altro.
+`anagrafiche.fn_istanza_di_altro_soggetto` risponde alla domanda «questa istanza è di un altro soggetto?»:
+restituisce il soggetto dell'istanza quando non è quello dato, e niente altrimenti.
 
 ---
 
@@ -25,31 +29,36 @@ soggetto della riga, o del suo ruolo. Altrimenti il dato di un soggetto finirebb
 
 | Caso | Risposta |
 | --- | --- |
-| l'istanza è del soggetto dato | `NULL` |
-| l'istanza è di un altro soggetto | il soggetto dell'istanza |
-| nessuna istanza, o nessun soggetto | `NULL`: non c'è niente da confrontare |
-| un'istanza che non esiste | `NULL`: la rifiuta la chiave esterna della tabella |
-
-⭐ È una domanda, non un controllo: **il rifiuto lo dà chi la chiama**, ognuno col suo codice
-d'errore e il suo campo. Per questo la stessa regola può avere codici diversi su tabelle diverse
-(il billing account e le pratiche tengono i loro).
+| L'istanza è del soggetto dato | nessun valore |
+| L'istanza è di un altro soggetto | il soggetto dell'istanza |
+| Nessuna istanza, o nessun soggetto | nessun valore: non c'è niente da confrontare |
+| Un'istanza che non esiste | nessun valore: la rifiuta la chiave esterna della tabella che la nomina |
 
 ---
 
-### Chi la usa
+### ⭐ Una domanda, non un controllo
 
-* `anagrafiche.trgfn_guard_istanza_del_ruolo` (indirizzi e conti del ruolo);
-* `anagrafiche.trgfn_contatti_guard_contesto_soggetto` (contatti);
-* `anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza` (billing account);
-* `pratiche.trgfn_pratiche_guard_contesto` (pratiche, regola 4).
+Una riga che porta un'istanza (un indirizzo, un contatto, un conto, un billing account, una pratica) deve
+portare un'istanza del suo soggetto, altrimenti il dato di un soggetto finisce a un altro. La funzione non
+rifiuta: il rifiuto lo dà chi la chiama, col suo codice e il suo campo. Per questo la stessa regola risponde
+con codici diversi su tabelle diverse.
 
-Prima il confronto era scritto a mano nel guard del billing account e in quello delle pratiche.
+Basta guardare la riga che si scrive perché il soggetto dell'istanza non cambia
+(`E_ISTANZA_SOGGETTO_IMMUTABILE`).
 
 ---
 
 ### Test
 
-`db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` (test 1).
+* `db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` — i quattro casi: stesso soggetto, altro
+  soggetto, istanza assente, soggetto assente.
+
+---
+
+### Note di migrazione
+
+* 2026-10-19 — nasce dal confronto che il guard del billing account e quello delle pratiche scrivevano
+  ciascuno a mano.
 
 ---
 

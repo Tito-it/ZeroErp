@@ -1,6 +1,6 @@
 # Guida — Gestione delle Istanze Utility
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -22,8 +22,8 @@
 > * [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — il check riusabile sulla coppia istanza/utility
 > * [anagrafiche.fn_guard_istanza_ha_ba](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba) — un'istanza non resta mai senza billing account
 > * [anagrafiche.fn_guard_istanza_ba_emittente](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente) — i billing account di un'istanza sono di una sola azienda
-> * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave) — chi occupa la fornitura soggetto + servizio + azienda
-> * [anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/manual/fn_guard_cliente_chiave_unica) — un cliente manuale per soggetto, servizio e azienda
+> * [anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/funzioni/fn_clienti_stessa_chiave) — chi occupa la fornitura soggetto + servizio + azienda
+> * [anagrafiche.fn_guard_cliente_chiave_unica](/dbzero/anagrafiche/funzioni/fn_guard_cliente_chiave_unica) — un cliente manuale per soggetto, servizio e azienda
 > * [anagrafiche.trgfn_clienti_guard_stato_date](/dbzero/anagrafiche/manual/trgfn_clienti_guard_stato_date) — gli stati del cliente e le loro date
 >
 > **Vedi anche** — guide correlate:
@@ -44,7 +44,7 @@ L'istanza è progettata per essere:
 
 * **Flessibile**: può esistere prima di un PDP e prima di un contratto
 * **Coerente**: i vincoli del database impediscono configurazioni impossibili
-* **Stabile nel tempo**: ogni modifica viene storicizzata per tracciabilità
+* **Stabile nel tempo**: codice e soggetto dell'istanza non cambiano dopo la nascita. L'istanza non ha uno storico suo: lo hanno il PDP, i clienti, i billing account e i dati precontrattuali
 
 ### Il nome dice "utility", ma il modello è generico
 
@@ -219,16 +219,23 @@ Il PDP ENERGIA di Mario Rossi non viene toccato.
 
 ### Il PDP è un'entità fisica
 
-Il PDP rappresenta il contatore o allaccio a un indirizzo. Non cambia indirizzo, non cambia utility, e ha un proprio stato tecnico (ATTIVO, DISPONIBILE) indipendente dalle istanze.
+Il PDP rappresenta il contatore o allaccio a un indirizzo. Non cambia indirizzo, non cambia utility, e ha un proprio stato tecnico — disponibile, attivo, staccato, dismesso, a catalogo in [config.stati_pdp](/dbzero/config/tabelle/stati_pdp) — indipendente dalle istanze.
 
 ### Regole di collegamento
 
 Quando un'istanza viene collegata a un PDP:
 
-* Gli indirizzi devono coincidere
-* Le utility devono coincidere
-* L'istanza non può essere fittizia
-* Il PDP deve essere in stato DISPONIBILE (se non ha già un cliente attivo)
+* L'istanza non può essere fittizia (`chk_iu_pdp_not_fittizia`) e deve avere un indirizzo (`chk_iu_pdp_requires_address`)
+* Gli indirizzi devono coincidere: la FK `fk_iu_pdp_id_addr` lega la coppia (PDP, indirizzo) dell'istanza a quella del PDP
+
+Al collegamento **non** si controllano la utility e lo stato del PDP:
+
+* l'istanza non ha una utility sua. La utility del PDP si confronta con quella del billing
+  account quando nasce o si riscrive il cliente (`E_PDP_UTILITY_MISMATCH`, in
+  [trgfn_clienti_sync_utility_from_ba](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba));
+* lo stato del PDP non decide il collegamento. Ciò che impedisce due clienti sullo stesso PDP è
+  l'esclusione per periodo `ex_clienti_no_overlap_stesso_pdp`, e il cliente richiede, alla
+  conferma, un PDP con `attivo` acceso
 
 ### Aggiornamento automatico dello stato PDP
 
@@ -266,7 +273,8 @@ alla prossima scrittura del cliente, non il giorno della chiusura.
 
 * Unico per `(indirizzo_dettaglio_id, utility_id)`
 * Stato tecnico indipendente dalle istanze
-* L'istanza non può cambiare PDP senza chiusura tecnica
+* Il PDP dell'istanza non è bloccato: il blocco delle colonne dell'istanza copre `codice` e `soggetto_id`
+* ⚠️ Il cliente copia `pdp_id` dall'istanza quando viene scritto ([trgfn_clienti_sync_pdp](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp)): un cambio di PDP sull'istanza arriva al cliente alla sua prossima scrittura
 
 ### Sul cliente
 
@@ -289,7 +297,7 @@ alla prossima scrittura del cliente, non il giorno della chiusura.
 
 ### 2. Associazione a un PDP
 
-Condizioni minime: indirizzo reale, utility compatibile, PDP disponibile.
+Condizioni minime: istanza reale, con l'indirizzo del PDP. La utility del PDP e l'occupazione del PDP si controllano alla nascita del cliente, non qui (vedi [Regole di collegamento](#regole-di-collegamento)).
 
 ### 3. Creazione del cliente
 
@@ -318,12 +326,12 @@ erDiagram
     indirizzi_dettaglio ||--o{ istanze_utilities : situato_a
     istanze_utilities ||--o{ clienti : serve
     billing_account ||--o| clienti : fattura
-    istanze_utilities ||--o{ catasto_unita_immobiliari : puo_avere
+    catasto_unita_immobiliari |o--o{ istanze_utilities : descrive
     istanze_utilities ||--o{ billing_account : genera
 
     pdp ||--o{ istanze_utilities : collegato_a
     utilities ||--o{ pdp : tipo_di
-    utilities ||--o{ istanze_utilities : usa
+    utilities ||--o{ billing_account : per
 
     soggetti ||--o{ istanze_utilities : ha
     soggetti ||--o{ soggetti_ruoli : ha
@@ -334,7 +342,7 @@ erDiagram
 
 ## Errori comuni
 
-* Assegnare un PDP con utility diversa dall'istanza
+* Collegare all'istanza un PDP di una utility diversa da quella del billing account del cliente: il collegamento passa, il cliente viene rifiutato (`E_PDP_UTILITY_MISMATCH`)
 * Creare un'istanza senza il suo billing account, o cancellare l'ultimo billing account di un'istanza
 * Creare un cliente senza istanza
 * Spostare un PDP di indirizzo (vietato dal modello fisico)
@@ -352,9 +360,9 @@ In questo caso l'istanza viene generata automaticamente come **contenitore tecni
 * `fittizia = TRUE` — l'istanza non rappresenta un punto di erogazione fisico
 * `indirizzo_dettaglio_id` — facoltativo, a discrezione dell'operatore. Se fornito, viene salvato come dato informativo
 * `pdp_id = NULL` — nessun punto di prelievo associato
-* `utility_id` — la utility scelta dall'operatore (solo quelle con `richiede_pdp = false`)
+* la utility non è un campo dell'istanza: è quella del billing account che nasce con lei, scelta dall'operatore. Per una utility con `richiede_pdp = true` un cliente senza PDP viene rifiutato (`E_PDP_OBBLIGATORIO`)
 
-L'operatore non interagisce direttamente con l'istanza: il `ClienteService` la crea dietro le quinte come parte della transazione atomica di creazione cliente (istanza + billing account + cliente).
+L'operatore non interagisce direttamente con l'istanza: la crea [anagrafiche.fn_crea_billing_account](/dbzero/anagrafiche/funzioni/fn_crea_billing_account), chiamata da [anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/funzioni/fn_crea_cliente) quando non le si indica un'istanza, nella stessa operazione che crea billing account e cliente.
 
 Per le utility con `richiede_pdp = true` (GAS, Energia, Idrico), la creazione del cliente passa obbligatoriamente dal motore pratiche e l'istanza è sempre reale, con indirizzo e PDP obbligatori.
 
@@ -381,7 +389,8 @@ account del cliente che esiste già.
 L'azienda è quella **dell'installazione**: quella a cui il billing account è collegato o, se non
 è collegato, l'azienda predefinita. Non dipende da chi sta lavorando. Per questo la regola si
 controlla anche quando si cambia l'azienda di un billing account, quando si sposta l'azienda
-predefinita e quando un'istanza diventa fittizia. Il controllo avviene **alla conferma**
+predefinita e quando un'istanza cambia `fittizia`, nei due versi (solo l'istanza che diventa
+fittizia può essere rifiutata: i suoi clienti entrano nella regola). Il controllo avviene **alla conferma**
 dell'operazione: dentro la stessa operazione si può chiudere il cliente vecchio e aprire il
 nuovo in qualunque ordine.
 
@@ -390,7 +399,7 @@ Quando la catena nuova si attiva, la sua istanza viene collegata da sola alla pr
 azienda.
 
 Per avvisare l'operatore mentre prepara un pre-contrattuale, il database offre la lettura
-[anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/manual/fn_clienti_stessa_chiave):
+[anagrafiche.fn_clienti_stessa_chiave](/dbzero/anagrafiche/funzioni/fn_clienti_stessa_chiave):
 è la stessa che usa il rifiuto, quindi l'avviso e il rifiuto non possono dire due cose diverse.
 
 ### Gli stati del cliente e le loro date
@@ -417,7 +426,7 @@ percorso e non occupa la fornitura.
 
 ---
 
-Le funzionalità descritte in questa guida valgono per il **modello strutturale corrente**, che definisce formalmente l'identità dell'istanza, il vincolo 1 istanza = 1 cliente e la gestione della catena di subentri tramite `parent_istanza_id`.
+Le funzionalità descritte in questa guida valgono per il **modello strutturale corrente**, che definisce formalmente l'identità dell'istanza, il vincolo «un cliente per billing account» e la gestione della catena di subentri tramite `parent_istanza_id`.
 
 Per i dettagli completi e i vincoli formali: [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
 

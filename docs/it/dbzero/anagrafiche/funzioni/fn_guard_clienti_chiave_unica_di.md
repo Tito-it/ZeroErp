@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_clienti_chiave_unica_di.md" %}
 # ⚙️ Funzione `fn_guard_clienti_chiave_unica_di`
 
 ```sql

@@ -1,6 +1,6 @@
 # Guida — Generazione di un Cliente
 
-> **Ultimo aggiornamento**: 14 ottobre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -16,9 +16,15 @@
 > * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — l'indirizzo civico
 > * [config.utilities](/dbzero/config/tabelle/utilities) — il tipo di servizio (GAS, ENERGIA, …)
 > * [config.stati_cliente](/dbzero/config/tabelle/stati_cliente) — gli stati del cliente (AT, CH, AN, …)
+> * [config.stati_pdp](/dbzero/config/tabelle/stati_pdp) — gli stati tecnici del PDP
 >
 > **Vedi anche** — funzioni DB:
 >
+> * [anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/funzioni/fn_crea_cliente) — fa di un soggetto un cliente: ruolo, billing account, cliente
+> * [anagrafiche.fn_crea_billing_account](/dbzero/anagrafiche/funzioni/fn_crea_billing_account) — il billing account e, se serve, l'istanza fittizia
+> * [anagrafiche.fn_update_cliente](/dbzero/anagrafiche/funzioni/fn_update_cliente) — la modifica del cliente
+> * [anagrafiche.fn_check_pdp_occupato](/dbzero/anagrafiche/funzioni/fn_check_pdp_occupato) — un cliente occupa il PDP in un giorno?
+> * [script.fn_cliente_dal_billing_account](/dbzero/script/funzioni/fn_cliente_dal_billing_account) — ruolo e utility del cliente vengono dal billing account
 > * [script.fn_subentro_cliente](/dbzero/script/funzioni/fn_subentro_cliente) — chiude il cliente precedente sul punto di prelievo
 > * [script.fn_disdetta_cliente](/dbzero/script/funzioni/fn_disdetta_cliente) — la cessazione senza subentro
 >
@@ -35,7 +41,7 @@
 
 In Zero ERP un **cliente** non e semplicemente una persona: e l'insieme di informazioni che collegano un soggetto (la persona o azienda) a un servizio e ai dati necessari per fatturare.
 
-Questa guida spiega **come nasce un cliente** — quali entita creare, in che ordine, e perche il modello e fatto cosi. La logica e la stessa sia per una prima attivazione, sia per un subentro (cambio di intestatario), sia per una riattivazione dopo una cessazione.
+Questa guida spiega **come nasce un cliente** — quali entita creare, in che ordine, e perche il modello e fatto cosi. La logica e la stessa sia per una prima attivazione, sia per un subentro (cambio di intestatario), sia per una ripartenza dopo una cessazione.
 
 **Cosa troverai in questa guida:**
 
@@ -71,6 +77,8 @@ E il **ciclo tecnico-commerciale** di un servizio su un indirizzo per un soggett
 
 L'istanza **non e il cliente**: precede il contratto (puo esistere in fase precontrattuale) e sopravvive alla chiusura del rapporto come record storico. Ma non esiste mai da sola: **nasce insieme al suo billing account** (vedi [Ogni istanza nasce col suo billing account](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
 
+L'istanza **non ha una utility sua**: la utility sta sul billing account, uno per ciascuna utility dell'istanza.
+
 **Perche l'istanza e legata al soggetto e non al ruolo?**
 Perche l'istanza identifica semplicemente "chi" e associato a un certo indirizzo/servizio, e sopravvive al rapporto commerciale. Il ruolo CLIENTE nasce con l'istanza, perche il billing account che nasce con lei fattura a quel ruolo; il **cliente** — la specializzazione in `clienti`, con le sue date — arriva dopo, con il contratto.
 
@@ -78,7 +86,7 @@ Un soggetto puo non acquisire mai il ruolo CLIENTE: per esempio un soggetto che 
 
 ### Billing account (BA)
 
-E l'account di fatturazione. Identifica **a chi fatturare** e **con quale codice**. Nasce **insieme all'istanza**, nella stessa operazione, e prima del cliente: esiste gia nella fase precontrattuale (preventivi, offerte) e viene "ereditato" dal cliente alla firma del contratto. Il suo codice si genera quando nasce.
+E l'account di fatturazione. Identifica **a chi fatturare**, **per quale utility** e **con quale codice**. Nasce **insieme all'istanza**, nella stessa operazione, e prima del cliente: esiste gia nella fase precontrattuale (preventivi, offerte) e viene "ereditato" dal cliente alla firma del contratto. Il suo codice si genera quando nasce.
 
 Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. Vedi la [documentazione dedicata](/dbzero/anagrafiche/manual/billing_account) per i dettagli.
 
@@ -95,16 +103,20 @@ Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu u
 
 ### Cliente
 
-E la specializzazione commerciale dell'istanza. Nasce quando il soggetto firma il contratto e lega insieme:
+E la specializzazione commerciale del **billing account**: un cliente per billing account (`uq_clienti_billing_account`), quindi un'istanza con due utility puo avere due clienti. Lega insieme:
 
-* l'istanza (dove e cosa)
-* il billing account (a chi fatturare)
+* l'istanza (dove)
+* il billing account (a chi fatturare, e per quale utility)
 * il ruolo CLIENTE del soggetto (chi)
 * le date commerciali (da quando a quando)
 
+Ruolo e utility del cliente sono **copie** di quelle del suo billing account, e non si cambiano dopo la nascita: billing account, istanza, ruolo e utility di un cliente sono la sua fornitura (`E_CLIENTE_FORNITURA_IMMUTABILE`).
+
 ### PDP (Punto Di Prelievo)
 
-E l'entita fisica che rappresenta il contatore o allaccio a un indirizzo. Il PDP ha un proprio stato tecnico (ATTIVO, DISPONIBILE) che cambia in automatico quando un cliente si attiva o si chiude. Non tutti i clienti hanno un PDP (le istanze possono essere "fittizie"), ma quando c'e un PDP, esso diventa il perno del vincolo di unicita: **un solo cliente attivo per PDP**.
+E l'entita fisica che rappresenta il contatore o allaccio a un indirizzo, per una utility. Il PDP ha un proprio stato tecnico, a catalogo in [config.stati_pdp](/dbzero/config/tabelle/stati_pdp): disponibile, attivo, staccato, dismesso. Il passaggio fra **disponibile** e **attivo** e automatico e segue l'occupazione da parte dei clienti; «staccato» e «dismesso» li governano processi loro.
+
+Non tutti i clienti hanno un PDP (le istanze possono essere "fittizie"), ma quando c'e un PDP, esso diventa il perno del vincolo di unicita: **un solo cliente per PDP in ogni giorno**.
 
 ---
 
@@ -115,11 +127,11 @@ La creazione di un cliente segue un ordine preciso, imposto dai vincoli del data
 ### Ordine dei passi
 
 ```text
-1. Soggetto       (deve gia esistere)
-2. Ruolo CLIENTE  (creato automaticamente se manca, tramite fn_get_or_create_soggetto_ruolo)
-3. Istanza        (richiede soggetto_id NOT NULL)
-4. Billing Account (richiede istanza_utility_id NOT NULL e soggetto_ruolo_id NOT NULL)
-5. Cliente        (richiede istanza_utility_id, billing_account_id e soggetto_ruolo_id NOT NULL)
+1. Soggetto        (deve gia esistere)
+2. Ruolo CLIENTE   (creato se manca, tramite fn_get_or_create_soggetto_ruolo)
+3. Istanza         (richiede soggetto_id NOT NULL)
+4. Billing Account (richiede istanza_utility_id, soggetto_ruolo_id e utility_id NOT NULL)
+5. Cliente         (richiede istanza_utility_id, billing_account_id e soggetto_ruolo_id NOT NULL)
 ```
 
 ### Perche questo ordine?
@@ -133,7 +145,7 @@ Ogni entita dipende dalla precedente tramite chiavi esterne obbligatorie:
 | Cliente              | Istanza + BA                  | `istanza_utility_id NOT NULL`, `billing_account_id NOT NULL` |
 | Cliente              | Ruolo CLIENTE                 | `soggetto_ruolo_id NOT NULL`                                 |
 
-La FK composita `(billing_account_id, istanza_utility_id)` su `clienti` garantisce inoltre che il billing account appartenga alla stessa istanza del cliente.
+Due FK composite su `clienti` tengono il cliente legato al suo billing account: `(billing_account_id, istanza_utility_id)` garantisce che il BA sia della stessa istanza del cliente, `(billing_account_id, soggetto_ruolo_id, utility_id)` che ruolo e utility siano quelli del BA.
 
 ### Flusso pre-contrattuale vs attivazione diretta
 
@@ -158,16 +170,27 @@ Soggetto + Ruolo CLIENTE → Istanza → Billing Account → Cliente
 
 In entrambi i casi istanza e billing account nascono nella **stessa transazione**: non e un consiglio, il database lo pretende. Il cliente puo nascere nella stessa transazione (attivazione diretta) o dopo, col contratto.
 
-### Orchestrazione automatica
+### La creazione in una chiamata: `fn_crea_cliente`
 
-Per evitare che il frontend debba gestire manualmente tutti questi passi, e previsto un **orchestrator Django** (`ClienteService`) che incapsula l'intera sequenza in una singola chiamata API. L'orchestrator:
+La sequenza sta in un verbo del database,
+[anagrafiche.fn_crea_cliente](/dbzero/anagrafiche/funzioni/fn_crea_cliente), che con una
+chiamata sola:
 
-* valida il soggetto
-* crea (o recupera) il ruolo CLIENTE
-* nel caso di subentro, chiude il cliente precedente
-* crea l'istanza
-* crea il billing account
-* crea il cliente con stato ATTIVO
+* crea (o recupera) il ruolo CLIENTE del soggetto;
+* crea il billing account per la utility indicata, con
+  [anagrafiche.fn_crea_billing_account](/dbzero/anagrafiche/funzioni/fn_crea_billing_account),
+  oppure usa un billing account che esiste gia;
+* se non gli si indica un'istanza, `fn_crea_billing_account` crea l'**istanza fittizia**,
+  con l'indirizzo se gli viene dato;
+* crea il cliente coi campi ricevuti: se non si indica uno stato, il cliente nasce **attivo**
+  dalla data operativa; con uno stato, le date le porta chi chiama, e le controlla il guard
+  degli stati;
+* aggiunge il contatto e gli indirizzi del ruolo, se ci sono.
+
+Una chiave che il verbo non conosce viene rifiutata (`E_CAMPO_NON_AMMESSO`). Il subentro non
+fa parte del verbo: la chiusura del cliente precedente e
+[`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente) (vedi l'appendice sul subentro). Le modifiche successive passano da
+[anagrafiche.fn_update_cliente](/dbzero/anagrafiche/funzioni/fn_update_cliente).
 
 Tutto avviene in una transazione atomica: se un passo fallisce, nessuna modifica viene salvata.
 
@@ -182,13 +205,11 @@ Il sistema supporta due modalita di creazione del cliente, governate dal flag `c
 
 **Creazione manuale** (`richiede_pdp = false`):
 
-L'operatore crea il cliente direttamente dall'interfaccia. Il `ClienteService` genera in trasparenza l'istanza fittizia, il billing account e il record cliente in una transazione atomica. L'operatore puo facoltativamente collegare un indirizzo del soggetto all'istanza, ma non e obbligatorio. L'istanza resta fittizia in entrambi i casi perche non rappresenta un punto di erogazione fisico.
+L'operatore crea il cliente direttamente dall'interfaccia. `fn_crea_cliente` genera in trasparenza l'istanza fittizia, il billing account e il record cliente in una transazione atomica. L'operatore puo facoltativamente collegare un indirizzo all'istanza, ma non e obbligatorio. L'istanza resta fittizia in entrambi i casi perche non rappresenta un punto di erogazione fisico.
 
 **Creazione da pratica** (`richiede_pdp = true`):
 
-Per utility con ciclo tecnico complesso (contatore, allaccio, verifica fisica), la creazione del cliente passa obbligatoriamente dal motore pratiche. L'istanza e reale, collegata a un indirizzo e a un PDP, e il flusso include step di verifica e approvazione.
-
-> **Nota architetturale**: il flag `richiede_pdp` e il discriminante unico per le due modalita. Se in futuro servira un'utility senza PDP che richiede comunque il workflow pratiche, bastera aggiungere un boolean `solo_pratica` su `config.utilities`; l'ipotesi e gia stata annotata nell'analisi interna sulla gestione clienti.
+Per utility con ciclo tecnico complesso (contatore, allaccio, verifica fisica), la creazione del cliente passa dal motore pratiche. L'istanza e reale, collegata a un indirizzo e a un PDP, e il flusso include step di verifica e approvazione. Il database lo pretende dal lato del cliente: per una utility con `richiede_pdp = true` un cliente senza PDP viene rifiutato (`E_PDP_OBBLIGATORIO`). L'istanza reale non la crea un verbo del database: `fn_crea_billing_account` crea solo istanze fittizie, e a `fn_crea_cliente` l'istanza reale si passa gia scritta.
 
 ---
 
@@ -201,22 +222,22 @@ Ogni cliente nasce da un'**istanza di servizio**. L'istanza puo essere:
 * **reale** (`fittizia = FALSE`): associata a un indirizzo e, opzionalmente, a un PDP
 * **fittizia** (`fittizia = TRUE`): senza indirizzo obbligatorio, utile per servizi che non richiedono un punto fisico
 
-Se c'e un PDP, l'istanza eredita automaticamente indirizzo e utility dal PDP, e non puo essere fittizia.
+Se c'e un PDP, l'istanza non puo essere fittizia (`chk_iu_pdp_not_fittizia`), deve avere un indirizzo (`chk_iu_pdp_requires_address`) e quell'indirizzo e lo stesso del PDP: la FK `fk_iu_pdp_id_addr` lega la coppia (PDP, indirizzo) dell'istanza a quella del PDP. Niente viene copiato dal PDP all'istanza: l'indirizzo lo scrive chi crea l'istanza, e la FK lo rifiuta se non coincide. La utility non sta sull'istanza: quella del PDP si confronta con quella del billing account quando nasce il cliente (`E_PDP_UTILITY_MISMATCH`).
 
 ### 2. Creazione del billing account
 
-Il BA viene sempre associato all'istanza (`istanza_utility_id NOT NULL`) e a un ruolo soggetto, e nasce **nella stessa operazione** dell'istanza: un'istanza senza billing account non esiste. Esiste gia **prima del cliente** (fase precontrattuale). L'istanza e la utility di un BA non si cambiano dopo la nascita.
+Il BA viene sempre associato all'istanza (`istanza_utility_id NOT NULL`), a un ruolo soggetto e a una utility, e nasce **nella stessa operazione** dell'istanza: un'istanza senza billing account non esiste. Esiste gia **prima del cliente** (fase precontrattuale). L'istanza, il ruolo e la utility di un BA non si cambiano dopo la nascita (`E_BA_ISTANZA_IMMUTABILE`).
 
-Il campo `codice` (l'account di fatturazione vero e proprio) viene generato automaticamente dal trigger `trgfn_billing_account_gen_codice` se non specificato.
+Il campo `codice` (l'account di fatturazione vero e proprio) viene generato automaticamente dal trigger `trgfn_billing_account_gen_codice` se non specificato, e poi non cambia.
 
 ### 3. Creazione del cliente
 
 Il record in `anagrafiche.clienti` lega tutte le entita precedenti:
 
-* `istanza_utility_id` → quale servizio
-* `billing_account_id` → a chi fatturare
-* `soggetto_ruolo_id` → chi e il cliente
-* `stato_cliente_id` → in che stato si trova (tipicamente ATTIVO alla creazione)
+* `istanza_utility_id` → quale istanza
+* `billing_account_id` → a chi fatturare, per quale utility
+* `soggetto_ruolo_id` → chi e il cliente (copiato dal BA)
+* `stato_cliente_id` → in che stato si trova (attivo, se alla creazione non se ne indica un altro)
 * `data_attivazione` → da quando e attivo
 
 Sulla scheda cliente vivono anche le **condizioni di pagamento** predefinite —
@@ -224,10 +245,12 @@ vedi il paragrafo successivo.
 
 I trigger sulla tabella clienti si occupano automaticamente di:
 
-* normalizzare il `periodo` commerciale (daterange calcolato da `data_attivazione` e `data_chiusura`)
-* allineare `pdp_id` e `utility_id` dall'istanza e dal billing account
-* aggiornare lo stato del PDP (ATTIVO quando il cliente si attiva, DISPONIBILE quando si chiude)
+* controllare che lo stato segua il percorso ammesso e che ogni stato abbia la sua data
+* calcolare il `periodo` commerciale (daterange `[data_attivazione, data_chiusura)`)
+* copiare `pdp_id` dall'istanza, e ruolo e utility dal billing account
+* aggiornare lo stato del PDP secondo l'occupazione (vedi [Ordine di esecuzione](#ordine-di-esecuzione-visione-rapida))
 * mantenere la catena `parent_istanza_id` per la tracciabilita dei subentri
+* rifiutare, alla conferma, un secondo cliente manuale per lo stesso soggetto, servizio e azienda ([Un cliente manuale per soggetto, servizio e azienda](/guide/gestione-delle-istanze-utility#un-cliente-manuale-per-soggetto-servizio-e-azienda))
 
 ### 3-bis. Le condizioni di pagamento del cliente
 
@@ -238,14 +261,7 @@ Il cliente porta **due riferimenti a catalogo**, entrambi facoltativi:
 
 Sono riferimenti, non numeri liberi: la condizione vera vive nel catalogo dei
 [termini di pagamento](/guide/termini-di-pagamento), e il cliente si limita a
-sceglierne uno.
-
-> ⚠️ **Se si trova codice o documentazione che nomina `tipo_gg_scadenza_ft` e
-> `nr_giorni_scadenza`, è anteriore alla riforma**: erano i due campi liberi che
-> dicevano la stessa cosa del termine, in un altro modo. Quelle colonne non
-> esistono più — due modi di dire la stessa cosa possono dirla diversa, e non
-> c'era regola che dicesse quale vincesse. Chi ha condizioni particolari usa un
-> termine dedicato a catalogo.
+sceglierne uno. Chi ha condizioni particolari usa un termine dedicato a catalogo.
 
 Due conseguenze pratiche:
 
@@ -272,23 +288,24 @@ Per il flusso completo dei trigger di clonazione e tutti i dettagli: [Architettu
 
 ## Vincoli e regole di coerenza
 
-### Regola fondamentale: un cliente attivo per PDP
+### Regola fondamentale: un cliente per PDP in ogni giorno
 
-Per ciascun PDP puo esistere **al massimo un cliente attivo**. Questo vincolo e implementato dall'indice di esclusione `ex_clienti_no_overlap_stesso_pdp` che opera su `(pdp_id, periodo)`.
+Su ciascun PDP i periodi dei clienti non si sovrappongono: in un dato giorno il PDP ha **al massimo un cliente**. Lo impone il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` su `(pdp_id, periodo)`. Un cliente annullato non ha periodo, e non conta.
 
 **Attenzione**: il vincolo opera **per PDP**, non per indirizzo. Sullo stesso indirizzo possono coesistere clienti attivi di utility diverse. Esempio: un appartamento puo avere contemporaneamente un cliente GAS attivo e un cliente ENERGIA attivo, perche sono due PDP distinti.
 
 ### Multi-utility e soggetto con piu istanze
 
-Il vincolo "un solo cliente attivo" opera **per PDP**, non per indirizzo. Sullo stesso civico possono coesistere clienti attivi di utility diverse (GAS + ENERGIA), ciascuno con la propria istanza e il proprio billing account, ma tutti collegati allo stesso soggetto e allo stesso ruolo CLIENTE.
+Sullo stesso civico possono coesistere clienti attivi di utility diverse (GAS + ENERGIA), ciascuno col proprio billing account, tutti collegati allo stesso soggetto e allo stesso ruolo CLIENTE. Con un PDP, ogni utility ha la sua istanza, perche l'istanza ha un solo `pdp_id`; senza PDP, la stessa istanza puo portare piu utility, un billing account e un cliente per ciascuna.
 
 Per gli esempi dettagliati e le casistiche: [Guida Gestione Istanze Utility – Multi-utility](/guide/gestione-delle-istanze-utility#multi-utility-sullo-stesso-indirizzo).
 
 ### Altri vincoli
 
 * Se `fittizia = FALSE`, allora `indirizzo_dettaglio_id` deve essere NOT NULL
-* Se `pdp_id` e valorizzato, l'istanza non puo essere fittizia
-* `utility_id` su `clienti` deve essere coerente con `billing_account.utility_id` (mantenuto in automatico dal trigger)
+* Se `pdp_id` e valorizzato, l'istanza non puo essere fittizia e deve avere l'indirizzo del PDP
+* Ruolo e utility su `clienti` sono quelli del billing account: li copia il trigger, e un valore diverso viene rifiutato (`E_DOC_CLIENTE_DIVERSO_DA_BA`)
+* Se il cliente ha un PDP, la utility del PDP e quella del billing account (`E_PDP_UTILITY_MISMATCH`); se la utility richiede il PDP, il PDP c'e (`E_PDP_OBBLIGATORIO`)
 * Un cliente non puo esistere senza istanza e senza billing account
 
 ---
@@ -302,7 +319,9 @@ sceglie, ed è il motivo per cui vale la pena saperlo prima di creare il primo c
 
 Nel momento in cui il billing account viene creato, un trigger lo aggancia
 all'**emittente dell'operatore corrente**. Non c'è un passaggio in cui il
-cliente esiste «senza emittente»: nasce già agganciato.
+cliente esiste «senza emittente»: nasce già agganciato. Chi crea il cliente con
+`fn_crea_cliente` puo indicare l'emittente esplicitamente; se un operatore e in
+sessione, l'emittente indicato deve essere il suo.
 
 ⚠️ **Conseguenza pratica da conoscere**: se l'operatore sta lavorando
 sull'emittente sbagliato, il cliente **nasce sbagliato**. È un errore di
@@ -315,12 +334,12 @@ Spostare il cliente su un altro emittente non riscrive quei documenti: li
 lascia dove sono. Da quel momento chi li ha emessi continua a vedere i documenti
 e **smette di vedere il cliente** a cui si riferiscono.
 
-⇒ Per questo il legame si può cambiare **finché sul cliente non è passato del
-lavoro** — nessuna fattura, nessuna commessa — e non più dopo. Il controllo che
+⇒ Per questo il legame si può cambiare **finché sul cliente non è passato un
+documento numerato**, di qualunque famiglia, e non più dopo. Il controllo che
 lo impone è
 [`anagrafiche.fn_guard_ba_cambio_emittente`](/dbzero/anagrafiche/manual/fn_guard_ba_cambio_emittente),
-e il messaggio che restituisce dice **quante** fatture e **quante** commesse
-stanno bloccando.
+e il messaggio che restituisce dice con quale emittente il cliente ha già
+documenti numerati.
 
 ### E se il cliente è passato davvero all'altro emittente?
 
@@ -329,8 +348,8 @@ I documenti già emessi restano con chi li ha emessi, il cliente resta lo stesso
 soggetto, e le due posizioni convivono.
 
 ⚠️ Non esiste un «cliente gemello» sulla stessa fornitura, e non è una
-dimenticanza: un indice univoco lo vieta — per una istanza di utility c'è **un**
-billing account e uno solo.
+dimenticanza: un indice univoco lo vieta — per una istanza e una utility c'è
+**un** billing account e uno solo, e per un billing account **un** cliente.
 
 ### ⚠️ E l'albero dei clienti si muove tutto insieme
 
@@ -345,42 +364,97 @@ respinto: vedi
 
 ### Ordine di esecuzione (visione rapida)
 
+Entro i trigger BEFORE e entro gli AFTER di una tabella, PostgreSQL li esegue in ordine
+alfabetico di nome. I controlli **differiti** scattano alla conferma dell'operazione, dopo tutto
+il resto, qualunque sia il loro nome.
+
 ```text
 INSERT istanza
-  ├─ gen_codice         → genera codice istanza
-  ├─ normalize          → normalizza campi, verifica coerenze
-  ├─ tx_id + audit      → tracciabilita e metadati
+  BEFORE ├─ gen_codice            → genera il codice dell'istanza
+         ├─ codice_maiuscolo
+         ├─ audit + tx_id
+         └─ normalize             → non fa niente
+  AFTER  ├─ sync_catasto_indirizzo → legame catasto ↔ indirizzo
+         └─ alla conferma         → soggetto e indirizzo attivi; l'istanza ha un BA
   │
 INSERT billing_account
-  ├─ gen_codice         → genera codice account
-  ├─ guard_normalize    → validazioni e normalizzazione BA
-  ├─ tx_id + audit
+  BEFORE ├─ date_validita         → valido_al non prima di valido_dal
+         ├─ gen_codice            → genera il codice dell'account
+         ├─ guard_admin_globale   → chi crea ha un emittente su cui scrivere
+         ├─ codice_maiuscolo
+         ├─ guard_soggetto_istanza → il ruolo e del soggetto dell'istanza, ed e un ruolo cliente
+         ├─ audit + tx_id
+         └─ guard_normalize       → coerenza del billing account padre
+  AFTER  ├─ link_ef               → aggancia il BA all'emittente dell'operatore
+         ├─ guard_albero_emittente → padre e figli sullo stesso emittente
+         ├─ guard_istanza_emittente → i BA dell'istanza sono di un solo emittente
+         └─ alla conferma         → la categoria cliente e attiva
   │
 INSERT cliente
-  ├─ set_parent_istanza → collega alla parent istanza (catena subentri)
-  ├─ set_periodo        → calcola periodo [attivazione, chiusura)
-  ├─ sync_pdp           → allinea pdp_id dall'istanza
-  ├─ sync_utility       → allinea utility_id dal BA
-  ├─ sync_stato_pdp     → PDP diventa ATTIVO
-  ├─ tx_id + audit + storico
+  BEFORE ├─ guard_stato_date      → lo stato e le sue date
+         ├─ audit + tx_id
+         ├─ guard_ruolo_cliente   → il ruolo e un ruolo cliente
+         ├─ set_periodo           → periodo [attivazione, chiusura)
+         ├─ sync_pdp              → pdp_id dall'istanza
+         ├─ sync_utility_from_ba  → ruolo e utility dal BA; PDP obbligatorio e della stessa utility
+         └─ set_parent_istanza    → catena dei subentri sull'istanza
+  AFTER  ├─ sync_stato_pdp        → stato del PDP secondo l'occupazione
+         └─ alla conferma         → PDP e termine di pagamento attivi; chiave unica del cliente manuale
 ```
+
+Sulle modifiche si aggiungono, in testa ai BEFORE, i blocchi delle colonne che non cambiano
+(il codice e il soggetto dell'istanza; codice, istanza, ruolo e utility del BA; la fornitura del
+cliente) e, in coda, lo storico di `billing_account` e `clienti`.
 
 ### Dettaglio completo
 
-| Trigger / Funzione                      | Quando scatta                    | Cosa fa                                             |
-| --------------------------------------- | -------------------------------- | --------------------------------------------------- |
-| `trgfn_istanze_utilities_gen_codice`    | INSERT su istanze                | Genera il codice automatico dell'istanza            |
-| `trgfn_istanze_utilities_normalize`     | INSERT/UPDATE su istanze         | Normalizza campi e verifica coerenze                |
-| `trgfn_billing_account_gen_codice`      | INSERT su billing_account        | Genera il codice dell'account                       |
-| `trgfn_billing_account_guard_normalize` | INSERT/UPDATE su billing_account | Guard e normalizzazione BA                          |
-| `trgfn_clienti_set_periodo`             | INSERT/UPDATE su clienti         | Calcola `periodo` da date attivazione/chiusura      |
-| `trgfn_clienti_set_parent_istanza`      | INSERT su clienti                | Imposta la catena `parent_istanza_id`               |
-| `trgfn_clienti_sync_pdp`                | INSERT/UPDATE su clienti         | Allinea `pdp_id` dall'istanza                       |
-| `trgfn_clienti_sync_utility_from_ba`    | INSERT/UPDATE su clienti         | Allinea `utility_id` dal billing account            |
-| `trgfn_clienti_sync_stato_pdp`          | INSERT/UPDATE su clienti         | Aggiorna stato PDP (AT→ATTIVO, CH→DISPONIBILE)      |
-| `dbops.trgfn_tx_id_managed`             | INSERT/UPDATE su tutte           | Genera `tx_id` per tracciabilita transazionale      |
-| `script.trgfn_audit_data_user_generic`  | INSERT/UPDATE su tutte           | Aggiorna campi audit (`data_update`, `user_update`) |
-| `script.trgfn_storico_generic`          | UPDATE/DELETE su tutte           | Snapshot storico del record modificato              |
+#### Sull'istanza (`anagrafiche.istanze_utilities`)
+
+| Trigger / Funzione | Quando scatta | Cosa fa |
+| --- | --- | --- |
+| [`trgfn_istanze_utilities_gen_codice`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_gen_codice) | BEFORE INSERT, UPDATE OF `codice` | Genera il codice automatico dell'istanza |
+| `script.trgfn_lock_columns` | BEFORE UPDATE OF `codice`, `soggetto_id` | Codice e soggetto non cambiano (`E_CODICE_NON_MODIFICABILE`, `E_ISTANZA_SOGGETTO_IMMUTABILE`) |
+| [`trgfn_istanze_utilities_normalize`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_normalize) | BEFORE INSERT/UPDATE | Nessuna azione: restituisce la riga com'è |
+| [`trgfn_iu_sync_catasto_unita_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) | AFTER INSERT, UPDATE OF catasto o indirizzo | Mantiene il legame catasto ↔ indirizzo |
+| [`trgfn_iu_clone_catasto_from_parent`](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent) | AFTER UPDATE OF `parent_istanza_id` | Clona il catasto della parent, se l'istanza non ne ha |
+| [`trgfn_istanze_utilities_require_utility_dichiarata`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) | AFTER INSERT, alla conferma | L'istanza ha almeno un billing account (`E_ISTANZA_SENZA_BA`) |
+
+#### Sul billing account (`anagrafiche.billing_account`)
+
+| Trigger / Funzione | Quando scatta | Cosa fa |
+| --- | --- | --- |
+| [`trgfn_billing_account_gen_codice`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_gen_codice) | BEFORE INSERT, UPDATE OF `codice` | Genera il codice dell'account |
+| `script.trgfn_lock_columns` | BEFORE UPDATE OF codice, istanza, ruolo, utility | Codice e coppia istanza/utility non cambiano (`E_BA_ISTANZA_IMMUTABILE`) |
+| [`trgfn_billing_account_guard_admin_globale`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_admin_globale) | BEFORE INSERT | Rifiuta la creazione a chi non ha un emittente su cui scrivere |
+| [`trgfn_billing_account_guard_soggetto_coerenza_istanza`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_soggetto_coerenza_istanza) | BEFORE INSERT, UPDATE OF istanza o ruolo | Il ruolo è del soggetto dell'istanza, ed è un ruolo cliente |
+| [`trgfn_billing_account_guard_normalize`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_normalize) | BEFORE INSERT/UPDATE | Il padre: non sé stesso, raggiungibile, dello stesso soggetto; non si stacca con attività da fatturare |
+| [`trgfn_billing_account_link_ef`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_link_ef) | AFTER INSERT | Aggancia il BA all'emittente dell'operatore corrente |
+| [`trgfn_billing_account_guard_albero_emittente`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_albero_emittente) | AFTER INSERT, UPDATE OF `parent_account_id` | Padre e figli sullo stesso emittente |
+| [`trgfn_billing_account_guard_istanza_emittente`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_guard_istanza_emittente) | AFTER INSERT | I BA di un'istanza sono di un solo emittente (`E_ISTANZA_EMITTENTI_DIVERSI`) |
+| [`trgfn_billing_account_require_istanza_ha_ba`](/dbzero/anagrafiche/funzioni/trgfn_billing_account_require_istanza_ha_ba) | AFTER DELETE, alla conferma | L'istanza che resta ha ancora un BA (`E_ISTANZA_SENZA_BA`) |
+
+#### Sul cliente (`anagrafiche.clienti`)
+
+| Trigger / Funzione | Quando scatta | Cosa fa |
+| --- | --- | --- |
+| [`trgfn_clienti_guard_stato_date`](/dbzero/anagrafiche/funzioni/trgfn_clienti_guard_stato_date) | BEFORE INSERT/UPDATE | Il cambio di stato segue il percorso; ogni stato ha la sua data; la chiusura di un chiuso non cambia |
+| `script.trgfn_lock_columns` | BEFORE UPDATE OF BA, istanza, ruolo, utility | La fornitura del cliente non cambia (`E_CLIENTE_FORNITURA_IMMUTABILE`) |
+| [`trgfn_clienti_guard_ruolo_cliente`](/dbzero/anagrafiche/funzioni/trgfn_clienti_guard_ruolo_cliente) | BEFORE INSERT/UPDATE | Il ruolo del cliente è un ruolo CLIENTE |
+| [`trgfn_clienti_set_periodo`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_periodo) | BEFORE INSERT/UPDATE | Calcola `periodo` = `[data_attivazione, data_chiusura)`; un annullato non ha date né periodo |
+| [`trgfn_clienti_sync_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_pdp) | BEFORE INSERT/UPDATE | Copia `pdp_id` dall'istanza |
+| [`trgfn_clienti_sync_utility_from_ba`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_utility_from_ba) | BEFORE INSERT/UPDATE | Ruolo e utility dal BA (via [`script.fn_cliente_dal_billing_account`](/dbzero/script/funzioni/fn_cliente_dal_billing_account)); PDP obbligatorio se la utility lo richiede, e della stessa utility |
+| [`trgfn_clienti_set_parent_istanza`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza) | BEFORE INSERT, UPDATE OF `pdp_id`, `data_attivazione`, con data di attivazione | Scrive `parent_istanza_id` sull'istanza del cliente |
+| [`trgfn_clienti_sync_stato_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp) | AFTER INSERT, UPDATE OF stato, PDP, date | Ricalcola lo stato del PDP del cliente, e di quello lasciato, secondo l'occupazione di oggi ([`fn_check_pdp_occupato`](/dbzero/anagrafiche/funzioni/fn_check_pdp_occupato)) |
+| `dbops.trgfn_child_requires_active_parent` | AFTER INSERT/UPDATE, alla conferma | Il PDP e il termine di pagamento del cliente sono attivi |
+| [`trgfn_clienti_guard_chiave_unica`](/dbzero/anagrafiche/funzioni/trgfn_clienti_guard_chiave_unica) | AFTER INSERT/UPDATE, alla conferma | Un cliente manuale per soggetto, servizio e azienda (`E_CLIENTE_STESSA_CHIAVE`) |
+
+#### Comuni alle tre tabelle
+
+| Trigger / Funzione | Quando scatta | Cosa fa |
+| --- | --- | --- |
+| [`dbops.trgfn_tx_id_managed`](/dbzero/dbops/funzioni/trgfn_tx_id_managed) | BEFORE INSERT/UPDATE | Genera `tx_id` per tracciabilita transazionale |
+| [`script.trgfn_audit_data_user_generic`](/dbzero/script/funzioni/trgfn_audit_data_user_generic) | BEFORE INSERT/UPDATE | Aggiorna i campi audit (`data_update`, `user_update`) |
+| [`script.trgfn_storico_generic`](/dbzero/script/funzioni/trgfn_storico_generic) | BEFORE UPDATE/DELETE su `billing_account` e `clienti` | Snapshot storico del record modificato; l'istanza non ha storico |
 
 ---
 
@@ -392,7 +466,8 @@ Cosa significa in pratica:
 
 * Se un qualsiasi trigger della catena fallisce (es. vincolo violato, dato mancante), **tutte le operazioni vengono annullate** (rollback atomico)
 * **Non esistono stati parziali**: o tutto va a buon fine, o nulla viene modificato
-* Questo vale anche per le catene complesse del subentro (4-5 trigger in cascata)
+* Questo vale anche per le catene del subentro, dove un trigger su `clienti` scrive sull'istanza e fa scattare quelli dell'istanza
+* I controlli differiti parlano alla conferma: dentro la transazione l'ordine delle scritture e libero, alla fine la regola deve valere
 
 Questa garanzia e offerta nativamente dal motore PostgreSQL e non richiede codice aggiuntivo.
 
@@ -402,48 +477,57 @@ Questa garanzia e offerta nativamente dal motore PostgreSQL e non richiede codic
 
 Il **subentro** (o voltura) e il passaggio di titolarita su un PDP: un cliente esce, un altro entra sullo stesso punto di prelievo.
 
-## Cosa fa `fn_subentro_cliente`
+### Cosa fa `fn_subentro_cliente`
 
 La funzione [`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente) si occupa **esclusivamente della chiusura del cliente precedente**: una chiamata con il punto di prelievo e la data di attivazione del nuovo ([esempio](#area-tecnica-esempi)).
 
 Effetti:
 
-* Individua il cliente attivo piu recente sul PDP
-* Imposta `data_chiusura = p_data_attivazione_nuovo - 1 giorno`
-* Imposta `stato_cliente = CH` (chiuso)
-* Se non esiste alcun cliente attivo → ritorna NULL (prima attivazione)
+* Individua il cliente piu recente sul PDP che non e annullato, e stato attivato prima della nuova data e ha il periodo ancora aperto a quella data
+* Imposta `data_chiusura = p_data_attivazione - 1 giorno`
+* Imposta lo stato **CH** (chiuso); se la chiusura e ammessa dallo stato in cui il cliente si trova lo decide il guard degli stati
+* Se non esiste alcun cliente da chiudere → ritorna NULL (prima attivazione)
 * I trigger aggiornano in automatico il `periodo` e lo stato del PDP
 
-**La funzione non crea** la nuova istanza, il nuovo billing account e il nuovo cliente. Questi passi sono a carico del chiamante (frontend, API o orchestrator Django). La sequenza completa e:
+> ⚠️ **Il giorno prima del subentro il PDP resta senza cliente.** La funzione chiude il
+> precedente al giorno prima dell'attivazione nuova, e il `periodo` calcolato da
+> [`trgfn_clienti_set_periodo`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_periodo) esclude
+> il giorno di chiusura: il periodo del precedente finisce cosi due giorni prima del nuovo, non
+> uno. I commenti delle colonne `data_chiusura` e `periodo` descrivono invece la chiusura come
+> inclusiva, e la disdetta scrive la data di cessazione cosi com'e. Le due letture della data di
+> chiusura non coincidono.
+
+**La funzione non crea** la nuova istanza, il nuovo billing account e il nuovo cliente. Questi passi sono a carico del chiamante. La sequenza completa e:
 
 1. `fn_subentro_cliente(pdp_id, data)` → chiude il precedente
-2. INSERT istanza → INSERT billing account → INSERT cliente → attiva il nuovo
+2. istanza reale sullo stesso PDP → billing account e cliente (con `fn_crea_cliente`, indicando l'istanza) → attiva il nuovo
 
 Tutti questi passi vanno eseguiti nella stessa transazione.
 
-## Catena trigger del subentro
+### Catena trigger del subentro
 
 Quando si crea un nuovo cliente sullo stesso PDP dopo la chiusura del precedente, scatta una catena di trigger:
 
-**Passo 1** — `trgfn_clienti_set_parent_istanza` (BEFORE INSERT su clienti)
-Cerca l'istanza precedente sullo stesso PDP e imposta `parent_istanza_id` sulla nuova istanza. Questo mantiene la catena storica dei subentri.
+**Passo 1** — `trgfn_clienti_set_parent_istanza` (BEFORE INSERT su clienti, se c'e la data di attivazione)
+Cerca il cliente precedente sullo stesso PDP (non annullato, attivato non dopo il nuovo) e scrive la sua istanza in `parent_istanza_id` sulla nuova istanza. Su un'istanza fittizia, senza PDP, il predecessore e l'ultimo cliente con lo stesso soggetto, servizio e azienda. Questo mantiene la catena storica dei subentri.
 
-**Passo 2** — `trgfn_iu_clone_catasto_from_parent` (AFTER UPDATE su istanze)
-Quando `parent_istanza_id` viene impostato e la nuova istanza non ha ancora un catasto, clona i dati catastali dall'istanza precedente. Il catasto non e mai condiviso: viene sempre duplicato.
+**Passo 2** — `trgfn_iu_clone_catasto_from_parent` (AFTER UPDATE OF `parent_istanza_id` su istanze)
+Quando `parent_istanza_id` viene impostato, la nuova istanza ha un indirizzo e non ha ancora un catasto, clona i dati catastali dall'istanza precedente. Il catasto non e mai condiviso: viene sempre duplicato.
 
 **Passo 3** — `trgfn_iu_sync_catasto_unita_indirizzo` (AFTER INSERT/UPDATE su istanze)
 Inserisce automaticamente il legame tra il catasto clonato e l'indirizzo nella tabella ponte `catasto_unita_immobiliari_indirizzi`.
 
 **Passo 4** — `trgfn_clienti_sync_stato_pdp` (AFTER INSERT/UPDATE su clienti)
-Aggiorna lo stato del PDP: ATTIVO per il nuovo cliente.
+Ricalcola lo stato del PDP: se oggi un cliente lo occupa e il PDP e disponibile, diventa attivo.
 
 Tutti questi trigger avvengono nella stessa transazione. Se uno fallisce, tutto viene annullato (vedi sezione "Garanzia transazionale").
 
-## Funzioni e trigger coinvolti nel subentro
+### Funzioni e trigger coinvolti nel subentro
 
 * [`anagrafiche.trgfn_clienti_set_parent_istanza`](/dbzero/anagrafiche/funzioni/trgfn_clienti_set_parent_istanza)
 * [`anagrafiche.trgfn_iu_clone_catasto_from_parent`](/dbzero/anagrafiche/funzioni/trgfn_iu_clone_catasto_from_parent)
 * [`anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo)
+* [`anagrafiche.trgfn_clienti_sync_stato_pdp`](/dbzero/anagrafiche/funzioni/trgfn_clienti_sync_stato_pdp)
 * [`script.fn_subentro_cliente`](/dbzero/script/funzioni/fn_subentro_cliente)
 * [`script.fn_get_catasto_source_by_istanza`](/dbzero/script/funzioni/fn_get_catasto_source_by_istanza)
 * [`script.fn_clone_catasto_from_parent_by_istanza`](/dbzero/script/funzioni/fn_clone_catasto_from_parent_by_istanza)
@@ -454,7 +538,7 @@ Tutti questi trigger avvengono nella stessa transazione. Se uno fallisce, tutto 
 
 La **disdetta** e la chiusura del servizio senza che un nuovo intestatario subentri. Il cliente disdice, il PDP torna disponibile per future attivazioni.
 
-## Cosa fa `fn_disdetta_cliente`
+### Cosa fa `fn_disdetta_cliente`
 
 La funzione [`script.fn_disdetta_cliente`](/dbzero/script/funzioni/fn_disdetta_cliente) incapsula la cessazione ([esempio](#area-tecnica-esempi)).
 
@@ -470,40 +554,43 @@ Effetti:
 I trigger si occupano automaticamente di:
 
 * Ricalcolare il `periodo` commerciale → `[data_attivazione, data_cessazione)`
-* Aggiornare lo stato PDP → **DISPONIBILE**, se dalla data di oggi nessun altro cliente lo occupa
+* Aggiornare lo stato PDP → **disponibile**, se oggi nessun altro cliente lo occupa
 * Storicizzare il record e aggiornare i campi audit
 
-## Policy sul billing account dopo la disdetta
+⚠️ Lo stato del PDP si ricalcola quando si scrive il cliente: una cessazione con data futura
+libera il PDP alla prossima scrittura del cliente, non il giorno della cessazione.
+
+### Policy sul billing account dopo la disdetta
 
 Il billing account **non viene toccato** dalla disdetta. Resta attivo per consentire:
 
 * Emissione di fatture finali
 * Conguagli e riconciliazioni
 
-Il billing account di un cliente chiuso **non si riattiva**: un cliente chiuso non si riapre
-(decisione del 2026-10-13). Se la fornitura riparte, nasce una catena nuova — istanza, billing
-account e cliente nuovi, collegata alla precedente — come nel subentro. Vedi
+Il billing account di un cliente chiuso **non si riattiva**: un cliente chiuso non si riapre.
+Se la fornitura riparte, nasce una catena nuova — istanza, billing account e cliente nuovi,
+collegata alla precedente — come nel subentro. Vedi
 [Gestione delle istanze utility — Chiusura del cliente](/guide/gestione-delle-istanze-utility#5-chiusura-del-cliente).
 
 La chiusura del billing account (tramite `valido_al`) e un'operazione separata, da eseguire solo quando tutti i documenti fiscali sono stati emessi e le partite aperte sono chiuse.
 
-## Cosa succede all'istanza dopo la disdetta
+### Cosa succede all'istanza dopo la disdetta
 
-L'istanza non ha un campo "stato" proprio. La sua "chiusura" e implicita: se il suo unico cliente e in stato CH (chiuso), l'istanza e considerata storica. Resta nel database come record per:
+L'istanza non ha un campo "stato" proprio. La sua "chiusura" e implicita: quando i suoi clienti — uno per billing account, cioe uno per utility — sono chiusi, l'istanza e considerata storica. Resta nel database come record per:
 
 * Tracciabilita delle precedenti attivazioni
 * Riferimento per eventuali futuri subentri sullo stesso PDP
 * Base per la catena `parent_istanza_id`
 
-## Differenza tra subentro e disdetta
+### Differenza tra subentro e disdetta
 
-|              | Subentro                                                             | Disdetta                              |
-| ------------ | -------------------------------------------------------------------- | ------------------------------------- |
-| Cosa succede | Un cliente esce, un altro entra                                      | Il cliente esce, nessuno entra        |
-| PDP dopo     | Resta ATTIVO (nuovo cliente)                                         | Torna DISPONIBILE                     |
-| Funzione DB  | `fn_subentro_cliente` (chiude il precedente) + creazione nuovo ciclo | `fn_disdetta_cliente` (solo chiusura) |
-| BA           | Nuovo BA per il nuovo intestatario                                   | BA resta attivo per fatture finali    |
-| Istanza      | Nuova istanza con `parent_istanza_id`                                | L'istanza resta come record storico   |
+|              | Subentro                                                             | Disdetta                                         |
+| ------------ | -------------------------------------------------------------------- | ------------------------------------------------ |
+| Cosa succede | Un cliente esce, un altro entra                                      | Il cliente esce, nessuno entra                   |
+| PDP dopo     | Resta attivo, se il nuovo cliente lo occupa gia oggi                 | Torna disponibile, se oggi nessuno lo occupa     |
+| Funzione DB  | `fn_subentro_cliente` (chiude il precedente) + creazione nuovo ciclo | `fn_disdetta_cliente` (solo chiusura)            |
+| BA           | Nuovo BA per il nuovo intestatario                                   | BA resta attivo per fatture finali               |
+| Istanza      | Nuova istanza con `parent_istanza_id`                                | L'istanza resta come record storico              |
 
 ---
 
@@ -515,27 +602,34 @@ erDiagram
 
 %% Relazioni principali per la generazione di un cliente
 
-    soggetti               ||--o{ soggetti_ruoli            : ha
-    tipi_ruoli             ||--o{ soggetti_ruoli            : classifica
+    soggetti                  ||--o{ soggetti_ruoli    : ha
+    tipi_ruoli                ||--o{ soggetti_ruoli    : classifica
 
-    soggetti_ruoli         ||--o{ clienti                   : come_cliente
+    soggetti_ruoli            ||--o{ billing_account   : fatturato_a
+    soggetti_ruoli            ||--o{ clienti           : come_cliente
 
-    soggetti               ||--o{ istanze_utilities         : ha
+    soggetti                  ||--o{ istanze_utilities : ha
 
-    istanze_utilities      ||--o{ clienti                   : assegnato_a
-    istanze_utilities      ||--o{ billing_account           : genera
-    istanze_utilities      ||--o{ catasto_unita_immobiliari : puo_avere
+    istanze_utilities         ||--o{ billing_account   : genera
+    istanze_utilities         ||--o{ clienti           : assegnato_a
+    istanze_utilities         |o--o{ istanze_utilities : parent_di
+    catasto_unita_immobiliari |o--o{ istanze_utilities : descrive
 
-    stati_cliente          ||--o{ clienti                   : stato
-    utilities              ||--o{ clienti                   : ha
+    utilities                 ||--o{ billing_account   : per
+    utilities                 ||--o{ clienti           : ha
+    utilities                 ||--o{ pdp               : tipo_di
+    stati_cliente             ||--o{ clienti           : stato
+    stati_pdp                 ||--o{ pdp               : stato
 
-    billing_account        ||--o| clienti                   : fattura
-    billing_account        ||--o{ billing_account           : padre_di
+    billing_account           ||--o| clienti           : fattura
+    billing_account           |o--o{ billing_account   : padre_di
 
-    pdp                    ||--o{ istanze_utilities         : collegato_a
+    pdp                       |o--o{ istanze_utilities : collegato_a
+    pdp                       |o--o{ clienti           : occupato_da
 
-    indirizzi_dettaglio    ||--o{ istanze_utilities         : opzionale_per
-    indirizzi_dettaglio    ||--o{ indirizzi                 : normalizzato_da
+    indirizzi_dettaglio       |o--o{ istanze_utilities : opzionale_per
+    indirizzi_dettaglio       ||--o{ pdp               : situato_a
+    indirizzi_dettaglio       ||--o{ indirizzi         : normalizzato_da
 ````
 
 ## Area tecnica — esempi

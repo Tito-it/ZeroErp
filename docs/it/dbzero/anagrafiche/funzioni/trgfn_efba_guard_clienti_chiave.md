@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_efba_guard_clienti_chiave.md" %}
 # ⚙️ Funzione `trgfn_efba_guard_clienti_chiave`
 
 ```sql

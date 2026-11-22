@@ -11,27 +11,55 @@
 
 ```sql
 CREATE OR REPLACE VIEW maintenance.vw_job_run_da_guardare AS
-WITH ultima AS (
-         SELECT DISTINCT ON (l.jobname) l.id,
-            l.jobname,
-            l.stepname,
-            l.processo_codice,
-            l.origine,
-            l.started_at,
-            l.ended_at,
-            l.ok,
-            l.error_code,
-            l.message,
-            l.error_detail,
-            l.run_uuid,
-            l.auth_user_id,
-            l.meta,
-            l.sqlstate,
-            COALESCE(pr_1.corsa_verdetto_completo, false) AS verdetto_completo
-           FROM (maintenance.job_run_log l
-             LEFT JOIN dbops.processi pr_1 ON ((pr_1.codice = l.processo_codice)))
-          WHERE ((NOT l.saltata) AND (NOT (COALESCE(pr_1.corsa_verdetto_completo, false) AND (l.ok IS NULL) AND (l.ended_at IS NULL) AND (l.started_at >= (now() - '01:00:00'::interval)))))
-          ORDER BY l.jobname, l.started_at DESC, l.id DESC
+WITH RECURSIVE jobs AS (
+         SELECT min(j0.jobname) AS jobname
+           FROM maintenance.job_run_log j0
+        UNION ALL
+         SELECT ( SELECT min(j1.jobname) AS min
+                   FROM maintenance.job_run_log j1
+                  WHERE (j1.jobname > jobs.jobname)) AS jobname
+           FROM jobs
+          WHERE (jobs.jobname IS NOT NULL)
+        ), ultima AS (
+         SELECT u_1.id,
+            u_1.jobname,
+            u_1.stepname,
+            u_1.processo_codice,
+            u_1.origine,
+            u_1.started_at,
+            u_1.ended_at,
+            u_1.ok,
+            u_1.error_code,
+            u_1.message,
+            u_1.error_detail,
+            u_1.run_uuid,
+            u_1.auth_user_id,
+            u_1.meta,
+            u_1.sqlstate,
+            u_1.verdetto_completo
+           FROM (jobs j
+             CROSS JOIN LATERAL ( SELECT l.id,
+                    l.jobname,
+                    l.stepname,
+                    l.processo_codice,
+                    l.origine,
+                    l.started_at,
+                    l.ended_at,
+                    l.ok,
+                    l.error_code,
+                    l.message,
+                    l.error_detail,
+                    l.run_uuid,
+                    l.auth_user_id,
+                    l.meta,
+                    l.sqlstate,
+                    COALESCE(pr_1.corsa_verdetto_completo, false) AS verdetto_completo
+                   FROM (maintenance.job_run_log l
+                     LEFT JOIN dbops.processi pr_1 ON ((pr_1.codice = l.processo_codice)))
+                  WHERE ((l.jobname = j.jobname) AND (NOT l.saltata) AND (NOT (COALESCE(pr_1.corsa_verdetto_completo, false) AND (l.ok IS NULL) AND (l.ended_at IS NULL) AND (l.started_at >= (now() - '01:00:00'::interval)))))
+                  ORDER BY l.started_at DESC, l.id DESC
+                 LIMIT 1) u_1)
+          WHERE (j.jobname IS NOT NULL)
         ), tratti AS (
          SELECT s.jobname,
             count(*) FILTER (WHERE ((s.ok IS FALSE) AND (s.precedente IS DISTINCT FROM false))) AS tratti_rossi
