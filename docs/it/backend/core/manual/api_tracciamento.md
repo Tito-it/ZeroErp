@@ -120,9 +120,9 @@ Ordine fisso: `started_at DESC, id DESC`. Ogni riga (`JobRunLogRow` in
 `ruolo_sessione` né `sqlstate`, che la tabella ha. Le corse **di un processo**
 (filtro su `processo_codice`, con `origine` e l'operatore che le ha lanciate) le
 dà `GET /api/v1/amm-software/processi/{codice}/run/`, riservato a
-`SUPER_ADMIN` e oggi non documentato
-([api_amm_software.md](../../amm-software/manual/api_amm_software.md) §6). Il
-`meta` di una corsa, e quindi `meta.esito`, non lo espone nessuno dei due.
+`SUPER_ADMIN` ([api_amm_software.md](../../amm-software/manual/api_amm_software.md)
+§6.9), che dal 2026-11-22 porta anche il resoconto della corsa (`meta`,
+`error_detail`).
 
 Ogni riga porta `saltata`: `true` sulla corsa che ha trovato il lock della corsia
 occupato (dal 2026-10-10, brief `brief-db-corsa-saltata-non-e-una-corsa`). Una

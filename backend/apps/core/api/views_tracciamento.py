@@ -346,8 +346,10 @@ class ApiJobRuns(DomainAPIView):
             },
         )},
     )
-    # Scopo: Restituisce via GET l'elenco paginato delle esecuzioni job pgAgent
-    # con filtri opzionali su jobname, esito, intervallo date e ricerca libera.
+    # Scopo: Restituisce via GET l'elenco paginato delle corse di
+    # `maintenance.job_run_log` — job del database (`PGAGENT`) e comandi del
+    # backend (`CRON`/`COMMAND`) — con filtri opzionali su jobname, esito,
+    # intervallo date e ricerca libera.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         # ⛔ Il vocabolario unico dei flag (§A6, 2026-10-20): prima `1/yes/y`

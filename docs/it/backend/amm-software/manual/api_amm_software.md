@@ -1625,13 +1625,32 @@ curl -H "Authorization: Bearer <token>" \
 
 ## 6. Processi automatici — i presidi e «Esegui ora»
 
-⚠️ **Di questa famiglia qui ci sono i presidi (§6.1), «Esegui ora» (§6.2) con la
-parte del dettaglio che lo alimenta (§6.3), l'accensione (§6.4) e la
-riattivazione dell'utente tecnico (§6.5).** Le altre rotte (`GET processi/`,
-`GET processi/{codice}/`, `GET processi/{codice}/run/`,
-`POST processi/{codice}/identita/`) esistono e **non sono documentate**: e' un
-debito dichiarato, non un'omissione da leggere come «non ci sono». Contratto
-vivo: `/api/docs/`.
+Il registro dei processi automatici (`dbops.processi`), letto e governato da
+`ProcessiService` (`apps/core/services/processi_service.py`) e
+`ProcessiRepository` (`apps/core/db/processi_repository.py`). Lo serve la
+schermata Strumenti → Diagnostica → Processi automatici
+(`ProcessiAutomaticiListView.vue` + `ProcessoDrawer.vue`).
+
+⛔ **Tutte le rotte portano `AdminAPIView` (`SUPER_ADMIN`)**, non `DomainAPIView`:
+le viste di presidio e il registro nominano **tutti** gli emittenti e non hanno
+RLS.
+
+| Rotta | § |
+| --- | --- |
+| `GET processi/` | 6.6 |
+| `GET processi/vocabolari/` | 6.7 |
+| `GET processi/presidi/` | 6.1 |
+| `GET processi/presidi/conteggi/` | 6.1-bis |
+| `GET processi/{codice}/` | 6.8 (le `sveglie[]` in 6.3, l'`accensione` in 6.4) |
+| `GET processi/{codice}/run/` | 6.9 |
+| `POST processi/{codice}/identita/` | 6.10 |
+| `POST processi/{codice}/identita/riattiva/` | 6.5 |
+| `POST processi/{codice}/esegui-ora/` | 6.2 |
+| `POST processi/{codice}/accensione/` | 6.4 |
+
+⚠️ In `urls_v1.py` `presidi/` e `vocabolari/` stanno **prima** di
+`<str:codice>/`: nell'ordine inverso Django li leggerebbe come codici di
+processo.
 
 ### 6.1 GET /api/v1/amm-software/processi/presidi/
 
@@ -1937,6 +1956,134 @@ terna: utente Django, identita' digitale, legame nel registro
   DB non riconosciuto → 400 `E_CORE_VALIDATION`.
 - **Permesso**: `AdminAPIView`.
 
+### 6.6 GET /api/v1/amm-software/processi/ — Il registro dei processi
+
+Elenco paginato dei processi automatici, con un riepilogo delle loro corse.
+Lista standard (`is_search_endpoint`), offset-based come ogni lista servita da
+`<ListaConfigurabile>`.
+
+| Parametro | Tipo | Note |
+| --- | --- | --- |
+| `classe` | string | `MANUTENZIONE` \| `AMMINISTRAZIONE` \| `DOMINIO` (case-insensitive). Fuori elenco → 400 `E_CORE_VALIDATION` |
+| `canale` | string | `PGAGENT` \| `COMMAND` \| `CODA` \| `CODA_AUTOMATICA` (case-insensitive). Fuori elenco → 400 `E_CORE_VALIDATION` |
+| `vivo` | bool | `true` = ritiro non raggiunto (`obsoleto_dal` vuota o futura), `false` = ritirato. Lo decide `script.fn_e_obsoleto`, **non** la colonna `attivo`. Non booleano → 400 `E_VALIDATION_INPUT` |
+| `search` | string | ricerca full (`RicercaFull` `amm.processi`) su `codice`, `descrizione` |
+| `order_by` / `order_dir` | string | whitelist `PROCESSI_SORT_COLUMNS`: `codice`, `descrizione`, `classe`, `canale`, `attivo`, `vivo`, `ultimo_run`. Fuori whitelist → 400 `E_CORE_VALIDATION`. Default: `canale, codice` |
+| `limit` / `offset` | int | `pagina_da_query`: 1-200, offset ≥ 0 |
+
+I vocabolari di `classe` e `canale` sono le costanti `_CLASSI`/`_CANALI` del
+service, tenute uguali ai `CHECK` di `dbops.processi` dal guardrail
+`test_coda_lavori_tipi_handler_guardrail`. Il client li legge da §6.7.
+
+**Response** (200): `{ "data": { "count": N, "results": [...] } }`. Ogni riga:
+
+| Campo | Significato |
+| --- | --- |
+| `id`, `codice`, `descrizione`, `classe`, `canale`, `attivo` | dal registro |
+| `obsoleto_dal` | data di ritiro (testo PG) o `null` |
+| `vivo` | ritiro non raggiunto (vedi filtro) |
+| `vuole_identita` | il processo deve avere un utente tecnico per emittente: classe `DOMINIO` e canale `PGAGENT`/`COMMAND`/`CODA_AUTOMATICA`. Un processo di `CODA` gira con l'identità di chi lo accoda, e qui lo dice `false` invece di sembrare «manca qualcosa» |
+| `identita_attive` | quante identità attive in `dbops.processi_identita` |
+| `bersagli` | quante tabelle dichiarate in `dbops.processi_bersagli` |
+| `ultimo_run` | la riga **più recente** del giornale `maintenance.job_run_log` per `processo_codice`: segno di vita, saltate comprese. `null` = mai girato. È anche la chiave di ordinamento `ultimo_run` |
+| `in_corso` | quella riga è ancora aperta |
+| `ultima_conclusa` | l'ultima corsa **vera** chiusa (non saltata): `{started_at, ended_at, ok}` in ISO-8601, o `null` se non ce n'è. Esito e data **della stessa riga** |
+| `ultimo_ok` | ⚠️ transitorio: è `ultima_conclusa.ok`, dalla stessa riga. Esiste solo perché la colonna «Esito» a catalogo (`ui.lista_colonna` 722) ha questo `campo_sorgente`; si ritira quando il team DB la porta su `ultima_conclusa` ([brief](../../../dev/work-in-progress/brief-db-lista-processi-esito-con-la-sua-data.md)). Non usarlo in codice nuovo |
+| `run_totali` | le corse vere (le saltate non contano, come `total_runs` di `job-summary`) |
+
+⭐ **Le corse nella forma unica** (dal 2026-11-22), la stessa di `job_liveness` e
+`job-summary` ([api_tracciamento.md](../../core/manual/api_tracciamento.md)): le
+leggono le CTE comuni `cte_corse(chiave="processo_codice")` di
+`maintenance_repository`. ⛔ Fino a quel giorno una lettura locale dava
+`ultimo_run` (anche una saltata) accanto a `ultimo_ok` (l'ultima corsa vera):
+due colonne affiancate che potevano essere di due corse diverse. A video la
+cella «Esito» legge `ultima_conclusa`, con la data della sua corsa nel tooltip e,
+quando non è la stessa di «Ultima corsa», anche accanto all'esito.
+
+### 6.7 GET /api/v1/amm-software/processi/vocabolari/ — Classi e canali dei filtri
+
+Statico, senza DB: le costanti con cui §6.6 rifiuta un filtro. Il client
+costruisce le tendine da qui invece di ricopiarle. ⛔ Esiste dal 2026-11-09
+proprio per questo: la copia del frontend, scritta a mano, non aveva
+`CODA_AUTOMATICA`.
+
+```json
+{ "data": { "classi": ["MANUTENZIONE", "AMMINISTRAZIONE", "DOMINIO"],
+            "canali": ["PGAGENT", "COMMAND", "CODA", "CODA_AUTOMATICA"] } }
+```
+
+### 6.8 GET /api/v1/amm-software/processi/{codice}/ — Il dettaglio di un processo
+
+Codice non nel registro → 404 `E_PROCESSO_NON_TROVATO`.
+
+**Response** (200), `data`:
+
+| Campo | Significato |
+| --- | --- |
+| `id`, `codice`, `descrizione`, `classe`, `canale`, `attivo`, `obsoleto_dal`, `vivo`, `vuole_identita` | come in §6.6 |
+| `meta` | il `meta` jsonb del processo |
+| `bersagli` | le tabelle su cui il processo lavora: `[{schema_tabella, nome_tabella, emittente_via, emittente_colonna, note}]`, ordinate per schema e tabella |
+| `identita` | il roster da `dbops.vw_processi_roster`: `[{auth_user_id, username, identita_id, emittente_fiscale_id, emittente_codice, emittente_soggetto_ruolo_id}]` |
+| `emittenti_non_serviti` | gli emittenti che il processo **non** serve, da `dbops.vw_emittenti_non_serviti`: `[{emittente_fiscale_id, emittente_codice}]`. ⭐ Viaggia col dettaglio perché, guardando le identità, la domanda è «e la terza azienda?», e senza risposta si leggerebbe «è tutto a posto». Si serve con §6.10 |
+| `accensione` | lo stato di accensione con le sue capability: forma in §6.4 |
+| `sveglie` | le unit di deploy con la capability «Esegui ora»: forma in §6.3 |
+
+### 6.9 GET /api/v1/amm-software/processi/{codice}/run/ — Le corse di un processo
+
+Le corse del processo nel giornale `maintenance.job_run_log`, filtrate per
+`processo_codice` (quindi **tutte le corsie** di un processo che ne ha più di
+una, e tutte e due le origini). Ordine `started_at DESC, id DESC`. Paginazione
+`limit`/`offset` (`pagina_da_query`).
+
+Codice non nel registro → 404 `E_PROCESSO_NON_TROVATO`, come §6.8 (dal
+2026-11-22: prima rispondeva 200 con lista vuota, cioè «mai girato» detto di un
+processo che non esiste).
+
+**Response** (200): `{ "data": { "count": N, "results": [...] } }`. Ogni riga:
+`id`, `jobname`, `stepname`, `origine` (`PGAGENT` \| `CRON` \| `COMMAND`),
+`started_at`, `ended_at` (ISO-8601), `ok`, `message`, `rows_affected`,
+`error_code`, `error_detail`, `meta`, `auth_user_id` e `auth_username`
+(l'operatore che l'ha lanciata, se c'è), `saltata`.
+
+- `ok = null` con `saltata = false` è una corsa **aperta**; con
+  `saltata = true` una corsa saltata sul lock occupato, chiusa e senza esito
+  (vedi [api_tracciamento.md](../../core/manual/api_tracciamento.md)).
+- ⭐ `meta` ed `error_detail` (dal 2026-11-22) sono il **resoconto** della
+  corsa: ciò che spiega un rosso, per esempio quali elementi sono stati
+  scartati e perché. `meta` viaggia **intero**, perché le due porte del
+  giornale lo riempiono in due forme: i job del database
+  (`maintenance.fn_run_and_log`) mettono il risultato del lavoro sotto
+  `meta.esito`, e un esito con `_falliti > 0` rende la corsa rossa con
+  `E_JOB_ESITO_CON_SCARTI`; i comandi del backend (`registered_job`) ci
+  scrivono il loro riepilogo così com'è, e i nomi degli elementi persi vanno in
+  `error_detail` (`chiudi_se_elementi_non_completati`). Il drawer lo apre
+  sotto la riga (toggle nella colonna in fondo, `JsonBlocco` per `meta`).
+- Non porta `sqlstate` né `ruolo_sessione`.
+
+È la sorgente del tab «Ultime corse» del drawer. Per la vista trasversale del
+giornale, senza filtro per processo, c'è `GET /api/v1/core/tracciamento/job-runs/`.
+
+### 6.10 POST /api/v1/amm-software/processi/{codice}/identita/ — Crea l'utente tecnico per un emittente
+
+Crea l'utente tecnico del processo **per un emittente**: utente Django,
+identità digitale, legame nel registro. La fabbrica è
+`script.fn_crea_utente_tecnico`, che tiene i guard e solleva codici a catalogo;
+il service li traduce (`translate_db_errors`) senza ricopiarli.
+
+⛔ Il sistema non **sceglie** l'emittente, lo riceve da una persona (D-9): non
+esiste un verbo «crea tutti quelli che mancano». Il pannello mostra
+`emittenti_non_serviti` (§6.8), la decisione resta di chi guarda.
+
+- **Header obbligatorio**: `Idempotency-Key`.
+- **Corpo**: `{ "emittente_codice": "..." }` (obbligatorio; mancante → 400
+  `E_CORE_VALIDATION`).
+- **Risposta** (200): `{ "data": { "auth_user_id": 123 } }`.
+- **Errori**: i guard della fabbrica, coi loro codici a catalogo. Fra questi
+  `E_UTENTE_TECNICO_DA_RIATTIVARE`: l'utente c'è ma è spento, e si riaccende
+  con §6.5 (lo username `processo@azienda` è deterministico e unico, quindi non
+  se ne può fare un secondo). Un errore DB non riconosciuto → 400
+  `E_CORE_VALIDATION`.
+
 ---
 
 ## 7. Stato del setup
@@ -2015,6 +2162,11 @@ Un operatore conta se la sua veste e' utilizzabile oggi
 | `fn_imposta_override_oggetti` | `config` | Scrittura replace degli override oggetto (§2.4-bis) |
 | `fn_get_setup_status()` | `script` | Contatori di setup (§7.1) |
 | `emittenti_fiscali` | `anagrafiche` | Catalogo emittenti fiscali |
+| `processi` / `processi_identita` / `processi_bersagli` | `dbops` | Registro dei processi automatici, le loro identità tecniche e le tabelle dichiarate (§6.6, §6.8) |
+| `vw_processi_roster` / `vw_emittenti_non_serviti` | `dbops` | Roster delle identità e emittenti non serviti, nel dettaglio processo (§6.8) |
+| `job_run_log` | `maintenance` | Il giornale delle corse: riepilogo nella lista (§6.6), corse del processo (§6.9) |
+| `fn_e_obsoleto(date)` | `script` | Il predicato `vivo` dei processi (§6.6) |
+| `fn_crea_utente_tecnico` / `fn_riattiva_utente_tecnico` | `script` | Le fabbriche dell'utente tecnico, coi loro guard (§6.10, §6.5) |
 
 ## File backend
 
@@ -2026,6 +2178,7 @@ Un operatore conta se la sua veste e' utilizzabile oggi
 | `apps/amm_software/services/amm_software_service.py` | Service layer -- validazione, orchestrazione, invalidazione cache. **Fase 3**: `_ROUNDING_MODE_VALIDI_EMITTENTE` + `_cast_param_bool` + `_cast_param_decimal` + `get_emittente_form_defaults` + `list_emittente_rounding_modes` |
 | `apps/amm_software/db/amm_software_repository.py` | Repository -- accesso DB diretto (SQL raw) |
 | `apps/amm_software/types.py` | TypedDict per righe utente |
+| `apps/core/services/processi_service.py` / `apps/core/db/processi_repository.py` | Registro dei processi automatici (§6): stanno in `core` perché li usa anche chi produce lavoro in altri domini; `amm_software` li espone |
 | `apps/core/services/permissions_cache.py` | `invalidate_user()`, `invalidate_department()` |
 | `apps/core/services/parameter_service.py` | `ParameterService.get_defaults` (cascata user->group->emittente->default via `fn_get_parameter_full`). Usato da Fase 3 form-defaults emittente |
 | `apps/core/api/views_parameters.py` | `get_user_context(request, svc)` -- helper riusato dalle view form-defaults |
