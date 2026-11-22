@@ -6607,7 +6607,7 @@
       "colonna_tab_comportamento": "Behavior",
       "colonna_tab_layout": "Layout",
       "colonna_delete_titolo": "Delete column",
-      "colonna_delete_messaggio": "Confirm deletion of column \"{codice}\"? Blocked if referenced by user preferences. Disable the column instead.",
+      "colonna_delete_messaggio": "Confirm deletion of column \"{codice}\"? It will also disappear from the personalizations of the users who show it. Blocked if a preset includes it: remove it from the preset first, or disable the column instead.",
       "tipo_colonna_identificatore": "Identifier",
       "tipo_colonna_informazione": "Information",
       "tipo_colonna_azione": "Action",

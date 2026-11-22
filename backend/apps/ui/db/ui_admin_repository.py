@@ -588,11 +588,12 @@ class UiAdminRepository:
     #        se ne vanno con lei. La composizione dei preset
     #        (`fk_lista_preset_colonna_lista_colonna`) e' NO ACTION: una
     #        colonna che sta in un preset non si cancella, si toglie prima
-    #        dal preset (Q18 di brief-db-revisione-ui). Le preferenze utente
-    #        la nominano per CODICE nel JSONB `configurazione->colonne`,
-    #        senza FK. I due controlli preventivi del service
-    #        (`count_preferenze_referenced_by_colonna`,
-    #        `preset_con_colonna`) danno il rifiuto parlante prima del DELETE.
+    #        dal preset (Q18 di brief-db-revisione-ui); il controllo preventivo
+    #        del service (`preset_con_colonna`) da' il rifiuto parlante prima
+    #        del DELETE. Le preferenze utente la nominano per CODICE nel JSONB
+    #        `configurazione->colonne`, senza FK: la voce la toglie il DB
+    #        (`ui.trgfn_voce_ritira_dalle_preferenze`, Q55), e non ferma il
+    #        DELETE (Q56).
     def delete_colonna(self, colonna_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -600,37 +601,6 @@ class UiAdminRepository:
                 [colonna_id],
             )
             return cursor.rowcount > 0
-
-    # Scopo: Conta le preferenze utente che referenziano la colonna nel
-    #        JSONB `configurazione->colonne`. Il match e' per `codice`
-    #        (le preferenze non memorizzano l'id colonna, ma il codice
-    #        stabile cross-environment) e per `lista_id` (la struttura
-    #        e' per lista). Usato dal soft-block DELETE.
-    def count_preferenze_referenced_by_colonna(
-        self,
-        lista_id: int,
-        codice: str,
-    ) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COUNT(*)
-                  FROM ui.lista_preferenza_utente lpu
-                 WHERE lpu.lista_id = %s
-                   AND EXISTS (
-                       SELECT 1
-                         FROM jsonb_array_elements(
-                              COALESCE(lpu.configurazione->'colonne',
-                                       '[]'::jsonb)
-                         ) AS elem
-                        WHERE elem->>'codice' = %s
-                   )
-                """,
-                [lista_id, codice],
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            return int(row[0])
 
     # Scopo: I codici dei preset che compongono la colonna, accesi o spenti,
     #        in ordine di codice. Sono le righe che fermerebbero il DELETE

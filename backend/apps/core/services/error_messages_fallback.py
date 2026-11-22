@@ -1505,7 +1505,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "Campo sorgente colonna non trovato nella vista SQL.",
     "E_UI_CHIAMATA_NON_VALIDA": "Chiamata non valida alla configurazione della lista: il contesto della richiesta non corrisponde all'utente.",
     "E_UI_COLONNA_CODICE_IMMUTABILE": "Il codice e la lista di una colonna non si possono cambiare: preferenze e preset cercano la colonna per codice nella sua lista.",
-    "E_UI_COLONNA_IN_USO": "La colonna e' in uso in preferenze utente o preset. Disattivala con attivo=false invece di eliminarla.",
+    "E_UI_COLONNA_IN_USO": "La colonna e' in uso in un preset: toglila prima dal preset, oppure disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",
     "E_UI_CONFIGURAZIONE_FORMA": "La personalizzazione non si puo' salvare: non ha la forma ammessa.",
