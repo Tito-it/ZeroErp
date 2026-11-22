@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_processi_programmazione`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -247,6 +247,11 @@ quanti sono i sani un guasto sembra la norma. La vista gira coi privilegi del pr
   (`brief-db-statistiche-tabelle-job-notturno`). Prima un job nuovo era `MAI_PARTITO` fino alla prima
   corsa, e un demone fermo lasciava `OK` ogni job che aveva già girato.
 * 2026-10-16 — nascono `SPENTO` e `acceso` (`brief-db-processi-accensione-per-ambiente`).
+* 2026-11-22 — il giornale si pota a 12 mesi, e la vista non cambia: la potatura tiene sempre, per
+  ogni processo e job, l'ultima corsa, l'ultima di pgAgent e l'ultima non saltata (aperta o
+  conclusa), cioè le tre righe che le date e l'esito della vista leggono. Un processo fermo da più di
+  un anno non diventa `MAI_PARTITO`. Il calcolo sulle corse del processo, che legge tutte le sue
+  corse, ha ora il limite della ritenzione (`brief-db-giornale-corse-indici`).
 
 ---
 

@@ -30,6 +30,7 @@
 | causa_fallimento | text | NO |  |
 | corsa_verdetto_completo | boolean | NO | false |
 | accendibile_in_produzione | boolean | YES |  |
+| potatura_esclusione | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -40,6 +41,7 @@
 | CHECK | chk_processi_contratto_solo_command |  |
 | CHECK | chk_processi_convergenza_ci |  |
 | CHECK | chk_processi_jobname_pgagent_non_vuoto |  |
+| CHECK | chk_processi_potatura_esclusione_non_vuota |  |
 | CHECK | chk_processi_ritiro_con_data |  |
 | CHECK | chk_processi_segno_di_vita |  |
 | CHECK | chk_processi_sessione_senza_tolleranza |  |

@@ -21,6 +21,7 @@
 > * [script.fn_job_run_start](/dbzero/script/funzioni/fn_job_run_start) — apre la corsa di un lavoro del backend
 > * [script.fn_job_run_end](/dbzero/script/funzioni/fn_job_run_end) — la chiude
 > * [maintenance.fn_job_run_log_failure](/dbzero/maintenance/funzioni/fn_job_run_log_failure) — il verbale di un fallimento, fuori transazione
+> * [maintenance.fn_pota_giornale_corse](/dbzero/maintenance/funzioni/fn_pota_giornale_corse) — la ritenzione: l'unica porta che cancella
 >
 > Guide:
 >
@@ -74,21 +75,18 @@ persona. Il giornale non distingue pgAgent dagli altri chiamanti di un job del d
 
 ---
 
-### ⛔ Ogni corsa nuova dice di quale processo è
+### ⛔ Ogni corsa dice di quale processo è
 
 `processo_codice` è l'**attore** della corsa: il codice del processo in `dbops.processi`, per
 tutti i lavori, anche quelli di manutenzione. La FK `fk_job_run_log_processi` respinge un
-codice che il registro non conosce, e il CHECK `chk_job_run_log_processo_dichiarato` respinge
-una riga nuova **senza** codice: un processo che non sa dire chi è non gira, e fallire
-rumorosamente è meglio che lasciare una riga muta.
+codice che il registro non conosce, e il `NOT NULL` respinge una riga **senza** codice (23502):
+un processo che non sa dire chi è non gira, e fallire rumorosamente è meglio che lasciare una
+riga muta.
 
-Il CHECK è `NOT VALID` di proposito, e non si convalida: le corse scritte prima che la colonna
-esistesse non hanno attore e non lo avranno mai. Riempirle per far passare un vincolo vorrebbe
-dire inventare un attore per corse che non l'avevano. Un `NOT NULL` non si può mettere per la
-stessa ragione.
-
-⇒ La regola è il CHECK, e non ha bisogno di un presidio che la misuri: una corsa senza attore non
-può più nascere, e quelle di prima restano senza attore per sempre.
+⇒ Chi legge il giornale non gestisce un processo mancante: ogni riga ne ha uno, e la FK lo
+porta sempre a una riga di `dbops.processi`. Nessuno lo inventa: `fn_run_and_log` lo deriva dal
+`jobname` (il processo il cui codice è il nome del job) solo se il chiamante non lo passa, e
+`fn_job_run_start` lo riceve dal chiamante.
 
 `auth_user_id` è l'**utente tecnico** con cui gira il processo, quando ne ha uno. ⚠️ Non è
 l'operatore che ha chiesto un singolo lavoro di una coda: quello sta nello scope del lavoro in
@@ -181,12 +179,33 @@ dominio delle vecchie righe `P0001` non si recupera.
 | --- | --- | --- |
 | accesso allo schema | sì | risolvere i nomi |
 | `SELECT` sulla tabella e sulle viste di presidio | sì | la lista dei processi automatici e delle corse, il riepilogo dei giri e la liveness, gli esiti delle corsie di fatturazione, il digest |
-| `INSERT`, `UPDATE`, `DELETE` | **no** | la porta di scrittura sono le funzioni qui sopra; un giornale non si cancella |
+| `INSERT`, `UPDATE`, `DELETE` | **no** | la porta di scrittura sono le funzioni qui sopra; si cancella solo dalla potatura notturna (sotto) |
 
 La sede è il provisioning (`scripts/sql/provision_zeroerp.sql`, fase `post`, blocco
 `maintenance`), con un changeSet gemello per i database già provisionati. ⛔ `maintenance` non
 entra nella whitelist del provisioning, che darebbe lettura e scrittura piene su tutto lo
 schema per concedere una lettura.
+
+---
+
+### La ritenzione: 12 mesi, e le ultime corse sempre
+
+Il giornale non cresce per sempre: ogni notte il processo `pota_giornale_corse`
+([fn_pota_giornale_corse](/dbzero/maintenance/funzioni/fn_pota_giornale_corse)) cancella le corse
+**chiuse** che hanno più di 12 mesi. È l'unica porta che cancella.
+
+Non cancella mai:
+
+* le corse **aperte**, a qualunque età: una corsa appesa è ciò che il presidio deve mostrare;
+* per ogni coppia processo e job, le righe che i lettori leggono come «l'ultima»: in assoluto,
+  conclusa e non saltata, col ruolo registrato, fallita, di pgAgent. Un lavoro che gira una volta
+  all'anno non diventa «mai partito», e il suo ultimo rosso resta;
+* le corse dei processi che dichiarano `dbops.processi.potatura_esclusione`: oggi le corsie della
+  fatturazione, il cui pannello degli esiti apre qualunque mese.
+
+⇒ Chi legge il giornale **non** può contare su tutta la storia: gli elenchi delle corse e i
+conteggi arrivano a 12 mesi, più le righe che restano. Può contare sull'ultima corsa di ogni tipo,
+che c'è sempre.
 
 ---
 
@@ -200,9 +219,9 @@ l'ultima corsa è la prima riga che l'indice trova.
 | Indice | Serve |
 | --- | --- |
 | `ix_job_run_log_jobname_started_at` | le corse di un job: l'ultima corsa per job dei presidi e della liveness del backend, «c'è una corsa da…» dei timer, l'elenco dei job |
-| `ix_job_run_log_processo_codice_started_at` | le corse di un processo: la lista dei processi, le corse di un processo, il panorama `dbops.vw_processi_programmazione`. Copre la FK verso `dbops.processi` |
+| `ix_job_run_log_processo_codice_started_at` | le corse di un processo, attraverso tutti i suoi job: la lista dei processi, le corse di un processo, il panorama `dbops.vw_processi_programmazione`, `vw_job_run_da_superuser`. Copre la FK verso `dbops.processi` |
+| `ix_job_run_log_processo_codice_jobname_started_at` | i job di un processo, e per ciascuno le corse: l'elenco dei job dentro un processo e l'ultima corsa di ognuno (la liveness per processo del backend) |
 | `ix_job_run_log_started_at` | il giornale per data, senza chiave: l'elenco delle corse e le finestre di tempo dei presidi |
-| `ix_job_run_log_jobname_senza_processo` | le righe senza processo, che sono solo storiche (vedi sopra): la chiave «processo o, dove manca, job» di `vw_job_run_da_superuser` |
 
 * **Un indice non basta a «l'ultima corsa di ognuno».** Raggruppare tutto il giornale costa quanto
   il giornale, con o senza indice. Le viste che vogliono l'ultima corsa di ogni job la cercano
@@ -234,8 +253,10 @@ l'ultima corsa è la prima riga che l'indice trova.
 * `db/pgtap/maintenance/test-fn-run-and-log-lock-ed-esito-v1.sql` — l'esito in `meta.esito`, la
   riuscita con scarti scritta con `ok` falso ed `E_JOB_ESITO_CON_SCARTI`, `rows_affected` di una
   `SELECT`.
-* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql` — i quattro indici, e le due viste di
-  presidio che cercano l'ultima corsa una chiave alla volta.
+* `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql` — gli indici di lettura, il processo
+  obbligatorio, e le due viste di presidio che cercano l'ultima corsa una chiave alla volta.
+* `db/pgtap/maintenance/test-pota-giornale-corse-v1.sql` — la ritenzione: che cosa si cancella e
+  che cosa resta.
 
 ---
 
@@ -264,6 +285,15 @@ l'ultima corsa è la prima riga che l'indice trova.
 * 2026-11-22 — i quattro indici di lettura. Fino ad allora la tabella aveva la sola chiave
   primaria, e ogni lettura per job o per processo percorreva tutto il giornale
   (`brief-db-giornale-corse-indici`).
+* 2026-11-22 — `processo_codice` diventa `NOT NULL`, ed esce il CHECK
+  `chk_job_run_log_processo_dichiarato`. Il CHECK era nato `NOT VALID` il 2026-09-05 per non
+  inventare un attore alle corse di prima: quelle righe, presenti sulle sole macchine di sviluppo
+  nate prima del vincolo, si sono cancellate a mano. Escono con loro l'indice parziale delle righe
+  senza processo e il ramo storico di `vw_job_run_da_superuser`; nasce l'indice dei job di un
+  processo (`brief-db-giornale-corse-indici` §8).
+* 2026-11-22 — nasce la ritenzione di 12 mesi, con la potatura notturna `pota_giornale_corse`.
+  Fino ad allora nessuno cancellava dal giornale, e chi lo leggeva poteva contare su tutta la
+  storia (`brief-db-giornale-corse-indici` §7, §8).
 
 ---
 

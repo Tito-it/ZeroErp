@@ -1,0 +1,65 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.processi.potatura_esclusione: il processo le cui corse il giornale tiene per sempre.
+#   Brief: brief-db-giornale-corse-indici §8.4, §8.8 (giro 2b; D-R3 di Tid, 2026-11-22).
+#
+# ⭐ IL MODELLO. La potatura del giornale (maintenance.fn_pota_giornale_corse)
+#   cancella le corse piu' vecchie della soglia. Un processo che ha bisogno di
+#   tutta la sua storia lo DICHIARA qui, col perche': la potatura legge la
+#   colonna, e non tiene un elenco di jobname suo. Un processo nuovo con lo
+#   stesso bisogno si dichiara nel seed, senza toccare la potatura.
+#
+# ⭐ LA FORMA e' quella di ci_esclusione: un'esclusione porta il suo motivo.
+#   NULL = le corse si potano; un testo = non si potano mai, e il testo e' il
+#   perche'. Il CHECK vieta la stringa vuota, che direbbe «escluso» senza dire
+#   perche'.
+#
+# ⚠️ Il valore arriva dal seed (80_data/sql/dbops/processi.csv, mirror
+#   loadUpdateData), dopo tutto 00_schema: la colonna nasce nuda, senza default.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261122-29-alter-processi-add-potatura-esclusione-mctit.yaml
+
+  - changeSet:
+      id: 20261122-29-alter-processi-add-potatura-esclusione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.processi.potatura_esclusione: il motivo per cui le corse del processo non si potano
+        dal giornale; NULL = si potano. Brief: brief-db-giornale-corse-indici §8.4.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - columnExists:
+                schemaName: dbops
+                tableName: processi
+                columnName: potatura_esclusione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.processi
+                  ADD COLUMN potatura_esclusione text;
+
+              ALTER TABLE dbops.processi
+                  ADD CONSTRAINT chk_processi_potatura_esclusione_non_vuota
+                      CHECK (potatura_esclusione IS NULL OR btrim(potatura_esclusione) <> '');
+
+              COMMENT ON COLUMN dbops.processi.potatura_esclusione IS
+                'Perche'' le corse del processo non si potano dal giornale. NULL: maintenance.fn_pota_giornale_corse le cancella oltre la soglia, tranne le righe che i lettori del giornale leggono come «l''ultima». Un testo: il giornale le tiene tutte, per sempre, e il testo dice a chi serve tutta la storia (il pannello degli esiti di fatturazione, che apre qualunque mese). Mai vuoto (chk_processi_potatura_esclusione_non_vuota).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.processi DROP COLUMN potatura_esclusione;

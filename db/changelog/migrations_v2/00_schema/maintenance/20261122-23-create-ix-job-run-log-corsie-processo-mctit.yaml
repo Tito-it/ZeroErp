@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE CORSIE DI UN PROCESSO: un indice per (processo_codice, jobname).
+#   Brief: brief-db-giornale-corse-indici §8.2 (giro 2a).
+#
+#   Un processo puo' avere piu' corsie (jobname): la liveness per processo
+#   del backend le elenca con una discesa ricorsiva «il jobname successivo
+#   dentro il processo» (min(jobname) WHERE processo_codice = X AND
+#   jobname > precedente), poi legge l'ultima corsa di ciascuna.
+#   Sull'indice (processo_codice, started_at DESC, id DESC) ogni passo della
+#   discesa percorre tutte le corse del processo: jobname non e' in ordine.
+#
+#   ix_job_run_log_processo_codice_jobname_started_at
+#     (processo_codice, jobname, started_at DESC, id DESC)
+#   serve i due passi: la discesa (solo indice) e l'ultima corsa per corsia.
+#
+# ⭐ SI AGGIUNGE, NON SOSTITUISCE ix_job_run_log_processo_codice_started_at:
+#   le corse di un processo per recenza, attraverso tutte le corsie (le corse
+#   di un processo, dbops.vw_processi_programmazione), le da' solo quello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261122-23-create-ix-job-run-log-corsie-processo-mctit.yaml
+
+  - changeSet:
+      id: 20261122-23-create-ix-job-run-log-corsie-processo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log: l'indice delle corsie di un processo
+        (processo_codice, jobname, started_at DESC, id DESC).
+        Brief: brief-db-giornale-corse-indici §8.2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE INDEX ix_job_run_log_processo_codice_jobname_started_at
+                  ON maintenance.job_run_log USING btree (processo_codice, jobname, started_at DESC, id DESC);
+              COMMENT ON INDEX maintenance.ix_job_run_log_processo_codice_jobname_started_at IS
+                'Le corsie di un processo, e per ciascuna le corse dalla piu'' recente: l''elenco dei jobname distinti dentro un processo e l''ultima corsa di ogni corsia (la liveness per processo del backend). Le corse di un processo per recenza, attraverso le corsie, le serve ix_job_run_log_processo_codice_started_at.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX maintenance.ix_job_run_log_processo_codice_jobname_started_at;

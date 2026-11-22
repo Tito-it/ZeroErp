@@ -1,6 +1,6 @@
 # Guida — Tracciamento processi e job
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -39,8 +39,8 @@ In Zero ERP convivono processi di natura diversa: manutenzione schedulata via pg
 Il sistema di tracciamento e organizzato su **tre livelli**, ciascuno con un ruolo preciso:
 
 * **Audit log** (`dbops.audit_log`) — traccia le operazioni generiche: automazioni, deploy, processi batch. E il livello trasversale, usato da qualsiasi componente
-* **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`
-  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non dice di quale processo è non si scrive: il CHECK `chk_job_run_log_processo_dichiarato` lo respinge, e il lavoro non parte.
+* **Job run log** (`maintenance.job_run_log`) — traccia le esecuzioni dei **job schedulati**: pgAgent (lato DB) *e* job headless cron/command (management command Django, es. `run_fatturazione_batch`). Un record per ogni esecuzione con `origine`, esito, durata, dettaglio errori e `meta`. Tiene **12 mesi**: la potatura notturna `pota_giornale_corse` cancella le corse chiuse più vecchie, ma mai le corse aperte, le ultime che i presidi leggono, né le corse dei processi che dichiarano di volere tutta la storia (la fatturazione)
+  * **Dice anche chi**: quale lavoro (nome a registro) e con quale identità. Un run che non dice di quale processo è non si scrive: il giornale lo respinge (`processo_codice` è obbligatorio), e il lavoro non parte.
   * **Un fallimento deve lasciare traccia**: la riga «è andata male» scritta dentro la stessa transazione dell'errore verrebbe annullata insieme all'errore, quindi il verbale viaggia su una linea separata e sopravvive al rollback.
 * **Task registry e task runs** (`dbops` + `vendite`) — traccia l'esecuzione dei task all'interno delle pipeline applicative, con stato, tentativi e policy di resume
 
@@ -222,7 +222,7 @@ Vincoli:
 
 ### 3. Job schedulati: pgAgent e job headless (cron/command)
 
-I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit.
+I job schedulati via pgAgent sono processi periodici gestiti dallo scheduler PostgreSQL: pulizia log, applicazione indici FK, storicizzazione, aggiornamento audit, ritenzione del giornale delle corse.
 ⚠️ **Questo elenco è la sola natura ammessa dentro l'orologio**: manutenzione del sistema. Un lavoro che tocca i dati di un'azienda non viene eseguito lì — l'orologio lo mette in coda ([perché](/guide/processi-automatici-classe-e-identita)). Ogni job ha il proprio wrapper nello schema `maintenance` e registra le esecuzioni in `job_run_log`.
 
 `job_run_log` è però **generica**: oltre a pgAgent accoglie anche i **job headless cron/command** (management command Django via systemd, es. `run_fatturazione_batch`). La colonna `origine` (`PGAGENT` / `CRON` / `COMMAND`) distingue la sorgente; la colonna `meta` (jsonb) porta un riepilogo *generico* del run. Il dettaglio di dominio resta nei rispettivi schemi (es. `vendite.*` per la fatturazione), correlato via `run_uuid`.
@@ -248,7 +248,7 @@ Da un punto di vista tecnico:
 | `agent_host`      | TEXT          | Host di origine                                                                                                                                         |
 | `run_uuid`        | UUID          | Correlatore di sessione (default: `uuidv7()`); aggancia i record di dominio del run                                                                     |
 | `origine`         | VARCHAR(16)   | `PGAGENT` (default) / `CRON` / `COMMAND` — CHECK `chk_job_run_log_origine`                                                                              |
-| `processo_codice` | TEXT, FK      | Quale processo dichiara il run — FK a [dbops.processi](/dbzero/dbops/tabelle/processi); CHECK `chk_job_run_log_processo_dichiarato`                     |
+| `processo_codice` | TEXT, FK      | Quale processo dichiara il run — FK a [dbops.processi](/dbzero/dbops/tabelle/processi); `NOT NULL`, su ogni corsa                                      |
 | `auth_user_id`    | INTEGER       | L'utente **tecnico** con cui gira il processo, quando ne ha uno (non è l'operatore che ha chiesto un singolo lavoro: quello sta in `coda_lavori.scope`) |
 | `meta`            | JSONB         | Riepilogo **generico** del run (es. conteggi per esito); default `{}`                                                                                   |
 
@@ -261,7 +261,7 @@ La funzione wrapper standard per i job pgAgent. Gestisce:
 * Advisory lock (evita esecuzioni parallele)
 * Logging automatico su `job_run_log` con esito e durata
 * Cattura errori con SQLSTATE e contesto
-* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo non diventa una corsa senza attore: il CHECK `chk_job_run_log_processo_dichiarato` respinge la riga, e la corsa non parte
+* La dichiarazione del processo: il codice arriva da `p_processo_codice` o, se assente, si **deriva dal `jobname`** (per convenzione le due stringhe coincidono); un `jobname` che non corrisponde a nessun processo non diventa una corsa senza attore: il giornale respinge la riga (`processo_codice` è obbligatorio), e la corsa non parte
 
 Ogni job schedulato ha una procedura dedicata (es. `proc_automations_storico_job`, `proc_automations_cleanup_job`) che internamente usa `fn_run_and_log` per la parte di logging.
 
@@ -505,19 +505,7 @@ l'attore che si è dichiarato:
 SELECT DISTINCT ON (processo_codice)
        processo_codice, jobname, origine, ok, started_at, ended_at
 FROM maintenance.job_run_log
-WHERE processo_codice IS NOT NULL
 ORDER BY processo_codice, started_at DESC;
-```
-
-**Le corse senza attore** — sono solo quelle scritte prima del CHECK
-`chk_job_run_log_processo_dichiarato` (2026-09-05): una corsa nuova senza processo non si scrive:
-
-```sql
-SELECT jobname, origine, max(started_at) AS ultima
-FROM maintenance.job_run_log
-WHERE processo_codice IS NULL
-GROUP BY jobname, origine
-ORDER BY ultima DESC;
 ```
 
 ---

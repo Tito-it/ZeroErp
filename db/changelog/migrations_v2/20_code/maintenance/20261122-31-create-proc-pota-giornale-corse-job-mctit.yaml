@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.proc_pota_giornale_corse_job: la procedura del processo pota_giornale_corse.
+#   Brief: brief-db-giornale-corse-indici §7.1, §8.8 (giro 2b).
+#
+#   Come le sorelle (proc_automations_guard_utility_job): SECURITY DEFINER,
+#   search_path fissato, nessun EXECUTE a PUBLIC; lo da' a zeroerp_job il
+#   provisioning (fase post). Chiama maintenance.fn_pota_giornale_corse dentro
+#   maintenance.fn_run_and_log, con lock e giornale: la potatura e' una corsa
+#   come le altre, e la sua riga resta nel giornale.
+#
+# ⭐ LA RITENZIONE STA QUI, e solo qui: 12 mesi (Tid, 2026-11-22). La funzione
+#   riceve la soglia come parametro.
+#
+# ⭐ LA SOGLIA E' UN GIORNO, non un istante: l'inizio del giorno aziendale di
+#   12 mesi fa (script.fn_giorno_operativo → script.fn_mesi_dopo(…, -12) →
+#   script.fn_inizio_giorno_operativo). now() - interval '12 months' calcolerebbe
+#   nel fuso della sessione (pgAgent gira nel fuso del server), e i mesi si
+#   sommano con fn_mesi_dopo (linee-guida-sql §11.10). La funzione sta sul
+#   confine, non sulla colonna: il predicato resta servito dall'indice.
+#
+#   Il processo e' la riga 50 di 80_data/sql/dbops/processi.csv; il job
+#   pgAgent e' 85_pgagent/20261122-32.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-31-create-proc-pota-giornale-corse-job-mctit.yaml
+
+  - changeSet:
+      id: 20261122-31-create-proc-pota-giornale-corse-job
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.proc_pota_giornale_corse_job: la procedura del processo pota_giornale_corse, che
+        pota il giornale a 12 mesi. Brief: brief-db-giornale-corse-indici §8.8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'maintenance' AND p.proname = 'proc_pota_giornale_corse_job'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE oid = to_regprocedure('maintenance.fn_pota_giornale_corse(timestamp with time zone)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE PROCEDURE maintenance.proc_pota_giornale_corse_job()
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'topology', 'pg_temp'
+              AS $procedure$
+                BEGIN
+                  -- Scopo: la ritenzione del giornale delle corse, 12 mesi: la soglia e'
+                  --   l'inizio del giorno aziendale di 12 mesi fa. Il jobname e' il
+                  --   codice del processo in dbops.processi.
+                  PERFORM maintenance.fn_run_and_log(
+                    p_jobname  := 'pota_giornale_corse',
+                    p_stepname := 'pota_giornale_corse',
+                    p_sql      := 'SELECT maintenance.fn_pota_giornale_corse(script.fn_inizio_giorno_operativo(script.fn_mesi_dopo(script.fn_giorno_operativo(now()), -12)));',
+                    p_lock_key := hashtext('pota_giornale_corse')
+                  );
+                END;
+              $procedure$;
+
+              -- DEFINER: senza questa revoca chiunque poterebbe il giornale come proprietario.
+              --   L'EXECUTE a zeroerp_job lo da' il provisioning (fase post), come alle sorelle.
+              REVOKE EXECUTE ON PROCEDURE maintenance.proc_pota_giornale_corse_job() FROM PUBLIC;
+
+              COMMENT ON PROCEDURE maintenance.proc_pota_giornale_corse_job() IS
+              'Job pota_giornale_corse: la ritenzione del giornale delle corse. Chiama maintenance.fn_pota_giornale_corse dentro maintenance.fn_run_and_log, con lock e giornale, con la soglia all''inizio del giorno aziendale di 12 mesi fa (script.fn_giorno_operativo, script.fn_mesi_dopo, script.fn_inizio_giorno_operativo). La ritenzione di 12 mesi sta qui. SECURITY DEFINER del proprietario, search_path fissato; l''EXECUTE va solo a zeroerp_job (provisioning). Fuori dalla convergenza di ci_apply (dbops.processi.ci_esclusione); ogni notte da pgAgent.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP PROCEDURE IF EXISTS maintenance.proc_pota_giornale_corse_job();

@@ -1,0 +1,172 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.fn_pota_giornale_corse: la ritenzione del giornale delle corse.
+#   Brief: brief-db-giornale-corse-indici §7, §8.3, §8.8 (giro 2b; Tid 2026-11-22:
+#   12 mesi, D-R1 strada (a), D-R2, D-R3).
+#
+# ⭐ CHE COSA CANCELLA. Le corse con started_at prima della soglia, chiuse
+#   (ended_at valorizzato), di un processo che non dichiara
+#   dbops.processi.potatura_esclusione.
+#
+# ⭐ CHE COSA TIENE, a qualunque eta'. Per ogni coppia (processo, jobname),
+#   l'ultima riga (started_at DESC, id DESC, l'ordine dei lettori) di ciascun
+#   predicato con cui un lettore del giornale cerca «l'ultima»:
+#     · in assoluto           — «mai partito», l'ultima corsa (vw_processi_programmazione, liveness BE)
+#     · conclusa e vera       — ended_at NOT NULL AND NOT saltata (ultima conclusa, ultimo esito)
+#     · col ruolo registrato  — ruolo_sessione NOT NULL (vw_job_run_da_superuser)
+#     · fallita               — ok IS FALSE («l'ultimo rosso» di vw_job_run_da_guardare)
+#     · di pgAgent            — origine = 'PGAGENT' (GIRA_E_NON_REGISTRA di vw_processi_programmazione)
+#   e OGNI corsa aperta (ended_at NULL): non e' storia chiusa, e da appesa e'
+#   proprio cio' che il presidio mostra. Le ultime due voci, fallita e di
+#   pgAgent, non erano nell'insieme di D-R2: le ha trovate la rilettura dei
+#   lettori scrivendo (§8.8). Tengono di piu', non di meno.
+#   ⚠️ L'«ultima NOT saltata» non e' in elenco perche' ci e' gia' dentro: o e'
+#   aperta (tenuta), o e' l'ultima conclusa e vera.
+#
+# ⭐ LA CHIAVE E' LA COPPIA (processo, jobname). I lettori cercano «l'ultima»
+#   per jobname (vw_job_run_da_guardare), per processo (vw_job_run_da_superuser,
+#   la liveness per processo) o per «processo = K OR jobname = K»
+#   (vw_processi_programmazione). L'ultima riga di un jobname, o di un processo,
+#   che soddisfa un predicato e' l'ultima della sua coppia; quella dell'unione e'
+#   l'ultima di uno dei due insiemi. Quindi tenere l'ultima di ogni coppia tiene
+#   l'ultima di ogni lettore. ⚠️ Il solo jobname non basta: il modello non lega
+#   un jobname a un processo solo, e l'ultima riga di un jobname puo' essere di
+#   un altro processo.
+#
+# ⭐ LA FORMA. Le coppie si leggono con una discesa ricorsiva su
+#   ix_job_run_log_processo_codice_jobname_started_at («la coppia successiva»,
+#   un confronto fra righe); per ciascuna, ogni predicato e' una
+#   LATERAL ... LIMIT 1 sullo stesso indice. Il costo segue il numero
+#   delle chiavi, non la storia. La cancellazione legge le candidate da
+#   ix_job_run_log_started_at.
+#
+# ⚠️ LA SOGLIA E' UN PARAMETRO, la ritenzione di 12 mesi sta nel job
+#   (maintenance.proc_pota_giornale_corse_job): un solo posto, e la funzione
+#   si prova con qualunque soglia. STRICT: una soglia NULL non cancella niente.
+#
+# ⚠️ SECURITY INVOKER: cancella chi ne ha il diritto. La chiama il job, che e'
+#   SECURITY DEFINER del proprietario; l'applicazione non ha DELETE sul
+#   giornale, quindi chiamarla non le serve a niente. EXECUTE tolto a PUBLIC.
+#
+# ℹ️ NON E' IL FRAMEWORK DI CLEANUP (dbops.fn_run_automations_cleanup): quello
+#   da' a ogni riga una scadenza alla nascita (cleanup_at) e cancella lo
+#   scaduto, schema per schema (dbops.automation_scope, dove maintenance non
+#   c'e'). Qui una riga vecchia resta se e' «l'ultima» di qualcosa: la regola
+#   dipende dalle righe vicine, non dalla riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-30-create-fn-pota-giornale-corse-mctit.yaml
+
+  - changeSet:
+      id: 20261122-30-create-fn-pota-giornale-corse
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_pota_giornale_corse(soglia): cancella dal giornale le corse chiuse piu' vecchie
+        della soglia, tranne l'ultima di ogni predicato dei lettori per coppia (processo,
+        jobname), le corse aperte e i processi con potatura_esclusione. Brief: brief-db-giornale-corse-indici §8.8.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'maintenance' AND p.proname = 'fn_pota_giornale_corse'
+        - columnExists:
+            schemaName: dbops
+            tableName: processi
+            columnName: potatura_esclusione
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION maintenance.fn_pota_giornale_corse(
+                  p_prima_di maintenance.job_run_log.started_at%TYPE)
+               -- jsonb: l'esito della corsa, che fn_run_and_log scrive in meta.esito (non e' una colonna)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STRICT
+              AS $function$
+              DECLARE
+                -- bigint: il numero delle righe cancellate, un conteggio (non e' il riflesso di una colonna)
+                v_cancellate bigint;
+              BEGIN
+                -- Scopo: la ritenzione del giornale. Cancella le corse chiuse con
+                --   started_at prima di p_prima_di, dei processi che non dichiarano
+                --   dbops.processi.potatura_esclusione, tranne le righe tenute: per
+                --   ogni coppia (processo, jobname) l'ultima di ciascun predicato dei
+                --   lettori. Le corse aperte non si toccano mai.
+                WITH RECURSIVE coppie AS (
+                         (SELECT c0.processo_codice, c0.jobname
+                            FROM maintenance.job_run_log c0
+                           ORDER BY c0.processo_codice, c0.jobname
+                           LIMIT 1)
+                         UNION ALL
+                         SELECT n.processo_codice, n.jobname
+                           FROM coppie c
+                          CROSS JOIN LATERAL (
+                                SELECT c1.processo_codice, c1.jobname
+                                  FROM maintenance.job_run_log c1
+                                 WHERE (c1.processo_codice, c1.jobname) > (c.processo_codice, c.jobname)
+                                 ORDER BY c1.processo_codice, c1.jobname
+                                 LIMIT 1) n
+                     ), tenute AS (
+                         SELECT t.id
+                           FROM coppie k
+                          CROSS JOIN LATERAL (
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ended_at IS NOT NULL AND NOT l.saltata
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ruolo_sessione IS NOT NULL
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ok IS FALSE
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.origine = 'PGAGENT'
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                               ) t
+                     )
+                DELETE FROM maintenance.job_run_log l
+                 WHERE l.started_at < p_prima_di
+                   AND l.ended_at IS NOT NULL
+                   AND NOT EXISTS (SELECT 1
+                                     FROM dbops.processi pr
+                                    WHERE pr.codice = l.processo_codice
+                                      AND pr.potatura_esclusione IS NOT NULL)
+                   AND NOT EXISTS (SELECT 1 FROM tenute t WHERE t.id = l.id);
+
+                GET DIAGNOSTICS v_cancellate = ROW_COUNT;
+
+                RETURN jsonb_build_object('soglia', p_prima_di, 'cancellate', v_cancellate);
+              END;
+              $function$;
+
+              REVOKE EXECUTE ON FUNCTION maintenance.fn_pota_giornale_corse(maintenance.job_run_log.started_at%TYPE) FROM PUBLIC;
+
+              COMMENT ON FUNCTION maintenance.fn_pota_giornale_corse(maintenance.job_run_log.started_at%TYPE) IS
+                'La ritenzione del giornale delle corse. Cancella da maintenance.job_run_log le corse chiuse (ended_at valorizzato) con started_at prima della soglia, dei processi che non dichiarano dbops.processi.potatura_esclusione. Tiene sempre, per ogni coppia (processo, jobname), l''ultima riga (started_at, id decrescenti) di ciascun predicato con cui i lettori cercano «l''ultima»: in assoluto, conclusa e non saltata, col ruolo registrato, fallita, di pgAgent; e ogni corsa aperta, a qualunque eta''. Restituisce l''esito {soglia, cancellate}. STRICT: con la soglia NULL non cancella niente. SECURITY INVOKER: la chiama maintenance.proc_pota_giornale_corse_job, che fissa la soglia a 12 mesi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS maintenance.fn_pota_giornale_corse(timestamp with time zone);

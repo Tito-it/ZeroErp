@@ -22,7 +22,7 @@
 | run_uuid | uuid | NO | uuidv7() |
 | origine | character varying(16) | NO | 'PGAGENT'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
-| processo_codice | text | YES |  |
+| processo_codice | text | NO |  |
 | auth_user_id | integer | YES |  |
 | saltata | boolean | NO | false |
 | ruolo_sessione | text | YES |  |
@@ -32,7 +32,6 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_job_run_log_origine |  |
-| CHECK | chk_job_run_log_processo_dichiarato |  |
 | CHECK | chk_job_run_log_saltata |  |
 | CHECK | chk_job_run_log_sqlstate_forma |  |
 | FOREIGN KEY | fk_job_run_log_processi | processo_codice |
@@ -41,8 +40,8 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
-| ix_job_run_log_jobname_senza_processo | `CREATE INDEX ix_job_run_log_jobname_senza_processo ON maintenance.job_run_log USING btree (jobname, started_at DESC, id DESC) WHERE (processo_codice IS NULL)` |
 | ix_job_run_log_jobname_started_at | `CREATE INDEX ix_job_run_log_jobname_started_at ON maintenance.job_run_log USING btree (jobname, started_at DESC, id DESC)` |
+| ix_job_run_log_processo_codice_jobname_started_at | `CREATE INDEX ix_job_run_log_processo_codice_jobname_started_at ON maintenance.job_run_log USING btree (processo_codice, jobname, started_at DESC, id DESC)` |
 | ix_job_run_log_processo_codice_started_at | `CREATE INDEX ix_job_run_log_processo_codice_started_at ON maintenance.job_run_log USING btree (processo_codice, started_at DESC, id DESC)` |
 | ix_job_run_log_started_at | `CREATE INDEX ix_job_run_log_started_at ON maintenance.job_run_log USING btree (started_at DESC, id DESC)` |
 | job_run_log_pkey | `CREATE UNIQUE INDEX job_run_log_pkey ON maintenance.job_run_log USING btree (id)` |
