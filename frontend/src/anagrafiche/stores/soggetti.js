@@ -10,5 +10,4 @@ export const useSoggettiStore = createCrudStore('anagrafiche-soggetti', {
   tabEntity: TAB_ENTITIES.SOGGETTO,
   filterDefaults: { tipo_soggetto_dettaglio_id: null },
   gateKeys: ['tipo_soggetto_dettaglio_id'],
-  orderBy: 'ragione_sociale_completa',
 })

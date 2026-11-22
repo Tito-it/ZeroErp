@@ -35,7 +35,7 @@ const isBlocked = useInjectBlocked()
 const {
   searchText, onPage, onSort, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, { searchTableOptions: { defaultSortField: 'code' } })
+} = useListaConfigurabilePage(store)
 
 // I quattro livelli di override della cascata sono colonne: lo stesso
 // rendering per tutti («—» dove il livello non ha un valore). Il quinto, il

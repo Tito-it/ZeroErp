@@ -52,7 +52,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'vendite.preventivi.nuovo_preventivo',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---

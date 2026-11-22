@@ -50,7 +50,6 @@ const {
   newTooltipKey: 'catalogo.nuovo_articolo',
   onNew: () => emit('new'),
   // Allineato al preset del seed (`codice asc`); lo store parte gia' da qui.
-  searchTableOptions: { defaultSortField: 'codice' },
 })
 
 // ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`

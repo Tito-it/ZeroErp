@@ -26,6 +26,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
 import { campoDelSoftware } from '../../core/utils/campoDelSoftware'
+import { campoFermo } from '../../core/utils/campoFermo'
 import MotivoDelProgramma from '../../core/components/MotivoDelProgramma.vue'
 import { senzaCampiFermi } from '../../core/utils/senzaCampiFermi'
 
@@ -47,6 +48,11 @@ const isEdit = computed(() => props.mode === 'edit')
 // Scopo: il campo lo stabilisce il programma su questa definizione (riga di
 // seed)? L'elenco viaggia con la riga della lista (`campi_del_software`).
 const delProgramma = (campo) => isEdit.value && campoDelSoftware(props.recordData, campo)
+// Scopo: il campo e' fermo in modifica: del programma, oppure fermo per
+// modello (il codice, chiave con cui la schermata si cerca: giro 4 di
+// brief-db-revisione-ui, BE12). Lo dice la riga (`campi_del_software`,
+// `non_editable_fields`), BB `campoFermo`. Fermo = spento e fuori dal PATCH.
+const fermo = (campo) => isEdit.value && campoFermo(props.recordData, campo)
 
 function defaultForm() {
   return {
@@ -110,7 +116,7 @@ function buildPayload() {
 async function onSave() {
   if (!canSave.value) return
   // ⛔ Un campo del programma non entra nel PATCH: il guard del DB lo rifiuta.
-  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), delProgramma) : buildPayload()
+  const payload = isEdit.value ? senzaCampiFermi(buildPayload(), fermo) : buildPayload()
   let result
   if (isEdit.value) {
     result = await execute(
@@ -152,7 +158,7 @@ async function onSave() {
         <div class="form-field">
           <label>{{ t('ui.admin.definizione_codice') }}</label>
           <InputText v-model="form.codice" maxlength="80"
-            :disabled="delProgramma('codice')"
+            :disabled="fermo('codice')"
             :invalid="campiErrati.includes('codice')"
           />
           <MotivoDelProgramma campo="codice" :fermo="delProgramma" :testo="t('ui.admin.campo_del_programma')" />

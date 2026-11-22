@@ -33,7 +33,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'indirizzi.nuovo_indirizzo',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'indirizzo_normalizzato' },
 })
 
 const comuneFilter = ref(null)

@@ -121,15 +121,17 @@ class PatchVuotaTests(TestCase):
                 )
                 getattr(repo, scrittura).assert_not_called()
 
-    # ⚠️ Sulle colonne «azione» `esportabile = false` e' DERIVATO: non e' un
-    #    campo chiesto, e con `{}` faceva passare il controllo e scriveva.
+    # ⚠️ Sulle colonne «azione» `esportabile = false` era DERIVATO: non era un
+    #    campo chiesto, e con `{}` faceva passare il controllo e scriveva. Dal
+    #    giro 4 di brief-db-revisione-ui il service non deriva piu' niente nel
+    #    PATCH (i vincoli fra campi li giudica il DB): `{}` resta `{}`, e un
+    #    valore esplicito arriva com'e'.
     def test_la_colonna_azione_non_inventa_un_campo(self) -> None:
         from apps.ui.services.lista_colonna_admin_service import ListaColonnaAdminService
 
         svc = ListaColonnaAdminService()
-        corrente = {"tipo_colonna": "azione"}
-        self.assertEqual(svc._build_update_data({}, current=corrente), {})
+        self.assertEqual(svc._build_update_data({}), {})
         self.assertEqual(
-            svc._build_update_data({"esportabile": True}, current=corrente),
-            {"esportabile": False},
+            svc._build_update_data({"esportabile": True}),
+            {"esportabile": True},
         )

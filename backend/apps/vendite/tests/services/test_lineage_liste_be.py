@@ -17,7 +17,7 @@ Indice test eseguiti:
 2) LineageListeOrderWhitelistTests.test_frontiera_non_ordinabile
 3) LineageListeFrontieraDecodeTests.test_nessuna_lista_ridecodifica_il_tipo_della_frontiera
 4) LineageListeChipPropTests.test_ogni_lista_col_transito_passa_la_natura_al_chip
-5) LineageListeSintesiTests.test_ogni_lista_unisce_la_sintesi_col_suo_tipo
+5) LineageListeSintesiTests.test_unisce_la_sintesi_chi_dichiara_legge_lineage
 6) LineageListeSintesiTests.test_ogni_lista_col_transito_e_servita_dalla_sintesi
 
 ⛔ QUESTO FILE ERA ANCORATO A CINQUE LISTE, ed e' la stessa trappola che il
@@ -83,13 +83,11 @@ _WHITELISTS = {
     #    colonne di genealogia, e su un reso la frontiera e' la NOTA DI CREDITO
     #    che lo accredita (arco S).
     "resi": (resi_repository, resi_repository._ORDER_COLS_RESI, "RESO_VENDITA"),
-    # ⭐ La settima (2026-08-29): `vw_fatture_lista` porta le stesse quattro
-    #    colonne `frontiera_*` delle sorelle, e il suo repository decodifica
-    #    gia' il tipo della frontiera. ⚠️ Non monta (ancora) il chip «Transito»
-    #    e la colonna non e' a catalogo: entra qui perche' il contratto che
-    #    questi tre test presidiano — pratica/fase ordinabili, frontiera no,
-    #    tipo decodificato — lo rispetta gia' tutto, e restarne fuori
-    #    significherebbe solo che nessuno se ne accorge quando smettera'.
+    # ⭐ La settima (2026-08-29): `vw_fatture_lista` porta pratica e fase come
+    #    le sorelle, e i presidi dell'ordinamento valgono anche per lei. ⛔ Non
+    #    legge la genealogia: la lista non dichiara `legge_lineage`, non ha la
+    #    colonna «Transito» a catalogo, e dal 2026-11-22 il suo repository non
+    #    chiede la sintesi (BE14 di brief-db-revisione-ui, deciso da Tid).
     "fatture": (fatture_repository, fatture_repository._ORDER_COLS_FATTURE, "FATTURA"),
 }
 
@@ -193,6 +191,14 @@ def _montato_in_cella(testo: str, nome: str) -> bool:
 #        (`ui.lista_colonna`, seed CSV). ⭐ Si deriva dal SEED e non da un
 #        elenco scritto qui: il seed e' il contratto, e una lista nuova entra da
 #        sola invece di dover aggiornare un numero.
+# Scopo: i codici delle liste accese che dichiarano `legge_lineage` nel seed.
+def _liste_che_leggono_la_lineage() -> set[str]:
+    return {
+        r["codice"] for r in seed_ui("lista_definizione.csv")
+        if r["attivo"] == "t" and r.get("legge_lineage") == "t"
+    }
+
+
 def _liste_con_colonna_transito() -> set[str]:
     ids = {
         r["lista_id"] for r in seed_ui("lista_colonna.csv")
@@ -315,25 +321,48 @@ class LineageListeSintesiTests(TestCase):
     con lui la colonna dell'export, che chiama gli stessi metodi.
     """
 
-    # Scopo: ogni lista del registro chiama la sintesi, col SUO tipo del
-    #        grafo — un tipo sbagliato (ordini col tipo dei DDT) non trova i
-    #        nodi e lascia le colonne a NULL, anche qui senza errore. Il tipo
-    #        si passa con la costante di `apps.config.sorgenti`
-    #        (`SORGENTE_<codice>`), che il suo presidio lega al seed.
-    def test_ogni_lista_unisce_la_sintesi_col_suo_tipo(self):
+    # Scopo: chiede la sintesi ESATTAMENTE la lista che dichiara
+    #        `legge_lineage` nel seed (giro 4 di brief-db-revisione-ui, Q15 e
+    #        Q47; BE14 deciso da Tid il 2026-11-22: le fatture non la
+    #        dichiarano, e il loro repository ha smesso di chiederla). Chi la
+    #        chiede la chiede col SUO tipo del grafo — un tipo sbagliato
+    #        (ordini col tipo dei DDT) non trova i nodi e lascia le colonne a
+    #        NULL, senza errore. Il tipo si passa con la costante di
+    #        `apps.config.sorgenti` (`SORGENTE_<codice>`), che il suo presidio
+    #        lega al seed.
+    # ⭐ Le liste che leggono la genealogia vengono dal SEED, non da un elenco
+    #    qui: una dichiarazione cambiata nel CSV accende o spegne il presidio.
+    def test_unisce_la_sintesi_chi_dichiara_legge_lineage(self):
         tipi = [tipo for _modulo, _wl, tipo in _WHITELISTS.values()]
         self.assertEqual(len(tipi), len(set(tipi)), "due liste col tipo del grafo uguale")
+        dichiarate = _liste_che_leggono_la_lineage()
+        self.assertTrue(dichiarate, "nessuna lista dichiara `legge_lineage` nel seed")
+        for codice in sorted(dichiarate):
+            with self.subTest(dichiarata=codice):
+                self.assertIn(
+                    codice.removeprefix("vendite."), _WHITELISTS,
+                    f"{codice}: dichiara `legge_lineage` ma il suo repository non "
+                    "e' nel registro delle liste documento.",
+                )
         for nome, (modulo, _wl, tipo) in _WHITELISTS.items():
             with self.subTest(lista=nome):
                 self.assertIn(tipo, LINEAGE_TIPI_DOCUMENTO)
                 sorgente = sorgente_senza_commenti(inspect.getsource(modulo))
-                self.assertRegex(
-                    sorgente,
-                    r"unisci_sintesi_lineage\(\s*results\s*,\s*tipo_codice_interno\s*=\s*"
-                    + re.escape(f"SORGENTE_{tipo}") + r"\s*\)",
-                    f"{nome}: la lista non unisce la sintesi lineage col tipo "
-                    f"{tipo}: frontiera e transito uscirebbero vuoti.",
-                )
+                if f"vendite.{nome}" in dichiarate:
+                    self.assertRegex(
+                        sorgente,
+                        r"unisci_sintesi_lineage\(\s*results\s*,\s*tipo_codice_interno\s*=\s*"
+                        + re.escape(f"SORGENTE_{tipo}") + r"\s*\)",
+                        f"{nome}: la lista dichiara `legge_lineage` ma non unisce "
+                        f"la sintesi col tipo {tipo}: frontiera e transito "
+                        "uscirebbero vuoti.",
+                    )
+                else:
+                    self.assertNotIn(
+                        "unisci_sintesi_lineage(", sorgente,
+                        f"{nome}: la lista non dichiara `legge_lineage` e chiede "
+                        "comunque la sintesi della genealogia.",
+                    )
 
     # Scopo: ogni lista che dichiara «transito» a catalogo e' servita da un
     #        repository del registro (cioe' da uno che unisce la sintesi). La

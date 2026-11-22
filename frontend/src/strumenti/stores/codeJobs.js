@@ -50,14 +50,14 @@ function buildCodaParams(f) {
 }
 
 // Factory: crea uno store coda con l'interfaccia standard delle liste
-// configurabili. `id` = id Pinia univoco; `fetchPage` = endpoint API;
-// `orderBy` = preset del seed, che replica il default gia' applicato dal BE
-// (la lista non si riordina sotto gli occhi dell'operatore al primo
-// caricamento).
-// ⚠️ Lo stesso fatto vive quindi in TRE sedi che devono concordare: qui,
-//    `ordinamento_default` del preset in `ui.lista_preset`, e il `default=`
-//    del service. Cambiarne una sola non da' nessun errore: da' una lista che
-//    si riordina da sola appena l'operatore tocca qualcosa.
+// configurabili. `id` = id Pinia univoco; `fetchPage` = endpoint API.
+// ⭐ NESSUN ORDINAMENTO DI PARTENZA QUI (BE25 (2) di brief-db-revisione-ui,
+//    2026-11-22). Prima lo stesso fatto viveva in TRE sedi che dovevano
+//    concordare (questo store, `ordinamento_default` del preset, il `default=`
+//    del service). Ora la richiesta parte senza `order_by`: il backend applica
+//    l'ordinamento del preset e lo dice in `meta.ordinamento`
+//    (`ordinamentoApplicato`, dal BB qui sotto), da cui la tabella accende
+//    l'intestazione. Il `default=` del service resta il ripiego senza preset.
 // ⭐ Dal 2026-09-07 entrambe le code ordinano per `data_insert` — «quando e'
 //    entrato in coda». Prima la coda lavori usava `started_at`, che un lavoro
 //    in ATTESA non ha: finiva in fondo, dopo ogni lavoro mai avviato. Non era
@@ -74,7 +74,7 @@ function buildCodaParams(f) {
 //    piena — un operatore non incontra mai una riga archiviabile finche' non
 //    tocca il filtro. Un verbo dietro un filtro che lo esclude e' come non
 //    averlo consegnato.
-function createCodaJobsStore(id, fetchPage, { orderBy }) {
+function createCodaJobsStore(id, fetchPage) {
   return defineStore(id, () => {
     // ⭐ I FILTRI DI DOMINIO IN UNA SEDE SOLA (2026-09-23): da qui nascono i
     //    valori di partenza E il contratto che `FiltriLista` legge per il segno
@@ -95,8 +95,8 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
       ...FILTRI_DEFAULT,
       limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
-      order_by: orderBy,
-      order_dir: 'desc',
+      order_by: null,
+      order_dir: null,
     })
 
     // Quante righe l'archiviazione lascia FUORI dall'elenco, dichiarate dal BE
@@ -155,8 +155,8 @@ function createCodaJobsStore(id, fetchPage, { orderBy }) {
 }
 
 export const useCodaLavoriStore = createCodaJobsStore(
-  'strumenti-coda-lavori', listCodaLavori, { orderBy: 'data_insert' },
+  'strumenti-coda-lavori', listCodaLavori,
 )
 export const useCodaStampaStore = createCodaJobsStore(
-  'strumenti-coda-stampa', listCodaStampa, { orderBy: 'data_insert' },
+  'strumenti-coda-stampa', listCodaStampa,
 )

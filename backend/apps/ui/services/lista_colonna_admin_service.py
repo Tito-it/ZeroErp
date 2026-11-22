@@ -14,21 +14,30 @@
 #
 #        Validazione lato Python:
 #          - whitelist chiavi payload via PayloadValidator
-#          - enum tipo_colonna / tipo_dato / allineamento (drift risk con DB)
-#          - vincolo CHECK chk_ui_lista_colonna_azione_non_esportabile:
-#            forziamo `esportabile=False` quando `tipo_colonna='azione'`
-#            (silently normalize, decisione 6 _def.md) per evitare errore
-#            tardivo del DB e UX rotta lato form.
-#          - lista_id immutabile in update (no spostamenti cross-lista)
+#          - enum tipo_colonna / tipo_dato / allineamento / origine_campo
+#            (drift risk con DB)
+#          - lista_id e codice immutabili in update (codice dal giro 4 di
+#            brief-db-revisione-ui, BE12: preferenze e preset cercano la
+#            colonna per codice)
+#          - i DEFAULT dei flag derivati dal modello, solo quando il client
+#            non li manda (vedi `_build_create_data`)
 #
-#        Validazione lato DB:
+#        Validazione lato DB (la regola sta li', il service la mappa sul campo):
 #          - UNIQUE (lista_id, codice) -> map_integrity_error
 #          - FK: lista_colonna_permesso ON DELETE CASCADE (i permessi
 #            vanno con la colonna); lista_preset_colonna NO ACTION (una
 #            colonna in un preset non si cancella, Q18 di
 #            brief-db-revisione-ui) -> E_UI_COLONNA_IN_USO
-#          - trigger guard valida_campo_sorgente -> E_UI_CAMPO_SORGENTE_NON_TROVATO
-#          - CHECK chk_ui_lista_colonna_azione_non_esportabile (defense in depth)
+#          - trigger guard valida_campo_sorgente -> E_UI_CAMPO_SORGENTE_NON_TROVATO,
+#            E_UI_LINEAGE_NON_DICHIARATA (una colonna LINEAGE su una lista
+#            che non dichiara `legge_lineage`)
+#          - i CHECK del giro 4 (U24, U25, la lineage): un'azione non ha campo
+#            sorgente; senza campo sorgente non si esporta; una colonna della
+#            genealogia non si filtra, non si ordina e non si cerca.
+#            ⛔ Il service non li ricopia piu' (fino al giro 4 forzava
+#            `esportabile=False` sulle azioni, decisione 6 _def.md, quando la
+#            regola era `chk_ui_lista_colonna_azione_non_esportabile`, ora
+#            ritirato): un valore esplicito contrario e' un 400 sul campo.
 #
 #        Soft-block DELETE: prima del DELETE il service conta le preferenze
 #        utente che nominano la colonna per codice nel JSONB
@@ -70,6 +79,9 @@ _TIPI_DATO: frozenset[str] = frozenset(
     {"string", "numeric", "date", "datetime", "boolean", "enum"}
 )
 _ALLINEAMENTI: frozenset[str] = frozenset({"left", "right", "center"})
+# Enum `ui.origine_campo_lista` (giro 4, U26, Q15): da dove la colonna prende
+# il dato, la relazione della lista o la genealogia dei documenti.
+_ORIGINI_CAMPO: frozenset[str] = frozenset({"VISTA", "LINEAGE"})
 
 # Whitelist chiavi payload create. lista_id arriva dal path della view.
 CREATE_KEYS: frozenset[str] = frozenset(
@@ -79,6 +91,7 @@ CREATE_KEYS: frozenset[str] = frozenset(
         "etichetta_estesa",
         "etichetta_i18n_key",
         "campo_sorgente",
+        "origine_campo",
         "tipo_colonna",
         "tipo_dato",
         "formato",
@@ -96,10 +109,10 @@ CREATE_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Whitelist update: gli stessi campi + esclusione lista_id (immutabile,
-# non comparirebbe comunque nel payload). Il `codice` cambia con UNIQUE
-# check DB.
-UPDATE_KEYS: frozenset[str] = CREATE_KEYS
+# Whitelist update: gli stessi campi, senza `codice` (immutabile dal giro 4,
+# lucchetto DB `E_UI_COLONNA_CODICE_IMMUTABILE`). `lista_id` non c'e' comunque:
+# arriva dal path.
+UPDATE_KEYS: frozenset[str] = CREATE_KEYS - {"codice"}
 
 _MAX_CODICE_LEN = 80
 _MAX_ETICHETTA_LEN = 120
@@ -127,10 +140,30 @@ _FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# I CHECK del giro 4 di brief-db-revisione-ui, ognuno sul campo che lo
+# risolve. `chk_ui_lista_colonna_azione_non_esportabile` e' ritirato: lo dicono
+# gia' i primi due insieme (regola del 2, lato DB).
 _CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
-    "chk_ui_lista_colonna_azione_non_esportabile": (
+    "chk_ui_lista_colonna_azione_senza_campo": (
         E_COLONNA_VALIDATION,
-        "Le colonne di tipo 'azione' non possono essere esportabili.",
+        "Una colonna di tipo 'azione' non ha campo sorgente.",
+        "campo_sorgente",
+    ),
+    "chk_ui_lista_colonna_senza_campo_non_esportabile": (
+        E_COLONNA_VALIDATION,
+        "Senza campo sorgente la colonna non si puo' esportare.",
+        "esportabile",
+    ),
+    "chk_ui_lista_colonna_lineage_solo_mostrata": (
+        E_COLONNA_VALIDATION,
+        "Una colonna della genealogia dei documenti si mostra soltanto: "
+        "non e' filtrabile, ordinabile ne' ricercabile.",
+        "origine_campo",
+    ),
+    "chk_lista_colonna_campo_sorgente_non_vuoto": (
+        E_COLONNA_VALIDATION,
+        "Il campo sorgente, se indicato, non puo' essere vuoto.",
+        "campo_sorgente",
     ),
 }
 
@@ -239,26 +272,26 @@ class ListaColonnaAdminService:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         self._v.guard_positive_int(colonna_id, field="colonna_id")
-        # 404 + caricamento corrente per UX vincoli (es. tipo_colonna
-        # passa da informazione -> azione -> serve forzare esportabile=
-        # False anche se non passato dal client).
-        current = self.get_colonna(colonna_id)
+        # 404 unificato prima di leggere il payload.
+        self.get_colonna(colonna_id)
 
         # Reject espliciti per immutabili: dare messaggio parlante prima
         # della whitelist.
-        if "lista_id" in payload:
-            ErrorManager.raise_error(
-                code=E_COLONNA_VALIDATION,
-                message="Campo immutabile presente in payload update.",
-                detail="lista_id non aggiornabile",
-            )
+        for immutabile in ("lista_id", "codice"):
+            if immutabile in payload:
+                ErrorManager.raise_error(
+                    code=E_COLONNA_VALIDATION,
+                    message="Campo immutabile presente in payload update.",
+                    detail=f"{immutabile} non aggiornabile",
+                    fields=(immutabile,),
+                )
 
         self._v.validate_allowed_keys(
             payload,
             allowed=UPDATE_KEYS,
             message="Payload colonna lista non valido.",
         )
-        data = self._build_update_data(payload, current=current)
+        data = self._build_update_data(payload)
         self._v.require_campi_da_aggiornare(
             data,
             detail=f"allowed_keys={sorted(UPDATE_KEYS)!r}",
@@ -411,6 +444,9 @@ class ListaColonnaAdminService:
         data["campo_sorgente"] = self._v.optional_string(
             payload, "campo_sorgente", max_len=_MAX_CAMPO_SORGENTE_LEN
         )
+        data["origine_campo"] = (
+            self._origine_campo(payload) if "origine_campo" in payload else "VISTA"
+        )
 
         tipo_colonna = self._v.require_string(payload, "tipo_colonna")
         ErrorManager.require(
@@ -468,10 +504,17 @@ class ListaColonnaAdminService:
             payload, "gruppo_ordine", max_value=_MAX_ORDINE
         )
 
+        # ⭐ I DEFAULT seguono il modello, e valgono SOLO per il flag che il
+        #    client non manda: una colonna senza dato non si esporta (U25),
+        #    una della genealogia si mostra soltanto (CHECK della lineage).
+        #    Non e' una copia della regola: un valore esplicito contrario
+        #    arriva al DB, che lo rifiuta sul campo (`_CHECK_CONSTRAINTS`).
+        ha_dato = data["campo_sorgente"] is not None
+        della_vista = data["origine_campo"] != "LINEAGE"
         for flag, default in (
-            ("filtrabile", True),
-            ("ordinabile", True),
-            ("esportabile", True),
+            ("filtrabile", della_vista),
+            ("ordinabile", della_vista),
+            ("esportabile", ha_dato),
             ("ricercabile_full", False),
             ("sensibile", False),
             ("attivo", True),
@@ -479,30 +522,28 @@ class ListaColonnaAdminService:
             value = self._v.optional_bool(payload, flag)
             data[flag] = bool(value) if value is not None else default
 
-        # Vincolo CHECK applicato lato BE (decisione 6 _def.md): le
-        # colonne di tipo 'azione' non possono essere esportabili. Se
-        # l'utente passa esportabile=True esplicitamente, lo
-        # silenziamo per coerenza UX (no errore tardivo dal DB).
-        if data["tipo_colonna"] == "azione":
-            data["esportabile"] = False
-
         return data
 
-    # Scopo: Normalizza il payload update sui soli campi presenti.
-    #        Quando cambia tipo_colonna verso 'azione' applichiamo la
-    #        normalizzazione esportabile=False anche se non e' nel
-    #        payload (decisione 6).
+    # Scopo: Legge `origine_campo` contro l'enum `ui.origine_campo_lista`.
+    def _origine_campo(self, payload: dict[str, Any]) -> str:
+        value = self._v.require_string(payload, "origine_campo")
+        ErrorManager.require(
+            value in _ORIGINI_CAMPO,
+            code=E_COLONNA_VALIDATION,
+            message="Valore 'origine_campo' non ammesso.",
+            detail=f"valore='{value}', ammessi={sorted(_ORIGINI_CAMPO)!r}",
+        )
+        return value
+
+    # Scopo: Normalizza il payload update sui soli campi presenti. Nessun
+    #        valore derivato: i vincoli fra campi (azione senza campo,
+    #        senza campo non esportabile, genealogia solo mostrata) li
+    #        giudica il DB, sul valore finale della riga.
     def _build_update_data(
         self,
         payload: dict[str, Any],
-        *,
-        current: dict[str, Any],
     ) -> dict[str, Any]:
         data: dict[str, Any] = {}
-        if "codice" in payload:
-            data["codice"] = self._v.require_string(
-                payload, "codice", max_len=_MAX_CODICE_LEN
-            )
         if "etichetta" in payload:
             data["etichetta"] = self._v.require_string(
                 payload, "etichetta", max_len=_MAX_ETICHETTA_LEN
@@ -519,6 +560,8 @@ class ListaColonnaAdminService:
             data["campo_sorgente"] = self._v.optional_string(
                 payload, "campo_sorgente", max_len=_MAX_CAMPO_SORGENTE_LEN
             )
+        if "origine_campo" in payload:
+            data["origine_campo"] = self._origine_campo(payload)
         if "tipo_colonna" in payload:
             value = self._v.require_string(payload, "tipo_colonna")
             ErrorManager.require(
@@ -587,16 +630,6 @@ class ListaColonnaAdminService:
                     detail=f"field={flag}",
                 )
                 data[flag] = bool(valore_flag)
-
-        # Normalize esportabile su tipo_colonna='azione': considera il
-        # tipo_colonna nuovo (se presente nel payload) o quello corrente.
-        # ⚠️ Solo se il client ha chiesto qualcosa: il valore DERIVATO non e' un
-        #    campo, e con `{}` faceva passare il controllo del PATCH vuoto e
-        #    scriveva `data_update` (2026-10-20, brief-be-verifica-
-        #    documentazione-api §A2).
-        tipo_colonna_finale = data.get("tipo_colonna", current["tipo_colonna"])
-        if tipo_colonna_finale == "azione" and data:
-            data["esportabile"] = False
 
         return data
 

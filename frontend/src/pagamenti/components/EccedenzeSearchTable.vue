@@ -44,7 +44,6 @@ const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'eccedenza_cliente', defaultSortOrder: 'desc' },
 })
 
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)

@@ -38,6 +38,4 @@ export const useConversioniUomStore = createCrudStore('catalogo-conversioni-uom'
   // ⚠️ Il ripiego del verso resta `asc` (default del core), com'era nella
   // copia a mano: e' un ramo dormiente, e un'estrazione appiana la
   // duplicazione, non le differenze.
-  orderBy: 'valido_al',
-  orderDir: 'desc',
 })

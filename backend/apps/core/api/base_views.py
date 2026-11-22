@@ -23,7 +23,14 @@ from apps.core.api.permissions import (
 )
 from apps.core.services import perimetro_emittente
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
-from apps.core.services.request_context import get_idempotency_key
+from apps.core.services.ordinamento_di_partenza import (
+    applica_ordinamento_di_partenza,
+    ritira_ordinamento_di_partenza,
+)
+from apps.core.services.request_context import (
+    OrdinamentoPropostoRifiutato,
+    get_idempotency_key,
+)
 from apps.core.services.service_errors import ServiceError
 
 
@@ -168,6 +175,37 @@ class DomainAPIView(_ApiViewBase):
                 lista_codice=self.lista_codice,
                 emittente_esplicito=self._emittente_esplicito(request),
             )
+            # ⭐ L'ordinamento di partenza della lista, quando la richiesta non
+            #    ne porta uno (BE25 (2) di brief-db-revisione-ui): DOPO il
+            #    cancello, perche' una lista che non si puo' leggere non si
+            #    ordina. Il perche' della sede sta nel BB.
+            applica_ordinamento_di_partenza(request, lista_codice=self.lista_codice)
+
+    # Scopo: il repository ha rifiutato la chiave dell'ordinamento di partenza
+    #        (BE25 (2) di brief-db-revisione-ui): si ritira la proposta e si
+    #        rilegge la lista con lo STESSO handler, una volta sola, come se la
+    #        richiesta fosse arrivata senza `order_by`.
+    # ⭐ Si rilegge invece di ripiegare dentro il repository perche' molti
+    #    compongono l'`ORDER BY` a mano e leggono `order_dir` per conto loro:
+    #    un ripiego sulla sola colonna terrebbe il verso del preset sul default.
+    #    Rileggere e' sicuro: la proposta vive solo su GET/HEAD, che non
+    #    scrivono (girano in sola lettura).
+    # ⚠️ Ogni altra eccezione, e un secondo rifiuto, seguono la strada di sempre.
+    def handle_exception(self, exc):
+        if (
+            isinstance(exc, OrdinamentoPropostoRifiutato)
+            and self.lista_codice
+            and not getattr(self, "_ordinamento_di_partenza_ritirato", False)
+        ):
+            self._ordinamento_di_partenza_ritirato = True
+            ritira_ordinamento_di_partenza(self.request, lista_codice=self.lista_codice)
+            metodo = (self.request.method or "").lower()
+            handler = getattr(self, metodo, self.http_method_not_allowed)
+            try:
+                return handler(self.request, *self.args, **self.kwargs)
+            except Exception as altro:
+                return super().handle_exception(altro)
+        return super().handle_exception(exc)
 
     # Scopo: l'emittente che la richiesta FISSA, quando questo endpoint ne
     #        dichiara il parametro. `None` se non lo dichiara.

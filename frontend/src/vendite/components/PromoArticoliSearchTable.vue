@@ -39,7 +39,6 @@ const {
   onNew: () => emit('new'),
   // `valido_al` DESC: regola di dominio sulle liste con date di validita'
   // (vedi lo store, che porta la stessa scelta e il perche' della direzione).
-  searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
 })
 
 // ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`

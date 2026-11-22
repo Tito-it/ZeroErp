@@ -58,8 +58,6 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
     // Default `data desc`: ordini con data piu' recente in cima (allineato al
     // default backend e al defaultSortField della OrdiniSearchTable). Il
     // ripiego del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
 

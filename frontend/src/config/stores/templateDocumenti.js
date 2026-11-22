@@ -34,8 +34,6 @@ export const useTemplateDocumentiStore = createCrudStore('config-template-docume
   // «Personalizza» (id dello standard, payload): la copia per un'azienda. Nello
   // stesso giro di scrittura di create/update: le altre tab ricaricano.
   extraActions: { personalizza: personalizzaTemplateDocumento },
-  orderBy: 'codice',
-  orderDir: 'asc',
   startsEmpty: false,
   filterDefaults: {
     attivo: true,

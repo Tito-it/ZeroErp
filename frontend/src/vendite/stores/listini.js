@@ -24,5 +24,4 @@ export const useListiniStore = createCrudStore('vendite-listini', {
   // `codice`: e' il preset default del seed della lista `vendite.listini`
   // (identificatore, colonna fissata). Il `defaultSortField` del componente
   // e' dormiente finche' questo preset esiste: la verita' e' qui.
-  orderBy: 'codice',
 })

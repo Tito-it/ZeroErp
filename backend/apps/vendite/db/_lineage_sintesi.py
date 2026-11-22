@@ -5,8 +5,9 @@
 # Scopo: Le colonne del grafo (frontiera, discendenti, transito, radice…) per le
 #        righe di una lista documento, lette da
 #        `vendite.fn_documento_lineage_sintesi` per le SOLE chiavi delle righe
-#        e unite riga per riga. Sede unica per le sette liste documento e, per
-#        costruzione, per il loro export (che chiama gli stessi metodi di
+#        e unite riga per riga. Sede unica per le liste documento che
+#        dichiarano `legge_lineage` (sei: la fattura no, BE14 di
+#        brief-db-revisione-ui, 2026-11-22) e, per costruzione, per il loro export (che chiama gli stessi metodi di
 #        repository con `limit=EXPORT_MAX_ROWS + 1`).
 # ------------------------------------------------------------
 

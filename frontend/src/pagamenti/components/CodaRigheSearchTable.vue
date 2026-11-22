@@ -70,7 +70,6 @@ const {
   searchText, onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
 } = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'data_pagamento', defaultSortOrder: 'desc' },
 })
 
 const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)

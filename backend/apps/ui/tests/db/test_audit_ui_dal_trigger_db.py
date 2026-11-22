@@ -13,8 +13,8 @@
 #          UPDATE, e la scrive solo il DB (`E_UI_PRESET_CONTENUTO_DERIVATO`
 #          a chi la scrive). Lo snapshot della preferenza la copia, e lo
 #          scrive il DB (giro 1a); «Ignora» e' riscrivere `preset_base_id`.
-#        - Spegnere una lista con colonne attive e' un 409 del guard ATTIVO,
-#          non un fallback di validazione del service.
+#        - Spegnere una lista con colonne e preset accesi passa, e li
+#          sospende senza toccarli (giro 4 di brief-db-revisione-ui, BE15).
 # Note: ⭐ La giuntura, non la regola: la regola la provano i pgTAP di `ui`
 #       (`ui/test-ui-nell-ambito-v1`). Qui si prova che il BE parla al DB col
 #       nome nuovo e senza l'audit a mano — un mock non lo vede (la rinomina
@@ -33,7 +33,7 @@ Indice test eseguiti:
 6) AuditUiDalTriggerDbTests.test_ignora_riallinea_lo_snapshot_della_dashboard
 7) AuditUiDalTriggerDbTests.test_data_del_contenuto_scritta_dall_app_rifiutata
 8) AuditUiDalTriggerDbTests.test_upsert_permesso_audit_dal_trigger
-9) AuditUiDalTriggerDbTests.test_spegnere_lista_con_colonne_attive_409
+9) AuditUiDalTriggerDbTests.test_spegnere_lista_con_colonne_attive_passa
 """
 from __future__ import annotations
 
@@ -88,6 +88,8 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
             "ordine_default": 1,
             # Spenta di proposito: la accende il test che la compone nel preset.
             "attivo": False,
+            # Senza campo sorgente non si esporta (U25, giro 4 di brief-db-revisione-ui).
+            "esportabile": False,
         })
         self.preset_id = self.repo.create_preset({
             "lista_id": self.lista_id,
@@ -271,43 +273,32 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
 
     # Il gemello della dashboard: un UPDATE suo, su un'altra tabella e con un
     # altro montaggio del trigger, e i mock del service non lo vedono (prima
-    # del giro 1b era un 500 anche qui). La dashboard si fabbrica: quella di
-    # seed porterebbe la prova sui dati di oggi.
+    # del giro 1b era un 500 anche qui).
+    # ⚠️ Dal giro 5 di brief-db-revisione-ui (U31, BE28) l'applicazione non
+    #    scrive il catalogo delle dashboard: non fabbrica una dashboard, e non
+    #    sposta il contenuto di un preset. Il banner ACCESO lo provano i pgTAP
+    #    del resolver, che girano da proprietario; qui si prova la giuntura
+    #    del BE sulla `home` del seed: «Ignora» lega sul DB vero, riscrive lo
+    #    snapshot dal contenuto del preset di base e lascia il banner spento.
+    #    Senza una `home` con un preset di base il test si salta, col motivo.
     def test_ignora_riallinea_lo_snapshot_della_dashboard(self) -> None:
         auth_user_id = self._utente_con_base()
-        with connection.cursor() as cur:
-            cur.execute(
-                "INSERT INTO ui.dashboard_definizione (codice, descrizione) "
-                "VALUES ('test_be11_audit', 'Dashboard del test') RETURNING id",
-            )
-            dashboard_id = int(cur.fetchone()[0])
-            cur.execute(
-                "INSERT INTO ui.widget (codice, etichetta) "
-                "VALUES ('test_be11_audit', 'Card del test') RETURNING id",
-            )
-            widget_id = int(cur.fetchone()[0])
-            cur.execute(
-                "INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default) "
-                "VALUES (%s, %s, 1)",
-                [dashboard_id, widget_id],
-            )
-            cur.execute(
-                "INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito) "
-                "VALUES (%s, 'be11_sistema', 'Preset di sistema', 'sistema') RETURNING id",
-                [dashboard_id],
-            )
-            preset_id = int(cur.fetchone()[0])
-            # Un preset vale come base solo con contenuto (U3): un widget del pool.
-            cur.execute(
-                "INSERT INTO ui.dashboard_preset_widget (preset_id, widget_id, ordine) "
-                "VALUES (%s, %s, 1)",
-                [preset_id, widget_id],
-            )
         repo = DashboardRepository()
+        dashboard_id = repo.get_dashboard_id("home")
+        if dashboard_id is None:
+            self.skipTest("nessuna dashboard `home` accesa: l'app non la puo' fabbricare (U31)")
+        # BE17: il lookup passa dal BB `ui.fn_dashboard_da_codice`; un codice
+        # che non c'e' e' «niente», e la transazione resta usabile (savepoint).
+        self.assertIsNone(repo.get_dashboard_id("test_be17_non_esiste"))
+        preset_id = preset_base_id_di_oggi(repo.resolve_dashboard_config(
+            dashboard_codice="home", auth_user_id=auth_user_id, emittente_fiscale_id=None,
+        ))
+        if preset_id is None:
+            self.skipTest("la `home` non ha un preset di base per un utente senza profili")
 
         def _banner() -> tuple[Any, Any]:
             risoluzione = repo.resolve_dashboard_config(
-                dashboard_codice="test_be11_audit",
+                dashboard_codice="home",
                 auth_user_id=auth_user_id,
                 emittente_fiscale_id=None,
             )
@@ -323,13 +314,6 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
             configurazione={"dimensione_max": 4},
             preset_base_id=preset_id,
         )
-        # L'amministratore cambia la chiave che la preferenza ha scelto.
-        with connection.cursor() as cur:
-            cur.execute(
-                "UPDATE ui.dashboard_preset SET dimensione_max = 6 WHERE id = %s",
-                [preset_id],
-            )
-        self.assertEqual(_banner(), (True, ["dimensione_max"]))
         self.assertTrue(repo.riallinea_snapshot_base(auth_user_id, dashboard_id))
         self.assertEqual(_banner(), (False, []))
         preferenza = repo.get_preferenza(auth_user_id, dashboard_id)
@@ -408,15 +392,18 @@ class AuditUiDalTriggerDbTests(unittest.TestCase):
             (_ATTORE, _ATTORE_UPDATE, "BLOCCATO"),
         )
 
-    # (d) di BE11: il BLOCK del guard ATTIVO arriva all'operatore come 409
-    #     col suo codice, non come il fallback di validazione del service.
-    def test_spegnere_lista_con_colonne_attive_409(self) -> None:
+    # (d) di BE11, rovesciata dal giro 4 di brief-db-revisione-ui (U22, Q13 (a),
+    #     BE15): spegnere una lista con colonne e preset accesi NON e' piu' un
+    #     409 del guard ATTIVO. La lista spenta sospende i figli senza
+    #     toccarli (eccezioni ATTIVO su `lista_colonna.lista_id` e
+    #     `lista_preset.lista_id`): riaccesa, torna com'era.
+    def test_spegnere_lista_con_colonne_attive_passa(self) -> None:
+        self.assertTrue(self.repo.update_colonna(self.colonna_id, {"attivo": True}))
         with connection.cursor() as cur:
             cur.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        with self.assertRaises(Exception) as ctx, transaction.atomic():
-            ListaDefinizioneAdminService().update_definizione(
-                self.lista_id, {"attivo": False},
-            )
-        api_error = ErrorTranslator.to_api_error(ctx.exception)
-        self.assertEqual(api_error.code, "E_ATTIVO_BLOCK_CHILDREN_ACTIVE")
-        self.assertEqual(ErrorTranslator.get_http_status(api_error), 409)
+        definizione = ListaDefinizioneAdminService().update_definizione(
+            self.lista_id, {"attivo": False},
+        )
+        self.assertFalse(definizione["attivo"])
+        self.assertEqual(self._riga("ui.lista_colonna", self.colonna_id, "attivo"), (True,))
+        self.assertEqual(self._riga("ui.lista_preset", self.preset_id, "attivo"), (True,))

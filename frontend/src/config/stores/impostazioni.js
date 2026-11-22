@@ -14,7 +14,6 @@ export const useImpostazioniStore = createListaStore('config-impostazioni', {
   fetchPage: fetchParameterSettings,
   // Parte piena: e' il catalogo dei parametri, non una ricerca.
   startsEmpty: false,
-  orderBy: 'code',
   extend: () => {
     const { saveOverride, removeOverride } = useParameterSettings()
     return { saveOverride, removeOverride }

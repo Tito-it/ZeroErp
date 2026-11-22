@@ -203,21 +203,19 @@ class ListaExportService:
     # Helpers privati
     # =================================================================
 
-    # Scopo: Filtra le colonne ammissibili all'export. Esclude
-    #        `tipo_colonna='azione'` (pulsanti UI) e `esportabile=false`
-    #        (decisione admin). Ordina per `ordine_default` per coerenza
-    #        col display lista. Tiene anche colonne con
-    #        `campo_sorgente=None`: il rendering produrra' celle vuote
-    #        (sono colonne FE-only composite, non rappresentabili senza
-    #        funzione FE).
+    # Scopo: Filtra le colonne ammissibili all'export: quelle con
+    #        `esportabile`. Ordina per `ordine_default` per coerenza col
+    #        display lista.
+    # ⭐ Una sede sola, il flag: dal giro 4 di brief-db-revisione-ui (U24,
+    #    U25) il DB garantisce che un'azione non ha campo sorgente e che una
+    #    colonna senza campo sorgente non e' esportabile. Il filtro sul tipo
+    #    `azione` e le celle vuote delle colonne composte non servono piu':
+    #    ripeterli qui sarebbe una seconda regola. Un flag assente (riga di
+    #    test o configurazione incompleta) non esporta.
     def _filter_colonne_esportabili(
         self, colonne: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        result = [
-            c for c in colonne
-            if c.get("tipo_colonna") != "azione"
-            and c.get("esportabile", True) is not False
-        ]
+        result = [c for c in colonne if c.get("esportabile") is True]
         result.sort(key=lambda c: int(c.get("ordine_default") or 0))
         return result
 

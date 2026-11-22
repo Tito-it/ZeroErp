@@ -5,7 +5,11 @@ from typing import Any
 
 from django.http import JsonResponse
 
-from apps.core.services.request_context import get_idempotency_key, get_request_id
+from apps.core.services.request_context import (
+    get_idempotency_key,
+    get_ordinamento_applicato,
+    get_request_id,
+)
 
 # Helper condivisi API: envelope successo uniforme con metadati request.
 
@@ -24,6 +28,13 @@ def success_response(data: Mapping[str, Any] | list[Any] | None, *, status: int 
     idempotency_key = get_idempotency_key()
     if idempotency_key:
         meta["idempotency_key"] = idempotency_key
+    # ⭐ L'ordinamento di partenza che la base view ha applicato a una lista
+    #    configurabile chiamata senza `order_by` (BE25 (2) di
+    #    brief-db-revisione-ui): `{order_by, order_dir, col}`. Il frontend accende
+    #    l'intestazione da qui, e non da un `orderBy` ricopiato nello store.
+    ordinamento = get_ordinamento_applicato()
+    if ordinamento:
+        meta["ordinamento"] = ordinamento
 
     payload: dict[str, Any] = {"data": data}
     if meta:

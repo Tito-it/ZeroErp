@@ -295,8 +295,8 @@ Errori:
   - `Idempotency-Key: <uuid-stringa>` — **obbligatorio** (cfr. policy
     api.md su modifiche di stato)
 - Path parameter: `codice` (vedi §1)
-- Body JSON (tutti i campi opzionali; whitelist rigida — chiavi extra
-  rifiutate):
+- Body JSON (tutti i campi opzionali; la forma la giudica il DB — chiavi
+  extra rifiutate):
 
 ```json
 {
@@ -314,20 +314,28 @@ Errori:
 }
 ```
 
-Whitelist root payload: `colonne`, `pagina_dimensione`. ⛔ `ordinamento` e
-`filtri` sono usciti dalla preferenza (Q38/Q39 §6 di brief-db-revisione-ui,
-giro 2 del 2026-11-21): nel payload sono un `400
-E_UI_PREFERENZA_VALIDAZIONE` della whitelist, e il guard di forma del DB le
-rifiuta comunque (`400 E_UI_CONFIGURAZIONE_FORMA`, la rete per chi scrive senza
-passare dal service). ⭐ **Ogni chiave e' facoltativa** (dal 2026-11-01):
-quella assente (o `null`) vale «come lo standard», e la preferenza contiene
-solo le chiavi scelte. ⛔ Una preferenza **senza chiavi** si toglie col
+⭐ **La forma la giudica il DB, in una sede sola**: il guard
+`ui.trgfn_preferenza_guard_forma` (`ui.fn_check_forma_configurazione`) risponde
+`400 E_UI_CONFIGURAZIONE_FORMA`, col messaggio che nomina la chiave e il motivo
+(«`colonne`: la voce `x` ha `larghezza` null»). Dal giro 2 di
+brief-db-revisione-ui (BE8, 2026-11-22) il service non ha più una sua copia: del
+BE resta la sola regola dell'API, il corpo è un oggetto con almeno una chiave
+(`400 E_UI_PREFERENZA_VALIDAZIONE`). Chiavi ammesse: `colonne`,
+`pagina_dimensione`. ⛔ `ordinamento` e `filtri` sono usciti dalla preferenza
+(Q38/Q39 §6, giro 2 del 2026-11-21): nel payload sono un `400
+E_UI_CONFIGURAZIONE_FORMA`. ⭐ **Ogni chiave e' facoltativa** (dal 2026-11-01):
+quella **assente** vale «come lo standard», e la preferenza contiene solo le
+chiavi scelte. ⛔ Una chiave a `null` non è «assente»: è un rifiuto di forma, in
+radice e nella voce («svuota la larghezza» è la chiave tolta, e la toglie il FE:
+decisione di Tid del 2026-11-22). ⛔ Una preferenza **senza chiavi** si toglie col
 `DELETE` (endpoint 4): il `PUT` vuoto risponde `400
-E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`,
-`visibile`, `fissata`. Vincoli:
+E_UI_PREFERENZA_VALIDAZIONE`. Chiavi della voce colonna: `codice`, `ordine`,
+`larghezza`, `visibile`, `fissata`. Vincoli:
 
-- `codice` (string) — obbligatorio; deve essere presente nel catalogo
-- `ordine`, `larghezza` (int positivo) — opzionali
+- `codice` (string non vuota) — obbligatorio; una colonna della lista, una
+  volta sola
+- `ordine`, `larghezza` (intero positivo, numero JSON: `"120"` è rifiutato) —
+  opzionali
 - `visibile`, `fissata` (bool stretto) — opzionali; non accetta `"true"`
   o `1`
 - `pagina_dimensione` (int) — una delle misure del catalogo
@@ -365,9 +373,12 @@ E_UI_PREFERENZA_VALIDAZIONE`. Whitelist colonna: `codice`, `ordine`, `larghezza`
 Errori:
 
 - `400` `E_IDEMPOTENCY_KEY_REQUIRED` — header `Idempotency-Key` mancante
-- `400` `E_UI_PREFERENZA_VALIDAZIONE` — payload non whitelisted, tipi
-  errati, nessuna chiave valorizzata, ecc. Il dettaglio indica esattamente quale chiave/colonna ha
-  violato il vincolo.
+- `400` `E_UI_PREFERENZA_VALIDAZIONE` — il corpo non è un oggetto, o non ha
+  nessuna chiave
+- `400` `E_UI_CONFIGURAZIONE_FORMA` — la forma non è ammessa (chiave fuori
+  posto, voce senza codice o con una chiave a `null`, tipo errato, codice
+  ripetuto o non della lista); il messaggio nomina la chiave e il motivo
+  (dal guard a DB)
 - `400` `E_UI_MISURA_PAGINA_NON_AMMESSA` — `pagina_dimensione` non e' una
   misura del catalogo (dal guard a DB; il messaggio elenca le ammesse)
 - `401` — JWT mancante o non valido
@@ -550,6 +561,23 @@ Errori:
   `ui.trgfn_preferenza_preset_base_snapshot` lo vede come un cambio di base:
   snapshot e «ignora» azzerati. I due flag (`preset_base_cambiato`,
   `preset_aggiornato`) li calcola il DB: il FE li legge e basta.
+- **Ordinamento di partenza delle liste** (dal 2026-11-22, BE25 (2) di
+  brief-db-revisione-ui): l'endpoint di una lista configurabile (la view
+  dichiara `lista_codice`), chiamato **senza `order_by`**, ordina con
+  l'ordinamento del preset di base dell'utente (`ui.fn_ordinamento_lista`, la
+  prima voce, per campo sorgente) e lo dice nella risposta:
+  `meta.ordinamento = {order_by, order_dir, col}`. Vale anche per l'export.
+  Con `order_by` nella richiesta vince la richiesta, e `meta.ordinamento`
+  non c'e'; senza un ordinamento a preset vale il default del repository.
+  Il frontend accende l'intestazione da `meta.ordinamento`
+  (`ordinamentoApplicato`), non da un ordinamento scritto nello store.
+  ⭐ `meta.ordinamento` dice l'ordinamento **applicato**, non quello
+  proposto: c'e' solo se il repository ha risolto la chiave nella sua
+  whitelist. Una lista che ordina nel browser non lo porta. Se la colonna del
+  preset e' `ordinabile` a catalogo ma il repository non la sa ordinare, la
+  lista si apre col suo default (la view la rilegge senza ordinamento, e il
+  difetto va nel log), non con un 400. Un `order_by` **chiesto dal client**
+  fuori whitelist resta il 400 `E_VALIDATION_INPUT`.
 - **Veste GUC corrotta**: il cast in fn DB e' avvolto in `EXCEPTION
   WHEN invalid_text_representation THEN NULL` -> fallback "tutte le
   vesti" (legacy) invece di propagare eccezione (deviazione team DB
@@ -575,8 +603,6 @@ Errori:
   con `skip_area_check=True`
 - [`apps.core.api.endpoint_helpers.handle_post_json`](../../core/manual/api_endpoint_helpers.md)
   con `require_idempotency_key=True` (PUT preferenza)
-- [`apps.core.services.payload_helpers.PayloadValidator`](../../core/manual/payload-validation-api.md)
-  per la whitelist JSONB
 - [`apps.core.services.permissions_resolver.PermissionResolver.get_emittente_for_user`](../../core/manual/permissions_resolver.md)
   per la derivazione 1:1 user->emittente
 - [`apps.core.services.error_manager.ErrorManager`](../../core/manual/error-handling-api.md)
@@ -591,7 +617,8 @@ In `apps/core/services/error_policies.py`:
 | `E_UI_LISTA_NON_TROVATA` | 404 | `show_empty_state` | Service (lista inesistente o `attivo=false`) + fn DB |
 | `E_UI_VISTA_SQL_NON_TROVATA` | 400 | `show_error_banner` | Trigger B1 (admin only — seed/import) |
 | `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | `show_error_banner` | Trigger B2 (admin only) |
-| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | `highlight_form_fields` | Service write (whitelist/tipi) |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | default `DATO_ERRATO` (banner: nessun input da accendere) | Service write (corpo non oggetto o senza chiavi) |
+| `E_UI_CONFIGURAZIONE_FORMA` | 400 | default `DATO_ERRATO` | Guard DB sulla preferenza (forma della configurazione) |
 | `E_UI_GENERIC_FAILED` | 400 | `show_error_banner` | Service (DatabaseError non riconosciuto) |
 | `E_UI_CHIAMATA_NON_VALIDA` | 500 | `show_error_banner` | Service (`get_lista_config_per_video`: contesto di sessione ≠ utente della chiamata) |
 | `E_UI_MISURA_PAGINA_NON_AMMESSA` | 400 | default `DATO_ERRATO` | Guard DB su preset e preferenza (misura fuori catalogo) |

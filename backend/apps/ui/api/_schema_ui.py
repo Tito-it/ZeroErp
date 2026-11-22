@@ -35,6 +35,7 @@ TIPI_UI: Tipi = {
     "etichetta_estesa": (testo, True),
     "etichetta_i18n_key": (testo, True),
     "campo_sorgente": (testo, True),
+    "origine_campo": (testo, False),
     "tipo_colonna": (testo, False),
     "tipo_dato": (testo, False),
     "formato": (testo, True),

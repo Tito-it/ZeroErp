@@ -55,7 +55,6 @@ const {
   //    di stamattina (Q-3). Il BB monta l'azione solo perche' passiamo `onNew`.
   onNew: () => emit('new'),
   newTooltipKey: 'pagamenti.distinte.apri_tooltip',
-  searchTableOptions: { defaultSortField: 'data_contabile', defaultSortOrder: 'desc' },
 })
 
 const { bindSelect, bindPeriodo } = useStoreFilterBindings(store, applyFilters)

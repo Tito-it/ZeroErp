@@ -34,7 +34,6 @@ export const useTemplateAssetDocumentiStore = createListaStore(STORE_NAME, {
   // che questa lista ha sempre avuto (`ricercaCorta`, migrazione 2026-08-10).
   startsEmpty: false,
   ricercaCorta: 'svuota',
-  orderBy: 'codice',
   filterDefaults: {
     attivo: true,
     asset_tipo_id: null,

@@ -18,14 +18,28 @@ E_UI_PREFERENZA_VALIDAZIONE = "E_UI_PREFERENZA_VALIDAZIONE"
 E_UI_PREFERENZA_NON_TROVATA = "E_UI_PREFERENZA_NON_TROVATA"
 
 
-# Scopo: Rifiuta una preferenza senza chiavi e ritorna la configurazione.
+# Scopo: La regola dell'API sul corpo di un salvataggio di preferenza: un
+#        oggetto con almeno una chiave. Ritorna la configurazione da salvare.
 # ⭐ Ogni chiave e' facoltativa: quella assente vale «come lo standard»
 #    (`fn_resolve_lista_config` / `fn_resolve_dashboard_config` risolvono per
 #    chiave, `origine`). Ma una preferenza SENZA chiavi non e' una preferenza:
 #    si toglie con il DELETE, non si salva vuota (decisione di Tid, 2026-11-01).
+# ⛔ La FORMA (chiavi ammesse, voci, tipi, codici della lista o della
+#    dashboard, tetto di `dimensione_max`) non si giudica qui: la giudica il
+#    guard del DB, `ui.trgfn_preferenza_guard_forma`, che risponde
+#    `E_UI_CONFIGURAZIONE_FORMA` (400) con la chiave e il motivo. La copia del
+#    BE e' ritirata (BE8 e BE11 di brief-db-revisione-ui, giro 2): due copie
+#    della stessa regola rispondono prima o poi in due modi diversi.
 def richiedi_preferenza_non_vuota(
-    config: dict[str, Any], *, message: str,
+    config: Any, *, message: str,
 ) -> dict[str, Any]:
+    ErrorManager.require(
+        isinstance(config, dict),
+        code=E_UI_PREFERENZA_VALIDAZIONE,
+        message=message,
+        detail="Il payload deve essere un oggetto JSON.",
+    )
+    assert isinstance(config, dict)
     ErrorManager.require(
         bool(config),
         code=E_UI_PREFERENZA_VALIDAZIONE,

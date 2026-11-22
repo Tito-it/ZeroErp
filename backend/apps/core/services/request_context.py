@@ -14,17 +14,79 @@ from contextvars import ContextVar
 
 _request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 _idempotency_key_var: ContextVar[str | None] = ContextVar("idempotency_key", default=None)
+# L'ordinamento di partenza di una lista configurabile
+# (`apps.core.services.ordinamento_di_partenza`), in DUE tempi:
+#   - PROPOSTO: la base view l'ha messo nella query di una richiesta che non
+#     ne portava uno;
+#   - APPLICATO: chi risolve la chiave nella whitelist del repository
+#     (`apps.core.db._helpers.colonna_ordinamento`) l'ha accettato. Solo
+#     questo va nella risposta, `meta.ordinamento`.
+# ⭐ Perche' due: proporre non e' applicare. Una lista che ordina nel browser
+#    non risolve nessuna chiave, e una chiave fuori whitelist il repository la
+#    rifiuta: in entrambi i casi la risposta direbbe un ordinamento che i dati
+#    non hanno (`/verifica` di brief-db-revisione-ui, 2026-11-22).
+_ordinamento_proposto_var: ContextVar[dict[str, str] | None] = ContextVar(
+    "ordinamento_proposto", default=None,
+)
+_ordinamento_applicato_var: ContextVar[dict[str, str] | None] = ContextVar(
+    "ordinamento_applicato", default=None,
+)
+
+
+# Scopo: il rifiuto della chiave PROPOSTA dalla base view (non chiesta dal
+#        client): la chiave sta fuori dalla whitelist del repository.
+# ⭐ E' un `ValueError("order_by_invalid")` come ogni chiave fuori whitelist,
+#    quindi fuori da una `DomainAPIView` resta il 400 di sempre. La base view
+#    lo intercetta e rilegge la lista SENZA la proposta
+#    (`DomainAPIView.handle_exception`): l'operatore non ha chiesto niente, e
+#    un errore di configurazione del catalogo non gli chiude la lista.
+class OrdinamentoPropostoRifiutato(ValueError):
+    pass
 
 
 # Scopo: Aggiorna `request_context` con i valori richiesti dal flusso corrente.
 def set_request_context(*, request_id: str | None, idempotency_key: str | None) -> None:
     _request_id_var.set(request_id)
     _idempotency_key_var.set(idempotency_key)
+    # ⚠️ Anche all'APERTURA, non solo alla chiusura: un worker riusa il suo
+    #    thread, e un ordinamento rimasto dalla richiesta prima finirebbe nel
+    #    `meta` di una risposta che non l'ha applicato.
+    _ordinamento_proposto_var.set(None)
+    _ordinamento_applicato_var.set(None)
 
 
 # Scopo: Gestisce `clear_request_context` nel flusso applicativo del modulo.
 def clear_request_context() -> None:
     set_request_context(request_id=None, idempotency_key=None)
+
+
+# Scopo: registra l'ordinamento PROPOSTO alla richiesta corrente (`None` lo
+#        ritira); l'applicato riparte da zero.
+def proponi_ordinamento(ordinamento: dict[str, str] | None) -> None:
+    _ordinamento_proposto_var.set(ordinamento)
+    _ordinamento_applicato_var.set(None)
+
+
+# Scopo: la chiave `order_by` e' quella proposta dalla base view?
+def e_chiave_proposta(chiave: str) -> bool:
+    proposto = _ordinamento_proposto_var.get()
+    return proposto is not None and proposto.get("order_by") == chiave
+
+
+# Scopo: il repository ha accettato la chiave proposta: da qui la risposta lo
+#        dice in `meta.ordinamento`.
+def conferma_ordinamento_proposto() -> None:
+    _ordinamento_applicato_var.set(_ordinamento_proposto_var.get())
+
+
+# Scopo: fissa l'ordinamento applicato (i test che simulano una richiesta).
+def set_ordinamento_applicato(ordinamento: dict[str, str] | None) -> None:
+    _ordinamento_applicato_var.set(ordinamento)
+
+
+# Scopo: l'ordinamento di partenza APPLICATO alla richiesta corrente, o `None`.
+def get_ordinamento_applicato() -> dict[str, str] | None:
+    return _ordinamento_applicato_var.get()
 
 
 # Scopo: Recupera `request_id` dal contesto applicativo o dal database.

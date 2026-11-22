@@ -57,7 +57,6 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportFatture,
   getExportParams: (fmt) => buildExportParams(fmt),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri (toolbar caller), legati allo store dal BB ---

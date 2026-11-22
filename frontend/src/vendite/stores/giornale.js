@@ -52,8 +52,6 @@ export const useGiornaleStore = defineStore(
       },
       // Allineato al preset `giornale_default` (`quando desc`): l'ultima cosa
       // successa in cima. Il ripiego del verso segue.
-      orderBy: 'quando',
-      orderDir: 'desc',
       orderDirDefault: 'desc',
       onPayload: (payload) => { ritirateCount.value = payload.ritirate_count ?? 0 },
     })

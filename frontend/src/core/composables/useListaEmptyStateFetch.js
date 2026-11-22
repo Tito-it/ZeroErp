@@ -114,6 +114,17 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
   //    insieme alla config, cioe' prima che si sappia se il cancello e' su.
   //    Quella resta una richiesta rifiutata, ed e' l'unica.
   const sospesa = ref(false)
+  // ⭐ L'ORDINAMENTO CHE IL BACKEND HA APPLICATO, quando la richiesta non ne
+  //    portava uno: `{order_by, order_dir, col}` da `meta.ordinamento` (BE25 (2)
+  //    di brief-db-revisione-ui, 2026-11-22). E' l'ordinamento di partenza del
+  //    preset di base dell'utente, risolto dal DB: la tabella accende
+  //    l'intestazione da qui (`useSearchTable.paginatorProps`), al posto di un
+  //    `orderBy` ricopiato nello store. `null` = la richiesta ordinava da se',
+  //    o la lista non ha un ordinamento a preset (vale il default del backend).
+  // ⛔ NON sta in `filters`: e' cio' che il backend ha fatto, non una scelta
+  //    dell'operatore; scritto in `filters.order_by` diventerebbe un clic, e
+  //    la pagina dopo lo rimanderebbe come se l'operatore l'avesse chiesto.
+  const ordinamentoApplicato = ref(null)
   // ⭐ LA LISTA CERCA? Lo dice la configurazione risolta dal backend
   //    (`ricerca_full`: almeno una colonna accesa a catalogo per questo
   //    operatore — brief-be-ricerca-full-liste-residue §7-bis). La scrive
@@ -162,6 +173,10 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
     ricercaInviata = NESSUNA_RICHIESTA
     items.value = []
     totalRecords.value = 0
+    // ⚠️ Anche l'ordinamento applicato: e' un fatto della RISPOSTA, e va via
+    //    con le sue righe. Rimasto, `reset()` (il logout, `userScoped`)
+    //    lascerebbe acceso sull'intestazione il preset dell'utente di prima.
+    ordinamentoApplicato.value = null
     hasSearched.value = false
     loading.value = false
   }
@@ -257,6 +272,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
       if (!fv.isCurrent(tag)) return false   // risposta stantia: la lista NON si tocca
       items.value = res.data.data.results
       totalRecords.value = res.data.data.count
+      ordinamentoApplicato.value = res.data.meta?.ordinamento ?? null
       // Campi extra dell'envelope, dopo il guard: vedi la nota su `onPayload`.
       if (onPayload) onPayload(res.data.data)
       hasSearched.value = true
@@ -303,6 +319,7 @@ export function useListaEmptyStateFetch({ filters, hasActiveFilters = () => fals
 
   return {
     items, totalRecords, loading, hasSearched, sospesa, ricercaFull, ricercaMinCaratteri,
+    ordinamentoApplicato,
     fetchList, svuota, ricercaCambiaLaRichiesta,
   }
 }

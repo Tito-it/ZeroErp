@@ -997,6 +997,35 @@ class ListeConfigurabiliSeedTests(unittest.TestCase):
             "registro: il test non discrimina piu' le due convenzioni, va rivisto.",
         )
 
+    # ⭐ BE25 (2) di brief-db-revisione-ui: la base view applica l'ordinamento
+    #    di partenza (`apps.core.services.ordinamento_di_partenza`) a ogni view
+    #    che dichiara `lista_codice`, mettendo nella richiesta il CAMPO SORGENTE
+    #    di una colonna ordinabile. Che stia nella whitelist del repository lo
+    #    garantisce `test_whitelist_copre_le_colonne_ordinabili` — ma solo per
+    #    le liste di questo registro. Una view la cui lista non c'e' riceverebbe
+    #    un `order_by` che nessuno ha verificato. ⚠️ Dal 2026-11-22 un rifiuto
+    #    del repository non e' piu' un 400 (la base view rilegge la lista
+    #    senza la proposta, `OrdinamentoPropostoRifiutato`), ma la lista si
+    #    aprirebbe col default invece che col preset, e solo il log lo
+    #    direbbe: per il seed il presidio resta qui, prima del rilascio. Le
+    #    liste a ordinamento locale non risolvono chiavi, quindi non
+    #    confermano niente e la risposta non porta `meta.ordinamento`; sono a
+    #    registro anche loro.
+    # ⭐ Le view vengono dal PERCORSO REALE (`classi_view`), non da un elenco.
+    def test_ogni_lista_codice_ha_la_whitelist_a_registro(self) -> None:
+        from apps.core.api.rotte import classi_view
+
+        a_registro = {codice for codice, _w in _LISTE}
+        dichiarate = {
+            getattr(view, "lista_codice", None) for view in classi_view(anche_condizionali=True)
+        } - {None}
+        self.assertTrue(dichiarate, "nessuna view dichiara `lista_codice`: la lettura e' rotta")
+        self.assertEqual(
+            sorted(dichiarate - a_registro), [],
+            "view che dichiarano `lista_codice` per una lista senza whitelist a "
+            "registro: l'ordinamento di partenza vi arriverebbe senza presidio.",
+        )
+
     def test_colonna_azione_mai_ordinabile(self) -> None:
         for codice, _ in _LISTE:
             with self.subTest(lista=codice):

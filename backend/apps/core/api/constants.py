@@ -13,9 +13,17 @@
 #    diversi (50 qui, 25 in `parse_list_params`). Presidio:
 #    `apps/core/tests/test_paginazione_fonte_unica.py`.
 
-# Righe per pagina quando il client non le chiede: le stesse che l'operatore
-# vede a video (`ui.lista_preset.pagina_dimensione` e `PAGINATION.DEFAULT_ROWS`
-# del frontend), cosi' una chiamata API senza `limit` risponde come la lista.
+# Righe per pagina quando il client non le chiede: e' la REGOLA DELL'API per
+# gli endpoint FUORI dal catalogo delle liste configurabili.
+# ⛔ Non ricopia la misura di una lista configurabile (Q11-bis, BE10 del giro 3
+#    di brief-db-revisione-ui): quella la dice il DB, dalla configurazione
+#    risolta (`pagina_dimensione`, lo standard dal catalogo `ui.misure_pagina`
+#    secondo l'uso che la lista dichiara), e il frontend la manda come `limit`.
+# ⚠️ Una lista configurabile chiamata SENZA `limit` riceve ancora questa
+#    misura. Il ripiego sulla misura risolta puo' stare nella stessa sede
+#    dell'ordinamento di partenza (`apps.core.services.ordinamento_di_partenza`,
+#    BE25 (2) dello stesso brief), ma chiede al DB una lettura della sola
+#    misura che oggi non c'e': residuo di BE10.
 DEFAULT_LIMIT = 25
 
 # Righe per pagina di una lista di EVENTI (il giornale di una pratica, il

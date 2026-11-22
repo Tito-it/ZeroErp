@@ -210,6 +210,9 @@ class UiRepository:
     #    brief-db-revisione-ui), `BEFORE INSERT OR UPDATE OF preset_base_id`.
     # ⛔ `preset_base_id` resta nel SET anche quando non cambia: e' la colonna
     #    nominata che fa scattare il trigger, cioe' il riallineamento.
+    # ⛔ `data_update` non si scrive: lo scrive `ui.trgfn_preferenza_data_update`
+    #    a ogni UPDATE, e un valore passato non conta (BE21, giro 5 di
+    #    brief-db-revisione-ui, Q22).
     def upsert_preferenza(
         self,
         auth_user_id: int,
@@ -230,8 +233,7 @@ class UiRepository:
                 VALUES (%s, %s, %s, %s::jsonb, now())
                 ON CONFLICT (auth_user_id, lista_id) DO UPDATE
                    SET configurazione           = EXCLUDED.configurazione,
-                       preset_base_id           = EXCLUDED.preset_base_id,
-                       data_update              = now()
+                       preset_base_id           = EXCLUDED.preset_base_id
                 RETURNING id
                 """,
                 [
@@ -264,8 +266,7 @@ class UiRepository:
             cursor.execute(
                 """
                 UPDATE ui.lista_preferenza_utente
-                   SET preset_base_id = preset_base_id,
-                       data_update    = now()
+                   SET preset_base_id = preset_base_id
                  WHERE auth_user_id = %s
                    AND lista_id     = %s
                 """,
