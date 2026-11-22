@@ -25,7 +25,10 @@ import Textarea from 'primevue/textarea'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 
 const { t } = useI18n()
-const { execute, loading } = useApiHandler()
+// `campiErrati`: il campo che il rifiuto nomina (`error.fields`). Per l'esito
+// e' `esito`, la colonna di `pratiche.flussi` che il require ATTIVO guarda
+// (un esito spento nel frattempo).
+const { execute, loading, campiErrati } = useApiHandler()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -174,6 +177,9 @@ watch(() => props.visible, (val) => {
   if (val) {
     esito.value = null
     noteEsito.value = ''
+    // Il campo rosso di un rifiuto e' del flusso di allora: `useApiHandler`
+    // lo azzera solo alla chiamata dopo, e il drawer si riapre su un altro.
+    campiErrati.value = []
     fissa()
     // Pre-seleziona l'esito_default (CONTESTUALE) SOLO se presente fra le
     // opzioni selezionabili caricate: un default fuori lista sarebbe un
@@ -448,6 +454,7 @@ async function onDomainComplete() {
           <Select
             v-model="esito"
             :options="esitiOptions"
+            :invalid="campiErrati.includes('esito')"
             option-label="label" option-value="value"
             :placeholder="t('pratiche.flusso_esito')"
           />

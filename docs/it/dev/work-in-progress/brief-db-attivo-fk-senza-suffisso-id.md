@@ -33,7 +33,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: il team BE/FE**, con la richiesta del §6. Al DB resta solo l'archiviazione, quando il BE/FE chiude. Il giro DB è
+**Riparte: Tid**, col commit del lavoro BE/FE (§6.1, 2026-11-22). Poi **il team DB**, con la chiusura e
+l'archiviazione: al DB il BE/FE non chiede niente. Il giro DB è
 applicato da Tid coi pgTAP verdi (2026-11-22, §9): 36 FK si legano (68 trigger nuovi, nessuno in più), 13 vanno fra
 le eccezioni, il registro delle inclusioni è ritirato.
 
@@ -47,11 +48,12 @@ le eccezioni, il registro delle inclusioni è ritirato.
 | 6 | ✅ sessione DB | Il giro scritto e provato in `ROLLBACK` (2026-11-22) | §9 | 5 |
 | 7 | ✅ Tid | Apply di `20261121-21` … `-25` e i pgTAP del §9.3, verdi (2026-11-22) | §9 | 6 |
 | 7-bis | ✅ Tid | Il commit del giro e la rigenerazione della doc auto-generata (2026-11-22) | §9.4 | 7 |
-| 8 | **team BE/FE** ⏭️ | I codici d'errore sulle maschere toccate, e il censimento dei lettori | §6 | 7 |
+| 8 | ✅ team BE/FE | I codici d'errore sulle maschere toccate, e il censimento dei lettori (2026-11-22): cinque legami del campo, il `campiErrati` dei tab dell'editor dei workflow, quattro prove sul DB vero. ⏳ commit di Tid | §6.1 | 7 |
 | 9 | ✅ sessione DB | Tolta la pagina `manual/` del registro ritirato e la sua voce in `dbops/index.ci.md` (2026-11-22) | §9.4 | 7-bis |
 | 10 | team DB | Chiusura e archiviazione del brief | — | 8 |
 
-Decisioni aperte di Tid: nessuna. Il giro (changeSet, CSV, pgTAP, doc) è applicato e committato.
+Decisioni aperte di Tid: nessuna. Il giro DB (changeSet, CSV, pgTAP, doc) è applicato e committato; il lavoro
+BE/FE del §6.1 è da committare.
 
 ## 1. Il problema
 
@@ -498,6 +500,73 @@ padre si spegne anche se in uso», per i dieci padri della tabella. È la richie
 Lato DB il censimento è fatto (2026-11-22): nessuna funzione spegne uno dei dieci padri con un `UPDATE … SET attivo`,
 e nessuna vista legge il registro delle inclusioni. Il seed e i dati di dbdev non hanno figlie vive con un padre
 spento (§8).
+
+### 6.1 Che cosa ha fatto il BE/FE (2026-11-22, `dev/backend-tid`)
+
+**Il canale è uno, e regge.** Il trigger mette la colonna FK nel canale `COLUMN` dell'eccezione e il codice in
+`CONSTRAINT`. I punti di traduzione la portano in `error.fields`, e il FE la riceve in `campiErrati` di
+`useApiHandler`. Vale per ogni nome di colonna, con o senza `_id`. Nessun codice nuovo: i tre `E_ATTIVO_*` hanno già
+classe (`CONFLITTO_STATO`, 409) e ripiego.
+
+**Quando l'operatore lo vede.** Un padre non si spegne più mentre ha figlie accese, quindi il require esce in due
+casi: quando si **riaccende una figlia spenta** che punta a un padre spento, e quando si sceglie un padre che un
+altro operatore ha appena spento. Il modello ammette tutti e due.
+
+⚠️ **Il require è differito al commit.** Con `ATOMIC_REQUESTS` spento il commit è quello dell'istruzione, dentro il
+`try` del service, e l'errore si traduce lì. I test lo riproducono con `SET CONSTRAINTS ALL IMMEDIATE`: in una
+transazione annullata il commit non arriva mai, e un test senza sarebbe verde perché il controllo non scatta
+(provato: tolto `IMMEDIATE`, i due casi del require vanno rossi).
+
+**Punto 1, chi spegne i dieci padri** (`grep` su tabella e colonna in `backend/` e `frontend/`, poi i percorsi):
+
+| Padre | Chi lo spegne | Esito |
+| --- | --- | --- |
+| `vendite.famiglie_documento` | `FamiglieRepository.set_attivo` (`vendite/db/famiglie_repository.py`) | Non ne dipende: `script.fn_check_famiglia_documento_disattivabile` ha già `HA_REGISTRI_ATTIVI`, e il guard dedicato (`…_a10_guard_disattivazione_upd`) scatta prima del block ATTIVO (ordine alfabetico). L'operatore riceve il motivo specifico, il block è la rete |
+| `magazzino.magazzini`, `magazzino.ubicazioni` | PATCH `attivo` da `anagrafiche_magazzino_service` | Adeguato col solo test: con un trasferimento il magazzino non si spegne più (`E_ATTIVO_BLOCK_CHILDREN_EXIST`), e il codice passa intatto dal suo `make_db_errors_translator`. Il test esistente che spegne un magazzino appena nato (`test_anagrafiche_magazzino_db.py`) non ha trasferimenti, e resta verde |
+| `config.sorgenti`, `magazzino.causali`, `config.iva`, `config.iva_assoggettamenti` | il pannello (`config.fn_pannello_scrivi`, drawer generico) | Non ne dipende: il codice arriva dal canale comune del pannello, col testo del catalogo |
+| `config.azioni_processo`, `config.esiti_flussi_pratiche`, `config.stati_lotto_job` | nessuno | Non ne dipende: nessun `UPDATE … attivo` in BE/FE, negli smoke o nelle fixture; nessuno dei tre è nel pannello |
+
+**Punto 2, chi scrive le figlie, e se il campo si accende:**
+
+| Figlia (colonna) | Maschera | Esito |
+| --- | --- | --- |
+| tabelle del pannello: `config.causali_trasporto` (`causale_magazzino`), `config.iva` (`id_iva_split`), `config.stati_doc_contratti`, `_ddt`, `_ordini`, `_preventivi`, `_reso` (`esito`) | `GenericConfigDrawer` | Già legato: `:invalid="campiErrati.includes(col.name)"` (`config.tabelle_gestibili.pannello` letto su dbdev il 2026-11-22) |
+| `config.nature_vendita` (`destinazione_tipo`, fuori pannello), `config.stati_doc_offerte` (`esito`, fuori pannello), `config.iva_stati` (`assoggettamento_id_override`), `config.tipi_indirizzi_allowed` (`ambito`), queste due nemmeno registrate | nessuna maschera | Nessuno le scrive da BE/FE: sono seed. Se una entra nel pannello, il drawer generico la copre senza modifiche |
+| `vendite.registri_fatturazione.famiglia_documento` | `RegistroNumerazioneDrawer` | Già legato (in creazione; in modifica la famiglia non si sceglie, e il messaggio dice il resto) |
+| `vendite.famiglie_documento.codice_interno` → `config.sorgenti` | `FamigliaDocumentoDrawer` | Già legato |
+| `pratiche.template_flussi.esito_default` | `DefinizioneStepForm` | **Legato** (mancava) |
+| `esito_richiesto` di prerequisiti, handler eventi e regole di generazione | `StepPrerequisitiTab`, `StepHandlerEventiTab`, `ArchiRegoleTab` | **Legato** (mancava), dopo la correzione qui sotto |
+| `pratiche.flussi.esito` | `FlussoDrawer` | **Legato** (mancava) |
+| `magazzino.trasferimenti*`, `magazzino.eventi_assets`, `vendite.fatturazione_lotti.stato_lotto`, le nove tabelle di transizione (`azione_processo_codename`) | nessuna maschera | Le scrivono funzioni DB o nessuno (§5.1 del brief del magazzino) |
+
+⚠️ **Un difetto che c'era già, trovato qui.** I sei tab dell'editor dei workflow ricevevano `campiErrati` come prop
+dalla vista, che ha un `useApiHandler` suo, ma salvano con l'`execute` di `useEditableCollection`, che ne ha un
+altro. I campi del rifiuto finivano in un'istanza che nessuno leggeva: nessun campo dei tab diventava mai rosso,
+nemmeno `attivo` e `descrizione`, che erano già legati. Ora il BB espone il `campiErrati` della sua istanza, e i tab
+leggono quello (catalogo BB FE, `useEditableCollection`). Presidio: `useEditableCollection.spec.js` (provato: tolta
+la correzione, va rosso).
+
+⚠️ **E due difetti della correzione, trovati in verifica.** Il `campiErrati` esposto era anche quello del toggle
+`attivo` e dell'eliminazione, che partono da una riga dell'elenco: proprio il caso del require (riaccendere una
+figlia su un esito spento) accendeva `esito_richiesto` nel form aperto su un'altra riga. E nessuno lo azzerava
+all'apertura del form, né del `FlussoDrawer`, né del form dello step da uno step all'altro: il campo di un rifiuto
+restava rosso sul record dopo. Ora toggle ed eliminazione hanno un `useApiHandler` loro, e i campi si azzerano a ogni
+apertura (casi 3 e 4 dello spec, provati rossi col codice di prima).
+
+**Punto 3, il testo del block.** Arriva quello del catalogo, letto dal DB nei test e non ricopiato. I tre messaggi
+sono frasi chiuse: il padre e la figlia viaggiano nel contesto, non nel testo.
+
+**Le prove sul DB vero** (`ZEROERP_TEST_DB_E2E=1`, dbdev come `zeroerp_app`, transazione annullata, 4/4 verdi):
+
+* `apps/core/tests/db/test_attivo_fk_senza_suffisso_db.py`. Dal pannello: una causale di trasporto su una causale
+  di magazzino spenta è `E_ATTIVO_PADRE_NON_ATTIVO`, 409, con `fields = ("causale_magazzino",)`. La causale di
+  magazzino in uso non si spegne (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`); spenta la figlia, sì. Il terzo caso fa passare
+  lo stesso rifiuto da `_mapped_db_errors` dell'editor dei workflow, che riconosce solo i codici del suo dominio e
+  rilancia gli altri: arriva all'envelope col codice e col campo, non come `E_DATABASE`;
+* `apps/magazzino/tests/db/test_magazzino_spento_con_trasferimenti_db.py`. Il magazzino di partenza e quello d'arrivo
+  di un trasferimento non si spengono (`E_ATTIVO_BLOCK_CHILDREN_EXIST`); un magazzino senza trasferimenti sì.
+
+Al DB non si chiede niente.
 
 ## 7. La query della misura
 

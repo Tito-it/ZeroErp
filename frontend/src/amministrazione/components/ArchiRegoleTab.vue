@@ -21,9 +21,6 @@ import CollectionEditorPanel from './CollectionEditorPanel.vue'
 import { fetchLookupCodici } from '../../core/composables/useLookupCodici'
 
 const props = defineProps({
-  // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
-  // Arrivano dal padre: questo componente non chiama le API da solo.
-  campiErrati: { type: Array, default: () => [] },
   definizioneId: { type: Number, required: true },
   rows: { type: Array, default: () => [] },
   steps: { type: Array, default: () => [] },
@@ -48,6 +45,11 @@ const coll = useArchiCollection({
     }),
   onChanged: () => emit('changed'),
 })
+// I campi che il rifiuto dell'ultimo salvataggio di QUESTO tab nomina
+// (`error.fields`): vengono dall'`execute` della collezione, che e' quello
+// che chiama le API. ⛔ Non una prop della vista: la vista ha un altro
+// `useApiHandler`, e la prop restava vuota (useEditableCollection).
+const { campiErrati } = coll
 
 // Catalogo tipi prestazione per il display del tipo destinazione in colonna
 // (nel form lo seleziona LookupSelect, che condivide il fetch via cache).
@@ -165,7 +167,7 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_esito_richiesto') }}</label>
-        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
+        <Select v-model="form.esito_richiesto" :options="esitoOptions" option-label="label" option-value="value" show-clear :invalid="campiErrati.includes('esito_richiesto')" :placeholder="t('amministrazione.definizioni_workflow.ed_prereq_qualsiasi_esito')" />
       </div>
       <div class="form-field form-field--wide">
         <label>{{ t('amministrazione.definizioni_workflow.ed_col_descrizione') }}</label>
