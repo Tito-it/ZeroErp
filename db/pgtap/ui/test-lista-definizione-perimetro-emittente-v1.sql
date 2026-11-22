@@ -170,12 +170,9 @@ SELECT is(
           --   dimensione emittente. Arrivata nel CSV da un cantiere BE senza
           --   passare di qui: e' il rosso che questo elenco esiste per dare.
           'dbops.error_log',
-          -- ⭐ Il lotto APPARTIENE ALL'ARTICOLO, che e' catalogo globale: la
-          --   tabella non ha ne' emittente ne' magazzino (D-L2, brief del Lotto
-          --   2; piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config,
-          --   2026-09-21). Arrivata nel CSV dal cantiere BE con il residuo
-          --   «il nome nell'elenco: team DB» — questo e' il nome.
-          'magazzino.lotti',
+          -- ⛔ magazzino.lotti NON e' piu' qui dal 2026-11-22: il lotto e'
+          --   dell'azienda (brief-db-magazzino-lotto-dell-azienda, D-L1), e la
+          --   sua lista ha il perimetro.
           'storico.audit_log',
           'ui.lista_colonna',
           'ui.lista_colonna_permesso',

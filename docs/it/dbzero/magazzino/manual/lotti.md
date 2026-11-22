@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `magazzino.lotti`
 
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -14,7 +14,7 @@
 
 ### 🎯 Scopo Principale
 
-**La partita di merce**: i pezzi di un articolo arrivati (o prodotti) insieme, con la data da
+**La partita di merce di un'azienda**: i pezzi di un articolo arrivati (o prodotti) insieme, con la data da
 cui si conta la rotazione e l'eventuale scadenza. È l'unità della tracciabilità — «dove è
 passato questo lotto», «ritira il lotto difettoso» — e la dimensione che i movimenti e le
 righe di inventario, rettifica e trasferimento nominano quando l'articolo lo richiede.
@@ -24,12 +24,14 @@ due lotti.
 
 ---
 
-### La chiave è (articolo, codice)
+### La chiave è (azienda, articolo, codice)
 
 Lo stesso codice di lotto su due articoli diversi è legittimo: due fornitori numerano
-ciascuno per conto suo, e «L2026-001» del reagente A non è «L2026-001» del reagente B. Per
-questo l'unicità è sulla coppia, non sul solo codice. Il codice non è un identificativo di
-sistema: nessuna logica confronta su di esso, i movimenti puntano l'id.
+ciascuno per conto suo, e «L2026-001» del reagente A non è «L2026-001» del reagente B. Ed è
+legittimo su due aziende: il codice sta sul cartone del fornitore, e due aziende possono
+ricevere dallo stesso fornitore partite con lo stesso codice. Per questo l'unicità è sulla
+terna, non sul solo codice. Il codice non è un identificativo di sistema: nessuna logica
+confronta su di esso, i movimenti puntano l'id.
 
 `data_arrivo` è la data da cui si conta (arrivo o produzione), obbligatoria e senza default:
 la dice chi carica. `data_scadenza` è facoltativa e mai prima dell'arrivo.
@@ -45,10 +47,14 @@ a rifiutare un movimento senza lotto quando l'articolo lo pretende.
 
 ---
 
-### Fuori dal perimetro, per costruzione
+### Il perimetro è l'azienda, non il magazzino
 
-Un lotto è una **definizione**: non ha magazzino né emittente, e la storia di una partita è
-la stessa per tutti. Non ha policy RLS, e la sua storicizzazione è permanente (è
+Un lotto è di un **emittente**: l'azienda che ha ricevuto o prodotto la partita. Non è di un
+magazzino, perché si sposta fra i magazzini della stessa azienda, e dove si trova lo dice il
+registro. L'emittente non si sceglie: lo mette la sessione di chi crea il lotto. Un operatore
+vede e modifica i lotti delle proprie aziende (policy RLS diretta, come il seriale), e una
+riga di magazzino non può nominare il lotto di un'altra azienda: il controllo sta sulle sei
+tabelle che citano il lotto. La storicizzazione è permanente, col perimetro dell'emittente (è
 tracciabilità: «chi ha spostato la scadenza di questo lotto» è una domanda che si fa).
 Spento (`attivo` falso) non si assegna a un movimento nuovo, e non si spegne finché lo
 nomina un movimento, un'attesa, una riga di inventario, rettifica o trasferimento o un
@@ -61,6 +67,8 @@ prelievo — i guard li genera il framework delle automazioni.
 * 2026-09-15 — tabella nuova (`brief-db-magazzino-lotto-1-terreno-vuoto`, §4.3; analisi
   carico e scarico, §7-quater, M-5): prima il lotto era un testo libero sui movimenti e sulle
   righe, e due scritture diverse dello stesso codice erano due lotti.
+* 2026-11-22 — il lotto prende l'emittente (`brief-db-magazzino-lotto-dell-azienda`): prima
+  era condiviso fra tutte le aziende, e una poteva cambiare la scadenza del lotto di un'altra.
 
 ---
 

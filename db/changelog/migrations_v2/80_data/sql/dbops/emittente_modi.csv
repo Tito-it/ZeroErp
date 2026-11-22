@@ -14,6 +14,7 @@ movimento,magazzino,movimenti,id,SALTO,magazzino_id,magazzino,Dal magazzino: non
 rettifica,magazzino,rettifiche,id,SALTO,magazzino_id,magazzino,NULL
 trasferimento,magazzino,trasferimenti,id,SALTO,magazzino_id_from,magazzino,Dal magazzino di partenza.
 asset,magazzino,assets,id,PK,emittente_fiscale_id,NULL,NULL
+lotto_magazzino,magazzino,lotti,id,PK,emittente_fiscale_id,NULL,Il lotto di magazzino: il nome lotto e' del lotto di fatturazione.
 evento_asset,magazzino,eventi_assets,id,SALTO,asset_id,asset,Dall'asset: non dalla sorgente dell'evento.
 ddt,vendite,ddt,id,PK,emittente_fiscale_id,NULL,NULL
 ddt_riga,vendite,ddt_righe,id,SALTO,ddt_id,ddt,NULL

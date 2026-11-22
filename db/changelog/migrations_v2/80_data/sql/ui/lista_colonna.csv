@@ -916,7 +916,7 @@ id,lista_id,codice,etichetta,etichetta_estesa,campo_sorgente,tipo_colonna,tipo_d
 919,81,data_insert,Creata il,NULL,data_insert,informazione,datetime,datetime_short,140,120,center,Audit,5,f,t,t,f,f,t,2026-09-21 00:00:00,SEED,magazzino.ubicazioni.col_data_insert,30,VISTA
 920,81,id,Id,Identificativo tecnico,id,informazione,numeric,NULL,80,130,right,Identificazione,1,f,t,t,f,f,t,2026-09-21 00:00:00,SEED,magazzino.ubicazioni.col_id,10,VISTA
 921,81,azioni,Azioni,NULL,NULL,azione,string,NULL,70,999,center,NULL,99,f,f,f,f,f,t,2026-09-21 00:00:00,SEED,common.col_azioni,100,VISTA
-922,82,codice,Lotto,"Il codice della partita, univoco per articolo",codice,identificatore,string,NULL,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,SEED,magazzino.lotti.col_codice,100,VISTA
+922,82,codice,Lotto,"Il codice della partita, univoco per azienda e articolo",codice,identificatore,string,NULL,140,10,left,Identificazione,1,f,t,t,t,f,t,2026-09-21 00:00:00,SEED,magazzino.lotti.col_codice,100,VISTA
 923,82,data_arrivo,Arrivo,La data da cui si conta la rotazione (FIFO),data_arrivo,informazione,date,date_short,110,20,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,SEED,magazzino.lotti.col_data_arrivo,95,VISTA
 924,82,data_scadenza,Scadenza,Vuota = non scade,data_scadenza,informazione,date,date_short,110,30,center,Date,2,f,t,t,f,f,t,2026-09-21 00:00:00,SEED,magazzino.lotti.col_data_scadenza,90,VISTA
 925,82,attivo,Attivo,NULL,attivo,informazione,boolean,yesno,90,40,center,Stato,3,f,t,t,f,f,t,2026-09-21 00:00:00,SEED,magazzino.lotti.col_attivo,85,VISTA
