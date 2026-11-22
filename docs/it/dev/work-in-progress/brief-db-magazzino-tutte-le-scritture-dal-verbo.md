@@ -2,8 +2,9 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-23**
 >
-> **Riparte: Tid**, con le quattro decisioni del Lotto 2 (D-M8 … D-M11, §5.4) e il via. La
-> ricognizione del P-5 è scritta (§5.4); nessun changeSet. La R-1 è fatta dalla sessione BE il
+> **Riparte: Tid**, col via al giro di `p_campi` (brief suo, da scrivere: D-M8 = a), che viene prima
+> del P-5. Le decisioni del Lotto 2 sono prese (D-M8 … D-M11 come proposte, 2026-11-23, §5.4); nessun
+> changeSet. La R-1 è fatta dalla sessione BE il
 > 2026-11-22 e committata. La R-4 aspetta che gli oggetti di magazzino entrino a catalogo (Tid, 2026-11-22).
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
@@ -16,8 +17,9 @@
 > | 5 | sessione BE | ✅ R-1 (2026-11-22); R-3: nessun codice nuovo da questo brief. ⏳ R-4 non fatta: vuole gli oggetti di magazzino a catalogo (§7, R-4) | §7 | — |
 > | 5-bis | Tid | ✅ R-4 «al giorno del catalogo» (2026-11-22): la fa la sessione BE/FE quando le righe `(magazzino, …)` entrano in `area_model_overrides` | §7 | catalogo |
 > | 5-ter | team DB | ✅ ricognizione del P-5 (2026-11-23) | §5.4 | — |
-> | 5-quater | Tid | D-M8 … D-M11, poi il via | §5.4 | — |
-> | 6 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 5-quater (e, con D-M8 = a, il giro di `p_campi`) |
+> | 5-quater | Tid | ✅ D-M8 … D-M11 decise (2026-11-23); il via al giro di `p_campi` | §5.4 | — |
+> | 5-quinquies | team DB | il giro `script.fn_guard_campi_ammessi` (brief suo, copie ritirate nello stesso giro) | brief da aprire | via di Tid |
+> | 6 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 5-quinquies, via di Tid |
 > | 7 | team DB | P-6, archiviazione | §5 | 6 |
 >
 > Decisioni di Tid del 2026-11-22: il controllo di `p_campi` comune ai `fn_crea_*` si estrae **in un
@@ -25,7 +27,7 @@
 > diventa dell'azienda, in un brief suo (`brief-db-magazzino-lotto-dell-azienda`); il cliente del
 > seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Il Lotto 1 è
 > committato (`4c5517181a`, `d609fef87d`, 2026-11-22). Da committare: la §5.4 di questo file.
-> Decisioni aperte di Tid: D-M8 … D-M11 (§5.4).
+> Decisioni aperte di Tid: nessuna.
 >
 > **Brief vicini verificati (2026-11-21):** `work-done/2026/brief-db-processi-accensione-per-ambiente`
 > ha costruito, senza citare questo brief, due pezzi del Lotto 1 (§3-bis, punti 1-2);
@@ -129,7 +131,7 @@ Magazzino; il solo gesto «Registra» chiede l'azione `registra_magazzino`.
 | **D-M2** | La forma dei verbi delle anagrafiche | **a** un verbo tipizzato per operazione (`fn_crea_magazzino(p_codice, …)`) · **b** un verbo per tabella con i dati in `jsonb`, come `fn_pannello_scrivi` | ⭐ **b.** La modifica è per delta (si scrivono solo i campi mandati), e con parametri tipizzati non si distingue «non mandato» da «messo a vuoto». È la forma che il pannello ha già |
 | **D-M3** | Regola del 2: la scrittura dinamica da `jsonb` | **a** copiarla nei verbi di magazzino · **b** estrarre dal pannello un BB in `script` (tabella, id, dati, colonne ammesse → `INSERT`/`UPDATE` con `jsonb_populate_record`) usato dal pannello e dai verbi, ritirando la copia del pannello nello stesso giro | ⭐ **b.** È la seconda occorrenza della stessa logica. Il BB **non** controlla permesso né perimetro: li fa il verbo, prima di chiamarlo |
 | **D-M4** ✅ **DECISA da Tid il 2026-11-21: b, una funzione per tabella col gesto (`'crea'`/`'modifica'`)** | Dove stanno le colonne scrivibili delle anagrafiche | **a** restano costanti del backend · **b** una funzione DB per tabella, letta dal verbo e dal backend (stampo di `fn_pannello_colonne_scrivibili`) | ⭐ **b.** Oggi il verbo dovrebbe fidarsi di una lista che sta altrove: due sedi. Le costanti del backend si ritirano nello stesso giro |
-| **D-M5** ✅ **DECISA da Tid il 2026-11-21: b** (le tre famiglie, trasferimento compreso) | I documenti interni (Lotto 2): verbi per famiglia o generici | **a** verbi per famiglia (`fn_crea_inventario`, `fn_crea_rettifica`, …) · **b** verbi generici sul registro delle famiglie a DB (crea/modifica/cancella testata, righe, cambio di stato), come fa già `fn_documento_interno_transizioni` | ⭐ **b.** Le famiglie sono tre (inventario, rettifica, trasferimento) con la stessa matrice: è la regola del 2 già superata. ⚠️ Il registro `FAMIGLIE` del backend diventa una seconda sede: il brief del Lotto 2 dirà come si riduce |
+| **D-M5** ✅ **DECISA da Tid il 2026-11-21: b** (le tre famiglie, trasferimento compreso). ⚠️ **Rivista il 2026-11-23 dalla D-M10 (§5.4)**: la nascita di testata e riga è per famiglia, tipizzata; il resto generico | I documenti interni (Lotto 2): verbi per famiglia o generici | **a** verbi per famiglia (`fn_crea_inventario`, `fn_crea_rettifica`, …) · **b** verbi generici sul registro delle famiglie a DB (crea/modifica/cancella testata, righe, cambio di stato), come fa già `fn_documento_interno_transizioni` | ⭐ **b.** Le famiglie sono tre (inventario, rettifica, trasferimento) con la stessa matrice: è la regola del 2 già superata. ⚠️ Il registro `FAMIGLIE` del backend diventa una seconda sede: il brief del Lotto 2 dirà come si riduce |
 
 **Che cosa non è una decisione, perché lo dice già il modello:**
 
@@ -575,14 +577,15 @@ Lotto 2 sarebbero la quarta sede: è la regola del 2 superata, e il registro del
 * POSTED non entra nel verbo del cambio di stato: la porta resta dell'operazione;
 * la postura nelle tre sedi (§11.8) sulle sei tabelle, nello stesso giro dei builder.
 
-**Decisioni a Tid**
+**Decisioni a Tid** — ✅ **tutte e quattro DECISE da Tid il 2026-11-23, come proposte** (D-M8 = a,
+D-M9 = b, D-M10 = b, D-M11 = a)
 
 | # | Domanda | Opzioni | Proposta |
 | --- | --- | --- | --- |
-| **D-M8** | L'ordine rispetto al giro di `p_campi` (deciso il 2026-11-22: «in un giro a parte, dopo la R-1»; la R-1 è fatta) | **a** prima il giro `script.fn_guard_campi_ammessi` (brief suo), poi il Lotto 2 · **b** prima il Lotto 2, poi il giro | ⭐ **a.** Il Lotto 2 aggiunge almeno due copie del controllo (testata e riga), sei con la D-M10 = b. Nate sul BB, non c'è niente da ritirare dopo |
-| **D-M9** | Dove sta il registro delle famiglie (D-M5) | **a** una tabella di seed in `magazzino` · **b** una funzione IMMUTABLE `magazzino.fn_documento_interno_famiglia(p_famiglia)` (tabella, tabella righe, colonna FK, colonna di stato, GUC, oggetto del permesso), stampo `fn_documento_interno_transizioni` | ⭐ **b.** Una famiglia nuova vuole tabelle, trigger e CHECK: è una costante del modello, non un dato configurabile. Una tabella prometterebbe una configurabilità che non c'è. Nello stesso giro le tre catene `IF` di `fn_check_documento_interno_registrabile` la leggono |
-| **D-M10** | La forma della **nascita** (testata e riga), che le tre famiglie non condividono: il trasferimento ha partenza e arrivo; la riga ha `qta_contata`, `qta_delta` + `motivo`, `qta` + ubicazioni da/a | **a** generica anche la nascita: `(famiglia, dati jsonb)`, gli obbligatori nella lista della famiglia, la chiave mancante col suo nome · **b** nascita per famiglia, tipizzata (stampo D-M2 del Lotto 1: obbligatori come argomenti, facoltativi in `p_campi`); generici modifica, cancellazione, togli riga e cambio di stato | ⭐ **b.** Le famiglie differiscono proprio dove nasce il documento; dove condividono la matrice (modifica per delta, stato, cancellazione) il verbo resta uno. È la forma che il Lotto 1 e la famiglia `fn_crea_*` hanno già. ⚠️ **Rivede la D-M5** (2026-11-21), che chiedeva generico anche il «crea» |
-| **D-M11** | Le colonne `sorgente_*` (§3-bis.9) nei verbi | **a** ammesse alla nascita, fuori dalla modifica · **b** fuori da tutti e due finché non c'è uno scrittore con una sorgente · **c** ammesse anche in modifica | ⭐ **a.** La provenienza dice da dove nasce il documento: la controlla già `trgfn_guard_sorgente`, e cambiarla dopo riscrive la storia. Il primo scrittore con una sorgente (il ricevimento degli acquisti) non deve aspettare un giro |
+| **D-M8** ✅ a | L'ordine rispetto al giro di `p_campi` (deciso il 2026-11-22: «in un giro a parte, dopo la R-1»; la R-1 è fatta) | **a** prima il giro `script.fn_guard_campi_ammessi` (brief suo), poi il Lotto 2 · **b** prima il Lotto 2, poi il giro | ⭐ **a.** Il Lotto 2 aggiunge almeno due copie del controllo (testata e riga), sei con la D-M10 = b. Nate sul BB, non c'è niente da ritirare dopo |
+| **D-M9** ✅ b | Dove sta il registro delle famiglie (D-M5) | **a** una tabella di seed in `magazzino` · **b** una funzione IMMUTABLE `magazzino.fn_documento_interno_famiglia(p_famiglia)` (tabella, tabella righe, colonna FK, colonna di stato, GUC, oggetto del permesso), stampo `fn_documento_interno_transizioni` | ⭐ **b.** Una famiglia nuova vuole tabelle, trigger e CHECK: è una costante del modello, non un dato configurabile. Una tabella prometterebbe una configurabilità che non c'è. Nello stesso giro le tre catene `IF` di `fn_check_documento_interno_registrabile` la leggono |
+| **D-M10** ✅ b | La forma della **nascita** (testata e riga), che le tre famiglie non condividono: il trasferimento ha partenza e arrivo; la riga ha `qta_contata`, `qta_delta` + `motivo`, `qta` + ubicazioni da/a | **a** generica anche la nascita: `(famiglia, dati jsonb)`, gli obbligatori nella lista della famiglia, la chiave mancante col suo nome · **b** nascita per famiglia, tipizzata (stampo D-M2 del Lotto 1: obbligatori come argomenti, facoltativi in `p_campi`); generici modifica, cancellazione, togli riga e cambio di stato | ⭐ **b.** Le famiglie differiscono proprio dove nasce il documento; dove condividono la matrice (modifica per delta, stato, cancellazione) il verbo resta uno. È la forma che il Lotto 1 e la famiglia `fn_crea_*` hanno già. ⚠️ **Rivede la D-M5** (2026-11-21), che chiedeva generico anche il «crea» |
+| **D-M11** ✅ a | Le colonne `sorgente_*` (§3-bis.9) nei verbi | **a** ammesse alla nascita, fuori dalla modifica · **b** fuori da tutti e due finché non c'è uno scrittore con una sorgente · **c** ammesse anche in modifica | ⭐ **a.** La provenienza dice da dove nasce il documento: la controlla già `trgfn_guard_sorgente`, e cambiarla dopo riscrive la storia. Il primo scrittore con una sorgente (il ricevimento degli acquisti) non deve aspettare un giro |
 
 ## 6. I pgTAP — i casi si fabbricano
 
@@ -704,3 +707,4 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-22 | BE | R-1 fatta: repository delle anagrafiche sui verbi, colonne ammesse dal DB, test sui builder; R-4 non fatta (vuole il catalogo) |
 | 2026-11-22 | Tid | R-4 al giorno del catalogo |
 | 2026-11-23 | DB | Ricognizione del P-5 (§5.4): che cosa resta, che cosa manca, la mappa famiglia → tabelle già in tre posti, censimento pgTAP datato. Quattro decisioni a Tid (D-M8 … D-M11); la D-M10 = b rivedrebbe in parte la D-M5. Testata aggiornata: il Lotto 1 è committato |
+| 2026-11-23 | Tid | **D-M8 = a** (prima il giro `script.fn_guard_campi_ammessi`, brief suo), **D-M9 = b** (registro delle famiglie in una funzione IMMUTABLE), **D-M10 = b** (nascita di testata e riga per famiglia, tipizzata; rivede in parte la D-M5), **D-M11 = a** (`sorgente_*` alla nascita, non in modifica) |
