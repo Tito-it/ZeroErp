@@ -509,7 +509,13 @@ Se una scrittura lascia traccia lo decide la colonna `storicizza` della riga, e 
 | `anagrafiche.indirizzi_soggetti` | `true` | **Memoria continua**: la tabella è in `config.storico_set_storicizza`, e il flag resta acceso dopo ogni modifica. Una scrittura che passa `storicizza = false` non lascia traccia |
 | `anagrafiche.indirizzi`, `anagrafiche.indirizzi_dettaglio`, `config.stradario` | `false` | **A richiesta di chi scrive**: una modifica lascia traccia solo se passa `storicizza = true`; registrata la versione, il trigger rimette il flag a `false` |
 
-Sulle tre tabelle a richiesta nessun oggetto del database riaccende il flag: la storia di un indirizzo di ruolo, di un civico o di una via è completa solo se **ogni** scrittura che va ricordata lo chiede. È voluto: chi scrive decide quali modifiche lasciano traccia.
+Sulle tre tabelle a richiesta nessun oggetto del database riaccende il flag: la storia di un indirizzo di ruolo, di un civico o di una via è completa solo se **ogni** scrittura che va ricordata lo chiede.
+
+⚠️ **Oggi nessuna modifica fatta dall'applicazione a un indirizzo di ruolo o a un civico lascia traccia**: nessuna
+scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` passa `storicizza = true`, e
+nemmeno la riattivazione di un civico dentro il «trova o crea». Per tutte e tre le tabelle a richiesta, compreso
+`config.stradario`, è deciso lo storico **continuo**, come su `indirizzi_soggetti`, con la regola tenuta dal
+database e non da chi scrive; finché non è fatto, la storia di indirizzi e civici scritti dall'app è vuota.
 
 ⚠️ La cancellazione guarda il flag **salvato** sulla riga, non quello della scrittura. Sulle tre tabelle a richiesta il flag salvato è spento dopo ogni modifica, compresa quella che lo ha chiesto: una DELETE lascia traccia solo su una riga scritta con `storicizza = true` e non più modificata.
 

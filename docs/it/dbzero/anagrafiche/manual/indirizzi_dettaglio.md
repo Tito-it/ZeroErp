@@ -124,6 +124,10 @@ quello della via.
   di colonna obbligatoria: la normalizzazione non trova la via e lascia `via_norm` vuota.
 * **La porta della fusione è un parametro di sessione** (`zeroerp.maintenance_indirizzi_dettaglio`): chiunque
   scriva può accenderlo, e con la porta accesa il cambio di via passa senza giudizio.
+* **Nessuna modifica fatta dall'applicazione lascia traccia nello storico**: nessuna scrittura dell'app passa
+  `storicizza = true`, e nemmeno la riattivazione del «trova o crea»; `storico.indirizzi_dettaglio` resta vuoto
+  per i civici scritti dall'app. È deciso lo storico continuo, come su `anagrafiche.indirizzi_soggetti`, con la
+  regola tenuta dal database; non è ancora fatto.
 * **Il commento di `storicizza`** dice «Default=True»: il default è `false`.
 
 ---

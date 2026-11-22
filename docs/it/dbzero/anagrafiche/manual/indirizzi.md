@@ -102,6 +102,9 @@ modifica dipende da chi la scrive.
   estero, se lo stato proposto non ha il catalogo completo, passa a quello stato senza che nessuno lo dica.
 * **La posizione è una copia**: `geoloc` prende la posizione del civico quando la riga si scrive. Se poi cambia
   la posizione del civico, la riga la riprende solo alla sua prossima scrittura.
+* **Nessuna modifica fatta dall'applicazione lascia traccia nello storico**: nessuna scrittura dell'app passa
+  `storicizza = true`, quindi `storico.indirizzi` resta vuoto per gli indirizzi scritti dall'app. È deciso lo
+  storico continuo, come su `anagrafiche.indirizzi_soggetti`, con la regola tenuta dal database; non è ancora fatto.
 
 ---
 

@@ -19,7 +19,7 @@ documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … 
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
 | 8 | sessione DB | Archiviazione in `work-done/` | §11 | 3, 7 |
 
-**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10); Q7 riaperta e decisa di nuovo lo stesso giorno, strada (b) (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
+**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10); Q7 riaperta e decisa di nuovo lo stesso giorno, strada (b), estesa a `config.stradario` (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
 che si scrivono, un commit per area.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-22. **A chi:** Tid e team DB.
@@ -531,7 +531,15 @@ dimenticherebbero il prossimo percorso di scrittura, e non coprono la riattivazi
 le due tabelle in `config.storico_set_storicizza`, e il default di `storicizza` allineato alle altre
 tabelle dello schema, più le righe esistenti; la forma la decide il team DB. **Ricadute BE:** nessuna
 attesa; il BE non passa il flag. Il giro 0c scrive le pagine e la guida col comportamento di oggi
-(«nessuna traccia») in «Che cosa oggi non copre», col rimando a questo giro.
+(«nessuna traccia») in «Che cosa oggi non copre», col rimando a questo giro. ✅ **Fatto (sessione DB,
+2026-11-22, dopo il merge della PR #204):** il giro 0c, committato prima della risposta, scriveva «È voluto»;
+corretti `manual/indirizzi.md`, `manual/indirizzi_dettaglio.md` («Che cosa oggi non copre») e la guida
+`gestione-degli-indirizzi` §Storicizzazione. ✅ **Tid, 2026-11-22: anche `config.stradario`**, che aveva la
+stessa regola «a richiesta»: lo storico continuo vale per tutte e tre le tabelle, e il giro di codice di Q7 porta
+anche lei in `config.storico_set_storicizza`, col default e le righe esistenti. Quali scritture dello stradario
+passano oggi il flag non è censito (R-BE5 copriva le due tabelle degli indirizzi): con la regola nel DB non serve.
+⚠️ La pagina `config/manual/stradario.md` dice ancora «il front-end dovrà sempre impostare a true»: è fuori da
+questa revisione (schema `config`), si corregge col giro di codice.
 
 ## 11. Alla chiusura
 
