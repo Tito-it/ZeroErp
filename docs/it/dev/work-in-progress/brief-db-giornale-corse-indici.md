@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: team DB** (`dev/db-tid`), con la richiesta del §9.2 (il riferimento orfano di
-`coda_lavori.job_run_id`). L'`EXECUTE` di `zeroerp_job` sulla procedura di potatura è dato su
-dbdev (Tid, 2026-11-22). Il lato BE del giro 2 è fatto, compresa la doc di `job_run_id` (§9.1).
+**Riparte: la sessione BE** (`/arrivi-db`), con il §10.5: toglie il ⏳ di `api_gestione_code.md` §4,
+censisce i lettori di `job_run_id`, porta la domanda sui lettori per solo `jobname`. Al team DB non
+resta niente da scrivere. Chiusa la riga 9-quater, il brief non aspetta più nessuno e passa in `work-done/`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -23,8 +23,10 @@ dbdev (Tid, 2026-11-22). Il lato BE del giro 2 è fatto, compresa la doc di `job
 | 7-bis | ✅ Tid | I due ritocchi del §8.8 confermati; `20261122-29` … `-32` applicati su scratch e dbdev; la fase post del provisioning sullo scratch; i pgTAP verdi (2026-11-22) | §8.8 | 7 |
 | 7-ter | ✅ Tid | La doc auto-generata di `dbops` e `maintenance` rigenerata. L'`EXECUTE` di `zeroerp_job` sulla procedura dato su dbdev con un `GRANT` a mano (2026-11-22, catalogo: `zeroerp_job=X/zeroerp_owner`). La fase post non l'aveva dato: con ogni probabilità era girata su un altro database (su dbdev è `zeroerp`) | §8.8 | 7-bis |
 | 8 | ✅ sessione BE | Le doc che promettono tutta la storia; con il 6-quater, in un solo `/arrivi-db` (2026-11-22, §9.1) | §7.4, §8.7, §8.8 | 7-bis |
-| 9 | **team DB** ⏭️ | La richiesta del §9.2: la potatura non lascia `coda_lavori.job_run_id` orfano; i 37 orfani di dbdev | §9.2 | 8, la decisione di Tid (2026-11-22) |
+| 9 | ✅ team DB | Giro 3 scritto e provato: la FK `ON DELETE SET NULL` di `coda_lavori.job_run_id`, l'azzeramento del pregresso, la riga della policy degli indici, il pgTAP, la doc (2026-11-22) | §9.2, §10 | 8, la decisione di Tid (2026-11-22) |
 | 9-bis | ✅ sessione BE | `api_gestione_code.md` dice che `job_run_id` NULL vuol dire anche «corsa non più nel giornale», con la garanzia ⏳ in attesa del 9. Fatta subito: BE e FE trattano già il NULL, niente aspetta il DB (2026-11-22) | §9.2 | — |
+| 9-ter | Tid | ✅ `20261122-33` e il mirror di `fk_index_policy.csv` applicati, `dbops/test-coda-lavori-job-run-id-segue-il-giornale-v1` verde; la doc auto-generata di `dbops` rigenerata, con la FK e l'indice (2026-11-22) | §10.4 | 9 |
+| 9-quater | **sessione BE** ⏭️ | Togliere il ⏳ della garanzia in `api_gestione_code.md` §4; la domanda sui lettori per solo `jobname` | §10.5 | 9-ter |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
@@ -34,12 +36,16 @@ ritirano (§7.4). ✅ 2026-11-22: D-R2 sì, D-R3 sì, D-R4 le righe storiche si 
 via al giro 2a (§8.6). ✅ 2026-11-22: via al giro 2b. ✅ 2026-11-22: confermati i due ritocchi
 del §8.8, la chiave per coppia `(processo, jobname)` e l'ultima fallita e di pgAgent fra le righe
 tenute. ✅ 2026-11-22: un `job_run_id` che non porta a nessuna corsa **non si mostra**, e lo
-toglie il DB alla fonte, non il BE in lettura (§9.2, strada A). Nessuna decisione aperta.
+toglie il DB alla fonte, non il BE in lettura (§9.2, strada A). ✅ 2026-11-22: lo strumento è una
+**FK `ON DELETE SET NULL`**, non un `UPDATE` nella potatura, e l'azzeramento riscrive `data_update` e
+`user_update` come ogni modifica; via al giro 3 (§10). Nessuna decisione aperta.
 **Committato** (2026-11-22, `dev/db-tid`): il giro 1 (tre changeSet, un pgTAP, la doc di `maintenance`,
 manuale e auto-generata) e questo brief. **Committato** (2026-11-22) anche il §8, questa testata e il giro 2a, applicato
 (tre changeSet, quattro pgTAP toccati, la doc `manual/` e cinque guide o pagine, §8.7) e il giro
 2b, applicato (quattro changeSet, il CSV dei processi, un pgTAP, due pagine `manual/` nuove e
-sei toccate, una guida, §8.8).
+sei toccate, una guida, §8.8). **Committato** (2026-11-22) anche il giro 3, applicato (un changeSet,
+una riga del CSV della policy degli indici, un pgTAP, tre pagine `manual/`, la doc auto-generata di
+`coda_lavori` e una guida, §10) e questa testata.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
 > **Origine:** revisione della doc API di `maintenance` ([api_tracciamento.md](../../backend/core/manual/api_tracciamento.md)),
@@ -378,6 +384,7 @@ presidi (`presidi_repository.stato_presidi`, il digest), che leggono le viste DB
 dall'inizio del periodo corrente, e i periodi di `deploy/sveglie.json` sono giorno, settimana, mese.
 Scrivono soltanto: `job_run.registered_job`, i comandi di fatturazione, stampa, code, smoke, email.
 
+⚠️ *Superato dal §10 (giro 3, 2026-11-22): `job_run_id` ha la FK `ON DELETE SET NULL`, e non resta più orfano.*
 **Un riferimento che resta orfano:** `dbops.coda_lavori.job_run_id` non ha FK verso il giornale; il BE
 lo espone e `JobDettaglioDrawer` lo mostra. Dopo la potatura punta a una riga che non c'è: niente si
 rompe, si perde la traccia. Lo si scrive nel manuale della coda.
@@ -563,7 +570,8 @@ COMMIT;
 Fatto datato (dbdev, 2026-11-22): 99 775 righe, dal 2026-01-07 al 2026-09-05. Lo scratch non ne
 ha, come ogni database costruito da zero. ⚠️ 37 lavori di `dbops.coda_lavori` puntano a quelle righe
 con `job_run_id`, che non ha FK: restano orfani, come quelli che lascerà la potatura (§7.4). Niente si
-rompe; nessuna vista DB legge `coda_lavori.job_run_id`.
+rompe; nessuna vista DB legge `coda_lavori.job_run_id`. ⚠️ *Superato dal §10: li azzera il changeSet
+del giro 3, prima della FK.*
 
 **Prova** (`prova_changeset.py`, ROLLBACK sullo scratch, i tre changeSet insieme):
 
@@ -663,7 +671,7 @@ Qui una riga vecchia resta se è «l'ultima» di qualcosa: la regola dipende dal
 | `vw_processi_programmazione` | coperto: l'ultima corsa, l'ultima di pgAgent e l'ultima non saltata (aperta o conclusa) restano. Il `max()` su tutte le corse del processo, segnalato al §6.3, ha ora il limite della ritenzione. La vista non si riscrive |
 | `vw_job_run_da_guardare` | coperto per il verdetto e la causa. ⚠️ Un caso cambia: per una corsa **appesa da più di un anno**, `falliti_ultimi_7_giorni` conta i fallimenti dei sette giorni prima solo fra le righe tenute. Scritto nel manuale della vista |
 | `vw_job_run_da_superuser` | coperto: l'ultima col ruolo resta, per coppia e quindi per processo |
-| `dbops.coda_lavori.job_run_id` | senza FK, può restare orfano: scritto nel manuale della coda |
+| `dbops.coda_lavori.job_run_id` | senza FK, può restare orfano: scritto nel manuale della coda. ⚠️ Superato dal §10: FK `ON DELETE SET NULL` |
 | i quattro scrittori | non ne dipendono: leggono solo la propria riga per `id` |
 
 **Prova** (`prova_changeset.py`, ROLLBACK sullo scratch, i quattro changeSet insieme):
@@ -756,3 +764,74 @@ il BE ha visto e che la toccano:
 più»: dopo il giro diventa «`job_run_id` NULL vuol dire mai preso da un worker, oppure corsa non più
 nel giornale». Lato BE lo dice già `api_gestione_code.md` §4 (riga 9-bis della testata), con la
 garanzia segnata ⏳ fino a questo giro: dopo l'apply si toglie il ⏳.
+
+## 10. Giro 3: `coda_lavori.job_run_id` segue il giornale ✅ applicato, verde (2026-11-22)
+
+✅ Tid, 2026-11-22: `20261122-33` e la riga di `fk_index_policy.csv` applicati, il pgTAP del §10.4
+verde, la doc auto-generata di `dbops` rigenerata.
+
+Team DB (`dev/db-tid`), dopo il §9.2. Decisioni di Tid (2026-11-22): la forma è una **FK**, e
+l'azzeramento riscrive `data_update` e `user_update`; via al giro.
+
+### 10.1 La forma: una FK, non un `UPDATE` nella potatura
+
+`fk_coda_lavori_job_run_log`: `coda_lavori.job_run_id` verso `maintenance.job_run_log(id)`,
+`ON DELETE SET NULL`. La regola è «nessun `job_run_id` senza corsa», per chiunque cancelli dal
+giornale: la potatura, un `DELETE` a mano come quello di D-R4, uno strumento futuro. Un `UPDATE`
+dentro `fn_pota_giornale_corse` avrebbe coperto la sola potatura.
+
+⚠️ **Revoca** due decisioni scritte: il «senza FK, apposta» del giro 2b (§8.8, 2026-11-22), che
+accettava l'orfano perché il giornale si pota, e il «no FK cross-schema se sconveniente» di
+`brief-db-coda-lavori-generica` (2026-07-20). Il giornale ha già una FK verso un altro schema
+(`fk_job_run_log_processi`).
+
+### 10.2 Come si comporta l'azione, sui punti del §9.2
+
+| Punto | Esito |
+| --- | --- |
+| RLS di `coda_lavori` | l'`UPDATE` della FK gira come proprietario della tabella e non subisce la policy, nemmeno con `FORCE`: tocca i lavori di ogni azienda, e `zeroerp_job` non prende permessi sulla coda. Provato dal pgTAP (test 5 e 8) |
+| trigger d'archiviazione | `trg_coda_lavori_a10_archiviazione_upd` è `UPDATE OF archiviato, stato, archiviato_il, archiviato_da`: non scatta. Il lavoro archiviato resta archiviato, con data e autore (test 9) |
+| audit e `tx_id` | scattano, come su ogni modifica: `data_update` è l'istante della cancellazione, `user_update` il proprietario. Il `tx_id` della riga resta. `coda_lavori` non ha tabella di storico |
+| la pulizia della coda | la coda non ha una pulizia: i lavori si archiviano e non si cancellano. Non esiste un `cleanup_at` sulla coda (il §9.2 lo nominava). Un lavoro vive quindi sempre più a lungo della sua corsa |
+| lo scrittore | il drenatore timbra la corsa aperta da `script.fn_job_run_start` (`registered_job`), già committata sulla stessa connessione: la FK la trova. Un `job_run_id` inesistente è `23503` (test 4) |
+| l'indice | parziale, `ix_coda_lavori_job_run_id … WHERE job_run_id IS NOT NULL` (linee-guida-sql §8.4): riga `CON_INDICE` nel CSV della policy, la crea `apply_fk_index_policy()` in `90_end` |
+
+### 10.3 Il pregresso
+
+Il changeSet azzera i `job_run_id` senza corsa prima di aggiungere la FK, su ogni database: la
+regola vale per tutte le righe, non solo per quelle che la potatura cancellerà. Da zero la coda è
+vuota e l'`UPDATE` tocca zero righe. Fatto datato (dbdev, 2026-11-22): 37 lavori, quelli delle righe
+senza processo cancellate in D-R4 (§8.7). Niente da fare a mano.
+
+### 10.4 Che cosa c'è, e come è provato
+
+| Oggetto | |
+| --- | --- |
+| `00_schema/dbops/20261122-33-alter-coda-lavori-fk-job-run-log` | l'azzeramento, la FK, il `COMMENT` della FK e della colonna (quello vecchio diceva «no FK cross-schema») |
+| `80_data/sql/dbops/fk_index_policy.csv` | la riga `fk_coda_lavori_job_run_log`, `CON_INDICE`, indice parziale |
+| `db/pgtap/dbops/test-coda-lavori-job-run-id-segue-il-giornale-v1.sql` | 11 test, runner owner: la FK, la policy e l'indice, lo scrittore, la potatura con la RLS armata (stessa azienda, altra azienda, archiviato, corsa tenuta), un `DELETE` qualunque |
+| `manual/` | `coda_lavori` (la colonna e la storia), `fn_pota_giornale_corse` (che cosa resta), `job_run_log` (il vedi anche); la guida `processi-automatici-classe-e-identita` |
+
+**La prova** (`scripts/prova_changeset.py`, 2026-11-22):
+
+* scratch, l'estratto più un changeSet di simulazione nello scratchpad (il mirror della riga della
+  policy e `CALL dbops.apply_fk_index_policy()`): pgTAP **senza 4 ok / 7 not ok → con 11 ok / 0 not
+  ok**. Senza l'estratto mancano la FK, la policy, l'indice e il rifiuto (1-4), e nessun lavoro perde
+  il riferimento (7, 8, 11); i verdi senza (5, 6, 9, 10) non dipendono dalla FK;
+* solo l'estratto, senza la simulazione: 1 e 4-11 verdi, 2 e 3 rossi, come atteso prima del
+  `80_data` e del `90_end`;
+* dbdev, l'estratto da solo: eseguito per intero, con i 37 orfani azzerati e la FK convalidata.
+
+### 10.5 Richiesta al team BE/FE
+
+1. `docs/it/backend/core/manual/api_gestione_code.md` §4: dopo l'apply di `20261122-33` la garanzia
+   «`job_run_id` NULL vuol dire anche corsa non più nel giornale» non è più ⏳. Nessun cambio di
+   contratto: le risposte avevano già `job_run_id` nullable (`get_dettaglio`,
+   `VenditeFatturazioneRunStatoData`).
+2. **Censisci i lettori di `coda_lavori.job_run_id` che contano su «il numero porta sempre a una
+   corsa»**, oltre ai due già noti (il drawer, lo stato del giro di fatturazione). La garanzia ora è
+   più forte di prima; un lettore che faceva un join e trattava il «non trovato» come errore ora non lo
+   incontra più.
+3. Resta del §9.1 la domanda di contratto sui lettori che cercano per solo `jobname`
+   (`job_liveness(jobnames=…)`, `job-summary` senza filtri, `job-runs?jobname=`): del BE, con Tid. Non
+   chiede niente al DB.

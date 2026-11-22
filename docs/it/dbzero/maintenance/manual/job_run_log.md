@@ -7,7 +7,7 @@
 > Approfondimento tabelle:
 >
 > * [dbops.processi](/dbzero/dbops/tabelle/processi) — il registro dei processi a cui ogni corsa nuova appartiene
-> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — dove sta l'operatore del singolo lavoro, che qui non c'è
+> * [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) — dove sta l'operatore del singolo lavoro, che qui non c'è; il suo `job_run_id` punta a una corsa di qui, e si azzera quando la corsa esce (`ON DELETE SET NULL`)
 >
 > Approfondimento viste:
 >
