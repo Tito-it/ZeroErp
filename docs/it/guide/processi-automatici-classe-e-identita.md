@@ -288,7 +288,9 @@ Un lavoro di **coda** lascia due tracce, e la domanda a cui rispondono è divers
 | [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) | **il singolo lavoro**: quando è stato preso in carico, quando è iniziato e finito, quanti tentativi, l'ultimo errore, il risultato |
 
 Le due si tengono per mano con la colonna **`coda_lavori.job_run_id`**, che punta
-al giro dentro cui quel lavoro è stato eseguito.
+al giro dentro cui quel lavoro è stato eseguito. Il giornale tiene 12 mesi e la
+coda no: quando il giro esce dal giornale, il lavoro resta e la colonna si
+svuota.
 
 ⚠️ **Da qui una cosa che sorprende, e conviene saperla prima di cercarla**:
 se si va in `job_run_log` a cercare le corse di `FATTURAZIONE_GIRO` per

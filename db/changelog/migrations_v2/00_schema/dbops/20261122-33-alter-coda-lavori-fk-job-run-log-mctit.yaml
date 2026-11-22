@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.coda_lavori.job_run_id SEGUE IL GIORNALE: FK ON DELETE SET NULL
+#   verso maintenance.job_run_log(id). Brief: brief-db-giornale-corse-indici,
+#   §9.2 e §10 (giro 3), decisioni di Tid del 2026-11-22.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   job_run_id dice quale corsa del giornale ha preso il lavoro. Il giornale
+#   si pota a 12 mesi (maintenance.fn_pota_giornale_corse), e la coda no: un
+#   lavoro vive piu' a lungo della sua corsa. Senza FK il lavoro restava con
+#   un numero che non porta a niente, e a video si legge come un guasto.
+#   Decisione di Tid (2026-11-22, §9.2): un job_run_id senza corsa non si
+#   mostra, e lo toglie il database alla fonte. La regola e' «nessun
+#   job_run_id senza corsa», per chiunque cancelli dal giornale (la potatura,
+#   un DELETE a mano): e' una FK, non un UPDATE nella funzione di potatura.
+#   ⚠️ REVOCA il «senza FK, apposta» del giro 2b (2026-11-22, §8.8) e il
+#   «no FK cross-schema» del 2026-07-20 (20260720-08): il giornale ha gia'
+#   una FK verso un altro schema (fk_job_run_log_processi).
+#
+# -- COME SI COMPORTA L'AZIONE -------------------------------------------
+#   * L'UPDATE di SET NULL gira come proprietario di coda_lavori e non
+#     subisce la RLS (le azioni referenziali la scavalcano, anche con FORCE):
+#     tocca i lavori di ogni azienda, senza dare permessi a zeroerp_job.
+#   * Il trigger d'archiviazione e' UPDATE OF archiviato, stato,
+#     archiviato_il, archiviato_da: non scatta, e i lavori archiviati si
+#     aggiornano restando archiviati.
+#   * Scattano l'audit (data_update, user_update) e il tx_id, come su ogni
+#     modifica: l'azzeramento e' una modifica vera della riga (Tid, 2026-11-22).
+#   * Lo scrittore (il drenatore del backend) timbra la corsa aperta da
+#     script.fn_job_run_start, gia' committata sulla stessa connessione: la
+#     FK la trova.
+#
+# -- L'INDICE ------------------------------------------------------------
+#   Ogni corsa cancellata cerca i suoi lavori: serve l'indice parziale
+#   ix_coda_lavori_job_run_id (WHERE job_run_id IS NOT NULL, linee-guida-sql
+#   §8.4). Lo decide il seed: riga CON_INDICE in dbops/fk_index_policy.csv,
+#   e lo crea apply_fk_index_policy() in 90_end (§8.7, mai a mano).
+#
+# -- IL PREGRESSO --------------------------------------------------------
+#   Prima della FK si azzerano i job_run_id che non portano a nessuna corsa,
+#   su ogni database (su dbdev, il 2026-11-22, i lavori delle righe senza
+#   processo cancellate a mano in D-R4). Da zero la coda e' vuota e
+#   l'UPDATE tocca zero righe. DML e ALTER sulla stessa tabella: apre con
+#   SET CONSTRAINTS ALL IMMEDIATE (§11.12).
+#   ⚠️ La migrate gira come proprietario, senza FORCE: l'UPDATE vede tutte
+#   le righe, di ogni azienda.
+# Presidio: dbops/test-coda-lavori-job-run-id-segue-il-giornale-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261122-33-alter-coda-lavori-fk-job-run-log-mctit.yaml
+
+  - changeSet:
+      id: 20261122-33-alter-coda-lavori-fk-job-run-log
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.coda_lavori.job_run_id: FK ON DELETE SET NULL verso maintenance.job_run_log(id),
+        dopo l'azzeramento dei riferimenti senza corsa. La potatura del giornale non lascia
+        orfani. Brief: brief-db-giornale-corse-indici §9.2, §10.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: dbops
+                tableName: coda_lavori
+            - tableExists:
+                schemaName: maintenance
+                tableName: job_run_log
+            - columnExists:
+                schemaName: dbops
+                tableName: coda_lavori
+                columnName: job_run_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              -- 1. Il pregresso: un job_run_id senza corsa diventa NULL.
+              UPDATE dbops.coda_lavori c
+                 SET job_run_id = NULL
+               WHERE c.job_run_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1
+                                   FROM maintenance.job_run_log l
+                                  WHERE l.id = c.job_run_id);
+
+              -- 2. La regola.
+              ALTER TABLE dbops.coda_lavori
+                  ADD CONSTRAINT fk_coda_lavori_job_run_log
+                      FOREIGN KEY (job_run_id) REFERENCES maintenance.job_run_log (id)
+                      ON DELETE SET NULL;
+
+              COMMENT ON CONSTRAINT fk_coda_lavori_job_run_log ON dbops.coda_lavori IS
+                'Il lavoro punta solo a una corsa che c''e''. Quando la corsa esce dal giornale '
+                '(la potatura a 12 mesi, o un DELETE) job_run_id diventa NULL: il lavoro resta, '
+                'il riferimento no. L''azione gira come proprietario e non subisce la RLS.';
+
+              COMMENT ON COLUMN dbops.coda_lavori.job_run_id IS
+                'La corsa di maintenance.job_run_log che ha preso il lavoro, timbrata dal drenatore. '
+                'NULL: il lavoro non e'' mai stato preso, oppure la sua corsa non e'' piu'' nel giornale '
+                '(fk_coda_lavori_job_run_log, ON DELETE SET NULL).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.coda_lavori DROP CONSTRAINT IF EXISTS fk_coda_lavori_job_run_log;
+              COMMENT ON COLUMN dbops.coda_lavori.job_run_id IS
+                'Link a maintenance.job_run_log (no FK cross-schema). Valorizzato dal worker quando il job parte.';

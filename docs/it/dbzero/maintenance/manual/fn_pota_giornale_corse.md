@@ -91,8 +91,9 @@ Oltre la soglia il giornale non è più la storia completa:
 * i conteggi sulle corse contano gli ultimi 12 mesi, più le righe che restano;
 * per una corsa appesa da più di un anno, `vw_job_run_da_guardare` conta i fallimenti dei sette
   giorni prima solo fra le righe che il giornale tiene. Il verdetto e la causa non cambiano;
-* un lavoro di `dbops.coda_lavori` può puntare con `job_run_id` a una corsa che non c'è più: niente
-  si rompe, si perde la traccia.
+* un lavoro di `dbops.coda_lavori` che puntava a una corsa cancellata resta, con `job_run_id`
+  vuoto: lo azzera la FK `fk_coda_lavori_job_run_log` (`ON DELETE SET NULL`), nella stessa
+  cancellazione. La funzione non lo fa da sé, e l'esito non lo conta.
 
 ---
 
