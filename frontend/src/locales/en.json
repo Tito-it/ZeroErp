@@ -5184,6 +5184,7 @@
         "lotto_obbligatorio": "The item is tracked by lot: specify the lot.",
         "lotto_non_ammesso": "The item is not tracked by lot: the lot must not be specified.",
         "lotto_di_altro_articolo": "The lot does not belong to the item, or is no longer active.",
+        "lotto_di_altro_emittente": "The lot does not belong to the warehouse's issuer.",
         "seriale_obbligatorio": "The item is tracked by serial: specify the serial.",
         "seriale_non_ammesso": "The item is not tracked by serial: the serial must not be specified.",
         "seriale_di_altro_articolo": "The serial does not belong to the item, or is no longer active.",

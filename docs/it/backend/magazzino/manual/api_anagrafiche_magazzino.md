@@ -6,7 +6,7 @@ Le tre **anagrafiche** dello schema `magazzino` con endpoint propri, fuori dal
 pannello di configurazione generico (decisione **B** di Tid, 2026-09-20 —
 [piano](../../../dev/work-done/2026/piano-be-fe-magazzino-anagrafiche-fuori-dal-pannello-config.md)):
 un magazzino ha un emittente e un indirizzo, un'ubicazione ha un magazzino, un
-tipo e un padre, un lotto ha un articolo e due date. Non sono vocabolari, e il
+tipo e un padre, un lotto ha un articolo, un'azienda e due date. Non sono vocabolari, e il
 drawer generico non sa renderli.
 
 Il documento interno (inventari, rettifiche), i lookup di riga e la
@@ -23,11 +23,29 @@ Area funzionale `magazzino` (`DomainAPIView`, livello `TUTTO` per scrivere).
 ⚠️ **Conseguenza dichiarata** del piano §2: creare un magazzino passa da qui e
 non piu' dall'area `config`.
 
-🔴 `magazzini` e `ubicazioni` hanno la **row security** accesa: il perimetro e'
-l'emittente del magazzino, e lo scope applicativo si somma
-(`add_emittente_scope_condition`). Un dettaglio fuori perimetro e' **404**,
-indistinguibile dall'inesistente (no-leak). ⛔ `lotti` **non** ha RLS: un lotto
-e' dell'articolo (brief Lotto 1 §4.3), e la lista lo pretende come filtro.
+⭐ **Le scritture passano dai verbi del DB** (dal 2026-11-22,
+[brief](../../../dev/work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) §7 R-1):
+`magazzino.fn_aggiungi_{magazzino,ubicazione,lotto}` per la nascita (gli
+obbligatori come argomenti, i facoltativi in `jsonb`) e
+`magazzino.fn_modifica_{magazzino,ubicazione,lotto}` per il delta (una chiave a
+`null` svuota, una assente resta). Il verbo controlla nella prima riga il livello
+`TUTTO` sull'oggetto (`script.fn_guard_livello(…, 'magazzino', '<tabella>',
+'TUTTO')`); finche' gli oggetti di magazzino non sono a catalogo nessun override
+sull'oggetto si puo' scrivere, quindi risponde come l'area, cioe' come
+l'endpoint. L'applicazione
+non ha `INSERT`/`UPDATE` su queste tabelle. Le chiavi **ammesse** le dice il DB
+(`magazzino.fn_<tabella>_colonne_ammesse('crea' | 'modifica')`), lette a ogni
+scrittura; il backend valida il trasporto (tipo, obbligo, lunghezza) e una
+chiave che il DB non ammette e' **400** col suo nome.
+
+🔴 Le tre tabelle hanno la **row security** accesa: il perimetro e'
+l'emittente del magazzino (per le ubicazioni, via il magazzino) e del lotto, e
+lo scope applicativo si somma (`add_emittente_scope_condition`). Un dettaglio
+fuori perimetro e' **404**, indistinguibile dall'inesistente (no-leak), anche
+nel verbo di modifica. ⭐ Il lotto e' **dell'azienda** dal 2026-11-22
+([brief](../../../dev/work-in-progress/brief-db-magazzino-lotto-dell-azienda.md)):
+due aziende possono avere ciascuna il proprio lotto con lo stesso codice dello
+stesso articolo; prima era dell'articolo, comune a tutte.
 
 Le regole del modello vivono nel database e qui **non si riscrivono**: il
 codice del magazzino e' lockato (`E_CODICE_NON_MODIFICABILE`), `usa_ubicazioni`
@@ -131,7 +149,7 @@ chiavi: un'ubicazione nasce nel suo magazzino (lock a DB).
 Il lookup `GET .../ubicazioni/lookup/` (le attive, per il form di riga) resta
 com'era: sta con gli altri due lookup di riga in [api_magazzino.md](api_magazzino.md).
 
-### Lotti (figli dell'articolo)
+### Lotti (dell'articolo e dell'azienda)
 
 #### 11. `GET /api/v1/magazzino/lotti/?articolo_id=<uuid>`
 
@@ -139,14 +157,12 @@ Lista `magazzino.lotti` (catalogo 82). **`articolo_id` obbligatorio** (400 col
 campo se manca o non e' un uuid): un elenco di tutti i lotti di tutti gli
 articoli non e' una domanda di nessuno. Filtri: `search` (sul codice),
 `attivo`. Ordinamento in `LOTTI_SORT_COLUMNS`; senza: `data_arrivo DESC` (le
-date partono DESC). Riga: `id`, `articolo_id`, `codice`, `data_arrivo`,
-`data_scadenza`, `attivo`, `meta`, audit.
+date partono DESC). Riga: `id`, `articolo_id`, `emittente_fiscale_id`,
+`codice`, `data_arrivo`, `data_scadenza`, `attivo`, `meta`, audit.
 
-⚠️ La lista e' a catalogo con `perimetro_emittente = false`: nessun
-`emittente_fiscale_id` in tabella, quindi **nessun cancello di perimetro** su
-queste view (registro `test_perimetro_emittente_copertura._ESENZIONI`); l'export
-riceve il codice della lista da una costante di modulo, come
-`vendite.famiglie_documento`.
+La lista e' a catalogo con `perimetro_emittente = true` (dal 2026-11-22): le
+view dichiarano `lista_codice`, come magazzini e ubicazioni, e la lista legge i
+lotti delle aziende del perimetro filtrate dallo scope.
 
 #### 12. `GET /api/v1/magazzino/lotti/export/?formato=&articolo_id=`
 
@@ -156,14 +172,15 @@ Il file.
 
 Crea. Payload: `articolo_id`, `codice`, `data_arrivo` (obbligatori);
 `data_scadenza` (>= arrivo: lo dice il CHECK, il BE traduce col campo e non
-ricontrolla), `meta`. Su un articolo disattivo il DB rifiuta
+ricontrolla), `meta`. ⛔ **`emittente_fiscale_id` non viaggia**: l'azienda del
+lotto la mette il DB dalla sessione, come per il magazzino. Su un articolo disattivo il DB rifiuta
 (`E_ATTIVO_PADRE_NON_ATTIVO`, 409, campo `articolo_id`): il FE non apre il drawer su
 un articolo spento. ⚠️ Fino al 2026-11-07 il require rispondeva `E_ATTIVO_REQUIRE`
 (TECNICO, 500): oggi quel codice lo solleva solo il generatore dei trigger.
 
 #### 14. `GET /api/v1/magazzino/lotti/{id}/`
 
-Il dettaglio; 404 `E_MAG_LOTTO_NON_TROVATO`.
+Il dettaglio; 404 `E_MAG_LOTTO_NON_TROVATO` se non esiste **o** e' di un'altra azienda.
 
 #### 15. `PATCH /api/v1/magazzino/lotti/{id}/`
 
@@ -175,8 +192,10 @@ Per delta (`codice`, `data_arrivo`, `data_scadenza` — `null` la toglie —,
 | codice | quando |
 |---|---|
 | `E_MAGAZZINO_VALIDATION` (fino al 2026-09-23 il generico `E_VALIDATION_INPUT`, R-6) | payload o query rifiutati dal BE (campo nel contesto); FK/CHECK del DB tradotti col campo |
-| `E_ANAG_DUPLICATO` | `uq_magazzini_codice`, `uq_mag_ubicazioni_mag_codice`, `uq_mag_lotti_articolo_codice` — campo `codice` |
-| `E_MAG_MAGAZZINO_NON_TROVATO` · `E_MAG_UBICAZIONE_NON_TROVATA` · `E_MAG_LOTTO_NON_TROVATO` | i tre 404 (R-2 del brief DB) |
+| `E_ANAG_DUPLICATO` | `uq_magazzini_codice`, `uq_mag_ubicazioni_mag_codice`, `uq_mag_lotti_emittente_articolo_codice` (il codice del lotto e' unico nell'azienda; fino al 2026-11-22 `uq_mag_lotti_articolo_codice`) — campo `codice` |
+| `E_MAG_MAGAZZINO_NON_TROVATO` · `E_MAG_UBICAZIONE_NON_TROVATA` · `E_MAG_LOTTO_NON_TROVATO` | i tre 404 (R-2 del brief DB): dalla lettura del service o dal verbo di modifica, con la stessa risposta |
+| `E_PERMESSO_NEGATO` | 403 dal verbo, se il livello sull'oggetto e' sotto `TUTTO` (l'endpoint lo nega prima con lo stesso criterio) |
+| `E_CAMPO_NON_AMMESSO` | la chiave che il verbo non ammette, col nome; il BE la rifiuta prima (`E_MAGAZZINO_VALIDATION`), quindi arriva solo da un chiamante che salta il service |
 | i codici del DB | `E_CODICE_NON_MODIFICABILE`, `E_MAG_MAGAZZINO_CON_GIACENZA`, `E_ATTIVO_BLOCK_CHILDREN_EXIST`, `E_MAG_UBICAZIONE_PADRE_*`, `E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE`, `E_EMITTENTE_NON_RISOLTO`, `E_ATTIVO_PADRE_NON_ATTIVO`: passano **com'e'**, con la frase e il campo del catalogo |
 
 ## Presidi
@@ -185,5 +204,6 @@ Per delta (`codice`, `data_arrivo`, `data_scadenza` — `null` la toglie —,
 mock del repository), `tests/api/test_anagrafiche_magazzino_api.py` (rotte,
 parametri, coppie lista/export), `tests/db/test_anagrafiche_magazzino_db.py`
 (DB provvisto: lista e dettaglio sul database vero, 404 no-leak, `articolo_id`
-obbligatorio). Trasversali: `test_liste_configurabili_seed` (whitelist ↔ seed),
+obbligatorio, le chiavi lette dal backend uguali a quelle ammesse dal DB, il
+rifiuto del verbo senza livello, il lotto dell'azienda). Trasversali: `test_liste_configurabili_seed` (whitelist ↔ seed),
 `test_perimetro_emittente_copertura`, `test_export_lista_codice_pari`.

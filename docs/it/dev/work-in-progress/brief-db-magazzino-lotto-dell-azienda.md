@@ -2,10 +2,9 @@
 
 > **⏭️ Chi riparte — aggiornato al 2026-11-22**
 >
-> **Riparte: sessione BE** con R-1 … R-5, e il FE con F-1 (§6, §6-bis). Il lavoro DB è chiuso:
-> P-1 … P-4 applicati da Tid, pgTAP verdi col runner (2026-11-22, `20261122-14` … `-19`); P-5 scritto.
-> Da committare: i changeSet `-14` … `-19`, i sei CSV, i tre pgTAP, le tre pagine di doc e questo
-> file. Il brief si archivia dopo il giro BE/FE.
+> **Riparte: team DB**, per l'archiviazione. R-1 … R-5 e F-1 sono fatti dalla sessione BE/FE il
+> 2026-11-22 (§6, esiti in riga), con test BE (DB vero compreso), smoke e vitest verdi; committati
+> su `dev/backend-tid`.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
@@ -13,7 +12,7 @@
 > | 1-bis | Tid | ✅ D-L5 = a, D-L6 = a (2026-11-22); il via al P-1 | §5.1 | — |
 > | 2 | team DB | ✅ P-0 (§5.1); ✅ P-1 applicato, pgTAP verdi (§5.2); ✅ P-2 … P-4 applicati, pgTAP verdi (§5.3) | §5 | — |
 > | 3 | Tid | ✅ apply di P-2 … P-4 e di `-19`, pgTAP verdi col runner (2026-11-22) | §5.3 | — |
-> | 4 | sessione BE / FE | R-1 … R-5; F-1 | §6, §6-bis | — |
+> | 4 | sessione BE / FE | ✅ R-1 … R-5; F-1 (2026-11-22) | §6, §6-bis | — |
 > | 5 | team DB | ✅ P-5 scritto (§5.3); archiviazione | §5 | 4 |
 >
 > **Brief vicini verificati (2026-11-22):**
@@ -260,6 +259,25 @@ doc auto-generata è rigenerata.
   Censisci anche i form che propongono lotti e seriali: dalla RLS ricevono solo quelli
   dell'azienda, quindi il codice lo vede solo chi manda un id a mano.
 
+**Esiti, sessione BE del 2026-11-22**
+
+* **R-1** ✅ `magazzino.lotti` esce da `_ESENZIONI`; `ApiLottiList` e `ApiLottiExport` dichiarano `lista_codice`.
+* **R-2** ✅ la lista per articolo somma lo scope sull'emittente del lotto (`add_emittente_scope_condition`),
+  come i magazzini; la riga porta `emittente_fiscale_id`; l'azienda non viaggia nel payload (400 se mandata).
+* **R-3** ✅ censiti i lettori: `anagrafiche_magazzino_repository` (lista, dettaglio), `magazzino_repository`
+  (`lookup_lotti`, proiezione delle righe), `ddt_repository` e `resi_repository` (`LEFT JOIN` per il codice,
+  per `id`: non ne dipendono). Nessuno cerca un lotto per `(articolo, codice)`. **Un lettore dipendeva** da «un
+  lotto lo vede chiunque»: `lookup_lotti` proponeva i lotti di tutte le aziende del perimetro, e a chi ne ha
+  più di una avrebbe offerto lotti che il guard dei figli poi rifiuta. Ora prende `magazzino_id` e filtra
+  sull'emittente del magazzino, come `lookup_assets` (rotta `lotti/lookup/?magazzino_id=`, tre form FE adeguati).
+* **R-4** ✅ la mappa vincolo → errore usa `uq_mag_lotti_emittente_articolo_codice`; doc API allineata.
+* **R-5** ✅ i due codici hanno la policy (rigenerata, zero classi spostate) e il ripiego senza segnaposto;
+  passano col campo dal canale `COLUMN`, senza ricontrollo nel BE. I form propongono solo lotti e seriali
+  dell'azienda del magazzino (vedi R-3).
+* **F-1** ✅ `magazzino.riga.blocco.lotto_di_altro_emittente` in `it.json` ed `en.json`. ⚠️ Senza `%s`:
+  la chiave gemella del seriale non ha segnaposto, e la chiave i18n non riceve i `valori` per posizione.
+  Testo: «Il lotto non appartiene all'emittente del magazzino.»
+
 ## 6-bis. Richieste a FE — nello stesso giro di PR
 
 * **F-1** La chiave i18n `magazzino.riga.blocco.lotto_di_altro_emittente` in `it.json` e `en.json`,
@@ -293,3 +311,4 @@ doc auto-generata è rigenerata.
 | 2026-11-22 | DB | P-2 … P-5 scritti e provati in `ROLLBACK` (§5.3); due codici d'errore; R-5 al BE, F-1 al FE |
 | 2026-11-22 | DB | Dopo l'apply di P-2 … P-4 (Tid): casi 11-14 rossi (`42883`, la chiamata a `fn_log_and_raise_error` senza `VARIADIC`) → `20261122-19`; caso 16 rosso per l'ordine dell'array nel test (`ORDER BY 1` dentro l'aggregato) → test corretto |
 | 2026-11-22 | Tid | P-2 … P-4 e `20261122-19` applicati, pgTAP verdi. Lavoro DB chiuso; restano R-1 … R-5 (BE) e F-1 (FE) |
+| 2026-11-22 | BE/FE | R-1 … R-5 e F-1 fatti (§6, esiti); `lookup_lotti` per l'emittente del magazzino (R-3) |

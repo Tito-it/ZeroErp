@@ -1152,7 +1152,7 @@ _ESERCIZI: dict[str, Esercizio] = {
         dove="magazzino/db/anagrafiche_magazzino_repository.py::list_lotti",
         chiama=lambda ob, od: _r(
             "apps.magazzino.db.anagrafiche_magazzino_repository", "AnagraficheMagazzinoRepository"
-        ).list_lotti(articolo_id="00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od, None)),
+        ).list_lotti(auth_user_id=None, articolo_id="00000000-0000-0000-0000-000000000000", limit=1, offset=0, **_ordine(ob, od, None)),
     ),
 }
 

@@ -34,7 +34,7 @@ from django.db import connection, transaction
 
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_operatore_con_aree, richiedi_db_provvisto
 from apps.magazzino.services import anagrafiche_magazzino_service as svc
 
 _CODICE = "E_ATTIVO_BLOCK_CHILDREN_EXIST"
@@ -43,7 +43,7 @@ _CODICE = "E_ATTIVO_BLOCK_CHILDREN_EXIST"
 class MagazzinoSpentoConTrasferimentiDbTests(unittest.TestCase):
 
     def setUp(self) -> None:
-        richiedi_db_provvisto("dbops.fn_pgtap_crea_magazzino(character varying, boolean)")
+        richiedi_db_provvisto("dbops.fn_pgtap_crea_magazzino(character varying, boolean, jsonb)")
 
     # Scopo: Esegue `azione` in un savepoint e ne ritorna il ServiceError.
     def _rifiuto(self, azione) -> ServiceError:
@@ -57,8 +57,11 @@ class MagazzinoSpentoConTrasferimentiDbTests(unittest.TestCase):
     def test_il_magazzino_con_un_trasferimento_non_si_spegne(self) -> None:
         try:
             with transaction.atomic(), connection.cursor() as cur:
-                cur.execute("CREATE TEMP TABLE _mondo AS SELECT m.* FROM dbops.fn_pgtap_crea_emittente_operatore() m")
-                cur.execute("SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))")
+                # Lo spegnimento passa dal verbo, che chiede TUTTO sull'oggetto
+                # (R-1 di brief-db-magazzino-tutte-le-scritture-dal-verbo).
+                apri_operatore_con_aree(
+                    cur, aree=("magazzino",), motivo="test_magazzino_spento_con_trasferimenti_db",
+                )
                 cur.execute(
                     "SELECT dbops.fn_pgtap_crea_magazzino('BE-ATT-DA', false),"
                     "       dbops.fn_pgtap_crea_magazzino('BE-ATT-A', false),"

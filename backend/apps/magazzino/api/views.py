@@ -578,7 +578,7 @@ class ApiMagazzinoUbicazioniLookup(DomainAPIView):
 
 
 class ApiLottiLookup(DomainAPIView):
-    """GET /api/v1/magazzino/lotti/lookup/?articolo_id=&search= — i lotti attivi dell'articolo."""
+    """GET /api/v1/magazzino/lotti/lookup/?articolo_id=&magazzino_id=&search= — i lotti attivi."""
 
     area_funzionale = AREA
     is_search_endpoint = True
@@ -587,15 +587,17 @@ class ApiLottiLookup(DomainAPIView):
         operation_id="magazzino_lotti_lookup",
         parameters=[
             OpenApiParameter(name="articolo_id", type=str, location=OpenApiParameter.QUERY, required=True),
+            OpenApiParameter(name="magazzino_id", type=int, location=OpenApiParameter.QUERY, required=True),
             OpenApiParameter(name="search", type=str, location=OpenApiParameter.QUERY, required=False),
         ],
         responses={200: RISPOSTA_GENERICA},
     )
-    # Scopo: I lotti attivi di un articolo.
+    # Scopo: I lotti attivi di un articolo, dell'emittente del magazzino.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         return success_response(magazzino_service.lookup_lotti(
             articolo_id=qp_str(qp.get("articolo_id")) or "",
+            magazzino_id=qp_int_optional(qp.get("magazzino_id"), "magazzino_id") or 0,
             search=qp_str(qp.get("search")),
         ))
 

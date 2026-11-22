@@ -5184,6 +5184,7 @@
         "lotto_obbligatorio": "L'articolo si movimenta per lotti: indica il lotto.",
         "lotto_non_ammesso": "L'articolo non si movimenta per lotti: il lotto non va indicato.",
         "lotto_di_altro_articolo": "Il lotto non è dell'articolo, oppure non è più attivo.",
+        "lotto_di_altro_emittente": "Il lotto non appartiene all'emittente del magazzino.",
         "seriale_obbligatorio": "L'articolo si movimenta per seriale: indica il seriale.",
         "seriale_non_ammesso": "L'articolo non si movimenta per seriale: il seriale non va indicato.",
         "seriale_di_altro_articolo": "Il seriale non è dell'articolo, oppure non è più attivo.",

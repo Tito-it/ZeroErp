@@ -60,12 +60,11 @@ _FIXTURE: tuple[str, ...] = (
     """,
     """
     CREATE TEMP TABLE _lotti AS
-    WITH art AS (SELECT dbops.fn_pgtap_crea_articolo('BE-L3V-A-LOTTI', true, true, false) AS art_l),
-         la AS (INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-                SELECT art_l, 'BE-L3V-LA', script.fn_data_operativa() - 10 FROM art RETURNING id, articolo_id),
-         lb AS (INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-                SELECT art_l, 'BE-L3V-LB', script.fn_data_operativa() - 5 FROM art RETURNING id)
-    SELECT la.articolo_id AS art_l, la.id AS lotto_a, lb.id AS lotto_b FROM la, lb
+    WITH art AS (SELECT dbops.fn_pgtap_crea_articolo('BE-L3V-A-LOTTI', true, true, false) AS art_l)
+    SELECT art.art_l,
+           dbops.fn_pgtap_crea_lotto_di_magazzino(art.art_l, 'BE-L3V-LA', script.fn_data_operativa() - 10) AS lotto_a,
+           dbops.fn_pgtap_crea_lotto_di_magazzino(art.art_l, 'BE-L3V-LB', script.fn_data_operativa() - 5)  AS lotto_b
+      FROM art
     """,
     """
     CREATE TEMP TABLE _inv AS

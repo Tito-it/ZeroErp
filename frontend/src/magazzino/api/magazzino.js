@@ -166,9 +166,10 @@ export function lookupUbicazioni(magazzinoId) {
   return api.get(`${BASE}/magazzini/${magazzinoId}/ubicazioni/lookup/`)
 }
 
-// I lotti attivi di un articolo (solo se `requires_lotto`), con ricerca sul codice.
-export function lookupLotti(articoloId, search = null) {
-  const params = { articolo_id: articoloId }
+// I lotti attivi di un articolo (solo se `requires_lotto`), dell'emittente del
+// magazzino — il lotto e' dell'azienda, come il seriale — con ricerca sul codice.
+export function lookupLotti(articoloId, magazzinoId, search = null) {
+  const params = { articolo_id: articoloId, magazzino_id: magazzinoId }
   if (search) params.search = search
   return api.get(`${BASE}/lotti/lookup/`, { params })
 }

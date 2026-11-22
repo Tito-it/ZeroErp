@@ -251,7 +251,7 @@ filtro per padre non è nel suo contratto.
 | # | Rotta | Che cosa |
 | --- | --- | --- |
 | 13 | `GET /api/v1/magazzino/magazzini/{id}/ubicazioni/lookup/` | le ubicazioni **attive** del magazzino |
-| 14 | `GET /api/v1/magazzino/lotti/lookup/?articolo_id=&search=` | i lotti **attivi** dell'articolo (`articolo_id` obbligatorio) |
+| 14 | `GET /api/v1/magazzino/lotti/lookup/?articolo_id=&magazzino_id=&search=` | i lotti **attivi** dell'articolo, dell'emittente del magazzino (`articolo_id` e `magazzino_id` obbligatori; dal 2026-11-22 il lotto è dell'azienda, come il seriale) |
 | 15 | `GET /api/v1/magazzino/assets/lookup/?articolo_id=&magazzino_id=` | i seriali **attivi** dell'articolo, dell'emittente del magazzino (entrambi obbligatori) |
 
 Il picker dell'**articolo** non è qui: è il lookup del catalogo col filtro
@@ -339,7 +339,8 @@ Export: `…/movimenti/export/`.
 | `E_MAG_DOCUMENTO_SENZA_RIGHE` | NON_ESEGUIBILE | registrare un documento vuoto |
 | `E_MAG_INVENTARIO_RIGA_POSIZIONE_DUPLICATA` | DATO_ERRATO | stessa posizione due volte nell'inventario, campo `articolo_id` (R-2) |
 | `E_PERMESSO_NEGATO` | NON_PERMESSO | registrare senza l'azione `registra_magazzino`; aprire o liberare un blocco senza `blocca_merce` |
-| i codici della riga | DATO_ERRATO | alla registrazione, il primo motivo di `fn_check_riga_magazzino` (`E_MAG_LOTTO_OBBLIGATORIO`, `E_MAG_UBICAZIONE_OBBLIGATORIA`, `E_MAG_ARTICOLO_NON_GESTITO`, …): passano **com'è**, con la frase e il campo del catalogo |
+| i codici della riga | DATO_ERRATO | alla registrazione, il primo motivo di `fn_check_riga_magazzino` (`E_MAG_LOTTO_OBBLIGATORIO`, `E_MAG_UBICAZIONE_OBBLIGATORIA`, `E_MAG_ARTICOLO_NON_GESTITO`, `E_MAG_LOTTO_DI_ALTRO_EMITTENTE`, …): passano **com'è**, con la frase e il campo del catalogo |
+| `E_RIFERIMENTO_DI_ALTRO_EMITTENTE` | DATO_ERRATO | salvare una riga col lotto o il seriale di un'altra azienda, o inesistente (no-leak): lo dice il guard della tabella delle righe, campo `lotto_id` o `asset_id`. Il BE lo traduce sul campo e non ricontrolla; i lookup propongono solo lotti e seriali dell'azienda del magazzino |
 | `E_MAG_DOCUMENTO_POSTED_SOLO_DA_OPERAZIONE` | TECNICO | la porta `POSTED` aperta fuori dal verbo: dall'API non si raggiunge (rotta 6) |
 
 ## Presidi

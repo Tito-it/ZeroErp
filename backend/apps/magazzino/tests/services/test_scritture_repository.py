@@ -2,21 +2,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unitari delle SCRITTURE dei due repository di magazzino dopo la
-#        migrazione sui BB core (2026-09-26): la whitelist RIGIDA (una chiave
-#        fuori lista e' `RuntimeError`, non piu' uno scarto silenzioso), la
-#        regola `meta` NOT NULL (`None` -> `{}`), il WHERE legato al padre
-#        (ubicazione -> magazzino, riga -> testata), il cast uuid del lotto e
-#        l'INSERT della testata che lascia al DB il DEFAULT di `data`.
+# Scopo: Test unitari delle SCRITTURE dei due repository di magazzino. Le
+#        anagrafiche scrivono dai VERBI del DB (2026-11-22, R-1 di
+#        brief-db-magazzino-tutte-le-scritture-dal-verbo): la chiamata giusta
+#        con gli argomenti al loro posto, i campi in jsonb con la regola `meta`
+#        NOT NULL (`None` -> `{}`), le colonne ammesse lette dalla funzione
+#        del DB. Il documento interno resta sui BB core (Lotto 2): whitelist
+#        RIGIDA, WHERE legato alla testata, DEFAULT di `data` lasciato al DB.
 #        Cursore mockato: CI-safe. La giuntura col DB vero e' in `tests/db/`.
 # ------------------------------------------------------------
 """
 Indice test eseguiti:
-1) AnagraficheScrittureTests.test_chiave_fuori_whitelist_e_runtime_error
+1) AnagraficheScrittureTests.test_colonne_ammesse_dalla_funzione_del_db
 2) AnagraficheScrittureTests.test_meta_none_diventa_oggetto_vuoto
-3) AnagraficheScrittureTests.test_ubicazione_aggiornata_dentro_il_suo_magazzino
-4) AnagraficheScrittureTests.test_il_lotto_nasce_col_cast_uuid_dell_articolo
-5) AnagraficheScrittureTests.test_patch_vuoto_non_esegue_niente
+3) AnagraficheScrittureTests.test_ubicazione_modificata_dal_verbo_col_suo_magazzino
+4) AnagraficheScrittureTests.test_il_lotto_nasce_dal_verbo_coi_cast
+5) AnagraficheScrittureTests.test_il_magazzino_nasce_dal_verbo_senza_emittente
 6) DocumentoInternoScrittureTests.test_descrizione_sulla_rettifica_e_runtime_error
 7) DocumentoInternoScrittureTests.test_la_testata_lascia_al_db_la_data_assente
 8) DocumentoInternoScrittureTests.test_la_riga_aggiornata_dentro_la_sua_testata
@@ -25,6 +26,7 @@ Indice test eseguiti:
 from __future__ import annotations
 
 import json
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -56,55 +58,69 @@ class AnagraficheScrittureTests(SimpleTestCase):
     def setUp(self) -> None:
         self.repo = AnagraficheMagazzinoRepository()
 
-    # 1. Prima veniva SCARTATA in silenzio: ora e' l'allarme tecnico (500).
-    def test_chiave_fuori_whitelist_e_runtime_error(self):
+    # 1. La lista la dice il DB; tabella o gesto fuori elenco e' un errore
+    #    del chiamante, prima di qualunque SQL.
+    def test_colonne_ammesse_dalla_funzione_del_db(self):
         conn, cursor = _connessione()
-        with patch(_BB_CONN, conn), patch(_ANA_CONN, conn):
-            for chiamata in (
-                lambda: self.repo.create_magazzino({"codice": "A", "emittente_fiscale_id": 1}),
-                lambda: self.repo.update_magazzino(3, {"emittente_fiscale_id": 1}),
-                lambda: self.repo.update_ubicazione(3, 9, {"magazzino_id": 4}),
-                lambda: self.repo.update_lotto(5, {"articolo_id": _UUID}),
-            ):
+        cursor.fetchone.return_value = (["codice", "meta"],)
+        with patch(_ANA_CONN, conn):
+            self.assertEqual(self.repo.colonne_ammesse("lotti", "crea"), frozenset({"codice", "meta"}))
+            sql, params = cursor.execute.call_args.args
+            self.assertIn("magazzino.fn_lotti_colonne_ammesse(%s)", sql)
+            self.assertEqual(params, ["crea"])
+            cursor.execute.reset_mock()
+            for tabella, gesto in (("assets", "crea"), ("lotti", "cancella")):
                 with self.assertRaises(RuntimeError):
-                    chiamata()
+                    self.repo.colonne_ammesse(tabella, gesto)
         cursor.execute.assert_not_called()
 
-    # 2. `meta` e' `jsonb NOT NULL DEFAULT '{}'`: None scrive `{}`, mai NULL.
+    # 2. `meta` e' `jsonb NOT NULL DEFAULT '{}'`: None scrive `{}`, mai NULL
+    #    (nel delta del verbo una chiave a null SVUOTA la colonna).
     def test_meta_none_diventa_oggetto_vuoto(self):
         conn, cursor = _connessione()
-        with patch(_BB_CONN, conn):
+        cursor.fetchone.return_value = ({"id": 3},)
+        with patch(_ANA_CONN, conn):
             self.repo.update_magazzino(3, {"meta": None})
         sql, params = cursor.execute.call_args.args
-        self.assertIn("meta = %s::jsonb", sql)
-        self.assertEqual(json.loads(params[0]), {})
+        self.assertIn("magazzino.fn_modifica_magazzino(%s, %s::jsonb)", sql)
+        self.assertEqual(params[0], 3)
+        self.assertEqual(json.loads(params[1]), {"meta": {}})
 
-    # 3. Il WHERE lega l'ubicazione al SUO magazzino (un id altrui = 0 righe).
-    def test_ubicazione_aggiornata_dentro_il_suo_magazzino(self):
+    # 3. La coppia (magazzino, ubicazione) e' la risorsa: tutte e due al verbo.
+    def test_ubicazione_modificata_dal_verbo_col_suo_magazzino(self):
+        conn, cursor = _connessione()
+        cursor.fetchone.return_value = ({"id": 9},)
+        with patch(_ANA_CONN, conn):
+            self.assertEqual(self.repo.update_ubicazione(3, 9, {"codice": "U2", "parent_id": None}), {"id": 9})
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("magazzino.fn_modifica_ubicazione(%s, %s, %s::jsonb)", sql)
+        self.assertEqual(params[:2], [3, 9])
+        self.assertEqual(json.loads(params[2]), {"codice": "U2", "parent_id": None})
+
+    # 4. L'articolo viaggia come stringa, la data come data: cast espliciti.
+    def test_il_lotto_nasce_dal_verbo_coi_cast(self):
         conn, cursor = _connessione()
         with patch(_ANA_CONN, conn):
-            self.assertTrue(self.repo.update_ubicazione(3, 9, {"codice": "U2", "parent_id": None}))
+            self.assertEqual(self.repo.create_lotto(
+                _UUID, codice="L1", data_arrivo=date(2026, 9, 1), campi={"data_scadenza": date(2027, 1, 1)},
+            ), 42)
         sql, params = cursor.execute.call_args.args
-        self.assertIn("WHERE id = %s AND magazzino_id = %s", sql)
-        self.assertEqual(params, ["U2", None, 9, 3])
+        self.assertIn("magazzino.fn_aggiungi_lotto(%s::uuid, %s, %s::date, %s::jsonb)", sql)
+        self.assertEqual(params[:3], [_UUID, "L1", date(2026, 9, 1)])
+        self.assertEqual(json.loads(params[3]), {"data_scadenza": "2027-01-01"})
 
-    # 4. L'articolo del lotto viaggia come stringa: cast esplicito a uuid.
-    def test_il_lotto_nasce_col_cast_uuid_dell_articolo(self):
+    # 5. L'emittente non viaggia: lo mette il DB dalla sessione.
+    def test_il_magazzino_nasce_dal_verbo_senza_emittente(self):
         conn, cursor = _connessione()
-        with patch(_BB_CONN, conn):
-            self.assertEqual(self.repo.create_lotto(_UUID, {"codice": "L1", "meta": {"a": 1}}), 42)
+        with patch(_ANA_CONN, conn):
+            self.repo.create_magazzino(
+                codice="A", descrizione="d", indirizzo_dettaglio_id=4, campi={"predefinito": True},
+            )
         sql, params = cursor.execute.call_args.args
-        self.assertIn("%s::uuid", sql)
-        self.assertIn("%s::jsonb", sql)
-        self.assertIn(_UUID, params)
-
-    # 5. Niente da aggiornare: nessuna SQL (e nessun UPDATE senza SET).
-    def test_patch_vuoto_non_esegue_niente(self):
-        conn, cursor = _connessione()
-        with patch(_BB_CONN, conn), patch(_ANA_CONN, conn):
-            self.assertFalse(self.repo.update_ubicazione(3, 9, {}))
-            self.assertFalse(self.repo.update_lotto(5, {}))
-        cursor.execute.assert_not_called()
+        self.assertIn("magazzino.fn_aggiungi_magazzino(%s, %s, %s::bigint, %s::jsonb)", sql)
+        self.assertEqual(params[:3], ["A", "d", 4])
+        self.assertEqual(json.loads(params[3]), {"predefinito": True})
+        self.assertNotIn("emittente", sql)
 
 
 class DocumentoInternoScrittureTests(SimpleTestCase):
