@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_forma_giuridica_ammessa.md" %}
 # ⚙️ Funzione `fn_forma_giuridica_ammessa`
 
 ```sql

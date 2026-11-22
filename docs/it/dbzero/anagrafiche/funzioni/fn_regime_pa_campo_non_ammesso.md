@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_regime_pa_campo_non_ammesso.md" %}
 # ⚙️ Funzione `fn_regime_pa_campo_non_ammesso`
 
 ```sql

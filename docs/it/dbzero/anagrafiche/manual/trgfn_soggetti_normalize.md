@@ -1,41 +1,67 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_soggetti_normalize()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento Tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [config.stati](/dbzero/config/tabelle/stati)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la tabella di cui scrive `stato_id`
+> * [config.stati](/dbzero/config/tabelle/stati) — gli stati, cercati per codice ISO2
 >
-Approfondimento funzioni:
+> Approfondimento funzioni:
 >
-[script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id)
+> * [script.fn_stato_proposto_id](/dbzero/script/funzioni/fn_stato_proposto_id) — lo stato proposto, letto dal parametro
+> * [anagrafiche.trgfn_soggetti_valida_cf_piva_dispatch](/dbzero/anagrafiche/funzioni/trgfn_soggetti_valida_cf_piva_dispatch) — il controllo che dallo stato sceglie il validatore
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-12-25)
-* **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`).
-* **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
+
+`anagrafiche.trgfn_soggetti_normalize` dà lo stato proposto a un soggetto scritto senza stato. Non fa altro: non
+pulisce né normalizza nessun altro campo.
 
 ---
 
-### Collegamenti
+### Lo stato proposto è un dato
 
-* **`anagrafiche.soggetti`** – tabella su cui si applica il trigger `BEFORE INSERT OR UPDATE`.
-* **`config.stati`** – lo stato proposto si cerca per `codice_iso2`.
-* **`script.fn_stato_proposto_id`** – lo stato proposto (parametro `STATO_PROPOSTO_ISO2`): valida e non ripiega (rev 18-10-2026; prima `fn_get_default_by_param` su `state_code_iso3`, ritirati).
-* **Trigger associato**: `trg_soggetti_normalize_ins_upd` (viene creato dal  `trgfn_soggetti_normalize`).
+Lo stato che si propone non è scritto nel codice: è il parametro `STATO_PROPOSTO_ISO2`, letto da
+`script.fn_stato_proposto_id` con la cascata degli override della sessione (utente, gruppo, azienda, sessione, funzione).
+Il trigger le passa il proprio nome, così un override può valere anche solo per questa strada.
 
----
+La lettura non ripiega mai: un parametro assente o vuoto, un codice che non indica nessuno stato o che ne indica
+più d'uno fermano la scrittura con un errore che lo dice. Uno stato detto da chi scrive non si tocca.
 
-### Note Operative
-
-* Il trigger viene invocato **BEFORE INSERT OR UPDATE** su `anagrafiche.soggetti` e agisce su **`NEW`**.
-* **Assegnazione default**: `stato_id` non detto = `script.fn_stato_proposto_id(TG_NAME)`. Se il parametro manca, è vuoto o indica più stati, l'inserimento si ferma con un errore che lo dice (`E_CONFIG_MANCANTE`, `E_DEFAULT_ERRATO`, `E_STATO_ISO2_AMBIGUO`).
-* **`TG_NAME`** passa automaticamente il nome del trigger alla funzione per migliorare il contesto di log in caso di errore.
-* **Estendibilità**: dopo il lookup di default è possibile inserire ulteriori blocchi di cleanup (es. normalizzazione di `nome`, `cognome`).
-* **Robustezza**: la funzione di lookup solleva eccezione se non trova il valore, garantendo coerenza dei dati.
+Il trigger viene prima, per nome, del controllo del formato di CF e P.IVA, che dallo stato sceglie il
+validatore: il controllo vede già lo stato proposto.
 
 ---
 
-> **“Allinea i record di `anagrafiche.soggetti` a regole di default e pulizia automatica: default lookup, normalizzazione e coerenza garantita.”**
+### ⚠️ Che cosa oggi non copre
+
+* **Una modifica che toglie lo stato non è rifiutata.** Il trigger scatta anche in modifica: una scrittura che
+  porta `stato_id` a NULL riceve lo stato proposto, e il soggetto cambia nazionalità (e perimetro
+  dell'identificativo fiscale) senza averlo chiesto.
+* **Il trigger non ha la fascia nel nome** (`trg_soggetti_normalize_ins_upd`): il suo posto fra i trigger lo
+  decide l'ordine alfabetico, dopo tutti i guard della fascia `a10`.
+
+---
+
+### Codici errore
+
+Il trigger non ne solleva di suoi. Dalla lettura dello stato proposto:
+
+* `E_CONFIG_MANCANTE` — il parametro manca o è vuoto.
+* `E_STATO_ISO2_AMBIGUO` — il codice indica più stati.
+* `E_DEFAULT_ERRATO` — il codice non indica nessuno stato.
+
+---
+
+### Note di migrazione
+
+* 2026-10-18 — lo stato proposto passa al parametro `STATO_PROPOSTO_ISO2`, che non ripiega; prima si leggeva un
+  default per codice ISO3.
+
+---
+
+{% include-markdown "signature-core.md" %}

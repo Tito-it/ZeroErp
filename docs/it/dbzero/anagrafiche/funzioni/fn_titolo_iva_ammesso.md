@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_titolo_iva_ammesso.md" %}
 # ⚙️ Funzione `fn_titolo_iva_ammesso`
 
 ```sql

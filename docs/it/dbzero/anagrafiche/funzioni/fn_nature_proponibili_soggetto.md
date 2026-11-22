@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_nature_proponibili_soggetto.md" %}
 # ⚙️ Funzione `fn_nature_proponibili_soggetto`
 
 ```sql

@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_soggetto_primo_documento.md" %}
 # ⚙️ Funzione `fn_soggetto_primo_documento`
 
 ```sql

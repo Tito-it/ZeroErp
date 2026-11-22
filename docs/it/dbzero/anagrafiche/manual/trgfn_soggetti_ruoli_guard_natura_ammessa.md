@@ -1,173 +1,81 @@
-## 📘 Documentazione Funzione – `anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Tabelle anagrafiche / config:**
+> Approfondimento tabelle:
 >
-[`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti)
-> [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli)
-> [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto)
-> [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio)
-> [`config.tipi_ruoli_nature_ammesse`](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse)
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — la tabella su cui è montato
+> * [config.tipi_ruoli_nature_ammesse](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse) — la matrice dei tipi di ruolo per macro-tipologia
+> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio) — da cui si risale alla macro-tipologia del soggetto
+> * [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto) — le macro-tipologie
 >
-**Funzioni / trigger di supporto:**
+> Approfondimento funzioni:
 >
-[`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) — lo stesso schema «matrice assente, nessun vincolo» per gli indirizzi del ruolo
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-02-26)
-La funzione **`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa`** e una **trigger function di tipo "guard"** che:
 
-* controlla gli **inserimenti / aggiornamenti** sulla tabella
-  [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli),
-* verificando la coerenza tra:
-
-  * la **natura del soggetto** (PF, PG, ENC — derivata dalla catena `soggetti.tipo_soggetto_dettaglio_id` → `tipi_soggetto_dettaglio.tipo_soggetto_id`), e
-  * il **tipo ruolo** che si sta assegnando
-
-  rispetto alla **matrice di configurazione**:
-
-  * [`config.tipi_ruoli_nature_ammesse`](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse).
-
-La funzione implementa una logica **adattiva** (pattern "matrice assente = libero"):
-
-* Se **per un certo `tipo_ruolo` non esistono righe** in `config.tipi_ruoli_nature_ammesse`
-  → le nature sono considerate **"libere"**: si accettano **tutti** i tipi di soggetto.
-* Se invece **il `tipo_ruolo` ha una matrice definita**
-  → si accettano **solo** le nature **esplicitamente configurate**, attive e nel range di validita.
-
-In caso di violazione, la funzione richiama **`script.fn_log_and_raise_error`** e blocca l'operazione.
+`anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa` rifiuta un ruolo che la macro-tipologia del soggetto
+non ammette: un ruolo che vale solo per le persone giuridiche non si dà a un privato, quello della risorsa
+umana non si dà a una società.
 
 ---
 
-### Collegamenti principali
+### La matrice è per macro-tipologia
 
-* **Tabelle coinvolte direttamente:**
+La matrice `config.tipi_ruoli_nature_ammesse` lega i tipi di ruolo alle **macro-tipologie** (persona fisica,
+persona giuridica, ente), non alle nature di dettaglio: il guard risale dalla natura del soggetto alla sua
+famiglia e cerca la coppia.
 
-  * [`anagrafiche.soggetti_ruoli`](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — tabella su cui e definito il trigger.
-  * [`anagrafiche.soggetti`](/dbzero/anagrafiche/tabelle/soggetti) — contiene `tipo_soggetto_dettaglio_id`.
-  * [`config.tipi_soggetto_dettaglio`](/dbzero/config/tabelle/tipi_soggetto_dettaglio) — contiene `tipo_soggetto_id` (la natura).
-  * [`config.tipi_ruoli`](/dbzero/config/tabelle/tipi_ruoli) — catalogo dei tipi ruolo.
-  * [`config.tipi_soggetto`](/dbzero/config/tabelle/tipi_soggetto) — catalogo delle nature (PF, PG, ENC).
-  * [`config.tipi_ruoli_nature_ammesse`](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse) — matrice ruolo ↔ natura ammessa.
-
-* **Funzioni di supporto:**
-
-  * [`script.fn_log_and_raise_error`](/dbzero/script/funzioni/fn_log_and_raise_error) — centralizza logging + raise exception.
+* **Un tipo di ruolo senza righe nella matrice è libero**: lo può avere qualunque soggetto, anche senza
+  natura.
+* **Un tipo di ruolo con righe nella matrice** ammette solo le macro-tipologie che hanno una riga attiva e
+  valida nel giorno operativo. Basta una riga qualunque, anche spenta o scaduta, perché il tipo non sia più
+  libero: un tipo le cui righe sono tutte spente non lo ammette più nessuno.
+* **Un soggetto senza natura** non può avere un ruolo che ha una matrice: non c'è niente da confrontare.
 
 ---
 
-### 🧾 Firma della funzione e trigger associato
+### Quando scatta
 
-**Funzione (schema `anagrafiche`):**
+Prima della nascita del ruolo e prima di ogni modifica del suo tipo. Il soggetto del ruolo non si cambia
+(`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`), quindi non c'è un'altra strada dalla parte del ruolo.
 
-```sql
-CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
-RETURNS trigger
-LANGUAGE plpgsql;
-```
-
-**Trigger su `anagrafiche.soggetti_ruoli`:**
-
-```sql
-CREATE OR REPLACE TRIGGER trg_soggetti_ruoli_a10_guard_natura_ammessa_ins_upd
-    BEFORE INSERT OR UPDATE OF tipo_ruolo_id
-    ON anagrafiche.soggetti_ruoli
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa();
-```
-
-📌 *Il trigger scatta:*
-
-* *sempre in INSERT*
-* *solo in UPDATE se cambia `tipo_ruolo_id`*
+Dalla parte del soggetto, un cambio di natura resta nella stessa macro-tipologia (la regola del cambio di
+natura rifiuta le altre), e la risposta della matrice non cambia: il guard non ha bisogno di rigirare.
 
 ---
 
-### Contesto e parametri logici
+### ⚠️ Che cosa oggi non copre
 
-Essendo una trigger function, non ha parametri espliciti. Utilizza:
-
-| Elemento                         | Descrizione                                                     |
-| -------------------------------- | --------------------------------------------------------------- |
-| `TG_OP`                          | Tipo operazione: INSERT / UPDATE / DELETE                       |
-| `NEW`                            | Record nuovo (in INSERT/UPDATE)                                 |
-| `NEW.soggetto_id`                | Identifica il soggetto a cui si assegna il ruolo                |
-| `NEW.tipo_ruolo_id`              | Tipo ruolo da assegnare (FK verso `config.tipi_ruoli`)          |
-
----
-
-### Logica di funzionamento (semplificata)
-
-1️⃣ **DELETE** → nessun controllo → `RETURN OLD`.
-
-2️⃣ Recupera `tipo_soggetto_dettaglio_id` dal soggetto (`anagrafiche.soggetti`).
-
-3️⃣ Verifica se esiste almeno una riga in matrice per `NEW.tipo_ruolo_id`:
-
-* Se **NO** → nature "libere" → `RETURN NEW` (nessuna restrizione).
-
-4️⃣ Se la matrice esiste MA `tipo_soggetto_dettaglio_id IS NULL`:
-
-* → errore `E_RUOLO_NATURA_TIPO_DET_NULL`: impossibile verificare la natura del soggetto.
-
-5️⃣ Risale alla natura (`tipo_soggetto_id`) via `config.tipi_soggetto_dettaglio`.
-
-6️⃣ Verifica la presenza di una riga in matrice con:
-* `tipo_ruolo_id = NEW.tipo_ruolo_id`
-* `tipo_soggetto_id` = natura del soggetto
-* `attivo = true`
-* `valido_dal/valido_al` compatibili con `CURRENT_DATE`
-
-* Se trovata → `RETURN NEW`.
-* Se **non trovata** → errore `E_RUOLO_NATURA_NON_AMMESSA`.
+* **La natura vuota come passaggio.** Un soggetto portato a nessuna natura e poi a una natura di un'altra
+  macro-tipologia tiene i suoi ruoli senza che nessuno li ricontrolli: il guard scatta solo quando si scrive
+  il ruolo.
+* **Una riga della matrice che si spegne o scade** non tocca i ruoli che già ci sono: vale per i ruoli che
+  nascono dopo.
+* **La frase dice gli id, non i nomi.** I due rifiuti riempiono la frase con l'id della macro-tipologia, del
+  tipo di ruolo e del soggetto, invece dei loro nomi, e il contesto non nomina un campo da evidenziare nel
+  form.
 
 ---
 
-### Esempi specifici
+### Codici errore
 
-#### ✔ Esempio valido (natura ammessa)
-
-* Soggetto SC (natura PG) + ruolo GE → matrice prevede GE/PG → **OK**
-
-#### ❌ Esempio non valido (natura non ammessa)
-
-* Soggetto PR (natura PF) + ruolo GE → matrice prevede solo GE/PG → **BLOCCATO**
-
-#### ❌ Esempio non valido (tipo_soggetto_dettaglio mancante)
-
-* Soggetto con `tipo_soggetto_dettaglio_id = NULL` + ruolo GE → matrice esiste per GE → **BLOCCATO** (E_RUOLO_NATURA_TIPO_DET_NULL)
-
-#### ✔ Esempio senza matrice
-
-* Ruolo senza righe in matrice → qualunque natura → **OK**
+* `E_RUOLO_NATURA_NON_AMMESSA` — la macro-tipologia del soggetto non è fra quelle ammesse dal tipo di ruolo.
+* `E_RUOLO_NATURA_TIPO_DET_NULL` — il tipo di ruolo ha una matrice e il soggetto non ha natura.
 
 ---
 
-### ⚠️ Note Tecniche
+### Test
 
-* La funzione e **coerente con il pattern "guard"** usato in Zero ERP (fase `_a10_`, fail-fast).
-* Non modifica i dati, si limita a validarli.
-* Segue lo stesso pattern di [`trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo`](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo) per la logica "matrice assente = libero".
-* In caso di errore, il messaggio e gestito da `script.fn_log_and_raise_error` che garantisce logging centralizzato.
-
----
-
-### 🏁 Best Practice
-
-✔ Configurare la matrice per ogni ruolo che ha vincoli di natura.
-✔ Assicurarsi che `tipo_soggetto_dettaglio_id` sia valorizzato sui soggetti prima di assegnare ruoli vincolati.
-✔ Nei test (pgTAP) validare:
-
-* Inserimento ammesso (natura corretta)
-* Inserimento non ammesso (natura non prevista)
-* Caso senza matrice (libero)
-* Caso tipo_soggetto_dettaglio mancante (errore)
+* `db/pgtap/anagrafiche/test-soggetti-ruoli-guard-natura-ammessa.sql` — persona giuridica ammessa e persona
+  fisica rifiutata per il gestore, il contrario per la risorsa umana, persona fisica ed ente ammessi per il
+  cliente, il soggetto senza natura rifiutato.
 
 ---
-
-📅 *Aggiornato: 28/02/2026*
 
 {% include-markdown "signature-core.md" %}

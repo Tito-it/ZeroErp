@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_titoli_iva_non_ammessi_conta.md" %}
 # ⚙️ Funzione `fn_titoli_iva_non_ammessi_conta`
 
 ```sql

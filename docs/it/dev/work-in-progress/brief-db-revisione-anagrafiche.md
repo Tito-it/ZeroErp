@@ -2,17 +2,16 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: la sessione DB**, col giro 0b (area A, §4.2). Il giro 0a è scritto e committato il 2026-11-22 (§12): le
-57 pagine dell'area C allo standard, 6 nuove, due blocchi comuni, le due guide; Tid ha rigenerato la doc
-auto-generata lo stesso giorno (§12.4). Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
+**Riparte: la sessione DB**, col giro 0c (area B, §4.3). I giri 0a (area C, §12) e 0b (area A, §13) sono scritti e
+committati il 2026-11-22, con la doc auto-generata rigenerata da Tid dopo ciascuno. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
 documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … R-BE5 (§9), che non fermano il giro 0.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
 | 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
-| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, 2026-11-22, §12); ⏳ 0b (area A) | §2, §4-§6, §12 | 2 |
-| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a (2026-11-22); ⏳ dopo lo 0b | §2, §12.4 | 3 |
+| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), 2026-11-22; ⏳ 0c (area B) | §2, §4-§6, §12, §13 | 2 |
+| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a e lo 0b (2026-11-22); ⏳ dopo lo 0c | §2, §12.4 | 3 |
 | 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
 | 6 | team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5 | §9 | 2 |
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
@@ -563,3 +562,90 @@ sono provati direttamente; di `trgfn_clienti_sync_stato_pdp` è provato solo il 
 * `billing_account.md` è di 178 righe: la tabella ha quattro policy, tre chiavi composte e i lock da spiegare.
 * Residui fuori dai punti assegnati, da chiudere col giro della guida: in `gestione-delle-istanze-utility` restano due
   frasi di cronaca («Fino al 2026-10-08…», «decisione di Tid del…»).
+
+## 13. Giro 0b — l'area A, 2026-11-22 (scritto, committato)
+
+Stesso metodo del giro 0a: quattro agenti per gruppi di oggetti (il soggetto; il cambio di natura e i ruoli; i dati
+societari; i titoli IVA) e uno per la guida, dai corpi del catalogo di dbdev, dalle schede e dai pgTAP.
+
+### 13.1 Che cosa è scritto
+
+* **Le 31 pagine esistenti dell'area A**, tutte nella cornice. Riscritte dal corpo `soggetti`, `soggetti_ruoli`,
+  `dati_societari`, `trgfn_soggetti_normalize`, `fn_crea_soggetto_pf`, `fn_crea_soggetto_pg`, `soggetti_titoli_iva`,
+  `soggetti_titoli_iva_ambiti`, `soggetti_titoli_iva_movimenti`; le altre allo standard, col contenuto riverificato.
+* **21 pagine nuove**, tutte quelle di §5 per l'area A: la famiglia del cambio di natura (6), le regole per natura sul
+  soggetto (4), i verbi dei dati societari (5), il titolo IVA ammesso dalla natura (6). Ogni oggetto dell'area A ha
+  ora la sua pagina.
+* **Quattro blocchi comuni**: `_identificativo-fiscale.md` (incluso in 4 pagine), `_cambio-di-natura.md` (6),
+  `_dati-societari.md` (6), `_titolo-iva-per-natura.md` (7).
+* **`guide/soggetti-e-ruoli-anagrafici.md`**, riscritta quasi per intero: i due verbi di nascita, la natura e le sue
+  regole, l'identificativo bloccato, il cambio di natura, i dati societari coi verbi, i titoli IVA per natura; i ruoli
+  con le specializzazioni vere (`RE` è il reseller, nessun referente); «Il soggetto non ha un emittente fiscale» al
+  posto di §5a-bis; «Subito o al COMMIT» al posto dell'elenco dei trigger; due ER piccoli, veri colonna per colonna.
+  Il titolo di §5b è rimasto identico perché due pagine di `script` lo linkano per anchor.
+
+### 13.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S4, S20, S21, S30 reggono**, riverificate sui corpi. S4 si precisa: un doppione esatto (stesso CF, stessa P.IVA)
+  lo ferma l'indice unico con l'errore tecnico, non un `E_ADMIN_*`; in `fn_crea_soggetto_pf` c'è l'asimmetria
+  opposta (il pre-controllo ferma una ditta col CF di un privato, che l'indice ammetterebbe). S20 si precisa: la
+  stringa vuota per un soggetto italiano la ferma il validatore del formato; fuori dall'Italia, o come P.IVA di un
+  privato, passa e resta bloccata come valore scritto.
+* **S21 è più largo**: `zeroerp_app` ha `arwd` su tutte le 19 viste di `anagrafiche`, non solo su
+  `vw_risorse_umane_dettaglio`. E `trg_soggetti_a10_guard_obbligatori_ruoli_upd` è differito ma porta la fascia
+  `a10` (gli altri differiti hanno `def`).
+* **§6, «i guard dei dati societari sono immediati»**: vale per i guard delle regole (tipo soggetto, forma, canale:
+  `BEFORE ROW`, non differibili). Sono differiti, su `dati_societari`, i due trigger generici del padre attivo, e su
+  `soggetti` il guard «required» e quello della forma rispetto alla natura.
+* **I motivi del cambio di natura sono 10 codici**, non 9 (§5 univa cliente PA e split payment). I «due rifiuti
+  mancanti» di `soggetti_titoli_iva` (§4.2) sono `E_CAMBIO_NATURA_TITOLI_ALTRI_EMITTENTI` e
+  `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO` sulla natura tolta.
+* Il codice del lock di `trgfn_soggetti_gen_codice` è `E_CODICE_NON_MODIFICABILE` (§4.2 e la pagina vecchia dicevano
+  `CODICE_NON_MODIFICABILE`, che resta in `config.messaggi_errore` come dice S21). Con la sequenza spenta funzione e
+  trigger si tolgono, non restituiscono NULL.
+* Il codice mancante di `trgfn_dati_societari_guard_tipo_soggetto` (§4.2) è `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO`.
+* `anagrafiche.soggetti` è in `config.storico_set_storicizza`: il suo storico è continuo, a differenza di S9. La
+  tabella non ha RLS.
+* La RLS dei tre titoli IVA concede le righe solo al ruolo `OPERATORE` col perimetro d'emittente: portale, shop e
+  API non vedono nessun titolo.
+* La matrice natura ↔ ruolo è «aperta» solo per un ruolo senza nessuna riga: basta una riga, anche spenta, a
+  vincolarlo.
+* Su `soggetti_ruoli` l'unica FK `RESTRICT` verso il ruolo è quella da `risorse_umane`; `fk_tipi_ruoli_config` è
+  `NO ACTION`, `fk_soggetti_anagrafiche` è `CASCADE`.
+* **§8.** M16 non vale per `trgfn_soggetti_guard_forma_giuridica_natura`, che ha solo un marcatore «Brief: …» nel
+  COMMENT. M15 è più largo: dicono ancora il falso il COMMENT di `trgfn_soggetti_titoli_iva_guard_coerenza` («il nome
+  sceglie l'ORDINE») e quello di `fn_consuma_plafond_titolo_iva_righe` («l'imponibile si legge dalla riga»: il corpo
+  usa l'importo passato e pretende che coincida). Il commento nel corpo di
+  `trgfn_soggetti_titoli_iva_guard_tipo_soggetto` nomina come vivo `trgfn_soggetti_guard_titoli_iva_ammessi`,
+  ritirato il 2026-11-14 (il controllo è in `fn_check_cambio_natura_soggetto`).
+
+### 13.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso; ✔︎ = riletta sul catalogo dalla sessione che coordina.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S38 ✔︎ | `fn_check_cambio_natura_soggetto` | **Il passaggio per la natura vuota aggira i due motivi definitivi.** Con la natura nuova NULL si guardano solo i titoli IVA; i controlli di macro-tipologia e documenti girano solo se la natura vecchia c'è. X → NULL → Y, anche nella stessa transazione, porta una società a privato, o una ditta con documenti a privato. Nessun guard di `soggetti` rifiuta la natura NULL. Anche la natura ammessa dei ruoli non si ricontrolla al cambio di natura |
+| S39 | Lo spegnimento del soggetto | **Un soggetto non si spegne.** Al COMMIT deve avere un contatto (`trgfn_soggetti_guard_soggetto_contatti`), e delle nove figlie che bloccano la disattivazione solo `risorse_umane` e `soggetti_titoli_iva` hanno `attivo`: le altre bloccano finché esistono. Una società di capitali non può togliere i dati societari; un ruolo nominato da un documento non si cancella. Da leggere come un tema solo |
+| S40 | I permessi | `fn_soggetto_primo_documento` e `fn_titoli_iva_non_ammessi_conta` sono `SECURITY DEFINER` con EXECUTE a `PUBLIC`. `vw_soggetti_ruoli_dettaglio` non è `security_invoker` (oggi innocuo). Il DML sulle viste è in 13.2 (S21) |
+| S41 | I dati societari | Una DELETE diretta non guarda la natura (la pretesa la tiene solo il verbo). Due prime scritture concorrenti in `fn_scrivi_dati_societari` urtano `uq_ds_soggetto` con l'errore grezzo. Una società di capitali creata senza forma riceve il `NOT NULL` (23502) senza codice. Il codice SDI di 6 o 7 caratteri vale per chiunque. Un cambio di `soggetti.stato_id` o delle policy della forma non rilegge le righe scritte. `trgfn_dati_societari_guard_tipo_soggetto` non ha fascia, parla dopo i guard di forma e canale e gira a ogni UPDATE (niente `OF`) |
+| S42 | La natura ammessa dei ruoli | I messaggi di `E_RUOLO_NATURA_NON_AMMESSA` e `E_RUOLO_NATURA_TIPO_DET_NULL` mostrano gli id; il contesto non ha `campo`; una riga di matrice spenta non tocca i ruoli che esistono |
+| S43 | Il soggetto | `trgfn_soggetti_normalize` scatta anche in modifica: un UPDATE che porta `stato_id` a NULL riceve lo stato proposto. Il dispatch del CF/P.IVA non ha `UPDATE OF`: un soggetto con un CF che il validatore non accetta non si modifica in nessun campo; con una natura inesistente va in errore tecnico (`INTO STRICT`) prima della FK; uno stato senza validatore passa. Il DB non normalizza CF e P.IVA (maiuscole); `stato_id`, metà della chiave fiscale, non è bloccato; la stringa vuota conta come «scritta». `ragione_sociale_completa` è NULL se manca nome o cognome; `codice` ammette NULL. Nei due verbi di nascita il tipo di contatto di ripiego è «il primo per id» |
+| S44 | I titoli IVA | Nessuno verifica che il titolo di un movimento di fattura sia del cliente e dell'emittente della fattura. Un titolo spento si ferma solo al COMMIT. Nessuna funzione scrive i movimenti `NOTA_CREDITO`, e niente impedisce di restituire più di quanto la fattura aveva consumato. Un titolo sfondato non lo segnala nessuno. `imponibile_utilizzato` si aggiorna direttamente e resta fino al movimento successivo. La regola «un titolo per tutto non ha ambiti» è in due sedi (`trgfn_soggetti_titoli_iva_guard_coerenza` e `fn_check_titolo_iva_ambito`). Il rifiuto di `trgfn_soggetti_titoli_iva_guard_ambito` indica sempre `valido_al` |
+
+pgTAP mancanti, trovati scrivendo la sezione «Test»: nessun test proprio per `trgfn_soggetti_gen_codice`,
+`trgfn_soggetti_normalize`, `fn_regime_pa_campo_non_ammesso`, `trgfn_soggetti_guard_forma_giuridica_natura` (provato
+solo per comportamento), `vw_soggetti_ruoli_dettaglio`.
+
+### 13.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 52 pagine dell'area: tutte nella cornice, data
+  22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun link a `manual/`
+  né morto. I nomi che il catalogo non conosce stanno tutti nelle Note di migrazione (`fn_consuma_plafond_titolo_iva`,
+  `trgfn_soggetti_guard_titoli_iva_ammessi`, `clienti.iva_id`). I quattro blocchi non hanno `##` né il tag include.
+* La guida: link tutti vivi, nessun link a `manual/`, a brief o col prefisso `/it`, blocchi solo `mermaid`.
+* **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le 21 schede delle pagine nuove le
+  includono; nell'indice restano 57 marcatori, delle aree B, D, E.
+* Misura: `soggetti` (196 righe), `soggetti_titoli_iva` (199), `soggetti_titoli_iva_movimenti` (191) passano il
+  tetto di 150; una trentina di righe a testa sono del «Vedi anche».
+* La build della doc non è lanciata.
