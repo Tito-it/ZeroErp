@@ -1,179 +1,105 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.gestori`
 
-> 👀 **Vedi anche**  
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-Approfondimento Tabelle:   
+> 👀 **Vedi anche**
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/soggetti)   
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)    
-> [config.valute](/dbzero/config/tabelle/valute)   
+> Approfondimento tabelle:
 >
-Approfondimenti funzioni:   
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo `GE` a cui la riga si aggancia
+> * [anagrafiche.gestori_utilities](/dbzero/anagrafiche/tabelle/gestori_utilities) — i servizi del gestore
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — chi emette i documenti, che non è il gestore
+> * [config.valute](/dbzero/config/tabelle/valute) — la valuta del gestore
 >
-[anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_ruolo_gestore)   
-> [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
-
-La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza e amministra il sistema Zero ERP (“gestore”). Attualmente raccoglie le informazioni di base necessarie a identificare il gestore, ma è ancora in fase di definizione: in futuro potrà essere estesa per includere ulteriori parametri funzionali e di configurazione del software.
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_gestori_guard](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard) — un solo gestore, con partita IVA
+> * [anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_ruolo_gestore) — il ruolo dev'essere `GE`
+> * [vendite.fn_get_valuta_id](/dbzero/vendite/funzioni/fn_get_valuta_id) — l'ultimo gradino della valuta di un documento
+>
+> Guide:
+>
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il modello soggetto, ruolo, specializzazione
 
 ---
+
 ### 🎯 Scopo Principale
-(latest update 05-12-25)
-- **Identificare il gestore del sistema**  
-  Memorizzare la riga unica che corrisponde all’azienda proprietaria o amministratrice di Zero ERP, distinguendola da tutti gli altri soggetti (clienti, fornitori, partner, ecc.).
 
-- **Collegare il gestore all’anagrafica generica**  
-  Utilizzare il campo `soggetto_id` per riferirsi al record corrispondente in `anagrafiche.soggetti` (azienda di tipo giuridico), garantendo coerenza fra scheda anagrafica e scheda gestore.
-
-- **Assicurare il ruolo corretto**  
-  Contribuire al rispetto della logica applicativa: il trigger `trg_gestori_guard_ruolo_gestore_ins_upd` verifica che il record inserito o aggiornato faccia effettivamente riferimento a una relazione soggetto-ruolo di tipo “Gestore” (presente in `anagrafiche.soggetti_ruoli`).
+`anagrafiche.gestori` è la specializzazione del ruolo **gestore** (`GE`): la società che gestisce il sistema
+informativo. La tabella ha al più una riga.
 
 ---
 
-### Collegamenti con Altre Tabelle
+### Il gestore è un ruolo, non una colonna sul soggetto
 
-- **`anagrafiche.soggetti`**  
-  - Il campo `soggetto_id` (UUID) è una chiave esterna che punta a `anagrafiche.soggetti(id)`.  
-  - Vincolo `fk_soggetti_anagrafiche`:  
-    - **ON UPDATE NO ACTION**  
-    - **ON DELETE RESTRICT** (non è consentito eliminare il soggetto di tipo “gestore” finché rimane collegato).  
+Come le altre specializzazioni, la riga nomina con `soggetto_ruolo_id` il legame «questo soggetto è il gestore»
+in `anagrafiche.soggetti_ruoli`; il soggetto si raggiunge da lì, e la tabella non ha una colonna propria che lo
+nomini. Un ruolo ha al più una riga di gestore (`uq_gestori_soggetto_ruolo`). Che il legame sia proprio del ruolo
+`GE` lo controlla `anagrafiche.trgfn_gestori_guard_ruolo_gestore`.
 
-- **`anagrafiche.soggetti_ruoli`**  
-  - Il campo `soggetto_ruolo_id` (integer) fa riferimento a una riga di `anagrafiche.soggetti_ruoli(id)` avente ruolo “Gestore”.  
-  - Vincolo `fk_soggetti_ruoli_anagrafiche`:  
-    - **ON UPDATE NO ACTION**  
-    - **ON DELETE RESTRICT** (non è consentito eliminare la relazione soggetto-ruolo “Gestore” se è in uso).  
-
-- **`config.valute`**  
-  - Il campo `valuta_id` (integer) rimanda a `config.valute(id)`, indicando la valuta di default per le operazioni gestionali.  
-  - Vincolo `fk_valute_config`:  
-    - **ON UPDATE NO ACTION**  
-    - **ON DELETE RESTRICT** (la valuta di default non può essere eliminata se è assegnata a un gestore).  
+Il gestore non è l'**emittente fiscale**: il primo è chi gestisce il sistema, il secondo chi emette i documenti, e
+in un'installazione con più aziende gli emittenti sono più d'uno. Le due cose possono cadere sullo stesso
+soggetto, con due ruoli diversi.
 
 ---
 
-### 🚩 Vincoli di Unicità e Integrità
+### ⭐ Uno solo, con partita IVA
 
-- **Primary Key**  
-  - `pk_gestori` su `id` (seriale intero generato automaticamente).
+`anagrafiche.trgfn_gestori_guard` tiene due regole del ruolo, a ogni nascita e modifica della riga:
 
-- **Un solo gestore nel sistema**  
-  - Lo impone il guard `anagrafiche.trgfn_gestori_guard` (regola 1, `E_GESTORE_SINGLETON_VIOLATO`): zero o un record rappresentano il gestore di Zero ERP. Non c'è un vincolo di tabella che lo dica.
-  - Un gestore per ruolo: `uq_gestori_soggetto_ruolo` su `soggetto_ruolo_id`.
-  - Il vincolo `uq_gestori_singleton`, che dal nome sembrava il singleton, è stato ritirato il 2026-10-10: vietava solo due righe con lo stesso `id`, cioè ripeteva la chiave primaria (`brief-db-istanza-nasce-col-ba-residui`, D-3).
+* **un solo gestore nel sistema**: una seconda riga è rifiutata, la modifica di quella che c'è no. Nessun vincolo
+  di tabella lo dice: la regola sta nel guard;
+* **il soggetto del gestore ha la partita IVA**.
 
-- **Riferimento obbligatorio a soggetto**  
-  - `soggetto_id` deve sempre esistere in `anagrafiche.soggetti`.  
-  - `soggetto_ruolo_id` deve sempre esistere in `anagrafiche.soggetti_ruoli` e deve corrispondere a un ruolo “Gestore”.
-
-- **Riferimento obbligatorio a valuta**  
-  - `valuta_id` deve sempre esistere in `config.valute`, per definire la moneta utilizzata dal gestore.
-
-- **Campi testuali obbligatori**  
-  - `descrizione` (50 caratteri) e `cd_prod_software` (20 caratteri) non possono essere nulli, al fine di fornire un’etichetta descrittiva e l’indicazione del prodotto software in uso.
-
-
+Il gestore non ha `attivo` e non si cancella: la cancellazione passa solo dalla porta di manutenzione del
+migratore (`script.trgfn_delete_block_by_guc`), e con servizi collegati si ferma comunque sulla chiave esterna di
+`anagrafiche.gestori_utilities`.
 
 ---
 
+### Che cosa porta
 
-### Descrizione dei Campi Principali
+* `descrizione` è il nome breve con cui il gestore si mostra; `cd_prod_software` il codice del prodotto software
+  in uso. Tutte e due obbligatorie e non vuote. Nessun oggetto del database legge `cd_prod_software`.
+* `valuta_id` è la valuta del gestore, ed è l'ultimo ripiego della valuta di un documento: quando né il billing
+  account né l'emittente ne indicano una, `vendite.fn_get_valuta_id` prende quella del gestore.
 
-- **`id`**  
-  Identificativo univoco (seriale intero) per la riga “gestore”.
-
-- **`soggetto_id`**  
-  Riferimento al record di `anagrafiche.soggetti` che rappresenta l’azienda amministratrice. È vincolato alla presenza di un soggetto di tipo giuridico.
-
-- **`soggetto_ruolo_id`**  
-  Riferimento alla riga di `anagrafiche.soggetti_ruoli` associata al ruolo “Gestore” per il soggetto indicato. Garantisce che il soggetto abbia già un ruolo valido di tipo “Gestore”.
-
-- **`descrizione`**  
-  Etichetta testuale (50 caratteri) utilizzata per mostrare un nominativo breve (ad esempio, “ACME S.r.l. – Gestore Sistema”) nelle interfacce utente.
-
-- **`cd_prod_software`**  
-  Codice del prodotto software in uso (20 caratteri). Può essere utile per identificare versioni, edizioni o configurazioni specifiche attivate per il gestore (es. “ZEROERP_PRO” o “ZEROERP_STD”).
-
-- **`valuta_id`**  
-  Riferimento a `config.valute(id)`, indica la valuta di default per prezzi, bilanci e reporting amministrativo (es. EUR, USD, GBP).
-
-
-- **`user_insert`, `data_insert`, `user_update`, `data_update`**  
-  Campi di audit standard:
-  - `user_insert`: login utente che ha creato la riga.  
-  - `data_insert`: timestamp di creazione.  
-  - `user_update`: login utente che ha eseguito l’ultima modifica.  
-  - `data_update`: timestamp dell’ultima modifica.
+La tabella non ha storico né identificativo esterno: porta solo l'audit di chi ha scritto e quando.
 
 ---
 
-### Vantaggi Operativi
+### ⚠️ Che cosa oggi non copre
 
-- **Singleton azienda gestore**  
-  Il guard della tabella garantisce che esista al massimo una sola riga che rappresenta l’azienda “gestore”. Ciò semplifica la logica applicativa, perché non è necessario gestire più istanze di gestore.
-
-- **Controllo automatico del ruolo**  
-  Il trigger `check_ruolo_gestore` impedisce l’inserimento di record non validi, assicurando che il soggetto collegato abbia già il ruolo “Gestore” in `anagrafiche.soggetti_ruoli`.
-
-- **Collegamenti diretti a dati anagrafici e valute**  
-  Le chiavi esterne verso `anagrafiche.soggetti` e `config.valute` assicurano coerenza e consentono di risalire rapidamente alle informazioni base dell’azienda e alla valuta di riferimento.
-
-- **Tracciabilità delle modifiche**  
-  Il trigger di audit registra tutti gli aggiornamenti, mantenendo un log implicito di chi e quando ha modificato i dati del gestore.
+* **Due nascite contemporanee.** Il «gestore unico» è una lettura del guard, non un vincolo: due transazioni che
+  inseriscono insieme non vedono l'una la riga dell'altra, e passano tutte e due.
+* **La partita IVA tolta dopo.** Il guard la guarda quando si scrive il gestore: un soggetto che la perde in
+  seguito resta gestore, e nessun trigger su `anagrafiche.soggetti` lo rileva.
 
 ---
 
-### Sviluppi Futuri
+### Codici errore
 
-- **Estensione dei parametri funzionali**  
-  In futuro, `anagrafiche.gestori` potrà contenere campi aggiuntivi di configurazione software, quali:
-  - Parametri di default per fatturazione elettronica (ad es. metodi di invio, codici destinatario).  
-  - Impostazioni di branding (logo, colori, template PDF).  
-  - Soglie operative (es. scorte minime, limiti di credito).  
-  - Configurazioni API per integrazione con servizi esterni (es. CRM, sistemi bancari).
-
-- **Integrazione con tabelle di telemetria**  
-  Possibile aggiunta di relazioni verso tabelle di monitoraggio (log di accesso, statistiche di performance, volumi di documenti) collegate al gestore, per analisi di utilizzo e ottimizzazione del sistema.
-
-- **Multitenancy e permessi**  
-  Se in futuro Zero ERP dovrà supportare ambienti multi-tenant, saranno previsti campi aggiuntivi per definire permessi, ruoli amministrativi e ambiti di visibilità dati in funzione del gestore.
-
-> 🚧 **Stato di sviluppo**  
-> Questa tabella è già funzionante per memorizzare le informazioni di base del gestore, ma rimane soggetta a evoluzione. I campi e i vincoli futuri saranno aggiunti a seconda delle esigenze di progetto.
+* `E_GESTORE_SOGGETTO_RUOLO_MANCANTE`, `E_RUOLO_RICHIEDE_PIVA`, `E_GESTORE_SINGLETON_VIOLATO` — dal guard di
+  dominio (vedi la sua scheda).
+* `E_SOGGETTI_RUOLI` — il ruolo non è `GE`.
+* `E_DELETE_NOT_ALLOWED` — una cancellazione fuori dalla porta di manutenzione.
 
 ---
 
-> **“Una singola entità per identificare l’azienda gestore e gettare le basi per la futura configurazione avanzata del sistema Zero ERP.”**  
+### Test
+
+* `db/pgtap/anagrafiche/create-soggetto-gestori.sql` — il soggetto col ruolo gestore, il gestore unico, il secondo
+  gestore rifiutato. Il file è fra i rossi noti della baseline.
+* `db/pgtap/vendite/test-fn-get-valuta-id-v1.sql` — la valuta del gestore come ultimo ripiego.
 
 ---
 
-###  Diagramma ER relazioni 
+### Note di migrazione
 
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti       ||--o{ gestori : has
-    soggetti_ruoli ||--o{ gestori : role_for
-    valute         ||--o{ gestori : uses
-
-    soggetti       { uuid id PK }
-    soggetti_ruoli { bigint  id PK }
-    valute         { int  id PK }
-    gestori        { int  id PK }
-
-```
+* 2026-10-08 — nasce `uq_gestori_soggetto_ruolo`, una riga per ruolo, come le altre specializzazioni.
+* 2026-10-10 — si ritira `uq_gestori_singleton`, che nonostante il nome non vincolava niente: il gestore unico è
+  sempre stato del guard.
 
 ---
+
 {% include-markdown "signature-core.md" %}
-
----
-
----
-
-### Un gestore per ruolo (dal 2026-10-08)
-
-`uq_gestori_soggetto_ruolo` = `UNIQUE (soggetto_ruolo_id)`, come le altre specializzazioni dei
-ruoli (fornitori, vettori, PSP, risorse umane, emittenti fiscali). L'indice dedicato
-`ix_anagrafiche_gestori_soggetto_ruolo_id`, che il vincolo rende ridondante, lo toglie la policy
-degli indici delle FK. ⚠️ `uq_gestori_singleton`, nonostante il nome, e' un indice GiST non unico
-su `id`: non vincola niente. Brief: brief-db-istanza-nasce-col-ba (R-9).

@@ -1,38 +1,45 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_psp_guard_ruolo_psp`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_psp_guard_ruolo_psp`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-• [anagrafiche.psp](/dbzero/anagrafiche/tabelle/psp)  
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)  
+> * [anagrafiche.psp](/dbzero/anagrafiche/tabelle/psp) — la specializzazione che presidia
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il ruolo `PSP`
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-• [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)  
->
+> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo) — il controllo, a cui delega per intero
+> * [pagamenti.trgfn_enti_incasso_guard_psp](/dbzero/pagamenti/funzioni/trgfn_enti_incasso_guard_psp) — lo stesso tipo di ruolo, controllato dal lato degli enti d'incasso
+
+---
+
 ### 🎯 Scopo Principale
-(latest review 13-02-2026)  
-La funzione **`anagrafiche.trgfn_psp_guard_ruolo_psp()`** valida che
-`NEW.soggetto_ruolo_id` punti a un ruolo con `codice_interno = 'PSP'`.
+
+`anagrafiche.trgfn_psp_guard_ruolo_psp` è il guard di ruolo del PSP: la riga di `anagrafiche.psp` punta solo a
+un ruolo `PSP`.
 
 ---
 
-### Regole principali
+### Che cosa ha di proprio il PSP
 
-* eseguita in trigger `BEFORE INSERT OR UPDATE` su `anagrafiche.psp`;
-* delega i controlli a `script.fn_guard_soggetto_ruolo(...)`;
-* in caso di incoerenza solleva errore applicativo tramite funzione guard centralizzata.
+Il codice del ruolo è `PSP`. Lo stesso tipo di ruolo lo controlla, per conto suo,
+anche `pagamenti.trgfn_enti_incasso_guard_psp`, che non passa da `script.fn_guard_soggetto_ruolo`: lì un ruolo
+d'altro tipo risponde con un codice proprio degli enti d'incasso, e in più si chiede che il PSP abbia qui una riga
+attiva.
 
 ---
 
-### Esempio d’uso
+{% include-markdown "it/dbzero/anagrafiche/_guard-di-ruolo.md" %}
 
-```sql
--- Invocata automaticamente dal trigger su anagrafiche.psp
-INSERT INTO anagrafiche.psp (soggetto_ruolo_id, codice, descrizione)
-VALUES (123, 'NEXI', 'Nexi PSP');
-```
+---
+
+### Test
+
+* `db/pgtap/pagamenti/test-enti-incasso-psp.sql` — passa da questo guard quando crea il PSP di prova, con un ruolo
+  `PSP`. Nessun test prova il rifiuto di un ruolo d'altro tipo su `anagrafiche.psp`.
 
 ---
 

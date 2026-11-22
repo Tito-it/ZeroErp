@@ -25,13 +25,13 @@ cliente (`CL`). Non crea ruoli e non cambia il valore: verifica soltanto.
 
 ---
 
-### Il controllo comune dei ruoli
+### Il ruolo del cliente lo crea chi fa nascere il cliente
 
-Il controllo è `script.fn_guard_soggetto_ruolo`, lo stesso delle altre tabelle di specializzazione dei ruoli,
-chiamato col tipo cliente e senza soggetto: basta che il ruolo indicato esista e sia di quel tipo. Il ruolo, se
-manca, lo crea chi fa nascere il cliente (`anagrafiche.fn_crea_cliente`), non il trigger.
+Il ruolo, se manca, lo crea `anagrafiche.fn_crea_cliente`, non il trigger.
 
-Scatta prima di ogni scrittura del cliente, anche quando il ruolo non cambia.
+---
+
+{% include-markdown "it/dbzero/anagrafiche/_guard-di-ruolo.md" %}
 
 ---
 

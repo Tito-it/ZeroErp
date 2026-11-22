@@ -1,52 +1,48 @@
-## 📚 Documentazione Tabella: `anagrafiche.gestori_utilities`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.gestori_utilities`
 
-> 👀 **Vedi anche:**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-Approfondimento tabelle:
+> 👀 **Vedi anche**
 >
-[anagrafiche.gestori](/dbzero/anagrafiche/gestori)
-> [config.utilities](/dbzero/config/utilities)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/soggetti_ruoli)
-> [config.tipi_ruoli](/dbzero/config/tipi_ruoli)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
->
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — il gestore
+> * [config.utilities](/dbzero/config/tabelle/utilities) — il catalogo dei servizi
+> * [anagrafiche.emittenti_fiscali_utilities](/dbzero/anagrafiche/tabelle/emittenti_fiscali_utilities) — la tabella gemella dell'emittente, che porta i parametri per servizio
 
 ---
+
 ### 🎯 Scopo Principale
-La tabella `anagrafiche.gestori_utilities` gestisce l'associazione tra i gestori e le utilities disponibili nel sistema Zero ERP. Ogni gestore, identificato dal suo ruolo, può gestire una o più utilities specifiche.
+
+`anagrafiche.gestori_utilities` dice quali servizi (le utility di `config.utilities`) il gestore del sistema
+gestisce: una riga per coppia gestore e servizio.
 
 ---
 
+### Una coppia, una volta
 
+La coppia gestore e servizio è unica (`uq_gestore_utility`). Il ruolo non compare: il gestore è già un ruolo, e
+la riga lo nomina attraverso la sua specializzazione. Il commento della tabella parla ancora di un «ruolo
+funzionale» e la chiave primaria si chiama `pk_gestori_utilities_ruoli`: sono nomi di un modello di prima, e
+nessuna colonna li porta.
 
----
-
-### Vincoli e Relazioni
-
-* **`gestore_id`**: Foreign key verso la tabella `anagrafiche.gestori` (cancellazione a cascata).
-* **`utility_id`**: Foreign key verso la tabella `config.utilities` (cancellazione ristretta).
-* **`uq_gest_util`**: Garantisce l'unicità dell'associazione gestore-utility.
-
----
-
-### Considerazioni di Progettazione
-
-* Ogni gestore può essere associato a molteplici utilities.
-* L'associazione non contempla ulteriori ruoli interni, in quanto il gestore stesso è già un ruolo specifico.
-* Il campo `extra` offre flessibilità per la memorizzazione di dettagli contrattuali o operativi specifici per ciascuna associazione.
+`meta` raccoglie i parametri della coppia in forma libera; il database non ne legge niente.
 
 ---
 
-### 🚨 Gestione Errori e Audit
+### Che cosa la tabella non regge
 
-* Eventuali errori nel gestire la tabella sono loggati tramite la funzione `script.fn_log_and_raise_error`.
-* Gli audit sono assicurati tramite i campi standard (date\_insert, user\_insert, date\_update, user\_update).
+La tabella ha due chiavi esterne e l'audit, e nessun trigger di dominio:
+
+* la cancellazione di una riga è libera; quella di un servizio usato si ferma sulla chiave esterna, come quella
+  del gestore (che però è già bloccata a monte);* non ha storico.
 
 ---
 
-> **“Questa struttura garantisce una gestione semplice e chiara delle associazioni tra gestori e utilities, facilitando la manutenibilità e la flessibilità del sistema.”**
+### ⚠️ Che cosa oggi non copre
+
+* **Nessun oggetto del database legge la tabella.** Il perimetro dei servizi del gestore non limita niente: un
+  cliente, un'istanza, un listino di un servizio che il gestore non dichiara nascono lo stesso.
 
 ---
 

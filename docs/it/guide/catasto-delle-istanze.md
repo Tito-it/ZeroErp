@@ -172,8 +172,6 @@ stessa chiave soggetto, utility e azienda. Il clone scatta allo stesso modo, se 
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — il subentro completo sullo stesso PDP: catena, clone con id
   diverso e dati uguali, legame della copia col civico, duplicato nella ponte rifiutato.
-* `db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql` — scritto sul modello di prima, cerca colonne che non
-  ci sono più; è fra i test rossi conosciuti.
 
 ---
 

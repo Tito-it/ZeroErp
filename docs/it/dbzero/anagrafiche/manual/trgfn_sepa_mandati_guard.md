@@ -1,77 +1,76 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_sepa_mandati_guard()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_sepa_mandati_guard`
 
-> 👀 **Vedi anche**   
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-**Approfondimento tabelle:**    
+> 👀 **Vedi anche**
 >
-[pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati)   
+> Approfondimento tabelle:
 >
-**Approfondimento Funzioni:**   
+> * [pagamenti.sepa_mandati](/dbzero/pagamenti/tabelle/sepa_mandati) — i mandati SEPA, la tabella su cui è montata
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — il legame del conto addebitato, che il mandato nomina
 >
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)   
-> [dbops.trgfn_tx_id_managed](/dbzero/dbops/funzioni/trgfn_tx_id_managed)   
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_conti_bancari_normalize](/dbzero/anagrafiche/funzioni/trgfn_conti_bancari_normalize) — la stessa normalizzazione sull'IBAN del registro
+>
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — i conti e i mandati che vi si agganciano
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 29-12-25)
-Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
+
+`anagrafiche.trgfn_sepa_mandati_guard` pretende la data di attivazione su un mandato SEPA attivo, e normalizza il
+codice del mandato (UMR) e la copia dell'IBAN prima che i vincoli li giudichino.
 
 ---
 
-### Come Funziona
+### Un mandato attivo ha la sua data
 
-1. **Validazione stato**
-   * Se `NEW.stato = 'ATTIVO'` allora `NEW.data_attivazione` deve essere valorizzata.
-   * In caso contrario, genera errore applicativo con `script.fn_log_and_raise_error`.
-2. **Normalizzazione UMR**
-   * Se presente, rimuove spazi multipli e consecutivi da `NEW.umr`.
-3. **Normalizzazione IBAN snapshot**
-   * Se presente, rimuove gli spazi e forza il maiuscolo su `NEW.iban_snapshot`.
+Un mandato in stato `ATTIVO` senza `data_attivazione` è rifiutato (`E_DATA_ERRATA`, sul campo `data_attivazione`). Gli
+altri stati non chiedono la data. L'ordine delle date (la firma, l'attivazione, la revoca) lo dice il vincolo
+`chk_sepa_mandati_date`, non il trigger.
 
----
-
-### Parametri del Trigger
-
-* `NEW`: record in fase di INSERT o UPDATE su `pagamenti.sepa_mandati`.
-* `OLD`: record precedente (non usato).
+Il trigger scatta prima di ogni nascita e di ogni modifica, sulla tabella dei mandati, che è nello schema
+`pagamenti`, mentre la funzione sta in `anagrafiche`, con le altre dei conti bancari.
 
 ---
 
-### Valore di Ritorno
+### UMR e IBAN nella forma canonica
 
-* **`NEW`**: record con campi normalizzati e validati.
+* **L'UMR** perde tutti gli spazi; le maiuscole e le minuscole restano come sono.
+* **La copia dell'IBAN** (`iban_snapshot`) perde gli spazi e passa in maiuscolo, come l'IBAN del registro.
 
----
-
-## Trigger Associato
-
-```sql
-CREATE TRIGGER trg_sepa_mandati_guard
-  BEFORE INSERT OR UPDATE
-  ON pagamenti.sepa_mandati
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_sepa_mandati_guard();
-```
+Il formato di tutti e due lo giudicano poi i vincoli della tabella, sul valore normalizzato.
 
 ---
 
-### 🚨 Errori Gestiti
+### ⚠️ Che cosa oggi non copre
 
-| Codice errore                  | Quando si verifica                      |
-| ------------------------------ | --------------------------------------- |
-| **E_DATA_ATTIVAZIONE_MANDATO** | Stato `ATTIVO` senza `data_attivazione` |
-
-Gli errori sono prodotti tramite:
-`script.fn_log_and_raise_error('<contesto>', '<funzione>', '<codice>', <meta>, ...)`.
+* **La copia dell'IBAN non si confronta col conto.** Niente lega `iban_snapshot` all'IBAN del conto che il legame
+  nomina: la copia può dire un conto diverso.
 
 ---
 
-### Note Operative
+### Codici errore
 
-* La normalizzazione di `umr` e `iban_snapshot` riduce duplicazioni dovute a spazi e formattazioni diverse.
-* La validazione su `data_attivazione` e' un vincolo di business: un mandato attivo deve avere data di attivazione.
+* `E_DATA_ERRATA` — un mandato `ATTIVO` senza data di attivazione.
 
 ---
 
-> **"Un mandato SEPA attivo deve avere data valida; UMR e IBAN vengono sempre normalizzati."**
+### Test
 
+* `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — il rifiuto dichiara il campo `data_attivazione`. Nessun test prova
+  il rifiuto o la normalizzazione su un mandato.
+
+---
+
+### Note di migrazione
+
+* 2026-08-04 — il rifiuto passa per il registro degli errori di `script` e porta nel contesto la data vera, non uno
+  zero.
+
+---
+
+{% include-markdown "signature-core.md" %}

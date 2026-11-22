@@ -1,44 +1,49 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_fornitori_guard_normalize`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_fornitori_guard_normalize`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori)
+> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori) — la tabella su cui è agganciata
 
 ---
+
 ### 🎯 Scopo Principale
-(rev 2026-11-21)
 
-La trigger function **`anagrafiche.trgfn_fornitori_guard_normalize()`** tiene
-coerente la **ritenuta d'acconto** del fornitore prima di ogni salvataggio.
-
----
-
-### Regole applicate
-
-* Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.fornitori`.
-* Con la ritenuta (`ritenuta_acconto = true`) serve un'aliquota maggiore di
-  zero: altrimenti il salvataggio è rifiutato con
-  `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA`, sul campo `ritenuta_aliquota`.
-* Senza ritenuta l'aliquota si azzera: un valore rimasto da prima non resta
-  appeso.
+`anagrafiche.trgfn_fornitori_guard_normalize` tiene coerente la ritenuta d'acconto del fornitore a ogni
+salvataggio: con la ritenuta serve un'aliquota, senza ritenuta l'aliquota non c'è.
 
 ---
 
-### Effetto operativo
+### La ritenuta e la sua aliquota
 
-Un fornitore non può avere la ritenuta senza aliquota, né un'aliquota senza
-ritenuta.
+* Con la ritenuta (`ritenuta_acconto` vero) l'aliquota dev'essere maggiore di zero: altrimenti il salvataggio è
+  rifiutato con `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA`, sul campo `ritenuta_aliquota`.
+* Senza la ritenuta (falsa o non indicata) l'aliquota si svuota: un valore rimasto da prima non resta appeso.
+
+Il tetto dell'aliquota (fino a 100) è un vincolo della tabella, non di questo trigger.
 
 ---
 
-### ⚠️ Nota funzionale
+### Scatta a ogni scrittura
 
-Fino al 2026-11-21 il trigger normalizzava anche il canale FE e la PEC del
-fornitore. Quei campi sono usciti dalla tabella: l'instradamento della
-fatturazione elettronica è del soggetto (`anagrafiche.dati_societari`), che ha
-i suoi controlli. Il codice del fornitore lo genera un altro trigger.
+Il trigger scatta prima di ogni inserimento e di ogni modifica, qualunque colonna cambi. Il codice del fornitore lo
+genera un altro trigger, `anagrafiche.trgfn_fornitori_gen_codice`.
+
+---
+
+### Codici errore
+
+* `E_FORNITORI_RITENUTA_ALIQUOTA_OBBLIGATORIA` — la ritenuta senza un'aliquota maggiore di zero.
+
+---
+
+### Note di migrazione
+
+* 2026-11-21 — smette di normalizzare il canale della fatturazione elettronica e la PEC del fornitore, usciti dalla
+  tabella: l'instradamento è del soggetto, in `anagrafiche.dati_societari`.
 
 ---
 

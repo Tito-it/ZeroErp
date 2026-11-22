@@ -2,16 +2,18 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: la sessione DB**, col giro 0d (area D, §4.4). I giri 0a (area C, §12), 0b (area A, §13) e 0c (area B,
-§14) sono scritti e committati il 2026-11-22, con la doc auto-generata rigenerata da Tid dopo ciascuno. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
+**Riparte: Tid**, con la rigenerazione della doc auto-generata dopo il giro 0d (§15.4) e il commit; poi la sessione
+DB col giro 0e (area E, §4.5), l'ultimo del giro 0. I giri 0a, 0b, 0c sono committati (§12-§14). Il giro 0d (area D,
+§15) è scritto il 2026-11-22: 45 pagine allo standard, una nuova, una ritirata (Q4), il blocco dei guard di ruolo, la
+guida dei conti; con il ritiro del pgTAP del catasto; non committato. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
 documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … R-BE5 (§9), che non fermano il giro 0.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
 | 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
-| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), 2026-11-22; ⏳ 0d (area D) | §2, §4-§6, §12-§14 | 2 |
-| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a, lo 0b e lo 0c (2026-11-22); ⏳ dopo lo 0d | §2, §12.4 | 3 |
+| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), ✅ 0d (area D, §15), 2026-11-22; ⏳ 0e (area E) | §2, §4-§6, §12-§15 | 2 |
+| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a, lo 0b e lo 0c (2026-11-22); ⏳ dopo lo 0d (§15.4) | §2, §12.4 | 3 |
 | 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
 | 6 | team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5 | §9 | 2 |
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
@@ -694,7 +696,8 @@ per la guida degli indirizzi.
 * **Il catasto**: `CATASTO_SOURCE_NOT_FOUND` non è più nemmeno in `config.messaggi_errore`. Il trigger del cliente che
   aggancia il parent è `BEFORE INSERT OR UPDATE OF pdp_id, data_attivazione`. Le tabelle del catasto non hanno né
   azienda né RLS. **`db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql` prova la colonna `istanza_utility_id` e
-  la sua FK, che non esistono più**: è nelle baseline dei rossi come `ERRORE_FIXTURE`, va riscritto o ritirato.
+  la sua FK, che non esistono più**: era nelle baseline dei rossi come `ERRORE_FIXTURE`. **Ritirato** (Tid, 2026-11-22): file tolto, le sue tre righe
+  tolte dalle baseline, le sezioni «Test» delle pagine aggiornate; il catasto resta provato da `test-simula-subentro.sql`.
 * **Il cambio di titolare di un indirizzo** si raggiunge solo dalla porta di manutenzione: prima scattano i lock
   (`E_INDIRIZZO_*_TITOLARE_IMMUTABILE`). I guard degli obbligatori su `indirizzi` e `indirizzi_soggetti` sono
   differiti solo su UPDATE e DELETE; alla nascita li pretendono quelli su `soggetti` e `soggetti_ruoli`.
@@ -742,3 +745,77 @@ NULL» che il NOT NULL non ammette. Il pgTAP del catasto è in 14.2.
 * **La doc auto-generata è rigenerata da Tid il 2026-11-22** (passo 4): le 28 schede nuove includono le pagine,
   `index.ci.md` non nomina più `manual/catasto-architettura`, e nell'indice restano 36 marcatori, delle aree D ed E.
 * `indirizzi_dettaglio.md` è di 154 righe. La build della doc non è lanciata.
+
+## 15. Giro 0d — l'area D, 2026-11-22 (scritto)
+
+Stesso metodo: quattro agenti per gruppi (le banche e i conti, con la loro guida; l'emittente fiscale; fornitori e
+vettori, che hanno scritto il blocco dei guard di ruolo; gestori, reseller e PSP).
+
+### 15.1 Che cosa è scritto
+
+* **Le 45 pagine esistenti dell'area D**, tutte nella cornice; riscritte dal corpo quelle che §4.4 dava da riscrivere,
+  più `fornitori`, `vettori`, i due `gen_codice`, `vw_fornitori_dettaglio`, `emittenti_fiscali` ed
+  `emittenti_fiscali_utilities`.
+* **Una pagina nuova**, `trgfn_emittenti_fiscali_guard_codice_forma`: ogni oggetto dell'area D ha la sua pagina.
+* **Q4 applicata**: la pagina di `trgfn_emittenti_fiscali_guard_attivo` è tolta, e «dove vive oggi la regola» (i
+  trigger `prevent_deactivate` generati dalle FK) sta nella pagina `emittenti_fiscali`.
+* **Il blocco comune `_guard-di-ruolo.md`**, incluso negli **otto** guard di ruolo: i sette dell'area D e quello del
+  cliente (`trgfn_clienti_guard_ruolo_cliente`, area C, a cui la sessione che coordina ha aggiunto l'include).
+* **`guide/gestione-conti-bancari.md`**, riscritta sul modello di `gestione-dei-contatti`: i cinque punti di §6, più
+  le filiali, i canali d'incasso e «Che cosa il database non tiene».
+
+### 15.2 Che cosa ha corretto o aggiunto al censimento
+
+* **I guard di ruolo sono otto, non sette** (c'è anche il cliente, `CL`). I corpi sono identici salvo il codice del
+  ruolo; tre commenti nel corpo dicono ancora «nuovo o esistente». Il codice del lock su fornitori e vettori è
+  `E_CODICE_NON_MODIFICABILE`.
+* **S12, S15, S18 reggono.** **S13 si corregge**: `psp.attivo` qualcosa ferma, perché
+  `pagamenti.trgfn_enti_incasso_guard_psp` vuole un PSP attivo perché un ente d'incasso PSP nasca o si modifichi; il
+  difetto è solo il verso opposto (lo spegnimento o la cancellazione di un PSP con enti attivi).
+* **L'esclusione del legame del ruolo** (`ex_src_…`) vieta lo stesso conto d'incasso su due **ruoli**, anche dello
+  stesso soggetto, non su due soggetti come diceva §4.4. Le due esclusioni (soggetto e ruolo) non si incrociano, ed
+  è voluto (COMMENT di `ex_scb_…`).
+* La sigla dell'emittente entra anche nel codice delle distinte d'incasso (`DIS-<sigla>-…`), non solo delle commesse.
+  Il commento nel corpo di `trgfn_emittenti_fiscali_guard_codice_forma` e il test 9 del suo pgTAP dicono
+  `varchar(10)`: la colonna è `varchar(32)`, il limite di 10 lo tiene il CHECK.
+* `vendite.fn_build_fattura_key` prende il reseller del BA con `ORDER BY rb.id LIMIT 1`, senza guardare il periodo:
+  un legame chiuso vale come uno aperto (va con S12).
+* Le quattro tabelle dei conti, `resellers` e `psp` sono in `config.storico_set_storicizza`: storico continuo. Nessuna
+  tabella dell'area ha RLS. `config.utilities` non ha `attivo`.
+* `db/pgtap/anagrafiche/create-soggetto-gestori.sql`, l'unico che prova il secondo gestore, è nelle baseline dei
+  rossi: il suo test 4 si aspetta un P0001 generico senza codice.
+* **Ricaduta BE**: `docs/it/backend/anagrafiche/manual/api_emittenti_fiscali.md` (riga 90) nomina
+  `trgfn_emittenti_fiscali_guard_attivo`, che non esiste: da correggere dal team BE (testo, non link).
+* **§8.** COMMENT stantii: `vettori.soggetto_ruolo_id` («ruolo atteso: RES»), il COMMENT della tabella `resellers`
+  («RES»: il codice è `RE`), `fornitori.rating` («0-100 o 1-5», il CHECK è 0..100), `trgfn_resellers_normalize`
+  (promette un generatore), la tabella `emittenti_fiscali` (M5).
+
+### 15.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate con un caso.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S52 | Gli otto guard di ruolo | Il cambio di `soggetti_ruoli.tipo_ruolo_id` (S30) non fa scattare i guard: un ruolo `FO` portato a `VT` lascia la riga di `fornitori` su un ruolo vettore. Vale per tutte le specializzazioni. Nessun pgTAP prova il rifiuto `E_SOGGETTI_RUOLI` |
+| S53 | Lo spegnimento dell'emittente | Fatture, commesse, registri, listini, lotti, distinte, sistemazioni e `dbops.coda_lavori` puntano a `soggetti_ruoli` e non fermano lo spegnimento: un emittente con fatture si spegne, uno con un ordine no. Un primo emittente nato spento è respinto al COMMIT con `E_ATTIVO_PADRE_NON_ATTIVO`. `emittenti_fiscali.valuta_id` è senza FK (con S29) |
+| S54 | Le letture dell'emittente | `fn_get_emittente_fiscale_id` e `_pk` danno un'azienda a un id di BA che non esiste; `fn_parametri_importo_utility` non rifiuta un ruolo che non è un emittente. Il maiuscolo della sigla si fa due volte (`a05` e `a15`) |
+| S55 | I conti | L'IBAN si modifica sotto i legami. `uso` del legame del ruolo non è bloccato: un canale d'incasso resta appeso a un legame che non è più `INCASSO`. Il soggetto del ruolo non deve essere attivo (il gemello sul soggetto lo pretende). Un predefinito a scadenza non è programmabile: l'indice del predefinito ignora la validità. Il normalize toglie solo gli spazi (un trattino resta e il CHECK rifiuta). Il BIC non si normalizza; filiale e IBAN non si confrontano; la stessa coppia ABI/CAB è ammessa su due banche. `iban_snapshot` del mandato SEPA non si confronta col conto |
+| S56 | Fornitori e vettori | `fornitori.soggetto_ruolo_id` non è bloccato (un fornitore si sposta su un altro soggetto). `vendite.ddt.vettore_soggetto_ruolo_id` ha la sola FK su `soggetti_ruoli`: nessuno chiede che sia `VT`, che abbia una riga in `vettori`, che sia attivo. «Fornitore attivo» sta in due corpi (`fn_check_fornitore_attivo`, `fn_guard_fornitore_attivo`), che nessun oggetto del DB chiama; `E_FORNITORE_BLOCCATO` riempie il segnaposto dell'id con una frase |
+| S57 | Gestori e reseller | Il gestore unico è una lettura, non un vincolo: due inserimenti concorrenti passano. La P.IVA del gestore si giudica solo quando si scrive il gestore. Nessun oggetto legge `gestori_utilities`. `resellers_billing_account` non ha guard di ruolo; il guard attivo dei reseller conta anche i legami chiusi, quindi un reseller che ha avuto clienti non si spegne senza cancellarne la storia |
+| S58 | I permessi | Come S21: `zeroerp_app` ha il DML su `vw_fornitori_dettaglio` e `vw_conti_bancari_per_ruolo`, viste non aggiornabili; la prima non è `security_invoker` |
+
+pgTAP mancanti: nessun test prova `E_CONTO_BANCARIO` su un conto spento, la normalizzazione dei conti, il guard SEPA,
+il rifiuto di un ruolo non `BANK_B` o non `EF`, `E_EMITTENTE_DEFAULT_SINGLETON` al COMMIT, né gli oggetti di gestori,
+reseller e PSP salvo il gestore unico (rosso).
+
+### 15.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 46 pagine dell'area e su quella del cliente:
+  tutte nella cornice, data 22 novembre 2026, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione,
+  nessun link a `manual/` né morto. I nomi che il catalogo non conosce stanno nelle Note di migrazione
+  (`trgfn_emittenti_fiscali_guard_attivo`, `uq_gestori_singleton`) o sono una sequenza (`vettori_codice_seq`). Il
+  blocco non ha `##` né il tag include. La guida: link vivi, nessun link a `manual/` o a brief.
+* **La doc auto-generata è da rigenerare** (passo 4): la scheda della pagina nuova non la include, l'indice porta i
+  marcatori dell'area D, e `index.ci.md` ha ancora il link alla pagina ritirata.
+* `emittenti_fiscali.md` è di 176 righe (21 trigger di spegnimento da spiegare). La build della doc non è lanciata.
+* **Ritirato anche il pgTAP del catasto** (14.2), nello stesso albero: da committare con questo giro.

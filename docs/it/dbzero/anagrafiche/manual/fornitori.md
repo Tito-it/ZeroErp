@@ -1,158 +1,134 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.fornitori`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento Tabelle**   
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)   
-> • [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)   
-> • [config.valute](/dbzero/config/tabelle/valute)    
-> • [config.modalita_pagamento](/dbzero/config/tabelle/modalita_pagamento)    
-> • [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento)    
-> • [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali)    
-> • [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari)    
-> • [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari)    
+> Approfondimento tabelle:
 >
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo `FO` di cui la riga è la specializzazione
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — l'identità del fornitore, lo split payment
+> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari) — l'instradamento della fatturazione elettronica
+> * [config.stati_fornitore](/dbzero/config/tabelle/stati_fornitore) — lo stato, e se blocca gli ordini
+> * [config.termini_pagamento](/dbzero/config/tabelle/termini_pagamento) — giorni, fine mese e rate del pagamento
+> * [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali) — il catalogo dei regimi RF
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — i conti bancari del ruolo
+>
+> Approfondimento viste:
+>
+> * [anagrafiche.vw_fornitori_dettaglio](/dbzero/anagrafiche/views/vw_fornitori_dettaglio) — il fornitore in una riga, sorgente della lista
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_crea_fornitore](/dbzero/anagrafiche/funzioni/fn_crea_fornitore) — la porta che fa di un soggetto un fornitore
+> * [anagrafiche.trgfn_fornitori_guard_ruolo_fornitore](/dbzero/anagrafiche/funzioni/trgfn_fornitori_guard_ruolo_fornitore) — il ruolo dev'essere `FO`
+> * [anagrafiche.trgfn_fornitori_guard_normalize](/dbzero/anagrafiche/funzioni/trgfn_fornitori_guard_normalize) — la coerenza della ritenuta d'acconto
+> * [anagrafiche.trgfn_fornitori_gen_codice](/dbzero/anagrafiche/funzioni/trgfn_fornitori_gen_codice) — il codice, quando non è passato
+> * [anagrafiche.fn_guard_fornitore_attivo](/dbzero/anagrafiche/funzioni/fn_guard_fornitore_attivo) — il fornitore utilizzabile, con rifiuto
+> * [anagrafiche.fn_check_fornitore_attivo](/dbzero/anagrafiche/funzioni/fn_check_fornitore_attivo) — la stessa domanda, senza rifiuto
+>
+> Guide:
+>
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il soggetto, i ruoli e le loro specializzazioni
+> * [Termini di pagamento](/guide/termini-di-pagamento) — il termine che il fornitore condivide col cliente
+
+---
+
 ### 🎯 Scopo Principale
-(rev 2026-11-21)
 
-`anagrafiche.fornitori` è la **tabella master del ruolo FORNITORE** (relazione **1:1** con `anagrafiche.soggetti_ruoli`). Contiene le **impostazioni fiscali/operative** necessarie per la gestione dei fornitori, le **preferenze di pagamento** (valuta, modalità e termini), parametri di **qualifica/valutazione** e l’**audit**.
-
-Questo disaccoppiamento consente di mantenere separati i **dati di identità** del soggetto (in `anagrafiche.soggetti`) dalle **caratteristiche di ruolo** (fornitore) senza duplicazioni.
-
----
-
-### Relazioni
-
-| Tipo        | Tabella ↔ Campo                                           | Descrizione                                             |
-| ----------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| FK →        | `anagrafiche.soggetti_ruoli(id)` ← `soggetto_ruolo_id`    | Collega il record al ruolo FORNITORE del soggetto (1:1) |
-| FK →        | `config.valute(id)` ← `valuta_id`                         | Valuta preferita del fornitore                          |
-| FK →        | `config.modalita_pagamento(id)` ← `modalita_pagamento_id` | Modalità di pagamento predefinita                       |
-| FK →        | `config.termini_pagamento(id)` ← `termine_pagamento_id`   | Termine di pagamento: giorni, fine mese, rate           |
-| FK →        | `config.regimi_fiscali(codice_interno)` ← `regime_fiscale_rf` | Regime fiscale del fornitore (codice RF)            |
-| FK →        | `config.stati_fornitore(id)` ← `stato_fornitore_id`       | Stato del fornitore (nasce «in verifica»)               |
-| (indiretto) | `anagrafiche.soggetti_ruoli_conti_bancari`                | Associa i conti bancari a livello di ruolo (override)   |
-
-> **Nota:** i conti bancari **non** sono salvati qui per evitare duplicazioni. Si usano i legami di ruolo (`soggetti_ruoli_conti_bancari`) e, in loro assenza, il fallback di soggetto (`soggetti_conti_bancari`).
+`anagrafiche.fornitori` è la specializzazione del **ruolo fornitore** (`FO`): per ogni ruolo, le impostazioni con
+cui l'azienda compra da quel soggetto (pagamento, ritenuta, regime fiscale), lo stato del fornitore e la sua
+qualifica.
 
 ---
 
-### Struttura logica (campi chiave)
+### Una riga per ruolo, non per soggetto
 
-* **Identità/Stato**
-  `id BIGINT` (PK), `soggetto_ruolo_id BIGINT` (FK, **UNIQUE** 1:1), `codice VARCHAR(32)` (**UNIQUE**),
-  `attivo BOOLEAN DEFAULT true`, `stato_fornitore_id` → `config.stati_fornitore`
+La riga punta al ruolo (`soggetto_ruolo_id`), non al soggetto, e un ruolo ha al più un fornitore
+(`uq_fornitori_soggetto_ruolo_id`). L'identità sta sul soggetto, i dati del rapporto qui: lo stesso soggetto può
+essere cliente e fornitore senza che niente si scriva due volte. Che il ruolo sia proprio `FO` lo garantisce
+`anagrafiche.trgfn_fornitori_guard_ruolo_fornitore`.
 
-* **Pagamento** — la stessa base del cliente
-  `valuta_id` → `config.valute`, `modalita_pagamento_id` → `config.modalita_pagamento`,
-  `termine_pagamento_id` → `config.termini_pagamento`. Giorni, fine mese, rate e
-  intervallo stanno nel termine, non sul fornitore.
-
-* **Fiscale**
-  `ritenuta_acconto BOOLEAN`, `ritenuta_aliquota NUMERIC(5,2)`,
-  `regime_fiscale_rf` → `config.regimi_fiscali(codice_interno)` *(codice RF del tracciato, facoltativo:
-  un privato non ne ha)*. È la stessa forma del regime dell'emittente.
-
-* **Cosa non sta qui** *(sono del soggetto, per ogni suo ruolo)*
-  lo split payment (`anagrafiche.soggetti.split_payment`) e l'instradamento della fatturazione
-  elettronica (codice destinatario, codice SdI, PEC: `anagrafiche.dati_societari`). Il bollo lo
-  decide chi emette il documento.
-
-* **Operativo / Qualità**
-  `rating SMALLINT` *(0–100 o 1–5, vedi check)*, `qualifica_scadenza DATE`, `note TEXT`
-
-* **Estensioni / Audit**
-  `meta JSONB`, `tx_id UUID`, `storicizza BOOLEAN`, `data_*`, `user_*`
+Si nasce fornitore da `anagrafiche.fn_crea_fornitore`, che crea il ruolo se manca, scrive la riga nello stato «in
+verifica» (`VE`) e porta con sé il contatto e gli indirizzi del ruolo.
 
 ---
 
-### 🚦 Vincoli & Regole
+### Che cosa sta qui e che cosa no
 
-* **Univocità**
-  `UNIQUE (soggetto_ruolo_id)` → relazione **1:1** con `soggetti_ruoli`.
-  `UNIQUE (codice)` → codice interno univoco.
-
-* **Check**
-  `rating` in **0..100** *(o modifica la check a 1..5 se adotti la scala 1–5)*.
-  `ritenuta_aliquota` **0..100%** *(quando valorizzata)*.
-
-* **Ritenuta d'acconto**
-  Il trigger di guardia pretende un'aliquota maggiore di zero quando c'è la ritenuta, e la
-  azzera quando non c'è.
-
-* **Regime fiscale**
-  Un codice che non è nel catalogo dei regimi è rifiutato dalla FK `fk_fornitori_regimi_fiscali`.
-  ⭐ Un regime **spento** non si assegna a un fornitore acceso: `E_ATTIVO_PADRE_NON_ATTIVO`, col
-  campo `regime_fiscale_rf` nel contesto. Un regime che un fornitore acceso usa non si spegne
-  (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`). Un fornitore spento tiene il suo regime anche se il regime
-  si spegne, ma riaccenderlo è rifiutato finché non gli si dà un regime acceso. Un fornitore senza
-  regime non controlla niente. È la coppia ATTIVO del framework, che lega la FK anche se la
-  colonna non finisce in `_id`: la regola completa sta in
-  [config.regimi_fiscali](/dbzero/config/tabelle/regimi_fiscali).
-
-* **Referential Integrity**
-  Cancellazione **NO ACTION** su FK per evitare orfani; usare `attivo=false` o storicizzazione per dismettere.
-
+* **Il pagamento**: valuta, modalità e termine. È la stessa base del cliente; giorni, fine mese, rate e intervallo
+  sono del termine, non del fornitore.
+* **La ritenuta d'acconto**: con la ritenuta serve un'aliquota maggiore di zero, e senza ritenuta l'aliquota si
+  azzera (`anagrafiche.trgfn_fornitori_guard_normalize`).
+* **Il regime fiscale** (`regime_fiscale_rf`): il codice RF del tracciato FatturaPA, nella stessa forma
+  dell'emittente. È facoltativo, perché un privato non ne ha.
+* **La qualifica**: `rating`, un punteggio da 0 a 100 (`chk_fornitori_rating`), e `qualifica_scadenza`, la data
+  in cui la qualifica va rinnovata. Il database le conserva e non le usa.
+* **Non stanno qui**, perché sono del soggetto e valgono per ogni suo ruolo: lo split payment
+  (`anagrafiche.soggetti`) e l'instradamento della fatturazione elettronica (codice destinatario, PEC:
+  `anagrafiche.dati_societari`). Neanche i conti bancari: si legano al ruolo in
+  `anagrafiche.soggetti_ruoli_conti_bancari`, o al soggetto.
 
 ---
 
-### Query tipiche
+### Lo stato e l'abilitazione
 
-**1) Fornitori attivi e qualificati**
-
-```sql
-SELECT f.id, f.codice, sf.codice_interno AS stato, f.rating
-FROM anagrafiche.fornitori f
-JOIN config.stati_fornitore sf ON sf.id = f.stato_fornitore_id
-WHERE f.attivo = true
-ORDER BY f.rating DESC NULLS LAST;
-```
-
-**2) Verifica 1:1 con `soggetti_ruoli`**
-
-```sql
-SELECT sr.id AS soggetto_ruolo_id
-FROM anagrafiche.soggetti_ruoli sr
-LEFT JOIN anagrafiche.fornitori f ON f.soggetto_ruolo_id = sr.id
-WHERE sr.ruolo = 'FORNITORE' AND f.id IS NULL;
-```
-
-**3) Parametri di pagamento consolidati (join essenziali)**
-
-```sql
-SELECT f.codice,
-       v.codice_iso AS valuta,
-       mp.codice    AS mod_pag,
-       tp.codice    AS termine
-FROM anagrafiche.fornitori f
-LEFT JOIN config.valute v               ON v.id  = f.valuta_id
-LEFT JOIN config.modalita_pagamento mp  ON mp.id = f.modalita_pagamento_id
-LEFT JOIN config.termini_pagamento tp   ON tp.id = f.termine_pagamento_id;
-```
+`attivo` dice se il fornitore è abilitato; lo **stato** (`stato_fornitore_id`) dice a che punto è il rapporto, e lo
+stato porta il flag `blocca_ordini`. Un fornitore si può usare quando è attivo e il suo stato non blocca gli ordini:
+è la domanda di `anagrafiche.fn_guard_fornitore_attivo` (che rifiuta) e di `anagrafiche.fn_check_fornitore_attivo`
+(che risponde sì o no).
 
 ---
 
-### Best practice
+### ⭐ Un riferimento spento non si assegna a un fornitore acceso
 
-* Mantieni **coerenti** i parametri di pagamento con i **conti bancari di ruolo** nella tabella `soggetti_ruoli_conti_bancari` (es. conto specifico per fornitori pagamenti).
-* Usa `qualifica_scadenza` per **alert** su rinnovi documentali; integra con una tabella documentale se necessario.
-* Per dismettere un fornitore, preferisci `attivo=false` e lascia la storicizzazione attiva.
+Lo stato, il termine di pagamento e il regime fiscale hanno un `attivo` loro, e la coppia ATTIVO del framework li
+lega al fornitore: un fornitore acceso non riceve un riferimento spento (`E_ATTIVO_PADRE_NON_ATTIVO`, col campo nel
+contesto), e un riferimento che un fornitore acceso usa non si spegne (`E_ATTIVO_BLOCK_CHILDREN_ACTIVE`). Un
+fornitore spento tiene il suo riferimento anche se si spegne, ma per riaccenderlo gliene serve uno acceso. Il
+controllo è differito alla conferma. Per il regime la coppia lega la chiave esterna anche se la colonna non finisce
+in `_id`.
 
 ---
 
-### Diagramma ER relazioni (focus fornitore)
+### Il codice
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    soggetti ||--o{ soggetti_ruoli : ha
-    soggetti_ruoli ||--|| fornitori : master_1_1
-    fornitori ||..o{ soggetti_ruoli_conti_bancari : usa_conti
-    conti_bancari ||--o{ soggetti_ruoli_conti_bancari : collega
-```
+Il codice è obbligatorio e unico (`uq_fornitori_codice`). Chi scrive può passarlo; se non lo passa, lo genera
+`anagrafiche.trgfn_fornitori_gen_codice` dalla riga `fornitori` di `config.sistema_codici`, nella forma
+`FORN0000001`. Si salva in maiuscolo, e dopo la nascita non cambia più (`E_CODICE_NON_MODIFICABILE`).
+
+---
+
+### Un fornitore non si cancella: si disattiva
+
+La cancellazione è bloccata (`trg_fornitori_a10_delete_block_dlt`): si apre solo dalla porta di manutenzione dei
+ruoli. Ogni modifica e ogni cancellazione lasciano la versione precedente nello storico, quando `storicizza` è
+acceso.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il ruolo del fornitore si può cambiare.** `soggetto_ruolo_id` non è bloccato: una riga si può spostare sul
+  ruolo `FO` di un altro soggetto, e porta con sé codice, stato e storia.
+* **Il COMMENT di `rating` dice «0-100 o 1-5».** La scala è una sola, da 0 a 100, ed è quella del vincolo.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-fn-crea-fornitore-v1.sql` — la nascita: ruolo nuovo o riusato, stato `VE`, codice
+  generato, campi estranei rifiutati, il secondo fornitore sullo stesso ruolo rifiutato dal vincolo unico.
+* `db/pgtap/anagrafiche/test-fornitore-privato-indirizzi-v1.sql` — il fornitore privato e i suoi indirizzi.
+* `db/pgtap/ui/test-lista-fornitori-seed.sql` — la lista configurabile sulla vista di dettaglio.
+
+---
+
+### Note di migrazione
+
+* 2026-11-21 — escono dalla tabella i campi che doppiavano il soggetto (lo split payment e l'instradamento della
+  fatturazione elettronica), e il regime fiscale prende il nome `regime_fiscale_rf`, legato al catalogo dei regimi.
 
 ---
 
 {% include-markdown "signature-core.md" %}
-
----

@@ -103,13 +103,13 @@ Cancellata un'unità, i suoi legami con i civici se ne vanno con lei.
 
 * `db/pgtap/anagrafiche/test-simula-subentro.sql` — l'unità della prima istanza, il legame col civico creato dal
   trigger, il clone sull'istanza del subentro (id diverso, dati uguali) e il suo legame col civico.
-* `db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql` — scritto sul modello di prima: cerca ancora la
-  colonna `istanza_utility_id` e la sua chiave esterna, ed è fra i test rossi conosciuti.
 
 ---
 
 ### Note di migrazione
 
+* 2026-11-22 — ritirato `db/pgtap/anagrafiche/test-catasto-unita-immobiliare.sql`, scritto sul modello in cui
+  l'unità nominava l'istanza (`istanza_utility_id`): provava colonne e chiavi esterne che non esistono più.
 * 2025-12-10 — la tabella perde `indirizzo_dettaglio_id`: il legame col civico passa alla tabella ponte.
 * 2025-12-15 — la tabella perde `istanza_utility_id`: il legame con l'istanza passa a
   `istanze_utilities.catasto_unita_immobiliare_id`, e il vincolo unico su (indirizzo, istanza) non esiste più.

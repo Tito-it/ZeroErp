@@ -1,96 +1,80 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_vettori_gen_codice()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_vettori_gen_codice`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.vettori](/dbzero/anagrafiche/tabelle/vettori)
-> • [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> • [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice)
-> • [anagrafiche.trgfn_vettori_normalize](/dbzero/anagrafiche/funzioni/trgfn_vettori_normalize)
+> * [anagrafiche.vettori](/dbzero/anagrafiche/tabelle/vettori) — la tabella di cui genera il codice
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — la riga `vettori`: prefisso, separatore, cifre
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — il generatore, a cui delega
+> * [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) — l'automazione che crea questa funzione, la sequenza e il trigger
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il lock che rende il codice immutabile
+>
+> Guide:
+>
+> * [Automazione DB](/guide/automazione-db) — gli oggetti che il database crea da una riga di configurazione
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21 — **funzione nata il 2026-08-21**)
-
-Assegna il **codice del vettore** quando non viene fornito, delegando a
-`script.fn_generate_codice('vettori')`. È la settima della famiglia `gen_codice`, identica
-alle altre sei perché — come loro — non è scritta a mano: la genera l'automazione dei codici.
-
-Configurazione in `config.sistema_codici`, riga `codice_interno = 'vettori'`:
-prefisso `VET`, separatore `-`, numero a 7 cifre (`VET-0000001`).
+`anagrafiche.trgfn_vettori_gen_codice` assegna il codice a un vettore che nasce senza, chiedendolo a
+`script.fn_generate_codice` per la riga `vettori` di `config.sistema_codici` (forma `VET-0000001`). Un codice
+passato da chi scrive resta quello.
 
 ---
 
-### Aggancio
+### Quando genera
 
-Trigger `trg_vettori_a10_gen_codice_ins_upd` — fase `_a10_`,
-`BEFORE INSERT OR UPDATE OF codice` su `anagrafiche.vettori`.
-
----
-
-### Regole applicate
-
-1. Se `NEW.codice` è `NULL` o vuoto dopo `btrim`, viene valorizzato con
-   `script.fn_generate_codice('vettori')`.
-2. Un codice già valorizzato non viene mai sovrascritto.
+Scatta prima di un inserimento e prima di una modifica della colonna `codice`. Genera quando il codice è assente o
+fatto di soli spazi; altrimenti lascia la riga com'è.
 
 ---
 
-### ⚠️ Questa funzione è **generata**, non scritta a mano
+### ⭐ Non è scritta a mano
 
-Funzione, sequenza (`anagrafiche.vettori_codice_seq`) e trigger sono creati con DDL dinamico
-da `script.trgfn_config_sistema_codici_sync_gen_codice`, il trigger `AFTER` di
-`config.sistema_codici`, a partire dalla sola riga di configurazione.
-
-Modificarla a mano non serve a niente: il loader del CSV è `runOnChange` e la riscrive col
-template a ogni migrate. Si spegne portando `usa_sequenza` a `false`, non con un `DROP`.
-
----
-
-### Perché è arrivata così tardi
-
-Fino al 2026-08-21 `anagrafiche.vettori.codice` era `NOT NULL` e `UNIQUE` ma **non lo
-generava nessuno**: niente riga in `config.sistema_codici`, niente trigger sulla tabella. Il
-codice doveva arrivare dal chiamante, e un `INSERT` che lo ometteva moriva su una violazione
-di vincolo (SQLSTATE `23502`), senza nessun codice `E_*` a spiegarne il motivo.
-
-Nel frattempo `anagrafiche.trgfn_vettori_normalize` — un no-op — dichiarava nel proprio
-`COMMENT` «generazione codice demandata al sistema_codici»: un rinvio a un meccanismo che per
-i vettori non era mai stato attivato. La lacuna è emersa scrivendo la doc manuale delle
-trigger function, ed è stata chiusa aggiungendo la riga 19 al CSV.
-
-⚠️ Alla nascita la sequenza è stata allineata da `20260821-06` oltre il massimo dei codici già
-presenti in forma `VET-<numero>`: senza, il primo `nextval` avrebbe potuto produrre un codice
-già occupato e violare `uq_vettori_codice`.
+La funzione, la sequenza `anagrafiche.vettori_codice_seq` e il trigger `trg_vettori_a10_gen_codice_ins_upd` li crea
+`script.trgfn_config_sistema_codici_sync_gen_codice` quando nasce o cambia la riga di `config.sistema_codici`. Il
+corpo è lo stesso di ogni generatore della famiglia, e cambia solo la riga. Si governa dalla configurazione: con
+`usa_sequenza` spento l'automazione toglie funzione e trigger, e una modifica a mano del corpo dura fino alla
+prossima scrittura della riga, che lo ricrea dal modello.
 
 ---
 
-### Il codice resta immutabile
+### Il codice generato non si cambia
 
-Su `anagrafiche.vettori` agisce anche `trg_vettori_a10_lock_columns_upd`
-(`CODICE_NON_MODIFICABILE`), configurato in `dbops.automation_lock_columns` fin da gennaio —
-fino a oggi presidiava una colonna che nessuno generava.
-
-I `BEFORE ROW` scattano in ordine alfabetico, quindi `gen_codice` gira prima di
-`lock_columns`: chi azzera `codice` in un `UPDATE` ne ottiene uno nuovo, che il lock rifiuta
-subito dopo come modifica.
+Il lock della colonna (`trg_vettori_a10_lock_columns_upd`) rifiuta ogni modifica del codice con
+`E_CODICE_NON_MODIFICABILE`. I trigger della stessa fase girano in ordine di nome, e il generatore viene prima del
+lock: una modifica che svuota il codice ne riceve uno nuovo, e il lock la rifiuta come cambio. Il codice si salva in
+maiuscolo, dal trigger della fase successiva.
 
 ---
 
 ### Codici errore
 
-| Codice | Sollevato da | Quando |
-|--------|--------------|--------|
-| `E_SEQUENZA_NON_CONFIGURATA` | `script.fn_generate_codice` | Riga `codice_interno = 'vettori'` assente in `config.sistema_codici`, o sequenza non provisionata |
-| `CODICE_NON_MODIFICABILE` | `script.trgfn_lock_columns` | Tentativo di cambiare `codice` in `UPDATE` |
+* `E_SEQUENZA_NON_CONFIGURATA` — da `script.fn_generate_codice`, quando la riga di configurazione o la sua sequenza
+  mancano.
 
-La funzione non solleva errori propri.
+La funzione non solleva codici suoi.
 
-Presidio: `db/pgtap/anagrafiche/test-vettori-gen-codice.sql`.
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-vettori-gen-codice.sql` — la riga di configurazione, la sequenza, la funzione e il
+  trigger creati dall'automazione; un vettore senza codice riceve un `VET-` a sette cifre, che poi non si cambia.
+
+---
+
+### Note di migrazione
+
+* 2026-08-21 — nasce con la riga `vettori` di `config.sistema_codici`. La sequenza è partita oltre il più alto dei
+  codici `VET-` già scritti a mano, perché il primo numero generato non urtasse `uq_vettori_codice`.
 
 ---
 
