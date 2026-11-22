@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_forma_giuridica_natura.md" %}
 # ⚙️ Funzione `trgfn_soggetti_guard_forma_giuridica_natura`
 
 ```sql

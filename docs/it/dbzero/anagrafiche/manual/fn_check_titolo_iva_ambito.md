@@ -1,118 +1,81 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_check_titolo_iva_ambito()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_check_titolo_iva_ambito`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva)
-> • [anagrafiche.soggetti_titoli_iva_ambiti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_ambiti)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_ambiti_guard) — chi la chiama dalle righe figlie
-> • [anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_guard_ambito) — chi la chiama dal titolo
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo di cui giudica l'ambito
+> * [anagrafiche.soggetti_titoli_iva_ambiti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_ambiti) — le righe di ambito
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_ambiti_guard) — chi la chiama dalle righe
+> * [anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_guard_ambito) — chi la chiama dal titolo
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
-
-Elenca i motivi per cui l'**ambito** di un titolo IVA non sta in piedi. Ne ha due:
-
-1. un titolo che vale per **tutto** porta anche un elenco di voci — la registrazione
-   direbbe due cose opposte, e chi calcola l'IVA ne leggerebbe una sola;
-2. **il pareggio**: due titoli dello stesso tipo, dello stesso cliente, verso lo
-   stesso emittente, validi insieme, che coprono lo **stesso oggetto allo stesso
-   livello**.
-
-Funzione **pura**: non solleva e non scrive. Ritorna `[]` se l'ambito è coerente,
-altrimenti un elenco ordinato di motivi; chi solleva prende il **primo**.
+`anagrafiche.fn_check_titolo_iva_ambito` elenca i motivi per cui l'ambito di un titolo IVA non sta in piedi. Non
+solleva e non scrive: restituisce un elenco vuoto se l'ambito è coerente, altrimenti i motivi in ordine, e chi
+solleva prende il primo.
 
 ---
 
-### ⭐ Perché è una funzione, e non il corpo di un trigger
+### ⭐ Una funzione, perché i guard sono due
 
-Perché i trigger che ne hanno bisogno sono **due**, e sono su tabelle diverse:
+La regola serve da due parti: quando si scrive una riga di ambito, e quando cambia il titolo (si allarga una data,
+si riattiva, si cambia tipo, titolare o emittente) senza che le righe di ambito siano toccate. Un controllo scritto
+solo sulle righe sarebbe cieco nel secondo caso, che è il più comune: prolungare un titolo è un gesto normale.
 
-| Trigger | Su cosa | Serve quando |
-| --- | --- | --- |
-| `trgfn_soggetti_titoli_iva_ambiti_guard` | le righe di ambito | si aggiunge o si sposta una voce coperta |
-| `trgfn_soggetti_titoli_iva_guard_ambito` | il titolo | si allarga una **data**, si **riattiva** un titolo spento, si cambia il **tipo** |
-
-🔴 **Il secondo è il lato che si dimentica.** Due titoli diventano sovrapposti anche
-senza che nessuno tocchi le righe di ambito: basta allungare una validità. Un
-controllo scritto solo sulla tabella figlia sarebbe **cieco metà del tempo**.
-
-⭐ E i due trigger la **chiamano** invece di riscriverla. La differenza vale la riga:
-un test che confrontasse due predicati proverebbe che *oggi* coincidono; così invece
-si prova che **non possono divergere**, perché la regola sta scritta in un posto
-solo. Il presidio da mantenere non è «gli esiti coincidono», è *«il guard non
-contiene più il predicato»*.
+I due guard la chiamano invece di riscriverla: la regola sta in un posto solo, e i due non possono divergere.
 
 ---
 
-### ⚠️ Cosa è un pareggio, e cosa invece si risolve da sé
+### I due motivi
 
-Non tutte le coppie di titoli che coprono la stessa riga sono un errore:
+1. **Righe di ambito su un titolo che vale per tutto** (`E_TITOLO_IVA_AMBITO_NON_AMMESSO`): il titolo direbbe due
+   cose opposte, e chi calcola l'IVA ne leggerebbe una sola. Se c'è questo, l'altro non si guarda.
+2. **Il pareggio** (`E_TITOLO_IVA_AMBITO_SOVRAPPOSTO`): un altro titolo attivo e ristretto dello stesso soggetto,
+   verso lo stesso emittente, dello stesso tipo, in un periodo che si tocca, che copre lo stesso oggetto allo
+   stesso livello. Si guarda solo se il titolo è attivo e ristretto. Il rifiuto nomina il tipo del titolo e la
+   merce, e fra più conflitti sceglie sempre lo stesso.
 
-| due titoli, stesso cliente / emittente / tipo, periodi che si toccano | esito |
+---
+
+### ⚠️ Che cosa è un pareggio, e che cosa si risolve da sé
+
+| Due titoli, stesso soggetto, emittente e tipo, periodi che si toccano | Esito |
 | --- | --- |
-| entrambi valgono per **tutto** | ⛔ lo ferma il vincolo `ex_soggetti_titoli_iva_no_overlap` |
-| uno per tutto + uno su un **articolo** | ✅ vince il più specifico |
-| uno su un **articolo** + uno su una **categoria** | ✅ vince l'articolo |
-| entrambi sullo **stesso oggetto, stesso livello** | ⛔ **questa funzione** |
+| entrambi valgono per tutto | rifiutato dal vincolo di esclusione della tabella dei titoli |
+| uno per tutto, uno su un articolo | vince il più specifico |
+| uno su un articolo, uno sulla sua categoria | vince l'articolo |
+| entrambi sullo stesso oggetto, allo stesso livello | rifiutato da questa funzione |
 
-⭐ Solo l'ultima riga è un pareggio: due titoli **indistinguibili per specificità**. A
-parità di specificità non c'è niente da scegliere — è un errore di configurazione, e
-si solleva invece di prenderne uno a caso. *Un'ambiguità che si risolve sull'ordine
-degli identificativi non è una scelta: è un difetto del modello.*
+Solo l'ultimo è un pareggio: due titoli indistinguibili per specificità, fra cui non c'è niente da scegliere. Una
+scelta fatta sull'ordine degli identificativi sarebbe un'ambiguità del modello, non una regola. Livelli diversi
+invece non si bloccano: è la configurazione più normale.
 
-⚠️ **Livelli diversi non vanno bloccati**, ed è il caso più normale che esista:
-articolo > categoria di merce > tutto è la stessa cascata degli indirizzi. Un
-controllo scritto largo passerebbe ogni altra verifica e rifiuterebbe una
-configurazione perfettamente legittima — per questo esiste il test gemello che
-pretende che quel caso **passi**.
+Per i titoli totali basta il vincolo di esclusione, più forte di un guard; questa funzione copre la metà che un
+vincolo non raggiunge, perché la chiave passa da una tabella figlia.
 
 ---
 
-### ⚠️ Perché copre solo i titoli ristretti
+### Gira coi permessi di chi chiama
 
-Per i titoli che valgono per **tutto** la sovrapposizione la chiude un vincolo di
-database vero (`EXCLUDE USING gist`), che è più forte di qualunque guard. Questa
-funzione copre l'altra metà — quella che un vincolo non può raggiungere, perché la
-chiave passa da una **tabella figlia**.
+Il confronto è fra titoli verso lo stesso emittente, quindi visibili alle stesse condizioni: chi vede un titolo vede
+anche quello con cui fa pareggio. Non c'è il conflitto invisibile che renderebbe cieco il controllo.
 
-La divisione è **dichiarata**: vincolo dove è esprimibile, guard dove non lo è.
-Scriverli entrambi come guard avrebbe indebolito il caso forte.
+Un titolo che non esiste dà un elenco vuoto: la funzione elenca motivi, non giudica l'esistenza.
 
 ---
 
-### ⚠️ Gira con i privilegi di chi la chiama, ed è motivato
+### Test
 
-Un guard che legge sotto row security di solito non distingue *«non lo vedo»* da
-*«è di un altro»*, e per questo si scrive con privilegi elevati.
-
-⭐ Qui no: il confronto è fra titoli verso lo **stesso emittente**, quindi la policy
-è la stessa per entrambi — chi vede uno vede l'altro. Non esiste il conflitto
-invisibile che renderebbe cieco il controllo, e una funzione privilegiata in più non
-chiuderebbe nessun buco.
-
----
-
-### Codici errore nominati
-
-| Codice | Motivo |
-| --- | --- |
-| `E_TITOLO_IVA_AMBITO_NON_AMMESSO` | righe di ambito su un titolo che vale per tutto (`DATO_ERRATO`, 400) |
-| `E_TITOLO_IVA_AMBITO_SOVRAPPOSTO` | il pareggio (`DATO_ERRATO`, 400) |
-
-⚠️ La funzione **nomina** i codici, non li solleva: sollevare è mestiere di chi la
-chiama. L'**ordine** dell'elenco è il contratto — se divergesse, il codice sollevato
-e il motivo mostrato direbbero cose diverse.
-
-⚠️ Un titolo inesistente ritorna `[]`, cioè «nessun ostacolo»: una `fn_check_*`
-elenca motivi, non arbitra l'esistenza.
-
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10` / `D13`.
+* `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` — la riga su un titolo totale, il pareggio sullo stesso
+  articolo, i livelli diversi che passano, il periodo del titolo allargato che crea il pareggio.
 
 ---
 

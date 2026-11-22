@@ -1,61 +1,43 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.soggetti_titoli_iva_ambiti`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-> [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo padre ·
-> [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) ·
-> [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi) ·
-> [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie) ·
-> [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito)
-
----
-
-### 👀 Chi legge questa tabella
-
-⭐ [`vendite.fn_resolve_iva_riga`](/dbzero/vendite/funzioni/fn_resolve_iva_riga),
-nel suo stadio B. L'ambito e` cio` che rende un titolo applicabile **a questa riga
-e non a tutte**: senza, un titolo sarebbe il vecchio «codice IVA del cliente» con
-un altro nome.
-
-⚠️ E decide anche **chi vince** quando i titoli sono piu` d'uno: il risolutore
-sceglie il **piu` specifico** — un titolo sul singolo articolo batte uno che vale
-per tutto — e a parita` di specificita` **solleva**, invece di scegliere a caso.
+> Approfondimento tabelle:
+>
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — il titolo di cui dice l'ambito
+> * [catalogo.articoli](/dbzero/catalogo/tabelle/articoli) — il livello articolo
+> * [vendite.articoli_gruppi](/dbzero/vendite/tabelle/articoli_gruppi) — il livello gruppo di voce
+> * [vendite.articoli_tipologie](/dbzero/vendite/tabelle/articoli_tipologie) — il livello tipo di voce
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — quando un ambito sta in piedi
+> * [anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_ambiti_guard) — il guard sulle righe
+> * [anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_guard_ambito) — il guard sul titolo
+> * [vendite.fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — il risolutore, che legge l'ambito riga per riga
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — tabella nata il 2026-08-29)
-
-Dice **per cosa vale** un titolo IVA ristretto: una riga per ogni articolo o
-categoria di merce coperta.
-
-Serve per i titoli che non valgono su tutto. Un'agevolazione per disabilità copre
-certi prodotti e non l'intero listino; una qualifica di cooperativa copre certe
-prestazioni. Chi calcola l'IVA guarda **riga per riga** se l'articolo di quella riga
-ricade qui dentro.
+`anagrafiche.soggetti_titoli_iva_ambiti` dice per che cosa vale un titolo IVA ristretto: una riga per ogni articolo
+o categoria di merce coperta. Un titolo che non vale su tutto (un'agevolazione su certi prodotti, una qualifica su
+certe prestazioni) copre solo le righe di documento che ricadono qui dentro.
 
 ---
 
-### 🔴 Perché questa tabella è la differenza fra un titolo e il difetto appena rimosso
+### ⭐ È ciò che distingue un titolo da un «codice IVA del cliente»
 
-Il rischio l'ha nominato Tid mentre si leggeva il disegno:
-
-> *«alcune aliquote agevolate, esempio quelle per disabilità, si possono applicare
-> solo su alcune categorie di prodotti; se alla seconda passata vince quella del
-> soggetto il rischio è che si applichi a tutto»*
-
-⭐ È il difetto giusto da temere. **Senza l'ambito, un titolo sarebbe
-`anagrafiche.clienti.iva_id` — la colonna tolta il 2026-08-29 — spostata di un
-piano**: un valore che vince su tutto perché nessuno gli ha detto dove fermarsi.
-
-Un documento di dieci righe con un titolo ristretto a due articoli deve produrre
-**due righe agevolate e otto ordinarie**. Queste righe sono ciò che lo rende
-possibile.
+Senza ambito un titolo varrebbe su tutto, cioè sarebbe un'aliquota del cliente con un altro nome. Un documento di
+dieci righe con un titolo ristretto a due articoli deve dare due righe agevolate e otto ordinarie: sono queste
+righe a renderlo possibile. Il risolutore le legge riga per riga, e quando più titoli coprono la stessa riga vince
+il più specifico.
 
 ---
 
-### I tre livelli, e sono già tutti nel modello
+### Tre livelli, dichiarati
 
 | `livello` | Colonna valorizzata | Punta a |
 | --- | --- | --- |
@@ -63,75 +45,70 @@ possibile.
 | `GRUPPO_VOCE` | `gruppo_voce_id` | `vendite.articoli_gruppi` |
 | `TIPO_VOCE` | `tipo_voce_id` | `vendite.articoli_tipologie` |
 
-Sono esattamente le due classificazioni che `catalogo.articoli` porta già
-(`gruppo_voce_id`, `tipo_voce_id`) più l'articolo stesso: **nessun livello è stato
-inventato per l'occasione**.
+Sono le due classificazioni che l'articolo porta già, più l'articolo stesso. Il livello è anche la specificità con
+cui si arbitra fra due titoli: articolo, poi categoria di merce, poi tutto.
 
-⚠️ Le due classificazioni stanno nello schema `vendite`, non in `catalogo`: è la sede
-che hanno da sempre, e le chiavi esterne di `catalogo.articoli` puntano lì.
+Il livello è dichiarato, non dedotto da quale colonna è piena: un controllo lo lega alla sua colonna e impone il
+vuoto alle altre due, così una riga non può nominare due oggetti né nessuno. L'unicità sull'oggetto tratta i valori
+vuoti come uguali, perché lo stesso oggetto non si dichiari due volte sullo stesso titolo.
 
-⭐ Il livello è anche la **specificità** con cui si arbitra un titolo contro un
-altro: **articolo > categoria di merce > tutto**, la stessa cascata degli indirizzi.
+L'oggetto nominato deve essere attivo alla conferma dell'operazione, e così il titolo (`E_ATTIVO_PADRE_NON_ATTIVO`).
+Un articolo nominato da un ambito non conta come «usato» per `catalogo.fn_articolo_usato`: l'ambito è anagrafica
+del titolo, non un uso dell'articolo.
 
 ---
 
-### ⚠️ Il livello è dichiarato, non dedotto da quale colonna è piena
+### Le regole dell'ambito
 
-Si potrebbe fare a meno della colonna `livello` e guardare quale delle tre chiavi è
-valorizzata. Non si fa, e sono le due trappole gemelle del valore vuoto in una
-chiave:
+`anagrafiche.fn_check_titolo_iva_ambito` le scrive una volta, e i due guard la chiamano:
 
-* una riga con **due** colonne piene sarebbe un'ambiguità che non vede nessuno;
-* una riga con **zero** colonne piene sarebbe un ambito che non nomina niente.
+* una riga di ambito su un titolo che vale per **tutto** è rifiutata (`E_TITOLO_IVA_AMBITO_NON_AMMESSO`);
+* il **pareggio** è rifiutato: due titoli attivi dello stesso soggetto, verso lo stesso emittente, dello stesso
+  tipo, in periodi che si toccano, che coprono lo stesso oggetto allo stesso livello
+  (`E_TITOLO_IVA_AMBITO_SOVRAPPOSTO`). Livelli diversi non sono un pareggio.
 
-`livello` obbligatorio più un controllo che lo lega alla sua colonna — e impone il
-silenzio alle altre due — chiudono entrambi i casi. E chi legge non deve indovinare.
-
-⚠️ Per la stessa ragione l'unicità è dichiarata `NULLS NOT DISTINCT`: con la regola
-standard due righe **identiche** che portano valori vuoti nelle stesse colonne non
-si accorgerebbero l'una dell'altra, e la stessa categoria si potrebbe dichiarare due
-volte sullo stesso titolo.
+Il guard sulle righe scatta quando si aggiunge o si cambia una voce; quello sul titolo quando cambia il titolo (si
+allarga una data, si riattiva, si cambia tipo), perché in quei casi questa tabella non viene toccata.
 
 ---
 
 ### ⚠️ Non c'è una colonna `attivo`, ed è voluto
 
-L'ambito è la **definizione** del titolo, non un'entità con un ciclo di vita suo: si
-aggiunge o si toglie. Una riga di ambito «non attiva» vorrebbe dire un titolo che
-vale per una cosa a metà, che non è un caso del dominio. A spegnere il titolo intero
-c'è `soggetti_titoli_iva.attivo`.
+L'ambito è la definizione del titolo, non un'entità con un ciclo di vita suo: una voce si aggiunge o si toglie.
+
+E una riga di ambito **impedisce di spegnere il titolo**: con righe di ambito la disattivazione del titolo è
+rifiutata (`E_ATTIVO_BLOCK_CHILDREN_EXIST`). Per farlo uscire si chiude la sua data di fine, oppure si tolgono le
+righe di ambito prima di spegnerlo.
 
 ---
 
-### ⛔ Le righe seguono il titolo, e spariscono con lui
+### Le righe spariscono col titolo
 
-`ON DELETE CASCADE`, al contrario del registro dei movimenti. La differenza è di
-natura: **un ambito è una clausola**, un movimento di plafond è un **fatto
-contabile**. Una clausola senza il suo titolo non significa niente; un movimento sì.
+La cancellazione del titolo cancella le sue righe di ambito, al contrario del registro dei movimenti: un ambito è
+una clausola, che senza il suo titolo non significa niente; un movimento è un fatto contabile.
 
 ---
 
-### Il guard, e i due lati che deve coprire
+### Chi le vede
 
-`trgfn_soggetti_titoli_iva_ambiti_guard` rifiuta due cose:
+La tabella ha la RLS, e la eredita dal titolo: una sessione con ruolo applicativo `OPERATORE` vede e scrive le righe
+dei titoli presentati a un emittente del suo perimetro; le sessioni degli altri ruoli applicativi non ne vedono
+nessuna. Chi può scrivere un titolo ne vede quindi tutte le righe, ed è ciò che permette ai guard dell'ambito di
+girare coi permessi di chi scrive.
 
-1. una riga di ambito su un titolo che vale per **tutto** — la tabella direbbe due
-   cose opposte, e chi calcola ne leggerebbe una sola;
-2. **il pareggio**: due titoli dello stesso tipo, dello stesso cliente, verso lo
-   stesso emittente, validi insieme, che coprono lo **stesso oggetto allo stesso
-   livello**. Lì nessuno dei due è più specifico, e non c'è niente da scegliere.
+---
 
-⚠️ **Livelli diversi non sono un pareggio e non vanno bloccati**: un titolo
-sull'articolo e uno sulla sua categoria convivono, e vince il primo. Un guard scritto
-largo rifiuterebbe la configurazione più normale che esista.
+### Test
 
-⭐ E il guard è **doppio**: la stessa regola gira anche quando a cambiare è il
-**titolo** invece delle sue righe — si allarga una data, si riattiva un titolo
-spento. In quei casi questa tabella non viene toccata affatto, e un controllo scritto
-solo qui non se ne accorgerebbe mai. La regola sta in **una** funzione pura che
-entrambi i trigger chiamano.
+* `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` — la riga su un titolo ristretto che si registra, quella su un
+  titolo totale rifiutata, il pareggio sullo stesso articolo rifiutato, i livelli diversi che passano, il periodo
+  del titolo allargato che fa scattare il guard.
 
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10` / `D12`.
+---
+
+### Note di migrazione
+
+* 2026-08-29 — nasce col titolo.
 
 ---
 

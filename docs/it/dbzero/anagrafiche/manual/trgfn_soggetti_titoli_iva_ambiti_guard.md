@@ -1,62 +1,52 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:
-> • [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — **la regola vive lì**
-> • [anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_guard_ambito) — il gemello sul titolo
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
-> • [anagrafiche.soggetti_titoli_iva_ambiti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_ambiti)
+> * [anagrafiche.soggetti_titoli_iva_ambiti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_ambiti) — le righe su cui è montata
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — la regola, che chiama
+> * [anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_guard_ambito) — il gemello sul titolo
+> * [script.fn_raise_primo_motivo_se_presente](/dbzero/script/funzioni/fn_raise_primo_motivo_se_presente) — chi solleva il primo motivo
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
-
-Rifiuta una riga di ambito che rende incoerente il titolo a cui appartiene.
-
-⭐ **Non contiene la regola**: chiama `anagrafiche.fn_check_titolo_iva_ambito` e
-solleva il codice del **primo** motivo. Il presidio da mantenere non è «gli esiti
-coincidono» ma *«il guard non contiene più il predicato»* — così la regola non può
-divergere dal suo gemello sul titolo, perché è scritta in un posto solo.
+`anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard` rifiuta una riga di ambito che rende incoerente il suo titolo:
+una voce su un titolo che vale per tutto, o un pareggio con un altro titolo. Non contiene la regola: chiama
+`anagrafiche.fn_check_titolo_iva_ambito` e solleva il primo motivo, sul campo `ambito`.
 
 ---
 
-### Contesto di Esecuzione
+### ⚠️ Dopo la scrittura, contro la convenzione dei guard
 
-* **Tipo**: trigger `AFTER INSERT OR UPDATE`
-* **Fascia**: `z90`
+Scatta dopo ogni inserimento e modifica di una riga di ambito. Un guard di solito gira prima della scrittura, ma
+qui la funzione conta le righe di ambito e confronta gli oggetti coperti: la riga nuova deve essere già scritta.
+Prima della scrittura il titolo si vedrebbe senza di lei, e passerebbe proprio la riga che crea il conflitto.
 
----
-
-### ⚠️ Perché `AFTER`, contro la convenzione dei guard
-
-La convenzione di casa vuole i controlli in fascia `a10`, cioè **prima** della
-scrittura. Qui non si può, e la ragione è concreta: la funzione **conta** le righe di
-ambito e confronta gli oggetti coperti, quindi **la riga nuova dev'essere già
-scritta**.
-
-⛔ Un `BEFORE` valuterebbe il titolo com'era **prima**, e lascerebbe passare proprio
-la riga che crea il conflitto.
+La cancellazione di una riga non lo sveglia: togliere una voce non crea né una voce su un titolo totale né un
+pareggio.
 
 ---
 
-### I due motivi che può sollevare
+### Codici errore
 
-| Codice | Motivo |
-| --- | --- |
-| `E_TITOLO_IVA_AMBITO_NON_AMMESSO` | si aggiunge una voce a un titolo che vale per **tutto** |
-| `E_TITOLO_IVA_AMBITO_SOVRAPPOSTO` | **pareggio**: un altro titolo dello stesso tipo, stesso cliente, stesso emittente, periodo sovrapposto, copre lo **stesso oggetto allo stesso livello** |
+* `E_TITOLO_IVA_AMBITO_NON_AMMESSO` — una voce su un titolo che vale per tutto.
+* `E_TITOLO_IVA_AMBITO_SOVRAPPOSTO` — un altro titolo dello stesso tipo copre lo stesso oggetto allo stesso
+  livello.
 
-⚠️ **L'ordine dell'elenco è il contratto**: il guard solleva il primo, e se l'ordine
-divergesse il codice sollevato e il motivo mostrato direbbero cose diverse.
+---
 
-⚠️ Titoli su **livelli diversi** non sono un pareggio e non vengono bloccati: vince
-il più specifico. Bloccarli rifiuterebbe la configurazione più normale che esista.
+### Test
 
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10` / `D13`.
+* `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` — la riga su un titolo ristretto che si registra, quella su un
+  titolo totale e il pareggio rifiutati, i livelli diversi che passano.
 
 ---
 

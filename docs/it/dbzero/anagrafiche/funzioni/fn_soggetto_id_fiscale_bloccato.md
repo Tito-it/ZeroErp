@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_soggetto_id_fiscale_bloccato.md" %}
 # ⚙️ Funzione `fn_soggetto_id_fiscale_bloccato`
 
 ```sql

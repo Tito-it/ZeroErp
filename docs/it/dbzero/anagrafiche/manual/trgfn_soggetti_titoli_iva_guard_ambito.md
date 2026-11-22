@@ -1,68 +1,63 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento funzioni:
-> • [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — **la regola vive lì**
-> • [anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_ambiti_guard) — il gemello sulle righe figlie
+> Approfondimento tabelle:
 >
-Approfondimento tabelle:
-> • [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva)
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — i titoli su cui è montata
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — la regola, che chiama
+> * [anagrafiche.trgfn_soggetti_titoli_iva_ambiti_guard](/dbzero/anagrafiche/funzioni/trgfn_soggetti_titoli_iva_ambiti_guard) — il gemello sulle righe di ambito
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
-
-La stessa regola dell'ambito, applicata quando a cambiare è il **titolo** invece
-delle sue righe.
+`anagrafiche.trgfn_soggetti_titoli_iva_guard_ambito` applica le regole dell'ambito quando a cambiare è il titolo e
+non le sue righe. Chiama `anagrafiche.fn_check_titolo_iva_ambito`, la stessa del gemello sulle righe, e solleva il
+primo motivo.
 
 ---
 
-### 🔴 Perché non è un doppione — ed è il lato che si dimentica
+### 🔴 Il lato che si dimentica
 
-Due titoli diventano sovrapposti anche **senza che nessuno tocchi le righe di
-ambito**:
+Due titoli ristretti diventano un pareggio anche senza che nessuno tocchi le righe di ambito:
 
 * si allarga `valido_al` o si anticipa `valido_dal`;
-* si **riattiva** un titolo che era spento;
-* si cambia il **tipo**, o il cliente, o l'emittente.
+* si riattiva un titolo spento;
+* si cambia il tipo, il titolare o l'emittente;
+* si passa un titolo da ristretto a totale con le righe ancora presenti.
 
-In nessuno di questi casi la tabella figlia viene scritta, quindi il guard che sta lì
-**non scatta**. Un controllo scritto su una sola delle due tabelle sarebbe cieco
-metà del tempo — e la metà cieca è quella che capita nell'uso quotidiano, perché
-prolungare la validità di un titolo è un gesto normale.
+In nessuno di questi casi la tabella delle righe viene scritta, e il guard che sta lì non scatta. Le colonne che lo
+svegliano sono quelle della chiave del pareggio, più le date e lo stato.
 
-⭐ È il motivo per cui la regola sta in una **funzione pura** che entrambi i trigger
-**chiamano**: un test che confrontasse due predicati proverebbe che *oggi*
-coincidono; così invece si prova che non possono divergere.
+Scatta dopo la modifica, perché la funzione legge il titolo com'è diventato. Alla nascita non serve: un titolo
+appena scritto non ha righe di ambito, e la sovrapposizione fra titoli totali la chiude il vincolo di esclusione.
 
 ---
 
-### Contesto di Esecuzione
+### ⚠️ Che cosa oggi non copre
 
-* **Tipo**: trigger `AFTER UPDATE OF valido_dal, valido_al, attivo, ambito, tipo_titolo_iva_id, soggetto_id, emittente_fiscale_id`
-* **Fascia**: `z90`
-
-⚠️ `AFTER`, perché la funzione legge la riga **com'è dopo** la modifica.
-
-⚠️ L'elenco delle colonne sorvegliate è quello che entra nella chiave
-dell'ambiguità **più** la finestra di validità: toccarne una qualsiasi può creare
-una sovrapposizione che prima non c'era.
-
-⚠️ Non scatta in inserimento, e non serve: un titolo appena creato non ha ancora
-righe di ambito, quindi non può essere in conflitto con nessuno **per ambito**. Le
-sovrapposizioni fra titoli che valgono per tutto le chiude un vincolo di database.
+* **Il rifiuto punta sempre su `valido_al`.** Qualunque colonna abbia creato il pareggio (il tipo, l'emittente,
+  la riattivazione), il campo indicato a chi scrive è la data di fine.
 
 ---
 
 ### Codici errore
 
-Gli stessi del gemello — `E_TITOLO_IVA_AMBITO_NON_AMMESSO` e
-`E_TITOLO_IVA_AMBITO_SOVRAPPOSTO` — perché la funzione che li nomina è la stessa.
+* `E_TITOLO_IVA_AMBITO_SOVRAPPOSTO` — il titolo cambiato fa pareggio con un altro.
+* `E_TITOLO_IVA_AMBITO_NON_AMMESSO` — il titolo diventa totale con righe di ambito. Sul cambio di ambito però parla
+  prima `anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza`, che lo stesso caso lo rifiuta prima della scrittura.
 
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10` / `D13`.
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` — il periodo del padre allargato che fa scattare il guard.
 
 ---
 

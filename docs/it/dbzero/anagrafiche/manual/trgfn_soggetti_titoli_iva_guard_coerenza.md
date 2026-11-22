@@ -1,88 +1,85 @@
-## 📘 Documentazione Concettuale – Funzione Trigger `anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva)
-> • [config.tipi_titolo_iva](/dbzero/config/tabelle/tipi_titolo_iva)
+> Approfondimento tabelle:
+>
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — i titoli su cui è montata
+> * [config.tipi_titolo_iva](/dbzero/config/tabelle/tipi_titolo_iva) — il tipo, che dice se il titolo ha un tetto
+> * [anagrafiche.soggetti_titoli_iva_ambiti](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva_ambiti) — le righe di ambito che conta
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_check_titolo_iva_ambito](/dbzero/anagrafiche/funzioni/fn_check_titolo_iva_ambito) — le regole dell'ambito, comprese le righe su un titolo totale
 
 ---
 
 ### 🎯 Scopo Principale
 
-(rev 2026-08-29 — funzione nata il 2026-08-29)
-
-Tiene le due regole del titolo IVA che un controllo di colonna **non può
-esprimere**, perché guardano fuori dalla riga:
-
-1. **il plafond esiste se e solo se il tipo ne prevede uno** → deve leggere
-   `config.tipi_titolo_iva.ha_plafond`, cioè un'**altra tabella**;
-2. **un titolo che vale per tutto non ha righe di ambito** → deve contare le righe
-   **figlie**.
+`anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza` tiene le due regole del titolo IVA che un controllo di
+colonna non può scrivere, perché guardano fuori dalla riga: il plafond c'è se e solo se il tipo ne prevede uno, e
+un titolo che vale per tutto non ha righe di ambito.
 
 ---
 
-### Contesto di Esecuzione
+### ⭐ Il plafond vale sui due versi
 
-* **Tipo**: trigger `BEFORE INSERT OR UPDATE OF tipo_titolo_iva_id, plafond, ambito`
-* **Fascia**: `a10` (guard, prima della scrittura)
+Il tipo dice se il titolo ha un tetto che si consuma (`config.tipi_titolo_iva.ha_plafond`), la riga porta il
+valore. Il guard rifiuta i due errori:
 
----
+* **tipo con tetto, plafond assente** (`E_TITOLO_IVA_PLAFOND_MANCANTE`): la funzione di consumo non avrebbe una
+  capienza con cui confrontarsi;
+* **tipo senza tetto, plafond presente** (`E_TITOLO_IVA_PLAFOND_NON_AMMESSO`): un numero che nessuno consuma, e che
+  chi lo legge scambia per un limite. È il verso che si dimentica.
 
-### ⭐ La regola del plafond vale sui **due** versi
-
-| Caso | Cosa succederebbe senza |
-| --- | --- |
-| tipo **con** tetto, plafond **assente** | la primitiva di consumo non avrebbe capienza da confrontare: coprirebbe zero o tutto, secondo come è scritta |
-| tipo **senza** tetto, plafond **valorizzato** | il numero c'è, **nessuno lo consuma**, e chi lo guarda crede che quel titolo abbia un limite |
-
-⭐ Il secondo è il verso che si dimentica, ed è la voce di partenza di questo cantiere
-in miniatura: *un campo che promette una cosa che non succede*.
+Scatta alla nascita del titolo e quando cambiano il tipo, il plafond o l'ambito. Se il tipo non esiste tace: lo
+dice la chiave esterna, che ha la sua voce.
 
 ---
 
-### ⚠️ Perché controlla l'ambito solo in aggiornamento
+### Un titolo riportato a «tutto» con le righe di ambito
 
-Il caso «vale per tutto **e** ha un elenco di voci» si crea in due modi, e questo
-trigger ne copre uno solo:
+Il caso «vale per tutto e ha un elenco di voci» si crea in due modi. Aggiungere una riga di ambito a un titolo
+totale lo ferma il guard sulle righe. Riportare a `TUTTO` un titolo che le righe le ha già lo ferma questo, in
+aggiornamento, con `E_TITOLO_IVA_AMBITO_NON_AMMESSO`: le righe esistono già, e nessuno le tocca.
 
-* **aggiungendo una riga di ambito** a un titolo totale → lo ferma il guard sulle
-  righe figlie;
-* **riportando a `TUTTO`** un titolo che le righe ce l'ha già → lo ferma questo, ed è
-  il verso che il guard sulle figlie non vedrebbe mai, perché lì non si tocca niente.
-
----
-
-### ⚠️ Gira con i privilegi di chi lo chiama, ed è motivato
-
-Un guard che legge sotto row security di solito non distingue *«non lo vedo»* da
-*«è di un altro»*. Qui non serve elevarlo: le righe contate sono le **figlie della
-riga stessa**, e la loro policy passa dallo stesso emittente del padre — chi può
-scrivere il padre le vede **tutte**. Non esiste il caso «ce n'è una che non vedo».
+Conta le righe coi permessi di chi scrive, ed è sufficiente: le righe di ambito sono visibili alle stesse
+condizioni del loro titolo, quindi chi scrive il titolo le vede tutte.
 
 ---
 
-### ⚠️ Il nome sceglie l'ordine, e non è estetica
+### Parla per primo, perché è prima della scrittura
 
-I trigger che scattano prima della scrittura girano in ordine **alfabetico**. Le
-chiavi esterne verso `config.iva` e `config.tipi_titolo_iva` faranno nascere dalle
-automazioni dei guard `..._require_attivo_...`; `guard_coerenza` viene prima, quindi
-**il messaggio che l'operatore legge è quello di dominio** e non quello generico.
+Il guard gira prima che la riga sia scritta. Le chiavi esterne e i controlli dei padri attivi (il tipo, il codice
+IVA, il soggetto, l'emittente) girano dopo, e quelli dei padri attivi solo alla conferma dell'operazione: su una
+riga che sbaglia in tutti e due i modi, il messaggio che l'operatore legge è questo, quello di dominio. Lo decide il
+momento in cui scattano, non l'ordine dei nomi, che conta solo fra trigger dello stesso momento.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **La regola «tutto non ha righe di ambito» è scritta due volte.** Questo guard la conta da sé; la stessa regola è
+  il primo motivo di `anagrafiche.fn_check_titolo_iva_ambito`, che il guard sul titolo chiama dopo la scrittura
+  quando cambia l'ambito. Sul cambio di ambito parla sempre questo, che viene prima; ma le due copie possono
+  divergere senza che nessun test se ne accorga.
 
 ---
 
 ### Codici errore
 
-| Codice | Motivo |
-| --- | --- |
-| `E_TITOLO_IVA_PLAFOND_MANCANTE` | tipo con tetto, plafond assente (`DATO_ERRATO`, 400) |
-| `E_TITOLO_IVA_PLAFOND_NON_AMMESSO` | tipo senza tetto, plafond valorizzato (`DATO_ERRATO`, 400) |
-| `E_TITOLO_IVA_AMBITO_NON_AMMESSO` | titolo riportato a «vale per tutto» con righe di ambito ancora presenti (`DATO_ERRATO`, 400) |
+* `E_TITOLO_IVA_PLAFOND_MANCANTE` — tipo con tetto, plafond assente.
+* `E_TITOLO_IVA_PLAFOND_NON_AMMESSO` — tipo senza tetto, plafond presente.
+* `E_TITOLO_IVA_AMBITO_NON_AMMESSO` — titolo riportato a «tutto» con righe di ambito.
 
-⚠️ Se il tipo non esiste il guard **non inventa un secondo errore**: lascia parlare
-la chiave esterna, che ha la sua voce.
+---
 
-Cantiere: `brief-db-be-iva-risolutore-e-regime-cliente.md`, `I7` / `D10`.
+### Test
+
+* `db/pgtap/anagrafiche/test-soggetti-titoli-iva.sql` — il plafond mancante, quello di troppo, il titolo ben formato
+  che si registra.
 
 ---
 

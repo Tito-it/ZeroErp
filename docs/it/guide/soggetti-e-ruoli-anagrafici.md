@@ -1,378 +1,488 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 9 ottobre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
 > **Vedi anche** — schemi DB:
 >
-> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — l'identita anagrafica (la persona o l'azienda)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — l'identità anagrafica (la persona o l'azienda)
+> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari) — i dati camerali e il canale di fatturazione elettronica
+> * [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva) — i titoli IVA del soggetto, uno per emittente
 > * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il collegamento soggetto ↔ ruolo
 > * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — il ponte verso un account utente
-> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — i dati specifici del ruolo CLIENTE
-> * [anagrafiche.fornitori](/dbzero/anagrafiche/tabelle/fornitori) — i dati specifici del ruolo FORNITORE
-> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — i dati di emissione del ruolo EMITTENTE FISCALE
-> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il mapping verso i billing account: l'unico punto in cui compare l'emittente
-> * [anagrafiche.dati_societari](/dbzero/anagrafiche/tabelle/dati_societari) — i dati camerali (aziende ed enti)
-> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti del soggetto e del ruolo
-> * [anagrafiche.conti_bancari](/dbzero/anagrafiche/tabelle/conti_bancari) — i conti collegati al ruolo
-> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — i cicli di servizio collegati al soggetto
-> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il catalogo dei ruoli disponibili
+> * [anagrafiche.clienti](/dbzero/anagrafiche/tabelle/clienti) — la specializzazione del ruolo CLIENTE, una per billing account
+> * [anagrafiche.emittenti_fiscali](/dbzero/anagrafiche/tabelle/emittenti_fiscali) — la specializzazione del ruolo EMITTENTE FISCALE
+> * [anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account) — il legame fra un billing account e il suo emittente
+> * [anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari) — i conti legati al soggetto
+> * [anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari) — i conti legati al ruolo
+> * [anagrafiche.contatti](/dbzero/anagrafiche/tabelle/contatti) — i contatti del soggetto, col ruolo come contesto
 > * [config.tipi_soggetto](/dbzero/config/tabelle/tipi_soggetto) — la natura base (PF, PG, ENC)
-> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio) — il dettaglio della natura (PR, DI, SP, SC, ENC)
+> * [config.tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio) — la natura di dettaglio e le regole che porta con sé
+> * [config.forme_giuridiche_tipi_soggetto_dettaglio](/dbzero/config/tabelle/forme_giuridiche_tipi_soggetto_dettaglio) — le forme giuridiche ammesse da ogni natura
+> * [config.tipi_titolo_iva_tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_titolo_iva_tipi_soggetto_dettaglio) — i titoli IVA ammessi da ogni natura
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il catalogo dei ruoli
 > * [config.tipi_ruoli_nature_ammesse](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse) — la matrice natura ↔ ruolo
-> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti) — il catalogo dei tipi contatto
 >
 > **Vedi anche** — funzioni e trigger DB:
 >
+> * [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pf) — la nascita di una persona fisica, coi suoi dati societari se ne ha
+> * [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) — la nascita di una società o di un ente
+> * [anagrafiche.fn_scrivi_dati_societari](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari) — crea o aggiorna i dati societari, a stato intero
+> * [anagrafiche.fn_elimina_dati_societari](/dbzero/anagrafiche/funzioni/fn_elimina_dati_societari) — toglie i dati societari, se la natura lo consente
+> * [anagrafiche.fn_check_cambio_natura_soggetto](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto) — i motivi che impediscono un cambio di natura
+> * [anagrafiche.fn_nature_proponibili_soggetto](/dbzero/anagrafiche/funzioni/fn_nature_proponibili_soggetto) — le nature proponibili per un soggetto, con i motivi delle escluse
+> * [anagrafiche.trgfn_soggetti_guard_cambio_natura](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_cambio_natura) — il guard che rifiuta il cambio di natura col primo motivo
+> * [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_id_fiscale_bloccato) — quando codice fiscale e partita IVA non si cambiano più
 > * [anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa) — la natura ammessa per il ruolo richiesto
-> * [anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_cf_piva_obbligatori) — presenza di CF e P.IVA per natura
-> * [anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente) — un albero di billing account non attraversa due emittenti
+> * [anagrafiche.fn_titolo_iva_ammesso](/dbzero/anagrafiche/funzioni/fn_titolo_iva_ammesso) — la natura ammette il tipo di titolo IVA?
+> * [script.fn_get_or_create_soggetto_ruolo](/dbzero/script/funzioni/fn_get_or_create_soggetto_ruolo) — il ruolo di un soggetto, creato se manca
+> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) — l'emittente di un billing account, come soggetto-ruolo
+> * [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) — lo stesso emittente, per chiave reale
 > * [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) — gli emittenti nel perimetro dell'utente, come soggetto-ruolo
-> * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) — gli stessi emittenti per chiave reale
-> * [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) — risale all'emittente di un documento
+> * [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) — gli stessi emittenti, per chiave reale
 >
 > **Vedi anche** — guide correlate:
 >
 > * [Glossario termini utility](/glossario/glossario-utility)
-> * [Guida Generazione di un Cliente](/guide/generazione-cliente)
+> * [Guida Generazione di un Cliente](/guide/generazione-cliente) — il cliente, il billing account e il suo emittente
 > * [Guida Gestione Istanze Utility](/guide/gestione-delle-istanze-utility)
 > * [Guida Gestione dei Contatti](/guide/gestione-dei-contatti)
+> * [Guida Gestione degli Indirizzi](/guide/gestione-degli-indirizzi)
 > * [Guida Gestione Conti Bancari](/guide/gestione-conti-bancari)
+> * [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga) — dove i titoli IVA del soggetto cambiano l'aliquota
 > * [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
 
 ---
 
 ## Introduzione
 
-In Zero ERP l'anagrafica si basa su un principio semplice: **una persona (o azienda) puo avere piu ruoli**. Mario Rossi puo essere contemporaneamente cliente, fornitore e referente. ACME S.r.l. puo essere cliente e fornitore allo stesso tempo.
+In Zero ERP l'anagrafica si basa su un principio semplice: **una persona (o un'azienda)
+esiste una volta sola, e può avere più ruoli**. ACME S.r.l. può essere cliente e fornitore
+allo stesso tempo; Mario Rossi può essere cliente e, con lo stesso soggetto, una risorsa
+umana dell'azienda.
 
-Il modello separa l'**identita** (chi e la persona/azienda) dai **ruoli** (cosa fa nel sistema). Questa separazione evita duplicazioni, semplifica la gestione e rende naturale aggiungere nuovi ruoli in futuro senza ristrutturare tutto.
+Il modello separa l'**identità** (chi è la persona o l'azienda) dai **ruoli** (che cosa fa
+nel sistema). L'identità porta i dati fiscali e la natura giuridica, e con la natura le
+regole che li governano; i ruoli portano i dati che servono solo a quel ruolo.
 
 **Cosa troverai in questa guida:**
 
-* Come funziona il modello soggetto/ruolo e perche e fatto cosi
-* Cosa sono le nature giuridiche e come influenzano i vincoli
-* Come vengono assegnati i ruoli e quali regole li governano
-* Dove si agganciano contatti, conti bancari e dati specifici di ruolo
-* Come si aggancia un account di accesso al ruolo (l'identita digitale)
+* il soggetto, la sua natura e che cosa la natura decide;
+* l'identificativo fiscale, che a un certo punto non si cambia più;
+* il cambio di natura e i dati societari, coi verbi che li scrivono;
+* i ruoli, le loro specializzazioni e i due modi di riferirli;
+* perché il soggetto non ha un emittente fiscale;
+* quali controlli scattano subito e quali al COMMIT.
 
-Questa guida e il **prerequisito** per tutte le altre guide anagrafiche (clienti, contatti, conti bancari, istanze): le altre danno per compreso il modello soggetto/ruolo descritto qui.
+Questa guida è il **prerequisito** delle altre guide anagrafiche (clienti, contatti,
+indirizzi, conti bancari, istanze): le altre danno per compreso il modello descritto qui.
 
 ---
 
 ## Il modello in sintesi
 
 ```text
-soggetti (chi sei)
+soggetti (chi è) ── natura di dettaglio (config.tipi_soggetto_dettaglio)
     │
-    ├── soggetti_ruoli (cosa fai nel sistema)
-    │       │
-    │       ├── clienti        (dati specifici cliente)
-    │       ├── fornitori      (dati specifici fornitore)
-    │       ├── gestori        (dati specifici gestore)
-    │       │
-    │       ├── contatti       (contatti per ruolo)
-    │       └── conti_bancari  (conti per ruolo)
+    ├── dati_societari      (al più una riga; li ammette o li pretende la natura)
+    ├── soggetti_titoli_iva (i titoli IVA, ciascuno presso un emittente)
+    ├── indirizzi, contatti, conti bancari del soggetto
     │
-    └── dati_societari (solo per aziende/enti)
+    └── soggetti_ruoli (che cosa fa nel sistema: un ruolo per tipo)
+            │
+            ├── specializzazione del ruolo (clienti, fornitori, emittenti_fiscali, …)
+            ├── indirizzi, contatti, conti bancari del ruolo
+            └── identita_digitali (l'accesso al software, se serve)
 ```
 
-* **Soggetto** = l'identita. Contiene i dati stabili: nome, cognome, ragione sociale, codice fiscale, partita IVA
-* **Ruolo** = la funzione nel sistema. Un soggetto puo avere piu ruoli contemporaneamente
-* **Tabella specializzata** = i dati che servono solo per quel ruolo (es. condizioni contrattuali per il cliente)
+* **Soggetto** = l'identità: nome o ragione sociale, codice fiscale, partita IVA, paese, natura.
+* **Ruolo** = la funzione nel sistema. Un soggetto ha al più un ruolo per tipo, e più ruoli di tipo diverso.
+* **Specializzazione** = la tabella con i dati che servono solo a quel ruolo.
 
 ---
 
-## Componenti del modello
+## Il soggetto
 
-### 1. Il soggetto: l'identita di base
+Un **soggetto** è una persona fisica o giuridica registrata nel sistema. Contiene i dati
+**indipendenti dal ruolo**: nome e cognome o ragione sociale, codice fiscale e partita IVA,
+il paese, la natura, i flag del regime PA (`cliente_pa`, `split_payment`). Un soggetto da solo
+non è ancora un cliente o un fornitore: lo diventa quando riceve un ruolo.
 
-Un **soggetto** e una persona fisica o giuridica registrata nel sistema. Contiene solo i dati **stabili e indipendenti dal ruolo**:
+Il soggetto ha un **codice** che il database genera alla nascita e che poi non si cambia
+(`E_CODICE_NON_MODIFICABILE`). Codice fiscale e partita IVA sono unici **per paese**: la chiave
+è il paese più una colonna calcolata dai due identificativi. Le colonne e i vincoli sono nella
+[scheda del soggetto](/dbzero/anagrafiche/tabelle/soggetti).
 
-* Ragione sociale, nome, cognome
-* Codice fiscale / partita IVA
-* Natura giuridica (privato, azienda, ente)
-* Dati di classificazione generale
+### Nasce con un verbo
 
-Un soggetto da solo **non e ancora un cliente, un fornitore o un gestore**. Lo diventa quando gli viene assegnato un ruolo.
+Un soggetto nasce con uno dei due verbi di creazione, scelti per macro-tipologia:
 
-### Natura giuridica del soggetto
+* [anagrafiche.fn_crea_soggetto_pf](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pf) per le persone fisiche;
+* [anagrafiche.fn_crea_soggetto_pg](/dbzero/anagrafiche/funzioni/fn_crea_soggetto_pg) per società ed enti.
 
-Ogni soggetto ha una **natura** definita su due livelli:
+Un verbo che riceve una natura dell'altra famiglia la rifiuta (`E_SOGGETTO_CREAZIONE_NATURA_ERRATA`):
+una ditta individuale è una persona fisica, e nasce col primo. Nella stessa chiamata il
+verbo crea il contatto del soggetto e, se la natura li pretende o se ne riceve almeno un campo,
+i dati societari (con [anagrafiche.fn_scrivi_dati_societari_alla_nascita](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari_alla_nascita)).
 
-| Livello   | Tabella                          | Esempi                                                                           |
-| --------- | -------------------------------- | -------------------------------------------------------------------------------- |
-| Base      | `config.tipi_soggetto`           | PF (Persona Fisica), PG (Persona Giuridica), ENC (Ente)                          |
-| Dettaglio | `config.tipi_soggetto_dettaglio` | PR (Privato), DI (Ditta Ind.), SP (Soc. Persone), SC (Soc. Capitali), ENC (Ente) |
+### La natura decide le regole
 
-La natura determina automaticamente quali dati sono obbligatori:
+Ogni soggetto ha una **natura**, su due livelli:
 
-| Tipo                   | Natura | CF obbligatorio | PIVA obbligatoria | Dati societari | Sesso          |
-| ---------------------- | ------ | :-------------: | :---------------: | -------------- | -------------- |
-| PR (Privato)           | PF     |       si        |        no         | vietati        | obbligatorio   |
-| DI (Ditta Individuale) | PF     |       si        |        si         | opzionali      | facoltativo    |
-| SP (Soc. Persone)      | PG     |       si        |        si         | opzionali      | non si indica  |
-| SC (Soc. Capitali)     | PG     |       si        |        si         | obbligatori    | non si indica  |
-| ENC (Ente)             | ENC    |       si        |        si         | opzionali      | non si indica  |
+| Livello | Tabella | Che cosa è |
+| --- | --- | --- |
+| Base | `config.tipi_soggetto` | la macro-tipologia: persona fisica, persona giuridica, ente |
+| Dettaglio | `config.tipi_soggetto_dettaglio` | la natura vera e propria (privato, ditta individuale, società di capitali, …) |
 
-In pratica: un privato non deve avere dati societari (forma giuridica, REA, capitale sociale), mentre una S.r.l. li deve avere obbligatoriamente. Il sistema verifica automaticamente queste regole tramite trigger.
+Sul soggetto si scrive il **dettaglio**, e il dettaglio porta con sé le regole del soggetto:
 
-**Il sesso non ha mai un valore di comodo.** Lo sceglie chi lo vede: `M` o `F`, oppure
-`X` quando serve ma non si puo' stabilire (un dato storico, un codice fiscale estero o
-non riconoscibile). Un campo vuoto vuol dire «non serve», ed e' ammesso solo dove la
-natura lo prevede. Una ditta individuale e' una persona con un'attivita' in proprio:
-il sesso si puo' indicare, ma non e' richiesto. Il dettaglio sta nella
-[tabella soggetti](/dbzero/anagrafiche/manual/soggetti).
+* **codice fiscale e partita IVA**: se sono obbligatori, e il loro formato. Una natura col
+  formato della partita IVA «non applicabile» non ha partita IVA;
+* **dati societari**: vietati, facoltativi od obbligatori (`NONE`, `OPTIONAL`, `REQUIRED`);
+* **sesso**: con la stessa scala. Si indica solo per le persone fisiche;
+* **regime PA**: se la natura ammette `cliente_pa` e `split_payment`;
+* **forme giuridiche**, **titoli IVA** e **tipi di indirizzo** che la natura ammette, ciascuno
+  con la sua matrice in `config`.
 
-La validazione distingue due aspetti separati:
+I valori di ogni natura stanno nella [scheda della natura di dettaglio](/dbzero/config/tabelle/tipi_soggetto_dettaglio).
+Nella configurazione di oggi, per esempio, un privato ha il codice fiscale, nessuna partita IVA
+e nessun dato societario, mentre una società di capitali ha la partita IVA e i dati societari
+obbligatori.
 
-* **Presenza**: il codice fiscale e/o la partita IVA devono essere compilati? (dipende dal tipo)
-* **Formato**: il codice fiscale ha 16 caratteri alfanumerici? La partita IVA ha 11 cifre? (dipende dal formato configurato)
+La validazione di codice fiscale e partita IVA distingue due aspetti:
+
+* **presenza**: il campo deve essere compilato? Lo dice la natura;
+* **formato**: il valore ha la forma giusta? Si controlla per il paese del soggetto, e le
+  regole scritte oggi sono quelle italiane.
+
+La natura sul soggetto può mancare. Senza natura i controlli che dipendono da lei tacciono,
+tranne quelli su un dato fiscale che la natura dovrebbe ammettere: un flag del regime PA acceso
+o un titolo IVA vigente sono rifiutati (`E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`), e un ruolo vincolato
+dalla matrice non si assegna (`E_RUOLO_NATURA_TIPO_DET_NULL`).
+
+**Il sesso non ha mai un valore di comodo.** Lo sceglie chi lo vede: `M` o `F`, oppure `X`
+quando serve ma non si può stabilire (un dato storico, un codice fiscale estero o non
+riconoscibile). Un campo vuoto vuol dire «non serve», ed è ammesso solo dove la natura lo
+prevede. Una ditta individuale è una persona con un'attività in proprio: il sesso si può
+indicare, ma non è richiesto.
+
+### ⛔ L'identificativo fiscale, una volta scritto, non si cambia
+
+Codice fiscale e partita IVA si scrivono quando mancano; una volta che hanno un valore, li
+cambia solo un super admin. Gli altri ricevono `E_SOGGETTO_ID_FISCALE_IMMUTABILE`, col campo
+nel contesto. La regola sta in [anagrafiche.fn_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_id_fiscale_bloccato),
+e [anagrafiche.fn_soggetto_id_fiscale_bloccato](/dbzero/anagrafiche/funzioni/fn_soggetto_id_fiscale_bloccato)
+dice per un soggetto e una colonna se il campo è ancora modificabile: è la stessa condizione
+con cui il form mostra i due campi in sola lettura.
+
+Il motivo è che l'identificativo fiscale è ciò che i documenti emessi stampano: correggerlo
+dopo vuol dire cambiare l'intestatario di ciò che è già stato emesso.
+
+### Il cambio di natura
+
+Un soggetto può cambiare natura, ma **solo dentro la sua macro-tipologia**: una ditta
+individuale può diventare un privato, una società di persone una società di capitali; una
+società non diventa un ente, né una persona fisica una società
+(`E_CAMBIO_NATURA_ALTRA_MACRO_TIPOLOGIA`).
+
+Dentro la macro-tipologia, il cambio è rifiutato finché resta qualcosa che la natura nuova non
+ammette. I motivi li elenca, tutti e in ordine,
+[anagrafiche.fn_check_cambio_natura_soggetto](/dbzero/anagrafiche/funzioni/fn_check_cambio_natura_soggetto),
+e il guard sul soggetto solleva il primo:
+
+* l'identità fiscale cambia (la natura nuova ha la partita IVA e la vecchia no, o il contrario)
+  e il soggetto compare già in un documento, in qualunque ruolo;
+* la partita IVA è compilata e la natura nuova non ne ha;
+* un flag del regime PA è acceso e la natura nuova non lo ammette;
+* ci sono titoli IVA vigenti che la natura nuova non ammette, compresi quelli presentati ad
+  altri emittenti, che chi agisce non vede;
+* ci sono dati societari e la natura nuova li vieta;
+* ci sono indirizzi, del soggetto o dei suoi ruoli, di un tipo che la natura nuova non ammette.
+
+**Il cambio non pulisce niente**: chi cambia natura toglie prima ciò che la natura nuova non
+ammette, oppure lo corregge nello stesso salvataggio (la partita IVA e i flag della riga si
+giudicano coi valori nuovi). Per la maschera,
+[anagrafiche.fn_nature_proponibili_soggetto](/dbzero/anagrafiche/funzioni/fn_nature_proponibili_soggetto)
+restituisce ogni natura col suo esito e i suoi motivi: è la stessa check del guard, quindi la
+lista propone ciò che il guard accetta.
+
+Due conseguenze del cambio si giudicano **al COMMIT**, sullo stato finale: la forma giuridica
+dei dati societari deve essere ammessa dalla natura nuova
+(`E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA`), e una natura che pretende i dati societari li
+deve trovare. Per questo, quando la forma va cambiata insieme alla natura, si cambia **prima la
+natura, poi la forma**, nella stessa transazione: la forma nuova si giudica subito, contro la
+natura che il soggetto ha in quel momento.
+
+Il cambio di natura non riapre la compatibilità coi ruoli: la matrice dei ruoli guarda la
+macro-tipologia, e la macro-tipologia non cambia.
+
+### I dati societari
+
+I dati societari — forma giuridica, iscrizione al REA, capitale sociale, socio unico,
+liquidazione, canale di fatturazione elettronica — sono **al più una riga per soggetto**, e la
+natura decide se sono vietati, facoltativi od obbligatori.
+
+Dentro la riga, la **forma giuridica** è obbligatoria e decide il resto:
+
+* deve essere del paese del soggetto (`E_FORMA_GIURIDICA_PAESE`) e ammessa dalla sua natura
+  (`E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO`);
+* dice se l'iscrizione al REA e il capitale sociale sono obbligatori, facoltativi o non ammessi.
+
+Il canale di fatturazione elettronica ha la sua coerenza: col canale per codice destinatario
+serve il codice SDI, col canale PEC serve la PEC.
+
+L'applicazione **non scrive la tabella**: legge e basta. I dati societari si scrivono coi verbi:
+
+* [anagrafiche.fn_scrivi_dati_societari](/dbzero/anagrafiche/funzioni/fn_scrivi_dati_societari) crea o aggiorna
+  la riga **a stato intero**: si passano tutti i campi, e un campo vuoto svuota la colonna. Socio
+  unico e liquidazione, se vuoti, prendono il valore proposto dai parametri;
+* [anagrafiche.fn_elimina_dati_societari](/dbzero/anagrafiche/funzioni/fn_elimina_dati_societari) toglie la
+  riga, e la rifiuta se la natura del soggetto la pretende (`E_DATI_SOCIETARI_NON_ELIMINABILI`).
+  [anagrafiche.fn_check_elimina_dati_societari](/dbzero/anagrafiche/funzioni/fn_check_elimina_dati_societari)
+  dà lo stesso esito senza scrivere.
+
+Le regole stanno nei trigger della tabella, non nei verbi: il verbo aggiunge solo il controllo
+che il soggetto esista. La vista [anagrafiche.vw_dati_societari](/dbzero/anagrafiche/views/vw_dati_societari)
+li espone con le descrizioni risolte.
+
+### I titoli IVA ammessi dalla natura
+
+Il soggetto influisce sull'IVA di una riga **solo attraverso un titolo IVA**: una
+dichiarazione d'intento, un'agevolazione, registrata in
+[anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva). Il titolo
+appartiene al soggetto ma si presenta a **un emittente preciso**: lo stesso esportatore abituale
+che compra da due emittenti ha due titoli, con due plafond.
+
+Un titolo **vigente** (attivo e valido almeno fino a oggi) deve essere di un tipo che la natura
+del soggetto ammette (`E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO`). La matrice è
+[config.tipi_titolo_iva_tipi_soggetto_dettaglio](/dbzero/config/tabelle/tipi_titolo_iva_tipi_soggetto_dettaglio),
+ed è chiusa: un tipo senza riga per la natura non è ammesso. Un titolo chiuso o scaduto non si
+giudica, perché non cambia più nessuna aliquota. Come il titolo entra nella riga di un
+documento lo spiega [Il risolutore IVA di riga](/guide/iva-risolutore-di-riga).
 
 ---
 
-### 2. Il catalogo dei ruoli
+## I ruoli
 
-La tabella `config.tipi_ruoli` contiene l'elenco dei ruoli disponibili nel sistema:
+### Il catalogo
 
-* CLIENTE (CL)
-* FORNITORE (FO)
-* GESTORE (GE)
-* VENDITORE (VE)
-* DISTRIBUTORE (DI)
-* EMITTENTE FISCALE (EF)
-* RISORSA UMANA (RIS_UMANA)
-* REFERENTE (RE)
-* VETTORE (VT)
-* BANCA (BANK)
-* PSP (PSP)
+[config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) elenca i ruoli. Ogni ruolo ha un `codice`
+(per esempio `CLIENTE`) e un `codice_interno` (per esempio `CL`), che è quello con cui il codice
+del database e i verbi nominano il ruolo. Il codice interno non si cambia.
 
-Ogni ruolo abilita logiche, dati e comportamenti differenti nel sistema.
+Alcuni ruoli hanno una **specializzazione**, una tabella coi dati che servono solo a loro; gli
+altri vivono del solo collegamento e delle tabelle trasversali:
 
----
+| Ruolo (codice interno) | Specializzazione | Righe per ruolo assegnato |
+| --- | --- | --- |
+| Cliente (`CL`) | `anagrafiche.clienti` | **una per billing account** |
+| Fornitore (`FO`) | `anagrafiche.fornitori` | una |
+| Gestore (`GE`) | `anagrafiche.gestori` | una |
+| Emittente fiscale (`EF`) | `anagrafiche.emittenti_fiscali` | una |
+| Reseller (`RE`) | `anagrafiche.resellers` | una |
+| Vettore (`VT`) | `anagrafiche.vettori` | una |
+| Payment service provider (`PSP`) | `anagrafiche.psp` | una |
+| Risorsa umana (`RIS_UMANA`) | `anagrafiche.risorse_umane` | una |
+| Istituto di credito (`BANK_B`) | `anagrafiche.bank_branches` | una per filiale |
 
-### 3. Il collegamento soggetto ↔ ruolo
+Venditore (`VE`), Distributore (`DI`) e Processo automatico (`PROC_AUTO`) non hanno una
+specializzazione. Ogni specializzazione controlla che il ruolo a cui si aggancia sia del tipo
+giusto.
 
-La tabella `anagrafiche.soggetti_ruoli` e il **ponte** tra l'identita e il ruolo. Creando un record qui, si afferma: "questo soggetto ricopre il ruolo X".
+⚠️ **Il cliente è l'eccezione da ricordare.** Un cliente non è «la persona come cliente», ma
+**una sua fornitura**: un soggetto con un solo ruolo CLIENTE può avere il gas a casa e la luce
+in ufficio, cioè due billing account e due clienti, tutti sullo stesso ruolo. La regola è **un
+cliente per ogni billing account** (vedi [Generazione di un Cliente](/guide/generazione-cliente)).
 
-Da un punto di vista tecnico:
+### Il collegamento soggetto ↔ ruolo
 
-* `id` (BIGINT) e la chiave primaria — identifica univocamente il singolo ruolo assegnato
-* `soggetto_id` (UUID) → FK verso `soggetti`
-* `tipo_ruolo_id` → FK verso `tipi_ruoli`
-* Il vincolo `UNIQUE (soggetto_id, tipo_ruolo_id)` impedisce di assegnare lo stesso ruolo due volte
+[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) è il **ponte** fra
+l'identità e il ruolo: una riga dice «questo soggetto ricopre il ruolo X».
 
-**Nota sulla scelta UUID vs BIGINT:** i soggetti usano UUID come chiave primaria perche sono entita "master" potenzialmente condivisibili tra sistemi esterni (import/export, sincronizzazione, API pubbliche). Le tabelle interne ad alta cardinalita come `soggetti_ruoli`, `clienti`, `billing_account` usano BIGINT per efficienza (indici piu compatti, join piu rapidi, nessuna necessita di distribuzione esterna).
+* Un soggetto ha **al più un ruolo per tipo**.
+* Il soggetto di un ruolo **non si cambia** (`E_SOGGETTO_RUOLO_SOGGETTO_IMMUTABILE`): un ruolo non
+  passa da un soggetto a un altro.
+* La riga non ha date né un suo `attivo`: il ruolo c'è o non c'è. Le date, dove servono, stanno
+  nella specializzazione o nei legami.
+* Un ruolo si appoggia a un soggetto attivo: il controllo è al COMMIT.
 
-Tutte le tabelle specializzate (clienti, fornitori, gestori) e le tabelle trasversali (contatti, conti bancari) si agganciano a `soggetti_ruoli.id`. Questo significa che con un solo join si risale dal dato specifico (es. un contatto del cliente) all'identita del soggetto.
+Specializzazioni, contatti, indirizzi, conti bancari e identità digitali si agganciano a
+`soggetti_ruoli.id`: da qualunque dato di ruolo si risale al soggetto con un passaggio. Il
+ruolo di un soggetto si ottiene, creandolo se manca, con
+[script.fn_get_or_create_soggetto_ruolo](/dbzero/script/funzioni/fn_get_or_create_soggetto_ruolo).
 
-In pratica, `soggetti_ruoli` e il **punto di aggancio unico** tra il mondo anagrafico e tutte le specializzazioni usate nei moduli funzionali di Zero ERP.
+I soggetti usano un UUID come chiave, perché sono entità che possono passare fra sistemi
+(import, export, API); ruoli e specializzazioni usano un BIGINT, interno al database.
 
----
+### La compatibilità natura ↔ ruolo
 
-### 4. Compatibilita natura ↔ ruolo
+Non ogni ruolo si assegna a ogni natura. La matrice
+[config.tipi_ruoli_nature_ammesse](/dbzero/config/tabelle/tipi_ruoli_nature_ammesse) dice, per
+ogni ruolo, quali **macro-tipologie** lo possono ricoprire, e
+[anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa](/dbzero/anagrafiche/funzioni/trgfn_soggetti_ruoli_guard_natura_ammessa)
+lo controlla quando il ruolo nasce o cambia tipo (`E_RUOLO_NATURA_NON_AMMESSA`).
 
-Non tutti i ruoli sono assegnabili a qualsiasi natura. La matrice `config.tipi_ruoli_nature_ammesse` definisce le combinazioni ammesse:
-
-| Ruolo             | Codice    | Nature ammesse |
-| ----------------- | --------- | -------------- |
-| Cliente           | CL        | PF, PG, ENC    |
-| Fornitore         | FO        | PF, PG, ENC    |
-| Gestore           | GE        | solo PG        |
-| Venditore         | VE        | PF, PG         |
-| Distributore      | DI        | solo PG        |
-| Emittente Fiscale | EF        | solo PG        |
-| Risorsa Umana     | RIS_UMANA | solo PF        |
-| Referente         | RE        | PF, PG         |
-| Vettore           | VT        | PF, PG         |
-| Banca             | BANK      | PG, ENC        |
-| PSP               | PSP       | solo PG        |
-
-**Logica fail-open:** se un ruolo non ha righe nella matrice, qualsiasi natura e ammessa. Solo i ruoli esplicitamente configurati vengono vincolati.
-
-Il trigger `trgfn_soggetti_ruoli_guard_natura_ammessa()` verifica la compatibilita automaticamente al momento dell'assegnazione.
-
----
-
-### 5. Tabelle specializzate dei ruoli
-
-Non tutti i ruoli hanno una tabella dedicata. Solo quelli che richiedono dati aggiuntivi oltre al semplice collegamento soggetto ↔ ruolo:
-
-| Ruolo                     | Tabella specializzata           | Dati principali                                                 |
-| ------------------------- | ------------------------------- | --------------------------------------------------------------- |
-| CLIENTE (CL)              | `anagrafiche.clienti`           | condizioni contrattuali, fatturazione, stato, periodo           |
-| FORNITORE (FO)            | `anagrafiche.fornitori`         | condizioni di acquisto, regime fiscale, ritenuta                |
-| GESTORE (GE)              | `anagrafiche.gestori`           | dati operativi, codice software, valuta                         |
-| RISORSA UMANA (RIS_UMANA) | `anagrafiche.risorse_umane`     | qualifica, unita organizzativa, periodo validita                |
-| VETTORE (VT)              | `anagrafiche.vettori`           | codice, descrizione, stato attivo                               |
-| EMITTENTE FISCALE (EF)    | `anagrafiche.emittenti_fiscali` | regime fiscale RF, bollo, valuta, policy operative di emissione |
-| PSP (PSP)                 | `anagrafiche.psp`               | codice, descrizione, stato attivo                               |
-
-I ruoli **REFERENTE** (RE), **VENDITORE** (VE), **DISTRIBUTORE** (DI) e **BANCA** (BANK) non hanno tabella specializzata: operano solo tramite il record in `soggetti_ruoli` e le tabelle trasversali (contatti, conti bancari).
-
-Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id`. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
-
-Per quasi tutti i ruoli il collegamento ha un vincolo UNIQUE: **un solo record specializzato per ruolo assegnato** (fornitori, vettori, PSP, risorse umane, emittenti fiscali; per i gestori dal 2026-10-08).
-
-⚠️ **L'eccezione e il CLIENTE.** Un cliente non e «la persona come cliente», ma **una sua fornitura**: un soggetto con un solo ruolo CLIENTE puo avere il gas a casa e la luce in ufficio, cioe due billing account e due clienti, tutti sullo stesso ruolo. Su `anagrafiche.clienti` non c'e — e non ci deve essere — un vincolo di unicita sul ruolo: la regola e **un cliente per ogni billing account** (decisa il 2026-10-08, vincolo `uq_clienti_billing_account`, al posto del vecchio «un cliente per istanza») (vedi [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
-
----
-
-### 5a-bis. ⭐ Il soggetto NON ha un emittente fiscale
-
-> ⚠️ **Sezione canonica.** L'assenza di questo legame e **implicita**, e cio' che
-> e' implicito viene letto al contrario: si e' gia' chiesto «l'emittente del
-> soggetto» come se fosse un suo attributo. Questa sezione nasce per togliere di
-> mezzo quell'equivoco una volta per tutte.
-
-**In tutta l'anagrafica l'emittente fiscale compare in un solo posto:**
-
-```text
-anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
-```
-
-Non esiste su `soggetti`, ne' su `soggetti_ruoli`, ne' su `clienti`, ne' su
-`billing_account`, ne' su `istanze_utilities`. Verificato sul catalogo, non
-dedotto.
-
-| Entita'             | Legame con l'emittente                                                                                                                                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **billing account** | ✅ **esattamente uno**, per costruzione: `UNIQUE (billing_account_id)` sul mapping, piu' la riserva per il BA non ancora collegato — in sessione l'emittente di chi agisce, altrimenti il gestore globale (che e' comunque uno) |
-| **soggetto**        | ❌ **nessuno.** Il legame esiste solo *transitivamente*, attraverso i billing account del soggetto                                                                                                                              |
-
-#### Cosa ne segue, in pratica
-
-* **un soggetto puo' essere cliente di piu' emittenti**, ed e' legittimo: sono
-  alberi di billing account separati, uno per emittente;
-* la regola che il database presidia **non** e' *«un soggetto sta sotto un solo
-  emittente»* — sarebbe falsa e dannosa. E' *«un singolo albero di billing
-  account non attraversa due emittenti»*, ed e' un'altra cosa. Guard:
-  [`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente);
-* ⚠️ **quando si mostra «l'emittente» accanto a un soggetto**, si sta mostrando
-  una **relazione**, non un attributo. Se il soggetto ne tocca due, i valori sono
-  due: l'etichetta deve dirlo (*«emittenti presso cui e' cliente»*), e la riga
-  **non** va duplicata per emittente — duplicarla cambierebbe il significato di
-  un conteggio di soggetti;
-* dove invece l'emittente **e'** un dato pulito per riga e' il livello del
-  **rapporto**: ogni riga cliente punta a un billing account, quindi a un
-  emittente solo.
+* Una riga della matrice vale se è attiva e valida alla data operativa.
+* Un ruolo **senza nessuna riga** nella matrice è aperto a ogni natura. Basta una riga, anche
+  spenta, perché il ruolo sia vincolato.
 
 ---
 
 ### 5b. Identificazione canonica di un ruolo specializzato — PK reale vs `soggetto_ruolo_id`
 
-> ⚠️ **Sezione canonica — leggere prima di disegnare nuove tabelle / FK / fn che riferiscono un ruolo specializzato (cliente, fornitore, emittente_fiscale, reseller, ecc.).**
+Un ruolo specializzato (cliente, fornitore, emittente fiscale, reseller, …) ha **due
+identificatori validi**, e convivono per disegno:
 
-Le tabelle specializzate dei ruoli (`emittenti_fiscali`, `clienti`, `fornitori`, `resellers`) hanno **due identificatori validi** che convivono per design:
+| Identificatore | Esempio | Che cosa indica |
+| --- | --- | --- |
+| **PK reale** della specializzazione | `emittenti_fiscali.id`, `fornitori.id` | l'entità di ruolo, con i suoi attributi (`attivo`, il codice, …) |
+| **`soggetto_ruolo_id`** (SR id) | `emittenti_fiscali.soggetto_ruolo_id` | il soggetto in quel ruolo: un passaggio solo fino a `soggetti` |
 
-| Identificatore                   | Esempio                                                              | Significato                                                                                                                |
-| -------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **PK reale** della tabella ruolo | `emittenti_fiscali.id`, `clienti.id`, `fornitori.id`, `resellers.id` | identita' autoritativa dell'**entita' di ruolo** con i suoi attributi business (`attivo`, `is_default`, `matricola`, ecc.) |
-| **Denorm `soggetto_ruolo_id`**   | `emittenti_fiscali.soggetto_ruolo_id`, idem per le altre             | riferimento al **soggetto nel ruolo** durante il periodo di validita' (`soggetti_ruoli.valido_dal/valido_al`)              |
+Una tabella che riferisce un ruolo specializzato sceglie una delle due colonne, e il nome lo
+dice: `<ruolo>_soggetto_ruolo_id` (o `soggetto_ruolo_id`) per lo SR id, `<ruolo>_fiscale_id` o
+`<ruolo>_id` per la PK reale. La scheda di ogni tabella mostra a che cosa punta la sua FK.
 
-Le tabelle che vogliono riferire un ruolo specializzato usano una delle due colonne **a seconda della semantica voluta**. **Entrambe sono pattern intenzionali**: non sono "dualita' da eliminare". I refactor che cercano di unificare su un solo pattern sono **sconsigliati**.
+* **SR id**: lo usano le tabelle che hanno bisogno del soggetto — fatture, commesse, listini,
+  registri e lotti di fatturazione, scritture contabili, il legame fra un billing account e il
+  suo emittente — e le ricerche che arrivano a `soggetti` con un join solo.
+* **PK reale**: la usano le tabelle che parlano dell'entità di ruolo — il perimetro degli
+  emittenti di un utente (`config.user_emittenti_fiscali`), gli override dei parametri, i
+  titoli IVA, e i documenti che prendono l'emittente di lavoro di chi li crea: preventivi,
+  offerte, contratti, ordini, DDT, resi.
 
-#### Quando usare `soggetto_ruolo_id` (SR id)
+Le due forme sono intenzionali: un lavoro che le unifica su una sola non è richiesto, e costa
+più di quanto risolve. Dove serve passare dall'una all'altra:
 
-Pattern colonna FK: `<ruolo>_soggetto_ruolo_id` (es. `emittente_soggetto_ruolo_id`, `reseller_soggetto_ruolo_id`) oppure semplicemente `soggetto_ruolo_id` (es. `vendite.ordini.soggetto_ruolo_id` per cliente).
+| Funzione | Restituisce |
+| --- | --- |
+| [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_id) | l'emittente di un billing account come **SR id**, nonostante il nome |
+| [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/funzioni/fn_get_emittente_fiscale_pk) | lo stesso emittente come **PK reale** |
+| [script.fn_get_emittenti_scope_pk_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_pk_ids) | gli emittenti nel perimetro di un utente, come PK reali |
+| [script.fn_get_emittenti_scope_sr_ids](/dbzero/script/funzioni/fn_get_emittenti_scope_sr_ids) | gli stessi, come SR id |
 
-| Contesto                            | Esempio attuale                                                                                                                                                                                                                                                                                                       | Perche' SR id                                                                                                                                                                          |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Documenti contrattuali**          | `vendite.fatture.emittente_soggetto_ruolo_id`, `vendite.fatture.reseller_soggetto_ruolo_id`, `vendite.ordini.soggetto_ruolo_id` (cliente), `vendite.commesse.emittente_soggetto_ruolo_id`, `vendite.listini.emittente_soggetto_ruolo_id`, `anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id` | Il documento ricorda il **soggetto nel ruolo all'istante del contratto**. Ragione sociale, codice fiscale stampati sulla fattura sono quelli del SR vigente al momento dell'emissione. |
-| **Snapshot legali**                 | tutti i registri fatturazione, scope arrotondamenti, source fondi fattura                                                                                                                                                                                                                                             | Devono essere stabili rispetto a future modifiche dell'entita' EF.                                                                                                                     |
-| **JOIN diretto a `soggetti_ruoli`** | `fn_search_soggetti_universale`, `fn_get_search_detail`, `vw_indirizzi_resolved_*`                                                                                                                                                                                                                                    | Un solo hop a `soggetti_ruoli` invece di due (`<tabella_ruolo> → soggetti_ruoli → soggetti`).                                                                                          |
-| **Pattern uniforme cross-ruolo**    | tutti i ruoli (cliente, fornitore, emittente, reseller) referenziati come parte contrattuale                                                                                                                                                                                                                          | Stesso pattern ovunque: facile riconoscere, facile generare query.                                                                                                                     |
-
-#### Quando usare PK reale (`<ruolo>_<entita>_id`)
-
-Pattern colonna FK: `<ruolo>_<entita>_id` (es. `emittente_fiscale_id`, `cliente_id` se mai dovesse servire).
-
-| Contesto                                      | Esempio attuale                                                                        | Perche' PK                                                                                                                   |
-| --------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **Scope/permessi utente**                     | `config.user_emittenti_fiscali.emittente_fiscale_id`                                   | L'utente "appartiene" all'**entita' EF**, non a un suo SR storico. Cambi di SR (rinnovo ruolo) non devono cambiare lo scope. |
-| **Override parametrici**                      | `config.parameter_overrides.emittente_fiscale_id`                                      | I parametri configurano l'entita' EF in quanto tale.                                                                         |
-| **Snapshot user-derived**                     | `vendite.preventivi.emittente_fiscale_id` (rev2 — operatore creatore)                  | Cattura "operatore appartiene a EF" — concetto entita'.                                                                      |
-| **Filtri su attributi business dell'entita'** | view che filtrano per `attivo`, `is_default`, `matricola`                              | Le view finite consumano l'entita'.                                                                                          |
-| **Chiavi di lookup parametriche**             | `vw_preventivi_list.emittente_fiscale_id` (per filtro scope con `parameter_overrides`) | Il filtro confronta entita' con entita'.                                                                                     |
-
-#### Tabella decisionale veloce
-
-| Domanda                                                    | Risposta SR id        | Risposta PK reale |
-| ---------------------------------------------------------- | --------------------- | ----------------- |
-| Devo ricordare il soggetto stampato in calce alla fattura? | ✓                     | ✗                 |
-| Devo legare l'utente all'EF (scope)?                       | ✗                     | ✓                 |
-| Devo fare JOIN con ragione sociale del soggetto?           | ✓ (1 hop)             | (2 hop)           |
-| Devo essere stabile rispetto a rinnovi/cambi del SR?       | ✗                     | ✓                 |
-| Sto referenziando da un documento contrattuale?            | ✓                     | ✗                 |
-| Sto referenziando da una tabella di config/scope/override? | ✗                     | ✓                 |
-| Devo filtrare per `attivo`, `is_default`, `matricola`?     | (richiede JOIN extra) | ✓                 |
-
-Se la risposta non e' chiara, **propenderlo a SR id**: e' il pattern dominante per i documenti, e quasi sempre il riferimento contrattuale e' la cosa giusta da preservare.
-
-#### Conseguenze sui filtri scope (es. permessi vendita)
-
-Per filtrare quali emittenti puo' vedere un utente, esistono **due funzioni parallele**, con la stessa semantica ma return type diverso:
-
-| Funzione                                             | Return type           | Quando usarla                                                                                                             |
-| ---------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `script.fn_get_emittenti_scope_sr_ids(auth_user_id)` | `bigint[]` (SR id)    | Filtri su colonne `<ruolo>_soggetto_ruolo_id` (fatture, ordini, commesse, listini, BA scope, search universale, ecc.)     |
-| `script.fn_get_emittenti_scope_pk_ids(auth_user_id)` | `bigint[]` (PK reale) | Filtri su colonne `<ruolo>_fiscale_id` (vw_preventivi_list, parameter_overrides, user_emittenti_fiscali, preventivi rev2) |
-
-Le due fn condividono i guard (no identita' OPERATORE → `'{}'`; super admin → NULL; altrimenti whitelist). `_sr_ids` e' implementata come wrapper su `_pk_ids` (single source of truth). Vedi manual `script.fn_get_emittenti_scope_pk_ids` e `script.fn_get_emittenti_scope_sr_ids` per dettagli.
-
-#### Cosa NON fare
-
-* ❌ **Non rinominare le colonne `<ruolo>_soggetto_ruolo_id` in `<ruolo>_<entita>_id`** "per uniformita'" — il pattern SR id e' intenzionale per i documenti.
-* ❌ **Non droppare `anagrafiche.fn_get_emittente_fiscale_id`** (che ritorna SR id) — la sua logica e' corretta nei 36 caller che la usano per JOIN su SR. Il nome e' fuorviante (sembra ritornare PK ma ritorna SR), ma il refactor del nome e' una pulizia cosmetica, da fare in un brief separato e con coordinamento di tutti i caller.
-* ❌ **Non aggiungere il filtro `ef.attivo` nelle fn di scope** — gia' garantito dai trigger di constraint che bloccano disattivazione di EF con figli in `user_emittenti_fiscali`.
-* ❌ **Non refactorare** `clienti`/`fornitori`/`resellers` per simmetria con `emittenti_fiscali` — il pattern duale e' uniforme su tutti, e la sua eliminazione costerebbe di piu' di quanto risolva.
+Le due funzioni di perimetro hanno la stessa semantica: la versione SR traduce la versione PK, e
+i guard (nessuna identità operatore, super admin, lista degli emittenti) stanno in un posto solo.
 
 ---
 
-### 6. Il ponte verso l'account utente
+### ⭐ Il soggetto non ha un emittente fiscale
 
-Non tutte le coppie soggetto-ruolo accedono al software. Quando serve — un operatore interno, il cliente di un portale, il fornitore che entra dal suo portale, chi acquista dallo shop — il ruolo riceve una **identita digitale**: la tabella `anagrafiche.identita_digitali` lega un `soggetti_ruoli` a un account Django e dice con quale **veste** quella persona entra nel sistema (`ruolo_applicativo`).
+L'emittente fiscale **non è un attributo del soggetto**. Non c'è su `soggetti`, né su
+`soggetti_ruoli`, né su `clienti`, né su `billing_account`, né su `istanze_utilities`.
 
-Vale la stessa logica del resto dell'anagrafica: l'identita digitale appartiene al **ruolo**, non al soggetto. Un'azienda che e cliente e fornitore puo avere una veste per il portale clienti e una diversa per il portale fornitori; e un soggetto puo essere, con lo stesso account, operatore interno e cliente del portale, perche le vesti convivono.
+Chi porta l'emittente è il **billing account**: ne ha esattamente uno, il collegamento in
+[anagrafiche.emittenti_fiscali_billing_account](/dbzero/anagrafiche/tabelle/emittenti_fiscali_billing_account)
+o, in sua assenza, quello che la regola di riserva gli attribuisce. Come si risolve, e quando
+un billing account non può cambiare emittente, lo spiega
+[Generazione di un Cliente](/guide/generazione-cliente).
+
+Il soggetto tocca un emittente solo **attraverso qualcosa**: i suoi billing account, oppure un
+suo titolo IVA, che è presentato a un emittente preciso. Le altre tabelle di `anagrafiche` che
+nominano un emittente parlano dell'emittente stesso, non del soggetto:
+`emittenti_fiscali_utilities` (le regole dell'emittente per utility) e
+`categorie_clienti_listini` (il listino di una categoria presso un emittente).
+
+#### Cosa ne segue, in pratica
+
+* **un soggetto può essere cliente di più emittenti**, ed è legittimo: sono alberi di billing
+  account separati;
+* la regola che il database presidia **non** è «un soggetto sta sotto un solo emittente», che
+  sarebbe falsa. È «un albero di billing account non attraversa due emittenti»
+  ([anagrafiche.fn_guard_albero_ba_emittente](/dbzero/anagrafiche/funzioni/fn_guard_albero_ba_emittente));
+* ⚠️ **quando si mostra «l'emittente» accanto a un soggetto**, si mostra una **relazione**, non
+  un attributo. Se il soggetto ne tocca due, i valori sono due: l'etichetta lo dice («emittenti
+  presso cui è cliente»), e la riga **non** si duplica per emittente, perché cambierebbe il
+  significato di un conteggio di soggetti;
+* l'emittente è un dato pulito per riga al livello del **rapporto**: ogni cliente ha un billing
+  account, quindi un emittente solo.
+
+---
+
+### Il ponte verso l'account utente
+
+Non tutte le coppie soggetto-ruolo accedono al software. Quando serve — un operatore interno, il
+cliente di un portale, il fornitore che entra dal suo portale, chi acquista dallo shop — il
+ruolo riceve una **identità digitale**:
+[anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) lega un
+soggetto-ruolo a un account e dice con quale **veste** quella persona entra nel sistema
+(`ruolo_applicativo`).
+
+L'identità digitale appartiene al **ruolo**, non al soggetto. Un'azienda che è cliente e
+fornitore può avere una veste per il portale clienti e una per il portale fornitori; un
+soggetto può essere, con lo stesso account, operatore interno e cliente del portale, perché le
+vesti convivono.
 
 Due cose che questo ponte **non** cambia nel modello anagrafico:
 
-* **Nessun attributo nuovo sul soggetto o sul ruolo.** `soggetti`, `soggetti_ruoli`, `tipi_ruoli` e le tabelle specializzate restano quelli descritti in questa guida: l'accesso e un ponte in piu, non una proprieta dell'anagrafica.
-* **Il vincolo «persona fisica pura» non e generale.** Riguarda la sola veste `OPERATORE` — la persona interna, che deve avere codice fiscale e nessuna partita IVA. Un soggetto persona giuridica puo avere l'account del suo portale; un processo automatico che opera nel sistema ha invece una veste **tecnica**, collegata a un soggetto-ruolo di tipo processo.
+* **nessun attributo nuovo sul soggetto o sul ruolo**: l'accesso è un ponte in più, non una
+  proprietà dell'anagrafica;
+* **il vincolo «persona fisica pura» non è generale**: riguarda la sola veste `OPERATORE` di una
+  persona — la persona interna, sul ruolo `RIS_UMANA`, con codice fiscale e nessuna partita
+  IVA. Un soggetto persona giuridica può avere l'account del suo portale; un processo
+  automatico ha una veste operatore **tecnica**, sul ruolo `PROC_AUTO`.
 
-> Per il modello auth completo — ruoli applicativi, profili di accesso, scope policy dei portali e dello shop — vedi [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
-> Per il ciclo di vita di un operatore (invito, credenziali, cessazione) vedi [Risorse Umane e Accessi](/guide/risorse-umane-e-accessi).
+> Per il modello completo — vesti, profili di accesso, perimetri dei portali e dello shop —
+> vedi [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth).
+> Per il ciclo di vita di un operatore vedi [Risorse Umane e Accessi](/guide/risorse-umane-e-accessi).
 
 ---
 
-## Vincoli e trigger
+## Contatti, indirizzi e conti: due livelli
 
-La validazione del modello avviene su piu livelli tramite trigger PostgreSQL. I trigger usano la convenzione `_a10_` = guard (verifica immediata), `_z90_` = finale.
+Contatti, indirizzi e conti bancari hanno due livelli, il **soggetto** e il **ruolo**, e il
+livello del ruolo permette di tenere separati gli usi dello stesso soggetto: l'email della
+contabilità fornitori non è quella degli ordini cliente.
 
-### Sul soggetto (`anagrafiche.soggetti`)
+* **Contatti** — ogni contatto è del soggetto, e può indicare un ruolo (e un'istanza) come
+  contesto. Il soggetto deve avere almeno un contatto, al COMMIT. Le regole del contatto
+  predefinito sono in [Gestione dei Contatti](/guide/gestione-dei-contatti).
+* **Indirizzi** — quelli del soggetto (`indirizzi_soggetti`) e quelli del ruolo (`indirizzi`).
+  La natura dice quali tipi sono ammessi e quali obbligatori per il soggetto, il tipo di ruolo
+  quali per il ruolo; gli obbligatori si controllano al COMMIT. Vedi
+  [Gestione degli Indirizzi](/guide/gestione-degli-indirizzi).
+* **Conti bancari** — il conto (l'IBAN) è un'entità sua, in `conti_bancari`, e si **lega** al
+  soggetto ([anagrafiche.soggetti_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_conti_bancari))
+  o al ruolo ([anagrafiche.soggetti_ruoli_conti_bancari](/dbzero/anagrafiche/tabelle/soggetti_ruoli_conti_bancari),
+  anche per una singola istanza), con un uso, un predefinito e un periodo. Quando si cerca il
+  conto di un ruolo, il legame del ruolo vince su quello del soggetto. Un conto d'incasso si
+  lega a un soggetto solo, e a un ruolo solo. Vedi [Gestione Conti Bancari](/guide/gestione-conti-bancari).
 
-| Trigger function                               | Evento               | Cosa verifica                                            |
-| ---------------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `trgfn_soggetti_guard_cf_piva_obbligatori`     | BEFORE INSERT/UPDATE | CF e/o PIVA presenti in base alla natura                 |
-| `trgfn_soggetti_valida_cf_piva_dispatch`       | BEFORE INSERT/UPDATE | Formato corretto di CF e PIVA (16 char, 11 cifre, ecc.)  |
-| `trgfn_soggetti_guard_dati_societari_required` | CONSTRAINT DEFERRED  | Dati societari presenti per soggetti con policy REQUIRED |
-| `trgfn_soggetti_guard_indirizzi_required`      | CONSTRAINT DEFERRED  | Indirizzi obbligatori presenti per la natura             |
+---
 
-### Sull'assegnazione ruolo (`anagrafiche.soggetti_ruoli`)
+## Quando si controlla: subito o al COMMIT
 
-| Trigger function                                | Evento               | Cosa verifica                                              |
-| ----------------------------------------------- | -------------------- | ---------------------------------------------------------- |
-| `trgfn_soggetti_ruoli_guard_natura_ammessa`     | BEFORE INSERT/UPDATE | Natura del soggetto ammessa per il ruolo richiesto         |
-| `trgfn_soggetti_ruoli_guard_indirizzi_required` | CONSTRAINT DEFERRED  | Indirizzi obbligatori per il tipo ruolo presenti al commit |
+I controlli dell'area sono trigger sulle tabelle, e sono di due specie. L'elenco completo, col
+momento e l'ordine di ciascuno, è nella sezione dei trigger di ogni scheda
+([soggetti](/dbzero/anagrafiche/tabelle/soggetti), [soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli),
+[dati_societari](/dbzero/anagrafiche/tabelle/dati_societari),
+[soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva)).
 
-### Sui dati societari (`anagrafiche.dati_societari`)
+**Subito**, sulla riga che si scrive, si giudica ciò che la riga dice di sé:
 
-| Trigger function                           | Evento               | Cosa verifica                                         |
-| ------------------------------------------ | -------------------- | ----------------------------------------------------- |
-| `trgfn_dati_societari_guard_tipo_soggetto` | BEFORE INSERT/UPDATE | Impedisce dati societari per soggetti con policy NONE |
+* sul soggetto: presenza e formato di codice fiscale e partita IVA, sesso, regime PA, blocco
+  dell'identificativo fiscale e del codice, cambio di natura;
+* sui dati societari: la natura li ammette, la forma giuridica è del paese e della natura, REA e
+  capitale come la forma li vuole, il canale di fatturazione elettronica;
+* sul ruolo: la natura ammette il ruolo, il soggetto non si cambia;
+* sul titolo IVA: la natura ammette il tipo.
 
-**Nota sui trigger DEFERRED:** i vincoli su indirizzi e dati societari vengono valutati al **commit** della transazione, non all'inserimento. Questo permette di creare soggetto, contatto, indirizzo e dati societari in qualsiasi ordine, purche al commit tutto sia a posto.
+**Al COMMIT** si giudica ciò che può arrivare dopo, nella stessa transazione:
+
+* la natura che pretende i dati societari li trova (`E_DATI_SOCIETARI_REQUIRED_MANCANTI`);
+* il soggetto ha almeno un contatto, e gli indirizzi obbligatori suoi e dei suoi ruoli;
+* dopo un cambio di natura, la forma giuridica è ancora ammessa;
+* ruoli, dati societari e titoli IVA si appoggiano a un soggetto attivo.
+
+Ne segue l'**ordine** delle scritture: il soggetto si scrive per primo, perché le righe figlie
+lo riferiscono e i loro controlli lo leggono subito; dati societari, contatti, indirizzi e ruoli
+vengono dopo, nella stessa transazione, e ciò che è obbligatorio deve esserci al COMMIT. I verbi
+di creazione rispettano questo ordine da soli.
+
+Un soggetto **non si disattiva** finché ha figli: ruoli, dati societari, contatti, indirizzi,
+istanze, legami dei conti, titoli IVA, pratiche, risorse umane. Solo titoli IVA e risorse umane
+hanno un loro `attivo`, e per loro contano le righe attive; le altre figlie contano finché
+esistono. Poiché ogni soggetto ha almeno un contatto, oggi nessun soggetto arriva a spegnersi.
 
 ---
 
@@ -380,113 +490,92 @@ La validazione del modello avviene su piu livelli tramite trigger PostgreSQL. I 
 
 ### Caso 1 — Persona fisica, solo cliente
 
-Mario Rossi e un privato che diventa cliente gas:
+Mario Rossi è un privato che diventa cliente gas:
 
-* **Soggetto**: Mario Rossi, tipo = PR (Privato, Persona Fisica)
-* CF obbligatorio, PIVA non richiesta, dati societari vietati
-* **Ruolo**: CLIENTE — ammesso per PF dalla matrice
-* **Clienti**: dati contrattuali, IVA, condizioni pagamento
-* Contatti e indirizzi: legati sia al soggetto che al ruolo CLIENTE
+* **Soggetto**: Mario Rossi, natura «privato» (persona fisica), nato con `fn_crea_soggetto_pf`;
+* codice fiscale obbligatorio, nessuna partita IVA, nessun dato societario, sesso obbligatorio;
+* **Ruolo**: CLIENTE, ammesso per le persone fisiche;
+* **Cliente**: uno per ogni billing account, con le sue date (vedi [Generazione di un Cliente](/guide/generazione-cliente)).
 
-### Caso 2 — Azienda multi-ruolo (cliente e fornitore)
+### Caso 2 — Azienda con due ruoli
 
-ACME S.r.l. e contemporaneamente cliente e fornitore:
+ACME S.r.l. è cliente e fornitore:
 
-* **Soggetto**: ACME S.r.l., tipo = SC (Soc. Capitali, PG)
-* CF e PIVA obbligatori, dati societari REQUIRED (forma giuridica, REA, capitale)
-* **Ruoli**: CLIENTE + FORNITORE — entrambi ammessi per PG
-* Due record in `soggetti_ruoli`, ciascuno con il proprio `id`
-* Contatti e conti bancari gestibili separatamente per ruolo: il contatto per le forniture non e lo stesso del contatto per gli ordini cliente
+* **Soggetto**: ACME S.r.l., natura «società di capitali», nato con `fn_crea_soggetto_pg`, che
+  riceve nella stessa chiamata i dati societari che la natura pretende (la forma giuridica, e
+  REA e capitale come la forma li vuole);
+* **Ruoli**: CLIENTE e FORNITORE, due righe in `soggetti_ruoli`;
+* contatti, indirizzi e conti si legano a ciascun ruolo separatamente.
 
-### Caso 3 — Ruolo con restrizione di natura
+### Caso 3 — Un ruolo che la natura non ammette
 
-Il ruolo GESTORE e ammesso **solo per PG** (persone giuridiche). Se si tenta di assegnare il ruolo Gestore a un privato (PF), il trigger blocca l'operazione con errore `E_RUOLO_NATURA_NON_AMMESSA`.
+Il ruolo GESTORE è vincolato alle persone giuridiche: assegnarlo a un privato è rifiutato con
+`E_RUOLO_NATURA_NON_AMMESSA`. Allo stesso modo RISORSA UMANA è solo delle persone fisiche.
 
-Allo stesso modo, il ruolo RISORSA UMANA e ammesso solo per PF. Un'azienda non puo essere una risorsa umana.
+### Caso 4 — Una ditta individuale che chiude la partita IVA
 
----
+Una ditta individuale cessa l'attività e torna privato. Il cambio è nella stessa
+macro-tipologia, ma la natura nuova non ha partita IVA:
 
-## Contatti appesi al ruolo
-
-Grazie alla separazione soggetto/ruolo, un contatto puo essere assegnato al **ruolo specifico**, non all'identita generica:
-
-* Il numero di telefono del referente commerciale → agganciato al ruolo CLIENTE
-* L'email della contabilita fornitori → agganciata al ruolo FORNITORE
-* Nessuna collisione tra usi diversi dello stesso soggetto
-
-Questo permette una gestione nativamente multi-ruolo senza duplicazioni.
+* se la partita IVA resta compilata, il cambio è rifiutato con `E_CAMBIO_NATURA_PIVA_NON_APPLICABILE`;
+* se il soggetto compare già in un documento, è rifiutato con `E_CAMBIO_NATURA_CON_DOCUMENTI`:
+  l'identità fiscale con cui i documenti sono stati emessi non si riscrive;
+* anche i dati societari, i titoli IVA e gli indirizzi che il privato non ammette vanno tolti
+  prima. `fn_nature_proponibili_soggetto` mostra in anticipo che cosa ferma il cambio.
 
 ---
 
-## Conti bancari e ruolo del cliente
+## Diagramma ER
 
-I conti bancari non vengono legati al soggetto "puro", ma al **ruolo**:
-
-* Un cliente puo avere uno o piu conti collegati al suo `soggetto_ruolo_id`
-* Il conto puo essere ulteriormente collegato al `billing_account` per modalita di addebito specifiche
-* Il conto bancario per incassare dal cliente e quello per pagare il fornitore restano separati, anche se il soggetto e lo stesso
-
----
-
-## Perche questo modello?
-
-* **Nessuna duplicazione**: un soggetto esiste una sola volta, indipendentemente da quanti ruoli ha
-* **Evoluzione modulare**: aggiungere un nuovo ruolo (es. "Agente") richiede solo una nuova riga in `tipi_ruoli` e una eventuale tabella specializzata
-* **Multi-ruolo naturale**: la struttura nasce per supportare piu ruoli, non e un adattamento successivo
-* **Un solo join**: da qualsiasi dato specializzato si risale al soggetto in un passaggio
-* **Identita centralizzata**: cambio di ragione sociale, codice fiscale o indirizzo → si aggiorna una volta, vale per tutti i ruoli
-
----
-
-## Diagrammi ER
-
-Il modello e suddiviso in due diagrammi per leggibilita.
-
-### Identita, natura e assegnazione ruoli
-
-La struttura centrale: il soggetto con la sua natura giuridica, la matrice di compatibilita e il collegamento ai ruoli.
+Il nucleo del modello: identità, natura, dati societari e ruoli. Le colonne sono solo quelle che
+reggono le relazioni; le altre sono nelle schede.
 
 ```mermaid
 erDiagram
     tipi_soggetto {
-        integer id PK
-        text codice
-        text descrizione
+        varchar id PK
+        varchar descrizione
     }
 
     tipi_soggetto_dettaglio {
-        integer id PK
-        integer tipo_soggetto_id FK
-        text codice
-        text descrizione
+        bigint id PK
+        varchar tipo_soggetto_id FK
+        varchar codice_interno
+        presenza_policy_enum dati_societari_policy
+    }
+
+    forme_giuridiche_tipi_soggetto_dettaglio {
+        bigint forma_giuridica_id PK
+        bigint tipo_soggetto_dettaglio_id PK
     }
 
     soggetti {
         uuid id PK
-        integer tipo_soggetto_dettaglio_id FK
-        text ragione_sociale
+        text codice
+        bigint tipo_soggetto_dettaglio_id FK
+        integer stato_id FK
         text codice_fiscale
         text partita_iva
-        bigint default_contatto_id FK
+        boolean attivo
     }
 
     dati_societari {
         bigint id PK
         uuid soggetto_id FK
-        text forma_giuridica
-        text rea
+        bigint forma_giuridica_id FK
     }
 
     tipi_ruoli {
         integer id PK
-        text codice
-        text descrizione
+        varchar codice
+        varchar codice_interno
     }
 
     tipi_ruoli_nature_ammesse {
-        integer id PK
-        integer tipo_soggetto_id FK
+        bigint id PK
         integer tipo_ruolo_id FK
+        varchar tipo_soggetto_id FK
+        boolean attivo
     }
 
     soggetti_ruoli {
@@ -495,22 +584,25 @@ erDiagram
         integer tipo_ruolo_id FK
     }
 
-    tipi_soggetto ||--o{ tipi_soggetto_dettaglio : "dettaglio natura"
-    tipi_soggetto_dettaglio ||--o{ soggetti : "classifica"
+    tipi_soggetto ||--o{ tipi_soggetto_dettaglio : "dettaglia"
+    tipi_soggetto_dettaglio ||--o{ forme_giuridiche_tipi_soggetto_dettaglio : "ammette"
+    tipi_soggetto_dettaglio |o--o{ soggetti : "classifica"
     tipi_soggetto ||--o{ tipi_ruoli_nature_ammesse : "vincola"
     tipi_ruoli ||--o{ tipi_ruoli_nature_ammesse : "vincola"
-
+    soggetti ||--o| dati_societari : "ha"
     soggetti ||--o{ soggetti_ruoli : "ha ruoli"
-    soggetti ||--o| dati_societari : "ha dati societari"
     tipi_ruoli ||--o{ soggetti_ruoli : "classifica"
 ```
 
-### Specializzazioni e tabelle trasversali
-
-Le tabelle specializzate dei ruoli e le tabelle trasversali (contatti, conti bancari) che si agganciano a `soggetti_ruoli`.
+Intorno al ruolo: alcune specializzazioni, l'identità digitale, i legami dei conti e i titoli
+IVA.
 
 ```mermaid
 erDiagram
+    soggetti {
+        uuid id PK
+    }
+
     soggetti_ruoli {
         bigint id PK
         uuid soggetto_id FK
@@ -520,24 +612,10 @@ erDiagram
     clienti {
         bigint id PK
         bigint soggetto_ruolo_id FK
+        bigint billing_account_id FK
     }
 
     fornitori {
-        bigint id PK
-        bigint soggetto_ruolo_id FK
-    }
-
-    gestori {
-        bigint id PK
-        bigint soggetto_ruolo_id FK
-    }
-
-    risorse_umane {
-        bigint id PK
-        bigint soggetto_ruolo_id FK
-    }
-
-    vettori {
         bigint id PK
         bigint soggetto_ruolo_id FK
     }
@@ -547,7 +625,7 @@ erDiagram
         bigint soggetto_ruolo_id FK
     }
 
-    psp {
+    bank_branches {
         bigint id PK
         bigint soggetto_ruolo_id FK
     }
@@ -556,31 +634,45 @@ erDiagram
         bigint id PK
         bigint soggetto_ruolo_id FK
         integer auth_user_id FK
-        enum ruolo_applicativo
-        boolean attivo
+        ruolo_applicativo ruolo_applicativo
     }
 
-    contatti {
+    soggetti_titoli_iva {
         bigint id PK
         uuid soggetto_id FK
-        bigint soggetto_ruolo_id FK
+        bigint emittente_fiscale_id FK
+        bigint tipo_titolo_iva_id FK
     }
 
     conti_bancari {
         bigint id PK
-        bigint soggetto_ruolo_id FK
     }
 
-    soggetti_ruoli ||--o{ clienti : "specializza"
+    soggetti_conti_bancari {
+        bigint id PK
+        uuid soggetto_id FK
+        bigint conto_bancario_id FK
+    }
+
+    soggetti_ruoli_conti_bancari {
+        bigint id PK
+        bigint soggetto_ruolo_id FK
+        bigint conto_bancario_id FK
+        bigint istanza_utility_id FK
+    }
+
+    soggetti ||--o{ soggetti_ruoli : "ha ruoli"
+    soggetti_ruoli ||--o{ clienti : "uno per billing account"
     soggetti_ruoli ||--o| fornitori : "specializza"
-    soggetti_ruoli ||--o| gestori : "specializza"
-    soggetti_ruoli ||--o| risorse_umane : "specializza"
-    soggetti_ruoli ||--o| vettori : "specializza"
     soggetti_ruoli ||--o| emittenti_fiscali : "specializza"
-    soggetti_ruoli ||--o| psp : "specializza"
+    soggetti_ruoli ||--o{ bank_branches : "una per filiale"
     soggetti_ruoli ||--o{ identita_digitali : "veste"
-    soggetti_ruoli ||--o{ contatti : "ha"
-    soggetti_ruoli ||--o{ conti_bancari : "usa"
+    soggetti ||--o{ soggetti_titoli_iva : "titolare"
+    emittenti_fiscali ||--o{ soggetti_titoli_iva : "destinatario"
+    soggetti ||--o{ soggetti_conti_bancari : "lega"
+    soggetti_ruoli ||--o{ soggetti_ruoli_conti_bancari : "lega"
+    conti_bancari ||--o{ soggetti_conti_bancari : "legato"
+    conti_bancari ||--o{ soggetti_ruoli_conti_bancari : "legato"
 ```
 
 ---

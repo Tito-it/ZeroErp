@@ -1,99 +1,74 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.trgfn_soggetti_gen_codice()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_soggetti_gen_codice`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimento tabelle:
-> • [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> • [config.sistema_codici](/dbzero/config/tabelle/sistema_codici)
+> Approfondimento tabelle:
 >
-Approfondimento funzioni:
-> • [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice)
-> • [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la tabella di cui scrive `codice`
+> * [config.sistema_codici](/dbzero/config/tabelle/sistema_codici) — prefisso, separatore e lunghezza del codice
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_generate_codice](/dbzero/script/funzioni/fn_generate_codice) — il codice, dalla configurazione e dalla sequenza
+> * [script.trgfn_config_sistema_codici_sync_gen_codice](/dbzero/script/funzioni/trgfn_config_sistema_codici_sync_gen_codice) — chi crea questa funzione e il suo trigger
+> * [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns) — il blocco del codice scritto
+> * [script.trgfn_codice_maiuscolo](/dbzero/script/funzioni/trgfn_codice_maiuscolo) — il codice in maiuscolo
 
 ---
+
 ### 🎯 Scopo Principale
 
-(rev 2026-08-21)
-
-Assegna il **codice interno** di `anagrafiche.soggetti` quando chi scrive non lo
-fornisce. Non calcola niente da sé: delega a `script.fn_generate_codice('soggetto')`,
-che legge prefisso, separatore e lunghezza da `config.sistema_codici` e consuma la
-sequenza dedicata. È il pattern comune a tutte le anagrafiche con codice generato.
+`anagrafiche.trgfn_soggetti_gen_codice` assegna il codice interno a un soggetto scritto senza codice (o con un
+codice vuoto). Un codice dato da chi scrive, per esempio da un'importazione, resta com'è.
 
 ---
 
-### Aggancio
+### Il codice viene dalla configurazione
 
-Trigger `trg_soggetti_a10_gen_codice_ins_upd` — fase `_a10_`, `BEFORE INSERT OR UPDATE`
-su `anagrafiche.soggetti`.
-
----
-
-### Regole applicate
-
-1. Se `NEW.codice` è `NULL` **oppure** stringa vuota dopo `btrim`, viene valorizzato
-   con `script.fn_generate_codice('soggetto')`.
-2. Se `NEW.codice` è già valorizzato, **non viene toccato**: un codice fornito
-   dall'applicazione o da un import vince sempre sulla generazione.
-
-La configurazione vive in `config.sistema_codici` alla riga `codice_interno = 'soggetto'`
-(prefisso `SGT`, separatore `-`, numero a 7 cifre).
+Il trigger non calcola niente: chiede il codice a `script.fn_generate_codice` per la voce `soggetto` di
+`config.sistema_codici`, che dice prefisso, separatore e lunghezza del numero (`SGT-` e sette cifre) e consuma
+la sequenza della tabella. Il legame con la configurazione è il nome della voce, non una chiave esterna.
 
 ---
 
-### ⚠️ Note e trappole
+### ⚠️ La funzione è generata
 
-* **La chiave di configurazione è `'soggetto'`, non il nome della tabella.** Rinominare
-  quella riga in `config.sistema_codici` senza toccare la funzione fa fallire ogni
-  inserimento con `E_SEQUENZA_NON_CONFIGURATA`: il legame è per stringa, non per FK.
-* **`usa_sequenza = false` non è un errore: è un `NULL`.** In quel caso
-  `fn_generate_codice` **restituisce `NULL`** senza sollevare niente, e la riga prosegue
-  senza codice. ⚠️ E qui è più insidioso che altrove: su `anagrafiche.soggetti` la colonna `codice` è **nullable**, quindi non c'è nessun vincolo a fermare la riga. Il soggetto viene creato **senza codice, in silenzio**, e il difetto si scopre a valle.
-* **In `UPDATE` la generazione è di fatto inerte, ma solo grazie al lock.** Sulla stessa
-  tabella agisce `trg_soggetti_a10_lock_columns_upd`
-  (`script.trgfn_lock_columns('codice', 'CODICE_NON_MODIFICABILE')`), e i trigger `BEFORE ROW`
-  scattano in **ordine alfabetico**: `gen_codice` gira *prima* di `lock_columns`. Chi svuota
-  `codice` in un `UPDATE` ottiene quindi un codice nuovo, che il lock intercetta subito dopo
-  come modifica e rifiuta.
-  ⚠️ Con `SET LOCAL zeroerp.allow_lock_columns_override = 'on'` il lock si spegne e questa
-  rete sparisce: in manutenzione, svuotare `codice` **cambia davvero l'identità della riga**
-  e consuma un valore di sequenza.
+La funzione, la sequenza e il trigger li crea `script.trgfn_config_sistema_codici_sync_gen_codice` quando la
+voce di `config.sistema_codici` nomina tabella e colonna e chiede la sequenza. Tutte le funzioni di generazione
+del codice del progetto hanno lo stesso corpo per questo motivo. Ne seguono tre cose:
+
+* **un ritocco a mano non dura**: la funzione si riscrive dal modello a ogni scrittura della voce;
+* **non si toglie cancellandola**: si spegne dalla configurazione (la sequenza non più richiesta), che toglie da
+  sé trigger e funzione;
+* **cambiare tabella o colonna della voce sposta gli oggetti**, senza avvisi.
 
 ---
 
-### ⚠️ Questa funzione è **generata**, non scritta a mano
+### Il codice scritto non si cambia
 
-Il corpo compresso su una riga sola non è una svista di formattazione. La funzione, la
-sequenza e il trigger che la invoca sono creati con DDL dinamico da
-`script.trgfn_config_sistema_codici_sync_gen_codice` — il trigger
-`AFTER INSERT OR UPDATE OR DELETE` di `config.sistema_codici`. Basta la riga
-`codice_interno = 'soggetto'` con `schema_tabella`, `nome_tabella`, `nome_colonna` valorizzati
-e `usa_sequenza = true`, e i tre oggetti nascono da soli.
+In modifica il trigger scatta solo quando la scrittura nomina `codice`. Il codice è bloccato da
+`script.trgfn_lock_columns`, che per nome viene dopo: chi svuota il codice ne riceve uno nuovo, e il blocco
+rifiuta il cambio (`E_CODICE_NON_MODIFICABILE`). Con la porta di manutenzione aperta il blocco non parla, e
+svuotare il codice ne assegna davvero uno nuovo, consumando un numero della sequenza.
 
-È il motivo per cui **tutte** le `trgfn_*_gen_codice` del progetto hanno corpo identico: non
-sono sette funzioni simili, sono la stessa funzione parametrizzata sette volte.
+---
 
-Conseguenze pratiche:
+### ⚠️ Che cosa oggi non copre
 
-* **Modificarla a mano non serve a niente.** Il loader del CSV `sistema_codici` è
-  `runOnChange`, quindi ripassa a ogni migrate: la funzione viene riscritta col template e
-  qualunque ritocco locale sparisce senza lasciare traccia.
-* **Non si spegne con un `DROP`, si spegne dalla configurazione.** Portando `usa_sequenza`
-  a `false` il trigger di sync cancella da sé trigger e funzione; un `DROP` manuale li fa
-  ricomparire al primo migrate.
-* **Cambiare `schema_tabella`/`nome_tabella`/`nome_colonna` sposta gli oggetti**: il sync
-  fa `DROP` di quelli vecchi e ricrea altrove. Nessun errore, nessun avviso.
+* **Un soggetto può nascere senza codice.** La colonna ammette NULL: con la voce di configurazione spenta il
+  trigger non c'è, nessuno genera il codice, e nessun vincolo ferma la riga.
 
 ---
 
 ### Codici errore
 
-| Codice | Sollevato da | Quando |
-|--------|--------------|--------|
-| `E_SEQUENZA_NON_CONFIGURATA` | `script.fn_generate_codice` | Nessuna riga `codice_interno = 'soggetto'` in `config.sistema_codici` |
-| `CODICE_NON_MODIFICABILE` | `script.trgfn_lock_columns` | Tentativo di cambiare `codice` in `UPDATE` |
+Il trigger non ne solleva di suoi.
 
-La funzione **non solleva errori propri**: ogni errore viene dalle funzioni che invoca.
+* `E_SEQUENZA_NON_CONFIGURATA` — da `script.fn_generate_codice`: la voce `soggetto` manca, non nomina tabella e
+  colonna, o la sequenza non esiste.
+* `E_CODICE_NON_MODIFICABILE` — dal blocco: il codice scritto cambia.
 
 ---
 

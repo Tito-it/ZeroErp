@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_dati_societari_guard_canale_fe.md" %}
 # ⚙️ Funzione `trgfn_dati_societari_guard_canale_fe`
 
 ```sql

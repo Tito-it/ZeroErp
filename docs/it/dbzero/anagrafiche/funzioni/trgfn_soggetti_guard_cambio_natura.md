@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/trgfn_soggetti_guard_cambio_natura.md" %}
 # ⚙️ Funzione `trgfn_soggetti_guard_cambio_natura`
 
 ```sql
