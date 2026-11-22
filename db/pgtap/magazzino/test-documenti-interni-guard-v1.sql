@@ -130,12 +130,14 @@ SELECT throws_like($$ DELETE FROM magazzino.inventari WHERE id = (SELECT inv FRO
     '14) una POSTED non si elimina: E_MAG_DOCUMENTO_NON_ELIMINABILE');
 
 -- La forma
--- ⚠️ Testo di PostgreSQL 19 (dal 2026-11-21): su una colonna varchar `IN (...)` si
---   scrive `ANY (ARRAY[('X'::character varying)::text, ...])`; la 18 scriveva
---   `ANY ((ARRAY['X'::character varying, ...])::text[])`. Stesso vincolo, altro testo.
+-- ⚠️ Rev 2026-11-22 (20261122-40): il testo si legge da dbops.fn_pgtap_definizione_vincolo,
+--   non da pg_get_constraintdef. Sulla 19 un `IN (...)` su varchar ha due testi: nato sul
+--   database (la CI, un'installazione nuova) `ANY ((ARRAY['X'::character varying, ...])::text[])`,
+--   riletto da un dump della 18 (dbdev, lo scratch) `ANY (ARRAY[('X'::character varying)::text, ...])`.
+--   Il BB riporta il secondo al primo: si asserisce la forma del vincolo nato.
 SELECT is(
-    (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'magazzino.inventari'::regclass AND conname = 'chk_mag_inventari_stato'),
-    'CHECK (((stato_mag_inventario)::text = ANY (ARRAY[(''DRAFT''::character varying)::text, (''CONFIRM''::character varying)::text, (''POSTED''::character varying)::text, (''CANCEL''::character varying)::text])))',
+    dbops.fn_pgtap_definizione_vincolo('magazzino.inventari', 'chk_mag_inventari_stato'),
+    'CHECK (((stato_mag_inventario)::text = ANY ((ARRAY[''DRAFT''::character varying, ''CONFIRM''::character varying, ''POSTED''::character varying, ''CANCEL''::character varying])::text[])))',
     '15) il CHECK degli stati ha quattro valori e si chiama chk_mag_inventari_stato (COUNTING e'' uscito, D-L2-h)');
 
 -- ============================================================

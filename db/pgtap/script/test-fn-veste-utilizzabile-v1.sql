@@ -324,7 +324,11 @@ SELECT set_eq(
              --   fn_scope_ba_ownership, _via_fattura, fn_scope_cliente_ownership e
              --   fn_scope_fornitore_ownership.
              ('script.fn_get_identita_sr_perimetro'),
-             ('script.fn_scope_identita_processo')$$,
+             ('script.fn_scope_identita_processo'),
+             -- Rev 2026-11-22 (20261120-49, brief-db-revisione-ui): con la veste
+             --   NULL il livello delle colonne e' il piu' restrittivo fra le vesti
+             --   utilizzabili dell'utente, e le sceglie il building block.
+             ('ui.fn_lista_colonne_livello')$$,
     '26) le sedi del brief leggono script.fn_veste_utilizzabile (le check dell''anti-lockout attraverso fn_identita_super_admin_senza_scadenza)');
 
 SELECT * FROM finish();

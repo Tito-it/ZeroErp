@@ -4,7 +4,7 @@
 > **Da dove viene**: tre giorni di lavoro nell'agosto 2026, e ogni regola qui
 > sotto è costata un difetto vero. Storia e misure:
 > `docs/it/dev/work-done/2026/brief-db-pgtap-runner-rls-baseline.md`.
-> **Ultimo aggiornamento**: 17 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 
 ## La cosa da sapere per prima
 
@@ -680,8 +680,11 @@ c'è?** Le forme che restano verdi su una configurazione monca:
   l'applicazione»);
 * **`has_check(schema, tabella, descrizione)`**: il terzo argomento è la
   descrizione, non il nome, e l'asserzione è verde con **qualunque** `CHECK`. Un
-  vincolo si asserisce per nome e definizione insieme (`pg_get_constraintdef`
-  del vincolo con quel `conname`, confrontato col testo atteso);
+  vincolo si asserisce per nome e definizione insieme, con
+  `dbops.fn_pgtap_definizione_vincolo(tabella, nome)` confrontato col testo atteso.
+  Non con `pg_get_constraintdef`: sulla 19 lo stesso `IN` su `varchar` ha un testo
+  sul database costruito da zero e un altro su quello aggiornato da un dump, e il
+  test sarebbe verde su una macchina sola;
 * **`has_column`**: verifica il nome, non da dove arriva il valore. Su una
   famiglia di viste quasi identiche l'errore plausibile è la riga copiata dalla
   sorella; accanto va un'invariante sul **contenuto**, vera anche a database

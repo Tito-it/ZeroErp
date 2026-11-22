@@ -8,10 +8,10 @@
 --   del giornale. Il ruolo applicativo ha SELECT e basta.
 --
 -- Test: maintenance.fn_run_and_log — il lock non resta preso, l'esito si legge
--- ChangeSet: 20261103-56, 20261103-64 · Brief: brief-db-revisione-maintenance D2, D5
+-- ChangeSet: 20261103-56, 20261103-64, 90_end/20261122-25 · Brief: brief-db-revisione-maintenance D2, D5
 --
 -- Elenco test (plan 11):
---  1) ⛔ D2: una corsa con lock e senza processo dichiarato e' respinta (23514)
+--  1) ⛔ D2: una corsa con lock e senza processo dichiarato e' respinta (23502)
 --  2) ⭐ D2: ... e il lock NON resta preso (pg_locks della sessione)
 --  3) ⭐ D5: un esito con _falliti > 0 rende la corsa rossa
 --  4) ⭐ D5: ... con error_code E_JOB_ESITO_CON_SCARTI
@@ -66,11 +66,15 @@ SELECT count(*) AS n FROM pg_locks
 -- ============================================================
 -- 1-2. D2: l'apertura respinta non lascia il lock preso
 -- ============================================================
+-- ⚠️ Dal 90_end/20261122-25 processo_codice e' NOT NULL e il CHECK
+--   chk_job_run_log_processo_dichiarato e' ritirato: la corsa senza processo la
+--   respinge il NOT NULL (23502), non piu' il CHECK (23514). Il punto del D2 resta
+--   lo stesso: l'apertura e' respinta, e il lock non resta preso (test 2).
 SELECT throws_ok(
     $$ SELECT maintenance.fn_run_and_log(
            'PGTAP-ESITO-NESSUN-PROCESSO', 'step', 'SELECT 1',
            p_lock_key => hashtext('PGTAP-ESITO-NESSUN-PROCESSO')::bigint) $$,
-    '23514',
+    '23502',
     NULL,
     'D2: una corsa senza processo dichiarato e'' respinta all''apertura'
 );

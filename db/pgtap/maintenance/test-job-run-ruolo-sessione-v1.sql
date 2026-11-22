@@ -69,7 +69,7 @@ SELECT is(
 -- I processi di prova
 -- ============================================================
 -- ⚠️ Una corsa nuova deve dichiarare il suo processo
---   (chk_job_run_log_processo_dichiarato, FK su dbops.processi): si seminano,
+--   (NOT NULL di processo_codice, FK su dbops.processi): si seminano,
 --   come fa dbops/test-presidio-processi-testo-per-causa-v1. Canale CODA: niente
 --   job pgAgent da dichiarare.
 INSERT INTO dbops.processi (id, codice, descrizione, classe, canale, causa_fallimento)
