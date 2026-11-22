@@ -84,11 +84,17 @@ class JobLivenessGuardTests(SimpleTestCase):
             )
         sql, params = cursore.execute.call_args[0]
         self.assertIn("processo_codice = %s", sql)
-        self.assertNotIn("jobname = ANY", sql)
-        # ⚠️ Il valore del filtro va una volta per CTE (`recente`, `conclusa`),
-        #    poi la soglia: e' l'ordine dei `%s` nel testo, e un parametro
-        #    fuori posto qui non fallisce — filtra sulla cosa sbagliata.
-        self.assertEqual(params, ["un_processo", "un_processo", 90])
+        self.assertNotIn("unnest(%s::text[])", sql)
+        # ⭐ Per chiave: le corsie del processo con la discesa ricorsiva, poi
+        #    una `LATERAL … LIMIT 1` per corsia, mai un `DISTINCT ON` sul giornale.
+        self.assertIn("WITH RECURSIVE", sql)
+        self.assertNotIn("DISTINCT ON", sql)
+        self.assertEqual(sql.count("LIMIT 1"), 2)
+        # ⚠️ Il valore del filtro va due volte nella discesa delle corsie, poi
+        #    una volta per CTE (`recente`, `conclusa`), poi la soglia: e'
+        #    l'ordine dei `%s` nel testo, e un parametro fuori posto qui non
+        #    fallisce — filtra sulla cosa sbagliata.
+        self.assertEqual(params, ["un_processo"] * 4 + [90])
 
     # 4. Una lista vuota non e' «nessun filtro»: e' «nessun job», e la risposta
     #    e' vuota senza interrogare niente.
@@ -125,6 +131,31 @@ class JobLivenessSulDatabaseTests(TestCase):
                 # ⭐ Il jobname porta la corsia: e' la forma che il battito
                 #    ritrova, ed e' il motivo per cui la chiave e' il processo.
                 self.assertTrue(jobname.startswith(PROCESSO_DIGEST_PRESIDI))
+
+    # 5-bis. Le corsie di un processo nessuna tabella le elenca: `job_liveness`
+    #    le ricava dal giornale con una discesa ricorsiva «salta al jobname
+    #    successivo» (2026-11-22). Una discesa che si fermasse al primo passo
+    #    risponderebbe una corsia sola, e il test 5 resterebbe verde. Qui le
+    #    corsie si COSTRUISCONO — due, sotto lo stesso processo, piu' quelle
+    #    vere — e si ritirano: tutte e due devono comparire, con la loro corsa.
+    def test_la_liveness_per_processo_vede_ogni_corsia(self) -> None:
+        sigla = uuid.uuid4().hex[:8]
+        corsie = [f"{PROCESSO_DIGEST_PRESIDI}:test-a-{sigla}", f"{PROCESSO_DIGEST_PRESIDI}:test-b-{sigla}"]
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                for corsia in corsie:
+                    cur.execute(
+                        "SELECT id FROM script.fn_job_run_start(%s, %s, %s, %s, %s, %s, %s)",
+                        [corsia, ORIGINE_COMMAND, "test", None, "test", PROCESSO_DIGEST_PRESIDI, None],
+                    )
+            esito = MaintenanceRepository().job_liveness(
+                processo_codice=PROCESSO_DIGEST_PRESIDI, soglia_minuti=60,
+            )
+            for corsia in corsie:
+                with self.subTest(corsia=corsia):
+                    self.assertIn(corsia, esito, "la discesa delle corsie ne ha saltata una")
+                    self.assertTrue(esito[corsia]["in_corso"])
+            transaction.set_rollback(True)
 
     # 6. ⛔ `ok` ha TRE facce — true, false, NULL = corsa ancora aperta — e
     #    una corsa aperta NON e' un esito. Fino al 2026-09-14 (mattina) la riga
@@ -202,8 +233,11 @@ class JobLivenessSulDatabaseTests(TestCase):
             self.assertIsNotNone(conclusa["ended_at"])
 
             righe, _totale = MaintenanceRepository().list_job_summary(
-                jobname_prefix=jobname, limit=10, offset=0,
+                processo_codice=PROCESSO_DIGEST_PRESIDI, limit=100, offset=0,
             )
+            # Le corsie vere del processo stanno accanto a quella del test:
+            # si guarda la propria.
+            righe = [r for r in righe if r["jobname"] == jobname]
             self.assertEqual(len(righe), 1)
             self.assertTrue(righe[0]["in_corso"], "la seconda sede non vede la corsa aperta")
             self.assertIs(righe[0]["ultima_conclusa"]["ok"], True)

@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: sessione BE**: le richieste del §6.6 e il censimento dei lettori del giornale (§7.3). Il
-giro 1 è applicato e verde (Tid, 2026-11-22). Il giro 2, la ritenzione (§7), parte dopo il censimento,
-col via di Tid; D-R1 è decisa (§7.2).
+**Riparte: team DB** (`dev/db-tid`): le richieste del §6.8 e del §7.4. Il lato BE del giro 1 è fatto
+(§6.8) e il censimento della ritenzione è consegnato (§7.4), 2026-11-22. Il giro 2, la ritenzione
+(§7), parte dopo, col via di Tid; D-R1 è decisa (§7.2), con la riserva del §7.4.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,8 +12,8 @@ col via di Tid; D-R1 è decisa (§7.2).
 | 2 | ✅ team DB | La verifica critica della richiesta | §6 | 1 |
 | 3 | ✅ team DB | Giro 1: quattro indici, due viste riscritte, la prova, la doc `manual/` | §6.2-§6.4, §6.7 | 2 |
 | 4 | ✅ Tid | Applicare `20261122-20` … `-22`; lanciare `test-job-run-log-per-chiave-v1` e i pgTAP del §6.7; rigenerare la doc auto-generata | §6.7 | 3 |
-| 5 | **sessione BE** ⏭️ | L7 riportata alla `LATERAL` per processo; il `count(*)` di L7 (si ritira, §7.4); il `LIKE` di L4; `api_tracciamento.md`. ✅ Il censimento della ritenzione (§7.4, 2026-11-22) | §6.6, §7.3, §7.4 | 4 |
-| 5-bis | **team DB** | Le due richieste del §7.4: la riserva su D-R1 (l'ultima **conclusa**), l'esclusione dichiarata dei processi come la fatturazione | §7.4 | 5 (censimento) |
+| 5 | ✅ sessione BE | L7 e le altre due sedi per chiave (`cte_corse` riscritta); `run_totali` ritirato; L4 per processo; `api_tracciamento.md`; il censimento della ritenzione (§7.4). Tutto il 2026-11-22 (§6.8) | §6.6, §6.8, §7.4 | 4 |
+| 5-bis | **team DB** ⏭️ | Le richieste del §7.4 (la riserva su D-R1, l'ultima **conclusa**; l'esclusione dichiarata dei processi come la fatturazione) e del §6.8 (le righe storiche senza processo; l'indice per le corsie di un processo, se lo ritiene) | §6.8, §7.4 | 5 |
 | 6 | team DB | Giro 2: la ritenzione di 12 mesi | §7 | 5-bis, il via di Tid |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
@@ -230,6 +230,50 @@ l'estratto, gli indici che mancano); invariati `test-vw-job-run-da-guardare` (6)
 
 ✅ Tid, 2026-11-22: applicato sullo scratch, pgTAP verde, doc auto-generata di `maintenance`
 rigenerata (tabella `job_run_log` con i quattro indici, le due viste col corpo nuovo).
+
+### 6.8 Il lato BE ✅ (2026-11-22, `dev/backend-tid`)
+
+Risposta al §6.6. Decisione di Tid: `cte_corse` si rifà **per tutti e tre** i chiamanti, non solo per L7.
+
+| Sede | Prima | Ora |
+| --- | --- | --- |
+| `maintenance_repository.cte_corse` | `DISTINCT ON (<chiave>)` sul giornale filtrato | il chiamante dichiara le **chiavi** (una relazione dello stesso WITH), e per ciascuna `CROSS JOIN LATERAL … ORDER BY started_at DESC, id DESC LIMIT 1`, `recente` e `conclusa`. Restituisce `(sql, params)` con i valori già ripetuti per le due CTE |
+| L7 `ProcessiRepository.list_processi` | `cte_corse` sul giornale intero | chiavi da `dbops.processi`; `run_totali` ritirato (§7.4) |
+| `job_liveness` per `jobnames` | `DISTINCT ON` filtrato `jobname = ANY` | chiavi `unnest` dei nomi chiesti |
+| `job_liveness` per `processo_codice` | `DISTINCT ON` filtrato sul processo | le corsie del processo con una discesa ricorsiva «salta al jobname successivo» (la forma di `vw_job_run_da_guardare`), poi la `LATERAL` col filtro sul processo |
+| L4 `list_job_summary` | `jobname_prefix`, un `jobname LIKE '<prefisso>%'` | `processo_codice`: `processo_codice = %s OR (processo_codice IS NULL AND split_part(jobname, ':', 1) = %s)`; chiavi delle corse: i jobname del riepilogo |
+
+⚠️ **L4 non è diventato un intervallo, apposta.** Sotto `it_IT.UTF-8` `_` e `:` non pesano al primo
+livello, quindi `jobname >= 'x' AND jobname < <successore di 'x'>` non è il prefisso: può prendere
+nomi che non lo hanno. E nel `LIKE` di prima `_` era un jolly. La chiave vera delle corsie di
+fatturazione è il processo, e il suo indice la serve. Il nome resta solo per le righe storiche
+senza processo, con un confronto esatto.
+
+**Prova** (`EXPLAIN` come app su dbdev, `enable_seqscan = off`): `job_liveness` nei due modi e
+`list_processi` scendono per chiave (`Index Cond: jobname = k.jobname` /
+`processo_codice = …`, `Limit`), senza `Sort` sul giornale. Test: 2393 verdi, compresi quelli sul
+DB vero (`ZEROERP_TEST_DB_E2E=1`).
+
+**Due richieste al team DB nate qui:**
+
+1. **Le righe storiche senza processo.** Nel riepilogo della fatturazione il ramo
+   `processo_codice IS NULL` si legge per intero: il predicato sul nome non è servito da
+   `ix_job_run_log_jobname_senza_processo`, che è per `jobname` esatto. Su dbdev sono circa
+   101 000 righe, ferme per costruzione (`chk_job_run_log_processo_dichiarato` è `NOT VALID`), quindi
+   il costo non cresce. Ma la soluzione sul modello è attribuire il processo alle righe storiche
+   (si riconosce dal nome) e validare il `CHECK`. Allora il ramo del BE si toglie, e con lui
+   l'indice parziale e il ramo «senza processo» delle viste del giro 1. Il team DB decide se e
+   quando. Il BE toglie il ramo dopo.
+2. **Le corsie di un processo**, facoltativa. La discesa ricorsiva di `job_liveness` per
+   `processo_codice` fa ogni passo su `ix_job_run_log_processo_codice_started_at`, cioè fra tutte le
+   corse del processo: cresce con la storia **del processo**, che la ritenzione limita. Un indice
+   `(processo_codice, jobname, started_at DESC, id DESC)` la renderebbe una ricerca per corsia. Lo
+   segnalo, non lo decido.
+
+Doc BE corrette: `api_tracciamento.md` (le Note sugli indici e sulla lettura per chiave, il filtro
+`processo_codice`, la data spostata sopra lo scopo, per cui l'indice della doc BE riprende la
+descrizione), `api_amm_software.md` (`run_totali` tolto), il catalogo dei building block
+(`cte_corse`, `job_liveness`).
 
 ## 7. Giro 2 — La ritenzione: il giornale tiene 12 mesi
 

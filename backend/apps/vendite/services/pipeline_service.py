@@ -17,6 +17,7 @@ from apps.core.db._helpers import order_dir_ammessa
 from apps.core.db.dbops_repository import DbopsRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
+from apps.core.services.processi import PROCESSO_RUN_FATTURAZIONE_BATCH
 from apps.core.services.service_errors import E_VALIDATION_INPUT
 from apps.vendite.db.pipeline_repository import (
     SdiPayloadRow,
@@ -568,8 +569,11 @@ def ristampa_lotto(
     return {"lotto_id": lotto_id, "accodate": accodate}
 
 
-# Prefisso jobname delle CORSIE DI FATTURAZIONE in maintenance.job_run_log:
-# il batch registra `run_fatturazione_batch:<corsia>` (immediata/differita).
+# Le CORSIE DI FATTURAZIONE in maintenance.job_run_log sono quelle del
+# processo `PROCESSO_RUN_FATTURAZIONE_BATCH` (il batch registra
+# `run_fatturazione_batch:<corsia>`, immediata/differita): si chiedono per
+# CODICE di processo, non per prefisso del nome (2026-11-22, vedi
+# `MaintenanceRepository.list_job_summary`).
 #
 # I worker di drenaggio code (`draina_coda_lavori`/`draina_coda_stampa`) NON
 # sono qui di proposito (2026-07-23, richiesta Tid): sono poller che si
@@ -579,7 +583,6 @@ def ristampa_lotto(
 # liveness delle code resta esposta dove è pertinente, accanto alle code
 # stesse: `coda_lavori.gestione_service.conteggi_code` -> `worker.*`
 # (last_run_at + attivo), reso nei tab della vista Code di lavoro.
-_JOBNAME_PREFISSO_FATTURAZIONE = "run_fatturazione_batch"
 
 
 # Scopo: normalizza il timestamp testuale di PG ("YYYY-MM-DD HH:MM:SS...+TZ",
@@ -675,11 +678,11 @@ def esiti_fatturazione(
     ]
 
     # (b) Giri del BATCH schedulato. Una pagina piena (`MAX_LIMIT`) di JOBNAME DISTINTI (il summary
-    # e' un GROUP BY jobname) gia' ristretti al prefisso di fatturazione: le
+    # e' un GROUP BY jobname) gia' ristretti alle corsie della fatturazione: le
     # corsie sono 2, il cap e' largo per costruzione.
     summary, _ = MaintenanceRepository().list_job_summary(
         limit=MAX_LIMIT,
-        jobname_prefix=_JOBNAME_PREFISSO_FATTURAZIONE,
+        processo_codice=PROCESSO_RUN_FATTURAZIONE_BATCH,
         meta_month_equals=(
             ("competenza", competenza_mese.replace(day=1).isoformat())
             if competenza_mese is not None

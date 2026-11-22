@@ -178,10 +178,10 @@ class EsitiFatturazioneTests(SimpleTestCase):
 
             result = esiti_fatturazione(auth_user_id=9)
 
-        # Il repo e' interrogato col prefisso delle sole corsie: i worker
+        # Il repo e' interrogato per il processo delle sole corsie: i worker
         # draina_* non devono nemmeno essere letti (2026-07-23).
         kwargs = MaintRepo.return_value.list_job_summary.call_args.kwargs
-        self.assertEqual(kwargs["jobname_prefix"], "run_fatturazione_batch")
+        self.assertEqual(kwargs["processo_codice"], "run_fatturazione_batch")
         # Senza competenza esplicita: nessun filtro di mese (totali da sempre).
         self.assertIsNone(kwargs["meta_month_equals"])
 

@@ -1992,7 +1992,7 @@ service, tenute uguali ai `CHECK` di `dbops.processi` dal guardrail
 
 ⭐ **Le corse nella forma unica** (dal 2026-11-22), la stessa di `job_liveness` e
 `job-summary` ([api_tracciamento.md](../../core/manual/api_tracciamento.md)): le
-leggono le CTE comuni `cte_corse(chiave="processo_codice")` di
+leggono le CTE comuni `cte_corse(..., chiave="processo_codice")`, per chiave, di
 `maintenance_repository`. ⛔ Fino a quel giorno una lettura locale dava
 `ultimo_run` (anche una saltata) accanto a `ultimo_ok` (l'ultima corsa vera):
 due colonne affiancate che potevano essere di due corse diverse. A video la

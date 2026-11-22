@@ -250,29 +250,33 @@ class TestMaintenanceJobSummary(TestCase):
         MaintenanceRepository().list_job_summary(limit=50, offset=0)
         sql, params = mock_conn.cursor.return_value.__enter__.return_value \
             .execute.call_args[0]
-        self.assertNotIn("jobname LIKE", sql)
+        self.assertNotIn("processo_codice = %s", sql)
         self.assertNotIn("meta ->>", sql)
         self.assertEqual(params, [50, 0])
-        # ⚠️ E senza condizioni la CTE `conclusa` deve restare un `WHERE` valido:
-        #    e' l'unica delle tre con una condizione propria.
-        self.assertIn("WHERE ended_at IS NOT NULL", sql)
+        # ⚠️ E senza condizioni la CTE `conclusa` resta un `WHERE` valido: la
+        #    chiave, poi le condizioni proprie della corsa conclusa.
+        self.assertIn("WHERE jobname = k.jobname\n", sql)
+        self.assertIn("AND ended_at IS NOT NULL", sql)
         self.assertNotIn("WHERE  AND", sql)
 
-    # Scopo: filtri opzionali → WHERE su jobname (LIKE prefisso) e sul mese
+    # Scopo: filtri opzionali → WHERE sul processo (per chiave) e sul mese
     #        ATTRIBUITO al run, con i VALORI parametrizzati (mai interpolati).
     @patch(_CONN)
-    def test_list_job_summary_filtra_prefisso_e_mese(self, mock_conn):
+    def test_list_job_summary_filtra_processo_e_mese(self, mock_conn):
         from apps.core.db.maintenance_repository import MaintenanceRepository
 
         _mock_cursor(mock_conn, [], _COLONNE["job_summary"])
         MaintenanceRepository().list_job_summary(
             limit=10, offset=0,
-            jobname_prefix="run_fatturazione_batch",
+            processo_codice="run_fatturazione_batch",
             meta_month_equals=("competenza", "2026-07-01"),
         )
         sql, params = mock_conn.cursor.return_value.__enter__.return_value \
             .execute.call_args[0]
-        self.assertIn("jobname LIKE %s", sql)
+        # Per chiave, non per prefisso: nessun `LIKE` (jolly `_`, nessun indice).
+        self.assertNotIn("LIKE", sql)
+        self.assertIn("processo_codice = %s", sql)
+        self.assertIn("split_part(jobname, ':', 1) = %s", sql)
         # Attribuzione: mese DICHIARATO nel meta, con ripiego sul mese di
         # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
         # quelli storici) non matcherebbero mai alcun mese.
@@ -289,10 +293,10 @@ class TestMaintenanceJobSummary(TestCase):
         #    valori seguono, nello stesso ordine, prima di limit/offset: un
         #    valore in meno qui non fallisce — filtra una CTE sulla cosa
         #    sbagliata e la riga cuce corse di job diversi.
-        self.assertEqual(sql.count("jobname LIKE %s"), 3)
+        self.assertEqual(sql.count("split_part(jobname, ':', 1) = %s"), 3)
         self.assertEqual(
             params,
-            ["run_fatturazione_batch%", "2026-07-01"] * 3 + [10, 0],
+            ["run_fatturazione_batch", "run_fatturazione_batch", "2026-07-01"] * 3 + [10, 0],
         )
 
     # Scopo: la CHIAVE di meta_month_equals finisce nell'SQL come letterale (non

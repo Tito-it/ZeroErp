@@ -1,8 +1,8 @@
 # API Tracciamento Processi e Job
 
-## Scopo
-
 > **Ultimo aggiornamento**: 22 novembre 2026
+
+## Scopo
 
 Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo, task registry multi-dominio e il giornale delle corse dei lavori automatici. È la vista **grezza e trasversale**: la vista per processo, con le sue corse, sta nella schermata dei processi automatici (vedi [Vedi anche](#vedi-anche)).
 
@@ -154,7 +154,7 @@ come uno — stessa forma di `job_liveness`, vedi
 [api_gestione_code.md](api_gestione_code.md) §1. Ordine: la riga più recente
 prima (`last_run_at DESC`), poi `jobname`.
 
-L'endpoint non ha filtri. I due filtri del repository (`jobname_prefix`,
+L'endpoint non ha filtri. I due filtri del repository (`processo_codice`,
 `meta_month_equals`) li usa solo il pannello esiti della fatturazione
 ([api_fatturazione.md](../../vendite/manual/api_fatturazione.md)), e la chiave
 `meta` la sceglie il codice chiamante, mai il client.
@@ -221,7 +221,7 @@ Il repository non serve solo questi endpoint. Gli altri metodi, e chi li usa:
 | `corsa_riuscita_dal(jobname, dal)` | c'è una corsa **riuscita** della corsia da `dal` in poi (fallite, aperte e saltate non contano) | `e_dovuto`, sveglie calendariali |
 | `corsa_chiusa_dal(jobname, dal)` | c'è una corsa **chiusa con esito**, riuscita o fallita, da `dal` in poi | `e_dovuto` con `basta_una_corsa` |
 | `job_liveness(jobnames=… \| processo_codice=…, soglia_minuti)` | per jobname: segno di vita (`last_run_at` ISO-8601, `attivo`, `in_corso`) + `ultima_conclusa`. Esattamente **una** delle due chiavi: senza, leggerebbe il giornale intero | stato dei worker in [api_gestione_code.md](api_gestione_code.md), digest dei presidi |
-| `list_job_summary(jobname_prefix=…, meta_month_equals=…)` | come `job-summary`, coi due filtri facoltativi | `job-summary` (senza filtri), pannello esiti della fatturazione |
+| `list_job_summary(processo_codice=…, meta_month_equals=…)` | come `job-summary`, coi due filtri facoltativi. `processo_codice` tiene le corsie del processo per **chiave**; le righe storiche senza processo le riconosce dal nome (`<codice>` o `<codice>:<corsia>`, confronto esatto). Fino al 2026-11-22 era `jobname_prefix`, un `LIKE` che nessun indice serve e in cui `_` era un jolly | `job-summary` (senza filtri), pannello esiti della fatturazione |
 
 ⭐ Le corse si raccontano in **una forma sola** in tutto il backend: la riga più
 recente come segno di vita, l'ultima corsa vera chiusa come `ultima_conclusa`
@@ -252,13 +252,22 @@ lavori).
 
 ## Note
 
-- Le query sono dirette, senza funzioni né viste SQL dedicate. ⚠️ Gli indici
-  li ha `dbops.audit_log`; `maintenance.job_run_log` ha **solo** la chiave
-  primaria (doc DB al 2026-11-22), quindi `job-runs` e `job-summary` (e
-  `job_liveness`, con i suoi `DISTINCT ON (jobname)`) leggono la tabella intera.
-  Fino a questa revisione la nota diceva che gli indici esistenti coprivano i
-  pattern di accesso, e per il giornale non era vero. Un indice è lavoro DB:
-  va chiesto con un brief, non deciso da qui.
+- Le query sono dirette, senza funzioni né viste SQL dedicate. Gli indici li
+  hanno `dbops.audit_log` e, dal 2026-11-22, `maintenance.job_run_log`
+  ([brief-db-giornale-corse-indici](../../../dev/work-in-progress/brief-db-giornale-corse-indici.md)):
+  per `jobname`, per `processo_codice`, per recenza, e uno parziale per le
+  righe storiche senza processo, tutti su `started_at DESC, id DESC`.
+- ⭐ Le corse si leggono **per chiave** (2026-11-22): `cte_corse` cerca la
+  riga più recente e l'ultima conclusa di ogni chiave con una `LATERAL …
+  LIMIT 1`, una discesa nell'indice a prescindere dalla storia. Fino a quel
+  giorno era un `DISTINCT ON` sul giornale filtrato, che un indice ordina ma
+  non limita. Lo usano `job_liveness`, `list_job_summary` e la lista dei
+  processi.
+- ⚠️ Restano proporzionali alla storia, per definizione: i conteggi di
+  `job-summary` (tutte le corse di ogni job) e la lista di `job-runs` senza
+  `date_from`. Il giornale tiene 12 mesi quando il team DB applica la
+  ritenzione (giro 2 del brief): da allora le due risposte parlano degli
+  ultimi 12 mesi, più le corse che la potatura conserva.
 - I tipi condivisi (`AuditLogRow`, `DominioTaskRow`, `TaskRegistryRow`, `TaskRegistryImplRow`, `JobRunLogRow`) sono in `apps/core/types.py` per riuso cross-dominio.
 - Gli helper generici `qp_bool_optional`, `qp_str`, `pagina_da_query`, `envelope_da_offset` sono in `apps/core/api/payload_validators.py` e riusabili da qualsiasi endpoint GET.
 - 2026-10-21: i sei endpoint leggono la finestra come `limit`/`offset` (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope invariato.

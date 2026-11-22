@@ -242,7 +242,7 @@ class ProcessiRepository:
     # ⭐ LE CORSE NELLA FORMA UNICA (2026-11-22, ok Tid): `ultimo_run` e
     #    `in_corso` dalla riga PIU' RECENTE (segno di vita, saltate comprese),
     #    `ultima_conclusa = {started_at, ended_at, ok}` dall'ultima corsa VERA
-    #    chiusa — le CTE `cte_corse(chiave="processo_codice")`, le stesse di
+    #    chiusa — le CTE `cte_corse(..., chiave="processo_codice")`, le stesse di
     #    `job_liveness` e `list_job_summary`.
     #    ⛔ Fino a quel giorno una LATERAL locale dava `ultimo_run` (anche una
     #    saltata) accanto a `ultimo_ok` (l'ultima vera): a video «ieri 07:30 ✓»
@@ -295,17 +295,26 @@ class ProcessiRepository:
         #    nella SELECT, cioe' PRIMA delle condizioni del WHERE. L'ordine dei
         #    segnaposto e' posizionale, e sbagliarlo non da' errore di sintassi
         #    — da' un filtro applicato al valore sbagliato.
+        # ⭐ Le corse PER PROCESSO, una `LATERAL` per codice del catalogo
+        #    (`cte_corse` con le chiavi da `dbops.processi`): una discesa
+        #    nell'indice `ix_job_run_log_processo_codice_started_at` per
+        #    processo, non un `DISTINCT ON` su tutto il giornale (L7 di
+        #    brief-db-giornale-corse-indici §6.6, 2026-11-22).
+        # ⚠️ L'ordine dei `%s` nel testo: le CTE delle corse (oggi senza
+        #    condizioni, quindi nessun valore — ma si passano lo stesso, perche'
+        #    una condizione aggiunta domani non resti senza il suo valore), poi
+        #    la SELECT, poi il WHERE.
+        corse_sql, corse_params = cte_corse("chiavi", chiave="processo_codice")
         where_params = params
-        params = [*_params_vuole_identita(), *params]
-        # ⚠️ Le CTE non hanno parametri (nessuna condizione): l'ordine dei `%s`
-        #    resta quello del SELECT e del WHERE.
+        params = [*corse_params, *_params_vuole_identita(), *params]
         data_sql = f"""
             -- ⛔ Niente conteggio delle corse: `run_totali` (le corse di sempre)
             --    e' ritirato il 2026-11-22 (Tid: «i conteggi non usati si
             --    ritirano»). Non lo leggeva nessuno, e con la ritenzione del
             --    giornale a 12 mesi non sarebbe piu' stato «di sempre»
             --    (brief-db-giornale-corse-indici §7.4).
-            WITH {cte_corse([], chiave="processo_codice")}
+            WITH chiavi AS (SELECT codice AS processo_codice FROM dbops.processi),
+            {corse_sql}
             SELECT p.id,
                    p.codice,
                    p.descrizione,
