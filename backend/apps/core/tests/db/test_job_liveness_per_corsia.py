@@ -2,31 +2,37 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Le DUE CHIAVI di `MaintenanceRepository.job_liveness` — per jobname
-#        (i due drainer) e per `processo_codice` (i processi a piu' corsie).
-# Note: ⭐ Perche' esiste. Il badge delle code chiede la liveness per NOME, e il
-#        suo commento dichiara aperto il caso opposto: «dove jobname e processo
-#        non coincidono — le corsie di `run_fatturazione_batch`, che attaccano
-#        la corsia al jobname — la liveness non si fa da qui». Il battito del
-#        digest dei presidi e' il primo che ne ha bisogno, e la chiave onesta e'
-#        `processo_codice`: ha una FK dura verso `dbops.processi`.
-#        ⛔ Il guard sulle due chiavi si prova SENZA database: e' quello che
-#        impedisce a una chiamata senza filtro di rispondere la liveness
+# Scopo: La CORSIA — la coppia `(processo_codice, jobname)` — come chiave dei
+#        lettori del giornale per corsia: `job_liveness`, `list_job_summary`,
+#        e il filtro di `list_job_runs`.
+# Note: ⭐ Perche' esiste. Il modello non lega un `jobname` a un processo solo
+#        (ritocco 1 del §8.8 di brief-db-giornale-corse-indici). Fino al
+#        2026-11-22 la liveness si poteva chiedere per soli nomi (il badge dei
+#        drainer) e il riepilogo raggruppava per nome: due processi con una
+#        corsia dello stesso nome si mescolavano senza errore. Strada (a) di
+#        Tid (§11.3): la chiave e' la coppia, ovunque. Il caso si COSTRUISCE
+#        (test 7): oggi nessun processo condivide un nome di corsia, e un test
+#        che guardasse i dati di oggi sarebbe verde per sottrazione.
+#        ⛔ Il processo obbligatorio si prova SENZA database: e' quello che
+#        impedisce a una chiamata senza chiave di rispondere la liveness
 #        dell'INTERO giornale — un errore che non fallisce, restituisce solo la
 #        cosa sbagliata.
+#        Fino al 2026-11-22 il file era `test_job_liveness_due_chiavi.py`.
 # ------------------------------------------------------------
 
 """Indice test previsti.
 
 Senza database:
-  1. test_senza_nessuna_chiave_si_ferma
-  2. test_con_tutte_e_due_le_chiavi_si_ferma
-  3. test_la_chiave_processo_filtra_sul_processo
+  1. test_senza_processo_si_ferma
+  2. test_i_jobnames_restringono_dentro_il_processo
+  3. test_senza_jobnames_le_corsie_vengono_dal_giornale_del_processo
   4. test_una_lista_di_jobname_vuota_non_interroga_il_giornale
 
 Su DB provvisto (`ZEROERP_TEST_DB_E2E=1`):
   5. test_la_liveness_per_processo_gira_sul_database_vero
+  5-bis. test_la_liveness_per_processo_vede_ogni_corsia
   6. test_una_corsa_aperta_non_e_un_esito_e_la_conclusa_porta_la_sua_data   ⭐ 14-09
+  7. test_due_processi_con_una_corsia_dello_stesso_nome_non_si_mescolano    ⭐ 22-11
 """
 
 from __future__ import annotations
@@ -41,67 +47,83 @@ from django.test import SimpleTestCase
 from apps.core.db import maintenance_repository as modulo
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.services.job_run import ORIGINE_COMMAND
-from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
+from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI, PROCESSO_DRAINA_CODA_LAVORI
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 
+def _connessione_finta() -> tuple[MagicMock, MagicMock]:
+    cursore = MagicMock()
+    cursore.fetchall.return_value = []
+    cursore.__enter__ = MagicMock(return_value=cursore)
+    cursore.__exit__ = MagicMock(return_value=False)
+    finta = MagicMock()
+    finta.cursor.return_value = cursore
+    return finta, cursore
+
+
 class JobLivenessGuardTests(SimpleTestCase):
-    """Il guard delle due chiavi, senza database."""
+    """La chiave della liveness, senza database."""
 
     def setUp(self) -> None:
         self.repo = MaintenanceRepository()
 
-    # 1-2. ⛔ Esattamente UNA chiave. Senza filtro la query leggerebbe il
-    #      giornale intero e risponderebbe la liveness di tutto; con tutte e due
-    #      il chiamante crede di aver ristretto due volte e ne vale una sola.
-    def test_senza_nessuna_chiave_si_ferma(self) -> None:
+    # 1. ⛔ Il processo e' obbligatorio: senza, la query leggerebbe il giornale
+    #    intero e risponderebbe la liveness di tutto. Mancante e' un
+    #    `TypeError` della firma; vuoto e' un `ValueError`, prima del cursore.
+    def test_senza_processo_si_ferma(self) -> None:
         finta = MagicMock()
         with patch.object(modulo, "connection", finta):
+            with self.assertRaises(TypeError):
+                self.repo.job_liveness(soglia_minuti=10)  # type: ignore[call-arg]
             with self.assertRaises(ValueError):
-                self.repo.job_liveness(soglia_minuti=10)
+                self.repo.job_liveness(processo_codice="", soglia_minuti=10)
         finta.cursor.assert_not_called()
 
-    def test_con_tutte_e_due_le_chiavi_si_ferma(self) -> None:
-        finta = MagicMock()
-        with patch.object(modulo, "connection", finta):
-            with self.assertRaises(ValueError):
-                self.repo.job_liveness(
-                    ["un_job"], soglia_minuti=10, processo_codice="un_processo",
-                )
-        finta.cursor.assert_not_called()
-
-    # 3. La chiave nuova filtra sul PROCESSO, e il valore viaggia come parametro.
-    def test_la_chiave_processo_filtra_sul_processo(self) -> None:
-        cursore = MagicMock()
-        cursore.fetchall.return_value = []
-        cursore.__enter__ = MagicMock(return_value=cursore)
-        cursore.__exit__ = MagicMock(return_value=False)
-        finta = MagicMock()
-        finta.cursor.return_value = cursore
+    # 2. Con `jobnames` le chiavi sono le corsie dette, DENTRO il processo: la
+    #    `LATERAL` cerca per coppia, e nessun nome si cerca da solo.
+    def test_i_jobnames_restringono_dentro_il_processo(self) -> None:
+        finta, cursore = _connessione_finta()
         with patch.object(modulo, "connection", finta):
             self.repo.job_liveness(
-                soglia_minuti=90, processo_codice="un_processo",
+                processo_codice="un_processo", jobnames=["una_corsia"], soglia_minuti=90,
             )
         sql, params = cursore.execute.call_args[0]
-        self.assertIn("processo_codice = %s", sql)
+        self.assertIn("unnest(%s::text[])", sql)
+        self.assertEqual(
+            sql.count("WHERE processo_codice = k.processo_codice AND jobname = k.jobname"), 2,
+        )
+        self.assertNotIn("WHERE jobname = k.jobname", sql)
+        self.assertIn("USING (processo_codice, jobname)", sql)
+        self.assertEqual(params, ["un_processo", ["una_corsia"], 90])
+
+    # 3. Senza `jobnames` le corsie del processo vengono dal giornale, con la
+    #    discesa ricorsiva, poi una `LATERAL … LIMIT 1` per corsia, mai un
+    #    `DISTINCT ON` sul giornale.
+    def test_senza_jobnames_le_corsie_vengono_dal_giornale_del_processo(self) -> None:
+        finta, cursore = _connessione_finta()
+        with patch.object(modulo, "connection", finta):
+            self.repo.job_liveness(processo_codice="un_processo", soglia_minuti=90)
+        sql, params = cursore.execute.call_args[0]
         self.assertNotIn("unnest(%s::text[])", sql)
-        # ⭐ Per chiave: le corsie del processo con la discesa ricorsiva, poi
-        #    una `LATERAL … LIMIT 1` per corsia, mai un `DISTINCT ON` sul giornale.
         self.assertIn("WITH RECURSIVE", sql)
         self.assertNotIn("DISTINCT ON", sql)
         self.assertEqual(sql.count("LIMIT 1"), 2)
-        # ⚠️ Il valore del filtro va due volte nella discesa delle corsie, poi
-        #    una volta per CTE (`recente`, `conclusa`), poi la soglia: e'
-        #    l'ordine dei `%s` nel testo, e un parametro fuori posto qui non
-        #    fallisce — filtra sulla cosa sbagliata.
-        self.assertEqual(params, ["un_processo"] * 4 + [90])
+        self.assertEqual(
+            sql.count("WHERE processo_codice = k.processo_codice AND jobname = k.jobname"), 2,
+        )
+        # ⚠️ Il processo va due volte nella discesa delle corsie, una nelle
+        #    chiavi, poi la soglia: e' l'ordine dei `%s` nel testo, e un
+        #    parametro fuori posto qui non fallisce — filtra sulla cosa sbagliata.
+        self.assertEqual(params, ["un_processo"] * 3 + [90])
 
-    # 4. Una lista vuota non e' «nessun filtro»: e' «nessun job», e la risposta
-    #    e' vuota senza interrogare niente.
+    # 4. Una lista vuota non e' «nessun filtro»: e' «nessuna corsia», e la
+    #    risposta e' vuota senza interrogare niente.
     def test_una_lista_di_jobname_vuota_non_interroga_il_giornale(self) -> None:
         finta = MagicMock()
         with patch.object(modulo, "connection", finta):
-            self.assertEqual(self.repo.job_liveness([], soglia_minuti=10), {})
+            self.assertEqual(
+                self.repo.job_liveness(processo_codice="p", jobnames=[], soglia_minuti=10), {},
+            )
         finta.cursor.assert_not_called()
 
 
@@ -216,7 +238,7 @@ class JobLivenessSulDatabaseTests(TestCase):
             self.assertNotEqual(avvio_prima, avvio_seconda)
 
             liveness = MaintenanceRepository().job_liveness(
-                jobnames=[jobname], soglia_minuti=60,
+                processo_codice=PROCESSO_DIGEST_PRESIDI, jobnames=[jobname], soglia_minuti=60,
             )
             corsa = liveness[jobname]
             self.assertTrue(corsa["attivo"], "una corsa aperta e' un segno di vita")
@@ -245,4 +267,71 @@ class JobLivenessSulDatabaseTests(TestCase):
                 righe[0]["ultima_conclusa"]["started_at"], avvio_prima,
                 "la seconda sede ha ancora la cucitura",
             )
+            transaction.set_rollback(True)
+
+    # 7. ⭐ Il controesempio della strada (a) (2026-11-22): due processi, una
+    #    corsia dello stesso nome. Nel primo la corsa e' APERTA, nel secondo
+    #    CONCLUSA e riuscita. Per solo nome la liveness del primo avrebbe preso
+    #    l'esito del secondo, e il riepilogo avrebbe sommato le due in una riga.
+    #    Si costruisce con le funzioni con cui il giornale si scrive davvero, e
+    #    si ritira.
+    def test_due_processi_con_una_corsia_dello_stesso_nome_non_si_mescolano(self) -> None:
+        nome = "test-corsia-condivisa:" + uuid.uuid4().hex[:8]
+        primo, secondo = PROCESSO_DIGEST_PRESIDI, PROCESSO_DRAINA_CODA_LAVORI
+        repo = MaintenanceRepository()
+
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                def apri(processo: str) -> int:
+                    cur.execute(
+                        "SELECT id FROM script.fn_job_run_start(%s, %s, %s, %s, %s, %s, %s)",
+                        [nome, ORIGINE_COMMAND, "test", None, "test", processo, None],
+                    )
+                    riga = cur.fetchone()
+                    assert riga is not None
+                    return int(riga[0])
+
+                apri(primo)  # resta APERTA
+                chiusa = apri(secondo)
+                cur.execute(
+                    "SELECT script.fn_job_run_end(%s, %s, %s, %s, %s, %s, %s::jsonb, %s)",
+                    [chiusa, True, "conclusa", 0, None, None, None, None],
+                )
+                # La premessa si ASSERISCE: lo stesso nome, due processi.
+                cur.execute(
+                    "SELECT count(DISTINCT processo_codice) FROM maintenance.job_run_log"
+                    " WHERE jobname = %s",
+                    [nome],
+                )
+                self.assertEqual(cur.fetchone()[0], 2, "il caso non e' stato costruito")
+
+            # La liveness: ogni processo vede la SUA corsa.
+            del_primo = repo.job_liveness(
+                processo_codice=primo, jobnames=[nome], soglia_minuti=60,
+            )[nome]
+            self.assertTrue(del_primo["in_corso"])
+            self.assertIsNone(
+                del_primo["ultima_conclusa"],
+                "la conclusa e' dell'altro processo: per solo nome si mescolava",
+            )
+            del_secondo = repo.job_liveness(
+                processo_codice=secondo, jobnames=[nome], soglia_minuti=60,
+            )[nome]
+            self.assertFalse(del_secondo["in_corso"])
+            self.assertIs(del_secondo["ultima_conclusa"]["ok"], True)
+
+            # Il riepilogo senza filtri: DUE righe, una per corsia.
+            righe, _ = repo.list_job_summary(limit=200, offset=0)
+            righe = {(r["processo_codice"], r["jobname"]): r for r in righe if r["jobname"] == nome}
+            self.assertEqual(set(righe), {(primo, nome), (secondo, nome)})
+            self.assertEqual(righe[(primo, nome)]["total_runs"], 1)
+            self.assertTrue(righe[(primo, nome)]["in_corso"])
+            self.assertEqual(righe[(secondo, nome)]["ok_count"], 1)
+
+            # Le corse: per nome tutte e due, ognuna col suo processo; per
+            # corsia una sola.
+            per_nome, _ = repo.list_job_runs(jobname=nome)
+            self.assertEqual({r["processo_codice"] for r in per_nome}, {primo, secondo})
+            per_corsia, _ = repo.list_job_runs(processo_codice=primo, jobname=nome)
+            self.assertEqual([r["processo_codice"] for r in per_corsia], [primo])
             transaction.set_rollback(True)

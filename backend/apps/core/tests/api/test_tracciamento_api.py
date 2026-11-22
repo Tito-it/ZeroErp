@@ -13,6 +13,7 @@ Indice test eseguiti:
 4) TestApiTaskRegistry.test_task_registry_200 — lista task
 5) TestApiTaskImplementations.test_task_implementations_200 — lista implementazioni
 6) TestApiJobRuns.test_job_runs_200 — lista esecuzioni
+6-bis) TestApiJobRuns.test_job_runs_passa_la_corsia — processo e jobname al service
 7) TestApiJobSummary.test_job_summary_200 — riepilogo job
 """
 
@@ -146,6 +147,26 @@ class TestApiJobRuns(TestCase):
         request = _make_get_request("/api/v1/core/tracciamento/job-runs/")
         response = view.get(request)
         self.assertEqual(response.status_code, 200)
+
+    # Scopo: la corsia e' la coppia (processo, jobname): la view passa al
+    #        service tutti e due i filtri (2026-11-22, strada (a) di Tid). Senza
+    #        `processo_codice` il nome prende le corse di ogni processo.
+    @patch("apps.core.api.views_tracciamento.fn_list_job_runs")
+    def test_job_runs_passa_la_corsia(self, mock_fn):
+        from apps.core.api.views_tracciamento import ApiJobRuns
+
+        mock_fn.return_value = {
+            "count": 0, "page": 1, "page_size": 50, "total_pages": 0, "results": [],
+        }
+        request = _make_get_request(
+            "/api/v1/core/tracciamento/job-runs/",
+            {"processo_codice": "draina_coda_lavori", "jobname": "draina_coda_lavori"},
+        )
+        response = ApiJobRuns().get(request)
+        self.assertEqual(response.status_code, 200)
+        kwargs = mock_fn.call_args.kwargs
+        self.assertEqual(kwargs["processo_codice"], "draina_coda_lavori")
+        self.assertEqual(kwargs["jobname"], "draina_coda_lavori")
 
 
 class TestApiJobSummary(TestCase):

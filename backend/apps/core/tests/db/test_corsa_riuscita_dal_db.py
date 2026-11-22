@@ -133,7 +133,9 @@ class CorsaRiuscitaDalDbTests(TestCase):
         repo = MaintenanceRepository()
         self._corsa(ok=False)
         self._corsa_saltata()
-        corsa = repo.job_liveness([_JOB], soglia_minuti=60)[_JOB]
+        corsa = repo.job_liveness(
+            processo_codice=PROCESSO_DIGEST_PRESIDI, jobnames=[_JOB], soglia_minuti=60,
+        )[_JOB]
         self.assertTrue(corsa["attivo"], "la sveglia e' scattata: segno di vita")
         self.assertFalse(corsa["in_corso"], "la skip e' chiusa")
         self.assertIsNotNone(corsa["ultima_conclusa"])

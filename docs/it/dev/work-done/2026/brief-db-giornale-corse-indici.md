@@ -2,9 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: la sessione BE** (`/arrivi-db`), con il §10.5: toglie il ⏳ di `api_gestione_code.md` §4,
-censisce i lettori di `job_run_id`, porta la domanda sui lettori per solo `jobname`. Al team DB non
-resta niente da scrivere. Chiusa la riga 9-quater, il brief non aspetta più nessuno e passa in `work-done/`.
+**Riparte: nessuno.** Brief **chiuso** il 2026-11-22 e archiviato in `work-done/2026/`. La domanda
+sui lettori per solo `jobname` (§11.3) l'ha decisa Tid la sera stessa, strada (a), e il giro BE
+l'ha chiusa (§11.5): nessun residuo resta aperto.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -26,7 +26,10 @@ resta niente da scrivere. Chiusa la riga 9-quater, il brief non aspetta più nes
 | 9 | ✅ team DB | Giro 3 scritto e provato: la FK `ON DELETE SET NULL` di `coda_lavori.job_run_id`, l'azzeramento del pregresso, la riga della policy degli indici, il pgTAP, la doc (2026-11-22) | §9.2, §10 | 8, la decisione di Tid (2026-11-22) |
 | 9-bis | ✅ sessione BE | `api_gestione_code.md` dice che `job_run_id` NULL vuol dire anche «corsa non più nel giornale», con la garanzia ⏳ in attesa del 9. Fatta subito: BE e FE trattano già il NULL, niente aspetta il DB (2026-11-22) | §9.2 | — |
 | 9-ter | Tid | ✅ `20261122-33` e il mirror di `fk_index_policy.csv` applicati, `dbops/test-coda-lavori-job-run-id-segue-il-giornale-v1` verde; la doc auto-generata di `dbops` rigenerata, con la FK e l'indice (2026-11-22) | §10.4 | 9 |
-| 9-quater | **sessione BE** ⏭️ | Togliere il ⏳ della garanzia in `api_gestione_code.md` §4; la domanda sui lettori per solo `jobname` | §10.5 | 9-ter |
+| 9-quater | ✅ sessione BE | Tolto il ⏳ della garanzia in `api_gestione_code.md` §4; censiti i lettori di `job_run_id`; la domanda sui lettori per solo `jobname` portata nel registro dei residui (2026-11-22) | §11 | 9-ter |
+| 10 | ✅ sessione BE | Brief archiviato in `work-done/2026/`, i rimandi ricollegati (2026-11-22) | §11.4 | 9-quater |
+| 10-bis | ✅ sessione BE | Strada (a) di Tid: i tre lettori per solo `jobname` passano alla corsia `(processo_codice, jobname)` (2026-11-22) | §11.5 | la decisione di Tid |
+| 10-ter | ✅ revisione BE (`/verifica`) | Il gemello dell'`ORDER BY` sul testo in `list_audit_logs`, il presidio di `_liveness_worker` per processo, il piano provato sul DB vero (2026-11-22) | §11.6 | 10-bis |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
@@ -48,7 +51,7 @@ una riga del CSV della policy degli indici, un pgTAP, tre pagine `manual/`, la d
 `coda_lavori` e una guida, §10) e questa testata.
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
-> **Origine:** revisione della doc API di `maintenance` ([api_tracciamento.md](../../backend/core/manual/api_tracciamento.md)),
+> **Origine:** revisione della doc API di `maintenance` ([api_tracciamento.md](../../../backend/core/manual/api_tracciamento.md)),
 > che affermava «gli indici DB esistenti coprono i pattern di accesso». Per `dbops.audit_log` è vero, per
 > `maintenance.job_run_log` no. Tid, 2026-11-22: brief separato.
 > **Brief vicini verificati:** nessun brief aperto in `work-in-progress/` tocca `job_run_log`.
@@ -110,7 +113,7 @@ con `text_pattern_ops`. Lo segnalo, non lo decido.
 
 * `docs/it/dbzero/maintenance/tabelle/job_run_log.md` si rigenera; il manuale
   `maintenance/manual/job_run_log.md` dice quali letture servono gli indici.
-* [api_tracciamento.md](../../backend/core/manual/api_tracciamento.md) § Note oggi dice «`job_run_log` ha
+* [api_tracciamento.md](../../../backend/core/manual/api_tracciamento.md) § Note oggi dice «`job_run_log` ha
   **solo** la chiave primaria»: a indici applicati quella riga va corretta. La corregge la sessione BE al
   ritorno (`/arrivi-db`), così il team DB non tocca `backend/` né la doc BE.
 
@@ -835,3 +838,98 @@ senza processo cancellate in D-R4 (§8.7). Niente da fare a mano.
 3. Resta del §9.1 la domanda di contratto sui lettori che cercano per solo `jobname`
    (`job_liveness(jobnames=…)`, `job-summary` senza filtri, `job-runs?jobname=`): del BE, con Tid. Non
    chiede niente al DB.
+
+## 11. La risposta del BE al §10.5 — 2026-11-22
+
+Sessione BE (`dev/backend-tid`), dopo il merge del giro 3 (PR #214).
+
+### 11.1 La garanzia, senza ⏳
+
+`api_gestione_code.md` §4 dice ora che un `job_run_id` non `null` porta sempre a una corsa, e perché:
+la FK `fk_coda_lavori_job_run_log` è `ON DELETE SET NULL`, per chiunque cancelli dal giornale. Nessun
+contratto cambia: le due risposte avevano già il campo nullable.
+
+### 11.2 I lettori di `coda_lavori.job_run_id`
+
+Censiti in `backend/` e `frontend/src/`. **Nessuno** fa un join verso `maintenance.job_run_log` né
+tratta un «corsa non trovata» come errore: tutti passano il numero così com'è.
+
+| Lettore | Che cosa ne fa |
+| --- | --- |
+| `CodaLavoriRepository.elenca` (lista della coda) | lo porta nella riga; il FE della lista non lo mostra |
+| `CodaLavoriRepository.get_dettaglio` → `JobDettaglioDrawer.vue` | «Run worker», `?? '—'` sul `null` |
+| `CodaLavoriRepository.get_stato` (polling) → `VenditeFatturazioneRunStatoData` | `IntegerField(allow_null=True)` |
+| `mark_done` / `mark_failed` / la riconsegna del drenatore | **scrittore**, non lettore: il filtro di ownership `job_run_id IS NOT DISTINCT FROM %s` confronta il lavoro con la corsa che lo ha preso |
+
+⚠️ Sull'ultima riga, il caso che la FK aprirebbe è una corsa **aperta** cancellata mentre il suo worker
+lavora: il lavoro perderebbe il `job_run_id` e il `mark_done` non lo troverebbe più suo. Per la potatura
+non succede per costruzione: le corse aperte sono fra le righe tenute (§8.8). Resta possibile solo per un
+`DELETE` a mano su una corsa aperta, che è un atto di manutenzione e va fatto a worker fermo. Nessuna
+modifica.
+
+### 11.3 La domanda sui lettori per solo `jobname` (§9.1) → residuo, di Tid
+
+Il modello non lega un `jobname` a un processo solo (ritocco 1 del §8.8). Tre lettori cercano ancora
+per solo `jobname`, e due processi con una corsia dello stesso nome si confonderebbero, senza errore:
+
+* `job_liveness(jobnames=…)`, dal badge della coda (`gestione_service`, i due drenatori, dove il
+  `jobname` è il codice del processo);
+* `GET …/tracciamento/job-summary/` senza filtri: una riga per `jobname`;
+* `GET …/tracciamento/job-runs/?jobname=`: il filtro, e la riga, non portano `processo_codice`.
+
+È una domanda di contratto del BE, non chiede niente al DB. ⚠️ Decisa da Tid la sera stessa,
+strada (a): i tre lettori passano alla coppia (§11.5). La voce del registro dei residui, scritta alla
+chiusura, è stata tolta nello stesso giro.
+
+### 11.4 La chiusura
+
+Brief archiviato in `work-done/2026/`. Ricollegati i rimandi di `api_gestione_code.md`,
+`api_tracciamento.md` e `work-done/2026/brief-db-lista-processi-esito-con-la-sua-data.md`; i rimandi per
+nome (changeSet, pgTAP, pagine `manual/`, commenti del codice) restano validi.
+
+### 11.5 Strada (a): la corsia è la coppia, in ogni lettore ✅ (2026-11-22)
+
+Decisione di Tid (2026-11-22): i tre lettori del §11.3 passano a `(processo_codice, jobname)`. Lato
+BE soltanto: ⚠️ il FE **non** consuma né `job-runs` né `job-summary` (nessun chiamante in
+`frontend/src`), e la risposta del badge non cambia forma. Il «una colonna e un filtro nel FE»
+detto in chat prima della decisione era sbagliato.
+
+| Lettore | Ora |
+| --- | --- |
+| `cte_corse` (BB) | la chiave è `processo_codice` oppure `corsia`, la coppia; la chiave per solo `jobname` è **ritirata**, e `chiave` è obbligatoria |
+| `job_liveness` | `processo_codice` obbligatorio (keyword), `jobnames` restringe dentro il processo; il ramo «per soli nomi» non esiste più |
+| badge della coda (`_liveness_worker`) | le due corsie dei drainer come coppie, una lettura per processo con la soglia del suo contratto; la risposta è la stessa |
+| `job-summary` | una riga per corsia, con `processo_codice`; `GROUP BY processo_codice, jobname` |
+| `job-runs` | ogni riga porta `processo_codice`; filtro `processo_codice=` facoltativo, che con `jobname` fa la corsia. Il nome da solo resta un filtro ammesso: la riga dice di chi è ogni corsa |
+
+**Trovato strada facendo, corretto:** l'`ORDER BY started_at` di `job-runs` si risolveva sulla
+colonna di output `started_at::text` e ordinava il testo sotto la collation `it_IT`, non l'istante, e
+nessun indice serviva l'ordine (con una sessione in un fuso con l'ora legale sarebbe anche sbagliato
+nell'ora che il cambio d'ora ripete; la sessione Django è in UTC). Ora è qualificato, `job_run_log.started_at`. Il `Seq Scan` della stessa query
+resta, ed è del totale `COUNT(*) OVER ()` della paginazione, non dell'ordine.
+
+**Prove.** `tests/db/test_job_liveness_per_corsia` (rinominato da `test_job_liveness_due_chiavi`),
+test 7: due processi con una corsia dello stesso nome, una aperta e una conclusa, **costruiti** con
+`script.fn_job_run_start/_end` e ritirati. Liveness, riepilogo e corse non si mescolano. Verde sul DB
+vero; rosso con la `LATERAL` che cerca per solo nome. Test unitari: la forma dell'SQL dei tre
+lettori, i parametri nell'ordine dei `%s`, la view che passa la corsia. `EXPLAIN` su dbdev: la
+liveness (con e senza `jobnames`) e le `LATERAL` del riepilogo scendono in
+`ix_job_run_log_processo_codice_jobname_started_at`.
+
+**Doc:** `api_tracciamento.md` (i due endpoint e la tabella dei metodi), `api_gestione_code.md` (la
+liveness per corsia), il catalogo BB backend (`cte_corse`, `job_liveness`, `gestione_service`,
+`corsa_conclusa`) e l'indice rigenerato.
+
+### 11.6 La revisione del giro (`/verifica`) ✅ (2026-11-22)
+
+Sessione di revisione sul codice non committato di §11.5. Il diff regge; due difetti stavano **attorno**.
+
+| Trovato | Corretto | Presidio (rosso col codice di prima, provato) |
+| --- | --- | --- |
+| `DbopsRepository.list_audit_logs` aveva lo stesso `ORDER BY executed_at` sulla colonna di output `executed_at::text`: `EXPLAIN` su dbdev, `Sort Key: ((executed_at)::text)` | `ORDER BY audit_log.executed_at DESC, audit_log.id DESC`; nota in `api_tracciamento.md` § audit-log | `tests/db/test_ordine_sull_istante_db` (nuovo): cattura l'SQL vero dei due repository (`execute_wrapper`) e ne legge il piano; nessuna chiave di ordinamento sul `::text`. Copre anche `list_job_runs`, che finora aveva solo un'asserzione sul testo della query |
+| `_liveness_worker` (una lettura per processo, con la sua soglia) senza un test: il mock rispondeva uguale a ogni processo, e il ritorno al mapping per solo nome restava verde | — | `test_coda_lavori_gestione_service` 2-bis: soglie diverse per processo (una dal ripiego), e una corsa col nome del worker della coda lavori **sotto il processo della stampa**, che non deve accenderlo |
+
+Allineati i commenti rimasti alla regola di prima: `pipeline_service` («GROUP BY jobname») e la nota sul
+cambio d'ora in `list_job_runs` e in `api_tracciamento.md`. Esito: `apps.core` toccati, `apps.vendite`
+(2766) e i test sul DB vero verdi; ruff e `gen_indice_bb.py --check` puliti. Non lanciato lo smoke
+`smoke-test-ui-personalizzazioni-liste.sh` (vuole il BE in piedi). Nessuna richiesta al DB.
