@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ui: il ritiro di una colonna della lista o di una card del pool la toglie
+#   dalle preferenze che la nominano.
+#   Brief: brief-db-revisione-ui (Q55 (a), decisa da Tid il 2026-11-22, dal
+#   /verifica-db del giro 2; gemella di U16, 20261120-40, per la misura).
+#
+# Il difetto: il guard di forma delle preferenze (ui.fn_check_forma_configurazione,
+#   20261120-24) vuole ogni codice della voce nella lista o nel pool, e giudica
+#   la configurazione intera a ogni cambio. Il DELETE di una ui.lista_colonna che
+#   nessun preset nomina, o di una riga di ui.dashboard_widget che nessun preset
+#   propone, passava e lasciava la voce nelle preferenze: da li' ogni scrittura
+#   che conservava colonne (widget) era rifiutata con E_UI_CONFIGURAZIONE_FORMA,
+#   anche il cambio della sola misura. Il resolver la voce la saltava gia'.
+# La correzione:
+#   - ui.fn_configurazione_senza_codici: toglie da un elenco della configurazione
+#     (colonne o widget) le voci di certi codici; l'elenco che resta vuoto esce,
+#     e la chiave torna a seguire il preset. Una sede per il trigger e per la
+#     bonifica qui sotto (regola del 2).
+#   - ui.trgfn_voce_ritira_dalle_preferenze, AFTER DELETE FOR EACH ROW su
+#     ui.lista_colonna e su ui.dashboard_widget (fase z10, come il ritiro della
+#     misura): la voce del codice ritirato esce dalle preferenze di quel
+#     contenitore. La riscrittura passa dai trigger della preferenza (e' un dato
+#     di dominio): il guard di forma giudica cio' che resta.
+#   - La bonifica delle voci gia' orfane (fatto datato: 20261121-01 ha ritirato
+#     tre colonne dei fornitori senza toccare le preferenze). Passa dai trigger,
+#     come il ritiro.
+# Solo il DELETE: le strade che con un UPDATE fanno uscire un codice dal suo
+#   contenitore (lista_colonna.lista_id, dashboard_widget.dashboard_id e
+#   widget_id, widget.codice) le chiude il lucchetto (80_data/sql/dbops/
+#   automation_lock_columns.csv, montato da 90_end/20261122-28): sono identita'
+#   (linee-guida-trigger, «Una FK di appartenenza non si presidia con un ramo
+#   UPDATE OF»). lista_colonna.codice era gia' sotto lucchetto (giro 4, U23).
+#   ui.widget non si cancella finche' e' nel pool (FK senza azione): basta il
+#   pool.
+# INVOKER: l'app cancella le colonne (il CRUD admin) e scrive le preferenze, che
+#   non hanno row level security.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261122-26-create-trgfn-voce-ritira-dalle-preferenze-mctit.yaml
+
+  - changeSet:
+      id: 20261122-26-create-trgfn-voce-ritira-dalle-preferenze
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: il ritiro di una colonna (ui.lista_colonna) o di una card dal pool (ui.dashboard_widget) toglie la
+        voce dalle preferenze che la nominano; bonifica delle voci gia' orfane. Brief: brief-db-revisione-ui (Q55 (a)).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui' AND p.proname = 'fn_check_forma_configurazione'
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'ui'
+                 AND p.proname IN ('fn_configurazione_senza_codici', 'trgfn_voce_ritira_dalle_preferenze')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION ui.fn_configurazione_senza_codici(
+                  p_configurazione ui.lista_preferenza_utente.configurazione%TYPE,
+                  -- text: la chiave dell'elenco ('colonne' o 'widget'); non il riflesso di una colonna
+                  p_elenco         text,
+                  -- character varying[]: i codici da togliere (ui.lista_colonna.codice, ui.widget.codice,
+                  -- varchar(80) tutti e due); tipo esplicito perche' colonna%TYPE[] non e' sintassi PostgreSQL
+                  p_codici         character varying[])
+               RETURNS jsonb
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- CASE: l'elenco si scompone solo se c'e' una voce da togliere;
+                  -- altrimenti la configurazione torna com'e' (anche un [] salvato).
+                  SELECT CASE
+                      WHEN jsonb_typeof(p_configurazione -> p_elenco) IS DISTINCT FROM 'array'
+                        OR NOT EXISTS (SELECT 1
+                                         FROM jsonb_array_elements(p_configurazione -> p_elenco) AS e(value)
+                                        WHERE (e.value ->> 'codice') = ANY (p_codici))
+                      THEN p_configurazione
+                      ELSE (SELECT CASE WHEN count(*) = 0 THEN p_configurazione - p_elenco
+                                        ELSE jsonb_set(p_configurazione, ARRAY[p_elenco],
+                                                       jsonb_agg(e.value ORDER BY e.ord))
+                                   END
+                              FROM jsonb_array_elements(p_configurazione -> p_elenco)
+                                   WITH ORDINALITY AS e(value, ord)
+                             WHERE ((e.value ->> 'codice') = ANY (p_codici)) IS NOT TRUE)
+                  END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.fn_configurazione_senza_codici(jsonb, text, character varying[]) IS
+                  'La configurazione di una preferenza senza le voci dell''elenco p_elenco (colonne o widget) il cui codice è in p_codici; le altre voci restano, nel loro ordine. L''elenco che resta vuoto esce, e la chiave torna a seguire il preset. Se l''elenco manca, non è un elenco o non ha voci di quei codici, la configurazione torna com''è. Non solleva. La leggono il ritiro di una colonna o di una card (ui.trgfn_voce_ritira_dalle_preferenze) e la bonifica che l''ha accompagnato. IMMUTABLE.';
+
+              CREATE FUNCTION ui.trgfn_voce_ritira_dalle_preferenze()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: una colonna tolta dalla lista (ui.lista_colonna) o una card
+              --   tolta dal pool (ui.dashboard_widget) esce dalle preferenze di quel
+              --   contenitore che la nominano; il resto della configurazione resta.
+              -- Montaggio: AFTER DELETE FOR EACH ROW, fase z10, sulle due tabelle.
+              DECLARE
+                  v_widget ui.widget.codice%TYPE;
+              BEGIN
+                  IF TG_WHEN <> 'AFTER' OR TG_LEVEL <> 'ROW' OR TG_OP <> 'DELETE'
+                     OR TG_RELID NOT IN ('ui.lista_colonna'::regclass, 'ui.dashboard_widget'::regclass) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'dettaglio', 'atteso AFTER DELETE FOR EACH ROW su ui.lista_colonna o ui.dashboard_widget'),
+                          NULL::uuid,
+                          format('%s: atteso AFTER DELETE FOR EACH ROW su ui.lista_colonna o ui.dashboard_widget',
+                                 TG_NAME));
+                  END IF;
+
+                  IF TG_RELID = 'ui.lista_colonna'::regclass THEN
+                      UPDATE ui.lista_preferenza_utente pu
+                         SET configurazione = ui.fn_configurazione_senza_codici(
+                                                  pu.configurazione, 'colonne', ARRAY[OLD.codice])
+                       WHERE pu.lista_id = OLD.lista_id
+                         AND pu.configurazione IS DISTINCT FROM ui.fn_configurazione_senza_codici(
+                                                  pu.configurazione, 'colonne', ARRAY[OLD.codice]);
+                  ELSE
+                      -- La card c'e' ancora: ui.widget non si cancella finche' e' nel pool.
+                      SELECT w.codice INTO v_widget FROM ui.widget w WHERE w.id = OLD.widget_id;
+                      UPDATE ui.dashboard_preferenza_utente pu
+                         SET configurazione = ui.fn_configurazione_senza_codici(
+                                                  pu.configurazione, 'widget', ARRAY[v_widget])
+                       WHERE pu.dashboard_id = OLD.dashboard_id
+                         AND pu.configurazione IS DISTINCT FROM ui.fn_configurazione_senza_codici(
+                                                  pu.configurazione, 'widget', ARRAY[v_widget]);
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION ui.trgfn_voce_ritira_dalle_preferenze() IS
+                  'Sul catalogo delle colonne (ui.lista_colonna) e sul pool delle dashboard (ui.dashboard_widget), AFTER DELETE FOR EACH ROW, fase z10: la voce del codice ritirato esce dalle preferenze di quella lista (chiave colonne di ui.lista_preferenza_utente.configurazione) o di quella dashboard (chiave widget di ui.dashboard_preferenza_utente.configurazione), con ui.fn_configurazione_senza_codici; l''elenco che resta vuoto esce e segue il preset. La riscrittura passa dai trigger della preferenza: il guard di forma giudica ciò che resta. Gli UPDATE che farebbero uscire un codice dal suo contenitore li rifiuta il lucchetto (lista_colonna.lista_id e codice, dashboard_widget.dashboard_id e widget_id, widget.codice). Montata altrove: E_TRIGGER_ARGOMENTI_INVALIDI.';
+
+              CREATE TRIGGER trg_ui_lista_colonna_z10_ritira_dalle_preferenze_dlt
+                  AFTER DELETE ON ui.lista_colonna
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_voce_ritira_dalle_preferenze();
+              CREATE TRIGGER trg_ui_dashboard_widget_z10_ritira_dalle_preferenze_dlt
+                  AFTER DELETE ON ui.dashboard_widget
+                  FOR EACH ROW
+                  EXECUTE FUNCTION ui.trgfn_voce_ritira_dalle_preferenze();
+
+              COMMENT ON TRIGGER trg_ui_lista_colonna_z10_ritira_dalle_preferenze_dlt ON ui.lista_colonna IS
+                  'La colonna ritirata esce dalle preferenze della lista (ui.trgfn_voce_ritira_dalle_preferenze).';
+              COMMENT ON TRIGGER trg_ui_dashboard_widget_z10_ritira_dalle_preferenze_dlt ON ui.dashboard_widget IS
+                  'La card tolta dal pool esce dalle preferenze della dashboard (ui.trgfn_voce_ritira_dalle_preferenze).';
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La bonifica delle voci gia' orfane: ogni codice che non e' piu' del
+              -- contenitore esce, con la stessa funzione del ritiro. Passa dai
+              -- trigger della preferenza (dato di dominio, come il ritiro).
+              UPDATE ui.lista_preferenza_utente pu
+                 SET configurazione = ui.fn_configurazione_senza_codici(pu.configurazione, 'colonne', o.codici)
+                FROM (SELECT p.id, array_agg(DISTINCT (e.value ->> 'codice'))::varchar[] AS codici
+                        FROM ui.lista_preferenza_utente p
+                       CROSS JOIN LATERAL jsonb_array_elements(
+                                 CASE WHEN jsonb_typeof(p.configurazione -> 'colonne') = 'array'
+                                      THEN p.configurazione -> 'colonne' ELSE '[]'::jsonb END) AS e(value)
+                       WHERE e.value ->> 'codice' IS NOT NULL
+                         AND NOT EXISTS (SELECT 1 FROM ui.lista_colonna lc
+                                          WHERE lc.lista_id = p.lista_id
+                                            AND lc.codice   = e.value ->> 'codice')
+                       GROUP BY p.id) AS o
+               WHERE o.id = pu.id;
+
+              UPDATE ui.dashboard_preferenza_utente pu
+                 SET configurazione = ui.fn_configurazione_senza_codici(pu.configurazione, 'widget', o.codici)
+                FROM (SELECT p.id, array_agg(DISTINCT (e.value ->> 'codice'))::varchar[] AS codici
+                        FROM ui.dashboard_preferenza_utente p
+                       CROSS JOIN LATERAL jsonb_array_elements(
+                                 CASE WHEN jsonb_typeof(p.configurazione -> 'widget') = 'array'
+                                      THEN p.configurazione -> 'widget' ELSE '[]'::jsonb END) AS e(value)
+                       WHERE e.value ->> 'codice' IS NOT NULL
+                         AND NOT EXISTS (SELECT 1 FROM ui.dashboard_widget dw
+                                           JOIN ui.widget w ON w.id = dw.widget_id
+                                          WHERE dw.dashboard_id = p.dashboard_id
+                                            AND w.codice        = e.value ->> 'codice')
+                       GROUP BY p.id) AS o
+               WHERE o.id = pu.id;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La bonifica non si annulla: le voci tolte nominavano codici che il
+              -- contenitore non ha piu'.
+              DROP TRIGGER IF EXISTS trg_ui_lista_colonna_z10_ritira_dalle_preferenze_dlt ON ui.lista_colonna;
+              DROP TRIGGER IF EXISTS trg_ui_dashboard_widget_z10_ritira_dalle_preferenze_dlt ON ui.dashboard_widget;
+              DROP FUNCTION IF EXISTS ui.trgfn_voce_ritira_dalle_preferenze();
+              DROP FUNCTION IF EXISTS ui.fn_configurazione_senza_codici(jsonb, text, character varying[]);

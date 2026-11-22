@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.misure_pagina`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -57,7 +57,11 @@ di una lista punta al numero, non all'`id`. Una misura non si riscrive, e un luc
 Una riga senza uso è una misura solo offerta. Ogni uso sta su **esattamente una** riga: al più una
 la garantisce l'indice unico, almeno una un trigger differito, che a fine transazione rifiuta un
 catalogo rimasto senza il default di un uso. Spostare un default da una misura a un'altra si fa
-quindi in una transazione sola: togliere l'uso da una riga e darlo all'altra. Il default si legge
+quindi in una transazione sola: togliere l'uso da una riga e darlo all'altra. L'indice unico però
+giudica ogni scrittura subito, non a fine transazione: la riga che perde l'uso va scritta prima di
+quella che lo prende. Dal CSV del catalogo, che si scrive riga per riga nel suo ordine, lo
+spostamento riesce in un giro solo se la riga che perde l'uso viene prima nel file; due giri, uno
+per togliere e uno per mettere, li rifiuta il trigger differito al primo. Il default si legge
 con [fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default), che non risponde mai
 vuoto: un uso senza riga è un catalogo rotto, e la funzione solleva.
 

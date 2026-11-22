@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -288,7 +288,9 @@ Un lavoro di **coda** lascia due tracce, e la domanda a cui rispondono è divers
 | [dbops.coda_lavori](/dbzero/dbops/tabelle/coda_lavori) | **il singolo lavoro**: quando è stato preso in carico, quando è iniziato e finito, quanti tentativi, l'ultimo errore, il risultato |
 
 Le due si tengono per mano con la colonna **`coda_lavori.job_run_id`**, che punta
-al giro dentro cui quel lavoro è stato eseguito.
+al giro dentro cui quel lavoro è stato eseguito. Il giornale tiene 12 mesi e la
+coda no: quando il giro esce dal giornale, il lavoro resta e la colonna si
+svuota.
 
 ⚠️ **Da qui una cosa che sorprende, e conviene saperla prima di cercarla**:
 se si va in `job_run_log` a cercare le corse di `FATTURAZIONE_GIRO` per
@@ -376,7 +378,7 @@ In ordine, e nessuno dei passi è facoltativo:
    e la [guida delle code](/guide/gestione-code-di-lavoro).
 5. **Fai in modo che firmi le proprie corse**: il giornale
    [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) rifiuta una corsa che
-   non dice di quale processo è (`chk_job_run_log_processo_dichiarato`), e il lavoro non gira.
+   non dice di quale processo è (`processo_codice` è obbligatorio), e il lavoro non gira.
 
 ⚠️ Un lavoro registrato come DOMINIO **non può essere accodato senza operatore**:
 il sistema lo rifiuta. Non è una formalità — è la regola che impedisce a un

@@ -184,6 +184,7 @@ def fn_list_task_implementations(
 #        di entrambe le origini (job del database e comandi del backend).
 def fn_list_job_runs(
     *,
+    processo_codice: str | None = None,
     jobname: str | None = None,
     ok: bool | None = None,
     date_from: date | None = None,
@@ -194,13 +195,15 @@ def fn_list_job_runs(
 ) -> dict:
     repo = MaintenanceRepository()
     results, total_count = repo.list_job_runs(
-        jobname=jobname, ok=ok, date_from=date_from, date_to=date_to,
+        processo_codice=processo_codice, jobname=jobname, ok=ok,
+        date_from=date_from, date_to=date_to,
         search=search, limit=limit, offset=offset,
     )
     return envelope_da_offset(results, total_count, limit=limit, offset=offset)
 
 
-# Scopo: Restituisce il riepilogo dei job con conteggi esecuzioni e ultimo esito.
+# Scopo: Restituisce il riepilogo per corsia — la coppia (processo_codice,
+#        jobname) — con conteggi esecuzioni e ultimo esito.
 def fn_list_job_summary(
     *,
     limit: int = DEFAULT_LIMIT,

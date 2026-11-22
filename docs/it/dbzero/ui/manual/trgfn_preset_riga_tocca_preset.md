@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_preset_riga_tocca_preset`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -78,10 +78,6 @@ stesso changeSet apre con `SET CONSTRAINTS ALL IMMEDIATE`.
 
 * **Le righe che il resolver non mostra.** Una riga che cita una colonna o un widget spenti cambia
   l'impronta lo stesso, anche se il resolver non la mostrerà.
-* **Il ritiro del software sotto un preset personalizzato.** Quando il seed toglie una riga dalla
-  composizione di un preset che l'installazione ha personalizzato, il seed rimette l'impronta di
-  prima: la data non si sposta, e l'impronta resta indietro finché la composizione non cambia di
-  nuovo.
 
 ---
 
@@ -100,6 +96,9 @@ stesso changeSet apre con `SET CONSTRAINTS ALL IMMEDIATE`.
   di un preset di dashboard.
 * `db/pgtap/ui/test-seed-primo-impianto-ui-installazione-v1.sql` — l'applicazione riscrive uguale la
   composizione di un preset di seed: il preset resta intatto.
+* `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql` — il software toglie una riga dalla
+  composizione di un preset personalizzato: l'impronta salvata è quella della composizione, e non
+  finisce fra i valori scartati del seed.
 * Non è costruito lo spostamento di una riga da un preset a un altro.
 
 ---

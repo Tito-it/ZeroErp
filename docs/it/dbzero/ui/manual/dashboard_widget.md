@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_widget`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -49,8 +49,10 @@ composizione lo chiede). Togliere dal pool un widget che un preset propone è ri
 `E_UI_WIDGET_IN_USO`, e il messaggio nomina i preset
 ([trgfn_ui_dashboard_widget_guard_in_uso](/dbzero/ui/funzioni/trgfn_ui_dashboard_widget_guard_in_uso)): si
 toglie prima il widget dai preset, o si cancellano i preset, poi dal pool. È la stessa regola delle
-colonne delle liste citate da un preset. Le preferenze non bloccano: una preferenza che nomina un widget
-uscito dal pool lo perde alla risoluzione.
+colonne delle liste citate da un preset. Le preferenze non bloccano: quando il widget esce dal pool, la
+sua voce esce anche dalle preferenze della dashboard che lo nominano
+([ui.trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)), e la
+persona continua a salvare le sue scelte. Se era l'unica voce, le card tornano a seguire il preset.
 
 ---
 
@@ -59,6 +61,10 @@ uscito dal pool lo perde alla risoluzione.
 La riga non ha `attivo`, e le due FK sono in eccezione alla regola ATTIVO: un widget nel pool si spegne
 lo stesso, e una dashboard non si ferma sul suo pool. Spegnere il widget lo toglie dalla dashboard alla
 risoluzione. Un widget nel pool non si cancella (FK senza azione), e nemmeno la dashboard.
+
+La coppia è l'identità della riga: né la dashboard né il widget di una riga si cambiano (lucchetto di
+colonna, `E_UI_WIDGET_IMMUTABILE`). Un widget si sposta togliendolo dal pool e aggiungendolo a quello
+dell'altra dashboard, così il ritiro dalle preferenze passa dalla sua strada.
 
 ### Lo scrive solo il migratore
 
@@ -77,6 +83,7 @@ e non la scrive (ha il solo `SELECT`).
 ### Codici errore
 
 * `E_UI_WIDGET_IN_USO` — si toglie dal pool un widget che un preset della dashboard propone.
+* `E_UI_WIDGET_IMMUTABILE` — si cambia la dashboard o il widget di una riga del pool.
 * La coppia ripetuta arriva come violazione della chiave primaria.
 
 ---
@@ -87,6 +94,8 @@ e non la scrive (ha il solo `SELECT`).
   invisibile e contato.
 * `db/pgtap/ui/test-ui-legami-preset-v1.sql` — togliere dal pool un widget proposto è rifiutato col nome
   del preset; tolto dal preset, esce.
+* `db/pgtap/ui/test-ui-ritiro-voce-preferenze-v1.sql` — il widget tolto dal pool esce dalle preferenze;
+  la riga del pool non cambia dashboard né widget.
 
 ---
 
@@ -97,6 +106,9 @@ e non la scrive (ha il solo `SELECT`).
 * 2026-11-21 — un widget proposto da un preset non esce più dal pool: prima il preset continuava a
   nominarlo.
 * 2026-11-21 — l'applicazione perde la scrittura: il pool lo scrive solo il migratore.
+* 2026-11-22 — il widget tolto dal pool esce dalle preferenze che lo nominano (prima la preferenza
+  restava con il codice, e il guard di forma ne rifiutava ogni salvataggio); dashboard e widget della
+  riga hanno il loro lucchetto.
 
 ---
 

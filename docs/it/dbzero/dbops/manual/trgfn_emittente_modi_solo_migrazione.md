@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `dbops.trgfn_emittente_modi_solo_migrazione`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,7 @@
 > Approfondimento funzioni:
 >
 > * [script.fn_is_proprietario_tabella](/dbzero/script/funzioni/fn_is_proprietario_tabella) — la domanda «chi scrive è il proprietario?»
-> * [ui.trgfn_lista_definizione_guard_multi_emittente](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_multi_emittente) — la stessa regola, su un solo flag
+> * [ui.trgfn_lista_definizione_guard_dichiarazioni](/dbzero/ui/funzioni/trgfn_lista_definizione_guard_dichiarazioni) — la stessa regola, sulle dichiarazioni di una lista
 
 ---
 

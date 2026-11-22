@@ -1,79 +1,73 @@
 ## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_risorse_umane_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:
+> Approfondimento tabelle:
 >
-[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)  
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)  
-> [config.qualifiche](/dbzero/config/tabelle/qualifiche)  
-> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)  
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto di lavoro, una riga per riga della vista
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — la persona, col suo nome e i suoi dati fiscali
+> * [config.qualifiche](/dbzero/config/tabelle/qualifiche) — la qualifica del rapporto
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — il reparto del rapporto
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_risorse_umane_guard_ruolo](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ruolo) — chi tiene il soggetto del rapporto uguale a quello del ruolo
+>
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — il rapporto di lavoro e la veste operatore
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 07-01-26)
-La vista **`anagrafiche.vw_risorse_umane_dettaglio`** fornisce una lettura
-unificata delle risorse umane con:
 
-* **tutti gli identificativi tecnici** delle tabelle coinvolte;
-* **decodifiche descrittive** di qualifica e unita organizzativa;
-* dati anagrafici essenziali del soggetto, inclusi
-  `ragione_sociale_completa` e `id_fiscale_univoco_cf_piva`.
-
-È pensata per **consultazione applicativa**, report e integrazioni esterne.
+`anagrafiche.vw_risorse_umane_dettaglio` mostra ogni rapporto di lavoro col nome della persona, la sua qualifica e
+il suo reparto decodificati: è la sede unica del modo in cui una risorsa umana si chiama.
 
 ---
 
-### Struttura logica della vista
+### Una riga per rapporto, il nome dal soggetto
 
-La vista parte da `anagrafiche.risorse_umane` e aggiunge:
+La vista parte da `anagrafiche.risorse_umane` e non filtra: ci sono anche i rapporti spenti o scaduti, con la loro
+colonna `risorsa_umana_attivo` e le loro date. Il nome della persona è la `ragione_sociale_completa` del soggetto,
+che la vista legge dalla copia del soggetto scritta sul rapporto (`soggetto_id`), senza passare dal ruolo: il guard
+di ruolo del rapporto tiene quella copia uguale al soggetto del ruolo, quindi è la stessa persona.
 
-* join a `anagrafiche.soggetti` per dati anagrafici e fiscali;
-* join a `config.qualifiche` per la descrizione della qualifica;
-* join a `config.unita_organizzative` per la descrizione dell’unita organizzativa.
+La qualifica e il reparto sono uniti senza pretenderli: un rapporto senza reparto c'è, con le colonne del reparto
+vuote. Le colonne prendono il prefisso della tabella da cui vengono (`risorsa_umana_…`, `qualifica_…`,
+`unita_organizzativa_…`, `soggetto_…`) quando il nome da solo sarebbe ambiguo.
 
----
-
-### 📑 Campi esposti (principali)
-
-| Colonna                           | Tipo      | Descrizione                                  |
-| --------------------------------- | --------- | -------------------------------------------- |
-| `risorsa_umana_id`                | `bigint`  | Identificativo della risorsa umana.          |
-| `risorsa_umana_soggetto_id`       | `uuid`    | Soggetto di riferimento della risorsa umana. |
-| `soggetto_ruolo_id`               | `bigint`  | Ruolo associato alla risorsa.                |
-| `qualifica_id`                    | `integer` | Riferimento alla qualifica.                  |
-| `qualifica_codice`                | `text`    | Codice della qualifica.                      |
-| `qualifica_descrizione`           | `text`    | Descrizione della qualifica.                 |
-| `unita_organizzativa_id`          | `integer` | Riferimento alla unita organizzativa.        |
-| `unita_organizzativa_codice`      | `text`    | Codice della unita organizzativa.            |
-| `unita_organizzativa_descrizione` | `text`    | Descrizione della unita organizzativa.       |
-| `soggetto_id`                     | `uuid`    | Identificativo del soggetto.                 |
-| `ragione_sociale_completa`        | `text`    | Ragione sociale completa del soggetto.       |
-| `id_fiscale_univoco_cf_piva`      | `text`    | Identificativo fiscale univoco (CF/P.IVA).   |
-| `partita_iva`                     | `text`    | Partita IVA del soggetto (se presente).      |
-| `codice_fiscale`                  | `text`    | Codice fiscale del soggetto (se presente).   |
-| `valido_dal`                      | `date`    | Inizio validita del rapporto.                |
-| `valido_al`                       | `date`    | Fine validita del rapporto.                  |
-| `risorsa_umana_attivo`            | `boolean` | Stato attivo della risorsa.                  |
-
-(Sono esposti anche i campi amministrativi e di audit.)
+La vista non guarda la veste né la credenziale: dice chi è la persona e dove lavora, non se entra.
 
 ---
 
-### Modalità d’uso tipiche
+### Chi la legge
 
-```sql
-SELECT *
-FROM anagrafiche.vw_risorse_umane_dettaglio
-WHERE soggetto_id = :soggetto_id;
-```
+Nessun oggetto del database la nomina; la legge il backend, in due punti:
+
+* il lookup delle risorse umane, `GET /api/v1/anagrafiche/risorse-umane/lookup/`, che il drawer della commessa usa
+  per scegliere il responsabile;
+* la testata della commessa, `GET /api/v1/vendite/commesse/{id}/stato/`, per il nome del responsabile.
+
+Tutti e due leggono di qui il nome, perché la stessa persona si chiami allo stesso modo nella scelta e nel
+dettaglio.
 
 ---
 
-### Best practice e raccomandazioni
+### ⚠️ Che cosa oggi non copre
 
-* Usare questa vista per letture applicative e reportistica.
-* Per modifiche, operare sempre sulle tabelle base.
+* **I permessi.** Il ruolo applicativo `zeroerp_app` ha sulla vista anche inserimento, modifica e cancellazione.
+  La vista unisce più tabelle e non è aggiornabile: quei permessi non servono a niente, e non andrebbero dati.
+* **La forma.** La vista non è `security_invoker`: legge le tabelle coi permessi del proprietario. Oggi è innocuo,
+  perché nessuna delle tabelle sotto ha la visibilità per riga. La vista non ha un commento nel database.
+
+---
+
+### Test
+
+Nessun test la presidia: né le colonne su cui il backend conta, né il nome che espone.
 
 ---
 

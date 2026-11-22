@@ -132,11 +132,11 @@ SELECT is(
            --    chiavi della pagina (frontiera, transito…). Prima la sintesi era un
            --    ripiego per nome, buono per qualunque colonna.
            AND CASE lc.origine_campo
-                 WHEN 'VISTA' THEN NOT EXISTS (
-                     SELECT 1 FROM information_schema.columns ic
-                      WHERE ic.table_schema = 'vendite'
-                        AND ic.table_name   = 'vw_preventivi_lista'
-                        AND ic.column_name  = lc.campo_sorgente)
+                 -- La domanda «la relazione ha il campo?» ha la sua sede (/verifica-db del
+                 -- 2026-11-22, regola del 2): ui.fn_lista_relazione_ha_attributo, sulla
+                 -- vista che la lista dichiara.
+                 WHEN 'VISTA' THEN NOT ui.fn_lista_relazione_ha_attributo(
+                                       ld.schema_dati, ld.vista_sql, lc.campo_sorgente)
                  ELSE NOT EXISTS (
                      SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
                       WHERE sc.colonna = lc.campo_sorgente)

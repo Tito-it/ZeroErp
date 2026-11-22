@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.widget`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -34,6 +34,11 @@ Il widget non appartiene a una dashboard: il legame sta nel pool
 Preferenze e preset citano il widget per `codice`, unico in tutto il catalogo e non solo in una
 dashboard. Il codice resta minuscolo: la tabella è fra le eccezioni decise alla regola del codice
 maiuscolo.
+
+Per questo il codice non si riscrive dopo la nascita, da nessuno (lucchetto di colonna,
+`E_UI_WIDGET_IMMUTABILE`): le preferenze lo ricordano nel JSONB, dove nessun vincolo lo segue. Un widget
+col codice sbagliato si spegne e se ne crea un altro; il seed lo riscrive uguale, e il lucchetto lo
+ammette.
 
 ---
 
@@ -101,6 +106,7 @@ da un preset non si cancella.
 
 * `E_ATTIVO_PADRE_NON_ATTIVO` — un widget acceso su un'area o un'azione spente, a fine transazione.
 * `E_ATTIVO_BLOCK_CHILDREN_ACTIVE` — lo spegnimento di un'area o di un'azione che un widget acceso cita.
+* `E_UI_WIDGET_IMMUTABILE` — si riscrive il codice del widget.
 * Il codice ripetuto arriva come violazione di `uq_ui_widget_codice`; un'area diversa da quella
   dell'azione, come violazione di `fk_ui_widget_azione_della_sua_area`. Tutte e due le legge chi scrive il
   seed.
@@ -114,6 +120,7 @@ da un preset non si cancella.
 * `db/pgtap/ui/test-ui-nell-ambito-v1.sql` — le regole ATTIVO verso area e azione.
 * `db/pgtap/ui/test-ui-catalogo-dashboard-v1.sql` — l'area dell'azione, la porta in sola lettura, i testi
   non vuoti.
+* `db/pgtap/ui/test-ui-ritiro-voce-preferenze-v1.sql` — il codice che non si riscrive.
 
 ---
 
@@ -124,6 +131,7 @@ da un preset non si cancella.
 * 2026-11-21 — codice, etichetta, chiave di traduzione e chiave del contatore non sono mai la
   stringa vuota (un CHECK per colonna).
 * 2026-11-21 — con un'azione, l'area è nulla o quella dell'azione; l'applicazione perde la scrittura.
+* 2026-11-22 — il codice ha il suo lucchetto.
 
 ---
 

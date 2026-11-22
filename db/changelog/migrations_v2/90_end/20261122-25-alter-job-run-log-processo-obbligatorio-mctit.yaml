@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# OGNI CORSA HA IL SUO PROCESSO: maintenance.job_run_log.processo_codice NOT NULL.
+#   Brief: brief-db-giornale-corse-indici §8.1 (giro 2a, D-R4 di Tid, 2026-11-22).
+#
+# ⚠️ REVOCA UNA PARTE DI DB-5 (20260905-16, 2026-09-05). Il CHECK nato NOT VALID
+#   lasciava le righe scritte prima della colonna senza processo, perche'
+#   riempirle sarebbe stato inventare un attore. La ragione resta giusta e qui
+#   non si inventa niente: D-R4 (Tid, 2026-11-22) quelle righe le CANCELLA a
+#   mano, sulle sole macchine di sviluppo nate prima del vincolo. Su un database
+#   costruito da zero non ce ne sono: il CHECK le vieta a ogni corsa nuova.
+#   Cambia la seconda meta' della scelta: il giornale non tiene piu' una storia
+#   senza attore, e le letture smettono di gestire il NULL (il ramo «senza
+#   processo» di maintenance.vw_job_run_da_superuser e' uscito in 20261122-24).
+#
+# ⛔ LA preCondition FERMA IL MIGRATE finche' esistono righe senza processo:
+#   si cancellano a mano prima (SQL nel brief, §8.7). Non e' una preCondition
+#   sul contenuto di 80_data (§11.4): job_run_log non e' un seed.
+#
+# ⭐ L'ORDINE. VALIDATE CONSTRAINT legge la tabella una volta; poi SET NOT NULL
+#   non la rilegge, perche' il CHECK validato gli dimostra gia' che non ci sono
+#   NULL; poi il CHECK esce, perche' il NOT NULL dice la stessa cosa. Chi non
+#   dichiara il processo vede ora 23502 (not_null_violation) al posto di 23514.
+#
+# ⭐ IN 90_end PERCHE' IL CHECK NASCE QUI (20260905-16, il suo COMMENT in
+#   20261111-68): da zero un changeSet di 00_schema lo troverebbe assente
+#   (§11.14). Nello stesso changeSet esce ix_job_run_log_jobname_senza_processo
+#   (00_schema/20261122-20): con la colonna NOT NULL non indicizza nessuna riga.
+#
+# ⚠️ Il COMMENT della colonna si riscrive qui: nessuna fase dopo 90_end lo scrive.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261122-25-alter-job-run-log-processo-obbligatorio-mctit.yaml
+
+  - changeSet:
+      id: 20261122-25-alter-job-run-log-processo-obbligatorio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log.processo_codice NOT NULL: ogni corsa ha il suo processo. Esce
+        chk_job_run_log_processo_dichiarato (NOT VALID) e l'indice parziale delle righe senza
+        processo. La preCondition ferma il migrate finche' le righe storiche senza processo
+        non sono cancellate a mano. Brief: brief-db-giornale-corse-indici §8.1.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Ci sono corse di maintenance.job_run_log senza processo: sono righe storiche, scritte
+            prima di chk_job_run_log_processo_dichiarato, e vanno cancellate a mano prima di questo
+            changeSet (D-R4 del brief brief-db-giornale-corse-indici, §8.7). Elenco:
+            SELECT jobname, count(*), min(started_at), max(started_at) FROM maintenance.job_run_log
+            WHERE processo_codice IS NULL GROUP BY jobname;
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM maintenance.job_run_log WHERE processo_codice IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  VALIDATE CONSTRAINT chk_job_run_log_processo_dichiarato;
+
+              ALTER TABLE maintenance.job_run_log
+                  ALTER COLUMN processo_codice SET NOT NULL;
+
+              ALTER TABLE maintenance.job_run_log
+                  DROP CONSTRAINT chk_job_run_log_processo_dichiarato;
+
+              DROP INDEX maintenance.ix_job_run_log_jobname_senza_processo;
+
+              COMMENT ON COLUMN maintenance.job_run_log.processo_codice IS
+                'L''attore della corsa: il codice del processo in dbops.processi (FK fk_job_run_log_processi). Obbligatorio, su ogni riga: chi non lo dichiara vede fallire l''INSERT con 23502, e il job si ferma. Un processo che non sa dire chi e'' non gira, e fallire rumorosamente e'' meglio di una riga muta. Vale per ogni classe di processo, manutenzione compresa. maintenance.fn_run_and_log lo deriva dal jobname (il processo il cui codice e'' il jobname) quando il chiamante non lo passa, script.fn_job_run_start lo riceve dal chiamante: nessuno dei due inventa un attore.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log ALTER COLUMN processo_codice DROP NOT NULL;
+              ALTER TABLE maintenance.job_run_log
+                  ADD CONSTRAINT chk_job_run_log_processo_dichiarato
+                      CHECK (processo_codice IS NOT NULL) NOT VALID;
+              CREATE INDEX ix_job_run_log_jobname_senza_processo
+                  ON maintenance.job_run_log USING btree (jobname, started_at DESC, id DESC)
+               WHERE processo_codice IS NULL;

@@ -18,6 +18,7 @@
 4. test_una_corsa_saltata_non_si_chiude
 5. test_corsa_chiusa_conta_anche_la_fallita_non_la_saltata
 6. test_la_lista_processi_non_cuce_la_saltata_con_l_esito_di_prima   ⭐ 22-11
+7. test_la_corsa_di_un_altro_processo_non_chiude_il_periodo           ⭐ 22-11
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from unittest import TestCase
 from django.db import DatabaseError, connection, connections, transaction
 
 from apps.core.db.maintenance_repository import MaintenanceRepository
-from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI
+from apps.core.services.processi import PROCESSO_DIGEST_PRESIDI, PROCESSO_SMOKE_NOTTURNO
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
 
 _JOB = "test_e_dovuto:corsia"
@@ -49,12 +50,12 @@ class CorsaRiuscitaDalDbTests(TestCase):
     #        (`fn_job_run_start`/`_end`: il ruolo applicativo non scrive la
     #        tabella), chiusa con `ok` o lasciata aperta. `started_at` e'
     #        l'istante della chiamata.
-    def _corsa(self, ok: bool | None) -> None:
+    def _corsa(self, ok: bool | None, processo_codice: str = PROCESSO_DIGEST_PRESIDI) -> None:
         with connection.cursor() as cur:
             # Il CHECK vuole un processo dichiarato: uno vero, in transazione annullata.
             cur.execute(
                 "SELECT id FROM script.fn_job_run_start(%s, 'CRON', NULL, NULL, NULL, %s, NULL)",
-                [_JOB, PROCESSO_DIGEST_PRESIDI],
+                [_JOB, processo_codice],
             )
             row = cur.fetchone()
             assert row is not None
@@ -107,13 +108,13 @@ class CorsaRiuscitaDalDbTests(TestCase):
         repo = MaintenanceRepository()
         prima = datetime.now(UTC) - timedelta(hours=1)
         dopo = datetime.now(UTC) + timedelta(hours=1)
-        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima))
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI))
         self._corsa(ok=False)
         self._corsa(ok=None)
-        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima), "fallita o in corso non chiude il periodo")
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI), "fallita o in corso non chiude il periodo")
         self._corsa(ok=True)
-        self.assertTrue(repo.corsa_riuscita_dal(_JOB, prima))
-        self.assertFalse(repo.corsa_riuscita_dal(_JOB, dopo), "una corsa prima dell'inizio e' del periodo precedente")
+        self.assertTrue(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI))
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, dopo, processo_codice=PROCESSO_DIGEST_PRESIDI), "una corsa prima dell'inizio e' del periodo precedente")
 
     # 2. Lo scenario del brief (§2.1): una corsa fallita, poi una sveglia che
     #    trova il lock occupato. Fino al 2026-10-10 la skip aveva `ok = true` e
@@ -123,7 +124,7 @@ class CorsaRiuscitaDalDbTests(TestCase):
         prima = datetime.now(UTC) - timedelta(hours=1)
         self._corsa(ok=False)
         self._corsa_saltata()
-        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima), "una skip non e' il lavoro fatto")
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI), "una skip non e' il lavoro fatto")
 
     # 3. Per la liveness la skip e' segno di vita (la riga piu' recente, chiusa:
     #    non «in corso»), ma l'ultima conclusa resta la corsa VERA, col suo
@@ -132,7 +133,9 @@ class CorsaRiuscitaDalDbTests(TestCase):
         repo = MaintenanceRepository()
         self._corsa(ok=False)
         self._corsa_saltata()
-        corsa = repo.job_liveness([_JOB], soglia_minuti=60)[_JOB]
+        corsa = repo.job_liveness(
+            processo_codice=PROCESSO_DIGEST_PRESIDI, jobnames=[_JOB], soglia_minuti=60,
+        )[_JOB]
         self.assertTrue(corsa["attivo"], "la sveglia e' scattata: segno di vita")
         self.assertFalse(corsa["in_corso"], "la skip e' chiusa")
         self.assertIsNotNone(corsa["ultima_conclusa"])
@@ -165,10 +168,10 @@ class CorsaRiuscitaDalDbTests(TestCase):
         prima = datetime.now(UTC) - timedelta(hours=1)
         self._corsa(ok=None)
         self._corsa_saltata()
-        self.assertFalse(repo.corsa_chiusa_dal(_JOB, prima), "in corso o saltata non e' una corsa chiusa")
+        self.assertFalse(repo.corsa_chiusa_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI), "in corso o saltata non e' una corsa chiusa")
         self._corsa(ok=False)
-        self.assertTrue(repo.corsa_chiusa_dal(_JOB, prima), "una fallita e' una corsa chiusa")
-        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima), "ma non riuscita")
+        self.assertTrue(repo.corsa_chiusa_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI), "una fallita e' una corsa chiusa")
+        self.assertFalse(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI), "ma non riuscita")
 
     # 6. ⛔ La terza sede che riassume le corse, la lista dei processi. Fino al
     #    2026-11-22 dava `ultimo_run` (la riga piu' recente, qui la SKIP) accanto
@@ -202,3 +205,22 @@ class CorsaRiuscitaDalDbTests(TestCase):
         )
         self.assertIs(conclusa["ok"], False)
         self.assertIs(riga["ultimo_ok"], conclusa["ok"], "`ultimo_ok` e' della stessa riga")
+
+    # 7. ⭐ La chiave e' la coppia `(processo, jobname)` (2026-11-22, ritocco 1
+    #    del §8.8 di brief-db-giornale-corse-indici): il modello non lega un
+    #    jobname a un processo solo. Una corsa RIUSCITA della stessa corsia
+    #    scritta da un ALTRO processo non fa il lavoro di questo: per solo
+    #    jobname la sveglia saltava il periodo senza errore.
+    def test_la_corsa_di_un_altro_processo_non_chiude_il_periodo(self) -> None:
+        repo = MaintenanceRepository()
+        prima = datetime.now(UTC) - timedelta(hours=1)
+        self._corsa(ok=True, processo_codice=PROCESSO_SMOKE_NOTTURNO)
+        self.assertFalse(
+            repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI),
+            "la corsa riuscita e' di un altro processo",
+        )
+        self.assertFalse(
+            repo.corsa_chiusa_dal(_JOB, prima, processo_codice=PROCESSO_DIGEST_PRESIDI),
+            "la corsa chiusa e' di un altro processo",
+        )
+        self.assertTrue(repo.corsa_riuscita_dal(_JOB, prima, processo_codice=PROCESSO_SMOKE_NOTTURNO))

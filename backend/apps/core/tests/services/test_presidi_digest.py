@@ -175,7 +175,7 @@ class _MaintenanceFinto:
         self._corse = corse or {}
         self.soglia_chiesta: int | None = None
 
-    def job_liveness(self, jobnames=None, *, soglia_minuti, processo_codice=None):
+    def job_liveness(self, *, processo_codice, soglia_minuti, jobnames=None):
         self.soglia_chiesta = soglia_minuti
         return dict(self._corse)
 
@@ -593,7 +593,7 @@ class PresidiDigestTests(SimpleTestCase):
     #     in corso — una forma che il repository (gia' corretto la mattina) non
     #     emetteva piu': verde, provando un messaggio che non si componeva mai.
     #     Ora la corsia si costruisce nella forma vera: riga aperta + conclusa a
-    #     parte, ed e' la forma che `test_job_liveness_due_chiavi` fabbrica sul
+    #     parte, ed e' la forma che `test_job_liveness_per_corsia` fabbrica sul
     #     database con `fn_job_run_start`.
     def test_una_corsia_in_corso_si_dice_in_corso_e_la_conclusa_sta_a_parte(self) -> None:
         repo = _RepoFinto(

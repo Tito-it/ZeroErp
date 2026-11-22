@@ -27,7 +27,9 @@ AS $function$
 --     UPDATE OR DELETE FOR EACH ROW, abilitato, col nome di
 --     dbops.fn_nome_oggetto_dichiarato (template
 --     trg_{table}_a00_seed_primo_impianto_ins_upd_dlt) e gli argomenti
---     della forma. Manca → CREA; diverso → RIGENERA;
+--     della forma (nella forma COLONNA, con le colonne derivate come
+--     quarto argomento se il registro le dichiara). Manca → CREA;
+--     diverso → RIGENERA;
 --   - forma COLONNA con colonne non classificate o assenti →
 --     NON_CLASSIFICATA, al posto di CREA o RIGENERA (il trigger di
 --     prima resta); tabella senza colonna id → SENZA_ID, salvo la forma
@@ -70,9 +72,12 @@ BEGIN
                  WHEN d.tabella_padre IS NOT NULL THEN ARRAY['FIGLIA', d.colonna_padre, d.tabella_padre]
                  WHEN d.solo_inserimento        THEN ARRAY['SOLO_INSERIMENTO']
                  WHEN d.colonne_software IS NULL THEN ARRAY['RIGA']
+                 -- le colonne derivate, se ci sono, come quarto argomento
                  ELSE ARRAY['COLONNA',
                             array_to_string(d.colonne_software, ','),
                             array_to_string(d.colonne_installazione, ',')]
+                      || CASE WHEN d.colonne_derivate IS NULL THEN ARRAY[]::text[]
+                              ELSE ARRAY[array_to_string(d.colonne_derivate, ',')] END
                END AS args,
                d.colonne_software IS NOT NULL AS per_colonna,
                d.tabella_padre IS NOT NULL AS figlia,

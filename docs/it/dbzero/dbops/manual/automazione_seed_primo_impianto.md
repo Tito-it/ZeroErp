@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.automazione_seed_primo_impianto`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -39,7 +39,7 @@ Oggi le tabelle sono sei: `config.email_account` (solo inserimento), `config.ema
 | Forma | Colonne | Che cosa fa il CSV su una riga di seed |
 | --- | --- | --- |
 | **per riga** (il default) | `colonne_software`, `colonne_installazione`, `tabella_padre` e `colonna_padre` `NULL` | finché la riga è intatta la aggiorna tutta; personalizzata, non le riscrive più niente |
-| **per colonna** | i due elenchi, non vuoti e disgiunti | le colonne del software le aggiorna sempre, e l'installazione non le può cambiare; quelle dell'installazione come nella forma per riga |
+| **per colonna** | i due elenchi, non vuoti e disgiunti; facoltativo `colonne_derivate`, un sottoinsieme di quelle dell'installazione | le colonne del software le aggiorna sempre, e l'installazione non le può cambiare; quelle dell'installazione come nella forma per riga, tranne le derivate |
 | **solo inserimento** | `solo_inserimento` vero, i due elenchi `NULL` | crea la riga se manca, e poi non la aggiorna più, toccata o no |
 | **figlia** | `tabella_padre` (`schema.tabella`) e `colonna_padre`, i due elenchi `NULL` | scrive la riga solo se il padre è una riga di seed intatta; sotto un padre personalizzato non la tocca |
 
@@ -57,6 +57,12 @@ Oggi le tabelle sono sei: `config.email_account` (solo inserimento), `config.ema
   transazione cambia `composizione_impronta`, che in `ui.lista_preset` è una colonna
   dell'installazione insieme a `contenuto_aggiornato_il`. Una composizione riscritta uguale (un
   DELETE seguito dall'INSERT delle stesse righe) non cambia l'impronta, e non personalizza.
+* ⭐ **Le colonne derivate** (`colonne_derivate`) sono colonne dell'installazione che nessuno scrive da
+  fuori: le deriva il database, da una tabella figlia. In `ui.lista_preset` è `composizione_impronta`.
+  Quando il software toglie una riga dalla composizione di un preset personalizzato (una colonna
+  ritirata), il database riscrive l'impronta, e il seed non la rimette com'era: la riga dice il vero, e
+  il banner del preset aggiornato si accende al ritiro, non a una scrittura successiva. Per
+  l'installazione restano colonne sue: cambiarle personalizza la riga.
 * ⛔ In forma per colonna ogni colonna della tabella sta in uno dei due elenchi, tranne quelle libere
   (`id`, `meta`, le colonne d'audit, `tx_id`). Una colonna nuova non classificata ferma il giro su
   quella tabella: il trigger di prima resta finché qualcuno non la classifica.

@@ -66,6 +66,14 @@ AZIONE_CODE_MANAGE = "code_manage"
 JOBNAME_WORKER_CODA_LAVORI = PROCESSO_DRAINA_CODA_LAVORI
 JOBNAME_WORKER_CODA_STAMPA = PROCESSO_DRAINA_CODA_STAMPA
 
+# Le CORSIE dei due worker: la coppia `(processo_codice, jobname)` con cui il
+# giornale le conosce (2026-11-22, strada (a) di Tid, §11.3 di
+# brief-db-giornale-corse-indici). La liveness si chiede per coppia: per solo
+# nome, la corsa di un altro processo con lo stesso nome avrebbe tenuto vivo
+# un worker fermo, senza errore.
+CORSIA_WORKER_CODA_LAVORI = (PROCESSO_DRAINA_CODA_LAVORI, JOBNAME_WORKER_CODA_LAVORI)
+CORSIA_WORKER_CODA_STAMPA = (PROCESSO_DRAINA_CODA_STAMPA, JOBNAME_WORKER_CODA_STAMPA)
+
 # Ripiego della soglia di liveness, per un worker che a catalogo non ha un
 # contratto (`dbops.processi.tolleranza_minuti` NULL, o codice non a catalogo).
 # ⚠️ NON è «il valore giusto»: è il valore che non fa danno. Un worker senza
@@ -153,34 +161,36 @@ def _valida_ordinamento(
 #    orologio storto — ed è per questo che `job_liveness` confronta col clock
 #    del database, non con quello di Python.
 #
-# ⚠️ SI RAGGRUPPA PER SOGLIA, e non è generalità gratuita: `job_liveness`
-#    accetta UNA soglia per chiamata, e nulla nel modello dice che due worker
-#    debbano avere la stessa. Oggi le due coincidono e la chiamata resta una
-#    sola; il giorno in cui divergono questo codice fa la cosa giusta invece di
-#    applicarne una alle due.
-def _liveness_worker(jobnames: list[str]) -> dict[str, dict]:
-    # ⚠️ Il jobname dei drainer È il `processo_codice`: sono i command che si
-    #    registrano col proprio nome, e le costanti qui sopra vengono da
-    #    `processi.py` apposta. Dove i due non coincidessero (le corsie di
-    #    `run_fatturazione_batch`, che attaccano la corsia al jobname) la
-    #    liveness non si fa da qui. Una lettura sola per tutti i worker.
-    contratti = ProcessiRepository().contratti_liveness(jobnames)
-    per_soglia: dict[int, list[str]] = {}
-    for jobname in jobnames:
+# ⭐ UNA LETTURA PER PROCESSO (2026-11-22). La soglia e' il contratto del
+#    PROCESSO, e la liveness si chiede per processo con le sue corsie: le due
+#    domande hanno la stessa chiave, e nulla nel modello dice che due worker
+#    debbano avere la stessa soglia. Fino a quel giorno si raggruppava per
+#    soglia e si chiedeva per soli nomi.
+# ⭐ Il dict risponde per CORSIA, la coppia: chi legge non ha un nome da
+#    confondere.
+def _liveness_worker(corsie: list[tuple[str, str]]) -> dict[tuple[str, str], dict]:
+    per_processo: dict[str, list[str]] = {}
+    for processo, jobname in corsie:
+        per_processo.setdefault(processo, []).append(jobname)
+    # Una lettura sola del catalogo per tutti i worker.
+    contratti = ProcessiRepository().contratti_liveness(list(per_processo))
+
+    repo = MaintenanceRepository()
+    esito: dict[tuple[str, str], dict] = {}
+    for processo, jobnames in per_processo.items():
         # ⛔ `is None` e NON `or`: sono due domande diverse. `or` direbbe
         #    «ripiega» anche su uno zero, e soprattutto confonde «non a
         #    catalogo» con «a catalogo senza contratto» — che nel modello sono
         #    due cose diverse (`NULL` = «non si presidia»). Qui entrambe cadono
         #    sul ripiego, e il test sul seed impedisce che ci arrivino i drainer.
-        contratto = contratti.get(jobname)
+        contratto = contratti.get(processo)
         dichiarata = contratto["tolleranza_minuti"] if contratto else None
         soglia = _SOGLIA_LIVENESS_RIPIEGO_MINUTI if dichiarata is None else dichiarata
-        per_soglia.setdefault(soglia, []).append(jobname)
-
-    repo = MaintenanceRepository()
-    esito: dict[str, dict] = {}
-    for soglia, gruppo in per_soglia.items():
-        esito.update(repo.job_liveness(gruppo, soglia_minuti=soglia))
+        corse = repo.job_liveness(
+            processo_codice=processo, jobnames=jobnames, soglia_minuti=soglia,
+        )
+        for jobname, corsa in corse.items():
+            esito[(processo, jobname)] = corsa
     return esito
 
 
@@ -203,7 +213,7 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
     )
 
     liveness = _liveness_worker(
-        [JOBNAME_WORKER_CODA_LAVORI, JOBNAME_WORKER_CODA_STAMPA],
+        [CORSIA_WORKER_CODA_LAVORI, CORSIA_WORKER_CODA_STAMPA],
     )
     # ⚠️ Stessa forma di `job_liveness` (2026-09-14): la riga piu' recente come
     #    segno di vita e l'ultima conclusa a parte, con la sua data — un worker
@@ -223,8 +233,8 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
             "in_corso": stampa.get("IN_CORSO", 0),
         },
         "worker": {
-            "coda_lavori": liveness.get(JOBNAME_WORKER_CODA_LAVORI, worker_giu),
-            "coda_stampa": liveness.get(JOBNAME_WORKER_CODA_STAMPA, worker_giu),
+            "coda_lavori": liveness.get(CORSIA_WORKER_CODA_LAVORI, worker_giu),
+            "coda_stampa": liveness.get(CORSIA_WORKER_CODA_STAMPA, worker_giu),
         },
     }
 

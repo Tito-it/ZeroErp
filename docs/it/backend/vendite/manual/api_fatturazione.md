@@ -229,12 +229,19 @@ parziale degli step già fatti — ed è la ragione per cui l'esito porta
 - `GET /api/v1/vendite/fatturazione/esiti/[?competenza_mese=YYYY-MM-DD]`
 - Due sorgenti fuse in `giri`: i job della **coda lavori** `FATTURAZIONE_GIRO` /
   `FATTURAZIONE_NUMERA` (`dbops.coda_lavori`, `origine: "app"`) e i giri
-  schedulati da `maintenance.job_run_log` con jobname di prefisso
-  `run_fatturazione_batch` (`origine: "batch"`); più i conteggi della coda stampa
+  schedulati da `maintenance.job_run_log` del processo `run_fatturazione_batch`
+  (per chiave, `processo_codice`; fino al 2026-11-22 un prefisso del jobname)
+  (`origine: "batch"`); più i conteggi della coda stampa
   per stato **scoped all'operatore** (JOIN a `vendite.fatture`).
 - `competenza_mese` (facoltativo, normalizzato al 1° del mese): restringe giri e
   coda stampa a quel mese di competenza; assente = totali da sempre. Data
   malformata → `400`.
+- ⭐ «Da sempre» è vero anche dopo la ritenzione del giornale (12 mesi, dal
+  2026-11-22): i tre processi della fatturazione (`run_fatturazione_batch`,
+  `FATTURAZIONE_GIRO`, `FATTURAZIONE_NUMERA`) dichiarano
+  `dbops.processi.potatura_esclusione`, e la potatura non tocca le loro corse.
+  Il pannello può aprire un mese di qualunque anno. Vedi
+  [api_tracciamento.md § Ritenzione del giornale](../../core/manual/api_tracciamento.md#ritenzione-del-giornale).
 
 ### 7. Finestra di numerazione (BE-5, sola lettura, 2026-08-25)
 

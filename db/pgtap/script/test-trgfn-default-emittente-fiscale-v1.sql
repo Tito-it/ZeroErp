@@ -11,6 +11,8 @@
 --   (l'operatore A ha TUTTO sull'area magazzino, scritto in fixture; il SA lo ha per ruolo);
 --   11 e 15 non si raggiungono piu' dal magazzino (il verbo non prende l'emittente, e senza
 --   utente si ferma sul permesso): girano su vendite.ordini, montato sullo stesso BB.
+-- rev 2026-11-22 (brief-db-magazzino-lotto-dell-azienda, 20261122-15): il lotto e' dell'azienda,
+--   magazzino.lotti porta il default: le tabelle montate sono dodici (test 6 e 7).
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): riga e conferma dell'ordine del
 --   test 13 da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id); la testata resta a mano
 --   (nasce senza emittente dall'operatore A: e' la premessa del caso).
@@ -114,6 +116,7 @@ CREATE TEMP TABLE _attese (rel text PRIMARY KEY) ON COMMIT DROP;
 INSERT INTO _attese VALUES
     ('vendite.ordini'), ('vendite.preventivi'), ('vendite.contratti'), ('vendite.ddt'),
     ('vendite.offerte_commerciali'), ('magazzino.magazzini'), ('magazzino.assets'),
+    ('magazzino.lotti'),
     ('pratiche.pratiche'), ('documenti.template_documenti'), ('documenti.template_asset'),
     ('anagrafiche.soggetti_titoli_iva');
 CREATE TEMP TABLE _escluse (rel text PRIMARY KEY, perche text) ON COMMIT DROP;
@@ -137,7 +140,7 @@ SELECT n.nspname || '.' || c.relname AS rel, t.tgname
 SELECT is(
     (SELECT array_agg(rel ORDER BY rel) FROM _montate),
     (SELECT array_agg(rel ORDER BY rel) FROM _attese),
-    '6. le undici tabelle montate sul BB sono esattamente quelle attese');
+    '6. le dodici tabelle montate sul BB sono esattamente quelle attese');
 
 SELECT is(
     (SELECT count(*)::int

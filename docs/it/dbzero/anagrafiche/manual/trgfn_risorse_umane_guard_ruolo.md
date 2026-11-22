@@ -1,48 +1,80 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_risorse_umane_guard_ruolo`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_risorse_umane_guard_ruolo`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto di lavoro che il guard presidia
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo `RIS_UMANA` a cui il rapporto punta
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-[script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo)
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo) — il controllo del tipo di ruolo, a cui il guard delega
+> * [anagrafiche.fn_crea_risorsa_umana_v2](/dbzero/anagrafiche/funzioni/fn_crea_risorsa_umana_v2) — la porta che scrive il rapporto
+>
+> Guide:
+>
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il soggetto, i ruoli e le loro specializzazioni
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — il rapporto di lavoro e la veste operatore
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-03-2026)
-La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`**
-garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un
-`soggetto_ruolo_id` di tipo **RIS_UMANA** e che tale ruolo punti allo stesso
-`soggetto_id` presente nel record della risorsa umana.
+
+`anagrafiche.trgfn_risorse_umane_guard_ruolo` impedisce che un rapporto di lavoro punti a un ruolo che non è una
+risorsa umana (`RIS_UMANA`), o a un ruolo di un soggetto diverso da quello scritto sulla riga.
 
 ---
 
-### Regole applicate
+### Il ruolo giusto, del soggetto giusto
 
-* Trigger **BEFORE INSERT OR UPDATE** su `anagrafiche.risorse_umane`.
-* Chiama `script.fn_guard_soggetto_ruolo(...)` con `p_cd_int_ruolo := 'RIS_UMANA'`.
-* Aggiorna `NEW.soggetto_ruolo_id` con l'ID valido restituito.
-* Recupera il `soggetto_id` reale dal ruolo.
-* Se il `soggetto_id` del ruolo e quello della risorsa non coincidono:
-  * blocca l'operazione con errore `E_RISORSA_UMANA_SOGGETTO_MISMATCH`.
+Il rapporto di lavoro è una specializzazione di ruolo, come il fornitore o il vettore: nomina con
+`soggetto_ruolo_id` la riga di `anagrafiche.soggetti_ruoli` che dice «questo soggetto è una risorsa umana». La
+prima metà del guard è quella di tutta la famiglia dei guard di ruolo: passa il ruolo e il codice `RIS_UMANA` a
+`script.fn_guard_soggetto_ruolo`, che lo verifica, e riscrive la colonna col valore che riceve.
+
+La seconda metà è sua. Il rapporto porta anche `soggetto_id`, una copia del soggetto del ruolo che serve ai
+lettori senza passare dal ruolo. Il guard legge il soggetto del ruolo e rifiuta la riga se le due colonne non
+coincidono: la copia non può divergere dall'originale.
 
 ---
 
-### Ruolo nel processo
+### Quando scatta
 
-La funzione protegge la coerenza del modello anagrafico evitando disallineamenti
-tra:
+Prima di ogni inserimento e di ogni modifica del rapporto, qualunque colonna cambi: anche una modifica che non
+tocca il ruolo lo ricontrolla.
 
-* il soggetto anagrafico della risorsa umana
-* il ruolo associato alla stessa risorsa
+Non crea il ruolo: lo crea chi scrive il rapporto, prima.
 
-In questo modo `anagrafiche.risorse_umane` resta sempre un'estensione coerente
-del ruolo `RIS_UMANA`.
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il ruolo che cambia tipo.** Come per tutte le specializzazioni, il guard scatta sul rapporto e non su
+  `soggetti_ruoli`: un ruolo `RIS_UMANA` portato a un altro tipo lascia il rapporto su un ruolo che non è più una
+  risorsa umana, finché la riga non si riscrive e il guard la rifiuta.
+
+---
+
+### Codici errore
+
+* `E_SOGGETTI_RUOLI` — il ruolo manca, non esiste o non è `RIS_UMANA`. Lo solleva `script.fn_guard_soggetto_ruolo`.
+* `E_COD_INT_RUOLO` — il codice `RIS_UMANA` non è in `config.tipi_ruoli`: un difetto di configurazione. Lo solleva
+  `script.fn_guard_soggetto_ruolo`.
+* `E_RISORSA_UMANA_SOGGETTO_MISMATCH` — il soggetto del ruolo non è il soggetto scritto sulla riga. Il messaggio
+  nomina il ruolo; il contesto porta i due soggetti e indica come campo `soggetto_ruolo_id`.
+
+---
+
+### Test
+
+* `db/pgtap/dbops/test-punti-canale-campo-v1.sql` — legge il corpo, non lo esegue: il rifiuto
+  `E_RISORSA_UMANA_SOGGETTO_MISMATCH` porta nel contesto il campo che l'interfaccia evidenzia.
+
+Nessun test esegue i rifiuti del guard: né il ruolo di un altro tipo, né il soggetto che non coincide. Il caso
+buono lo attraversa ogni test che crea una risorsa umana.
 
 ---
 

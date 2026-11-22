@@ -235,9 +235,11 @@ CREATE TABLE dbops.pgtap_stati_prova (
           CHECK (stato = ANY (ARRAY['UNO','DUE','TRE','QUATTRO','CINQUE','SEI','SETTE','NOVE','DIECI','UNDICI']))
 );
 
--- La forma VARCHAR: PostgreSQL 19 la scrive `((stato)::text = ANY (ARRAY[('VA'::
--- character varying)::text, …]))` (la 18: `ANY ((ARRAY[…])::text[])`), cioe' NON la
--- forma della tabella sopra. La vista regge tutte e due: `\(?ARRAY\[`.
+-- La forma VARCHAR: nata sul database si scrive `((stato)::text = ANY ((ARRAY['VA'::
+-- character varying, …])::text[]))`; riletta da un dump della 18 (pg_upgrade, restore)
+-- la 19 la scrive `ANY (ARRAY[('VA'::character varying)::text, …])` (rev 2026-11-22: fino
+-- a oggi questo commento attribuiva la seconda alla 19 tout court). In tutte e due NON e'
+-- la forma della tabella sopra. La vista regge tutte e due: `\(?ARRAY\[`.
 CREATE TABLE dbops.pgtap_stati_prova_vc (
     id    int PRIMARY KEY,
     stato varchar(10) NOT NULL

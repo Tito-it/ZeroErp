@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_colonna`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -43,8 +43,9 @@ nasconderla).
 Una colonna si identifica col suo `codice`, unico nella lista (`uq_ui_lista_colonna_lista_codice`).
 Le preferenze degli utenti e la composizione dei preset la ricordano per codice, nel JSONB della
 configurazione: per questo il codice non si cambia dopo la nascita, da nessuno (lucchetto di colonna,
-`E_UI_COLONNA_CODICE_IMMUTABILE`). Una colonna col codice sbagliato si spegne e se ne crea un'altra;
-il seed lo riscrive uguale, e il lucchetto lo ammette.
+`E_UI_COLONNA_CODICE_IMMUTABILE`), e la colonna non cambia lista (lo stesso lucchetto, su `lista_id`).
+Una colonna col codice sbagliato, o nella lista sbagliata, si spegne e se ne crea un'altra; il seed
+li riscrive uguali, e il lucchetto lo ammette.
 
 ---
 
@@ -149,9 +150,12 @@ bassa, a parità quella più a destra (`ordine_default`).
 
 I permessi della colonna si cancellano con lei (FK con cascata). La presenza in un preset invece la
 blocca: la FK di `lista_preset_colonna` verso la colonna è senza azione, e la cancellazione arriva
-come violazione di vincolo. Le preferenze degli utenti non hanno FK: il backend conta da sé quelle
-che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in tutti e due i casi,
-è spegnere la colonna.
+come violazione di vincolo, e il rimedio è spegnere la colonna. Le preferenze degli utenti non
+hanno FK: quando la colonna si cancella, la sua voce esce dalle preferenze della lista che la
+nominano ([ui.trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)),
+e la persona continua a salvare le sue scelte. Se la colonna era l'unica voce della preferenza, le
+colonne tornano a seguire il preset. ⚠️ Il backend oggi conta da sé le preferenze che nominano il
+codice e rifiuta la cancellazione se ce ne sono: è una regola sua, che il database non chiede più.
 
 ---
 
@@ -159,8 +163,10 @@ che nominano il codice e rifiuta la cancellazione se ce ne sono. Il rimedio, in 
 
 Una riga di un preset nomina la colonna insieme alla lista del preset, e un vincolo composto chiede
 che la colonna sia di quella lista. Il vincolo vale da tutti e due i lati: spostare su un'altra lista
-una colonna che un preset nomina è rifiutato, come violazione di vincolo. La chiave che il vincolo
-legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista).
+una colonna che un preset nomina è rifiutato. Prima ancora del vincolo parla il lucchetto di
+`lista_id` (`E_UI_COLONNA_CODICE_IMMUTABILE`), che vale per ogni colonna: le preferenze la citano per
+codice nella sua lista. La chiave che il vincolo legge è l'unicità `uq_ui_lista_colonna_id_lista`,
+sulla coppia (colonna, lista).
 
 ---
 
@@ -169,7 +175,8 @@ legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista
 * `E_UI_CAMPO_SORGENTE_NON_TROVATO` — il campo di una colonna `VISTA` non è nella relazione della
   lista.
 * `E_UI_LINEAGE_NON_DICHIARATA` — una colonna `LINEAGE` su una lista che non dichiara la lineage.
-* `E_UI_COLONNA_CODICE_IMMUTABILE` — si riscrive il codice della colonna.
+* `E_UI_COLONNA_CODICE_IMMUTABILE` — si riscrive il codice della colonna, o la si sposta su un'altra
+  lista.
 * L'unicità del codice nella lista, i CHECK dei testi non vuoti, dell'azione senza campo, della
   colonna senza campo non esportabile, della colonna della lineage e della priorità, e le FK
   arrivano come violazione di vincolo, e il backend le traduce per nome.
@@ -191,6 +198,8 @@ legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista
   documenti.
 * `db/pgtap/ui/test-ui-legami-preset-v1.sql` — la lista di una colonna che un preset nomina non
   cambia.
+* `db/pgtap/ui/test-ui-ritiro-voce-preferenze-v1.sql` — la colonna cancellata esce dalle preferenze
+  della lista; la colonna non cambia lista.
 
 ---
 
@@ -207,6 +216,9 @@ legge è l'unicità `uq_ui_lista_colonna_id_lista`, sulla coppia (colonna, lista
   sulle colonne `LINEAGE` delle liste che la dichiarano. Un'azione non ha campo, una colonna senza
   campo non si esporta (il CHECK delle azioni non esportabili si ritira, coperto dai due nuovi); il
   codice ha il suo lucchetto; una colonna sta accesa anche su una lista spenta.
+* 2026-11-22 — la colonna cancellata esce dalle preferenze che la nominano (prima la preferenza restava
+  con il codice, e il guard di forma ne rifiutava ogni salvataggio); anche la lista della colonna ha
+  il suo lucchetto.
 
 ---
 

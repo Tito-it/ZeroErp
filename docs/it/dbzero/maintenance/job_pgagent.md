@@ -21,6 +21,7 @@
 | `automations_tx_id` | si | alle 21:00, ogni giorno | `automations_tx_id` |
 | `chiusura_scadenze_daily` | si | ogni ora, al minuto 05 | `chiusura_scadenze_daily` |
 | `guardiano_digest` | si | ogni ora, al minuto 20 | `guardiano_digest` |
+| `pota_giornale_corse` | si | alle 03:30, ogni giorno | `pota_giornale_corse` |
 | `sync_auth_user_expired_daily` | si | ogni ora, al minuto 10 | `sync_auth_user_expired_daily` |
 | `sync_storico_set_storicizza` | si | alle 07:00, di sabato | `sync_storico_set_storicizza` |
 
@@ -349,6 +350,28 @@ BEGIN
     -- il lavoro non parte e il giornale non scrive niente.
     IF maintenance.fn_sveglia_accesa('guardiano_digest') THEN
         CALL maintenance.proc_guardiano_digest_job();
+    END IF;
+END
+$sveglia$;
+```
+
+## `pota_giornale_corse`
+
+Ritenzione del giornale delle corse: cancella le corse chiuse piu' vecchie di 12 mesi, tranne le ultime che i presidi leggono
+
+| Step | Acceso | Tipo | Database | Chiama |
+| --- | --- | --- | --- | --- |
+| `pota_giornale_corse` | si | SQL | zeroerp | vedi sotto |
+
+Step `pota_giornale_corse`:
+
+```sql
+DO $sveglia$
+BEGIN
+    -- Cancello della sveglia (85_pgagent/20261016-30): da spento
+    -- il lavoro non parte e il giornale non scrive niente.
+    IF maintenance.fn_sveglia_accesa('pota_giornale_corse') THEN
+        CALL maintenance.proc_pota_giornale_corse_job();
     END IF;
 END
 $sveglia$;

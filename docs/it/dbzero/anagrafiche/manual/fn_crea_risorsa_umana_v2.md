@@ -1,144 +1,149 @@
-# fn_crea_risorsa_umana_v2
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_crea_risorsa_umana_v2`
 
-### Scopo
-
-Building block transazionale per creare una **risorsa umana operatore**:
-inserisce contestualmente `risorse_umane`, `identita_digitali` (ruolo
-applicativo `OPERATORE`) e — se richiesto — il binding `SUPER_ADMIN` su
-`profili_accesso_bindings`.
-
-Sostituisce `fn_crea_risorsa_umana` v1 (droppata in Fase 7, 2026-04-29):
-v1 aveva firma con `p_ruolo_sistema config.ruolo_sistema` (enum legacy).
-La v2 espone la stessa logica con **firma multi-face native**:
-`p_is_super_admin boolean` + `p_attivo boolean`.
-
-> **Vedi anche**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-> - [Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> - [fn_crea_operatore_v2](/dbzero/anagrafiche/manual/fn_crea_operatore_v2) — orchestratore che la chiama
-> - [identita_digitali](/dbzero/anagrafiche/manual/identita_digitali) — tabella scritta
-> - [profili_accesso_bindings](/dbzero/config/manual/profili_accesso_bindings) — tabella binding SUPER_ADMIN
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto che la funzione crea
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — la veste OPERATORE che nasce insieme al rapporto
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — l'unica madre che la chiama
+> * [config.fn_profilo_super_admin_id](/dbzero/config/funzioni/fn_profilo_super_admin_id) — quale profilo è il SUPER_ADMIN
+> * [config.fn_lega_profilo_identita](/dbzero/config/funzioni/fn_lega_profilo_identita) — scrive il legame fra la veste e il profilo
+> * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — quando una veste apre davvero la porta
+> * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la credenziale segue le vesti
+>
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — la persona, il rapporto, la veste e la credenziale
 
-## Schema
+---
 
-`anagrafiche` (dominio risorse umane).
+### 🎯 Scopo Principale
 
-## Firma
+`anagrafiche.fn_crea_risorsa_umana_v2` crea il rapporto di lavoro di una persona (la risorsa umana) e, se le si
+passa una credenziale, la sua veste OPERATORE, con l'eventuale legame al profilo SUPER_ADMIN, tutto nella stessa
+istruzione.
 
-```sql
-anagrafiche.fn_crea_risorsa_umana_v2(
-    p_soggetto_id            anagrafiche.soggetti.id%TYPE,
-    p_qualifica_id           config.qualifiche.id%TYPE,
-    p_unita_organizzativa_id config.unita_organizzative.id%TYPE,
-    p_valido_dal             anagrafiche.risorse_umane.valido_dal%TYPE,
-    p_valido_al              anagrafiche.risorse_umane.valido_al%TYPE,
-    p_auth_user_id           INTEGER,
-    p_is_super_admin         BOOLEAN  DEFAULT false,
-    p_attivo                 anagrafiche.identita_digitali.attivo%TYPE  DEFAULT true
-) RETURNS anagrafiche.risorse_umane.id%TYPE
-```
+È il building block che sta sotto la creazione di un operatore: dentro il database la chiama solo
+`anagrafiche.fn_crea_operatore_v2`, che prima ha già trovato o creato la credenziale e il soggetto persona fisica.
+Il suffisso `_v2` è un nome rimasto: oggi non esiste una funzione con lo stesso nome senza suffisso.
 
-## Parametri
+---
 
-| Parametro | Tipo | Obbligatorio | Descrizione |
-|---|---|:---:|---|
-| `p_soggetto_id` | `anagrafiche.soggetti.id%TYPE` (uuid) | Sì | Soggetto persona fisica esistente. |
-| `p_qualifica_id` | `config.qualifiche.id%TYPE` | Sì, `> 0` | Qualifica attiva (validata). |
-| `p_unita_organizzativa_id` | `config.unita_organizzative.id%TYPE` | No | UO attiva, validata se valorizzata. |
-| `p_valido_dal` | `risorse_umane.valido_dal%TYPE` | No (default `CURRENT_DATE`) | Inizio finestra temporale risorsa umana. |
-| `p_valido_al` | `risorse_umane.valido_al%TYPE` | No | Fine finestra. |
-| `p_auth_user_id` | `INTEGER` (django.auth_user.id, no `%TYPE` su django.*) | No | Se valorizzato, crea anche identita digitale OPERATORE + binding opzionale SA. |
-| `p_is_super_admin` | `BOOLEAN` | No (default `false`) | Se `true`, crea binding SUPER_ADMIN sull'identita digitale. **Differenza chiave vs v1**: prima si passava `p_ruolo_sistema='ADMIN'` (enum); ora si esprime direttamente la capability boolean. |
-| `p_attivo` | `identita_digitali.attivo%TYPE` (boolean) | No (default `true`) | Stato di `identita_digitali.attivo`. **Nuovo in v2**: in v1 era hardcoded `true`. Il chiamante può creare un'identita pre-disattivata (caso onboarding sospeso). |
+### Una persona è una risorsa umana sola
 
-Ritorna l'`id` della `risorsa_umana` creata.
+Il rapporto si appoggia al ruolo `RIS_UMANA` del soggetto, che la funzione trova o crea. Se quel ruolo ha già una
+risorsa umana, accesa o spenta, la funzione si ferma con `E_RISORSA_UMANA_GIA_PRESENTE` prima di scrivere: il
+vincolo unico sul ruolo non distingue le righe spente, e il rimedio è sulla risorsa che c'è (il reinvito, la
+riattivazione), non una seconda. La frase dell'errore porta il nome della persona; il campo segnalato è il soggetto.
 
-## Algoritmo
+Il rapporto nasce sempre acceso. La qualifica è obbligatoria e dev'essere attiva; l'unità organizzativa è
+facoltativa, ma se c'è dev'essere attiva.
 
-1. **Validazione parametri obbligatori** (raise `E_ADMIN_VALIDAZIONE` se mancanti):
-   `p_soggetto_id`, `p_qualifica_id`.
-2. **Guard prerequisiti**:
-   - qualifica esistente e `attivo=true`,
-   - UO esistente e `attivo=true` se valorizzata,
-   - auth_user esistente se valorizzato (raise `E_ADMIN_VALIDAZIONE` o `E_ADMIN_UO_NON_TROVATA`),
-   - se `p_is_super_admin`: il profilo SUPER_ADMIN si **risolve prima di ogni scrittura** con
-     [`config.fn_profilo_super_admin_id`](/dbzero/config/manual/fn_profilo_super_admin_id), che
-     solleva `E_CONFIG_MANCANTE` se i profili attivi di quel tipo non sono esattamente uno.
-3. **Step 1**: `script.fn_get_or_create_soggetto_ruolo(p_soggetto_id, 'RIS_UMANA')` → upsert ruolo.
-4. **Step 2**: `INSERT INTO risorse_umane` (`attivo=true` hardcoded — il flag `p_attivo` riguarda solo l'identita digitale, non la risorsa).
-5. **Step 3** (se `p_auth_user_id IS NOT NULL`): `INSERT INTO identita_digitali`
-   con `ruolo_applicativo='OPERATORE'` e `attivo=p_attivo`.
-6. **Step 4** (se `p_is_super_admin=true`): il legame lo scrive la madre
-   [`config.fn_lega_profilo_identita`](/dbzero/config/manual/fn_lega_profilo_identita) sul profilo
-   risolto al passo 2 (dal 18-10-2026, `20261018-45`).
+---
 
-## Regole
+### Le date valgono per il rapporto e per la veste
 
-- Nessuna scrittura su `anagrafiche.risorse_umane_auth_user` (post-cutover §13.3 è una vista; i trigger-ponte sono stati droppati).
-- Il profilo del binding SUPER_ADMIN **non è più cablato** (fino al 23-09-2026 era l'id 9100 del seed): si
-  risolve per `tipo`, fra i profili attivi, esattamente uno. Dal 18-10-2026 (R-BE-11, `20261019-17`) la regola
-  sta nel lettore `config.fn_profilo_super_admin_id`, sede unica: era scritta qui e nel backend.
-- La fn è **transazionale**: se uno qualunque degli step fallisce, l'intera operazione è rolled-back (caller responsibility usare `BEGIN…COMMIT`).
-- Errori applicativi via `script.fn_log_and_raise_error` (codici stabili `E_ADMIN_VALIDAZIONE`, `E_ADMIN_UO_NON_TROVATA`).
+L'inizio e la fine passati alla funzione vanno sia sul rapporto sia sulla veste: un operatore nasce con la veste
+valida esattamente quanto il suo rapporto. Se l'inizio non si passa, è il giorno operativo
+(`script.fn_data_operativa`), non la data di sistema.
 
-## Differenze vs v1 (droppata)
+---
 
-| Aspetto | v1 (droppata 2026-04-29) | v2 (questa) |
-|---|---|---|
-| Firma capability | `p_ruolo_sistema config.ruolo_sistema` (enum `ADMIN`/`OPERATIVO`/`DISABILITATO`) | `p_is_super_admin boolean` + `p_attivo boolean` |
-| Mapping interno | `IF p_ruolo_sistema='ADMIN' THEN INSERT binding...` | `IF p_is_super_admin THEN INSERT binding...` |
-| Stato `identita.attivo` | hardcoded `true` | parametrizzato (`p_attivo`) |
-| Tipo enum legacy | richiede `config.ruolo_sistema` | indipendente — abilita `DROP TYPE` finale (Fase 7 step 9) |
+### La veste nasce solo con una credenziale
 
-## Dipendenze
+Senza credenziale la funzione crea il rapporto e basta: nessuna veste, nessun profilo. Con la credenziale (che
+deve esistere in `django.auth_user`) crea la veste OPERATORE sullo stesso ruolo del rapporto, accesa o spenta
+secondo il parametro `p_attivo`. La madre `fn_crea_operatore_v2` la chiede sempre spenta: la accende
+l'attivazione dell'invito.
 
-- `script.fn_get_or_create_soggetto_ruolo` (upsert ruolo)
-- `script.fn_log_and_raise_error` (errori standardizzati)
-- `config.qualifiche`, `config.unita_organizzative` (lookup)
-- `django.auth_user` (FK validation)
-- `anagrafiche.risorse_umane`, `anagrafiche.identita_digitali` (write)
-- `config.profili_accesso_bindings` (write opzionale binding SA)
+Che la credenziale si accenda o resti spenta non lo decide questa funzione: lo decidono i trigger della veste,
+secondo la regola «accesa se almeno una veste è utilizzabile» (vedi la scheda del trigger di sincronizzazione).
 
-## Chi la chiama
+---
 
-- `anagrafiche.fn_crea_operatore_v2` (orchestratore)
-- BE: `apps.amm_software.db.amm_software_repository.create_operatore` post-Fase 7 LANDED (nessun `_legacy_ruolo_from_contract` residuo)
-- BE: `apps.core.db.risorse_umane_core_repository.create_risorsa_umana`
+### Il profilo SUPER_ADMIN si risolve prima di scrivere
 
-## Riferimenti
+Con `p_is_super_admin` vero e una credenziale, il profilo SUPER_ADMIN si cerca **prima** di ogni scrittura, con
+`config.fn_profilo_super_admin_id`: per tipo, fra i profili attivi, esattamente uno. Se non è uno solo la funzione
+si ferma con `E_CONFIG_MANCANTE` senza aver scritto niente. Il legame fra la veste e il profilo lo scrive
+`config.fn_lega_profilo_identita`, e nasce attivo anche quando la veste nasce spenta: la porta e il profilo sono
+due domande diverse. Chi difende l'ultimo SUPER_ADMIN è il guard della veste
+([`trgfn_identita_digitali_guard_ultimo_super_admin`](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin)).
 
-- Migration: `db/changelog/migrations_v2/20_code/anagrafiche/20260429-12-create-fn-crea-risorsa-umana-v2-mctit.yaml`
-- Drop v1: `db/changelog/migrations_v2/20_code/anagrafiche/20260429-16-drop-fn-crea-risorsa-umana-v1-mctit.yaml`
-- Brief Fase 7: handoff BE refactor `analisi-refactor.frontend-amm-software` (2026-04-29 LANDED)
+---
 
-## Esempio
+### Tutto o niente
 
-```sql
--- Operatore standard (non admin)
-SELECT anagrafiche.fn_crea_risorsa_umana_v2(
-    p_soggetto_id            := '...uuid...',
-    p_qualifica_id           := 1,
-    p_unita_organizzativa_id := 5,
-    p_valido_dal             := CURRENT_DATE,
-    p_auth_user_id           := 42
-);
--- → crea RU + identita OPERATORE attiva, NO binding SA
+La funzione è una sola istruzione: se un passo fallisce, non resta né il ruolo, né il rapporto, né la veste, né il
+legame. I controlli che non sono suoi (la coerenza fra veste e ruolo, la natura della credenziale, l'unicità
+della veste accesa, i guard del rapporto) li fanno i trigger delle due tabelle.
 
--- Operatore super admin
-SELECT anagrafiche.fn_crea_risorsa_umana_v2(
-    p_soggetto_id    := '...uuid...',
-    p_qualifica_id   := 1,
-    p_auth_user_id   := 42,
-    p_is_super_admin := true
-);
--- → crea RU + identita OPERATORE + binding SUPER_ADMIN
+---
 
--- Operatore pre-disattivato (onboarding sospeso)
-SELECT anagrafiche.fn_crea_risorsa_umana_v2(
-    p_soggetto_id  := '...uuid...',
-    p_qualifica_id := 1,
-    p_auth_user_id := 42,
-    p_attivo       := false
-);
--- → identita_digitali.attivo = false (capability nuova v2)
-```
+### ⚠️ Che cosa oggi non copre
+
+* **`p_attivo` ha come default «accesa».** La regola è che la veste OPERATORE nasce spenta, e la madre la passa
+  spenta; ma la funzione è eseguibile da `zeroerp_app`, e un chiamante diretto che non dice niente ottiene una
+  veste accesa. La funzione gemella dei portali, `fn_crea_veste_portale`, non ha un default proprio per questo.
+* **Un SUPER_ADMIN senza credenziale è ignorato in silenzio.** Con `p_is_super_admin` vero e nessuna credenziale
+  non nasce né la veste né il legame, e la funzione non lo dice.
+* **La credenziale non si controlla qui.** Che la credenziale abbia già una veste OPERATORE lo rifiuta la madre
+  (`E_CREDENZIALE_GIA_OPERATORE`); chiamata direttamente, la funzione si affida agli indici unici, che valgono
+  solo per le vesti accese: una seconda veste OPERATORE spenta sulla stessa credenziale passa.
+* **Un inizio passato esplicitamente vuoto** non diventa il giorno operativo: il rapporto vuole la data, e l'errore
+  arriva dal vincolo della colonna, senza un codice del catalogo. Il ripiego sul giorno operativo scritto per la
+  veste non si raggiunge mai.
+
+---
+
+### Codici errore
+
+| Codice | Quando |
+| --- | --- |
+| `E_ADMIN_VALIDAZIONE` | manca il soggetto o la qualifica; la qualifica non esiste o è spenta; la credenziale passata non esiste |
+| `E_ADMIN_UO_NON_TROVATA` | l'unità organizzativa passata non esiste o è spenta |
+| `E_CONFIG_MANCANTE` | è chiesto un SUPER_ADMIN e i profili attivi di quel tipo non sono esattamente uno (da `config.fn_profilo_super_admin_id`) |
+| `E_RISORSA_UMANA_GIA_PRESENTE` | il soggetto ha già una risorsa umana, accesa o spenta |
+
+Più quelli dei trigger delle tabelle scritte.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-fn-crea-risorsa-umana.sql` — il rapporto senza credenziale (nessuna veste), il
+  rapporto con la credenziale (la veste OPERATORE, chiesta accesa), il soggetto mancante, l'unità organizzativa
+  inesistente. Il file lavora coi vincoli differiti: i guard di completezza del soggetto non scattano.
+* `db/pgtap/anagrafiche/test-fn-crea-risorsa-umana-gia-presente-v1.sql` — il secondo rapporto sullo stesso
+  soggetto, con la risorsa accesa e spenta, dalla madre e chiamando la funzione direttamente: il codice, il campo,
+  la frase col nome, e che non resti niente scritto.
+* Il legame SUPER_ADMIN lo esercitano le fixture che creano un super admin con
+  `dbops.fn_pgtap_crea_operatore_umano`; `db/pgtap/config/test-fn-profilo-super-admin-id-v1.sql` prova, chiamando
+  questa funzione, che con due profili SUPER_ADMIN attivi si ferma con `E_CONFIG_MANCANTE`.
+* Nessun test prova il default di `p_attivo`, la qualifica spenta, la credenziale inesistente, il SUPER_ADMIN
+  chiesto senza credenziale, né che le date finiscano anche sulla veste.
+
+---
+
+### Note di migrazione
+
+* 2026-04-29 — nasce col suffisso `_v2` e prende il posto di `fn_crea_risorsa_umana`, che chiedeva il ruolo con
+  l'enum `config.ruolo_sistema`; funzione ed enum sono stati ritirati. Il commento del corpo e quello della
+  funzione descrivono ancora la differenza da quella versione.
+* 2026-09-12 — ritirata la tabella ponte `risorse_umane_auth_user`: il legame fra rapporto e credenziale è la veste
+  OPERATORE sullo stesso ruolo.
+* 2026-09-23 — il profilo SUPER_ADMIN si risolve per tipo; prima era un id del seed scritto nel corpo.
+* 2026-10-02 — il rifiuto `E_RISORSA_UMANA_GIA_PRESENTE`: prima il secondo rapporto arrivava al client come errore
+  generico del vincolo unico.
+* 2026-10-18 — il legame lo scrive `config.fn_lega_profilo_identita` e il profilo lo trova
+  `config.fn_profilo_super_admin_id`, sedi uniche delle due regole.
+
+---
+
+{% include-markdown "signature-core.md" %}

@@ -216,6 +216,9 @@ class EmailAllegatoRow(TypedDict):
 
 class JobRunLogRow(TypedDict):
     id: int
+    # Il processo della corsa (`NOT NULL` dal 2026-11-22): con `jobname` fa la
+    # corsia, perche' un nome di corsia non e' di un processo solo.
+    processo_codice: str
     jobname: str
     stepname: str | None
     started_at: str

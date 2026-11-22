@@ -18,7 +18,7 @@
 --   (80_data, contratto); la grammatica e le divergenze si provano su tabelle
 --   di prova create qui.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 21):
 --    1) mirror della composizione sotto un preset intatto: nessun errore
 --    2) … la riga segue il CSV
 --    3) mirror sotto il preset personalizzato: nessuna chiave duplicata
@@ -36,13 +36,21 @@
 --   14) … sotto un padre non iscritto e' PADRE_NON_ISCRITTO
 --   15) … con la colonna del padre assente e' NON_CLASSIFICATA
 --   16) il runner monta la figlia e non la iscrive
+--   Le colonne derivate (brief-db-revisione-ui, giro 7, Q54 (a); numerati in coda)
+--   17) ⭐ dopo il ritiro del caso 5 l'impronta del preset personalizzato e' quella
+--       della sua composizione: il seed non l'ha riportata indietro
+--   18) … e non e' finita fra i valori scartati del registro
+--   19) grammatica: COLONNA con le colonne derivate come quarto argomento e' valida
+--   20) … una derivata che non sta fra le colonne dell'installazione no
+--   21) controllo del seed: il montaggio su ui.lista_preset porta
+--       composizione_impronta come colonna derivata (riga 5 del registro)
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(16);
+SELECT plan(21);
 
 -- ============================================================
 -- 1-2 Sotto un preset intatto la composizione segue il CSV
@@ -113,6 +121,21 @@ SELECT is(
     0,
     '7) … e la riga non c''e'': il preset personalizzato non la riceve');
 
+-- 17-18) Il caso 5 ha tolto una riga della composizione nella sessione del
+--   migratore: il trigger della composizione ha riscritto l'impronta del preset, e
+--   il seed (a00) non la riporta a OLD perche' e' una colonna derivata.
+SELECT is(
+    (SELECT lp.composizione_impronta FROM ui.lista_preset lp WHERE lp.id = 1),
+    ui.fn_preset_impronta('lista', 1),
+    '17) ⭐ dopo il ritiro l''impronta del preset personalizzato e'' quella della sua composizione');
+
+SELECT is(
+    (SELECT COALESCE(s.scartati ? 'composizione_impronta', false)
+       FROM dbops.seed_righe s
+      WHERE s.schema_name = 'ui' AND s.table_name = 'lista_preset' AND s.riga_id = '1'),
+    false,
+    '18) … e l''impronta non e'' fra i valori scartati del registro');
+
 -- ============================================================
 -- 8-11 La grammatica
 -- ============================================================
@@ -136,6 +159,20 @@ SELECT is(
     (SELECT valido FROM dbops.fn_seed_primo_impianto_argomenti(ARRAY['FIGLIA', NULL, 'ui.lista_preset'])),
     false,
     '11) … FIGLIA con la colonna NULL non e'' valida');
+
+SELECT is(
+    (SELECT valido::text || ',' || forma
+       FROM dbops.fn_seed_primo_impianto_argomenti(
+                ARRAY['COLONNA', 'codice', 'descrizione,impronta', 'impronta'])),
+    'true,COLONNA',
+    '19) grammatica: COLONNA con le colonne derivate come quarto argomento e'' valida');
+
+SELECT is(
+    (SELECT valido::text || ',' || COALESCE(dettaglio, '')
+       FROM dbops.fn_seed_primo_impianto_argomenti(
+                ARRAY['COLONNA', 'codice', 'descrizione', 'impronta'])),
+    'false,forma COLONNA: una colonna derivata non sta fra quelle dell''installazione',
+    '20) … una derivata che non sta fra le colonne dell''installazione no');
 
 -- ============================================================
 -- 12-16 Registro, divergenze e runner, su tabelle di prova
@@ -193,6 +230,16 @@ SELECT is(
       WHERE schema_name = 'ui' AND table_name = 'pgtap_seed_figlia_a'),
     '1,0',
     '16) il runner monta la figlia e non la iscrive');
+
+-- 21) Un controllo del seed, non del modello: lo dichiara la riga 5 del registro.
+SELECT is(
+    (SELECT (dbops.fn_trigger_argomenti(tg.tgargs))[4]
+       FROM pg_trigger tg
+      WHERE tg.tgrelid = 'ui.lista_preset'::regclass
+        AND tg.tgfoid = 'script.trgfn_seed_primo_impianto()'::regprocedure
+        AND NOT tg.tgisinternal),
+    'composizione_impronta',
+    '21) controllo del seed: il montaggio su ui.lista_preset porta composizione_impronta come colonna derivata');
 
 SELECT * FROM finish();
 ROLLBACK;

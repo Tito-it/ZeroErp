@@ -677,8 +677,8 @@ def esiti_fatturazione(
         )
     ]
 
-    # (b) Giri del BATCH schedulato. Una pagina piena (`MAX_LIMIT`) di JOBNAME DISTINTI (il summary
-    # e' un GROUP BY jobname) gia' ristretti alle corsie della fatturazione: le
+    # (b) Giri del BATCH schedulato. Una pagina piena (`MAX_LIMIT`) di CORSIE DISTINTE (il summary
+    # e' un GROUP BY processo_codice, jobname) gia' ristrette al processo della fatturazione: le
     # corsie sono 2, il cap e' largo per costruzione.
     summary, _ = MaintenanceRepository().list_job_summary(
         limit=MAX_LIMIT,

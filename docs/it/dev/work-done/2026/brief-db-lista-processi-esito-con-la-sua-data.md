@@ -21,7 +21,7 @@ strada (ii), un solo valore booleano (§6.3). Nessuna decisione aperta.
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
 > **Origine:** allineamento della lista `amm.processi` alla forma unica delle corse, chiesto da Tid
 > (2026-11-22); scelta «in due tempi» di Tid, perché il BE non rinomina prima del DB.
-> **Brief vicini verificati:** [brief-db-giornale-corse-indici](../../work-in-progress/brief-db-giornale-corse-indici.md), stesso
+> **Brief vicini verificati:** [brief-db-giornale-corse-indici](brief-db-giornale-corse-indici.md), stesso
 > giornale ma altro tema (gli indici). Nessun altro brief aperto tocca la lista 66.
 
 ## 1. Il caso

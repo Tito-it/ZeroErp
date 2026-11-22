@@ -191,15 +191,17 @@ SELECT ok(
 -- ============================================================
 -- 6-7. Le undici colonne del 20261010-26 (la dodicesima, magazzino.note.lingua, e' id_lingua dal 20261101-17)
 -- ============================================================
--- ⚠️ Testo di PostgreSQL 19 (dal 2026-11-21): su una colonna varchar `IN (...)` si
---   scrive `ANY (ARRAY[('X'::character varying)::text, ...])`; la 18 scriveva
---   `ANY ((ARRAY['X'::character varying, ...])::text[])`. Stesso vincolo, altro testo.
+-- ⚠️ Rev 2026-11-22 (20261122-40): il testo si legge da dbops.fn_pgtap_definizione_vincolo,
+--   non da pg_get_constraintdef. Sulla 19 un `IN (...)` su varchar ha due testi: nato sul
+--   database (la CI, un'installazione nuova) `ANY ((ARRAY['X'::character varying, ...])::text[])`,
+--   riletto da un dump della 18 (dbdev, lo scratch) `ANY (ARRAY[('X'::character varying)::text, ...])`.
+--   Il BB riporta il secondo al primo: si asserisce la forma del vincolo nato.
 CREATE TEMP TABLE _convertite (colonna text, tipo text, vincolo text, definizione text) ON COMMIT DROP;
 INSERT INTO _convertite VALUES
     ('config.province.sigla',                               'character varying(10)',  'chk_province_sigla_forma',                         'CHECK (((sigla)::text ~ ''^[A-Z0-9]{1,10}$''::text))'),
     ('config.province.descrizione',                         'character varying(80)',  'chk_province_descrizione_non_vuota',               'CHECK ((btrim((descrizione)::text) <> ''''::text))'),
     -- D-6 (20261010-37): e' il canale FE, P o C; il «non vuoto» e' diventato il vocabolario
-    ('anagrafiche.dati_societari.destinatario_fe',          'character varying(1)',   'chk_dati_societari_destinatario_fe_canale',        'CHECK (((destinatario_fe)::text = ANY (ARRAY[(''P''::character varying)::text, (''C''::character varying)::text])))'),
+    ('anagrafiche.dati_societari.destinatario_fe',          'character varying(1)',   'chk_dati_societari_destinatario_fe_canale',        'CHECK (((destinatario_fe)::text = ANY ((ARRAY[''P''::character varying, ''C''::character varying])::text[])))'),
     ('anagrafiche.gestori.descrizione',                     'character varying(50)',  'chk_gestori_descrizione_non_vuota',                'CHECK ((btrim((descrizione)::text) <> ''''::text))'),
     ('anagrafiche.gestori.cd_prod_software',                'character varying(20)',  'chk_gestori_cd_prod_software_non_vuoto',           'CHECK ((btrim((cd_prod_software)::text) <> ''''::text))'),
     ('config.ambiti.descrizione',                           'character varying(100)', 'chk_ambiti_descrizione_non_vuota',                 'CHECK ((btrim((descrizione)::text) <> ''''::text))'),
@@ -226,7 +228,7 @@ SELECT is(
        LEFT JOIN pg_namespace n ON n.nspname = split_part(x.colonna, '.', 1)
        LEFT JOIN pg_class c     ON c.relnamespace = n.oid AND c.relname = split_part(x.colonna, '.', 2)
        LEFT JOIN pg_constraint k ON k.conrelid = c.oid AND k.conname = x.vincolo AND k.contype = 'c'
-      WHERE pg_get_constraintdef(k.oid) IS DISTINCT FROM x.definizione),
+      WHERE dbops.fn_pgtap_definizione_vincolo(k.conrelid::regclass, k.conname) IS DISTINCT FROM x.definizione),
     '',
     '7) ognuna ha il suo CHECK, nella forma esatta (sigla: forma; le altre: non vuoto)'
 );

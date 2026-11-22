@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.coda_lavori`
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -109,7 +109,15 @@ per i lavori futuri, non interrompe quello in corso.
 * `claimed_at`: l'istante della presa in carico, scritto dal drenatore; è il riferimento del
   reaper.
 * `idempotency_key`: la chiave **di business** che impedisce due lavori vivi uguali (vedi sotto).
-* `job_run_id`: il legame con la corsa del giornale, quando c'è. `result`: il riepilogo che
+* `job_run_id`: la corsa del giornale che ha preso il lavoro, timbrata dal drenatore. `NULL` vuol
+  dire che il lavoro non è mai stato preso, oppure che la sua corsa non è più nel giornale. Il
+  giornale si pota a 12 mesi (`maintenance.fn_pota_giornale_corse`) e la coda no: un lavoro vive
+  più a lungo della sua corsa. La FK `fk_coda_lavori_job_run_log` (`ON DELETE SET NULL`) toglie il
+  riferimento quando la corsa esce, per chiunque la cancelli. L'azzeramento gira come proprietario
+  e non subisce la row level security, quindi tocca i lavori di ogni azienda, anche quelli
+  archiviati, che restano archiviati. Come ogni modifica, riscrive `data_update` e `user_update`.
+  Lo serve l'indice parziale `ix_coda_lavori_job_run_id`, deciso nella policy degli indici.
+  `result`: il riepilogo che
   l'handler restituisce. `ultimo_errore`: l'ultimo fallimento.
 
 ---
@@ -223,6 +231,9 @@ dalle automazioni.
 * 2026-11-07 — nasce `emittente_fiscale_id` con i suoi due vincoli, e la policy, prima inerte
   (`brief-db-revisione-dbops`, giro 5, `20261107-51`, `-54`); poi la row level security si accende,
   con l'indice dell'azienda dichiarato assente (`20261107-57`, `-58`).
+* 2026-11-22 — il giornale delle corse si pota a 12 mesi; `job_run_id` prende la FK verso il
+  giornale, `ON DELETE SET NULL`, e i riferimenti senza corsa si azzerano (`20261122-33`,
+  `brief-db-giornale-corse-indici`).
 
 ---
 

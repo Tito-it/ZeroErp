@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Trigger function `ui.trgfn_preferenza_guard_forma`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -56,13 +56,15 @@ guard non ne trova di sbagliate al primo salvataggio.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Un ritiro dal catalogo non blocca la preferenza
 
-* **Una misura uscita dal catalogo blocca la modifica.** Il catalogo delle misure non sa delle
-  preferenze: una misura citata solo da preferenze si toglie senza rifiuto. Da quel momento ogni
-  modifica della configurazione che conservi quella misura è rifiutata, anche se tocca soltanto le
-  colonne; la lettura, invece, scarta la misura e risponde lo standard. Il client evita il caso
-  rimandando la misura solo quando la lettura la dice scelta dall'utente.
+Il guard giudica la configurazione intera, quindi anche le chiavi che il salvataggio non tocca. Per
+questo ciò che esce dal catalogo esce anche dalle preferenze, nella stessa istruzione: la misura tolta
+dal catalogo ([trgfn_misure_pagina_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_misure_pagina_ritira_dalle_preferenze)),
+la colonna cancellata e la card tolta dal pool
+([trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)). Le
+strade che con un aggiornamento farebbero uscire un codice dal suo contenitore sono chiuse dal
+lucchetto di colonna. Una preferenza non resta così con un valore che il guard rifiuterebbe.
 
 ---
 
@@ -90,6 +92,8 @@ guard non ne trova di sbagliate al primo salvataggio.
 * 2026-11-21 — nasce, e prende il posto di `ui.trgfn_ui_lista_preferenza_utente_guard_pagina_dimensione`,
   che giudicava solo la misura di pagina delle liste. Sulle dashboard prima non c'era nessun guard: la
   forma la controllava solo il backend.
+* 2026-11-22 — i ritiri dal catalogo (misura, colonna, card) tolgono il valore anche dalle preferenze:
+  la sezione «Che cosa oggi non copre» non ha più casi.
 
 ---
 

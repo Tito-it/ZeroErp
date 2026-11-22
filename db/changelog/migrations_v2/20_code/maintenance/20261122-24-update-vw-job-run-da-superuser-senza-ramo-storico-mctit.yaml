@@ -1,0 +1,100 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vw_job_run_da_superuser: la chiave e' il processo, e basta.
+#   Brief: brief-db-giornale-corse-indici §8.1 (giro 2a, Tid 2026-11-22).
+#
+# ⭐ IL MODELLO. Ogni corsa ha il suo processo: processo_codice diventa
+#   NOT NULL in 90_end/20261122-25, dopo che le righe storiche senza processo
+#   sono state cancellate a mano dalle macchine nate prima del vincolo
+#   (D-R4 di Tid). La chiave COALESCE(processo_codice, jobname) non ha piu'
+#   il secondo ramo: si ritirano la discesa ricorsiva sui jobname senza
+#   processo e la LATERAL sulle righe senza processo, e l'ultima corsa per
+#   processo e' una LATERAL sola su ix_job_run_log_processo_codice_started_at.
+#
+# ⚠️ Stesse colonne, stesso ordine: CREATE OR REPLACE VIEW. Corpo dal catalogo
+#   (pg_get_viewdef, 2026-11-22, cioe' quello di 20261122-22); cambiano solo le
+#   CTE. Il COMMENT dice che cosa dice la vista, non come la legge: resta.
+#
+# ⚠️ Gira prima del NOT NULL (20_code prima di 90_end, da zero; per numero, su
+#   un database gia' vivo): su una macchina che ha ancora righe senza processo
+#   la vista non le vede, e il -25 si ferma finche' non sono cancellate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-24-update-vw-job-run-da-superuser-senza-ramo-storico-mctit.yaml
+
+  - changeSet:
+      id: 20261122-24-update-vw-job-run-da-superuser-senza-ramo-storico
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_da_superuser: la chiave e' processo_codice, senza il ramo delle
+        righe storiche senza processo. Brief: brief-db-giornale-corse-indici §8.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'maintenance'
+                AND c.relname = 'vw_job_run_da_superuser'
+                AND c.relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW maintenance.vw_job_run_da_superuser AS
+              WITH RECURSIVE processi_giornale AS (
+                       SELECT min(p0.processo_codice) AS chiave
+                         FROM maintenance.job_run_log p0
+                       UNION ALL
+                       SELECT ( SELECT min(p1.processo_codice) AS min
+                                  FROM maintenance.job_run_log p1
+                                 WHERE (p1.processo_codice > processi_giornale.chiave)) AS chiave
+                         FROM processi_giornale
+                        WHERE (processi_giornale.chiave IS NOT NULL)
+                      ), ultima AS (
+                       SELECT k.chiave AS processo_codice,
+                          x.jobname,
+                          x.started_at,
+                          x.ok,
+                          x.origine,
+                          x.ruolo_sessione
+                         FROM (processi_giornale k
+                           CROSS JOIN LATERAL ( SELECT l.jobname,
+                                  l.started_at,
+                                  l.ok,
+                                  l.origine,
+                                  l.ruolo_sessione
+                                 FROM maintenance.job_run_log l
+                                WHERE ((l.processo_codice = k.chiave) AND (l.ruolo_sessione IS NOT NULL))
+                                ORDER BY l.started_at DESC, l.id DESC
+                               LIMIT 1) x)
+                        WHERE (k.chiave IS NOT NULL)
+                      )
+               SELECT u.processo_codice,
+                  u.jobname,
+                  u.started_at,
+                  u.ok,
+                  u.origine,
+                  u.ruolo_sessione
+                 FROM (ultima u
+                   JOIN pg_roles r ON ((r.rolname = u.ruolo_sessione)))
+                WHERE r.rolsuper;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo di 20261122-22 dal catalogo).
+              SELECT 1;

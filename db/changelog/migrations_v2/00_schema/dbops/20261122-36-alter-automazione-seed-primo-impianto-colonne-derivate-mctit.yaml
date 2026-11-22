@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.automazione_seed_primo_impianto: le colonne che il database deriva.
+#   Brief: brief-db-revisione-ui (giro 7: Q54 (a), decisa da Tid il 2026-11-22,
+#   col disegno «una colonna nel registro»; completa QU1 del
+#   brief-db-seed-primo-impianto-non-si-riscrive).
+#
+# Il difetto: nella forma per colonna, quando il software scrive una riga che
+#   l'installazione ha personalizzato, script.trgfn_seed_primo_impianto riporta a
+#   OLD ogni colonna dell'installazione cambiata. Fra quelle ci sono colonne che
+#   non scrive nessuno da fuori: le deriva il database da una tabella figlia
+#   (ui.lista_preset.composizione_impronta, scritta da
+#   ui.trgfn_preset_riga_tocca_preset quando la composizione cambia). Il software
+#   che ritira una colonna dalla composizione di un preset personalizzato toglie
+#   davvero la riga figlia, e il seed riportava indietro l'impronta: da li' la
+#   prima scrittura dell'installazione, anche uguale, spostava la data del
+#   contenuto.
+# La correzione qui: colonne_derivate, un sottoinsieme di colonne_installazione.
+#   Il trigger la riceve come quarto argomento della forma per colonna
+#   (20261122-37, -38), e nell'UPDATE del software non la riporta a OLD
+#   (20261122-39). Per l'installazione restano colonne sue: cambiarle personalizza
+#   la riga, come oggi.
+# DDL vivo da dbdev (2026-11-22). Il COMMENT di tabella si riscrive intero
+#   (linee-guida-sql §5d): cambia la descrizione della forma per colonna.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261122-36-alter-automazione-seed-primo-impianto-colonne-derivate-mctit.yaml
+
+  - changeSet:
+      id: 20261122-36-alter-automazione-seed-primo-impianto-colonne-derivate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.automazione_seed_primo_impianto: colonne_derivate, le colonne dell'installazione che il database
+        deriva e che il software non riporta a OLD. Brief: brief-db-revisione-ui (giro 7, Q54 (a)).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_attribute
+               WHERE attrelid = to_regclass('dbops.automazione_seed_primo_impianto')
+                 AND attname = 'colonne_derivate'
+                 AND NOT attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_seed_primo_impianto
+                  ADD COLUMN colonne_derivate text[],
+                  ADD CONSTRAINT chk_automazione_seed_primo_impianto_derivate
+                      CHECK (colonne_derivate IS NULL
+                             OR ((cardinality(colonne_derivate) >= 1
+                                  AND colonne_installazione IS NOT NULL
+                                  AND colonne_derivate <@ colonne_installazione) IS TRUE));
+
+              COMMENT ON COLUMN dbops.automazione_seed_primo_impianto.colonne_derivate IS
+                  'Forma per colonna: le colonne dell''installazione che il database deriva da sé (da una tabella figlia, con un trigger), e che nessuno scrive da fuori. Quando il software scrive una riga personalizzata dall''installazione, non si riportano al valore di prima: il cambio l''ha fatto il database, e la riga deve dire il vero. Per l''installazione restano colonne sue, e cambiarle personalizza la riga. Un sottoinsieme di colonne_installazione; NULL se la tabella non ne ha.';
+              COMMENT ON CONSTRAINT chk_automazione_seed_primo_impianto_derivate ON dbops.automazione_seed_primo_impianto IS
+                  'Le colonne derivate sono almeno una e stanno tutte fra le colonne dell''installazione; altrimenti NULL.';
+              COMMENT ON TABLE dbops.automazione_seed_primo_impianto IS
+                  'Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l''installazione l''ha modificata la riga e'' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e'' accesa, lo rigenera se diverge, lo toglie se la riga e'' spenta. Quattro forme: per riga (gli elenchi e il padre NULL, il default), per colonna (i due elenchi, per le righe miste, e fra le colonne dell''installazione quelle che il database deriva, colonne_derivate), solo inserimento (per riga, e ogni riga di seed conta come personalizzata), figlia (tabella_padre e colonna_padre: una tabella di composizione senza colonna id, che segue il suo padre). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.automazione_seed_primo_impianto
+                  DROP CONSTRAINT IF EXISTS chk_automazione_seed_primo_impianto_derivate,
+                  DROP COLUMN IF EXISTS colonne_derivate;
+              COMMENT ON TABLE dbops.automazione_seed_primo_impianto IS
+                  'Le tabelle iscritte alla regola del seed di primo impianto: il CSV crea la riga, e dopo che l''installazione l''ha modificata la riga e'' sua (linee-guida-sql §11.7). Una riga per tabella; il runner dbops.fn_run_automations_seed_primo_impianto monta script.trgfn_seed_primo_impianto dove la riga e'' accesa, lo rigenera se diverge, lo toglie se la riga e'' spenta. Quattro forme: per riga (gli elenchi e il padre NULL, il default), per colonna (i due elenchi, per le righe miste), solo inserimento (per riga, e ogni riga di seed conta come personalizzata), figlia (tabella_padre e colonna_padre: una tabella di composizione senza colonna id, che segue il suo padre). Lo scrive solo la migrazione, dal CSV. ⚠️ Una tabella entra in un rilascio PRECEDENTE al primo ritocco del suo CSV: il trigger nasce dopo 80_data.';

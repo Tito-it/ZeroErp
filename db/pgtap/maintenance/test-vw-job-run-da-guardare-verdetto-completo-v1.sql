@@ -39,8 +39,8 @@
 --   uno a corsa_verdetto_completo = true e uno a false. Il confronto e' fra i
 --   due, cosi' ogni caso dice anche che per i processi a false niente e' cambiato.
 -- ⚠️ IL CASO «LAVORO SENZA PROCESSO A CATALOGO» (§6.6 del brief) NON E'
---   COSTRUIBILE: chk_job_run_log_processo_dichiarato (NOT VALID) vieta a una corsa
---   nuova di nascere senza processo. La vista lo tratta come false
+--   COSTRUIBILE: processo_codice e' NOT NULL (90_end/20261122-25), e la FK porta
+--   sempre a un processo a catalogo. La vista lo tratterebbe come false
 --   (COALESCE(pr.corsa_verdetto_completo, false) sotto un LEFT JOIN): e' il
 --   comportamento di prima, e lo presidiano i pgTAP che c'erano
 --   (test-vw-job-run-da-guardare, -causa-v1), che non dichiarano la colonna.

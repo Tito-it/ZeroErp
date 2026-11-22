@@ -10,7 +10,7 @@
 #        `stato = 'FATTO'` sulla riga piu' recente: un lavoro IN_CORSO usciva
 #        «Errore» nel pannello degli esiti, e un ANNULLATO pure. E' la stessa
 #        famiglia della cucitura sul giornale dei run (test 6 di
-#        `test_job_liveness_due_chiavi`): un esito letto da una riga che un
+#        `test_job_liveness_per_corsia`): un esito letto da una riga che un
 #        esito non ce l'ha. Il caso si COSTRUISCE e si ritira: nessun test che
 #        confronti la popolazione di oggi.
 #        ⚠️ Le righe si scrivono direttamente sulla tabella con `run_as =

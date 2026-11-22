@@ -8,6 +8,8 @@
 # Indice test:
 #   1) conteggi_code_scoped_operatore — nessun filtro scritto qui (lo fa la RLS, BE9), worker attivi
 #   2) conteggi_code_worker_mai_girato — liveness assente → worker giù
+#   2-bis) liveness_worker_per_corsia — una lettura per processo, con la SUA
+#      soglia; la risposta di un processo non accende l'altro (2026-11-22)
 #   3) elenca_coda_lavori_operatore — «miei» = accodati dal chiamante, lui per is_mio (BE9)
 #   4) elenca_coda_lavori_tutti_aperto_senza_permesso — visibilità libera
 #   5) elenca_coda_lavori_tutti_con_permesso — owner filter None
@@ -150,6 +152,50 @@ class ConteggiCodeTests(SimpleTestCase):
                 "last_run_at": None, "attivo": False, "in_corso": False,
                 "ultima_conclusa": None,
             },
+        )
+
+
+    # 2-bis. ⭐ La liveness si chiede per CORSIA (2026-11-22, strada (a) di Tid,
+    #    §11.3 di brief-db-giornale-corse-indici): una lettura per processo, coi
+    #    suoi `jobnames` e la SUA soglia (il contratto del processo; ripiego per
+    #    chi non ne ha), e la risposta di un processo si mette sotto la coppia
+    #    di QUEL processo. Il caso costruito: il catalogo da' soglie diverse ai
+    #    due drainer (una assente), e il giornale ha una corsa col nome del
+    #    worker della coda lavori SOTTO IL PROCESSO DELLA STAMPA. Per solo nome
+    #    quella corsa avrebbe acceso il worker della coda lavori.
+    def test_liveness_worker_per_corsia(self) -> None:
+        lavori = svc.CORSIA_WORKER_CODA_LAVORI
+        stampa = svc.CORSIA_WORKER_CODA_STAMPA
+        viva = {"last_run_at": "x", "attivo": True, "in_corso": False, "ultima_conclusa": None}
+
+        def per_processo(*, processo_codice, soglia_minuti, jobnames=None):
+            if processo_codice == stampa[0]:
+                return {stampa[1]: viva, lavori[1]: viva}
+            return {}
+
+        with patch(f"{_SVC}.ProcessiRepository", autospec=True) as proc_cls, \
+                patch(f"{_SVC}.MaintenanceRepository", autospec=True) as maint_cls:
+            proc_cls.return_value.contratti_liveness.return_value = {
+                stampa[0]: {"tolleranza_minuti": 7, "segno_di_vita": "GIORNALE"},
+            }
+            maint_cls.return_value.job_liveness.side_effect = per_processo
+            esito = svc._liveness_worker([lavori, stampa])
+
+        chiamate = {
+            c.kwargs["processo_codice"]: c.kwargs
+            for c in maint_cls.return_value.job_liveness.call_args_list
+        }
+        self.assertEqual(set(chiamate), {lavori[0], stampa[0]}, "una lettura per processo")
+        self.assertEqual(chiamate[lavori[0]]["jobnames"], [lavori[1]])
+        self.assertEqual(chiamate[stampa[0]]["jobnames"], [stampa[1]])
+        self.assertEqual(chiamate[stampa[0]]["soglia_minuti"], 7)
+        self.assertEqual(
+            chiamate[lavori[0]]["soglia_minuti"], svc._SOGLIA_LIVENESS_RIPIEGO_MINUTI,
+        )
+        self.assertIn(stampa, esito)
+        self.assertNotIn(
+            lavori, esito,
+            "la corsa di un altro processo con lo stesso nome ha acceso il worker",
         )
 
 

@@ -223,8 +223,8 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
   verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
   finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
-  (documenti interni). Il lotto di magazzino diventa dell'azienda in
-  `work-in-progress/brief-db-magazzino-lotto-dell-azienda.md`: quattro decisioni a Tid.
+  (documenti interni). Il lotto di magazzino è dell'azienda dal 2026-11-22
+  (`work-done/2026/brief-db-magazzino-lotto-dell-azienda.md`, chiuso: DB, BE e FE fatti).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
@@ -281,7 +281,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   auto-generata rigenerata. Giro 0d (area D: ruoli d'impresa e
   banche; 46 pagine, il blocco dei guard di ruolo, la guida dei conti) scritto il 2026-11-22, con il pgTAP del catasto
   ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
-  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Prossimo: il giro 0e (area E).
+  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Giro 0e (area E: gli accessi; 23 pagine, i blocchi della
+  sincronizzazione e dell'ultimo SUPER_ADMIN, le due guide) scritto e committato il 2026-11-22, doc auto-generata rigenerata: il giro 0 è finito. Prossimo:
+  il vaglio delle segnalazioni S1-S68 (Tid), poi i giri di codice.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

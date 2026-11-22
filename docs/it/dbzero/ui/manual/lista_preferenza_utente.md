@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -89,6 +89,13 @@ porta `preset_base_id` a nessuno (`ON DELETE SET NULL`) e lo snapshot torna vuot
 * `pagina_dimensione`, se c'è, è un intero del catalogo
   [misure_pagina](/dbzero/ui/tabelle/misure_pagina), giudicato dallo stesso guard. Una preferenza
   salvata con una misura poi uscita dal catalogo non rompe la lettura: la lista risponde lo standard.
+* **Ciò che esce dal catalogo esce anche dalla preferenza.** Tolta una misura dal catalogo, la chiave
+  `pagina_dimensione` esce dalle preferenze che la citano
+  ([trgfn_misure_pagina_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_misure_pagina_ritira_dalle_preferenze));
+  cancellata una colonna, la sua voce esce dalle preferenze della lista
+  ([trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)), e se
+  era l'unica la chiave `colonne` esce e segue il preset. Così una preferenza non resta mai con un
+  valore che il guard rifiuterebbe al salvataggio successivo.
 * Una scrittura che riscrive la configurazione uguale (chiudere il banner, riallinearsi alla base)
   passa senza giudizio.
 * Una riga scritta senza passare dal guard non rende la lista inapribile: il resolver salta le voci
@@ -115,12 +122,11 @@ dall'utente della riga e spesso, e non ha `user_insert` né `user_update`.
 
 ### ⚠️ Che cosa oggi non copre
 
-* **Le colonne che non ci sono più.** Una preferenza di colonne i cui codici sono tutti spariti
-  dal catalogo vale ancora come scelta: il resolver aggiunge le colonne del catalogo in coda,
-  nascoste, e la lista parte con le sole colonne identificatore e azione.
-* **Una misura uscita dal catalogo blocca la modifica.** Una misura citata solo da preferenze si
-  toglie dal catalogo senza rifiuto; da quel momento il guard rifiuta ogni modifica della
-  configurazione che la conservi, anche se tocca soltanto le colonne.
+* **Una colonna spenta resta nella preferenza, finché la persona non salva.** Spegnere una colonna
+  non la toglie dalla preferenza, e la lettura la salta; ma il salvataggio successivo rimanda le
+  colonne che la lettura ha dato, senza quella spenta, e la voce si perde. Se la colonna si riaccende
+  prima, la scelta torna a valere; dopo, la colonna rientra come nuova. Il database ritira la voce
+  solo alla cancellazione.
 
 ---
 
@@ -183,6 +189,8 @@ dall'utente della riga e spesso, e non ha `user_insert` né `user_update`.
   non è quella di oggi.
 * 2026-11-21 — `data_update` la scrive il database, ed è sempre valorizzata: le righe senza hanno preso
   `data_insert`.
+* 2026-11-22 — la colonna cancellata esce dalle preferenze della lista: prima la preferenza restava con
+  il codice, e il guard di forma ne rifiutava ogni salvataggio.
 
 ---
 

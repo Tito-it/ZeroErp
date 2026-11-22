@@ -1,22 +1,26 @@
 # Brief DB — magazzino: il lotto è dell'azienda
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-22**
->
-> **Riparte: team DB**, per l'archiviazione. R-1 … R-5 e F-1 sono fatti dalla sessione BE/FE il
-> 2026-11-22 (§6, esiti in riga), con test BE (DB vero compreso), smoke e vitest verdi; committati
-> su `dev/backend-tid`.
->
-> | # | Chi | Che cosa | Dove | Aspetta |
-> | --- | --- | --- | --- | --- |
-> | 1 | Tid | ✅ D-L1 = a, D-L2 = a, D-L3 = b, D-L4 = a (2026-11-22); il via al P-0 è dato | §4 | — |
-> | 1-bis | Tid | ✅ D-L5 = a, D-L6 = a (2026-11-22); il via al P-1 | §5.1 | — |
-> | 2 | team DB | ✅ P-0 (§5.1); ✅ P-1 applicato, pgTAP verdi (§5.2); ✅ P-2 … P-4 applicati, pgTAP verdi (§5.3) | §5 | — |
-> | 3 | Tid | ✅ apply di P-2 … P-4 e di `-19`, pgTAP verdi col runner (2026-11-22) | §5.3 | — |
-> | 4 | sessione BE / FE | ✅ R-1 … R-5; F-1 (2026-11-22) | §6, §6-bis | — |
-> | 5 | team DB | ✅ P-5 scritto (§5.3); archiviazione | §5 | 4 |
->
+## ✅ Chiuso — 2026-11-22
+
+> **Ultimo aggiornamento**: 22 novembre 2026
+
+**Nessuno riparte.** Il lato DB (P-0 … P-5, `20261122-14` … `-19`) è applicato da Tid coi pgTAP
+verdi; R-1 … R-5 e F-1 sono fatti dalla sessione BE/FE lo stesso giorno (§6, esiti in riga) ed
+entrati in `Tito-dev` con la PR #209. Nessun debito residuo. Archiviato in `work-done/`.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | ✅ Tid | D-L1 = a, D-L2 = a, D-L3 = b, D-L4 = a; il via al P-0 | §4 | — |
+| 1-bis | ✅ Tid | D-L5 = a, D-L6 = a; il via al P-1 | §5.1 | — |
+| 2 | ✅ team DB | P-0 (§5.1); P-1 (§5.2); P-2 … P-4 (§5.3) | §5 | — |
+| 3 | ✅ Tid | apply di P-1 … P-4 e di `-19`, pgTAP verdi col runner | §5.2, §5.3 | — |
+| 4 | ✅ sessione BE / FE | R-1 … R-5; F-1 | §6, §6-bis | — |
+| 5 | ✅ team DB | P-5; archiviazione | §5 | — |
+
+Decisioni aperte di Tid: nessuna.
+
 > **Brief vicini verificati (2026-11-22):**
-> * `work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo` ha i verbi del lotto
+> * [brief-db-magazzino-tutte-le-scritture-dal-verbo](../../work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md) ha i verbi del lotto
 >   (`fn_aggiungi_lotto`, `fn_modifica_lotto`) e la R-1 al BE che li adotta. Da lì nasce questo
 >   brief (§5.3);
 > * `work-in-progress/analisi-db-magazzino-carico-e-scarico` cita i lotti fra le tabelle «uguali
@@ -44,7 +48,7 @@ i magazzini e i seriali.
 ## 1. La storia della decisione che si cambia
 
 * **2026-09-14, Lotto 1 del magazzino**
-  ([brief-db-magazzino-lotto-1-terreno-vuoto](../work-done/2026/brief-db-magazzino-lotto-1-terreno-vuoto.md),
+  ([brief-db-magazzino-lotto-1-terreno-vuoto](brief-db-magazzino-lotto-1-terreno-vuoto.md),
   §4.3 e M-6). `magazzino.lotti` nasce **fuori dal perimetro RLS**, perché è «una definizione, non ha
   `magazzino_id`, e non ha FK verso tabelle protette». Unicità `(articolo_id, codice)`.
 * **2026-09-21, backend.** `test_perimetro_emittente_copertura.py`: *«un lotto è dell'ARTICOLO, […] il
@@ -312,3 +316,4 @@ doc auto-generata è rigenerata.
 | 2026-11-22 | DB | Dopo l'apply di P-2 … P-4 (Tid): casi 11-14 rossi (`42883`, la chiamata a `fn_log_and_raise_error` senza `VARIADIC`) → `20261122-19`; caso 16 rosso per l'ordine dell'array nel test (`ORDER BY 1` dentro l'aggregato) → test corretto |
 | 2026-11-22 | Tid | P-2 … P-4 e `20261122-19` applicati, pgTAP verdi. Lavoro DB chiuso; restano R-1 … R-5 (BE) e F-1 (FE) |
 | 2026-11-22 | BE/FE | R-1 … R-5 e F-1 fatti (§6, esiti); `lookup_lotti` per l'emittente del magazzino (R-3) |
+| 2026-11-22 | DB | Chiuso e archiviato in `work-done/2026/`: lavoro DB applicato, R-1 … R-5 e F-1 in `Tito-dev` (PR #209); nessun debito residuo |

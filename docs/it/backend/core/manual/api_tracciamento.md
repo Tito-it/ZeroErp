@@ -6,6 +6,8 @@
 
 Espone in lettura i tre livelli di tracciamento del sistema: audit log operativo, task registry multi-dominio e il giornale delle corse dei lavori automatici. È la vista **grezza e trasversale**: la vista per processo, con le sue corse, sta nella schermata dei processi automatici (vedi [Vedi anche](#vedi-anche)).
 
+⚠️ Il giornale delle corse **non è tutta la storia**: tiene gli ultimi 12 mesi, più le corse che la potatura conserva (vedi [Ritenzione del giornale](#ritenzione-del-giornale)).
+
 ## Contesto
 
 Il sistema di tracciamento Zero ERP opera su tre livelli distinti (vedi [Guida Tracciamento Processi e Job](/guide/analisi-tracciamento-processi-e-job)):
@@ -53,6 +55,9 @@ GET /api/v1/core/tracciamento/audit-log/
 | `search`        | string | No           | --      | Ricerca libera ILIKE su function_name/message |
 | `limit`         | int    | No           | 25      | Righe per pagina (1-200, fuori → 400)|
 | `offset`        | int    | No           | 0       | Righe da saltare (negativo → 400)             |
+
+Ordine fisso: `executed_at DESC, id DESC`, sull'istante (fino al 2026-11-22
+l'ordine cadeva sul testo di `executed_at`, come quello di `job-runs`).
 
 ### Domini Task
 
@@ -103,20 +108,28 @@ GET /api/v1/core/tracciamento/job-runs/
 
 | Parametro   | Tipo   | Obbligatorio | Default | Note                          |
 |-------------|--------|:------------:|---------|-------------------------------|
-| `jobname`   | string | No           | --      | Filtra per jobname esatto     |
+| `processo_codice` | string | No     | --      | Filtra per processo esatto. Con `jobname` è la **corsia** (dal 2026-11-22) |
+| `jobname`   | string | No           | --      | Filtra per jobname esatto. Da solo prende le corse di **ogni** processo che ha una corsia con quel nome: la riga dice di quale processo è ciascuna |
 | `ok`        | bool   | No           | --      | Filtra per esito: `true` = riuscite, `false` = fallite; vuoto = nessun filtro; ogni altro valore è un 400 `E_VALIDATION_INPUT` (dal 2026-10-20: prima `1`/`yes`/`y` = riuscite e tutto il resto fallite, in silenzio) |
-| `date_from` | string | No           | --      | Data inizio (YYYY-MM-DD)      |
+| `date_from` | string | No           | --      | Data inizio (YYYY-MM-DD). Oltre i 12 mesi trova solo le corse che la potatura conserva ([Ritenzione](#ritenzione-del-giornale)) |
 | `date_to`   | string | No           | --      | Data fine (YYYY-MM-DD)        |
 | `search`    | str    | No           | --      | ILIKE su jobname/stepname/message |
 | `limit`     | int    | No           | 25      | Righe per pagina (1-200, fuori → 400)|
 | `offset`    | int    | No           | 0       | Righe da saltare (negativo → 400)|
 
-Ordine fisso: `started_at DESC, id DESC`. Ogni riga (`JobRunLogRow` in
-`apps/core/types.py`) porta `id`, `jobname`, `stepname`, `started_at`,
+Ordine fisso: `started_at DESC, id DESC`, sull'istante (fino al 2026-11-22
+l'ordine cadeva sul testo di `started_at`, sotto la collation del database e
+senza indice: con una sessione in un fuso con l'ora legale, sbagliato nell'ora
+che il cambio d'ora ripete). Ogni riga (`JobRunLogRow` in `apps/core/types.py`) porta `id`,
+`processo_codice` (dal 2026-11-22), `jobname`, `stepname`, `started_at`,
 `ended_at` (testo PG), `ok`, `rows_affected`, `message`, `error_code`,
 `error_detail`, `agent_host`, `run_uuid`, `saltata`.
 
-⚠️ Non porta `origine`, `processo_codice`, `meta`, `auth_user_id`,
+⭐ La corsia è la coppia `(processo_codice, jobname)`: il modello non lega un
+nome di corsia a un processo solo (brief-db-giornale-corse-indici §11.3,
+strada (a) di Tid, 2026-11-22).
+
+⚠️ Non porta `origine`, `meta`, `auth_user_id`,
 `ruolo_sessione` né `sqlstate`, che la tabella ha. Le corse **di un processo**
 (filtro su `processo_codice`, con `origine` e l'operatore che le ha lanciate) le
 dà `GET /api/v1/amm-software/processi/{codice}/run/`, riservato a
@@ -142,8 +155,14 @@ GET /api/v1/core/tracciamento/job-summary/
 | `limit`     | int  | No           | 25      | Righe per pagina (1-200, fuori → 400)|
 | `offset`    | int  | No           | 0       | Righe da saltare (negativo → 400)|
 
-Restituisce per ogni jobname: `total_runs` (le corse **vere**: una saltata non è
-un'esecuzione), `ok_count`, `fail_count`, `saltate_count`,
+Restituisce una riga per **corsia**, la coppia `(processo_codice, jobname)` (dal
+2026-11-22: prima una per `jobname`, e due processi con una corsia dello stesso
+nome finivano in una riga, coi conteggi sommati). Ogni riga porta
+`processo_codice`, `jobname`, `total_runs` (le corse **vere**: una saltata non è
+un'esecuzione), `ok_count`, `fail_count`, `saltate_count` — contati sulle righe
+che il giornale ha: gli ultimi 12 mesi più quelle conservate, e tutta la storia
+solo per i processi esclusi dalla potatura, come la fatturazione
+([Ritenzione](#ritenzione-del-giornale)) —
 `last_run_at` (la riga più recente, testo PG: anche una saltata, che è segno di
 vita della sveglia), `in_corso` (quella riga è ancora
 aperta) e `ultima_conclusa = {started_at, ended_at, ok}` in ISO-8601: l'ultima
@@ -152,7 +171,7 @@ chiusa). ⛔ Dal 2026-09-14 al posto di `last_ok`:
 un esito accanto alla data di un'*altra* corsa (l'ultima avviata) si leggeva
 come uno — stessa forma di `job_liveness`, vedi
 [api_gestione_code.md](api_gestione_code.md) §1. Ordine: la riga più recente
-prima (`last_run_at DESC`), poi `jobname`.
+prima (`last_run_at DESC`), poi `processo_codice` e `jobname`.
 
 L'endpoint non ha filtri. I due filtri del repository (`processo_codice`,
 `meta_month_equals`) li usa solo il pannello esiti della fatturazione
@@ -196,6 +215,27 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
   [Contesto](#contesto)), il tracciamento dei task i service di dominio (es.
   `VenditePipelineRepository`).
 
+## Ritenzione del giornale
+
+Dal 2026-11-22 il job pgAgent `pota_giornale_corse` (ogni notte alle 03:30,
+`maintenance.fn_pota_giornale_corse`) cancella le corse **chiuse** partite prima
+dell'inizio del giorno aziendale di 12 mesi fa. Per ogni coppia
+`(processo_codice, jobname)` restano comunque, a qualunque età:
+
+- l'ultima corsa in assoluto (`last_run_at`, «mai eseguito»);
+- l'ultima conclusa vera (`ultima_conclusa`);
+- l'ultima fallita e l'ultima di pgAgent;
+- l'ultima col ruolo di sessione registrato;
+- **ogni corsa aperta**: in esecuzione, o appesa.
+
+Non si potano mai le corse dei processi che lo dichiarano
+(`dbops.processi.potatura_esclusione`): oggi i tre della fatturazione
+(`run_fatturazione_batch`, `FATTURAZIONE_GIRO`, `FATTURAZIONE_NUMERA`), perché il
+pannello esiti apre ogni mese di competenza. Nessun contratto cambia: le risposte
+hanno la stessa forma, parlano di un giornale più corto. Le regole stanno nel
+manuale della funzione (doc auto-generata di `maintenance`) e nel
+[brief-db-giornale-corse-indici](../../../dev/work-done/2026/brief-db-giornale-corse-indici.md) §8.8.
+
 ## Dipendenze DB
 
 Lette da questi endpoint:
@@ -218,10 +258,10 @@ Il repository non serve solo questi endpoint. Gli altri metodi, e chi li usa:
 | Metodo | Che cosa risponde | Chi lo usa |
 |--------|-------------------|-----------|
 | `sveglia_accesa(processo_codice)` | `maintenance.fn_sveglia_accesa`: la sveglia del processo deve far partire il lavoro? Mai `NULL`: se la funzione non sa decidere, solleva | `e_dovuto` (l'`ExecCondition` delle sveglie) |
-| `corsa_riuscita_dal(jobname, dal)` | c'è una corsa **riuscita** della corsia da `dal` in poi (fallite, aperte e saltate non contano) | `e_dovuto`, sveglie calendariali |
-| `corsa_chiusa_dal(jobname, dal)` | c'è una corsa **chiusa con esito**, riuscita o fallita, da `dal` in poi | `e_dovuto` con `basta_una_corsa` |
-| `job_liveness(jobnames=… \| processo_codice=…, soglia_minuti)` | per jobname: segno di vita (`last_run_at` ISO-8601, `attivo`, `in_corso`) + `ultima_conclusa`. Esattamente **una** delle due chiavi: senza, leggerebbe il giornale intero | stato dei worker in [api_gestione_code.md](api_gestione_code.md), digest dei presidi |
-| `list_job_summary(processo_codice=…, meta_month_equals=…)` | come `job-summary`, coi due filtri facoltativi. `processo_codice` tiene le corsie del processo per **chiave**; le righe storiche senza processo le riconosce dal nome (`<codice>` o `<codice>:<corsia>`, confronto esatto). Fino al 2026-11-22 era `jobname_prefix`, un `LIKE` che nessun indice serve e in cui `_` era un jolly | `job-summary` (senza filtri), pannello esiti della fatturazione |
+| `corsa_riuscita_dal(jobname, dal, *, processo_codice)` | c'è una corsa **riuscita** della corsia **del processo** da `dal` in poi (fallite, aperte e saltate non contano). La chiave è la coppia `(processo_codice, jobname)` dal 2026-11-22: un `jobname` non è di un processo solo, e una corsa di un altro processo direbbe «già fatto» | `e_dovuto`, sveglie calendariali |
+| `corsa_chiusa_dal(jobname, dal, *, processo_codice)` | c'è una corsa **chiusa con esito**, riuscita o fallita, della corsia del processo da `dal` in poi | `e_dovuto` con `basta_una_corsa` |
+| `job_liveness(*, processo_codice, soglia_minuti, jobnames=None)` | per ogni corsia del processo (`jobnames` restringe a quelle dette): segno di vita (`last_run_at` ISO-8601, `attivo`, `in_corso`) + `ultima_conclusa`, in un dict per `jobname`. Il processo è **obbligatorio** dal 2026-11-22: la chiave è la coppia, e per soli nomi la corsa di un altro processo avrebbe tenuto vivo un worker fermo | stato dei worker in [api_gestione_code.md](api_gestione_code.md), digest dei presidi |
+| `list_job_summary(processo_codice=…, meta_month_equals=…)` | come `job-summary` (una riga per corsia), coi due filtri facoltativi. `processo_codice` tiene le corsie del processo per **chiave** (la colonna è `NOT NULL`: ogni corsa ha il suo processo). Fino al 2026-11-22 era `jobname_prefix`, un `LIKE` che nessun indice serve e in cui `_` era un jolly | `job-summary` (senza filtri), pannello esiti della fatturazione |
 
 ⭐ Le corse si raccontano in **una forma sola** in tutto il backend: la riga più
 recente come segno di vita, l'ultima corsa vera chiusa come `ultima_conclusa`
@@ -254,20 +294,20 @@ lavori).
 
 - Le query sono dirette, senza funzioni né viste SQL dedicate. Gli indici li
   hanno `dbops.audit_log` e, dal 2026-11-22, `maintenance.job_run_log`
-  ([brief-db-giornale-corse-indici](../../../dev/work-in-progress/brief-db-giornale-corse-indici.md)):
-  per `jobname`, per `processo_codice`, per recenza, e uno parziale per le
-  righe storiche senza processo, tutti su `started_at DESC, id DESC`.
-- ⭐ Le corse si leggono **per chiave** (2026-11-22): `cte_corse` cerca la
+  ([brief-db-giornale-corse-indici](../../../dev/work-done/2026/brief-db-giornale-corse-indici.md)):
+  per `jobname`, per `processo_codice`, per le corsie di un processo
+  (`processo_codice, jobname`) e per recenza, tutti su `started_at DESC, id DESC`.
+- ⭐ Le corse si leggono **per chiave** (2026-11-22): il processo, o la corsia
+  `(processo_codice, jobname)`, mai il solo nome. `cte_corse` cerca la
   riga più recente e l'ultima conclusa di ogni chiave con una `LATERAL …
   LIMIT 1`, una discesa nell'indice a prescindere dalla storia. Fino a quel
   giorno era un `DISTINCT ON` sul giornale filtrato, che un indice ordina ma
   non limita. Lo usano `job_liveness`, `list_job_summary` e la lista dei
   processi.
-- ⚠️ Restano proporzionali alla storia, per definizione: i conteggi di
+- ⚠️ Restano proporzionali al giornale, per definizione: i conteggi di
   `job-summary` (tutte le corse di ogni job) e la lista di `job-runs` senza
-  `date_from`. Il giornale tiene 12 mesi quando il team DB applica la
-  ritenzione (giro 2 del brief): da allora le due risposte parlano degli
-  ultimi 12 mesi, più le corse che la potatura conserva.
+  `date_from`. Il giornale è limitato dalla ritenzione
+  ([Ritenzione del giornale](#ritenzione-del-giornale)).
 - I tipi condivisi (`AuditLogRow`, `DominioTaskRow`, `TaskRegistryRow`, `TaskRegistryImplRow`, `JobRunLogRow`) sono in `apps/core/types.py` per riuso cross-dominio.
 - Gli helper generici `qp_bool_optional`, `qp_str`, `pagina_da_query`, `envelope_da_offset` sono in `apps/core/api/payload_validators.py` e riusabili da qualsiasi endpoint GET.
 - 2026-10-21: i sei endpoint leggono la finestra come `limit`/`offset` (`pagina_da_query`); `page`/`page_size` in query diventano un 400. Envelope invariato.

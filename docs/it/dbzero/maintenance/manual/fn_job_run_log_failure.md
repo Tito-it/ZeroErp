@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_job_run_log_failure`
 
-> **Ultimo aggiornamento**: 4 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -92,7 +92,7 @@ Con il canale spento o non configurato lo dice con un avviso, e il fallimento re
 chi lo chiama, si collauda guardando dove dovrebbe arrivare.**
 
 Anche il giornale ha le sue regole, e il verbale non le aggira: una corsa senza processo
-dichiarato è respinta dal CHECK `chk_job_run_log_processo_dichiarato` anche qui, e finisce in
+dichiarato è respinta dal `NOT NULL` di `processo_codice` anche qui, e finisce in
 un avviso.
 
 ---

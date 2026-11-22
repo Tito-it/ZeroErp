@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Il job pgAgent pota_giornale_corse: ogni notte alle 03:30 la ritenzione del
+#   giornale delle corse (maintenance.proc_pota_giornale_corse_job, 12 mesi).
+#   Ora libera: nessun altro job gira alle 03:30. Il jobname e' il codice in
+#   dbops.processi. Brief: brief-db-giornale-corse-indici §8.8 (giro 2b).
+#
+# ⚠️ Stessa forma delle sorelle (85_pgagent/20261110-05): runOnChange con
+#   validCheckSums ANY, MARK_RAN dove pgAgent non c'e' (la CI), il job ricreato
+#   pulito, il passo gia' avvolto nel cancello della sveglia.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/85_pgagent/20261122-32-create-pgagent-job-pota-giornale-corse-mctit.yaml
+
+  - changeSet:
+      id: 20261122-32-create-pgagent-job-pota-giornale-corse
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comment: >
+        Crea il job pgAgent pota_giornale_corse (ogni giorno alle 03:30), che chiama
+        maintenance.proc_pota_giornale_corse_job(). Brief: brief-db-giornale-corse-indici §8.8.
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT COUNT(*)
+              FROM pg_extension
+              WHERE extname = 'pgagent'
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $$
+                 DECLARE
+                   v_classid pgagent.pga_jobclass.jclid%TYPE;
+                   v_jobid   pgagent.pga_job.jobid%TYPE;
+                 BEGIN
+                   SELECT jclid INTO v_classid
+                     FROM pgagent.pga_jobclass
+                    WHERE jclname = 'Routine Maintenance'
+                    LIMIT 1;
+
+                   IF v_classid IS NULL THEN
+                     INSERT INTO pgagent.pga_jobclass (jclname, jcldesc)
+                     VALUES ('Routine Maintenance', 'Default job class')
+                     RETURNING jclid INTO v_classid;
+                   END IF;
+
+                   -- ⚠️ Il jobname DEVE essere identico al codice in dbops.processi, o
+                   --   maintenance.fn_run_and_log non sa derivare l'attore.
+                   DELETE FROM pgagent.pga_job WHERE jobname = 'pota_giornale_corse';
+
+                   INSERT INTO pgagent.pga_job(jobjclid, jobname, jobdesc, jobenabled)
+                   VALUES (v_classid, 'pota_giornale_corse',
+                           'Ritenzione del giornale delle corse: cancella le corse chiuse piu'' vecchie di 12 mesi, tranne le ultime che i presidi leggono',
+                           true)
+                   RETURNING jobid INTO v_jobid;
+
+                   INSERT INTO pgagent.pga_schedule(
+                     jscjobid, jscname, jscenabled,
+                     jscminutes, jschours, jscweekdays,
+                     jscmonthdays, jscmonths, jscstart
+                   ) VALUES (
+                     v_jobid,
+                     'daily_03_30',
+                     true,
+                     (SELECT array_agg((i = 30)::boolean) FROM generate_series(0,59) AS g(i)),
+                     (SELECT array_agg((i = 3)::boolean) FROM generate_series(0,23) AS g(i)),
+                     array_fill(TRUE, ARRAY[7])::boolean[],
+                     array_fill(TRUE, ARRAY[32])::boolean[],
+                     array_fill(TRUE, ARRAY[12])::boolean[],
+                     now()
+                   );
+
+                   -- ⚠️ Il passo nasce GIA' avvolto nel cancello della sveglia, nella
+                   --   stessa forma che scrive 85_pgagent/20261016-30. Lo presidia
+                   --   db/pgtap/dbops/test-installazione-ambiente-v1 (test 20-22).
+                   INSERT INTO pgagent.pga_jobstep(
+                     jstjobid, jstname, jstkind, jstcode, jstdbname
+                   ) VALUES (
+                     v_jobid, 'pota_giornale_corse', 's',
+                     format(
+                       E'DO $sveglia$\nBEGIN\n    -- Cancello della sveglia (85_pgagent/20261016-30): da spento\n    -- il lavoro non parte e il giornale non scrive niente.\n    IF maintenance.fn_sveglia_accesa(%L) THEN\n        %s\n    END IF;\nEND\n$sveglia$;',
+                       'pota_giornale_corse',
+                       'CALL maintenance.proc_pota_giornale_corse_job();'),
+                     current_database()
+                   );
+                 END;
+                 $$;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM pgagent.pga_job WHERE jobname = 'pota_giornale_corse';

@@ -39,10 +39,10 @@ _COLONNE = {
                  "attivo", "total_count"),
     "impl": ("id", "task_registry_id", "task_code", "implementation_key",
              "handler_code", "is_default", "attivo", "total_count"),
-    "job_runs": ("id", "jobname", "stepname", "started_at", "ended_at", "ok",
+    "job_runs": ("id", "processo_codice", "jobname", "stepname", "started_at", "ended_at", "ok",
                  "rows_affected", "message", "error_code", "error_detail",
                  "agent_host", "run_uuid", "saltata", "total_count"),
-    "job_summary": ("jobname", "total_runs", "ok_count", "fail_count",
+    "job_summary": ("processo_codice", "jobname", "total_runs", "ok_count", "fail_count",
                     "saltate_count", "last_run_at", "in_corso", "started_at", "ended_at", "ok",
                     "total_count"),
 }
@@ -185,7 +185,7 @@ class TestMaintenanceJobRuns(TestCase):
         from apps.core.db.maintenance_repository import MaintenanceRepository
 
         _mock_cursor(mock_conn, [
-            (1, "apply_storicizza_weekly", "step_1",
+            (1, "storicizza", "apply_storicizza_weekly", "step_1",
              "2026-03-01 10:00:00+00", "2026-03-01 10:00:05+00",
              True, 42, "done", None, None,
              "10.0.0.1", "uuid-abc", False, 1),
@@ -194,8 +194,31 @@ class TestMaintenanceJobRuns(TestCase):
         results, count = repo.list_job_runs(limit=50, offset=0)
         self.assertEqual(count, 1)
         self.assertEqual(results[0]["jobname"], "apply_storicizza_weekly")
+        # La riga dice di quale processo e' la corsa: il nome non basta.
+        self.assertEqual(results[0]["processo_codice"], "storicizza")
         self.assertTrue(results[0]["ok"])
         self.assertFalse(results[0]["saltata"])
+
+    # Scopo: il filtro per processo (2026-11-22, strada (a) di Tid): con
+    #        `jobname` fa la corsia. I valori viaggiano come parametri, nell'ordine
+    #        dei `%s` del testo — processo, poi nome.
+    @patch(_CONN)
+    def test_list_job_runs_filtra_la_corsia(self, mock_conn):
+        from apps.core.db.maintenance_repository import MaintenanceRepository
+
+        _mock_cursor(mock_conn, [], _COLONNE["job_runs"])
+        MaintenanceRepository().list_job_runs(
+            processo_codice="un_processo", jobname="una_corsia", limit=50, offset=0,
+        )
+        sql, params = mock_conn.cursor.return_value.__enter__.return_value \
+            .execute.call_args[0]
+        self.assertIn("(%s::text IS NULL OR processo_codice = %s)", sql)
+        self.assertIn("(%s::text IS NULL OR jobname = %s)", sql)
+        self.assertLess(sql.index("processo_codice = %s"), sql.index("jobname = %s"))
+        self.assertEqual(params[:4], ["un_processo", "un_processo", "una_corsia", "una_corsia"])
+        # ⛔ L'ordine e' per l'ISTANTE: `started_at` nudo si risolverebbe sul
+        #    `::text` della SELECT e ordinerebbe il testo (2026-11-22).
+        self.assertIn("ORDER BY job_run_log.started_at DESC, job_run_log.id DESC", sql)
 
     # Scopo: Verifica lista vuota.
     @patch(_CONN)
@@ -219,14 +242,19 @@ class TestMaintenanceJobSummary(TestCase):
         avvio = datetime(2026, 3, 1, 10, 0, tzinfo=UTC)
         fine = datetime(2026, 3, 1, 10, 0, 5, tzinfo=UTC)
         _mock_cursor(mock_conn, [
-            # jobname, total, ok, fail, saltate, last_run_at::text, in_corso,
-            # conclusa.started_at, conclusa.ended_at, conclusa.ok, total_count
-            ("apply_storicizza_weekly", 10, 9, 1, 2,
+            # processo, jobname, total, ok, fail, saltate, last_run_at::text,
+            # in_corso, conclusa.started_at, conclusa.ended_at, conclusa.ok,
+            # total_count
+            ("storicizza", "apply_storicizza_weekly", 10, 9, 1, 2,
              "2026-03-01 10:00:00+00", False, avvio, fine, True, 1),
         ], _COLONNE["job_summary"])
         repo = MaintenanceRepository()
         results, count = repo.list_job_summary(limit=50, offset=0)
         self.assertEqual(count, 1)
+        self.assertEqual(
+            (results[0]["processo_codice"], results[0]["jobname"]),
+            ("storicizza", "apply_storicizza_weekly"),
+        )
         self.assertEqual(results[0]["total_runs"], 10)
         self.assertEqual(results[0]["ok_count"], 9)
         self.assertEqual(results[0]["saltate_count"], 2)
@@ -255,7 +283,14 @@ class TestMaintenanceJobSummary(TestCase):
         self.assertEqual(params, [50, 0])
         # ⚠️ E senza condizioni la CTE `conclusa` resta un `WHERE` valido: la
         #    chiave, poi le condizioni proprie della corsa conclusa.
-        self.assertIn("WHERE jobname = k.jobname\n", sql)
+        # ⭐ La chiave e' la CORSIA, la coppia (2026-11-22, strada (a) di Tid):
+        #    senza filtri due processi con una corsia dello stesso nome non si
+        #    sommano in una riga.
+        self.assertIn(
+            "WHERE processo_codice = k.processo_codice AND jobname = k.jobname\n", sql,
+        )
+        self.assertIn("GROUP BY processo_codice, jobname", sql)
+        self.assertEqual(sql.count("USING (processo_codice, jobname)"), 2)
         self.assertIn("AND ended_at IS NOT NULL", sql)
         self.assertNotIn("WHERE  AND", sql)
 
@@ -276,7 +311,9 @@ class TestMaintenanceJobSummary(TestCase):
         # Per chiave, non per prefisso: nessun `LIKE` (jolly `_`, nessun indice).
         self.assertNotIn("LIKE", sql)
         self.assertIn("processo_codice = %s", sql)
-        self.assertIn("split_part(jobname, ':', 1) = %s", sql)
+        # La colonna e' NOT NULL dal giro 2a (§8.7): nessun ramo per nome.
+        self.assertNotIn("split_part", sql)
+        self.assertNotIn("processo_codice IS NULL", sql)
         # Attribuzione: mese DICHIARATO nel meta, con ripiego sul mese di
         # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
         # quelli storici) non matcherebbero mai alcun mese.
@@ -293,10 +330,10 @@ class TestMaintenanceJobSummary(TestCase):
         #    valori seguono, nello stesso ordine, prima di limit/offset: un
         #    valore in meno qui non fallisce — filtra una CTE sulla cosa
         #    sbagliata e la riga cuce corse di job diversi.
-        self.assertEqual(sql.count("split_part(jobname, ':', 1) = %s"), 3)
+        self.assertEqual(sql.count("processo_codice = %s"), 3)
         self.assertEqual(
             params,
-            ["run_fatturazione_batch", "run_fatturazione_batch", "2026-07-01"] * 3 + [10, 0],
+            ["run_fatturazione_batch", "2026-07-01"] * 3 + [10, 0],
         )
 
     # Scopo: la CHIAVE di meta_month_equals finisce nell'SQL come letterale (non

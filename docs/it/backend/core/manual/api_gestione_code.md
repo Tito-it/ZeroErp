@@ -178,6 +178,19 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
 - `GET /api/v1/core/tracciamento/coda-lavori/<job_id>/`
 - Payload, origine, priorità, timeline (accodato/claimed/started/ended),
   tentativi/max, ultimo_errore, result, job_run_id, proprietario, is_mio.
+- `job_run_id` è la corsa del worker nel giornale (`maintenance.job_run_log`),
+  `null` quando non c'è: il lavoro non è mai stato preso da un worker, oppure
+  la sua corsa non è più nel giornale (la ritenzione di 12 mesi, vedi
+  [api_tracciamento.md § Ritenzione del giornale](api_tracciamento.md#ritenzione-del-giornale)).
+  Il drawer rende il `null` con «—». Un numero che non porta a nessuna corsa
+  non si mostra (decisione di Tid, 2026-11-22), e lo garantisce il DB: la FK
+  `fk_coda_lavori_job_run_log` è `ON DELETE SET NULL`, quindi chi cancella una
+  corsa dal giornale (la potatura, o chiunque altro) azzera il riferimento nella
+  stessa operazione
+  ([brief-db-giornale-corse-indici](../../../dev/work-done/2026/brief-db-giornale-corse-indici.md)
+  §10). Un `job_run_id` non `null` porta sempre a una corsa. Lo stesso campo, con
+  lo stesso significato, è nello stato di un giro di fatturazione
+  ([api_fatturazione.md](../../vendite/manual/api_fatturazione.md)).
 
 ### 5. Azioni (BE-7, comando)
 
@@ -366,8 +379,14 @@ sono incluse (lì non c'è niente di nascosto da dichiarare).
   `anagrafiche.emittenti_fiscali`. Scope emittente applicativo (convenzione SR)
   nei conteggi e nell'archiviazione; la lista filtra per `user_insert` e per il
   resto si affida alla RLS.
-- `maintenance.job_run_log` (liveness worker, jobname
-  `draina_coda_lavori`/`draina_coda_stampa`).
+- `maintenance.job_run_log` (liveness worker, corsie
+  `(draina_coda_lavori, draina_coda_lavori)` e `(draina_coda_stampa,
+  draina_coda_stampa)`: processo e jobname). ⭐ Dal 2026-11-22 la liveness si
+  chiede per **corsia**, la coppia, non per solo nome: il modello non lega un
+  nome di corsia a un processo solo, e la corsa di un altro processo con lo
+  stesso nome avrebbe tenuto verde il pallino di un worker fermo
+  ([brief-db-giornale-corse-indici](../../../dev/work-done/2026/brief-db-giornale-corse-indici.md)
+  §11.3).
   ⚠️ I due jobname **non sono letterali** in `gestione_service.py`: sono le
   costanti di `apps.core.services.processi`, perché il worker si registra sul
   giornale col proprio `processo_codice` ed è con quello che si cerca la

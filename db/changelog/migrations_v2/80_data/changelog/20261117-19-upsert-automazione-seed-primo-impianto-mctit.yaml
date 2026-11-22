@@ -19,9 +19,11 @@
 #   config.email_account e config.email_template non tocca email_account.csv
 #   ne' email_template.csv.
 #
-# ⚠️ Le due colonne text[] (colonne_software, colonne_installazione) arrivano
-#   come STRING nella forma di letterale di array ("{a,b}"): il letterale senza
-#   tipo si converte in text[] all'assegnazione. NULL nel CSV = forma per riga.
+# ⚠️ Le colonne text[] (colonne_software, colonne_installazione,
+#   colonne_derivate) arrivano come STRING nella forma di letterale di array
+#   ("{a,b}"): il letterale senza tipo si converte in text[] all'assegnazione.
+#   NULL nel CSV = forma per riga; colonne_derivate NULL = nessuna colonna che il
+#   database deriva (00_schema/dbops/20261122-36, brief-db-revisione-ui, Q54).
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -66,3 +68,4 @@ databaseChangeLog:
               - column: { name: user_insert, type: STRING }
               - column: { name: tabella_padre, type: STRING }
               - column: { name: colonna_padre, type: STRING }
+              - column: { name: colonne_derivate, type: STRING }

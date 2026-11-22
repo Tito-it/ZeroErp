@@ -1,5 +1,7 @@
 # API — Le anagrafiche di magazzino: magazzini, ubicazioni, lotti
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+
 ## Scopo
 
 Le tre **anagrafiche** dello schema `magazzino` con endpoint propri, fuori dal
@@ -43,7 +45,7 @@ l'emittente del magazzino (per le ubicazioni, via il magazzino) e del lotto, e
 lo scope applicativo si somma (`add_emittente_scope_condition`). Un dettaglio
 fuori perimetro e' **404**, indistinguibile dall'inesistente (no-leak), anche
 nel verbo di modifica. ⭐ Il lotto e' **dell'azienda** dal 2026-11-22
-([brief](../../../dev/work-in-progress/brief-db-magazzino-lotto-dell-azienda.md)):
+([brief](../../../dev/work-done/2026/brief-db-magazzino-lotto-dell-azienda.md)):
 due aziende possono avere ciascuna il proprio lotto con lo stesso codice dello
 stesso articolo; prima era dell'articolo, comune a tutte.
 

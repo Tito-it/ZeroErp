@@ -51,6 +51,7 @@
 | CHECK | chk_coda_lavori_stato |  |
 | CHECK | chk_coda_lavori_tentativi |  |
 | FOREIGN KEY | fk_coda_lavori_emittente_fiscale | emittente_fiscale_id |
+| FOREIGN KEY | fk_coda_lavori_job_run_log | job_run_id |
 | FOREIGN KEY | fk_coda_lavori_tipo | job_type |
 | PRIMARY KEY | pk_coda_lavori | id |
 | UNIQUE | uq_coda_lavori_uid | uid |
@@ -59,6 +60,7 @@
 | Nome | Definizione |
 |------|-------------|
 | ix_coda_lavori_da_lavorare | `CREATE INDEX ix_coda_lavori_da_lavorare ON dbops.coda_lavori USING btree (priorita, id) WHERE (stato = ANY (ARRAY['PENDING'::text, 'IN_CORSO'::text]))` |
+| ix_coda_lavori_job_run_id | `CREATE INDEX ix_coda_lavori_job_run_id ON dbops.coda_lavori USING btree (job_run_id) WHERE (job_run_id IS NOT NULL)` |
 | ix_coda_lavori_stato | `CREATE INDEX ix_coda_lavori_stato ON dbops.coda_lavori USING btree (stato)` |
 | pk_coda_lavori | `CREATE UNIQUE INDEX pk_coda_lavori ON dbops.coda_lavori USING btree (id)` |
 | uq_coda_lavori_uid | `CREATE UNIQUE INDEX uq_coda_lavori_uid ON dbops.coda_lavori USING btree (uid)` |

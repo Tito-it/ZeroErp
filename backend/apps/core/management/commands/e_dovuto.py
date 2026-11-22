@@ -125,7 +125,7 @@ class Command(ComandoAziendale):
         gia_fatto = (
             repo.corsa_chiusa_dal if sveglia.dovuto.basta_una_corsa else repo.corsa_riuscita_dal
         )
-        if gia_fatto(sveglia.dovuto.jobname, inizio):
+        if gia_fatto(sveglia.dovuto.jobname, inizio, processo_codice=sveglia.processo_codice):
             self.stdout.write(f"{unit}: gia' fatto dal {inizio.isoformat()}")
             self._esci(USCITA_NON_DOVUTO)
         self.stdout.write(f"{unit}: dovuto dal {inizio.isoformat()}")

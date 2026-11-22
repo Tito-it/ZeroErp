@@ -1,87 +1,95 @@
-## Documentazione Concettuale – Trigger function `anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin`
 
-> **Vedi anche**
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-[script.fn_check_almeno_un_super_admin_attivo](/dbzero/script/funzioni/fn_check_almeno_un_super_admin_attivo)
-> [config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin](/dbzero/config/funzioni/trgfn_profili_accesso_bindings_guard_ultimo_super_admin)
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — la veste che il guard presidia
+> * [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — il legame che fa di una veste un SUPER_ADMIN
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_check_almeno_un_super_admin_attivo](/dbzero/script/funzioni/fn_check_almeno_un_super_admin_attivo) — la domanda a cui il guard delega
+> * [script.fn_identita_super_admin_senza_scadenza](/dbzero/script/funzioni/fn_identita_super_admin_senza_scadenza) — che cosa vuol dire «SUPER_ADMIN senza scadenza»
+> * [anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ultimo_super_admin) — il gemello sul rapporto di lavoro
+> * [config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin](/dbzero/config/funzioni/trgfn_profili_accesso_bindings_guard_ultimo_super_admin) — il gemello sul legame
+> * [config.trgfn_credenziali_guard_ultimo_super_admin](/dbzero/config/funzioni/trgfn_credenziali_guard_ultimo_super_admin) — il gemello sul blocco della credenziale
+>
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — la veste, il rapporto e la credenziale
+> * [Architettura multi-face auth](/guide/architettura-multi-face-auth) — vesti, profili e legami
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 19-04-2026)
 
-Guard anti-lockout simmetrico al guard su
-`config.profili_accesso_bindings`, ma sul lato identità: impedisce le
-scritture su un'identità SUPER_ADMIN che lascerebbero il sistema senza
-**nessun SUPER_ADMIN senza scadenza**, evitando così il lockout, subito
-o col calendario.
+`anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin` rifiuta la modifica di una veste che lascerebbe il
+sistema senza nessun SUPER_ADMIN senza scadenza: spegnerla, darle una data di fine, spostarne l'inizio oltre oggi.
 
-Trigger associato (dal 07-10-2026, `20261007-19`):
-```
-trg_identita_digitali_a10_guard_ultimo_super_admin_upd
-    AFTER UPDATE
-    FOR EACH ROW
-    WHEN (attivo, valido_dal o valido_al cambiano)
-```
+È la sede della regola sul lato della veste. La regola intera, le sue quattro sedi e ciò che conta come
+«senza scadenza» stanno nel blocco comune in fondo alla pagina.
 
-⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`, decisione di Tid):
-guarda anche le **date**. Una data che passa non scrive niente, e nessun guard
-può fermare il calendario: se l'ultimo amministratore ha una data di fine, il
-giorno dopo il sistema resta senza. Per questo la garanzia si chiede sulla
-scrittura che **mette** la data, finché resta almeno un amministratore che non
-scade ([fn_identita_super_admin_senza_scadenza](/dbzero/script/funzioni/fn_identita_super_admin_senza_scadenza)).
-Il gemello sul rapporto è
-[trgfn_risorse_umane_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ultimo_super_admin).
+---
 
 ### Quando scatta
 
-Doppio short-circuit:
+Dopo la modifica di una veste in cui cambia `attivo`, `valido_dal` o `valido_al`. Il corpo lascia passare subito
+tutto ciò che non riduce la garanzia, e lavora solo su tre transizioni:
 
-1. Solo le scritture che **riducono** la garanzia: spegnere la veste
-   (`attivo: true -> false`), darle una data di fine (`valido_al` da vuoto a
-   valorizzato), spostarne l'inizio nel futuro. Togliere una data di fine o
-   riaccendere passano sempre, anche su un sistema già scoperto.
-2. Solo se l'identità porta effettivamente un binding SUPER_ADMIN attivo.
-   Altrimenti la garanzia non può peggiorare.
+* la veste passa da accesa a spenta;
+* la veste riceve una data di fine che prima non aveva;
+* l'inizio della veste passa da un giorno già arrivato a un giorno oltre oggi (il giorno operativo).
 
-Se entrambi i filtri passano, delega il check a
-`script.fn_check_almeno_un_super_admin_attivo()`. Se ritorna `false`,
-raise `E_PROFILO_ULTIMO_SUPER_ADMIN`.
+Poi guarda se la veste ha un legame attivo verso un profilo `SUPER_ADMIN` attivo: se non ce l'ha, la garanzia non
+può peggiorare e il guard tace. Altrimenti chiede a `script.fn_check_almeno_un_super_admin_attivo` com'è il sistema
+dopo la scrittura, e rifiuta se non resta nessuno.
 
-### Perché serve un guard separato
+Spostare la fine a una data diversa quando una data c'era già non è a rischio: quella veste non era senza
+scadenza.
 
-Il guard sui bindings vede solo UPDATE/DELETE della tabella bindings.
-Una disattivazione di `identita_digitali.attivo = false` rende
-implicitamente invalidi tutti i suoi binding (fail-closed nel check)
-ma non passa dal trigger bindings. Senza un guard dedicato sull'altra
-tabella, un admin potrebbe disattivare la propria identità — o quella
-altrui — rendendo inaccessibile il sistema.
+---
 
-### Single source of truth
+### Perché un guard sulla veste
 
-Sia questo trigger sia quello sui bindings chiamano la **stessa**
-funzione `script.fn_check_almeno_un_super_admin_attivo`. Evoluzione
-della condizione va fatta **solo lì** e propaga automaticamente a
-tutti i guard. ⭐ È successo il 2026-09-25: la funzione ha imparato che
-un SUPER_ADMIN la cui credenziale è **bloccata dall'amministratore**
-([config.credenziali](/dbzero/config/tabelle/credenziali)) non è
-raggiungibile, e un terzo guard — sul blocco stesso,
-[config.trgfn_credenziali_guard_ultimo_super_admin](/dbzero/config/funzioni/trgfn_credenziali_guard_ultimo_super_admin)
-— chiede alla stessa funzione.
+Il legame di una veste spenta resta acceso: la veste smette di contare senza che il legame venga scritto, e il
+guard sui legami non lo vedrebbe. Lo stesso vale per una data di fine messa sulla veste. Ogni tabella da cui la
+garanzia si perde ha il suo guard, e tutti chiedono alla stessa funzione.
 
-### Bypass / manutenzione
+---
 
-Vedi note del trigger gemello: per disabilitazioni massive in
-manutenzione, `ALTER TABLE ... DISABLE TRIGGER` temporaneo.
+{% include-markdown "it/dbzero/anagrafiche/_ultimo-super-admin.md" %}
 
-### Codice errore
+---
 
-`E_PROFILO_ULTIMO_SUPER_ADMIN` (id 384). Contesto jsonb:
-`op`, `identita_digitale_id`, `auth_user_id`, `ruolo_applicativo`, e dal
-07-10-2026 `attivo`, `valido_dal`, `valido_al` della riga nuova.
+### Codici errore
 
-### Riferimenti
+* `E_PROFILO_ULTIMO_SUPER_ADMIN` — dopo la scrittura non resta nessun SUPER_ADMIN senza scadenza. È lo stesso codice
+  dei tre gemelli. Il contesto porta la veste, la sua credenziale, il suo ruolo applicativo e i valori nuovi di
+  `attivo` e delle due date.
 
-* [WIP multi-face-auth §13.3.6](/dev/work-done/2026/sviluppo-multi-face-auth)
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-super-admin-senza-scadenza-v1.sql` — la data di fine sulla veste dell'ultimo
+  amministratore, l'inizio spostato a domani e lo spegnimento sono rifiutati; la data di fine a un amministratore
+  quando ne resta un altro, e a un operatore che non è amministratore, passa; togliere la data di fine passa.
+* `db/pgtap/config/test-profili-accesso-guard-ultimo-super-admin.sql` — lo spegnimento della veste che porta
+  l'ultimo legame `SUPER_ADMIN` è rifiutato.
+
+Nessun test prova il caso della veste che cambia credenziale, ruolo o tipo.
+
+---
+
+### Note di migrazione
+
+* 2026-06-29 — il profilo `SUPER_ADMIN` si riconosce dal tipo invece che dal codice.
+* 2026-09-25 — la funzione delegata impara che una credenziale bloccata non conta, e nasce il gemello sul blocco.
+* 2026-10-07 — il guard guarda anche le date, e la regola diventa «senza scadenza»: prima scattava solo sullo
+  spegnimento, e una data di fine messa all'ultimo amministratore lo faceva scadere senza che nessuno la fermasse.
 
 ---
 

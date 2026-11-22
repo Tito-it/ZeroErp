@@ -21,20 +21,21 @@
 --  6) fn_run_and_log gira senza che il chiamante passi il codice
 --  7) fn_run_and_log DERIVA il codice dal jobname
 --  8) fn_run_and_log NON inventa: un jobname sconosciuto non entra affatto
---     (chk_job_run_log_processo_dichiarato lo respinge con 23514)
+--     (il NOT NULL di processo_codice lo respinge con 23502)
 --  9) nessun overload residuo di fn_job_run_start
 -- 10) nessun overload residuo di fn_run_and_log
 -- 11) fn_job_run_start non e' aperta a PUBLIC dopo il DROP+CREATE
 --
 -- ⚠️ Il test che interrogava dbops.vw_run_senza_attore e' uscito con la vista
---   (20_code/dbops/20261104-11, brief-db-revisione-dbops D42): dopo il CHECK
---   chk_job_run_log_processo_dichiarato la corsa senza processo non nasce piu'
---   (test 8), e il presidio non poteva ne' accendersi ne' svuotarsi.
+--   (20_code/dbops/20261104-11, brief-db-revisione-dbops D42): la corsa senza
+--   processo non nasce piu' (test 8), e il presidio non poteva ne' accendersi
+--   ne' svuotarsi. Dal 90_end/20261122-25 processo_codice e' NOT NULL, e il
+--   CHECK chk_job_run_log_processo_dichiarato e' uscito.
 --
 -- Scopo:
 --  - fissare che l'attore arriva sul giornale per ENTRAMBI i canali;
 --  - fissare che la derivazione dal jobname copre i job pgAgent e NON maschera
---    il caso non derivabile: il CHECK respinge la riga senza attore (23514),
+--    il caso non derivabile: il NOT NULL respinge la riga senza attore (23502),
 --    quindi il job si ferma invece di lasciare una riga muta;
 --  - fissare che dopo il DROP non e' rimasta la firma vecchia: e' il difetto
 --    che si vedrebbe solo come «l'attore non arriva mai», mesi dopo;
@@ -153,8 +154,9 @@ SELECT is(
 --
 -- ⛔ 2026-09-05 — LA CONSEGUENZA E' CAMBIATA, il principio no. Fino a DB-5 un
 --   jobname sconosciuto lasciava l'attore NULL: la riga entrava MUTA e finiva
---   nel presidio. Adesso `chk_job_run_log_processo_dichiarato` la rifiuta,
---   quindi **il job si ferma**.
+--   nel presidio. Adesso la rifiuta il NOT NULL di processo_codice (23502;
+--   fino al 90_end/20261122-25 era il CHECK chk_job_run_log_processo_dichiarato,
+--   23514), quindi **il job si ferma**.
 --   ⭐ E' la scelta, non un effetto collaterale: un processo che non sa dire chi
 --     e' non deve girare, e fallire rumorosamente e' meglio che lasciare una
 --     riga muta — che e' il difetto per cui questo cantiere esiste.
@@ -165,7 +167,7 @@ SELECT throws_ok(
           p_jobname  => 'PGTAP-JOBNAME-SCONOSCIUTO',
           p_stepname => 'pgtap-step',
           p_sql      => 'SELECT 1')$$,
-    '23514',
+    '23502',
     NULL,
     'fn_run_and_log non inventa: un jobname sconosciuto non entra affatto'
 );

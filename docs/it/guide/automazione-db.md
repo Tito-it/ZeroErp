@@ -598,7 +598,8 @@ sistema sta in [Configurare il sistema senza perdere le modifiche agli aggiornam
 **Come funziona:**
 
 * config in `dbops.automazione_seed_primo_impianto`, una riga per tabella, dal suo CSV: la
-  forma (per riga, per colonna con i due elenchi di colonne, solo inserimento, figlia con il
+  forma (per riga, per colonna con i due elenchi di colonne e, facoltative, le colonne che il
+  database deriva, solo inserimento, figlia con il
   padre e la colonna che ne porta l'`id`), l'interruttore
   `enabled`, il nome del trigger e il motivo. Come per DELETE_BLOCK, la regola non ha una riga
   in `automation_rules_tbl`;

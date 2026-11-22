@@ -714,7 +714,12 @@ class DbopsRepository:
                AND (%s::text IS NULL
                     OR function_name ILIKE %s
                     OR message ILIKE %s)
-             ORDER BY executed_at DESC, id DESC
+             -- ⛔ La colonna QUALIFICATA, non `executed_at` (2026-11-22, gemello
+             --    di `MaintenanceRepository.list_job_runs`): un nome nudo
+             --    nell'ORDER BY si risolve prima sulle colonne di OUTPUT, e qui
+             --    `executed_at` e' il `::text` della SELECT. Si ordinava il testo
+             --    sotto la collation del database, non l'istante.
+             ORDER BY audit_log.executed_at DESC, audit_log.id DESC
              LIMIT %s OFFSET %s
             """,  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
             [

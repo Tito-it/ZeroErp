@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1266, di cui 133 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1267, di cui 133 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1994,7 +1994,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "DATO_ERRATO",
     # Guard di contesto delle liste configurabili su una condizione che NESSUNA interfaccia puo' produrre: il backend (apps/ui/services/ui_service.get_lista_config_per_video) legge la configurazione della lista per l'utente della chiamata (auth_user_id esplicito) e ricerca_full per l'utente del contesto di sessione (GUC app.current_user_id, impostata da JwtAuditMiddleware). Se la GUC e' vuota o nomina un altro utente, le due letture rispondono per due persone diverse: la casella di ricerca direbbe una cosa e la ricerca ne farebbe un'altra (le colonne sensibili senza grant), senza errore. Lo solleva il backend, e lo solleva ui.fn_lista_colonne_ricerca_full quando app.current_user_id non e' un intero: anche li' il contesto di sessione non e' quello di un utente. Gemello di E_MAG_, E_PAGAMENTI_ ed E_VENDITE_CHIAMATA_NON_VALIDA, TECNICO per la stessa ragione: e' rotto il chiamante, l'operatore non ha niente da correggere. ⛔ Non E_UI_GENERIC_FAILED (DATO_ERRATO: direbbe «correggi e riprova» su un guasto di contesto) e non E_SCOPE_SENZA_UTENTE (copre solo la GUC vuota, e parla di scritture su tabelle con perimetro). ⛔ Frase CHIUSA, senza segnaposto, per i due chiamanti: un %s uscirebbe grezzo a video; lista_codice, auth_user_id e l'utente della GUC (o il valore illeggibile) vanno nel contesto dell'errore.
     "E_UI_CHIAMATA_NON_VALIDA": "TECNICO",
-    # Lock di colonna (dbops.automation_lock_columns) su ui.lista_colonna.codice: il codice è la chiave delle preferenze e dei preset, che citano le colonne per codice, e non si riscrive. Una colonna col codice sbagliato si spegne e se ne crea un'altra. Segnaposto: la colonna.
+    # Lock di colonna (dbops.automation_lock_columns) su ui.lista_colonna.codice e lista_id: il codice nella sua lista è la chiave delle preferenze e dei preset, che citano le colonne per codice, e non si riscrive né cambia lista (lista_id: brief-db-revisione-ui, Q55). Una colonna col codice sbagliato, o nella lista sbagliata, si spegne e se ne crea un'altra. Segnaposto: la colonna.
     "E_UI_COLONNA_CODICE_IMMUTABILE": "CONFLITTO_STATO",
     "E_UI_COLONNA_IN_USO": "CONFLITTO_STATO",
     "E_UI_COLONNA_NON_TROVATA": "NON_TROVATO",
@@ -2045,6 +2045,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_PRESET_POSTO_IMMUTABILE": "CONFLITTO_STATO",
     "E_UI_PRESET_VALIDAZIONE": "DATO_ERRATO",
     "E_UI_VISTA_SQL_NON_TROVATA": "DATO_ERRATO",
+    # Lock di colonna (dbops.automation_lock_columns) su ui.widget.codice e su ui.dashboard_widget.dashboard_id e widget_id: preferenze e preset cercano la card per codice nel pool della sua dashboard, e il ritiro di una card dal pool la toglie dalle preferenze solo col DELETE (brief-db-revisione-ui, Q55). Una card col codice sbagliato si spegne e se ne crea un'altra; una card si sposta togliendola dal pool e aggiungendola all'altro. Lo incontra solo chi governa il CSV: l'app non scrive catalogo e pool. Segnaposto: la colonna.
+    "E_UI_WIDGET_IMMUTABILE": "CONFLITTO_STATO",
     # ui.trgfn_ui_dashboard_widget_guard_in_uso (a10, BEFORE DELETE su ui.dashboard_widget): si toglie dal pool di una dashboard un widget che un suo preset propone. Gemello di E_UI_COLONNA_IN_USO per le liste. Segnaposto: il codice del widget, i codici dei preset.
     "E_UI_WIDGET_IN_USO": "CONFLITTO_STATO",
     # catalogo.unita_misura.conta_dal_calendario valorizzato su un'unita' che non e' di tipologia TEMPO. La solleva catalogo.trgfn_unita_misura_guard_tipo. I VALORI: codice dell'unita'; campo conta_dal_calendario.
