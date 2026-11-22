@@ -26,17 +26,19 @@
 #   seedare, nessuna chiave i18n nuova.
 #
 # ── L'ORDINAMENTO DI APERTURA, E LA TRAPPOLA CHE C'E' DENTRO ────────────
-#   Il preset 18 apriva la lista ordinata per `descrizione`. Ora ordina per
-#   ⚠️ **`ragione_sociale_completa`, cioe' il `campo_sorgente`, NON il `codice`
-#   logico** (`ragione_sociale`). <ListaConfigurabile> monta le Column su
-#   `campo_sorgente`, quindi e' quello il nome che arriva al backend.
-#   E' esattamente l'errore che il 4o controllo di
-#   `gen_seed_lista.py --verifica-ordinamento` ha stanato su
-#   `anagrafiche.clienti`, dove era rimasto rotto da maggio senza che nessuno
-#   se ne accorgesse: un ordinamento di apertura sbagliato non da' errore,
-#   semplicemente non ordina.
-#   ✅ `ragione_sociale_completa` e' gia' in `_EMITTENTI_ORDER_COLS`, quindi
-#   il presidio resta verde senza chiedere niente al BE.
+#   Il preset 18 apriva la lista ordinata per `descrizione`. Ora ordina per la
+#   Ragione sociale.
+#   ⚠️ Ritoccato il 2026-11-22: tolto l'UPDATE di `ordinamento_default`, con
+#   `validCheckSums: ANY`. Nel 2026-08 l'UPDATE scriveva il `campo_sorgente`
+#   (`ragione_sociale_completa`). Dal giro 2 di brief-db-revisione-ui (Q7, Q34,
+#   Q40 (b)) `col` e' il **codice** della colonna (`ragione_sociale`), e il guard
+#   `ui.trgfn_ui_lista_preset_guard_ordinamento` (20_code/20261120-27) rifiuta
+#   il campo sorgente. Da zero quel guard gira prima di questo file
+#   (linee-guida-sql §11.14) e il migrate si fermava qui. L'UPDATE era anche una
+#   seconda sorgente sul dato di un CSV (§11.2): il valore lo porta
+#   `80_data/sql/ui/lista_preset.csv` (riga 18, gia' col codice), e il backfill
+#   di 00_schema/20261120-25 l'ha portato sui database dove questo file era gia'
+#   passato. Restano le DELETE, l'unica eccezione di §11.2.
 #
 # 🔴 UNA VOCE PER IL BE, che non e' nel perimetro di questo changeSet.
 #   `_EMITTENTI_ORDER_COLS` usa `"descrizione"` anche come **default** del
@@ -61,12 +63,16 @@ databaseChangeLog:
   - changeSet:
       id: 20260802-23-seed-ui-lista-18-drop-colonna-descrizione
       author: mctit
+      # Ritoccato il 2026-11-22 (via l'UPDATE dell'ordinamento, vedi intestazione).
+      runOnChange: false
+      validCheckSums:
+        - ANY
       failOnError: true
       comment: >
         Lista 18 (anagrafiche.emittenti_fiscali): elimina la colonna di
         catalogo `descrizione` e il suo aggancio al preset, ora che la colonna
-        fisica e' stata droppata (20260802-22). L'ordinamento di apertura passa
-        a ragione_sociale_completa. Le DELETE servono perche' loadUpdateData
+        fisica e' stata droppata (20260802-22). L'ordinamento di apertura lo
+        porta lista_preset.csv. Le DELETE servono perche' loadUpdateData
         non cancella: togliere la riga dal CSV non basta.
       preConditions:
         - onFail: HALT
@@ -113,16 +119,3 @@ databaseChangeLog:
                WHERE lc.lista_id = ld.id
                  AND ld.codice   = 'anagrafiche.emittenti_fiscali'
                  AND lc.codice   = 'descrizione';
-
-        - sql:
-            dbms: postgresql
-            splitStatements: false
-            stripComments: false
-            sql: |
-              -- Ordinamento di apertura: il campo_sorgente, non il codice logico.
-              UPDATE ui.lista_preset p
-                 SET ordinamento_default = '[{"col":"ragione_sociale_completa","dir":"asc"}]'::jsonb
-                FROM ui.lista_definizione ld
-               WHERE p.lista_id = ld.id
-                 AND ld.codice  = 'anagrafiche.emittenti_fiscali'
-                 AND p.codice   = 'emittenti_fiscali_default';
