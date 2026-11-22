@@ -18,8 +18,6 @@ from datetime import date
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
-from apps.core.api.openapi_params import descrizione_order_by
 
 AREA = "magazzino"
 
@@ -30,27 +28,6 @@ RISPOSTA_GENERICA = inline_serializer(
         "meta": serializers.DictField(required=False),
     },
 )
-
-
-# Scopo: i parametri di lista offset-based dichiarati una volta.
-def params_lista(colonne: dict[str, str], nota: str) -> list[OpenApiParameter]:
-    return [
-        OpenApiParameter(
-            name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-            description=descrizione_order_by(colonne, nota),
-        ),
-        OpenApiParameter(
-            name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-            description="asc | desc (le colonne data partono DESC).",
-        ),
-        OpenApiParameter(
-            name="limit", type=int, location=OpenApiParameter.QUERY, required=False,
-            description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-        ),
-        OpenApiParameter(
-            name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
-        ),
-    ]
 
 
 PARAM_FORMATO = OpenApiParameter(

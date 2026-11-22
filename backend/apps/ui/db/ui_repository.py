@@ -18,6 +18,7 @@ from django.db import connection
 
 from apps.core.db._helpers import (
     colonne_ricerca_accese,
+    fetchone_scalar,
     jsonb_out,
     rows_to_list,
     utente_di_sessione,
@@ -93,26 +94,32 @@ class UiRepository:
     #        quello per cui `ha_ricerca_full` e la ricerca vera rispondono. Lo
     #        legge la guardia di `UiService.get_lista_config_per_video`.
     def utente_di_sessione(self) -> int | None:
-        return utente_di_sessione()
+        return utente_di_sessione(
+            codice_errore="E_UI_CHIAMATA_NON_VALIDA",
+            function_name="ui_repository.utente_di_sessione",
+        )
 
-    # Scopo: Restituisce la `lista_definizione.id` data il codice. None se
-    #        inesistente o non attivo. Usato dai service per distinguere
-    #        404 (lista) da preferenze orfane prima di toccare la fn.
-    def get_lista_id(self, lista_codice: str) -> int | None:
+    # Scopo: la `lista_definizione.id` di una lista accesa, dal suo codice,
+    #        letta dal BB del DB `ui.fn_lista_da_codice` (U39 di
+    #        brief-db-revisione-ui, Q23): «lista accesa per codice» ha una sede
+    #        sola. Lista assente o spenta: `E_UI_LISTA_NON_TROVATA` dal BB, che
+    #        si propaga (404) — il service lo darebbe comunque, non c'e' un
+    #        «niente» da intercettare.
+    # ⚠️ `SELECT … FROM`: `SELECT ui.fn_lista_da_codice(…)` da' la riga intera
+    #    come una tupla in un campo solo.
+    def get_lista_id(self, lista_codice: str) -> int:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id FROM ui.lista_definizione "
-                "WHERE codice = %s AND attivo = TRUE",
+                "SELECT id FROM ui.fn_lista_da_codice(%s)",
                 [lista_codice],
             )
-            row = cursor.fetchone()
-        return int(row[0]) if row else None
+            return int(fetchone_scalar(cursor))
 
     # Scopo: Catalogo colonne per la modale di personalizzazione, lookup
     #        diretto per `lista_codice` (single round-trip via JOIN con
     #        lista_definizione). Restituisce lista vuota se la lista non
-    #        esiste o non e' attiva: il chiamante che vuole distinguere
-    #        404 vs lista vuota usa `get_lista_id` separatamente.
+    #        esiste o non e' attiva: il chiamante che vuole il 404 sulla lista
+    #        usa prima `get_lista_id`, che lo solleva dal DB.
     #        Filtra colonne `attivo=TRUE`. Non applica permessi: il
     #        service applica filtro BLOCCATO sulla base del profilo utente
     #        (delegato a fn_resolve_lista_config — qui restiamo grezzi).

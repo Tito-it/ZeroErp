@@ -43,7 +43,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.db.contratti_repository import TESTATA_CONTRATTI, ContrattoRigheListaRepository
 from apps.vendite.services import contratti_service
 from apps.vendite.services.contratti_service import ContrattiService
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -122,8 +122,7 @@ class ApiContrattiExportView(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="scadenza_mese", type=str, required=False,
                              description="YYYY-MM"),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -202,10 +201,7 @@ class ApiContrattiList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="numero | data | valido_dal | valido_al | "
-                                         "ba_ragione_sociale | stato_codice | data_insert | data_update"),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento("numero | data | valido_dal | valido_al | ba_ragione_sociale | stato_codice | data_insert | data_update."),
         ],
         responses={200: inline_serializer(
             name="VenditeContrattiListResp",

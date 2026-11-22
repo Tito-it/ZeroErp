@@ -47,7 +47,6 @@ from apps.magazzino.api._comuni import (
     RISPOSTA_GENERICA,
     RISPOSTE_EXPORT,
     filtri_label,
-    params_lista,
 )
 from apps.magazzino.db.famiglie import FAMIGLIE, FamigliaDocumentoInterno
 from apps.magazzino.db.magazzino_repository import (
@@ -61,9 +60,9 @@ from apps.magazzino.db.magazzino_repository import (
 from apps.magazzino.services import consultazione_service, magazzino_service
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 
-# `AREA`, `RISPOSTA_GENERICA`, `params_lista`, `PARAM_FORMATO`, `RISPOSTE_EXPORT`
+# `AREA`, `RISPOSTA_GENERICA`, `PARAM_FORMATO`, `RISPOSTE_EXPORT`
 # e `filtri_label` vivono in `api/_comuni.py` dal 2026-09-21 (seconda
 # occorrenza: le view delle anagrafiche in `views_anagrafiche.py`).
 
@@ -133,7 +132,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
                 OpenApiParameter(name="data_da", type=str, location=OpenApiParameter.QUERY, required=False),
                 OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
                 _PARAM_SEARCH,
-                *params_lista(DOCUMENTI_SORT_COLUMNS, "Senza: data DESC, id DESC."),
+                *parametri_ordinamento(DOCUMENTI_SORT_COLUMNS, senza="data DESC, id DESC.", verso="asc; desc sulle colonne data"), *parametri_finestra(),
             ],
             responses={200: RISPOSTA_GENERICA},
         )
@@ -180,7 +179,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{codice}_export",
-            parameters=[PARAM_FORMATO, *params_lista(DOCUMENTI_SORT_COLUMNS, "")],
+            parameters=[PARAM_FORMATO, *parametri_ordinamento(DOCUMENTI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
             responses=RISPOSTE_EXPORT,
         )
         # Scopo: Il file della lista, con gli stessi filtri e ordinamento.
@@ -303,7 +302,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_list",
-            parameters=[_PARAM_SEARCH, *params_lista(righe_sort_columns(f), "Senza: id ASC (l'ordine di digitazione).")],
+            parameters=[_PARAM_SEARCH, *parametri_ordinamento(righe_sort_columns(f), senza="id ASC (l'ordine di digitazione).", verso="asc; desc sulle colonne data"), *parametri_finestra()],
             responses={200: RISPOSTA_GENERICA},
         )
         # Scopo: Le righe della testata, paginate.
@@ -349,7 +348,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
         @extend_schema(
             operation_id=f"magazzino_{op}_righe_export",
-            parameters=[PARAM_FORMATO, _PARAM_SEARCH, *params_lista(righe_sort_columns(f), "")],
+            parameters=[PARAM_FORMATO, _PARAM_SEARCH, *parametri_ordinamento(righe_sort_columns(f), verso="asc; desc sulle colonne data"), *parametri_finestra()],
             responses=RISPOSTE_EXPORT,
         )
         # Scopo: Il file delle righe di UN documento.
@@ -429,7 +428,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano",
-                parameters=[_PARAM_SEARCH, *params_lista(PIANO_SORT_COLUMNS, "Senza: articolo, poi la posizione.")],
+                parameters=[_PARAM_SEARCH, *parametri_ordinamento(PIANO_SORT_COLUMNS, senza="articolo, poi la posizione.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
                 responses={200: RISPOSTA_GENERICA},
             )
             # Scopo: Il piano dell'inventario: che cosa il posting scrivera'.
@@ -450,7 +449,7 @@ def build_documento_interno_views(f: FamigliaDocumentoInterno) -> dict[str, type
 
             @extend_schema(
                 operation_id=f"magazzino_{op}_piano_export",
-                parameters=[PARAM_FORMATO, _PARAM_SEARCH, *params_lista(PIANO_SORT_COLUMNS, "")],
+                parameters=[PARAM_FORMATO, _PARAM_SEARCH, *parametri_ordinamento(PIANO_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
                 responses=RISPOSTE_EXPORT,
             )
             # Scopo: Il file del piano.
@@ -666,7 +665,7 @@ class ApiDisponibilita(DomainAPIView):
         parameters=[
             OpenApiParameter(name="magazzino_id", type=int, location=OpenApiParameter.QUERY, required=False),
             *_PARAMS_DISPONIBILITA,
-            *params_lista(DISPONIBILITA_SORT_COLUMNS, "Senza: articolo, magazzino."),
+            *parametri_ordinamento(DISPONIBILITA_SORT_COLUMNS, senza="articolo, magazzino.", verso="asc; desc sulle colonne data"), *parametri_finestra(),
         ],
         responses={200: RISPOSTA_GENERICA},
     )
@@ -691,7 +690,7 @@ class ApiDisponibilitaExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_export",
-        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *parametri_ordinamento(DISPONIBILITA_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file della disponibilita'.
@@ -720,7 +719,7 @@ class ApiDisponibilitaArticoli(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_articoli_list",
-        parameters=[*_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "Senza: articolo.")],
+        parameters=[*_PARAMS_DISPONIBILITA, *parametri_ordinamento(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, senza="articolo.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: La disponibilita' per articolo, paginata.
@@ -743,7 +742,7 @@ class ApiDisponibilitaArticoliExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_disponibilita_articoli_export",
-        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *params_lista(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, *_PARAMS_DISPONIBILITA, *parametri_ordinamento(DISPONIBILITA_ARTICOLI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file della disponibilita' per articolo.
@@ -885,7 +884,7 @@ class ApiMovimenti(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_movimenti_list",
-        parameters=[*_PARAMS_MOVIMENTI, *params_lista(MOVIMENTI_SORT_COLUMNS, "Senza: data_mov DESC, id DESC.")],
+        parameters=[*_PARAMS_MOVIMENTI, *parametri_ordinamento(MOVIMENTI_SORT_COLUMNS, senza="data_mov DESC, id DESC.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: Il registro dei movimenti, paginato. Sola lettura per costruzione.
@@ -909,7 +908,7 @@ class ApiMovimentiExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_movimenti_export",
-        parameters=[PARAM_FORMATO, *_PARAMS_MOVIMENTI, *params_lista(MOVIMENTI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, *_PARAMS_MOVIMENTI, *parametri_ordinamento(MOVIMENTI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file del registro, con gli stessi filtri e ordinamento.

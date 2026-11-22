@@ -62,7 +62,6 @@ const {
   // ⭐ I filtri li dà lo STORE, gli stessi che ha appena usato per la lista: un
   //    secondo elenco qui esporterebbe un insieme diverso da quello a video.
   getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
-  searchTableOptions: { defaultSortField: 'codice_interno' },
 })
 
 // ⛔ `null` = TUTTE, spente comprese: una famiglia spenta è la riga che spiega

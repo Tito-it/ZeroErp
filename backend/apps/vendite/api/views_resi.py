@@ -39,7 +39,7 @@ from apps.vendite.api._list_filters_helpers import extract_doc_list_filters
 from apps.vendite.services import resi_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.resi_repository import ResiRepository
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 
 # Codici lista config (ui.lista_definizione) delle liste resi: guidano la
@@ -174,11 +174,7 @@ class ApiResiList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo 'vendite.resi' "
-                                         "(numero | data | destinatario_denominazione | "
-                                         "ba_codice | stato_descrizione | ...)."),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="VenditeResiListResp",
@@ -233,8 +229,7 @@ class ApiResiExport(DomainAPIView):
             OpenApiParameter(name="billing_account_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -305,13 +300,7 @@ class ApiResiDaAccreditare(DomainAPIView):
                              description="Restringe la coda all'ordine indicato, via "
                                          "fulfillment della riga di DDT resa. "
                                          "Alternativo a ddt_id."),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo "
-                                         "'vendite.resi_da_accreditare' "
-                                         "(reso_numero | data | destinatario_denominazione | "
-                                         "descrizione | ddt_numero | accredito_dovuto | "
-                                         "etichetta | ...)."),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="VenditeResiDaAccreditareResp",
@@ -366,8 +355,7 @@ class ApiResiDaAccreditareExport(DomainAPIView):
                              description="Restringe la coda all'ordine indicato, via "
                                          "fulfillment della riga di DDT resa. "
                                          "Alternativo a ddt_id."),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -436,13 +424,7 @@ class ApiResiDaRiconsegnare(DomainAPIView):
                              description="Restringe la coda all'ordine indicato, via "
                                          "fulfillment della riga di DDT resa. "
                                          "Alternativo a ddt_id."),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo "
-                                         "'vendite.resi_da_riconsegnare' "
-                                         "(reso_numero | data | destinatario_denominazione | "
-                                         "descrizione | ddt_numero | qta_resa | "
-                                         "qta_riconsegnata | qta_residua | stato_riconsegna)."),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="VenditeResiDaRiconsegnareResp",
@@ -494,8 +476,7 @@ class ApiResiDaRiconsegnareExport(DomainAPIView):
                              description="Restringe la coda all'ordine indicato, via "
                                          "fulfillment della riga di DDT resa. "
                                          "Alternativo a ddt_id."),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,

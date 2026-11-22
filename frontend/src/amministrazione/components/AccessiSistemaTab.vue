@@ -39,9 +39,7 @@ const drawer = useDrawerState()
 const {
   searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'username' },
-})
+} = useListaConfigurabilePage(store)
 
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: tipoFilter, onChange: onTipoChange } = bindSelect('tipo')

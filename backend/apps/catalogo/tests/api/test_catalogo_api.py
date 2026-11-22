@@ -627,9 +627,13 @@ class CatalogoApiTests(JwtMockedApiTest):
         from apps.catalogo.db.note_repositories import NOTE_REPO_ARTICOLO
         from apps.vendite.api.note_views import ApiPreventivoNoteList
 
+        # ⭐ La sede globale dichiara la SUA lista, letta dal repository (dal
+        #    2026-11-22: la partenza della lista). Il cancello che ne segue non
+        #    chiede niente (`catalogo.note` e' `perimetro_emittente = false`), e
+        #    nessun parametro dell'emittente: una nota di catalogo non ne ha.
         for vista in (ApiArticoloNoteList, ApiComponenteNoteList):
             with self.subTest(vista.__name__):
-                self.assertIsNone(vista.lista_codice)
+                self.assertEqual(vista.lista_codice, NOTE_REPO_ARTICOLO.lista_codice)
                 self.assertIsNone(vista.lista_emittente_param)
         self.assertEqual(ApiPreventivoNoteList.lista_codice, "vendite.note")
         self.assertEqual(NOTE_REPO_ARTICOLO.lista_codice, "catalogo.note")

@@ -41,7 +41,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.permissions import PassaggioDocumento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
@@ -327,8 +327,7 @@ def build_documenti_sorgente_views(
                 ),
                 OpenApiParameter(name="limit", type=int, required=False),
                 OpenApiParameter(name="offset", type=int, required=False),
-                OpenApiParameter(name="order_by", type=str, required=False),
-                OpenApiParameter(name="order_dir", type=str, required=False),
+                *parametri_ordinamento(),
             ],
             responses={200: inline_serializer(
                 name=f"{schema_prefix}DocumentiListResponse",

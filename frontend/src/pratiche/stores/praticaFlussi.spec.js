@@ -48,7 +48,10 @@ describe('praticaFlussi store', () => {
     const [praticaId, params] = listFlussi.mock.calls[0]
     expect(praticaId).toBe(12)
     expect(params).toMatchObject({
-      emittente_fiscale_id: 3, order_by: 'sequenza', order_dir: 'asc', offset: 0,
+      emittente_fiscale_id: 3, offset: 0,
     })
+    // L'ordinamento di partenza lo applica il backend dal preset: lo store
+    // non lo scrive (residuo di BE25 (2) di brief-db-revisione-ui).
+    expect(params.order_by ?? null).toBeNull()
   })
 })

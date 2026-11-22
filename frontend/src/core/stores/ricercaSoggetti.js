@@ -27,6 +27,8 @@ export const useRicercaSoggettiStore = createListaStore('core-ricerca-soggetti',
   startsEmpty: true,
   ricercaCorta: 'svuota',
   filterDefaults: { tipo_ruolo_id: null },
-  orderBy: 'ragione_sociale_completa',
-  orderDir: 'asc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
 })

@@ -11,7 +11,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
@@ -28,7 +28,7 @@ from apps.core.api.payload_validators import (
     qp_int_strict,
     qp_str,
 )
-from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import PayloadValidator
@@ -70,8 +70,7 @@ class ApiPraticheList(DomainAPIView):
             OpenApiParameter(name="solo_interne", type=bool, required=False, description="Lente contesto: solo pratiche interne, senza soggetto (esclusiva con ruolo/istanza)."),
             OpenApiParameter(name="priorita_id", type=int, required=False, description="Filtro priorita' pratica."),
             OpenApiParameter(name="risorsa_umana_id", type=int, required=False, description="Filtro operatore assegnato."),
-            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
-            OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
+            *parametri_finestra(),
         ],
         responses={200: inline_serializer(
             name="PraticheListResponse",
@@ -388,13 +387,8 @@ class ApiPraticaFlussiList(DomainAPIView):
                     "perimetro per chi ha piu' emittenti nello scope. Non filtra."
                 ),
             ),
-            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
-            OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description=descrizione_order_by(FLUSSI_ORDER_COLS, "Default: sequenza."),
-            ),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_finestra(),
+            *parametri_ordinamento(FLUSSI_ORDER_COLS, senza="sequenza"),
         ],
         responses={200: inline_serializer(
             name="PraticaFlussiListResponse",

@@ -30,11 +30,11 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import parse_list_params, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 from apps.vendite.services.vendite_service import (
@@ -69,46 +69,8 @@ class ApiFondiFatturaDaDecidere(DomainAPIView):
                     "Motivo fuori vocabolario -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (whitelist): data (default) | "
-                    "motivo | anno | numero | totale_a_pagare | "
-                    "importo_proposto | capienza_attuale | stato_atto. "
-                    "Colonna non ammessa -> 400. "
-                    "⚠️ `stato_atto` e' valorizzato sul solo ramo "
-                    "NON_PIU_CAPIENTE e NULL sugli altri: ordinarlo separa i "
-                    "casi con un atto vivo da quelli senza (i vuoti in coda "
-                    "su desc, in testa su asc — regola unica di progetto)."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Direzione ordinamento: asc | desc (default desc: le "
-                    "fatture piu' recenti prima). Valore diverso -> 400."
-                ),
-            ),
-            OpenApiParameter(
-                name="limit",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT}).",
-            ),
-            OpenApiParameter(
-                name="offset",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Offset paginazione (default 0). `page`/`page_size` sono un 400 (dal 2026-10-20).",
-            ),
+            *parametri_ordinamento("data | motivo | anno | numero | totale_a_pagare | importo_proposto | capienza_attuale | stato_atto.", senza="data", verso="desc (le fatture piu' recenti prima)", nota="Colonna o verso non ammessi -> 400. ⚠️ `stato_atto` e' valorizzato sul solo ramo NON_PIU_CAPIENTE e NULL sugli altri: ordinarlo separa i casi con un atto vivo da quelli senza (i vuoti in coda su desc, in testa su asc — regola unica di progetto)."),
+            *parametri_finestra(),
         ],
         responses={
             200: inline_serializer(
@@ -186,14 +148,7 @@ class ApiFondiFatturaDaDecidereExport(DomainAPIView):
                 required=False,
                 description="Stesso filtro del GET di lista (whitelist chiusa).",
             ),
-            OpenApiParameter(
-                name="order_by", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="Stessa whitelist del GET di lista.",
-            ),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="asc | desc (default desc).",
-            ),
+            *parametri_ordinamento("Stessa whitelist del GET di lista.", senza="data", verso="desc"),
         ],
         responses={(200, "text/csv"): bytes},
     )

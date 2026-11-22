@@ -23,7 +23,8 @@ export const useListinoVersioniStore = createListaStore('vendite-listino-version
   parentField: 'listinoId',
   // Il listino e' gia' scelto quando il tab si apre.
   startsEmpty: false,
-  // Il preset 112: la piu' recente in cima.
-  orderBy: 'valido_dal',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
 })

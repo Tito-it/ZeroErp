@@ -32,10 +32,10 @@ export const useAuditLogStore = createListaStore('amm-audit-log', {
     data_da: defaultFiltroDataDaString(),
     data_a: null,
   },
-  // Allineato all'`ordinamento_default` del preset `audit_log_default`
-  // (seed `lista_preset`, riga 32): il piu' recente in cima. Il ripiego del
-  // verso segue: e' una lista di eventi, si legge dal piu' recente.
-  orderBy: 'timestamp',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
+  // Il ripiego del verso, quando `order_by` arriva senza verso.
   orderDirDefault: 'desc',
 })

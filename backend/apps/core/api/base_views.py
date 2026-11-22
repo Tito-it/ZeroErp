@@ -24,6 +24,7 @@ from apps.core.api.permissions import (
 from apps.core.services import perimetro_emittente
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.ordinamento_di_partenza import (
+    applica_misura_di_partenza,
     applica_ordinamento_di_partenza,
     ritira_ordinamento_di_partenza,
 )
@@ -78,6 +79,64 @@ class _ApiViewBase(APIView):
                 message=USER_MESSAGE_FALLBACK["E_IDEMPOTENCY_KEY_REQUIRED"],
                 detail="Header Idempotency-Key mancante: una POST che scrive la porta sempre.",
             )
+        if self.lista_codice and request.user and request.user.is_authenticated:
+            # Prima il cancello della porta (solo `DomainAPIView` ne ha uno),
+            # poi la partenza: una lista che non si puo' leggere non si ordina.
+            self._cancello_di_lista(request, lista_codice=self.lista_codice)
+            # ⭐ L'ordinamento di partenza della lista, quando la richiesta non
+            #    ne porta uno (BE25 (2) di brief-db-revisione-ui). Il perche'
+            #    della sede sta nel BB.
+            applica_ordinamento_di_partenza(request, lista_codice=self.lista_codice)
+            # E la misura di partenza, quando la richiesta non porta `limit`
+            # (BE10): la legge `pagina_da_query` solo se pagina davvero.
+            applica_misura_di_partenza(request, lista_codice=self.lista_codice)
+
+    # Codice stabile della lista di catalogo servita da questo endpoint, quando
+    # ne serve UNA (`"vendite.dash_competenza_gruppi"`). `None` = l'endpoint non
+    # alimenta una lista di catalogo.
+    # ⭐ Su OGNI porta accende la PARTENZA della lista: l'ordinamento e la misura
+    #    della sua configurazione quando la richiesta non li porta
+    #    (`apps.core.services.ordinamento_di_partenza`). Sta qui, e non in
+    #    `DomainAPIView`, dal 2026-11-22 (residuo di BE25 (2) di
+    #    brief-db-revisione-ui, ok Tid): le liste dell'amministrazione
+    #    (`AdminAPIView`) non la ricevevano, e il FE ne teneva le copie.
+    # ⚠️ Su `DomainAPIView` accende ANCHE il cancello di perimetro emittente
+    #    (`_cancello_di_lista`, la' il perche'). Le altre porte ne sono esenti
+    #    per decisione (brief perimetro-emittente, passo C-2): dichiarare la
+    #    lista su una `AdminAPIView` non lo accende. Registro delle esenzioni:
+    #    `test_perimetro_emittente_copertura`.
+    lista_codice: str | None = None
+
+    # Scopo: il cancello della PORTA sulla lista, prima della partenza. Nessuno
+    #        sulla base: lo ha `DomainAPIView` (perimetro emittente).
+    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+        return None
+
+    # Scopo: il repository ha rifiutato la chiave dell'ordinamento di partenza
+    #        (BE25 (2) di brief-db-revisione-ui): si ritira la proposta e si
+    #        rilegge la lista con lo STESSO handler, una volta sola, come se la
+    #        richiesta fosse arrivata senza `order_by`.
+    # ⭐ Si rilegge invece di ripiegare dentro il repository perche' molti
+    #    compongono l'`ORDER BY` a mano e leggono `order_dir` per conto loro:
+    #    un ripiego sulla sola colonna terrebbe il verso del preset sul default.
+    #    Rileggere e' sicuro: la proposta vive solo su GET/HEAD, che non
+    #    scrivono (girano in sola lettura).
+    # ⚠️ Ogni altra eccezione, e un secondo rifiuto, seguono la strada di sempre.
+    def handle_exception(self, exc):
+        if (
+            isinstance(exc, OrdinamentoPropostoRifiutato)
+            and self.lista_codice
+            and not getattr(self, "_ordinamento_di_partenza_ritirato", False)
+        ):
+            self._ordinamento_di_partenza_ritirato = True
+            ritira_ordinamento_di_partenza(self.request, lista_codice=self.lista_codice)
+            metodo = (self.request.method or "").lower()
+            handler = getattr(self, metodo, self.http_method_not_allowed)
+            try:
+                return handler(self.request, *self.args, **self.kwargs)
+            except Exception as altro:
+                return super().handle_exception(altro)
+        return super().handle_exception(exc)
 
 
 class DomainAPIView(_ApiViewBase):
@@ -111,9 +170,9 @@ class DomainAPIView(_ApiViewBase):
     patch_permission: str
     delete_permission: str
 
-    # Codice stabile della lista servita da questo endpoint, quando ne serve
-    # UNA (`"vendite.dash_competenza_gruppi"`). `None` = l'endpoint non
-    # alimenta una lista di catalogo, e il cancello resta inerte.
+    # `lista_codice` (dichiarato su `_ApiViewBase`, la' la partenza): QUI
+    # accende anche il cancello di perimetro emittente. `None` = il cancello
+    # resta inerte.
     #
     # ⚠️ E' DICHIARATIVO come `area_funzionale` e `post_permission`: la view
     #    dichiara COSA SERVE, non cosa controllare. La forma alternativa —
@@ -132,7 +191,6 @@ class DomainAPIView(_ApiViewBase):
     #    proprieta' del meccanismo, non di ognuna di esse. Copiarlo accanto a
     #    ogni dichiarazione produceva 243 righe di commento identico per 65 di
     #    codice — e nessuno commenta `area_funzionale = "vendite"`.
-    lista_codice: str | None = None
 
     # Nome del parametro di QUERY con cui questo endpoint riceve l'emittente
     # gia' fissato dal contesto che lo apre — tipicamente un tab-lista dentro
@@ -167,45 +225,13 @@ class DomainAPIView(_ApiViewBase):
     #    che espone anche un'azione massiva sulla stessa selezione la
     #    eseguirebbe sullo stesso perimetro ambiguo che il cancello sta
     #    rifiutando di mostrare.
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-        if self.lista_codice and request.user and request.user.is_authenticated:
-            perimetro_emittente.guard_lista_per_codice(
-                user=request.user,
-                lista_codice=self.lista_codice,
-                emittente_esplicito=self._emittente_esplicito(request),
-            )
-            # ⭐ L'ordinamento di partenza della lista, quando la richiesta non
-            #    ne porta uno (BE25 (2) di brief-db-revisione-ui): DOPO il
-            #    cancello, perche' una lista che non si puo' leggere non si
-            #    ordina. Il perche' della sede sta nel BB.
-            applica_ordinamento_di_partenza(request, lista_codice=self.lista_codice)
-
-    # Scopo: il repository ha rifiutato la chiave dell'ordinamento di partenza
-    #        (BE25 (2) di brief-db-revisione-ui): si ritira la proposta e si
-    #        rilegge la lista con lo STESSO handler, una volta sola, come se la
-    #        richiesta fosse arrivata senza `order_by`.
-    # ⭐ Si rilegge invece di ripiegare dentro il repository perche' molti
-    #    compongono l'`ORDER BY` a mano e leggono `order_dir` per conto loro:
-    #    un ripiego sulla sola colonna terrebbe il verso del preset sul default.
-    #    Rileggere e' sicuro: la proposta vive solo su GET/HEAD, che non
-    #    scrivono (girano in sola lettura).
-    # ⚠️ Ogni altra eccezione, e un secondo rifiuto, seguono la strada di sempre.
-    def handle_exception(self, exc):
-        if (
-            isinstance(exc, OrdinamentoPropostoRifiutato)
-            and self.lista_codice
-            and not getattr(self, "_ordinamento_di_partenza_ritirato", False)
-        ):
-            self._ordinamento_di_partenza_ritirato = True
-            ritira_ordinamento_di_partenza(self.request, lista_codice=self.lista_codice)
-            metodo = (self.request.method or "").lower()
-            handler = getattr(self, metodo, self.http_method_not_allowed)
-            try:
-                return handler(self.request, *self.args, **self.kwargs)
-            except Exception as altro:
-                return super().handle_exception(altro)
-        return super().handle_exception(exc)
+    # ⭐ Lo chiama `_ApiViewBase.initial()` prima della partenza della lista.
+    def _cancello_di_lista(self, request, *, lista_codice: str) -> None:
+        perimetro_emittente.guard_lista_per_codice(
+            user=request.user,
+            lista_codice=lista_codice,
+            emittente_esplicito=self._emittente_esplicito(request),
+        )
 
     # Scopo: l'emittente che la richiesta FISSA, quando questo endpoint ne
     #        dichiara il parametro. `None` se non lo dichiara.

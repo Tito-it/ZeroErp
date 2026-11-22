@@ -32,8 +32,11 @@ export const useSessioniAttiveStore = defineStore(
     const base = useListaStoreCore({
       fetchPage: listSessioni,
       startsEmpty: false,
-      orderBy: 'data_ultimo_evento',
-      orderDir: 'desc',
+      // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+      //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+      //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+      //    l'intestazione.
+      // Il ripiego del verso, quando `order_by` arriva senza verso.
       orderDirDefault: 'desc',
       onPayload: (payload) => { totaleAttive.value = payload.totale_attive ?? 0 },
     })

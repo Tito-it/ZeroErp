@@ -45,8 +45,11 @@ describe('templateVersioni store', () => {
     const [url, { params }] = api.get.mock.calls[0]
     expect(url).toBe('/documenti/templates/12/versioni/')
     expect(params).toMatchObject({
-      emittente_fiscale_id: 5, order_by: 'versione', order_dir: 'desc', limit: 25, offset: 0,
+      emittente_fiscale_id: 5, limit: 25, offset: 0,
     })
+    // L'ordinamento di partenza lo applica il backend dal preset: lo store
+    // non lo scrive (residuo di BE25 (2) di brief-db-revisione-ui).
+    expect(params.order_by ?? null).toBeNull()
   })
 
   it('2. la creazione manda l\'emittente in query', async () => {

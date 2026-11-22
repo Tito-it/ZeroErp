@@ -38,9 +38,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'amministrazione.matrice_categorie_listini.new_row',
   onNew: () => emit('new'),
-  // `valido_al` DESC: regola di dominio sulle liste con date di validita',
-  // allineato al preset del seed.
-  searchTableOptions: { defaultSortField: 'valido_al', defaultSortOrder: 'desc' },
 })
 
 const emittentiLookup = useLookup(listEmittentiFiscali, { immediate: true })

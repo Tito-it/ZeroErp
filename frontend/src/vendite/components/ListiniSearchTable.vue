@@ -61,7 +61,6 @@ const {
 } = useListaConfigurabilePage(store, {
   newTooltipKey: 'vendite.listini.nuovo_listino',
   onNew: () => emit('new'),
-  // Allineato al preset del seed (`codice asc`).
   extraActions: () => extraPageActions.value,
   // «Ricarica» riallinea anche il badge: lista e conteggio sono la stessa
   // fotografia. ⚠️ Arrow lazy: `reload` e `ricaricaBadge` si risolvono al clic.

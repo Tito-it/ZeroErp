@@ -27,7 +27,7 @@ from apps.core.api.payload_validators import (
     qp_bool_optional,
 )
 from apps.core.api.success_responses import success_response
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 
 # =================================================================
@@ -38,6 +38,8 @@ from apps.core.api.openapi_params import param_ricerca_full
 class CategorieClientiView(AdminAPIView):
     """GET lista paginata, POST crea categoria (admin only)."""
 
+    lista_codice = "anagrafiche.categorie_clienti"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -47,9 +49,7 @@ class CategorieClientiView(AdminAPIView):
             OpenApiParameter(name="partecipa_promo", type=bool, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="codice | descrizione | ordinamento | partecipa_promo | attivo | data_insert | data_update"),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento("codice | descrizione | ordinamento | partecipa_promo | attivo | data_insert | data_update."),
         ],
         responses={200: inline_serializer(
             name="AnagCategorieClientiListResp",

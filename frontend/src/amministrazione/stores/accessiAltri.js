@@ -25,5 +25,8 @@ export const useAccessiAltriStore = createListaStore('amm-accessi-altri', {
     secondo_fattore_stato: null,
     bloccata: null,
   },
-  orderBy: 'nome_visualizzato',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
 })

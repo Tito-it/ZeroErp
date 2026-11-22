@@ -2015,8 +2015,13 @@ class PagamentiRepository:
         self._guard_canale_sistema("emittente_nel_perimetro")
         # L'utente per cui la connessione agisce, dalla GUC delle policy RLS
         # (BB `utente_di_sessione`: il nome della GUC e il suo tranello stanno
-        # li'). Senza utente non c'e' perimetro: si rifiuta.
-        auth_user_id = utente_di_sessione()
+        # li'). Senza utente non c'e' perimetro: si rifiuta. Un valore che non
+        # e' un id utente e' una chiamata rotta: `E_PAGAMENTI_CHIAMATA_NON_VALIDA`
+        # (BE31 di brief-db-revisione-ui), non il 22P02 del cast.
+        auth_user_id = utente_di_sessione(
+            codice_errore=_E_CHIAMATA,
+            function_name="pagamenti_repository.emittente_nel_perimetro",
+        )
         if auth_user_id is None:
             return False
         with connection.cursor() as cursor:

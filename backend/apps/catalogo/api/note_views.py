@@ -47,6 +47,7 @@ ApiArticoloNoteList, ApiArticoloNoteDetail = make_note_views(
     target_tipo=NOTE_REPO_ARTICOLO.target_tipo,
     model_permission=("catalogo", "articolo"),
     perimetro_emittente=False,
+    lista_globale=NOTE_REPO_ARTICOLO.lista_codice,
     supporta_righe=NOTE_REPO_ARTICOLO.supports_riga,
 )
 
@@ -57,6 +58,7 @@ ApiComponenteNoteList, ApiComponenteNoteDetail = make_note_views(
     target_tipo=NOTE_REPO_ARTICOLO_COMPONENTE.target_tipo,
     model_permission=("catalogo", "articolo"),
     perimetro_emittente=False,
+    lista_globale=NOTE_REPO_ARTICOLO_COMPONENTE.lista_codice,
     supporta_righe=NOTE_REPO_ARTICOLO_COMPONENTE.supports_riga,
     cancello_padre=_legame_dell_articolo,
 )

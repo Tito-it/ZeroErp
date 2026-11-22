@@ -34,15 +34,7 @@ const store = useAuditLogStore()
 const {
   onPage, onSort, applyFilters, paginatorProps, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions, perimetroBloccato,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: {
-    // Allineato al preset del seed (`timestamp desc`). Va detto in entrambi i
-    // posti: quando lo store preimposta `order_by` questo resta dormiente, ma
-    // lasciarlo indietro fa divergere i due se un domani lo store cambia.
-    defaultSortField: 'timestamp',
-    defaultSortOrder: 'desc',
-  },
-})
+} = useListaConfigurabilePage(store)
 
 // Lookup sorgenti audit dal BE (single source of truth: `script.vw_audit_sources`).
 // Cache modulo-level via useGlobalLookup; transform perche' l'endpoint ritorna

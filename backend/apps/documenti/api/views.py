@@ -29,7 +29,7 @@ from apps.core.api.payload_validators import (
     qp_int_optional,
     qp_str_upper,
 )
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -85,8 +85,7 @@ class ApiTemplateList(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             200: inline_serializer(
@@ -410,8 +409,7 @@ class ApiTemplateVersioniList(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             200: inline_serializer(
@@ -700,8 +698,7 @@ class ApiAssetList(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             200: inline_serializer(

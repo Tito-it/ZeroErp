@@ -12,7 +12,7 @@
 //
 // Indice test:
 //  1. senza emittente la lista non legge, ed e' in attesa
-//  2. fattura: id nel path, emittente in query, ordine del preset (quando desc)
+//  2. fattura: id nel path, emittente in query, l'ordine lo applica il backend
 //  3. lotto: il filtro «solo problemi» viaggia come `info=false`, e «tutto» e' neutro
 //  4. i contatori di cio' che il filtro nasconde arrivano dal payload
 //  5. i due store sono DUE: la pagina di uno non tocca l'altro
@@ -54,7 +54,7 @@ describe('giornaleEntita store', () => {
     expect(store.attesaPadre).toBe(true)
   })
 
-  it('2. fattura: id nel path, emittente in query, ordine del preset', async () => {
+  it('2. fattura: id nel path, emittente in query, l\'ordine lo applica il backend', async () => {
     const store = useFatturaGiornaleStore()
     store.entitaId = 7
     store.emittenteId = 3
@@ -63,8 +63,11 @@ describe('giornaleEntita store', () => {
     const [fatturaId, params] = listFatturaGiornale.mock.calls[0]
     expect(fatturaId).toBe(7)
     expect(params).toMatchObject({
-      emittente_soggetto_ruolo_id: 3, order_by: 'quando', order_dir: 'desc', offset: 0,
+      emittente_soggetto_ruolo_id: 3, offset: 0,
     })
+    // L'ordinamento di partenza lo applica il backend dal preset: lo store
+    // non lo scrive (residuo di BE25 (2) di brief-db-revisione-ui).
+    expect(params.order_by ?? null).toBeNull()
     // La Storia della fattura non ha filtri propri: `info` e' del lotto.
     expect(params).not.toHaveProperty('info')
   })

@@ -42,7 +42,7 @@ from apps.vendite.api.riepilogo_iva_views import build_riepilogo_iva_view
 from apps.vendite.services import ddt_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.ddt_repository import TESTATA_DDT, DdtRepository
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
     COMPONENTI_LIST_PARAMETERS,
@@ -117,11 +117,7 @@ class ApiDdtList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="campo_sorgente catalogo 'vendite.ddt' "
-                                         "(numero | data | destinatario_denominazione | "
-                                         "ba_codice | stato_descrizione | ...)."),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="VenditeDdtListResp",
@@ -176,8 +172,7 @@ class ApiDdtExportView(DomainAPIView):
             OpenApiParameter(name="utility_id", type=int, required=False),
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,

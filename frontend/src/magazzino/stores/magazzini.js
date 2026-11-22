@@ -41,8 +41,9 @@ export const useMagazziniStore = createCrudStore('magazzino-magazzini', {
   startsEmpty: false,
   // `attivo: true` = solo le attive; l'interruttore lo porta a `null` (tutte).
   filterDefaults: { attivo: true },
-  orderBy: 'codice',
-  orderDir: 'asc',
+  // ⭐ Nessun ordinamento di partenza qui (BE29 di brief-db-revisione-ui):
+  //  lo dichiara il preset della lista, il backend lo applica e lo dice in
+  //  `meta.ordinamento`, da cui la tabella accende l'intestazione.
   // Scopo: dopo una scrittura, i PICKER (`<LookupSelect rel="magazzino.magazzini">`
   //        del documento interno, dei filtri): la cache condivisa del lookup
   //        si invalida — nelle DUE chiavi che il `rel` puo' avere — o

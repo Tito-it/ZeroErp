@@ -40,7 +40,10 @@ export const useRegistriNumerazioneStore = createListaStore('amm-registri-numera
   parentField: 'emittenteSoggettoRuoloId',
   // Parte piena: sono i registri di QUESTO emittente.
   startsEmpty: false,
-  orderBy: 'codice',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   filterDefaults: {
     // ⛔ `null` = TUTTI, ed e' il default voluto (§FE-3): la lista deve
     //    mostrare anche gli spenti, perche' sono le righe che spiegano il

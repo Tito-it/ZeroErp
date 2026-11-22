@@ -32,10 +32,11 @@ export const useErrorLogStore = createListaStore('amm-error-log', {
     data_da: defaultFiltroDataDaString(),
     data_a: null,
   },
-  // Allineato al preset `error_log_default` (`occurred_at desc`): il piu'
-  // recente in cima; il ripiego del verso segue.
-  orderBy: 'occurred_at',
-  orderDir: 'desc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
+  // Il ripiego del verso, quando `order_by` arriva senza verso.
   orderDirDefault: 'desc',
   extend: () => {
     // La riga aperta nel drawer di dettaglio: e' gia' nella pagina, non si

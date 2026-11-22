@@ -66,7 +66,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.search_validators import require_min_search_length
 from apps.core.api.success_responses import success_response
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.catalogo.db.catalogo_bom_repository import COMPONENTI_SORT_COLUMNS
 from apps.ui.api.lista_figlia_views import build_lista_figlia_views
 
@@ -205,8 +205,7 @@ class ApiArticoliList(DomainAPIView):
             OpenApiParameter(name="data_a", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoArticoliListResponse",
@@ -352,8 +351,7 @@ _PARAMETRI_LISTA_FIGLIA = [
     param_ricerca_full(),
     OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
     OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+    *parametri_ordinamento(),
 ]
 
 
@@ -366,8 +364,10 @@ class ApiArticoloUomList(DomainAPIView):
     area_funzionale = "catalogo"
     model_permission = ("catalogo", "articolo")
     is_search_endpoint = True
-    # ⚠️ Nessun `lista_codice`: `catalogo.articolo_uom` e' globale (come le
-    #    note dell'articolo, vedi sopra).
+    # La partenza della lista (ordinamento e misura del preset). ⚠️ La lista e'
+    # globale (`perimetro_emittente = false`, come le note dell'articolo): il
+    # cancello di perimetro qui non chiede niente.
+    lista_codice = "catalogo.articolo_uom"
 
     @extend_schema(
         parameters=_PARAMETRI_LISTA_FIGLIA,
@@ -753,8 +753,7 @@ class ApiUomTipiList(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoUomTipiListResponse",
@@ -843,8 +842,7 @@ class ApiUnitaMisuraList(DomainAPIView):
             OpenApiParameter(name="attivo", type=bool, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoUnitaMisuraListResponse",
@@ -954,8 +952,7 @@ class ApiConversioniList(DomainAPIView):
             OpenApiParameter(name="uom_id", type=int, required=False, description="Filtra conversioni per UoM (from o to)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="CatalogoConversioniListResponse",

@@ -85,10 +85,11 @@ function createResiCodaStore(id, fetchPage, extraFilters = {}) {
       ...FILTRI_DEFAULT,
       limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
-      // Default sort `data desc` (parità lista resi/DDT), allineato al
-      // default backend e al defaultSortField della ResiCodaTable.
-      order_by: 'data',
-      order_dir: 'desc',
+      // ⭐ Nessun ordinamento di partenza (BE29 di brief-db-revisione-ui): lo
+      //    dichiara il preset di ciascuna coda (`data desc`), il backend lo
+      //    applica e lo dice in `meta.ordinamento`.
+      order_by: null,
+      order_dir: null,
     })
 
     // alwaysFetch: la coda parte piena (lavoro pendente sempre visibile).
