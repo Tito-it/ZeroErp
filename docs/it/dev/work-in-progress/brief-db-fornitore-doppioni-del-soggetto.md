@@ -5,11 +5,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: il team BE/FE**, con la richiesta del §7.4 («La richiesta al BE/FE, con il builder»): il test e2e del
-regime spento costruisce i regimi col builder `dbops.fn_crea_regime_fiscale_di_prova`. ⚠️ Il giro D-8 e D-9 è già
-applicato su dbdev (Tid, 2026-11-22, §7.4 «L'apply»): finché il BE non adegua il test, l'e2e
-`test_regime_fiscale_spento_db` è **rosso** (`42501`). In parallelo **Tid**: il commit del giro DB e la doc
-auto-generata. Poi **la sessione DB**: l'archiviazione. Il lavoro BE/FE dei giri precedenti è
+**Riparte: Tid**, col commit del test e2e corretto e del ripiego (§7.5), nella stessa PR del giro DB perché la CI resti verde, e con la doc auto-generata del giro D-8/D-9 (ancora da rigenerare: c'è solo `manual/`). Poi **la sessione DB**: il messaggio a catalogo di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` (§7.5) e l'archiviazione. Lato BE/FE il brief è chiuso: la richiesta del §7.4 è fatta (2026-11-22, 8/8 verdi su dbdev). Il lavoro BE/FE dei giri precedenti è
 committato (`ae2336fcfd`, PR #187); il collaudo a video del drawer è fatto (Tid, 2026-11-22). La D-6 nella forma della D-7 «2» è applicata e pushata (`20261121-10` … `-15`,
 `790fc0432`, PR #185), e la sessione BE/FE l'ha provata sui due drawer. Il `/verifica-db` dei giri
 A e B è fatto (§7) e la doc auto-generata è rigenerata (`eaed059e6`).
@@ -32,9 +28,10 @@ BE/FE è committato (`56c7fee9f6`, PR #182). D-6 «a» e D-7 «2» decise (Tid, 
 | 5-quinquies | ✅ Tid | D-8 «a»: `config.regimi_fiscali` in sola lettura per l'app (2026-11-22, §7.4) | 5-quater |
 | 5-sexies | ✅ sessione DB | Il giro D-8: `20261121-16`, loop dei grant, provisioning, pgTAP nuovo, pagina `manual/` (§7.4). Scritto e provato, non applicato, da committare | 5-quinquies |
 | 5-septies-bis | ✅ Tid e sessione DB | D-9 «a»: il builder dei regimi di prova, nel giro del `-16` (Tid, 2026-11-22). Scritto e provato: `20261121-17`, `-18` (§7.4) | 5-sexies |
-| 5-septies | ⏳ team BE/FE | Il test e2e del regime spento costruisce i regimi col builder; il censimento di chi scrive la tabella (§7.4). ⚠️ Rosso su dbdev dall'apply, finché non c'è | 5-septies-bis |
+| 5-septies | ✅ team BE/FE | Il test e2e del regime spento costruisce i regimi col builder; il censimento di chi scrive la tabella (§7.4). Fatto il 2026-11-22: 8/8 verdi su dbdev con `ZEROERP_TEST_DB_E2E=1`, nessun regime di prova rimasto; censimento: l'unico scrittore era questo test. ⏳ commit di Tid, nella stessa PR del giro DB | 5-septies-bis |
 | 5-octies | Tid | ✅ Apply di `20261121-16` … `-18` su dbdev, pgTAP verdi (2026-11-22, prima del BE); ⏳ commit del giro DB; ⏳ doc auto-generata | 5-septies-bis |
-| 6 | team DB | Chiusura: archiviazione | 5-septies, 5-octies |
+| 5-novies | ⏳ sessione DB | Il messaggio a catalogo di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` nomina anche i regimi fiscali di prova (§7.5). Il ripiego del BE è già allineato (2026-11-22) | 5-septies-bis |
+| 6 | team DB | Chiusura: archiviazione | 5-septies, 5-octies, 5-novies |
 
 ## 1. Che cosa ha fatto il BE/FE (2026-11-21)
 
@@ -694,3 +691,24 @@ Restano:
    diretta, dopo l'apply, è un `42501`.
 5. Il codice `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` non è nuovo, ed è già nella policy: in CI l'ambiente è `SVILUPPO`, e
    il builder lì si apre.
+
+### 7.5 Dopo il giro D-9, dal BE/FE (2026-11-22)
+
+**Fatto.** Il test e2e `test_regime_fiscale_spento_db.py` costruisce i regimi con `dbops.fn_crea_regime_fiscale_di_prova`
+ed è verde sul DB vero (8/8, `ZEROERP_TEST_DB_E2E=1`); il caso 3 è nella forma del §7.4 (il fornitore spento prende il
+regime nato spento, poi si riaccende). Nessun regime di prova rimasto su dbdev. Il caso «spegnimento di un regime in
+uso» nel file non c'era: niente da togliere. **Censimento** di chi scrive `config.regimi_fiscali` in `backend/`,
+`frontend/`, script, smoke e CI: l'unico era questo test. Gli altri (il test della conferma, lo smoke dei fornitori,
+service, repository, drawer, `voceRegimeFiscale.js`) leggono e basta. Il lookup dei regimi non filtra il segno
+`meta.di_prova`: va bene, perché il test non fa COMMIT e in produzione c'è il presidio.
+
+**Richiesta alla sessione DB.** Il giro D-9 ha esteso la nota di `E_DATI_DI_SVILUPPO_IN_PRODUZIONE` in
+`codici_errore.csv`, ma il messaggio in `80_data/sql/config/messaggi_errore.csv` (riga `it`, id 1356) dice ancora
+«utenti e soggetti di prova», e la causa «Gli utenti e i dati di prova». Proposta di testo:
+
+* messaggio: «I dati di sviluppo (utenti, soggetti e regimi fiscali di prova) non si creano in un'installazione di %s.»
+* causa: «Utenti, soggetti e regimi fiscali di prova esistono solo nei database di sviluppo: in produzione resterebbero
+  mescolati ai dati veri.»
+
+Il ripiego del BE (`error_messages_fallback.py`) ha già il messaggio senza segnaposto, nella stessa forma. Nessun
+codice nuovo e nessuna policy da rigenerare.

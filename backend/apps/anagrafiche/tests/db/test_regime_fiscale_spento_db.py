@@ -25,7 +25,14 @@
 #       per nome (i nomi lunghi sono hashati).
 #       ⚠️ I due regimi li COSTRUISCE il test (RF93 acceso, RF94 spento),
 #       in transazione ANNULLATA: spegnere un regime del catalogo dipenderebbe
-#       da chi lo usa oggi (regola zero). Opt-in `ZEROERP_TEST_DB_E2E=1`.
+#       da chi lo usa oggi (regola zero). L'app il catalogo lo legge e basta
+#       (D-8, `20261121-16`): i regimi nascono dalla porta di prova
+#       `dbops.fn_crea_regime_fiscale_di_prova` (D-9, `20261121-17`), che si
+#       apre solo in `SVILUPPO`, scrive solo righe nuove col segno
+#       `meta.di_prova` e non spegne. Il regime spento quindi NASCE spento, e
+#       lo spegnimento di un regime in uso resta al pgTAP
+#       `test-automazione-attivo-inclusioni-v1`, come owner.
+#       Opt-in `ZEROERP_TEST_DB_E2E=1`.
 # ------------------------------------------------------------
 """
 Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
@@ -65,12 +72,14 @@ class RegimeFiscaleSpentoDbTests(unittest.TestCase):
         richiedi_db_provvisto()
         with connection.cursor() as cur:
             apri_contesto_operatore(cur)
-            cur.execute(
-                "INSERT INTO config.regimi_fiscali (codice_interno, codice, descrizione, attivo)"
-                " VALUES (%s, 'E2E-RF93', 'Regime e2e acceso', true),"
-                "        (%s, 'E2E-RF94', 'Regime e2e spento', false)",
-                [_ACCESO, _SPENTO],
-            )
+            for codice_interno, descrizione, attivo in (
+                (_ACCESO, "Regime e2e acceso", True),
+                (_SPENTO, "Regime e2e spento", False),
+            ):
+                cur.execute(
+                    "SELECT dbops.fn_crea_regime_fiscale_di_prova(%s, %s, %s, %s)",
+                    [codice_interno, f"E2E-{codice_interno}", descrizione, attivo],
+                )
 
     def _fornitori(self):
         from apps.anagrafiche.services.fornitori_service import FornitoriService
@@ -190,16 +199,16 @@ class RegimeFiscaleSpentoDbTests(unittest.TestCase):
         self._assert_rifiuto_sul_campo(lambda: self._fornitori().crea_fornitore(payload))
 
     # 3. Il caso che a video si incontra davvero (la tendina propone i soli
-    #    accesi): il fornitore spento tiene il suo regime quando il regime si
-    #    spegne, e riaccenderlo e' rifiutato sul campo del regime.
+    #    accesi): un fornitore spento col regime spento, e riaccenderlo e'
+    #    rifiutato sul campo del regime. Il regime non si spegne qui (l'app
+    #    non lo puo'): e' il fornitore spento a prendere il regime gia' spento,
+    #    che un figlio spento puo' citare.
     def test_riaccendere_fornitore_col_regime_spento_409_sul_campo(self):
         fornitore_id = self._fornitore()
         self._fornitori().update_fornitore(fornitore_id, {"attivo": False})
-        with connection.cursor() as cur:
-            cur.execute(
-                "UPDATE config.regimi_fiscali SET attivo = false WHERE codice_interno = %s",
-                [_ACCESO],
-            )
+        self._require_regime_immediati()
+        self._fornitori().update_fornitore(fornitore_id, {_CAMPO: _SPENTO})
+        self.assertEqual(_SPENTO, self._regime_di("fornitori", fornitore_id))
         self._assert_rifiuto_sul_campo(
             lambda: self._fornitori().update_fornitore(fornitore_id, {"attivo": True}),
         )
