@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: URL namespace `/api/v1/documenti/*` — endpoint read-only
-#        v1 per template e versioni. CRUD admin (POST/PATCH) +
-#        comandi versione (clona/pubblica/cancella-bozza) + endpoint
-#        generazione/download atterrano in PR successive sullo
-#        stesso namespace.
+# Scopo: URL namespace `/api/v1/documenti/*` — il lato amministrativo
+#        del motore documentale: template (lettura, crea/aggiorna,
+#        risoluzione per azienda, personalizza), versioni (CRUD bozza,
+#        clona, pubblica), asset, registro dei context builder.
+#        Generazione, download e ristampa vivono sotto le sorgenti
+#        (`/api/v1/vendite/<dominio>/{id}/documenti/...`, factory in
+#        `sorgente_documenti_views.py`).
+#        Doc: docs/it/backend/documenti/manual/api_documenti_templates.md
 # ------------------------------------------------------------
 
 from __future__ import annotations
