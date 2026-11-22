@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.payload_validators import envelope_da_offset, pagina_da_query, qp_int_optional, qp_str
@@ -31,7 +31,6 @@ from apps.core.services.service_errors import ServiceError
 
 # Limiti paginazione per la ricerca
 _PAGE_SIZE_MAX = 100
-_PAGE_SIZE_DEFAULT = 25
 
 
 # Scopo: Estrae tipo_ruolo_id da query params: obbligatorieta' e conversione
@@ -129,21 +128,8 @@ class SearchUniversaleView(DomainAPIView):
                 required=True,
                 description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true: gli altri 404 E_TIPO_RUOLO_NON_RICERCABILE.",
             ),
-            *parametri_finestra(default_limit=_PAGE_SIZE_DEFAULT, max_limit=_PAGE_SIZE_MAX),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Colonna di ordinamento. Valori: ragione_sociale_completa, soggetto_codice, id_fiscale_univoco. utility_list non e' ordinabile (aggregato della sola pagina).",
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Direzione ordinamento: ASC (default) o DESC.",
-            ),
+            *parametri_finestra(max_limit=_PAGE_SIZE_MAX),
+            *parametri_ordinamento("Valori: ragione_sociale_completa | soggetto_codice | id_fiscale_univoco.", verso="asc", nota="utility_list non e' ordinabile (aggregato della sola pagina)."),
         ],
         responses={
             200: inline_serializer(
@@ -191,9 +177,9 @@ class SearchUniversaleView(DomainAPIView):
         # La finestra dal BB: dal 2026-10-21 un dialetto solo, `limit`/`offset`
         # (`page`/`page_size` sono un 400). Oltre il massimo della ricerca la
         # finestra si riporta nei limiti, come ogni lista.
-        limit, offset = pagina_da_query(
-            request.query_params, default_limit=_PAGE_SIZE_DEFAULT, max_limit=_PAGE_SIZE_MAX,
-        )
+        # Senza `limit` vale la misura della lista (`anagrafiche.ricerca_soggetti`,
+        # BE10 di brief-db-revisione-ui): il tetto resta della ricerca.
+        limit, offset = pagina_da_query(request.query_params, max_limit=_PAGE_SIZE_MAX)
 
         # Ordinamento opzionale
         order_by, order_dir = validate_order_params(

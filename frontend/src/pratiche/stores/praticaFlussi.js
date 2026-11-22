@@ -35,10 +35,9 @@ export const usePraticaFlussiStore = storePerIstanza(
     emittenteParam: 'emittente_fiscale_id',
     // La pratica e' gia' aperta quando il tab compare.
     startsEmpty: false,
-    // L'ordine di lettura di un percorso: la posizione del flusso nella
-    // pratica. E' anche il default del backend — qui serve a far vedere la
-    // freccia sulla colonna giusta.
-    orderBy: 'sequenza',
-    orderDir: 'asc',
+    // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+    //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+    //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+    //    l'intestazione.
   }),
 )

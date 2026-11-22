@@ -18,5 +18,5 @@ import { listRevisioniOfferta } from '../api/offerteApi'
 // si scrivono addosso la catena.
 export const useOffertaRevisioniStore = storePerIstanza(
   'vendite-offerta-revisioni',
-  (id) => createRevisioniStore(id, { fetchRevisioni: listRevisioniOfferta, orderBy: 'revisione_numero' }),
+  (id) => createRevisioniStore(id, { fetchRevisioni: listRevisioniOfferta }),
 )

@@ -47,9 +47,7 @@ const store = useProcessiAutomaticiStore()
 const {
   searchText, applyFilters, paginatorProps, onPage, onSort, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'codice' },
-})
+} = useListaConfigurabilePage(store)
 
 // ⭐ I FILTRI PASSANO DAI BINDER, e non e' una preferenza di stile: `bindSelect`
 //    porta con se' il `watch` store → widget, cioe' l'unico modo perche' la
@@ -219,9 +217,11 @@ onMounted(() => {
         </span>
       </template>
 
-      <!-- ⚠️ Lo slot porta il nome della colonna a catalogo (`ultimo_ok`), ma
-           legge `ultima_conclusa`: esito e data della stessa riga. `null` non
-           è «fallito»: nessuna corsa vera conclusa (mai girato, o solo saltate). -->
+      <!-- Lo slot porta il codice della colonna a catalogo (`ultimo_ok`, il suo
+           campo booleano, quello che scrive l'export) e legge `ultima_conclusa`
+           per aggiungere all'esito la data: esito e data della stessa riga.
+           `null` non è «fallito»: nessuna corsa vera conclusa (mai girato, o
+           solo saltate). -->
       <template #cell-ultimo_ok="{ data }">
         <span
           v-if="data.ultima_conclusa"

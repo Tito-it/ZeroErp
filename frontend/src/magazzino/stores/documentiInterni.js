@@ -52,11 +52,10 @@ function creaStoreFamiglia(f) {
       data_da: defaultFiltroDataDaString(),
       data_a: null,
     },
-    // Il giorno piu' recente in cima: e' il default del backend (`data DESC,
-    // id DESC`), quindi la lista non si riordina al primo click, e il ripiego
-    // del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
+    // ⭐ Nessun ordinamento di partenza qui (BE29 di brief-db-revisione-ui):
+    //    lo dichiara il preset della lista, il backend lo applica e lo dice in
+    //    `meta.ordinamento`, da cui la tabella accende l'intestazione.
+    // Il ripiego del verso, quando `order_by` arriva senza verso.
     orderDirDefault: 'desc',
     extend: () => {
       const { emitDataChanged } = useTabEvents()

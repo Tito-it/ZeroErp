@@ -29,7 +29,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.config.db.utilities_tipi_ruolo_repository import USAGE_ORDER_COLS
-from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 
 
 # =================================================================
@@ -39,6 +39,8 @@ from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_ful
 
 class UtilitiesTipiRuoloView(AdminAPIView):
     """GET lista paginata, POST crea riga matrice (admin only)."""
+
+    lista_codice = "config.utilities_tipi_ruolo"
 
     is_search_endpoint = True
 
@@ -50,8 +52,7 @@ class UtilitiesTipiRuoloView(AdminAPIView):
             OpenApiParameter(name="tipo_ruolo_id", type=int, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="ConfigUtilitiesTipiRuoloListResp",
@@ -142,6 +143,8 @@ class UtilitiesTipiRuoloDetailView(AdminAPIView):
 class UtilitiesTipiRuoloUsageView(AdminAPIView):
     """GET emittenti fiscali che usano la matrice (override esistente)."""
 
+    lista_codice = "config.utilities_tipi_ruolo_usage"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -149,13 +152,7 @@ class UtilitiesTipiRuoloUsageView(AdminAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description=descrizione_order_by(
-                    USAGE_ORDER_COLS, "Default: ragione sociale, poi codice.",
-                ),
-            ),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(USAGE_ORDER_COLS, senza="ragione sociale, poi codice"),
         ],
         responses={200: inline_serializer(
             name="ConfigUtilitiesTipiRuoloUsageResp",

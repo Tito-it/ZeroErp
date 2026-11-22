@@ -47,21 +47,11 @@ class ListaPreferenzaService:
     def __init__(self, repository: UiRepository | None = None) -> None:
         self._repo = repository or UiRepository()
 
-    # Scopo: Risolve `lista_codice -> lista_id` con errore parlante 404
-    #        `E_UI_LISTA_NON_TROVATA` se la lista non esiste / non e' attiva.
-    #        Pattern centralizzato (helper privato) per non duplicare la
-    #        guardia in ogni metodo del service.
+    # Scopo: `lista_codice -> lista_id`. Lista assente o spenta: 404
+    #        `E_UI_LISTA_NON_TROVATA` dal BB del DB (`ui.fn_lista_da_codice`,
+    #        via il repository), non ricopiato qui (U39 di brief-db-revisione-ui).
     def _require_lista_id(self, lista_codice: str) -> int:
-        lista_id = self._repo.get_lista_id(lista_codice)
-        ErrorManager.require(
-            lista_id is not None,
-            code=E_UI_LISTA_NON_TROVATA,
-            message="Lista non trovata.",
-            detail=f"codice lista: '{lista_codice}'",
-            context={"lista_codice": lista_codice},
-        )
-        assert lista_id is not None
-        return lista_id
+        return self._repo.get_lista_id(lista_codice)
 
     # Scopo: UPSERT preferenza utente per (auth_user, lista_codice).
     #        Valida la struttura JSONB in ingresso, legge il preset di base

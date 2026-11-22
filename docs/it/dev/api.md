@@ -605,7 +605,7 @@ niente da toccare. *`filterDefaults` risponde a due domande — «cosa mando» e
 
 | Parametro | Default                | Max                 |
 | --------- | ---------------------- | ------------------- |
-| `limit`   | `DEFAULT_LIMIT` (25)   | `MAX_LIMIT` (200)   |
+| `limit`   | lista configurabile: la sua misura; altrimenti `DEFAULT_LIMIT` (25) | `MAX_LIMIT` (200)   |
 | `offset`  | 0                      | —                   |
 
 ⛔ **Un dialetto solo: `limit`/`offset`** (decisione di Tid del 2026-10-21).
@@ -631,17 +631,27 @@ mano di `limit`/`offset`, letture di `page`/`page_size`) e, lato frontend,
 `page`/`page_size`). Nello schema OpenAPI i due parametri li dichiara
 `parametri_finestra(default_limit=…, max_limit=…)` (`apps.core.api.openapi_params`).
 
-⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Il default e'
-quello che l'operatore vede a video (la misura `PAGINA` del catalogo
-`ui.misure_pagina`, che frontend e preset leggono da li'), cosi' una chiamata
-senza `limit` risponde come la lista. ⚠️ `DEFAULT_LIMIT` resta un numero del
+⭐ **Senza `limit`, una lista configurabile pagina con la SUA misura**
+(BE10 di brief-db-revisione-ui, Tid 2026-11-22): le righe per pagina della
+configurazione della lista per quell'utente (`ui.fn_misura_lista`: preferenza,
+preset di base, default dell'uso), registrate da `_ApiViewBase.initial()` (su
+ogni porta, dal 2026-11-22) per le view che dichiarano `lista_codice` e lette da `pagina_da_query` solo se la
+richiesta pagina. Vince sul `default_limit` della view; il tetto resta della
+view, e una misura oltre il tetto si riporta al tetto con un warning (difetto
+del catalogo: il fuori limite è un 400 solo per il `limit` del client). Il BB è
+nel catalogo BB backend, alla voce dell'ordinamento di partenza.
+
+⭐ **Una sede sola: `apps.core.api.constants`** (2026-09-28). Fuori dal catalogo
+delle liste il default e' `DEFAULT_LIMIT`, la misura `PAGINA` del catalogo
+`ui.misure_pagina`. ⚠️ `DEFAULT_LIMIT` resta un numero del
 backend: quanti record chiede al massimo una chiamata e' un tema vicino ma
 diverso dalle misure del paginatore (brief-db-misure-pagina-catalogo §6.5). Nei repository il clamp e' il BB `limiti_pagina(limit, offset,
 tetto=MAX_LIMIT)`. ⛔ Mai il numero scritto a mano, nemmeno nella descrizione
 OpenAPI (`f"... (default {DEFAULT_LIMIT}, max {MAX_LIMIT})"`): lo presidia
 `apps/core/tests/test_paginazione_fonte_unica.py`, con le eccezioni dichiarate
-(autocomplete, batch). ⭐ Le **liste di eventi** (giornale di una pratica,
-registro di una commessa, task run di un lotto) partono da
+(autocomplete, batch). ⭐ Le **liste di eventi** fuori catalogo (giornale di una pratica,
+registro di una commessa; i task run di un lotto sono una lista configurabile e
+prendono la loro misura) partono da
 `DEFAULT_LIMIT_EVENTI` (100), stessa sede. ⛔ **Anche le firme** di service e
 repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
 una lista aveva il suo default nella view e un altro, diverso, nella firma; il
@@ -796,6 +806,16 @@ accanto a lei: `descrizione_order_by(SORT_COLUMNS, nota)` di
 `apps/core/api/openapi_params.py` (2026-09-18). Un elenco scritto a mano nella
 `description` di `order_by` è già divergente il giorno in cui la mappa prende
 una colonna — ed era successo due volte in pagamenti prima del BB.
+
+⛔ **Una lista configurabile dichiara `order_by`/`order_dir` col BB
+`*parametri_ordinamento(colonne, senza=…, verso=…, nota=…)`** (stesso file, ok
+Tid 2026-11-22): senza `order_by` la base view applica l'ordinamento del preset
+della lista (BE25 (2) di brief-db-revisione-ui), e la frase lo dice; `senza` è
+l'ordine del repository quando il preset non ne ha uno, `verso` il ripiego di
+`order_dir` quando c'è `order_by`. Una «default X» scritta a mano sulla view
+non è più vera. Fuori catalogo (view senza `lista_codice`) resta
+`descrizione_order_by`. Presidio sullo schema generato, nei due versi:
+`core/tests/api/test_openapi_params.py`.
 
 ### Ricerca e throttling
 

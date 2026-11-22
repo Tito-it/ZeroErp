@@ -70,11 +70,12 @@ class ErrorLogApiTests(JwtMockedApiTest):
         self.assertIs(resolve(_URL).func.view_class, ErrorLogListView)
         self.assertIs(resolve(_URL + "export/").func.view_class, ErrorLogExportView)
         self.assertEqual(_LISTA_CODICE_ERROR_LOG, "dbops.error_log")
-        # ⛔ NON `lista_codice`, su nessuna delle due: su AdminAPIView il
-        #    cancello di perimetro non esiste, e quell'attributo direbbe al
-        #    presidio «coperta» su niente.
-        self.assertIsNone(getattr(ErrorLogListView, "lista_codice", None))
-        self.assertIsNone(getattr(ErrorLogExportView, "lista_codice", None))
+        # ⭐ `lista_codice` su tutte e due (dal 2026-11-22, residuo di BE25 (2)
+        #    di brief-db-revisione-ui): su `AdminAPIView` accende la PARTENZA
+        #    (ordinamento e misura del preset), non il cancello di perimetro,
+        #    e il presidio di copertura la conta ancora esente.
+        self.assertEqual(ErrorLogListView.lista_codice, _LISTA_CODICE_ERROR_LOG)
+        self.assertEqual(ErrorLogExportView.lista_codice, _LISTA_CODICE_ERROR_LOG)
 
     # 3. I filtri arrivano al repository normalizzati, e `order_dir` grezzo.
     @patch(_AUTH, return_value=(_mock_user(), None))

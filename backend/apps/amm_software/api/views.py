@@ -15,12 +15,11 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.amm_software.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import descrizione_order_by
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_int,
@@ -52,6 +51,9 @@ from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
 
 class OperatoriListView(AdminAPIView):
     """GET lista, POST crea operatore."""
+
+    lista_codice = "anagrafiche.operatori"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -69,8 +71,7 @@ class OperatoriListView(AdminAPIView):
             ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(name="OperatoriListResp", fields={"data": serializers.DictField()})},
     )
@@ -311,11 +312,13 @@ class EmittentiScopeView(AdminAPIView):
 class RepartiListView(AdminAPIView):
     """GET lista reparti (`amm.reparti`, lista 87): envelope paginato standard.
 
-    ⛔ Nessun `lista_codice`: su `AdminAPIView` il cancello di perimetro non
-    c'e', e la lista e' GLOBALE (`config.unita_organizzative`,
-    `perimetro_emittente = false`) — l'esenzione sta in
-    `test_perimetro_emittente_copertura._ESENZIONI`.
+    `lista_codice` le da' la partenza (ordinamento e misura del preset), non
+    il cancello di perimetro, che su `AdminAPIView` non c'e': la lista e'
+    GLOBALE (`config.unita_organizzative`, `perimetro_emittente = false`) —
+    l'esenzione sta in `test_perimetro_emittente_copertura._ESENZIONI`.
     """
+
+    lista_codice = "amm.reparti"
 
     is_search_endpoint = True
 
@@ -324,11 +327,7 @@ class RepartiListView(AdminAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description=descrizione_order_by(REPARTI_ORDER_COLUMNS, "Default: descrizione."),
-            ),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(REPARTI_ORDER_COLUMNS, senza="descrizione"),
         ],
         responses={200: inline_serializer(name="RepartiListResp", fields={"data": serializers.DictField()})},
     )
@@ -438,6 +437,8 @@ class ProcessiListView(AdminAPIView):
     questa area nominano TUTTI gli emittenti e non hanno RLS.
     """
 
+    lista_codice = "amm.processi"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -455,8 +456,7 @@ class ProcessiListView(AdminAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="ProcessiListResp", fields={"data": serializers.DictField()},
@@ -755,13 +755,14 @@ class ProcessiAccensioneView(AdminAPIView):
 class AuditLogView(AdminAPIView):
     """GET audit log globale modifiche permessi."""
 
+    lista_codice = "storico.audit_log"
+
     @extend_schema(
         parameters=[
             OpenApiParameter(name="data_da", type=str, required=False),
             OpenApiParameter(name="data_a", type=str, required=False),
             OpenApiParameter(name="tabella", type=str, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
         ],
@@ -797,15 +798,7 @@ _PARAMS_FILTRI_ERROR_LOG = [
                      description="UUID di transazione esatto: il ponte dal giornale di dominio."),
     OpenApiParameter(name="data_da", type=str, required=False, description="Data inizio (YYYY-MM-DD)."),
     OpenApiParameter(name="data_a", type=str, required=False, description="Data fine inclusa (YYYY-MM-DD)."),
-    OpenApiParameter(
-        name="order_by", type=str, required=False,
-        description=descrizione_order_by(
-            ERROR_LOG_SORT_COLUMNS,
-            "Default `occurred_at DESC`; le frasi (`messaggio`, `causa`, `soluzione`) e "
-            "`context` non ordinano.",
-        ),
-    ),
-    OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc."),
+    *parametri_ordinamento(ERROR_LOG_SORT_COLUMNS, senza="occurred_at DESC", nota="Le frasi (`messaggio`, `causa`, `soluzione`) e `context` non ordinano."),
 ]
 
 
@@ -827,16 +820,13 @@ def _filtri_error_log(qp) -> dict[str, Any]:
     }
 
 
-# Il codice di lista della consultazione (`ui.lista_definizione`): lo legge il
-# solo EXPORT, per risolvere le colonne che l'operatore vede.
-# ⛔ NON e' un attributo `lista_codice` sulle view, ed e' una scelta: quello e'
-#    il cancello di perimetro emittente di `DomainAPIView`, che su
-#    `AdminAPIView` NON esiste — dichiararlo direbbe al presidio
-#    `test_perimetro_emittente_copertura` «lista coperta» su un cancello
-#    inerte. La lista `dbops.error_log` e' ESENTE (un errore tecnico non ha
-#    un'azienda da cui arrivare) e l'esenzione e' scritta la', con la ragione.
-#    Stessa forma di `_LISTA_CODICE` dell'export delle famiglie documento
-#    (`vendite/api/views_famiglie.py`), l'altro export su `AdminAPIView`.
+# Il codice di lista della consultazione (`ui.lista_definizione`): lo leggono
+# la lista e l'export (le colonne che l'operatore vede), e come `lista_codice`
+# delle due view accende la partenza (ordinamento e misura del preset).
+# ⚠️ Su `AdminAPIView` NON accende il cancello di perimetro (dal 2026-11-22
+#    `test_perimetro_emittente_copertura` lo sa): la lista `dbops.error_log`
+#    resta ESENTE (un errore tecnico non ha un'azienda da cui arrivare), e
+#    l'esenzione e' scritta la', con la ragione.
 _LISTA_CODICE_ERROR_LOG = "dbops.error_log"
 
 
@@ -846,7 +836,7 @@ class ErrorLogListView(AdminAPIView):
     # ⭐ `AdminAPIView` (vincolo del Passo A dell'osservabilita', D-E1): oggi il
     #    permesso dei tecnici e' questo, come per `audit-log/` ed `email-log/`.
     #    Il giorno che nascera' un livello «tecnici», si sposta con quelli.
-    # ⛔ Nessun `lista_codice`: vedi `_LISTA_CODICE_ERROR_LOG` qui sopra.
+    lista_codice = _LISTA_CODICE_ERROR_LOG
     is_search_endpoint = True
 
     @extend_schema(
@@ -880,12 +870,9 @@ class ErrorLogExportView(AdminAPIView):
     """GET /api/v1/amm-software/error-log/export/ — CSV/XLSX della consultazione."""
 
     # ⭐ Il codice di lista e' UNO, `_LISTA_CODICE_ERROR_LOG`: le colonne del
-    #    file sono quelle che l'operatore VEDE (preferenza + preset + permessi).
-    #    ⚠️ Su `AdminAPIView` la coppia lista/export non ha un `lista_codice`
-    #    da cui il presidio `test_export_lista_codice_pari` possa leggerla: e'
-    #    fuori dal suo perimetro per costruzione, come `famiglie/`, ed e' la
-    #    ragione della costante unica — non c'e' un secondo letterale da
-    #    tenere allineato.
+    #    file sono quelle che l'operatore VEDE (preferenza + preset + permessi),
+    #    e l'ordine di partenza e' quello della lista a video.
+    lista_codice = _LISTA_CODICE_ERROR_LOG
 
     @extend_schema(
         parameters=[

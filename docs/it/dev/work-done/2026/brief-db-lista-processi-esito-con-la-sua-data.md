@@ -1,9 +1,9 @@
 # Brief DB — Lista processi: la colonna «Esito» con la sua data
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-22
+## ✅ Chiuso — 2026-11-22
 
-**Riparte: sessione BE/FE**: chiude le ricadute del §6.5, poi il brief si archivia. Il lato DB è
-chiuso: il seed della riga 722 è applicato (Tid, 2026-11-22).
+**Nessuno riparte.** Il lato DB è applicato (il seed della riga 722, Tid, 2026-11-22), le ricadute
+BE/FE del §6.5 sono fatte lo stesso giorno (§7). Archiviato in `work-done/`.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ chiuso: il seed della riga 722 è applicato (Tid, 2026-11-22).
 | 3 | ✅ Tid | D-2: che cosa è il valore della colonna «Esito» | §6.3 | 2 |
 | 4 | ✅ team DB | La riga 722 nel seed: l'etichetta estesa | §6.4 | 3 |
 | 5 | ✅ Tid | Applicare il seed (`lista_colonna.csv`, mirror `20260806-15`); rigenerare la doc `ui` | §6.4 | 4 |
-| 6 | **sessione BE/FE** ⏭️ | Le ricadute del §6.5 | §6.5 | 5 |
+| 6 | ✅ sessione BE/FE | Le ricadute del §6.5 | §6.5, §7 | 5 |
 
 **Decisioni di Tid:** ✅ D-1 (2026-11-22): strada (b), il codice resta `ultimo_ok` (§6.2). ✅ D-2 (2026-11-22):
 strada (ii), un solo valore booleano (§6.3). Nessuna decisione aperta.
@@ -21,7 +21,7 @@ strada (ii), un solo valore booleano (§6.3). Nessuna decisione aperta.
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
 > **Origine:** allineamento della lista `amm.processi` alla forma unica delle corse, chiesto da Tid
 > (2026-11-22); scelta «in due tempi» di Tid, perché il BE non rinomina prima del DB.
-> **Brief vicini verificati:** [brief-db-giornale-corse-indici](brief-db-giornale-corse-indici.md), stesso
+> **Brief vicini verificati:** [brief-db-giornale-corse-indici](../../work-in-progress/brief-db-giornale-corse-indici.md), stesso
 > giornale ma altro tema (gli indici). Nessun altro brief aperto tocca la lista 66.
 
 ## 1. Il caso
@@ -78,7 +78,7 @@ La sessione BE, nello stesso giro:
 * rinomina lo slot FE `#cell-ultimo_ok` in `#cell-ultima_conclusa` (`ProcessiAutomaticiTab.vue`);
 * decide come `ListaExportService` scrive un oggetto `ultima_conclusa` (esito + data in una cella), sulla
   base del §3.2;
-* corregge [api_amm_software.md](../../backend/amm-software/manual/api_amm_software.md) §6.6, riga
+* corregge [api_amm_software.md](../../../backend/amm-software/manual/api_amm_software.md) §6.6, riga
   `ultimo_ok`.
 
 ## 6. Verifica DB — 2026-11-22
@@ -89,7 +89,7 @@ Fatta sul catalogo dello scratch `zeroerp_ruoli`.
 
 * **Il `codice` della colonna non si riscrive.** `ui.lista_colonna.codice` ha il lucchetto
   `trg_lista_colonna_a10_lock_columns_upd` (`E_UI_COLONNA_CODICE_IMMUTABILE`, U23 di
-  [brief-db-revisione-ui](brief-db-revisione-ui.md)): il codice è la chiave con cui preferenze e preset
+  [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md)): il codice è la chiave con cui preferenze e preset
   citano la colonna. Il punto 1 del §3, così come è scritto, si ferma su quel lucchetto.
 * **Il §3.3 aveva una premessa sbagliata.** `ui.lista_preset_colonna` cita la colonna per **id**
   (`66,722` in `lista_preset_colonna.csv`), non per codice. Per codice la citano solo le preferenze utente
@@ -153,3 +153,17 @@ auto-generata di `ui` non riporta `etichetta_estesa`: nessuna pagina cambia.
 * l'export scrive l'esito senza la data, per scelta (D-2), e `ListaExportService` non cambia;
 * `api_amm_software.md` §6.6, riga `ultimo_ok`: l'esito dell'ultima corsa **conclusa**, lo stesso di
   `ultima_conclusa.ok`.
+
+## 7. Chiusura BE/FE — 2026-11-22
+
+Le ricadute del §6.5, tutte di commento e di documentazione: nessuna riga di codice cambia.
+
+| File | Che cosa |
+| --- | --- |
+| `backend/apps/core/db/processi_repository.py` | il commento di `list_processi`: `ultimo_ok` non è più un ponte da ritirare ma il campo della colonna «Esito», `ultima_conclusa.ok` dalla stessa riga |
+| `frontend/src/amministrazione/components/ProcessiAutomaticiTab.vue` | il commento dello slot `#cell-ultimo_ok`: il codice della colonna, il campo che scrive l'export, la data letta da `ultima_conclusa` |
+| `docs/it/backend/amm-software/manual/api_amm_software.md` §6.6 | la riga `ultimo_ok`: l'esito dell'ultima corsa conclusa, il campo della colonna 722; senza «transitorio» |
+| `backend/apps/core/tests/db/test_corsa_riuscita_dal_db.py` | il commento del test 6 |
+
+`ListaExportService` non cambia (D-2). Verifica: `test_corsa_riuscita_dal_db` sul DB vero
+(`ZEROERP_TEST_DB_E2E=1`), 6 su 6.

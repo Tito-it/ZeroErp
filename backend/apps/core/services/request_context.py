@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextvars import ContextVar
 
 # Contesto richiesta API (request_id/idempotency_key) accessibile nei layer core.
@@ -31,6 +32,14 @@ _ordinamento_proposto_var: ContextVar[dict[str, str] | None] = ContextVar(
 _ordinamento_applicato_var: ContextVar[dict[str, str] | None] = ContextVar(
     "ordinamento_applicato", default=None,
 )
+# La misura di partenza di una lista configurabile, quando la richiesta non
+# porta `limit` (BE10 di brief-db-revisione-ui, 2026-11-22): la base view
+# ci mette la LETTURA, non il numero (`applica_misura_di_partenza`), e
+# `pagina_da_query`, l'unico lettore di `limit`, la chiama solo se gli serve.
+# Un dettaglio o una scrittura della stessa view non pagano la query.
+_misura_di_partenza_var: ContextVar[Callable[[], int] | None] = ContextVar(
+    "misura_di_partenza", default=None,
+)
 
 
 # Scopo: il rifiuto della chiave PROPOSTA dalla base view (non chiesta dal
@@ -53,6 +62,7 @@ def set_request_context(*, request_id: str | None, idempotency_key: str | None) 
     #    `meta` di una risposta che non l'ha applicato.
     _ordinamento_proposto_var.set(None)
     _ordinamento_applicato_var.set(None)
+    _misura_di_partenza_var.set(None)
 
 
 # Scopo: Gestisce `clear_request_context` nel flusso applicativo del modulo.
@@ -87,6 +97,25 @@ def set_ordinamento_applicato(ordinamento: dict[str, str] | None) -> None:
 # Scopo: l'ordinamento di partenza APPLICATO alla richiesta corrente, o `None`.
 def get_ordinamento_applicato() -> dict[str, str] | None:
     return _ordinamento_applicato_var.get()
+
+
+# Scopo: registra la LETTURA della misura di partenza della richiesta corrente
+#        (`None` la toglie).
+def imposta_misura_di_partenza(lettura: Callable[[], int] | None) -> None:
+    _misura_di_partenza_var.set(lettura)
+
+
+# Scopo: la misura di partenza della richiesta corrente, letta (dal DB) alla
+#        prima domanda, o `None` se la richiesta non ne ha una (non e' di una
+#        lista configurabile, o porta `limit`).
+def get_misura_di_partenza() -> int | None:
+    lettura = _misura_di_partenza_var.get()
+    if lettura is None:
+        return None
+    misura = lettura()
+    # Letta una volta: la seconda domanda della stessa richiesta non rilegge.
+    _misura_di_partenza_var.set(lambda: misura)
+    return misura
 
 
 # Scopo: Recupera `request_id` dal contesto applicativo o dal database.

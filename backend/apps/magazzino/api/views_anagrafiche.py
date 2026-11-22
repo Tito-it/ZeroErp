@@ -53,7 +53,6 @@ from apps.magazzino.api._comuni import (
     RISPOSTA_GENERICA,
     RISPOSTE_EXPORT,
     filtri_label,
-    params_lista,
 )
 from apps.magazzino.db.anagrafiche_magazzino_repository import (
     LOTTI_SORT_COLUMNS,
@@ -65,7 +64,7 @@ from apps.core.api.schema_da_contratto import schema_da_contratto
 from apps.magazzino.api._schema_magazzino import TIPI_MAGAZZINO
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 
 # I codici delle liste a catalogo, in costanti di modulo: li leggono la lista,
 # l'export e il presidio di copertura del perimetro (che risolve un `Name`
@@ -137,7 +136,7 @@ class ApiMagazziniList(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_magazzini_list",
-        parameters=[_PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(MAGAZZINI_SORT_COLUMNS, "Senza: codice.")],
+        parameters=[_PARAM_SEARCH, _PARAM_ATTIVO, *parametri_ordinamento(MAGAZZINI_SORT_COLUMNS, senza="codice.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: I magazzini del perimetro, paginati.
@@ -164,7 +163,7 @@ class ApiMagazziniExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_magazzini_export",
-        parameters=[PARAM_FORMATO, _PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(MAGAZZINI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, _PARAM_SEARCH, _PARAM_ATTIVO, *parametri_ordinamento(MAGAZZINI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file dei magazzini: il DATASET, non la pagina.
@@ -218,7 +217,7 @@ class ApiUbicazioniList(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_ubicazioni_list",
-        parameters=[_PARAM_SEARCH, _PARAM_ATTIVO, _PARAM_PARENT, *params_lista(UBICAZIONI_SORT_COLUMNS, "Senza: codice.")],
+        parameters=[_PARAM_SEARCH, _PARAM_ATTIVO, _PARAM_PARENT, *parametri_ordinamento(UBICAZIONI_SORT_COLUMNS, senza="codice.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: Le ubicazioni del magazzino, paginate (404 sulla testata prima).
@@ -248,7 +247,7 @@ class ApiUbicazioniExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_ubicazioni_export",
-        parameters=[PARAM_FORMATO, _PARAM_SEARCH, _PARAM_ATTIVO, _PARAM_PARENT, *params_lista(UBICAZIONI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, _PARAM_SEARCH, _PARAM_ATTIVO, _PARAM_PARENT, *parametri_ordinamento(UBICAZIONI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file delle ubicazioni del magazzino.
@@ -303,7 +302,7 @@ class ApiLottiList(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_lotti_list",
-        parameters=[_PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "Senza: data_arrivo DESC.")],
+        parameters=[_PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *parametri_ordinamento(LOTTI_SORT_COLUMNS, senza="data_arrivo DESC.", verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses={200: RISPOSTA_GENERICA},
     )
     # Scopo: I lotti dell'articolo, paginati.
@@ -331,7 +330,7 @@ class ApiLottiExport(DomainAPIView):
 
     @extend_schema(
         operation_id="magazzino_lotti_export",
-        parameters=[PARAM_FORMATO, _PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *params_lista(LOTTI_SORT_COLUMNS, "")],
+        parameters=[PARAM_FORMATO, _PARAM_ARTICOLO, _PARAM_SEARCH, _PARAM_ATTIVO, *parametri_ordinamento(LOTTI_SORT_COLUMNS, verso="asc; desc sulle colonne data"), *parametri_finestra()],
         responses=RISPOSTE_EXPORT,
     )
     # Scopo: Il file dei lotti dell'articolo.

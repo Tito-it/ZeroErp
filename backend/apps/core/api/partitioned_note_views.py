@@ -18,7 +18,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra
+from apps.core.api.openapi_params import param_ricerca_full, parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.payload_validators import envelope_da_offset, parse_list_params, corpo_oggetto, qp_bool_optional, qp_int_strict, qp_str
@@ -71,6 +71,10 @@ def _make_view_name(target_tipo: str, suffix: str) -> str:
 #                               (`catalogo.note`, perimetro_emittente = false
 #                               a catalogo, esenzione motivata in
 #                               `test_perimetro_emittente_copertura`).
+#         - lista_globale: la lista a catalogo di una sede GLOBALE
+#                               (obbligatoria con `perimetro_emittente=False`):
+#                               il chiamante la legge dal repository
+#                               (`repo.lista_codice`), non la riscrive.
 #         - cancello_padre: callable (path_kwargs) -> None chiamato da OGNI
 #                               verbo prima del service, per i percorsi in cui
 #                               il padre sta sotto un altro padre (il legame
@@ -91,9 +95,14 @@ def make_note_views(
     model_permission: tuple[str, str] | None = None,
     is_search_endpoint: bool = True,
     perimetro_emittente: bool = True,
+    lista_globale: str | None = None,
     cancello_padre: CancelloPadre | None = None,
     supporta_righe: bool = True,
 ) -> tuple[type[DomainAPIView], type[DomainAPIView]]:
+    # ⛔ Una sede GLOBALE dice la sua lista: senza, la lista note partirebbe
+    #    senza l'ordinamento e la misura del suo preset, in silenzio.
+    if not perimetro_emittente and not lista_globale:
+        raise ValueError("make_note_views: una sede globale dichiara `lista_globale`")
     # Serializer inline univoci per il dominio. Schema OpenAPI puro: i campi
     # sono dichiarativi per drf-spectacular ma la validazione effettiva resta
     # nel service (PayloadValidator + map_integrity_error).
@@ -204,8 +213,7 @@ def make_note_views(
         @extend_schema(
             parameters=[
                 param_ricerca_full(),
-                OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-                OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+                *parametri_ordinamento(),
                 *_parametri_perimetro,
                 *_parametri_riga,
                 OpenApiParameter(
@@ -316,15 +324,19 @@ def make_note_views(
             svc.elimina_nota(note_id=note_id, target_id=target_id)
             return success_response({"deleted": True})
 
-    # ⭐ Una tabella-madre GLOBALE non ha il cancello di perimetro: la classe
-    #    dichiara `vendite.note` letterale (lo legge il presidio statico), e
-    #    qui lo si toglie. La ricerca e l'ordinamento restano quelli della
-    #    lista della sede (`repo.lista_codice`), che non dipendono da questo.
+    # ⭐ Una tabella-madre GLOBALE dichiara la SUA lista (`lista_globale`, dal
+    #    repository della sede: `repo.lista_codice`): la classe porta
+    #    `vendite.note` letterale (lo legge il presidio statico), e qui lo si
+    #    sostituisce. La lista globale e' `perimetro_emittente = false` a
+    #    catalogo: il cancello non chiede niente, e `lista_codice` le da' la
+    #    partenza (ordinamento e misura del preset, 2026-11-22) — fino a quel
+    #    giorno qui si metteva `None`, e le note dell'articolo partivano senza.
+    #    Senza parametro dell'emittente: una nota di catalogo non ne ha uno.
     #    ⚠️ `setattr` e non l'assegnamento: la classe ha `lista_codice` come
     #    `str` letterale (e annotarla `str | None` la nasconderebbe al
     #    presidio, che legge solo gli assegnamenti semplici).
     if not perimetro_emittente:
-        setattr(NoteListCreateView, "lista_codice", None)  # noqa: B010
+        setattr(NoteListCreateView, "lista_codice", lista_globale)  # noqa: B010
         setattr(NoteListCreateView, "lista_emittente_param", None)  # noqa: B010
 
     # Rinomina le classi per debugging/admin/openapi (drf-spectacular usa il

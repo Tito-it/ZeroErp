@@ -4310,7 +4310,7 @@ in `create`/`update`/`extraActions`. Basta passare `tabEntity`:
 export const useCategorieClientiStore = createCrudStore('amm-categorie-clienti', {
   api: { list, detail, create, update },
   tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,  // la factory emette automaticamente
-  orderBy: 'ordinamento',
+  // niente `orderBy`: l'ordinamento di partenza lo applica il backend dal preset
   startsEmpty: false,
   // ...
 })

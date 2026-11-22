@@ -47,7 +47,6 @@ const {
 } = useListaConfigurabilePage(store, {
   exportFn: exportResi,
   getExportParams: (fmt) => buildExportParams(fmt),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // Niente "Nuovo": il reso nasce dal DDT consegnato. Non serve filtrare —

@@ -247,11 +247,13 @@ class ProcessiRepository:
     #    ⛔ Fino a quel giorno una LATERAL locale dava `ultimo_run` (anche una
     #    saltata) accanto a `ultimo_ok` (l'ultima vera): a video «ieri 07:30 ✓»
     #    poteva essere la data di una corsa saltata con l'esito di quella prima.
-    # ⚠️ `ultimo_ok` resta nella proiezione SOLO perche' la colonna «Esito»
-    #    della lista (`ui.lista_colonna` 722) ha quel `campo_sorgente`, e il BE
-    #    non rinomina prima del DB. E' `ultima_conclusa.ok`, dalla STESSA riga
-    #    (CTE `conclusa`): non puo' divergere. Si ritira quando il team DB porta
-    #    la colonna su `ultima_conclusa` (brief-db-lista-processi-esito-con-la-sua-data).
+    # ⭐ `ultimo_ok` e' il campo della colonna «Esito» della lista
+    #    (`ui.lista_colonna` 722, `campo_sorgente` booleano): l'esito dell'ultima
+    #    corsa CONCLUSA, cioe' `ultima_conclusa.ok` dalla STESSA riga (CTE
+    #    `conclusa`), quindi non puo' divergere. La data non e' del campo: la
+    #    mostra lo slot FE leggendo `ultima_conclusa`, e l'export scrive l'esito
+    #    senza la data (decisione di Tid del 2026-11-22, D-1 e D-2 di
+    #    brief-db-lista-processi-esito-con-la-sua-data, in `work-done/2026/`).
     def list_processi(
         self,
         *,
@@ -298,16 +300,12 @@ class ProcessiRepository:
         # ⚠️ Le CTE non hanno parametri (nessuna condizione): l'ordine dei `%s`
         #    resta quello del SELECT e del WHERE.
         data_sql = f"""
-            WITH {cte_corse([], chiave="processo_codice")},
-            conteggi AS (
-                -- Le corse VERE, come `total_runs` di
-                -- MaintenanceRepository.list_job_summary: una saltata non e'
-                -- un'esecuzione.
-                SELECT processo_codice, count(*) FILTER (WHERE NOT saltata) AS run_totali
-                  FROM maintenance.job_run_log
-                 WHERE processo_codice IS NOT NULL
-                 GROUP BY processo_codice
-            )
+            -- ⛔ Niente conteggio delle corse: `run_totali` (le corse di sempre)
+            --    e' ritirato il 2026-11-22 (Tid: «i conteggi non usati si
+            --    ritirano»). Non lo leggeva nessuno, e con la ritenzione del
+            --    giornale a 12 mesi non sarebbe piu' stato «di sempre»
+            --    (brief-db-giornale-corse-indici §7.4).
+            WITH {cte_corse([], chiave="processo_codice")}
             SELECT p.id,
                    p.codice,
                    p.descrizione,
@@ -330,12 +328,10 @@ class ProcessiRepository:
                    c.started_at AS conclusa_started_at,
                    c.ended_at   AS conclusa_ended_at,
                    c.ok         AS ultimo_ok,
-                   COALESCE(n.run_totali, 0) AS run_totali,
                    COUNT(*) OVER () AS total_count
               FROM dbops.processi p
               LEFT JOIN recente r ON r.processo_codice = p.codice
               LEFT JOIN conclusa c ON c.processo_codice = p.codice
-              LEFT JOIN conteggi n ON n.processo_codice = p.codice
              WHERE {' AND '.join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s

@@ -16,7 +16,7 @@ from rest_framework.request import Request
 from django.http import JsonResponse
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params
 
 from apps.core.api.success_responses import success_response
@@ -34,10 +34,13 @@ class SessioniAttiveListView(DomainAPIView):
     E' la lista a catalogo `core.sessioni_attive` (lista 83): envelope
     paginato standard, ordinamento sulla whitelist del repository, ricerca
     libera sulle colonne che il catalogo accende.
-    ⛔ Nessun `lista_codice`: la lista e' GLOBALE (`perimetro_emittente =
-    false`) — sono le sessioni dell'utente collegato, non dati di un'azienda —
-    e il suo posto e' `_ESENZIONI` di `test_perimetro_emittente_copertura`.
+    `lista_codice` le da' la partenza (ordinamento e misura del preset). La
+    lista e' GLOBALE (`perimetro_emittente = false`) — sono le sessioni
+    dell'utente collegato, non dati di un'azienda — e il cancello di perimetro
+    qui non chiede niente.
     """
+
+    lista_codice = "core.sessioni_attive"
 
     skip_area_check = True
     is_search_endpoint = True
@@ -48,8 +51,7 @@ class SessioniAttiveListView(DomainAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             200: inline_serializer(

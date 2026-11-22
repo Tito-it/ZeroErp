@@ -8,7 +8,7 @@
 //        tutte» — che NON e' il `count` delle righe trovate.
 //
 // Indice test:
-//  1. parte dal piu' recente: `order_by=data_ultimo_evento`, `order_dir=desc`
+//  1. l'ordinamento di partenza lo applica il backend dal preset: niente `order_by`
 //  2. `totaleAttive` lo scrive `totale_attive` del backend, non `count`
 //  3. senza `totale_attive` nell'envelope NON ripiega su `count` (con una
 //     ricerca attiva `count` dice le trovate: e' il numero sbagliato)
@@ -33,12 +33,14 @@ describe('core/sessioniAttive — lista e totale delle attive', () => {
     listSessioni.mockReset()
   })
 
-  it('parte dal piu\' recente', async () => {
+  it('l\'ordinamento di partenza lo dice il preset, non lo store', async () => {
     listSessioni.mockResolvedValue(risposta({ results: [], count: 0, totale_attive: 0 }))
     await useSessioniAttiveStore().fetchList()
     const params = listSessioni.mock.calls[0][0]
-    expect(params.order_by).toBe('data_ultimo_evento')
-    expect(params.order_dir).toBe('desc')
+    // L'ordinamento di partenza lo applica il backend dal preset (residuo di
+    // BE25 (2) di brief-db-revisione-ui): lo store non lo scrive.
+    expect(params.order_by ?? null).toBeNull()
+    expect(params.order_dir ?? null).toBeNull()
     expect(params.limit).toBe(25)
     expect(params.offset).toBe(0)
   })

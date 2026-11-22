@@ -1988,8 +1988,7 @@ service, tenute uguali ai `CHECK` di `dbops.processi` dal guardrail
 | `ultimo_run` | la riga **più recente** del giornale `maintenance.job_run_log` per `processo_codice`: segno di vita, saltate comprese. `null` = mai girato. È anche la chiave di ordinamento `ultimo_run` |
 | `in_corso` | quella riga è ancora aperta |
 | `ultima_conclusa` | l'ultima corsa **vera** chiusa (non saltata): `{started_at, ended_at, ok}` in ISO-8601, o `null` se non ce n'è. Esito e data **della stessa riga** |
-| `ultimo_ok` | ⚠️ transitorio: è `ultima_conclusa.ok`, dalla stessa riga. Esiste solo perché la colonna «Esito» a catalogo (`ui.lista_colonna` 722) ha questo `campo_sorgente`; si ritira quando il team DB la porta su `ultima_conclusa` ([brief](../../../dev/work-in-progress/brief-db-lista-processi-esito-con-la-sua-data.md)). Non usarlo in codice nuovo |
-| `run_totali` | le corse vere (le saltate non contano, come `total_runs` di `job-summary`) |
+| `ultimo_ok` | l'esito dell'ultima corsa **conclusa**: lo stesso di `ultima_conclusa.ok`, dalla stessa riga. È il campo della colonna «Esito» a catalogo (`ui.lista_colonna` 722, booleano): l'export scrive l'esito senza la data, che a video aggiunge la cella leggendo `ultima_conclusa` |
 
 ⭐ **Le corse nella forma unica** (dal 2026-11-22), la stessa di `job_liveness` e
 `job-summary` ([api_tracciamento.md](../../core/manual/api_tracciamento.md)): le

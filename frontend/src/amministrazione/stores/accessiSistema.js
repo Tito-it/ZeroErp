@@ -14,5 +14,8 @@ export const useAccessiSistemaStore = createListaStore('amm-accessi-sistema', {
   fetchPage: listAccessiSistema,
   startsEmpty: false,
   filterDefaults: { tipo: null, identita_attiva: null, bloccata: null },
-  orderBy: 'username',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
 })

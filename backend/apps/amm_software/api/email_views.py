@@ -21,7 +21,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     optional_bool,
     qp_iso_date_optional,
@@ -187,6 +187,8 @@ def _enrich_account_with_capability(account: dict[str, Any]) -> dict[str, Any]:
 class EmailAccountListView(AdminAPIView):
     """GET: lista account email. POST: crea account email."""
 
+    lista_codice = "config.email_account"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -194,8 +196,7 @@ class EmailAccountListView(AdminAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: dict},
     )
@@ -367,6 +368,8 @@ class EmailAccountTestView(AdminAPIView):
 class EmailTemplateListView(AdminAPIView):
     """GET: lista template email. POST: crea template email."""
 
+    lista_codice = "config.email_template"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -375,8 +378,7 @@ class EmailTemplateListView(AdminAPIView):
             OpenApiParameter(name="codice", type=str, required=False),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: dict},
     )
@@ -527,6 +529,8 @@ class EmailTemplatePreviewView(AdminAPIView):
 class EmailLogListView(AdminAPIView):
     """GET: lista log email con filtri (admin vede tutto)."""
 
+    lista_codice = "config.email_log"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -539,8 +543,7 @@ class EmailLogListView(AdminAPIView):
             OpenApiParameter(name="data_a", type=str, required=False, description="Data fine (YYYY-MM-DD)"),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={200: dict},
     )

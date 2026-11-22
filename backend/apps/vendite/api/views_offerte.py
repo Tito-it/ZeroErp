@@ -48,7 +48,7 @@ from apps.vendite.api.indirizzi_documento_views import (
 from apps.vendite.db.offerte_repository import TESTATA_OFFERTE, OffertaRigheListaRepository
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -176,13 +176,7 @@ class ApiOfferteList(DomainAPIView):
                                          "restano visibili e filtrabili per stato."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             # Derivata dalla whitelist del repository: era un
-                             # elenco scritto a mano e aveva gia' divergito.
-                             description="campo_sorgente colonna catalogo 'vendite.offerte' ("
-                                         + " | ".join(sorted(offerte_service._ORDER_BY_OFFERTE))
-                                         + "). 'revisione_numero' non ordinabile."),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(sorted(offerte_service._ORDER_BY_OFFERTE), nota="'revisione_numero' non ordinabile."),
         ],
         responses={200: inline_serializer(
             name="VenditeOfferteListResp",
@@ -256,8 +250,7 @@ class ApiOfferteExportView(DomainAPIView):
             OpenApiParameter(name="validita_dal_min", type=str, required=False),
             OpenApiParameter(name="validita_dal_max", type=str, required=False),
             OpenApiParameter(name="solo_ultima_revisione", type=bool, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -621,10 +614,7 @@ class ApiOffertaRevisioni(DomainAPIView):
             ),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="revisione_numero (default) | data_emissione"),
-            OpenApiParameter(name="order_dir", type=str, required=False,
-                             description="asc | desc (assente: asc; desc sulle date)"),
+            *parametri_ordinamento("revisione_numero | data_emissione.", senza="revisione_numero", verso="asc; desc sulle date"),
         ],
         responses={200: inline_serializer(
             name="VenditeOffertaRevisioniListResp",

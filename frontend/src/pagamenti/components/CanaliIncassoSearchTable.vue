@@ -49,9 +49,7 @@ const isReadonly = useInjectReadonly()
 const {
   onPage, onSort, applyFilters, paginatorProps, reloadAction, tablePage,
   listaRef, dirty, onConfigLoaded, pageActions: azioniScaffolding,
-} = useListaConfigurabilePage(store, {
-  searchTableOptions: { defaultSortField: 'codice', defaultSortOrder: 'asc' },
-})
+} = useListaConfigurabilePage(store)
 
 const { bindSelect } = useStoreFilterBindings(store, applyFilters)
 const { value: tipoFilter, onChange: onTipoChange } = bindSelect('tipo')

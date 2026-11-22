@@ -17,8 +17,10 @@ export const useCategorieClientiStore = createCrudStore('amministrazione-categor
     update: updateCategoriaCliente
   },
   tabEntity: TAB_ENTITIES.CATEGORIE_CLIENTI,
-  orderBy: 'ordinamento',
-  orderDir: 'asc',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   startsEmpty: false,
   filterDefaults: { attivo: true, partecipa_promo: null },
 })

@@ -13,11 +13,11 @@ documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … 
 | 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), 2026-11-22; ⏳ 0c (area B) | §2, §4-§6, §12, §13 | 2 |
 | 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a e lo 0b (2026-11-22); ⏳ dopo lo 0c | §2, §12.4 | 3 |
 | 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
-| 6 | team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5 | §9 | 2 |
+| 6 | ✅ team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5: risposte il 2026-11-22. ⚠️ R-BE5 smentisce la premessa di Q7 | §9, §9.1 | 2 |
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
 | 8 | sessione DB | Archiviazione in `work-done/` | §11 | 3, 7 |
 
-**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
+**Decisioni di Tid:** Q1-Q8 il 2026-11-22 (§10); Q7 riaperta e decisa di nuovo lo stesso giorno, strada (b) (§10). Nessuna decisione aperta. **Da committare:** le pagine del giro 0 man mano
 che si scrivono, un commit per area.
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-11-22. **A chi:** Tid e team DB.
@@ -369,7 +369,7 @@ vanno provate con un caso costruito prima di scriverne la correzione.
 | S6 | `fn_crea_risorsa_umana_v2` | `p_attivo DEFAULT true` contro la regola «la veste nasce spenta» (la funzione gemella del portale non ha default apposta); `p_is_super_admin = true` senza credenziale è ignorato in silenzio |
 | S7 ✔︎ | Il job `sync_auth_user_expired_daily` | ~~Da dire quale dei due è il progetto~~. **Non è un difetto di codice: è voluto** (letto il 2026-11-22). Dal 2026-10-09 il job ha una sveglia oraria al minuto 10, perché la funzione è idempotente e una scadenza si riallinea entro l'ora invece che il mattino dopo; lo stesso changeSet ha portato `chiusura_scadenze_daily` alla sveglia oraria. Stantii sono guida, pagina e COMMENT, che dicono ancora «ogni giorno alle 06:00»: si correggono nel giro 0e. Il nome del job, che dice «daily», resta |
 | S8 | I contatti | Il default è unico per (soggetto, contesto) e non scende al ruolo né all'istanza: due ruoli dello stesso soggetto condividono un default. Togliere il flag all'unico default lascia il contesto senza; nessuna promozione alla cancellazione. Un contatto con l'istanza e senza il ruolo è ammesso e non ha unicità per tipo. `trgfn_soggetti_guard_soggetto_contatti` chiede in pratica «almeno un contatto», di qualunque contesto. `script.fn_get_contatti` scarta i contatti con un'unità organizzativa quando il parametro non è passato; `fn_get_contatto_default` fra tipi diversi ordina per id |
-| S9 ✔︎ | Lo storico degli indirizzi | `storicizza` ha default `false` su `indirizzi` e `indirizzi_dettaglio` (`true` sulle altre tabelle dello schema che l'hanno). **Voluto** (Tid, 2026-11-22, Q7). Come lavora oggi il DB (`script.trgfn_storico_generic`): una riga con `storicizza = true` lascia nello storico la versione precedente, poi il trigger rimette il flag a `false`, perché le due tabelle non sono in `config.storico_set_storicizza`; nessun oggetto del DB lo riaccende. Lo storico è quindi «a richiesta di chi scrive». Tid ricorda che le scritture dell'app passano `true`: se è così, ogni modifica fatta dall'app lascia la sua traccia. Le pagine scrivono la regola del DB e il ruolo di chi scrive, senza promettere una traccia continua; R-BE5 conferma il lato applicativo |
+| S9 ✔︎ | Lo storico degli indirizzi | `storicizza` ha default `false` su `indirizzi` e `indirizzi_dettaglio` (`true` sulle altre tabelle dello schema che l'hanno). ~~Voluto~~ → ⚠️ Q7 riaperta: R-BE5 (§9.1) smentisce la premessa, Tid sceglie lo storico **continuo**, strada (b) (§10). Come lavora oggi il DB (`script.trgfn_storico_generic`): una riga con `storicizza = true` lascia nello storico la versione precedente, poi il trigger rimette il flag a `false`, perché le due tabelle non sono in `config.storico_set_storicizza`; nessun oggetto del DB lo riaccende. Lo storico è quindi «a richiesta di chi scrive». Tid ricorda che le scritture dell'app passano `true`: se è così, ogni modifica fatta dall'app lascia la sua traccia. Le pagine scrivono la regola del DB e il ruolo di chi scrive, senza promettere una traccia continua; R-BE5 conferma il lato applicativo |
 | S10 | `fn_search_indirizzi_dettaglio` | L'estensione del civico si confronta col valore grezzo (`'A'` non trova `/A`); `RAISE EXCEPTION` diretto invece di `fn_log_and_raise_error`; `p_limit` senza tetto |
 | S11 | Il catasto | «Un'istanza, un catasto» vale solo per la strada della clonazione: nessun UNIQUE su `istanze_utilities.catasto_unita_immobiliare_id` |
 | S12 ✔︎ | I reseller | `resellers.codice` è NOT NULL e nessun trigger lo genera (è la lacuna che i vettori avevano fino ad agosto). `resellers_billing_account` non ha né UNIQUE né esclusione: due reseller sullo stesso BA nello stesso periodo sono ammessi, e la colonna generata `validita` non è usata da nessun vincolo. `trgfn_resellers_guard_attivo` è scritto a mano perché la FK punta a `soggetti_ruoli`, e manca il verso opposto (un legame verso un reseller spento) |
@@ -438,6 +438,66 @@ pagine:
 | R-BE4 | La regola «un conto predefinito non si blocca» è solo nel service dei conti bancari? In quali punti | S18: se diventa una regola del DB, il brief dirà chi cambia per primo |
 | R-BE5 | Ogni scrittura dell'app su `anagrafiche.indirizzi` e `anagrafiche.indirizzi_dettaglio` (UPDATE e DELETE, compresi i verbi di copia e le madri) passa `storicizza = true`? Quali no | S9, Q7: la guida degli indirizzi dirà quali modifiche lasciano traccia |
 
+
+### 9.1 Le risposte del team BE/FE — 2026-11-22
+
+Censimento in sola lettura su `backend/`, `frontend/src` e i CSV di `80_data` (sessione BE, `dev/backend-tid`).
+I test sono contati a parte: nessuno nomina direttamente gli oggetti delle domande.
+
+**R-BE1 — I lettori delle tre viste.**
+
+| Vista | Lettori | Esito per la pagina |
+| --- | --- | --- |
+| `vw_risorse_umane_dettaglio` | Due, di produzione. (1) Il lookup delle risorse umane: `anagrafiche_repository._risorse_umane_lookup`, `GET /api/v1/anagrafiche/risorse-umane/lookup/`, usato dal drawer della commessa. (2) La testata della commessa, per il nome del responsabile: `commesse_repository.get_commessa_testata`, `GET /api/v1/vendite/commesse/{id}/stato/` (anche in risposta alla PATCH della testata) | La pagina nomina i due lettori |
+| `vw_pdp` | Nessuno: né il backend, né il frontend, né il catalogo delle liste (`ui/*.csv`) | Candidata al ritiro |
+| `vw_clienti_codice_ba` | Nessuno per nome nel backend, ma **è viva**: è l'`entita_tabella` del ruolo CLIENTE in `config.tipi_ruoli`, letta in modo dinamico da `script.fn_get_entita_ruolo_detail`, a sua volta chiamata da `script.fn_get_search_detail`. Il percorso dell'app: `SearchRepository.get_search_detail` → `GET /api/v1/core/search/{id}/detail/` → il dettaglio della ricerca universale nel FE | La pagina nomina il lettore dinamico: **non** è da ritirare |
+
+**R-BE2 — Il backend scrive `anagrafiche.pdp.cliente_id`?** No. Il backend non scrive mai su
+`anagrafiche.pdp`, né direttamente né attraverso una funzione del DB. Fa solo letture (`LEFT JOIN
+anagrafiche.pdp` nei repository di istanze utility, billing account e pagamenti), e nessuna legge
+`pdp.cliente_id`. `fn_crea_cliente` non riceve il PDP nei suoi campi. La tabella non è in
+`config.tabelle_gestibili`, quindi il pannello generico non la scrive. Lato DB l'unico che la scrive
+è `trgfn_clienti_sync_stato_pdp`, e scrive solo `stato_pdp_id`.
+
+**R-BE3 — Chi chiama `fn_check_fornitore_attivo` e `fn_guard_fornitore_attivo`?** Nessuno: né il
+backend, né il frontend, né il DB, né i pgTAP. In `backend/` c'è solo un commento in
+`portale/services/invito_portale_service.py`, il cui codice fa un controllo suo (`E_FORNITORE_NON_TROVATO`)
+senza chiamarle. `E_FORNITORE_NON_ATTIVO` vive solo nei cataloghi errori. Candidate al ritiro.
+
+**R-BE4 — «Un conto predefinito non si blocca».** Nel BE sta **solo** in
+`ContiBancariService._guard_predefinito_bloccato`. Sullo stato risultante (in update, il payload sopra
+le bandiere correnti) rifiuta `predefinito AND bloccato` col codice **generico** `E_ANAG_VALIDAZIONE`
+(400), non con un codice suo. Lo chiamano quattro punti: crea e aggiorna del conto del soggetto, crea
+e aggiorna del conto del ruolo. Non ci sono altre strade di scrittura su
+`soggetti_conti_bancari`/`soggetti_ruoli_conti_bancari`, che non stanno in `tabelle_gestibili`. Nel FE
+`ContoBancarioForm.vue` rende le due spunte alternative (spuntarne una toglie l'altra). La chiave i18n
+`anagrafiche.conti_bancari.bloccato_predefinito_hint` esiste ma nessun componente la usa. A DB non c'è
+nessun vincolo. **Se la regola passa al DB (S18):** serve un codice errore suo, con la policy
+generata e il messaggio di ripiego; cambia per primo il DB, poi il BE ritira il guard e il codice
+generico.
+
+**R-BE5 — Le scritture sugli indirizzi passano `storicizza = true`?** **No, nessuna.** Il flag non
+compare in nessuna scrittura dell'app su queste due tabelle. Né le whitelist delle colonne
+(`INDIRIZZO_RUOLO_UPDATE_COLS`, le colonne ammesse di `update_indirizzo_dettaglio`) né le funzioni
+chiamate lo portano.
+
+| # | Scrittura | Percorso dell'app | `storicizza` |
+| --- | --- | --- | --- |
+| 1 | UPDATE `indirizzi` | `soggetti_repository.update_indirizzo_ruolo`, PATCH dell'indirizzo del ruolo | no |
+| 2 | DELETE `indirizzi` | `soggetti_repository.delete_indirizzo_ruolo`, chiamata **dalla view** senza service | no |
+| 3 | DELETE + INSERT `indirizzi` | `soggetti_service.replace_indirizzo_ruolo`, PUT dell'indirizzo del ruolo | no |
+| 4 | UPDATE `indirizzi_dettaglio` | `indirizzi_repository.update_indirizzo_dettaglio` (`geo_service.update_indirizzo`), PATCH dell'indirizzo | no |
+| 5 | INSERT `indirizzi` | le madri e i verbi di copia (`fn_crea_indirizzo_ruolo`, `fn_crea_indirizzi_ruolo`, `fn_copia_indirizzo_*`, `fn_crea_indirizzo_soggetto`, `fn_crea_cliente`/`fn_crea_fornitore`) | non serve all'INSERT; la riga nasce col default `false` |
+| 6 | UPDATE `indirizzi_dettaglio` **nascosto** | `fn_get_or_create_indirizzo_dettaglio` (la riattivazione `attivo = true`), raggiunta dalle madri e dalle copie attraverso `fn_indirizzo_elemento_dettaglio` e `fn_create_indirizzo` | no |
+
+Non verificate: le cancellazioni a cascata dovute alla cancellazione di un soggetto o di un ruolo.
+Fuori dall'app, `dbops.fn_admin_merge_stradario` e `maintenance.proc_bump_indirizzi_dettaglio`: il
+backend non le chiama.
+
+⚠️ **R-BE5 smentisce la premessa di Q7.** La decisione «voluto» (§10) si appoggiava al ricordo che le
+scritture dell'app passino `true` (S9). Non lo fanno: oggi **nessuna modifica a un indirizzo fatta
+dall'app lascia traccia nello storico**. Tid ha riaperto Q7 e l'ha decisa di nuovo: strada (b) (§10).
+
 Le ricadute dei giri di codice, se nascono, si scrivono qui giro per giro, come nei brief precedenti.
 
 ## 10. Le decisioni di Tid
@@ -454,9 +514,22 @@ Le ricadute dei giri di codice, se nascono, si scrivono qui giro per giro, come 
 | Q8 | **Il batch degli accessi (S7).** Giornaliero alle 06:00 o ogni ora? | Serve prima del giro 0e, per lo stesso motivo |
 
 **Decise da Tid il 2026-11-22.** Q1-Q6 come proposte, con una precisazione su Q1: prima si chiude tutto il giro 0
-(documentazione), e i giri che cambiano il comportamento vengono per ultimi. Q7: voluto (S9). Q8: Tid non ricordava
+(documentazione), e i giri che cambiano il comportamento vengono per ultimi. Q7: voluto (S9) — ⚠️ **riaperta e
+decisa di nuovo il 2026-11-22, vedi sotto**. Q8: Tid non ricordava
 se fosse una scelta dello sviluppo; letto nel changelog, è voluto dal 2026-10-09 (S7), quindi si corregge la
 documentazione e non il job.
+
+**Q7 riaperta — Tid, 2026-11-22: strada (b), le modifiche agli indirizzi lasciano traccia.** La prima
+risposta («voluto») si appoggiava al ricordo che le scritture dell'app passino `storicizza = true`:
+R-BE5 (§9.1) lo smentisce, nessuna lo fa. Oggi nessuna modifica a un indirizzo lascia traccia.
+Decisione: lo storico di `indirizzi` e `indirizzi_dettaglio` diventa **continuo**, come quello di
+`indirizzi_soggetti` e di `soggetti`, con la garanzia nel DB e non nei cinque punti del BE (che
+dimenticherebbero il prossimo percorso di scrittura, e non coprono la riattivazione dentro
+`fn_get_or_create_indirizzo_dettaglio`). **Richiesta al team DB**, come giro di codice (in coda, Q1):
+le due tabelle in `config.storico_set_storicizza`, e il default di `storicizza` allineato alle altre
+tabelle dello schema, più le righe esistenti; la forma la decide il team DB. **Ricadute BE:** nessuna
+attesa; il BE non passa il flag. Il giro 0c scrive le pagine e la guida col comportamento di oggi
+(«nessuna traccia») in «Che cosa oggi non copre», col rimando a questo giro.
 
 ## 11. Alla chiusura
 

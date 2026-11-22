@@ -63,11 +63,6 @@ const {
   // (`paramsFiltro`), non ricostruiti qui — la forma con cui l'export
   // perdeva filtri per strada (catalogo BB, `useListaStoreCore`).
   getExportParams: (fmt) => ({ formato: fmt, ...store.paramsFiltro() }),
-  searchTableOptions: {
-    // Allineato al preset del seed (`occurred_at desc`).
-    defaultSortField: 'occurred_at',
-    defaultSortOrder: 'desc',
-  },
 })
 
 const { bindPeriodo } = useStoreFilterBindings(store, applyFilters)

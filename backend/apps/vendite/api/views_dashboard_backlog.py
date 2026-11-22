@@ -21,7 +21,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.core.api.openapi_params import parametri_finestra
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import pagina_da_query, qp_int_optional, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
@@ -110,29 +110,7 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
                     "intero <= 0 -> 400 (E_VENDITE_VALIDATION)."
                 ),
             ),
-            OpenApiParameter(
-                name="order_by",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Colonna di ordinamento (whitelist): anzianita_giorni "
-                    "(default, \"fermo da\") | area | codice | cliente_display | "
-                    "valore_fermo | stato_codice. Ordinamento server-side su "
-                    "tutte le pagine. Colonna non ammessa -> 400."
-                ),
-            ),
-            OpenApiParameter(
-                name="order_dir",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description=(
-                    "Direzione ordinamento: asc | desc (default desc per "
-                    "anzianita_giorni: i piu' \"fermo da\" prima). Valore "
-                    "diverso -> 400 (E_VENDITE_VALIDATION)."
-                ),
-            ),
+            *parametri_ordinamento("anzianita_giorni | area | codice | cliente_display | valore_fermo | stato_codice.", senza="anzianita_giorni DESC (i piu' «fermo da» prima)", nota="Ordinamento server-side su tutte le pagine. Colonna o verso non ammessi -> 400 (E_VENDITE_VALIDATION)."),
             *parametri_finestra(),
         ],
         responses={
@@ -210,8 +188,7 @@ class ApiDashboardBacklogDocumentiExport(DomainAPIView):
             OpenApiParameter(name="classe", type=str, required=False),
             OpenApiParameter(name="area", type=str, required=False),
             OpenApiParameter(name="ritardo_giorni", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): OpenApiTypes.BINARY},
     )

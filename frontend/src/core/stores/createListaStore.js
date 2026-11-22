@@ -25,10 +25,11 @@
 //     { fetchPage: listSistemazioniFattura, parentField: 'fatturaId' },
 //   )
 //
-// Uso (lista globale che parte piena, con ordinamento di partenza):
+// Uso (lista globale che parte piena; l'ordinamento di partenza lo dichiara
+// il preset della lista e lo applica il backend, quindi qui non si scrive):
 //   export const useTitoliIvaSfondatiStore = createListaStore(
 //     'anagrafiche-titoli-iva-sfondati',
-//     { fetchPage: listTitoliIvaSfondati, orderBy: 'eccedenza', orderDir: 'desc' },
+//     { fetchPage: listTitoliIvaSfondati, startsEmpty: false },
 //   )
 import { defineStore } from 'pinia'
 import { useListaStoreCore } from '../composables/useListaStoreCore'

@@ -6,7 +6,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.services.fuso_aziendale import oggi_aziendale
-from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.permissions import PassaggioDocumento
 
@@ -43,7 +43,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
     qp_uuid_optional,
 )
-from apps.core.api.openapi_params import parametri_finestra, descrizione_order_by
+from apps.core.api.openapi_params import parametri_finestra, parametri_ordinamento
 from apps.vendite.db.vendite_repository import (
     GIORNALE_GRAVITA,
     GIORNALE_ORDINE_DEFAULT,
@@ -343,8 +343,7 @@ class ApiLottoSegnalazioniRows(DomainAPIView):
             OpenApiParameter(name="solo_attive", type=bool, location=OpenApiParameter.QUERY),
             OpenApiParameter(name="solo_job_corrente", type=bool, location=OpenApiParameter.QUERY),
             *parametri_finestra(max_limit=LOTTO_LISTE_PAGINA_MAX),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY),
+            *parametri_ordinamento(),
         ],
         responses={200: inline_serializer(
             name="LottoSegnalazioniRowsResponse",
@@ -393,8 +392,7 @@ class ApiLottoSegnalazioniExport(DomainAPIView):
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="livello", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="origine", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): bytes},
     )
@@ -461,8 +459,7 @@ class ApiLottoTaskRunsExport(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
             OpenApiParameter(name="task_stato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(
                 name="solo_giro_corrente", type=bool, location=OpenApiParameter.QUERY, required=False
@@ -517,7 +514,7 @@ class ApiLottoTaskRuns(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description=f"Numero massimo task run restituiti (default {DEFAULT_LIMIT_EVENTI}, max {LOTTO_LISTE_PAGINA_MAX}).",
+                description=f"Numero massimo task run restituiti (default: la misura della lista `vendite.lotto_task_runs`, max {LOTTO_LISTE_PAGINA_MAX}).",
             ),
             OpenApiParameter(
                 name="offset", type=int, location=OpenApiParameter.QUERY, required=False,
@@ -578,9 +575,9 @@ class ApiLottoTaskRuns(DomainAPIView):
     #    lista parlava. `page`/`page_size` ora sono un 400.
     def get(self, request: Request, lotto_id: int) -> JsonResponse:
         q = request.query_params
-        limit, offset = pagina_da_query(
-            q, default_limit=DEFAULT_LIMIT_EVENTI, max_limit=LOTTO_LISTE_PAGINA_MAX,
-        )
+        # Senza `limit` vale la misura della lista (`vendite.lotto_task_runs`,
+        # BE10 di brief-db-revisione-ui): il tetto resta di questa vista.
+        limit, offset = pagina_da_query(q, max_limit=LOTTO_LISTE_PAGINA_MAX)
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
             auth_user_id=get_scope_user_id(request),
@@ -971,8 +968,7 @@ class ApiLottiList(DomainAPIView):
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per tipo documento fiscale."),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, location=OpenApiParameter.QUERY, required=False, description="Filtro per emittente fiscale (soggetto_ruolo_id)."),
             OpenApiParameter(name="annullati", type=bool, location=OpenApiParameter.QUERY, required=False, description="`1` mostra anche i lotti col fiscale ABORTITO (`config.stati_doc_fiscale.is_abortito`, oggi ANNULLATA). Default: nascosti — lista, chip per stato ed export insieme — e la risposta dichiara quanti sono in `annullati_count`."),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento: `campo_sorgente` del catalogo lista `vendite.lotti`. Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
+            *parametri_ordinamento("Whitelist autoritativa: `VenditeRepository.LOTTI_SORT_COLUMNS` — codice, competenza_mese, data_documento, tipo_lotto, tipo_doc_fiscale_descrizione, utility_descrizione, area_geografica_descrizione, emittente_ragione_sociale, stato_lotto, stato_operativo, stato_doc_fiscale_descrizione, n_fatture, totale_documenti, data_insert, user_insert.", verso="asc"),
             *parametri_finestra(),
         ],
         responses={
@@ -1055,8 +1051,7 @@ class ApiLottiExportView(DomainAPIView):
             OpenApiParameter(name="tipo_doc_fiscale_id", type=int, required=False),
             OpenApiParameter(name="emittente_soggetto_ruolo_id", type=int, required=False),
             OpenApiParameter(name="annullati", type=bool, required=False, description="`1` esporta anche i lotti annullati (stesso interruttore della lista)."),
-            OpenApiParameter(name="order_by", type=str, required=False, description="`campo_sorgente` del catalogo `vendite.lotti` (stessa whitelist della lista)."),
-            OpenApiParameter(name="order_dir", type=str, required=False, description="asc | desc"),
+            *parametri_ordinamento("Stessa whitelist della lista.", verso="asc"),
         ],
         responses={
             (200, "text/csv"): bytes,
@@ -1238,8 +1233,7 @@ class ApiLottoFattureExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): bytes},
     )
@@ -1279,8 +1273,7 @@ class ApiLottoFattureList(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato esecuzione fattura."),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (default fattura_id). Fino al 2026-10-20 si chiamava `sort_by`."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc/desc (assente: la decide la lista, date DESC). Fino al 2026-10-20 si chiamava `sort_dir`."),
+            *parametri_ordinamento(senza="fattura_id", verso="desc sulle date", nota="Fino al 2026-10-20 si chiamavano `sort_by` e `sort_dir`."),
             *parametri_finestra(),
         ],
         responses={
@@ -1372,11 +1365,7 @@ class ApiLottoGruppiList(DomainAPIView):
                     "Assente = tutti, compresi i gruppi mai tentati (esito NULL)."
                 ),
             ),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(
-                name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-                description="Verso: asc (default) o desc.",
-            ),
+            *parametri_ordinamento(verso="asc"),
             *parametri_finestra(),
         ],
         responses={
@@ -1432,8 +1421,7 @@ class ApiLottoGruppiExport(DomainAPIView):
         parameters=[
             OpenApiParameter(name="formato", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="stato_esecuzione", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento(),
         ],
         responses={(200, "text/csv"): bytes},
     )
@@ -1516,15 +1504,7 @@ _PARAMS_FILTRI_GIORNALE = [
         name="solo_vive", type=bool, location=OpenApiParameter.QUERY, required=False,
         description="Default true: esclude le segnalazioni RITIRATE; `ritirate_count` dice quante.",
     ),
-    OpenApiParameter(
-        name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-        description=descrizione_order_by(
-            GIORNALE_SORT_COLUMNS,
-            "Default `quando DESC`; `gravita` ordina il rango e, dentro, il tempo dal piu' recente.",
-        ),
-    ),
-    OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False,
-                     description="asc | desc."),
+    *parametri_ordinamento(GIORNALE_SORT_COLUMNS, senza="quando DESC", nota="`gravita` ordina il rango e, dentro, il tempo dal piu' recente."),
 ]
 
 
@@ -2057,10 +2037,8 @@ class ApiCommessaAttivita(DomainAPIView):
             OpenApiParameter(name="stato_emissione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato emissione (es. NON_EMESSA, EMESSA)."),
             OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro stato approvazione (es. BOZZA, APPROVATA)."),
             OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro mese di competenza (YYYY-MM-DD)."),
-            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT}, max {MAX_LIMIT})."),
-            OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False, description="Offset paginazione (default 0)."),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Colonna di ordinamento (id, data_attivita, competenza_mese, segment_key, quantita, prezzo_snapshot, stato_approvazione, stato_emissione). Assente = ordine storico per id."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="Direzione ordinamento: asc | desc (default asc)."),
+            *parametri_finestra(),
+            *parametri_ordinamento("id | data_attivita | competenza_mese | segment_key | quantita | prezzo_snapshot | stato_approvazione | stato_emissione.", senza="l'ordine storico per id", verso="asc"),
             OpenApiParameter(name="tipo_movimento", type=str, location=OpenApiParameter.QUERY, required=False, description="Filtro natura della riga: NORMALE | RETTIFICA | ONERE. Assente o vuoto = tutti. Un valore fuori vocabolario e' rifiutato (400), non filtra a vuoto."),
         ],
         responses={
@@ -2132,8 +2110,7 @@ class ApiCommessaAttivitaExport(DomainAPIView):
             OpenApiParameter(name="stato_approvazione", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="competenza_mese", type=str, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="tipo_movimento", type=str, location=OpenApiParameter.QUERY, required=False, description="NORMALE | RETTIFICA | ONERE. Assente = tutti."),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False, description="Stessa whitelist della lista."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False, description="asc | desc"),
+            *parametri_ordinamento("Stessa whitelist della lista.", senza="l'ordine storico per id", verso="asc"),
         ],
         responses={
             (200, "text/csv"): bytes,

@@ -32,6 +32,7 @@ from apps.core.api.payload_validators import (
     qp_str,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.api.openapi_params import parametri_ordinamento
 from apps.vendite.services import approvazioni_prezzo_service
 from apps.vendite.services._approvazioni_prezzo_constants import (
     META_SORGENTE_CONTRATTO,
@@ -278,11 +279,7 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
         parameters=[
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(
-                name="order_by", type=str, required=False,
-                description="Colonna di ordinamento (whitelist pratiche).",
-            ),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento("La whitelist delle pratiche."),
         ],
         responses={200: _CODA_RESPONSE},
         tags=["vendite"],

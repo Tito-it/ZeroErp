@@ -21,7 +21,7 @@ from apps.anagrafiche.services.categorie_clienti_listini_service import (
 )
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -41,6 +41,8 @@ from apps.core.api.success_responses import success_response
 class CategorieClientiListiniView(AdminAPIView):
     """GET lista paginata, POST crea riga matrice (admin only)."""
 
+    lista_codice = "anagrafiche.categorie_clienti_listini"
+
     is_search_endpoint = True
 
     @extend_schema(
@@ -55,11 +57,7 @@ class CategorieClientiListiniView(AdminAPIView):
                              description="Data ISO YYYY-MM-DD: filtra righe la cui validita contiene questa data."),
             OpenApiParameter(name="limit", type=int, required=False),
             OpenApiParameter(name="offset", type=int, required=False),
-            OpenApiParameter(name="order_by", type=str, required=False,
-                             description="categoria_codice | categoria_descrizione | utility_codice | "
-                                         "utility_descrizione | listino_codice | listino_descrizione | "
-                                         "valido_dal | valido_al | attivo | data_insert | data_update"),
-            OpenApiParameter(name="order_dir", type=str, required=False),
+            *parametri_ordinamento("categoria_codice | categoria_descrizione | utility_codice | utility_descrizione | listino_codice | listino_descrizione | valido_dal | valido_al | attivo | data_insert | data_update."),
         ],
         responses={200: inline_serializer(
             name="AnagCategorieClientiListiniListResp",

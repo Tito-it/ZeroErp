@@ -24,7 +24,7 @@ import re
 from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato, utente_autenticato_id
-from apps.core.api.openapi_params import param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params, qp_int_optional
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
@@ -226,9 +226,7 @@ class ParameterSettingsView(DomainAPIView):
             param_ricerca_full(),
             OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
             OpenApiParameter(name="offset", type=int, location=OpenApiParameter.QUERY, required=False),
-            OpenApiParameter(name="order_by", type=str, location=OpenApiParameter.QUERY, required=False,
-                             description="`code` (default) o `description`."),
-            OpenApiParameter(name="order_dir", type=str, location=OpenApiParameter.QUERY, required=False),
+            *parametri_ordinamento("`code` | `description`.", senza="code"),
         ],
         responses={
             200: inline_serializer(

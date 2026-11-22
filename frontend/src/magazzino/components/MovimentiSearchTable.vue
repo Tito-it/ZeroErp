@@ -58,7 +58,6 @@ const {
   // L'export segue la lista a video — filtri e ordinamento — dalla sede unica
   // dello store (`paramsFiltro`), non da una ricostruzione a mano.
   getExportParams: (formato) => ({ formato, ...store.paramsFiltro() }),
-  searchTableOptions: { defaultSortField: 'data_mov', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri (toolbar caller) — binding store via BB ---

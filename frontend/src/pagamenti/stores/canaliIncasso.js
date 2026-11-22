@@ -61,8 +61,11 @@ export const useCanaliIncassoStore = defineStore(
       search: '',
       limit: misuraDefault(USO_MISURA.PAGINA),
       offset: 0,
-      order_by: 'codice',
-      order_dir: 'asc',
+      // ⭐ Nessun ordinamento di partenza (BE29 di brief-db-revisione-ui): lo
+      //    dichiara il preset della lista, il backend lo applica e lo dice in
+      //    `meta.ordinamento`.
+      order_by: null,
+      order_dir: null,
     })
 
     // `lista`: lo stato del BB, esposto INTERO nel `return` (`...lista`).

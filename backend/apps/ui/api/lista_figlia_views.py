@@ -64,7 +64,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_scope_user_id
-from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
+from apps.core.api.openapi_params import param_ricerca_full, parametri_ordinamento
 from apps.core.api.payload_validators import paginated_envelope, parse_list_params
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -102,12 +102,9 @@ def _parametri(
         *emittente,
         *parametri_filtri,
         param_ricerca_full(),
-        OpenApiParameter(
-            name="order_by", type=str, required=False,
-            description=descrizione_order_by(colonne_ordinabili, f"Assente: {ordine_assente}"),
+        *parametri_ordinamento(
+            colonne_ordinabili, senza=ordine_assente, verso="asc; desc sulle date",
         ),
-        OpenApiParameter(name="order_dir", type=str, required=False,
-                         description="asc | desc (assente: asc; desc sulle date)"),
     ]
 
 

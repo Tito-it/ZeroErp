@@ -26,7 +26,10 @@ export const useEmittentiFiscaliBAStore = storePerIstanza('amm-emittenti-fiscali
   parentField: 'emittenteId',
   // Parte piena: e' la lista dei mapping di QUESTO emittente.
   startsEmpty: false,
-  orderBy: 'billing_account_codice',
+  // ⭐ Nessun ordinamento di partenza qui (residuo di BE25 (2) di
+  //    brief-db-revisione-ui): lo dichiara il preset della lista, il backend
+  //    lo applica e lo dice in `meta.ordinamento`, da cui la tabella accende
+  //    l'intestazione.
   extend: (lista) => {
     const { emittenteId, fetchList, reset: resetLista } = lista
 
