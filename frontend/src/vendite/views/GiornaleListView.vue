@@ -99,10 +99,6 @@ const {
   // (`paramsFiltro`), non ricostruiti qui — la forma con cui l'export
   // perdeva filtri per strada (catalogo BB, `useListaStoreCore`).
   getExportParams: (fmt) => ({ formato: fmt, ...store.paramsFiltro() }),
-  searchTableOptions: {
-    defaultSortField: 'quando',
-    defaultSortOrder: 'desc',
-  },
 })
 
 const { bindSelect, bindToggle, bindPeriodo } = useStoreFilterBindings(store, applyFilters)

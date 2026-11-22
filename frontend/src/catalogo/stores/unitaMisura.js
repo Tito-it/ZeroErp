@@ -30,5 +30,4 @@ export const useUnitaMisuraStore = createCrudStore('catalogo-unita-misura', {
   startsEmpty: false,
   ricercaCorta: 'svuota',
   filterDefaults: { attivo: true },
-  orderBy: 'codice',
 })

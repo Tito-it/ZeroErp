@@ -17,8 +17,11 @@
 //     getExportParams: (fmt) => buildExportParams(fmt),
 //     newTooltipKey: 'anagrafiche.fornitori.nuovo_fornitore',
 //     onNew: () => emit('new'),
-//     searchTableOptions: { defaultSortField: 'ragione_sociale_completa' },
 //   })
+//
+// ⛔ Niente `searchTableOptions.defaultSortField` su una lista la cui view
+// dichiara `lista_codice`: l'ordinamento di partenza e' del preset, lo applica
+// il backend e lo dice in `meta.ordinamento` (BE25 (2) di brief-db-revisione-ui).
 //
 // Liste a ricerca obbligatoria (<SearchHint> + lista dietro `v-show`): usare
 // `mostraSearchHint` / `mostraLista` invece di `!store.hasSearched &&

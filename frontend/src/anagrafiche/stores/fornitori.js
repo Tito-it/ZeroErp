@@ -10,5 +10,4 @@ export const useFornitoriStore = createCrudStore('anagrafiche-fornitori', {
   tabEntity: TAB_ENTITIES.FORNITORE,
   filterDefaults: { stato_fornitore_id: null, attivo: null },
   gateKeys: ['stato_fornitore_id', 'attivo'],
-  orderBy: 'ragione_sociale_completa',
 })

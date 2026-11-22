@@ -59,8 +59,6 @@ export const useFattureStore = defineStore('vendite-fatture', () => {
     ],
     // Il piu' recente in cima, come le sorelle e come il default del backend;
     // il ripiego del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
   const { filters, fetchList } = lista

@@ -54,7 +54,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'vendite.offerte.nuova_offerta',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'validita_dal', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB (B14) ---

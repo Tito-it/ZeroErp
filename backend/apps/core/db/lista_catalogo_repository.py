@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: lettura minima del CATALOGO delle liste per il cancello di perimetro
-#        emittente — le DUE colonne che dicono se una lista ha un perimetro e se
-#        lo sa dichiarare (`perimetro_emittente`, `multi_emittente`).
+# Scopo: lettura minima del CATALOGO delle liste per le due cose che la base
+#        view decide prima di servire i dati: il cancello di perimetro emittente
+#        (le DUE colonne che dicono se una lista ha un perimetro e se lo sa
+#        dichiarare, `perimetro_emittente` e `multi_emittente`) e l'ordinamento
+#        di partenza (`fetch_ordinamento_lista`, BE25 (2) di brief-db-revisione-ui).
 #
 # ⚠️ Perche' sta in `apps/core/db/` e non in `apps/ui/db/`, dove il catalogo
 #        delle liste ha la sua sede naturale: il consumatore e'
@@ -27,6 +29,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from django.db import connection
+
+from apps.core.db._helpers import jsonb_out
 
 
 # ⭐ DUE DOMANDE, DUE COLONNE, e vanno lette insieme (§12.1, 2026-09-02):
@@ -72,3 +76,26 @@ def fetch_flag_perimetro(lista_codice: str) -> FlagPerimetroLista | None:
     if not row:
         return None
     return FlagPerimetroLista(multi_emittente=bool(row[0]), perimetro_emittente=bool(row[1]))
+
+
+# Scopo: l'ordinamento di partenza di una lista per un utente, come lo risolve il
+#        DB: `ui.fn_ordinamento_lista` (giro 2 di brief-db-revisione-ui), la sola
+#        sede dell'ordinamento risolto — quello del preset di base, senza le voci
+#        delle colonne che l'utente non puo' ordinare, ognuna col suo campo
+#        sorgente. Ritorna l'elenco `[{col, dir, campo_sorgente}]`, vuoto se il
+#        preset non ne dichiara (o non c'e' un preset di base).
+# ⚠️ Sta qui per la stessa ragione di `fetch_flag_perimetro`: la legge
+#    `DomainAPIView`, e `core` non importa `ui`.
+# ⚠️ Lista assente o spenta: `E_UI_LISTA_NON_TROVATA` dal BB del DB, che si
+#    propaga — e' un errore di dichiarazione della view, non un ripiego.
+def fetch_ordinamento_lista(
+    lista_codice: str, *, auth_user_id: int, emittente_fiscale_id: int | None,
+) -> list[dict[str, str]]:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT ui.fn_ordinamento_lista(%s, %s, %s)",
+            [lista_codice, auth_user_id, emittente_fiscale_id],
+        )
+        row = cursor.fetchone()
+    voci = jsonb_out(row[0]) if row and row[0] is not None else []
+    return list(voci) if isinstance(voci, list) else []

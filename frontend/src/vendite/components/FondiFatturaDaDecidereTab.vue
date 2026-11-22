@@ -98,7 +98,6 @@ const {
     return { ...p, ...paramsOrdinamento(store.filters) }
   },
   // Nessun "Nuovo": una riga di questo elenco non si crea, si risolve.
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // --- Filtro motivo (unico filtro: la coda è già ristretta dalla vista) ---

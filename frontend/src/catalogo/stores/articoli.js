@@ -22,7 +22,6 @@ export const useArticoliStore = createCrudStore('catalogo-articoli', {
   // (identificatore, colonna fissata). Prima era `descrizione` e le due
   // dichiarazioni divergevano — invisibile finche' il FE non consuma
   // `ordinamento_default`, poi sarebbe cambiato l'ordine da solo.
-  orderBy: 'codice',
   extraActions: {
     disattiva: disattivaArticolo,
     riattiva: riattivaArticolo,

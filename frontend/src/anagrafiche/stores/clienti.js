@@ -10,5 +10,4 @@ export const useClientiStore = createCrudStore('anagrafiche-clienti', {
   tabEntity: TAB_ENTITIES.CLIENTE,
   filterDefaults: { utility_id: null, stato_cliente_id: null },
   gateKeys: ['utility_id', 'stato_cliente_id'],
-  orderBy: 'ragione_sociale_completa',
 })

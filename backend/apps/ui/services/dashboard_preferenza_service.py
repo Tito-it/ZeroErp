@@ -3,12 +3,14 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Service di scrittura per `ui.dashboard_preferenza_utente` —
-#        valida il JSONB in ingresso (whitelist chiavi anti-injection),
-#        UPSERT col preset di base di oggi (lo snapshot lo scrive il DB), delete idempotente,
-#        tombstone "ignora banner preset aggiornato".
+#        il corpo deve essere un oggetto con almeno una chiave (la forma la
+#        giudica il guard del DB), UPSERT col preset di base di oggi (lo
+#        snapshot lo scrive il DB), delete idempotente, «ignora» del banner
+#        preset aggiornato.
 #        Gemello di `ListaPreferenzaService`.
 #
-#        Forma della `configurazione` persistita (contratto fn DB):
+#        Forma della `configurazione` persistita (la giudica
+#        `ui.fn_check_forma_configurazione`):
 #            {"widget": [{"codice", "ordine", "visibile"}],
 #             "dimensione_max": int}
 #        La preferenza porta SOLO il codice widget (brief DB §3d): tutti
@@ -21,7 +23,6 @@ from __future__ import annotations
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.ui.db.dashboard_repository import DashboardRepository
 from apps.ui.services._preferenza import (
@@ -41,17 +42,9 @@ __all__ = [
 
 E_UI_DASHBOARD_NON_TROVATA = "E_UI_DASHBOARD_NON_TROVATA"
 
-# Whitelist root del payload preferenza dashboard.
-_PAYLOAD_KEYS = frozenset({"widget", "dimensione_max"})
-# Whitelist di un singolo widget nella preferenza (§3d: solo il codice
-# identifica; ordine/visibile sono lo stato di layout scelto dall'utente).
-_WIDGET_KEYS = frozenset({"codice", "ordine", "visibile"})
-
-# Tetto difensivo sul numero di widget accettati in un salvataggio. Non e'
-# il `dimensione_max` del preset (che limita quanti se ne MOSTRANO): e' una
-# guardia anti-payload-abnorme, coerente col fatto che il pool reale e'
-# comunque limitato da catalogo + permessi.
-_MAX_WIDGET_PAYLOAD = 100
+# ⛔ Nessuna whitelist e nessun tetto qui: chiavi, voci, codici doppi e il
+#    tetto 1-100 di `dimensione_max` li giudica il guard del DB
+#    (`E_UI_CONFIGURAZIONE_FORMA`, BE8 e BE11 di brief-db-revisione-ui).
 
 
 class DashboardPreferenzaService:
@@ -59,9 +52,6 @@ class DashboardPreferenzaService:
 
     def __init__(self, repository: DashboardRepository | None = None) -> None:
         self._repo = repository or DashboardRepository()
-        self._validator = PayloadValidator(
-            validation_code=E_UI_PREFERENZA_VALIDAZIONE,
-        )
 
     # Scopo: Risolve `dashboard_codice -> dashboard_id` con 404 parlante
     #        se la dashboard non esiste o non e' attiva.
@@ -89,7 +79,7 @@ class DashboardPreferenzaService:
         # 1. Dashboard deve esistere
         dashboard_id = self._require_dashboard_id(dashboard_codice)
 
-        # 2. Whitelist + tipi del payload
+        # 2. Un oggetto con almeno una chiave; la forma la giudica il DB
         configurazione = self._validate_payload(payload)
 
         # 3. Il preset di base di oggi, dalla risoluzione (stesso emittente
@@ -161,98 +151,11 @@ class DashboardPreferenzaService:
 
         return {"ignored": True}
 
-    # Scopo: Valida il payload contro le whitelist e ritorna il dict
-    #        normalizzato pronto per il salvataggio JSONB.
-    def _validate_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            ErrorManager.raise_error(
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza dashboard non valida.",
-                detail="Il payload deve essere un oggetto JSON.",
-            )
-
-        self._validator.validate_allowed_keys(
-            payload, allowed=_PAYLOAD_KEYS,
-            message="Preferenza dashboard non valida.",
-        )
-
-        config: dict[str, Any] = {}
-
-        # widget: lista di oggetti normalizzati
-        widget_raw = payload.get("widget")
-        if widget_raw is not None:
-            # Il tetto PRIMA di leggere le voci: un elenco smisurato non si
-            # scorre. La forma (lista, ogni voce un oggetto) la giudica il BB.
-            ErrorManager.require(
-                not isinstance(widget_raw, list) or len(widget_raw) <= _MAX_WIDGET_PAYLOAD,
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza dashboard non valida.",
-                detail=(
-                    "Numero massimo di widget per salvataggio: "
-                    f"{_MAX_WIDGET_PAYLOAD}."
-                ),
-            )
-            widget = self._validator.voci(
-                widget_raw, self._validate_widget, campo="widget",
-                message="Preferenza dashboard non valida.",
-            )
-            # Codice duplicato = layout ambiguo: la fn DB fa JOIN sul
-            # codice e produrrebbe la stessa card due volte.
-            codici = [w["codice"] for w in widget]
-            ErrorManager.require(
-                len(codici) == len(set(codici)),
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza dashboard non valida.",
-                detail="Codici widget duplicati nella preferenza.",
-            )
-            config["widget"] = widget
-
-        # dimensione_max: int positivo, tetto allineato alla guardia payload
-        dimensione_max = self._validator.optional_positive_int(
-            payload, key="dimensione_max",
-            message="Preferenza dashboard non valida.",
-        )
-        if dimensione_max is not None:
-            ErrorManager.require(
-                dimensione_max <= _MAX_WIDGET_PAYLOAD,
-                code=E_UI_PREFERENZA_VALIDAZIONE,
-                message="Preferenza dashboard non valida.",
-                detail=(
-                    "dimensione_max massima ammessa: "
-                    f"{_MAX_WIDGET_PAYLOAD}"
-                ),
-            )
-            config["dimensione_max"] = dimensione_max
-
-        # Ogni chiave e' facoltativa, ma una preferenza senza chiavi si toglie
-        # col DELETE (BB `richiedi_preferenza_non_vuota`).
+    # Scopo: La configurazione da salvare: il corpo cosi' com'e', se e' un
+    #        oggetto con almeno una chiave (BB `richiedi_preferenza_non_vuota`).
+    #        La forma, codici doppi e tetto 1-100 di `dimensione_max` compresi,
+    #        la giudica il DB (vedi il BB).
+    def _validate_payload(self, payload: Any) -> dict[str, Any]:
         return richiedi_preferenza_non_vuota(
-            config, message="Preferenza dashboard non valida.",
+            payload, message="Preferenza dashboard non valida.",
         )
-
-    # Scopo: Valida un singolo widget della preferenza. Whitelist chiavi,
-    #        codice obbligatorio, ordine int positivo, visibile bool.
-    def _validate_widget(self, raw: dict[str, Any], idx: int) -> dict[str, Any]:
-        self._validator.validate_allowed_keys(
-            raw, allowed=_WIDGET_KEYS,
-            message=f"widget[{idx}]: campi non supportati.",
-        )
-
-        codice = self._validator.require_string(
-            raw, key="codice",
-            message=f"widget[{idx}]: 'codice' obbligatorio.",
-        )
-        out: dict[str, Any] = {"codice": codice}
-
-        ordine = self._validator.optional_positive_int(
-            raw, key="ordine",
-            message=f"widget[{idx}]: 'ordine' deve essere intero positivo.",
-        )
-        if ordine is not None:
-            out["ordine"] = ordine
-
-        visibile = self._validator.optional_bool(raw, key="visibile")
-        if visibile is not None:
-            out["visibile"] = visibile
-
-        return out

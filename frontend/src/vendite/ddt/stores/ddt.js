@@ -58,8 +58,6 @@ export const useDdtStore = defineStore('vendite-ddt', () => {
     // Default `data desc`: DDT con data piu' recente in cima (allineato al
     // default backend e al defaultSortField della DdtSearchTable). Il ripiego
     // del verso segue.
-    orderBy: 'data',
-    orderDir: 'desc',
     orderDirDefault: 'desc',
   })
 

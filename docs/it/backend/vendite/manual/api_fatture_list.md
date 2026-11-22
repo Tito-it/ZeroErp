@@ -80,10 +80,12 @@ repository, e dimenticarla spegneva la cella «Transito» in silenzio.)*
 ⚠️ E `natura_doc_codice` della riga si chiama ora `natura_doc_codice_interno`:
 il **filtro** in query string resta `natura_doc_codice`, perche' e' un nome di
 parametro d'ingresso e non di colonna.
-⭐ Alla riga della vista si aggiungono le **colonne di sintesi lineage**
-(`unisci_sintesi_lineage`, da `vendite.fn_documento_lineage_sintesi`, una
-chiamata per blocco di righe della pagina): una riga senza sintesi le ha
-comunque tutte, a `null`.
+⛔ **Nessuna colonna della sintesi lineage** (frontiera, discendenti, radice,
+transito): la lista delle fatture non dichiara `legge_lineage`, e dal
+2026-11-22 il repository non chiede `vendite.fn_documento_lineage_sintesi`
+(BE14 di brief-db-revisione-ui, deciso da Tid). Pratica (`pratica_id`,
+`pratica_numero`) e `fase` arrivano dalla vista. La genealogia di una fattura
+si legge dal drawer (`/vendite/fatture/<id>/passaggi/`).
 
 Errori:
 - `400 E_VENDITE_VALIDATION` — stato o natura fuori vocabolario

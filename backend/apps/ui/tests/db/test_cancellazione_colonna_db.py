@@ -80,6 +80,8 @@ class CancellazioneColonnaDbTests(unittest.TestCase):
             "tipo_dato": "string",
             "ordine_default": 1,
             "attivo": False,
+            # Senza campo sorgente non si esporta (U25, giro 4 di brief-db-revisione-ui).
+            "esportabile": False,
         })
         preset_id = self.repo.create_preset({
             "lista_id": lista_id,
@@ -151,6 +153,8 @@ class CancellazioneColonnaDbTests(unittest.TestCase):
             "tipo_dato": "string",
             "ordine_default": 1,
             "attivo": False,
+            # Senza campo sorgente non si esporta (U25, giro 4 di brief-db-revisione-ui).
+            "esportabile": False,
         })
         errore = self._rifiuto(lambda: ListaPresetAdminService().replace_preset_colonne(
             self.preset_id, {"colonne": [{"colonna_id": altra_colonna_id, "ordine": 1}]},

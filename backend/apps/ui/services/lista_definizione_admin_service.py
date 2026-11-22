@@ -47,21 +47,25 @@ E_DEFINIZIONE_IN_USE = "E_UI_DEFINIZIONE_IN_USO"
 # tranne i tre obbligatori (codice/descrizione/schema_dati): vista_sql
 # e note possono essere NULL, attivo default TRUE applicativo.
 #
-# 🚫 `multi_emittente` NON entra qui, e NON e' una dimenticanza.
-#    E' un flag che dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa
-#    dire da quale emittente arriva ogni riga» — non una preferenza di chi
-#    amministra: si accende SOLO dal seed (`80_data/.../lista_definizione.csv`),
-#    insieme (o dopo) al lavoro che la rende vera, cioe' la colonna emittente
-#    a catalogo. Un interruttore in interfaccia lo trasformerebbe da registro
-#    di debito che cala in elenco di eccezioni che cresce.
+# 🚫 Le tre DICHIARAZIONI della lista — `multi_emittente`,
+#    `perimetro_emittente`, `legge_lineage` — NON entrano qui, e NON e' una
+#    dimenticanza. Dichiarano una CAPACITA' DEL SOFTWARE («questa lista sa
+#    dire da quale emittente arriva ogni riga», «si apre solo con l'azienda
+#    scelta», «riceve i campi della genealogia dei documenti»), non una
+#    preferenza di chi amministra: si scrivono SOLO dal seed
+#    (`80_data/.../lista_definizione.csv`), insieme (o dopo) al lavoro che le
+#    rende vere. Un interruttore in interfaccia trasformerebbe un registro di
+#    debito che cala in un elenco di eccezioni che cresce.
 #    Presidiato su tre strati: il TRIGGER DB
-#    (`ui.trgfn_lista_definizione_guard_multi_emittente`, che rifiuta la
-#    scrittura da qualunque ruolo non proprietario → `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`),
-#    il test `ListaDefinizioneMultiEmittenteFuoriScritturaTests` (che presidia
-#    TUTTI e quattro i punti di questo file e del repository che elencano
-#    campi scrivibili, non la sola whitelist), e questo commento.
+#    (`ui.trgfn_lista_definizione_guard_dichiarazioni`, che rifiuta la
+#    scrittura da qualunque ruolo non proprietario →
+#    `E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE`, che nomina la colonna: giro 4
+#    di brief-db-revisione-ui, U23), il test
+#    `ListaDefinizioneMultiEmittenteFuoriScritturaTests` (che presidia TUTTI e
+#    quattro i punti di questo file e del repository che elencano campi
+#    scrivibili, non la sola whitelist), e questo commento.
 #    Decisione Tid 2026-08-17 · brief-db-perimetro-emittente-liste-e-gerarchia-ba
-#    §7 decisione 3, Q1, §11.5.
+#    §7 decisione 3, Q1, §11.5; esteso alle tre il 2026-11-19 (Q14).
 CREATE_KEYS: frozenset[str] = frozenset(
     {
         "codice",
@@ -73,11 +77,13 @@ CREATE_KEYS: frozenset[str] = frozenset(
     }
 )
 
-# Whitelist chiavi del payload update. Comprende anche `codice`: la
-# UNIQUE constraint DB intercetta i conflitti (mappata via
-# map_integrity_error). `schema_dati` ammesso in update perche' la
-# tabella non ha trigger di immutabilita'.
-UPDATE_KEYS: frozenset[str] = CREATE_KEYS
+# Whitelist chiavi del payload update. ⛔ Senza `codice` (BE12 del giro 4 di
+# brief-db-revisione-ui, U23, Q14): e' la chiave con cui backend, frontend e
+# preferenze cercano la schermata, e a DB lo tiene fermo il lucchetto
+# `E_UI_LISTA_CODICE_IMMUTABILE`; nel PATCH e' un 400 sul campo. Cambiare
+# `vista_sql` o `schema_dati` passa dal guard della vista, che rifiuta se una
+# colonna resterebbe senza il suo campo (`E_UI_LISTA_COLONNE_ORFANE`).
+UPDATE_KEYS: frozenset[str] = CREATE_KEYS - {"codice"}
 
 _MAX_CODICE_LEN = 80
 _MAX_DESCRIZIONE_LEN = 200
@@ -94,6 +100,28 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
         E_DEFINIZIONE_VALIDATION,
         "Esiste gia' una definizione con questo codice.",
         "codice",
+    ),
+}
+
+# I CHECK «non vuoto» (giro 4, U28). Il service normalizza la stringa vuota a
+# NULL e rifiuta quella obbligatoria vuota prima del DB: la mappa serve a chi
+# arriva al vincolo per un'altra strada, perche' risponda sul campo e non con
+# un 500.
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
+    "chk_lista_definizione_codice_non_vuoto": (
+        E_DEFINIZIONE_VALIDATION, "Il codice non puo' essere vuoto.", "codice",
+    ),
+    "chk_lista_definizione_descrizione_non_vuota": (
+        E_DEFINIZIONE_VALIDATION, "La descrizione non puo' essere vuota.", "descrizione",
+    ),
+    "chk_lista_definizione_schema_dati_non_vuoto": (
+        E_DEFINIZIONE_VALIDATION, "Lo schema dati non puo' essere vuoto.", "schema_dati",
+    ),
+    "chk_lista_definizione_vista_sql_non_vuota": (
+        E_DEFINIZIONE_VALIDATION, "La vista, se indicata, non puo' essere vuota.", "vista_sql",
+    ),
+    "chk_lista_definizione_note_non_vuote": (
+        E_DEFINIZIONE_VALIDATION, "Le note, se indicate, non possono essere vuote.", "note",
     ),
 }
 
@@ -200,6 +228,7 @@ class ListaDefinizioneAdminService:
             map_integrity_error(
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_DEFINIZIONE_VALIDATION,
                 fallback_message="Violazione vincolo DB su definizione lista.",
                 context={
@@ -209,15 +238,13 @@ class ListaDefinizioneAdminService:
         return self.get_definizione(new_id)
 
     # Scopo: Aggiorna definizione sui soli campi presenti nel payload.
-    #        Tutti i campi ESPOSTI sono mutabili (nessun immutabile per
-    #        design): cambiare `vista_sql` su lista esistente passa per il
-    #        trigger guard come per la create.
-    # ⚠️ «Tutti» si riferisce ai sei della whitelist, e c'e' UNA colonna della
-    #        tabella deliberatamente fuori: `multi_emittente`. Non e' un campo
-    #        che questo service ha dimenticato di esporre — e' l'unica
-    #        eccezione a questa frase, e il perche' e' scritto accanto a
-    #        `CREATE_KEYS`. Chi riallinea le whitelist «per coerenza» legga
-    #        prima quello.
+    #        Cambiare `vista_sql` su lista esistente passa per il trigger
+    #        guard come per la create.
+    # ⚠️ Fuori dalla whitelist, deliberatamente: `codice` (immutabile, vedi
+    #        `UPDATE_KEYS`) e le tre dichiarazioni della lista. Non sono campi
+    #        che questo service ha dimenticato di esporre: il perche' e'
+    #        scritto accanto a `CREATE_KEYS`. Chi riallinea le whitelist «per
+    #        coerenza» legga prima quello.
     def update_definizione(
         self,
         lista_id: int,
@@ -227,6 +254,15 @@ class ListaDefinizioneAdminService:
         # 404 unificato: legge il dettaglio per validare l'id.
         self.get_definizione(lista_id)
 
+        # Il codice e' immutabile: un rifiuto parlante sul campo, prima della
+        # whitelist (che direbbe solo «campo non supportato»).
+        if "codice" in payload:
+            ErrorManager.raise_error(
+                code=E_DEFINIZIONE_VALIDATION,
+                message="Il codice della lista non si puo' cambiare.",
+                detail="codice non aggiornabile",
+                fields=("codice",),
+            )
         self._v.validate_allowed_keys(
             payload,
             allowed=UPDATE_KEYS,
@@ -244,6 +280,7 @@ class ListaDefinizioneAdminService:
             map_integrity_error(
                 exc,
                 unique_constraints=_UNIQUE_CONSTRAINTS,
+                check_constraints=_CHECK_CONSTRAINTS,
                 fallback_code=E_DEFINIZIONE_VALIDATION,
                 fallback_message="Violazione vincolo DB su definizione lista.",
                 context={"lista_id": lista_id},
@@ -321,10 +358,6 @@ class ListaDefinizioneAdminService:
     #        il valore corrente.
     def _build_update_data(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
-        if "codice" in payload:
-            data["codice"] = self._v.require_string(
-                payload, "codice", max_len=_MAX_CODICE_LEN
-            )
         if "descrizione" in payload:
             data["descrizione"] = self._v.require_string(
                 payload, "descrizione", max_len=_MAX_DESCRIZIONE_LEN

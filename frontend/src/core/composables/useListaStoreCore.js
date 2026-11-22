@@ -127,7 +127,11 @@ export const PADRE_SENZA_EMITTENTE = Symbol('PADRE_SENZA_EMITTENTE')
 //       resta piena), `'svuota'`, `'ignora'`. E' il parametro omonimo di
 //       `useListaEmptyStateFetch`, passato tal quale: le tre UX convivono nel
 //       prodotto e la scelta e' dello store, non del BB.
-//   - orderBy / orderDir: ordinamento di partenza.
+//   - orderBy / orderDir: ordinamento di partenza SCRITTO DALLO STORE. ⛔ Una
+//       lista configurabile non lo dichiara (BE25 (2) di brief-db-revisione-ui,
+//       2026-11-22): senza `order_by` il backend applica l'ordinamento del
+//       preset di base e lo dice in `meta.ordinamento` (`ordinamentoApplicato`).
+//       Resta per le superfici fuori catalogo.
 //   - orderDirDefault: il RIPIEGO del verso quando `order_by` c'e' e
 //       `order_dir` no (`paramsOrdinamento`). Default `'asc'`, che e' quello
 //       che questo BB ha sempre avuto. ⛔ E' un parametro e non si deriva da
@@ -332,6 +336,8 @@ export function useListaStoreCore({
     // `ricercaFull` (la lista cerca?) e `ricercaMinCaratteri` (da quanti
     // caratteri?): dichiarate dal BB di stato (vedi li').
     ricercaFull, ricercaMinCaratteri,
+    // L'ordinamento che il backend ha applicato (vedi `useListaEmptyStateFetch`).
+    ordinamentoApplicato,
     fetchList: fetchListBase, svuota,
     // Il termine nuovo cambia la richiesta? Lo chiede `useSearchTable`.
     ricercaCambiaLaRichiesta,
@@ -396,6 +402,7 @@ export function useListaStoreCore({
   const esposto = {
     items, totalRecords, loading, hasSearched, filters,
     ricercaFull, ricercaMinCaratteri, ricercaCambiaLaRichiesta,
+    ordinamentoApplicato,
     // Alzata da chi conosce il motivo (oggi solo il cancello di perimetro
     // emittente, in `useListaConfigurabilePage`): finche' e' true la lista non
     // interroga il backend. Si scrive nei DUE versi, mai una volta sola.

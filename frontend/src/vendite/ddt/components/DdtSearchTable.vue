@@ -59,7 +59,6 @@ const {
   getExportParams: (fmt) => buildExportParams(fmt),
   newTooltipKey: 'vendite.ddt.nuovo_ddt',
   onNew: () => emit('new'),
-  searchTableOptions: { defaultSortField: 'data', defaultSortOrder: 'desc' },
 })
 
 // --- Filtri custom (toolbar caller) — binding store via BB ---

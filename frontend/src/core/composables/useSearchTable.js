@@ -15,7 +15,7 @@
 // paginatorProps include: totalRecords, rows, first, rowsPerPageOptions,
 //   paginator, paginatorTemplate, currentPageReportTemplate
 
-import { ref, computed, watch, onMounted, onActivated, onUnmounted } from 'vue'
+import { ref, computed, unref, watch, onMounted, onActivated, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useContextStore } from '../../stores/context'
@@ -303,9 +303,26 @@ export function useSearchTable(store, options = {}) {
     paginatorPosition: 'top',
     paginatorTemplate: 'FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageDropdown CurrentPageReport',
     currentPageReportTemplate: '{currentPage}/{totalPages}',
-    sortField: store.filters.order_by || null,
-    sortOrder: store.filters.order_dir === 'desc' ? -1 : store.filters.order_dir === 'asc' ? 1 : null
+    ...intestazioneOrdinata(),
   }))
+
+  // Scopo: la colonna e il verso che l'intestazione accende: quelli chiesti
+  //        dall'operatore (`filters`), altrimenti quelli che il backend ha
+  //        applicato alla richiesta senza `order_by` (`ordinamentoApplicato`,
+  //        l'ordinamento del preset: BE25 (2) di brief-db-revisione-ui).
+  // ⚠️ Lo store scritto a mano che non espone `ordinamentoApplicato` resta come
+  //    prima: decide solo `filters`.
+  function intestazioneOrdinata() {
+    const chiesto = store.filters.order_by
+    const fonte = chiesto
+      ? { order_by: chiesto, order_dir: store.filters.order_dir }
+      : (unref(store.ordinamentoApplicato) ?? null)
+    const dir = fonte?.order_dir
+    return {
+      sortField: fonte?.order_by || null,
+      sortOrder: dir === 'desc' ? -1 : dir === 'asc' ? 1 : null,
+    }
+  }
 
   return {
     searchText,

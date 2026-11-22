@@ -258,7 +258,7 @@ function _deepClone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
-// Whitelist root del payload BE (sottoinsieme di ListaPreferenzaService).
+// Whitelist root del payload (le chiavi che il guard di forma del DB ammette).
 // Sotto-whitelist colonna inline in _extractColonna.
 // ⛔ `ordinamento` e `filtri` NON si salvano (Q38 e Q39 di
 //    brief-db-revisione-ui, Tid 2026-11-20): i filtri si ritirano, e il clic
@@ -279,10 +279,14 @@ function _extractWritablePayload(config) {
   return out
 }
 
+// ⛔ Una chiave a null non si manda: vale «come lo standard», e il guard di
+//    forma del DB rifiuta la voce che la porta (`E_UI_CONFIGURAZIONE_FORMA`).
+//    «Svuota la larghezza» e' la chiave assente (decisione di Tid del
+//    2026-11-22, BE8 di brief-db-revisione-ui: la toglie il FE, non il BE).
 function _extractColonna(c) {
   const out = {}
   for (const k of _COLONNA_KEYS) {
-    if (c[k] !== undefined) out[k] = c[k]
+    if (c[k] !== undefined && c[k] !== null) out[k] = c[k]
   }
   return out
 }

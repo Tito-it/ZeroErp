@@ -2,28 +2,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Test unit DashboardPreferenzaService — valida payload (whitelist
-#        chiavi anti-injection), preset di base dalla risoluzione, UPSERT/DELETE
-#        preferenza, tombstone ignore. CI senza DB reale (SimpleTestCase
+# Scopo: Test unit DashboardPreferenzaService — il corpo arriva intatto al
+#        DB (la forma la giudica il guard), preset di base dalla risoluzione,
+#        UPSERT/DELETE preferenza, «ignora». CI senza DB reale (SimpleTestCase
 #        + repository mockato). Gemello di test_lista_preferenza_service.
 #
 # Indice test (0..N):
 #   0. upsert_happy_path
-#   1. upsert_dashboard_inesistente_raises
-#   2. upsert_payload_non_dict_raises
-#   3. upsert_payload_chiavi_extra_raises
-#   4. upsert_widget_non_lista_raises
-#   5. upsert_widget_oltre_tetto_raises
-#   6. upsert_widget_item_non_dict_raises
-#   7. upsert_widget_chiavi_extra_raises
-#   8. upsert_widget_codice_mancante_raises
-#   9. upsert_widget_codici_duplicati_raises
-#  10. upsert_widget_ordine_non_positivo_raises
-#  11. upsert_dimensione_max_oltre_tetto_raises
-#  12. delete_happy_path_idempotente
-#  13. delete_dashboard_inesistente_raises
-#  14. ignore_preset_update_happy_path
-#  15. ignore_preset_update_senza_preferenza_raises
+#   1. upsert_senza_preset_di_base
+#   2. upsert_dashboard_inesistente_raises
+#   3. upsert_una_chiave_sola_arriva_da_sola
+#   4. upsert_senza_chiavi_raises
+#   5. upsert_payload_non_dict_raises
+#   6. upsert_la_forma_arriva_intatta_al_db (BE8 e BE11, giro 2: la forma la giudica il DB)
+#   7. delete_happy_path_idempotente
+#   8. delete_dashboard_inesistente_raises
+#   9. ignore_preset_update_happy_path
+#  10. ignore_preset_update_senza_preferenza_raises
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -142,10 +137,9 @@ class DashboardPreferenzaUpsertTests(SimpleTestCase):
         repo = _make_repo()
         svc = DashboardPreferenzaService(repository=repo)
 
-        for payload in ({}, {"dimensione_max": None}):
-            with self.subTest(payload=payload), self.assertRaises(ServiceError) as ctx:
-                svc.upsert(_make_user(), "home", payload)
-            self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        with self.assertRaises(ServiceError) as ctx:
+            svc.upsert(_make_user(), "home", {})
+        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
         repo.upsert_preferenza.assert_not_called()
 
     @_PATCH_EMITTENTE
@@ -156,101 +150,27 @@ class DashboardPreferenzaUpsertTests(SimpleTestCase):
             svc.upsert(_make_user(), "home", ["non", "dict"])  # type: ignore[arg-type]
         self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
 
+    # ⛔ La forma la giudica il guard del DB (BE8 e BE11 di
+    #    brief-db-revisione-ui, giro 2): chiavi, voci, codici doppi e il tetto
+    #    1-100 di `dimensione_max`. Il service non toglie, non converte e non
+    #    rifiuta niente: un corpo sbagliato in ogni modo arriva INTATTO al
+    #    repository; il rifiuto (`E_UI_CONFIGURAZIONE_FORMA`, 400) lo prova
+    #    `tests/db/test_forma_preferenza_db`.
     @_PATCH_EMITTENTE
-    def test_upsert_payload_chiavi_extra_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
+    def test_upsert_la_forma_arriva_intatta_al_db(self, _mock_em) -> None:
+        repo = _make_repo()
+        svc = DashboardPreferenzaService(repository=repo)
 
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(
-                _make_user(), "home",
-                {**_VALID_PAYLOAD, "iniettata": True},
-            )
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_non_lista_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "home", {"widget": {"codice": "x"}})
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_oltre_tetto_raises(self, _mock_em) -> None:
-        # Guardia anti-payload-abnorme: oltre 100 widget in un salvataggio.
-        troppi = [
-            {"codice": f"w{i}", "ordine": i + 1, "visibile": True}
-            for i in range(101)
-        ]
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "home", {"widget": troppi})
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_item_non_dict_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "home", {"widget": ["stringa"]})
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_chiavi_extra_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(
-                _make_user(), "home",
-                {"widget": [{"codice": "x", "deep_link": {"path": "/x"}}]},
-            )
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_codice_mancante_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(
-                _make_user(), "home",
-                {"widget": [{"ordine": 1, "visibile": True}]},
-            )
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_codici_duplicati_raises(self, _mock_em) -> None:
-        # Codice duplicato = layout ambiguo (la fn DB joina sul codice).
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(
-                _make_user(), "home",
-                {"widget": [
-                    {"codice": "x", "ordine": 1},
-                    {"codice": "x", "ordine": 2},
-                ]},
-            )
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_widget_ordine_non_positivo_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(
-                _make_user(), "home",
-                {"widget": [{"codice": "x", "ordine": 0}]},
-            )
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
-
-    @_PATCH_EMITTENTE
-    def test_upsert_dimensione_max_oltre_tetto_raises(self, _mock_em) -> None:
-        svc = DashboardPreferenzaService(repository=_make_repo())
-
-        with self.assertRaises(ServiceError) as ctx:
-            svc.upsert(_make_user(), "home", {"dimensione_max": 101})
-        self.assertEqual(ctx.exception.code, E_UI_PREFERENZA_VALIDAZIONE)
+        payload = {
+            "widget": [
+                {"codice": "x", "ordine": 0, "deep_link": {"path": "/x"}},
+                {"codice": "x", "visibile": None},
+            ],
+            "dimensione_max": 101,
+            "iniettata": True,
+        }
+        svc.upsert(_make_user(), "home", payload)
+        self.assertEqual(repo.upsert_preferenza.call_args.kwargs["configurazione"], payload)
 
 
 class DashboardPreferenzaDeleteTests(SimpleTestCase):

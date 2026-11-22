@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import jsonb_out
+from apps.core.services.db_error_fields import diagnostica_db
 
 
 class DashboardRepository:
@@ -72,19 +73,26 @@ class DashboardRepository:
     # Scopo: Restituisce `dashboard_definizione.id` dato il codice. None se
     #        inesistente o non attiva. Usato dai service di scrittura per
     #        un 404 parlante prima di toccare la preferenza.
+    # ⭐ «Dashboard accesa per codice» ha una sede sola, il BB DB
+    #    `ui.fn_dashboard_da_codice` (giro 5 di brief-db-revisione-ui, U34,
+    #    BE17), lo stesso che legge `fn_resolve_dashboard_config`: qui non si
+    #    riscrive il `WHERE codice … AND attivo`. Il BB rifiuta con
+    #    `E_UI_DASHBOARD_NON_TROVATA`; chi vuole «niente» intercetta quel
+    #    codice (Q23), dentro un savepoint, perche' la transazione del
+    #    chiamante resti usabile. Ogni altro errore si propaga.
     def get_dashboard_id(self, dashboard_codice: str) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id
-                  FROM ui.dashboard_definizione
-                 WHERE codice = %s
-                   AND attivo = TRUE
-                """,
-                [dashboard_codice],
-            )
-            row = cursor.fetchone()
-        return int(row[0]) if row else None
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM ui.fn_dashboard_da_codice(%s)",
+                    [dashboard_codice],
+                )
+                row = cursor.fetchone()
+        except DatabaseError as exc:
+            if diagnostica_db(exc).codice == "E_UI_DASHBOARD_NON_TROVATA":
+                return None
+            raise
+        return int(row[0]) if row and row[0] is not None else None
 
     # Scopo: Preferenza utente per (auth_user, dashboard). None se assente.
     #        Inclusi i metadati preset per il badge "preset aggiornato".
@@ -125,6 +133,8 @@ class DashboardRepository:
     # ⭐ Lo snapshot lo scrive il trigger del DB, come per le liste
     #    (`UiRepository.upsert_preferenza`): `preset_base_id` resta nel SET
     #    perche' e' la colonna che fa scattare il riallineamento.
+    # ⛔ `data_update` non si scrive: lo scrive `ui.trgfn_preferenza_data_update`
+    #    (BE21, giro 5 di brief-db-revisione-ui, Q22).
     def upsert_preferenza(
         self,
         auth_user_id: int,
@@ -145,8 +155,7 @@ class DashboardRepository:
                 VALUES (%s, %s, %s, %s::jsonb, now())
                 ON CONFLICT (auth_user_id, dashboard_id) DO UPDATE
                    SET configurazione          = EXCLUDED.configurazione,
-                       preset_base_id          = EXCLUDED.preset_base_id,
-                       data_update             = now()
+                       preset_base_id          = EXCLUDED.preset_base_id
                 RETURNING id
                 """,
                 [
@@ -172,8 +181,7 @@ class DashboardRepository:
             cursor.execute(
                 """
                 UPDATE ui.dashboard_preferenza_utente
-                   SET preset_base_id = preset_base_id,
-                       data_update    = now()
+                   SET preset_base_id = preset_base_id
                  WHERE auth_user_id = %s
                    AND dashboard_id = %s
                 """,

@@ -16,6 +16,11 @@ from psycopg.postgres import types as _tipi_postgres
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.request_context import (
+    OrdinamentoPropostoRifiutato,
+    conferma_ordinamento_proposto,
+    e_chiave_proposta,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -800,8 +805,21 @@ def colonna_ordinamento(order_by: str | None, colonne: Mapping[str, str]) -> str
     chiave = (order_by or "").strip()
     if not chiave:
         return None
+    # ⭐ L'ORDINAMENTO DI PARTENZA (BE25 (2) di brief-db-revisione-ui): la base
+    #    view PROPONE la prima voce del preset a una richiesta che non ordinava
+    #    (`apps.core.services.ordinamento_di_partenza`). Qui, la sede unica
+    #    della risoluzione, la proposta diventa APPLICATA (e la risposta la dice
+    #    in `meta.ordinamento`) oppure si rifiuta con un errore suo, che la view
+    #    intercetta per rileggere la lista senza (`OrdinamentoPropostoRifiutato`).
+    #    Una lista che non risolve chiavi (ordina nel browser) non conferma
+    #    niente, e la risposta non dice un ordinamento che non ha.
+    proposta = e_chiave_proposta(chiave)
     if chiave not in colonne:
+        if proposta:
+            raise OrdinamentoPropostoRifiutato("order_by_invalid")
         raise ValueError("order_by_invalid")
+    if proposta:
+        conferma_ordinamento_proposto()
     return colonne[chiave]
 
 

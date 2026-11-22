@@ -112,11 +112,11 @@ export function useDashboardConfig(codice) {
   //        (la selezione puo' essere cambiata, quindi anche le key da
   //        contare).
   //
-  // Drift risk: la whitelist FE deve restare allineata a
-  // DashboardPreferenzaService._PAYLOAD_KEYS / _WIDGET_KEYS. Se il BE
-  // accetta nuove chiavi, aggiungerle anche qui; se ne rimuove, il PUT
-  // le invierebbe e il PayloadValidator risponderebbe con
-  // E_UI_PREFERENZA_VALIDAZIONE — errore parlante, nessun danno.
+  // Drift risk: la whitelist FE deve restare allineata alle chiavi che il
+  // guard di forma del DB ammette (`ui.fn_check_forma_configurazione`). Se
+  // il DB ne ammette di nuove, aggiungerle anche qui; se ne toglie, il PUT
+  // le invierebbe e il DB risponderebbe `E_UI_CONFIGURAZIONE_FORMA` (400)
+  // con la chiave — errore parlante, nessun danno.
   async function save() {
     if (!config.value) return null
     // ⭐ Per chiave (2026-11-01, BB `preferenzaPerChiave`): solo le chiavi
@@ -175,12 +175,15 @@ export function useDashboardConfig(codice) {
     return contatori.value[key] ?? null
   }
 
-  // Cap di card mostrabili, dal preset risolto. Fallback 8 allineato al
-  // default DB (`ui.dashboard_preset.dimensione_max`).
+  // Cap di card mostrabili, dalla configurazione risolta: il DB la da'
+  // sempre, lo standard compreso (`dimensione_max_standard`, una sede sola,
+  // `ui.fn_dimensione_max_ammessa`). ⛔ Nessun ripiego numerico qui (FE1 del
+  // giro 3 di brief-db-revisione-ui): prima c'era un `?? 8` ricopiato dal DB.
+  // `null` finche' la configurazione non e' letta (e allora non ci sono card).
   // Dichiarata PRIMA di widgetVisibili che la consuma: i computed sono
   // lazy e reggerebbero comunque, ma l'ordine corretto evita la classe
   // di TDZ silenziosa che morde con i watch immediate.
-  const dimensioneMax = computed(() => config.value?.dimensione_max ?? 8)
+  const dimensioneMax = computed(() => config.value?.dimensione_max ?? null)
 
   // Widget effettivamente da mostrare in griglia: solo i visibili,
   // ordinati, e tagliati a `dimensione_max`. Il taglio e' qui e non nel
@@ -191,8 +194,9 @@ export function useDashboardConfig(codice) {
       .filter(w => w.visibile)
       .slice()
       .sort((a, b) => (a.ordine ?? 0) - (b.ordine ?? 0))
+    // ⛔ «≤0 = nessun tetto» non esiste (Q12): il tetto e' fra 1 e 100.
     const max = dimensioneMax.value
-    return max > 0 ? visibili.slice(0, max) : visibili
+    return max == null ? visibili : visibili.slice(0, max)
   })
 
   // Count dei widget nuovi apparsi in catalogo dopo l'ultimo salvataggio
@@ -261,7 +265,7 @@ function _deepClone(obj) {
   return JSON.parse(JSON.stringify(obj))
 }
 
-// Whitelist root del payload BE (allineata a DashboardPreferenzaService).
+// Whitelist root del payload (le chiavi che il guard di forma del DB ammette).
 const _PAYLOAD_ROOT_KEYS = ['widget', 'dimensione_max']
 const _WIDGET_KEYS = ['codice', 'ordine', 'visibile']
 
@@ -276,10 +280,13 @@ function _extractWritablePayload(config) {
   return out
 }
 
+// ⛔ Una chiave a null non si manda: il guard di forma del DB rifiuta la voce
+//    che la porta (`E_UI_CONFIGURAZIONE_FORMA`), gemello di `_extractColonna`
+//    di useListaConfig (BE8 di brief-db-revisione-ui).
 function _extractWidget(w) {
   const out = {}
   for (const k of _WIDGET_KEYS) {
-    if (w[k] !== undefined) out[k] = w[k]
+    if (w[k] !== undefined && w[k] !== null) out[k] = w[k]
   }
   return out
 }

@@ -1616,10 +1616,14 @@ Quando l'utente seleziona un risultato dalla ricerca universale (SearchDrawer), 
 la risoluzione del termine di ricerca iniziale. Le SearchTable si usano esattamente come prima:
 
 ```js
-const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store, {
-  defaultSortField: 'ragione_sociale_completa'
-})
+const { searchText, onPage, onSort, paginatorProps } = useSearchTable(store)
 ```
+
+⛔ Niente `defaultSortField` su una lista configurabile la cui view dichiara
+`lista_codice`: l'ordinamento di partenza lo applica il backend dal preset e lo
+dice in `meta.ordinamento`, da cui `paginatorProps` accende l'intestazione
+(BE25 (2) di brief-db-revisione-ui, 2026-11-22). L'opzione resta per le
+superfici fuori catalogo.
 
 **Nella View** serve solo il watcher per auto-apertura drawer da contesto:
 

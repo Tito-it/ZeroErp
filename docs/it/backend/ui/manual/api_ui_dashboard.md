@@ -61,7 +61,7 @@ contatori: la funzione DB non viene chiamata due volte per la stessa richiesta.
 
 | metodo | fa |
 |---|---|
-| `PUT` | upsert della preferenza utente, **`Idempotency-Key` obbligatoria** — body: `widget` (lista, max 100, di oggetti con le sole chiavi `codice` obbligatorio, `ordine` intero positivo, `visibile` booleano; codici duplicati rifiutati) e `dimensione_max` (intero positivo, max 100), entrambi opzionali: la chiave assente vale «come lo standard». ⛔ Il `PUT` senza nessuna chiave è un `400 E_UI_PREFERENZA_VALIDAZIONE`: per tornare allo standard si usa la `DELETE`. Altre chiavi, nel corpo o nel widget: `400 E_UI_PREFERENZA_VALIDAZIONE`. Risposta `{"id", "preset_base_id"}` |
+| `PUT` | upsert della preferenza utente, **`Idempotency-Key` obbligatoria** — body: `widget` (lista di oggetti con le sole chiavi `codice` obbligatorio, una card del pool della dashboard, `ordine` intero positivo, `visibile` booleano; codici duplicati rifiutati) e `dimensione_max` (intero da 1 a 100), entrambi opzionali: la chiave **assente** vale «come lo standard». ⭐ La forma la giudica il DB (`ui.trgfn_preferenza_guard_forma`, BE8 e BE11 di brief-db-revisione-ui, 2026-11-22): altre chiavi, nel corpo o nel widget, una chiave a `null`, un tipo errato o il tetto superato sono un `400 E_UI_CONFIGURAZIONE_FORMA`, col messaggio che nomina la chiave e il motivo. ⛔ Il `PUT` senza nessuna chiave, o con un corpo che non è un oggetto, è un `400 E_UI_PREFERENZA_VALIDAZIONE`: per tornare allo standard si usa la `DELETE`. Risposta `{"id", "preset_base_id"}` |
 | `DELETE` | cancella la preferenza: la dashboard **torna al preset**, non si svuota. Idempotente: `{"deleted": true\|false}` |
 
 La `DELETE` e' il «ripristina predefiniti» della UI: senza preferenza la cascata
@@ -90,7 +90,8 @@ insegnare a ignorare gli avvisi.
 | codice | HTTP | quando |
 |---|---|---|
 | `E_UI_DASHBOARD_NON_TROVATA` | 404 | `codice` dashboard inesistente (tutte e quattro le rotte) |
-| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | corpo del `PUT` fuori whitelist, malformato o senza nessuna chiave |
+| `E_UI_PREFERENZA_VALIDAZIONE` | 400 | corpo del `PUT` che non è un oggetto, o senza nessuna chiave |
+| `E_UI_CONFIGURAZIONE_FORMA` | 400 | forma del `PUT` non ammessa (dal guard a DB): il messaggio nomina la chiave e il motivo |
 | `E_UI_PREFERENZA_NON_TROVATA` | 404 | `ignore-preset-update` senza una preferenza salvata |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | `PUT` preferenza o `POST` ignore-preset-update senza chiave |
 

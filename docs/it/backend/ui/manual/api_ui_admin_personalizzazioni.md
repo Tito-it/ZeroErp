@@ -219,6 +219,15 @@ stabilisce (il guard rifiuta di cambiarle); altrimenti è vuoto, mai `null`.
 ⭐ Nessun elenco di colonne nel backend: lo dà il DB, e il frontend spegne il
 cestino e quei campi col motivo.
 
+`non_editable_fields` — i campi **fermi per modello** della riga (dal
+2026-11-22, `/verifica` di brief-db-revisione-ui): le colonne che un trigger
+di lock vivo blocca (il `codice` di definizioni e colonne, il «posto» del
+preset: `lista_id`, `ambito`, `profilo_accesso_id`, `emittente_fiscale_id`) e
+i lock condizionali valutati sulla riga, da `dbops.fn_non_editable_fields`
+nella stessa SELECT. Lo portano liste e dettagli delle tre tabelle; vuoto,
+mai `null`. Il frontend spegne quei campi in modifica e li toglie dal PATCH
+(BB `campoFermo`). ⭐ Anche qui nessun elenco nel backend né nel frontend.
+
 Errori:
 
 - `401`, `403` (azione `ui_preset_manage` mancante)
@@ -628,14 +637,14 @@ mappa.
 | # | Rotta | Corpo / risposta | Errori |
 | --- | --- | --- | --- |
 | 12 | `GET /admin/definizioni/` | `{"results": [...], "count": n}`: tutte, disattivate comprese, `attivo DESC, codice, id` | — |
-| 13 | `POST /admin/definizioni/` | `CREATE_KEYS`: `codice`, `descrizione`, `schema_dati` (obbligatori), `vista_sql`, `note`, `attivo` (default `true`) | `E_UI_DEFINIZIONE_VALIDAZIONE` (anche codice duplicato, campo `codice`), `E_UI_VISTA_SQL_NON_TROVATA` |
+| 13 | `POST /admin/definizioni/` | `CREATE_KEYS`: `codice`, `descrizione`, `schema_dati` (obbligatori), `vista_sql`, `note`, `attivo` (default `true`). Il dettaglio porta anche le tre **dichiarazioni** della lista (`multi_emittente`, `perimetro_emittente`, `legge_lineage`), in sola lettura: ⛔ si scrivono solo dal seed | `E_UI_DEFINIZIONE_VALIDAZIONE` (anche codice duplicato, campo `codice`; un testo vuoto sul suo campo), `E_UI_VISTA_SQL_NON_TROVATA` |
 | 14 | `GET /admin/definizioni/{id}/` | la definizione completa | 404 `E_UI_DEFINIZIONE_NON_TROVATA` |
-| 15 | `PATCH /admin/definizioni/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` (⛔ `multi_emittente` non è scrivibile) | come 13, più 404 |
+| 15 | `PATCH /admin/definizioni/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` **senza `codice`**: il codice è la chiave con cui la schermata si cerca, e non si cambia (giro 4 di brief-db-revisione-ui, BE12: nel corpo è un `400 E_UI_DEFINIZIONE_VALIDAZIONE` sul campo; a DB il lucchetto `E_UI_LISTA_CODICE_IMMUTABILE`). ⛔ Le tre dichiarazioni non sono scrivibili. Spegnere una lista con colonne e preset accesi **passa** e li sospende senza toccarli (U22, Q13): riaccesa, torna com'era | come 13, più 404; `400 E_UI_LISTA_COLONNE_ORFANE` se il cambio di vista o di schema, o la riaccensione, lascerebbe colonne senza il loro campo (il messaggio le nomina) |
 | 16 | `DELETE /admin/definizioni/{id}/` | — | 404; 409 `E_UI_DEFINIZIONE_IN_USO` se ha colonne, preset o preferenze (FK RESTRICT): l'alternativa è `PATCH attivo=false` |
 | 17 | `GET /admin/definizioni/{id}/colonne/` | `{"results": [...], "count": n}`: tutte le colonne, disattivate comprese | 404 `E_UI_DEFINIZIONE_NON_TROVATA` |
-| 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path | `E_UI_COLONNA_VALIDAZIONE` (codice duplicato nella lista, colonna `azione` esportabile, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, 404 definizione |
+| 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `origine_campo` (`VISTA` default / `LINEAGE`: la genealogia dei documenti, solo su una lista che dichiara `legge_lineage`), `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path. ⭐ I default dei flag seguono il modello, solo per il flag non mandato: senza `campo_sorgente` la colonna nasce non esportabile, una `LINEAGE` non filtrabile né ordinabile. ⛔ Un valore esplicito non si corregge: i vincoli fra campi li giudica il DB (un'azione non ha campo sorgente; senza campo sorgente non si esporta; la genealogia non si filtra, non si ordina, non si cerca) | `E_UI_COLONNA_VALIDAZIONE` sul campo che lo risolve (codice duplicato nella lista, i tre vincoli sopra, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, `E_UI_LINEAGE_NON_DICHIARATA`, 404 definizione |
 | 19 | `GET /admin/colonne/{id}/` | la colonna completa | 404 `E_UI_COLONNA_NON_TROVATA` |
-| 20 | `PATCH /admin/colonne/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` (`lista_id` immutabile) | come 18, più 404 |
+| 20 | `PATCH /admin/colonne/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` **senza `codice`** (preferenze e preset cercano la colonna per codice: BE12; a DB `E_UI_COLONNA_CODICE_IMMUTABILE`); `lista_id` e `codice` nel corpo sono un `400` sul campo. Nessun valore derivato: i vincoli fra campi si giudicano sul valore finale della riga | come 18, più 404 |
 | 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se una preferenza utente la nomina (soft-block applicativo); preset e permessi della colonna vanno via in CASCADE |
 
 ---
@@ -658,7 +667,10 @@ Lo status segue la classe a catalogo (`error_policies_generated.py`):
 | `E_UI_COLONNA_NON_TROVATA` | 404 | show_empty_state |
 | `E_UI_COLONNA_IN_USO` | 409 | show_error_banner |
 | `E_UI_VISTA_SQL_NON_TROVATA` · `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | guard DB su `vista_sql` / `campo_sorgente` |
-| `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE` | 403 | guard DB: `multi_emittente` non si scrive da qui |
+| `E_UI_LINEAGE_NON_DICHIARATA` | 400 | guard DB: colonna `LINEAGE` su una lista che non dichiara `legge_lineage` |
+| `E_UI_LISTA_COLONNE_ORFANE` | 400 | guard DB su `vista_sql`: colonne `VISTA` senza il loro campo nella relazione nuova |
+| `E_UI_LISTA_CODICE_IMMUTABILE` · `E_UI_COLONNA_CODICE_IMMUTABILE` | 409 | lucchetti DB sul codice (il BE lo rifiuta prima, sul campo) |
+| `E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE` | 403 | guard DB: una dichiarazione della lista (`multi_emittente`, `perimetro_emittente`, `legge_lineage`) non si scrive da qui; il messaggio nomina la colonna. Sostituisce `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`, ritirato il 2026-11-21 |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | show_error_banner |
 
 ## Regole
@@ -734,9 +746,10 @@ Azioni di processo (seedate in `config.azioni_processo` 2026-05-08):
   validazione. Cancellazione bloccata da FK RESTRICT
   (`E_UI_DEFINIZIONE_IN_USO` / `E_UI_COLONNA_IN_USO`) e da soft-block
   applicativo per preferenze utente (count JSONB
-  `configurazione->colonne` per codice). UX vincolo: forzato
-  `esportabile=false` quando `tipo_colonna='azione'` (CHECK
-  `chk_ui_lista_colonna_azione_non_esportabile`). Pagina FE:
+  `configurazione->colonne` per codice). I vincoli fra campi della colonna
+  (azione senza campo sorgente, senza campo non esportabile, genealogia solo
+  mostrata) sono CHECK del DB dal giro 4 di brief-db-revisione-ui: il drawer
+  spegne ciò che il DB rifiuterebbe, il service non li ricopia. Pagina FE:
   `/amm-software/personalizzazioni-liste-tecniche`, voce sidebar
   `adminOnly: true`. Voce sidebar separata da `/config/personalizzazioni-liste`
   (Fase 1, operativa). Endpoint nuovi: §12-§21 della tabella sopra.

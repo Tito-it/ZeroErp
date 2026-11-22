@@ -129,10 +129,6 @@ const {
       disabled: aggiunta.bloccata(props.versione),
     },
   ],
-  searchTableOptions: {
-    defaultSortField: 'articolo_descrizione',
-    defaultSortOrder: 'asc',
-  },
 })
 
 // Stato master-detail inline

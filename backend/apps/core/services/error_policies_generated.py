@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1259, di cui 132 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1264, di cui 133 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -536,7 +536,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "DATO_ERRATO",
     # dbops.fn_run_automations_date_validita non e riuscita a montare il guard delle date di validita (script.trgfn_guard_date_validita) su una tabella con valido_dal/valido_al. Nessun operatore lo provoca: e un difetto di struttura o di permessi di chi migra. Brief: brief-db-guard-date-validita.
     "E_DATE_VALIDITA": "TECNICO",
-    # La regola dbops.fn_dati_di_sviluppo_ammessi_su_valori (brief-db-processi-accensione-per-ambiente, R-4): i dati di sviluppo nascono solo in un'installazione SVILUPPO. La sollevano il guard dbops.trgfn_etichette_di_prova_guard (un'etichetta di prova su un database PRODUZIONE) e il verbo anagrafiche.fn_provisiona_dati_di_sviluppo (che in PRODUZIONE non parte): e' la stessa decisione, quindi un codice. Il VARIADIC porta l'ambiente. NON_ESEGUIBILE: non e' un dato sbagliato, e' un gesto che su questa installazione non si fa.
+    # La regola dbops.fn_dati_di_sviluppo_ammessi_su_valori (brief-db-processi-accensione-per-ambiente, R-4): i dati di sviluppo nascono solo in un'installazione SVILUPPO. La sollevano il guard dbops.trgfn_etichette_di_prova_guard (un'etichetta di prova su un database PRODUZIONE) il verbo anagrafiche.fn_provisiona_dati_di_sviluppo (che in PRODUZIONE non parte) e il builder dbops.fn_crea_regime_fiscale_di_prova (brief-db-fornitore-doppioni-del-soggetto, D-9): e' la stessa decisione, quindi un codice. Il VARIADIC porta l'ambiente. NON_ESEGUIBILE: non e' un dato sbagliato, e' un gesto che su questa installazione non si fa.
     "E_DATI_DI_SVILUPPO_IN_PRODUZIONE": "NON_ESEGUIBILE",
     # Canale della fattura elettronica C (codice SDI) senza codice_sdi. Lo solleva anagrafiche.trgfn_dati_societari_guard_canale_fe; il CHECK chk_dati_societari_canale_fe_coerente resta la rete. DATO_ERRATO, campo codice_sdi. Frase chiusa. Brief: brief-db-character-n-spazi-di-riempimento (D-6, Tid 2026-10-10).
     "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "DATO_ERRATO",
@@ -1990,12 +1990,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "DATO_ERRATO",
     # Guard di contesto delle liste configurabili su una condizione che NESSUNA interfaccia puo' produrre: il backend (apps/ui/services/ui_service.get_lista_config_per_video) legge la configurazione della lista per l'utente della chiamata (auth_user_id esplicito) e ricerca_full per l'utente del contesto di sessione (GUC app.current_user_id, impostata da JwtAuditMiddleware). Se la GUC e' vuota o nomina un altro utente, le due letture rispondono per due persone diverse: la casella di ricerca direbbe una cosa e la ricerca ne farebbe un'altra (le colonne sensibili senza grant), senza errore. Lo solleva il BACKEND, non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe. Gemello di E_MAG_, E_PAGAMENTI_ ed E_VENDITE_CHIAMATA_NON_VALIDA, TECNICO per la stessa ragione: e' rotto il chiamante, l'operatore non ha niente da correggere. ⛔ Non E_UI_GENERIC_FAILED (DATO_ERRATO: direbbe «correggi e riprova» su un guasto di contesto) e non E_SCOPE_SENZA_UTENTE (copre solo la GUC vuota, e parla di scritture su tabelle con perimetro). ⛔ Frase CHIUSA, senza segnaposto: nessuna funzione PL/pgSQL la riempie, e un %s uscirebbe grezzo a video; lista_codice, auth_user_id e l'utente della GUC vanno nel contesto dell'errore. Nasce il 2026-09-24 (brief-be-ricerca-full-liste-residue, sezione 12).
     "E_UI_CHIAMATA_NON_VALIDA": "TECNICO",
+    # Lock di colonna (dbops.automation_lock_columns) su ui.lista_colonna.codice: il codice è la chiave delle preferenze e dei preset, che citano le colonne per codice, e non si riscrive (brief-db-revisione-ui, giro 4, U23, Q14). Una colonna col codice sbagliato si spegne e se ne crea un'altra. Segnaposto: la colonna.
+    "E_UI_COLONNA_CODICE_IMMUTABILE": "CONFLITTO_STATO",
     "E_UI_COLONNA_IN_USO": "CONFLITTO_STATO",
     "E_UI_COLONNA_NON_TROVATA": "NON_TROVATO",
     "E_UI_COLONNA_VALIDAZIONE": "DATO_ERRATO",
     # ui.trgfn_preferenza_guard_forma (a10, su ui.lista_preferenza_utente e ui.dashboard_preferenza_utente) con ui.fn_check_forma_configurazione, e ui.trgfn_ui_lista_preset_guard_ordinamento (a10, su ui.lista_preset.ordinamento_default): la configurazione di una preferenza o l'ordinamento di un preset non hanno la forma ammessa (una chiave o un campo fuori elenco o a null, un codice ripetuto o che non e' della lista o del pool, un numero che non e' un intero positivo, un col che non e' un codice). DATO_ERRATO: il chiamante ha mandato un dato fuori forma, e la frase dice quale chiave e perche'. Il frontend di oggi non lo produce: manda le colonne della risoluzione. Segnaposto: la chiave, il motivo.
     "E_UI_CONFIGURAZIONE_FORMA": "DATO_ERRATO",
-    # E_UI_DASHBOARD_NON_TROVATA: gemello del precedente per le · dashboard configurabili — sollevato da fn_resolve_dashboard_config · quando il codice dashboard non esiste o e' attivo=false.
+    # E_UI_DASHBOARD_NON_TROVATA: sollevato dal building block ui.fn_dashboard_da_codice (lo chiamano ui.fn_resolve_dashboard_config e il backend) quando il codice dashboard non esiste o la dashboard e' spenta. Gemello di E_UI_LISTA_NON_TROVATA.
     "E_UI_DASHBOARD_NON_TROVATA": "NON_TROVATO",
     "E_UI_DEFINIZIONE_IN_USO": "CONFLITTO_STATO",
     "E_UI_DEFINIZIONE_NON_TROVATA": "NON_TROVATO",
@@ -2006,6 +2008,14 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UI_EXPORT_LIMIT_EXCEEDED": "NON_ESEGUIBILE",
     # Fallback per DatabaseError non riconosciute dai marker noti · nello schema `ui` (allineato a E_VENDITE_PRICING_FAILED).
     "E_UI_GENERIC_FAILED": "DATO_ERRATO",
+    # Guard ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente: una colonna con origine_campo LINEAGE su una lista che non dichiara legge_lineage (brief-db-revisione-ui, giro 4, U26, Q15 e Q47). Segnaposto: la colonna, la lista.
+    "E_UI_LINEAGE_NON_DICHIARATA": "DATO_ERRATO",
+    # Lock di colonna (dbops.automation_lock_columns) su ui.lista_definizione.codice: il codice è la chiave con cui backend, frontend e preferenze cercano la schermata, e non si riscrive (brief-db-revisione-ui, giro 4, U23, Q14). Una lista col codice sbagliato si spegne e se ne crea un'altra. Segnaposto: la colonna.
+    "E_UI_LISTA_CODICE_IMMUTABILE": "CONFLITTO_STATO",
+    # Guard ui.trgfn_ui_lista_definizione_a10_valida_vista_sql: l'applicazione cambia la vista o lo schema di una lista accesa, o riaccende una lista, e una sua colonna VISTA (accesa o spenta) ha un campo che la relazione non ha (brief-db-revisione-ui, giro 4, U27, Q16 e Q35). Il migrate resta fuori: il seed lo giudicano il pgTAP del catalogo e il presidio dbops.vw_liste_colonne_campo_orfano. Segnaposto: la lista, la relazione, le colonne.
+    "E_UI_LISTA_COLONNE_ORFANE": "DATO_ERRATO",
+    # Guard ui.trgfn_lista_definizione_guard_dichiarazioni: un ruolo diverso dal proprietario della tabella (cioè l'applicazione) scrive una dichiarazione della lista, multi_emittente, perimetro_emittente o legge_lineage (brief-db-revisione-ui, giro 4, U23, Q14 e Q47). Le dichiarazioni sono capacità del software: le porta il CSV del seed. Sostituisce E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE. Segnaposto: la colonna, la lista.
+    "E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE": "NON_PERMESSO",
     # Cancello applicativo del flag ui.lista_definizione.multi_emittente (P-2b): una lista che NON sa dire da quale emittente arriva ogni riga viene aperta da chi ha in scope piu' di un emittente. Lo solleva il BACKEND (apps/core/services/perimetro_emittente.guard_lista), non una funzione PL/pgSQL: il catalogo lo registra perche' ogni codice che l'applicazione nomina deve avere la sua classe, e il cancello del terzo lato non distingue fra codici nati nel DB e codici nati nel backend. Classe NON_ESEGUIBILE (422) e NON NON_PERMESSO (403), ed e' di merito: il diritto C'E', manca una precondizione che l'utente scioglie da se' scegliendo un emittente dalla combo di topbar. Un 403 racconterebbe una bugia sul motivo, e fra sei mesi qualcuno cercherebbe un diritto da concedere a qualcuno. Richiesta R-1 del perimetro BE, 2026-08-18.
     "E_UI_LISTA_EMITTENTE_DA_SCEGLIERE": "NON_ESEGUIBILE",
     # E_UI_LISTA_NON_TROVATA: sollevato dal building block ui.fn_lista_da_codice (dal 2026-09-25; lo chiamano fn_resolve_lista_config · fn_lista_colonne_ricerca_full · il BB di ricerca del backend) quando il codice · lista non esiste o e' attivo=false (seedato in messaggi_errore.csv id 427). · Gli E_UI_VISTA_SQL_NON_TROVATA / E_UI_CAMPO_SORGENTE_NON_TROVATO sono guard · admin-only dei trigger B1/B2: l'utente finale non li vede in flussi normali.
@@ -2017,6 +2027,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ui.fn_guard_misura_pagina: una misura «righe per pagina» (di un preset, ui.lista_preset.pagina_dimensione, o di una preferenza utente, nel jsonb) che non e' nel catalogo ui.misure_pagina, o un valore che non e' un numero intero. Al posto del 23503 grezzo della FK e del selettore vuoto a video (il caso del 28-09: un preset a 15). campo = pagina_dimensione. Segnaposto: il valore scritto e l'elenco delle misure ammesse. Nasce il 2026-09-30 (brief-db-misure-pagina-catalogo).
     "E_UI_MISURA_PAGINA_NON_AMMESSA": "DATO_ERRATO",
     # Guard ui.trgfn_lista_definizione_guard_multi_emittente: tentativo di scrivere ui.lista_definizione.multi_emittente da un ruolo diverso dal proprietario della tabella (cioe' dall'applicazione). Il flag dichiara una CAPACITA' DEL SOFTWARE — «questa lista sa dire da quale emittente arriva ogni riga» — non una preferenza dell'utente, e una capacita' non si dichiara per stanchezza. Si accende SOLO dal seed lista_definizione.csv, insieme (o dopo) al lavoro di P-4 che la rende vera. ⚠️ Il presidio e' un TRIGGER e non un permesso di colonna: il GRANT verrebbe ri-concesso a ogni passata di ci_apply dal giro dei grant runtime, che cicla su tutti gli schemi. Piano: brief-db-perimetro-emittente-liste-e-gerarchia-ba Q1 e §11.5.
+    # ⚠️ RITIRATO il 2026-11-21
     "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE": "NON_PERMESSO",
     "E_UI_PERMESSO_NON_TROVATO": "NON_TROVATO",
     "E_UI_PERMESSO_VALIDAZIONE": "DATO_ERRATO",
@@ -2328,6 +2339,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_TASK_RUNTIME",
         "E_TXID_DBLINK_ERROR",
         "E_TXID_DBLINK_NULL",
+        "E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE",
         "E_USER_DISABILITATO",
         "E_UTENTE_NON_ATTIVO",
         "E_UTENTE_SCADUTO",
