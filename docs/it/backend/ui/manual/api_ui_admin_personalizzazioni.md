@@ -5,11 +5,14 @@
 Esporre via HTTP la gestione amministrativa dei **preset** di lista
 (`ui.lista_preset` + composizione `ui.lista_preset_colonna`) e dei
 **permessi colonna** (`ui.lista_colonna_permesso`) per il refactor
-personalizzazioni liste — Blocco F Fase 1. Le operazioni vengono
-consumate da una pagina condivisa accessibile sia da
-`/config/personalizzazioni-liste` (tenant admin con azione di processo
-abilitata) sia da `/amm-software/personalizzazioni-liste` (SUPER_ADMIN
-con bypass totale).
+personalizzazioni liste — Blocco F Fase 1 — e, in Fase 2, la gestione
+tecnica delle **definizioni** di lista e delle loro **colonne**
+(`ui.lista_definizione`, `ui.lista_colonna`, solo SUPER_ADMIN). Le
+operazioni di Fase 1 le consuma la pagina `/config/personalizzazioni-liste`
+(`GestionePersonalizzazioniListeView`: tenant admin con azione di processo
+abilitata, o SUPER_ADMIN); quelle di Fase 2 la pagina
+`/amm-software/personalizzazioni-liste-tecniche`
+(`PersonalizzazioniListeTecnicheView`).
 
 ## Contesto
 
@@ -20,9 +23,11 @@ Strato amministrativo del refactor `sviluppo-personalizzazioni-liste.md`
 - repository admin `apps.ui.db.ui_admin_repository.UiAdminRepository`
   (CRUD diretto su 5 tabelle dello schema `ui` + display fields via
   JOIN su `config.profili_accesso` e `anagrafiche.emittenti_fiscali`);
-- 3 service admin in `apps.ui.services/`:
-  - `ListaDefinizioneAdminService` (read-only — Select header lista
-    corrente + catalogo colonne grezzo);
+- 4 service admin in `apps.ui.services/`:
+  - `ListaDefinizioneAdminService` (Select header lista corrente +
+    catalogo colonne grezzo in Fase 1; CRUD delle definizioni in Fase 2);
+  - `ListaColonnaAdminService` (CRUD delle colonne di una definizione,
+    Fase 2);
   - `ListaPresetAdminService` (CRUD testata + replace atomico
     composizione);
   - `ListaColonnaPermessoAdminService` (UPSERT/DELETE permessi);
@@ -46,9 +51,12 @@ operativa 2B (2026-05-07): nessun profilo riceve di default le 2 azioni —
 SUPER_ADMIN bypassa via `script.fn_is_super_admin`, il super-admin
 abilita manualmente le azioni sui profili `REPARTO_*` da Amm. Software.
 
-Il check OR-azioni del Select header riusa la cache permessi di
-`ZeroERPPermission._get_cache(request)` per evitare round-trip DB
-ridondanti (`is_super_admin` + 2 `check_azione`).
+Il check OR-azioni del Select header (`_require_any_action` in
+`views_admin.py`) riusa la cache permessi della richiesta via
+`cache_permessi_richiesta(request)` (il context manager che legge quella di
+`ZeroERPPermission`), per evitare round-trip DB ridondanti
+(`is_super_admin` + 2 `check_azione`). Il superuser Django
+(`user.is_superuser`) salta il controllo prima ancora di aprire la cache.
 
 ---
 
@@ -185,6 +193,7 @@ Errori:
       "colonne_count": 14,
       "nata_dal_seed": true,
       "campi_del_software": ["lista_id", "codice", "ambito", "profilo_accesso_id", "emittente_fiscale_id"],
+      "non_editable_fields": ["lista_id", "ambito", "profilo_accesso_id", "emittente_fiscale_id"],
       "data_insert": "2026-05-07T10:30:00",
       "user_insert": "tid",
       "data_update": null,
@@ -349,7 +358,8 @@ Errori:
   o un secondo preset acceso nello stesso posto (campo `attivo`)
 - `400` `E_UI_CONFIGURAZIONE_FORMA` — `ordinamento_default` fuori forma
   (vedi §4)
-- `400` — payload vuoto (`Nessun campo aggiornabile presente`)
+- `400` `E_UI_PRESET_VALIDAZIONE` — payload vuoto (`Nessun campo
+  aggiornabile presente`)
 - `404` `E_UI_PRESET_NON_TROVATO`
 - `409` `E_SEED_COLONNA_DEL_SOFTWARE` — una colonna del programma su un
   preset nato dal seed
@@ -374,9 +384,12 @@ Effetti collaterali (FK):
   cancellata in cascata
 - `ui.lista_preferenza_utente.preset_base_id` → `ON DELETE SET NULL`
   (DB-2 atterrato 2026-05-07) → la preferenza utente sopravvive senza
-  riferimento; il badge "preset aggiornato" (DEF-2) sparisce e
-  l'utente lavora direttamente sul catalogo grezzo finche' non
-  applica un altro preset
+  riferimento, e `ui.trgfn_preferenza_preset_base_snapshot` vede il NULL
+  come un cambio di base: azzera lo snapshot. Le chiavi che la preferenza
+  non contiene vengono dal preset di base **di oggi** (`ui.fn_preset_di_base`:
+  ruolo, poi azienda, poi sistema), e la risoluzione dice
+  `preset_base_cambiato = true` (banner «Riallinea»). Dal catalogo grezzo
+  si parte solo se nessun preset vale
 
 Errori:
 
@@ -451,7 +464,10 @@ Whitelist root payload: `colonne`. Whitelist riga: `colonna_id`,
 
 Vincoli:
 
-- `colonne` (lista, anche vuota) — replace integrale
+- `colonne` (lista, anche vuota) — **obbligatoria**, replace integrale. Una
+  chiave assente, o un valore che non è una lista di oggetti, è un `400
+  E_UI_PRESET_VALIDAZIONE` (BB `voci`): la composizione si sostituisce in
+  blocco, non si «svuota» per omissione
 - `colonna_id` (int positivo, FK su `ui.lista_colonna.id`) — obbligatorio;
   duplicati in payload rifiutati con `E_UI_PRESET_VALIDAZIONE` (PK
   `(preset_id, colonna_id)` farebbe scattare un IntegrityError, ma
@@ -642,10 +658,10 @@ mappa.
 | 15 | `PATCH /admin/definizioni/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` **senza `codice`**: il codice è la chiave con cui la schermata si cerca, e non si cambia (giro 4 di brief-db-revisione-ui, BE12: nel corpo è un `400 E_UI_DEFINIZIONE_VALIDAZIONE` sul campo; a DB il lucchetto `E_UI_LISTA_CODICE_IMMUTABILE`). ⛔ Le tre dichiarazioni non sono scrivibili. Spegnere una lista con colonne e preset accesi **passa** e li sospende senza toccarli (U22, Q13): riaccesa, torna com'era | come 13, più 404; `400 E_UI_LISTA_COLONNE_ORFANE` se il cambio di vista o di schema, o la riaccensione, lascerebbe colonne senza il loro campo (il messaggio le nomina) |
 | 16 | `DELETE /admin/definizioni/{id}/` | — | 404; 409 `E_UI_DEFINIZIONE_IN_USO` se ha colonne, preset o preferenze (FK RESTRICT): l'alternativa è `PATCH attivo=false` |
 | 17 | `GET /admin/definizioni/{id}/colonne/` | `{"results": [...], "count": n}`: tutte le colonne, disattivate comprese | 404 `E_UI_DEFINIZIONE_NON_TROVATA` |
-| 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `origine_campo` (`VISTA` default / `LINEAGE`: la genealogia dei documenti, solo su una lista che dichiara `legge_lineage`), `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path. ⭐ I default dei flag seguono il modello, solo per il flag non mandato: senza `campo_sorgente` la colonna nasce non esportabile, una `LINEAGE` non filtrabile né ordinabile. ⛔ Un valore esplicito non si corregge: i vincoli fra campi li giudica il DB (un'azione non ha campo sorgente; senza campo sorgente non si esporta; la genealogia non si filtra, non si ordina, non si cerca) | `E_UI_COLONNA_VALIDAZIONE` sul campo che lo risolve (codice duplicato nella lista, i tre vincoli sopra, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, `E_UI_LINEAGE_NON_DICHIARATA`, 404 definizione |
+| 18 | `POST /admin/definizioni/{id}/colonne/` | `CREATE_KEYS`: `codice`, `etichetta`, `etichetta_estesa`, `etichetta_i18n_key`, `campo_sorgente`, `origine_campo` (`VISTA` default / `LINEAGE`: la genealogia dei documenti, solo su una lista che dichiara `legge_lineage`), `tipo_colonna`, `tipo_dato`, `formato`, `larghezza_default`, `ordine_default`, `allineamento` (`left`/`right`/`center`), `gruppo`, `gruppo_ordine`, `filtrabile`, `ordinabile`, `esportabile`, `ricercabile_full`, `sensibile`, `attivo`; `lista_id` dal path. **Obbligatori**: `codice`, `etichetta`, `tipo_colonna` (`identificatore` / `informazione` / `azione`), `tipo_dato` (`string` / `numeric` / `date` / `datetime` / `boolean` / `enum`), `ordine_default`. Tetti: `larghezza_default` ≤ 4000, `ordine_default` e `gruppo_ordine` ≤ 100000. ⭐ I default dei flag seguono il modello, solo per il flag non mandato: senza `campo_sorgente` la colonna nasce non esportabile, una `LINEAGE` non filtrabile né ordinabile. ⛔ Un valore esplicito non si corregge: i vincoli fra campi li giudica il DB (un'azione non ha campo sorgente; senza campo sorgente non si esporta; la genealogia non si filtra, non si ordina, non si cerca) | `E_UI_COLONNA_VALIDAZIONE` sul campo che lo risolve (codice duplicato nella lista, i tre vincoli sopra, …), `E_UI_CAMPO_SORGENTE_NON_TROVATO`, `E_UI_LINEAGE_NON_DICHIARATA`, 404 definizione |
 | 19 | `GET /admin/colonne/{id}/` | la colonna completa | 404 `E_UI_COLONNA_NON_TROVATA` |
 | 20 | `PATCH /admin/colonne/{id}/` | `UPDATE_KEYS` = `CREATE_KEYS` **senza `codice`** (preferenze e preset cercano la colonna per codice: BE12; a DB `E_UI_COLONNA_CODICE_IMMUTABILE`); `lista_id` e `codice` nel corpo sono un `400` sul campo. Nessun valore derivato: i vincoli fra campi si giudicano sul valore finale della riga | come 18, più 404 |
-| 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se una preferenza utente la nomina (soft-block applicativo); preset e permessi della colonna vanno via in CASCADE |
+| 21 | `DELETE /admin/colonne/{id}/` | — | 404; 409 `E_UI_COLONNA_IN_USO` se una preferenza utente la nomina (soft-block applicativo: nessuna FK la protegge) e poi se un preset la compone (il messaggio nomina i preset per codice; le due FK della composizione, `fk_lista_preset_colonna_lista_colonna` e la composita `fk_ui_lista_preset_colonna_colonna_della_lista`, sono NO ACTION e, se scattano lo stesso, danno lo stesso codice). Solo i **permessi** della colonna vanno via in CASCADE. Una colonna nata dal seed salta i due controlli: risponde il guard del DB, `409 E_SEED_RIGA_NON_CANCELLABILE` (si spegne con `PATCH attivo=false`) |
 
 ---
 
@@ -671,7 +687,15 @@ Lo status segue la classe a catalogo (`error_policies_generated.py`):
 | `E_UI_LISTA_COLONNE_ORFANE` | 400 | guard DB su `vista_sql`: colonne `VISTA` senza il loro campo nella relazione nuova |
 | `E_UI_LISTA_CODICE_IMMUTABILE` · `E_UI_COLONNA_CODICE_IMMUTABILE` | 409 | lucchetti DB sul codice (il BE lo rifiuta prima, sul campo) |
 | `E_UI_LISTA_DICHIARAZIONE_NON_SCRIVIBILE` | 403 | guard DB: una dichiarazione della lista (`multi_emittente`, `perimetro_emittente`, `legge_lineage`) non si scrive da qui; il messaggio nomina la colonna. Sostituisce `E_UI_MULTI_EMITTENTE_NON_SCRIVIBILE`, ritirato il 2026-11-21 |
+| `E_UI_MISURA_PAGINA_NON_AMMESSA` | 400 | guard DB: `pagina_dimensione` del preset fuori dal catalogo `ui.misure_pagina` |
+| `E_UI_CONFIGURAZIONE_FORMA` | 400 | guard DB sulla forma della configurazione |
+| `E_UI_PRESET_POSTO_IMMUTABILE` | 409 | lucchetto DB sul posto del preset (lista, ambito, profilo, emittente) |
+| `E_SEED_RIGA_NON_CANCELLABILE` | 409 | guard DB: una riga nata dal seed di primo impianto si spegne, non si cancella |
+| `E_SEED_COLONNA_DEL_SOFTWARE` | 409 | guard DB: un campo della riga di seed che appartiene al software non si modifica |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | show_error_banner |
+
+Per le righe che descrivono un guard, la `ui_action` e' quella della classe:
+`show_error_banner` (`error_policies.py`).
 
 ## Regole
 
@@ -687,9 +711,9 @@ Lo status segue la classe a catalogo (`error_policies_generated.py`):
   perche' lo schema `ui` non e' un'area funzionale di business. Il check
   e' invece sull'azione di processo (`<method>_permission`) o sulla
   combinazione OR-azioni (`_require_any_action`, vedi §1).
-- **Audit fields**: `user_insert`/`user_update` derivati dall'utente
-  autenticato via helper centralizzato `apps.ui.services._audit.user_label`
-  (fallback `'system'` per anonimi/test).
+- **Audit fields**: `user_insert`/`user_update` li scrive il DB, il trigger
+  `script.trgfn_audit_data_user_generic`, dall'utente della richiesta (GUC
+  `app.jwt_user`). Il repository non li nomina: non c'e' un helper Python.
 - **Drift risk** documentato sui set `_AMBITI_AMMESSI` e `_LIVELLI_AMMESSI`:
   duplicano gli enum DB (`ui.ambito_preset`, `config.livello_accesso`)
   per filtrare presto con messaggio parlante; il DB resta single source
@@ -699,8 +723,10 @@ Lo status segue la classe a catalogo (`error_policies_generated.py`):
 
 Tabelle:
 
-- `ui.lista_definizione` — read-only (lookup Select header + 404 guard)
-- `ui.lista_colonna` — read-only (catalogo grezzo)
+- `ui.lista_definizione` — lettura in Fase 1 (lookup Select header + 404
+  guard), CRUD in Fase 2 (§12-§16)
+- `ui.lista_colonna` — lettura in Fase 1 (catalogo grezzo), CRUD in Fase 2
+  (§17-§21)
 - `ui.lista_preset` — CRUD (testata preset)
 - `ui.lista_preset_colonna` — replace atomico (composizione)
 - `ui.lista_colonna_permesso` — UPSERT/DELETE (permessi colonna)
@@ -724,7 +750,13 @@ ENUM coinvolti:
 Vincoli rilevanti (tutti enforced lato DB):
 
 - `uq_ui_lista_preset_lista_codice` — UNIQUE codice per lista
-- `uq_ui_lista_preset_default` — partial UNIQUE 1 default per scope
+- `uq_ui_lista_preset_posto` — un solo preset **acceso** per posto (lista,
+  ambito, profilo, emittente; `NULLS NOT DISTINCT WHERE attivo`). Ha preso il
+  posto di `uq_ui_lista_preset_default`, ritirato con `is_default` il
+  2026-11-20
+- `fk_ui_lista_preset_colonna_preset_della_lista` e
+  `fk_ui_lista_preset_colonna_colonna_della_lista` — FK composite della
+  composizione: preset e colonna devono essere della stessa lista
 - `chk_ui_lista_preset_ambito_refs` — coerenza ambito ↔ refs
 - `uq_ui_lista_colonna_permesso_col_profilo` — UNIQUE coppia colonna/profilo
 
@@ -744,9 +776,10 @@ Azioni di processo (seedate in `config.azioni_processo` 2026-05-08):
   creare con `attivo=false` (o `vista_sql=null`), il trigger
   `trgfn_ui_lista_definizione_a10_valida_vista_sql` skippa la
   validazione. Cancellazione bloccata da FK RESTRICT
-  (`E_UI_DEFINIZIONE_IN_USO` / `E_UI_COLONNA_IN_USO`) e da soft-block
-  applicativo per preferenze utente (count JSONB
-  `configurazione->colonne` per codice). I vincoli fra campi della colonna
+  (`E_UI_DEFINIZIONE_IN_USO`; per le colonne FK NO ACTION della composizione
+  dei preset, `E_UI_COLONNA_IN_USO`) e da soft-block applicativi: le
+  preferenze utente (count JSONB `configurazione->colonne` per codice) e,
+  per la colonna, i preset che la compongono (§21). I vincoli fra campi della colonna
   (azione senza campo sorgente, senza campo non esportabile, genealogia solo
   mostrata) sono CHECK del DB dal giro 4 di brief-db-revisione-ui: il drawer
   spegne ciò che il DB rifiuterebbe, il service non li ricopia. Pagina FE:

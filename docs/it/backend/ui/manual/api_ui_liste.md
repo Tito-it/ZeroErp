@@ -30,7 +30,10 @@ applica:
    forzate a `visibile=true`);
 4. filtro autorizzativo (deny-list per non sensibili, allow-list per
    sensibili) via `script.fn_get_profili_accesso_applicabili` filtrata
-   per la veste corrente (GUC `app.ruolo_applicativo`).
+   per la veste corrente (GUC `app.ruolo_applicativo`). Oggi passa da due
+   building block del DB: la veste la legge `ui.fn_veste_corrente()`, il
+   livello di ogni colonna lo da' `ui.fn_lista_colonne_livello` (`BLOCCATO`
+   esce, `LETTURA` resta a video con `esportabile = false`).
 
 Il backend Django (`apps.ui`) e' un wrapper sottile: tutta la logica
 di dominio vive nel DB. La meta-API e' trasversale ai domini funzionali
@@ -82,7 +85,9 @@ sistema o sul catalogo grezzo.
         "visibile": true,
         "fissata": true,
         "esportabile": true,
-        "tipo_colonna": "identificatore"
+        "tipo_colonna": "identificatore",
+        "etichetta_i18n_key": "liste.clienti.ragione_sociale",
+        "priorita": 1
       },
       {
         "codice": "partita_iva",
@@ -91,7 +96,9 @@ sistema o sul catalogo grezzo.
         "visibile": true,
         "fissata": false,
         "esportabile": true,
-        "tipo_colonna": "informazione"
+        "tipo_colonna": "informazione",
+        "etichetta_i18n_key": null,
+        "priorita": 3
       }
     ],
     "pagina_dimensione": 25,
@@ -100,6 +107,7 @@ sistema o sul catalogo grezzo.
       "colonne": "preferenza",
       "pagina_dimensione": "sistema"
     },
+    "ricerca_min_caratteri": 3,
     "colonne_nuove": 0,
     "preset_base": {
       "id": 5,
@@ -112,6 +120,8 @@ sistema o sul catalogo grezzo.
     "preset_base_cambiato": false,
     "preset_aggiornato": false,
     "preset_aggiornato_chiavi": [],
+    "multi_emittente": false,
+    "perimetro_emittente": true,
     "ricerca_full": true,
     "richiede_scelta_emittente": false
   },
@@ -135,6 +145,10 @@ Campi dell'oggetto colonna:
 - `tipo_colonna` — uno tra `identificatore`, `informazione`, `azione`.
   Il FE disabilita il toggle visibilita' nella modale per
   `identificatore` e `azione`.
+- `etichetta_i18n_key` — la chiave di traduzione dell'etichetta, fresca dal
+  catalogo (`null` se la colonna non ne ha una)
+- `priorita` — la priorita' della colonna, fresca da `ui.lista_colonna`
+  (non dal preset o dalla preferenza)
 
 Campi top-level:
 
@@ -142,10 +156,20 @@ Campi top-level:
   preferenza salvata (per il badge UX "N nuove colonne disponibili")
 - `pagina_dimensione` — stato derivato dalla
   cascata (preferenza > preset di ruolo > preset di emittente > preset
-  di sistema > la misura di default `PAGINA` del catalogo
-  `ui.misure_pagina`). ⭐ Dal 2026-09-30 `pagina_dimensione` e' **sempre
-  una misura del catalogo**: quella scelta se ammessa, altrimenti il
+  di sistema > la misura di default **dell'uso della lista** nel catalogo
+  `ui.misure_pagina`: `COMPATTA` o `PAGINA`, da
+  `ui.lista_definizione.uso_misura`). La regola e' `ui.fn_misura_pagina_risolta`,
+  la stessa di `ui.fn_misura_lista`. ⭐ Dal 2026-09-30 `pagina_dimensione` e'
+  **sempre una misura del catalogo**: quella scelta se ammessa, altrimenti il
   default — mai `NULL`, mai un numero che il paginatore non offre
+- `ricerca_min_caratteri` — la soglia della ricerca libera della lista: il
+  frontend non manda un termine piu' corto. E' la stessa colonna che legge il
+  BB di ricerca (`soglia_ricerca`)
+- `multi_emittente` — la lista sa dire l'emittente di ogni riga (non e' un
+  permesso)
+- `perimetro_emittente` — `false` per un catalogo globale: la domanda
+  dell'emittente non si applica. Con `multi_emittente` e' l'ingresso di
+  `richiede_scelta_emittente`
 - `origine` — per ognuna delle due chiavi (`colonne`, `pagina_dimensione`),
   il livello da cui viene:
   `preferenza`, `ruolo`, `emittente_fiscale`, `sistema` o `catalogo` (dal
@@ -243,6 +267,7 @@ Errori:
         "codice": "ragione_sociale",
         "etichetta": "Ragione sociale",
         "etichetta_estesa": "Ragione sociale del cliente",
+        "etichetta_i18n_key": "liste.clienti.ragione_sociale",
         "campo_sorgente": "ragione_sociale",
         "tipo_colonna": "identificatore",
         "tipo_dato": "string",
@@ -265,9 +290,10 @@ Errori:
 }
 ```
 
-I metadati ricchi (etichetta, etichetta_estesa, gruppo, gruppo_ordine,
-formato, ordine_default, ecc.) servono al frontend per renderizzare la
-modale: raggruppamento collassabile per `gruppo`/`gruppo_ordine`,
+I metadati ricchi (etichetta, etichetta_estesa, etichetta_i18n_key, gruppo,
+gruppo_ordine, formato, ordine_default, ecc.) servono al frontend per
+renderizzare la modale (`etichetta_i18n_key` la traduce nella lingua
+dell'utente): raggruppamento collassabile per `gruppo`/`gruppo_ordine`,
 tooltip da `etichetta_estesa`, ordinamento di default per
 `ordine_default`.
 
@@ -578,19 +604,41 @@ Errori:
   lista si apre col suo default (la view la rilegge senza ordinamento, e il
   difetto va nel log), non con un 400. Un `order_by` **chiesto dal client**
   fuori whitelist resta il 400 `E_VALIDATION_INPUT`.
-- **Veste GUC corrotta**: il cast in fn DB e' avvolto in `EXCEPTION
-  WHEN invalid_text_representation THEN NULL` -> fallback "tutte le
-  vesti" (legacy) invece di propagare eccezione (deviazione team DB
-  rispetto al brief originale).
+- **Misura di partenza delle liste** (dal 2026-11-22, BE10 di
+  brief-db-revisione-ui): la stessa porta, chiamata **senza `limit`**, pagina
+  con la misura della configurazione della lista (`ui.fn_misura_lista`, la
+  stessa regola di `pagina_dimensione` qui sopra), non con il `default_limit`
+  della view, che per una lista configurabile non vale piu'. La legge
+  `pagina_da_query` solo se l'endpoint pagina davvero. Il tetto (`max_limit`)
+  resta della view: un `limit` del client oltre il tetto e' un 400, una misura
+  di catalogo oltre il tetto si riporta al tetto con un warning nel log (e' un
+  difetto del catalogo, non della richiesta). BB:
+  `apps.core.services.ordinamento_di_partenza`.
+- **Su quali porte vale la partenza**: ordinamento e misura di partenza li
+  accende `_ApiViewBase`, quindi **ogni** view che dichiara `lista_codice`,
+  comprese le liste dell'amministrazione su `AdminAPIView` (dal 2026-11-22,
+  giro 6). Il cancello del perimetro emittente invece resta solo su
+  `DomainAPIView`.
+- **Veste GUC corrotta**: `ui.fn_veste_corrente()` risponde `NULL` («tutte
+  le vesti dell'utente») per una GUC assente, vuota o fuori dominio, mai
+  un'eccezione (`EXCEPTION WHEN invalid_text_representation`). E' semantica
+  di presentazione: le funzioni di `script` che decidono un accesso restano
+  fail-closed sulla veste.
 
 ## Dipendenze DB
 
 - Tabelle: `ui.lista_definizione`, `ui.lista_colonna`, `ui.lista_preset`,
   `ui.lista_preset_colonna`, `ui.lista_preferenza_utente`,
   `ui.lista_colonna_permesso`, `ui.misure_pagina`
-- Funzioni: `ui.fn_resolve_lista_config` (con `ui.fn_preset_di_base` e
-  `ui.fn_preset_aggiornato`), `ui.fn_get_misure_pagina`,
-  `script.fn_get_profili_accesso_applicabili`,
+- Funzioni: `ui.fn_resolve_lista_config` (con `ui.fn_lista_da_codice`,
+  `ui.fn_veste_corrente`, `ui.fn_preset_di_base`, `ui.fn_preset_aggiornato`,
+  `ui.fn_lista_colonne_livello` e `ui.fn_misura_pagina_risolta`),
+  `ui.fn_lista_da_codice` (anche da solo: `lista_codice -> id` per la
+  preferenza), `ui.fn_lista_colonne_ricerca_full` (`ricerca_full`),
+  `ui.fn_ordinamento_lista` e `ui.fn_misura_lista` (la partenza),
+  `ui.fn_get_misure_pagina`,
+  `script.fn_get_profili_accesso_applicabili` (dentro
+  `ui.fn_lista_colonne_livello`),
   `script.fn_resolve_emittente_for_user` (via Python
   `PermissionResolver.get_emittente_for_user`)
 - Trigger: `trgfn_ui_lista_definizione_a10_valida_vista_sql`,
@@ -610,11 +658,18 @@ Errori:
 
 ## Codici errore registrati
 
-In `apps/core/services/error_policies.py`:
+Ogni codice ha una **classe** nel catalogo
+`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`, rigenerata in
+`apps/core/services/error_policies_generated.py` (`manage.py
+genera_error_policies`, non si modifica a mano). Status HTTP e `ui_action` si
+derivano dalla classe in `apps/core/services/error_policies.py`.
 
 | Codice | HTTP | UI action | Origine |
 | ------ | ---- | --------- | ------- |
-| `E_UI_LISTA_NON_TROVATA` | 404 | `show_empty_state` | Service (lista inesistente o `attivo=false`) + fn DB |
+| `E_UI_LISTA_NON_TROVATA` | 404 | `show_empty_state` | BB DB `ui.fn_lista_da_codice` (lista inesistente o `attivo=false`), via resolver e repository |
+| `E_UI_PREFERENZA_NON_TROVATA` | 404 | `show_empty_state` | Service (`ignore-preset-update` senza preferenza salvata) |
+| `E_UI_PRESET_CONTENUTO_DERIVATO` | 500 | `show_error_banner` | Trigger DB `ui.trgfn_preset_contenuto_aggiornato` (la data del contenuto la scrive solo il DB) |
+| `E_UI_LISTA_EMITTENTE_DA_SCEGLIERE` | 422 | `show_error_banner` | Cancello di perimetro di `DomainAPIView` sulle rotte dati (non su questi endpoint: qui c'e' solo il flag `richiede_scelta_emittente`) |
 | `E_UI_VISTA_SQL_NON_TROVATA` | 400 | `show_error_banner` | Trigger B1 (admin only — seed/import) |
 | `E_UI_CAMPO_SORGENTE_NON_TROVATO` | 400 | `show_error_banner` | Trigger B2 (admin only) |
 | `E_UI_PREFERENZA_VALIDAZIONE` | 400 | default `DATO_ERRATO` (banner: nessun input da accendere) | Service write (corpo non oggetto o senza chiavi) |
@@ -630,8 +685,9 @@ In `apps/core/services/error_policies.py`:
   [zeroerp_backend/settings.py](../../../../backend/zeroerp_backend/settings.py).
 - Routing: `path("api/v1/ui/", include("apps.ui.api.urls"))` in
   [zeroerp_backend/urls.py](../../../../backend/zeroerp_backend/urls.py).
-- 26 test unit (17 service + 6 API + 3 helper) in
-  `apps/ui/tests/`. Tutti basati su `SimpleTestCase`/`JwtMockedApiTest`
-  con repository mockato (CI senza DB reale).
+- Test in `apps/ui/tests/`: `services/` e `api/` con repository mockato
+  (`SimpleTestCase`/`JwtMockedApiTest`), `db/` sul database vero (forma della
+  preferenza, `fn_lista_da_codice`, misure, ordinamento di partenza, audit,
+  seed). Il conteggio non si ricopia qui: invecchia.
 - Brief team DB DB-1..DB-4 atterrato 2026-05-07
   (vedi [`brief-db-ui-personalizzazioni-liste.md`](../../../dev/work-done/2026/brief-db-ui-personalizzazioni-liste.md)).
