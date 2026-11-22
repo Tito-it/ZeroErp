@@ -1,0 +1,106 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DEI VINCOLI DI ui CHE DICONO UNA REGOLA
+#   Brief: brief-db-revisione-ui (giro 6b: i metadati, §4.2).
+#
+# Come nella revisione di documenti: un vincolo il cui nome dice tutto (_non_vuoto,
+#   le chiavi primarie, gli UNIQUE sul codice, le FK semplici) resta senza COMMENT.
+#   Lo prendono quelli che fanno valere una regola che il nome non dice: la coerenza
+#   di ambito e riferimenti dei preset, le tre regole del campo sorgente, la soglia
+#   della ricerca, le coppie (preset, lista) e (colonna, lista) che reggono i vincoli
+#   composti, il default per uso del catalogo delle misure. Gli indici delle FK li
+#   genera la policy di 90_end, e non si commentano.
+# La FK fk_lista_preset_misure_pagina nasce in 90_end (20260930-11): il suo COMMENT
+#   va in 20261121-37.
+# Nessun comportamento cambia. Rollback: NULL, come sul catalogo di dbdev il 2026-11-22.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261121-35-comment-vincoli-ui-mctit.yaml
+
+  - changeSet:
+      id: 20261121-35-comment-vincoli-ui
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: i COMMENT dei vincoli che dicono una regola non scritta nel nome. Brief: brief-db-revisione-ui (giro 6b, §4.2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: >
+              SELECT count(*) FROM pg_constraint co JOIN pg_namespace n ON n.oid = co.connamespace
+               WHERE n.nspname = 'ui'
+                 AND co.conname IN ('uq_ui_lista_preset_id_lista', 'uq_ui_dashboard_preset_id_dashboard',
+                                    'uq_ui_lista_colonna_id_lista', 'chk_ui_lista_colonna_lineage_solo_mostrata')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_ui_lista_preset_ambito_refs ON ui.lista_preset IS
+                  'L''ambito e i riferimenti del preset sono coerenti: sistema senza profilo né azienda, ruolo col solo profilo, emittente_fiscale con la sola azienda.';
+              COMMENT ON CONSTRAINT chk_ui_dashboard_preset_ambito_refs ON ui.dashboard_preset IS
+                  'L''ambito e i riferimenti del preset sono coerenti: sistema senza profilo né azienda, ruolo col solo profilo, emittente_fiscale con la sola azienda.';
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_azione_senza_campo ON ui.lista_colonna IS
+                  'Un''azione non ha campo sorgente: è un pulsante, non un valore.';
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_senza_campo_non_esportabile ON ui.lista_colonna IS
+                  'Una colonna senza campo sorgente (un''azione, una cella composta dal frontend) non si esporta: non ha un valore da esportare.';
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_lineage_solo_mostrata ON ui.lista_colonna IS
+                  'Una colonna della lineage ha un campo sorgente e si mostra soltanto: non è filtrabile, ordinabile né ricercabile, perché filtro, ordinamento e ricerca interrogano la relazione della lista, che quel campo non lo ha.';
+              COMMENT ON CONSTRAINT chk_ui_lista_definizione_ricerca_min_caratteri ON ui.lista_definizione IS
+                  'La ricerca libera della lista parte da almeno un carattere.';
+              COMMENT ON CONSTRAINT chk_misure_pagina_misura ON ui.misure_pagina IS
+                  'Una misura è un numero positivo di righe.';
+              COMMENT ON CONSTRAINT uq_ui_lista_preset_id_lista ON ui.lista_preset IS
+                  'La coppia (preset, lista): la chiave dei vincoli composti per cui una riga di composizione e il preset di base di una preferenza stanno sulla stessa lista del preset.';
+              COMMENT ON CONSTRAINT uq_ui_dashboard_preset_id_dashboard ON ui.dashboard_preset IS
+                  'La coppia (preset, dashboard): la chiave dei vincoli composti per cui una riga di composizione e il preset di base di una preferenza stanno sulla stessa dashboard del preset.';
+              COMMENT ON CONSTRAINT uq_ui_lista_colonna_id_lista ON ui.lista_colonna IS
+                  'La coppia (colonna, lista): la chiave del vincolo composto per cui un preset nomina solo colonne della sua lista (fk_ui_lista_preset_colonna_colonna_della_lista).';
+              COMMENT ON CONSTRAINT fk_ui_lista_preset_colonna_preset_della_lista ON ui.lista_preset_colonna IS
+                  'La riga di composizione appartiene a un preset della sua lista (lista_id, scritta dal database). Cancellato il preset, la riga se ne va con lui.';
+              COMMENT ON CONSTRAINT fk_ui_dashboard_preset_widget_preset_della_dashboard ON ui.dashboard_preset_widget IS
+                  'La riga di composizione appartiene a un preset della sua dashboard (dashboard_id, scritta dal database). Cancellato il preset, la riga se ne va con lui.';
+              COMMENT ON INDEX ui.uq_misure_pagina_uso_default IS
+                  'Al più una misura di default per uso. Che ce ne sia esattamente una lo controlla a fine transazione ui.trgfn_misure_pagina_guard_default_per_uso.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON CONSTRAINT chk_ui_lista_preset_ambito_refs ON ui.lista_preset IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_ui_dashboard_preset_ambito_refs ON ui.dashboard_preset IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_azione_senza_campo ON ui.lista_colonna IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_senza_campo_non_esportabile ON ui.lista_colonna IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_ui_lista_colonna_lineage_solo_mostrata ON ui.lista_colonna IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_ui_lista_definizione_ricerca_min_caratteri ON ui.lista_definizione IS
+                  NULL;
+              COMMENT ON CONSTRAINT chk_misure_pagina_misura ON ui.misure_pagina IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_ui_lista_preset_id_lista ON ui.lista_preset IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_ui_dashboard_preset_id_dashboard ON ui.dashboard_preset IS
+                  NULL;
+              COMMENT ON CONSTRAINT uq_ui_lista_colonna_id_lista ON ui.lista_colonna IS
+                  NULL;
+              COMMENT ON CONSTRAINT fk_ui_lista_preset_colonna_preset_della_lista ON ui.lista_preset_colonna IS
+                  NULL;
+              COMMENT ON CONSTRAINT fk_ui_dashboard_preset_widget_preset_della_dashboard ON ui.dashboard_preset_widget IS
+                  NULL;
+              COMMENT ON INDEX ui.uq_misure_pagina_uso_default IS
+                  NULL;

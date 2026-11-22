@@ -270,7 +270,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
   `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6,
   che ha in più U40 (l'ordinamento di partenza nel seed dei preset, chiesto dal team BE il 2026-11-22). Le ricadute
-  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Al BE/FE resta il residuo di BE25 (2).
+  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Al BE/FE resta il residuo di BE25 (2). Giro 6a (`20261121-26` … `-33`: U40 nel seed, BE10 con `ui.fn_misura_lista` e il BB `ui.fn_misura_pagina_risolta`, U38) applicato coi pgTAP verdi il 2026-11-22. Giro 6b (`20261121-34` … `-37`, i COMMENT di `ui` e le note dei registri) applicato coi pgTAP verdi lo stesso giorno. Al BE: BE10, BE29, BE31, BE18. Giro 6c (i pgTAP deboli di §5, due test nuovi) verde come app il 2026-11-22; il giro 6 è committato. Resta il `/verifica-db` dei giri 1a-6c, poi la chiusura.
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Composizione dashboard&lt;-&gt;widget: pool candidato per dashboard + ordine di default. Sorgente del catalogo grezzo e del merge widget nuovi nella risoluzione.
+> Il pool di una dashboard: i widget del catalogo globale (ui.widget) che può mostrare, e in che ordine quando nessuno ha scelto. Una riga per dashboard e widget. Un widget fuori dal pool non compare, anche se una preferenza o un preset lo nominano. È una parte della dashboard, senza attivo né audit. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

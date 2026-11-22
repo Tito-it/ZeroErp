@@ -30,8 +30,8 @@
 -- la guard PF pura. Per questa veste (non-OPERATORE) le mappe permessi
 -- producono BLOCCATO: i widget gated risultano sempre nascosti -> copre il
 -- caso negativo §4.5. Il caso positivo di gating (widget visibile con permesso)
--- richiederebbe una identita OPERATORE con grant d'area ed e' fuori da questo
--- test. ⚠️ Un elenco vuoto dopo il filtro dei permessi e' un esito ammesso: la home
+-- chiede un'identita OPERATORE con grant d'area: lo prova
+-- test-ui-dashboard-casi-del-modello-v1 (casi 1-2). ⚠️ Un elenco vuoto dopo il filtro dei permessi e' un esito ammesso: la home
 -- non promette una card (Tid, 2026-07-22, confermato il 2026-11-21, Q50 di
 -- brief-db-revisione-ui), lo stato vuoto lo dice il frontend.
 -- BEGIN; + ROLLBACK implicito a fine file.
@@ -380,12 +380,25 @@ UPDATE ui.widget SET attivo = TRUE WHERE id = (SELECT widget_id FROM _t_w1);
 
 -- =========================================================
 -- 10. §4.3: due profili -> AD_HOC (prio=1) prevale deterministicamente
---     Usa un profilo prio>1 gia' applicabile all'utente (binding reale, es.
---     PORTALE su CLIENTE_PORTALE): non ne creiamo uno nuovo. Se non esiste,
---     l'INSERT produce 0 righe e il test verifica comunque AD_HOC (dim=5).
+--     Il secondo profilo e' il PORTALE della veste CLIENTE_PORTALE (priorita'
+--     3). uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il
+--     seed lo porta gia' si usa quello, altrimenti si costruisce qui. Il caso
+--     dice anche di averlo trovato: senza, il preset di ruolo non nascerebbe e
+--     il caso passerebbe senza provare niente.
 -- =========================================================
 DELETE FROM ui.dashboard_preferenza_utente
 WHERE auth_user_id = (SELECT auth_user_id FROM _t_au);
+
+WITH p AS (
+    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
+    SELECT 'PORTALE', '_PGTAP_DASH_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo PORTALE test fn_resolve_dashboard_config', TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
+                        WHERE b.ruolo_applicativo = 'CLIENTE_PORTALE'::config.ruolo_applicativo)
+    RETURNING id
+)
+INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
+SELECT p.id, 'CLIENTE_PORTALE'::config.ruolo_applicativo, TRUE FROM p;
 
 CREATE TEMP TABLE _t_profilo_prio2 AS
 SELECT profilo_accesso_id
@@ -409,13 +422,15 @@ WHERE lp.codice = 'preset_prio2_pgtap'
   AND lp.dashboard_id = (SELECT dashboard_id FROM _t_dash);
 
 SELECT is(
-    (SELECT (ui.fn_resolve_dashboard_config(
-        (SELECT dashboard_codice FROM _t_dash),
-        (SELECT auth_user_id FROM _t_au),
-        NULL
-    )->>'dimensione_max')::INTEGER),
-    5,
-    '10. §4.3: AD_HOC (prio=1, dim=5) prevale su profilo prio>1 (dim=77)'
+    (SELECT format('%s|%s',
+                   (SELECT count(*) FROM ui.dashboard_preset dp
+                     WHERE dp.codice = 'preset_prio2_pgtap'
+                       AND dp.dashboard_id = (SELECT dashboard_id FROM _t_dash)),
+                   ui.fn_resolve_dashboard_config((SELECT dashboard_codice FROM _t_dash),
+                                                  (SELECT auth_user_id FROM _t_au),
+                                                  NULL)->>'dimensione_max')),
+    '1|5',
+    '10. §4.3: il preset del profilo prio>1 c''e'', e AD_HOC (prio=1, dim=5) prevale (dim=77)'
 );
 
 -- =========================================================

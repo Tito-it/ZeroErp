@@ -1,0 +1,510 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMMENT DELLE TABELLE E DELLE COLONNE DI ui
+#   Brief: brief-db-revisione-ui (giro 6b: i metadati, §4.1-§4.3).
+#
+# Perche': quasi tutte le colonne di ui erano senza COMMENT (id, FK, attivo, audit,
+#   gran parte dei preset e del catalogo delle colonne), e i COMMENT di tabella di
+#   liste, colonne, permessi, preset e dashboard erano di una riga e generici. Alcuni
+#   COMMENT di colonna portavano brief, sigle di cantiere o una fotografia datata
+#   (multi_emittente, perimetro_emittente, ricerca_min_caratteri, widget.codice, i
+#   profili dei preset e dei permessi): si riscrivono al presente
+#   (linee-guida-sql §5d). Il testo viene dalle pagine manual/ dello schema, che il
+#   giro 0 ha riallineato al codice, e dai vincoli vivi.
+# Il COMMENT di ui.lista_preset.pagina_dimensione non e' qui: lo riscrive in 90_end
+#   20260930-11, che su un database da zero gira dopo 00_schema; va in 20261121-37.
+# Nessun comportamento cambia. Rollback: i COMMENT di prima (NULL dove non c'erano),
+#   letti dal catalogo di dbdev il 2026-11-22.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/ui/20261121-34-comment-tabelle-e-colonne-ui-mctit.yaml
+
+  - changeSet:
+      id: 20261121-34-comment-tabelle-e-colonne-ui
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        ui: i COMMENT di tabelle e colonne, al presente; nessun comportamento cambia. Brief: brief-db-revisione-ui (giro 6b, §4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 13
+            sql: >
+              SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'ui' AND c.relkind = 'r'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE ui.dashboard_definizione IS
+                  'Il catalogo delle dashboard configurabili: una riga per ogni griglia di card che l''utente può personalizzare, cercata per codice (la home è home). Non ha una relazione sorgente: ogni widget porta il suo collegamento e il suo contatore. La lettura per codice è ui.fn_dashboard_da_codice. La scrive il seed; l''applicazione la legge.';
+              COMMENT ON COLUMN ui.dashboard_definizione.id IS
+                  'Identificativo della dashboard. Cambia da un ambiente all''altro: fuori dal database la dashboard si cita per codice.';
+              COMMENT ON COLUMN ui.dashboard_definizione.descrizione IS
+                  'Il nome della dashboard, per chi la amministra.';
+              COMMENT ON COLUMN ui.dashboard_definizione.note IS
+                  'Note libere del catalogo; NULL se non ce ne sono, mai la stringa vuota.';
+              COMMENT ON COLUMN ui.dashboard_definizione.attivo IS
+                  'Spenta, la dashboard non si risolve (ui.fn_dashboard_da_codice risponde E_UI_DASHBOARD_NON_TROVATA) e sospende preset, pool e preferenze senza toccarli: alla riaccensione tornano com''erano.';
+              COMMENT ON COLUMN ui.dashboard_definizione.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.dashboard_definizione.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.dashboard_definizione.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.dashboard_definizione.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.id IS
+                  'Identificativo della preferenza.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.auth_user_id IS
+                  'L''utente della preferenza (django.auth_user.id). La FK nasce in 90_end, dopo le tabelle di Django; cancellato l''utente, le sue preferenze di dashboard se ne vanno con lui.';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.dashboard_id IS
+                  'La dashboard personalizzata. Una preferenza per utente e dashboard (uq_ui_dashboard_preferenza_utente_user_dashboard).';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.preset_base_id IS
+                  'Il preset di base che l''utente aveva quando ha salvato: lo scrive il servizio, dalla risposta di ui.fn_resolve_dashboard_config. È un preset della stessa dashboard (fk_ui_dashboard_preferenza_utente_preset_della_dashboard) e la base del banner «preset aggiornato». Cancellato il preset, torna NULL.';
+              COMMENT ON TABLE ui.dashboard_preset IS
+                  'I default di una dashboard per ambito: di sistema, per un''azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali widget mostrare (ui.dashboard_preset_widget) e quante card al massimo. Il posto del preset (dashboard, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base. Gemella di ui.lista_preset. La scrive il seed; l''applicazione la legge.';
+              COMMENT ON COLUMN ui.dashboard_preset.id IS
+                  'Identificativo del preset.';
+              COMMENT ON COLUMN ui.dashboard_preset.dashboard_id IS
+                  'La dashboard del preset. Parte del posto del preset: non cambia dopo la nascita (E_UI_PRESET_POSTO_IMMUTABILE).';
+              COMMENT ON COLUMN ui.dashboard_preset.codice IS
+                  'Il nome tecnico del preset, unico nella sua dashboard (uq_ui_dashboard_preset_dashboard_codice).';
+              COMMENT ON COLUMN ui.dashboard_preset.descrizione IS
+                  'Il nome del preset, per chi lo amministra.';
+              COMMENT ON COLUMN ui.dashboard_preset.ambito IS
+                  'A chi vale il preset (ui.ambito_preset): sistema, emittente_fiscale o ruolo, coerente coi riferimenti (chk_ui_dashboard_preset_ambito_refs). Parte del posto del preset: non cambia dopo la nascita.';
+              COMMENT ON COLUMN ui.dashboard_preset.profilo_accesso_id IS
+                  'Il profilo di accesso (config.profili_accesso) di un preset di ruolo, NULL negli altri ambiti (chk_ui_dashboard_preset_ambito_refs). Vale per chi ha il profilo fra quelli che script.fn_get_profili_accesso_applicabili gli dà; fra più preset di ruolo vince la priorità del profilo (ui.fn_preset_di_base). Parte del posto del preset: non cambia dopo la nascita (E_UI_PRESET_POSTO_IMMUTABILE).';
+              COMMENT ON COLUMN ui.dashboard_preset.attivo IS
+                  'Acceso, il preset occupa il suo posto e concorre alla scelta del preset di base (ui.fn_preset_di_base); spento è una bozza o un preset ritirato, che nessuno legge e che non occupa il posto. Un solo preset acceso per posto (uq_ui_dashboard_preset_posto).';
+              COMMENT ON COLUMN ui.dashboard_preset.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.dashboard_preset.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.dashboard_preset.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.dashboard_preset.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON TABLE ui.dashboard_preset_widget IS
+                  'La composizione di un preset di dashboard: quali widget propone, in che ordine e quali mostra subito. Una riga per preset e widget. È una parte del preset, senza attivo né audit. Una composizione cambiata sposta la chiave widget della data del contenuto del preset, a fine transazione (ui.trgfn_preset_riga_tocca_preset). Gemella di ui.lista_preset_colonna.';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.preset_id IS
+                  'Il preset di cui la riga è parte. Cancellato il preset, la riga se ne va con lui.';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.widget_id IS
+                  'Il widget proposto: un widget del pool della dashboard del preset (fk_ui_dashboard_preset_widget_pool).';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.ordine IS
+                  'La posizione del widget nel preset.';
+              COMMENT ON TABLE ui.dashboard_widget IS
+                  'Il pool di una dashboard: i widget del catalogo globale (ui.widget) che può mostrare, e in che ordine quando nessuno ha scelto. Una riga per dashboard e widget. Un widget fuori dal pool non compare, anche se una preferenza o un preset lo nominano. È una parte della dashboard, senza attivo né audit. La scrive il seed; l''applicazione la legge.';
+              COMMENT ON COLUMN ui.dashboard_widget.dashboard_id IS
+                  'La dashboard del pool.';
+              COMMENT ON COLUMN ui.dashboard_widget.widget_id IS
+                  'Il widget che la dashboard può mostrare. Un widget proposto da un preset della dashboard non esce dal pool (E_UI_WIDGET_IN_USO).';
+              COMMENT ON COLUMN ui.dashboard_widget.ordine_default IS
+                  'L''ordine del widget quando né la preferenza né un preset lo dicono: la dashboard mostra allora tutti i widget accesi del pool, in quest''ordine.';
+              COMMENT ON TABLE ui.lista_colonna IS
+                  'Il catalogo delle colonne che ogni lista configurabile può mostrare: per ciascuna l''etichetta, il campo da cui legge (nella relazione della lista o nella sintesi della lineage), il tipo e il formato, la posizione e la larghezza di partenza, e che cosa se ne può fare (filtrare, ordinare, esportare, cercarci). Il livello di ogni colonna per un utente è ui.fn_lista_colonne_livello.';
+              COMMENT ON COLUMN ui.lista_colonna.id IS
+                  'Identificativo della colonna. Cambia da un ambiente all''altro: preset e preferenze citano la colonna per codice.';
+              COMMENT ON COLUMN ui.lista_colonna.lista_id IS
+                  'La lista della colonna. Non cambia finché un preset nomina la colonna (fk_ui_lista_preset_colonna_colonna_della_lista).';
+              COMMENT ON COLUMN ui.lista_colonna.codice IS
+                  'Il nome della colonna nella sua lista (uq_ui_lista_colonna_lista_codice): la chiave con cui preset, preferenze e ordinamento la citano. Non si riscrive (E_UI_COLONNA_CODICE_IMMUTABILE).';
+              COMMENT ON COLUMN ui.lista_colonna.etichetta IS
+                  'L''intestazione della colonna, quando manca la chiave di traduzione (etichetta_i18n_key).';
+              COMMENT ON COLUMN ui.lista_colonna.etichetta_estesa IS
+                  'Il nome lungo della colonna, per il pannello di personalizzazione; NULL se non c''è, mai la stringa vuota.';
+              COMMENT ON COLUMN ui.lista_colonna.tipo_dato IS
+                  'Il tipo del valore (ui.tipo_dato): dice al frontend come rendere e filtrare la cella.';
+              COMMENT ON COLUMN ui.lista_colonna.formato IS
+                  'Un suggerimento di resa per il frontend; NULL se basta il tipo di dato, mai la stringa vuota.';
+              COMMENT ON COLUMN ui.lista_colonna.larghezza_default IS
+                  'La larghezza di partenza della colonna; NULL la lascia al frontend. È anche il peso della colonna nel ritiro dinamico.';
+              COMMENT ON COLUMN ui.lista_colonna.ordine_default IS
+                  'La posizione di partenza della colonna, quando né la preferenza né un preset la dicono; nel ritiro dinamico, a parità di priorità, si ritira prima la più a destra.';
+              COMMENT ON COLUMN ui.lista_colonna.allineamento IS
+                  'L''allineamento della cella (ui.allineamento_colonna).';
+              COMMENT ON COLUMN ui.lista_colonna.gruppo_ordine IS
+                  'La posizione del gruppo nel pannello di personalizzazione.';
+              COMMENT ON COLUMN ui.lista_colonna.filtrabile IS
+                  'La lista ammette un filtro su questa colonna. Falso su una colonna della lineage (chk_ui_lista_colonna_lineage_solo_mostrata).';
+              COMMENT ON COLUMN ui.lista_colonna.ordinabile IS
+                  'La lista ammette l''ordinamento per questa colonna: lo leggono ui.fn_ordinamento_lista e l''elenco del backend delle colonne ordinabili, che si cambiano insieme. Falso su una colonna della lineage (chk_ui_lista_colonna_lineage_solo_mostrata).';
+              COMMENT ON COLUMN ui.lista_colonna.ricercabile_full IS
+                  'La ricerca libera della lista cerca anche in questa colonna (ui.fn_lista_colonne_ricerca_full). Falso su una colonna della lineage (chk_ui_lista_colonna_lineage_solo_mostrata).';
+              COMMENT ON COLUMN ui.lista_colonna.attivo IS
+                  'Spenta, la colonna esce dalla lista per tutti: preset e preferenze la perdono alla risoluzione, senza errore. Una colonna accesa sta anche su una lista spenta, che la sospende.';
+              COMMENT ON COLUMN ui.lista_colonna.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.lista_colonna.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_colonna.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_colonna.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON TABLE ui.lista_colonna_permesso IS
+                  'Il livello con cui chi ha un profilo di accesso vede una colonna di lista: TUTTO, LETTURA (si vede, non si esporta) o BLOCCATO (non c''è). Su una colonna non sensibile le righe scrivono restrizioni, su una sensibile concessioni. È una parte della colonna, senza attivo. La regola del livello sta in ui.fn_lista_colonne_livello.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.id IS
+                  'Identificativo del permesso.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.colonna_id IS
+                  'La colonna del permesso; cancellata la colonna, il permesso se ne va con lei. Un permesso per colonna e profilo (uq_ui_lista_colonna_permesso_col_profilo).';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.profilo_accesso_id IS
+                  'Il profilo di accesso (config.profili_accesso, gli stessi degli altri permessi) a cui vale il livello. Fra più profili dell''utente vince il più specifico, a parità il più restrittivo: la regola sta in ui.fn_lista_colonne_livello.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON TABLE ui.lista_definizione IS
+                  'Il catalogo delle liste configurabili: una riga per ogni schermata a elenco che l''operatore può personalizzare. Dice il codice, la relazione da cui legge, se le righe appartengono a un''azienda e se la lista sa dire di quale, se riceve la genealogia dei documenti, l''uso della misura di pagina e la soglia della ricerca libera. La lettura per codice è ui.fn_lista_da_codice.';
+              COMMENT ON COLUMN ui.lista_definizione.id IS
+                  'Identificativo della lista. Cambia da un ambiente all''altro: fuori dal database la lista si cita per codice.';
+              COMMENT ON COLUMN ui.lista_definizione.descrizione IS
+                  'Il nome della lista, per chi la amministra.';
+              COMMENT ON COLUMN ui.lista_definizione.schema_dati IS
+                  'Lo schema in cui sta la relazione della lista (vista_sql).';
+              COMMENT ON COLUMN ui.lista_definizione.vista_sql IS
+                  'La relazione da cui la lista legge, senza schema: una vista, una vista materializzata, una tabella o una tabella partizionata nello schema schema_dati. Su una lista accesa la verifica ui.trgfn_ui_lista_definizione_a10_valida_vista_sql. NULL: i dati li dà una funzione o un repository del backend, e le colonne non si verificano contro niente.';
+              COMMENT ON COLUMN ui.lista_definizione.note IS
+                  'Note libere del catalogo; NULL se non ce ne sono, mai la stringa vuota.';
+              COMMENT ON COLUMN ui.lista_definizione.attivo IS
+                  'Spenta, la lista non si risolve (ui.fn_lista_da_codice risponde E_UI_LISTA_NON_TROVATA) e sospende colonne, preset e preferenze senza toccarli. Alla riaccensione dall''applicazione le colonne si riverificano contro la relazione (E_UI_LISTA_COLONNE_ORFANE).';
+              COMMENT ON COLUMN ui.lista_definizione.multi_emittente IS
+                  'La lista sa dire da quale emittente fiscale arriva ogni riga. Chi ha in scope più di un emittente entra senza sceglierne uno in una lista che lo sa dire; in una lista con perimetro che non lo sa dire, ne sceglie uno prima. Non è un permesso: non decide che cosa l''utente vede (lo decidono lo scope e la RLS), ma se la schermata è leggibile così. Lo dichiara solo il seed (ui.trgfn_lista_definizione_guard_dichiarazioni), insieme al lavoro che lo rende vero; lo controlla dbops.vw_liste_multi_emittente_non_certificate. Default false: una lista nuova nasce non certificata. Su una lista senza perimetro non si dichiara (chk_ui_lista_definizione_perimetro_coerente).';
+              COMMENT ON COLUMN ui.lista_definizione.perimetro_emittente IS
+                  'Le righe della lista appartengono a un emittente fiscale. Falso su una lista globale (vocabolari, liste tecniche): non c''è un emittente da scegliere, e si entra senza. È una domanda diversa da multi_emittente, che è una capacità della lista: si entra senza scegliere un emittente quando la lista sa dirlo, oppure quando non c''è niente da dire. Non è un permesso. Default true: una lista nuova nasce con perimetro, e la globalità si dichiara. Lo dichiara solo il seed (ui.trgfn_lista_definizione_guard_dichiarazioni).';
+              COMMENT ON COLUMN ui.lista_definizione.ricerca_min_caratteri IS
+                  'Quanti caratteri servono perché la ricerca libera della lista filtri: sotto la soglia il termine non si applica. È una proprietà della lista, non di chi la chiama: la leggono la configurazione della schermata (ui.fn_resolve_lista_config) e il backend (ui.fn_lista_da_codice), dalla stessa riga. Almeno 1 (chk_ui_lista_definizione_ricerca_min_caratteri), default 3.';
+              COMMENT ON COLUMN ui.lista_definizione.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.lista_definizione.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_definizione.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_definizione.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.id IS
+                  'Identificativo della preferenza.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.auth_user_id IS
+                  'L''utente della preferenza (django.auth_user.id). La FK nasce in 90_end, dopo le tabelle di Django; cancellato l''utente, le sue preferenze di lista se ne vanno con lui.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.lista_id IS
+                  'La lista personalizzata. Una preferenza per utente e lista (uq_ui_lista_preferenza_utente_user_lista); con la lista spenta la preferenza resta, sospesa.';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.preset_base_id IS
+                  'Il preset di base che l''utente aveva quando ha salvato: lo scrive il servizio, dalla risposta di ui.fn_resolve_lista_config. È un preset della stessa lista (fk_ui_lista_preferenza_utente_preset_della_lista) e la base del banner «preset aggiornato». Cancellato il preset, torna NULL.';
+              COMMENT ON TABLE ui.lista_preset IS
+                  'Le configurazioni predefinite di una lista per ambito: di sistema, per un''azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali colonne mostrare (ui.lista_preset_colonna), l''ordinamento di partenza e le righe per pagina. Il posto del preset (lista, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base.';
+              COMMENT ON COLUMN ui.lista_preset.id IS
+                  'Identificativo del preset.';
+              COMMENT ON COLUMN ui.lista_preset.lista_id IS
+                  'La lista del preset. Parte del posto del preset: non cambia dopo la nascita (E_UI_PRESET_POSTO_IMMUTABILE).';
+              COMMENT ON COLUMN ui.lista_preset.codice IS
+                  'Il nome tecnico del preset, unico nella sua lista (uq_ui_lista_preset_lista_codice).';
+              COMMENT ON COLUMN ui.lista_preset.descrizione IS
+                  'Il nome del preset, per chi lo amministra.';
+              COMMENT ON COLUMN ui.lista_preset.ambito IS
+                  'A chi vale il preset (ui.ambito_preset): sistema, emittente_fiscale o ruolo, coerente coi riferimenti (chk_ui_lista_preset_ambito_refs). Parte del posto del preset: non cambia dopo la nascita.';
+              COMMENT ON COLUMN ui.lista_preset.profilo_accesso_id IS
+                  'Il profilo di accesso (config.profili_accesso) di un preset di ruolo, NULL negli altri ambiti (chk_ui_lista_preset_ambito_refs). Vale per chi ha il profilo fra quelli che script.fn_get_profili_accesso_applicabili gli dà; fra più preset di ruolo vince la priorità del profilo (ui.fn_preset_di_base). Parte del posto del preset: non cambia dopo la nascita (E_UI_PRESET_POSTO_IMMUTABILE).';
+              COMMENT ON COLUMN ui.lista_preset.emittente_fiscale_id IS
+                  'L''azienda (anagrafiche.emittenti_fiscali.id) di un preset con ambito emittente_fiscale, NULL negli altri ambiti (chk_ui_lista_preset_ambito_refs). Il preset vale solo con l''azienda accesa. Parte del posto del preset: non cambia dopo la nascita.';
+              COMMENT ON COLUMN ui.lista_preset.attivo IS
+                  'Acceso, il preset occupa il suo posto e concorre alla scelta del preset di base (ui.fn_preset_di_base); spento è una bozza o un preset ritirato, che nessuno legge e che non occupa il posto. Un solo preset acceso per posto (uq_ui_lista_preset_posto).';
+              COMMENT ON COLUMN ui.lista_preset.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.lista_preset.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_preset.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.lista_preset.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON TABLE ui.lista_preset_colonna IS
+                  'La composizione di un preset di lista: una riga per ogni colonna del catalogo che il preset include, con la posizione, la larghezza, se si vede subito e se è fissata. Una riga per preset e colonna. È una parte del preset, senza attivo né audit. Una composizione cambiata sposta la chiave colonne della data del contenuto del preset, a fine transazione (ui.trgfn_preset_riga_tocca_preset).';
+              COMMENT ON COLUMN ui.lista_preset_colonna.preset_id IS
+                  'Il preset di cui la riga è parte. Cancellato il preset, la riga se ne va con lui.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.colonna_id IS
+                  'La colonna del catalogo che il preset include: una colonna della lista del preset (fk_ui_lista_preset_colonna_colonna_della_lista). Una colonna citata da un preset non si cancella.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.ordine IS
+                  'La posizione della colonna nel preset.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.larghezza IS
+                  'La larghezza della colonna nel preset; NULL vuol dire la larghezza di default del catalogo.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.fissata IS
+                  'La colonna resta ferma quando la lista scorre in orizzontale. Un identificatore è sempre fissato, qualunque cosa dica la riga (ui.fn_resolve_lista_config).';
+              COMMENT ON COLUMN ui.misure_pagina.id IS
+                  'Identificativo della riga. Chi cita una misura cita il numero (misura), non l''id.';
+              COMMENT ON COLUMN ui.misure_pagina.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.misure_pagina.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.misure_pagina.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.misure_pagina.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON TABLE ui.widget IS
+                  'Il catalogo globale dei widget delle dashboard: ogni widget è una card con un''etichetta, un contatore, una soglia di attenzione e un collegamento a una schermata già filtrata. Il legame con le dashboard è il pool (ui.dashboard_widget). deep_link, contatore_key e soglia sono opachi per il database; chi vede il widget lo dicono area e azione. La scrive il seed; l''applicazione la legge.';
+              COMMENT ON COLUMN ui.widget.id IS
+                  'Identificativo del widget. Preferenze e preset citano il widget per codice.';
+              COMMENT ON COLUMN ui.widget.codice IS
+                  'Il nome del widget, unico in tutto il catalogo e non solo in una dashboard (uq_ui_widget_codice): la chiave con cui preferenze e preset lo citano.';
+              COMMENT ON COLUMN ui.widget.etichetta IS
+                  'Il titolo della card, quando manca la chiave di traduzione (etichetta_i18n_key).';
+              COMMENT ON COLUMN ui.widget.etichetta_i18n_key IS
+                  'La chiave di traduzione del titolo della card; NULL usa etichetta, mai la stringa vuota.';
+              COMMENT ON COLUMN ui.widget.tipo_widget IS
+                  'La forma della card per il frontend (ui.tipo_widget).';
+              COMMENT ON COLUMN ui.widget.attivo IS
+                  'Spento, il widget esce da ogni dashboard alla risoluzione. Acceso, chiede area e azione accese, a fine transazione.';
+              COMMENT ON COLUMN ui.widget.data_insert IS
+                  'Momento dell''inserimento della riga (DEFAULT now()).';
+              COMMENT ON COLUMN ui.widget.user_insert IS
+                  'Chi ha inserito la riga: l''utente dell''applicazione (GUC app.jwt_user) o, senza, il ruolo del database. Lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.widget.data_update IS
+                  'Momento dell''ultima scrittura della riga, anche dell''inserimento: lo scrive script.trgfn_audit_data_user_generic.';
+              COMMENT ON COLUMN ui.widget.user_update IS
+                  'Chi ha fatto l''ultima scrittura della riga, con la regola di user_insert: lo scrive script.trgfn_audit_data_user_generic.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON TABLE ui.dashboard_definizione IS
+                  'Catalogo delle dashboard configurabili. Una riga per dashboard personalizzabile (prima: home). Senza vista_sql: nessuna vista sorgente unica.';
+              COMMENT ON COLUMN ui.dashboard_definizione.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.note IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_definizione.user_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.auth_user_id IS
+                  'FK verso django.auth_user, aggiunta in 90_end (auth_user creata da Django migrate).';
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.dashboard_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preferenza_utente.preset_base_id IS
+                  NULL;
+              COMMENT ON TABLE ui.dashboard_preset IS
+                  'Preset di dashboard per ambito: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso). Ricalca ui.lista_preset.';
+              COMMENT ON COLUMN ui.dashboard_preset.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.dashboard_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.codice IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.ambito IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.profilo_accesso_id IS
+                  'config.profili_accesso: stessa entita del sistema permessi. Risolto via fn_get_profili_accesso_applicabili (priorita a rompere i pareggi).';
+              COMMENT ON COLUMN ui.dashboard_preset.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset.user_update IS
+                  NULL;
+              COMMENT ON TABLE ui.dashboard_preset_widget IS
+                  'Widget di un preset dashboard: ordine e visibilita di default. Ricalca ui.lista_preset_colonna.';
+              COMMENT ON COLUMN ui.dashboard_preset_widget.preset_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset_widget.widget_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_preset_widget.ordine IS
+                  NULL;
+              COMMENT ON TABLE ui.dashboard_widget IS
+                  'Composizione dashboard<->widget: pool candidato per dashboard + ordine di default. Sorgente del catalogo grezzo e del merge widget nuovi nella risoluzione.';
+              COMMENT ON COLUMN ui.dashboard_widget.dashboard_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_widget.widget_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.dashboard_widget.ordine_default IS
+                  'Ordine di default del widget nella dashboard (fallback "catalogo grezzo" quando manca preset/preferenza).';
+              COMMENT ON TABLE ui.lista_colonna IS
+                  'Catalogo colonne disponibili per ciascuna lista. Definisce tutto cio che la lista puo mostrare.';
+              COMMENT ON COLUMN ui.lista_colonna.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.lista_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.codice IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.etichetta IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.etichetta_estesa IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.tipo_dato IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.formato IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.larghezza_default IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.ordine_default IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.allineamento IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.gruppo_ordine IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.filtrabile IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.ordinabile IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.ricercabile_full IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna.user_update IS
+                  NULL;
+              COMMENT ON TABLE ui.lista_colonna_permesso IS
+                  'Permessi a livello colonna per profilo_accesso. deny-list per non sensibili, allow-list per sensibili.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna_permesso.colonna_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna_permesso.profilo_accesso_id IS
+                  'config.profili_accesso: stessa entita del PermissionResolver. Non scrivere logica di risoluzione duplicata.';
+              COMMENT ON COLUMN ui.lista_colonna_permesso.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna_permesso.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna_permesso.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_colonna_permesso.user_update IS
+                  NULL;
+              COMMENT ON TABLE ui.lista_definizione IS
+                  'Catalogo delle liste configurabili. Una riga per lista personalizzabile.';
+              COMMENT ON COLUMN ui.lista_definizione.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.schema_dati IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.vista_sql IS
+                  'Nome view PostgreSQL sorgente dati. Validato da trigger contro pg_catalog.pg_class.';
+              COMMENT ON COLUMN ui.lista_definizione.note IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.multi_emittente IS
+                  'Capacita'' dichiarata della lista: sa dire da quale emittente fiscale arriva ogni riga? Quando lo scope di chi entra contiene PIU'' di un emittente (in pratica il solo super admin, dopo P-2a), una lista con false chiede di sceglierne uno prima di entrare. ⚠️ NON E'' UN PERMESSO: non decide COSA un utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se una schermata e'' LEGGIBILE nella condizione in cui sta per essere aperta. Chi lo implementa come controllo di autorizzazione crea una seconda via d''accesso accanto a quella vera. ⛔ Si accende SOLO dal seed lista_definizione.csv, mai da interfaccia, e solo insieme (o dopo) al lavoro che lo rende vero: la lista deve gia'' esporre l''emittente nella riga. Presidiato dal trigger trg_ui_lista_definizione_a10_guard_multi_emittente_ins_upd e dalla vista di controllo dbops.vw_liste_multi_emittente_non_certificate. Default false: una lista nuova nasce NON certificata. Brief perimetro-emittente P-2b (decisioni Q1 e §7 punto 3).';
+              COMMENT ON COLUMN ui.lista_definizione.perimetro_emittente IS
+                  'Natura del dato: le righe di questa lista appartengono a un emittente fiscale? ⭐ E'' IL TERZO CASO, e senza di lui `multi_emittente` risponde a una domanda che per certe liste non esiste. `multi_emittente` dice «so dire da QUALE emittente arriva ogni riga»; su un catalogo GLOBALE — le famiglie di documento, le liste tecniche di ui, i vocabolari di config — non c''e'' nessun emittente da dire, quindi il suo `false` e'' letteralmente vero e l''effetto e'' sbagliato: la schermata chiede di scegliere un emittente prima di entrare, e sbarra la strada proprio a chi ha lo scope piu'' largo. ⛔ LA STRADA BREVE ERA UN''ALTRA E NON SI E'' PRESA: dichiarare quelle liste `multi_emittente = true` avrebbe vantato una capacita'' che non hanno, e dbops.vw_liste_multi_emittente_non_certificate — che due pgTAP pretendono a zero righe — l''avrebbe intercettato, come deve. Allargare il presidio con un''eccezione avrebbe voluto dire spegnerlo un pezzo alla volta. ⭐ DUE DOMANDE INDIPENDENTI, DUE COLONNE: questa e'' la natura del dato, quella e'' una capacita'' conquistata e certificata; un enum a tre valori le legherebbe, ed e'' il flag che risponde a due domande in AND che poi non si riesce piu'' a invertire. ⚠️ REGOLA PER CHI LEGGE: si entra senza scegliere un emittente quando la lista SA DIRLO (multi_emittente) OPPURE quando non c''e'' niente da dire (perimetro_emittente = false) — due ragioni diverse per lo stesso gesto, da tenere distinte. ⚠️ NON E'' UN PERMESSO: non decide cosa un utente puo'' vedere — quello lo decidono lo scope e la RLS — ma se una schermata e'' leggibile nella condizione in cui sta per essere aperta. ⭐ Default TRUE, che e'' il verso prudente: una lista nuova nasce CON perimetro, e la globalita'' si dichiara invece di ereditarla. Il valore si dichiara nel seed — colonna `perimetro_emittente` di lista_definizione.csv, mirror 20260507-06 — mai da interfaccia. ⛔ Dal 2026-09-18 NON piu'' in un CSV laterale chiavato su codice (20260902-02, ritirato): due CSV sulla stessa tabella sono due sorgenti di verita'' e divergono in silenzio (Tid, brief-db-perimetro-emittente-cataloghi-globali). Sette liste globali al 18-09: le tre tecniche di ui, amm.processi, storico.audit_log, vendite.famiglie_documento, anagrafiche.emittenti_fiscali. Piano: brief-be-fe-crud-registri-di-numerazione, sezione 11.16.';
+              COMMENT ON COLUMN ui.lista_definizione.ricerca_min_caratteri IS
+                  'Quanti caratteri servono perche'' la ricerca libera della lista filtri: sotto soglia il termine non si applica. E'' una proprieta'' della lista (una tabella di configurazione a codici corti cerca da 1, un archivio che cresce da 3), non di chi la chiama. Sede UNICA del fatto: la leggono la configurazione della schermata (chiave ricerca_min_caratteri di ui.fn_resolve_lista_config) e il building block di ricerca del backend (ui.fn_lista_da_codice), dalla stessa riga. NOT NULL: la risposta e'' una, gia'' risolta, e nessun lettore la completa con una costante sua. Default 3, la soglia di progetto; CHECK >= 1. Si dichiara nel seed lista_definizione.csv. Brief: brief-db-be-fe-ricerca-soglia-per-lista.';
+              COMMENT ON COLUMN ui.lista_definizione.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_definizione.user_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preferenza_utente.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preferenza_utente.auth_user_id IS
+                  'FK verso django.auth_user, aggiunta in 90_end (auth_user creata da Django migrate).';
+              COMMENT ON COLUMN ui.lista_preferenza_utente.lista_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preferenza_utente.preset_base_id IS
+                  NULL;
+              COMMENT ON TABLE ui.lista_preset IS
+                  'Configurazioni predefinite per le liste: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso).';
+              COMMENT ON COLUMN ui.lista_preset.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.lista_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.codice IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.descrizione IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.ambito IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.profilo_accesso_id IS
+                  'config.profili_accesso: stessa entita del sistema permessi. Risolto via fn_get_profili_accesso_applicabili.';
+              COMMENT ON COLUMN ui.lista_preset.emittente_fiscale_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset.user_update IS
+                  NULL;
+              COMMENT ON TABLE ui.lista_preset_colonna IS
+                  'Colonne di un preset: ordine, larghezza, visibilita di default e freeze.';
+              COMMENT ON COLUMN ui.lista_preset_colonna.preset_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset_colonna.colonna_id IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset_colonna.ordine IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset_colonna.larghezza IS
+                  NULL;
+              COMMENT ON COLUMN ui.lista_preset_colonna.fissata IS
+                  NULL;
+              COMMENT ON COLUMN ui.misure_pagina.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.misure_pagina.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.misure_pagina.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.misure_pagina.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.misure_pagina.user_update IS
+                  NULL;
+              COMMENT ON TABLE ui.widget IS
+                  'Catalogo GLOBALE dei widget dashboard (card KPI). codice unico globale; il legame con le dashboard e in ui.dashboard_widget. Zero logica di business: deep_link/contatore_key/soglia sono opachi al DB.';
+              COMMENT ON COLUMN ui.widget.id IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.codice IS
+                  'Identificatore stabile GLOBALE del widget (referenziato nel JSONB della preferenza utente, §3d).';
+              COMMENT ON COLUMN ui.widget.etichetta IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.etichetta_i18n_key IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.tipo_widget IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.attivo IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.data_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.user_insert IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.data_update IS
+                  NULL;
+              COMMENT ON COLUMN ui.widget.user_update IS
+                  NULL;

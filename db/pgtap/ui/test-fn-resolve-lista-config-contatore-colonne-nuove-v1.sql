@@ -55,28 +55,14 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SELECT plan(5);
 
 -- ============================================================
--- Fixture: una lista qualsiasi fra quelle attive, e una colonna nuova a
+-- Fixture: una lista costruita col suo preset di base, e una colonna nuova a
 -- catalogo marcata `sensibile` e priva di grant.
--- ⭐ La lista si sceglie con ORDER BY esplicito: un LIMIT 1 senza ordinamento
---    non verifica, scommette.
 -- ============================================================
--- ⚠️ L'utente NON e' quello del contesto pgTAP. Misurato il 2026-08-18:
---    l'operatore di prova non ha **alcun** profilo di accesso applicabile,
---    quindi su di lui il ramo «colonna sensibile CON grant» e' irraggiungibile
---    — un grant si aggancia a un profilo, e se l'utente non ne ha nessuno la
---    colonna resta bloccata comunque. I test 3-4 sarebbero verdi per la ragione
---    sbagliata. Si sceglie quindi il primo utente che ha davvero un profilo
---    sotto la veste corrente, con un criterio esplicito e non un id fisso.
--- ⛔ E L'UTENTE COL PROFILO SI COSTRUISCE (2026-09-23). Sceglierlo fra quelli
---    che ne hanno gia' uno e' lo stesso criterio, ma su un database
---    ricostruito NESSUNO ne ha uno (misurato: zero utenti con profilo
---    applicabile) e la sotto-select tornava NULL: la funzione veniva chiamata
---    con l'utente NULL, il contatore rispondeva un numero suo e il test 5
---    falliva dicendo «have 1, want 2» — cioe' il file misurava l'assenza di
---    dati, non il contatore. Qui il profilo lo si crea e lo si lega
---    all'identita' dell'operatore di contesto: il criterio del commento qui
---    sopra («un utente che ha davvero un profilo sotto la veste corrente»)
---    diventa una precondizione costruita invece che una speranza.
+-- ⭐ L'utente e' l'operatore di contesto, e il suo profilo si COSTRUISCE:
+--    un profilo AD_HOC legato alla sua identita' OPERATORE. Senza un profilo il
+--    ramo «colonna sensibile CON grant» non si raggiunge (un grant si aggancia a
+--    un profilo), e i casi 3-4 sarebbero verdi per la ragione sbagliata; su un
+--    database ricostruito nessun utente ne ha uno.
 CREATE TEMP TABLE _t_profilo AS
 WITH ins AS (
     INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
@@ -96,22 +82,35 @@ BEGIN
 END
 $lega$;
 
+-- ⭐ La lista si COSTRUISCE: senza vista dichiarata (il guard del campo
+--    sorgente non verifica il campo, il nome si sceglie qui), con una colonna
+--    e il suo preset di base. Il preset serve: le colonne nuove sono quelle del
+--    catalogo che la configurazione non nomina, e senza preset ne' preferenza la
+--    configurazione e' il catalogo intero, che non ha niente di nuovo.
 CREATE TEMP TABLE _t_ctx AS
-SELECT ld.codice                                                         AS lista_codice,
-       ld.id                                                             AS lista_id,
+WITH ins AS (
+    INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+    VALUES ('_pgtap.colonne_nuove_' || substr(md5(clock_timestamp()::text), 1, 6),
+            'Lista test pgTAP colonne nuove', 'pgtap', NULL, TRUE, 'pgtap')
+    RETURNING id, codice
+)
+SELECT ins.codice                                                        AS lista_codice,
+       ins.id                                                            AS lista_id,
        NULLIF(current_setting('app.current_user_id', true), '')::integer AS auth_user_id,
-       -- ⚠️ `campo_sorgente` NON si inventa: `trgfn_ui_lista_colonna_a10_valida_campo_sorgente`
-       --    verifica che corrisponda a un attributo reale della vista della
-       --    lista. Si riusa quello di una colonna gia' a catalogo — il codice
-       --    e' nuovo, ed e' il codice a identificare la colonna.
-       (SELECT lc.campo_sorgente FROM ui.lista_colonna lc
-         WHERE lc.lista_id = ld.id AND lc.attivo IS TRUE
-           AND lc.campo_sorgente IS NOT NULL
-         ORDER BY lc.id LIMIT 1)                                          AS campo_reale
-  FROM ui.lista_definizione ld
- WHERE ld.attivo IS TRUE
- ORDER BY ld.id
- LIMIT 1;
+       'campo_reale'::varchar                                            AS campo_reale
+  FROM ins;
+
+WITH c AS (
+    INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_dato, ordine_default, user_insert)
+    SELECT lista_id, 'zz_pgtap_base', 'Colonna del preset', 'campo_base', 'string', 10, 'pgtap' FROM _t_ctx
+    RETURNING id, lista_id
+), p AS (
+    INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, attivo, user_insert)
+    SELECT lista_id, 'P_BASE', 'Preset di base test colonne nuove', 'sistema', TRUE, 'pgtap' FROM _t_ctx
+    RETURNING id
+)
+INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile, fissata)
+SELECT p.id, c.id, 1, TRUE, FALSE FROM p CROSS JOIN c;
 
 -- Il numero di partenza: quante colonne nuove annuncia la lista PRIMA della
 -- prova. Tutto il test ragiona per differenza, cosi' non dipende dal seed.
@@ -158,29 +157,20 @@ SELECT is(
 -- ⚠️ La veste va passata come la legge la funzione (dalla GUC), non NULL: con
 --    NULL i profili applicabili sono un altro insieme, e il grant finirebbe su
 --    un profilo che la funzione non guarda.
+-- Il grant va al profilo costruito sopra, legato all'identita' OPERATORE
+--   dell'operatore di contesto: e' fra i suoi profili sotto la veste corrente.
 INSERT INTO ui.lista_colonna_permesso (colonna_id, profilo_accesso_id, livello_accesso, user_insert)
-SELECT 900001, p.profilo_accesso_id, 'TUTTO', 'pgtap'
-  FROM script.fn_get_profili_accesso_applicabili(
-         (SELECT auth_user_id FROM _t_ctx),
-         NULLIF(current_setting('app.ruolo_applicativo', true), '')::config.ruolo_applicativo) p
- ORDER BY p.profilo_accesso_id
- LIMIT 1;
+SELECT 900001, p.profilo_id, 'TUTTO', 'pgtap' FROM _t_profilo p;
 
-SELECT CASE WHEN (SELECT auth_user_id FROM _t_ctx) IS NULL
-  THEN skip('nessun utente con un profilo di accesso: il ramo del grant non e'' esercitabile', 1)
-  ELSE ok(
+SELECT ok(
     EXISTS (SELECT 1 FROM jsonb_array_elements(pg_temp.cfg() -> 'colonne') e
              WHERE e ->> 'codice' = 'zz_pgtap_sensibile'),
-    '3) con un grant la colonna sensibile torna fra le colonne risolte')
-  END;
+    '3) con un grant la colonna sensibile torna fra le colonne risolte');
 
-SELECT CASE WHEN (SELECT auth_user_id FROM _t_ctx) IS NULL
-  THEN skip('idem', 1)
-  ELSE is(
+SELECT is(
     (pg_temp.cfg() ->> 'colonne_nuove')::integer,
     (SELECT nuove FROM _t_base) + 1,
-    '4) ⭐ e il contatore la annuncia: +1 rispetto al valore di partenza')
-  END;
+    '4) ⭐ e il contatore la annuncia: +1 rispetto al valore di partenza');
 
 -- ============================================================
 -- 5) Non-regressione: una colonna nuova NON sensibile va contata.

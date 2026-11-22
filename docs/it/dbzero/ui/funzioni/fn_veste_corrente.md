@@ -40,7 +40,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_veste_corrente()
-IS 'Veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL = tutte le vesti dell''utente, sia per GUC assente o vuota sia per un valore fuori dominio: mai eccezione. Estratta il 2026-09-23 dalle due copie identiche in fn_resolve_lista_config e fn_resolve_dashboard_config (regola del 2), terzo consumatore fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste. Brief: brief-db-ricerca-full-colonne-permessi.';
+IS 'La veste corrente della sessione per la configurazione delle schermate: legge la GUC app.ruolo_applicativo e la converte in config.ruolo_applicativo. NULL vuol dire tutte le vesti dell''utente, sia con la GUC assente o vuota sia con un valore fuori dominio: mai un''eccezione. La leggono ui.fn_resolve_lista_config, ui.fn_resolve_dashboard_config, ui.fn_ordinamento_lista, ui.fn_misura_lista e ui.fn_lista_colonne_ricerca_full. ⚠️ Semantica di presentazione, non di permesso: le funzioni di script che decidono un accesso sono fail-closed sulla veste.';
 ```
 
 </div>

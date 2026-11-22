@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Widget di un preset dashboard: ordine e visibilita di default. Ricalca ui.lista_preset_colonna.
+> La composizione di un preset di dashboard: quali widget propone, in che ordine e quali mostra subito. Una riga per preset e widget. È una parte del preset, senza attivo né audit. Una composizione cambiata sposta la chiave widget della data del contenuto del preset, a fine transazione (ui.trgfn_preset_riga_tocca_preset). Gemella di ui.lista_preset_colonna.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

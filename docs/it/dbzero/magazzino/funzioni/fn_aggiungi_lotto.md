@@ -19,8 +19,9 @@ CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_lotto(p_articolo_id uuid, p_cod
 AS $function$
 BEGIN
     -- Scopo: il gesto «nuovo lotto» dell'operatore: livello TUTTO
-    --   sull'oggetto, poi il BB. Un lotto e' dell'articolo: nessun
-    --   perimetro d'emittente. Ritorna l'id.
+    --   sull'oggetto, poi il BB. L'azienda del lotto la mette il
+    --   default di sessione e la controlla il guard di perimetro
+    --   della tabella. Ritorna l'id.
     PERFORM script.fn_guard_livello(
         NULLIF(current_setting('app.current_user_id', true), '')::integer,
         'magazzino', 'lotti', 'TUTTO');
@@ -30,7 +31,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_aggiungi_lotto(p_articolo_id uuid, p_codice character varying, p_data_arrivo date, p_campi jsonb)
-IS 'VERBO: il gesto «nuovo lotto» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, lotti, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_lotto: colonne ammesse, articolo attivo, date e unicita'' sono del BB e della tabella. Un lotto e'' dell''articolo, senza perimetro d''emittente. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+IS 'VERBO: il gesto «nuovo lotto» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, lotti, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_lotto: colonne ammesse, articolo attivo, date e unicita'' sono del BB e della tabella. L''emittente non si sceglie: lo mette il default di sessione (trgfn_default_emittente_fiscale) e lo controlla il guard di perimetro della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
 ```
 
 </div>

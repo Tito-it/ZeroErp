@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Configurazioni predefinite per le liste: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso).
+> Le configurazioni predefinite di una lista per ambito: di sistema, per un'azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali colonne mostrare (ui.lista_preset_colonna), l'ordinamento di partenza e le righe per pagina. Il posto del preset (lista, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

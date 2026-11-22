@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo GLOBALE dei widget dashboard (card KPI). codice unico globale; il legame con le dashboard e in ui.dashboard_widget. Zero logica di business: deep_link/contatore_key/soglia sono opachi al DB.
+> Il catalogo globale dei widget delle dashboard: ogni widget è una card con un'etichetta, un contatore, una soglia di attenzione e un collegamento a una schermata già filtrata. Il legame con le dashboard è il pool (ui.dashboard_widget). deep_link, contatore_key e soglia sono opachi per il database; chi vede il widget lo dicono area e azione. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

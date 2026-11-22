@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Preset di dashboard per ambito: sistema (globale), emittente_fiscale, ruolo (via profilo_accesso). Ricalca ui.lista_preset.
+> I default di una dashboard per ambito: di sistema, per un'azienda (emittente fiscale) o per un profilo di accesso (ruolo). Dice quali widget mostrare (ui.dashboard_preset_widget) e quante card al massimo. Il posto del preset (dashboard, ambito, profilo, azienda) non cambia, e ha un solo preset acceso. La scelta del preset di base è ui.fn_preset_di_base. Gemella di ui.lista_preset. La scrive il seed; l'applicazione la legge.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

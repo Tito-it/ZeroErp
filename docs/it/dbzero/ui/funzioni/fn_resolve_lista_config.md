@@ -62,11 +62,8 @@ DECLARE
   v_preset_livello     ui.lista_preset.ambito%TYPE;
   -- La misura senza la preferenza, e da dove viene.
   v_pagina_standard    ui.lista_preset.pagina_dimensione%TYPE;
-  -- Tipi espliciti: un esito e un'etichetta calcolati qui, nessuna colonna
-  -- di cui siano il riflesso (l'etichetta e' un ambito_preset reso a testo,
-  -- oppure 'preferenza' o 'catalogo').
-  v_pref_pagina_ok     BOOLEAN;
-  v_preset_pagina_ok   BOOLEAN;
+  -- Tipo esplicito: un'etichetta calcolata qui, nessuna colonna di cui sia il
+  -- riflesso (un ambito_preset reso a testo, oppure 'preferenza' o 'catalogo').
   v_origine_pagina     TEXT;
 
   -- Il preset di base salvato con la preferenza e il suo snapshot ({chiave: data}).
@@ -320,23 +317,22 @@ BEGIN
 
   -- -------------------------------------------------------
   -- 5-ter. La misura di pagina, per chiave.
-  --   Lo standard: la misura del preset di base se e' nel catalogo,
-  --   altrimenti il default del catalogo per l'uso della lista (COMPATTA o
-  --   PAGINA, ui.lista_definizione.uso_misura). Risponde la misura della
-  --   preferenza se e' nel catalogo, altrimenti lo standard: una misura
+  --   La cascata la tiene ui.fn_misura_pagina_risolta, la stessa che legge
+  --   ui.fn_misura_lista: lo standard e' la misura del preset di base se e'
+  --   nel catalogo, altrimenti il default del catalogo per l'uso della lista
+  --   (COMPATTA o PAGINA, ui.lista_definizione.uso_misura); risponde la misura
+  --   della preferenza se e' nel catalogo, altrimenti lo standard. Una misura
   --   salvata e poi uscita dal catalogo non e' piu' una scelta che vale, e
-  --   origine non la dice 'preferenza' (il FE non la rimanda).
+  --   origine non la dice 'preferenza' (il FE non la rimanda). L'origine
+  --   'preset' del BB qui si dice con l'ambito del preset di base.
   -- -------------------------------------------------------
-  v_pref_pagina_ok   := COALESCE(ui.fn_misura_pagina_ammessa(v_pref_pagina), FALSE);
-  v_preset_pagina_ok := COALESCE(ui.fn_misura_pagina_ammessa(v_preset_pagina), FALSE);
-
-  v_pagina_standard := CASE WHEN v_preset_pagina_ok THEN v_preset_pagina
-                            ELSE ui.fn_misura_pagina_default(v_lista.uso_misura::text) END;
-  v_pagina_dim      := CASE WHEN v_pref_pagina_ok THEN v_pref_pagina
-                            ELSE v_pagina_standard END;
-  v_origine_pagina  := CASE WHEN v_pref_pagina_ok   THEN 'preferenza'
-                            WHEN v_preset_pagina_ok THEN v_preset_livello::text
-                            ELSE 'catalogo' END;
+  SELECT r.misura,
+         r.standard,
+         CASE WHEN r.origine = 'preset' THEN v_preset_livello::text
+              ELSE r.origine END
+    INTO v_pagina_dim, v_pagina_standard, v_origine_pagina
+    FROM ui.fn_misura_pagina_risolta(v_pref_pagina, v_preset_pagina,
+                                     v_lista.uso_misura) r;
 
   -- Per ognuna delle due chiavi, il livello da cui viene: 'preferenza',
   --   un ambito di ui.ambito_preset ('ruolo', 'emittente_fiscale',
@@ -428,7 +424,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_resolve_lista_config(p_lista_codice character varying, p_auth_user_id integer, p_emittente_fiscale_id bigint)
-IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo più prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina dal catalogo ui.misure_pagina: senza la preferenza e senza il preset, il default dell''uso della lista (ui.lista_definizione.uso_misura, COMPATTA o PAGINA). Una riga della preferenza fuori forma non fa cadere la funzione: ordine, larghezza e misura passano da ui.fn_intero_da_jsonb, un campo che manca prende il default del catalogo, una voce senza codice o di un''altra colonna si salta, un codice ripetuto vale una volta. Uscite: colonne, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non è quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset è cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner è riscrivere preset_base_id) e preset_aggiornato (almeno una), multi_emittente (la lista sa dire l''emittente di ogni riga: non è un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). L''ordinamento di partenza non è qui: lo dà ui.fn_ordinamento_lista; i filtri di partenza sono dell''interfaccia. La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
+IS 'La configurazione effettiva di una lista per un utente, pronta per il frontend. Cascata per chiave: colonne e pagina_dimensione vengono ognuna dal primo livello che la contiene: la preferenza (una chiave assente vuol dire «come lo standard»), poi il preset di base scelto da ui.fn_preset_di_base (acceso e con almeno una colonna attiva: il preset di ruolo del profilo più prioritario, solo con la veste valorizzata; poi quello dell''azienda, se accesa; poi quello di sistema), poi il catalogo. Poi il merge delle colonne nuove (colonne_nuove le conta dopo il filtro dei permessi), la normalizzazione (identificatori e azioni visibili, identificatori fissati), il filtro dei permessi di colonna (ui.fn_lista_colonne_livello: BLOCCATO esce, LETTURA non si esporta), etichetta_i18n_key e priorita fresche dal catalogo, e la misura di pagina da ui.fn_misura_pagina_risolta, la stessa regola di ui.fn_misura_lista: una misura del catalogo ui.misure_pagina, e senza la preferenza e senza il preset il default dell''uso della lista (ui.lista_definizione.uso_misura, COMPATTA o PAGINA). Una riga della preferenza fuori forma non fa cadere la funzione: ordine, larghezza e misura passano da ui.fn_intero_da_jsonb, un campo che manca prende il default del catalogo, una voce senza codice o di un''altra colonna si salta, un codice ripetuto vale una volta. Uscite: colonne, pagina_dimensione e pagina_dimensione_standard (la misura senza la preferenza), origine (per chiave: preferenza, ruolo, emittente_fiscale, sistema o catalogo; il FE rimanda al salvataggio solo le chiavi preferenza), ricerca_min_caratteri (la soglia della ricerca libera della lista), colonne_nuove, preset_base (id, ambito e contenuto_aggiornato_il, la data del contenuto per chiave, del preset di base di oggi, o null), preset_base_cambiato (la preferenza ha salvato una base che non è quella di oggi), preset_aggiornato_chiavi (solo sulla base di oggi: le chiavi di origine preferenza il cui contenuto nel preset è cambiato dopo lo snapshot salvato con la preferenza, ui.fn_preset_aggiornato; vuoto se nessuna; chiudere il banner è riscrivere preset_base_id) e preset_aggiornato (almeno una), multi_emittente (la lista sa dire l''emittente di ogni riga: non è un permesso) e perimetro_emittente (false: catalogo globale, la domanda dell''emittente non si applica). L''ordinamento di partenza non è qui: lo dà ui.fn_ordinamento_lista; i filtri di partenza sono dell''interfaccia. La riga della lista la legge ui.fn_lista_da_codice (E_UI_LISTA_NON_TROVATA), la veste ui.fn_veste_corrente. STABLE.';
 ```
 
 </div>

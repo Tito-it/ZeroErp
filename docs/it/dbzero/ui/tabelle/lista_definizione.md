@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Catalogo delle liste configurabili. Una riga per lista personalizzabile.
+> Il catalogo delle liste configurabili: una riga per ogni schermata a elenco che l'operatore può personalizzare. Dice il codice, la relazione da cui legge, se le righe appartengono a un'azienda e se la lista sa dire di quale, se riceve la genealogia dei documenti, l'uso della misura di pagina e la soglia della ricerca libera. La lettura per codice è ui.fn_lista_da_codice.
 
 ## 🗂️ Campi principali
 | Colonna | Tipo | Nullable | Default |

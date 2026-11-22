@@ -33,7 +33,7 @@ BEGIN
     IF v_preset IS NOT NULL THEN
         SELECT w.codice INTO v_widget FROM ui.widget w WHERE w.id = OLD.widget_id;
         PERFORM script.fn_log_and_raise_error(
-            'ui', TG_NAME::text, 'E_UI_WIDGET_IN_USO',
+            'database', TG_NAME::text, 'E_UI_WIDGET_IN_USO',
             jsonb_build_object(
                 'table',        TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
                 'dashboard_id', OLD.dashboard_id,
