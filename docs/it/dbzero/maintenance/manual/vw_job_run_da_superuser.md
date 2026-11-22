@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `maintenance.vw_job_run_da_superuser`
 
-> **Ultimo aggiornamento**: 3 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -81,11 +81,18 @@ processo fatta da un superuser, non quella di un processo la cui ultima corsa è
 né una corsa senza ruolo o di un ruolo che non esiste più; il presidio è a catalogo, e
 l'applicazione lo legge.
 
+`db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql`, test 7-8 — per un processo vince la
+corsa più recente fra quelle col processo e quelle storiche senza processo con quel nome di job.
+
 ---
 
 ### Note di migrazione
 
 * 2026-10-15 — nasce insieme a `job_run_log.ruolo_sessione` (`brief-db-ruoli-di-sistema`).
+* 2026-11-22 — l'ultima corsa si cerca processo per processo, sugli indici del giornale: le corse
+  col processo da una parte, le righe storiche senza processo dall'altra, e vince la più recente.
+  Prima la vista raggruppava tutto il giornale su un'espressione che nessun indice serve. Il
+  risultato non cambia (`brief-db-giornale-corse-indici`).
 
 ---
 
