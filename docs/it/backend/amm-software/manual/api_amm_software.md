@@ -2034,6 +2034,13 @@ Le corse del processo nel giornale `maintenance.job_run_log`, filtrate per
 una, e tutte e due le origini). Ordine `started_at DESC, id DESC`. Paginazione
 `limit`/`offset` (`pagina_da_query`).
 
+⚠️ **Non è tutta la storia** (dal 2026-11-22): il giornale tiene gli ultimi 12
+mesi, più le corse che la potatura conserva per ogni corsia (l'ultima, l'ultima
+conclusa, l'ultima fallita, l'ultima di pgAgent, ogni corsa aperta). `count` e
+`offset` arrivano quindi fin lì. Fa eccezione un processo che dichiara
+`potatura_esclusione` (la fatturazione), che tiene tutte le sue corse. Le regole
+in [api_tracciamento.md § Ritenzione del giornale](../../core/manual/api_tracciamento.md#ritenzione-del-giornale).
+
 Codice non nel registro → 404 `E_PROCESSO_NON_TROVATO`, come §6.8 (dal
 2026-11-22: prima rispondeva 200 con lista vuota, cioè «mai girato» detto di un
 processo che non esiste).

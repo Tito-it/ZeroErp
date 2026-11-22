@@ -2,10 +2,9 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, con un passo su dbdev: dare a `zeroerp_job` l'`EXECUTE` su
-`proc_pota_giornale_corse_job` prima della corsa delle 03:30 (§8.8). La fase post del provisioning
-è stata lanciata, ma al controllo del catalogo il permesso non c'è. Il giro 2b è applicato su scratch e dbdev, con i pgTAP verdi, il
-2026-11-22. Poi la sessione BE (`/arrivi-db`), con le richieste del §8.7 e del §8.8.
+**Riparte: team DB** (`dev/db-tid`), con la richiesta del §9.2 (il riferimento orfano di
+`coda_lavori.job_run_id`). L'`EXECUTE` di `zeroerp_job` sulla procedura di potatura è dato su
+dbdev (Tid, 2026-11-22). Il lato BE del giro 2 è fatto, compresa la doc di `job_run_id` (§9.1).
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -19,11 +18,13 @@
 | 6 | ✅ team DB | Giro 2a scritto e provato: il processo obbligatorio, l'indice delle corsie, la vista dei superuser senza il ramo storico, i pgTAP e la doc | §8.7 | 5-ter |
 | 6-bis | ✅ Tid | Il `DELETE` a mano su dbdev; applicare `20261122-23` … `-25`; i pgTAP del §8.7 verdi (2026-11-22) | §8.7 | 6 |
 | 6-ter | ✅ Tid | La doc auto-generata di `maintenance` rigenerata dopo il 2a | §8.7 | 6-bis |
-| 6-quater | **sessione BE** ⏭️ | Le richieste del §8.7: il ramo storico di `list_job_summary`, il censimento del `23514`, il NULL di `processo_codice` nei lettori | §8.7 | 6-bis |
+| 6-quater | ✅ sessione BE | Le richieste del §8.7 (2026-11-22, §9.1): il ramo storico di `list_job_summary`, il censimento del `23514`, il NULL di `processo_codice` nei lettori | §8.7 | 6-bis |
 | 7 | ✅ team DB | Giro 2b scritto e provato: `potatura_esclusione`, la funzione di potatura, il job, il processo nel seed, il pgTAP, la doc | §8.8 | 6-bis, il via di Tid (2026-11-22) |
 | 7-bis | ✅ Tid | I due ritocchi del §8.8 confermati; `20261122-29` … `-32` applicati su scratch e dbdev; la fase post del provisioning sullo scratch; i pgTAP verdi (2026-11-22) | §8.8 | 7 |
-| 7-ter | **Tid** ⏭️ | ✅ La doc auto-generata di `dbops` e `maintenance` rigenerata. ⏳ Su dbdev manca ancora l'`EXECUTE` di `zeroerp_job` sulla procedura, anche dopo la fase post (verificato il 2026-11-22): senza, il job delle 03:30 fallisce per permesso negato | §8.8 | 7-bis |
-| 8 | **sessione BE** | Le doc che promettono tutta la storia; con il 6-quater, in un solo `/arrivi-db` | §7.4, §8.7, §8.8 | 7-bis |
+| 7-ter | ✅ Tid | La doc auto-generata di `dbops` e `maintenance` rigenerata. L'`EXECUTE` di `zeroerp_job` sulla procedura dato su dbdev con un `GRANT` a mano (2026-11-22, catalogo: `zeroerp_job=X/zeroerp_owner`). La fase post non l'aveva dato: con ogni probabilità era girata su un altro database (su dbdev è `zeroerp`) | §8.8 | 7-bis |
+| 8 | ✅ sessione BE | Le doc che promettono tutta la storia; con il 6-quater, in un solo `/arrivi-db` (2026-11-22, §9.1) | §7.4, §8.7, §8.8 | 7-bis |
+| 9 | **team DB** ⏭️ | La richiesta del §9.2: la potatura non lascia `coda_lavori.job_run_id` orfano; i 37 orfani di dbdev | §9.2 | 8, la decisione di Tid (2026-11-22) |
+| 9-bis | ✅ sessione BE | `api_gestione_code.md` dice che `job_run_id` NULL vuol dire anche «corsa non più nel giornale», con la garanzia ⏳ in attesa del 9. Fatta subito: BE e FE trattano già il NULL, niente aspetta il DB (2026-11-22) | §9.2 | — |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
@@ -32,7 +33,8 @@ processo (§7.2). ✅ 2026-11-22: le corse della fatturazione non si potano; i c
 ritirano (§7.4). ✅ 2026-11-22: D-R2 sì, D-R3 sì, D-R4 le righe storiche si cancellano a mano,
 via al giro 2a (§8.6). ✅ 2026-11-22: via al giro 2b. ✅ 2026-11-22: confermati i due ritocchi
 del §8.8, la chiave per coppia `(processo, jobname)` e l'ultima fallita e di pgAgent fra le righe
-tenute. Nessuna decisione aperta.
+tenute. ✅ 2026-11-22: un `job_run_id` che non porta a nessuna corsa **non si mostra**, e lo
+toglie il DB alla fonte, non il BE in lettura (§9.2, strada A). Nessuna decisione aperta.
 **Committato** (2026-11-22, `dev/db-tid`): il giro 1 (tre changeSet, un pgTAP, la doc di `maintenance`,
 manuale e auto-generata) e questo brief. **Committato** (2026-11-22) anche il §8, questa testata e il giro 2a, applicato
 (tre changeSet, quattro pgTAP toccati, la doc `manual/` e cinque guide o pagine, §8.7) e il giro
@@ -704,3 +706,53 @@ datato, 2026-11-22).
 2. Nessun cambio di contratto: la potatura non tocca API né risposte. Il censimento dei lettori
    applicativi del §7.4 resta valido. Se un lettore conta sull'ultima corsa **fallita** o **di
    pgAgent** di un job, ora c'è sempre (§8.8, ritocco 2).
+
+## 9. La risposta del BE al §8.7 e al §8.8 — 2026-11-22
+
+Sessione BE (`dev/backend-tid`), `/arrivi-db` dopo l'apply dei giri 2a e 2b.
+
+### 9.1 Fatto ✅
+
+| Richiesta | Esito |
+| --- | --- |
+| §8.7-1, il ramo storico di `list_job_summary` | ritirato: il filtro è `processo_codice = %s`, un parametro solo. Il test del repository vuole tre occorrenze del filtro e nessun `split_part`. **Chiamata reale su dbdev**: il riepilogo della fatturazione torna le sue due corsie; l'`EXPLAIN` del riepilogo per processo è un `Index Only Scan` su `ix_job_run_log_processo_codice_jobname_started_at` |
+| §8.7-2, chi conta sul `23514` o sul nome del `CHECK` | **nessun lettore** in `backend/` né in `frontend/`. `registered_job` vuole `processo_codice: str` già nella firma, quindi il BE non manda mai una corsa senza processo. Aggiornato un solo commento di test |
+| §8.7-3, il NULL di `processo_codice` nei lettori | niente da togliere: `cte_corse` e `job_liveness` non avevano rami per il NULL. Il filtro per processo nella `LATERAL` di `job_liveness` resta, per la ragione del ritocco 1 del §8.8 (un `jobname` non appartiene a un processo solo): scritto nel commento |
+| §8.8, ritocco 1, negli altri lettori (dalla revisione, 2026-11-22) | `corsa_riuscita_dal` / `corsa_chiusa_dal` (`e_dovuto`) cercavano per solo `jobname`: una corsa dello stesso nome di un altro processo chiudeva il periodo, e la sveglia saltava senza errore. Ora la chiave è la coppia, `processo_codice` keyword-only passato da `sveglia.processo_codice`; test 7 di `tests/db/test_corsa_riuscita_dal_db` sul DB vero (rosso col filtro tolto). ⚠️ Restano per solo `jobname`, per contratto e da decidere: `job_liveness(jobnames=…)`, `job-summary` senza filtri, `job-runs?jobname=` |
+| §8.8-1, le doc che promettono tutta la storia | `api_tracciamento.md`: una sezione «Ritenzione del giornale», con `job-runs` (`date_from`) e i conteggi di `job-summary` che la richiamano, gli indici e il filtro per processo aggiornati. `api_amm_software.md` §6.9: la paginazione arriva fino alla ritenzione. `api_fatturazione.md`: «da sempre» resta vero, e il perché (`potatura_esclusione`); la sorgente dei giri è per processo, non più per prefisso |
+
+Nessun FE da toccare: nessuna risposta cambia forma.
+
+### 9.2 ⏭️ Richiesta al team DB: la potatura non lascia `coda_lavori.job_run_id` orfano
+
+**Il caso.** `dbops.coda_lavori.job_run_id` non ha FK (lo dice il suo manuale): dopo la potatura
+un lavoro vecchio punta a una corsa che non c'è più. Il BE lo espone in due risposte, il dettaglio
+del lavoro della coda (`CodaLavoriRepository.get_dettaglio`, mostrato a video da
+`JobDettaglioDrawer`, voce «Run worker») e lo stato di un giro di fatturazione
+(`VenditeFatturazioneRunStatoData`, in `vendite/api/views.py`). Un numero che non porta a niente, a video, si legge come un
+malfunzionamento.
+
+**Decisione di Tid (2026-11-22): non si mostra, e lo toglie il DB alla fonte.** La strada scartata
+era il BE che, in lettura, controlla che la corsa esista e manda NULL: andrebbe fatta in ogni lettore
+di oggi e di domani, e il dato sbagliato resterebbe nel database.
+
+**Cosa chiede il BE.** Che, nella stessa operazione che pota il giornale, i lavori della coda che
+puntano a una corsa cancellata abbiano `job_run_id = NULL`. Il BE e il FE trattano già il NULL
+(«—» nel drawer, `allow_null` nello schema dello stato). La forma la decide il team DB; i punti che
+il BE ha visto e che la toccano:
+
+* `coda_lavori` ha la row level security e il trigger d'archiviazione
+  (`trg_coda_lavori_a10_archiviazione_upd`): la potatura, che corre come `zeroerp_job`, deve poter
+  aggiornare anche i lavori archiviati e quelli di ogni azienda;
+* i trigger di audit e di `tx_id` scattano sull'`UPDATE`: va deciso se l'azzeramento lascia la sua
+  traccia di audit come ogni altra modifica;
+* il garbage collection della coda (`cleanup_at`) è un'altra cosa e non lo copre: un lavoro può
+  vivere più a lungo della sua corsa.
+* **I 37 orfani di oggi su dbdev** (§8.7: i lavori che puntavano alle righe senza processo
+  cancellate). Si sistemano a mano su dbdev, come le righe di D-R4, o con la prima potatura se la
+  regola è «nessun `job_run_id` senza corsa» e non solo «quelli che cancello adesso».
+
+**Il manuale di `coda_lavori`** oggi dice «un lavoro vecchio può puntare a una corsa che non c'è
+più»: dopo il giro diventa «`job_run_id` NULL vuol dire mai preso da un worker, oppure corsa non più
+nel giornale». Lato BE lo dice già `api_gestione_code.md` §4 (riga 9-bis della testata), con la
+garanzia segnata ⏳ fino a questo giro: dopo l'apply si toglie il ⏳.

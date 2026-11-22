@@ -276,7 +276,9 @@ class TestMaintenanceJobSummary(TestCase):
         # Per chiave, non per prefisso: nessun `LIKE` (jolly `_`, nessun indice).
         self.assertNotIn("LIKE", sql)
         self.assertIn("processo_codice = %s", sql)
-        self.assertIn("split_part(jobname, ':', 1) = %s", sql)
+        # La colonna e' NOT NULL dal giro 2a (§8.7): nessun ramo per nome.
+        self.assertNotIn("split_part", sql)
+        self.assertNotIn("processo_codice IS NULL", sql)
         # Attribuzione: mese DICHIARATO nel meta, con ripiego sul mese di
         # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
         # quelli storici) non matcherebbero mai alcun mese.
@@ -293,10 +295,10 @@ class TestMaintenanceJobSummary(TestCase):
         #    valori seguono, nello stesso ordine, prima di limit/offset: un
         #    valore in meno qui non fallisce — filtra una CTE sulla cosa
         #    sbagliata e la riga cuce corse di job diversi.
-        self.assertEqual(sql.count("split_part(jobname, ':', 1) = %s"), 3)
+        self.assertEqual(sql.count("processo_codice = %s"), 3)
         self.assertEqual(
             params,
-            ["run_fatturazione_batch", "run_fatturazione_batch", "2026-07-01"] * 3 + [10, 0],
+            ["run_fatturazione_batch", "2026-07-01"] * 3 + [10, 0],
         )
 
     # Scopo: la CHIAVE di meta_month_equals finisce nell'SQL come letterale (non

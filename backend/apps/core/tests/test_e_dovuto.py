@@ -88,6 +88,8 @@ class EDovutoTests(SimpleTestCase):
     def test_dopo_le_dalle_senza_corsa_riuscita_e_dovuto(self) -> None:
         self.assertEqual(self._esegui(_DIGEST.unit, datetime(2026, 9, 14, 5, 5, tzinfo=UTC)), 0)
         jobname, dal = self.repo.corsa_riuscita_dal.call_args.args
+        # La corsia si cerca nel SUO processo: un jobname non e' di un processo solo.
+        self.assertEqual(self.repo.corsa_riuscita_dal.call_args.kwargs, {"processo_codice": "digest_presidi"})
         self.assertEqual(jobname, "digest_presidi:giornaliera")
         self.assertEqual(dal, datetime(2026, 9, 14, 5, 0, tzinfo=UTC))
 
@@ -134,6 +136,8 @@ class EDovutoTests(SimpleTestCase):
         self.repo.corsa_chiusa_dal.return_value = True
         self.assertEqual(self._esegui(_SMOKE.unit, datetime(2026, 10, 13, 10, 0, tzinfo=UTC)), 1)
         jobname, dal = self.repo.corsa_chiusa_dal.call_args.args
+        # La corsia si cerca nel SUO processo: un jobname non e' di un processo solo.
+        self.assertEqual(self.repo.corsa_chiusa_dal.call_args.kwargs, {"processo_codice": "smoke_notturno"})
         self.assertEqual(jobname, "smoke_notturno:completo")
         self.assertEqual(dal, datetime(2026, 10, 13, 0, 30, tzinfo=UTC))
         self.repo.corsa_riuscita_dal.assert_not_called()

@@ -152,10 +152,10 @@ class MaintenanceRepository:
             )
         return bool(row[0])
 
-    # Scopo: vero se la corsia `jobname` ha una corsa RIUSCITA (`ok`) partita
-    #        da `dal` in poi: il lavoro del periodo che comincia a `dal` e' fatto.
-    #        Lo chiede `e_dovuto`, l'`ExecCondition` delle sveglie calendariali
-    #        (brief un-solo-fuso-aziendale T-9).
+    # Scopo: vero se la corsia `jobname` del processo `processo_codice` ha una
+    #        corsa RIUSCITA (`ok`) partita da `dal` in poi: il lavoro del periodo
+    #        che comincia a `dal` e' fatto. Lo chiede `e_dovuto`, l'`ExecCondition`
+    #        delle sveglie calendariali (brief un-solo-fuso-aziendale T-9).
     # ⚠️ Una corsa FALLITA non conta: il lavoro non e' fatto, e la sveglia dopo
     #    riprova. Una corsa IN CORSO non conta nemmeno: la sovrapposizione la
     #    impedisce il lock del comando, e una riga rimasta aperta da un processo
@@ -163,39 +163,43 @@ class MaintenanceRepository:
     #    nemmeno: dal 2026-10-10 nasce con `ok` NULL (brief corsa-saltata D2), e
     #    `AND ok` la scarta da solo. Fino a quel giorno aveva `ok = true`, e una
     #    sveglia saltata dietro una corsa poi fallita chiudeva il periodo.
-    def corsa_riuscita_dal(self, jobname: str, dal: datetime) -> bool:
-        with connection.cursor() as cur:
-            cur.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM maintenance.job_run_log
-                     WHERE jobname = %s AND started_at >= %s AND ok
-                )
-                """,
-                [jobname, dal],
-            )
-            row = cur.fetchone()
-        assert row is not None
-        return bool(row[0])
+    def corsa_riuscita_dal(self, jobname: str, dal: datetime, *, processo_codice: str) -> bool:
+        return self._corsa_dal(processo_codice, jobname, dal, "ok")
 
     # Scopo: c'e' una corsa CHIUSA della corsia da `dal`, riuscita o fallita?
     #        Per il `dovuto` con `basta_una_corsa`: l'esito negativo e' un
     #        risultato, non un lavoro da rifare. ⚠️ `ok IS NOT NULL` e non
     #        `ended_at IS NOT NULL`: una corsa SALTATA (lock occupato) ha `ok`
     #        NULL come una aperta, e non ha fatto il lavoro del periodo.
-    def corsa_chiusa_dal(self, jobname: str, dal: datetime) -> bool:
+    def corsa_chiusa_dal(self, jobname: str, dal: datetime, *, processo_codice: str) -> bool:
+        return self._corsa_dal(processo_codice, jobname, dal, "ok IS NOT NULL")
+
+    # Scopo: la lettura comune alle due sopra, che differiscono solo per il
+    #        predicato sull'esito (frammento costante, mai dal chiamante esterno).
+    # ⭐ La chiave e' la coppia `(processo_codice, jobname)` (2026-11-22): il
+    #    modello non lega un `jobname` a un processo solo (ritocco 1 del §8.8 di
+    #    brief-db-giornale-corse-indici), e per solo `jobname` una corsa dello
+    #    stesso nome di un ALTRO processo direbbe «gia' fatto», e la sveglia
+    #    salterebbe il periodo senza errore. La serve l'indice
+    #    `(processo_codice, jobname, started_at)`.
+    # ⛔ `processo_codice` keyword-only: due `str` posizionali si scambiano
+    #    senza che niente fallisca (la coppia non esiste → «non fatto»).
+    # ⛔ Non un `assert` sulla riga: con `python -O` sparirebbe.
+    def _corsa_dal(self, processo_codice: str, jobname: str, dal: datetime, esito: str) -> bool:
         with connection.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT EXISTS (
                     SELECT 1 FROM maintenance.job_run_log
-                     WHERE jobname = %s AND started_at >= %s AND ok IS NOT NULL
+                     WHERE processo_codice = %s AND jobname = %s
+                       AND started_at >= %s AND {esito}
                 )
-                """,
-                [jobname, dal],
+                """,  # noqa: S608 — `esito`: frammento costante dei due metodi sopra
+                [processo_codice, jobname, dal],
             )
             row = cur.fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError("SELECT EXISTS senza riga: il driver non ha risposto")
         return bool(row[0])
 
     # Scopo: Restituisce la lista delle esecuzioni job con filtri opzionali su
@@ -309,8 +313,11 @@ class MaintenanceRepository:
         #    successivo» (la forma di `vw_job_run_da_guardare`), una ricerca
         #    per corsia invece di un `DISTINCT` su tutte le corse del processo.
         #    ⛔ Le corsie NON si compongono qui (`<codice>:<corsia>`): vedi sopra.
-        #    Nella `LATERAL` il filtro `processo_codice = %s` resta: una corsia
-        #    con righe storiche senza processo non le prende.
+        #    Nella `LATERAL` il filtro `processo_codice = %s` resta: il modello
+        #    non lega un `jobname` a un processo solo (§8.8 del brief
+        #    giornale-corse-indici, ritocco 1), e senza il filtro la corsia
+        #    prenderebbe le corse dello stesso nome di un altro processo. La
+        #    discesa la serve l'indice `(processo_codice, jobname, started_at)`.
         if jobnames is not None:
             chiavi_sql = "chiavi AS (SELECT DISTINCT unnest(%s::text[]) AS jobname),"
             chiavi_params: list[Any] = [list(jobnames)]
@@ -389,15 +396,9 @@ class MaintenanceRepository:
     #    l'intervallo `>= 'x' AND < successore` lo sostituisce: sotto `it_IT`
     #    `_` e `:` non pesano al primo livello, e l'intervallo non e' il
     #    prefisso. La chiave vera e' `processo_codice`, servito dal suo indice.
-    #    ⚠️ Le righe STORICHE senza processo (`chk_job_run_log_processo_dichiarato`
-    #    e' NOT VALID: nessuna riga nuova nasce cosi') si riconoscono dal nome,
-    #    `<codice>` o `<codice>:<corsia>`, con `split_part`: confronto esatto,
-    #    senza jolly. ⚠️ Nel `summary` quel ramo legge per intero l'indice
-    #    parziale `ix_job_run_log_jobname_senza_processo` (che e' per `jobname`
-    #    esatto, non per `split_part`): costo fermo, perche' per costruzione
-    #    l'indice non cresce. Nella `LATERAL` delle corse lo stesso indice si
-    #    scende per jobname. La soluzione sul modello e' del team DB (§6.8,
-    #    richiesta 1: attribuire il processo alle righe storiche).
+    #    Dal giro 2a (§8.7 del brief, 2026-11-22) la colonna e' `NOT NULL`:
+    #    ogni corsa ha il suo processo, e il ramo per nome delle righe storiche
+    #    senza processo (`split_part(jobname, ':', 1)`) e' ritirato.
     #  - `meta_month_equals`: `(chiave, 'YYYY-MM-01')` — tiene i run ATTRIBUITI
     #    a quel mese, applicato PRIMA del GROUP BY (i conteggi risultano quindi
     #    relativi ai soli run che matchano). L'attribuzione è:
@@ -422,11 +423,8 @@ class MaintenanceRepository:
         conditions: list[str] = []
         params: list[Any] = []
         if processo_codice is not None:
-            conditions.append(
-                "(processo_codice = %s"
-                " OR (processo_codice IS NULL AND split_part(jobname, ':', 1) = %s))"
-            )
-            params.extend([processo_codice, processo_codice])
+            conditions.append("processo_codice = %s")
+            params.append(processo_codice)
         if meta_month_equals is not None:
             # La CHIAVE finisce nell'SQL come letterale quotato (è un nome di
             # campo, non un valore: non parametrizzabile) → validata qui. Il
