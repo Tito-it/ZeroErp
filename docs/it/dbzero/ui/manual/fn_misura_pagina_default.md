@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_misura_pagina_default`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -36,9 +36,11 @@ selettore senza misura scelta.
 
 * [fn_get_misure_pagina](/dbzero/ui/funzioni/fn_get_misure_pagina), per i due default che manda
   all'applicazione;
-* [fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config), per il ripiego sul default
-  dell'uso della lista (`COMPATTA` o `PAGINA`) quando né la preferenza né il preset di base hanno una
-  misura del catalogo;
+* [fn_misura_pagina_risolta](/dbzero/ui/funzioni/fn_misura_pagina_risolta), per il ripiego sul
+  default dell'uso della lista (`COMPATTA` o `PAGINA`) quando né la preferenza né il preset di base
+  hanno una misura del catalogo. Da lì il default arriva al resolver
+  ([fn_resolve_lista_config](/dbzero/ui/funzioni/fn_resolve_lista_config)) e alla misura di una lista
+  ([fn_misura_lista](/dbzero/ui/funzioni/fn_misura_lista)), che non la chiamano direttamente;
 * [trgfn_misure_pagina_guard_default_per_uso](/dbzero/ui/funzioni/trgfn_misure_pagina_guard_default_per_uso),
   che a fine transazione la chiede per ogni uso: il catalogo non resta senza un default.
 

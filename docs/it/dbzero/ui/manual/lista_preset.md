@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preset`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -23,7 +23,6 @@
 > * [ui.trgfn_ui_lista_preset_guard_pagina_dimensione](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_pagina_dimensione) — la misura fuori catalogo rifiutata
 > * [ui.trgfn_ui_lista_preset_guard_ordinamento](/dbzero/ui/funzioni/trgfn_ui_lista_preset_guard_ordinamento) — la forma dell'ordinamento di partenza
 > * [ui.fn_ordinamento_lista](/dbzero/ui/funzioni/fn_ordinamento_lista) — l'ordinamento di partenza risolto per l'utente
-> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — un preset nasce solo su una lista accesa
 >
 > Guide:
 >

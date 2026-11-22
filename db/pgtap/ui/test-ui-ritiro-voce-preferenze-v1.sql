@@ -19,7 +19,7 @@
 --   c_tre), una dashboard con due card nel pool, un operatore umano con le sue
 --   preferenze. Nessun dato esistente decide un'asserzione.
 --
--- Elenco test (plan 14):
+-- Elenco test (plan 15):
 --   Il building block (ui.fn_configurazione_senza_codici)
 --    1) toglie le voci dei codici dati e tiene le altre, nel loro ordine
 --    2) l'elenco che resta vuoto esce
@@ -32,6 +32,8 @@
 --   Il ritiro di una card dal pool
 --    8) ⭐ la voce della card esce dalla preferenza della dashboard
 --    9) ... e dopo il ritiro la preferenza si salva
+--   15) ... e la preferenza di un'altra dashboard, con la stessa card nel pool,
+--       non cambia (aggiunto dal /verifica-db del 2026-11-22; numerato in coda)
 --   I lucchetti
 --   10) una colonna non cambia lista: E_UI_COLONNA_CODICE_IMMUTABILE
 --   11) una riga del pool non cambia dashboard: E_UI_WIDGET_IMMUTABILE
@@ -45,7 +47,7 @@ SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================
 -- Fixture
@@ -91,6 +93,10 @@ WITH ins AS (
 SELECT id AS widget_id, codice, substr(etichetta, 3)::int AS n FROM ins;
 INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
 SELECT (SELECT dashboard_id FROM _d WHERE n = 1), widget_id, 10 * n FROM _w;
+-- La seconda card anche nel pool della seconda dashboard: il ritiro dalla
+-- prima non tocca le preferenze dell'altra (caso 15).
+INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
+SELECT (SELECT dashboard_id FROM _d WHERE n = 2), widget_id, 10 FROM _w WHERE n = 2;
 
 CREATE TEMP TABLE _u AS
 SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('pgTAP-ritiro-voce-preferenze', false);
@@ -111,7 +117,11 @@ INSERT INTO ui.dashboard_preferenza_utente (auth_user_id, dashboard_id, configur
 SELECT (SELECT auth_user_id FROM _u), (SELECT dashboard_id FROM _d WHERE n = 1),
        jsonb_build_object('widget', jsonb_build_array(
            jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 1), 'ordine', 1),
-           jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 2), 'ordine', 2)));
+           jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 2), 'ordine', 2)))
+UNION ALL
+SELECT (SELECT auth_user_id FROM _u), (SELECT dashboard_id FROM _d WHERE n = 2),
+       jsonb_build_object('widget', jsonb_build_array(
+           jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 2), 'ordine', 1)));
 
 -- La preferenza di (utente, lista), per i confronti.
 CREATE FUNCTION pg_temp.pref(p_utente integer, p_lista_n integer) RETURNS jsonb LANGUAGE sql AS $$
@@ -180,6 +190,12 @@ SELECT lives_ok($$
            SET configurazione = configurazione || '{"dimensione_max": 6}'::jsonb
          WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND dashboard_id = (SELECT dashboard_id FROM _d WHERE n = 1)$$,
           '9) ... e dopo il ritiro la preferenza si salva');
+SELECT is((SELECT pu.configurazione FROM ui.dashboard_preferenza_utente pu
+            WHERE pu.auth_user_id = (SELECT auth_user_id FROM _u)
+              AND pu.dashboard_id = (SELECT dashboard_id FROM _d WHERE n = 2)),
+          jsonb_build_object('widget', jsonb_build_array(
+              jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 2), 'ordine', 1))),
+          '15) ... e la preferenza di un''altra dashboard, con la stessa card nel pool, non cambia');
 
 -- ============================================================
 -- 10-13 I lucchetti

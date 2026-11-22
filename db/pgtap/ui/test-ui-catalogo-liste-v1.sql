@@ -25,7 +25,7 @@
 --   (20261120-52) e il 14 il ritiro dei trigger ATTIVO (20261120-51): nella prova
 --   sull'estratto, prima dell'apply, non ci sono.
 --
--- Elenco test (plan 28):
+-- Elenco test (plan 34):
 --   La struttura
 --    1) lista_colonna.origine_campo e' l'enum ui.origine_campo_lista, NOT NULL
 --    2) il CHECK che ricopiava U24 + U25 non c'e' piu', i tre nuovi si'
@@ -64,13 +64,19 @@
 --   27) ⭐ con la veste NULL, la colonna sensibile concessa TUTTO dal profilo di
 --       un'altra veste resta BLOCCATO (il livello piu' restrittivo)
 --   28) ... e sotto quella veste e' TUTTO
+--   Aggiunti dal /verifica-db del 2026-11-22
+--   29) il presidio vede la relazione tolta con un DDL (RELAZIONE_ASSENTE)
+--   30) ... e una colonna LINEAGE su un nome che la sintesi non ha
+--       (LINEAGE_SCONOSCIUTA; skip come i casi 7-8)
+--   31-34) U28: il codice, la descrizione, lo schema_dati e le note vuoti di
+--       una lista, un CHECK per caso, riconosciuto per nome
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(28);
+SELECT plan(34);
 
 -- ============================================================
 -- Fixture: le relazioni temporanee e le liste che le leggono
@@ -402,6 +408,61 @@ SELECT is(
       WHERE lv.codice = 'col_a_sensibile'),
     'TUTTO',
     '28) ... e sotto la veste del profilo e'' TUTTO');
+
+-- ============================================================
+-- 29-34) Aggiunti dal /verifica-db del 2026-11-22, numerati in coda
+-- ============================================================
+-- Q48 (a): il presidio e' l'unica verifica del nome di una colonna LINEAGE e
+-- della relazione che sparisce. CAMPO_ASSENTE e' il caso 22; LINEAGE_NON_DICHIARATA
+-- non si costruisce come applicazione (il guard la rifiuta, caso 6).
+-- La relazione della lista 4 la toglie un DDL: il presidio vede la lista.
+DROP TABLE _rel_ddl;
+
+SELECT is(
+    (SELECT array_agg(v.causa || ':' || COALESCE(v.colonna_codice, '-') ORDER BY v.causa)
+       FROM dbops.vw_liste_colonne_campo_orfano v
+      WHERE v.lista_id = (SELECT lista_id FROM _l WHERE n = 4)),
+    ARRAY['RELAZIONE_ASSENTE:-'],
+    '29) il presidio vede la relazione tolta con un DDL (RELAZIONE_ASSENTE), e non le sue colonne');
+
+-- Il guard non legge piu' la sintesi della lineage (Q48): il nome inventato
+-- entra, e lo vede solo il presidio. Senza lista che dichiara, nessuna riga.
+INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, origine_campo,
+                              tipo_dato, filtrabile, ordinabile, ordine_default, user_insert)
+SELECT lista_id, '_pgtap_lineage_inventata', 'Transito', '_pgtap_campo_inventato', 'LINEAGE',
+       'string', false, false, 10, '_pgtap' FROM _ll;
+
+SELECT CASE WHEN EXISTS (SELECT 1 FROM _ll)
+    THEN is(
+        (SELECT array_agg(v.causa ORDER BY v.causa)
+           FROM ui.lista_colonna lc
+           JOIN dbops.vw_liste_colonne_campo_orfano v ON v.colonna_id = lc.id
+          WHERE lc.lista_id = (SELECT lista_id FROM _ll) AND lc.codice = '_pgtap_lineage_inventata'),
+        ARRAY['LINEAGE_SCONOSCIUTA'],
+        '30) una colonna LINEAGE su un nome che la sintesi non ha: il presidio la vede (LINEAGE_SCONOSCIUTA)')
+    ELSE skip('30) nessuna lista dichiara legge_lineage (il CSV del seed non e'' caricato)', 1)
+END;
+
+-- U28: un caso per CHECK dei testi di ui.lista_definizione (vista_sql e' il 24).
+SELECT is(dbops.fn_pgtap_codice_errore(format(
+        $$ INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+           VALUES (' ', 'Lista test pgTAP', %L, NULL, FALSE, '_pgtap') $$, (SELECT schema_tmp FROM _s))),
+    'chk_lista_definizione_codice_non_vuoto',
+    '31) un codice di lista vuoto e'' rifiutato dal CHECK');
+SELECT is(dbops.fn_pgtap_codice_errore(format(
+        $$ INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+           VALUES ('_pgtap.catalogo_descr_vuota', ' ', %L, NULL, FALSE, '_pgtap') $$, (SELECT schema_tmp FROM _s))),
+    'chk_lista_definizione_descrizione_non_vuota',
+    '32) una descrizione di lista vuota e'' rifiutata dal CHECK');
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.lista_definizione (codice, descrizione, schema_dati, vista_sql, attivo, user_insert)
+           VALUES ('_pgtap.catalogo_schema_vuoto', 'Lista test pgTAP', ' ', NULL, FALSE, '_pgtap') $$),
+    'chk_lista_definizione_schema_dati_non_vuoto',
+    '33) uno schema_dati vuoto e'' rifiutato dal CHECK');
+SELECT is(dbops.fn_pgtap_codice_errore(format(
+        $$ UPDATE ui.lista_definizione SET note = ' ' WHERE id = %s $$, (SELECT lista_id FROM _l WHERE n = 6))),
+    'chk_lista_definizione_note_non_vuote',
+    '34) una nota di lista vuota e'' rifiutata dal CHECK (NULL resta ammesso)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -17,7 +17,7 @@
 --   con l'azione concessa, uno senza niente). Nessuna riga del seed decide
 --   un'asserzione.
 --
--- Elenco test (plan 6):
+-- Elenco test (plan 7):
 --   Chi vede il widget
 --    1) ⭐ con l'azione concessa (e l'area aperta al suo minimo): il widget
 --       dell'azione, quello della sola area e quello libero; non quello
@@ -30,13 +30,15 @@
 --   La vista materializzata
 --    5) una lista si registra su una vista materializzata
 --    6) ... e una sua colonna sul campo della vista passa
+--    7) ... e una colonna su un campo che la vista non ha e' rifiutata:
+--       E_UI_CAMPO_SORGENTE_NON_TROVATO (la vista materializzata si guarda, non si salta)
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(6);
+SELECT plan(7);
 
 -- ============================================================
 -- Fixture
@@ -86,7 +88,7 @@ INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
 SELECT (SELECT dashboard_id FROM _d), w.widget_id, row_number() OVER (ORDER BY w.widget_id) * 10 FROM _w w;
 
 -- Due preset di sistema: il primo acceso, il secondo spento (la base nuova del caso 4
---   e' il primo, ripreso dopo il cambio).
+--   e' il secondo: una base spenta si salva, e lo snapshot e' comunque il suo).
 CREATE TEMP TABLE _p AS
 WITH ins AS (
   INSERT INTO ui.dashboard_preset (dashboard_id, codice, descrizione, ambito, attivo, user_insert)
@@ -174,6 +176,13 @@ SELECT lives_ok(
        SELECT ld.id, 'campo_mv', 'campo_mv', 'campo_mv', 'numeric', 10, 'pgtap'
          FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.dash_casi_mv' $$,
     '6) ... e una sua colonna sul campo della vista passa');
+
+SELECT is(dbops.fn_pgtap_codice_errore(
+    $$ INSERT INTO ui.lista_colonna (lista_id, codice, etichetta, campo_sorgente, tipo_dato, ordine_default, user_insert)
+       SELECT ld.id, 'campo_assente', 'campo_assente', 'campo_assente', 'numeric', 20, 'pgtap'
+         FROM ui.lista_definizione ld WHERE ld.codice = '_pgtap.dash_casi_mv' $$),
+    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+    '7) ... e una colonna su un campo che la vista non ha e'' rifiutata');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Vista `dbops.vw_liste_colonne_campo_orfano`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -71,7 +71,10 @@ corretta o spenta, oppure la vista della lista riallineata.
 ### Test
 
 * `db/pgtap/ui/test-ui-catalogo-liste-v1.sql` — una colonna tolta con un DDL compare come
-  `CAMPO_ASSENTE`, una lista sana non compare.
+  `CAMPO_ASSENTE`, una lista sana non compare; la relazione tolta con un DDL compare come
+  `RELAZIONE_ASSENTE`, senza le sue colonne; una colonna LINEAGE su un nome che la sintesi non ha
+  compare come `LINEAGE_SCONOSCIUTA`. `LINEAGE_NON_DICHIARATA` non ha un caso: come applicazione
+  il guard la rifiuta prima, e la scrive solo chi governa il seed.
 * `db/pgtap/dbops/test-catalogo-presidi-v1.sql` — la vista ha la sua riga nel catalogo dei presidi.
 
 ---

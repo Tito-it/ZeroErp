@@ -50,13 +50,17 @@
 --   U28: i testi vuoti (dal giro 4)
 --   20) un'etichetta di widget vuota e' rifiutata dal CHECK
 --   21) una descrizione di dashboard vuota e' rifiutata dal CHECK
+--   22-26) gli altri CHECK dei testi, uno per caso, riconosciuti per nome
+--       (aggiunti dal /verifica-db del 2026-11-22): codice, chiave i18n
+--       dell'etichetta e chiave del contatore del widget; codice e note della
+--       dashboard
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(26);
 
 -- ============================================================
 -- Fixture: due dashboard, un widget nel pool, un preset di sistema
@@ -296,6 +300,32 @@ SELECT throws_ok(
        VALUES ('_pgtap.dash_vuota', ' ', TRUE, '_pgtap') $$,
     '23514', NULL,
     '21) una descrizione di dashboard vuota e'' rifiutata (chk_dashboard_definizione_descrizione_non_vuota)');
+
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.widget (codice, etichetta, tipo_widget, attivo, user_insert)
+           VALUES (' ', 'Widget test pgTAP', 'kpi', TRUE, '_pgtap') $$),
+    'chk_widget_codice_non_vuoto',
+    '22) un codice di widget vuoto e'' rifiutato dal CHECK');
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.widget (codice, etichetta, etichetta_i18n_key, tipo_widget, attivo, user_insert)
+           VALUES ('_pgtap_widget_i18n_vuota', 'Widget test pgTAP', ' ', 'kpi', TRUE, '_pgtap') $$),
+    'chk_widget_etichetta_i18n_key_non_vuota',
+    '23) una chiave i18n dell''etichetta vuota e'' rifiutata dal CHECK (NULL resta ammesso)');
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.widget (codice, etichetta, contatore_key, tipo_widget, attivo, user_insert)
+           VALUES ('_pgtap_widget_contatore_vuoto', 'Widget test pgTAP', ' ', 'kpi', TRUE, '_pgtap') $$),
+    'chk_widget_contatore_key_non_vuota',
+    '24) una chiave del contatore vuota e'' rifiutata dal CHECK (NULL resta ammesso)');
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.dashboard_definizione (codice, descrizione, attivo, user_insert)
+           VALUES (' ', 'Dashboard test pgTAP', TRUE, '_pgtap') $$),
+    'chk_dashboard_definizione_codice_non_vuoto',
+    '25) un codice di dashboard vuoto e'' rifiutato dal CHECK');
+SELECT is(dbops.fn_pgtap_codice_errore(
+        $$ INSERT INTO ui.dashboard_definizione (codice, descrizione, note, attivo, user_insert)
+           VALUES ('_pgtap.dash_note_vuote', 'Dashboard test pgTAP', ' ', TRUE, '_pgtap') $$),
+    'chk_dashboard_definizione_note_non_vuote',
+    '26) una nota di dashboard vuota e'' rifiutata dal CHECK (NULL resta ammesso)');
 
 SELECT * FROM finish();
 ROLLBACK;
