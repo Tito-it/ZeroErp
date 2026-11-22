@@ -53,7 +53,7 @@ SELECT plan(11);
 -- Fixture: tre processi di prova, uno per domanda
 -- ============================================================
 -- ⚠️ processo_codice e' obbligatorio sulle righe nuove
---   (chk_job_run_log_processo_dichiarato) e ha una FK: i processi si
+--   (NOT NULL dal 90_end/20261122-25) e ha una FK: i processi si
 --   costruiscono qui, separati, perche' le viste ragionano per processo e una
 --   corsa scritta per un test non deve diventare «l'ultima» di un altro.
 -- 20261016-20: un processo con una sveglia dichiara l'accensione.

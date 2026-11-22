@@ -1,0 +1,112 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_pgtap_definizione_vincolo: la definizione di un vincolo in UNA forma, quella
+#   che il vincolo ha quando nasce sul database che lo legge.
+#
+# ⚠️ PERCHE'. Su PostgreSQL 19 lo stesso CHECK `col IN ('A', 'B')` su una colonna varchar
+#   si legge da pg_get_constraintdef in due testi, secondo la strada da cui e' arrivato:
+#   - nato qui (CREATE/ALTER, il database ricostruito da zero, cioe' la CI e ogni
+#     installazione nuova):
+#       ((col)::text = ANY ((ARRAY['A'::character varying, 'B'::character varying])::text[]))
+#   - riletto da un dump (pg_upgrade dalla 18, un restore: la 19 riparsa il testo scritto
+#     dalla 18, e mette il cast su ogni elemento invece che sull'array):
+#       ((col)::text = ANY (ARRAY[('A'::character varying)::text, ('B'::character varying)::text]))
+#   Stesso vincolo, altro testo. Il 2026-11-21 (commit 83c2d9343e) tre pgTAP sono stati
+#   riscritti sul secondo testo, letto da dbdev, che era passato alla 19 con pg_upgrade: da
+#   allora erano verdi su dbdev e sullo scratch (anche lui nato sulla 18) e rossi in CI.
+#   Le due forme sono la stessa regola; un test che ne asserisce una sola dice su quale
+#   macchina gira, non com'e' fatto il vincolo.
+#
+# La forma canonica e' la PRIMA: e' quella di un database costruito dal changelog. La
+#   seconda si riporta alla prima, array per array (ANY e ALL), e solo quando OGNI elemento
+#   ha la forma `('…'::character varying)::text`: un array di text (`ARRAY['A'::text]`) e'
+#   un'altra forma, nata cosi', e resta com'e'.
+#   Consumatori: anagrafiche/test-dati-societari-canale-fe-v1, dbops/test-character-n-v1,
+#   magazzino/test-documenti-interni-guard-v1 (regola del 2: la normalizzazione in un posto).
+#   Presidio: dbops/test-fn-pgtap-definizione-vincolo-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261122-40-create-fn-pgtap-definizione-vincolo-mctit.yaml
+
+  - changeSet:
+      id: 20261122-40-create-fn-pgtap-definizione-vincolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_pgtap_definizione_vincolo: pg_get_constraintdef in una forma sola, quella del
+        vincolo nato sul database; la forma riletta da un dump (IN su varchar) si riporta a quella.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_definizione_vincolo(
+                  p_tabella regclass,
+                  p_vincolo name
+              )
+              RETURNS text
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la definizione del vincolo p_vincolo di p_tabella, come la scrive
+              --   pg_get_constraintdef per un vincolo nato sul database. Un IN su varchar
+              --   riletto da un dump (cast su ogni elemento) torna alla forma col cast
+              --   sull'array. NULL se il vincolo non c'e'.
+              -- Uso:
+              --   SELECT is(dbops.fn_pgtap_definizione_vincolo('magazzino.inventari', 'chk_mag_inventari_stato'),
+              --             'CHECK (…)', '…');
+              DECLARE
+                  -- Un elemento della forma riletta: ('…'::character varying)::text, con
+                  -- l'apice raddoppiato dentro il letterale.
+                  c_elemento CONSTANT text := $re$\('(?:[^']|'')*'::character varying\)::text$re$;
+                  v_testo    text;
+                  v_trovato  text[];
+              BEGIN
+                  SELECT pg_catalog.pg_get_constraintdef(k.oid) INTO v_testo
+                    FROM pg_catalog.pg_constraint k
+                   WHERE k.conrelid = p_tabella
+                     AND k.conname  = p_vincolo;
+
+                  IF v_testo IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Un array per giro: termina perche' l'array riscritto comincia con
+                  -- «((ARRAY[» e non e' piu' della forma cercata.
+                  LOOP
+                      v_trovato := regexp_match(
+                          v_testo,
+                          '(ANY|ALL) \(ARRAY\[(' || c_elemento || '(?:, ' || c_elemento || ')*)\]\)');
+                      EXIT WHEN v_trovato IS NULL;
+
+                      v_testo := replace(
+                          v_testo,
+                          v_trovato[1] || ' (ARRAY[' || v_trovato[2] || '])',
+                          v_trovato[1] || ' ((ARRAY['
+                              || regexp_replace(v_trovato[2],
+                                                $re$\(('(?:[^']|'')*'::character varying)\)::text$re$,
+                                                '\1', 'g')
+                              || '])::text[])');
+                  END LOOP;
+
+                  RETURN v_testo;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_definizione_vincolo(regclass, name) IS
+                  'Fixture pgTAP: la definizione del vincolo p_vincolo della tabella p_tabella (pg_get_constraintdef) nella forma che il vincolo ha quando nasce sul database, la stessa di un database costruito dal changelog. Su PostgreSQL 19 un IN su una colonna varchar riletto da un dump (pg_upgrade, restore) si scrive col cast su ogni elemento, ANY (ARRAY[(''A''::character varying)::text, ...]): la funzione lo riporta alla forma col cast sull''array, ANY ((ARRAY[''A''::character varying, ...])::text[]), array per array, ANY e ALL. Un array con elementi di altra forma resta com''e''. NULL se il vincolo non esiste.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_definizione_vincolo(regclass, name);

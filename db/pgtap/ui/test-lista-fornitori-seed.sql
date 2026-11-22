@@ -14,7 +14,7 @@
 --   5.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
 --   6.  Colonne con tipo_dato='boolean' hanno formato='yesno' (solo ritenuta_acconto)
 --   7.  Preset fornitori_default presente e acceso
---   8.  Preset fornitori_default: pagina_dimensione=50, ambito=sistema
+--   8.  Preset fornitori_default: pagina_dimensione NULL (lo standard dell'uso), ambito=sistema
 --   9.  Esattamente 7 colonne nel preset fornitori_default
 --   10. Tutte le 7 colonne del preset hanno visibile=true
 --   11. Colonna codice ha fissata=true nel preset
@@ -155,8 +155,11 @@ SELECT ok(
 );
 
 -- =========================================================
--- 8. Preset: pagina_dimensione=50, ambito=sistema
+-- 8. Preset: pagina_dimensione NULL, ambito=sistema
 -- =========================================================
+-- ⚠️ Rev 2026-11-22 (brief-db-revisione-ui, giro 3, U15 con Q9; 20261120-37): il seed
+--   dei preset porta la misura NULL, cioe' lo standard: il default dell'uso della
+--   lista. Il 50 scritto sul preset era una seconda sede della misura.
 SELECT ok(
     EXISTS (
         SELECT 1
@@ -164,10 +167,10 @@ SELECT ok(
           JOIN ui.lista_definizione ld ON ld.id = lp.lista_id
          WHERE ld.codice          = 'anagrafiche.fornitori'
            AND lp.codice          = 'fornitori_default'
-           AND lp.pagina_dimensione = 50
+           AND lp.pagina_dimensione IS NULL
            AND lp.ambito::TEXT    = 'sistema'
     ),
-    '8. Preset fornitori_default: pagina_dimensione=50, ambito=sistema'
+    '8. Preset fornitori_default: pagina_dimensione NULL (lo standard dell''uso), ambito=sistema'
 );
 
 -- =========================================================
