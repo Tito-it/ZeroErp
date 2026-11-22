@@ -1,0 +1,197 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PADRE DI UN'UBICAZIONE SI LEGGE NEL PERIMETRO DI CHI AGISCE, NON SOTTO RLS
+#   magazzino.trgfn_ubicazioni_guard_parent (20260921-14): CREATE OR REPLACE.
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-4 (difetto
+#   trovato portando i pgTAP sui verbi).
+#   Corpo di partenza: pg_get_functiondef su dbdev.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Il guard e' INVOKER e leggeva il padre affidandosi alla RLS: un padre di
+#   un'altra azienda non risolveva, e la frase diceva «non e' visibile». Dal
+#   Lotto 1 le ubicazioni le scrivono i verbi SECURITY DEFINER
+#   (fn_aggiungi_ubicazione, fn_modifica_ubicazione con parent_id fra i campi):
+#   li' la RLS non filtra, il padre altrui risolve, e la frase diceva «appartiene
+#   al magazzino <codice dell'altra azienda>». Una fuga d'informazione, e un
+#   guard che risponde in due modi a seconda di chi scrive.
+#   Ora il padre si cerca col predicato esplicito del perimetro,
+#   script.fn_scope_ef_whitelist_via_magazzino, quello del verbo e di
+#   fn_libera_blocco: la stessa domanda della policy, posta allo stesso modo da
+#   ogni scrittore (D-M6: il perimetro lo dice la tabella).
+#
+# -- CHI PASSA ANCORA (linee-guida-trigger, «un guard nuovo passa dai
+#    test gia' scritti») -------------------------------------------------
+#   * l'app con l'operatore: la stessa risposta di prima (la policy e il
+#     predicato fanno la stessa domanda);
+#   * il verbo DEFINER con l'operatore: ora come l'app;
+#   * senza operatore in sessione (il migratore, un job): il filtro esplicito
+#     non c'e', decide la RLS di chi scrive, come prima.
+#   I rami del ciclo non cambiano: leggono la catena di un padre gia' trovato
+#   nel perimetro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-11-update-trgfn-ubicazioni-guard-parent-perimetro-esplicito-mctit.yaml
+
+  - changeSet:
+      id: 20261122-11-update-trgfn-ubicazioni-guard-parent-perimetro-esplicito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard sul padre di un'ubicazione legge il padre nel perimetro dell'operatore in sessione
+        (script.fn_scope_ef_whitelist_via_magazzino) invece di affidarsi alla RLS: dentro un verbo
+        SECURITY DEFINER risponde come dall'applicazione e non nomina il magazzino di un'altra azienda.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'magazzino' AND p.proname = 'trgfn_ubicazioni_guard_parent')
+                  OR (n.nspname = 'script'    AND p.proname = 'fn_scope_ef_whitelist_via_magazzino');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_padre_magazzino_id  magazzino.ubicazioni.magazzino_id%TYPE;
+                v_padre_codice        magazzino.ubicazioni.codice%TYPE;
+                v_mag_codice          magazzino.magazzini.codice%TYPE;
+                v_mag_padre_codice    magazzino.magazzini.codice%TYPE;
+                v_ciclo               boolean := false;  -- l'esito di un EXISTS: nessuna colonna
+                v_utente              config.user_override_aree.auth_user_id%TYPE;
+              BEGIN
+                -- Scopo: il padre di un'ubicazione (parent_id) sta nello stesso magazzino
+                --   della figlia, e la catena dei padri non torna mai su se stessa.
+                --   Un padre fuori dal perimetro dell'operatore in sessione non risolve, e
+                --   si rifiuta lo stesso (fail-closed). Il perimetro si chiede col predicato
+                --   esplicito (fn_scope_ef_whitelist_via_magazzino), non alla RLS: dentro un
+                --   verbo SECURITY DEFINER la RLS non filtra, e la frase direbbe il magazzino
+                --   di un'altra azienda. Senza operatore in sessione decide la RLS di chi
+                --   scrive (il migratore vede tutto, l'app nulla).
+                -- Regole:
+                --   - parent_id = id, o NEW.id fra gli antenati del padre nuovo (solo in
+                --     UPDATE: in INSERT la riga non e' ancora in nessuna catena):
+                --     E_MAG_UBICAZIONE_PADRE_CICLICO (DATO_ERRATO, campo parent_id);
+                --   - padre di un altro magazzino, o non visibile:
+                --     E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id).
+                --   Il cambio di magazzino_id NON passa di qui: e' una colonna immutabile
+                --   (automation_lock_columns, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE).
+                IF NEW.parent_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 1) Ciclo di lunghezza uno: un'ubicazione dentro se stessa.
+                IF NEW.parent_id = NEW.id THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                    jsonb_build_object(
+                      'detail',        'parent_id = id',
+                      'campo',         'parent_id',
+                      'ubicazione_id', NEW.id,
+                      'parent_id',     NEW.parent_id
+                    ),
+                    NULL::uuid,
+                    NEW.codice,
+                    NEW.codice
+                  );
+                END IF;
+
+                -- 2) Il padre, nel perimetro di chi agisce: magazzino e codici per la frase.
+                v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                SELECT u.magazzino_id, u.codice, m.codice
+                  INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
+                  FROM magazzino.ubicazioni u
+                  LEFT JOIN magazzino.magazzini m ON m.id = u.magazzino_id
+                 WHERE u.id = NEW.parent_id
+                   AND (v_utente IS NULL
+                        OR script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id));
+
+                IF v_padre_magazzino_id IS NULL OR v_padre_magazzino_id <> NEW.magazzino_id THEN
+                  SELECT m.codice INTO v_mag_codice
+                    FROM magazzino.magazzini m
+                   WHERE m.id = NEW.magazzino_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'magazzino.trgfn_ubicazioni_guard_parent',
+                    'E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO',
+                    jsonb_build_object(
+                      'detail',             'il padre non e'' del magazzino della figlia (o non e'' visibile)',
+                      'campo',              'parent_id',
+                      'ubicazione_id',      NEW.id,
+                      'parent_id',          NEW.parent_id,
+                      'magazzino_id',       NEW.magazzino_id,
+                      'magazzino_id_padre', v_padre_magazzino_id
+                    ),
+                    NULL::uuid,
+                    coalesce(v_padre_codice, NEW.parent_id::text),
+                    coalesce(v_mag_codice, NEW.magazzino_id::text),
+                    coalesce('appartiene al magazzino ' || v_mag_padre_codice,
+                             'non è visibile con i permessi di chi sta operando')
+                  );
+                END IF;
+
+                -- 3) Cicli piu' lunghi: NEW.id fra gli antenati del padre nuovo. Solo in
+                --    UPDATE. L'array dei visitati ferma la risalita anche su una catena
+                --    gia' ciclica nel pregresso.
+                IF TG_OP = 'UPDATE' THEN
+                  SELECT EXISTS (
+                    WITH RECURSIVE antenati AS (
+                      SELECT u.id, u.parent_id, ARRAY[u.id] AS percorso
+                        FROM magazzino.ubicazioni u
+                       WHERE u.id = NEW.parent_id
+                      UNION ALL
+                      SELECT u.id, u.parent_id, a.percorso || u.id
+                        FROM antenati a
+                        JOIN magazzino.ubicazioni u ON u.id = a.parent_id
+                       WHERE NOT (u.id = ANY (a.percorso))
+                    )
+                    SELECT 1 FROM antenati a WHERE a.id = NEW.id
+                  ) INTO v_ciclo;
+
+                  IF v_ciclo THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'magazzino.trgfn_ubicazioni_guard_parent',
+                      'E_MAG_UBICAZIONE_PADRE_CICLICO',
+                      jsonb_build_object(
+                        'detail',        'NEW.id e'' fra gli antenati di parent_id',
+                        'campo',         'parent_id',
+                        'ubicazione_id', NEW.id,
+                        'parent_id',     NEW.parent_id
+                      ),
+                      NULL::uuid,
+                      NEW.codice,
+                      v_padre_codice
+                    );
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.trgfn_ubicazioni_guard_parent() IS
+                  'Guard R-1 sulle ubicazioni: il padre (parent_id) sta nello stesso magazzino della figlia — altrimenti E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id; fail-closed: un padre fuori dal perimetro dell''operatore in sessione non risolve e si rifiuta lo stesso, chiesto col predicato esplicito script.fn_scope_ef_whitelist_via_magazzino, cosi'' la risposta e'' la stessa da applicazione e dentro un verbo SECURITY DEFINER) — e la gerarchia non ha cicli di nessuna lunghezza: E_MAG_UBICAZIONE_PADRE_CICLICO (stessa classe, stesso campo). Il cambio di magazzino_id non passa di qui: colonna immutabile via automation_lock_columns.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: >
+              SELECT 'rollback manuale: ripristinare il corpo di 20260921-14 dalla doc auto-generata';

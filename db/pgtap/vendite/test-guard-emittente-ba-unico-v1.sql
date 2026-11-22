@@ -7,6 +7,10 @@
 --   copie, un codice per i sei documenti, una frase con i nomi.
 --   Brief: docs/it/dev/work-done/2026/brief-db-guard-emittente-ba-unico.md
 --   ChangeSet 20261010-17 ... -19.
+-- rev 2026-11-22: il BB e' montato anche su magazzino.assets (20261122-12,
+--   brief-db-magazzino-tutte-le-scritture-dal-verbo §5.3): il censimento del test 1
+--   ha otto righe. Il comportamento del seriale lo prova
+--   magazzino/test-assets-guard-emittente-ba-v1.
 --
 -- ⭐ I soggetti li FABBRICA (dbops.fn_pgtap_crea_emittente_operatore due
 --   volte, fn_pgtap_crea_cliente_ba): gira uguale su un database ricostruito
@@ -24,7 +28,7 @@
 --
 -- Indice test (1..10):
 --   STRUTTURA
---    1) i sette trigger sono montati sul BB, con colonna e codice attesi
+--    1) gli otto trigger (sette documenti e il seriale) sono montati sul BB, con colonna e codice attesi
 --    2) le sette funzioni di prima non ci sono piu'
 --    3) i sei codici di prima sono ritirati, e nessuna funzione li solleva
 --   DOCUMENTI
@@ -100,14 +104,15 @@ SELECT is(
        CROSS JOIN LATERAL (SELECT dbops.fn_trigger_argomenti(t.tgargs) AS a) x
       WHERE p.proname = 'trgfn_doc_guard_emittente_ba'
         AND NOT t.tgisinternal),
-    'commesse:emittente_soggetto_ruolo_id:E_COMMESSA_EMITTENTE_BA_INCOERENTE, '
+    'assets:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
+    || 'commesse:emittente_soggetto_ruolo_id:E_COMMESSA_EMITTENTE_BA_INCOERENTE, '
     || 'contratti:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'ddt:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'offerte_commerciali:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'ordini:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'preventivi:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE, '
     || 'resi:emittente_fiscale_id:E_DOC_EMITTENTE_BA_INCOERENTE',
-    '1) i sette trigger guard emittente <-> BA sono montati sul BB, con la colonna e il codice di ciascuno');
+    '1) gli otto trigger guard emittente <-> BA (i sette documenti e il seriale) sono montati sul BB, con la colonna e il codice di ciascuno');
 
 SELECT is(
     (SELECT count(*)::int

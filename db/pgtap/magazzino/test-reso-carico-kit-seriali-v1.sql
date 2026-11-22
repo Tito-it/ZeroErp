@@ -64,9 +64,7 @@ DECLARE
 BEGIN
     v_mag  := dbops.fn_pgtap_crea_magazzino('PGT-L3BK-MAG', false);
     v_magu := dbops.fn_pgtap_crea_magazzino('PGT-L3BK-MAGU', true);
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id)
-    VALUES (v_magu, 'PGT-L3BK-U1', (SELECT t.id FROM config.tipi_ubicazione t ORDER BY t.id LIMIT 1))
-    RETURNING id INTO v_u1;
+    v_u1 := dbops.fn_pgtap_crea_ubicazione(v_magu, 'PGT-L3BK-U1');
 
     v_k   := dbops.fn_pgtap_crea_articolo('PGT-L3BK-KIT',       false, false, false,
                                           p_is_composito => true);
@@ -77,13 +75,8 @@ BEGIN
     INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
     VALUES (v_k, v_cs, 2, script.fn_data_operativa() - 30), (v_k, v_cl, 3, script.fn_data_operativa() - 30);
 
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_cl, 'PGT-L3BK-A', script.fn_data_operativa() - 10) RETURNING id INTO v_la;
-    INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
-    VALUES (v_ser, 'PGT-L3BK-SN1',
-            (SELECT s.id FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1),
-            (SELECT o.id FROM config.assets_ownership o WHERE o.attivo ORDER BY o.id LIMIT 1),
-            (SELECT emittente_fiscale_id FROM _m))
-    RETURNING id INTO v_sn;
+    v_la := dbops.fn_pgtap_crea_lotto_di_magazzino(v_cl, 'PGT-L3BK-A', script.fn_data_operativa() - 10);
+    v_sn := dbops.fn_pgtap_crea_asset(v_ser, 'PGT-L3BK-SN1');
 
     INSERT INTO _fix
     SELECT v_mag, v_magu, v_u1, v_k, v_cs, v_cl, v_ser, v_sem, v_la, v_sn;

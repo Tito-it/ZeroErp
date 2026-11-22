@@ -1,19 +1,27 @@
 # Brief DB — magazzino: tutte le scritture passano da un verbo
 
-> **⏭️ Chi riparte — aggiornato al 2026-11-21**
+> **⏭️ Chi riparte — aggiornato al 2026-11-22**
 >
-> **Riparte: team DB**, col P-0 e poi il Lotto 1 (§4), quando Tid dà il via.
+> **Riparte: sessione BE**, con la R-1 (§7). Il P-3 e il P-4 sono applicati, i pgTAP verdi col
+> runner (Tid, 2026-11-22). ⚠️ Da ora il backend non scrive più magazzini, ubicazioni e lotti
+> (`42501`) finché la R-1 non porta il repository sui verbi.
 >
 > | # | Chi | Che cosa | Dove | Aspetta |
 > | --- | --- | --- | --- | --- |
-> | 1 | Tid | ✅ decisioni prese il 2026-11-21: D-M1 = C, D-M2 = b riformulata, D-M4 = b col gesto, D-M5 = b, D-M6 = b; D-M3 era già fatta. Resta **il via** al Lotto 1 | §3, §3-bis, §4 | — |
-> | 2 | team DB | P-0 rifatto sui file, poi P-3 e P-4 (Lotto 1) | §5 | il via |
-> | 3 | sessione BE | R-1, R-4 | §7 | 2 |
-> | 4 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 3 |
-> | 5 | team DB | P-6, archiviazione | §5 | 4 |
+> | 1 | Tid | ✅ decisioni prese (2026-11-21/22): D-M1 = C, D-M2 = b riformulata, D-M4 = b col gesto, D-M5 = b, D-M6 = b, D-M7 = b; D-M3 era già fatta. Il via al Lotto 1 è dato | §3, §3-bis | — |
+> | 2 | team DB | ✅ P-0 (§5.1); ✅ P-3 (`20261122-01` … `-08`, §5.2), applicato da Tid il 2026-11-22 con i test verdi | §5 | — |
+> | 3 | team DB | ✅ P-4 (`20261122-09` … `-11`, il loop, il provisioning, 2 pgTAP nuovi e 17 adattati, §5.3) | §5.3 | — |
+> | 4 | Tid | ✅ apply del P-4, pgTAP verdi col runner (2026-11-22) | §5.3 | — |
+> | 4-bis | Tid | ✅ apply di `20261122-12` e `-13` (il cliente del seriale), pgTAP verdi col runner (2026-11-22) | §5.3 | — |
+> | 5 | sessione BE | R-1 (⚠️ urgente: il backend riceve `42501`), R-4 | §7 | — |
+> | 6 | team DB | P-5 (Lotto 2), poi R-2 al BE | §5, §7 | 5 |
+> | 7 | team DB | P-6, archiviazione | §5 | 6 |
 >
-> Decisioni aperte di Tid: nessuna (resta il via). Da committare: solo questo file (riverifica e
-> decisioni del 2026-11-21).
+> Decisioni di Tid del 2026-11-22: il controllo di `p_campi` comune ai `fn_crea_*` si estrae **in un
+> giro a parte**, dopo la R-1 (§5.2); il debito `%TYPE` del P-3 **resta per ora** (§5.3); il lotto
+> diventa dell'azienda, in un brief suo (`brief-db-magazzino-lotto-dell-azienda`); il cliente del
+> seriale si controlla subito: `20261122-12` e `-13` applicati, pgTAP verdi (§5.3). Da committare:
+> il P-3, il P-4, `-12`, `-13` e questo file.
 >
 > **Brief vicini verificati (2026-11-21):** `work-done/2026/brief-db-processi-accensione-per-ambiente`
 > ha costruito, senza citare questo brief, due pezzi del Lotto 1 (§3-bis, punti 1-2);
@@ -185,6 +193,10 @@ una riga con un padrone).
 l'area si ricava dall'`app_label`. `fn_guard_livello` legge anche l'**override dell'utente
 sull'oggetto**; le view BE del magazzino dichiarano solo `area_funzionale`. Con un override
 sull'oggetto, i due punti rispondono in due modi diversi. ⇒ R-4 al §7.
+⚠️ **Precisato il 2026-11-22**: `config.user_override_oggetti` ha una FK verso
+`config.area_model_overrides`, dove nessun oggetto di magazzino è a catalogo. Oggi un override su un
+oggetto di magazzino **non si può scrivere**, e il backend e il verbo rispondono uguale (l'area). La
+divergenza nasce quando gli oggetti entrano a catalogo: la R-4 resta, per quel giorno.
 
 **6. Le fixture pgTAP hanno cambiato nome.** `dbops.fn_pgtap_crea_articolo_e_magazzino`
 (`20260918-26`) non esiste più. Oggi i soggetti li fanno `dbops.fn_pgtap_crea_magazzino`
@@ -210,6 +222,12 @@ solo la madre. Nessuno scrittore applicativo di note di magazzino a oggi (il
 verbi generici della D-M5 scrivono anche le colonne `sorgente_*`. Le famiglie del registro BE
 `FAMIGLIE` sono **due** (inventario, rettifica); il trasferimento non ha scrittore applicativo.
 L'argomento della D-M5 non cambia: la matrice delle tre famiglie a DB è una sola.
+
+**10. Il controesempio del P-0 (2026-11-22): le tabelle «senza scrittore» uno scrittore ce l'hanno (§5.1).**
+
+| | Opzioni | Proposta |
+| --- | --- | --- |
+| **D-M7** ✅ **DECISA da Tid il 2026-11-22: b** | **a** il Lotto 1 chiude anagrafiche, note ed `eventi_assets`; `trasferimenti` passa al Lotto 2 coi suoi verbi; `assets` resta aperta, dichiarata nella guida, fino al verbo del primo scrittore (§8) · **b** come a, ma `assets` si chiude nel Lotto 1 con un BB di nascita del seriale (`fn_crea_asset`, stampo `fn_crea_magazzino`) e il suo verbo · **c** si chiude tutto e i test si marcano owner | ⭐ **b.** Il seriale una nascita ce l'ha già, fatta a mano: i pgTAP e il collaudo a video lo inseriscono in SQL. Il BB è meccanico (le regole stanno già nei vincoli e nel guard di perimetro della tabella) e dà al collaudo la strada che non ha. `trasferimenti` al Lotto 2 perché lì nascono i suoi verbi. ⛔ **c** no: il marcatore owner su un soggetto che l'app raggiunge nasconde il difetto (criterio di `testpgtap.sh`) |
 
 ## 4. Il disegno — deciso il 2026-11-21
 
@@ -269,8 +287,8 @@ stesso brief.
 | **P-0** | Censimento, prima di scrivere | sotto |
 | **P-1** | Dichiarazione «dominio a metà» nella guida | ✅ **fatto il 2026-10-03** |
 | P-2 | BB della scrittura dinamica, il pannello lo adotta | ✅ **fatto da un altro cantiere** (`script.fn_scrivi_riga_da_jsonb`, `20261017-05`; §3-bis.1) |
-| P-3 | Colonne ammesse, BB di nascita, verbi delle anagrafiche; guard di perimetro sulle quattro tabelle (D-M6) | `20_code/magazzino`; builder `dbops.fn_pgtap_crea_*` involucri nello stesso giro |
-| P-4 | Postura del Lotto 1 nelle tre sedi | `90_end` + loop + provisioning |
+| P-3 | Colonne ammesse, BB di nascita, verbi delle anagrafiche; guard di perimetro sulle quattro tabelle (D-M6) | ✅ **applicato il 2026-11-22** (§5.2), test verdi. I builder `dbops.fn_pgtap_crea_*` passano al P-4: li rompe la chiusura, si cambiano con lei |
+| P-4 | Postura del Lotto 1 nelle tre sedi; builder sui verbi; i pgTAP come app | ✅ **applicato il 2026-11-22** (§5.3), pgTAP verdi col runner |
 | P-5 | Lotto 2: verbi dei documenti interni e postura | dopo P-4 |
 | P-6 | Guida: la sezione «La porta» si riduce a una riga; registro dei BB | alla chiusura |
 
@@ -364,6 +382,153 @@ nessun verbo lo crea:
 
 ⇒ Decisione a Tid: **D-M7** al §3-bis.
 
+### 5.2 Il P-3 — scritto il 2026-11-22
+
+Tutto in `20_code/magazzino/`. Non applicato.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261122-01` | `fn_magazzini_colonne_ammesse`, `fn_ubicazioni_…`, `fn_lotti_…`, `fn_assets_colonne_ammesse(p_gesto)` (D-M4): `'crea'` e `'modifica'`, in ordine di tabella. Fuori lista: l'emittente e le identità della nascita (`magazzino_id`, `articolo_id`). Il seriale non ha colonne da modificare |
+| `20261122-02` | `fn_crea_magazzino` legge la lista `'crea'` al posto della costante `c_ammesse`. Firma e comportamento invariati |
+| `20261122-03` … `-05` | i BB di nascita `fn_crea_ubicazione(magazzino, codice, tipo, campi)`, `fn_crea_lotto(articolo, codice, data_arrivo, campi)`, `fn_crea_asset(articolo, seriale, stato, proprietà, campi, emittente)`: INVOKER, stampo `fn_crea_magazzino`, gli obbligatori come argomenti |
+| `20261122-06` | i verbi di nascita `fn_aggiungi_magazzino`, `_ubicazione`, `_lotto`, `_asset`: DEFINER, `fn_guard_livello(utente, 'magazzino', '<tabella>', 'TUTTO')` nella prima riga, poi il BB. L'ubicazione in un magazzino fuori perimetro o inesistente: `E_MAG_MAGAZZINO_NON_TROVATO` (no-leak, il predicato di `fn_libera_blocco`) |
+| `20261122-07` | i verbi di modifica `fn_modifica_magazzino(id, dati)`, `fn_modifica_ubicazione(magazzino, id, dati)`, `fn_modifica_lotto(id, dati)`: il delta in `jsonb` (una chiave a null svuota, una assente resta), la lista `'modifica'`, la riga letta `FOR UPDATE` nel perimetro, altrimenti il codice «non trovato» che il backend solleva già (`E_MAG_MAGAZZINO_NON_TROVATO`, `E_MAG_UBICAZIONE_NON_TROVATA`, `E_MAG_LOTTO_NON_TROVATO`) |
+| `20261122-08` | `trgfn_guard_emittente_scope('magazzino', …)` su `ubicazioni`, `inventari`, `rettifiche` (`magazzino_id`) e `trasferimenti` (`magazzino_id_from`), stampo `trg_<t>_a10_guard_emittente_scope_ins_upd` (D-M6) |
+
+**I nomi.** `fn_crea_*` è il BB, senza permesso (lo usano anche il provisioning e i builder);
+`fn_aggiungi_*` e `fn_modifica_*` sono i gesti dell'operatore.
+
+**pgTAP nuovi**, verdi in estratto: `magazzino/test-colonne-ammesse-e-nascita-anagrafiche-v1` (22) e
+`magazzino/test-verbi-anagrafiche-magazzino-v1` (22, come app: permesso, nascita, modifica, no-leak, forma).
+In estratto, coi `-01` … `-08` davanti, invariati: `rls/test-rls-magazzino-perimetro-v1`,
+`magazzino/test-fn-posta-trasferimento-v1`, `-inventario-v1`, `-rettifica-v1`, `test-documenti-interni-guard-v1`
+(3 rossi già presenti prima), `test-ubicazioni-guard-parent-v1` (1 rosso già presente), `test-capability-documenti-interni-v1`,
+`dbops/test-presidi-magazzino-grana-v1`, `test-movimenti-vincoli-v2`, `test-sorgente-testate-v1`,
+`test-valore-giacenza-forma-v1`, `test-fn-scrivi-movimento-controlli-v1`, `test-fn-crea-magazzino-v1`.
+
+⚠️ **Il limite della prova.** `prova_changeset.py` gira da proprietario: la RLS non filtra e il guard
+della D-M6 lascia passare il proprietario fuori da una DEFINER. La strada dell'app (il guard nuovo
+sulle scritture del backend di oggi, il perimetro dei pgTAP come app) si vede solo dopo l'apply, col
+runner. I rossi già presenti nei due file sopra sono quelli «da owner, per costruzione»: vanno
+riletti nella corsa come app, perché un rosso preesistente può nascondere un'asserzione nuova.
+
+**Lasciato apposta**
+
+* le pagine `manual/` delle funzioni nuove e la doc auto-generata: con l'apply (P-6);
+* le note di `codici_errore.csv` dei tre codici «non trovato» dicono ancora «lo solleva il backend».
+  Il CSV ha modifiche aperte di un'altra sessione: le note si allineano al commit del Lotto 1;
+* ✅ **DECISA da Tid il 2026-11-22: sì, in un giro a parte** (dopo la R-1, brief suo): i `fn_crea_*` ripetono tutti lo stesso controllo di `p_campi`
+  (è un oggetto; nessuna chiave fuori lista, col nome), in più domini: magazzino, anagrafiche,
+  vendite. Con questo giro le copie in magazzino sono quattro. Estrarlo in un BB `script` tocca più
+  domini, e la regola del 2 vuole l'ok di Tid. Proposta: un BB `script.fn_guard_campi_ammessi(campi,
+  ammesse, porta, chiave)`, con le copie ritirate nello stesso giro, in un giro a parte.
+
+### 5.3 Il P-4 — scritto il 2026-11-22
+
+Il P-3 e il P-4 sono applicati (Tid, 2026-11-22), i pgTAP verdi col runner come app: anche le
+asserzioni di privilegio, rosse in estratto per costruzione.
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `20_code/dbops/20261122-09` | i builder sui verbi: `fn_pgtap_crea_magazzino(codice, usa_ubicazioni, campi)` (entra `p_campi`, DROP + CREATE: le chiamate a uno e due argomenti restano), e i nuovi `fn_pgtap_crea_ubicazione`, `fn_pgtap_crea_lotto_di_magazzino` (`fn_pgtap_crea_lotto` è il lotto di fatturazione), `fn_pgtap_crea_asset`. Con loro `fn_pgtap_apri_area_per_nascita` e `fn_pgtap_richiudi_area` |
+| `90_end/20261122-10` | la postura: a `zeroerp_app` solo `SELECT` su `magazzini`, `ubicazioni`, `lotti`, `assets`, `eventi_assets`, la madre `note` e le nove partizioni |
+| loop `90_end/ci_apply/20260205-41`, `scripts/sql/provision_zeroerp.sql` | le altre due sedi, stesso elenco (§11.8) |
+| `20_code/magazzino/20261122-11` | il guard sul padre dell'ubicazione legge il padre nel perimetro di chi agisce (sotto) |
+
+**L'area aperta per il tempo della nascita.** Il verbo vuole `TUTTO`, l'operatore costruito è `BLOCCATO`.
+Il builder apre l'area con un override d'area (o alza quello che c'è), chiama il verbo e lo rimette com'era.
+Il test ritrova i livelli che aveva: un rifiuto per livello si prova prima o dopo la fixture, e la fixture
+non lo tocca. È diverso da `fn_pgtap_concedi_azione`, che apre l'area per sempre.
+
+**⚠️ Un difetto trovato portando i test sui verbi, chiuso dal `-11`.** `trgfn_ubicazioni_guard_parent` è
+INVOKER e leggeva il padre affidandosi alla RLS. Dentro `fn_aggiungi_ubicazione` e `fn_modifica_ubicazione`
+(DEFINER, applicati col P-3) la RLS non filtra, quindi un padre di un'altra azienda veniva trovato. La frase
+diceva allora «appartiene al magazzino PGT-UGP-B»: il codice del magazzino altrui. Il padre ora si cerca col
+predicato esplicito del perimetro (`fn_scope_ef_whitelist_via_magazzino`, quello dei verbi). La correzione è
+provata sul controesempio: senza `-11`, i casi 4 e 5 di `test-ubicazioni-guard-parent-v1` sono rossi con
+quella frase; con `-11` sono verdi. Applicato su dbdev il 2026-11-22.
+
+**pgTAP nuovi**
+
+* `magazzino/test-anagrafiche-magazzino-sola-lettura-v1` (14, come app): le tre sedi dicono la stessa cosa,
+  i `42501`, i builder (la nascita, l'override rimesso com'era, il verbo nel corpo). In estratto le
+  asserzioni 2-9 sono rosse per costruzione (da owner non c'è `42501`); si leggono col runner come app.
+* `magazzino/test-sorgente-eventi-assets-v1` (3, **owner**): i casi dell'evento del seriale che erano in
+  `test-sorgente-testate-v1` (D-M7 = b). L'evento è chiuso all'app e nessun verbo lo scrive: forma 3 di
+  `testpgtap.sh`. Quando l'evento avrà il suo verbo (§8), il marcatore si toglie.
+
+**pgTAP adattati** (17). Le nascite a mano diventano builder; i casi passano dai verbi:
+
+* sui builder: `test-capability-documenti-interni-v1`, `test-ddt-scarico-v1`, `test-fn-posta-inventario-v1`,
+  `test-fn-posta-trasferimento-v1` (solo le ubicazioni: il trasferimento resta aperto fino al Lotto 2),
+  `test-reso-carico-v1`, `test-reso-carico-kit-seriali-v1`, `test-valore-giacenza-forma-v1`,
+  `script/test-guard-sorgente-v1`, `script/test-sorgente-in-uscita-v1`,
+  `vendite/test-ddt-da-ordine-emittente-prima-dei-lettori-v1` e `vendite/test-ddt-magazzino-testata-v1` (il
+  predefinito si sceglie alla nascita, in `p_campi`), `test-verbi-anagrafiche-magazzino-v1`;
+* sui verbi: `test-fn-crea-magazzino-v1` e `test-colonne-ammesse-e-nascita-anagrafiche-v1` (le regole dei BB,
+  dalla strada dell'app), `test-ubicazioni-guard-parent-v1`;
+* `test-sorgente-testate-v1`: senza i casi dell'evento (sopra). La riga citata del caso 14 la cita una
+  rettifica;
+* `script/test-trgfn-default-emittente-fiscale-v1`: 10, 12 e 14 dal verbo del magazzino. L'11 (emittente
+  esplicito) e il 15 (sessione senza utente) dal magazzino non si raggiungono più, perché il verbo non prende
+  l'emittente e senza utente si ferma sul permesso: girano su `vendite.ordini`, montato sullo stesso BB.
+
+**Casi che l'app non può più tentare**, sostituiti, non marcati owner:
+
+* `test-fn-crea-magazzino-v1` 2, «l'emittente indicato»: è la strada del provisioning
+  (`fn_provisiona_dati_di_sviluppo`, col suo test). Diventa «l'emittente fra i campi del verbo:
+  `E_CAMPO_NON_AMMESSO`»;
+* `test-ubicazioni-guard-parent-v1`:
+  * 5, «nascita con `parent_id = id`»: il verbo non prende l'id. Il ramo lo prova il 7 in modifica. Al suo
+    posto c'è il padre altrui in modifica;
+  * 10, «il lucchetto rifiuta il cambio di magazzino»: il verbo non ammette `magazzino_id`, quindi
+    `E_CAMPO_NON_AMMESSO`. Il lucchetto resta dichiarato al 9, per lo scrittore diretto.
+
+**La prova in estratto** (coi tre changeSet, da owner sullo scratch). I 46 pgTAP che usano un builder di
+magazzino o scrivono le tabelle del Lotto 1 danno lo stesso esito di prima o uno migliore.
+`test-ubicazioni-guard-parent-v1` è passato da 1 rosso a 0. Hanno ancora rossi, identici con e senza
+estratto:
+
+* `test-blocco-manuale-e-porta-lotto3-v1` (1), `test-documenti-interni-guard-v1` (3) e `test-porta-ledger-v1`
+  (4): le asserzioni di privilegio, rosse da owner per costruzione;
+* `test-lista-definizione-perimetro-emittente-v1`: si interrompe allo stesso punto, con e senza estratto.
+
+Vanno riletti nella corsa come app.
+
+**⚠️ Debito `%TYPE` del P-3** (visto il 2026-11-22, dopo l'apply). Restano a tipi nudi:
+
+* i `RETURNS bigint` di `fn_crea_*` (`-02` … `-05`) e dei quattro `fn_aggiungi_*` (`-06`);
+* le firme dei `DROP` nei rollback (`-01`, `-03` … `-06`);
+* `v_estranea text` e `v_ammesse text[]` (nomi di colonna, nessuna colonna di cui siano il riflesso), senza
+  il commento che lo dica.
+
+Il DB non cambia (`%TYPE` si risolve allo stesso tipo). Ma i file sono applicati su dbdev: correggerli
+cambia il checksum. ✅ **Tid, 2026-11-22: resta così per ora**; si riprende con un changeSet di sola forma
+o alla prossima riscrittura di quelle funzioni. Il P-4 (`-09` … `-11`) è ancorato.
+
+**Due fatti emersi, decisi da Tid il 2026-11-22:**
+
+* **il lotto non ha emittente né policy**: è condiviso fra le aziende, come l'articolo. Dentro il verbo di
+  modifica, `trgfn_prevent_deactivate_if_children` vede i figli di tutte le aziende, quindi un lotto usato da
+  un'altra azienda non si disattiva. Dall'app, sotto RLS, si disattivava.
+  ✅ **Tid: «lotto b»**, il lotto è dell'azienda. Si lavora in
+  [brief-db-magazzino-lotto-dell-azienda](brief-db-magazzino-lotto-dell-azienda.md);
+* **`assets.billing_account_id`** (fra i campi della nascita del seriale) non era controllato contro
+  l'emittente del seriale. ✅ **Tid: «seriale a»**, il controllo subito. Applicati da Tid il 2026-11-22,
+  pgTAP verdi col runner:
+  * `20_code/magazzino/20261122-12` monta sul seriale `script.trgfn_doc_guard_emittente_ba`, il BB di
+    ordini, contratti, DDT, preventivi, offerte, resi e commesse (`E_DOC_EMITTENTE_BA_INCOERENTE`). Su
+    dbdev nessun seriale ha un BA: niente pregresso;
+  * `20_code/script/20261122-13`: il BB mette nella frase il codice del BA solo se il BA è nel perimetro
+    di chi agisce (`fn_scope_ef_whitelist_via_efba`). Dentro `fn_aggiungi_asset` (DEFINER) la frase dava
+    il codice del cliente dell'altra azienda: provato sul controesempio (caso 5 di
+    `magazzino/test-assets-guard-emittente-ba-v1`, rosso senza `-13`, verde con). Dall'app la frase non
+    cambia. I nomi delle aziende restano: `anagrafiche.soggetti` non ha RLS.
+
+  pgTAP: `magazzino/test-assets-guard-emittente-ba-v1` (5, come app) nuovo;
+  `vendite/test-guard-emittente-ba-unico-v1` (il censimento del test 1: otto montaggi). I quindici pgTAP
+  che toccano il BB danno lo stesso esito di prima con `-12` e `-13`.
+
 ## 6. I pgTAP — i casi si fabbricano
 
 Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
@@ -386,6 +551,32 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
   `fn_crea_magazzino`); le costanti `*_COLONNE` e `_CAMPI_MADRE_MAGAZZINO` si ritirano, e il form e la validazione leggono le funzioni DB
   (D-M4). Il 403 dell'endpoint resta (guida §7.4: *il backend chiede, non decide
   due volte*).
+  ⚠️ **Dall'apply del P-4 (§5.3) l'app riceve `42501`** su ogni scrittura diretta di `magazzini`,
+  `ubicazioni`, `lotti`, `assets`, `eventi_assets` e delle note. L'elenco chiuso, al 2026-11-22:
+
+  | Oggi (BE) | Dopo |
+  | --- | --- |
+  | `create_magazzino` → `fn_crea_magazzino(codice, descrizione, indirizzo, campi)` | `magazzino.fn_aggiungi_magazzino(codice, descrizione, indirizzo_dettaglio_id, campi jsonb)` → `bigint` |
+  | `update_magazzino` → `execute_dynamic_update` | `magazzino.fn_modifica_magazzino(id, dati jsonb)` → `jsonb` (la riga: id e colonne modificabili) |
+  | `create_ubicazione` → `execute_dynamic_insert` | `magazzino.fn_aggiungi_ubicazione(magazzino_id, codice, tipo_id, campi jsonb)` → `bigint` |
+  | `update_ubicazione` → `UPDATE … WHERE id AND magazzino_id` | `magazzino.fn_modifica_ubicazione(magazzino_id, id, dati jsonb)` → `jsonb` |
+  | `create_lotto` → `execute_dynamic_insert` | `magazzino.fn_aggiungi_lotto(articolo_id, codice, data_arrivo, campi jsonb)` → `bigint` |
+  | `update_lotto` → `execute_dynamic_update` | `magazzino.fn_modifica_lotto(id, dati jsonb)` → `jsonb` |
+  | `MAGAZZINI_COLONNE`, `UBICAZIONI_COLONNE`, `LOTTI_COLONNE`, `_CAMPI_MADRE_MAGAZZINO` | `magazzino.fn_{magazzini,ubicazioni,lotti}_colonne_ammesse('crea' \| 'modifica')` → `text[]` |
+
+  Nella modifica, una chiave assente resta com'è e una chiave a `null` svuota il campo. ⚠️ Il verbo **non**
+  normalizza `''`: per svuotare un campo si manda `null`. Codici che il verbo solleva:
+  * `E_PERMESSO_NEGATO`: livello sotto `TUTTO` sull'oggetto;
+  * `E_CAMPO_NON_AMMESSO`: una chiave fuori lista, col nome;
+  * `E_SCRIPT_CHIAMATA_NON_VALIDA`: `dati` non è un oggetto;
+  * `E_MAG_MAGAZZINO_NON_TROVATO`, `E_MAG_UBICAZIONE_NON_TROVATA`, `E_MAG_LOTTO_NON_TROVATO`: la riga è
+    assente o fuori perimetro. Sono quelli che il BE solleva già.
+
+  I test BE che scrivono le tabelle a mano e riceveranno `42501`: `magazzino/tests/db/test_documento_interno_db.py`,
+  `vendite/tests/db/test_ddt_cambia_stato_db.py`, `backend/scripts/tests/smoke-magazzino-inventario-primo-carico.py`.
+  `magazzino/tests/db/test_anagrafiche_magazzino_db.py` passa dal repository: si rilegge dopo la R-1. Nessuno
+  scrittore BE di seriali, eventi e note (§5.1). Il pannello non scrive magazzini né ubicazioni
+  (`config.tabelle_gestibili`: `pannello = false`).
 * **R-2** (Lotto 2) `magazzino_repository.py`: testate, righe e cambio di stato
   dai verbi; il registro `FAMIGLIE` si riduce a ciò che il DB non sa (il brief del
   Lotto 2 lo dirà).
@@ -428,3 +619,13 @@ Uno per verbo, sullo stampo di `test-fn-pannello-scrivi-v1` e
 | 2026-11-21 | Tid | **D-M2 = b, nella forma del §3-bis.2**: nascita = verbo col guard che chiama il BB `fn_crea_*` della tabella (`fn_crea_magazzino` c'è; nascono `fn_crea_ubicazione`, `fn_crea_lotto`); modifica = verbo per tabella col delta in `jsonb` su `fn_scrivi_riga_da_jsonb`; nessun `DELETE` |
 | 2026-11-21 | Tid | **D-M4 = b, una funzione per tabella col gesto** (`'crea'` / `'modifica'`): la leggono il verbo e il backend; `c_ammesse` di `fn_crea_magazzino` e le costanti BE (`*_COLONNE`, `_CAMPI_MADRE_MAGAZZINO`) si ritirano nello stesso giro |
 | 2026-11-21 | Tid | **D-M5 = b**: verbi comuni dei documenti interni con la famiglia come argomento, su un registro a DB; le tre famiglie, trasferimento compreso; il registro `FAMIGLIE` del BE si riduce a ciò che il DB non sa. §4 riscritto sul deciso (la prima stesura resta marcata superata); P-3 allargato al guard della D-M6; testata: riparte il team DB, al via |
+| 2026-11-22 | Tid | Il via al Lotto 1, dal progressivo `20261122-01` |
+| 2026-11-22 | DB | **P-0 rifatto** (§5.1): scrittori DB, 14 pgTAP come app da portare sui verbi, 21 attraverso il builder del magazzino (si cambia il builder, che apre l'area al livello che serve), file BE noti. **Smentita** l'ipotesi della D-M1 «le tabelle senza scrittore costano una voce nel loop»: i pgTAP come app fabbricano seriali, eventi e trasferimenti. Nuova **D-M7** a Tid (§3-bis.10) |
+| 2026-11-22 | Tid | **D-M7 = b**: nel Lotto 1 si chiudono anagrafiche, note, `eventi_assets` (il suo test va owner, forma 3) e `assets` con un BB di nascita del seriale (`fn_crea_asset`) e il suo verbo; `trasferimenti` e righe passano al Lotto 2 |
+| 2026-11-22 | DB | **P-3 scritto** (§5.2): `20261122-01` … `-08` (colonne ammesse, `fn_crea_magazzino` sulla lista, tre BB di nascita, sette verbi, guard di perimetro su quattro tabelle) e due pgTAP, verdi in estratto con tredici pgTAP esistenti invariati. Precisata la R-4 (§3-bis.5: oggi un override su un oggetto di magazzino non si può scrivere). I builder passano al P-4. Una domanda a Tid sull'estrazione del controllo di `p_campi` |
+| 2026-11-22 | Tid | P-3 applicato, pgTAP verdi |
+| 2026-11-22 | DB | **P-4 scritto** (§5.3): builder sui verbi con l'area aperta per il tempo della nascita (`20261122-09`), postura del Lotto 1 nelle tre sedi (`-10`, loop, provisioning), e il guard del padre dell'ubicazione che legge nel perimetro esplicito (`-11`): dentro i verbi del P-3 la frase nominava il magazzino di un'altra azienda, provato sul controesempio. Due pgTAP nuovi (uno owner, l'evento del seriale), 17 adattati; 46 pgTAP in estratto con esito uguale o migliore. R-1 completata con l'elenco chiuso. Emersi: il debito `%TYPE` del P-3, il lotto condiviso, il BA del seriale |
+| 2026-11-22 | Tid | P-4 applicato, pgTAP verdi col runner. Riparte la sessione BE con la R-1 |
+| 2026-11-22 | Tid | Estrazione del controllo di `p_campi` (`script.fn_guard_campi_ammessi`): sì, in un giro a parte dopo la R-1. Debito `%TYPE` del P-3: resta per ora |
+| 2026-11-22 | Tid + DB | «lotto b»: brief nuovo `brief-db-magazzino-lotto-dell-azienda`. «seriale a»: `20261122-12` (il BB emittente ↔ BA sul seriale) e `-13` (il codice del BA nella frase solo nel perimetro), pgTAP nuovo e censimento aggiornato, da applicare |
+| 2026-11-22 | Tid | `20261122-12` e `-13` applicati, pgTAP verdi col runner |

@@ -47,13 +47,13 @@ BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-L2I-U', true);
     v_no  := dbops.fn_pgtap_crea_magazzino('PGT-L2I-N', false);
     SELECT t.id INTO v_tipo FROM config.tipi_ubicazione t ORDER BY t.id LIMIT 1;
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'UX', v_tipo) RETURNING id INTO v_ux;
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_mag, 'UY', v_tipo) RETURNING id INTO v_uy;
+    v_ux := dbops.fn_pgtap_crea_ubicazione(v_mag, 'UX', p_tipo_id => v_tipo);
+    v_uy := dbops.fn_pgtap_crea_ubicazione(v_mag, 'UY', p_tipo_id => v_tipo);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2I-ART', true, false, false);
     v_lot := dbops.fn_pgtap_crea_articolo('PGT-L2I-LOT', true, true, false);
     v_nog := dbops.fn_pgtap_crea_articolo('PGT-L2I-NO', false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L1', script.fn_data_operativa()) RETURNING id INTO v_l1;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L2', script.fn_data_operativa()) RETURNING id INTO v_l2;
+    v_l1 := dbops.fn_pgtap_crea_lotto_di_magazzino(v_lot, 'PGT-L2I-L1', script.fn_data_operativa());
+    v_l2 := dbops.fn_pgtap_crea_lotto_di_magazzino(v_lot, 'PGT-L2I-L2', script.fn_data_operativa());
     INSERT INTO _fix VALUES (v_mag, v_no, v_ux, v_uy, v_art, v_lot, v_nog, v_l1, v_l2);
 END $fix$;
 

@@ -21,12 +21,17 @@ DECLARE
   v_padre_codice        magazzino.ubicazioni.codice%TYPE;
   v_mag_codice          magazzino.magazzini.codice%TYPE;
   v_mag_padre_codice    magazzino.magazzini.codice%TYPE;
-  v_ciclo               boolean := false;
+  v_ciclo               boolean := false;  -- l'esito di un EXISTS: nessuna colonna
+  v_utente              config.user_override_aree.auth_user_id%TYPE;
 BEGIN
   -- Scopo: il padre di un'ubicazione (parent_id) sta nello stesso magazzino
   --   della figlia, e la catena dei padri non torna mai su se stessa.
-  --   Lettura sotto RLS (SECURITY INVOKER): un padre fuori perimetro non
-  --   risolve, e si rifiuta lo stesso (fail-closed).
+  --   Un padre fuori dal perimetro dell'operatore in sessione non risolve, e
+  --   si rifiuta lo stesso (fail-closed). Il perimetro si chiede col predicato
+  --   esplicito (fn_scope_ef_whitelist_via_magazzino), non alla RLS: dentro un
+  --   verbo SECURITY DEFINER la RLS non filtra, e la frase direbbe il magazzino
+  --   di un'altra azienda. Senza operatore in sessione decide la RLS di chi
+  --   scrive (il migratore vede tutto, l'app nulla).
   -- Regole:
   --   - parent_id = id, o NEW.id fra gli antenati del padre nuovo (solo in
   --     UPDATE: in INSERT la riga non e' ancora in nessuna catena):
@@ -57,12 +62,15 @@ BEGIN
     );
   END IF;
 
-  -- 2) Il padre, sotto RLS: magazzino e codici per la frase.
+  -- 2) Il padre, nel perimetro di chi agisce: magazzino e codici per la frase.
+  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
   SELECT u.magazzino_id, u.codice, m.codice
     INTO v_padre_magazzino_id, v_padre_codice, v_mag_padre_codice
     FROM magazzino.ubicazioni u
     LEFT JOIN magazzino.magazzini m ON m.id = u.magazzino_id
-   WHERE u.id = NEW.parent_id;
+   WHERE u.id = NEW.parent_id
+     AND (v_utente IS NULL
+          OR script.fn_scope_ef_whitelist_via_magazzino(v_utente, u.magazzino_id));
 
   IF v_padre_magazzino_id IS NULL OR v_padre_magazzino_id <> NEW.magazzino_id THEN
     SELECT m.codice INTO v_mag_codice
@@ -130,7 +138,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.trgfn_ubicazioni_guard_parent()
-IS 'Guard R-1 sulle ubicazioni: il padre (parent_id) sta nello stesso magazzino della figlia — altrimenti E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id; fail-closed: un padre fuori perimetro RLS non risolve e si rifiuta lo stesso) — e la gerarchia non ha cicli di nessuna lunghezza: E_MAG_UBICAZIONE_PADRE_CICLICO (stessa classe, stesso campo). Il cambio di magazzino_id non passa di qui: colonna immutabile via automation_lock_columns. Brief: brief-db-magazzino-anagrafiche-guard-ubicazioni-e-codici, R-1.';
+IS 'Guard R-1 sulle ubicazioni: il padre (parent_id) sta nello stesso magazzino della figlia — altrimenti E_MAG_UBICAZIONE_PADRE_DI_ALTRO_MAGAZZINO (DATO_ERRATO, campo parent_id; fail-closed: un padre fuori dal perimetro dell''operatore in sessione non risolve e si rifiuta lo stesso, chiesto col predicato esplicito script.fn_scope_ef_whitelist_via_magazzino, cosi'' la risposta e'' la stessa da applicazione e dentro un verbo SECURITY DEFINER) — e la gerarchia non ha cicli di nessuna lunghezza: E_MAG_UBICAZIONE_PADRE_CICLICO (stessa classe, stesso campo). Il cambio di magazzino_id non passa di qui: colonna immutabile via automation_lock_columns.';
 ```
 
 </div>
