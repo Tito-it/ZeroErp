@@ -33,12 +33,23 @@ da `UiService.get_lista_config`.
 
 Il renderer scarta:
 
-* le colonne `tipo_colonna='azione'` — sono pulsanti, non dati;
-* le colonne `esportabile = false` — decisione dell'admin, non dell'utente;
-* le colonne che il livello di permesso dell'utente non espone.
+* le colonne nascoste dall'utente (`visibile = false` nella configurazione);
+* le colonne `BLOCCATO` per i permessi — non arrivano nemmeno nella
+  configurazione;
+* le colonne con `esportabile = false` **nella configurazione**: il flag lo
+  compone `ui.fn_resolve_lista_config`, ed e' falso sia quando l'admin ha
+  marcato la colonna non esportabile a catalogo, sia quando il permesso di
+  colonna dell'utente e' `LETTURA` (la vede a video, non la porta via). Le
+  azioni ci cadono per costruzione: il DB garantisce che un'azione non ha campo
+  sorgente e che una colonna senza campo sorgente non e' esportabile.
 
-Restano identificatori e informazioni, nell'ordine `ordine_default` (o in quello
-che il chiamante passa). ⚠️ Conseguenza pratica: **due operatori con permessi
+⛔ Il flag che decide e' quello della **configurazione**, non quello del
+catalogo (`ui.lista_colonna.esportabile`): fino al 2026-11-22
+`ListaExportService.select_colonne_visibili_da_config` prendeva il secondo, e le
+colonne in sola `LETTURA` finivano nel file. Un flag assente non esporta.
+
+Restano identificatori e informazioni, **nell'ordine della configurazione
+dell'utente** (quello che vede a video). ⚠️ Conseguenza pratica: **due operatori con permessi
 diversi ottengono file diversi dallo stesso endpoint**, ed e' voluto.
 
 I **filtri applicati** viaggiano col file: riga di intestazione commentata (`#`)
@@ -112,9 +123,16 @@ configurazione della lista **e** il cancello del perimetro emittente.
 | `GET /api/v1/magazzino/movimenti/export/` | `magazzino.movimenti` |
 | `GET /api/v1/amm-software/error-log/export/` | `dbops.error_log` ² |
 
-¹ Codice da una costante di modulo e non dall'attributo `lista_codice` della
-view: liste senza perimetro emittente (catalogo globale), quindi senza
-cancello. ² Su `AdminAPIView` (solo SUPER_ADMIN): codice da costante di modulo.
+¹ Liste senza perimetro emittente (catalogo globale, `perimetro_emittente =
+false`): dichiarano `lista_codice` ma non hanno cancello. ² Su `AdminAPIView`
+(solo SUPER_ADMIN): dichiara `lista_codice` (da una costante di modulo), e il
+cancello del perimetro emittente non c'e', perche' sta solo su `DomainAPIView`.
+Il registro delle esenzioni e' `test_perimetro_emittente_copertura`.
+
+⭐ Dal 2026-11-22 (giro 6 di brief-db-revisione-ui) la **partenza** della lista
+(ordinamento e misura di partenza, vedi
+[api_ui_liste § Regole](api_ui_liste.md#regole)) la accende `_ApiViewBase` su
+**ogni** porta che dichiara `lista_codice`, quindi anche sugli export ¹ e ².
 
 **I filtri sono quelli della lista corrispondente**: l'export accetta gli stessi
 query param della sua `GET` di lista e li applica agli stessi campi. Per il
@@ -155,7 +173,7 @@ lista lo dichiara, il suo export deve farlo; e viceversa.
 ## Dipendenze
 
 * `apps/ui/services/lista_export_service.py` — renderer CSV/XLSX, cap, filtri in testata
-* `apps/ui/services/ui_service.py` — `get_lista_config` (colonne, ordine, permessi)
+* `apps/ui/services/ui_service.py` — `get_lista_config` (colonne, ordine, permessi, `esportabile`)
 * `apps/core/services/locale_formatters.py` — `format_for_export`
-* `apps/core/api/base_views.py` — `DomainAPIView.lista_codice` e cancello perimetro
+* `apps/core/api/base_views.py` — `lista_codice` (dichiarato su `_ApiViewBase`: la partenza) e cancello perimetro (`DomainAPIView`)
 * [api_ui_liste](api_ui_liste.md) — la configurazione delle liste, di cui l'export e' la proiezione su file

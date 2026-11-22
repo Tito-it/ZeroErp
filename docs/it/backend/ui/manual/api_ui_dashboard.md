@@ -3,7 +3,7 @@
 ## Scopo
 
 Servire al frontend **la dashboard di un utente**: quali widget vede, in che
-ordine, e con che numeri sopra. Quattro endpoint sotto
+ordine, e con che numeri sopra. Quattro rotte (cinque metodi) sotto
 `/api/v1/ui/dashboard/{codice}/`, dove `codice` identifica la dashboard (non
 l'utente: quello arriva dal token).
 
@@ -35,7 +35,61 @@ fa la funzione DB quando filtra i widget.
 
 La configurazione **effettiva** per l'utente autenticato: l'esito della cascata,
 gia' filtrato. E' l'unico endpoint che il FE deve chiamare per sapere cosa
-disegnare.
+disegnare. La risposta e' il jsonb di `ui.fn_resolve_dashboard_config`, cosi'
+com'e':
+
+```json
+{
+  "data": {
+    "widget": [
+      {
+        "codice": "situazione_aperta",
+        "ordine": 10,
+        "visibile": true,
+        "tipo_widget": "kpi",
+        "etichetta": "Situazione aperta",
+        "etichetta_i18n_key": "dashboard.home.situazione_aperta",
+        "deep_link": "/vendite/dashboard-aperto",
+        "contatore_key": "situazione_aperta",
+        "soglia": null
+      }
+    ],
+    "dimensione_max": 8,
+    "dimensione_max_standard": 8,
+    "origine": {"widget": "sistema", "dimensione_max": "catalogo"},
+    "widget_nuovi": 0,
+    "preset_base": {
+      "id": 3,
+      "ambito": "sistema",
+      "contenuto_aggiornato_il": {"widget": "2026-11-20T09:12:00+00:00"}
+    },
+    "preset_base_cambiato": false,
+    "preset_aggiornato": false,
+    "preset_aggiornato_chiavi": []
+  },
+  "meta": {"request_id": "..."}
+}
+```
+
+- `widget` — le card che l'utente puo' vedere, in ordine; `deep_link`,
+  `contatore_key`, `soglia`, le etichette e `tipo_widget` sono freschi dal
+  catalogo del pool, non dalla preferenza
+- `dimensione_max` / `dimensione_max_standard` — quante card al massimo, con e
+  senza la preferenza (da 1 a 100)
+- `origine` — per chiave (`widget`, `dimensione_max`) il livello da cui viene
+- `widget_nuovi` — le card nuove del pool che l'utente puo' vedere, contate
+  dopo il filtro dei permessi
+- `preset_base`, `preset_base_cambiato`, `preset_aggiornato`,
+  `preset_aggiornato_chiavi` — gli stessi campi, con lo stesso significato, di
+  [api_ui_liste §1](api_ui_liste.md#1-risolvi-configurazione-lista)
+
+Il filtro dei permessi e' per **area e azione** (`script.fn_get_user_permissions_map`,
+`script.fn_get_user_actions_map`), fail-closed fuori dalla veste `OPERATORE`.
+I valori dell'esempio sono illustrativi.
+
+⚠️ `DashboardService.get_catalogo` (il pool per una modale di scelta delle
+card) esiste nel service ma **non ha una rotta**: oggi nessun endpoint lo
+espone.
 
 ## 2. `GET /api/v1/ui/dashboard/{codice}/contatori/`
 
@@ -94,13 +148,14 @@ insegnare a ignorare gli avvisi.
 | `E_UI_CONFIGURAZIONE_FORMA` | 400 | forma del `PUT` non ammessa (dal guard a DB): il messaggio nomina la chiave e il motivo |
 | `E_UI_PREFERENZA_NON_TROVATA` | 404 | `ignore-preset-update` senza una preferenza salvata |
 | `E_IDEMPOTENCY_KEY_REQUIRED` | 400 | `PUT` preferenza o `POST` ignore-preset-update senza chiave |
+| `E_UI_GENERIC_FAILED` | 400 | `config` e `contatori`: `DatabaseError` non riconosciuto durante la risoluzione |
 
 ## Dove guardare nel codice
 
 | cosa | dove |
 |---|---|
 | le quattro view | `apps/ui/api/views_dashboard.py` |
-| cascata e risoluzione | `apps/ui/services/dashboard_service.py` (`get_dashboard_config`) |
+| cascata e risoluzione | `apps/ui/services/dashboard_service.py` (`get_dashboard_config`), wrapper di `ui.fn_resolve_dashboard_config` |
 | contatori | `apps/ui/services/dashboard_contatori_service.py` |
 | preferenza e tombstone | `apps/ui/services/dashboard_preferenza_service.py` |
 

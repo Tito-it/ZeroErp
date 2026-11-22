@@ -161,7 +161,8 @@ class ListaExportService:
     #        Combinazione:
     #          1. Itera `config.colonne` nell'ordine fornito (ordine utente).
     #          2. Skip se `visibile=false` (colonna nascosta a video).
-    #          3. Merge con `metadata` per recuperare etichetta + tipo_*.
+    #          3. Merge con `metadata` per recuperare etichetta + tipo_*;
+    #             `esportabile` resta quello della configurazione (permessi).
     #          4. Sovrascrive `ordine_default` con la posizione progressiva
     #             cosi' il renderer (che sorta per quel campo) preserva
     #             l'ordine utente.
@@ -195,6 +196,13 @@ class ListaExportService:
                 # Skip silenzioso per coerenza con render FE.
                 continue
             merged = dict(m)
+            # ⛔ `esportabile` viene dalla CONFIGURAZIONE, non dal catalogo:
+            #    `ui.fn_resolve_lista_config` lo da' gia' composto (il flag
+            #    del catalogo, e `false` sul livello `LETTURA` del permesso di
+            #    colonna). Col flag del catalogo una colonna che l'utente puo'
+            #    solo vedere finiva nel file. Assente = non si esporta, come
+            #    in `_filter_colonne_esportabili`.
+            merged["esportabile"] = c.get("esportabile") is True
             merged["ordine_default"] = idx
             out.append(merged)
         return out

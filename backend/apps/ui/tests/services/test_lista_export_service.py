@@ -373,6 +373,43 @@ class SelectColonneVisibiliTests(SimpleTestCase):
         self.assertEqual([c["codice"] for c in result], ["ragione_sociale"])
         # Nemmeno se la passiamo a render: solo ragione_sociale nell'output.
 
+    def test_colonna_in_sola_lettura_non_si_esporta(self) -> None:
+        # Permesso di colonna LETTURA: la fn DB la lascia a video ma con
+        # `esportabile=false`. Il catalogo la dice esportabile: deve vincere
+        # la configurazione, o la colonna finisce nel file.
+        metadata = self._metadata_full()
+        self.assertTrue(
+            next(m for m in metadata if m["codice"] == "partita_iva")["esportabile"],
+        )
+        config = {
+            "colonne": [
+                {"codice": "ragione_sociale", "visibile": True, "esportabile": True},
+                {"codice": "partita_iva", "visibile": True, "esportabile": False},
+            ],
+        }
+        colonne = ListaExportService.select_colonne_visibili_da_config(config, metadata)
+        self.assertEqual(
+            {c["codice"]: c["esportabile"] for c in colonne},
+            {"ragione_sociale": True, "partita_iva": False},
+        )
+        body, _ct, _fn = ListaExportService().render(
+            lista_codice="anagrafiche.clienti",
+            colonne=colonne,
+            righe=[{"ragione_sociale_completa": "ACME", "partita_iva": "01234567890"}],
+            filtri_applicati=None,
+            formato="csv",
+        )
+        testo = body.decode("utf-8-sig") if isinstance(body, bytes) else body
+        self.assertIn("ACME", testo)
+        self.assertNotIn("01234567890", testo)
+
+    def test_esportabile_assente_in_config_non_si_esporta(self) -> None:
+        config = {"colonne": [{"codice": "ragione_sociale", "visibile": True}]}
+        colonne = ListaExportService.select_colonne_visibili_da_config(
+            config, self._metadata_full(),
+        )
+        self.assertEqual([c["esportabile"] for c in colonne], [False])
+
     def test_visibile_default_true_quando_flag_assente(self) -> None:
         # Alcuni preset di sistema non dichiarano esplicitamente `visibile`:
         # interpretiamo come True (mostra/esporta). Solo `visibile: false`
