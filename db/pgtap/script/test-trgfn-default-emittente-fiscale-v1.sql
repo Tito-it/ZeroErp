@@ -6,6 +6,11 @@
 --   building block solo, e le copie di vendite ritirate.
 --   Brief: brief-db-emittente-di-default-un-bb-solo (P-6; D1..D5 confermate da
 --   Tid il 2026-09-15). ChangeSet 20260915-36 .. 20260915-46.
+-- rev 2026-11-22 (brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 1): i magazzini sono
+--   chiusi all'applicazione. 10, 12 e 14 nascono dal verbo magazzino.fn_aggiungi_magazzino
+--   (l'operatore A ha TUTTO sull'area magazzino, scritto in fixture; il SA lo ha per ruolo);
+--   11 e 15 non si raggiungono piu' dal magazzino (il verbo non prende l'emittente, e senza
+--   utente si ferma sul permesso): girano su vendite.ordini, montato sullo stesso BB.
 -- rev 2026-10-25 (brief-db-pgtap-reso-costruito, giro D-4): riga e conferma dell'ordine del
 --   test 13 da dbops.fn_pgtap_crea_ordine_con_righe (p_ordine_id); la testata resta a mano
 --   (nasce senza emittente dall'operatore A: e' la premessa del caso).
@@ -35,12 +40,12 @@
 --   binding SUPER_ADMIN; una quarta azienda Z il cui operatore e' un SECONDO
 --   super admin, mai attore; un indirizzo; un BA di A)
 --   10) operatore A, magazzino senza emittente -> A
---   11) SA in modalita' «tutti» (assegnato a S), emittente ESPLICITO A -> resta A
+--   11) SA in modalita' «tutti» (assegnato a S), ordine con emittente ESPLICITO A -> resta A
 --   12) SA con emittente attivo B -> B (l'attivo di sessione vince sull'assegnato)
 --   13) ddt SALTA_CON_SORGENTE: SA (assegnato a S) evade un ordine di A -> il DDT porta A
 --   -- da qui il SA e' «admin globale»: senza riga in user_emittenti_fiscali
 --   14) SA senza emittente, magazzino senza emittente -> E_EMITTENTE_NON_RISOLTO (P0001, frase)
---   15) GUC app.current_user_id vuota -> E_EMITTENTE_NON_RISOLTO
+--   15) GUC app.current_user_id vuota, ordine senza emittente -> E_EMITTENTE_NON_RISOLTO
 --   16) ddt LASCIA_NULL: SA senza emittente, DDT DRAFT senza sorgente con BA di A
 --       -> nessun errore dal default, emittente dal BA via normalize
 --   17) trigger montato con un argomento non ammesso -> E_TRIGGER_ARGOMENTI_INVALIDI
@@ -198,6 +203,11 @@ BEGIN
         (SELECT c.id FROM config.causali_trasporto c WHERE c.codice = 'VENDITA' ORDER BY c.id LIMIT 1),
         (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA' AND s.attivo ORDER BY s.id LIMIT 1));
 END $fix$;
+-- L'operatore A crea magazzini dal verbo: TUTTO sull'area magazzino (scelta del test).
+INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo)
+SELECT m.auth_user_id, af.id, 'TUTTO', 'pgTAP: default emittente, magazzini dal verbo'
+  FROM _m m, config.aree_funzionali af
+ WHERE m.lato = 'A' AND af.schema_db = 'magazzino';
 -- ⛔ Tolta il 2026-11-18 la riga SET LOCAL zeroerp.allow_lock_columns_override = 'on':
 --    il file non scrive colonne bloccate, e dal 2026-11-18 la porta si apre solo per
 --    la sessione del migratore (script.fn_porta_manutenzione_aperta,
@@ -208,12 +218,11 @@ END $fix$;
 -- IL COMPORTAMENTO
 -- ============================================================
 -- 10) operatore A, magazzino senza emittente -> A
+-- ⚠️ La nascita e la lettura in due istruzioni: nella stessa, la lettura non vede la riga.
+CREATE TEMP TABLE _n10 ON COMMIT DROP AS
+SELECT magazzino.fn_aggiungi_magazzino('PGT-DE-10', 'default emittente 10', f.ind) AS id FROM _fix f;
 CREATE TEMP TABLE _r10 ON COMMIT DROP AS
-WITH ins AS (
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id)
-        SELECT 'PGT-DE-10', 'default emittente 10', f.ind FROM _fix f
-    RETURNING emittente_fiscale_id)
-SELECT emittente_fiscale_id FROM ins;
+SELECT mg.emittente_fiscale_id FROM magazzino.magazzini mg JOIN _n10 n ON n.id = mg.id;
 SELECT is(
     (SELECT emittente_fiscale_id FROM _r10),
     (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A'),
@@ -223,23 +232,25 @@ SELECT is(
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 CREATE TEMP TABLE _r11 ON COMMIT DROP AS
 WITH ins AS (
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id, emittente_fiscale_id)
-        SELECT 'PGT-DE-11', 'default emittente 11', f.ind, (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A') FROM _fix f
+        INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, valuta_id, data, storicizza, meta,
+                                    emittente_fiscale_id)
+        SELECT f.ba_sr, f.ba, f.valuta, script.fn_data_operativa(), false, '{}'::jsonb,
+               (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A')
+          FROM _fix f
     RETURNING emittente_fiscale_id)
 SELECT emittente_fiscale_id FROM ins;
 SELECT is(
     (SELECT emittente_fiscale_id FROM _r11),
     (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A'),
-    '11. valore esplicito (A) non sovrascritto, anche se il SA avrebbe un default (S)');
+    '11. ordine con valore esplicito (A) non sovrascritto, anche se il SA avrebbe un default (S)');
 
 -- 12) SA con emittente attivo B -> B
 SELECT set_config('app.current_emittente_id', (SELECT emittente_fiscale_id::text FROM _m WHERE lato = 'B'), true);
+-- ⚠️ La nascita e la lettura in due istruzioni: nella stessa, la lettura non vede la riga.
+CREATE TEMP TABLE _n12 ON COMMIT DROP AS
+SELECT magazzino.fn_aggiungi_magazzino('PGT-DE-12', 'default emittente 12', f.ind) AS id FROM _fix f;
 CREATE TEMP TABLE _r12 ON COMMIT DROP AS
-WITH ins AS (
-        INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id)
-        SELECT 'PGT-DE-12', 'default emittente 12', f.ind FROM _fix f
-    RETURNING emittente_fiscale_id)
-SELECT emittente_fiscale_id FROM ins;
+SELECT mg.emittente_fiscale_id FROM magazzino.magazzini mg JOIN _n12 n ON n.id = mg.id;
 SELECT is(
     (SELECT emittente_fiscale_id FROM _r12),
     (SELECT emittente_fiscale_id FROM _m WHERE lato = 'B'),
@@ -284,18 +295,17 @@ SELECT script.fn_change_user_emittenti_scope((SELECT auth_user_id FROM _m WHERE 
 
 -- 14) SA senza emittente, senza valore -> E_EMITTENTE_NON_RISOLTO
 SELECT throws_like(
-    $$ INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id)
-       SELECT 'PGT-DE-14', 'default emittente 14', f.ind FROM _fix f $$,
+    $$ SELECT magazzino.fn_aggiungi_magazzino('PGT-DE-14', 'default emittente 14', f.ind) FROM _fix f $$,
     'Nessun emittente fiscale attivo%',
     '14. admin globale senza emittente attivo, riga senza emittente -> E_EMITTENTE_NON_RISOLTO');
 
 -- 15) GUC vuota -> E_EMITTENTE_NON_RISOLTO (poi il contesto si rimette)
 SELECT set_config('app.current_user_id', '', true);
 SELECT throws_like(
-    $$ INSERT INTO magazzino.magazzini (codice, descrizione, indirizzo_dettaglio_id)
-       SELECT 'PGT-DE-15', 'default emittente 15', f.ind FROM _fix f $$,
+    $$ INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, valuta_id, data, storicizza, meta)
+       SELECT f.ba_sr, f.ba, f.valuta, script.fn_data_operativa(), false, '{}'::jsonb FROM _fix f $$,
     'Nessun emittente fiscale attivo%',
-    '15. GUC app.current_user_id vuota -> E_EMITTENTE_NON_RISOLTO');
+    '15. GUC app.current_user_id vuota, ordine senza emittente -> E_EMITTENTE_NON_RISOLTO');
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
 
 -- 16) ddt LASCIA_NULL: SA senza emittente, DDT DRAFT senza sorgente con BA di A

@@ -27,11 +27,12 @@ DECLARE
   v_ba          anagrafiche.billing_account.id%TYPE;
   v_emittente   bigint;  -- id della colonna [2]: emittente_fiscale_id o emittente_soggetto_ruolo_id
   v_atteso      bigint;  -- lo stesso, risolto dal BA
-  v_documento   text;
-  v_nome        text;
-  v_nome_atteso text;
+  v_documento   text;  -- etichetta + identificativo, composti per la frase
+  v_nome        text;  -- ragione sociale o '#id': un pezzo di frase, non una colonna
+  v_nome_atteso text;  -- idem
   v_ba_codice   anagrafiche.billing_account.codice%TYPE;
   v_contesto    jsonb;
+  v_utente      config.user_override_aree.auth_user_id%TYPE;
 BEGIN
   -- =========================================================
   -- Scopo:
@@ -44,6 +45,11 @@ BEGIN
   --   NULL ammesso (DDT, reso) non c'e' niente da confrontare.
   -- ⚠️ I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING:
   --   e' un difetto di configurazione, non si maschera.
+  -- ⛔ No-leak: il codice del BA entra nella frase solo se il BA e' nel
+  --   perimetro di chi agisce (fn_scope_ef_whitelist_via_efba, la domanda
+  --   della policy). Dentro un verbo SECURITY DEFINER la RLS non filtra,
+  --   e la frase direbbe il codice di un cliente di un'altra azienda.
+  --   Senza operatore in sessione decide la RLS di chi scrive.
   -- =========================================================
   v_new := to_jsonb(NEW);
 
@@ -107,9 +113,11 @@ BEGIN
                       THEN (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
                              WHERE ef.id = v_atteso)
                       ELSE v_atteso END;
+  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
   SELECT ba.codice INTO v_ba_codice
     FROM anagrafiche.billing_account ba
-   WHERE ba.id = v_ba;
+   WHERE ba.id = v_ba
+     AND (v_utente IS NULL OR script.fn_scope_ef_whitelist_via_efba(v_utente, ba.id));
 
   v_contesto := jsonb_build_object(
       'tabella',             TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
@@ -139,7 +147,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_doc_guard_emittente_ba()
-IS 'Building block (2026-10-10, brief-db-guard-emittente-ba-unico): l''emittente di un documento di vendita e'' quello che il suo billing account risolve. BEFORE INSERT OR UPDATE OF (billing_account_id, <colonna dell''emittente>) FOR EACH ROW; TG_ARGV = [0] etichetta del documento, [1] colonna che lo identifica, [2] colonna dell''emittente (emittente_fiscale_id -> anagrafiche.fn_get_emittente_fiscale_pk; emittente_soggetto_ruolo_id -> anagrafiche.fn_get_emittente_fiscale_id), [3] codice d''errore (E_DOC_EMITTENTE_BA_INCOERENTE per preventivo, offerta, contratto, ordine, DDT, reso; E_COMMESSA_EMITTENTE_BA_INCOERENTE, TECNICO, per la commessa). BA NULL: esce. VARIADIC: documento, nome dell''azienda indicata, nome di quella del cliente (soggetti.ragione_sociale_completa, o l''id), codice del BA; nel contesto gli id, e `campo` solo se il codice non e'' TECNICO; tx_id della riga. Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO. I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING. Regola del 2: sostituisce trgfn_{preventivi,offerte_commerciali,contratti,ordini,ddt,resi,commesse}_guard_emittente_ba (ritirate da 20261010-19).';
+IS 'Building block: l''emittente di un documento (di vendita, o di un seriale di magazzino) e'' quello che il suo billing account risolve. BEFORE INSERT OR UPDATE OF (billing_account_id, <colonna dell''emittente>) FOR EACH ROW; TG_ARGV = [0] etichetta del documento, [1] colonna che lo identifica, [2] colonna dell''emittente (emittente_fiscale_id -> anagrafiche.fn_get_emittente_fiscale_pk; emittente_soggetto_ruolo_id -> anagrafiche.fn_get_emittente_fiscale_id), [3] codice d''errore (E_DOC_EMITTENTE_BA_INCOERENTE per preventivo, offerta, contratto, ordine, DDT, reso, seriale; E_COMMESSA_EMITTENTE_BA_INCOERENTE, TECNICO, per la commessa). BA NULL: esce. VARIADIC: documento, nome dell''azienda indicata, nome di quella del cliente (soggetti.ragione_sociale_completa, o l''id), codice del BA (solo se il BA e'' nel perimetro di chi agisce, script.fn_scope_ef_whitelist_via_efba; altrimenti l''id); nel contesto gli id, e `campo` solo se il codice non e'' TECNICO; tx_id della riga. Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO. I risolutori possono propagare E_EMITTENTE_DEFAULT_MISSING.';
 ```
 
 </div>

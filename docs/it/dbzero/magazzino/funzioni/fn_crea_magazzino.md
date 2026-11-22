@@ -19,7 +19,9 @@ AS $function$
 DECLARE
     v_campi    jsonb := COALESCE(p_campi, '{}'::jsonb);
     v_estranea text;
-    c_ammesse  CONSTANT text[] := ARRAY['usa_ubicazioni', 'predefinito', 'meta'];
+    -- Le colonne che il BB riceve come argomenti: non stanno in p_campi.
+    c_argomenti CONSTANT text[] := ARRAY['codice', 'descrizione', 'indirizzo_dettaglio_id'];
+    v_ammesse  text[];
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -29,7 +31,9 @@ BEGIN
     --   dal trigger). Ritorna l'id.
     --
     -- Regole:
-    --   - una chiave fuori elenco si rifiuta: E_CAMPO_NON_AMMESSO;
+    --   - le chiavi ammesse in p_campi: la lista 'crea' di
+    --     magazzino.fn_magazzini_colonne_ammesse, tolti gli
+    --     argomenti; una chiave fuori elenco: E_CAMPO_NON_AMMESSO;
     --   - scope, unicita', indirizzo attivo: i guard della tabella.
     -- =========================================================
     IF jsonb_typeof(v_campi) <> 'object' THEN
@@ -41,7 +45,11 @@ BEGIN
             'i campi non sono un oggetto');
     END IF;
 
-    v_estranea := script.fn_prima_chiave_estranea(v_campi, c_ammesse);
+    v_ammesse := ARRAY(SELECT c
+                         FROM unnest(magazzino.fn_magazzini_colonne_ammesse('crea')) AS c
+                        WHERE c <> ALL (c_argomenti));
+
+    v_estranea := script.fn_prima_chiave_estranea(v_campi, v_ammesse);
     IF v_estranea IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'magazzino', 'magazzino.fn_crea_magazzino', 'E_CAMPO_NON_AMMESSO',
@@ -65,7 +73,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_crea_magazzino(p_codice character varying, p_descrizione character varying, p_indirizzo_dettaglio_id bigint, p_campi jsonb, p_emittente_fiscale_id bigint)
-IS 'BB (2026-10-18): crea un magazzino, cioe'' la riga di magazzino.magazzini, in una sola istruzione. Codice, descrizione e indirizzo di dettaglio sono argomenti (NOT NULL della tabella, obbligatori nel backend); p_campi: usa_ubicazioni, predefinito, meta (le assenti e le null al DEFAULT; chiave estranea: E_CAMPO_NON_AMMESSO). attivo non e'' un campo: un magazzino nasce attivo. p_emittente_fiscale_id NULL = quello della sessione, che mette trgfn_default_emittente_fiscale(SOLLEVA); indicato, lo controlla trgfn_guard_emittente_scope. Scope, unicita'' del codice e indirizzo attivo li dicono i guard e i vincoli della tabella. Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER: dentro una SECURITY DEFINER senza operatore in sessione il guard di scope ferma una riga con un padrone. Ritorna l''id. Prende il posto di AnagraficheMagazzinoRepository.create_magazzino (2b-2), dell''INSERT di dbops.fn_pgtap_crea_magazzino e delle fixture dei pgTAP del magazzino. Brief: brief-db-processi-accensione-per-ambiente (2b-1, lotto 7).';
+IS 'BB: crea un magazzino, cioe'' la riga di magazzino.magazzini, in una sola istruzione. Codice, descrizione e indirizzo di dettaglio sono argomenti (NOT NULL della tabella); in p_campi le altre colonne della lista crea di magazzino.fn_magazzini_colonne_ammesse (le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome). attivo non e'' un campo: un magazzino nasce attivo. p_emittente_fiscale_id NULL = quello della sessione, che mette trgfn_default_emittente_fiscale(SOLLEVA); indicato, lo controlla trgfn_guard_emittente_scope. Scope, unicita'' del codice e indirizzo attivo li dicono i guard e i vincoli della tabella. Non controlla il permesso: lo controlla chi lo chiama (il verbo di nascita). Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER: dentro una SECURITY DEFINER senza operatore in sessione il guard di scope ferma una riga con un padrone. Ritorna l''id.';
 ```
 
 </div>

@@ -33,17 +33,31 @@ search:
 - [valore_giacenza](tabelle/valore_giacenza.md) — **Quanto vale la giacenza** di un articolo in un magazzino. Una riga per coppia (articolo, magazzino), con il **valore** totale corrente.
 
 ## ⚙️ Funzioni
+- [fn_aggiungi_asset](funzioni/fn_aggiungi_asset.md)
+- [fn_aggiungi_lotto](funzioni/fn_aggiungi_lotto.md)
+- [fn_aggiungi_magazzino](funzioni/fn_aggiungi_magazzino.md)
+- [fn_aggiungi_ubicazione](funzioni/fn_aggiungi_ubicazione.md)
 - [fn_apri_blocco](funzioni/fn_apri_blocco.md)
+- [fn_assets_colonne_ammesse](funzioni/fn_assets_colonne_ammesse.md)
+- [fn_crea_asset](funzioni/fn_crea_asset.md)
+- [fn_crea_lotto](funzioni/fn_crea_lotto.md)
 - [fn_crea_magazzino](funzioni/fn_crea_magazzino.md) — **Aprire un magazzino** di un'azienda: codice, descrizione, indirizzo e, se servono, l'uso delle ubicazioni e il «predefinito».
+- [fn_crea_ubicazione](funzioni/fn_crea_ubicazione.md)
 - [fn_documento_interno_transizioni](funzioni/fn_documento_interno_transizioni.md) — Dice quali **destinazioni** sono ammesse a partire da uno stato, per i documenti interni di magazzino — l'inventario, la rettifica e il trasferimento interno, che hanno la stessa matrice.
 - [fn_inventario_piano](funzioni/fn_inventario_piano.md) — **Che cosa scriverà il posting di un inventario, prima di confermare**: una riga per ogni posizione del magazzino che il registro ha o che il conteggio nomina, con l'esito che avrà.
 - [fn_libera_blocco](funzioni/fn_libera_blocco.md)
+- [fn_lotti_colonne_ammesse](funzioni/fn_lotti_colonne_ammesse.md)
+- [fn_magazzini_colonne_ammesse](funzioni/fn_magazzini_colonne_ammesse.md)
+- [fn_modifica_lotto](funzioni/fn_modifica_lotto.md)
+- [fn_modifica_magazzino](funzioni/fn_modifica_magazzino.md)
+- [fn_modifica_ubicazione](funzioni/fn_modifica_ubicazione.md)
 - [fn_posta_inventario](funzioni/fn_posta_inventario.md) — **Registra un inventario confermato.** Legge il [piano](/dbzero/magazzino/funzioni/fn_inventario_piano), scrive su ogni riga la quantità che il registro diceva (`qta_sistema`: la fotografia contro cui il conteggio è stato posto, e resta), posta con la primitiva ogni riga con differenza, porta la testata a `POSTED`. Ritorna, riga per riga, il movimento scritto.
 - [fn_posta_rettifica](funzioni/fn_posta_rettifica.md) — **Registra una rettifica confermata**: la *correzione a mano* che il modello promette («la correzione a mano È una rettifica»). Per ogni riga posta con la primitiva il delta **dato** (`qta_delta`, con segno) con `RETT_POS` o `RETT_NEG` secondo il segno, come sorgente la rettifica (tipo `RETTIFICA`) con la riga, il costo della riga solo su un'entrata; poi porta la testata a `POSTED`. Una transazione sola; ritorna i movimenti scritti.
 - [fn_posta_trasferimento](funzioni/fn_posta_trasferimento.md)
 - [fn_ricalcola_valore_giacenza](funzioni/fn_ricalcola_valore_giacenza.md) — **Riscrive la copia del valore di magazzino dal registro**, per un magazzino e, se si vuole, per un solo articolo. Ritorna, coppia per coppia, il valore prima e dopo.
 - [fn_scrivi_movimento](funzioni/fn_scrivi_movimento.md) — **L'unica funzione che scrive un movimento di magazzino**: fa tutti i controlli nell'ordine del contratto, scrive la riga sul registro e aggiorna la copia del valore. Ritorna l'id del movimento.
 - [fn_storna_movimenti_sorgente](funzioni/fn_storna_movimenti_sorgente.md)
+- [fn_ubicazioni_colonne_ammesse](funzioni/fn_ubicazioni_colonne_ammesse.md)
 - [trgfn_documento_interno_guard_transizione](funzioni/trgfn_documento_interno_guard_transizione.md) — **Fa rispettare la matrice degli stati** dei documenti interni di magazzino — inventari, rettifiche e trasferimenti — e tiene la porta `POSTED` e il cestino. Una funzione sola per le tre famiglie: ogni tabella le passa il nome della propria colonna di stato e quello della propria impostazione di registrazione. È montata prima dell'aggiornamento della colonna di stato e prima della cancellazione.
 - [trgfn_documento_interno_righe_guard_testata](funzioni/trgfn_documento_interno_righe_guard_testata.md) — **Le righe dei documenti interni di magazzino seguono lo stato della testata.** Una funzione per le tre famiglie (inventari, rettifiche, trasferimenti): ogni tabella di righe le passa il nome della testata, della colonna che la collega, della colonna di stato e dell'impostazione di registrazione. È montata prima di ogni inserimento, aggiornamento e cancellazione di riga.
 - [trgfn_magazzini_guard_usa_ubicazioni](funzioni/trgfn_magazzini_guard_usa_ubicazioni.md) — **`usa_ubicazioni` si cambia solo a registro vuoto.** Il flag decide la *grana* del registro di quel magazzino (ogni movimento nomina un'ubicazione, o nessuno); se esiste un movimento del magazzino, il cambio è rifiutato.

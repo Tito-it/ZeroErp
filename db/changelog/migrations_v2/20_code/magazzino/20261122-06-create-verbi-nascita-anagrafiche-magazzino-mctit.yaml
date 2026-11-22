@@ -1,0 +1,207 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VERBI DI NASCITA DELLE ANAGRAFICHE DI MAGAZZINO
+#   magazzino.fn_aggiungi_magazzino(codice, descrizione, indirizzo, campi)
+#   magazzino.fn_aggiungi_ubicazione(magazzino, codice, tipo, campi)
+#   magazzino.fn_aggiungi_lotto(articolo, codice, data_arrivo, campi)
+#   magazzino.fn_aggiungi_asset(articolo, seriale, stato, proprieta', campi)
+#   Ritornano l'id. Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo,
+#   D-M2 (la nascita: verbo col guard che chiama il BB fn_crea_*), D-M7.
+#
+# -- IL MODELLO («una scrittura = un verbo», guida permessi §7.4) --------
+#   * prima riga: script.fn_guard_livello(utente, 'magazzino', '<tabella>',
+#     'TUTTO'), l'oggetto che config.tabelle_gestibili gia' nomina per
+#     magazzini e ubicazioni. Fail-closed: senza utente E_PERMESSO_NEGATO;
+#   * SECURITY DEFINER del proprietario, search_path bloccato: dopo la
+#     postura del Lotto 1 l'app non scrive piu' queste tabelle;
+#   * il perimetro: da proprietario la RLS non filtra. Lo dice la tabella
+#     (trgfn_guard_emittente_scope, D-M6) a ogni scrittore; il verbo rimette
+#     la sola lettura no-leak del padre (il magazzino dell'ubicazione), con
+#     lo stesso predicato di magazzino.fn_libera_blocco:
+#     script.fn_scope_ef_whitelist_via_magazzino. Un magazzino fuori
+#     perimetro risponde «non trovato», come se non esistesse;
+#   * la riga la scrive il BB (fn_crea_*): colonne ammesse, chiave estranea,
+#     default. Il verbo non ne ricopia nessuna regola.
+#
+# -- I NOMI -------------------------------------------------------------
+#   fn_crea_* e' il BB (senza permesso, lo usano anche il provisioning e i
+#   builder); fn_aggiungi_* e' il gesto dell'operatore. Gemelli di nome:
+#   fn_modifica_* (20261122-07).
+#
+# -- CHE COSA RESTA FUORI ----------------------------------------------
+#   * l'emittente: lo mette il trigger dalla sessione, come oggi dal backend.
+#     Il BB lo accetta esplicito per il provisioning, il verbo no;
+#   * nessun DELETE: un'anagrafica si disattiva (fn_modifica_*, attivo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-06-create-verbi-nascita-anagrafiche-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261122-06-create-verbi-nascita-anagrafiche-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea i quattro verbi di nascita delle anagrafiche di magazzino (magazzino, ubicazione,
+        lotto, seriale): SECURITY DEFINER, livello TUTTO sull'oggetto nella prima riga, la riga
+        scritta dal BB fn_crea_* della tabella.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'magazzino'
+                 AND p.proname IN ('fn_crea_ubicazione', 'fn_crea_lotto', 'fn_crea_asset');
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_magazzino(
+                  p_codice                 magazzino.magazzini.codice%TYPE,
+                  p_descrizione            magazzino.magazzini.descrizione%TYPE,
+                  p_indirizzo_dettaglio_id magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  p_campi                  jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo magazzino» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'magazzini', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_magazzino(
+                             p_codice, p_descrizione, p_indirizzo_dettaglio_id, p_campi);
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente config.user_override_oggetti.auth_user_id%TYPE;
+              BEGIN
+                  -- Scopo: il gesto «nuova ubicazione» dell'operatore nel
+                  --   magazzino p_magazzino_id: livello TUTTO sull'oggetto, il
+                  --   magazzino nel perimetro (no-leak), poi il BB. Ritorna l'id.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'ubicazioni', 'TUTTO');
+
+                  -- No-leak: un magazzino fuori perimetro e' come uno che non
+                  -- esiste. Lo stesso predicato di fn_libera_blocco.
+                  IF NOT EXISTS (SELECT 1
+                                   FROM magazzino.magazzini mg
+                                  WHERE mg.id = p_magazzino_id
+                                    AND script.fn_scope_ef_whitelist_via_magazzino(v_utente, mg.id)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_aggiungi_ubicazione', 'E_MAG_MAGAZZINO_NON_TROVATO',
+                          jsonb_build_object('magazzino_id', p_magazzino_id),
+                          NULL::uuid,
+                          COALESCE(p_magazzino_id::text, '(nessuno)'));
+                  END IF;
+
+                  RETURN magazzino.fn_crea_ubicazione(p_magazzino_id, p_codice, p_tipo_id, p_campi);
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo lotto» dell'operatore: livello TUTTO
+                  --   sull'oggetto, poi il BB. Un lotto e' dell'articolo: nessun
+                  --   perimetro d'emittente. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'lotti', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_lotto(p_articolo_id, p_codice, p_data_arrivo, p_campi);
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_asset(
+                  p_articolo_id  magazzino.assets.articolo_id%TYPE,
+                  p_seriale      magazzino.assets.seriale%TYPE,
+                  p_stato_id     magazzino.assets.stato_id%TYPE,
+                  p_ownership_id magazzino.assets.ownership_id%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb)
+               RETURNS bigint
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo seriale» dell'operatore: livello
+                  --   TUTTO sull'oggetto, poi il BB. L'emittente e' quello della
+                  --   sessione; il perimetro lo dice il guard della tabella.
+                  --   Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'assets', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_asset(p_articolo_id, p_seriale, p_stato_id,
+                                                 p_ownership_id, p_campi);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_magazzino(
+                  magazzino.magazzini.codice%TYPE,
+                  magazzino.magazzini.descrizione%TYPE,
+                  magazzino.magazzini.indirizzo_dettaglio_id%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuovo magazzino» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, magazzini, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_magazzino con l''emittente della sessione: colonne ammesse in p_campi, default, perimetro (trgfn_guard_emittente_scope) e vincoli sono del BB e della tabella. SECURITY DEFINER del proprietario, search_path bloccato: l''applicazione non scrive magazzino.magazzini da sola. Ritorna l''id.';
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_ubicazione(
+                  magazzino.ubicazioni.magazzino_id%TYPE,
+                  magazzino.ubicazioni.codice%TYPE,
+                  magazzino.ubicazioni.tipo_id%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuova ubicazione» dell''operatore nel magazzino p_magazzino_id. Prima riga script.fn_guard_livello(utente, magazzino, ubicazioni, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Un magazzino che non esiste o fuori dal perimetro dell''operatore (script.fn_scope_ef_whitelist_via_magazzino) risponde E_MAG_MAGAZZINO_NON_TROVATO, senza dire quale dei due. Poi magazzino.fn_crea_ubicazione: colonne ammesse, padre, tipo e vincoli sono del BB e della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_lotto(
+                  magazzino.lotti.articolo_id%TYPE,
+                  magazzino.lotti.codice%TYPE,
+                  magazzino.lotti.data_arrivo%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuovo lotto» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, lotti, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_lotto: colonne ammesse, articolo attivo, date e unicita'' sono del BB e della tabella. Un lotto e'' dell''articolo, senza perimetro d''emittente. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_asset(
+                  magazzino.assets.articolo_id%TYPE,
+                  magazzino.assets.seriale%TYPE,
+                  magazzino.assets.stato_id%TYPE,
+                  magazzino.assets.ownership_id%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuovo seriale» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, assets, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_asset con l''emittente della sessione: colonne ammesse, perimetro (trgfn_guard_emittente_scope), padri attivi e unicita'' del seriale sono del BB e della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+      rollback:
+        - sql:
+            sql: >
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_magazzino(character varying, character varying, bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_ubicazione(bigint, character varying, bigint, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_lotto(uuid, character varying, date, jsonb);
+              DROP FUNCTION IF EXISTS magazzino.fn_aggiungi_asset(uuid, character varying, bigint, bigint, jsonb);

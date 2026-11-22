@@ -45,10 +45,9 @@ CREATE TEMP TABLE _fix (mag_p bigint, mag_x bigint, art_g uuid, art_n uuid);
 DO $fix$
 DECLARE v_p bigint; v_x bigint;
 BEGIN
-    v_p := dbops.fn_pgtap_crea_magazzino('PGT-L3E-PRED', false);
+    -- Il predefinito si sceglie alla nascita, coi campi del builder.
+    v_p := dbops.fn_pgtap_crea_magazzino('PGT-L3E-PRED', false, '{"predefinito": true}'::jsonb);
     v_x := dbops.fn_pgtap_crea_magazzino('PGT-L3E-ALTRO', false);
-    -- Il predefinito si sceglie con un UPDATE: la fixture nasce non predefinita.
-    UPDATE magazzino.magazzini SET predefinito = true WHERE id = v_p;
     INSERT INTO _fix VALUES (v_p, v_x,
                              dbops.fn_pgtap_crea_articolo('PGT-L3E-GEST', true, false, false),
                              dbops.fn_pgtap_crea_articolo('PGT-L3E-NONG', false, false, false));
@@ -56,7 +55,7 @@ END $fix$;
 
 -- 1) un solo predefinito per emittente
 SELECT throws_ok(
-    format('UPDATE magazzino.magazzini SET predefinito = true WHERE id = %s', (SELECT mag_x FROM _fix)),
+    $$SELECT dbops.fn_pgtap_crea_magazzino('PGT-L3E-PRED2', false, '{"predefinito": true}'::jsonb)$$,
     '23505', NULL,
     '1) il secondo magazzino predefinito dello stesso emittente e'' rifiutato (D-L3-h)');
 
@@ -119,12 +118,7 @@ CREATE TEMP TABLE _as (id bigint);
 DO $a$
 DECLARE v_id bigint;
 BEGIN
-    INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
-    SELECT art_g, 'PGT-L3E-SER-1',
-           (SELECT s.id FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1),
-           (SELECT o.id FROM config.assets_ownership o WHERE o.attivo ORDER BY o.id LIMIT 1),
-           (SELECT emittente_fiscale_id FROM _m)
-      FROM _fix RETURNING id INTO v_id;
+    v_id := dbops.fn_pgtap_crea_asset((SELECT art_g FROM _fix), 'PGT-L3E-SER-1');
     INSERT INTO _as VALUES (v_id);
 END $a$;
 SELECT throws_ok(

@@ -72,10 +72,9 @@ CREATE TEMP TABLE _fix (mag_p bigint, mag_x bigint, art uuid, sorg_ord bigint, d
 DO $fix$
 DECLARE v_p bigint; v_x bigint; v_art uuid; v_inv bigint;
 BEGIN
-    v_p := dbops.fn_pgtap_crea_magazzino('PGT-EPL-PRED', false);
+    -- Il predefinito si sceglie alla nascita, coi campi del builder.
+    v_p := dbops.fn_pgtap_crea_magazzino('PGT-EPL-PRED', false, '{"predefinito": true}'::jsonb);
     v_x := dbops.fn_pgtap_crea_magazzino('PGT-EPL-ALTRO', false);
-    -- Il predefinito si sceglie con un UPDATE: la fixture nasce non predefinita.
-    UPDATE magazzino.magazzini SET predefinito = true WHERE id = v_p;
     v_art := dbops.fn_pgtap_crea_articolo('PGT-EPL-GEST', true, false, false);
 
     -- Il carico: 10 pezzi nel predefinito.

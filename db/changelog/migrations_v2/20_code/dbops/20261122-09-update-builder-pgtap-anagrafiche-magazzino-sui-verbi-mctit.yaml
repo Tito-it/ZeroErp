@@ -1,0 +1,362 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I BUILDER pgTAP DELLE ANAGRAFICHE DI MAGAZZINO PASSANO DAI VERBI
+#   dbops.fn_pgtap_apri_area_per_nascita(app_label, model_name)  (nuovo)
+#   dbops.fn_pgtap_richiudi_area(ricordo)                        (nuovo)
+#   dbops.fn_pgtap_crea_magazzino(codice, usa_ubicazioni, campi) (sul verbo; + p_campi)
+#   dbops.fn_pgtap_crea_ubicazione(magazzino, codice, campi, tipo)        (nuovo)
+#   dbops.fn_pgtap_crea_lotto_di_magazzino(articolo, codice, arrivo, campi) (nuovo)
+#   dbops.fn_pgtap_crea_asset(articolo, seriale, campi, stato, proprieta') (nuovo)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, P-4 (§5.1).
+#   Corpo di partenza di fn_pgtap_crea_magazzino: pg_get_functiondef su dbdev.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Con la postura del Lotto 1 (90_end/20261122-10) l'applicazione non scrive
+#   piu' magazzini, ubicazioni, lotti, assets: un builder INVOKER che chiama il
+#   BB fn_crea_* riceverebbe 42501 col runner come app. Il builder chiama il
+#   VERBO di nascita, cioe' la strada dell'operatore.
+#
+# -- L'AREA APERTA PER IL TEMPO DELLA NASCITA ---------------------------
+#   Il verbo vuole TUTTO sull'oggetto, e l'operatore costruito non ha righe
+#   d'area (BLOCCATO ovunque). Il builder apre l'area con un override d'area
+#   (o alza quello che c'e'), chiama il verbo, e lo RIMETTE com'era: tolto se
+#   l'aveva scritto, coi valori di prima se l'aveva alzato. Il test ritrova
+#   il mondo dei permessi come l'aveva lasciato, e un rifiuto per livello si
+#   prova prima o dopo la fixture senza che la fixture lo veda.
+#   ⭐ A differenza di fn_pgtap_concedi_azione, che apre l'area per sempre (e
+#   per questo si ferma su un override del test), qui l'apertura dura una
+#   chiamata: alzare per un istante un override del test non lo scavalca.
+#   ⛔ Un override sull'OGGETTO sotto TUTTO resta sotto il tetto: solleva.
+#
+# -- fn_pgtap_crea_magazzino ----------------------------------------------
+#   DROP + CREATE: entra p_campi (DEFAULT '{}'), i facoltativi del verbo
+#   (predefinito, meta, ...). Le chiamate a uno e a due argomenti restano
+#   valide. L'emittente non si passa piu': lo mette il default di sessione
+#   (trgfn_default_emittente_fiscale), con lo stesso resolver di
+#   script.fn_pgtap_emittente_operatore.
+#
+# -- NOMI ---------------------------------------------------------------
+#   fn_pgtap_crea_lotto e' gia' il lotto di FATTURAZIONE (vendite):
+#   il lotto di magazzino e' fn_pgtap_crea_lotto_di_magazzino.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261122-09-update-builder-pgtap-anagrafiche-magazzino-sui-verbi-mctit.yaml
+
+  - changeSet:
+      id: 20261122-09-update-builder-pgtap-anagrafiche-magazzino-sui-verbi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I builder pgTAP di magazzino, ubicazione, lotto di magazzino e seriale chiamano i verbi di
+        nascita (fn_aggiungi_*), con l'area aperta a TUTTO per il tempo della nascita e poi
+        richiusa. fn_pgtap_crea_magazzino riceve p_campi.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "4"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'magazzino'
+                     AND p.proname IN ('fn_aggiungi_magazzino', 'fn_aggiungi_ubicazione',
+                                       'fn_aggiungi_lotto', 'fn_aggiungi_asset');
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'dbops' AND p.proname = 'fn_pgtap_crea_magazzino';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_apri_area_per_nascita(
+                  p_app_label  config.user_override_oggetti.app_label%TYPE,
+                  p_model_name config.user_override_oggetti.model_name%TYPE)
+               RETURNS jsonb  -- il ricordo dell'override di prima: nessuna colonna di cui sia il riflesso
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare all'operatore in sessione TUTTO sull'oggetto per il tempo
+              --   di una nascita fatta da un builder. Ritorna il ricordo di cio' che
+              --   c'era, da passare a dbops.fn_pgtap_richiudi_area; NULL se il livello
+              --   c'era gia'.
+              -- Uso: v_ricordo := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'magazzini');
+              --      ... il verbo ...
+              --      PERFORM dbops.fn_pgtap_richiudi_area(v_ricordo);
+              DECLARE
+                  v_utente  config.user_override_aree.auth_user_id%TYPE;
+                  v_area    config.aree_funzionali.schema_db%TYPE;
+                  v_area_id config.aree_funzionali.id%TYPE;
+                  v_prima   config.user_override_aree%ROWTYPE;
+                  v_ov      config.user_override_aree.id%TYPE;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  IF v_utente IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessun operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+
+                  v_area := script.fn_area_di_oggetto(p_app_label, p_model_name);
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS NOT DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT af.id INTO v_area_id
+                    FROM config.aree_funzionali af
+                   WHERE af.schema_db = v_area;
+                  IF v_area_id IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: nessuna area funzionale per %.%', p_app_label, p_model_name;
+                  END IF;
+
+                  -- Un override d'area che c'e' (del test, o del database) si alza per
+                  -- il tempo della nascita e si rimette com'era: se ne tiene il ricordo.
+                  SELECT * INTO v_prima
+                    FROM config.user_override_aree uoa
+                   WHERE uoa.auth_user_id = v_utente
+                     AND uoa.area_id      = v_area_id;
+
+                  IF v_prima.id IS NULL THEN
+                      INSERT INTO config.user_override_aree
+                             (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
+                      VALUES (v_utente, v_area_id, 'TUTTO',
+                              'Fixture pgTAP: nascita di ' || p_app_label || '.' || p_model_name,
+                              (SELECT script.fn_data_operativa()), NULL)
+                      RETURNING id INTO v_ov;
+                  ELSE
+                      UPDATE config.user_override_aree uoa
+                         SET livello    = 'TUTTO',
+                             valido_dal = (SELECT script.fn_data_operativa()),
+                             valido_al  = NULL
+                       WHERE uoa.id = v_prima.id;
+                      v_ov := v_prima.id;
+                  END IF;
+
+                  -- Un override sull'OGGETTO resta sotto il tetto: lo si dice.
+                  IF script.fn_resolve_livello_oggetto(v_utente, p_app_label, p_model_name, v_area)
+                         IS DISTINCT FROM 'TUTTO'::config.livello_accesso THEN
+                      RAISE EXCEPTION 'fn_pgtap_apri_area_per_nascita: %.% non arriva a TUTTO anche con l''area aperta (override d''oggetto)',
+                                      p_app_label, p_model_name;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'override_id', v_ov,
+                      'nuovo',       v_prima.id IS NULL,
+                      'livello',     v_prima.livello,
+                      'valido_dal',  v_prima.valido_dal,
+                      'valido_al',   v_prima.valido_al);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_apri_area_per_nascita(
+                  config.user_override_oggetti.app_label%TYPE, config.user_override_oggetti.model_name%TYPE) IS
+                  'Fixture pgTAP: apre a TUTTO l''area dell''oggetto per l''operatore in sessione, per il tempo di una nascita fatta da un builder sul verbo: scrive un override d''area, o alza quello che c''e''. Ritorna il ricordo di cio'' che c''era (NULL se il livello c''era gia''), da passare a dbops.fn_pgtap_richiudi_area.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_richiudi_area(
+                  p_ricordo jsonb)  -- il ritorno di fn_pgtap_apri_area_per_nascita: nessuna colonna
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: rimettere l'override d'area com'era prima di
+              --   dbops.fn_pgtap_apri_area_per_nascita: tolto se l'aveva scritto,
+              --   coi valori di prima se l'aveva alzato. NULL: niente da rimettere.
+              -- Uso: PERFORM dbops.fn_pgtap_richiudi_area(v_ricordo);
+              BEGIN
+                  IF p_ricordo IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  IF (p_ricordo ->> 'nuovo')::boolean THEN
+                      DELETE FROM config.user_override_aree uoa
+                       WHERE uoa.id = (p_ricordo ->> 'override_id')::bigint;
+                  ELSE
+                      UPDATE config.user_override_aree uoa
+                         SET livello    = (p_ricordo ->> 'livello')::config.livello_accesso,
+                             valido_dal = (p_ricordo ->> 'valido_dal')::date,
+                             valido_al  = (p_ricordo ->> 'valido_al')::date
+                       WHERE uoa.id = (p_ricordo ->> 'override_id')::bigint;
+                  END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_richiudi_area(jsonb) IS
+                  'Fixture pgTAP: rimette l''override d''area com''era prima di dbops.fn_pgtap_apri_area_per_nascita (tolto se l''aveva scritto, coi valori di prima se l''aveva alzato), cosi'' il test ritrova i livelli che aveva. NULL: niente da rimettere.';
+
+              -- La firma viva a due argomenti (20261018-41): codice, usa_ubicazioni.
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_magazzino(
+                  magazzino.magazzini.codice%TYPE, magazzino.magazzini.usa_ubicazioni%TYPE);
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_magazzino(
+                  p_codice         magazzino.magazzini.codice%TYPE,
+                  p_usa_ubicazioni magazzino.magazzini.usa_ubicazioni%TYPE DEFAULT false,
+                  p_campi          jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.magazzini.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un magazzino dell'EMITTENTE DELL'OPERATORE
+              --   in sessione, con un indirizzo fabbricato e usa_ubicazioni scelto dal
+              --   test (D-L2-m), dal verbo magazzino.fn_aggiungi_magazzino. p_campi: gli
+              --   altri facoltativi del verbo (predefinito, meta, ...).
+              --   Da chiamare DOPO fn_pgtap_set_contesto_operatore.
+              -- Uso: v_mag := dbops.fn_pgtap_crea_magazzino('PGT-MAG-A', true);
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.magazzini.id%TYPE;
+              BEGIN
+                  -- L'emittente lo mette il default di sessione: qui si controlla solo
+                  -- che ci sia, col messaggio di chi ha dimenticato il contesto.
+                  IF script.fn_pgtap_emittente_operatore() IS NULL THEN
+                      RAISE EXCEPTION 'fn_pgtap_crea_magazzino: nessun emittente per l''operatore in sessione — chiamare prima fn_pgtap_set_contesto_operatore';
+                  END IF;
+
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'magazzini');
+                  v_id := magazzino.fn_aggiungi_magazzino(
+                              p_codice,
+                              'Fixture pgTAP: ' || p_codice,
+                              dbops.fn_pgtap_crea_indirizzo_dettaglio(p_codice),
+                              jsonb_build_object('usa_ubicazioni', COALESCE(p_usa_ubicazioni, false))
+                                  || COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_magazzino(
+                  magazzino.magazzini.codice%TYPE, magazzino.magazzini.usa_ubicazioni%TYPE, jsonb) IS
+                  'Fixture pgTAP: un magazzino dell''emittente dell''operatore in sessione, con un indirizzo fabbricato (dbops.fn_pgtap_crea_indirizzo_dettaglio) e usa_ubicazioni scelto dal test; p_campi porta gli altri facoltativi. Nasce dal verbo magazzino.fn_aggiungi_magazzino, con l''area aperta per il tempo della nascita (dbops.fn_pgtap_apri_area_per_nascita). Da chiamare dopo fn_pgtap_set_contesto_operatore.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ubicazione(
+                  p_magazzino_id magazzino.ubicazioni.magazzino_id%TYPE,
+                  p_codice       magazzino.ubicazioni.codice%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb,  -- i facoltativi del verbo: nessuna colonna
+                  p_tipo_id      magazzino.ubicazioni.tipo_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.ubicazioni.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un'ubicazione del magazzino
+              --   p_magazzino_id, dal verbo magazzino.fn_aggiungi_ubicazione. Senza
+              --   p_tipo_id: il primo tipo attivo del catalogo. p_campi: i facoltativi
+              --   del verbo (parent_id, area, corsia, ...).
+              -- Uso: v_ubi := dbops.fn_pgtap_crea_ubicazione(v_mag, 'PGT-U1');
+              DECLARE
+                  v_tipo magazzino.ubicazioni.tipo_id%TYPE;
+                  v_ov   jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id   magazzino.ubicazioni.id%TYPE;
+              BEGIN
+                  v_tipo := COALESCE(p_tipo_id,
+                                     (SELECT t.id FROM config.tipi_ubicazione t
+                                       WHERE t.attivo ORDER BY t.id LIMIT 1));
+
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'ubicazioni');
+                  v_id := magazzino.fn_aggiungi_ubicazione(
+                              p_magazzino_id, p_codice, v_tipo, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_ubicazione(
+                  magazzino.ubicazioni.magazzino_id%TYPE, magazzino.ubicazioni.codice%TYPE, jsonb,
+                  magazzino.ubicazioni.tipo_id%TYPE) IS
+                  'Fixture pgTAP: un''ubicazione del magazzino dato, dal verbo magazzino.fn_aggiungi_ubicazione, con l''area aperta per il tempo della nascita. Senza tipo: il primo tipo attivo di config.tipi_ubicazione. p_campi porta i facoltativi (parent_id, area, corsia, ...).';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_lotto_di_magazzino(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE DEFAULT NULL,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)  -- i facoltativi del verbo: nessuna colonna
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un lotto di magazzino dell'articolo
+              --   p_articolo_id, dal verbo magazzino.fn_aggiungi_lotto. Senza
+              --   p_data_arrivo: la data operativa. p_campi: i facoltativi del verbo
+              --   (data_scadenza, meta).
+              -- ⚠️ Non e' dbops.fn_pgtap_crea_lotto: quello e' il lotto di fatturazione.
+              -- Uso: v_lot := dbops.fn_pgtap_crea_lotto_di_magazzino(v_art, 'PGT-L1');
+              DECLARE
+                  v_ov jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id magazzino.lotti.id%TYPE;
+              BEGIN
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'lotti');
+                  v_id := magazzino.fn_aggiungi_lotto(
+                              p_articolo_id, p_codice,
+                              COALESCE(p_data_arrivo, (SELECT script.fn_data_operativa())),
+                              COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_lotto_di_magazzino(
+                  magazzino.lotti.articolo_id%TYPE, magazzino.lotti.codice%TYPE,
+                  magazzino.lotti.data_arrivo%TYPE, jsonb) IS
+                  'Fixture pgTAP: un lotto di magazzino dell''articolo dato, dal verbo magazzino.fn_aggiungi_lotto, con l''area aperta per il tempo della nascita. Senza data di arrivo: la data operativa. Non e'' dbops.fn_pgtap_crea_lotto, che costruisce il lotto di fatturazione.';
+
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_asset(
+                  p_articolo_id  magazzino.assets.articolo_id%TYPE,
+                  p_seriale      magazzino.assets.seriale%TYPE,
+                  p_campi        jsonb DEFAULT '{}'::jsonb,  -- i facoltativi del verbo: nessuna colonna
+                  p_stato_id     magazzino.assets.stato_id%TYPE DEFAULT NULL,
+                  p_ownership_id magazzino.assets.ownership_id%TYPE DEFAULT NULL)
+               RETURNS magazzino.assets.id%TYPE
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un seriale dell'articolo p_articolo_id,
+              --   dell'emittente dell'operatore in sessione, dal verbo
+              --   magazzino.fn_aggiungi_asset. Senza stato e proprieta': il primo
+              --   attivo dei due cataloghi. p_campi: i facoltativi del verbo.
+              -- Uso: v_sn := dbops.fn_pgtap_crea_asset(v_ser, 'PGT-SN1');
+              DECLARE
+                  v_stato magazzino.assets.stato_id%TYPE;
+                  v_own   magazzino.assets.ownership_id%TYPE;
+                  v_ov    jsonb;  -- il ricordo di fn_pgtap_apri_area_per_nascita
+                  v_id    magazzino.assets.id%TYPE;
+              BEGIN
+                  v_stato := COALESCE(p_stato_id,
+                                      (SELECT s.id FROM config.stati_assets s
+                                        WHERE s.attivo ORDER BY s.id LIMIT 1));
+                  v_own   := COALESCE(p_ownership_id,
+                                      (SELECT o.id FROM config.assets_ownership o
+                                        WHERE o.attivo ORDER BY o.id LIMIT 1));
+
+                  v_ov := dbops.fn_pgtap_apri_area_per_nascita('magazzino', 'assets');
+                  v_id := magazzino.fn_aggiungi_asset(
+                              p_articolo_id, p_seriale, v_stato, v_own, COALESCE(p_campi, '{}'::jsonb));
+                  PERFORM dbops.fn_pgtap_richiudi_area(v_ov);
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_asset(
+                  magazzino.assets.articolo_id%TYPE, magazzino.assets.seriale%TYPE, jsonb,
+                  magazzino.assets.stato_id%TYPE, magazzino.assets.ownership_id%TYPE) IS
+                  'Fixture pgTAP: un seriale dell''articolo dato e dell''emittente dell''operatore in sessione, dal verbo magazzino.fn_aggiungi_asset, con l''area aperta per il tempo della nascita. Senza stato e proprieta'': il primo attivo di config.stati_assets e config.assets_ownership.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_asset(
+                  magazzino.assets.articolo_id%TYPE, magazzino.assets.seriale%TYPE, jsonb,
+                  magazzino.assets.stato_id%TYPE, magazzino.assets.ownership_id%TYPE);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_lotto_di_magazzino(
+                  magazzino.lotti.articolo_id%TYPE, magazzino.lotti.codice%TYPE,
+                  magazzino.lotti.data_arrivo%TYPE, jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_ubicazione(
+                  magazzino.ubicazioni.magazzino_id%TYPE, magazzino.ubicazioni.codice%TYPE, jsonb,
+                  magazzino.ubicazioni.tipo_id%TYPE);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_richiudi_area(jsonb);
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_apri_area_per_nascita(
+                  config.user_override_oggetti.app_label%TYPE, config.user_override_oggetti.model_name%TYPE);
+              -- fn_pgtap_crea_magazzino: il corpo a due argomenti (20261018-41) si
+              -- ripristina dalla doc auto-generata.
+              SELECT 'rollback manuale di dbops.fn_pgtap_crea_magazzino: corpo a due argomenti dalla doc auto-generata';

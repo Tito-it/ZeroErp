@@ -46,8 +46,8 @@ BEGIN
     END IF;
     v_a := dbops.fn_pgtap_crea_magazzino('PGT-L3I-A', true);
     v_b := dbops.fn_pgtap_crea_magazzino('PGT-L3I-B', false);
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_a, 'PGT-L3I-U1', v_tipo) RETURNING id INTO v_u1;
-    INSERT INTO magazzino.ubicazioni (magazzino_id, codice, tipo_id) VALUES (v_a, 'PGT-L3I-U2', v_tipo) RETURNING id INTO v_u2;
+    v_u1 := dbops.fn_pgtap_crea_ubicazione(v_a, 'PGT-L3I-U1', p_tipo_id => v_tipo);
+    v_u2 := dbops.fn_pgtap_crea_ubicazione(v_a, 'PGT-L3I-U2', p_tipo_id => v_tipo);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L3I-ART', true, false, false);
     INSERT INTO _fix VALUES (v_a, v_b, v_u1, v_u2, v_art);
     INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_a) RETURNING id INTO v_inv;

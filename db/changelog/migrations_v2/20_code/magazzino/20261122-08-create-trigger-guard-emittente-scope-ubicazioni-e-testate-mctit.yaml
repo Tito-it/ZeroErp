@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PERIMETRO IN SCRITTURA LO DICE LA TABELLA: quattro trigger del BB
+#   trg_ubicazioni_a10_guard_emittente_scope_ins_upd     (magazzino_id)
+#   trg_inventari_a10_guard_emittente_scope_ins_upd      (magazzino_id)
+#   trg_rettifiche_a10_guard_emittente_scope_ins_upd     (magazzino_id)
+#   trg_trasferimenti_a10_guard_emittente_scope_ins_upd  (magazzino_id_from)
+#   Brief: brief-db-magazzino-tutte-le-scritture-dal-verbo, D-M6 (Tid,
+#   2026-11-21: il perimetro sulla tabella, il verbo tiene solo il no-leak).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Queste quattro tabelle avevano la sola RLS, che da proprietario non
+#   filtra: un verbo SECURITY DEFINER (quelli del Lotto 1, i verbi dei
+#   documenti interni del Lotto 2, i fn_posta_*) le scavalca. Con il guard il
+#   perimetro lo dice la tabella a ogni scrittore, presente e futuro, come
+#   gia' su magazzini, assets e sul registro (20260918-14): policy, guard e
+#   verbo leggono la stessa domanda (fn_check_user_emittente_scope).
+#
+# -- LO STAMPO --------------------------------------------------------
+#   trg_<t>_a10_guard_emittente_scope_ins_upd, BEFORE INSERT OR UPDATE, modo
+#   'magazzino'. Il guard salta un UPDATE che non cambia la colonna: i
+#   cambi di stato dei fn_posta_* passano senza leggerlo. Fra gli a10 della
+#   tabella guard_emittente_scope ordina per primo (prima di guard_sorgente,
+#   guard_transizione, lock_columns, parent_guard, require_attivo): il
+#   perimetro parla prima delle altre regole. Lunghezze 48/47/48/51.
+#
+#   Il trasferimento si ancora a magazzino_id_from: e' la colonna della sua
+#   policy, e trgfn_trasferimenti_guard_stesso_emittente vuole l'arrivo
+#   dello stesso emittente. L'ubicazione ha magazzino_id immutabile
+#   (lucchetto): il guard conta alla nascita.
+#
+# -- CHI PASSA ANCORA (linee-guida-trigger, «un guard nuovo passa dai
+#    test già scritti») -------------------------------------------------
+#   * il proprietario fuori da una DEFINER (migratore, pgTAP owner): passa,
+#     come la RLS (row_security_active);
+#   * l'app con l'operatore: la stessa risposta della WITH CHECK della
+#     policy, quindi niente di nuovo per il backend di oggi;
+#   * una DEFINER senza operatore in sessione: si ferma su una riga che ha un
+#     padrone (magazzino NOT NULL). Nessuno scrive oggi queste tabelle cosi'
+#     (P-0, brief §5.1).
+#
+# -- NIENTE preCondition SUI TRIGGER GENERATI (§11.5) -------------------
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-08-create-trigger-guard-emittente-scope-ubicazioni-e-testate-mctit.yaml
+
+  - changeSet:
+      id: 20261122-08-create-trigger-guard-emittente-scope-ubicazioni-e-testate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il guard di scope in scrittura (script.trgfn_guard_emittente_scope, modo 'magazzino')
+        montato su magazzino.ubicazioni, inventari, rettifiche e trasferimenti, con lo stampo
+        trg_<t>_a10_guard_emittente_scope_ins_upd: il perimetro lo dice la tabella anche ai
+        verbi SECURITY DEFINER.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope';
+            - columnExists:
+                schemaName: magazzino
+                tableName: ubicazioni
+                columnName: magazzino_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: inventari
+                columnName: magazzino_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: rettifiche
+                columnName: magazzino_id
+            - columnExists:
+                schemaName: magazzino
+                tableName: trasferimenti
+                columnName: magazzino_id_from
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ubicazioni_a10_guard_emittente_scope_ins_upd ON magazzino.ubicazioni;
+              CREATE TRIGGER trg_ubicazioni_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.ubicazioni
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+
+              DROP TRIGGER IF EXISTS trg_inventari_a10_guard_emittente_scope_ins_upd ON magazzino.inventari;
+              CREATE TRIGGER trg_inventari_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.inventari
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+
+              DROP TRIGGER IF EXISTS trg_rettifiche_a10_guard_emittente_scope_ins_upd ON magazzino.rettifiche;
+              CREATE TRIGGER trg_rettifiche_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.rettifiche
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id');
+
+              DROP TRIGGER IF EXISTS trg_trasferimenti_a10_guard_emittente_scope_ins_upd ON magazzino.trasferimenti;
+              CREATE TRIGGER trg_trasferimenti_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.trasferimenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('magazzino', 'magazzino_id_from');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_trasferimenti_a10_guard_emittente_scope_ins_upd ON magazzino.trasferimenti;
+              DROP TRIGGER IF EXISTS trg_rettifiche_a10_guard_emittente_scope_ins_upd ON magazzino.rettifiche;
+              DROP TRIGGER IF EXISTS trg_inventari_a10_guard_emittente_scope_ins_upd ON magazzino.inventari;
+              DROP TRIGGER IF EXISTS trg_ubicazioni_a10_guard_emittente_scope_ins_upd ON magazzino.ubicazioni;

@@ -605,6 +605,25 @@ FROM (VALUES ('config.regimi_fiscali')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ LE ANAGRAFICHE DI MAGAZZINO (dal 2026-11-22): brief
+--   brief-db-magazzino-tutte-le-scritture-dal-verbo, Lotto 1. Magazzini,
+--   ubicazioni, lotti e seriali li scrivono i verbi fn_aggiungi_* / fn_modifica_*;
+--   eventi dei seriali e note non hanno scrittore applicativo. Le note sono
+--   partizionate: madre e nove partizioni, ognuna col suo privilegio. Stesso
+--   elenco di `v_tabelle_sola_lettura_app` nel loop 20260205-41 e del forward
+--   90_end/20261122-10; `db/pgtap/magazzino/test-anagrafiche-magazzino-sola-lettura-v1.sql`
+--   lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('magazzino.magazzini'), ('magazzino.ubicazioni'), ('magazzino.lotti'),
+             ('magazzino.assets'), ('magazzino.eventi_assets'), ('magazzino.note'),
+             ('magazzino.note_asset'), ('magazzino.note_evento_asset'),
+             ('magazzino.note_inventario'), ('magazzino.note_inventario_riga'),
+             ('magazzino.note_movimento'), ('magazzino.note_rettifica'),
+             ('magazzino.note_rettifica_riga'), ('magazzino.note_trasferimento'),
+             ('magazzino.note_trasferimento_riga')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

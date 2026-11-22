@@ -83,8 +83,7 @@ DECLARE v_mag bigint; v_art uuid; v_lotto bigint;
 BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-SUSC-MAG', false);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-SUSC-LOTTI', true, true, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-    VALUES (v_art, 'PGT-SUSC-L1', script.fn_data_operativa() - 1) RETURNING id INTO v_lotto;
+    v_lotto := dbops.fn_pgtap_crea_lotto_di_magazzino(v_art, 'PGT-SUSC-L1', script.fn_data_operativa() - 1);
     INSERT INTO _fix VALUES (v_mag, v_art, v_lotto);
 END $fix$;
 

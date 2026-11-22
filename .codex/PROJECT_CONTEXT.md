@@ -218,10 +218,13 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   `work-in-progress/collaudo-in-app-magazzino-bolla-e-reso.md`. Il difetto DB dei motivi della «Conferma» del reso
   è chiuso il 2026-10-14 (`work-done/2026/brief-db-reso-motivi-conferma-con-valori.md`), a video al §5.3/§5.7 del collaudo.
 - 📝 **Magazzino: tutte le scritture dal verbo**
-  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): riverificato il 2026-11-21 (§3-bis) e
-  decisioni prese lo stesso giorno (D-M1 C in due lotti, D-M2 nascita sul BB `fn_crea_*` e modifica per delta, D-M4
-  colonne ammesse a DB col gesto, D-M5 verbi comuni dei documenti interni, D-M6 guard di perimetro sulle tabelle). Ora
-  il via di Tid al Lotto 1 (§4), poi il team DB.
+  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): Lotto 1 lato DB applicato coi pgTAP verdi
+  il 2026-11-22 (`20261122-01` … `-13`: colonne ammesse, BB di nascita, verbi `fn_aggiungi_*` / `fn_modifica_*`, guard
+  di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
+  verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
+  finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
+  (documenti interni). Il lotto di magazzino diventa dell'azienda in
+  `work-in-progress/brief-db-magazzino-lotto-dell-azienda.md`: quattro decisioni a Tid.
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo
