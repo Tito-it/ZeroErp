@@ -7,17 +7,17 @@
 > **Brief vicini verificati** (rifatto il 2026-11-21 sugli **oggetti**, non solo sul filtro): nessuno
 > in `work-in-progress/` tocca il filtro `_id` del motore ATTIVO; due toccano FK dell'elenco del §2.
 >
-> * [brief-db-revisione-ui](brief-db-revisione-ui.md): scrive anche lui in `automazione_attivo_eccezioni.csv`,
+> * [brief-db-revisione-ui](../../work-in-progress/brief-db-revisione-ui.md): scrive anche lui in `automazione_attivo_eccezioni.csv`,
 >   coi giri 5-6 ancora da fare. Le righe del CSV si aggiungono per sostituzione del testo attuale.
 >   ⚠️ *Correzione del 2026-11-21 (§3.2): qui si leggeva che toccava «le FK di `ui` (`ambito`, `vista`)».
 >   Non è così: `ambito` è di `config.tipi_indirizzi_allowed`, `vista` di `dbops.presidi_*`, e nessuna FK
 >   di `ui` è nell'elenco. Il vicino è solo il CSV in comune.*
-> * [analisi-db-magazzino-carico-e-scarico](analisi-db-magazzino-carico-e-scarico.md):
+> * [analisi-db-magazzino-carico-e-scarico](../../work-in-progress/analisi-db-magazzino-carico-e-scarico.md):
 >   `ubicazione_id_da`/`_a`, `causale_magazzino`, `stato_lotto`. Si incrociano due voci aperte del
 >   PROJECT_CONTEXT, «La matrice di `stato_lotto` in due sedi che dissentono» e «La porta dell'esito
 >   ancora aperta» (le FK `esito*`): la revisione di quelle FK chiede a Tid se aspetta i due cantieri.
 >
-> * [brief-db-fornitore-doppioni-del-soggetto](../work-done/2026/brief-db-fornitore-doppioni-del-soggetto.md) (aggiunto il
+> * [brief-db-fornitore-doppioni-del-soggetto](brief-db-fornitore-doppioni-del-soggetto.md) (aggiunto il
 >   2026-11-22, su segnalazione della sessione del fornitore): il registro delle inclusioni nasce dalla sua D-6/D-7
 >   (§7.2). Il giro D-8 dello stesso brief (§7.4, Tid 2026-11-22) tocca oggetti di questo giro: il motivo
 >   `pgtap-runner` di `dbops/test-automazione-attivo-inclusioni-v1.sql` e `config/manual/regimi_fiscali.md`
@@ -33,8 +33,8 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, col commit del lavoro BE/FE (§6.1, 2026-11-22). Poi **il team DB**, con la chiusura e
-l'archiviazione: al DB il BE/FE non chiede niente. Il giro DB è
+**Brief chiuso e archiviato (sessione DB, 2026-11-22, §10). Non riparte nessuno**: il lavoro BE/FE del §6.1 è
+committato (`ebd81ec653`, in `Tito-dev` con la PR #194), e al DB il BE/FE non chiede niente. Il giro DB è
 applicato da Tid coi pgTAP verdi (2026-11-22, §9): 36 FK si legano (68 trigger nuovi, nessuno in più), 13 vanno fra
 le eccezioni, il registro delle inclusioni è ritirato.
 
@@ -48,12 +48,12 @@ le eccezioni, il registro delle inclusioni è ritirato.
 | 6 | ✅ sessione DB | Il giro scritto e provato in `ROLLBACK` (2026-11-22) | §9 | 5 |
 | 7 | ✅ Tid | Apply di `20261121-21` … `-25` e i pgTAP del §9.3, verdi (2026-11-22) | §9 | 6 |
 | 7-bis | ✅ Tid | Il commit del giro e la rigenerazione della doc auto-generata (2026-11-22) | §9.4 | 7 |
-| 8 | ✅ team BE/FE | I codici d'errore sulle maschere toccate, e il censimento dei lettori (2026-11-22): cinque legami del campo, il `campiErrati` dei tab dell'editor dei workflow, quattro prove sul DB vero. ⏳ commit di Tid | §6.1 | 7 |
+| 8 | ✅ team BE/FE | I codici d'errore sulle maschere toccate, e il censimento dei lettori (2026-11-22): cinque legami del campo, il `campiErrati` dei tab dell'editor dei workflow, quattro prove sul DB vero. Committato (`ebd81ec653`, PR #194) | §6.1 | 7 |
 | 9 | ✅ sessione DB | Tolta la pagina `manual/` del registro ritirato e la sua voce in `dbops/index.ci.md` (2026-11-22) | §9.4 | 7-bis |
-| 10 | team DB | Chiusura e archiviazione del brief | — | 8 |
+| 10 | ✅ sessione DB | Chiusura e archiviazione del brief (2026-11-22): nessuna correttiva chiesta dal BE/FE, nessun debito | §10 | 8 |
 
-Decisioni aperte di Tid: nessuna. Il giro DB (changeSet, CSV, pgTAP, doc) è applicato e committato; il lavoro
-BE/FE del §6.1 è da committare.
+Decisioni aperte di Tid: nessuna. Il giro DB (changeSet, CSV, pgTAP, doc) e il lavoro BE/FE del §6.1 sono
+committati; da committare solo l'archiviazione.
 
 ## 1. Il problema
 
@@ -682,3 +682,15 @@ sostituzione sul testo del giro D-8), `fornitori`, e `linee-guida-sql.md` §2 (l
 diventa il pgTAP). La doc auto-generata è rigenerata (Tid, 2026-11-22): la pagina della tabella ritirata non c'è più, e con lei
 sono state tolte la pagina `manual/automazione_attivo_inclusioni.md` e la sua voce in `dbops/index.ci.md`.
 
+
+## 10. Chiusura (sessione DB, 2026-11-22)
+
+* **Il BE/FE non chiede correttive al DB.** Il §6.1 risponde ai punti 1-3 della richiesta del §6. Il punto 4 non
+  chiedeva lavoro. Nessuna funzione, nessun codice d'errore e nessuna riga del catalogo da cambiare: i tre
+  `E_ATTIVO_*` avevano già classe e ripiego. Lavoro committato in `ebd81ec653` (PR #194).
+* **Niente debito.** I due punti aperti che il brief tocca hanno già la loro voce, e questo giro non li cambia:
+  «`E_ATTIVO_REQUIRE` è TECNICO anche quando il dato l'ha scelto una persona» (PROJECT_CONTEXT, §6 punto 4) e «Le FK
+  verso `django.auth_user` non nascono su un'installazione nuova» (registro dei residui, §9.3).
+* **Archiviato** in `work-done/2026/`. I rimandi per percorso (i tre brief vicini in testata, la voce del
+  PROJECT_CONTEXT) sono riallineati. I rimandi per nome nelle intestazioni dei changeSet, dei pgTAP, delle pagine
+  `manual/` e dei test BE non cambiano.

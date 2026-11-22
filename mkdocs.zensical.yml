@@ -29,6 +29,25 @@ theme:
                 - navigation.sections
                 - navigation.expand
                 - navigation.indexes
+        # Tema chiaro/scuro: di default segue il sistema operativo; il pulsante
+        # nell'header gira fra sistema → chiaro → scuro. I diagrammi Mermaid li
+        # disegna il tema (blocchi pre.mermaid di superfences) con i colori delle
+        # variabili --md-mermaid-*, che seguono lo schema anche al cambio al volo.
+        palette:
+                - media: "(prefers-color-scheme)"
+                  toggle:
+                          icon: lucide/sun-moon
+                          name: Passa al tema chiaro
+                - media: "(prefers-color-scheme: light)"
+                  scheme: default
+                  toggle:
+                          icon: lucide/sun
+                          name: Passa al tema scuro
+                - media: "(prefers-color-scheme: dark)"
+                  scheme: slate
+                  toggle:
+                          icon: lucide/moon
+                          name: Segui il sistema
 plugins:
         - include-markdown:
                   opening_tag: "{%"
@@ -58,9 +77,10 @@ markdown_extensions:
                           - name: mermaid
                             class: mermaid
                             format: !!python/name:pymdownx.superfences.fence_code_format ""
+# Solo la libreria: il tema la trova già caricata e non la scarica da unpkg.
+# L'inizializzazione e il disegno li fa il tema, niente script di avvio nostro.
 extra_javascript:
         - assets/javascripts/mermaid.min.js
-        - assets/javascripts/mermaid-init.js
 
 nav:
         - Home: it/index.md

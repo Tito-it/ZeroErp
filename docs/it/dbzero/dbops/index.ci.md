@@ -282,6 +282,3 @@ search:
 - [vw_stati_check_scrittori](manual/vw_stati_check_scrittori.md) — La misura del presidio degli stati mai scritti. Risponde a una domanda sola: **c'è uno stato che il database ammette e che nessuno scrive mai?** Ogni riga è un valore ammesso da una colonna di stato, con accanto chi lo scrive e se qualcuno se n'era già accorto.
 - [vw_storico_scope_da_dichiarare](manual/vw_storico_scope_da_dichiarare.md) — Il debito della mappa dello scope di storico: le madri storicizzate per cui nessuno ha ancora detto, o non dice più il vero, da dove si prende l'emittente che protegge le loro versioni. Deve restare **vuota**.
 - [vw_trigger_functions](manual/vw_trigger_functions.md) — L'inventario dei trigger del database: ogni trigger utente, in tutti gli schemi, con la tabella su cui sta, la funzione che esegue e la definizione completa di quella funzione. È un attrezzo per leggere, non un presidio.
-
-## 📘 Altri contenuti manuali
-- [automazione_attivo_inclusioni](manual/automazione_attivo_inclusioni.md) — Il registro delle FK **senza il suffisso `_id`** che l'automazione ATTIVO lega comunque. Il motore salta ogni FK la cui colonna non finisce in `_id`, perché di solito punta a un codice testuale che non è un legame padre/figlio. Quando lo è, la FK si dichiara qui, e il motore genera la coppia intera:

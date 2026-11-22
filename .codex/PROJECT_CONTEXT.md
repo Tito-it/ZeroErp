@@ -268,12 +268,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `20261120-36` … `-42`) il 2026-11-21. Giro 4 (il catalogo delle liste, `20261120-43` … `-52`) applicato coi pgTAP
   verdi e committato il 2026-11-21. Giro 5 (il catalogo delle dashboard, `20261120-53` … `-62`, Q49 e Q50 (a): il
   «mai vuota» resta quello di luglio) applicato coi pgTAP verdi il 2026-11-22, con la guida
-  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6;
-  al BE/FE le ricadute dei giri 2, 3, 4 e 5 (§3.2-bis, §3.3-bis, §3.4-bis, §3.5-bis).
-
-- **La regola ATTIVO lega ogni FK, qualunque sia il nome della colonna** (`work-in-progress/brief-db-attivo-fk-senza-suffisso-id.md`):
-  giro DB applicato coi pgTAP verdi il 2026-11-22 (34 FK legate in più, 13 eccezioni, registro delle inclusioni
-  ritirato, regola dei nomi delle FK col suo pgTAP). Al BE/FE la richiesta del §6; a Tid la rigenerazione della doc.
+  `configurazione-dashboard`: resta la doc auto-generata. Al DB il `/verifica-db` dei giri 1a, 2, 3, 4 e 5, poi il giro 6,
+  che ha in più U40 (l'ordinamento di partenza nel seed dei preset, chiesto dal team BE il 2026-11-22). Le ricadute
+  BE/FE dei giri 2-5 sono fatte e committate (PR #193 e #194, 2026-11-22). Al BE/FE resta il residuo di BE25 (2).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**
