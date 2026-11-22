@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.lista_preferenza_utente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -115,8 +115,10 @@ lista si riaccende.
 
 Le date: `data_insert` ha il default, `data_update` la scrive il database a ogni INSERT e UPDATE
 ([trgfn_preferenza_data_update](/dbzero/ui/funzioni/trgfn_preferenza_data_update)); il valore mandato da
-chi scrive non conta. **Senza audit, per scelta:** la preferenza è un dato personale, scritto solo
-dall'utente della riga e spesso, e non ha `user_insert` né `user_update`.
+chi scrive non conta. È l'ultima scrittura della riga, anche quella con cui il database ritira una
+colonna o una misura uscite dal catalogo: non l'ultimo salvataggio dell'utente. **Senza audit, per
+scelta:** la preferenza è un dato personale, scritto spesso dall'utente della riga, e non ha
+`user_insert` né `user_update`.
 
 ---
 

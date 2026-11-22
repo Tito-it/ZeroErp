@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `ui.dashboard_preferenza_utente`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -101,15 +101,18 @@ base e senza fotografia.
 
 ### Chi la scrive
 
-La scrive solo il backend, con INSERT, UPDATE e DELETE diretti: il salvataggio (un UPSERT sulla coppia
-utente e dashboard), la cancellazione e l'«ignora». La lettura passa dalla funzione di risoluzione; il
+La scrive il backend, con INSERT, UPDATE e DELETE diretti: il salvataggio (un UPSERT sulla coppia
+utente e dashboard), la cancellazione e l'«ignora». Il database la riscrive da sé in un caso solo: una
+card che esce dal pool esce anche dalle preferenze che la nominano
+([trgfn_voce_ritira_dalle_preferenze](/dbzero/ui/funzioni/trgfn_voce_ritira_dalle_preferenze)). La lettura passa dalla funzione di risoluzione; il
 backend legge la riga direttamente solo per il proprio servizio di preferenza.
 
-**Senza audit, per scelta.** La preferenza è un dato personale, scritto solo dal suo proprietario e spesso:
+**Senza audit, per scelta.** La preferenza è un dato personale, scritto spesso dal suo proprietario:
 la tabella non ha il trigger d'audit né le colonne `user_insert` e `user_update`. `data_update` la scrive
 il database a ogni INSERT e UPDATE
 ([trgfn_preferenza_data_update](/dbzero/ui/funzioni/trgfn_preferenza_data_update)), e il valore mandato
-da chi scrive non conta.
+da chi scrive non conta. È l'ultima scrittura della riga, anche quella del ritiro di una card: non
+l'ultimo salvataggio dell'utente.
 
 ---
 
