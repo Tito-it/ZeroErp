@@ -178,6 +178,17 @@ prima li perdeva — la stessa riga raccontava due storie a seconda di quale
 - `GET /api/v1/core/tracciamento/coda-lavori/<job_id>/`
 - Payload, origine, priorità, timeline (accodato/claimed/started/ended),
   tentativi/max, ultimo_errore, result, job_run_id, proprietario, is_mio.
+- `job_run_id` è la corsa del worker nel giornale (`maintenance.job_run_log`),
+  `null` quando non c'è: il lavoro non è mai stato preso da un worker, oppure
+  la sua corsa non è più nel giornale (la ritenzione di 12 mesi, vedi
+  [api_tracciamento.md § Ritenzione del giornale](api_tracciamento.md#ritenzione-del-giornale)).
+  Il drawer rende il `null` con «—». Un numero che non porta a nessuna corsa
+  non si mostra (decisione di Tid, 2026-11-22). ⏳ Lo garantisce il DB, che
+  azzera il riferimento quando pota la corsa
+  ([brief-db-giornale-corse-indici](../../../dev/work-in-progress/brief-db-giornale-corse-indici.md)
+  §9.2): fino a quel giro può ancora arrivare un id orfano. Lo stesso campo, con
+  lo stesso significato, è nello stato di un giro di fatturazione
+  ([api_fatturazione.md](../../vendite/manual/api_fatturazione.md)).
 
 ### 5. Azioni (BE-7, comando)
 

@@ -1504,7 +1504,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TX_ID": "Generazione del trigger tx_id fallita.",
     "E_UI_CAMPO_SORGENTE_NON_TROVATO": "Campo sorgente colonna non trovato nella vista SQL.",
     "E_UI_CHIAMATA_NON_VALIDA": "Chiamata non valida alla configurazione della lista: il contesto della richiesta non corrisponde all'utente.",
-    "E_UI_COLONNA_CODICE_IMMUTABILE": "Il codice di una colonna di lista non si puo' cambiare: preferenze e preset cercano la colonna per codice.",
+    "E_UI_COLONNA_CODICE_IMMUTABILE": "Il codice e la lista di una colonna non si possono cambiare: preferenze e preset cercano la colonna per codice nella sua lista.",
     "E_UI_COLONNA_IN_USO": "La colonna e' in uso in preferenze utente o preset. Disattivala con attivo=false invece di eliminarla.",
     "E_UI_COLONNA_NON_TROVATA": "Colonna lista non trovata.",
     "E_UI_COLONNA_VALIDAZIONE": "Colonna lista non valida.",
@@ -1536,6 +1536,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_UI_PRESET_POSTO_IMMUTABILE": "Il posto del preset (lista, ambito, profilo, azienda) non si puo' cambiare: spegnilo e creane uno nuovo nel posto giusto.",
     "E_UI_PRESET_VALIDAZIONE": "Preset lista non valido.",
     "E_UI_VISTA_SQL_NON_TROVATA": "Vista SQL della lista non trovata nel database.",
+    "E_UI_WIDGET_IMMUTABILE": "Il codice di una card e la dashboard del suo pool non si possono cambiare: preferenze e preset cercano la card per codice nella sua dashboard.",
     "E_UI_WIDGET_IN_USO": "La card non si puo' togliere dalla dashboard: la propone un preset. Toglila prima dai preset.",
     "E_UOM_CALENDARIO_NON_TEMPO": "Un'unita' si puo' contare dal calendario solo se e' un'unita' di tempo.",
     # Brief-db-revisione-catalogo, giro 2-bis (2026-11-11): la storia delle
