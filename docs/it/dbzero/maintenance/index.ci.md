@@ -38,6 +38,7 @@ search:
 - [proc_sync_storico_set_storicizza_job](manual/proc_sync_storico_set_storicizza_job.md) — Il wrapper del job `sync_storico_set_storicizza`: esegue `maintenance.proc_sync_storico_set_storicizza` passando dal giornale delle esecuzioni, con un lock che impedisce due corse sovrapposte.
 
 ## 🔍 Views (manuale)
+- [vw_job_run_corsie](manual/vw_job_run_corsie.md) — L'elenco delle corsie del giornale delle corse: una riga per ogni coppia `processo_codice` e `jobname` che ha almeno una corsa. È il punto di partenza di chi vuole «l'ultima corsa di ogni corsia».
 - [vw_job_run_da_guardare](manual/vw_job_run_da_guardare.md) — Il posto dove guardare: i lavori automatici la cui ultima corsa vera è fallita, è rimasta appesa, o che falliscono a intermittenza. Deve restare vuota.
 - [vw_job_run_da_superuser](manual/vw_job_run_da_superuser.md) — Il presidio «nessun superuser al lavoro»: per ogni processo, l'ultima corsa registrata nel giornale, se il ruolo che si è collegato per farla è un superuser. Deve restare vuota.
 - [vw_statistiche_mancanti](manual/vw_statistiche_mancanti.md) — Le tabelle che, per il ruolo che la interroga, resterebbero senza statistiche dopo un `ANALYZE`: o perché quel ruolo non può analizzarle, o perché non sono mai state analizzate.

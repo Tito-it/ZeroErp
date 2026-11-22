@@ -39,6 +39,13 @@
 --   intermittente. Il test descriveva il processo a verdetto PARZIALE senza
 --   dirlo: ora usa un processo suo, dichiarato a false. Il verdetto completo e'
 --   provato in test-vw-job-run-da-guardare-verdetto-completo-v1.
+--
+-- ⚠️ Rev 2026-11-23 (20261122-45, la vista guarda la corsia, la coppia
+--   processo e jobname): la corsa verde del rientro (test 2) era rimasta sotto
+--   apply_storicizza_weekly, il processo vero di prima della rev 2026-10-18.
+--   Il test passava perche' la vista univa per nome le corsie di due processi,
+--   cioe' grazie al difetto che il -45 corregge. Ora il rientro e' sulla
+--   corsia del rosso, sotto PGTAP-DA-GUARDARE.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -120,7 +127,7 @@ DO $rientro$
 BEGIN
     INSERT INTO maintenance.job_run_log
         (jobname, stepname, processo_codice, origine, started_at, ended_at, ok, message)
-    VALUES ('PGTAP-RIENTRATO', 's', 'apply_storicizza_weekly', 'PGAGENT',
+    VALUES ('PGTAP-RIENTRATO', 's', 'PGTAP-DA-GUARDARE', 'PGAGENT',
             now() - interval '1 minute', now(), true, 'done');
 END
 $rientro$;

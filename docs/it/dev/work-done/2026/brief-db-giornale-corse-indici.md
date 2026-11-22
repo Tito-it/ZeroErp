@@ -1,10 +1,10 @@
 # Brief DB — Il giornale delle corse senza indici di lettura
 
-## ⏭️ Chi riparte — aggiornato al 2026-11-22
+## ⏭️ Chi riparte — aggiornato al 2026-11-23
 
-**Riparte: nessuno.** Brief **chiuso** il 2026-11-22 e archiviato in `work-done/2026/`. La domanda
-sui lettori per solo `jobname` (§11.3) l'ha decisa Tid la sera stessa, strada (a), e il giro BE
-l'ha chiusa (§11.5): nessun residuo resta aperto.
+**Riparte: nessuno.** Il §12 (`20261122-44` … `-47`) è applicato, verde e committato, e la doc di
+`maintenance` e di `dbops` è rigenerata (2026-11-23). Brief chiuso il
+2026-11-22. La strada (a) (§11.5) l'ha portata ai lettori DB il §12.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -30,6 +30,11 @@ l'ha chiusa (§11.5): nessun residuo resta aperto.
 | 10 | ✅ sessione BE | Brief archiviato in `work-done/2026/`, i rimandi ricollegati (2026-11-22) | §11.4 | 9-quater |
 | 10-bis | ✅ sessione BE | Strada (a) di Tid: i tre lettori per solo `jobname` passano alla corsia `(processo_codice, jobname)` (2026-11-22) | §11.5 | la decisione di Tid |
 | 10-ter | ✅ revisione BE (`/verifica`) | Il gemello dell'`ORDER BY` sul testo in `list_audit_logs`, il presidio di `_liveness_worker` per processo, il piano provato sul DB vero (2026-11-22) | §11.6 | 10-bis |
+| 11 | ✅ team DB | La corsia nei lettori DB: `vw_job_run_corsie`, `vw_job_run_da_guardare` per coppia, la potatura dalla vista; pgTAP, banco e manuali. Provato in `ROLLBACK` (2026-11-23) | §12 | 10-bis, la decisione di Tid |
+| 11-bis | ✅ Tid | Apply di `20261122-44` … `-46`; `maintenance/test-job-run-log-per-chiave-v1` e `test-vw-job-run-da-guardare`; la doc auto-generata di `maintenance` (nasce `views/vw_job_run_corsie.md`): applicato, verdi, rigenerata (2026-11-23) | §12 | 11 |
+| 11-ter | ✅ Tid | L'indice per solo `jobname` resta (2026-11-23) | §12.1 | — |
+| 12 | ✅ team DB | Il panorama legge le corse di un processo per `processo_codice` soltanto (`20261122-47`); pgTAP e banco. Provato in `ROLLBACK` (2026-11-23) | §12.2 | la decisione di Tid |
+| 12-bis | ✅ Tid | Apply di `20261122-47`; `dbops/test-vw-processi-programmazione`; la doc auto-generata di `dbops`: applicato, verde, rigenerata (2026-11-23) | §12.2 | 12 |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
@@ -41,7 +46,11 @@ del §8.8, la chiave per coppia `(processo, jobname)` e l'ultima fallita e di pg
 tenute. ✅ 2026-11-22: un `job_run_id` che non porta a nessuna corsa **non si mostra**, e lo
 toglie il DB alla fonte, non il BE in lettura (§9.2, strada A). ✅ 2026-11-22: lo strumento è una
 **FK `ON DELETE SET NULL`**, non un `UPDATE` nella potatura, e l'azzeramento riscrive `data_update` e
-`user_update` come ogni modifica; via al giro 3 (§10). Nessuna decisione aperta.
+`user_update` come ogni modifica; via al giro 3 (§10). ✅ 2026-11-23: la corsia è la coppia anche
+nei lettori DB, senza un brief nuovo (§12). ✅ 2026-11-23: l'indice per solo `jobname` resta
+(§12.1). ✅ 2026-11-23: il panorama legge le corse per processo soltanto (§12.2). Nessuna decisione aperta.
+**Committato** (2026-11-23, `dev/db-tid`): il §12, cioè quattro changeSet, tre pgTAP, i manuali, la doc
+auto-generata di `maintenance` e di `dbops`, e questa testata.
 **Committato** (2026-11-22, `dev/db-tid`): il giro 1 (tre changeSet, un pgTAP, la doc di `maintenance`,
 manuale e auto-generata) e questo brief. **Committato** (2026-11-22) anche il §8, questa testata e il giro 2a, applicato
 (tre changeSet, quattro pgTAP toccati, la doc `manual/` e cinque guide o pagine, §8.7) e il giro
@@ -463,6 +472,7 @@ il suo processo in `dbops.processi`.
 * nel BE, dopo il DB: il ramo `processo_codice IS NULL AND split_part(...)` di `list_job_summary`.
 
 `vw_job_run_da_guardare` non cambia: la sua chiave è il `jobname`.
+⚠️ Superato dal §12 (2026-11-23): la chiave della vista è la corsia, la coppia.
 
 **Garanzia nuova, non ritirata:** «ogni corsa ha il suo processo». Chi legge può smettere di
 gestire il NULL. Lo dicono il `COMMENT` della colonna e il manuale.
@@ -933,3 +943,67 @@ Allineati i commenti rimasti alla regola di prima: `pipeline_service` («GROUP B
 cambio d'ora in `list_job_runs` e in `api_tracciamento.md`. Esito: `apps.core` toccati, `apps.vendite`
 (2766) e i test sul DB vero verdi; ruff e `gen_indice_bb.py --check` puliti. Non lanciato lo smoke
 `smoke-test-ui-personalizzazioni-liste.sh` (vuole il BE in piedi). Nessuna richiesta al DB.
+
+## 12. La corsia anche nei lettori DB — 2026-11-23
+
+Sessione DB (`dev/db-tid`), all'arrivo del §11 (`/arrivi-be`). La strada (a) di Tid (§11.5) vale
+per ogni lettore del giornale; il BE l'ha portata ai suoi tre. Lato DB restava per solo `jobname`
+`maintenance.vw_job_run_da_guardare`, per la riga del §8.1 scritta prima del ritocco 1 del §8.8.
+Con due processi e una corsia dello stesso nome il verde dell'uno nascondeva il rosso dell'altro, e
+ultimo rosso e falliti si leggevano dalla corsia sbagliata. Decisione di Tid (2026-11-23): si
+corregge, senza un brief nuovo.
+
+| ChangeSet | Che cosa |
+| --- | --- |
+| `20261122-44` | `maintenance.vw_job_run_corsie`: le corsie del giornale, la discesa sulle coppie che stava nella potatura (regola del 2) |
+| `20261122-45` | `vw_job_run_da_guardare` per corsia: ogni lettura del giornale filtra la coppia; il `COMMENT` dice «corsia» |
+| `20261122-46` | `fn_pota_giornale_corse` legge le corsie dalla vista; righe tenute e cancellate invariate |
+
+**Prove** (scratch `zeroerp_ruoli`, estratto in `ROLLBACK`, 2026-11-23):
+`test-job-run-log-per-chiave-v1` 13-16, nuovi, rossi con la vista di prima e verdi con la nuova.
+`test-vw-job-run-da-guardare`: il test 2 era verde per il difetto, perché la corsa verde del rientro
+stava sotto un altro processo, e la fixture è corretta. Verdi con l'estratto gli altri test della vista,
+della potatura, della coda e i presidi trasversali. Banco §13.1: `EXCEPT ALL` vuoto nei due versi
+fra vista vecchia e nuova, sulle righe dello scratch, dove nessun nome è condiviso. Con
+`enable_seqscan = off` la vista nuova scende su `ix_job_run_log_processo_codice_jobname_started_at`
+e non usa più `ix_job_run_log_jobname_started_at`.
+
+**Ricadute BE:** nessuna. Il BE non legge la vista, e le colonne restano le stesse.
+
+### 12.1 L'indice per solo `jobname`
+
+Dopo il §11.5 e il §12, `ix_job_run_log_jobname_started_at` serve due soli lettori, tutti e due per solo nome:
+
+* nel BE, `job-runs?jobname=` senza `processo_codice`, che il §11.5 tiene come filtro ammesso;
+* nel DB, il ramo `r.jobname = p.codice` di `dbops.vw_processi_programmazione`: la difesa per le
+  corse storiche senza processo, che il `NOT NULL` del §8.1 ha reso irraggiungibile. ⚠️ Non è solo
+  inutile: sul modello conta anche le corse di un **altro** processo il cui `jobname` è uguale al
+  codice di questo, ed è lo stesso difetto del §12.
+
+**Decisione di Tid (2026-11-23): l'indice resta, il panorama non si tocca.** Il filtro per solo nome
+di `job-runs` è una scelta del BE (§11.5): è una ricerca, e ogni riga porta il suo processo. Finché
+il filtro c'è, l'indice gli serve, e nessuna richiesta va al BE. ⚠️ La prima stesura diceva anche
+«il ramo per nome del panorama resta com'è»: corretta lo stesso giorno dal §12.2. ⚠️ Vicolo cieco, scritto perché non si riproponga: ritirare l'indice obbligando il BE a
+filtrare `jobname` solo con `processo_codice` cambia un contratto senza correggere un errore.
+
+### 12.2 Il panorama legge le corse per processo soltanto
+
+Decisione di Tid (2026-11-23), prima del commit del §12. `dbops.vw_processi_programmazione` prendeva le
+corse di un processo P con `processo_codice = P OR jobname = P`. Il secondo ramo era la difesa per le
+corse storiche senza processo, impossibili dal `NOT NULL` del §8.1. Restava l'altro effetto: una corsa
+di un processo Q col nome uguale al codice di P entrava fra quelle di P. Ultima corsa, ultima di
+pgAgent e ultimo esito potevano venire da Q, e un processo fermo risultava vivo. È lo stesso difetto
+del §12.
+
+* `20261122-47`: i due filtri sul giornale sono `processo_codice = P` e basta, e scendono
+  sull'indice di processo. Corpo dalla doc auto-generata rigenerata il 2026-11-23; il `COMMENT` cambia
+  la frase sul giornale.
+* `dbops/test-vw-processi-programmazione` 20, nuovo: una corsa fresca di un altro processo, col nome
+  del processo `MUTO`, non lo rianima. È rosso col panorama di prima e verde col nuovo; gli altri 21
+  sono verdi in tutti e due i casi. Con l'estratto sono verdi anche gli altri sette pgTAP del panorama e i
+  presidi trasversali.
+* Banco §13.1: `EXCEPT ALL` vuoto nei due versi fra panorama vecchio e nuovo, sulle righe dello
+  scratch, dove nessuna corsa ha il nome di un altro processo.
+
+**Ricadute BE:** nessuna. Le colonne non cambiano, e l'indice per solo `jobname` resta (§12.1).
+

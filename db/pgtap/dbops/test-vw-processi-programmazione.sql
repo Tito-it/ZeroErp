@@ -11,8 +11,9 @@
 -- Test: dbops.vw_processi_programmazione — la programmazione e l'ultima corsa
 -- ChangeSet: 20260906-03 / -04 / -05 / -06 · 20260907-01 / -06 · 20260911-13 / -14
 --            · 20260914-01 (il verdetto SESSIONE poggia sull'esistenza)
+--            · 20261122-47 (le corse di un processo per processo_codice soltanto)
 --
--- Elenco test (plan 19):
+-- Elenco test (plan 22: 7-bis, 19a e 19b sono asserzioni a parte):
 --  1) la colonna `jobname_pgagent` c'e', ed e' nullable
 --  2) ⛔ due processi non possono dichiarare lo stesso job
 --  3) ⚠️ un nome vuoto non e' «nessun job»
@@ -36,6 +37,10 @@
 -- 19) ⛔ SESSIONE di un ALTRO utente, MASCHERATA a questo lettore (19a: la
 --     precondizione — backend_start e' NULL da qui), e il panorama la da' OK
 --     lo stesso (19b) — il verdetto poggia sull'esistenza, rev 20260914-01
+-- 20) ⛔ una corsa FRESCA di un altro processo, col jobname uguale al codice
+--     di un processo MUTO, non lo rianima: le corse di un processo sono quelle
+--     col suo processo_codice (20261122-47). Rosso col ramo «OR jobname =
+--     codice» di prima, che la contava fra le sue e dava OK.
 --
 -- ⛔ IL TEST 19 E' LA RAGIONE DEL 20260914-01, e il 17 non poteva vederla.
 --   pg_stat_activity mostra a tutti la RIGA di ogni sessione, ma MASCHERA
@@ -99,7 +104,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(21);
+SELECT plan(22);
 
 -- ============================================================
 -- 1..3. La colonna e i suoi cancelli
@@ -570,6 +575,23 @@ SELECT is(
        FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-CONTRATTO-MAI'),
     'MAI_PARTITO/true',
     '16. COMMAND con contratto e nessuna corsa: MAI_PARTITO — il timer mai installato, visto da qui'
+);
+
+-- ============================================================
+-- 20. ⛔ Il nome di una corsa non dice di quale processo e' (20261122-47)
+-- ============================================================
+-- La corsa e' di PGTAP-CONTRATTO-OK, di un minuto fa, e si chiama come il
+--   processo muto. Il jobname e' testo libero: nessun vincolo lo lega al
+--   processo, quindi il caso e' del modello.
+INSERT INTO maintenance.job_run_log (jobname, processo_codice, origine, started_at, ended_at, ok, message)
+VALUES ('PGTAP-CONTRATTO-MUTO', 'PGTAP-CONTRATTO-OK', 'CRON',
+        now() - interval '1 minute', now() - interval '1 minute', true, 'pgtap, corsa di un altro processo');
+
+SELECT is(
+    (SELECT stato || '/' || da_guardare::text
+       FROM dbops.vw_processi_programmazione WHERE processo_codice = 'PGTAP-CONTRATTO-MUTO'),
+    'MUTO/true',
+    '20. una corsa fresca di un altro processo, col nome del processo muto, non lo rianima'
 );
 
 -- ⭐ Il segno di vita e' la SESSIONE: questo stesso backend si presenta col
