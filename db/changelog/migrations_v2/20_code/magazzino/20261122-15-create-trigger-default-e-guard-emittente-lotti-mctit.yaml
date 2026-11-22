@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOTTO PRENDE L'AZIENDA DALLA SESSIONE, E LA TABELLA LA CONTROLLA
+#   trg_lotti_a10_default_emittente_ins         -> script.trgfn_default_emittente_fiscale('SOLLEVA')
+#   trg_lotti_a10_guard_emittente_scope_ins_upd -> script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')
+#   Brief: brief-db-magazzino-lotto-dell-azienda, D-L1 (Tid, 2026-11-22), P-1.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   La colonna nasce in 20261122-14. L'azienda non si sceglie: la mette la
+#   sessione (R-2 del brief), come sul seriale e sul magazzino (20260915-43).
+#   Le colonne ammesse alla nascita (magazzino.fn_lotti_colonne_ammesse)
+#   restano senza emittente: chi crea un lotto non la dice, e chi la dice
+#   esplicita (un pgTAP, un verbo di sistema) non viene sovrascritto.
+#   Il guard di perimetro e' la difesa in scrittura per ogni scrittore,
+#   anche per i verbi SECURITY DEFINER che la RLS non filtra (D-M6 del
+#   brief vicino): stampo di magazzini e assets (20260915-09).
+#
+# -- L'ORDINE ---------------------------------------------------------------
+#   BEFORE ROW in ordine alfabetico: a10_default_emittente_ins precede
+#   a10_guard_emittente_scope_ins_upd, quindi il guard legge l'emittente
+#   gia' risolto. Gli altri a10 di lotti sono generati (require_attivo,
+#   block_deact) e non leggono l'emittente. Lunghezze 35/43.
+#
+# -- CHI PASSA ANCORA (linee-guida-trigger) -------------------------------
+#   * l'app con l'operatore: passa per i verbi (magazzino.fn_aggiungi_lotto,
+#     DEFINER), che non mandano l'emittente: lo mette il default;
+#   * il proprietario senza operatore in sessione (migratore, pgTAP owner):
+#     il default risponde E_EMITTENTE_NON_RISOLTO. I sei pgTAP che inseriscono
+#     lotti a mano danno l'emittente esplicito (brief §5.1, P-4);
+#   * nessun seed di 80_data scrive lotti.
+#
+# -- NIENTE preCondition SUI TRIGGER GENERATI (§11.5) -------------------
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-15-create-trigger-default-e-guard-emittente-lotti-mctit.yaml
+
+  - changeSet:
+      id: 20261122-15-create-trigger-default-e-guard-emittente-lotti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.lotti: il default dell'emittente dalla sessione
+        (trgfn_default_emittente_fiscale 'SOLLEVA') e il guard di scope in scrittura
+        (trgfn_guard_emittente_scope 'fiscale'), stampo di magazzini e assets. Brief:
+        brief-db-magazzino-lotto-dell-azienda, D-L1 (P-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_default_emittente_fiscale';
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'trgfn_guard_emittente_scope';
+            - columnExists:
+                schemaName: magazzino
+                tableName: lotti
+                columnName: emittente_fiscale_id
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_lotti_a10_default_emittente_ins ON magazzino.lotti;
+              CREATE TRIGGER trg_lotti_a10_default_emittente_ins
+                  BEFORE INSERT
+                  ON magazzino.lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA');
+
+              DROP TRIGGER IF EXISTS trg_lotti_a10_guard_emittente_scope_ins_upd ON magazzino.lotti;
+              CREATE TRIGGER trg_lotti_a10_guard_emittente_scope_ins_upd
+                  BEFORE INSERT OR UPDATE
+                  ON magazzino.lotti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_lotti_a10_guard_emittente_scope_ins_upd ON magazzino.lotti;
+              DROP TRIGGER IF EXISTS trg_lotti_a10_default_emittente_ins ON magazzino.lotti;

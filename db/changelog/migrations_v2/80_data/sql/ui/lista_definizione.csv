@@ -80,7 +80,7 @@ id,codice,descrizione,schema_dati,vista_sql,attivo,data_insert,user_insert,multi
 79,vendite.giornale,Giornale degli eventi (trasversale),vendite,NULL,t,2026-09-19 00:00:00,SEED,f,t,3,PAGINA,f
 80,magazzino.magazzini,Magazzini dell'emittente,magazzino,NULL,t,2026-09-21 00:00:00,SEED,f,t,3,PAGINA,f
 81,magazzino.ubicazioni,Ubicazioni di un magazzino,magazzino,NULL,t,2026-09-21 00:00:00,SEED,f,t,3,COMPATTA,f
-82,magazzino.lotti,Lotti di un articolo,magazzino,NULL,t,2026-09-21 00:00:00,SEED,f,f,3,COMPATTA,f
+82,magazzino.lotti,Lotti di un articolo,magazzino,NULL,t,2026-09-21 00:00:00,SEED,f,t,3,COMPATTA,f
 83,core.sessioni_attive,Sessioni attive dell'utente,dbops,NULL,t,2026-09-27 00:00:00,SEED,f,f,3,PAGINA,f
 84,documenti.documenti_sorgente,Documenti generati di una sorgente,documenti,NULL,t,2026-09-27 00:00:00,SEED,f,t,3,COMPATTA,f
 85,pratiche.flussi,Flussi di una pratica,pratiche,NULL,t,2026-09-27 00:00:00,SEED,f,t,3,COMPATTA,f

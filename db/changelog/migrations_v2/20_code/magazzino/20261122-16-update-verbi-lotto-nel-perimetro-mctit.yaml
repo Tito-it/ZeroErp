@@ -1,0 +1,182 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I VERBI DEL LOTTO NEL PERIMETRO DELL'AZIENDA
+#   magazzino.fn_modifica_lotto(id, dati)          CREATE OR REPLACE
+#   magazzino.fn_aggiungi_lotto(articolo, codice, data_arrivo, campi)  CREATE OR REPLACE
+#   magazzino.fn_crea_lotto                         solo il COMMENT
+#   Brief: brief-db-magazzino-lotto-dell-azienda, D-L1 (Tid, 2026-11-22), P-2.
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Dal 20261122-14 il lotto e' di un emittente. I verbi sono SECURITY
+#   DEFINER: da proprietario la RLS non filtra, quindi la modifica vedeva i
+#   lotti di tutte le aziende. Ora legge la riga col predicato della policy
+#   (script.fn_check_user_emittente_scope sull'emittente del lotto), come
+#   fn_modifica_magazzino: fuori perimetro e inesistente rispondono uguale,
+#   E_MAG_LOTTO_NON_TROVATO (no-leak).
+#   La nascita non ha una riga da leggere: l'emittente lo mette il default
+#   di sessione e lo controlla il guard di perimetro della tabella
+#   (20261122-15). Il verbo di nascita cambia solo il commento.
+#
+# -- LA FORMA ---------------------------------------------------------------
+#   Firma invariata: i %TYPE si risolvono negli stessi tipi (bigint, uuid,
+#   character varying, date), quindi CREATE OR REPLACE e nessun overload.
+#   RETURNS di fn_aggiungi_lotto ancorato a magazzino.lotti.id%TYPE (era
+#   bigint nudo: stesso tipo). p_dati e il RETURNS jsonb di fn_modifica_lotto
+#   non hanno una colonna di cui siano il riflesso: sono il delta e la riga.
+#   SECURITY DEFINER e search_path si ripetono (linee-guida-sql §13.7);
+#   proprietario e GRANT restano (CREATE OR REPLACE non li tocca).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/magazzino/20261122-16-update-verbi-lotto-nel-perimetro-mctit.yaml
+
+  - changeSet:
+      id: 20261122-16-update-verbi-lotto-nel-perimetro
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        magazzino.fn_modifica_lotto legge il lotto nel perimetro dell'emittente
+        (fn_check_user_emittente_scope, no-leak E_MAG_LOTTO_NON_TROVATO); fn_aggiungi_lotto e
+        fn_crea_lotto: il commento dice il lotto dell'azienda. Brief:
+        brief-db-magazzino-lotto-dell-azienda, D-L1 (P-2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                schemaName: magazzino
+                tableName: lotti
+                columnName: emittente_fiscale_id
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid = to_regprocedure('script.fn_check_user_emittente_scope(integer,bigint)');
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE oid IN (to_regprocedure('magazzino.fn_modifica_lotto(bigint,jsonb)'),
+                                 to_regprocedure('magazzino.fn_aggiungi_lotto(uuid,character varying,date,jsonb)'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(
+                  p_id   magazzino.lotti.id%TYPE,
+                  p_dati jsonb)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  v_utente   config.user_override_oggetti.auth_user_id%TYPE;
+                  v_ammesse  text[];
+                  v_estranea text;
+                  v_riga     jsonb;
+              BEGIN
+                  -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+                  --   il perimetro della sua azienda: il delta p_dati sulle
+                  --   colonne modificabili. Ritorna la riga.
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+                  PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
+
+                  IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_SCRIPT_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('id', p_id, 'tipo_dati', jsonb_typeof(p_dati)),
+                          NULL::uuid,
+                          'magazzino.fn_modifica_lotto',
+                          'i dati non sono un oggetto');
+                  END IF;
+
+                  v_ammesse  := magazzino.fn_lotti_colonne_ammesse('modifica');
+                  v_estranea := script.fn_prima_chiave_estranea(p_dati, v_ammesse);
+                  IF v_estranea IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_CAMPO_NON_AMMESSO',
+                          jsonb_build_object('campo', v_estranea, 'id', p_id),
+                          NULL::uuid,
+                          v_estranea);
+                  END IF;
+
+                  -- No-leak: fuori perimetro e inesistente rispondono uguale.
+                  PERFORM 1
+                     FROM magazzino.lotti l
+                    WHERE l.id = p_id
+                      AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+                      FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
+                          jsonb_build_object('lotto_id', p_id),
+                          NULL::uuid,
+                          COALESCE(p_id::text, '(nessuno)'));
+                  END IF;
+
+                  v_riga := script.fn_scrivi_riga_da_jsonb(
+                                'magazzino.lotti'::regclass, p_dati, jsonb_build_object('id', p_id));
+
+                  RETURN (SELECT jsonb_object_agg(e.key, e.value)
+                            FROM jsonb_each(v_riga) AS e
+                           WHERE e.key = 'id' OR e.key = ANY (v_ammesse));
+              END;
+              $function$;
+
+              CREATE OR REPLACE FUNCTION magazzino.fn_aggiungi_lotto(
+                  p_articolo_id magazzino.lotti.articolo_id%TYPE,
+                  p_codice      magazzino.lotti.codice%TYPE,
+                  p_data_arrivo magazzino.lotti.data_arrivo%TYPE,
+                  p_campi       jsonb DEFAULT '{}'::jsonb)
+               RETURNS magazzino.lotti.id%TYPE
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- Scopo: il gesto «nuovo lotto» dell'operatore: livello TUTTO
+                  --   sull'oggetto, poi il BB. L'azienda del lotto la mette il
+                  --   default di sessione e la controlla il guard di perimetro
+                  --   della tabella. Ritorna l'id.
+                  PERFORM script.fn_guard_livello(
+                      NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                      'magazzino', 'lotti', 'TUTTO');
+
+                  RETURN magazzino.fn_crea_lotto(p_articolo_id, p_codice, p_data_arrivo, p_campi);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION magazzino.fn_modifica_lotto(magazzino.lotti.id%TYPE, jsonb) IS
+                  'VERBO: il gesto «modifica il lotto» dell''operatore. p_dati e'' il delta: si scrivono solo le chiavi mandate, una chiave a null scrive NULL, un delta vuoto non scrive niente. Passi: script.fn_guard_livello(utente, magazzino, lotti, TUTTO) (E_PERMESSO_NEGATO); p_dati oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA) con le sole chiavi della lista modifica di magazzino.fn_lotti_colonne_ammesse (E_CAMPO_NON_AMMESSO col nome del campo); il lotto c''e'' ed e'' nel perimetro dell''utente (script.fn_check_user_emittente_scope sul suo emittente, il predicato della policy), letto FOR UPDATE, altrimenti E_MAG_LOTTO_NON_TROVATO (no-leak: fuori perimetro e inesistente rispondono uguale); la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della tabella. Nessun DELETE: si disattiva con attivo. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna la riga: id e colonne modificabili.';
+
+              COMMENT ON FUNCTION magazzino.fn_aggiungi_lotto(
+                  magazzino.lotti.articolo_id%TYPE,
+                  magazzino.lotti.codice%TYPE,
+                  magazzino.lotti.data_arrivo%TYPE,
+                  jsonb) IS
+                  'VERBO: il gesto «nuovo lotto» dell''operatore. Prima riga script.fn_guard_livello(utente, magazzino, lotti, TUTTO): sotto il livello, o senza utente, E_PERMESSO_NEGATO. Poi magazzino.fn_crea_lotto: colonne ammesse, articolo attivo, date e unicita'' sono del BB e della tabella. L''emittente non si sceglie: lo mette il default di sessione (trgfn_default_emittente_fiscale) e lo controlla il guard di perimetro della tabella. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna l''id.';
+
+              COMMENT ON FUNCTION magazzino.fn_crea_lotto(
+                  magazzino.lotti.articolo_id%TYPE,
+                  magazzino.lotti.codice%TYPE,
+                  magazzino.lotti.data_arrivo%TYPE,
+                  jsonb) IS
+                  'BB: crea un lotto di magazzino, cioe'' la riga di magazzino.lotti, in una sola istruzione. Articolo, codice e data di arrivo sono argomenti (NOT NULL della tabella; l''articolo e'' l''identita'' della nascita); in p_campi le altre colonne della lista crea di magazzino.fn_lotti_colonne_ammesse (le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome). attivo non e'' un campo: un lotto nasce attivo. L''emittente non e'' un campo: lo mette il default di sessione. Articolo attivo, codice non vuoto, scadenza non prima dell''arrivo, unicita'' del codice per emittente e articolo e perimetro dell''emittente li dicono i guard e i vincoli della tabella. Non controlla il permesso: lo controlla chi lo chiama (il verbo di nascita). Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER. Ritorna l''id.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima sta in 20261122-07 (modifica) e 20261122-06 (nascita):
+              -- un rollback ricrea la versione senza perimetro, che dopo 20261122-14
+              -- lascerebbe la modifica aperta sui lotti di ogni azienda. Non si torna.
+              SELECT 1;

@@ -1,4 +1,4 @@
-> **Ultimo aggiornamento**: 1 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 
 ### 🏗️ Lo stato del dominio `magazzino`
 
@@ -76,7 +76,8 @@ la spia `dbops.vw_magazzino_dipendenze_inverse`, che deve restare vuota.
 
 * **Anagrafiche** — `magazzini` (di un **emittente**: è l'ancora del perimetro; si creano
   con `fn_crea_magazzino`), `ubicazioni`, `assets` (il pezzo serializzato, anch'esso di un
-  emittente; la sua posizione la dice il registro), `lotti` (la partita di merce).
+  emittente; la sua posizione la dice il registro), `lotti` (la partita di merce, anch'essa di un emittente: il codice è unico dentro
+  l'azienda).
 * **Documenti interni** — `inventari`, `rettifiche`, `trasferimenti`, ciascuno con le
   proprie righe: sono le **operazioni** del magazzino, e ogni riga è la sorgente dei suoi
   movimenti. Le tre famiglie hanno lo stesso ciclo: dalla bozza (`DRAFT`) alla conferma
@@ -108,10 +109,13 @@ la spia `dbops.vw_magazzino_dipendenze_inverse`, che deve restare vuota.
 ### Il perimetro
 
 Tutto ciò che porta merce o valore è sotto **row level security**: un operatore vede e scrive
-i magazzini del proprio emittente e tutto ciò che vi risale, dal magazzino, dall'asset, dalla
-testata. Nessuna operazione attraversa due emittenti: un trasferimento fra magazzini di
-emittenti diversi si rifiuta. Restano fuori, per costruzione, i vocabolari e le definizioni
-uguali per tutti (`causali`, `lotti`, `config.tipi_ubicazione`, `config.assets_ownership`).
+i magazzini del proprio emittente e tutto ciò che vi risale, dal magazzino, dall'asset, dal
+lotto, dalla testata. Il lotto e il seriale sono dell'azienda, non del magazzino: si spostano
+fra i magazzini della stessa azienda. Nessuna operazione attraversa due emittenti: un
+trasferimento fra magazzini di emittenti diversi si rifiuta, e una riga di magazzino (un
+movimento, una riga di documento, un prelievo di bolla) non può nominare il lotto o il seriale
+di un'altra azienda. Restano fuori, per costruzione, i vocabolari uguali per tutti (`causali`,
+`config.tipi_ubicazione`, `config.assets_ownership`).
 Il meccanismo è quello comune del progetto:
 [Linee guida SQL — sezione 10](/linee-guida-sql#10-row-level-security-rls).
 
