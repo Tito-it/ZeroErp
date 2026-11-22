@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_tipi_indirizzo_proponibili_soggetto.md" %}
 # ⚙️ Funzione `fn_tipi_indirizzo_proponibili_soggetto`
 
 ```sql

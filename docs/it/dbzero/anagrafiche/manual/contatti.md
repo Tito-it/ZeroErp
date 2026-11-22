@@ -1,183 +1,146 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.contatti`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
+>
 > Approfondimento tabelle:
 >
-[anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti)
-> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
-> [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — il titolare di ogni contatto, che punta al suo predefinito
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo del soggetto, quando è il contesto del contatto
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza del soggetto, quando è il contesto del contatto
+> * [config.tipi_contatti](/dbzero/config/tabelle/tipi_contatti) — la categoria del contatto
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — il reparto del referente
+> * [config.titoli_cortesia](/dbzero/config/tabelle/titoli_cortesia) — l'appellativo del nominativo
 >
-Approfondimenti funzioni:
+> Approfondimento funzioni:
 >
-[anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto)
-
-
-La tabella **`anagrafiche.contatti`** è il **punto di raccolta centralizzato** per tutte le informazioni di contatto nell'applicazione, a diversi livelli di granularità:
-
-- **Soggetto** (`soggetto_id` obbligatorio)
-- **Ruolo assegnato al soggetto** (`soggetto_ruolo_id`, opzionale)
-- **Istanza di servizio** (`istanza_utility_id`, opzionale)
-
-In questo modo è possibile definire:
-
-1. **Contatto "globale" del soggetto**
-   (solo `soggetto_id`, `soggetto_ruolo_id` e `istanza_utility_id` a `NULL`)
-
-2. **Contatto legato a uno specifico ruolo**
-   (ad es. l'amministratore di un soggetto, con `soggetto_ruolo_id` valorizzato)
-
-3. **Contatto associato a una specifica istanza di servizio**
-   (ad es. referente tecnico per il contratto GAS di Corridonia, con `istanza_utility_id` valorizzato)
+> * [anagrafiche.fn_crea_contatto](/dbzero/anagrafiche/funzioni/fn_crea_contatto) — il verbo che fa nascere un contatto
+> * [anagrafiche.trgfn_contatti_set_default_contatto](/dbzero/anagrafiche/funzioni/trgfn_contatti_set_default_contatto) — il predefinito di ogni contesto
+> * [anagrafiche.trgfn_contatti_guard_contesto_soggetto](/dbzero/anagrafiche/funzioni/trgfn_contatti_guard_contesto_soggetto) — ruolo e istanza sono del soggetto del contatto
+> * [anagrafiche.trgfn_soggetti_guard_soggetto_contatti](/dbzero/anagrafiche/funzioni/trgfn_soggetti_guard_soggetto_contatti) — il soggetto ha almeno un contatto, al COMMIT
+> * [script.fn_get_contatti](/dbzero/script/funzioni/fn_get_contatti) — il contatto migliore per tipo, dal più specifico al soggetto
+> * [script.fn_get_contatto_default](/dbzero/script/funzioni/fn_get_contatto_default) — il predefinito fra quei contatti
+>
+> Guide:
+>
+> * [Gestione dei Contatti](/guide/gestione-dei-contatti) — il modello raccontato per intero
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 25-03-26)
-* **Centralizzare i contatti**
-  Un'unica tabella per tutti i numeri di telefono, email, PEC e nominativi, evitando duplicazioni e frammentazione.
 
-* **Gestire livelli di contesto (3 livelli)**
-  Tramite i campi `soggetto_ruolo_id` e `istanza_utility_id` (che possono essere **`NULL`**), si modellano contatti generici o specifici:
-  - **Livello 1 — Istanza**: `soggetto_ruolo_id` e `istanza_utility_id` valorizzati → specifico per servizio
-  - **Livello 2 — Ruolo generico**: `soggetto_ruolo_id` valorizzato, `istanza_utility_id` NULL → generico del ruolo
-  - **Livello 3 — Soggetto**: `soggetto_ruolo_id` NULL, `istanza_utility_id` NULL → fallback soggetto
+`anagrafiche.contatti` raccoglie i contatti delle anagrafiche: ogni contatto è una persona di riferimento di un
+soggetto, con i suoi recapiti, e può avere come contesto un ruolo del soggetto, una sua istanza o tutti e due.
 
-* **Identificare il contatto "default"**
-  Il flag `is_default` permette di marcare un solo contatto di riferimento per ciascun soggetto.
-
-* **Separare reparto e categoria**
-  Il reparto/ufficio e' indicato da `unita_organizzativa_id`, mentre `tipo_contatto_id`
-  identifica la categoria del contatto ed e' **obbligatoria**: ogni contatto ha un tipo.
-  Questo evita di usare `tipi_contatti` come reparto.
+È l'unica sede dei contatti: un contatto del cliente o del fornitore è un contatto del soggetto col ruolo come
+contesto, non una riga di un'altra tabella.
 
 ---
 
-### Vincoli e Relazioni
+### Il contatto è del soggetto; ruolo e istanza sono il contesto
 
-- **`PK (id)`**: identificatore univoco del contact record.
-- **Vincoli UNIQUE**: 3 partial unique index per i 3 livelli di contesto:
-  - `uq_contatti_soggetto_tipo (soggetto_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NULL AND istanza_utility_id IS NULL` — soggetto puro
-  - `uq_contatti_ruolo_tipo_no_istanza (soggetto_id, soggetto_ruolo_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NULL` — ruolo generico
-  - `uq_contatti_ruolo_istanza_tipo (soggetto_id, soggetto_ruolo_id, istanza_utility_id, tipo_contatto_id) WHERE soggetto_ruolo_id IS NOT NULL AND istanza_utility_id IS NOT NULL` — ruolo + istanza
-- **Foreign Keys**
-  - `soggetto_id` → `anagrafiche.soggetti(id)` **ON DELETE CASCADE**
-  - `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` **ON DELETE CASCADE**
-  - `tipo_contatto_id` → `config.tipi_contatti(id)` **ON DELETE RESTRICT**
-  - `unita_organizzativa_id` → `config.unita_organizzative(id)` **ON DELETE RESTRICT**
-  - `istanza_utility_id` → `anagrafiche.istanze_utilities(id)`
+Il soggetto è obbligatorio. Ruolo e istanza sono facoltativi, e dicono **per che cosa** il contatto vale: il
+referente del soggetto in generale, quello del suo ruolo di cliente, quello di una sua fornitura. Il ruolo e
+l'istanza devono essere **del soggetto del contatto**: lo pretende
+`anagrafiche.trgfn_contatti_guard_contesto_soggetto`, anche quando una modifica sposta il contatto su un altro
+soggetto.
 
 ---
 
-### Relazioni e Trigger
+### Nominativo e tipo, il resto facoltativo
 
-- **Trigger `trg_contatti_set_default_contatto_ins_upd`**
-  Assicura che esista al più un contatto `is_default = TRUE` per ogni `soggetto_id`:
-  - Se `NEW.is_default = TRUE`, resetta gli altri a `FALSE`.
-  - Se nessun contatto precedente è `default`, marca automaticamente il primo inserito/aggiornato.
-
-- **Trigger `trg_contatti_audit_data_user_upd`**
-  Aggiorna i campi `data_update` e `user_update` ad ogni modifica.
-
+Ogni contatto ha un **nominativo** e un **tipo** (`tipo_contatto_id`, la categoria: il referente, l'ufficio
+acquisti, …). I recapiti (email, telefono, cellulare, PEC) sono colonne della riga, e un contatto può averne
+più d'uno o nessuno: il tipo non è il canale. Il **reparto** del referente è un'altra cosa ancora, e sta in
+`unita_organizzativa_id`, facoltativa; il titolo di cortesia dà l'appellativo al nominativo.
 
 ---
 
-### Indici
+### Un contatto per tipo in ogni contesto
 
-* `ix_contatti_soggetto` su `soggetto_id` per ricerche rapide per soggetto.
-* `ix_contatti_tipo` su `tipo_contatto_id` per filtrare contatti per tipologia.
-* `ix_contatti_unita_organizzativa_id` su `unita_organizzativa_id` per filtrare contatti per reparto.
-* `ix_contatti_istanza_utility_id` su `istanza_utility_id` per isolare contatti per istanza di servizio.
+Tre indici unici parziali, uno per livello, impediscono due contatti dello stesso tipo nello stesso posto:
 
-Migliorano le performance nelle query di recupero contatti per soggetto, tipo o istanza.
-
+* sul soggetto, senza ruolo né istanza: uno per tipo (`uq_contatti_soggetto_tipo`);
+* sul ruolo, senza istanza: uno per tipo e per ruolo (`uq_contatti_ruolo_tipo_no_istanza`);
+* sul ruolo e sull'istanza: uno per tipo, ruolo e istanza (`uq_contatti_ruolo_istanza_tipo`).
 
 ---
 
-### Esempi di Utilizzo
+### Nasce con un verbo
 
-```sql
--- 1) Contatto globale per il soggetto UUID '123e4567-e89b-12d3-a456-426614174000'
-INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, unita_organizzativa_id, soggetto_id,
-  nominativo, email, telefono, is_default
-) VALUES (
-  1, 1, '123e4567-e89b-12d3-a456-426614174000',
-  'Mario Rossi', 'm.rossi@example.com', '0123456789', TRUE
-);
-
--- 2) Contatto specifico per ruolo (soggetto_ruolo_id = 10)
-INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, unita_organizzativa_id, soggetto_id, soggetto_ruolo_id,
-  nominativo, cellulare
-) VALUES (
-  2, 2, '123e4567-e89b-12d3-a456-426614174000', 10,
-  'Luca Bianchi', '3801234567'
-);
-
--- 3) Contatto per istanza specifica (istanza_utility_id = 5)
-INSERT INTO anagrafiche.contatti (
-  tipo_contatto_id, unita_organizzativa_id, soggetto_id, soggetto_ruolo_id,
-  istanza_utility_id, nominativo, pec
-) VALUES (
-  3, 3, '123e4567-e89b-12d3-a456-426614174000', 10, 5,
-  'Ufficio Tecnico', 'tecnico@azienda.pec'
-);
-
---  4) Impostare un contatto come default (il trigger resetta gli altri)
-UPDATE anagrafiche.contatti
-   SET is_default = TRUE
- WHERE id = 42;
-
--- 5) Recuperare il contatto default di un soggetto
-SELECT *
-  FROM anagrafiche.contatti
- WHERE soggetto_id = '123e4567-e89b-12d3-a456-426614174000'
-   AND is_default;
-
-```
----
-
-### Vantaggi Operativi
-
- - Flessibilità: un singolo modello per ogni combinazione soggetto/ruolo/istanza e tipo di contatto.
-
- - Univocità: constraint e trigger assicurano coerenza e un solo contatto predefinito per soggetto.
-
- - Manutenzione semplificata: aggiornare o estendere i tipi di contatto avviene solo in tabelle di configurazione.
-
- - Tracciabilità: audit dei cambiamenti con timestamp e utente, per compliance e debugging.
+Un contatto nasce con `anagrafiche.fn_crea_contatto`, che pretende nominativo e tipo e accetta un elenco chiuso
+di campi. Lo usano i verbi di nascita del soggetto (che creano il suo primo contatto), quelli del cliente e del
+fornitore, la creazione degli utenti tecnici e l'applicazione.
 
 ---
 
-> **Centralizzare i contatti in un'unica tabella con supporto multi-contesto e contact default migliora coerenza, performance e usabilità del sistema."**
+### La vita del contatto segue quella del soggetto
 
+* Il contatto si scrive solo su un soggetto **attivo**, e con un'unità organizzativa attiva: lo controllano al
+  COMMIT due trigger differiti, quando nasce o cambia soggetto o reparto.
+* Il soggetto, finché ha contatti, **non si disattiva**; l'unità organizzativa nemmeno, finché un contatto la
+  nomina.
+* Cancellare il soggetto cancella i suoi contatti. Un ruolo o un'istanza che un contatto nomina, invece, non si
+  cancellano finché il contatto c'è.
+* Il soggetto deve avere almeno un contatto al COMMIT di ogni sua scrittura
+  (`anagrafiche.trgfn_soggetti_guard_soggetto_contatti`).
+
+La tabella non ha row security.
+
+---
+
+### La lettura: dal più specifico al soggetto
+
+Chi cerca il contatto da usare non legge la tabella: `script.fn_get_contatti` dà un contatto per tipo, preferendo
+quello dell'istanza e del ruolo chiesti, poi quello del ruolo, poi quello del soggetto; a parità, quello del
+reparto chiesto, poi il predefinito, poi l'id più basso. `script.fn_get_contatto_default` sceglie il predefinito
+fra quei contatti.
 
 ---
 
-###  Diagramma ER relazioni
-
-
-```mermaid
-%%{init: {'er': {'layoutDirection': 'LR'}}}%%
-erDiagram
-    soggetti         ||--o{ contatti : has
-    soggetti_ruoli   ||--o{ contatti : scoped_by
-    istanze_utilities ||--o{ contatti : for
-    tipi_contatti    ||--o{ contatti : typed_as
-    unita_organizzative ||--o{ contatti : belongs_to
-    titoli_cortesia  ||--o{ contatti : courtesy
-
-    soggetti           { uuid id PK }
-    soggetti_ruoli     { bigint id PK }
-    istanze_utilities  { bigint id PK }
-    tipi_contatti      { int id PK }
-    titoli_cortesia    { int id PK }
-    contatti           { bigint id PK }
-
-```
+{% include-markdown "it/dbzero/anagrafiche/_contatto-predefinito.md" %}
 
 ---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il predefinito di un ruolo o di un'istanza.** La chiave del predefinito è soggetto più contesto: due ruoli,
+  o due istanze, dello stesso soggetto ne condividono uno, e chi cerca il predefinito del suo ruolo può trovarlo
+  vuoto perché il segno l'ha preso un contatto di un altro ruolo.
+* **Il contatto di un'istanza senza ruolo.** È ammesso, e nessuno dei tre indici lo copre: sullo stesso soggetto
+  e sulla stessa istanza possono stare due contatti dello stesso tipo.
+* **Il predefinito che perde il segno o sparisce.** Nessuno ne promuove un altro, e il soggetto continua a
+  puntare il contatto di prima.
+* **Il soggetto che si spegne.** I contatti, che non hanno un loro `attivo`, ne bloccano la disattivazione
+  finché esistono; tolti tutti, è la disattivazione stessa a non passare il controllo del contatto obbligatorio.
+  Un soggetto con contatti oggi non si disattiva.
+* **La lettura senza reparto.** Senza unità organizzativa fra i parametri, `script.fn_get_contatti` scarta i
+  contatti che ne hanno una, invece di considerarli; `script.fn_get_contatto_default`, quando i predefiniti sono
+  di tipi diversi, sceglie quello con l'id più basso.
+* **I COMMENT.** Quello di `default_context` elenca i valori `soggetto`, `ruolo`, `utility` (il terzo è
+  `istanza`); quello di `is_default` parla di un predefinito «per il soggetto».
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-fn-crea-contatto-v1.sql` — il verbo: il contatto di soggetto e quello di ruolo, i
+  campi incompleti o fuori elenco, i quattro verbi che non scrivono più la tabella a mano.
+* `db/pgtap/anagrafiche/test-contatti-soggetto-cliente.sql` — il contesto `ruolo` del contatto di un cliente, e la
+  lettura per ruolo, per tipo e per reparto.
+* `db/pgtap/anagrafiche/test-istanza-dello-stesso-soggetto-v1.sql` (test 13-16) — ruolo e istanza di un altro
+  soggetto rifiutati.
+* `db/pgtap/anagrafiche/soggetti-con-contatti.sql` — un soggetto costruito ha almeno un contatto con un recapito.
+
+---
+
+### Note di migrazione
+
+* 2026-10-17 — nasce `anagrafiche.fn_crea_contatto`, e prende il posto degli inserimenti diretti dei verbi di
+  nascita del soggetto, degli utenti tecnici, delle fixture e dell'applicazione.
+* 2026-10-19 — nasce il controllo che ruolo e istanza siano del soggetto del contatto.
+
+---
+
 {% include-markdown "signature-core.md" %}
-
----

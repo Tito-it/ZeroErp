@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_guard_indirizzi_obbligatori_soggetto.md" %}
 # ⚙️ Funzione `fn_guard_indirizzi_obbligatori_soggetto`
 
 ```sql

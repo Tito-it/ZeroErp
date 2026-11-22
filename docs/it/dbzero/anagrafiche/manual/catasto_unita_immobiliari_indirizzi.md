@@ -1,130 +1,94 @@
-## Documentazione Tecnica – Tabella `anagrafiche.catasto_unita_immobiliari_indirizzi`
+## 📘 Documentazione Concettuale – Tabella `anagrafiche.catasto_unita_immobiliari_indirizzi`
 
-> **Destinatari:** DBA / backend / analisti funzionali
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
-👀 **Vedi anche**
+> 👀 **Vedi anche**
 >
-**Tabelle**
+> Approfondimento tabelle:
 >
-[`anagrafiche.catasto_unita_immobiliari`](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari)
-> [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-> [`anagrafiche.istanze_utilities`](/dbzero/anagrafiche/tabelle/istanze_utilities)
+> * [anagrafiche.catasto_unita_immobiliari](/dbzero/anagrafiche/tabelle/catasto_unita_immobiliari) — l'unità catastale
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico
+> * [anagrafiche.istanze_utilities](/dbzero/anagrafiche/tabelle/istanze_utilities) — l'istanza, da cui nasce la coppia
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo](/dbzero/anagrafiche/funzioni/trgfn_iu_sync_catasto_unita_indirizzo) — chi scrive le righe
+> * [dbops.trgfn_child_requires_active_parent](/dbzero/dbops/funzioni/trgfn_child_requires_active_parent) — il civico della riga deve essere attivo
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — un civico con un'unità non si spegne
+>
+> Guide:
+>
+> * [Il catasto delle istanze](/guide/catasto-delle-istanze) — il flusso intero del catasto
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 16-12-25)
-La tabella `anagrafiche.catasto_unita_immobiliari_indirizzi` è una **tabella ponte** che esplicita la relazione tra:
 
-* 🏠 una **unità immobiliare catastale** (`catasto_unita_immobiliari`)
-* 📍 uno **indirizzo civico dettagliato** (`indirizzi_dettaglio`)
-
-Il suo scopo è separare in modo netto:
-
-* il **concetto catastale** (unità immobiliare: foglio/particella/subalterno)
-* dal **concetto topografico/logistico** (indirizzo, scala, piano, interno)
-
-consentendo una modellazione **robusta**, **riusabile** e coerente con i flussi di **subentro** tipici delle utilities.
+`anagrafiche.catasto_unita_immobiliari_indirizzi` lega un'unità catastale a un civico. Tiene separato il concetto
+catastale (foglio, particella, subalterno) da quello topografico (via, civico, scala, interno): la stessa unità
+può stare su più civici, e lo stesso civico può avere più unità.
 
 ---
 
-### Struttura della tabella
+### Una coppia, una volta
 
-| Campo                    |            Tipo | Null  | Descrizione                                          |
-| ------------------------ | --------------: | :---: | ---------------------------------------------------- |
-| `id`                     | bigint identity |  NO   | Chiave primaria tecnica                              |
-| `catasto_unita_id`       |          bigint |  NO   | FK verso `anagrafiche.catasto_unita_immobiliari(id)` |
-| `indirizzo_dettaglio_id` |          bigint |  NO   | FK verso `anagrafiche.indirizzi_dettaglio(id)`       |
+Il vincolo unico `uq_catunitaindir` ammette la coppia (unità, civico) una sola volta. È anche il vincolo su cui
+`anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo` rende idempotente il suo inserimento: la coppia già presente
+non si duplica e non dà errore.
 
 ---
 
-### Vincoli e integrità
+### ⭐ La coppia nasce dall'istanza
 
-**🔑 Chiave primaria**
-
-* `pk_catasto_unita_immobiliari_indirizzi (id)`
-
-**♻️ Unicità logica**
-
-* `uq_catunitaindir (catasto_unita_id, indirizzo_dettaglio_id)`
-
-Garantisce che **lo stesso indirizzo non venga associato due volte alla stessa unità immobiliare**.
-
-**🔗 Foreign key**
-
-| Vincolo                              | Colonna                  | Riferimento                     | ON UPDATE | ON DELETE |
-| ------------------------------------ | ------------------------ | ------------------------------- | --------- | --------- |
-| `fk_cat_un_imm_indir_cat_un_imm`     | `catasto_unita_id`       | `catasto_unita_immobiliari(id)` | CASCADE   | CASCADE   |
-| `fk_cat_un_imm_indir_indirizzo_dett` | `indirizzo_dettaglio_id` | `indirizzi_dettaglio(id)`       | CASCADE   | CASCADE   |
-
-📌 Essendo una tabella ponte pura, l’uso di `ON DELETE CASCADE` è **voluto e corretto**.
+Le righe le scrive il trigger delle istanze: quando un'istanza ha sia l'unità catastale sia il civico, la coppia
+(unità dell'istanza, civico dell'istanza) entra qui. Succede alla nascita dell'istanza, a ogni cambio dell'unità o
+del civico, e al subentro, quando il clone aggancia all'istanza nuova la copia dell'unità della precedente: il
+clone è una riga nuova, quindi anche la coppia è nuova, col civico dell'istanza nuova. L'applicazione può
+scrivere anche direttamente (`zeroerp_app` ha il DML), per i casi di un'unità su più civici.
 
 ---
 
-### Ruolo nei flussi di business
+### Il civico deve essere attivo, e chi ha un'unità non si spegne
 
-**🔁 Subentro / riattivazione utenza**
+Il legame segue la regola dell'automazione ATTIVO fra un figlio e il suo padre:
 
-Nel flusso tipico:
+* una riga nuova, o una riga che cambia civico, chiede un civico attivo
+  (`trg_catasto_unita_immobiliari_indirizzi_a10_indirizzi_de_4328b2`, controllato a fine transazione);
+* un civico che ha righe qui non si spegne (`trg_indirizzi_dettaglio_a10_catasto_unita_immobiliari_in_25baf0`):
+  la tabella non ha una colonna `attivo`, quindi conta ogni riga.
 
-1. una istanza/cliente viene **chiusa** (stato CH)
-2. 🆕 viene creata una **nuova istanza** sullo stesso indirizzo
-3. la nuova istanza viene collegata alla **stessa unità immobiliare catastale**
-
-Questa tabella consente di:
-
-* verificare che l’indirizzo della nuova istanza punti alla **medesima unità**
-* mantenere continuità catastale indipendentemente dal soggetto/contratto
+La riga se ne va con la sua unità o col suo civico, quando l'uno o l'altro si cancella.
 
 ---
 
-### Controlli consigliati (pgTAP)
+### ⚠️ Che cosa oggi non copre
 
-I test automatici dovrebbero verificare:
-
-1. inserimento corretto del legame unità↔indirizzo
-2. rifiuto di duplicati su `(catasto_unita_id, indirizzo_dettaglio_id)`
-3. coerenza FK (no record orfani)
-4. scenario di subentro:
-
-   * stessa unità catastale
-   * stesso indirizzo
-   * nuova istanza / nuovo cliente
+* **Le coppie vecchie restano.** Un'istanza che cambia civico o unità aggiunge la coppia nuova e lascia quella di
+  prima: nessun oggetto del DB la toglie. La ponte dice quindi «questa unità è stata legata a questo civico», non
+  «oggi lo è».
+* **Un civico che ha avuto un'unità non si spegne più.** La coppia rimasta basta a fermare lo spegnimento del
+  civico, anche quando nessuna istanza lo usa più con quell'unità; e l'unità non si cancella finché un'istanza la
+  nomina.
 
 ---
 
-### 🗺️ Diagramma ER
+### Codici errore
 
-```mermaid
-%%{init: {'er': {'layoutDirection': 'TB'}}}%%
-erDiagram
-    catasto_unita_immobiliari ||--o{ catasto_unita_immobiliari_indirizzi : associa
-    indirizzi_dettaglio       ||--o{ catasto_unita_immobiliari_indirizzi : associa
-
-    catasto_unita_immobiliari {
-        bigint id PK
-    }
-
-    indirizzi_dettaglio {
-        bigint id PK
-    }
-
-    catasto_unita_immobiliari_indirizzi {
-        bigint id PK
-        bigint catasto_unita_id FK
-        bigint indirizzo_dettaglio_id FK
-    }
-```
+* `E_ATTIVO_PADRE_NON_ATTIVO` — la riga nomina un civico spento.
+* `E_ATTIVO_BLOCK_CHILDREN_EXIST` — si spegne un civico che ha righe qui.
 
 ---
 
-### Note finali
+### Test
 
-* La tabella **non contiene logica di dominio**, ma è fondamentale per la **coerenza del modello**.
-* Permette di evolvere in futuro verso:
+* `db/pgtap/anagrafiche/test-simula-subentro.sql` — la coppia creata dal trigger per l'unità della prima istanza e
+  per il clone del subentro, e il duplicato rifiutato da `uq_catunitaindir`.
 
-  * multi-indirizzo per unità (casi complessi)
-  * storicizzazione dei legami (se necessario)
-* È un punto chiave per i test di **regressione funzionale** su subentri e riattivazioni.
+---
+
+### Note di migrazione
+
+* 2025-12-10 — nasce al posto della colonna `indirizzo_dettaglio_id` di `catasto_unita_immobiliari`.
 
 ---
 

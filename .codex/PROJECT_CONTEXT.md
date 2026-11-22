@@ -276,7 +276,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   falso e stantio per area; segnalazioni di codice da vagliare per ultime). Q1-Q8 decise da Tid lo stesso giorno. Giro
   0a (area C: clienti, billing account, istanze, PDP; 63 pagine, due blocchi comuni, due guide) scritto e committato
   il 2026-11-22, doc auto-generata rigenerata. Giro 0b (area A: soggetti, natura, dati societari, titoli IVA; 52
-  pagine, quattro blocchi, la guida) scritto e committato il 2026-11-22, doc auto-generata rigenerata. Prossimo: il giro 0c (area B).
+  pagine, quattro blocchi, la guida) scritto e committato il 2026-11-22, doc auto-generata rigenerata. Giro 0c (area B: indirizzi, contatti,
+  catasto; 65 pagine, cinque blocchi, la guida nuova del catasto, due guide) scritto e committato il 2026-11-22, doc
+  auto-generata rigenerata. Giro 0d (area D: ruoli d'impresa e
+  banche; 46 pagine, il blocco dei guard di ruolo, la guida dei conti) scritto il 2026-11-22, con il pgTAP del catasto
+  ritirato, committato il 2026-11-22, doc auto-generata rigenerata. Q7 riaperta dalla risposta R-BE5 del BE: lo
+  storico di `indirizzi`, `indirizzi_dettaglio` e `config.stradario` diventa continuo (giro di codice, in coda). Prossimo: il giro 0e (area E).
 
 > I cantieri **chiusi** non stanno qui: ognuno ha il suo documento in `docs/it/dev/work-done/`, e ciò che ha
 > lasciato aperto è una voce di § «Aperto — Media priorità». Alla chiusura di un brief la sua voce si **toglie**

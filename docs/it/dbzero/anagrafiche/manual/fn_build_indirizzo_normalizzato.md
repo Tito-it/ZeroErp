@@ -1,147 +1,93 @@
-# fn_build_indirizzo_normalizzato
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_build_indirizzo_normalizzato`
+
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
+> 👀 **Vedi anche**
+>
+> Approfondimento tabelle:
+>
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — il civico, che si salva coi valori di questa funzione
+> * [config.stradario](/dbzero/config/tabelle/stradario) — la via
+>
+> Approfondimento viste:
+>
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — dove la funzione legge toponimo e nome della via
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.trgfn_indirizzi_dettaglio_normalize](/dbzero/anagrafiche/funzioni/trgfn_indirizzi_dettaglio_normalize) — il trigger che scrive questi valori sulla riga
+> * [anagrafiche.fn_get_or_create_indirizzo_dettaglio](/dbzero/anagrafiche/funzioni/fn_get_or_create_indirizzo_dettaglio) — il «trova o crea», che cerca con questi valori
+> * [script.fn_check_indirizzo_duplicato](/dbzero/script/funzioni/fn_check_indirizzo_duplicato) — il controllo del doppione, che confronta la stringa normalizzata
+>
+> Guide:
+>
+> * [Gestione degli indirizzi](/guide/gestione-degli-indirizzi) — il quadro degli indirizzi e dello stradario
+
+---
+
 ### 🎯 Scopo Principale
-Centralizza **tutta** la logica di normalizzazione degli indirizzi fisici.
-E' la **unica source of truth**: il trigger `trgfn_indirizzi_dettaglio_normalize`
-la chiama e assegna i risultati (zero logica nel trigger). La usano anche il
-«trova o crea» `fn_get_or_create_indirizzo_dettaglio` (cerca coi valori come li
-salva il trigger) e `script.fn_check_indirizzo_duplicato`.
-(ultima revisione 25-10-2026: vuoto → NULL, SNC solo col civico NULL)
 
-## Schema
+`anagrafiche.fn_build_indirizzo_normalizzato` dice come si salva un civico: riceve la via e i valori del
+dettaglio come li scrive una persona, e restituisce i valori normalizzati e le tre stringhe derivate. È la
+sola sede di queste regole.
 
-`anagrafiche`
+---
 
-## Firma
+### ⭐ Una normalizzazione sola, per chi salva e per chi cerca
 
-```sql
-anagrafiche.fn_build_indirizzo_normalizzato(
-  p_stradario_id  config.stradario.id%TYPE,
-  p_civico        anagrafiche.indirizzi_dettaglio.civico%TYPE           DEFAULT NULL,
-  p_estensione    anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE DEFAULT NULL,
-  p_palazzina     anagrafiche.indirizzi_dettaglio.palazzina%TYPE        DEFAULT NULL,
-  p_scala         anagrafiche.indirizzi_dettaglio.scala%TYPE            DEFAULT NULL,
-  p_piano         anagrafiche.indirizzi_dettaglio.piano%TYPE            DEFAULT NULL,
-  p_interno       anagrafiche.indirizzi_dettaglio.interno%TYPE          DEFAULT NULL,
-  -- OUT params
-  OUT o_estensione_civico       anagrafiche.indirizzi_dettaglio.estensione_civico%TYPE,
-  OUT o_palazzina               anagrafiche.indirizzi_dettaglio.palazzina%TYPE,
-  OUT o_scala                   anagrafiche.indirizzi_dettaglio.scala%TYPE,
-  OUT o_piano                   anagrafiche.indirizzi_dettaglio.piano%TYPE,
-  OUT o_interno                 anagrafiche.indirizzi_dettaglio.interno%TYPE,
-  OUT o_via_norm                anagrafiche.indirizzi_dettaglio.via_norm%TYPE,
-  OUT o_civico_norm             anagrafiche.indirizzi_dettaglio.civico_norm%TYPE,
-  OUT o_indirizzo_normalizzato  anagrafiche.indirizzi_dettaglio.indirizzo_normalizzato%TYPE
-) RETURNS record
-```
+La usano il trigger che scrive la riga, il «trova o crea» che cerca il civico prima di crearlo e il controllo
+del doppione. Se chi cerca normalizzasse in un altro modo da chi salva, cercherebbe una riga che non può
+esistere e ne creerebbe una seconda: un'estensione `a` scritta oggi non troverebbe la `/A` di ieri.
 
-## Parametri IN
+---
 
-| Parametro | Tipo | Default | Descrizione |
-|-----------|------|---------|-------------|
-| `p_stradario_id` | integer | — | FK a `config.stradario` (obbligatorio) |
-| `p_civico` | integer | NULL | Numero civico (NULL = SNC) |
-| `p_estensione` | varchar | NULL | Estensione civico (es. `a`, `/B`) |
-| `p_palazzina` | varchar | NULL | Palazzina |
-| `p_scala` | varchar | NULL | Scala |
-| `p_piano` | varchar | NULL | Piano |
-| `p_interno` | varchar | NULL | Interno |
+### Le regole
 
-## Parametri OUT
+* **Il dettaglio** (estensione, palazzina, scala, piano, interno): spazi in testa e in coda tolti, maiuscolo, e
+  un testo vuoto diventa nessun valore. Il «non c'è» ha una forma sola, perché l'indice della chiave tratta i
+  vuoti come uguali.
+* **L'estensione** prende il `/` davanti, se non l'ha: `a`, `A` e `/A` sono la stessa estensione.
+* **La via normalizzata** (`o_via_norm`) è toponimo e nome della via, in maiuscolo, letti dalla via risolta.
+* **Il civico normalizzato** (`o_civico_norm`) è il numero seguito dall'estensione; senza numero è `SNC`. Il
+  civico zero o negativo non è un modo di dire «senza numero»: lo rifiuta il guard della chiave.
+* **L'indirizzo normalizzato** (`o_indirizzo_normalizzato`) mette in fila, separati da virgola e spazio, la via,
+  il civico e, quando ci sono, palazzina, scala, piano e interno coi loro prefissi `Pal.`, `Scala `, `Piano `,
+  `Int.`: per esempio `VIA ROMA, 12/A, Pal.B, Scala C, Piano 2, Int.3`. È la stringa su cui lavora la ricerca
+  per testo.
 
-| Parametro | Descrizione |
-|-----------|-------------|
-| `o_estensione_civico` | Normalizzata: UPPER+BTRIM, prefisso `/` |
-| `o_palazzina` | Normalizzata: UPPER+BTRIM |
-| `o_scala` | Normalizzata: UPPER+BTRIM |
-| `o_piano` | Normalizzato: UPPER+BTRIM |
-| `o_interno` | Normalizzato: UPPER+BTRIM |
-| `o_via_norm` | `UPPER(tipo_toponimo + nome_strada)` da lookup |
-| `o_civico_norm` | `civico + estensione` oppure `SNC` |
-| `o_indirizzo_normalizzato` | Stringa completa concatenata |
+---
 
-## Caratteristiche
+### Una via che non si risolve dà tutto vuoto
 
-- **STABLE**: esegue un SELECT su `script.vw_indirizzo_completo`
-- **PARALLEL SAFE**: nessun side-effect
-- Normalizza internamente tutti gli input (UPPER + BTRIM, vuoto → NULL, prefisso `/`)
-- Ritorna record con tutti gli OUT a NULL se `p_stradario_id` non valido o la via non si risolve nella vista: anche le colonne strutturali. Chi cerca con questi valori si ferma su `o_via_norm` NULL (lo fa `fn_get_or_create_indirizzo_dettaglio`)
+Se la via non c'è, o non si risolve nella catena via → comune → provincia → CAP di `script.vw_indirizzo_completo`
+(un comune senza provincia, per esempio), la funzione restituisce tutto vuoto, anche il dettaglio. Chi la usa
+deve fermarsi lì: il «trova o crea» risponde `E_INDIRIZZO_VIA_NON_RISOLTA`, invece di cercare con una chiave
+vuota e trovare il civico nudo della via.
 
-## Logica
+La funzione non solleva errori e non scrive niente.
 
-1. **Guard**: `p_stradario_id` IS NULL o <= 0 → RETURN (tutti OUT a NULL)
-2. **Lookup via_norm**: `UPPER(TRIM(tipo_toponimo || ' ' || nome_strada))` da `script.vw_indirizzo_completo`
-3. **Normalizza input**: UPPER + BTRIM su estensione, palazzina, scala, piano, interno; un testo vuoto diventa NULL (una forma sola per «non c'è», come vuole l'indice `NULLS NOT DISTINCT`)
-4. **Prefisso '/'**: aggiunge `'/'` a estensione se mancante
-5. **Civico norm**: `civico::text || estensione` oppure `'SNC'` se civico NULL
-6. **Concatena**: `via_norm, civico_norm[, Pal.X][, Scala X][, Piano X][, Int.X]`
+---
 
-## Formato output
+### ⚠️ Che cosa oggi non copre
 
-```
-VIA ROMA, 12/A, Pal.B, Scala C, Piano 2, Int.3
-```
+* **Il trigger non si ferma sulla via non risolta**: assegna i valori vuoti alla riga, e l'inserimento o la
+  modifica falliscono con l'errore tecnico della colonna obbligatoria `via_norm`, senza un codice che dica qual è
+  il problema.
 
-- Separatore: `, ` tra ogni componente
-- Prefissi fissi: `Pal.`, `Scala `, `Piano `, `Int.`
-- Componenti opzionali omessi se NULL o vuoti
+---
 
-## Indici utilizzati
+### Test
 
-La stringa `o_indirizzo_normalizzato` matcha `anagrafiche.indirizzi_dettaglio.indirizzo_normalizzato`.
-L'indice GIN trigram `ix_indirizzi_dettaglio_indirizzo_norm_gin` permette ricerche ILIKE performanti.
-Per match esatto nel check duplicato si usa `=` (btree implicito).
+* `db/pgtap/anagrafiche/test-indirizzi-dettaglio-unicita-v1.sql` — la stessa chiave scritta maiuscola, con spazi
+  o col `/` che trova la stessa riga, il testo vuoto uguale a nessun valore, la via che non si risolve.
 
-## Uso da trigger
+---
 
-```sql
--- trgfn_indirizzi_dettaglio_normalize: zero logica, solo assegnazioni
-DECLARE
-  v_result record;
-BEGIN
-  SELECT * INTO v_result
-    FROM anagrafiche.fn_build_indirizzo_normalizzato(
-      NEW.stradario_id, NEW.civico, NEW.estensione_civico,
-      NEW.palazzina, NEW.scala, NEW.piano, NEW.interno);
+### Note di migrazione
 
-  NEW.estensione_civico      := v_result.o_estensione_civico;
-  NEW.palazzina              := v_result.o_palazzina;
-  NEW.scala                  := v_result.o_scala;
-  NEW.piano                  := v_result.o_piano;
-  NEW.interno                := v_result.o_interno;
-  NEW.via_norm               := v_result.o_via_norm;
-  NEW.civico_norm            := v_result.o_civico_norm;
-  NEW.indirizzo_normalizzato := v_result.o_indirizzo_normalizzato;
-  RETURN NEW;
-END;
-```
+* 2026-10-25 — il testo vuoto del dettaglio diventa nessun valore, e `SNC` vale solo per il civico senza
+  numero: prima lo zero era un secondo modo di dirlo.
 
-## Uso da Python (check duplicato)
+---
 
-```sql
-SELECT * FROM anagrafiche.vw_indirizzi_dettaglio
- WHERE stradario_id = %s
-   AND indirizzo_normalizzato = (
-         anagrafiche.fn_build_indirizzo_normalizzato(
-           %s, %s, %s, %s, %s, %s, %s)
-       ).o_indirizzo_normalizzato
- LIMIT 1
-```
-
-## Esempi
-
-```sql
--- Civico con estensione
-SELECT * FROM anagrafiche.fn_build_indirizzo_normalizzato(42, 12, 'a');
--- o_estensione_civico = '/A'
--- o_via_norm = 'VIA ROMA'
--- o_civico_norm = '12/A'
--- o_indirizzo_normalizzato = 'VIA ROMA, 12/A'
-
--- Senza numero civico
-SELECT (anagrafiche.fn_build_indirizzo_normalizzato(42)).o_indirizzo_normalizzato;
--- → 'VIA ROMA, SNC'
-
--- Completo
-SELECT * FROM anagrafiche.fn_build_indirizzo_normalizzato(42, 5, '/B', 'C', 'A', '2', '3');
--- → 'VIA ROMA, 5/B, Pal.C, Scala A, Piano 2, Int.3'
-```
+{% include-markdown "signature-core.md" %}

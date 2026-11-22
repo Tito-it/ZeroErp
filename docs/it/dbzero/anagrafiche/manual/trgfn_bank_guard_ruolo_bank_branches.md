@@ -1,71 +1,60 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_bank_guard_ruolo_bank_branches`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_bank_guard_ruolo_bank_branches`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
-
-> Approfondimenti tabelle:  
 >
-[anagrafiche.bank_branches](/dbzero/anagrafiche/tabelle/bank_branches)   
->  [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) 
-
-> Approfondimenti funzioni:   
+> Approfondimento tabelle:
 >
-[script.fn_guard_soggetto_ruolo ](/dbzero/script/funzioni/fn_guard_soggetto_ruolo ) 
-
-La trigger function **`anagrafiche.trgfn_bank_guard_ruolo_bank_branches()`** si attiva **BEFORE INSERT** e **BEFORE UPDATE** sulla tabella `anagrafiche.bank_branches`. Il suo scopo è garantire che, ogni volta che si crea o modifica il record del bank_branches, venga automaticamente gestita (verificata o creata) la corrispondente riga di relazione in `anagrafiche.soggetti_ruoli` con ruolo “bank_branches” (`codice_interno = 'BANK_B'`).
+> * [anagrafiche.bank_branches](/dbzero/anagrafiche/tabelle/bank_branches) — le filiali, che il guard presidia
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo della banca a cui la filiale punta
+> * [config.tipi_ruoli](/dbzero/config/tabelle/tipi_ruoli) — il ruolo `BANK_B`, «istituti di credito»
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_guard_soggetto_ruolo](/dbzero/script/funzioni/fn_guard_soggetto_ruolo) — il controllo, a cui il guard delega
+>
+> Guide:
+>
+> * [Gestione dei conti bancari](/guide/gestione-conti-bancari) — le filiali e i conti che tengono
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 05-12-25)
-- **Centralizzare l’assegnazione del ruolo “bank_branches”**  
-  Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 
-- **Mantenere coerenza referenziale**  
-  Associare sempre correttamente il soggetto al ruolo di bank_branches, aggiornando `NEW.soggetto_ruolo_id` con l’ID valido, che sia preesistente o appena creato.
-
-- **Semplificare i trigger client**  
-  Qualunque operazione di INSERT o UPDATE su `anagrafiche.bank_branches` non deve preoccuparsi di controllare manualmente `soggetto_ruolo_id`; la trigger function ne gestisce la delega.
+`anagrafiche.trgfn_bank_guard_ruolo_bank_branches` impedisce che una filiale di `anagrafiche.bank_branches` punti a
+un ruolo che non è una banca (`BANK_B`).
 
 ---
 
-### Flusso Logico
+### Una banca, molte filiali
 
-1. **Chiamata automatica**  
-   Attivata **BEFORE INSERT OR UPDATE** su `anagrafiche.bank_branches`.  
+Il guard non crea il ruolo `BANK_B`: chi scrive la filiale passa il ruolo della banca, già esistente. Nessun verbo del
+database crea una banca: il soggetto, il suo ruolo e le sue filiali li scrive l'applicazione.
 
-     p_cd_int_ruolo = 'BANK_B' identifica il ruolo “bank_branches” in config.tipi_ruoli.
-
-     La funzione verifica o crea il record in anagrafiche.soggetti_ruoli e restituisce l’ID.
-
-### Utilizzo in DDL
-
-Nel DDL di anagrafiche.bank il trigger viene definito così:
-
-CREATE OR REPLACE TRIGGER trg_bank_guard_ruolo_bank_branches_ins_upd
-  BEFORE INSERT OR UPDATE ON anagrafiche.bank
-  FOR EACH ROW
-  EXECUTE FUNCTION anagrafiche.trgfn_bank_guard_ruolo_bank_branches();
+A differenza delle altre specializzazioni, le filiali non hanno un vincolo unico sul solo ruolo: lo stesso ruolo
+`BANK_B` ha tutte le filiali della banca, e il guard le giudica una per una.
 
 ---
-### Vantaggi Operativi
 
-    Unica fonte di verità per l’assegnazione del ruolo
-    Ogni modifica al bank_branches delega a una sola funzione centralizzata il compito di controllare/eseguire 
-    l’inserimento del ruolo in linking table.
-
-    Riduzione del codice boilerplate
-    Non è necessario ripetere la logica di verifica/inserimento nei trigger o nelle procedure che 
-    gestiscono anagrafiche.bank.
-
-    Coerenza e tracciabilità
-    Grazie all’uso di script.fn_guard_soggetto_ruolo , ogni assegnazione di ruolo registra automaticamente 
-    user_insert nel linking table e garantisce che soggetto_ruolo_id sia sempre valido.
-
-    Flessibilità per ruoli futuri
-    Il pattern può essere replicato in altre trigger function per tabelle analoghe 
-    (es. anagrafiche.clienti, anagrafiche.fornitori), semplicemente cambiando il parametro p_cd_int_ruolo.
+{% include-markdown "it/dbzero/anagrafiche/_guard-di-ruolo.md" %}
 
 ---
-### 🚧 Nota di sviluppo
-    Questa trigger function e la funzione generica fn_guard_soggetto_ruolo  costituiscono il 
-    nucleo metodologico per la gestione dei ruoli in Zero ERP: saranno estese e replicate per ogni nuovo 
-    tipo di ruolo oggetto di implementazione.
+
+### Codici errore
+
+* `E_SOGGETTI_RUOLI` — il ruolo manca, non esiste o non è `BANK_B`.
+* `E_COD_INT_RUOLO` — il codice `BANK_B` non è in `config.tipi_ruoli`.
+
+Li solleva `script.fn_guard_soggetto_ruolo`, passando dal registro degli errori.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/create-soggetto-bank-branches.sql` — la filiale nasce sul ruolo `BANK_B` della banca. Nessun
+  test prova il rifiuto di un ruolo di altro tipo.
+
+---
+
+{% include-markdown "signature-core.md" %}

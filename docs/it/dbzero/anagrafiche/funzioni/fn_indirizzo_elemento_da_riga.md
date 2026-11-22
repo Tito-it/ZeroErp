@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/anagrafiche/manual/fn_indirizzo_elemento_da_riga.md" %}
 # ⚙️ Funzione `fn_indirizzo_elemento_da_riga`
 
 ```sql

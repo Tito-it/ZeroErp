@@ -1,146 +1,64 @@
-##  Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_dettaglio`
+## 📘 Documentazione Concettuale – Vista `anagrafiche.vw_indirizzi_dettaglio`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Approfondimenti tabelle:   
+> Approfondimento tabelle:
 >
-[anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)   
-> [anagrafiche.indirizzi](/dbzero/anagrafiche/tabelle/indirizzi)   
+> * [anagrafiche.indirizzi_dettaglio](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) — i civici
+> * [config.stradario](/dbzero/config/tabelle/stradario) — la via, da cui viene il comune
 >
-Approfondimenti funzioni:   
+> Approfondimento viste:
 >
-[anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio)   
+> * [script.vw_indirizzo_completo](/dbzero/script/views/vw_indirizzo_completo) — la via risolta, da cui vengono nome del comune, CAP e provincia
+> * [anagrafiche.vw_indirizzi_resolved_base](/dbzero/anagrafiche/views/vw_indirizzi_resolved_base) — la lettura risolta degli indirizzi, che la usa per quelli col dettaglio
+> * [anagrafiche.vw_pdp](/dbzero/anagrafiche/views/vw_pdp) — i punti di fornitura, che la usano per il loro civico
+> * [anagrafiche.vw_istanze_utilities_dettaglio](/dbzero/anagrafiche/views/vw_istanze_utilities_dettaglio) — le istanze, che la usano per il loro civico
+>
+> Approfondimento funzioni:
+>
+> * [anagrafiche.fn_search_indirizzi_dettaglio](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio) — la ricerca dei civici, che restituisce righe di questa vista
+> * [script.fn_check_indirizzo_duplicato](/dbzero/script/funzioni/fn_check_indirizzo_duplicato) — il controllo del doppione
+> * [script.fn_get_search_detail](/dbzero/script/funzioni/fn_get_search_detail) — il dettaglio di una ricerca
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 28-11-25)
-La vista **`anagrafiche.vw_indirizzi_dettaglio`** fornisce una rappresentazione "comoda" e già arricchita degli indirizzi di dettaglio, a partire dalla tabella sorgente [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio) collegata allo stradario [`config.stradario`](/dbzero/config/tabelle/stradario).
 
-Gli obiettivi principali sono:
-
-* Offrire un **punto unico di lettura** degli indirizzi normalizzati (via, civico, palazzina, scala, piano, interno, note).
-* Esporre **informazioni minime di contesto geografico**, come il `comune_id` derivato da `config.stradario`.
-* Servire come **base dati per funzioni di ricerca** (es. `anagrafiche.fn_search_indirizzi_dettaglio`) e per componenti UI (autocomplete indirizzo, lookup veloci).
-* Ridurre la duplicazione di join ripetitivi su `indirizzi_dettaglio` + `stradario` all’interno del codice SQL applicativo.
-
-La vista è **read‑only** dal punto di vista logico: qualsiasi DML sugli indirizzi deve essere effettuato sulle tabelle di origine.
+`anagrafiche.vw_indirizzi_dettaglio` è il civico pronto da leggere: le colonne di `anagrafiche.indirizzi_dettaglio`
+con accanto il comune, il nome del comune, il CAP e la sigla della provincia della sua via.
 
 ---
 
-###  Collegamenti principali
+### Che cosa aggiunge al civico
 
-* **Tabelle sorgenti**:
+* **Il comune** (`comune_id`) dalla via di `config.stradario`.
+* **Nome del comune, CAP e provincia** (`descrizione_comune`, `cap`, `provincia`) dalla via risolta di
+  `script.vw_indirizzo_completo`. Il CAP è quello della via: nello stradario una via sta in un CAP solo.
+* L'id del civico esce come `indirizzo_dettaglio_id`, il nome con cui lo cercano tutte le altre letture.
 
-  * [`anagrafiche.indirizzi_dettaglio`](/dbzero/anagrafiche/tabelle/indirizzi_dettaglio)
-  * [`config.stradario`](/dbzero/config/tabelle/stradario)
+`indirizzo_normalizzato`, `via_norm` e il dettaglio sono quelli della tabella, cioè i valori scritti dal
+trigger di normalizzazione. La vista non calcola niente: legge.
 
-* **Funzioni correlate**:
-
-  * [`anagrafiche.fn_search_indirizzi_dettaglio`](/dbzero/anagrafiche/funzioni/fn_search_indirizzi_dettaglio) – funzione di ricerca parametrica che utilizza questa vista come sorgente dati.
-
-* **Oggetti di supporto**:
-
-  * Vincolo di univocità sugli indirizzi di dettaglio (unique index/constraint su combinazione di: `stradario_id`, `civico`, `estensione_civico`, `palazzina`, `scala`, `piano`, `interno`).
+Escono anche i civici spenti: chi vuole solo quelli in uso filtra su `attivo`, come fa la ricerca.
 
 ---
 
-### 隣 Struttura logica della vista
+### Chi la legge
 
-La vista effettua un join diretto tra:
-
-* `anagrafiche.indirizzi_dettaglio` (alias `idd`)
-* `config.stradario` (alias `s`)
-
-esponendo un set di colonne già pronte per ricerche e visualizzazioni.
-
-### Campi esposti
-
-| Colonna                  | Tipo                      | Provenienza                  | Descrizione                                                       |
-| ------------------------ | ------------------------- | ---------------------------- | ----------------------------------------------------------------- |
-| `indirizzo_dettaglio_id` | `bigint`                  | `idd.id`                     | Identificativo univoco dell’indirizzo di dettaglio.               |
-| `stradario_id`           | `integer`                 | `idd.stradario_id`           | Riferimento allo stradario (`config.stradario`).                  |
-| `comune_id`              | `integer`                 | `s.comune_id`                | Comune associato allo stradario.                                  |
-| `indirizzo_normalizzato` | `text` (generated column) | `idd.indirizzo_normalizzato` | Stringa composta (via, civico, palazzina, scala, piano, interno). |
-| `via_norm`               | `text`                    | `idd.via_norm`               | Via normalizzata.                                                 |
-| `civico`                 | `integer`                 | `idd.civico`                 | Numero civico.                                                    |
-| `estensione_civico`      | `varchar(10)`             | `idd.estensione_civico`      | Estensione civico (es. A, B, bis, ecc.).                          |
-| `palazzina`              | `varchar(50)`             | `idd.palazzina`              | Palazzina o corpo di fabbrica.                                    |
-| `scala`                  | `varchar(10)`             | `idd.scala`                  | Scala.                                                            |
-| `piano`                  | `varchar(10)`             | `idd.piano`                  | Piano.                                                            |
-| `interno`                | `varchar(10)`             | `idd.interno`                | Interno o unità.                                                  |
-| `altro`                  | `text`                    | `idd.altro`                  | Note libere sull’indirizzo.                                       |
-| `civic_geoloc`           | `geometry(Point,4326)`    | `idd.civic_geoloc`           | Geolocalizzazione puntuale del civico.                            |
-| `street_geoloc`          | `geometry(Point,4326)`    | `idd.street_geoloc`          | Geolocalizzazione di via/strada.                                  |
-| `attivo`                 | `boolean`                 | `idd.attivo`                 | Stato attivo/disattivo dell’indirizzo.                            |
-| `storicizza`             | `boolean`                 | `idd.storicizza`             | Flag che abilita la storicizzazione.                              |
-| `tx_id`                  | `uuid`                    | `idd.tx_id`                  | Identificativo di transazione logica.                             |
-| `data_insert`            | `timestamptz`             | `idd.data_insert`            | Timestamp di inserimento.                                         |
-| `user_insert`            | `text`                    | `idd.user_insert`            | Utente che ha effettuato l’inserimento.                           |
-| `data_update`            | `timestamptz` #           |
----
-
-###  Modalità d’uso tipiche
-
-  * 1. Ricerca manuale per indirizzo normalizzato
-
-  Utilizzo diretto della vista per ricerche veloci:
-
-  ```sql
-  SELECT
-      indirizzo_dettaglio_id,
-      indirizzo_normalizzato,
-      comune_id
-  FROM anagrafiche.vw_indirizzi_dettaglio
-  WHERE UPPER(indirizzo_normalizzato) LIKE UPPER('%FALERIENSE EST%')
-  ORDER BY indirizzo_normalizzato;
-  ```
-
-  * 2. Supporto a UI/autocomplete
-
-  La vista è pensata per essere utilizzata da funzioni applicative (es. API REST) che implementano:
-
-  * ricerca per pattern sull’indirizzo normalizzato;
-  * limit/pagination;
-  * eventuale filtro per `comune_id` o `stradario_id`.
-
-  Esempio:
-
-  ```sql
-  SELECT *
-  FROM anagrafiche.vw_indirizzi_dettaglio
-  WHERE comune_id = :comune_id
-    AND UPPER(indirizzo_normalizzato) LIKE UPPER('%' || :pattern || '%')
-  ORDER BY indirizzo_normalizzato
-  LIMIT 50;
-  ```
-
-  * 3. Integrazione con funzioni helper
-
-  La vista è usata come **sorgente dati** dalla funzione:
-
-  ```sql
-  SELECT *
-  FROM anagrafiche.fn_search_indirizzi_dettaglio(
-      p_stradario_id   => :stradario_id,
-      p_civico         => :civico,
-      p_indirizzo_norm => :pattern,
-      p_limit          => 50
-  );
-  ```
-
-Questo approccio permette di centralizzare la logica di ricerca mantenendo la vista semplice e riutilizzabile.
+La lettura risolta degli indirizzi (`anagrafiche.vw_indirizzi_resolved_base`) per gli indirizzi col dettaglio,
+le viste dei punti di fornitura e delle istanze, la ricerca dei civici, il controllo del doppione. La vista si
+legge soltanto: i civici si scrivono sulla tabella, attraverso il «trova o crea».
 
 ---
 
-### Best practice e raccomandazioni
+### ⚠️ Che cosa oggi non copre
 
-* Utilizzare la vista **solo per SELECT**; qualsiasi operazione di aggiornamento o inserimento va effettuata sulle tabelle base.
-* Per ricerche in contesti applicativi, preferire l’uso di **`fn_search_indirizzi_dettaglio`**, che:
-
-  * applica filtri coerenti (es. `attivo = TRUE`),
-  * gestisce parametri opzionali e pattern fuzzy,
-  * limita il numero di record restituiti.
-* La vista può essere estesa in futuro per includere ulteriori metadati (es. descrizioni di comune, provincia, stato) ma va mantenuta leggera e orientata alla ricerca.
+* **I civici di una via che non si risolve spariscono**: la vista unisce la via risolta con un join interno, e
+  quando la catena via → comune → provincia → CAP si interrompe (un comune che perde la provincia, per esempio)
+  il civico non esce più, né qui né nelle letture che passano da qui. Negli indirizzi risolti quel civico resta,
+  ma senza testo, comune e CAP.
 
 ---
 

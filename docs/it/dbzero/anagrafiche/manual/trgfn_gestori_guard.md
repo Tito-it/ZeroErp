@@ -1,214 +1,64 @@
-## Documentazione Funzione – `anagrafiche.trgfn_gestori_guard()`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_gestori_guard`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Tabelle correlate:**
+> Approfondimento tabelle:
 >
-[anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori)
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
-> [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
+> * [anagrafiche.gestori](/dbzero/anagrafiche/tabelle/gestori) — la tabella che presidia
+> * [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti) — da cui legge la partita IVA
 >
-**Trigger collegati:**
+> Approfondimento funzioni:
 >
-`trg_gestori_a10_guard_ins_upd` su `anagrafiche.gestori`
->
-**Funzioni di supporto:**
->
-[script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
-> [script.fn_log_and_raise_error](/dbzero/script/funzioni/fn_log_and_raise_error)
+> * [anagrafiche.trgfn_gestori_guard_ruolo_gestore](/dbzero/anagrafiche/funzioni/trgfn_gestori_guard_ruolo_gestore) — l'altro guard della riga, sul tipo del ruolo
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 03-12-25)
-La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 
-Viene eseguita **BEFORE INSERT/UPDATE** (tramite il trigger `trg_gestori_a10_guard_ins_upd`) e ha il compito di garantire che:
-
-1. Il **soggetto_ruolo** associato al gestore **esista**.
-2. Il **soggetto collegato** al gestore abbia una **partita IVA valorizzata**.
-3. Esista al massimo **un solo record** in `anagrafiche.gestori` (regola di **singleton** del Gestore del Sistema Informativo).
-
-In caso di violazione di una di queste regole, la funzione **non blocca manualmente** l'operazione, ma demanda la segnalazione a `fn_log_and_raise_error(...)`, che registra il contesto e solleva un'eccezione applicativa.
+`anagrafiche.trgfn_gestori_guard` è il guard di dominio del gestore: a ogni nascita e modifica della riga
+controlla che il ruolo esista, che il soggetto abbia la partita IVA e che nel sistema non ci sia un altro
+gestore.
 
 ---
 
-### Contesto e attivazione
+### Tre controlli, in quest'ordine
 
-La funzione è pensata per essere utilizzata tramite il trigger:
+1. **Il ruolo esiste.** Dal ruolo risale al soggetto; un ruolo che non c'è, o non passato, ferma la scrittura.
+2. **Il soggetto ha la partita IVA**, non vuota. È la regola del ruolo: il gestore è un'impresa.
+3. **Nessun altro gestore.** Basta una riga diversa da quella che si scrive: la modifica del gestore che c'è
+   passa, una seconda nascita no.
 
-```sql
-CREATE OR REPLACE TRIGGER trg_gestori_a10_guard_ins_upd
-    BEFORE INSERT OR UPDATE
-    ON anagrafiche.gestori
-    FOR EACH ROW
-    EXECUTE FUNCTION anagrafiche.trgfn_gestori_guard();
-```
-
-Pertanto viene invocata automaticamente su **ogni inserimento o modifica** di un record della tabella `anagrafiche.gestori`.
+Il guard scatta prima di `anagrafiche.trgfn_gestori_guard_ruolo_gestore`, che per nome viene dopo: un ruolo che
+non esiste risponde con il codice di questo guard, uno che esiste ma non è `GE` con quello del guard di ruolo.
+Qualunque colonna cambi, i tre controlli si rifanno.
 
 ---
 
-### Regole di dominio applicate
+### ⚠️ Che cosa oggi non copre
 
-La funzione implementa **tre regole principali**:
-
-1. **Esistenza del `soggetto_ruolo`**
-
-   * Verifica che `NEW.soggetto_ruolo_id` referenzi un record esistente in `anagrafiche.soggetti_ruoli`.
-   * In caso contrario, invoca:
-
-     ```plpgsql
-     script.fn_log_and_raise_error(
-         'database',
-         TG_NAME,
-         p_codice_errore := 'E_GESTORE_SOGGETTO_RUOLO_MANCANTE',
-         jsonb_build_object(
-             'table', TG_TABLE_NAME,
-             'soggetto_ruolo_id', NEW.soggetto_ruolo_id
-         ),
-         NULL::uuid,
-         NEW.soggetto_ruolo_id::text
-     );
-     ```
-   * La mancanza del ruolo è quindi gestita come **errore strutturale di configurazione**.
-
-2. **Obbligatorietà della Partita IVA per il soggetto del Gestore**
-
-   * Dato il `soggetto_ruolo`, la funzione risale al relativo `soggetto` e ne legge `partita_iva`.
-   * Se `partita_iva` è `NULL` o vuota:
-
-     ```plpgsql
-     script.fn_log_and_raise_error(
-         'database',
-         TG_NAME,
-         'E_RUOLO_RICHIEDE_PIVA',
-         jsonb_build_object(
-             'table', TG_TABLE_NAME,
-             'soggetto_id', v_soggetto_id,
-             'soggetto_ruolo_id', NEW.soggetto_ruolo_id
-         ),
-         NULL::uuid,
-         'gestore',
-         v_soggetto_id::text,
-         NEW.soggetto_ruolo_id::text
-     );
-     ```
-   * Questo codifica la regola di dominio: **il Gestore deve essere un soggetto con P.IVA** valida a livello anagrafico.
-
-3. **Regola di singleton su `anagrafiche.gestori`**
-
-   * La funzione controlla che non esistano **altri record** in `anagrafiche.gestori` oltre a quello eventualmente in aggiornamento:
-
-     ```plpgsql
-     SELECT g.id
-       INTO v_existing_id
-       FROM anagrafiche.gestori g
-      WHERE g.id <> COALESCE(NEW.id, -1)
-      LIMIT 1;
-     ```
-   * Se viene trovato un altro record (`FOUND = TRUE`), viene invocata:
-
-     ```plpgsql
-     script.fn_log_and_raise_error(
-         'database',
-         TG_NAME,
-         'E_GESTORE_SINGLETON_VIOLATO',
-         jsonb_build_object(
-             'table', TG_TABLE_NAME,
-             'existing_gestore_id', v_existing_id,
-             'new_soggetto_ruolo_id', NEW.soggetto_ruolo_id
-         ),
-         NULL::uuid,
-         NEW.soggetto_ruolo_id::text
-     );
-     ```
-   * In questo modo viene garantito che esista **un solo Gestore del Sistema Informativo** in tutta la base dati.
+* **Il gestore unico non regge due nascite contemporanee.** È una lettura della tabella, non un vincolo: due
+  transazioni che inseriscono insieme non vedono l'una la riga dell'altra.
+* **La partita IVA si guarda solo qui.** Tolta dal soggetto dopo la nascita del gestore, nessuno la richiede
+  finché la riga del gestore non si riscrive.
+* **Le variabili non seguono le colonne.** Sono dichiarate con tipi scritti a mano, e quella dell'id del gestore
+  è `integer` contro una colonna `bigint`.
 
 ---
 
-### Parametri e variabili principali
+### Codici errore
 
-Essendo una funzione trigger, non espone parametri “classici”, ma utilizza i record **`NEW`** e i metadati del trigger (`TG_NAME`, `TG_TABLE_NAME`).
-
-Variabili interne:
-
-* `v_soggetto_id UUID` – id del soggetto associato al ruolo `NEW.soggetto_ruolo_id`.
-* `v_partita_iva TEXT` – partita IVA del soggetto recuperata da `anagrafiche.soggetti`.
-* `v_existing_id INTEGER` – id di un eventuale altro record già presente in `anagrafiche.gestori`.
-
-Valore di ritorno:
-
-* `RETURN NEW;` – se tutte le verifiche sono superate, l'operazione può proseguire normalmente.
+* `E_GESTORE_SOGGETTO_RUOLO_MANCANTE` — il ruolo non è passato o non esiste.
+* `E_RUOLO_RICHIEDE_PIVA` — il soggetto del ruolo non ha la partita IVA.
+* `E_GESTORE_SINGLETON_VIOLATO` — c'è già un gestore.
 
 ---
 
-### 🚨 Codici di errore gestiti
+### Test
 
-La funzione non esegue `RAISE EXCEPTION` direttamente, ma delega a:
-
-* `script.fn_log_and_raise_error(...)`
-* `script.fn_log_and_raise_error(...)`
-
-che gestiscono in modo centralizzato **logging e generazione dell'eccezione**.
-
-I principali codici di errore utilizzati sono:
-
-* **`E_GESTORE_SOGGETTO_RUOLO_MANCANTE`**
-  → Il `soggetto_ruolo_id` indicato non esiste in `anagrafiche.soggetti_ruoli`.
-
-* **`E_RUOLO_RICHIEDE_PIVA`**
-  → Il ruolo Gestore richiede che il soggetto collegato abbia `partita_iva` valorizzata.
-
-* **`E_GESTORE_SINGLETON_VIOLATO`**
-  → È stato rilevato un secondo record in `anagrafiche.gestori`, violando la regola di singleton.
-
-Questi codici devono essere mappati nella tabella di messaggistica centralizzata (es. `config.messaggi_errore`) per garantire messaggi coerenti verso l'esterno.
-
----
-
-### Dipendenze
-
-La funzione dipende da:
-
-* **Tabelle**
-
-  * `anagrafiche.gestori`
-  * `anagrafiche.soggetti_ruoli`
-  * `anagrafiche.soggetti`
-
-* **Funzioni esterne**
-
-  * `script.fn_log_and_raise_error(...)`
-  * `script.fn_log_and_raise_error(...)`
-
-La corretta configurazione di queste funzioni e della tabella dei messaggi è fondamentale per avere errori tracciati e comprensibili.
-
----
-
-### Considerazioni implementative
-
-* La regola di **singleton** è implementata tramite query e non solo tramite vincolo `EXCLUDE` o `UNIQUE`, perché si vuole avere:
-
-  * **controllo esplicito** sulla gestione dell'errore,
-  * logging strutturato in JSON (`jsonb_build_object(...)`).
-* Le funzioni `fn_log_and_raise_error` permettono di:
-
-  * registrare il contesto (`TG_NAME`, `TG_TABLE_NAME`, chiavi coinvolte);
-  * sollevare un'eccezione coerente con il framework applicativo (codici errore, testabilità, localizzazione).
-* In ambienti multi-tenant o multi-utility il concetto di Gestore rimane **unico a livello di istanza DB**, e questa funzione ne garantisce la coerenza.
-
----
-
-### Riepilogo
-
-La funzione **`anagrafiche.trgfn_gestori_guard()`**:
-
-* assicura che il **Gestore del Sistema Informativo** sia collegato a un ruolo e a un soggetto validi;
-* impone che il soggetto del Gestore abbia **partita IVA valorizzata**;
-* garantisce la regola di **“uno e un solo Gestore”** tramite controllo applicativo;
-* integra la gestione errori con il framework centralizzato di logging/raising.
-
-È quindi un tassello chiave per mantenere coerente e robusta l'anagrafica del Gestore nel modello dati di Zero ERP.
+* `db/pgtap/anagrafiche/create-soggetto-gestori.sql` — il secondo gestore rifiutato. Il file è fra i rossi noti
+  della baseline.
 
 ---
 
