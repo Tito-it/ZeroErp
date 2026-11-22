@@ -10,9 +10,11 @@
 // Indice test:
 //   1. letta prima del caricamento solleva, non ripiega
 //   2. dopo la registrazione: opzioni in ordine, default per uso
-//   3. uso sconosciuto solleva
+//   3. uso sconosciuto solleva (anche un nome di `Object.prototype`)
 //   4. risposta malformata rifiutata (default fuori elenco, elenco vuoto,
-//      misure non strettamente crescenti)
+//      misure non strettamente crescenti, `default_per_uso` assente, non un
+//      oggetto o senza uno degli usi che il codice chiede)
+//   4-bis. un uso che il DB aggiunge all'enum arriva senza toccare il BB
 //   5. carica: una richiesta sola anche con chiamate concorrenti
 //   6. carica fallita: non resta in memoria, la successiva riprova
 // ------------------------------------------------------------
@@ -22,7 +24,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const getMisurePagina = vi.fn()
 vi.mock('./api/ui-api', () => ({ getMisurePagina }))
 
-const RISPOSTA = { misure: [10, 25, 50, 100], default_compatta: 10, default_pagina: 25 }
+const RISPOSTA = { misure: [10, 25, 50, 100], default_per_uso: { COMPATTA: 10, PAGINA: 25 } }
 
 async function moduloFresco() {
   vi.resetModules()
@@ -53,17 +55,30 @@ describe('misurePagina', () => {
     const m = await moduloFresco()
     m.registraMisurePagina(RISPOSTA)
     expect(() => m.misuraDefault('LARGA')).toThrow(/uso sconosciuto/)
+    expect(() => m.misuraDefault('toString')).toThrow(/uso sconosciuto/)
   })
 
   it('4. risposta malformata rifiutata', async () => {
     const m = await moduloFresco()
-    expect(() => m.registraMisurePagina({ ...RISPOSTA, default_pagina: 15 })).toThrow(/non valida/)
+    expect(() => m.registraMisurePagina({ ...RISPOSTA, default_per_uso: { COMPATTA: 10, PAGINA: 15 } })).toThrow(/non valida/)
+    expect(() => m.registraMisurePagina({ ...RISPOSTA, default_per_uso: { COMPATTA: 10 } })).toThrow(/non valida/)
+    expect(() => m.registraMisurePagina({ ...RISPOSTA, default_per_uso: undefined })).toThrow(/non valida/)
+    expect(() => m.registraMisurePagina({ ...RISPOSTA, default_per_uso: [10, 25] })).toThrow(/non valida/)
+    // Le due chiavi di prima, da sole, non bastano piu' (BE33).
+    expect(() => m.registraMisurePagina({ misure: [10, 25, 50, 100], default_compatta: 10, default_pagina: 25 })).toThrow(/non valida/)
     expect(() => m.registraMisurePagina({ ...RISPOSTA, misure: [] })).toThrow(/non valida/)
     expect(() => m.registraMisurePagina(undefined)).toThrow(/non valida/)
     // L'ordine e' quello del selettore: fuori ordine o doppia si rifiuta.
     expect(() => m.registraMisurePagina({ ...RISPOSTA, misure: [25, 10, 50, 100] })).toThrow(/non valida/)
     expect(() => m.registraMisurePagina({ ...RISPOSTA, misure: [10, 25, 25, 100] })).toThrow(/non valida/)
     expect(() => m.misureOpzioni()).toThrow(/prima del caricamento/)
+  })
+
+  it('4-bis. un uso che il DB aggiunge all\'enum arriva senza toccare il BB', async () => {
+    const m = await moduloFresco()
+    m.registraMisurePagina({ ...RISPOSTA, default_per_uso: { COMPATTA: 10, PAGINA: 25, LARGA: 50 } })
+    expect(m.misuraDefault('LARGA')).toBe(50)
+    expect(m.misuraDefault(m.USO_MISURA.PAGINA)).toBe(25)
   })
 
   it('5. carica: una richiesta sola anche con chiamate concorrenti', async () => {

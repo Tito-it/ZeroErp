@@ -550,23 +550,27 @@ qualunque pagina dell'operatore (BB `core/misurePagina.js`).
 {
   "data": {
     "misure": [10, 25, 50, 100],
-    "default_compatta": 10,
-    "default_pagina": 25
+    "default_per_uso": {"COMPATTA": 10, "PAGINA": 25}
   },
   "meta": {"request_id": "..."}
 }
 ```
 
 - `misure` — in ordine crescente (l'ordine del selettore)
-- `default_compatta` — la misura di partenza delle liste in drawer e dialog
-- `default_pagina` — quella delle liste a pagina intera, e il ripiego del
-  resolver quando nessuno ha scelto
+- `default_per_uso` — la misura di partenza per ogni uso, una chiave per ogni
+  valore dell'enum `ui.uso_misura_pagina`: `COMPATTA` per le liste in drawer e
+  dialog, `PAGINA` per quelle a pagina intera (ed è il ripiego del resolver
+  quando nessuno ha scelto). Un uso nuovo nell'enum arriva come chiave nuova,
+  senza cambiare il contratto
+- ⚠️ La risposta porta ancora `default_compatta` e `default_pagina`, le due
+  chiavi di prima: sono in ritiro (BE33 di brief-db-revisione-ui), nessun
+  lettore le usa, e le toglie un changeSet del team DB
 
 Errori:
 
 - `401` — JWT mancante o non valido
 - `500` `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (`TECNICO`) — il catalogo non
-  ha la riga di uno dei due default: anomalia di seed, non un valore vuoto
+  ha il default di uno degli usi: anomalia di seed, non un valore vuoto
 
 ---
 

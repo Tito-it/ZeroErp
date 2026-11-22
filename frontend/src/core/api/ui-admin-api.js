@@ -160,8 +160,9 @@ export function updateAdminColonna(colonnaId, payload) {
   )
 }
 
-// Scopo: Cancella colonna. Soft-block applicativo se referenziata da
-//        preferenze utente; FK CASCADE su preset_colonna e permessi.
+// Scopo: Cancella colonna. 409 E_UI_COLONNA_IN_USO se un preset la compone
+//        (FK NO ACTION); i permessi vanno a cascata, la voce esce dalle
+//        preferenze utente per mano del DB.
 export function deleteAdminColonna(colonnaId) {
   return api.delete(`${BASE}/colonne/${encodeURIComponent(colonnaId)}/`)
 }
