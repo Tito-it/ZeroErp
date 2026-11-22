@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_run_and_log`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -58,8 +58,8 @@ che si registra come `automations_cleanup`). Lo presidia
 `db/pgtap/dbops/test-processi-jobname-wrapper.sql`, che guarda ogni `proc_*_job`.
 
 ⛔ **La funzione non inventa un processo.** Un `jobname` che non corrisponde a nessun
-processo, senza il parametro esplicito, lascia il codice vuoto, e il CHECK
-`chk_job_run_log_processo_dichiarato` respinge la riga nuova: la corsa non parte, e l'errore
+processo, senza il parametro esplicito, lascia il codice vuoto, e il `NOT NULL` di
+`job_run_log.processo_codice` respinge la riga nuova (23502): la corsa non parte, e l'errore
 torna al chiamante. Un processo che non sa dire chi è non gira.
 
 `p_auth_user_id` è l'**utente tecnico** della corsa, per i soli processi che ne hanno uno;
@@ -178,8 +178,8 @@ server, e il fallimento resta senza riga. Il lock, se preso, si rilascia anche q
 ### Codici errore
 
 La funzione non solleva codici suoi: rilancia l'errore del lavoro così com'è. Sulla riga
-nuova, un processo non dichiarato o inesistente fa fallire la scrittura con il CHECK
-`chk_job_run_log_processo_dichiarato` o con la FK `fk_job_run_log_processi`.
+nuova, un processo non dichiarato o inesistente fa fallire la scrittura con il `NOT NULL` di
+`processo_codice` (23502) o con la FK `fk_job_run_log_processi` (23503).
 
 `E_JOB_ESITO_CON_SCARTI` non è un errore sollevato: la funzione lo **scrive** in `error_code`
 quando l'esito dichiara degli scarti (`_falliti` maggiore di zero). La causa del fallimento la

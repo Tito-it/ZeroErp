@@ -223,8 +223,8 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
   di perimetro, sola lettura per l'app su magazzini, ubicazioni, lotti, seriali, eventi e note, builder pgTAP sui
   verbi, due fughe d'informazione chiuse nei guard, il cliente del seriale controllato). ⚠️ Ora la R-1 del BE (§7):
   finché il repository non chiama i verbi, il backend non scrive magazzini, ubicazioni e lotti. Poi il Lotto 2
-  (documenti interni). Il lotto di magazzino diventa dell'azienda in
-  `work-in-progress/brief-db-magazzino-lotto-dell-azienda.md`: quattro decisioni a Tid.
+  (documenti interni). Il lotto di magazzino è dell'azienda dal 2026-11-22
+  (`work-done/2026/brief-db-magazzino-lotto-dell-azienda.md`, chiuso: DB, BE e FE fatti).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n). Alla ripartenza: quali articoli ammettono le righe
   d'acquisto è rinviato a `work-done/2026/brief-db-articoli-ammessi-per-documento.md` §8.4 (D-5). Il documento passivo

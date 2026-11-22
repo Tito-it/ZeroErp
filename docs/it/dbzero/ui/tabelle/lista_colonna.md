@@ -66,11 +66,12 @@
 | trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
 | trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
 | trg_lista_colonna_a00_seed_primo_impianto_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_seed_primo_impianto('COLONNA', 'lista_id,codice,campo_sorgente,origine_campo,tipo_colonna,tipo_dato,formato,filtrabile,ordinabile,ricercabile_full,sensibile,etichetta_i18n_key', 'etichetta,etichetta_estesa,larghezza_default,ordine_default,allineamento,gruppo,gruppo_ordine,esportabile,priorita,attivo')` |
-| trg_lista_colonna_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_UI_COLONNA_CODICE_IMMUTABILE')` |
+| trg_lista_colonna_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_UI_COLONNA_CODICE_IMMUTABILE', 'lista_id', 'E_UI_COLONNA_CODICE_IMMUTABILE')` |
 | trg_lista_colonna_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_lista_colonna_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
 | trg_ui_lista_colonna_a10_valida_campo_sorgente_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()` |
+| trg_ui_lista_colonna_z10_ritira_dalle_preferenze_dlt | AFTER | DELETE | `EXECUTE FUNCTION ui.trgfn_voce_ritira_dalle_preferenze()` |
 
 ---
 {% include-markdown "signature-core.md" %}

@@ -158,7 +158,9 @@ La causa si decide **in quest'ordine**:
 3. il codice d'errore dichiara la sua causa (`config.codici_errore.causa_fallimento`) → quella;
 4. altrimenti decide il processo, che dichiara la natura dei suoi fallimenti
    (`dbops.processi.causa_fallimento`);
-5. una corsa senza processo a catalogo → `PROGRAMMA`.
+5. `PROGRAMMA`, come ultima difesa. Il modello non la raggiunge: ogni corsa ha il suo processo
+   (`job_run_log.processo_codice` è `NOT NULL`, con la FK), e `causa_fallimento` del processo è
+   `NOT NULL`, quindi il punto 4 decide sempre.
 
 ⭐ Nessuna riga resta senza causa, quindi nessuna finisce fra quelle «senza indicazione di chi
 agisce».
@@ -250,6 +252,10 @@ e il rimedio cambiano con la causa della riga.
   un nome al successivo, poi la prima corsa vera di ciascuno. Prima la vista raggruppava tutto il
   giornale, e il suo costo cresceva con la storia. Il risultato non cambia
   (`brief-db-giornale-corse-indici`).
+* 2026-11-22 — il giornale si pota a 12 mesi, e il verdetto non cambia: la potatura tiene sempre
+  l'ultima corsa vera (aperta o conclusa), le corse aperte e l'ultima fallita di ogni job. Cambia un
+  caso solo: per una corsa appesa da più di un anno, `falliti_ultimi_7_giorni` conta le corse dei
+  sette giorni prima fra quelle che il giornale tiene (`brief-db-giornale-corse-indici` §8).
 
 ---
 

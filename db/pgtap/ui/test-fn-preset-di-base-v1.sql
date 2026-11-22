@@ -16,9 +16,10 @@
 --
 -- Gira da owner (marcatore in testa): il catalogo delle dashboard lo scrive
 --   solo il migratore. Tutti i soggetti si costruiscono qui: due liste, una dashboard col suo pool, un'azienda, un
---   operatore con un profilo AD_HOC, i preset e le preferenze.
+--   operatore con un profilo AD_HOC (e il PORTALE della veste OPERATORE, se
+--   il seed non lo porta), i preset e le preferenze.
 --
--- Elenco test (plan 20):
+-- Elenco test (plan 25):
 --    1-4) fn_preset_aggiornato, per chiave: senza snapshot nessuna; contenuto
 --         piu' recente la chiave; U6, una chiave non passata non entra;
 --         contenuto uguale nessuna
@@ -45,13 +46,16 @@
 --   22) … e il cambio successivo del preset lo riaccende
 --   23) U8: l'app che scrive la data del contenuto riceve E_UI_PRESET_CONTENUTO_DERIVATO
 --   24) … e cosi' l'app che scrive un'impronta finta
+--   25) U3 sul ruolo: il primo profilo (AD_HOC) con un preset senza
+--       colonne attive non ferma il ruolo: vince il preset del secondo
+--       (PORTALE della veste OPERATORE)
 -- ------------------------------------------------------------
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(24);
+SELECT plan(25);
 
 -- ============================================================
 -- Fixture
@@ -346,6 +350,55 @@ SELECT is(
         UPDATE ui.lista_preset SET composizione_impronta = 'finta' WHERE id = (SELECT preset_id FROM _base)$$),
     'E_UI_PRESET_CONTENUTO_DERIVATO',
     '24) U8: l''app scrive un''impronta che non e'' quella della composizione: rifiutato');
+
+-- ============================================================
+-- 25 U3 sul ruolo: il profilo piu' prioritario senza contenuto non ferma il ruolo
+-- ============================================================
+-- Sulla seconda lista: il preset di ruolo del profilo AD_HOC (priorita' 1) ha
+-- la sola colonna spenta, quello del PORTALE della veste OPERATORE (priorita'
+-- 3) una colonna attiva. Deve vincere il secondo, non il sistema (vuoto).
+-- uq_profili_accesso_bindings_ruolo ammette UN binding per veste: se il seed lo
+-- porta gia' si usa quello, altrimenti si costruisce qui. Senza un PORTALE
+-- applicabile il preset nasce con il profilo NULL e lo rifiuta
+-- chk_ui_lista_preset_ambito_refs: il caso e' rosso, non verde a vuoto.
+WITH p AS (
+    INSERT INTO config.profili_accesso (tipo, codice, descrizione, attivo)
+    SELECT 'PORTALE', '_PGTAP_BASE_P_' || upper(substr(md5(clock_timestamp()::text), 1, 8)),
+           'Profilo PORTALE test preset di base', TRUE
+     WHERE NOT EXISTS (SELECT 1 FROM config.profili_accesso_bindings b
+                        WHERE b.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
+    RETURNING id
+)
+INSERT INTO config.profili_accesso_bindings (profilo_accesso_id, ruolo_applicativo, attivo)
+SELECT p.id, 'OPERATORE'::config.ruolo_applicativo, TRUE FROM p;
+
+-- In un'istruzione sua: la lettura vede il binding appena scritto.
+CREATE TEMP TABLE _prof_portale AS
+SELECT pa.profilo_accesso_id AS profilo_id
+  FROM script.fn_get_profili_accesso_applicabili((SELECT auth_user_id FROM _u), 'OPERATORE') pa
+ WHERE pa.priorita = 3
+ LIMIT 1;
+
+CREATE TEMP TABLE _p2 AS
+WITH ins AS (
+  INSERT INTO ui.lista_preset (lista_id, codice, descrizione, ambito, profilo_accesso_id, attivo, user_insert)
+  SELECT l.lista_id, v.codice, v.codice, 'ruolo', v.profilo_id, TRUE, '_pgtap'
+    FROM _l2 l,
+         (VALUES ('p_ruolo_vuoto',   (SELECT profilo_id FROM _prof)),
+                 ('p_ruolo_secondo', (SELECT profilo_id FROM _prof_portale))) AS v(codice, profilo_id)
+  RETURNING id, codice
+)
+SELECT id AS preset_id, codice FROM ins;
+
+INSERT INTO ui.lista_preset_colonna (preset_id, colonna_id, ordine, visibile)
+SELECT p.preset_id, c.colonna_id, 1, TRUE
+  FROM _p2 p
+  JOIN _c c ON c.lista_id = (SELECT lista_id FROM _l2)
+ WHERE (p.codice = 'p_ruolo_vuoto'   AND c.codice = 'c_spenta')
+    OR (p.codice = 'p_ruolo_secondo' AND c.codice = 'c_uno');
+
+SELECT is(pg_temp.base_lista('OPERATORE', (SELECT lista_id FROM _l2)), 'p_ruolo_secondo',
+          '25) U3: il preset di ruolo del primo profilo senza colonne attive non ferma il ruolo: vince il secondo profilo');
 
 SELECT * FROM finish();
 ROLLBACK;

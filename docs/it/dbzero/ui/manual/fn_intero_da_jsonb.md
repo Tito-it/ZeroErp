@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_intero_da_jsonb`
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -38,10 +38,15 @@ può essere onorato dalla lettura, e viceversa.
 
 ### Che cosa vale come intero
 
-* Vale un numero senza segno scritto con sole cifre, al più nove: resta sempre dentro un intero.
+* Vale un numero senza segno che, nella forma in cui il database lo conserva, ha sole cifre, al più
+  nove: resta sempre dentro un intero.
 * Non vale una stringa, nemmeno se contiene solo cifre: il testo «25» non è il numero 25.
-* Non valgono un numero negativo, un numero con decimali, uno scritto in notazione esponenziale, il
-  valore nullo, un oggetto o un elenco: per tutti la risposta è «niente».
+* Non valgono un numero negativo, un numero con decimali, il valore nullo, un oggetto o un elenco:
+  per tutti la risposta è «niente».
+* ⚠️ **Conta la forma conservata, non la grafia.** Il database normalizza un numero quando lo legge
+  da un JSON, e tiene i decimali scritti: `1e2` diventa `100` e vale 100; `100.0` e `2.50e1`
+  restano con i decimali (`100.0`, `25.0`) e non valgono. Il COMMENT della funzione dice ancora che
+  la notazione esponenziale non vale: la correzione aspetta un changeSet.
 
 Lo zero è un intero: dire se un valore è **ammesso** (positivo, una misura del catalogo, un tetto
 fra 1 e 100) resta a chi chiama.

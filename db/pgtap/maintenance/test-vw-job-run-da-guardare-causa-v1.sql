@@ -38,10 +38,11 @@
 --   corollario sui test): processi, codice d'errore e corse sono fabbricati
 --   qui, cosi' il test vale anche su un database ricostruito da zero.
 -- ⚠️ IL RAMO «NESSUN PROCESSO → PROGRAMMA» NON E' COSTRUIBILE, e non si finge:
---   chk_job_run_log_processo_dichiarato (NOT VALID) vieta a una corsa NUOVA di
---   nascere senza processo. Il ramo esiste per le righe di prima del vincolo,
---   che il modello ammette. Lo presidiano il test 13 (nessuna causa NULL,
---   su tutte le righe della vista) e la lettura del CASE.
+--   processo_codice e' NOT NULL (90_end/20261122-25), e la FK porta sempre a un
+--   processo, la cui causa_fallimento e' NOT NULL. Il 'PROGRAMMA' finale del
+--   COALESCE e' una difesa che il modello non raggiunge piu'. Lo presidiano il
+--   test 13 (nessuna causa NULL, su tutte le righe della vista) e la lettura
+--   del CASE.
 -- ⚠️ I test 13 e 14 guardano anche le righe vere della vista: sono presidi
 --   sulla FORMA (mai NULL, sempre a catalogo), non sul contenuto.
 -- ------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Guida — I lavori automatici: che natura hanno e per conto di chi girano
 
-> **Ultimo aggiornamento**: 7 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > Destinatari: chiunque debba capire, aggiungere o controllare un lavoro che il
 > sistema fa da solo — sviluppatori, analisti, e chi guarda se stanotte è andato
@@ -376,7 +376,7 @@ In ordine, e nessuno dei passi è facoltativo:
    e la [guida delle code](/guide/gestione-code-di-lavoro).
 5. **Fai in modo che firmi le proprie corse**: il giornale
    [maintenance.job_run_log](/dbzero/maintenance/tabelle/job_run_log) rifiuta una corsa che
-   non dice di quale processo è (`chk_job_run_log_processo_dichiarato`), e il lavoro non gira.
+   non dice di quale processo è (`processo_codice` è obbligatorio), e il lavoro non gira.
 
 ⚠️ Un lavoro registrato come DOMINIO **non può essere accodato senza operatore**:
 il sistema lo rifiuta. Non è una formalità — è la regola che impedisce a un

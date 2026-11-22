@@ -59,16 +59,25 @@ SELECT ok(
 --   lo diceva forte perche' pretende lo SQLSTATE (23514), che e' esattamente il motivo
 --   per cui lo si pretende. Dall'entry point il CHECK scatta lo stesso, e il collaudo
 --   diventa piu' fedele: e' la porta da cui ci passa l'applicazione.
+-- ⚠️ Si passa un processo VERO: senza, la corsa e' respinta prima dal NOT NULL
+--   di processo_codice (23502, che PostgreSQL controlla prima dei CHECK), e
+--   fino al 90_end/20261122-25 lo era dal CHECK chk_job_run_log_processo_dichiarato,
+--   con lo stesso 23514 di quello sull'origine: il test era verde senza poter
+--   dire quale dei due avesse respinto. Col processo, l'unico 23514 e' l'origine.
 SELECT throws_ok(
-    $$ SELECT script.fn_job_run_start('t_check','XXX') $$,
+    $$ SELECT script.fn_job_run_start('t_check', 'XXX', NULL, NULL, NULL,
+           (SELECT codice FROM dbops.processi
+             WHERE classe = 'MANUTENZIONE' AND attivo
+             ORDER BY id LIMIT 1)) $$,
     '23514',
     NULL,
     'CHECK chk_job_run_log_origine rifiuta origine non valida'
 );
 
 -- ---- 8..11: fn_job_run_start happy-path (no lock) ----
--- ⛔ 2026-09-05: `chk_job_run_log_processo_dichiarato` pretende che un run NUOVO
---   dichiari il proprio processo (DB-5). Questa fixture ne apriva uno muto —
+-- ⛔ 2026-09-05: un run NUOVO deve dichiarare il proprio processo (DB-5; oggi il
+--   NOT NULL di processo_codice, fino al 90_end/20261122-25 il CHECK
+--   chk_job_run_log_processo_dichiarato). Questa fixture ne apriva uno muto —
 --   collaudava la vecchia tolleranza, non la registrazione.
 --   ⇒ Si passa un processo VERO del catalogo, scelto in modo deterministico:
 --     cosi' il file continua a collaudare cio' che collaudava — l'apertura e la

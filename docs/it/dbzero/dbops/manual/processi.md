@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `dbops.processi`
 
-> **Ultimo aggiornamento**: 12 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -124,7 +124,8 @@ chi accoda» vale per i `CODA` di `DOMINIO`, che toccano i dati di un'azienda.
   può chiamarsi diversamente dal processo che registra (`apply_fk_index_policy` è svegliato da
   `automations_apply_fk_indexes_policy`). Due processi non possono dichiarare lo stesso job, e un
   nome vuoto non vale come «nessun job».
-* Un processo ritirato **non si cancella**: la sua storia nel giornale resta leggibile.
+* Un processo ritirato **non si cancella**: la sua storia nel giornale resta leggibile, per
+  quanto il giornale la tiene (12 mesi, e le ultime corse sempre: vedi `potatura_esclusione`).
 * ⭐ **Il ritiro ha una sede sola: `obsoleto_dal`.** Un processo è **vivo** finché la data è
   vuota o non è ancora arrivata, ed è **ritirato** dal giorno indicato (nel fuso aziendale). La
   regola è il building block [script.fn_e_obsoleto](/dbzero/script/funzioni/fn_e_obsoleto), e la
@@ -263,12 +264,32 @@ falsa.
 
 ---
 
+### ⭐ Le corse che il giornale tiene per sempre: `potatura_esclusione`
+
+Il giornale delle corse si pota a 12 mesi (`maintenance.fn_pota_giornale_corse`, il processo
+`pota_giornale_corse`). Un processo che ha bisogno di tutta la sua storia lo **dichiara** qui, col
+perché: `NULL` vuol dire che le sue corse si potano; un testo vuol dire che non si potano mai, e il
+testo è il motivo. Non è mai vuoto. È la forma di `ci_esclusione`: un'esclusione porta il suo
+motivo.
+
+Oggi la dichiarano le tre corsie della fatturazione (`run_fatturazione_batch`,
+`FATTURAZIONE_GIRO`, `FATTURAZIONE_NUMERA`): il pannello degli esiti apre qualunque mese, anche di
+anni prima. Un processo nuovo con lo stesso bisogno si dichiara nel seed, senza toccare la
+potatura.
+
+Anche senza esclusione, la potatura non tocca mai le corse aperte né le ultime che i presidi
+leggono (l'ultima, l'ultima conclusa, l'ultima fallita, l'ultima col ruolo, l'ultima di pgAgent):
+un processo che gira una volta all'anno non diventa «mai partito».
+
+---
+
 ### Come si registra un processo nuovo
 
 1. Una riga nel seed dei processi: è catalogo, si cambia dal CSV, mai con un aggiornamento
    diretto (il ruolo applicativo ha sola lettura). La riga dichiara:
    * la convergenza in CI, se ha un job pgAgent;
    * `corsa_verdetto_completo`, col criterio sopra;
+   * `potatura_esclusione`, se il processo ha bisogno di tutta la sua storia nel giornale;
    * le quattro colonne dell'accensione, se ha una sveglia; e se il job è pgAgent, il suo passo
      nasce già avvolto nel cancello della sveglia.
 2. Se è di **dominio**, una riga in [processi_bersagli](/dbzero/dbops/tabelle/processi_bersagli)
@@ -333,6 +354,8 @@ falsa.
   data scritta, l'accensione solo la data scritta: un ritiro programmato spariva dai presidi il
   giorno in cui si scriveva. Nasce `chk_processi_ritiro_con_data`; `chk_processi_accensione` smette
   di esentare i ritirati.
+* 2026-11-22 — nasce `potatura_esclusione`, con la ritenzione del giornale a 12 mesi; nasce il
+  processo `pota_giornale_corse` (`brief-db-giornale-corse-indici`).
 
 ---
 

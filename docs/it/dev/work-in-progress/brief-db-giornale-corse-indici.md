@@ -2,9 +2,10 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: team DB** (`dev/db-tid`): le richieste del §6.8 e del §7.4. Il lato BE del giro 1 è fatto
-(§6.8) e il censimento della ritenzione è consegnato (§7.4), 2026-11-22. Il giro 2, la ritenzione
-(§7), parte dopo, col via di Tid; D-R1 è decisa (§7.2), con la riserva del §7.4.
+**Riparte: Tid**, con un passo su dbdev: dare a `zeroerp_job` l'`EXECUTE` su
+`proc_pota_giornale_corse_job` prima della corsa delle 03:30 (§8.8). La fase post del provisioning
+è stata lanciata, ma al controllo del catalogo il permesso non c'è. Il giro 2b è applicato su scratch e dbdev, con i pgTAP verdi, il
+2026-11-22. Poi la sessione BE (`/arrivi-db`), con le richieste del §8.7 e del §8.8.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -13,16 +14,30 @@
 | 3 | ✅ team DB | Giro 1: quattro indici, due viste riscritte, la prova, la doc `manual/` | §6.2-§6.4, §6.7 | 2 |
 | 4 | ✅ Tid | Applicare `20261122-20` … `-22`; lanciare `test-job-run-log-per-chiave-v1` e i pgTAP del §6.7; rigenerare la doc auto-generata | §6.7 | 3 |
 | 5 | ✅ sessione BE | L7 e le altre due sedi per chiave (`cte_corse` riscritta); `run_totali` ritirato; L4 per processo; `api_tracciamento.md`; il censimento della ritenzione (§7.4). Tutto il 2026-11-22 (§6.8) | §6.6, §6.8, §7.4 | 4 |
-| 5-bis | **team DB** ⏭️ | Le richieste del §7.4 (la riserva su D-R1, l'ultima **conclusa**; l'esclusione dichiarata dei processi come la fatturazione) e del §6.8 (le righe storiche senza processo; l'indice per le corsie di un processo, se lo ritiene) | §6.8, §7.4 | 5 |
-| 6 | team DB | Giro 2: la ritenzione di 12 mesi | §7 | 5-bis, il via di Tid |
+| 5-bis | ✅ team DB | La risposta alle richieste del §6.8 e del §7.4: il processo obbligatorio, l'indice delle corsie, l'insieme tenuto dalla potatura, `potatura_esclusione` | §8 | 5 |
+| 5-ter | ✅ Tid | D-R2, D-R3, D-R4 (le righe storiche si **cancellano**); il via al giro 2a | §8.6 | 5-bis |
+| 6 | ✅ team DB | Giro 2a scritto e provato: il processo obbligatorio, l'indice delle corsie, la vista dei superuser senza il ramo storico, i pgTAP e la doc | §8.7 | 5-ter |
+| 6-bis | ✅ Tid | Il `DELETE` a mano su dbdev; applicare `20261122-23` … `-25`; i pgTAP del §8.7 verdi (2026-11-22) | §8.7 | 6 |
+| 6-ter | ✅ Tid | La doc auto-generata di `maintenance` rigenerata dopo il 2a | §8.7 | 6-bis |
+| 6-quater | **sessione BE** ⏭️ | Le richieste del §8.7: il ramo storico di `list_job_summary`, il censimento del `23514`, il NULL di `processo_codice` nei lettori | §8.7 | 6-bis |
+| 7 | ✅ team DB | Giro 2b scritto e provato: `potatura_esclusione`, la funzione di potatura, il job, il processo nel seed, il pgTAP, la doc | §8.8 | 6-bis, il via di Tid (2026-11-22) |
+| 7-bis | ✅ Tid | I due ritocchi del §8.8 confermati; `20261122-29` … `-32` applicati su scratch e dbdev; la fase post del provisioning sullo scratch; i pgTAP verdi (2026-11-22) | §8.8 | 7 |
+| 7-ter | **Tid** ⏭️ | ✅ La doc auto-generata di `dbops` e `maintenance` rigenerata. ⏳ Su dbdev manca ancora l'`EXECUTE` di `zeroerp_job` sulla procedura, anche dopo la fase post (verificato il 2026-11-22): senza, il job delle 03:30 fallisce per permesso negato | §8.8 | 7-bis |
+| 8 | **sessione BE** | Le doc che promettono tutta la storia; con il 6-quater, in un solo `/arrivi-db` | §7.4, §8.7, §8.8 | 7-bis |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
 ✅ 2026-11-22: D-R1 strada **(a)**, la potatura non tocca mai l'ultima corsa di ogni job e di ogni
 processo (§7.2). ✅ 2026-11-22: le corse della fatturazione non si potano; i conteggi non usati si
-ritirano (§7.4). Nessuna decisione aperta.
+ritirano (§7.4). ✅ 2026-11-22: D-R2 sì, D-R3 sì, D-R4 le righe storiche si cancellano a mano,
+via al giro 2a (§8.6). ✅ 2026-11-22: via al giro 2b. ✅ 2026-11-22: confermati i due ritocchi
+del §8.8, la chiave per coppia `(processo, jobname)` e l'ultima fallita e di pgAgent fra le righe
+tenute. Nessuna decisione aperta.
 **Committato** (2026-11-22, `dev/db-tid`): il giro 1 (tre changeSet, un pgTAP, la doc di `maintenance`,
-manuale e auto-generata) e questo brief. Il giro 2 non ha ancora file.
+manuale e auto-generata) e questo brief. **Committato** (2026-11-22) anche il §8, questa testata e il giro 2a, applicato
+(tre changeSet, quattro pgTAP toccati, la doc `manual/` e cinque guide o pagine, §8.7) e il giro
+2b, applicato (quattro changeSet, il CSV dei processi, un pgTAP, due pagine `manual/` nuove e
+sei toccate, una guida, §8.8).
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-11-22. **A chi:** team DB.
 > **Origine:** revisione della doc API di `maintenance` ([api_tracciamento.md](../../backend/core/manual/api_tracciamento.md)),
@@ -395,3 +410,297 @@ domanda per i lettori DB: `vw_job_run_da_guardare` scarta la corsa in corso ma n
   restano: li usa il pannello esiti (`total_runs`, `ok_count`), e con la fatturazione esclusa dalla
   potatura restano veri per lui. Per l'endpoint `job-summary` senza filtri, che nessun FE chiama, la
   doc dirà «gli ultimi 12 mesi».
+
+## 8. La risposta del team DB al §6.8 e al §7.4 — 2026-11-22
+
+Sessione DB (`dev/db-tid`). Prima l'analisi; dopo le decisioni del §8.6, il giro 2a (§8.7).
+
+### 8.1 Le righe storiche senza processo (§6.8, richiesta 1): il processo diventa obbligatorio
+
+⚠️ **Corretto dal §8.6 (D-R4) e dal §8.7.** La proposta qui sotto **attribuiva** il processo alle
+righe storiche, e revocava senza dirlo una decisione presa: DB-5 (2026-09-05, `90_end/20260905-16`)
+aveva scelto il `CHECK NOT VALID` proprio perché «riempirle sarebbe inventare un attore per corse che
+non l'avevano». La regola di attribuzione proposta era anche più larga della derivazione di
+`fn_run_and_log`, che vuole il `jobname` uguale al codice. Tid ha scelto di **cancellarle**: non si
+inventa niente, e il resto della proposta (il changeSet strutturale, i ritiri) resta.
+
+**Sul modello.** `chk_job_run_log_processo_dichiarato` è `NOT VALID`: vieta la riga senza processo a
+ogni corsa nuova, quindi un database costruito da zero (la CI, lo scratch, ogni installazione nuova)
+non ne ha. Le righe senza processo sono la storia di una macchina nata prima del `CHECK`. La
+ritenzione da sola non le chiude: D-R1 tiene l'ultima corsa per `jobname`, quindi il ramo «senza
+processo» resterebbe per sempre in due viste, in un indice e nel BE.
+
+**La regola di attribuzione** è sul nome, ed è quella che il BE usa già nel riepilogo della
+fatturazione (§6.8): la radice del `jobname` (`split_part(jobname, ':', 1)`) è il `codice` del
+processo, oppure il suo `jobname_pgagent`. Fatto datato (dbdev, 2026-11-22): 14 radici, e ognuna ha
+il suo processo in `dbops.processi`.
+
+**La proposta, in due pezzi:**
+
+1. **Il dato si corregge a mano su dbdev**, con un solo `UPDATE` per regola (AGENTS, «bug di dati in
+   sviluppo»: un fix per dati sbagliati lascia codice da togliere). Lo SQL lo prepara il team DB.
+2. **Il changeSet porta solo la struttura:** `VALIDATE CONSTRAINT`, poi `processo_codice SET NOT
+   NULL` (il `CHECK` validato evita a PostgreSQL una seconda scansione) e il `CHECK` ritirato. Su una
+   macchina che ha ancora righe senza processo il changeSet si ferma, ed è il comportamento giusto
+   (fail-closed).
+
+**Che cosa si ritira nello stesso giro:**
+
+* l'indice `ix_job_run_log_jobname_senza_processo`;
+* il ramo «senza processo» di `vw_job_run_da_superuser`, la cui chiave torna `processo_codice`;
+* nel BE, dopo il DB: il ramo `processo_codice IS NULL AND split_part(...)` di `list_job_summary`.
+
+`vw_job_run_da_guardare` non cambia: la sua chiave è il `jobname`.
+
+**Garanzia nuova, non ritirata:** «ogni corsa ha il suo processo». Chi legge può smettere di
+gestire il NULL. Lo dicono il `COMMENT` della colonna e il manuale.
+
+### 8.2 L'indice per le corsie di un processo (§6.8, richiesta 2): sì
+
+La discesa «salta al jobname successivo» dentro un processo, fatta su
+`ix_job_run_log_processo_codice_started_at`, percorre a ogni passo tutte le corse del processo:
+`min(jobname) WHERE processo_codice = X AND jobname > precedente` non ha l'ordine di `jobname`
+nell'indice. È la forma a dirlo, non i volumi: un processo che corre spesso ha molte corse anche in
+12 mesi.
+
+`ix_job_run_log_processo_codice_jobname_started_at (processo_codice, jobname, started_at DESC, id
+DESC)` serve i due passi: la discesa (solo indice) e la `LATERAL` per corsia (`processo_codice = X
+AND jobname = k ORDER BY started_at DESC, id DESC LIMIT 1`). **Si aggiunge, non sostituisce**:
+L6 e `vw_processi_programmazione` ordinano per recenza dentro il processo, attraverso tutte le corsie,
+e quell'ordine lo dà solo l'indice `(processo_codice, started_at DESC, id DESC)`.
+
+### 8.3 La riserva su D-R1 (§7.4): l'insieme delle righe tenute, riscritto sui predicati dei lettori
+
+Il BE ha ragione: «l'ultima `NOT saltata`» non è «l'ultima conclusa». C'è anche un terzo lettore, che
+la riserva non nomina. La CTE `ultima` di `vw_job_run_da_guardare` vuole l'ultima `NOT saltata`
+**escluse** le corse giovani in corso di un processo a verdetto completo. Se quella giovane è la più
+recente, la risposta è la corsa prima, che può avere più di 12 mesi ed essere **appesa**: né
+«l'ultima `NOT saltata`» né «l'ultima conclusa» la proteggono.
+
+La regola che copre ogni lettore, per ogni `jobname` e ogni `processo_codice`, tiene oltre i 12 mesi:
+
+* l'ultima corsa in assoluto («mai partito», `ultimo_run`);
+* l'ultima conclusa vera (`ended_at IS NOT NULL AND NOT saltata`: `ultima_conclusa`, `ultimo_ok`);
+* l'ultima col ruolo registrato (`vw_job_run_da_superuser`);
+* **ogni corsa aperta** (`ended_at IS NULL`), a qualunque età. Una corsa aperta non è storia chiusa:
+  è un fatto pendente, e da appesa è proprio ciò che il presidio mostra. Potarla nasconderebbe
+  l'anomalia.
+
+L'«ultima `NOT saltata`» di D-R1 esce dall'elenco perché ci è già dentro: o è aperta, e allora è
+tenuta, o è conclusa, e allora è l'ultima conclusa vera. Lo stesso vale per la risposta di
+`vw_job_run_da_guardare`: le sole righe più recenti che salta sono corse aperte.
+
+⚠️ Il «scarta la corsa in corso ma non quella appesa» di `vw_job_run_da_guardare` (§7.4) non è un
+difetto: l'appesa è uno dei suoi verdetti (colonna `appesa`).
+
+È un ritocco di una decisione di Tid (D-R1, §7.2), quindi **la conferma Tid** (D-R2 qui sotto).
+
+### 8.4 L'esclusione dichiarata dal processo (§7.4)
+
+La forma che segue un modello già in `dbops.processi`, cioè `ci_esclusione` (l'esclusione porta il
+suo motivo scritto): **`potatura_esclusione text`**. NULL vuol dire che le corse si potano a 12 mesi.
+Un testo vuol dire che non si potano mai, e il testo è il perché. Il valore sta nel CSV del seed dei
+processi (`80_data`). Un processo nuovo con lo stesso bisogno lo dichiara lì, senza toccare la
+procedura. Un `CHECK` vieta la stringa vuota, come per `ci_esclusione`.
+
+Il pannello esiti legge le corse di `run_fatturazione_batch`. Restano da decidere i due processi
+`CODA` della fatturazione, `FATTURAZIONE_GIRO` e `FATTURAZIONE_NUMERA` (D-R3).
+
+### 8.5 Il giro 2, ridisegnato
+
+| Parte | Che cosa |
+| --- | --- |
+| 2a | il processo obbligatorio (§8.1, dopo l'`UPDATE` a mano su dbdev), l'indice delle corsie (§8.2), `vw_job_run_da_superuser` senza il ramo storico, l'indice parziale ritirato |
+| 2b | `potatura_esclusione` in `dbops.processi` e nel CSV (§8.4); la potatura (§7.1) con l'insieme tenuto del §8.3; il processo nel seed; il piano di `vw_processi_programmazione` riletto (§6.3) |
+| BE, dopo | il ramo storico di `list_job_summary` ritirato; le doc che promettono tutta la storia (§7.4); il manuale della coda per `job_run_id` orfano |
+
+La 2a viene prima, perché semplifica la 2b: con il processo obbligatorio la potatura protegge per
+`jobname` e per `processo_codice`, senza un terzo ramo per le righe storiche.
+
+### 8.6 Decisioni di Tid
+
+✅ Tutte decise da Tid il 2026-11-22.
+
+* ✅ **D-R2, sì:** la potatura tiene l'insieme del §8.3 (l'ultima, l'ultima conclusa vera, l'ultima
+  col ruolo, ogni corsa aperta) al posto delle tre righe di D-R1.
+* ✅ **D-R3, sì:** anche `FATTURAZIONE_GIRO` e `FATTURAZIONE_NUMERA` dichiarano
+  `potatura_esclusione`, insieme a `run_fatturazione_batch`.
+* ✅ **D-R4, le righe storiche senza processo si cancellano a mano** su dbdev. Non si attribuiscono:
+  è la ragione di DB-5, che resta (§8.1, la correzione in testa).
+* ✅ Il via al giro 2a. Il 2b aspetta un via suo.
+
+### 8.7 Il giro 2a ✅ applicato, verde (2026-11-22)
+
+✅ Tid, 2026-11-22: il `DELETE` a mano su dbdev, poi `20261122-23` … `-25` applicati su scratch e
+dbdev, i pgTAP verdi. Il primo apply su dbdev, lanciato prima del `DELETE`, si è fermato sulla
+`preCondition` del `-25` dopo aver applicato `-23` e `-24`: è il comportamento voluto, e l'apply
+successivo è ripartito dal `-25`. Verificato sul catalogo di dbdev: nessuna riga senza processo,
+`processo_codice` `NOT NULL`. ⏳ La doc auto-generata di `maintenance` è ancora da rigenerare.
+
+| File | Che cosa |
+| --- | --- |
+| `00_schema/maintenance/20261122-23-create-ix-job-run-log-corsie-processo-mctit.yaml` | `ix_job_run_log_processo_codice_jobname_started_at`, col `COMMENT` |
+| `20_code/maintenance/20261122-24-update-vw-job-run-da-superuser-senza-ramo-storico-mctit.yaml` | `vw_job_run_da_superuser`: la chiave è il processo, una discesa e una `LATERAL` sola |
+| `90_end/20261122-25-alter-job-run-log-processo-obbligatorio-mctit.yaml` | `VALIDATE`, `SET NOT NULL`, il `CHECK` ritirato, l'indice parziale ritirato, il `COMMENT` della colonna. In `90_end` perché il `CHECK` nasce lì (§11.14). Una `preCondition` `HALT` ferma il migrate finché restano righe senza processo |
+| `db/pgtap/maintenance/test-job-run-log-per-chiave-v1.sql` | riscritto (plan 12): gli indici, il parziale assente, il `NOT NULL`, il `CHECK` assente, il `23502`, le due viste per chiave senza il ramo storico |
+| `test-job-run-attore.sql` | il test 8 aspetta `23502` (il `NOT NULL`) al posto di `23514` |
+| `test-job-run-registrazione.sql` | il test 7 passa un processo vero: era **verde per il motivo sbagliato**. Senza processo il `23514` poteva venire da tutti e due i `CHECK`, quello dell'origine e quello del processo; ora il `NOT NULL` risponde prima con `23502` |
+| `test-vw-job-run-da-guardare-causa-v1.sql`, `-verdetto-completo-v1.sql` | solo i commenti: il caso «senza processo» il modello non lo ammette più |
+| `manual/` di `job_run_log`, `vw_job_run_da_superuser`, `vw_job_run_da_guardare`, `fn_run_and_log`, `fn_job_run_log_failure`; le guide `analisi-tracciamento-processi-e-job`, `processi-pgagent-funzionali`, `processi-automatici-classe-e-identita` | il `NOT NULL` al posto del `CHECK`; la query «corse senza attore» della guida è uscita |
+
+**Il passo di Tid, prima dell'apply, su dbdev** (lavora come `zeroerp_owner`):
+
+```sql
+BEGIN;
+SELECT jobname, count(*), min(started_at), max(started_at)
+  FROM maintenance.job_run_log WHERE processo_codice IS NULL GROUP BY jobname ORDER BY 1;
+DELETE FROM maintenance.job_run_log WHERE processo_codice IS NULL;
+COMMIT;
+```
+
+Fatto datato (dbdev, 2026-11-22): 99 775 righe, dal 2026-01-07 al 2026-09-05. Lo scratch non ne
+ha, come ogni database costruito da zero. ⚠️ 37 lavori di `dbops.coda_lavori` puntano a quelle righe
+con `job_run_id`, che non ha FK: restano orfani, come quelli che lascerà la potatura (§7.4). Niente si
+rompe; nessuna vista DB legge `coda_lavori.job_run_id`.
+
+**Prova** (`prova_changeset.py`, ROLLBACK sullo scratch, i tre changeSet insieme):
+
+* `test-job-run-log-per-chiave-v1` da 7/12 senza l'estratto a 12/12 con. I 5 rossi senza sono lo
+  stato nuovo: l'indice, il parziale assente, il `NOT NULL`, il `CHECK` assente, il `23502`.
+* `test-job-run-attore` da 10/11 a 11/11 (il `23502`). `test-job-run-registrazione` 21/21 nei due
+  versi dopo la correzione del test 7.
+* Invariati: `test-app-postura-job-run-log-v1` (10, con 1 rosso da owner che c'era già),
+  `-log-failure-out-of-tx` (7), `-ruolo-sessione-v1` (10), `-saltata-v1` (11), `-sqlstate-e-codice-v1`
+  (9), `test-vw-job-run-da-guardare` (6), `-causa-v1` (15), `-corse-distinte-v1` (2),
+  `-verdetto-completo-v1` (17); in `dbops` `test-vw-processi-programmazione` (21),
+  `-da-guardare` (7), `test-processi-convergenza-ci` (8), `test-presidio-processi-testo-per-causa-v1`
+  (18), `test-processi-registro` (16), `test-fn-guardiano-digest` (9), `test-installazione-ambiente-v1`
+  (23), `test-security-definer-search-path-v1` (5), `test-comment-al-presente-v1` (8); in `script`
+  `test-canale-log-v1` (16). `guardrail_comment_al_presente.py` pulito.
+* La forma (§6.4, `enable_seqscan = off`): `vw_job_run_da_superuser` scende sull'indice di processo
+  senza `Sort`, la discesa delle corsie usa l'indice nuovo. 4 su 4 con l'estratto, 2 su 4 senza.
+
+⚠️ **Non toccata, apposta:** `vw_job_run_da_guardare`. I suoi `COALESCE` sul processo (il
+`LEFT JOIN` verso `dbops.processi`, la causa `PROGRAMMA` di ripiego) non sbagliano nulla col
+`NOT NULL`: sono difese che il modello non raggiunge più. Riscrivere la vista solo per toglierle
+vorrebbe un banco di equivalenza per nessun cambio di risultato; lo dice il suo manuale.
+
+**Richieste al BE (`/arrivi-db`, dopo l'apply):**
+
+1. Ritirare il ramo `processo_codice IS NULL AND split_part(jobname, ':', 1) = %s` di
+   `list_job_summary`: le righe senza processo non esistono più.
+2. **Censire i lettori che contano sul `23514` o sul nome `chk_job_run_log_processo_dichiarato`**
+   per riconoscere una corsa senza processo: ora la respinge il `NOT NULL`, con `23502` e senza un
+   nome di vincolo `CHECK`. Lato DB nessuna funzione intercetta quel codice (censito sul catalogo).
+3. Se un lettore gestisce ancora `processo_codice` NULL (in `cte_corse`, in `job_liveness`, nelle
+   risposte delle API), può smettere: la colonna è `NOT NULL`. Facoltativo, non rompe niente.
+4. La liveness per processo (`job_liveness(processo_codice=…)`) non cambia: la sua discesa trova da
+   sola l'indice delle corsie.
+
+### 8.8 Il giro 2b ✅ applicato, verde (2026-11-22)
+
+Via di Tid, 2026-11-22. ✅ Applicato da Tid su scratch e dbdev il 2026-11-22, con i pgTAP verdi.
+Verificato sul catalogo dei due database: i quattro changeSet eseguiti, il processo
+`pota_giornale_corse` nel seed, `potatura_esclusione` sui tre processi della fatturazione, il job
+pgAgent creato. ⚠️ Su dbdev `zeroerp_job` non ha ancora l'`EXECUTE` sulla procedura (sullo scratch
+sì): manca la fase post del provisioning, e senza la prima corsa notturna fallisce per permesso
+negato. Rilanciata la fase post, il catalogo di dbdev non ha ancora il permesso (la procedura ha il
+solo `zeroerp_owner=X`, le sorelle anche `zeroerp_job=X`). ✅ La doc auto-generata di `dbops` e
+`maintenance` è rigenerata.
+
+ℹ️ Il primo apply si è fermato su un difetto della sessione `ui`, non di questo giro:
+`messaggi_errore.csv`, riga 1265, una virgola senza virgolette. L'apply ha portato anche i changeSet
+`ui` ancora non committati (`20261122-26` … `-28`).
+
+| File | Che cosa |
+| --- | --- |
+| `00_schema/dbops/20261122-29-alter-processi-add-potatura-esclusione-mctit.yaml` | `dbops.processi.potatura_esclusione text`, `chk_processi_potatura_esclusione_non_vuota`, il `COMMENT` (§8.4) |
+| `20_code/maintenance/20261122-30-create-fn-pota-giornale-corse-mctit.yaml` | `maintenance.fn_pota_giornale_corse(soglia)`: `STRICT`, `SECURITY INVOKER`, `EXECUTE` tolto a `PUBLIC`; restituisce `{soglia, cancellate}` |
+| `20_code/maintenance/20261122-31-create-proc-pota-giornale-corse-job-mctit.yaml` | `maintenance.proc_pota_giornale_corse_job()`, come le sorelle; la soglia di 12 mesi sta qui |
+| `85_pgagent/20261122-32-create-pgagent-job-pota-giornale-corse-mctit.yaml` | il job pgAgent, ogni notte alle 03:30 (ora libera), il passo dietro il cancello della sveglia |
+| `80_data/sql/dbops/processi.csv` | la colonna in coda; l'esclusione dei tre processi della fatturazione (D-R3); la riga 50, `pota_giornale_corse`: `MANUTENZIONE`, `PGAGENT`, fuori dalla convergenza di CI col motivo, acceso in sviluppo e in produzione, verdetto completo |
+| `db/pgtap/maintenance/test-pota-giornale-corse-v1.sql` | nuovo, plan 19 |
+| `manual/` nuove: `fn_pota_giornale_corse`, `proc_pota_giornale_corse_job`; toccate: `job_run_log` (la ritenzione), `processi` (la colonna), `coda_lavori` (`job_run_id` orfano), `vw_job_run_da_guardare`, `vw_processi_programmazione`; la guida `analisi-tracciamento-processi-e-job` | |
+
+**Come lavora.** Cancella le corse chiuse con `started_at` prima della soglia, dei processi senza
+`potatura_esclusione`. Le corse aperte restano sempre. Per ogni coppia `(processo_codice, jobname)`
+restano l'ultima riga di ciascun predicato dei lettori (vedi sotto). Le coppie si leggono con una
+discesa ricorsiva sull'indice delle corsie del giro 2a, e ogni predicato è una `LATERAL … LIMIT 1`
+sullo stesso indice. La soglia è l'inizio del giorno aziendale di 12 mesi fa, con i BB
+`script.fn_giorno_operativo`, `script.fn_mesi_dopo` e `script.fn_inizio_giorno_operativo`.
+`now() - interval '12 months'` lo ha fermato il guardrail (`mesi-intervallo`, §11.10): conterebbe
+nel fuso della sessione di pgAgent.
+
+**Il framework di cleanup non è la stessa cosa** (regola del 2, verificato).
+`dbops.fn_run_automations_cleanup` dà una scadenza alla nascita a ogni riga (`cleanup_at`) e
+cancella lo scaduto, schema per schema su `dbops.automation_scope`, dove `maintenance` non c'è.
+Qui una riga vecchia resta se è «l'ultima» di qualcosa: la regola dipende dalle righe vicine.
+
+#### ✅ Due ritocchi alle decisioni, confermati da Tid il 2026-11-22 (tengono di più, non di meno)
+
+1. **La chiave è la coppia `(processo, jobname)`**, non «ogni job e ogni processo» presi da soli
+   (D-R1). Scrivendo è emerso che il modello non lega un `jobname` a un processo solo: il BE passa
+   il processo esplicito, e nessun vincolo lo vieta. Con il solo `jobname` come chiave, l'ultima
+   riga del job può essere di un altro processo, e la potatura toglierebbe l'ultima del primo. La
+   coppia copre tutti i lettori: quelli per job, quelli per processo e il «processo = K OR jobname
+   = K» del panorama. Il test 14 costruisce il caso. La mutazione con la chiave per solo `jobname`
+   fa diventare rossi i test 10, 12 e 13.
+   ⚠️ Vicolo cieco, scritto perché non si riprovi: una prima stesura teneva per solo `jobname`,
+   «perché le righe di un job sono una parte di quelle del suo processo». È falso, per la ragione
+   qui sopra.
+2. **Due righe in più fra quelle tenute** (D-R2): l'ultima **fallita** (`ok IS FALSE`, l'ultimo
+   rosso di `vw_job_run_da_guardare`) e l'ultima **di pgAgent** (`origine = 'PGAGENT'`, la data di
+   `GIRA_E_NON_REGISTRA` di `vw_processi_programmazione`). Senza la seconda, un job pgAgent che
+   gira una volta all'anno farebbe scattare `GIRA_E_NON_REGISTRA` per un motivo falso. Le ha
+   trovate la rilettura dei corpi dei lettori.
+
+#### Garanzia ritirata: il censimento chiuso lato DB (§7.3, completato)
+
+| Lettore DB | Esito |
+| --- | --- |
+| `vw_processi_programmazione` | coperto: l'ultima corsa, l'ultima di pgAgent e l'ultima non saltata (aperta o conclusa) restano. Il `max()` su tutte le corse del processo, segnalato al §6.3, ha ora il limite della ritenzione. La vista non si riscrive |
+| `vw_job_run_da_guardare` | coperto per il verdetto e la causa. ⚠️ Un caso cambia: per una corsa **appesa da più di un anno**, `falliti_ultimi_7_giorni` conta i fallimenti dei sette giorni prima solo fra le righe tenute. Scritto nel manuale della vista |
+| `vw_job_run_da_superuser` | coperto: l'ultima col ruolo resta, per coppia e quindi per processo |
+| `dbops.coda_lavori.job_run_id` | senza FK, può restare orfano: scritto nel manuale della coda |
+| i quattro scrittori | non ne dipendono: leggono solo la propria riga per `id` |
+
+**Prova** (`prova_changeset.py`, ROLLBACK sullo scratch, i quattro changeSet insieme):
+
+* `test-pota-giornale-corse-v1`: 17 su 19. I due rossi sono i test 17 e 18, che leggono il seed:
+  la prova non applica i CSV, e diventano verdi con l'apply. Tre mutazioni viste dal test: la chiave
+  per solo `jobname` (rossi 10, 12, 13), la corsa aperta non tutelata (rosso 11), l'ultima fallita
+  tolta (rosso 9).
+* Invariati, insieme all'estratto, i pgTAP di `maintenance` e i presidi di `dbops` su processi,
+  pgAgent, installazione, `SECURITY DEFINER`, commenti, postura e riferimenti morti. Fanno
+  eccezione due rossi attesi solo nella prova:
+  * `test-processi-jobname-wrapper`, test 1: il nome `pota_giornale_corse` arriva col CSV;
+  * `test-proc-job-definer-v1`, test 7: l'`EXECUTE` di `zeroerp_job` sulla procedura nuova lo dà
+    la fase post del provisioning (`scripts/sql/provision_zeroerp.sql`, il ciclo su
+    `maintenance.proc_*_job`). Sui database già vivi va rilanciata dopo l'apply; in CI gira dopo il
+    migrate.
+* Guardrail puliti: `comment_al_presente`, `forme_changeset`, `run_on_change`, `precondition_seed`,
+  `grant_ruolo_batch`, `sql_letterali`, `timestamp_senza_fuso`, `pgtap_preambolo`.
+
+**I passi di Tid:**
+
+1. ✅ Confermare i due ritocchi qui sopra (2026-11-22).
+2. ✅ Applicare `20261122-29` … `-32` su scratch e dbdev. Il CSV dei processi rientra da solo: il suo
+   caricatore è `runOnChange`.
+3. Rilanciare la fase post del provisioning su scratch e dbdev, per l'`EXECUTE` di `zeroerp_job`.
+   ✅ scratch; ⏳ **dbdev**: lanciata, ma il permesso non risulta.
+4. ✅ Lanciare `test-pota-giornale-corse-v1`, `test-processi-jobname-wrapper`, `test-proc-job-definer-v1`,
+   `test-processi-registro`, `test-processi-convergenza-ci`, `test-installazione-ambiente-v1`.
+5. ✅ Rigenerare la doc auto-generata di `dbops` e `maintenance`.
+
+Su dbdev la prima corsa notturna non cancella niente: il giornale parte dal 2026-09-04 (fatto
+datato, 2026-11-22).
+
+**Richieste al BE (`/arrivi-db`, dopo l'apply):**
+
+1. Le doc che promettono tutta la storia, già censite al §7.4: `api_tracciamento.md` (lo scopo,
+   `job-runs` senza limite di data, i conteggi di `job-summary`), `api_amm_software.md` (§6.9, la
+   paginazione delle corse del processo), `api_fatturazione.md` («assente = totali da sempre»: per
+   la fatturazione resta vero, perché è esclusa dalla potatura).
+2. Nessun cambio di contratto: la potatura non tocca API né risposte. Il censimento dei lettori
+   applicativi del §7.4 resta valido. Se un lettore conta sull'ultima corsa **fallita** o **di
+   pgAgent** di un job, ora c'è sempre (§8.8, ritocco 2).
