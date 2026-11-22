@@ -13,7 +13,7 @@
 > bozza vuota», grammatica unica dei documenti). Il §4.6, per esempio, è superato in parte: vedi §4.6-bis.
 > ✅ **Già allineato (2026-11-21):** `acquisti.ordini` porta `termine_pagamento_id` (FK su `config.termini_pagamento`,
 > come `vendite.ordini`) e ha perso `giorni_pagamento` e `fine_mese`: changeSet `20261121-04`,
-> [brief-db-fornitore-doppioni-del-soggetto](brief-db-fornitore-doppioni-del-soggetto.md) (D-3).
+> [brief-db-fornitore-doppioni-del-soggetto](../work-done/2026/brief-db-fornitore-doppioni-del-soggetto.md) (D-3).
 > Branch target (futuro): `dev/db-tid` (DB) · `dev/backend-tid` (BE/FE)
 >
 > Riferimenti letti per scrivere questa analisi:

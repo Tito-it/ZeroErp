@@ -9,10 +9,16 @@
 -- pgtap-runner: owner
 -- pgtap-runner-motivo: spegnere un regime fiscale lo puo' solo il migratore (config.regimi_fiscali e' un catalogo scritto dal seed, in sola lettura per l'app da 90_end/20261121-16): il block che il test collauda nessun entry point dell'applicazione lo puo' far scattare (forma 3 di scripts/testpgtap.sh)
 --
--- Test: le INCLUSIONI dell'automazione ATTIVO, e le prime: un regime fiscale
---   spento non si assegna, e uno in uso non si spegne (Tid, 2026-11-21).
---   ChangeSet: 20261121-10 (registro), -11 (dbops.fn_attivo_fk_esclusa),
+-- Test: un regime fiscale spento non si assegna, e uno in uso non si spegne
+--   (Tid, 2026-11-21). Nato col registro delle INCLUSIONI dell'automazione
+--   ATTIVO: ChangeSet 20261121-10 (registro), -11 (dbops.fn_attivo_fk_esclusa),
 --   -12 (runner), -13 (ritiro), -14 (seed), -15 (provision).
+-- ⭐ Rev 2026-11-22 (brief-db-attivo-fk-senza-suffisso-id, D-1 «a»): il filtro
+--   _id non c'e' piu' (20261121-21) e il registro delle inclusioni si ritira
+--   (20261121-25). Le due FK regime_fiscale_rf si legano da sole: i test 1, 2
+--   e 6 guardano che sia cosi', il resto e' invariato. Il nome del file resta
+--   (lo citano altri file); il presidio della regola generale e'
+--   dbops/test-automazione-attivo-senza-filtro-nome-v1.
 --
 -- ⛔ I trigger si cercano per FUNZIONE e ARGOMENTI, non per nome: i nomi
 --   generati sono hashati oltre i 63 caratteri.
@@ -23,16 +29,15 @@
 --   dipenderebbe da chi lo usa oggi.
 --
 -- Elenco test (plan 12):
---   Il registro e il framework
---    1) le due righe del registro, col motivo
---    2) ogni riga nomina una FK monocolonna viva della figlia, senza _id, e
---       non e' anche un'eccezione
+--   Il framework
+--    1) il registro delle inclusioni non c'e' piu'
+--    2) le due FK regime_fiscale_rf non sono eccezioni
 --    3) il require su emittenti_fiscali per regime_fiscale_rf, verso
 --       config.regimi_fiscali(codice_interno)
 --    4) il require su fornitori, idem
 --    5) i due block su config.regimi_fiscali, uno per figlia
---    6) dbops.fn_attivo_fk_esclusa: eccezione, FK senza _id fuori registro,
---       FK inclusa, FK con _id
+--    6) dbops.fn_attivo_fk_esclusa: eccezione, regime_fiscale_rf senza
+--       registro, FK con _id
 --   Il comportamento
 --    7) un regime che nessuno usa si spegne
 --    8) a un fornitore acceso non si assegna un regime spento: E_ATTIVO_PADRE_NON_ATTIVO
@@ -66,35 +71,18 @@ SELECT cn.nspname || '.' || c.relname AS rel,
                      'trgfn_prevent_deactivate_if_children');
 
 -- ============================================================
--- 1-2) Il registro
+-- 1-2) Il framework
 -- ============================================================
-SELECT is(
-    (SELECT array_agg(i.tabella_figlia || '.' || i.colonna_fk ORDER BY i.tabella_figlia COLLATE "C")
-       FROM dbops.automazione_attivo_inclusioni i
-      WHERE i.schema_figlia = 'anagrafiche'
-        AND i.colonna_fk = 'regime_fiscale_rf'
-        AND btrim(i.motivo) <> ''),
-    ARRAY['emittenti_fiscali.regime_fiscale_rf', 'fornitori.regime_fiscale_rf'],
-    '1) le due righe del registro, col motivo');
+SELECT hasnt_table('dbops', 'automazione_attivo_inclusioni',
+    '1) il registro delle inclusioni non c''e'' piu''');
 
 SELECT is(
-    (SELECT COALESCE(array_agg(i.schema_figlia || '.' || i.tabella_figlia || '.' || i.colonna_fk
-                               ORDER BY 1), '{}'::text[])
-       FROM dbops.automazione_attivo_inclusioni i
-      WHERE NOT EXISTS (
-                SELECT 1
-                  FROM pg_constraint k
-                  JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = k.conkey[1]
-                 WHERE k.contype = 'f'
-                   AND cardinality(k.conkey) = 1
-                   AND k.conrelid = to_regclass(format('%I.%I', i.schema_figlia, i.tabella_figlia))
-                   AND a.attname = i.colonna_fk)
-         OR EXISTS (
-                SELECT 1 FROM dbops.automazione_attivo_eccezioni e
-                 WHERE (e.schema_figlia, e.tabella_figlia, e.colonna_fk)
-                     = (i.schema_figlia, i.tabella_figlia, i.colonna_fk))),
-    '{}'::text[],
-    '2) ogni riga nomina una FK monocolonna viva e non e'' anche un''eccezione');
+    (SELECT count(*)::int FROM dbops.automazione_attivo_eccezioni e
+      WHERE e.schema_figlia = 'anagrafiche'
+        AND e.tabella_figlia IN ('emittenti_fiscali', 'fornitori')
+        AND e.colonna_fk = 'regime_fiscale_rf'),
+    0,
+    '2) le due FK regime_fiscale_rf non sono eccezioni');
 
 -- ============================================================
 -- 3-5) I trigger generati
@@ -133,11 +121,11 @@ SELECT is(
 SELECT is(
     ARRAY[
       COALESCE(dbops.fn_attivo_fk_esclusa('config', 'profili_accesso_bindings', 'identita_digitale_id'), '<si lega>'),
-      COALESCE(dbops.fn_attivo_fk_esclusa('vendite', 'note', 'target_tipo'), '<si lega>'),
+      COALESCE(dbops.fn_attivo_fk_esclusa('anagrafiche', 'emittenti_fiscali', 'regime_fiscale_rf'), '<si lega>'),
       COALESCE(dbops.fn_attivo_fk_esclusa('anagrafiche', 'fornitori', 'regime_fiscale_rf'), '<si lega>'),
       COALESCE(dbops.fn_attivo_fk_esclusa('anagrafiche', 'fornitori', 'valuta_id'), '<si lega>')],
-    ARRAY['ECCEZIONE_DICHIARATA', 'FK_NO_ID_SUFFIX', '<si lega>', '<si lega>'],
-    '6) fn_attivo_fk_esclusa: eccezione, FK senza _id fuori registro, FK inclusa, FK con _id');
+    ARRAY['ECCEZIONE_DICHIARATA', '<si lega>', '<si lega>', '<si lega>'],
+    '6) fn_attivo_fk_esclusa: eccezione, i due regime_fiscale_rf senza registro, FK con _id');
 
 -- ============================================================
 -- Fixture: due regimi del test, un fornitore con RF97, un emittente

@@ -133,8 +133,11 @@ strumenti che leggono i nomi.
 **I nomi storici restano** (decisione di Tid del 2026-11-21): la regola vale per le FK nuove, e le FK di
 oggi fuori regola non si rinominano, perché il rinomino costa al backend e al frontend. Le FK storiche
 stanno in un elenco congelato, ciascuna col suo motivo; una FK nuova fuori regola non ci entra.
-⏳ Il presidio, un pgTAP strutturale che confronta ogni FK con l'elenco, non c'è ancora: fino ad allora
-la regola la fa rispettare la revisione.
+Il presidio è `db/pgtap/dbops/test-fk-nome-dice-cosa-porta-v1.sql`: confronta ogni FK a una colonna
+con l'elenco congelato, nei due versi, e chiede che ogni voce dell'elenco esista e sia ancora fuori
+regola. Una FK nuova fuori regola lo fa diventare rosso; una FK storica rinominata esce dall'elenco
+nello stesso giro. Guarda le FK proprie: una FK che una partizione eredita dalla radice ha il nome
+della radice.
 
 ### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
 

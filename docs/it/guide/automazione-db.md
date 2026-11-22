@@ -1,6 +1,6 @@
 # Guida — Framework di Automazione DB
 
-> **Ultimo aggiornamento**: 21 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali; chi amministra un'installazione (§9)
 >
@@ -134,7 +134,6 @@ Non tutte le tabelle seguono le convenzioni standard. Le tabelle di override per
 * `automation_overrides_cols` — nomi colonna non standard (es. `attivo_flag` invece di `attivo`, FK storico diverse)
 * `automazione_attivo_eccezioni` — le **FK** che la regola ATTIVO non lega: per una riga (schema, tabella **figlia**, colonna FK) il motore non genera né il block sul padre né il require sul figlio, e ritira quelli già generati. Ogni riga porta il suo **motivo**, obbligatorio: un'eccezione senza perché è un buco nel framework. È **per FK, non per tabella**: le altre coppie della stessa figlia restano legate. Dettaglio in §4.2, «Le eccezioni».
   ⚠️ Per ritirare configurazione senza toccare il guard, invece, resta `obsoleto_dal` (vedi [Mandare in pensione una voce di catalogo](/guide/uso-di-obsoleto)).
-* `automazione_attivo_inclusioni` — il verso opposto: le **FK senza il suffisso `_id`** che la regola ATTIVO lega comunque, una per riga col suo motivo. Dettaglio in §4.2, «Le inclusioni».
 * `automation_cleanup_exclusions` — tabelle da escludere dal cleanup: per una tabella esclusa nessuno scrive la scadenza (né il giro né il trigger alla nascita) e nessuno cancella righe
 * `automation_lock_columns` — colonne extra da bloccare per singola tabella
 * `storico_scope_policy` — per ogni tabella storicizzata, da dove si prende l'azienda emittente da congelare nella sua storia (vedi §3.4)
@@ -314,7 +313,8 @@ Molte tabelle hanno una colonna `attivo` per il soft-delete (disattivare un reco
 * **Nessuna cascata automatica** sui figli
 * La regola si applica solo se il padre possiede la colonna `attivo`
 * Il tipo di azione della FK (`RESTRICT`, `NO ACTION`, `CASCADE`…) non conta: il motore non lo guarda
-* Solo FK a **una colonna**, con colonna che termina in `_id` (esclude le FK composte e i riferimenti a codici testuali), salvo le FK dichiarate fra le **inclusioni** (sotto)
+* Solo FK a **una colonna**: le FK composte restano fuori. Il nome della colonna non conta: una FK verso l'`id` del padre e una verso un suo codice (`codice_interno`, `codice_iso`, una chiave naturale) si legano allo stesso modo, con la colonna del padre che la FK referenzia davvero. Chi non si lega sta fra le **eccezioni** (sotto)
+* Su una tabella partizionata la FK si decide sulla **radice**: il require della radice PostgreSQL lo copia su ogni partizione, anche su quelle future, e il block conta le righe di tutte. Un'eccezione sulla radice vale per tutte le partizioni
 
 **Trigger generati:**
 
@@ -342,7 +342,7 @@ Il suffisso finale è un hash corto della FK, aggiunto di norma solo quando il n
 | `catalogo.articoli_uom_operativa.articolo_id` e `.uom_id` | la mappatura di un'unità operativa è **storia**: si chiude con `valido_al` e dal primo giorno in vigore non si spegne più. Col block un articolo o un'unità che hanno avuto una mappatura non si spegnerebbero mai; l'articolo si spegne e si riaccende con le sue mappature intatte |
 | `catalogo.unita_misura_conversioni.uom_from_id` e `.uom_to_id` | la conversione generale è storia allo stesso modo: un'unità che ha avuto una conversione non si spegnerebbe mai |
 
-**Le inclusioni: una FK su un codice che si lega comunque.** Il filtro `_id` esclude le FK verso un codice testuale. Quando una di queste è un vero legame padre/figlio, si dichiara in [`dbops.automazione_attivo_inclusioni`](/dbzero/dbops/tabelle/automazione_attivo_inclusioni), una FK per riga col suo motivo (seed da `80_data`, CSV `dbops/automazione_attivo_inclusioni.csv`): il motore genera la coppia intera, block e require, con la colonna del padre che la FK referenzia davvero. Se una FK si lega lo dice una funzione sola, [`dbops.fn_attivo_fk_esclusa`](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa), che leggono sia il motore sia il ritiro: un'eccezione prevale anche su un'inclusione, e togliere una riga ritira i suoi trigger al giro successivo. ⚠️ Un trigger ATTIVO montato **a mano** su una FK senza `_id` va dichiarato qui, o il ritiro lo toglie. Il presidio è `db/pgtap/dbops/test-automazione-attivo-inclusioni-v1.sql`.
+**Chi si lega lo dice una funzione sola.** [`dbops.fn_attivo_fk_esclusa`](/dbzero/dbops/funzioni/fn_attivo_fk_esclusa) risponde per il motore, che non genera le FK escluse, e per il ritiro, che ne toglie i trigger già generati: esclusa è una FK fra le eccezioni, o una FK che una partizione eredita dalla sua radice. Il ritiro non tocca le copie che PostgreSQL fa sulle partizioni del trigger della radice: le governa la radice. Ogni altra FK del perimetro si lega, qualunque sia il nome della colonna: un legame dimenticato non esiste, al più un'eccezione da scrivere. Lo presidia `db/pgtap/dbops/test-automazione-attivo-senza-filtro-nome-v1.sql`, che guarda tutte le FK del perimetro e prova la regola su tabelle costruite dal test.
 
 | Figlia · FK | Perché |
 | --- | --- |
