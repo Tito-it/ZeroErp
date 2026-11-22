@@ -38,6 +38,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_causali_trasporto_a10_causali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'causali', 'attivo', 'causale_magazzino', 'codice_interno')` |
+| trg_causali_trasporto_a10_causali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('magazzino', 'causali', 'attivo', 'causale_magazzino', 'codice_interno')` |
 | trg_causali_trasporto_a10_ddt_block_deact_upd_38fdd5 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ddt', 'causale_trasporto_id', 'id', 'attivo')` |
 | trg_causali_trasporto_a10_ddt_block_deact_upd_d69a08 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'ddt', 'causale_trasporto_id', 'id', 'attivo')` |
 | trg_causali_trasporto_a10_ordini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('acquisti', 'ordini', 'causale_trasporto_id', 'id', 'attivo')` |

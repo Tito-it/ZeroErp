@@ -41,10 +41,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_doc_fiscale_transizioni_a10_azioni_processo_re_e3ee0f | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
+| trg_stati_doc_fiscale_transizioni_a10_azioni_processo_re_e3ee0f | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'azioni_processo', 'attivo', 'azione_processo_codename', 'permission_codename')` |
 | trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale_8ec9d2 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_from_id', 'id')` |
 | trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale_8ec9d2 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_from_id', 'id')` |
-| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale_ec940d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_to_id', 'id')` |
 | trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale_ec940d | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_to_id', 'id')` |
+| trg_stati_doc_fiscale_transizioni_a10_stati_doc_fiscale_ec940d | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_fiscale', 'attivo', 'stato_to_id', 'id')` |
 | trg_stati_doc_fiscale_transizioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_stati_doc_fiscale_transizioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

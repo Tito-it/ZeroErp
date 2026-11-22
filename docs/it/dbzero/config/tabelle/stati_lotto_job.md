@@ -34,6 +34,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_stati_lotto_job_a10_fatturazione_lotti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'fatturazione_lotti', 'stato_lotto', 'codice_interno', 'attivo')` |
 | trg_stati_lotto_job_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_stati_lotto_job_a10_transizioni_stati_lotto_job_bloc_436a94 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_lotto_job', 'stato_a_id', 'id', 'attivo')` |
 | trg_stati_lotto_job_a10_transizioni_stati_lotto_job_bloc_a838d5 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'transizioni_stati_lotto_job', 'stato_da_id', 'id', 'attivo')` |
