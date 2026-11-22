@@ -8,7 +8,7 @@
 #     ui.lista_definizione + lista_colonna + lista_preset + lista_preset_colonna)
 #   - Utente con accesso ai domini `/api/v1/ui/*` (skip_area_check, JWT operatore)
 # ------------------------------------------------------------
-# Indice test (0..9):
+# Indice test (0..9, con 8b):
 #  0) Autenticazione JWT
 #  1) Cleanup proattivo: DELETE preferenza precedente (silent OK)
 #  2) GET /config con codice valido → 200, JSONB con colonne risolte
@@ -17,7 +17,11 @@
 #  5) PUT /preferenza senza Idempotency-Key → 400 E_IDEMPOTENCY_KEY_REQUIRED
 #  6) PUT /preferenza con Idempotency-Key → 200, salva
 #  7) GET /config dopo PUT → contiene la preferenza salvata (verifica round-trip)
-#  8) PUT /preferenza con chiave extra → 400 E_UI_PREFERENZA_VALIDAZIONE
+#  8) PUT /preferenza con chiave extra → 400 E_UI_CONFIGURAZIONE_FORMA (la forma
+#     la giudica il guard del DB, ui.trgfn_preferenza_guard_forma: dal 2026-11-22,
+#     BE8 di brief-db-revisione-ui, il BE non ha piu' whitelist sua)
+#  8b) PUT /preferenza vuota {} → 400 E_UI_PREFERENZA_VALIDAZIONE (la sola regola
+#     dell'API sul corpo, BB richiedi_preferenza_non_vuota)
 #  9) DELETE /preferenza → 200 deleted=true; DELETE idempotente → 200 deleted=false
 # ------------------------------------------------------------
 set -euo pipefail
@@ -232,7 +236,14 @@ echo "-- 8. PUT /preferenza con chiave non whitelisted (atteso 400) --"
 IDEM_KEY=$(gen_uuid)
 do_curl PUT "/api/v1/ui/liste/$LISTA_CODICE/preferenza/" \
     '{"colonne":[],"chiave_maliziosa":"<script>"}' "Idempotency-Key: $IDEM_KEY"
-smoke_check_codice "PUT preferenza con chiave extra" 400 E_UI_PREFERENZA_VALIDAZIONE
+smoke_check_codice "PUT preferenza con chiave extra" 400 E_UI_CONFIGURAZIONE_FORMA
+
+# --- 8b. PUT /preferenza vuota ---
+echo ""
+echo "-- 8b. PUT /preferenza senza nessuna chiave (atteso 400) --"
+IDEM_KEY=$(gen_uuid)
+do_curl PUT "/api/v1/ui/liste/$LISTA_CODICE/preferenza/" '{}' "Idempotency-Key: $IDEM_KEY"
+smoke_check_codice "PUT preferenza vuota" 400 E_UI_PREFERENZA_VALIDAZIONE
 
 # --- 9. DELETE /preferenza + idempotenza ---
 echo ""

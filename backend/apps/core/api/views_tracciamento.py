@@ -312,8 +312,19 @@ class ApiJobRuns(DomainAPIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
+                name="processo_codice", type=str, location=OpenApiParameter.QUERY,
+                required=False, description=(
+                    "Filtra per processo esatto. Con `jobname` e' la corsia: "
+                    "un nome di corsia non e' di un processo solo."
+                ),
+            ),
+            OpenApiParameter(
                 name="jobname", type=str, location=OpenApiParameter.QUERY,
-                required=False, description="Filtra per jobname esatto.",
+                required=False, description=(
+                    "Filtra per jobname esatto. Da solo prende le corse di "
+                    "ogni processo con una corsia di quel nome: ogni riga "
+                    "porta `processo_codice`."
+                ),
             ),
             OpenApiParameter(
                 name="ok", type=bool, location=OpenApiParameter.QUERY,
@@ -348,7 +359,7 @@ class ApiJobRuns(DomainAPIView):
     )
     # Scopo: Restituisce via GET l'elenco paginato delle corse di
     # `maintenance.job_run_log` — job del database (`PGAGENT`) e comandi del
-    # backend (`CRON`/`COMMAND`) — con filtri opzionali su jobname, esito,
+    # backend (`CRON`/`COMMAND`) — con filtri opzionali su processo, jobname, esito,
     # intervallo date e ricerca libera.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
@@ -358,6 +369,7 @@ class ApiJobRuns(DomainAPIView):
 
         limit, offset = pagina_da_query(qp)
         data = fn_list_job_runs(
+            processo_codice=qp_str(qp.get("processo_codice")),
             jobname=qp_str(qp.get("jobname")),
             ok=ok,
             date_from=qp_iso_date_optional(qp.get("date_from"), "date_from"),
@@ -397,7 +409,8 @@ class ApiJobSummary(DomainAPIView):
             },
         )},
     )
-    # Scopo: Restituisce via GET il riepilogo dei job con conteggi esecuzioni,
+    # Scopo: Restituisce via GET il riepilogo per corsia — la coppia
+    # (processo_codice, jobname), una riga ciascuna — con conteggi esecuzioni,
     # successi, fallimenti e ultimo esito.
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
