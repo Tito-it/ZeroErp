@@ -300,16 +300,12 @@ class ProcessiRepository:
         # ⚠️ Le CTE non hanno parametri (nessuna condizione): l'ordine dei `%s`
         #    resta quello del SELECT e del WHERE.
         data_sql = f"""
-            WITH {cte_corse([], chiave="processo_codice")},
-            conteggi AS (
-                -- Le corse VERE, come `total_runs` di
-                -- MaintenanceRepository.list_job_summary: una saltata non e'
-                -- un'esecuzione.
-                SELECT processo_codice, count(*) FILTER (WHERE NOT saltata) AS run_totali
-                  FROM maintenance.job_run_log
-                 WHERE processo_codice IS NOT NULL
-                 GROUP BY processo_codice
-            )
+            -- ⛔ Niente conteggio delle corse: `run_totali` (le corse di sempre)
+            --    e' ritirato il 2026-11-22 (Tid: «i conteggi non usati si
+            --    ritirano»). Non lo leggeva nessuno, e con la ritenzione del
+            --    giornale a 12 mesi non sarebbe piu' stato «di sempre»
+            --    (brief-db-giornale-corse-indici §7.4).
+            WITH {cte_corse([], chiave="processo_codice")}
             SELECT p.id,
                    p.codice,
                    p.descrizione,
@@ -332,12 +328,10 @@ class ProcessiRepository:
                    c.started_at AS conclusa_started_at,
                    c.ended_at   AS conclusa_ended_at,
                    c.ok         AS ultimo_ok,
-                   COALESCE(n.run_totali, 0) AS run_totali,
                    COUNT(*) OVER () AS total_count
               FROM dbops.processi p
               LEFT JOIN recente r ON r.processo_codice = p.codice
               LEFT JOIN conclusa c ON c.processo_codice = p.codice
-              LEFT JOIN conteggi n ON n.processo_codice = p.codice
              WHERE {' AND '.join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s

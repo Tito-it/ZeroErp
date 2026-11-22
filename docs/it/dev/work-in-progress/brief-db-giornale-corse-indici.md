@@ -12,13 +12,15 @@ col via di Tid; D-R1 è decisa (§7.2).
 | 2 | ✅ team DB | La verifica critica della richiesta | §6 | 1 |
 | 3 | ✅ team DB | Giro 1: quattro indici, due viste riscritte, la prova, la doc `manual/` | §6.2-§6.4, §6.7 | 2 |
 | 4 | ✅ Tid | Applicare `20261122-20` … `-22`; lanciare `test-job-run-log-per-chiave-v1` e i pgTAP del §6.7; rigenerare la doc auto-generata | §6.7 | 3 |
-| 5 | **sessione BE** ⏭️ | L7 riportata alla `LATERAL` per processo; il `count(*)` di L7; il `LIKE` di L4; `api_tracciamento.md`; il censimento della ritenzione (§7.3) | §6.6, §7.3 | 4 |
-| 6 | team DB | Giro 2: la ritenzione di 12 mesi | §7 | 5, il via di Tid |
+| 5 | **sessione BE** ⏭️ | L7 riportata alla `LATERAL` per processo; il `count(*)` di L7 (si ritira, §7.4); il `LIKE` di L4; `api_tracciamento.md`. ✅ Il censimento della ritenzione (§7.4, 2026-11-22) | §6.6, §7.3, §7.4 | 4 |
+| 5-bis | **team DB** | Le due richieste del §7.4: la riserva su D-R1 (l'ultima **conclusa**), l'esclusione dichiarata dei processi come la fatturazione | §7.4 | 5 (censimento) |
+| 6 | team DB | Giro 2: la ritenzione di 12 mesi | §7 | 5-bis, il via di Tid |
 
 **Decisioni di Tid:** ✅ 2026-11-22: le due viste DB che leggono tutto il giornale si riscrivono **in
 questo giro** (§6.3). ✅ 2026-11-22: la ritenzione è un debito, e il giornale tiene **12 mesi** (§6.5, §7).
 ✅ 2026-11-22: D-R1 strada **(a)**, la potatura non tocca mai l'ultima corsa di ogni job e di ogni
-processo (§7.2). Nessuna decisione aperta.
+processo (§7.2). ✅ 2026-11-22: le corse della fatturazione non si potano; i conteggi non usati si
+ritirano (§7.4). Nessuna decisione aperta.
 **Committato** (2026-11-22, `dev/db-tid`): il giro 1 (tre changeSet, un pgTAP, la doc di `maintenance`,
 manuale e auto-generata) e questo brief. Il giro 2 non ha ancora file.
 
@@ -291,3 +293,61 @@ può contare su una storia completa.
 contano su «il giornale ha tutta la storia». Quelli già noti: il `count(*)` delle corse di L7 (che
 diventerebbe «le corse degli ultimi 12 mesi», oltre a ciò che D-R1 tiene), L1 e L6 (le corse più
 vecchie spariscono dagli elenchi), `api_tracciamento.md`. L'elenco non è chiuso: va cercato.
+
+### 7.4 Il censimento del BE — 2026-11-22
+
+Sola lettura su `backend/apps` e `frontend/src` (sessione BE, `dev/backend-tid`). I test sono contati a parte.
+
+**Dipendono da «tutta la storia»:**
+
+| Lettore | Forma | Chi lo vede | Dopo la potatura |
+| --- | --- | --- | --- |
+| `pipeline_service.esiti_fatturazione` → `MaintenanceRepository.list_job_summary(jobname_prefix='run_fatturazione_batch', meta_month_equals=('competenza', mese))` | conteggi e corse per **mese di competenza** (`COALESCE(meta->>'competenza', mese di started_at)`) | **FE**: `FatturazioneEsitiPanel` in `LottiListView`, che naviga per anno e può aprire un mese di anni prima | il filtro è per mese, non per chiave: le righe che D-R1 tiene non lo coprono. Un mese oltre la soglia diventa «Nessun giro di fatturazione», un mese a cavallo conta meno del vero. → **Decisione di Tid qui sotto** |
+| `list_job_summary` senza filtri, `GET /api/v1/core/tracciamento/job-summary/` | `total_runs`, `ok_count`, `fail_count`, `saltate_count` per jobname su tutte le righe | solo API, nessun FE | diventano «gli ultimi 12 mesi, più le righe tenute» |
+| `list_job_runs` (L1), `GET /api/v1/core/tracciamento/job-runs/` | lista paginata col totale, `date_from` senza limite inferiore | solo API, nessun FE | un `date_from` oltre la soglia trova solo le righe tenute |
+| `ProcessiRepository.list_processi` (L7), `run_totali` | `count(*) FILTER (NOT saltata)` per processo, su tutta la storia | solo API e doc: non è una colonna della lista 66, il FE non lo legge | → **ritirato dal BE** (decisione di Tid qui sotto) |
+| `ProcessiRepository.list_run_processo` (L6), `GET /api/v1/amm-software/processi/{codice}/run/` | lista paginata col totale, senza limite di data | FE: `ProcessoDrawer` chiede le ultime 50 e non pagina | `count` e `offset` non arrivano più a tutta la storia; a video cambia solo per un processo con meno di 50 corse in 12 mesi |
+
+**Coperti da D-R1 (salvo la riserva qui sotto):** `job_liveness` (lo stato dei worker delle code,
+`ApiCodeConteggi` → `CodaWorkerStato`, «mai eseguito»; il battito di `presidi_digest`, «non ha mai
+girato»), le corse di `list_processi` (`ultimo_run` «mai girato», `ultima_conclusa`, `ultimo_ok`), e i
+presidi (`presidi_repository.stato_presidi`, il digest), che leggono le viste DB senza finestre loro.
+
+**Non dipendono:** `corsa_riuscita_dal` e `corsa_chiusa_dal`, le idempotenze di `e_dovuto`: guardano
+dall'inizio del periodo corrente, e i periodi di `deploy/sveglie.json` sono giorno, settimana, mese.
+Scrivono soltanto: `job_run.registered_job`, i comandi di fatturazione, stampa, code, smoke, email.
+
+**Un riferimento che resta orfano:** `dbops.coda_lavori.job_run_id` non ha FK verso il giornale; il BE
+lo espone e `JobDettaglioDrawer` lo mostra. Dopo la potatura punta a una riga che non c'è: niente si
+rompe, si perde la traccia. Lo si scrive nel manuale della coda.
+
+**Doc BE che promettono tutta la storia** (le corregge il BE dopo il giro 2):
+`api_tracciamento.md` (lo scopo, `job-runs` senza limite di data, i conteggi di `job-summary`),
+`api_amm_software.md` (`run_totali`, §6.9 la paginazione delle corse del processo),
+`api_fatturazione.md` («assente = totali da sempre»).
+
+#### ⛔ Riserva su D-R1: «l'ultima corsa vera» può essere una riga aperta
+
+D-R1 tiene l'ultima corsa `NOT saltata`. Ma il BE legge «l'ultima **conclusa**»: la CTE `conclusa` di
+`maintenance_repository.cte_corse` vuole `ended_at IS NOT NULL AND NOT saltata`. L'ultima corsa non
+saltata può essere aperta: in esecuzione, o rimasta appesa da un processo morto. Se l'ultima
+conclusa ha più di 12 mesi, la potatura la cancella, e `ultima_conclusa` diventa `null`: «Mai
+concluso» in lista, «nessuna corsa conclusa» nel digest, la cella «Esito» vuota.
+
+**Richiesta al team DB:** fra le righe che la potatura tiene per ogni chiave, l'ultima con
+`ended_at IS NOT NULL AND NOT saltata`, al posto (o accanto) dell'ultima `NOT saltata`. È la stessa
+domanda per i lettori DB: `vw_job_run_da_guardare` scarta la corsa in corso ma non quella appesa.
+
+#### ✅ Decisioni di Tid (2026-11-22) sul censimento
+
+* **Le corse della fatturazione non si potano.** Il pannello esiti deve vedere ogni mese, anche
+  oltre la soglia. **Richiesta al team DB:** la potatura esclude le corse dei processi che lo
+  dichiarano. Il BE propone che sia una proprietà del processo in `dbops.processi`, e non un elenco di
+  jobname nella procedura: un altro processo con lo stesso bisogno la dichiara senza toccare la
+  potatura. Oggi la dichiara la fatturazione (`jobname` con prefisso `run_fatturazione_batch`). La
+  forma la decide il team DB.
+* **I conteggi non usati si ritirano.** `run_totali` di `list_processi` non lo legge nessuno: il BE lo
+  ritira (risposta, query `conteggi`, `api_amm_software.md`). I conteggi di `list_job_summary`
+  restano: li usa il pannello esiti (`total_runs`, `ok_count`), e con la fatturazione esclusa dalla
+  potatura restano veri per lui. Per l'endpoint `job-summary` senza filtri, che nessun FE chiama, la
+  doc dirà «gli ultimi 12 mesi».
