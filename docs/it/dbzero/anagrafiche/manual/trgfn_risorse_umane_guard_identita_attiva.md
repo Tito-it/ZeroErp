@@ -1,77 +1,94 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_risorse_umane_guard_identita_attiva`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_risorse_umane_guard_identita_attiva`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto di lavoro che il guard presidia
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — la veste operatore che va spenta prima
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-[dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la stessa regola, generata dall'automazione, per le coppie legate da una FK
+> * [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — la stessa regola, generata, per le coppie legate da una chiave esterna
+> * [anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_guard_ultimo_super_admin) — l'altro guard sullo spegnimento del rapporto
 >
-Guida: [Risorse umane e accessi](/guide/risorse-umane-e-accessi) · [Disattivazione record — ordine UPDATE e trigger](/dev/api#disattivazione-record-ordine-update-e-trigger)
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — la veste, il rapporto e la credenziale
 
 ---
+
 ### 🎯 Scopo Principale
-(nata il 12-09-2026, `20_code/anagrafiche/20260912-18`; decisione Tid, analisi
-`analisi-software-per-dati-morti` §6.2)
 
-**Una risorsa umana con un'identità operatore ancora attiva non si disattiva.**
-È «figli prima, padre poi», la regola di tutto il progetto — qui scritta a mano
-perché il legame fra `risorse_umane` e `identita_digitali` **non è una chiave
-esterna** (passa da `soggetto_ruolo_id`), e l'automazione ATTIVO, che genera i
-guard dalle FK, non lo vede.
-
-Trigger: `trg_risorse_umane_a10_guard_identita_attiva_upd`, `BEFORE UPDATE OF
-attivo` su `anagrafiche.risorse_umane`, fase `_a10_`. Interviene **solo** sulla
-transizione `attivo` `true → false`; INSERT e UPDATE di altre colonne non sono
-affar suo.
+`anagrafiche.trgfn_risorse_umane_guard_identita_attiva` rifiuta lo spegnimento di un rapporto di lavoro finché sullo
+stesso ruolo c'è una veste `OPERATORE` accesa.
 
 ---
 
-### ⚠️ Perché è nata: una regola che viveva per caso
+### Figli prima, padre poi, scritto a mano
 
-Fino al 12-09-2026 la stessa regola la faceva rispettare il guard di automazione
-`trg_risorse_umane_a10_risorse_umane_auth_user_block_deact_upd`, generato quando
-`risorse_umane_auth_user` era una **tabella** figlia. Dopo il cutover multi-face
-quel nome risolveva una **vista** su `identita_digitali`, e il guard continuava
-a funzionare per caso (la vista aveva `risorsa_umana_id` e `attivo`). Con il
-ritiro della vista (`90_end/20260912-26`) sarebbe caduto — o peggio, avrebbe
-sollevato `E_ATTIVO_BLOCK_FKCOL_NOT_FOUND` a ogni disattivazione, come il
-guard gemello sulla legacy la mattina dello stesso giorno. Il guard di
-automazione è stato ritirato (`00_schema/20260912-19`) **dopo** che questo era
-in servizio nella timeline: nessuna finestra senza regola.
+In tutto il progetto una riga non si spegne finché ha figli accesi: prima si spengono i figli, poi il padre. Per le
+coppie legate da una chiave esterna il guard lo genera l'automazione. La veste operatore e il rapporto di lavoro non
+sono legati da una chiave esterna: si trovano perché hanno lo stesso `soggetto_ruolo_id`. L'automazione non li vede,
+e il guard è scritto a mano.
 
-L'alternativa scartata — nessun guard, la risorsa si disattiva e il sync spegne
-l'utente — avrebbe fatto trascinare il figlio dal padre: un modello diverso da
-tutte le altre coppie padre/figlio.
+L'alternativa, lasciar spegnere il rapporto e spegnere la credenziale di conseguenza, farebbe trascinare il figlio
+dal padre: un modello diverso da tutte le altre coppie.
 
 ---
 
-### Come rifiuta
+### Quando scatta
 
-Codice **suo**, [`E_RISORSA_UMANA_IDENTITA_ATTIVA`](/guide/Messaggi-di-Errore-e-Generazione-Log)
-(classe `CONFLITTO_STATO`: lo stato del figlio può cambiare, quindi l'azione
-resta proposta e disabilitata col motivo — non `E_ATTIVO_BLOCK_CHILDREN_ACTIVE`,
-che è dell'automazione e nomina una FK). Nel contesto: `campo = attivo`
-(l'interruttore che il frontend accende), `risorsa_umana_id`,
-`soggetto_ruolo_id`. Nel `VARIADIC` lo **username** dell'utente ancora attivo:
-è ciò che una persona riconosce, e la frase a catalogo lo nomina.
+Prima della modifica della colonna `attivo` di un rapporto, e solo quando passa da acceso a spento. Cerca una veste
+`OPERATORE` accesa sullo stesso `soggetto_ruolo_id` della riga nuova; se ce n'è più d'una nomina la prima.
 
-Il rimedio è nella `soluzione` a catalogo: disattivare prima l'identità
-operatore (o chiuderne la validità), poi ripetere.
+Conta il solo interruttore della veste, non le sue date: una veste accesa ma già scaduta ferma comunque lo
+spegnimento del rapporto. È coerente con la regola, che guarda lo stato dei figli e non la loro validità.
+
+Il rimedio è spegnere prima la veste e poi ripetere lo spegnimento del rapporto.
+
+Le date del rapporto non sono affar suo: una data di fine o un inizio spostato in avanti chiudono l'accesso
+dell'operatore senza spegnere niente, e la credenziale li segue con la sincronizzazione. Per l'ultimo
+amministratore li ferma il guard dell'ultimo SUPER_ADMIN.
 
 ---
 
-### Presidio
+### ⚠️ Che cosa oggi non copre
 
-`db/pgtap/anagrafiche/test-risorse-umane-guard-identita-attiva-v1.sql` — otto
-test su un operatore **costruito** dalla madre `fn_crea_operatore_v2` (non
-cercato: in CI `anagrafiche` è vuoto): rifiuto con codice nel canale
-`CONSTRAINT` e username nella frase; passaggio a identità spenta; il sync
-`z90` che spegne l'utente; il guard vecchio non più montato.
+* **Lo spegnimento insieme allo spostamento.** Se la stessa modifica spegne il rapporto e ne cambia il
+  `soggetto_ruolo_id`, il guard cerca la veste sul ruolo nuovo: la veste accesa sul ruolo di prima non lo ferma.
+
+---
+
+### Codici errore
+
+* `E_RISORSA_UMANA_IDENTITA_ATTIVA` — il rapporto ha una veste operatore ancora accesa. È un codice suo, di classe
+  `CONFLITTO_STATO`: lo stato della veste può cambiare, e l'interfaccia mostra l'azione disabilitata col motivo.
+  Non usa il codice dell'automazione, che nomina una chiave esterna che qui non c'è. Il contesto indica
+  l'interruttore da accendere (`attivo`), il rapporto e il ruolo; il messaggio nomina lo username della veste
+  ancora accesa, che è ciò che una persona riconosce.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-risorse-umane-guard-identita-attiva-v1.sql` — su un operatore costruito con la sua
+  funzione di creazione: lo spegnimento con la veste accesa è rifiutato col suo codice e con lo username nel
+  messaggio; con la veste spenta prima passa, e la credenziale si spegne; il guard generato di prima non è più
+  montato.
+
+Nessun test prova lo spegnimento insieme allo spostamento del ruolo.
+
+---
+
+### Note di migrazione
+
+* 2026-09-12 — prende il posto del guard generato dall'automazione quando la veste e il rapporto erano legati da
+  una tabella ponte, `risorse_umane_auth_user`. Dopo che il ponte era diventato una vista, quel guard funzionava
+  per caso; col ritiro della vista sarebbe caduto. Il guard nuovo è entrato in servizio prima del ritiro di quello
+  vecchio, senza una finestra senza regola.
 
 ---
 

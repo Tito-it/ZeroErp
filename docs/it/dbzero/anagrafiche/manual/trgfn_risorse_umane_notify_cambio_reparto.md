@@ -1,47 +1,57 @@
-## 📘 Documentazione Concettuale – Trigger Function `anagrafiche.trgfn_risorse_umane_notify_cambio_reparto`
+## 📘 Documentazione Concettuale – Trigger function `anagrafiche.trgfn_risorse_umane_notify_cambio_reparto`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-**Approfondimento tabelle:**
+> Approfondimento tabelle:
 >
-[anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative)
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto di lavoro, che porta il reparto
+> * [config.unita_organizzative](/dbzero/config/tabelle/unita_organizzative) — i reparti
 >
-**Approfondimento funzioni:**
+> Approfondimento funzioni:
 >
-[anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto)
+> * [anagrafiche.fn_notify_cambio_reparto](/dbzero/anagrafiche/funzioni/fn_notify_cambio_reparto) — la funzione che costruisce e invia l'avviso
+>
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — il rapporto di lavoro e la veste operatore
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 10-03-2026)
-La trigger function
-**`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una
-notifica PostgreSQL quando una risorsa umana cambia
-`unita_organizzativa_id`.
 
-La notifica e' pensata per il backend applicativo, che puo' intercettarla via
-`LISTEN/NOTIFY` e invalidare cache o permessi derivati dal reparto.
+`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto` avvisa il backend quando una risorsa umana cambia reparto
+(`unita_organizzativa_id`), perché ricalcoli i permessi di quella persona.
 
 ---
 
-### Regola applicata
+### Perché il backend va avvisato
 
-* Trigger **AFTER UPDATE OF unita_organizzativa_id** su
-  `anagrafiche.risorse_umane`.
-* Chiama `anagrafiche.fn_notify_cambio_reparto(...)` passando:
-  * `NEW.id`
-  * `OLD.unita_organizzativa_id`
-  * `NEW.unita_organizzativa_id`
-* Essendo un trigger `AFTER`, il valore di ritorno e' ignorato (`RETURN NULL`).
+Un profilo di accesso si può dare a un reparto invece che a una persona: vale per chi ci lavora. Il backend tiene i
+permessi di ogni utente in una memoria temporanea, e uno spostamento di reparto la rende vecchia. Il database non
+chiama il backend: lascia un avviso sul canale `cambio_reparto`, e il processo del backend che ascolta quel canale
+toglie dalla memoria i permessi della persona spostata.
 
 ---
 
-### Ruolo nel processo
+### Quando scatta
 
-La funzione collega una modifica dati lato DB a una reazione applicativa
-asincrona, senza introdurre dipendenze dirette del database dal backend.
+Dopo una modifica di `unita_organizzativa_id` in cui il valore cambia davvero, anche da vuoto a valorizzato e
+viceversa. Una modifica che riscrive lo stesso reparto non scatta. Il trigger passa alla funzione il rapporto, il
+reparto di prima e quello nuovo, e non cambia la riga.
 
-Il cambio reparto diventa cosi' un evento esplicito e osservabile.
+L'avviso parte solo se la transazione si conferma: una modifica annullata non avvisa nessuno.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-notify-cambio-reparto.sql` — il trigger è montato; un cambio di reparto lo attraversa
+  senza errori, e una modifica che non cambia il reparto non lo fa scattare.
+
+Nessun test verifica che l'avviso arrivi, né che cosa porta: l'avviso parte alla conferma della transazione, e il
+test si chiude annullandola.
 
 ---
 
