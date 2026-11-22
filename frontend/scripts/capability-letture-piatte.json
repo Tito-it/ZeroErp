@@ -11,6 +11,10 @@
       "motivo": "`non_editable_fields` del registro dei lock (`dbops.vw_non_editable_fields` + gap Python, `compute_non_editable_fields`), non di una capability: stesso nome, altra sorgente (brief §4.0).",
       "chiavi": { "non_editable_fields": 2 }
     },
+    "core/utils/campoFermo.js": {
+      "motivo": "`non_editable_fields` della RIGA, dal registro dei lock (`dbops.fn_non_editable_fields`, proiettato da `ui_admin_repository`), non di una capability: stesso nome, altra sorgente (brief §4.0). E' il BB che lo legge per i drawer di `ui` (`ListaDefinizioneDrawer`, `ListaColonnaDrawer`).",
+      "chiavi": { "non_editable_fields": 1 }
+    },
     "amministrazione/components/EmittenteFiscaleUtilitiesTab.vue": {
       "motivo": "`can_update` e' una capability di RIGA calcolata da `emittenti_fiscali_service`, non il blob di un dettaglio (api.md: una capability di dettaglio non risponde per una riga).",
       "chiavi": { "can_update": 1 }
