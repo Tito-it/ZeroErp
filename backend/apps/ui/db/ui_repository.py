@@ -69,10 +69,11 @@ class UiRepository:
         #    quindi valeva la pena verificarlo prima di toglierla.
         return jsonb_out(row[0])
 
-    # Scopo: le misure «righe per pagina» ammesse e i due default, per TUTTI i
-    #        paginatori dell'applicazione. Wrapper 1:1 di
-    #        `ui.fn_get_misure_pagina()`: `{misure, default_compatta,
-    #        default_pagina}`. Se un default manca a catalogo la fn solleva
+    # Scopo: le misure «righe per pagina» ammesse e il default di ogni uso,
+    #        per TUTTI i paginatori dell'applicazione. Wrapper 1:1 di
+    #        `ui.fn_get_misure_pagina()`: `{misure, default_per_uso}` (le due
+    #        chiavi `default_compatta`/`default_pagina` sono in ritiro, BE33:
+    #        non si leggono). Se un default manca a catalogo la fn solleva
     #        `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` (TECNICO): mai un NULL.
     def get_misure_pagina(self) -> dict[str, Any]:
         with connection.cursor() as cursor:

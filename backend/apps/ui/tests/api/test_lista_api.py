@@ -90,14 +90,14 @@ class UiListaApiTests(JwtMockedApiTest):
     )
     @patch(
         "apps.ui.api.views.UiService.get_misure_pagina",
-        return_value={"misure": [10, 25, 50, 100], "default_compatta": 10, "default_pagina": 25},
+        return_value={"misure": [10, 25, 50, 100], "default_per_uso": {"COMPATTA": 10, "PAGINA": 25}},
     )
     def test_get_misure_pagina_envelope_corretto(self, mock_svc, _mock_auth) -> None:
         response = self.client.get("/api/v1/ui/misure-pagina/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.json()["data"],
-            {"misure": [10, 25, 50, 100], "default_compatta": 10, "default_pagina": 25},
+            {"misure": [10, 25, 50, 100], "default_per_uso": {"COMPATTA": 10, "PAGINA": 25}},
         )
         mock_svc.assert_called_once()
 

@@ -6,7 +6,7 @@
 //          - getById(id)              — GET /admin/colonne/<id>/
 //          - create(listaId, payload) — POST con Idempotency-Key
 //          - update(id, payload)      — PATCH (lista_id immutabile)
-//          - destroy(id)              — DELETE (soft-block preferenze)
+//          - destroy(id)              — DELETE (409 se un preset la compone)
 //
 // emitDataChanged fired post-write su `TAB_ENTITIES.UI_COLONNA`. La
 // pagina tecnica e' SUPER_ADMIN-only (BE: `IsAdminZeroERP`).
@@ -79,9 +79,10 @@ export const useUiColonnaAdminStore = defineStore('ui-colonna-admin', () => {
     return res.data.data
   }
 
-  // Scopo: Cancella colonna. Soft-block applicativo se referenziata da
-  //        preferenze utente -> 409 con E_UI_COLONNA_IN_USO; l'errore
-  //        risale al caller.
+  // Scopo: Cancella colonna. Se un preset la compone -> 409 con
+  //        E_UI_COLONNA_IN_USO (il messaggio nomina i preset); l'errore
+  //        risale al caller. Le preferenze utente non la fermano: la voce
+  //        la toglie il DB (Q56 di brief-db-revisione-ui).
   async function destroy(colonnaId) {
     const res = await deleteAdminColonna(colonnaId)
     emitDataChanged(TAB_ENTITIES.UI_COLONNA, colonnaId)

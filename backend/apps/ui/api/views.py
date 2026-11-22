@@ -97,9 +97,14 @@ class ApiMisurePaginaView(DomainAPIView):
     """
     GET /api/v1/ui/misure-pagina/
 
-    Le misure «righe per pagina» che ogni paginatore offre e i due default
-    (`default_compatta` per drawer e dialog, `default_pagina` per le pagine),
-    dal catalogo `ui.misure_pagina`. Servite a TUTTA l'applicazione, non
+    Le misure «righe per pagina» che ogni paginatore offre e il default di
+    ogni uso (`default_per_uso`, `{uso: misura}`, una chiave per ogni valore
+    di `ui.uso_misura_pagina`: oggi `COMPATTA` per drawer e dialog, `PAGINA`
+    per le pagine), dal catalogo `ui.misure_pagina`. La risposta passa
+    com'e' dal DB: le due chiavi di prima (`default_compatta`,
+    `default_pagina`) ci sono ancora finche' il team DB non le ritira (BE33
+    di brief-db-revisione-ui), ma non fanno parte del contratto e nessuno le
+    legge. Servite a TUTTA l'applicazione, non
     dentro la configurazione di una lista: le usano anche tabelle grezze,
     dialog e cruscotti. Il frontend le legge una volta per sessione.
     """
@@ -117,8 +122,9 @@ class ApiMisurePaginaView(DomainAPIView):
                             "misure": serializers.ListField(
                                 child=serializers.IntegerField(),
                             ),
-                            "default_compatta": serializers.IntegerField(),
-                            "default_pagina": serializers.IntegerField(),
+                            "default_per_uso": serializers.DictField(
+                                child=serializers.IntegerField(),
+                            ),
                         },
                     ),
                     "meta": serializers.DictField(required=False),

@@ -485,7 +485,7 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
     """
     GET    /api/v1/ui/admin/colonne/<id>/  -> dettaglio singolo
     PATCH  /api/v1/ui/admin/colonne/<id>/  -> aggiorna campi mutabili
-    DELETE /api/v1/ui/admin/colonne/<id>/  -> elimina (soft-block preferenze)
+    DELETE /api/v1/ui/admin/colonne/<id>/  -> elimina (409 se un preset la compone)
     """
 
     @extend_schema(responses={200: _DATA_RESPONSE})
@@ -505,9 +505,9 @@ class ApiAdminListaColonnaDetailView(AdminAPIView):
         return success_response(result)
 
     @extend_schema(responses={200: _DATA_RESPONSE})
-    # Scopo: Cancella colonna. Soft-block applicativo se referenziata da
-    #        preferenze utente; FK CASCADE pulisce preset_colonna e
-    #        permessi colonna.
+    # Scopo: Cancella colonna. 409 E_UI_COLONNA_IN_USO se un preset la
+    #        compone (FK NO ACTION); i permessi di colonna vanno a cascata, e
+    #        la voce esce dalle preferenze utente per mano del DB (Q56).
     def delete(self, request: Request, colonna_id: int) -> JsonResponse:
         result = ListaColonnaAdminService().delete_colonna(colonna_id)
         return success_response(result)

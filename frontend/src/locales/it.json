@@ -6607,7 +6607,7 @@
       "colonna_tab_comportamento": "Comportamento",
       "colonna_tab_layout": "Layout",
       "colonna_delete_titolo": "Elimina colonna",
-      "colonna_delete_messaggio": "Confermi l'eliminazione della colonna \"{codice}\"? Operazione bloccata se referenziata da preferenze utente. In tal caso, disattiva la colonna invece.",
+      "colonna_delete_messaggio": "Confermi l'eliminazione della colonna \"{codice}\"? Sparirà anche dalle personalizzazioni degli utenti che la mostrano. Operazione bloccata se un preset la compone: in tal caso toglila prima dal preset, oppure disattiva la colonna.",
       "tipo_colonna_identificatore": "Identificatore",
       "tipo_colonna_informazione": "Informazione",
       "tipo_colonna_azione": "Azione",
