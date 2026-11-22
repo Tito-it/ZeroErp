@@ -37,6 +37,8 @@ DECLARE
     -- sottoinsieme degli elenchi calcolato qui
     v_cambiate_inst text[];
     v_cambiate_sw   text[];
+    -- forma COLONNA: le colonne derivate, dal quarto argomento validato
+    v_derivate  dbops.automazione_seed_primo_impianto.colonne_derivate%TYPE;
     -- forma FIGLIA: il padre e l'id del padre letti dagli argomenti
     -- validati (regclass e text nudi: un nome e un valore, non un riflesso)
     v_padre     regclass;
@@ -223,6 +225,17 @@ BEGIN
         RETURN NEW;   -- riga di seed intatta: segue il CSV
     END IF;
 
+    -- Le colonne derivate le ha cambiate il database (un trigger della
+    -- tabella figlia), non il CSV: non si riportano a OLD e non vanno
+    -- negli scartati. Il quarto argomento l'ha validato la grammatica,
+    -- e si legge con la sua stessa lettura (dbops.fn_seed_elenco_colonne).
+    IF v_arg.forma = 'COLONNA' AND TG_NARGS = 4 THEN
+        v_derivate := dbops.fn_seed_elenco_colonne(TG_ARGV[3]);
+        v_cambiate_inst := ARRAY(SELECT k FROM unnest(v_cambiate_inst) AS k
+                                  WHERE NOT (k = ANY (v_derivate))
+                                  ORDER BY k);
+    END IF;
+
     IF cardinality(v_cambiate_inst) = 0 THEN
         RETURN NEW;   -- niente dell'installazione da scartare
     END IF;
@@ -264,7 +277,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_seed_primo_impianto()
-IS 'Sulle tabelle del seed di primo impianto (dbops.automazione_seed_primo_impianto) il CSV crea la riga, e dopo che l''installazione l''ha modificata non la riscrive piu''. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, in fase a00 (scatta per primo), montato dal runner dbops.fn_run_automations_seed_primo_impianto; argomenti secondo dbops.fn_seed_primo_impianto_argomenti (forma RIGA, COLONNA, SOLO_INSERIMENTO o FIGLIA). Chi scrive: il software e'' la sessione del migratore (dbops.fn_sessione_del_migratore), tutto il resto e'' l''installazione. INSERT del software: la riga entra in dbops.seed_righe, nata dal seed. UPDATE del software: su una riga di seed intatta passa; su una riga personalizzata, su una riga dell''installazione o in SOLO_INSERIMENTO rimette da OLD le colonne dell''installazione e lascia passare quelle del software; su una riga personalizzata salva i valori scartati nel registro e alza un WARNING; in SOLO_INSERIMENTO alza il WARNING e non scrive il registro. UPDATE dell''installazione su una riga di seed: una colonna del software cambiata e'' E_SEED_COLONNA_DEL_SOFTWARE (campo = la colonna); una colonna dell''installazione cambiata fa la riga personalizzata (meta, colonne d''audit e tx_id non contano). DELETE di una riga di seed: E_SEED_RIGA_NON_CANCELLABILE (la riga si spegne, attivo = false). La domanda «nata dal seed» la fa dbops.fn_seed_riga, la stessa che leggono le superfici dei campi spenti. Le righe dell''installazione si scrivono e si cancellano liberamente. Forma FIGLIA (una tabella di composizione senza colonna id): l''installazione scrive e cancella sempre; il software scrive una riga solo sotto un padre che e'' una riga di seed intatta (dbops.fn_seed_riga del padre), altrimenti alza un WARNING e restituisce OLD all''UPDATE e NULL all''INSERT di una riga che manca; il DELETE del software passa. Porta di manutenzione zeroerp.allow_seed_primo_impianto_override, solo per la sessione del migratore (script.fn_porta_manutenzione_aperta): lascia passare la bonifica e il DELETE forward-only, la riga resta personalizzata. Montaggio sbagliato: E_TRIGGER_ARGOMENTI_INVALIDI. Restituisce sempre la riga, mai NULL, salvo l''INSERT saltato della forma FIGLIA: il blocco UPDATE … IF not found THEN INSERT del mirror non va in chiave duplicata. SECURITY DEFINER, search_path pg_catalog: scrive il registro, che l''app legge soltanto.';
+IS 'Sulle tabelle del seed di primo impianto (dbops.automazione_seed_primo_impianto) il CSV crea la riga, e dopo che l''installazione l''ha modificata non la riscrive piu''. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, in fase a00 (scatta per primo), montato dal runner dbops.fn_run_automations_seed_primo_impianto; argomenti secondo dbops.fn_seed_primo_impianto_argomenti (forma RIGA, COLONNA, SOLO_INSERIMENTO o FIGLIA). Chi scrive: il software e'' la sessione del migratore (dbops.fn_sessione_del_migratore), tutto il resto e'' l''installazione. INSERT del software: la riga entra in dbops.seed_righe, nata dal seed. UPDATE del software: su una riga di seed intatta passa; su una riga personalizzata, su una riga dell''installazione o in SOLO_INSERIMENTO rimette da OLD le colonne dell''installazione e lascia passare quelle del software; su una riga personalizzata salva i valori scartati nel registro e alza un WARNING; nella forma COLONNA le colonne derivate (il quarto argomento, dbops.automazione_seed_primo_impianto.colonne_derivate) non si rimettono da OLD e non vanno negli scartati: le ha cambiate il database, da una tabella figlia; in SOLO_INSERIMENTO alza il WARNING e non scrive il registro. UPDATE dell''installazione su una riga di seed: una colonna del software cambiata e'' E_SEED_COLONNA_DEL_SOFTWARE (campo = la colonna); una colonna dell''installazione cambiata fa la riga personalizzata (meta, colonne d''audit e tx_id non contano). DELETE di una riga di seed: E_SEED_RIGA_NON_CANCELLABILE (la riga si spegne, attivo = false). La domanda «nata dal seed» la fa dbops.fn_seed_riga, la stessa che leggono le superfici dei campi spenti. Le righe dell''installazione si scrivono e si cancellano liberamente. Forma FIGLIA (una tabella di composizione senza colonna id): l''installazione scrive e cancella sempre; il software scrive una riga solo sotto un padre che e'' una riga di seed intatta (dbops.fn_seed_riga del padre), altrimenti alza un WARNING e restituisce OLD all''UPDATE e NULL all''INSERT di una riga che manca; il DELETE del software passa. Porta di manutenzione zeroerp.allow_seed_primo_impianto_override, solo per la sessione del migratore (script.fn_porta_manutenzione_aperta): lascia passare la bonifica e il DELETE forward-only, la riga resta personalizzata. Montaggio sbagliato: E_TRIGGER_ARGOMENTI_INVALIDI. Restituisce sempre la riga, mai NULL, salvo l''INSERT saltato della forma FIGLIA: il blocco UPDATE … IF not found THEN INSERT del mirror non va in chiave duplicata. SECURITY DEFINER, search_path pg_catalog: scrive il registro, che l''app legge soltanto.';
 ```
 
 </div>

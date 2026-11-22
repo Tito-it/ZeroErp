@@ -19,7 +19,7 @@
 --   c_tre), una dashboard con due card nel pool, un operatore umano con le sue
 --   preferenze. Nessun dato esistente decide un'asserzione.
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 16):
 --   Il building block (ui.fn_configurazione_senza_codici)
 --    1) toglie le voci dei codici dati e tiene le altre, nel loro ordine
 --    2) l'elenco che resta vuoto esce
@@ -34,6 +34,8 @@
 --    9) ... e dopo il ritiro la preferenza si salva
 --   15) ... e la preferenza di un'altra dashboard, con la stessa card nel pool,
 --       non cambia (aggiunto dal /verifica-db del 2026-11-22; numerato in coda)
+--   16) ⭐ Q57: la card esce dal pool e dal catalogo nella stessa istruzione (una
+--       CTE), e la sua voce esce lo stesso dalla preferenza (giro 7; in coda)
 --   I lucchetti
 --   10) una colonna non cambia lista: E_UI_COLONNA_CODICE_IMMUTABILE
 --   11) una riga del pool non cambia dashboard: E_UI_WIDGET_IMMUTABILE
@@ -47,7 +49,7 @@ SET LOCAL lock_timeout = '5s';
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================
 -- Fixture
@@ -196,6 +198,38 @@ SELECT is((SELECT pu.configurazione FROM ui.dashboard_preferenza_utente pu
           jsonb_build_object('widget', jsonb_build_array(
               jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 2), 'ordine', 1))),
           '15) ... e la preferenza di un''altra dashboard, con la stessa card nel pool, non cambia');
+
+-- 16) Q57: una terza card, nel pool della prima dashboard e nella preferenza; poi
+--   una sola istruzione la toglie dal pool e la cancella dal catalogo. Il ritiro
+--   scatta a fine istruzione, quando ui.widget non ha piu' la riga: la risposta
+--   non deve dipendere dal catalogo delle card.
+WITH ins AS (
+  INSERT INTO ui.widget (codice, etichetta, tipo_widget, attivo, user_insert)
+  VALUES ('w_ritiro_3_' || substr(md5(clock_timestamp()::text), 1, 6), 'w_3', 'kpi', TRUE, '_pgtap')
+  RETURNING id, codice
+)
+INSERT INTO _w (widget_id, codice, n) SELECT id, codice, 3 FROM ins;
+INSERT INTO ui.dashboard_widget (dashboard_id, widget_id, ordine_default)
+SELECT (SELECT dashboard_id FROM _d WHERE n = 1), widget_id, 30 FROM _w WHERE n = 3;
+UPDATE ui.dashboard_preferenza_utente
+   SET configurazione = jsonb_set(configurazione, '{widget}',
+           (configurazione -> 'widget')
+           || jsonb_build_array(jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 3), 'ordine', 2)))
+ WHERE auth_user_id = (SELECT auth_user_id FROM _u) AND dashboard_id = (SELECT dashboard_id FROM _d WHERE n = 1);
+
+WITH via_dal_pool AS (
+  DELETE FROM ui.dashboard_widget
+   WHERE dashboard_id = (SELECT dashboard_id FROM _d WHERE n = 1)
+     AND widget_id    = (SELECT widget_id FROM _w WHERE n = 3)
+  RETURNING widget_id
+)
+DELETE FROM ui.widget WHERE id IN (SELECT widget_id FROM via_dal_pool);
+
+SELECT is((SELECT pu.configurazione -> 'widget' FROM ui.dashboard_preferenza_utente pu
+            WHERE pu.auth_user_id = (SELECT auth_user_id FROM _u)
+              AND pu.dashboard_id = (SELECT dashboard_id FROM _d WHERE n = 1)),
+          jsonb_build_array(jsonb_build_object('codice', (SELECT codice FROM _w WHERE n = 1), 'ordine', 1)),
+          '16) ⭐ Q57: la card esce dal pool e dal catalogo nella stessa istruzione, e la sua voce esce lo stesso');
 
 -- ============================================================
 -- 10-13 I lucchetti

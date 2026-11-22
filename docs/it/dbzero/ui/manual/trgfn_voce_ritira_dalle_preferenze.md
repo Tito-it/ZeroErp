@@ -41,6 +41,15 @@ voce che il catalogo non ha più: il blocco si vedeva solo al salvataggio.
 aggiornamento farebbero uscire un codice dal suo contenitore sono chiuse dal lucchetto di colonna (la
 lista e il codice di una colonna, la dashboard e la card di una riga del pool, il codice di una card).
 
+### Che cosa esce
+
+* **Dalla lista** esce il codice della colonna cancellata.
+* **Dalla dashboard** esce ogni codice che il pool della dashboard non ha più. La funzione non cerca il
+  codice della card ritirata nel catalogo delle card: chi scrive il catalogo può togliere la card dal
+  pool e cancellarla dal catalogo nella stessa istruzione, e il trigger, che scatta alla fine
+  dell'istruzione, non la troverebbe più. Chiedere al pool che cosa ha ancora dà la stessa risposta in
+  tutti e due i casi.
+
 Se l'elenco della preferenza resta vuoto, la chiave esce: quella parte della preferenza torna a
 seguire il preset.
 
@@ -63,7 +72,8 @@ forma giudica la configurazione che resta.
   preferenza della lista e non da quella di un'altra lista con lo stesso codice; dopo il ritiro la
   persona cambia la sola misura e salva; la preferenza che aveva solo quella colonna segue il preset;
   lo stesso per la card tolta dal pool, che non esce dalle preferenze di un'altra dashboard che ha
-  la stessa card; il montaggio sulle due tabelle.
+  la stessa card; la card tolta dal pool e cancellata dal catalogo nella stessa istruzione; il
+  montaggio sulle due tabelle.
 
 ---
 
@@ -71,6 +81,9 @@ forma giudica la configurazione che resta.
 
 * 2026-11-22 — nasce, con la bonifica delle voci che il ritiro di prima aveva lasciato (le tre
   colonne tolte dalla lista dei fornitori il 2026-11-21) e con i lucchetti dell'appartenenza.
+* 2026-11-22 — per la dashboard esce ogni codice che il pool non ha più: prima la funzione cercava il
+  codice della card nel catalogo, e una card cancellata dal catalogo nella stessa istruzione restava
+  nella preferenza.
 
 ---
 

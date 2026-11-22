@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops.fn_seed_elenco_colonne: un elenco di colonne del montaggio del seed di
+#   primo impianto, letto in una sede sola.
+#   Brief: brief-db-revisione-ui (giro 7, Q54: la regola del 2, estrazione decisa
+#   da Tid il 2026-11-22).
+#
+# Il perche': un argomento della forma COLONNA (le colonne del software, quelle
+#   dell'installazione, le derivate) e' un testo con i nomi separati da virgola. Lo
+#   leggevano con la stessa espressione (spazi tolti, spezzato sulle virgole, voci
+#   vuote tolte) la grammatica dbops.fn_seed_primo_impianto_argomenti, per i tre
+#   elenchi, e script.trgfn_seed_primo_impianto, per le derivate che legge da
+#   TG_ARGV dopo la validazione. Due sedi della stessa lettura: se una cambiasse
+#   (un separatore nuovo, le maiuscole), il trigger scarterebbe colonne diverse da
+#   quelle che la grammatica ha validato. Le due la leggono da qui: 20261122-42 e
+#   20261122-43.
+# Il contratto: un elenco assente (NULL) e' un elenco vuoto, mai NULL. La grammatica
+#   rifiuta l'elenco vuoto dove la forma lo vuole pieno; con la lettura di prima un
+#   elenco del software o dell'installazione NULL usciva NULL, e la grammatica lo
+#   dava valido (20261122-42).
+# Il corpo: LANGUAGE sql a stringa, non BEGIN ATOMIC: non legge tabelle, non ha
+#   dipendenze da tenere in pg_depend (linee-guida-sql §5c). IMMUTABLE e PARALLEL
+#   SAFE come la grammatica che la chiama. EXECUTE a zeroerp_app dai default
+#   privileges di dbops.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261122-41-create-fn-seed-elenco-colonne-mctit.yaml
+
+  - changeSet:
+      id: 20261122-41-create-fn-seed-elenco-colonne
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_seed_elenco_colonne: l'elenco di colonne di un argomento del trigger del seed di primo impianto,
+        letto in una sede sola dalla grammatica e dal trigger. Brief: brief-db-revisione-ui (giro 7, Q54, regola
+        del 2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_seed_elenco_colonne(
+                  -- text nudo: un argomento del montaggio (TG_ARGV), non il
+                  -- riflesso di una colonna
+                  p_elenco text)
+              -- text[] nudo: i nomi di un elenco qualunque del montaggio; il
+              -- chiamante lo mette nella colonna del registro che gli tocca
+              RETURNS text[]
+               LANGUAGE sql
+               IMMUTABLE PARALLEL SAFE
+              AS $function$
+                  -- Scopo: i nomi di colonna di un elenco del montaggio, separati da
+                  --   virgola: spazi tolti, voci vuote tolte, l'ordine dell'elenco.
+                  --   NULL e '' danno l'elenco vuoto.
+                  SELECT array_remove(
+                             string_to_array(regexp_replace(COALESCE(p_elenco, ''), '\s', '', 'g'), ','),
+                             '');
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_seed_elenco_colonne(p_elenco text) IS
+                  'Un elenco di colonne di un argomento del trigger del seed di primo impianto (script.trgfn_seed_primo_impianto, forma COLONNA): i nomi separati da virgola, con gli spazi tolti e le voci vuote tolte, nell''ordine in cui sono scritti. Un elenco assente (NULL) o vuoto da'' l''array vuoto, mai NULL: decide il chiamante se l''elenco vuoto e'' ammesso. La leggono dbops.fn_seed_primo_impianto_argomenti, per le colonne del software, dell''installazione e derivate, e il trigger, per le derivate che legge da TG_ARGV dopo la validazione: una lettura sola, perche'' il trigger scarti le colonne che la grammatica ha validato. IMMUTABLE.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ La chiamano la grammatica e il trigger: la rollback di
+              -- 20261122-42 e 20261122-43 viene prima di questa.
+              DROP FUNCTION IF EXISTS dbops.fn_seed_elenco_colonne(text);

@@ -2833,7 +2833,11 @@ CSV le dà il valore iniziale e poi la riga la configura l'installazione. Quattr
   nata dal seed l'installazione non la cambia) o **dell'installazione** (il CSV la
   scrive finché la riga è intatta). Una colonna che non sta in nessuno dei due
   elenchi è un difetto, e la regola non rigenera il trigger finché qualcuno non la
-  classifica;
+  classifica. Fra quelle dell'installazione, le **derivate** (`colonne_derivate`)
+  sono le colonne che il database deriva da sé, da una tabella figlia
+  (l'impronta della composizione di un preset): quando il software scrive una
+  riga personalizzata non si rimettono com'erano, perché le ha cambiate il
+  database e la riga deve dire il vero;
 * **solo inserimento**: la forma per riga in cui il CSV crea la riga se manca e
   poi non la aggiorna più, toccata o no. Serve quando il CSV porta segnaposto che
   ogni installazione sostituisce (l'host SMTP di esempio);

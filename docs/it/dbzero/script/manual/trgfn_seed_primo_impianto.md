@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `script.trgfn_seed_primo_impianto()`
 
-> **Ultimo aggiornamento**: 20 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -13,6 +13,7 @@
 > Approfondimento funzioni:
 >
 > * [dbops.fn_seed_primo_impianto_argomenti](/dbzero/dbops/funzioni/fn_seed_primo_impianto_argomenti) — la grammatica dei suoi argomenti
+> * [dbops.fn_seed_elenco_colonne](/dbzero/dbops/funzioni/fn_seed_elenco_colonne) — la lettura delle colonne derivate, la stessa della grammatica
 > * [dbops.fn_sessione_del_migratore](/dbzero/dbops/funzioni/fn_sessione_del_migratore) — chi è il software
 > * [script.fn_porta_manutenzione_aperta](/dbzero/script/funzioni/fn_porta_manutenzione_aperta) — la porta di manutenzione
 > * [dbops.fn_run_automations_seed_primo_impianto](/dbzero/dbops/funzioni/fn_run_automations_seed_primo_impianto) — il giro che la monta
@@ -55,7 +56,7 @@ l'applicazione, un verbo `SECURITY DEFINER` chiamato dall'app, un job.
 | software | `INSERT` | — | passa, e la riga entra nel registro, nata dal seed |
 | installazione | `INSERT` | — | passa: la riga è dell'installazione |
 | software | `UPDATE` | di seed, intatta | passa: segue il CSV |
-| software | `UPDATE` | personalizzata, dell'installazione, o in solo inserimento | le colonne dell'installazione tornano da `OLD`, quelle del software passano, e parte un `WARNING` |
+| software | `UPDATE` | personalizzata, dell'installazione, o in solo inserimento | le colonne dell'installazione tornano da `OLD`, quelle del software passano, e parte un `WARNING`; nella forma per colonna le colonne derivate (il quarto argomento, letto con `fn_seed_elenco_colonne` come lo legge la grammatica) passano anche loro, e non vanno fra gli scartati |
 | installazione | `UPDATE` | di seed | una colonna del software cambiata è `E_SEED_COLONNA_DEL_SOFTWARE`; una dell'installazione cambiata fa la riga personalizzata |
 | installazione | `UPDATE` | dell'installazione | passa |
 | chiunque | `DELETE` | di seed | `E_SEED_RIGA_NON_CANCELLABILE`: la riga si spegne (`attivo = false`) |
@@ -151,7 +152,10 @@ che la `SECURITY DEFINER` non cambia. `search_path` bloccato su `pg_catalog, pg_
   si scrive e personalizza il preset.
 * `db/pgtap/ui/test-seed-primo-impianto-ui-software-v1.sql`, asserzioni 1-7 — il mirror della
   composizione sotto un preset intatto e sotto uno personalizzato, senza chiave duplicata; il
-  `DELETE` del software che passa.
+  `DELETE` del software che passa; asserzioni 17-18 — il ritiro di una colonna dal preset
+  personalizzato: l'impronta della composizione è vera e non va fra gli scartati.
+* `db/pgtap/dbops/test-fn-seed-elenco-colonne-v1.sql`, asserzione 8 — le colonne derivate si
+  leggono col building block della grammatica, non con una copia.
 * `db/pgtap/dbops/test-seed-primo-impianto-postura-v1.sql` — `SECURITY DEFINER` e `search_path`.
 * `db/pgtap/config/test-posta-solo-disattivazione-v1.sql` — sul template di seed parla il guard
   prima del blocco della `DELETE` (test 6), e le superfici che leggono le sue funzioni.
@@ -165,6 +169,8 @@ che la `SECURITY DEFINER` non cambia. `search_path` bloccato su `pg_catalog, pg_
   registro (Q22).
 * 2026-11-19 — la voce del registro si legge da `fn_seed_riga` (§16.14 del brief).
 * 2026-11-20 — la forma figlia, per la composizione dei preset (§16.15 del brief).
+* 2026-11-22 — le colonne derivate non tornano da `OLD`; il loro elenco si legge da
+  `dbops.fn_seed_elenco_colonne` (`brief-db-revisione-ui`, giro 7).
 
 ---
 
