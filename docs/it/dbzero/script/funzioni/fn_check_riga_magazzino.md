@@ -27,7 +27,7 @@ AS $function$
 -- Regole (D-L2-m, M-5, M-6):
 --   5) articolo attivo e gestito_a_magazzino;
 --   6) requires_lotto => lotto obbligatorio, altrimenti vietato; se c'e',
---      dell'articolo e attivo;
+--      dell'articolo, attivo, e dello stesso emittente del magazzino;
 --   7) requires_serial => asset obbligatorio, altrimenti vietato; se c'e',
 --      dell'articolo, attivo, e dello stesso emittente del magazzino;
 --   8) magazzini.usa_ubicazioni => ubicazione obbligatoria, altrimenti
@@ -46,6 +46,7 @@ DECLARE
     v_usa_ubicazioni magazzino.magazzini.usa_ubicazioni%TYPE;
     v_lotto_codice   magazzino.lotti.codice%TYPE;
     v_lotto_ok       boolean;
+    v_lotto_ef_id    magazzino.lotti.emittente_fiscale_id%TYPE;
     v_seriale        magazzino.assets.seriale%TYPE;
     v_asset_ok       boolean;
     v_asset_ef_id    magazzino.assets.emittente_fiscale_id%TYPE;
@@ -105,7 +106,7 @@ BEGIN
     END IF;
 
     -- ============================================================
-    -- 6) Il lotto: decide l'articolo.
+    -- 6) Il lotto: decide l'articolo; il lotto e' dell'emittente del magazzino.
     -- ============================================================
     IF v_req_lotto AND p_lotto_id IS NULL THEN
         v_motivi := v_motivi || jsonb_build_object(
@@ -116,8 +117,8 @@ BEGIN
             -- «L'articolo %s si movimenta per lotti: indica il lotto.»
             'valori',     jsonb_build_array(v_art_label));
     ELSIF p_lotto_id IS NOT NULL THEN
-        SELECT l.codice, (l.attivo AND l.articolo_id = p_articolo_id)
-          INTO v_lotto_codice, v_lotto_ok
+        SELECT l.codice, (l.attivo AND l.articolo_id = p_articolo_id), l.emittente_fiscale_id
+          INTO v_lotto_codice, v_lotto_ok, v_lotto_ef_id
           FROM magazzino.lotti l
          WHERE l.id = p_lotto_id;
         IF NOT v_req_lotto THEN
@@ -138,6 +139,16 @@ BEGIN
                                                  'lotto_id', p_lotto_id),
                 -- «Il lotto %s non e' dell'articolo %s, oppure non e' piu' attivo.»
                 'valori',     jsonb_build_array(COALESCE(v_lotto_codice, p_lotto_id::text), v_art_label));
+        ELSIF v_mag_ef_id IS NOT NULL AND v_lotto_ef_id IS DISTINCT FROM v_mag_ef_id THEN
+            v_motivi := v_motivi || jsonb_build_object(
+                'codice',     'E_MAG_LOTTO_DI_ALTRO_EMITTENTE',
+                'reason',     'LOTTO_DI_ALTRO_EMITTENTE',
+                'reason_key', 'magazzino.riga.blocco.lotto_di_altro_emittente',
+                'dettaglio',  jsonb_build_object('campo', 'lotto_id', 'lotto_id', p_lotto_id,
+                                                 'lotto_emittente_fiscale_id', v_lotto_ef_id,
+                                                 'magazzino_emittente_fiscale_id', v_mag_ef_id),
+                -- «Il lotto %s non appartiene all'emittente del magazzino %s.»
+                'valori',     jsonb_build_array(COALESCE(v_lotto_codice, p_lotto_id::text), v_mag_label));
         END IF;
     END IF;
 
@@ -232,7 +243,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_riga_magazzino(p_magazzino_id bigint, p_articolo_id uuid, p_lotto_id bigint, p_asset_id bigint, p_ubicazione_id bigint)
-IS 'La riga e'' scrivibile a registro? I passi 5-8 della primitiva in una sede sola (C8, linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se si'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio (con campo), valori}: 5) articolo attivo e gestito_a_magazzino (E_MAG_ARTICOLO_NON_GESTITO, e si ferma li''); 6) lotto deciso dall''articolo — requires_lotto => obbligatorio, altrimenti vietato; se c''e'', dell''articolo e attivo (E_MAG_LOTTO_*); 7) seriale deciso dall''articolo — requires_serial => obbligatorio, altrimenti vietato; se c''e'', dell''articolo, attivo e dello stesso emittente del magazzino (E_MAG_SERIALE_*, E_MAG_ASSET_*); 8) ubicazione decisa dal MAGAZZINO — usa_ubicazioni => obbligatoria, altrimenti vietata; se c''e'', del magazzino e attiva (E_MAG_UBICAZIONE_*). Letta da magazzino.fn_scrivi_movimento (solleva il primo motivo) e da magazzino.fn_inventario_piano (esito NON_POSTABILE): il piano mostra cio'' che il posting rifiutera''. Non guarda il magazzino in se'' (passo 4 della primitiva) ne'' la disponibilita'' (fn_check_disponibilita_uscita). Le reason_key magazzino.riga.blocco.* sono chiavi i18n del frontend. Brief: brief-db-magazzino-lotto-2-motore, sezione 6-ter C8.';
+IS 'La riga e'' scrivibile a registro? I passi 5-8 della primitiva in una sede sola (C8, linee-guida-sql 12.5.2): pura, STABLE, INVOKER — [] se si'', altrimenti array ORDINATO di {codice, reason, reason_key, dettaglio (con campo), valori}: 5) articolo attivo e gestito_a_magazzino (E_MAG_ARTICOLO_NON_GESTITO, e si ferma li''); 6) lotto deciso dall''articolo — requires_lotto => obbligatorio, altrimenti vietato; se c''e'', dell''articolo, attivo e dello stesso emittente del magazzino (E_MAG_LOTTO_*); 7) seriale deciso dall''articolo — requires_serial => obbligatorio, altrimenti vietato; se c''e'', dell''articolo, attivo e dello stesso emittente del magazzino (E_MAG_SERIALE_*, E_MAG_ASSET_*); 8) ubicazione decisa dal MAGAZZINO — usa_ubicazioni => obbligatoria, altrimenti vietata; se c''e'', del magazzino e attiva (E_MAG_UBICAZIONE_*). Sotto RLS un lotto o un seriale di un''altra azienda non si vede e risponde come di un altro articolo; letti da una DEFINER, rispondono E_MAG_LOTTO_DI_ALTRO_EMITTENTE ed E_MAG_ASSET_DI_ALTRO_EMITTENTE. La regola sta anche sulla tabella dei figli (script.trgfn_guard_riferimento_stesso_emittente): qui c''e'' il motivo per chi giudica la riga prima di scriverla. Letta da magazzino.fn_scrivi_movimento (solleva il primo motivo) e da magazzino.fn_inventario_piano (esito NON_POSTABILE): il piano mostra cio'' che il posting rifiutera''. Non guarda il magazzino in se'' (passo 4 della primitiva) ne'' la disponibilita'' (fn_check_disponibilita_uscita). Le reason_key magazzino.riga.blocco.* sono chiavi i18n del frontend, compresa magazzino.riga.blocco.lotto_di_altro_emittente.';
 ```
 
 </div>

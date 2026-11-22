@@ -18,16 +18,16 @@ CREATE OR REPLACE FUNCTION magazzino.fn_modifica_lotto(p_id bigint, p_dati jsonb
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
+    v_utente   config.user_override_oggetti.auth_user_id%TYPE;
     v_ammesse  text[];
     v_estranea text;
     v_riga     jsonb;
 BEGIN
-    -- Scopo: il gesto «modifica il lotto» dell'operatore: il delta
-    --   p_dati sulle colonne modificabili. Un lotto e'
-    --   dell'articolo: nessun perimetro. Ritorna la riga.
-    PERFORM script.fn_guard_livello(
-        NULLIF(current_setting('app.current_user_id', true), '')::integer,
-        'magazzino', 'lotti', 'TUTTO');
+    -- Scopo: il gesto «modifica il lotto» dell'operatore, dentro
+    --   il perimetro della sua azienda: il delta p_dati sulle
+    --   colonne modificabili. Ritorna la riga.
+    v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+    PERFORM script.fn_guard_livello(v_utente, 'magazzino', 'lotti', 'TUTTO');
 
     IF p_dati IS NULL OR jsonb_typeof(p_dati) <> 'object' THEN
         PERFORM script.fn_log_and_raise_error(
@@ -48,7 +48,12 @@ BEGIN
             v_estranea);
     END IF;
 
-    PERFORM 1 FROM magazzino.lotti l WHERE l.id = p_id FOR UPDATE;
+    -- No-leak: fuori perimetro e inesistente rispondono uguale.
+    PERFORM 1
+       FROM magazzino.lotti l
+      WHERE l.id = p_id
+        AND script.fn_check_user_emittente_scope(v_utente, l.emittente_fiscale_id)
+        FOR UPDATE;
     IF NOT FOUND THEN
         PERFORM script.fn_log_and_raise_error(
             'magazzino', 'magazzino.fn_modifica_lotto', 'E_MAG_LOTTO_NON_TROVATO',
@@ -67,7 +72,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_modifica_lotto(p_id bigint, p_dati jsonb)
-IS 'VERBO: il gesto «modifica il lotto» dell''operatore. p_dati e'' il delta: si scrivono solo le chiavi mandate, una chiave a null scrive NULL, un delta vuoto non scrive niente. Passi: script.fn_guard_livello(utente, magazzino, lotti, TUTTO) (E_PERMESSO_NEGATO); p_dati oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA) con le sole chiavi della lista modifica di magazzino.fn_lotti_colonne_ammesse (E_CAMPO_NON_AMMESSO col nome del campo); il lotto c''e'', letto FOR UPDATE, altrimenti E_MAG_LOTTO_NON_TROVATO; la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della tabella. Un lotto e'' dell''articolo, senza perimetro d''emittente. Nessun DELETE: si disattiva con attivo. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna la riga: id e colonne modificabili.';
+IS 'VERBO: il gesto «modifica il lotto» dell''operatore. p_dati e'' il delta: si scrivono solo le chiavi mandate, una chiave a null scrive NULL, un delta vuoto non scrive niente. Passi: script.fn_guard_livello(utente, magazzino, lotti, TUTTO) (E_PERMESSO_NEGATO); p_dati oggetto (E_SCRIPT_CHIAMATA_NON_VALIDA) con le sole chiavi della lista modifica di magazzino.fn_lotti_colonne_ammesse (E_CAMPO_NON_AMMESSO col nome del campo); il lotto c''e'' ed e'' nel perimetro dell''utente (script.fn_check_user_emittente_scope sul suo emittente, il predicato della policy), letto FOR UPDATE, altrimenti E_MAG_LOTTO_NON_TROVATO (no-leak: fuori perimetro e inesistente rispondono uguale); la scrittura con script.fn_scrivi_riga_da_jsonb, coi trigger della tabella. Nessun DELETE: si disattiva con attivo. SECURITY DEFINER del proprietario, search_path bloccato. Ritorna la riga: id e colonne modificabili.';
 ```
 
 </div>

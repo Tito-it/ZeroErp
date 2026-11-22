@@ -164,6 +164,12 @@ BEGIN
           INTO v_risultato
           FROM vendite.fatturazione_lotti t0
          WHERE t0.id = p_valore;
+    ELSIF p_modo = 'lotto_magazzino' THEN
+        SELECT ef.soggetto_ruolo_id
+          INTO v_risultato
+          FROM magazzino.lotti t0
+          JOIN anagrafiche.emittenti_fiscali ef ON ef.id = t0.emittente_fiscale_id
+         WHERE t0.id = p_valore;
     ELSIF p_modo = 'magazzino' THEN
         SELECT ef.soggetto_ruolo_id
           INTO v_risultato
@@ -271,7 +277,7 @@ BEGIN
             format(
                 'il modo di risoluzione dell''emittente «%s» non esiste: sono ammessi %s',
                 p_modo,
-                'asset, attivita_fatturabile, commessa, commessa_attivita, contabile, conto_bancario, contratto, contratto_riga, ddt, ddt_riga, documento_generato, ente_incasso, evento_asset, fattura, fattura_sdi, fiscale, flusso, inventario, listino, listino_versione, lotto, magazzino, movimento, offerta, offerta_eccezione, ordine, ordine_riga, pratica, preventivo, preventivo_riga, reso, reso_riga, rettifica, soggetto_ruolo, trasferimento'
+                'asset, attivita_fatturabile, commessa, commessa_attivita, contabile, conto_bancario, contratto, contratto_riga, ddt, ddt_riga, documento_generato, ente_incasso, evento_asset, fattura, fattura_sdi, fiscale, flusso, inventario, listino, listino_versione, lotto, lotto_magazzino, magazzino, movimento, offerta, offerta_eccezione, ordine, ordine_riga, pratica, preventivo, preventivo_riga, reso, reso_riga, rettifica, soggetto_ruolo, trasferimento'
             )
         );
     END IF;

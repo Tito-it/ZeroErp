@@ -68,7 +68,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION magazzino.fn_crea_lotto(p_articolo_id uuid, p_codice character varying, p_data_arrivo date, p_campi jsonb)
-IS 'BB: crea un lotto di magazzino, cioe'' la riga di magazzino.lotti, in una sola istruzione. Articolo, codice e data di arrivo sono argomenti (NOT NULL della tabella; l''articolo e'' l''identita'' della nascita); in p_campi le altre colonne della lista crea di magazzino.fn_lotti_colonne_ammesse (le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome). attivo non e'' un campo: un lotto nasce attivo. Articolo attivo, codice non vuoto, scadenza non prima dell''arrivo e unicita'' del codice per articolo li dicono i guard e i vincoli della tabella. Un lotto non ha perimetro d''emittente. Non controlla il permesso: lo controlla chi lo chiama (il verbo di nascita). Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER. Ritorna l''id.';
+IS 'BB: crea un lotto di magazzino, cioe'' la riga di magazzino.lotti, in una sola istruzione. Articolo, codice e data di arrivo sono argomenti (NOT NULL della tabella; l''articolo e'' l''identita'' della nascita); in p_campi le altre colonne della lista crea di magazzino.fn_lotti_colonne_ammesse (le assenti e le null al DEFAULT; una chiave fuori lista: E_CAMPO_NON_AMMESSO col suo nome). attivo non e'' un campo: un lotto nasce attivo. L''emittente non e'' un campo: lo mette il default di sessione. Articolo attivo, codice non vuoto, scadenza non prima dell''arrivo, unicita'' del codice per emittente e articolo e perimetro dell''emittente li dicono i guard e i vincoli della tabella. Non controlla il permesso: lo controlla chi lo chiama (il verbo di nascita). Scrive con script.fn_scrivi_riga_da_jsonb. INVOKER. Ritorna l''id.';
 ```
 
 </div>
