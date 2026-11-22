@@ -1,6 +1,6 @@
 # Guida — Architettura Multi-Face Auth
 
-> **Ultimo aggiornamento**: 25 ottobre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > **Destinatari**: sviluppatori database, backend, frontend e analisti funzionali
 >
@@ -128,15 +128,24 @@ corso. Una veste scaduta non entra e non vede più i suoi dati.
   dichiarando l'id della credenziale confermata (`riusa_auth_user_id`). Un id e non un sì: una
   credenziale cambiata nel frattempo ferma di nuovo. Se la credenziale è di un'altra persona fisica, il
   riuso è rifiutato (`E_CREDENZIALE_ALTRA_PERSONA`: l'email è sbagliata).
-* ⭐ **La veste nasce spenta** e la accende solo l'**attivazione** dell'invito: nessuno entra da una porta
-  prima di averla accettata. Se la credenziale ha già una password, l'attivazione è un clic; altrimenti
-  chiede di sceglierla.
+* ⭐ **La veste che passa dall'invito nasce spenta** e la accende l'**attivazione**
+  (`anagrafiche.fn_accendi_veste`): nessuno entra da una porta prima di averla accettata. Se la
+  credenziale ha già una password, l'attivazione è un clic; altrimenti chiede di sceglierla. Per
+  l'operatore è la regola sempre: `anagrafiche.fn_crea_operatore_v2` crea la veste `OPERATORE` spenta,
+  senza eccezioni. Le vesti esterne nascono da `anagrafiche.fn_crea_veste_portale`, che vuole sapere
+  ogni volta se la veste nasce spenta o accesa: l'invito la crea spenta, ma il modello ammette anche
+  una veste esterna che nasce accesa. L'utente tecnico di un processo automatico nasce con la veste
+  accesa.
 * ⭐ **Porta e profili sono due domande.** La veste accesa dice se la porta è aperta; il binding in
   `config.profili_accesso_bindings` dice cosa si può fare dentro. Un profilo (anche SUPER_ADMIN) si
   assegna anche a una veste spenta, e spegnere una veste non chiede di togliere prima i profili: li
   ritrova alla riaccensione. Chi legge i permessi chiede entrambe le cose (`fn_is_super_admin`,
-  `fn_get_profili_accesso_applicabili`); l'ultimo SUPER_ADMIN attivo lo protegge
-  `E_PROFILO_ULTIMO_SUPER_ADMIN`.
+  `fn_get_profili_accesso_applicabili`); l'ultimo SUPER_ADMIN senza scadenza lo protegge
+  `E_PROFILO_ULTIMO_SUPER_ADMIN` ([Risorse umane — L'ultimo amministratore non scade](/guide/risorse-umane-e-accessi#lultimo-amministratore-non-scade)).
+* ⭐ **Persona o macchina.** Tutte le vesti di una credenziale hanno la stessa natura: di persona, o di
+  macchina (`API_CLIENT`, oppure `tecnica = true`). Il guard
+  `anagrafiche.trgfn_identita_digitali_guard_natura_credenziale` rifiuta di mescolarle
+  (`E_CREDENZIALE_PERSONA_E_SISTEMA`).
 * ⛔ **La veste non porta lo stato della password.** Tentativi falliti, blocco, cambio password
   obbligatorio e obbligo del secondo fattore sono della **credenziale**: la password è una sola e vale
   per tutte le porte (§3.2).
@@ -188,8 +197,9 @@ prima di leggere il codice.
 
 La regola **R4** ([Risorse umane §R4](/guide/risorse-umane-e-accessi#r4--collegamento-a-django-solo-persona-fisica-pura))
 vieta il collegamento a `auth_user` per chi ha partita IVA. Nasce dalla natura del ruolo RIS_UMANA, non
-dal bridge, e vale per la veste `OPERATORE`: il `soggetto_ruolo` deve essere RIS_UMANA su una persona
-fisica pura. Per le altre vesti non si applica, così un cliente persona giuridica (S.r.l., S.p.A., Ente)
+dal bridge, e vale per la veste `OPERATORE` di una persona: il `soggetto_ruolo` deve essere RIS_UMANA su
+una persona fisica pura. La veste `OPERATORE` tecnica (`tecnica = true`) sta invece su un ruolo
+`PROC_AUTO`, senza persona da verificare. Per le altre vesti non si applica, così un cliente persona giuridica (S.r.l., S.p.A., Ente)
 può avere un accesso al portale.
 
 ---
@@ -332,7 +342,7 @@ restituisce la tripla, o una tripla di `NULL` se non è coerente.
 ### 6.4 Il canale di origine sui dati transazionali
 
 Per distinguere portale B2B e shop B2C servono due cose: **billing account separati per canale** (scelta
-di dominio, cfr. [Risorse umane](/guide/risorse-umane-e-accessi)) e il **canale di origine** sulle righe.
+di dominio, cfr. [anagrafiche.billing_account](/dbzero/anagrafiche/tabelle/billing_account)) e il **canale di origine** sulle righe.
 La colonna `canale_origine` (tipo `config.canale_origine`: `ADMIN`, `PORTALE`, `SHOP`; default `ADMIN`)
 sta su:
 
@@ -462,9 +472,16 @@ correnti falliscono alla richiesta successiva, perché Django verifica `is_activ
 
 `anagrafiche.fn_sync_auth_user_is_active(p_auth_user_id)` ricalcola il flag. La chiamano:
 
-* i trigger `trg_identita_digitali_z90_sync_auth_user_active_ins` e `_upd`, a ogni scrittura di una veste;
-* il management command `sync_auth_user_active` e il job pgAgent `sync_auth_user_expired_daily`, per le
-  vesti che scadono col passare dei giorni.
+* i trigger `trg_identita_digitali_z90_sync_auth_user_active_ins` e `_upd`, alla nascita di una veste e
+  quando ne cambiano stato, date, tipo o credenziale;
+* il trigger `trg_risorse_umane_z90_sync_auth_user_active_upd`, quando cambiano stato o date del
+  rapporto di lavoro: risale alla credenziale dalla veste `OPERATORE` della risorsa;
+* il management command `sync_auth_user_active` e il job pgAgent `sync_auth_user_expired_daily` (ogni
+  ora, al minuto 10, con `anagrafiche.fn_sync_auth_user_expired`), per le date che arrivano col passare
+  del tempo.
+
+Quello che i trigger non vedono, e i casi che solo il job riallinea, sono in
+[Risorse umane — Livello 2](/guide/risorse-umane-e-accessi#sync-is-active).
 
 Per l'operatore umano «utilizzabile» guarda anche il rapporto di lavoro: la fine del rapporto spegne la
 credenziale, se non resta un'altra veste.

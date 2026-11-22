@@ -2,20 +2,21 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-11-22
 
-**Riparte: Tid**, con la rigenerazione della doc auto-generata dopo il giro 0d (§15.4) e il commit; poi la sessione
-DB col giro 0e (area E, §4.5), l'ultimo del giro 0. I giri 0a, 0b, 0c sono committati (§12-§14). Il giro 0d (area D,
-§15) è scritto il 2026-11-22: 45 pagine allo standard, una nuova, una ritirata (Q4), il blocco dei guard di ruolo, la
-guida dei conti; con il ritiro del pgTAP del catasto; non committato. Q1-Q8 sono decise da Tid il 2026-11-22 (§10): prima tutta la
-documentazione, i giri di codice per ultimi. Al team BE/FE le domande R-BE1 … R-BE5 (§9), che non fermano il giro 0.
+**Riparte: Tid**, col vaglio
+delle segnalazioni di codice (§7, S1-S68: passo 5); poi la sessione DB coi giri di codice (Q1). Il giro 0 è finito: le
+aree 0a-0e sono scritte e committate (§12-§16), con la doc auto-generata rigenerata dopo ognuna; lo 0e: 23 pagine, due
+blocchi comuni, le due guide degli accessi. Q1-Q8 sono decise da Tid il 2026-11-22 (§10). Al team
+BE/FE R-BE1 … R-BE5 hanno risposta (§9.1); R-BE6 (§16.3) è una domanda nuova, che non ferma niente.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
 | 1 | ✅ sessione DB | Censimento in sola lettura: la forma delle 195 pagine `manual/`, il contenuto falso e stantio per area, gli oggetti senza pagina, le guide, le segnalazioni di codice, i metadati | §3-§9 | — |
 | 2 | ✅ Tid | Le decisioni Q1-Q8 e il via al giro 0 (2026-11-22) | §10 | 1 |
-| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), ✅ 0d (area D, §15), 2026-11-22; ⏳ 0e (area E) | §2, §4-§6, §12-§15 | 2 |
-| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo lo 0a, lo 0b e lo 0c (2026-11-22); ⏳ dopo lo 0d (§15.4) | §2, §12.4 | 3 |
+| 3 | sessione DB | Giro 0, un'area per sessione (0a-0e): le pagine `manual/` allo standard e al codice di oggi, le pagine nuove, le guide dell'area. ✅ 0a (area C, §12), ✅ 0b (area A, §13), ✅ 0c (area B, §14), ✅ 0d (area D, §15), ✅ 0e (area E, §16), 2026-11-22 | §2, §4-§6, §12-§16 | 2 |
+| 4 | Tid | Doc auto-generata rigenerata dopo ogni area (le schede prendono le pagine nuove, l'indice le descrizioni). ✅ dopo ogni area, 0a-0e (2026-11-22) | §2, §12.4 | 3 |
 | 5 | Tid | Il vaglio delle segnalazioni di codice: quali sono difetti, quali sono volute | §7 | 1 |
 | 6 | ✅ team BE/FE | Le cinque domande di censimento R-BE1 … R-BE5: risposte il 2026-11-22. ⚠️ R-BE5 smentisce la premessa di Q7 | §9, §9.1 | 2 |
+| 6-bis | team BE/FE | R-BE6: le due scritture del portale su credenziale e veste (§16.3), con S59 | §16.3 | — |
 | 7 | sessione DB | I giri di codice e di metadati, dopo tutto il giro 0 (Q1, Tid: «le funzionalità per ultime») | §7, §8 | 3, 5 |
 | 8 | sessione DB | Archiviazione in `work-done/` | §11 | 3, 7 |
 
@@ -827,7 +828,7 @@ NULL» che il NOT NULL non ammette. Il pgTAP del catasto è in 14.2.
   `index.ci.md` non nomina più `manual/catasto-architettura`, e nell'indice restano 36 marcatori, delle aree D ed E.
 * `indirizzi_dettaglio.md` è di 154 righe. La build della doc non è lanciata.
 
-## 15. Giro 0d — l'area D, 2026-11-22 (scritto)
+## 15. Giro 0d — l'area D, 2026-11-22 (scritto, committato)
 
 Stesso metodo: quattro agenti per gruppi (le banche e i conti, con la loro guida; l'emittente fiscale; fornitori e
 vettori, che hanno scritto il blocco dei guard di ruolo; gestori, reseller e PSP).
@@ -900,3 +901,103 @@ reseller e PSP salvo il gestore unico (rosso).
   marcatori dell'area D, e `index.ci.md` ha ancora il link alla pagina ritirata.
 * `emittenti_fiscali.md` è di 176 righe (21 trigger di spegnimento da spiegare). La build della doc non è lanciata.
 * **Ritirato anche il pgTAP del catasto** (14.2), nello stesso albero: da committare con questo giro.
+
+## 16. Giro 0e — l'area E, 2026-11-22 (scritto, committato)
+
+Stesso metodo: quattro agenti per gruppi (la sincronizzazione dell'accesso e la veste; la risorsa umana, l'ultimo
+SUPER_ADMIN, il reparto e le viste degli accessi; i verbi; le due guide). Le pagine sono lette dai corpi del catalogo di
+dbdev. Con questo giro il giro 0 è finito: tutte e cinque le aree sono scritte.
+
+### 16.1 Che cosa è scritto
+
+* **Le 23 pagine dell'area E**, tutte nella cornice; riscritte dal corpo quelle che §4.5 dava da riscrivere
+  (`risorse_umane`, `trgfn_identita_digitali_sync_auth_user_active`, `fn_sync_auth_user_expired`,
+  `fn_crea_risorsa_umana_v2`), più `identita_digitali` (ritocco largo, M4) e le pagine dei verbi.
+* **Due blocchi comuni** (Q2, le due famiglie già documentate di §5): `_sincronizzazione-accesso.md` (la regola «la
+  credenziale è accesa se almeno una veste è utilizzabile», le tre strade che la tengono allineata, il job orario, ciò
+  che nessun trigger copre), incluso nelle quattro pagine della famiglia; `_ultimo-super-admin.md` (le quattro sedi del
+  guard, in `anagrafiche` e in `config`, e le check di `script`), incluso nei due guard di `anagrafiche`.
+* **S7 chiusa sulla documentazione**: pagine e guide dicono «ogni ora al minuto 10»; il nome del job resta.
+* **`guide/risorse-umane-e-accessi.md`** rivista per intero: `DISABILITATO` non è più una veste viva (il valore resta
+  nel tipo, la tabella lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO` e il CHECK `chk_identita_digitali_ruolo_non_ritirato`);
+  l'assunzione è una tabella «caso → verbo»; le colonne vere dei trigger di sync; il nome del trigger del reparto;
+  nuove le sezioni «persona o macchina», lo stato della veste, le liste degli accessi; tolto il modello del ponte.
+* **`guide/architettura-multi-face-auth.md`**, solo §3.1 (la veste nasce spenta quando passa dall'invito: l'operatore
+  sempre, il portale può nascere acceso, l'utente tecnico nasce acceso), §3.3 (la veste `OPERATORE` tecnica), §6.4 (un
+  rimando che puntava a una guida che non ne parla), §9 (il trigger su `risorse_umane` fra chi chiama la sync).
+
+### 16.2 Che cosa ha corretto o aggiunto al censimento
+
+* **S5 si corregge.** Il terzo caso (lo spegnimento del soggetto) oggi non si raggiunge: il blocco dello spegnimento
+  dai figli su `soggetti` conta ogni riga di `soggetti_ruoli`, che non ha `attivo`, e una veste ha sempre un ruolo. Il
+  primo caso (il cambio di `auth_user_id`) il batch lo riallinea solo se alla credenziale di prima resta un'altra veste:
+  vedi S59. Si aggiungono il cambio di `soggetto_ruolo_id` e di `tecnica` della veste, e la nascita del rapporto dopo
+  la veste (S60).
+* **Le colonne dei trigger di sync**: quello della veste scatta su `attivo`, `valido_dal`, `valido_al`,
+  `ruolo_applicativo`, `auth_user_id`, senza `WHEN` (anche a valore uguale); quello del rapporto su `attivo`,
+  `valido_dal`, `valido_al`, solo se cambiano. «Cinque colonne» di §6 vale per il primo.
+* **`trgfn_risorse_umane_guard_ruolo` non è un guard di ruolo come gli altri otto**: rifiuta anche un `soggetto_id`
+  diverso da quello del ruolo (`E_RISORSA_UMANA_SOGGETTO_MISMATCH`), quindi non include `_guard-di-ruolo.md`.
+* **`trgfn_identita_digitali_guard_natura_credenziale` non reggeva** sulla forma: era fuori cornice.
+* **Il profilo SUPER_ADMIN non ha un id scritto**: lo risolve `config.fn_profilo_super_admin_id`; il legame lo
+  scrive `fn_crea_risorsa_umana_v2`, poi lo mettono e lo tolgono `config.fn_lega_profilo_identita` e `_slega_`.
+* **`risorse_umane` ha più trigger di quelli censiti**: quattro blocchi di spegnimento dai figli (commesse, pratiche,
+  flussi, competenze sui flussi), tre controlli differiti sui padri accesi (soggetto, qualifica, reparto), lo storico.
+* **I chiamanti dei verbi dentro il DB**: `fn_crea_risorsa_umana_v2` solo da `fn_crea_operatore_v2`; questa dal
+  provisioning e dalla fixture `dbops.fn_pgtap_crea_operatore_umano`; `fn_crea_veste_portale` solo dal provisioning;
+  `fn_provisiona_dati_di_sviluppo` da nessuno. Nessun pgTAP chiama `fn_accendi_veste` direttamente.
+* Nella guida: la tabella dei guard citava un blocco di spegnimento per i binding di profilo, che non esiste (c'è solo
+  per quelli di scope), e chiamava «trigger» `script.fn_check_user_emittente_scope`, che è una funzione booleana.
+* **`pgagent.pga_job.jobdesc` di `sync_auth_user_expired_daily`** è stantio («disattiva», «una volta per giorno
+  aziendale»): va nel giro dei metadati con §8.
+* **§8, COMMENT falsi o stantii trovati**: la tabella `identita_digitali` e `auth_user_id` (M4 confermato); la colonna
+  `tecnica` («non ha MAI il profilo SUPER_ADMIN», non presidiato, S63); `fn_sync_auth_user_expired` e
+  `maintenance.proc_sync_auth_user_expired_job` («batch notturno», «disattiva»: oggi orario e nei due versi);
+  `fn_crea_risorsa_umana_v2` (M11 confermato) e `fn_crea_operatore_v2` (elenco di revisioni con nomi di brief);
+  `trgfn_risorse_umane_guard_ruolo` (tace il controllo del soggetto; l'intestazione del corpo parla di fornitori);
+  `script.fn_veste_utilizzabile` (M18 confermato); la nota di `E_PROFILO_ULTIMO_SUPER_ADMIN` in `config.codici_errore`
+  (una sede sola, «post-cutover»); la `causa` vuota di `E_RISORSA_UMANA_SOGGETTO_MISMATCH`; i commenti nei corpi che
+  parlano ancora di `DISABILITATO` (sync della veste, `fn_crea_operatore_v2`). Senza COMMENT: la tabella
+  `risorse_umane` e quasi tutte le sue colonne, la vista `vw_risorse_umane_dettaglio`.
+
+### 16.3 Segnalazioni di codice nuove
+
+Lette sui corpi dagli agenti del giro, non provate.
+
+| # | Dove | Che cosa |
+| --- | --- | --- |
+| S59 | La credenziale senza vesti | Nessun trigger segue la cancellazione di una veste (`zeroerp_app` ha il DELETE su `identita_digitali`) né lo spostamento della sua `auth_user_id`; se era l'ultima veste della credenziale, la credenziale resta accesa per sempre, perché `fn_sync_auth_user_expired` guarda solo le credenziali che hanno vesti. Lo stesso per una credenziale creata da `fn_crea_auth_user` (nasce accesa) e mai vestita. Si vede solo nel presidio `vw_credenziali_da_sanare` (`NESSUNA_VESTE`). In compenso `fn_sync_auth_user_is_active`, chiamata su una credenziale senza vesti, la spegne |
+| S60 | La sync, i casi lasciati al batch | Il cambio di `soggetto_ruolo_id` o di `tecnica` della veste non fa scattare la sync; il trigger del rapporto non scatta sull'INSERT, quindi un rapporto nato dopo la veste la rende utilizzabile senza sync. Li riallinea il job entro l'ora |
+| S61 | L'ultimo SUPER_ADMIN | Il guard della veste guarda solo `attivo` e le date: spostare la veste dell'ultimo amministratore su un'altra credenziale (anche bloccata), su un ruolo col rapporto chiuso, o farla diventare non OPERATORE, non passa da nessun guard. Un profilo SUPER_ADMIN si porta a un altro `tipo` senza guard. Con la porta di manutenzione aperta si cancella il rapporto dell'ultimo amministratore: il guard del rapporto scatta solo sull'UPDATE |
+| S62 | `trgfn_risorse_umane_guard_identita_attiva` | Cerca la veste su `NEW.soggetto_ruolo_id`: uno spegnimento che nella stessa modifica sposta il ruolo passa, con la veste accesa sul ruolo di prima |
+| S63 | La veste tecnica | `trgfn_identita_digitali_guard_coerenza` legge `tecnica` solo nel ramo OPERATORE: una veste di portale o di shop con `tecnica = true` passa. Nessun controllo impedisce il SUPER_ADMIN su un'identità tecnica, contro il COMMENT della colonna; `script.fn_is_super_admin_account` non esclude `tecnica` |
+| S64 | `script.fn_stato_veste` | `ATTIVO` vuol dire «accesa», non «utilizzabile»: una veste accesa e scaduta, o col rapporto chiuso, è `ATTIVO` in `vw_accessi_altri`. Il COMMENT lo dichiara come scelta: da dire se resta |
+| S65 | `fn_crea_risorsa_umana_v2` | Oltre a S6: con `p_valido_dal` passato nullo l'INSERT del rapporto fallisce sul NOT NULL (23502, senza codice del catalogo), e il ripiego sul giorno operativo scritto per la veste non si raggiunge; chiamata da sola, non controlla che la credenziale abbia già una veste OPERATORE spenta (gli indici unici valgono per le vesti accese) |
+| S66 | `fn_provisiona_dati_di_sviluppo` | Al rilancio riaccende le vesti ma non rimette il SUPER_ADMIN di `dev.smoke`, né le date, il rapporto o il soggetto: un utente di prova scaduto resta senza accesso |
+| S67 | La veste dello shop | Il COMMENT di `fn_crea_veste_portale` la fa nascere accesa; `architettura-multi-face-auth` §8.2 la disegna spenta, accesa dalla verifica dell'email. Lo shop self-service non c'è ancora: da decidere quale dei due vale |
+| S68 | I permessi delle viste | Come S21 e S58: `zeroerp_app` ha il DML anche su `vw_accessi_altri` e `vw_accessi_sistema`; `vw_risorse_umane_dettaglio` non è `security_invoker` (sotto non c'è RLS) |
+
+pgTAP mancanti: nessun test prova la cancellazione o lo spostamento dell'ultima veste rispetto a `is_active`, il batch
+che lascia fuori le credenziali senza vesti e la sua seconda chiamata a vuoto, i casi di S61, i due rifiuti di
+`trgfn_risorse_umane_guard_ruolo`, `fn_accendi_veste` direttamente, gli indirizzi e le date di `fn_crea_operatore_v2`,
+`vw_risorse_umane_dettaglio`. Quattro test della famiglia sono rossi in baseline: `test-sync-auth-user-is-active-multi-role`
+(in tutte e tre; il suo caso 3 si aspetta «nessuna modifica» su una credenziale senza vesti, vero solo se è già spenta),
+`test-fn-sync-auth-user-is-active-or`, `test-identita-digitali-unique-multi-veste`, `test-identita-digitali-guard-coerenza`
+(scratch e CI).
+
+**Al team BE/FE, da verificare** (R-BE6; l'agente dei verbi ha letto `backend/`, fuori dal perimetro di una sessione DB:
+le due righe sono domande, non fatti): `PortaleRepository.create_auth_user_portale` scrive `django.auth_user` senza
+passare da `fn_crea_auth_user`, e salta il controllo dell'email in minuscolo? `PortaleRepository.disattiva_identita`
+spegne la veste con un UPDATE scritto a mano invece che da un verbo? Va con S59: una veste spenta o cancellata dal BE
+decide se la credenziale resta accesa.
+
+### 16.4 Le verifiche
+
+* Il controllo meccanico rilanciato dalla sessione che coordina sulle 23 pagine: tutte nella cornice, data 22 novembre
+  2026, firma in fondo, nessun blocco di codice, nessun marcatore fuori dalle Note di migrazione, nessun link a
+  `manual/` né morto. I nomi che il catalogo non conosce (`fn_crea_admin`, `fn_crea_operatore`,
+  `fn_crea_risorsa_umana`, `risorse_umane_auth_user`) stanno nelle Note di migrazione. I due blocchi non hanno `##`.
+* Le due guide: link vivi, nessun link a brief; i blocchi `json`, `bash`, `ini` stanno nell'«Area tecnica — esempi».
+  Non snellite le sezioni di sistema (GUC, pgbouncer, secondo fattore), che sono del backend.
+* **La doc auto-generata è rigenerata** (Tid, 2026-11-22): le schede prendono le pagine nuove, l'indice le descrizioni.
+  La build della doc non è lanciata.

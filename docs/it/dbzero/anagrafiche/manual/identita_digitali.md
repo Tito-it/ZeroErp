@@ -1,217 +1,211 @@
 ## 📘 Documentazione Concettuale – Tabella `anagrafiche.identita_digitali`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Architettura di riferimento:
+> Approfondimento tabelle:
 >
-[Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
-> [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici)
-> [Risorse umane e accessi](/guide/risorse-umane-e-accessi)
+> * [anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli) — il ruolo d'impresa a cui la veste appartiene
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto che la veste dell'operatore umano pretende
+> * [config.credenziali](/dbzero/config/tabelle/credenziali) — lo stato della password, che è della credenziale e non della veste
+> * [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings) — il profilo di accesso legato alla veste
+> * [config.identita_scope_bindings](/dbzero/config/tabelle/identita_scope_bindings) — il perimetro dei dati legato alla veste
+> * [dbops.processi_identita](/dbzero/dbops/tabelle/processi_identita) — il processo automatico dietro un'identità tecnica
 >
-Tabelle correlate:
+> Approfondimento viste:
 >
-[anagrafiche.soggetti_ruoli](/dbzero/anagrafiche/tabelle/soggetti_ruoli)
-> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [django.auth_user](/dbzero/django/auth_user)
+> * [dbops.vw_credenziali_da_sanare](/dbzero/dbops/views/vw_credenziali_da_sanare) — le credenziali che il modello non ammette
+>
+> Approfondimento funzioni:
+>
+> * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — la regola «la veste vale oggi»
+> * [anagrafiche.fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) — accende o spegne la credenziale secondo le sue vesti
+> * [anagrafiche.trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza) — il tipo di veste coerente col ruolo
+> * [anagrafiche.trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale) — persona o macchina, non tutte e due
+> * [anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_ultimo_super_admin) — il sistema non resta senza amministratore
+> * [anagrafiche.fn_crea_operatore_v2](/dbzero/anagrafiche/funzioni/fn_crea_operatore_v2) — crea l'operatore, con la sua veste spenta
+> * [anagrafiche.fn_crea_veste_portale](/dbzero/anagrafiche/funzioni/fn_crea_veste_portale) — crea la veste di un portale
+> * [anagrafiche.fn_accendi_veste](/dbzero/anagrafiche/funzioni/fn_accendi_veste) — accende la veste
+> * [script.fn_crea_utente_tecnico](/dbzero/script/funzioni/fn_crea_utente_tecnico) — crea l'identità tecnica di un processo
+>
+> Guide:
+>
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — vesti, credenziali e il blocco del login
+> * [Architettura multi-face auth](/guide/architettura-multi-face-auth) — le porte del software e le loro vesti
+> * [Soggetti e ruoli anagrafici](/guide/soggetti-e-ruoli-anagrafici) — il soggetto e i suoi ruoli d'impresa
 
 ---
+
 ### 🎯 Scopo Principale
-(latest revision 20-04-2026 — modello SSO multi-veste)
 
-La tabella **`anagrafiche.identita_digitali`** è il **bridge generico** tra un
-`soggetti_ruoli` e l'utente software Django (`django.auth_user`). Generalizza
-il ruolo di `risorse_umane_auth_user` (oggi limitato ai soli dipendenti interni)
-estendendolo a:
+`anagrafiche.identita_digitali` contiene le **vesti**: ogni riga lega un ruolo d'impresa di un soggetto
+(`soggetto_ruolo_id`) a una credenziale Django (`auth_user_id`), e dice con quale porta del software quella
+credenziale entra (`ruolo_applicativo`).
 
-* **Operatori interni** (ruolo applicativo `OPERATORE` – equivalente al bridge storico)
-* **Clienti portale B2B** (`CLIENTE_PORTALE`)
-* **Fornitori portale** (`FORNITORE_PORTALE`)
-* **Clienti shop self-service** (`SHOP_CUSTOMER`)
-* **Sistemi terzi integrati** (`API_CLIENT`)
-
-⭐ **Una veste si spegne con `attivo = false` e tiene il suo tipo**, qualunque sia
-(dal 2026-10-02, brief `brief-db-be-fe-area-accessi`, R-DB-1). `DISABILITATO` è una voce **storica** dell'enum: fino a quel
-giorno lo spegnimento dell'operatore la scriveva al posto di `OPERATORE`, e la veste
-perdeva il tipo. La tabella viva la rifiuta (CHECK `chk_identita_digitali_ruolo_non_ritirato`,
-e prima ancora il guard di coerenza con `E_RUOLO_APPLICATIVO_RITIRATO`); resta nel
-tipo perché la porta `storico.identita_digitali`.
-
-Ogni record rappresenta **una veste** con cui un soggetto si logga nel sistema.
-Post 20-04-2026 (modello SSO multi-veste) un `auth_user` puo' avere **piu'
-identita attive contemporaneamente**, una per ogni `ruolo_applicativo`, e
-simmetricamente un `soggetto_ruolo` puo' avere **piu' identita attive**, una
-per ogni canale self-service (es. un SR-CL puo' avere `CLIENTE_PORTALE` attivo
-per il portale B2B + `SHOP_CUSTOMER` attivo per il canale shop B2C).
+Le porte sono cinque: l'operatore interno (`OPERATORE`), il portale dei clienti (`CLIENTE_PORTALE`), il portale dei
+fornitori (`FORNITORE_PORTALE`), lo shop (`SHOP_CUSTOMER`) e il sistema esterno integrato (`API_CLIENT`). La veste è
+facoltativa: un soggetto che non usa il software non ne ha.
 
 ---
 
-### Collegamenti principali
+### Una credenziale, più vesti
 
-* `soggetto_ruolo_id` → `anagrafiche.soggetti_ruoli(id)` – ruolo del soggetto che si logga
-* `auth_user_id` → `django.auth_user(id)` – utente Django associato (1:N —
-  un auth_user puo' avere N identita, una per ruolo_applicativo)
+Una credenziale è una persona, o un processo, che si autentica con una password sola; le sue vesti sono le porte in
+cui entra. La stessa credenziale può avere la veste dell'operatore e quella del portale, e lo stesso ruolo d'impresa
+può avere più vesti, una per porta (un cliente col portale e con lo shop).
 
----
+I due indici unici valgono fra le vesti **accese** e sono per coppia, non per colonna:
 
-### ⭐ Il flag `tecnica` — identità di PERSONE e identità di PROCESSI
+* `uq_identita_digitali_auth_user_ruolo_attivo` — una credenziale ha al più una veste accesa per tipo;
+* `uq_identita_digitali_sr_ruolo_attivo` — un ruolo d'impresa ha al più una veste accesa per tipo.
 
-*(dal 2026-09-04)* `tecnica` *(boolean NN, default `false`)* distingue le
-identità che appartengono a una **persona** da quelle che appartengono a un
-**processo automatico**.
-
-⚠️ **Perché un flag e non un ruolo applicativo nuovo.** Un processo che emette
-fatture deve attraversare *esattamente* i controlli che attraversa un operatore:
-le stesse policy, lo stesso perimetro. Un ruolo dedicato avrebbe voluto dire
-riscrivere tutte quelle regole una seconda volta — e due scritture della stessa
-regola prima o poi dissentono. ⇒ Il processo **è** un operatore, e il flag dice
-soltanto che dietro non c'è nessuno.
-
-⛔ **Il flag non è liberamente assegnabile**, ed è il punto che protegge dal
-caso peggiore. Il guard di coerenza
-[trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/manual/trgfn_identita_digitali_guard_coerenza)
-si biforca:
-
-| `tecnica` | Che cosa pretende                                            |
-| --------- | ------------------------------------------------------------ |
-| `true`    | un soggetto-ruolo di tipo **`PROC_AUTO`**                    |
-| `false`   | un soggetto-ruolo `RIS_UMANA`, **e una persona fisica pura** |
-
-⇒ Marcare «tecnica» l'identità di una persona **non passa**: sarebbe stato il
-modo di far sparire un utente vero da tutti i conteggi che riguardano le
-persone.
-
-⭐ Il default `false` lascia il pregresso dov'è: tutto ciò che esisteva prima
-resta di persone.
-
-⇒ Le identità tecniche le crea
-[script.fn_crea_utente_tecnico](/dbzero/script/manual/fn_crea_utente_tecnico),
-e il legame col processo vive in
-[dbops.processi_identita](/dbzero/dbops/manual/processi_identita).
+Le vesti spente non hanno limiti: restano, una per ogni volta che la porta è stata chiusa.
 
 ---
 
-### Regole di dominio
+### ⭐ Una veste si spegne con `attivo = false` e tiene il suo tipo
 
-* **Modello SSO multi-veste** (post 20-04-2026): un `auth_user` rappresenta
-  una persona autenticabile (email + password unici). Le sue vesti
-  applicative vivono su N record di `identita_digitali`, ciascuno con il
-  proprio `ruolo_applicativo`.
-* **Unicita' (auth_user, ruolo_applicativo)**: indice parziale
-  `uq_identita_digitali_auth_user_ruolo_attivo` su
-  `(auth_user_id, ruolo_applicativo) WHERE attivo = true`. Un solo
-  `CLIENTE_PORTALE` attivo per user, un solo `OPERATORE` attivo per user,
-  eccetera. Storicizzate (`attivo = false`) multiple.
-* **Unicita' (soggetto_ruolo, ruolo_applicativo)**: indice parziale
-  `uq_identita_digitali_sr_ruolo_attivo` su
-  `(soggetto_ruolo_id, ruolo_applicativo) WHERE attivo = true`. Abilita
-  scenari multi-canale (es. lo stesso SR-CL ha al massimo un
-  `CLIENTE_PORTALE` attivo + un `SHOP_CUSTOMER` attivo, ma nessun doppione
-  per ruolo).
-* **Finestra temporale**: `valido_dal` obbligatorio (default oggi), `valido_al`
-  opzionale. CHECK `valido_al >= valido_dal` se entrambi valorizzati.
-* **Coerenza ruolo_applicativo ↔ soggetto_ruolo** garantita dal guard
-  [trgfn_identita_digitali_guard_coerenza](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_coerenza):
-  * `OPERATORE` → soggetto_ruolo con tipo `RIS_UMANA` + soggetto persona fisica pura
-    (CF obbligatorio, P.IVA vietata)
-  * `CLIENTE_PORTALE` / `SHOP_CUSTOMER` → tipo `CL` (cliente)
-  * `FORNITORE_PORTALE` → tipo `FO` (fornitore)
-  * `API_CLIENT` → nessun vincolo specifico; `DISABILITATO` → rifiutato
-    (`E_RUOLO_APPLICATIVO_RITIRATO`, dal 2026-10-02)
-* **Una credenziale è di una persona o di una macchina, non di tutte e due**
-  (dal 2026-10-02): tutte le vesti di un `auth_user_id`, anche spente, hanno la
-  stessa natura secondo [script.fn_veste_di_sistema](/dbzero/script/funzioni/fn_veste_di_sistema)
-  (`API_CLIENT` o `tecnica` = macchina). Lo impone
-  [trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale)
-  con `E_CREDENZIALE_PERSONA_E_SISTEMA`; le righe nate prima le segnala
-  [dbops.vw_credenziali_da_sanare](/dbzero/dbops/views/vw_credenziali_da_sanare).
-  Su questa regola poggia la categoria di una credenziale
-  ([script.fn_categoria_accesso](/dbzero/script/funzioni/fn_categoria_accesso)), cioè il
-  tab dell'area «Accessi» in cui sta.
-* **Tentativi sbagliati, blocco e cambio password obbligatorio NON sono della
-  veste** (dal 2026-09-25): la password è una sola e vale per tutte le porte,
-  quindi quello stato appartiene alla **credenziale** e sta in
-  [config.credenziali](/dbzero/config/tabelle/credenziali). Fino a quel giorno
-  `tentativi_falliti`, `bloccato_fino_a`, `deve_cambiare_password` e
-  `totp_obbligatorio` stavano qui, una copia per veste, e il login contava solo
-  la riga `OPERATORE`: chi aveva solo il portale o lo shop non veniva mai frenato.
-* **`auth_user.is_active` = OR sulle identita**: l'utente Django resta
-  globalmente attivo se esiste almeno un'identita utilizzabile (cfr.
-  [fn_sync_auth_user_is_active](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active)).
+Spegnere una veste vuol dire `attivo = false`, qualunque sia il tipo, e il tipo resta. `DISABILITATO` è una voce
+storica dell'enum, che lo spegnimento dell'operatore scriveva al posto di `OPERATORE`: la tabella la rifiuta (il
+CHECK `chk_identita_digitali_ruolo_non_ritirato`, e prima ancora il guard di coerenza), e resta nel tipo solo perché
+la porta lo storico.
 
 ---
 
-### Campi di gestione autenticazione
+### Le date: dal giorno operativo, aperte in fondo
 
-| Campo                    | Default        | Scopo                                                                                                                                                       |
-| ------------------------ | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `attivo`                 | `true`         | Soft flag. Se `false`, `auth_user.is_active` viene sincronizzato a `false` (gestione tramite `fn_sync_auth_user_is_active`).                                |
-| `valido_dal`             | `CURRENT_DATE` | Inizio validità.                                                                                                                                            |
-| `valido_al`              | NULL           | Fine validità (NULL = aperto). Scaduto → identità non utilizzabile.                                                                                         |
-| `invito_inviato_at`      | NULL           | Timestamp dell'ultimo invito di attivazione inviato (token monouso `INVITO_PORTALE`).                                                                       |
-| `storicizza`             | `true`         | Flag opt-out per lo snapshot storico automatico (`trgfn_storico_generic`).                                                                                  |
-
-⚠️ Dal 2026-09-25 (`20260925-25`) `deve_cambiare_password`, `tentativi_falliti`,
-`bloccato_fino_a` e `totp_obbligatorio` non sono più qui: i primi tre sono della
-credenziale ([config.credenziali](/dbzero/config/tabelle/credenziali)),
-`totp_obbligatorio` non l'aveva mai letto nessuno e, quando il secondo fattore si
-farà, sarà anch'esso della credenziale.
+`valido_dal` è obbligatoria e, se chi scrive non la passa, è il **giorno operativo**, la data di oggi nel fuso
+dell'azienda (`script.fn_data_operativa`). `valido_al` è facoltativa: vuota vuol dire senza fine. La fine non viene
+prima dell'inizio, e sulle date scatta anche il controllo comune delle finestre di validità.
 
 ---
 
-### Super admin via binding profilo
+### Accesa non vuol dire utilizzabile
 
-A partire da §4.6.A-B WIP multi-face-auth (decisione 2026-04-19) il
-privilegio di **bypass totale dei permessi** (equivalente al vecchio
-`risorse_umane_auth_user.ruolo_sistema = 'ADMIN'`) non è più una colonna
-speciale ma un **binding** tra l'identità e un profilo con
-`tipo = 'SUPER_ADMIN'` (seed id `9100`).
+Una veste è **utilizzabile** quando è accesa, oggi sta nelle sue date e il suo soggetto è attivo; la veste
+dell'operatore umano pretende in più che il suo rapporto, la risorsa umana dello stesso ruolo, sia acceso e nelle
+sue date. La regola ha una sede sola, `script.fn_veste_utilizzabile`.
 
-* Il check viene fatto da [script.fn_is_super_admin](/dbzero/script/funzioni/fn_is_super_admin).
-* Il binding è gestito via [config.profili_accesso_bindings](/dbzero/config/tabelle/profili_accesso_bindings).
-* Il binding `SUPER_ADMIN` viene creato ed eliminato esplicitamente dai caller
-  (`fn_crea_risorsa_umana`, `amm_software_repository`) su
-  `config.profili_accesso_bindings`.
-* ⭐ **La veste OPERATORE nasce spenta** (dal 2026-09-25,
-  [fn_crea_operatore_v2](/dbzero/anagrafiche/manual/fn_crea_operatore_v2)):
-  la accende l'attivazione dell'invito, come per ogni veste. I suoi binding,
-  SUPER_ADMIN compreso, nascono invece attivi: **porta e profili non si
-  legano sull'`attivo`** (eccezione dichiarata in
-  [dbops.automazione_attivo_eccezioni](/dbzero/dbops/manual/automazione_attivo_eccezioni)),
-  e `fn_is_super_admin` vuole entrambe le cose. Una veste si spegne anche con
-  binding attivi, che restano per il reinvito; l'ultimo SUPER_ADMIN lo
-  protegge il guard anti-lockout dell'identità.
+La credenziale è accesa (`django.auth_user.is_active`) quando **almeno una** delle sue vesti è utilizzabile.
+Spegnere una veste, o lasciarla scadere, spegne la credenziale solo se non le resta un'altra veste utilizzabile.
+La allinea `anagrafiche.fn_sync_auth_user_is_active`, chiamata dai trigger della tabella e, per le date che
+arrivano senza che nessuno scriva, da un passaggio periodico ogni ora: la sua scheda dice chi la chiama e che cosa
+nessun trigger copre.
 
 ---
 
-### Il bridge storico non esiste piu'
+### ⭐ Persona o processo: il flag `tecnica`
 
-`anagrafiche.risorse_umane_auth_user` — la tabella che teneva il ponte fra una
-risorsa umana e un account Django — non esiste in nessuna forma. Era stata
-sostituita da una vista read-only con `security_invoker = true` costruita su
-`identita_digitali WHERE ruolo_applicativo = 'OPERATORE'`, nata solo per la
-retrocompatibilita' del codice non ancora migrato; in seguito e' stata
-eliminata anche quella. Il legame risorsa ⇄ utente passa oggi e solo da
-`identita_digitali`.
+`tecnica = true` dice che dietro la veste non c'è una persona ma un **processo automatico**. Il processo è un
+operatore a tutti gli effetti (`OPERATORE`): attraversa le stesse regole di visibilità e lo stesso perimetro, e un
+tipo di veste dedicato avrebbe voluto dire riscriverle una seconda volta.
 
----
-
-### FK condizionale verso Django
-
-La FK `fk_identita_digitali_auth_user` viene creata **solo se lo schema `django`
-e la tabella `auth_user` esistono**. In ambienti CI senza Django (test pgTAP
-puri) il vincolo non viene installato, permettendo alle migration di applicarsi
-comunque.
+Il flag non è libero: il guard di coerenza pretende, per l'operatore, un ruolo `PROC_AUTO` se la veste è tecnica e
+un ruolo `RIS_UMANA` di una persona fisica pura se non lo è. Marcare tecnica la veste di una persona non passa. Il
+default è `false`. Le identità tecniche le crea `script.fn_crea_utente_tecnico`, e il legame col processo sta in
+`dbops.processi_identita`.
 
 ---
 
-### Note operative
+### Il tipo di veste deve essere coerente col ruolo
 
-* La presenza del bridge è **opzionale**: non tutti i `soggetti_ruoli` devono
-  avere un accesso al software (es. clienti che non usano il portale).
-* L'attivazione di una nuova identità triggera la sincronizzazione di
-  `auth_user.is_active` tramite automation (trigger `sync_auth_user_active`).
-* I trigger framework (audit, tx_id, storico) sono applicati via automation
-  sulla tabella; non richiedono intervento manuale.
+La veste dell'operatore sta su un ruolo `RIS_UMANA` (di una persona fisica pura) o `PROC_AUTO`; quella del portale
+dei clienti e dello shop su un ruolo cliente `CL`; quella del portale dei fornitori su un ruolo `FO`. La veste del
+sistema esterno non ha vincoli sul ruolo. Lo controlla, a ogni scrittura,
+`anagrafiche.trgfn_identita_digitali_guard_coerenza`.
+
+---
+
+### Una credenziale è di una persona o di una macchina
+
+Tutte le vesti di una credenziale, anche le spente, hanno la stessa natura: di macchina se sono del sistema
+esterno o tecniche, di persona altrimenti. Lo impone `anagrafiche.trgfn_identita_digitali_guard_natura_credenziale`.
+Su questa regola poggia la categoria di una credenziale (`script.fn_categoria_accesso`), cioè il tab dell'area
+«Accessi» in cui sta.
+
+---
+
+### Lo stato della password non è della veste
+
+Tentativi sbagliati, blocco e cambio di password obbligatorio sono della **credenziale**, perché la password è una
+sola per tutte le porte: stanno in `config.credenziali`, non qui.
+
+---
+
+### L'amministratore è un profilo legato alla veste
+
+Il passaggio oltre tutti i permessi non è una colonna della veste: è il **profilo** di tipo `SUPER_ADMIN`, legato a
+una veste dell'operatore con una riga di `config.profili_accesso_bindings`. Il profilo non ha un id scritto da
+nessuna parte: lo risolve `config.fn_profilo_super_admin_id`. Il legame lo scrive, alla creazione dell'operatore,
+`anagrafiche.fn_crea_risorsa_umana_v2` (che `fn_crea_operatore_v2` chiama); dopo, lo mettono e lo tolgono
+`config.fn_lega_profilo_identita` e `config.fn_slega_profilo_identita`. Chi è amministratore lo dice
+`script.fn_is_super_admin`.
+
+La veste dell'operatore nasce **spenta** e la accende l'attivazione dell'invito; i suoi legami coi profili, quello
+`SUPER_ADMIN` compreso, nascono invece attivi, perché porta e profili non si legano sull'`attivo`. Una veste spenta
+tiene i suoi legami, che servono al reinvito. Che il sistema non resti senza un amministratore lo presidia la
+scheda di `trgfn_identita_digitali_guard_ultimo_super_admin`.
+
+---
+
+### Che cosa fanno i trigger della tabella
+
+Oltre ai tre guard sul tipo, sulla natura e sull'ultimo amministratore, i trigger della tabella controllano le date,
+impediscono di spegnere una veste che ha ancora un perimetro dei dati attivo in `config.identita_scope_bindings`,
+allineano la credenziale dopo ogni scrittura che cambia la validità, e tengono audit, identificativo di transazione
+e storico. L'elenco, con l'ordine, sta nella scheda.
+
+---
+
+### La chiave esterna verso Django
+
+`auth_user_id` punta a `django.auth_user`, e una credenziale con delle vesti non si cancella (`ON DELETE RESTRICT`).
+La chiave esterna nasce solo dove lo schema Django c'è già quando la migrazione gira: su un database ricostruito da
+zero, dove Liquibase gira prima delle migrazioni Django, manca.
+
+---
+
+### ⚠️ Che cosa oggi non copre
+
+* **Il flag `tecnica` su una veste che non è dell'operatore.** Il guard di coerenza legge il flag solo per
+  `OPERATORE`: una veste del portale o dello shop con `tecnica = true` passa, e fa della sua credenziale una
+  credenziale di macchina.
+* **Il profilo `SUPER_ADMIN` su un'identità tecnica.** Un processo non deve passare oltre tutti i permessi, ma nessun
+  controllo impedisce di legare quel profilo a una veste con `tecnica = true`.
+
+---
+
+### Codici errore
+
+* `E_RUOLO_APPLICATIVO_RITIRATO` — una veste `DISABILITATO`; il CHECK `chk_identita_digitali_ruolo_non_ritirato` lo
+  ripete alla tabella.
+* `E_SOGGETTI_RUOLI`, `E_AUTH_USER_SOGGETTO_CON_PIVA`, `E_AUTH_USER_SOGGETTO_SENZA_CF`,
+  `E_RUOLO_APPLICATIVO_NON_GESTITO` — il tipo di veste incoerente col ruolo (la scheda del guard di coerenza).
+* `E_CREDENZIALE_PERSONA_E_SISTEMA` — una credenziale che mescolerebbe persona e macchina.
+
+---
+
+### Test
+
+* `db/pgtap/anagrafiche/test-identita-digitali-unique-multi-veste.sql` — i due indici unici fra le vesti accese, e
+  le spente che non contano. È **rosso** in baseline.
+* `db/pgtap/anagrafiche/test-veste-operatore-spenta-v1.sql` — la veste dell'operatore si spegne con `attivo = false`
+  e tiene il tipo, `DISABILITATO` rifiutato.
+* `db/pgtap/anagrafiche/test-identita-tecnica.sql` — il flag `tecnica`, il suo default e i presidi dei processi.
+* `db/pgtap/anagrafiche/test-area-accessi-v1.sql` — la natura della credenziale e la categoria.
+
+---
+
+### Note di migrazione
+
+* 2026-04-20 — modello a più vesti: una credenziale può avere più vesti accese, una per tipo. Prende il posto del
+  ponte `risorse_umane_auth_user`, che legava la sola risorsa umana alla credenziale e che dal 2026-09-12 non esiste
+  più, nemmeno come vista. Il privilegio di amministratore, che era una colonna del ponte, diventa un profilo.
+* 2026-09-04 — nasce il flag `tecnica`.
+* 2026-09-25 — tentativi sbagliati, blocco e cambio password escono dalla veste e vanno in `config.credenziali`;
+  la veste dell'operatore nasce spenta.
+* 2026-10-02 — `DISABILITATO` non è più un tipo di veste; nasce la regola «persona o macchina».
 
 ---
 

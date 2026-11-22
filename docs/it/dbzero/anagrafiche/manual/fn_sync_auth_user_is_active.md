@@ -1,139 +1,91 @@
-## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_sync_auth_user_is_active()`
+## 📘 Documentazione Concettuale – Funzione `anagrafiche.fn_sync_auth_user_is_active`
 
+> **Ultimo aggiornamento**: 22 novembre 2026
+>
 > 👀 **Vedi anche**
 >
-Architettura di riferimento:
+> Approfondimento tabelle:
 >
-[Architettura Multi-Face Auth](/guide/architettura-multi-face-auth)
+> * [anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali) — le vesti della credenziale
+> * [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane) — il rapporto che l'operatore umano pretende
 >
-**Approfondimento tabelle:**
+> Approfondimento funzioni:
 >
-[anagrafiche.identita_digitali](/dbzero/anagrafiche/tabelle/identita_digitali)
-> [anagrafiche.risorse_umane](/dbzero/anagrafiche/tabelle/risorse_umane)
-> [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti)
+> * [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile) — la regola «la veste vale oggi», a cui la funzione delega
+> * [anagrafiche.trgfn_identita_digitali_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_sync_auth_user_active) — la chiama a ogni scrittura su una veste
+> * [anagrafiche.trgfn_risorse_umane_sync_auth_user_active](/dbzero/anagrafiche/funzioni/trgfn_risorse_umane_sync_auth_user_active) — la chiama a ogni cambio del rapporto
+> * [anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired) — la chiama ogni ora, per le credenziali rimaste indietro
 >
-**Approfondimento funzioni:**
+> Guide:
 >
-[anagrafiche.fn_sync_auth_user_expired](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired)
+> * [Risorse umane e accessi](/guide/risorse-umane-e-accessi) — vesti, credenziali e il blocco del login
 
 ---
+
 ### 🎯 Scopo Principale
-(latest review 20-04-2026 — semantica OR multi-veste)
 
-La funzione **`anagrafiche.fn_sync_auth_user_is_active()`** allinea il campo
-`django.auth_user.is_active` allo stato effettivo delle identita digitali
-dell'utente.
-
-Post 20-04-2026 (modello SSO multi-veste) la funzione ha una logica **OR
-su N identita**: `auth_user.is_active = true` se e solo se esiste almeno
-un'identita **utilizzabile oggi** per l'utente, secondo
-[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
-(dal 07-10-2026: accesa, nelle sue date, soggetto attivo e, per l'operatore
-umano, rapporto attivo e nelle sue date). Dal 2026-10-02 (brief `brief-db-be-fe-area-accessi`, R-DB-1) «spenta» si legge solo da
-`attivo`: il controllo sul ruolo `DISABILITATO` è caduto con il tipo.
+`anagrafiche.fn_sync_auth_user_is_active` allinea `django.auth_user.is_active` di una credenziale alle sue vesti:
+la accende se almeno una veste è utilizzabile oggi, altrimenti la spegne. Restituisce vero solo se ha cambiato il
+flag.
 
 ---
 
-### Parametri di input
+### Decide sull'insieme delle vesti, non su una
 
-| Parametro        | Tipo      | Descrizione                           |
-| ---------------- | --------- | ------------------------------------- |
-| `p_auth_user_id` | `integer` | ID dell'utente Django. NOT NULL, > 0. |
+La funzione non sa quale veste è cambiata e non le serve: guarda tutte le vesti della credenziale e chiede a
+`script.fn_veste_utilizzabile` se almeno una vale oggi. Che cosa voglia dire «utilizzabile» lo decide quella
+funzione, e qui non è ricopiato: la veste accesa, nelle sue date, col soggetto attivo e, per l'operatore umano,
+col rapporto attivo e nelle sue date.
 
-Il parametro è dichiarato con `%TYPE` della colonna
-`anagrafiche.identita_digitali.auth_user_id`.
-
----
-
-### Output
-
-`boolean` — `true` solo se la funzione ha **effettivamente modificato** la
-riga `django.auth_user` (UPDATE applicato perché il valore è cambiato).
-`false` in tutti gli altri casi (utente orfano, nessun cambio, schema django
-assente).
+Una credenziale che **non ha nessuna veste** risulta da spegnere: se è accesa, la funzione la spegne. Per questo il
+passaggio periodico non la propone, e i trigger non la chiamano mai su una credenziale che non sia quella di una
+veste.
 
 ---
 
-### Algoritmo (OR multi-veste post 20-04-2026)
+### Scrive solo se cambia
 
-1. **Guard parametro** — `p_auth_user_id IS NULL OR <= 0` → `E_PARAMETRO_INVALIDO`.
-2. **Calcolo OR** — singola query `EXISTS (...)` sulle N identita
-   digitali dell'utente. `is_active = true` se esiste almeno un'identita
-   utilizzabile oggi per
-   [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile).
-   Fino al 07-10-2026 i criteri erano ricopiati qui (attiva, in finestra,
-   soggetto attivo), senza il rapporto dell'operatore.
-3. **No-op ambiente CI** — se schema Django assente, `RETURN false`
-   silente (CI senza Django non ha auth_user da sincronizzare).
-4. **UPDATE** — `auth_user.is_active = <OR>` solo se diverso dal valore
-   corrente. Se l'auth_user non esiste (orfano), `RETURN false`.
+Il flag si scrive solo quando il suo valore è diverso da quello calcolato: chiamarla due volte di seguito non
+cambia niente, e la seconda volta restituisce falso. Il ritorno serve al passaggio periodico per contare le
+credenziali riallineate.
 
-**Motivazione OR:** Django `is_active` e' il flag globale di autorizzazione
-al login. Se l'utente ha 3 vesti e ne vengono disattivate 2, deve
-comunque poter loggare con la terza. Il blocco della singola veste
-disattivata e' applicato dalla policy RLS + permission class namespace,
-non dal flag `is_active`.
-
-**Rimossi rispetto a versioni pre-20-04:**
-
-* Fallback legacy su `risorse_umane_auth_user` (ora vista post cutover
-  19-04-2026, gia' rimosso in migration 20260419-92).
-* Doppia verifica per OPERATORE su `risorse_umane.attivo` (vincolo legacy
-  transitorio gia' rimosso in 20260419-92). ⚠️ Il rapporto è **tornato** il
-  07-10-2026, in un'altra forma e in una sede sola: lo guarda il building
-  block (attivo e nelle sue date), per decisione di Tid (D-2 di
-  `brief-db-veste-utilizzabile`). Così la fine del rapporto scritta dal drawer
-  operatore spegne la credenziale, se non le resta un'altra veste utilizzabile.
-* Assunzione 1:1 user→identita (sostituita da query aggregata sul set
-  delle identita).
+Restituisce falso, senza scrivere, anche quando la credenziale non esiste in `django.auth_user` e quando lo schema
+Django non c'è (un database di sola integrazione continua): la tabella si raggiunge per nome, a tempo di esecuzione.
 
 ---
 
-### Fix bug latente §3.2.b (verifica 2026-04-18)
-
-La firma precedente accettava `p_risorsa_umana_id bigint`, ma 3 metodi di
-`AmmSoftwareRepository` (`update_operatore`, `disabilita_operatore`,
-`riattiva_operatore`) la invocavano passando invece un `auth_user_id`.
-Il bug era coperto dai trigger AFTER su `risorse_umane_auth_user` che
-chiamavano la funzione con il parametro corretto, ma lasciava un rischio
-di comportamento non deterministico in caso di collisione di id tra
-`auth_user` e `risorse_umane`.
-
-La nuova firma `(p_auth_user_id)` rende **automaticamente corretti** i 3
-metodi Python senza toccare il codice chiamante.
+{% include-markdown "it/dbzero/anagrafiche/_sincronizzazione-accesso.md" %}
 
 ---
 
-### Regole implementative
+### Codici errore
 
-* Variabili locali e parametro tipizzati con `%TYPE` (policy ZeroErp).
-* `LANGUAGE plpgsql` (non `sql`): la funzione ha flusso condizionale
-  complesso + EXECUTE dinamico per dialog con `django.auth_user`.
-* `EXECUTE` dinamico su `django.auth_user`: evita dipendenza statica dallo
-  schema `django` (compatibilità CI).
-* Codici errore: `E_PARAMETRO_INVALIDO` (già in `messaggi_errore`).
+* `E_PARAMETRO_INVALIDO` — la credenziale non è passata, o non è un numero positivo.
 
 ---
 
-### Chiamanti
+### Test
 
-#### Trigger DB
+* `db/pgtap/anagrafiche/test-sync-auth-user-is-active-multi-role.sql` — il rifiuto della credenziale non valida, la
+  credenziale senza vesti (che il test si aspetta lasciata com'è: vale solo se è già spenta), le vesti dei portali e dello shop, la veste spenta e quella fuori dalle sue date.
+* `db/pgtap/anagrafiche/test-fn-sync-auth-user-is-active-or.sql` — più vesti sulla stessa credenziale: basta una
+  utilizzabile.
+* `db/pgtap/script/test-fn-veste-utilizzabile-v1.sql` (caso 17) — col rapporto chiuso la credenziale dell'operatore
+  si spegne.
 
-* `anagrafiche.trgfn_risorse_umane_sync_auth_user_active` — risolve
-  l'`auth_user_id` dalle identità collegate alla risorsa prima di chiamare.
-* `anagrafiche.trgfn_identita_digitali_sync_auth_user_active` — passa
-  `NEW.auth_user_id`.
+I primi due sono **rossi** in baseline.
 
-#### Funzione batch
+---
 
-* `anagrafiche.fn_sync_auth_user_expired` — loop daily via pgAgent con
-  `DISTINCT auth_user_id` su UNION di risorse_umane scadute + identità scadute.
+### Note di migrazione
 
-#### Service Python
-
-* `AmmSoftwareRepository.update_operatore / disabilita_operatore /
-  riattiva_operatore` — passano `auth_user_id` (ora corretto grazie alla
-  nuova firma; fix implicito del bug latente §3.2.b).
+* 2026-04-18 — la funzione riceve la credenziale invece della risorsa umana: alcuni chiamanti del backend le
+  passavano già una credenziale.
+* 2026-04-20 — con il modello a più vesti la credenziale è accesa se **almeno una** veste è utilizzabile. Cadono la
+  lettura del ponte `risorse_umane_auth_user` e il secondo controllo sull'operatore.
+* 2026-10-02 — «spenta» si legge solo da `attivo`: `DISABILITATO` non è più un tipo di veste.
+* 2026-10-07 — la regola si legge da `script.fn_veste_utilizzabile`, che per l'operatore umano guarda di nuovo il
+  rapporto: la fine del rapporto spegne la credenziale se non le resta un'altra veste utilizzabile.
 
 ---
 
