@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Tabella `maintenance.job_run_log`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -211,22 +211,25 @@ che c'è sempre.
 
 ### Come si legge: per chiave, mai per intero
 
-Il giornale cresce a ogni corsa, quindi chi lo legge non lo percorre tutto: cerca le corse di **un**
-job o di **un** processo, dalla più recente, o le corse di un periodo. Quattro indici servono
+Il giornale cresce a ogni corsa, quindi chi lo legge non lo percorre tutto: cerca le corse di **una**
+corsia o di **un** processo, dalla più recente, o le corse di un periodo. La corsia è la coppia
+(`processo_codice`, `jobname`), non il solo nome: il modello non lega un `jobname` a un processo
+solo, e due processi possono avere una corsia con lo stesso nome. Quattro indici servono
 queste domande, tutti nell'ordine «dalla più recente» (`started_at` e `id` decrescenti), così
 l'ultima corsa è la prima riga che l'indice trova.
 
 | Indice | Serve |
 | --- | --- |
-| `ix_job_run_log_jobname_started_at` | le corse di un job: l'ultima corsa per job dei presidi e della liveness del backend, «c'è una corsa da…» dei timer, l'elenco dei job |
+| `ix_job_run_log_jobname_started_at` | le corse di un nome, senza il processo: il filtro per solo nome dell'elenco delle corse del backend |
 | `ix_job_run_log_processo_codice_started_at` | le corse di un processo, attraverso tutti i suoi job: la lista dei processi, le corse di un processo, il panorama `dbops.vw_processi_programmazione`, `vw_job_run_da_superuser`. Copre la FK verso `dbops.processi` |
-| `ix_job_run_log_processo_codice_jobname_started_at` | i job di un processo, e per ciascuno le corse: l'elenco dei job dentro un processo e l'ultima corsa di ognuno (la liveness per processo del backend) |
+| `ix_job_run_log_processo_codice_jobname_started_at` | le corsie, e per ciascuna le corse: l'elenco delle corsie (`maintenance.vw_job_run_corsie`), l'ultima corsa di ogni corsia del presidio `vw_job_run_da_guardare`, della liveness e dei timer del backend («c'è una corsa da…»), le righe che la potatura tiene |
 | `ix_job_run_log_started_at` | il giornale per data, senza chiave: l'elenco delle corse e le finestre di tempo dei presidi |
 
 * **Un indice non basta a «l'ultima corsa di ognuno».** Raggruppare tutto il giornale costa quanto
-  il giornale, con o senza indice. Le viste che vogliono l'ultima corsa di ogni job la cercano
-  **una chiave alla volta**: prima l'elenco delle chiavi, saltando nell'indice da un valore al
-  successivo, poi la prima riga per ciascuna.
+  il giornale, con o senza indice. Chi vuole l'ultima corsa di ogni corsia la cerca **una chiave
+  alla volta**: prima l'elenco delle chiavi, saltando nell'indice da un valore al successivo, poi la
+  prima riga per ciascuna. L'elenco delle corsie ha una sede sola, `maintenance.vw_job_run_corsie`,
+  che leggono il presidio e la potatura.
 * **La FK non passa dalla policy degli indici FK.** `maintenance` non è fra gli schemi che la
   policy governa (`dbops.automation_scope`), quindi l'indice che la copre nasce col changeSet della
   tabella.

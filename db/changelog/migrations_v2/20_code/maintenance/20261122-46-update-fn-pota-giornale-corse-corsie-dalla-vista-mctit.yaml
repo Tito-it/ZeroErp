@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.fn_pota_giornale_corse legge le corsie da
+#   maintenance.vw_job_run_corsie.
+#
+# ⭐ LA COPIA RITIRATA (regola del 2). La CTE coppie di questa funzione era la
+#   discesa sulle coppie (processo, jobname); dal 20261122-44 la discesa sta in
+#   maintenance.vw_job_run_corsie, che legge anche vw_job_run_da_guardare
+#   (20261122-45). Qui la CTE esce e tenute parte dalla vista. Il resto del
+#   corpo e' quello del 20261122-30, riga per riga: le righe tenute e quelle
+#   cancellate non cambiano.
+#
+# ⚠️ Stessa firma, CREATE OR REPLACE: restano STRICT, SECURITY INVOKER e il
+#   REVOKE EXECUTE da PUBLIC (l'ACL non cambia con il CREATE OR REPLACE).
+#   Nessun COST, ROWS o SET da ripetere: la funzione non ne ha. Il COMMENT
+#   descrive la regola, non la forma, e resta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-46-update-fn-pota-giornale-corse-corsie-dalla-vista-mctit.yaml
+
+  - changeSet:
+      id: 20261122-46-update-fn-pota-giornale-corse-corsie-dalla-vista
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.fn_pota_giornale_corse: le corsie da maintenance.vw_job_run_corsie invece della
+        sua CTE coppie; righe tenute e cancellate invariate.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'maintenance' AND p.proname = 'fn_pota_giornale_corse'
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'maintenance'
+                AND c.relname = 'vw_job_run_corsie'
+                AND c.relkind = 'v'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION maintenance.fn_pota_giornale_corse(
+                  p_prima_di maintenance.job_run_log.started_at%TYPE)
+               -- jsonb: l'esito della corsa, che fn_run_and_log scrive in meta.esito (non e' una colonna)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STRICT
+              AS $function$
+              DECLARE
+                -- bigint: il numero delle righe cancellate, un conteggio (non e' il riflesso di una colonna)
+                v_cancellate bigint;
+              BEGIN
+                -- Scopo: la ritenzione del giornale. Cancella le corse chiuse con
+                --   started_at prima di p_prima_di, dei processi che non dichiarano
+                --   dbops.processi.potatura_esclusione, tranne le righe tenute: per
+                --   ogni corsia (processo, jobname) di maintenance.vw_job_run_corsie
+                --   l'ultima di ciascun predicato dei lettori. Le corse aperte non si
+                --   toccano mai.
+                WITH tenute AS (
+                         SELECT t.id
+                           FROM maintenance.vw_job_run_corsie k
+                          CROSS JOIN LATERAL (
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ended_at IS NOT NULL AND NOT l.saltata
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ruolo_sessione IS NOT NULL
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.ok IS FALSE
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                                UNION ALL
+                                (SELECT l.id FROM maintenance.job_run_log l
+                                  WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname AND l.origine = 'PGAGENT'
+                                  ORDER BY l.started_at DESC, l.id DESC LIMIT 1)
+                               ) t
+                     )
+                DELETE FROM maintenance.job_run_log l
+                 WHERE l.started_at < p_prima_di
+                   AND l.ended_at IS NOT NULL
+                   AND NOT EXISTS (SELECT 1
+                                     FROM dbops.processi pr
+                                    WHERE pr.codice = l.processo_codice
+                                      AND pr.potatura_esclusione IS NOT NULL)
+                   AND NOT EXISTS (SELECT 1 FROM tenute t WHERE t.id = l.id);
+
+                GET DIAGNOSTICS v_cancellate = ROW_COUNT;
+
+                RETURN jsonb_build_object('soglia', p_prima_di, 'cancellate', v_cancellate);
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il verso di ritiro e' un changeSet nuovo (corpo del 20261122-30).
+              SELECT 1;

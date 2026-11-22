@@ -24,25 +24,12 @@ BEGIN
   -- Scopo: la ritenzione del giornale. Cancella le corse chiuse con
   --   started_at prima di p_prima_di, dei processi che non dichiarano
   --   dbops.processi.potatura_esclusione, tranne le righe tenute: per
-  --   ogni coppia (processo, jobname) l'ultima di ciascun predicato dei
-  --   lettori. Le corse aperte non si toccano mai.
-  WITH RECURSIVE coppie AS (
-           (SELECT c0.processo_codice, c0.jobname
-              FROM maintenance.job_run_log c0
-             ORDER BY c0.processo_codice, c0.jobname
-             LIMIT 1)
-           UNION ALL
-           SELECT n.processo_codice, n.jobname
-             FROM coppie c
-            CROSS JOIN LATERAL (
-                  SELECT c1.processo_codice, c1.jobname
-                    FROM maintenance.job_run_log c1
-                   WHERE (c1.processo_codice, c1.jobname) > (c.processo_codice, c.jobname)
-                   ORDER BY c1.processo_codice, c1.jobname
-                   LIMIT 1) n
-       ), tenute AS (
+  --   ogni corsia (processo, jobname) di maintenance.vw_job_run_corsie
+  --   l'ultima di ciascun predicato dei lettori. Le corse aperte non si
+  --   toccano mai.
+  WITH tenute AS (
            SELECT t.id
-             FROM coppie k
+             FROM maintenance.vw_job_run_corsie k
             CROSS JOIN LATERAL (
                   (SELECT l.id FROM maintenance.job_run_log l
                     WHERE l.processo_codice = k.processo_codice AND l.jobname = k.jobname

@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# maintenance.vw_job_run_corsie: le corsie del giornale, una riga per coppia
+#   (processo_codice, jobname).
+#   Origine: la corsia e' la coppia in ogni lettore del giornale (Tid,
+#   2026-11-22, strada (a) di brief-db-giornale-corse-indici §11.5, che il BE ha
+#   applicato ai suoi tre lettori); qui la si porta ai lettori DB.
+#
+# ⭐ PERCHE' UNA VISTA SUA (regola del 2). La discesa sulle coppie nasce in
+#   maintenance.fn_pota_giornale_corse (20261122-30, CTE coppie);
+#   vw_job_run_da_guardare, che passa alla corsia nel 20261122-45, ne sarebbe
+#   la seconda copia. Le due copie si ritirano nello stesso giro: -45 e -46.
+#   Una vista e non una funzione: dentro un'altra vista si legge con i
+#   privilegi del proprietario, come le tabelle, e non chiede EXECUTE a chi
+#   interroga vw_job_run_da_guardare.
+#
+# ⭐ LA FORMA. «La coppia successiva» con un confronto fra righe, una discesa
+#   per corsia su ix_job_run_log_processo_codice_jobname_started_at: il costo
+#   segue il numero delle corsie, non la storia. Corpo uguale alla CTE coppie
+#   del 20261122-30. processo_codice e jobname sono NOT NULL, quindi il
+#   confronto fra righe non incontra NULL e la discesa non si ferma prima.
+#
+# ⚠️ Nessun GRANT: la leggono una vista e una funzione del proprietario.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261122-44-create-vw-job-run-corsie-mctit.yaml
+
+  - changeSet:
+      id: 20261122-44-create-vw-job-run-corsie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_corsie: le corsie (processo_codice, jobname) del giornale, con una
+        discesa ricorsiva sull'indice delle corsie. Sede unica della discesa per vw_job_run_da_guardare
+        e fn_pota_giornale_corse.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = 'maintenance'
+                AND c.relname = 'vw_job_run_corsie'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW maintenance.vw_job_run_corsie AS
+              WITH RECURSIVE corsie AS (
+                       (SELECT c0.processo_codice, c0.jobname
+                          FROM maintenance.job_run_log c0
+                         ORDER BY c0.processo_codice, c0.jobname
+                         LIMIT 1)
+                       UNION ALL
+                       SELECT n.processo_codice, n.jobname
+                         FROM corsie c
+                        CROSS JOIN LATERAL (
+                              SELECT c1.processo_codice, c1.jobname
+                                FROM maintenance.job_run_log c1
+                               WHERE (c1.processo_codice, c1.jobname) > (c.processo_codice, c.jobname)
+                               ORDER BY c1.processo_codice, c1.jobname
+                               LIMIT 1) n
+                   )
+              SELECT corsie.processo_codice,
+                     corsie.jobname
+                FROM corsie;
+
+              COMMENT ON VIEW maintenance.vw_job_run_corsie IS
+                'Le corsie del giornale: una riga per ogni coppia (processo_codice, jobname) che ha almeno una corsa in maintenance.job_run_log. La corsia e'' la coppia, non il solo jobname: il modello non lega un jobname a un processo solo, e due processi possono avere una corsia con lo stesso nome. Si legge con una discesa ricorsiva sull''indice ix_job_run_log_processo_codice_jobname_started_at (la coppia successiva), quindi il costo segue il numero delle corsie, non la storia del giornale. La leggono maintenance.vw_job_run_da_guardare e maintenance.fn_pota_giornale_corse.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS maintenance.vw_job_run_corsie;

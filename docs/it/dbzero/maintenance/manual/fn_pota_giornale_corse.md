@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `maintenance.fn_pota_giornale_corse`
 
-> **Ultimo aggiornamento**: 22 novembre 2026
+> **Ultimo aggiornamento**: 23 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -11,7 +11,8 @@
 >
 > Approfondimento viste:
 >
-> * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — legge l'ultima corsa vera e l'ultima fallita di ogni job
+> * [maintenance.vw_job_run_corsie](/dbzero/maintenance/views/vw_job_run_corsie) — le corsie, da cui la funzione parte
+> * [maintenance.vw_job_run_da_guardare](/dbzero/maintenance/views/vw_job_run_da_guardare) — legge l'ultima corsa vera e l'ultima fallita di ogni corsia
 > * [maintenance.vw_job_run_da_superuser](/dbzero/maintenance/views/vw_job_run_da_superuser) — legge l'ultima corsa col ruolo di ogni processo
 > * [dbops.vw_processi_programmazione](/dbzero/dbops/views/vw_processi_programmazione) — legge l'ultima corsa, l'ultima di pgAgent e l'ultimo esito di ogni processo
 >
@@ -69,9 +70,9 @@ dichiara nel seed dei processi, senza toccare la funzione.
 
 ### Come lavora
 
-* Le coppie si leggono saltando nell'indice delle corsie da una coppia alla successiva, e per
-  ciascuna ogni voce della tabella qui sopra è una sola ricerca nell'indice. Il costo segue il
-  numero delle coppie, non la storia.
+* Le coppie vengono da `maintenance.vw_job_run_corsie`, che le legge saltando nell'indice delle
+  corsie da una coppia alla successiva; per ciascuna ogni voce della tabella qui sopra è una sola
+  ricerca nell'indice. Il costo segue il numero delle coppie, non la storia.
 * Le candidate si leggono dall'indice per data.
 * È `SECURITY INVOKER`: cancella chi ne ha il diritto. L'applicazione non ha `DELETE` sul giornale
   e non ha `EXECUTE` sulla funzione; la chiama il job, che gira come proprietario.
@@ -110,6 +111,9 @@ Oltre la soglia il giornale non è più la storia completa:
 * 2026-11-22 — nasce, con la ritenzione di 12 mesi decisa da Tid
   (`brief-db-giornale-corse-indici` §7, §8). Prima il giornale non si potava, e cresceva per
   sempre.
+* 2026-11-23 — le coppie vengono da `maintenance.vw_job_run_corsie`, la sede che legge anche
+  `vw_job_run_da_guardare`; prima la discesa stava qui, in una CTE sua. Righe tenute e cancellate
+  non cambiano.
 
 ---
 
