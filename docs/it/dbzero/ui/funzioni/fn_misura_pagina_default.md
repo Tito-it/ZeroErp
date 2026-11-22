@@ -41,7 +41,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION ui.fn_misura_pagina_default(p_uso character varying)
-IS 'La misura «righe per pagina» di default per un uso (ui.uso_misura_pagina: COMPATTA, drawer e dialog; PAGINA, pagine), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default, o l''uso è fuori vocabolario, solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_get_misure_pagina, ui.fn_resolve_lista_config (col default dell''uso della lista) e il trigger differito del catalogo, che a fine transazione pretende un default per ogni uso. STABLE, INVOKER.';
+IS 'La misura «righe per pagina» di default per un uso (ui.uso_misura_pagina: COMPATTA, drawer e dialog; PAGINA, pagine), dal catalogo ui.misure_pagina. Mai NULL: se il catalogo non ha quel default, o l''uso è fuori vocabolario, solleva E_UI_MISURA_PAGINA_DEFAULT_MANCANTE (TECNICO). La chiedono ui.fn_get_misure_pagina (il default di ogni uso), ui.fn_misura_pagina_risolta (lo standard di una lista senza un preset nel catalogo) e il trigger differito del catalogo, che a fine transazione pretende un default per ogni uso. STABLE, INVOKER.';
 ```
 
 </div>

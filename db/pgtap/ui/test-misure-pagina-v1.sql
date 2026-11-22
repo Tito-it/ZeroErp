@@ -15,7 +15,7 @@
 --   letti con ui.fn_misura_pagina_default: nessuna lista, nessun preset e
 --   nessun numero del seed decide un'asserzione.
 --
--- Elenco test (plan 18):
+-- Elenco test (plan 19):
 --   Il catalogo
 --    1) un default per uso: COMPATTA e PAGINA, una riga ciascuno
 --    2) fn_get_misure_pagina: misure strettamente crescenti, le stesse del catalogo,
@@ -43,6 +43,9 @@
 --       quello della misura, sulla preferenza quello di forma (che chiama
 --       ui.fn_guard_misura_pagina; brief-db-revisione-ui, giro 2). Cercati per
 --       funzione e tabella, non per nome (linee-guida-trigger)
+--   Gli usi dall'enum (giro 7, Q58; in coda)
+--   19) default_per_uso: una chiave per ogni valore di ui.uso_misura_pagina, col
+--       default del BB; le due chiavi di prima uguali; il corpo legge l'enum
 --
 -- ⚠️ Gira come l'APPLICAZIONE (il backend scrive preset e preferenze). Il 16 e'
 --   rosso da owner per costruzione.
@@ -51,7 +54,7 @@ BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ============================================================
 -- Fixture
@@ -252,6 +255,24 @@ SELECT is(
                                        'ui.trgfn_preferenza_guard_forma'::regproc))),
     'ui.lista_preferenza_utente:ui.trgfn_preferenza_guard_forma:a10,ui.lista_preset:ui.trgfn_ui_lista_preset_guard_pagina_dimensione:a10',
     '18) i due trigger che giudicano la misura ci sono, in fase a10');
+
+-- 19) Con l'enum di oggi un oggetto scritto a mano coi due usi darebbe le stesse
+--   chiavi: per questo il caso guarda anche il corpo (enum_range sull'enum).
+SELECT is(
+    -- ::text esplicito: format('%s') su un booleano stampa t/f.
+    (SELECT format('%s|%s|%s',
+                   ((SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(g -> 'default_per_uso') k)
+                     = (SELECT array_agg(u::text ORDER BY u::text)
+                          FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) u)
+                   AND (SELECT bool_and((g -> 'default_per_uso' ->> u::text)::int = ui.fn_misura_pagina_default(u::text))
+                          FROM unnest(enum_range(NULL::ui.uso_misura_pagina)) u))::text,
+                   ((g ->> 'default_compatta') = (g -> 'default_per_uso' ->> 'COMPATTA')
+                   AND (g ->> 'default_pagina') = (g -> 'default_per_uso' ->> 'PAGINA'))::text,
+                   (pg_get_functiondef('ui.fn_get_misure_pagina()'::regprocedure)
+                     ~ 'enum_range\(NULL::ui\.uso_misura_pagina\)')::text)
+       FROM (SELECT ui.fn_get_misure_pagina() AS g) x),
+    'true|true|true',
+    '19) default_per_uso: un default per ogni uso dell''enum, quello del BB; le due chiavi di prima uguali');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,589 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU AGPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_seed_primo_impianto: le colonne derivate si leggono da
+#   dbops.fn_seed_elenco_colonne.
+#   Brief: brief-db-revisione-ui (giro 7, Q54: la regola del 2, estrazione decisa
+#   da Tid il 2026-11-22).
+#
+# Che cosa cambia: la lettura di TG_ARGV[3] (le colonne derivate della forma
+#   COLONNA) chiama il BB di 20261122-41, lo stesso con cui la grammatica
+#   (20261122-42) le ha validate, invece di ricopiarne l'espressione. Il
+#   comportamento non cambia: TG_ARGV non porta NULL, e per un testo il BB da' lo
+#   stesso array dell'espressione di prima.
+# Il COMMENT non cambia (non nomina la lettura): resta quello di 20261122-39, che un
+#   CREATE OR REPLACE conserva.
+# Corpo di partenza: quello di 20261122-39, l'ultimo changeSet sulla funzione
+#   (uguale al vivo di dbdev, 2026-11-22). Attributi vivi: plpgsql, VOLATILE,
+#   SECURITY DEFINER, SET search_path = pg_catalog, pg_temp, COST 100: ripetuti dal
+#   blocco; EXECUTE a zeroerp_app, che un CREATE OR REPLACE conserva. Il BB e'
+#   chiamato qualificato: il search_path stretto non lo nasconde. La rollback
+#   riporta il corpo di 20261122-39.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261122-43-update-trgfn-seed-primo-impianto-elenco-colonne-mctit.yaml
+
+  - changeSet:
+      id: 20261122-43-update-trgfn-seed-primo-impianto-elenco-colonne
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_seed_primo_impianto: le colonne derivate (quarto argomento della forma COLONNA) lette da
+        dbops.fn_seed_elenco_colonne, la lettura della grammatica. Brief: brief-db-revisione-ui (giro 7, Q54,
+        regola del 2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('script.trgfn_seed_primo_impianto()')
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc
+               WHERE oid = to_regprocedure('dbops.fn_seed_elenco_colonne(text)')
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_seed_primo_impianto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                  v_arg       record;   -- riga di dbops.fn_seed_primo_impianto_argomenti
+                  -- boolean nudo: la risposta di dbops.fn_sessione_del_migratore
+                  v_software  boolean;
+                  v_seed_id   dbops.seed_righe.id%TYPE;
+                  v_pers      dbops.seed_righe.personalizzata_il%TYPE;
+                  v_riga_id   dbops.seed_righe.riga_id%TYPE;
+                  v_scartati  dbops.seed_righe.scartati%TYPE;
+                  v_inst      dbops.automazione_seed_primo_impianto.colonne_installazione%TYPE;
+                  v_sw        dbops.automazione_seed_primo_impianto.colonne_software%TYPE;
+                  -- jsonb nudi: la riga intera, vecchia e nuova, e la toppa che
+                  -- rimette le colonne; non il riflesso di una colonna
+                  v_old       jsonb;
+                  v_new       jsonb;
+                  v_patch     jsonb;
+                  -- text[] nudi: le colonne cambiate in questa scrittura, un
+                  -- sottoinsieme degli elenchi calcolato qui
+                  v_cambiate_inst text[];
+                  v_cambiate_sw   text[];
+                  -- forma COLONNA: le colonne derivate, dal quarto argomento validato
+                  v_derivate  dbops.automazione_seed_primo_impianto.colonne_derivate%TYPE;
+                  -- forma FIGLIA: il padre e l'id del padre letti dagli argomenti
+                  -- validati (regclass e text nudi: un nome e un valore, non un riflesso)
+                  v_padre     regclass;
+                  v_padre_id  dbops.seed_righe.riga_id%TYPE;
+              BEGIN
+                  SELECT * INTO v_arg FROM dbops.fn_seed_primo_impianto_argomenti(TG_ARGV);
+
+                  IF NOT v_arg.valido OR TG_LEVEL <> 'ROW' OR TG_WHEN <> 'BEFORE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'tgargs',    to_jsonb(TG_ARGV),
+                              'dettaglio', COALESCE(v_arg.dettaglio, 'atteso BEFORE … FOR EACH ROW')),
+                          NULL::uuid,
+                          format('%s: %s', TG_NAME, COALESCE(v_arg.dettaglio, 'atteso BEFORE … FOR EACH ROW')));
+                  END IF;
+
+                  v_software := dbops.fn_sessione_del_migratore();
+
+                  -- ── FIGLIA: la composizione segue il suo padre ──────────
+                  -- L'installazione la scrive sempre (e personalizza il padre se il padre
+                  -- se ne accorge). Il software la scrive solo sotto un padre che e' una
+                  -- riga di seed intatta; il DELETE del software passa (una colonna che il
+                  -- software ritira esce dalle composizioni).
+                  IF v_arg.forma = 'FIGLIA' THEN
+                      IF NOT v_software THEN
+                          IF TG_OP = 'DELETE' THEN
+                              RETURN OLD;
+                          END IF;
+                          RETURN NEW;
+                      END IF;
+                      IF TG_OP = 'DELETE' THEN
+                          RETURN OLD;
+                      END IF;
+
+                      v_padre    := to_regclass(TG_ARGV[2]);
+                      v_padre_id := to_jsonb(NEW) ->> TG_ARGV[1];
+                      IF v_padre IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                              jsonb_build_object(
+                                  'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                  'tgargs',    to_jsonb(TG_ARGV),
+                                  'dettaglio', format('il padre %s non esiste', TG_ARGV[2])),
+                              NULL::uuid,
+                              format('%s: il padre %s non esiste', TG_NAME, TG_ARGV[2]));
+                      END IF;
+
+                      SELECT s.seed_riga_id, s.personalizzata_il
+                        INTO v_seed_id, v_pers
+                        FROM dbops.fn_seed_riga(v_padre, v_padre_id) s;
+
+                      IF v_seed_id IS NOT NULL AND v_pers IS NULL THEN
+                          RETURN NEW;
+                      END IF;
+
+                      RAISE WARNING '%.%: il padre % id % non e'' una riga di seed intatta, la riga della composizione non si scrive',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_ARGV[2], v_padre_id;
+                      IF TG_OP = 'UPDATE' THEN
+                          RETURN OLD;   -- l'UPDATE del mirror trova la riga: niente INSERT dopo
+                      END IF;
+                      RETURN NULL;      -- l'INSERT di una riga che manca: nessuna riga, nessun conflitto
+                  END IF;
+
+                  -- ── INSERT ─────────────────────────────────────────────
+                  IF TG_OP = 'INSERT' THEN
+                      IF v_software THEN
+                          v_riga_id := to_jsonb(NEW) ->> 'id';
+                          IF v_riga_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                                  jsonb_build_object(
+                                      'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                      'dettaglio', 'la tabella non ha una colonna id valorizzata'),
+                                  NULL::uuid,
+                                  format('%s: la tabella %s.%s non ha una colonna id valorizzata',
+                                         TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME));
+                          END IF;
+
+                          INSERT INTO dbops.seed_righe (schema_name, table_name, riga_id, segnata_da)
+                          VALUES (TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, 'INSERT')
+                          ON CONFLICT ON CONSTRAINT uq_seed_righe_tabella_riga DO NOTHING;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE e DELETE: la riga e' nata dal seed? ─────────
+                  v_old     := to_jsonb(OLD);
+                  v_riga_id := v_old ->> 'id';
+
+                  -- La voce del registro dal building block che leggono anche le superfici
+                  -- dei campi spenti: la domanda «nata dal seed» ha una sede sola.
+                  SELECT s.seed_riga_id, s.personalizzata_il
+                    INTO v_seed_id, v_pers
+                    FROM dbops.fn_seed_riga(TG_RELID::regclass, v_riga_id) s;
+
+                  -- ── DELETE ─────────────────────────────────────────────
+                  IF TG_OP = 'DELETE' THEN
+                      IF v_seed_id IS NULL THEN
+                          RETURN OLD;   -- riga dell'installazione
+                      END IF;
+
+                      IF script.fn_porta_manutenzione_aperta(
+                             'zeroerp.allow_seed_primo_impianto_override', TG_RELID, TG_OP, v_riga_id) THEN
+                          DELETE FROM dbops.seed_righe WHERE id = v_seed_id;
+                          RETURN OLD;
+                      END IF;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA::text, TG_NAME::text, 'E_SEED_RIGA_NON_CANCELLABILE',
+                          jsonb_build_object(
+                              'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',    v_riga_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                      RETURN OLD;
+                  END IF;
+
+                  -- ── UPDATE: quali colonne sono cambiate ────────────────
+                  v_new := to_jsonb(NEW);
+
+                  IF v_arg.forma = 'COLONNA' THEN
+                      v_inst := v_arg.colonne_installazione;
+                      v_sw   := v_arg.colonne_software;
+                  ELSE
+                      -- Per riga: dell'installazione tutte le colonne non libere.
+                      SELECT COALESCE(array_agg(a.attname::text ORDER BY a.attnum), ARRAY[]::text[])
+                        INTO v_inst
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = TG_RELID
+                         AND a.attnum > 0
+                         AND NOT a.attisdropped
+                         AND a.attgenerated = ''
+                         AND NOT (a.attname::text = ANY (v_arg.colonne_libere));
+                      v_sw := ARRAY[]::text[];
+                  END IF;
+
+                  SELECT COALESCE(array_agg(k ORDER BY k), ARRAY[]::text[])
+                    INTO v_cambiate_inst
+                    FROM unnest(v_inst) AS k
+                   WHERE (v_new -> k) IS DISTINCT FROM (v_old -> k);
+
+                  SELECT COALESCE(array_agg(k ORDER BY k), ARRAY[]::text[])
+                    INTO v_cambiate_sw
+                    FROM unnest(v_sw) AS k
+                   WHERE (v_new -> k) IS DISTINCT FROM (v_old -> k);
+
+                  -- ── UPDATE dell'installazione ──────────────────────────
+                  IF NOT v_software THEN
+                      IF v_seed_id IS NULL THEN
+                          RETURN NEW;   -- riga dell'installazione
+                      END IF;
+
+                      IF cardinality(v_cambiate_sw) > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              TG_TABLE_SCHEMA::text, TG_NAME::text, 'E_SEED_COLONNA_DEL_SOFTWARE',
+                              jsonb_build_object(
+                                  'campo', v_cambiate_sw[1],
+                                  'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                  'id',    v_riga_id,
+                                  'colonne', to_jsonb(v_cambiate_sw)),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+
+                      IF cardinality(v_cambiate_inst) > 0 AND v_pers IS NULL THEN
+                          UPDATE dbops.seed_righe
+                             SET personalizzata_il = now(),
+                                 personalizzata_da = COALESCE(NULLIF(current_setting('app.jwt_user', true), ''),
+                                                              session_user::text)
+                           WHERE id = v_seed_id;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE del software ────────────────────────────────
+                  IF v_seed_id IS NOT NULL AND v_riga_id IS DISTINCT FROM (v_new ->> 'id') THEN
+                      -- La chiave della riga cambia: il registro la segue.
+                      UPDATE dbops.seed_righe SET riga_id = v_new ->> 'id' WHERE id = v_seed_id;
+                  END IF;
+
+                  IF v_seed_id IS NOT NULL AND v_pers IS NULL AND v_arg.forma <> 'SOLO_INSERIMENTO' THEN
+                      RETURN NEW;   -- riga di seed intatta: segue il CSV
+                  END IF;
+
+                  -- Le colonne derivate le ha cambiate il database (un trigger della
+                  -- tabella figlia), non il CSV: non si riportano a OLD e non vanno
+                  -- negli scartati. Il quarto argomento l'ha validato la grammatica,
+                  -- e si legge con la sua stessa lettura (dbops.fn_seed_elenco_colonne).
+                  IF v_arg.forma = 'COLONNA' AND TG_NARGS = 4 THEN
+                      v_derivate := dbops.fn_seed_elenco_colonne(TG_ARGV[3]);
+                      v_cambiate_inst := ARRAY(SELECT k FROM unnest(v_cambiate_inst) AS k
+                                                WHERE NOT (k = ANY (v_derivate))
+                                                ORDER BY k);
+                  END IF;
+
+                  IF cardinality(v_cambiate_inst) = 0 THEN
+                      RETURN NEW;   -- niente dell'installazione da scartare
+                  END IF;
+
+                  IF script.fn_porta_manutenzione_aperta(
+                         'zeroerp.allow_seed_primo_impianto_override', TG_RELID, TG_OP, v_riga_id) THEN
+                      RETURN NEW;   -- bonifica voluta: la riga resta personalizzata (D6)
+                  END IF;
+
+                  SELECT jsonb_object_agg(k, v_old -> k), jsonb_object_agg(k, v_new -> k)
+                    INTO v_patch, v_scartati
+                    FROM unnest(v_cambiate_inst) AS k;
+
+                  NEW := jsonb_populate_record(NEW, v_patch);
+
+                  IF v_seed_id IS NOT NULL AND v_arg.forma = 'SOLO_INSERIMENTO' THEN
+                      -- Il salto atteso, ma non muto (Q22): chi scrive a mano con
+                      -- l'utente del migratore deve sapere che la scrittura non e'
+                      -- entrata. Nel registro non va niente: la riga non e'
+                      -- personalizzata, e' dell'installazione per costruzione.
+                      RAISE WARNING '%.% id %: riga in solo inserimento, e'' dell''installazione: non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_seed_id IS NOT NULL THEN
+                      UPDATE dbops.seed_righe
+                         SET scartati = v_scartati, scartati_il = now()
+                       WHERE id = v_seed_id;
+                      RAISE WARNING '%.% id %: riga personalizzata dall''installazione, non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                  ELSE
+                      RAISE WARNING '%.% id %: riga creata dall''installazione, non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_seed_primo_impianto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                  v_arg       record;   -- riga di dbops.fn_seed_primo_impianto_argomenti
+                  -- boolean nudo: la risposta di dbops.fn_sessione_del_migratore
+                  v_software  boolean;
+                  v_seed_id   dbops.seed_righe.id%TYPE;
+                  v_pers      dbops.seed_righe.personalizzata_il%TYPE;
+                  v_riga_id   dbops.seed_righe.riga_id%TYPE;
+                  v_scartati  dbops.seed_righe.scartati%TYPE;
+                  v_inst      dbops.automazione_seed_primo_impianto.colonne_installazione%TYPE;
+                  v_sw        dbops.automazione_seed_primo_impianto.colonne_software%TYPE;
+                  -- jsonb nudi: la riga intera, vecchia e nuova, e la toppa che
+                  -- rimette le colonne; non il riflesso di una colonna
+                  v_old       jsonb;
+                  v_new       jsonb;
+                  v_patch     jsonb;
+                  -- text[] nudi: le colonne cambiate in questa scrittura, un
+                  -- sottoinsieme degli elenchi calcolato qui
+                  v_cambiate_inst text[];
+                  v_cambiate_sw   text[];
+                  -- forma COLONNA: le colonne derivate, dal quarto argomento validato
+                  v_derivate  dbops.automazione_seed_primo_impianto.colonne_derivate%TYPE;
+                  -- forma FIGLIA: il padre e l'id del padre letti dagli argomenti
+                  -- validati (regclass e text nudi: un nome e un valore, non un riflesso)
+                  v_padre     regclass;
+                  v_padre_id  dbops.seed_righe.riga_id%TYPE;
+              BEGIN
+                  SELECT * INTO v_arg FROM dbops.fn_seed_primo_impianto_argomenti(TG_ARGV);
+
+                  IF NOT v_arg.valido OR TG_LEVEL <> 'ROW' OR TG_WHEN <> 'BEFORE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                          jsonb_build_object(
+                              'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'tgargs',    to_jsonb(TG_ARGV),
+                              'dettaglio', COALESCE(v_arg.dettaglio, 'atteso BEFORE … FOR EACH ROW')),
+                          NULL::uuid,
+                          format('%s: %s', TG_NAME, COALESCE(v_arg.dettaglio, 'atteso BEFORE … FOR EACH ROW')));
+                  END IF;
+
+                  v_software := dbops.fn_sessione_del_migratore();
+
+                  -- ── FIGLIA: la composizione segue il suo padre ──────────
+                  -- L'installazione la scrive sempre (e personalizza il padre se il padre
+                  -- se ne accorge). Il software la scrive solo sotto un padre che e' una
+                  -- riga di seed intatta; il DELETE del software passa (una colonna che il
+                  -- software ritira esce dalle composizioni).
+                  IF v_arg.forma = 'FIGLIA' THEN
+                      IF NOT v_software THEN
+                          IF TG_OP = 'DELETE' THEN
+                              RETURN OLD;
+                          END IF;
+                          RETURN NEW;
+                      END IF;
+                      IF TG_OP = 'DELETE' THEN
+                          RETURN OLD;
+                      END IF;
+
+                      v_padre    := to_regclass(TG_ARGV[2]);
+                      v_padre_id := to_jsonb(NEW) ->> TG_ARGV[1];
+                      IF v_padre IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                              jsonb_build_object(
+                                  'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                  'tgargs',    to_jsonb(TG_ARGV),
+                                  'dettaglio', format('il padre %s non esiste', TG_ARGV[2])),
+                              NULL::uuid,
+                              format('%s: il padre %s non esiste', TG_NAME, TG_ARGV[2]));
+                      END IF;
+
+                      SELECT s.seed_riga_id, s.personalizzata_il
+                        INTO v_seed_id, v_pers
+                        FROM dbops.fn_seed_riga(v_padre, v_padre_id) s;
+
+                      IF v_seed_id IS NOT NULL AND v_pers IS NULL THEN
+                          RETURN NEW;
+                      END IF;
+
+                      RAISE WARNING '%.%: il padre % id % non e'' una riga di seed intatta, la riga della composizione non si scrive',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, TG_ARGV[2], v_padre_id;
+                      IF TG_OP = 'UPDATE' THEN
+                          RETURN OLD;   -- l'UPDATE del mirror trova la riga: niente INSERT dopo
+                      END IF;
+                      RETURN NULL;      -- l'INSERT di una riga che manca: nessuna riga, nessun conflitto
+                  END IF;
+
+                  -- ── INSERT ─────────────────────────────────────────────
+                  IF TG_OP = 'INSERT' THEN
+                      IF v_software THEN
+                          v_riga_id := to_jsonb(NEW) ->> 'id';
+                          IF v_riga_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', TG_NAME::text, 'E_TRIGGER_ARGOMENTI_INVALIDI',
+                                  jsonb_build_object(
+                                      'table',     TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                      'dettaglio', 'la tabella non ha una colonna id valorizzata'),
+                                  NULL::uuid,
+                                  format('%s: la tabella %s.%s non ha una colonna id valorizzata',
+                                         TG_NAME, TG_TABLE_SCHEMA, TG_TABLE_NAME));
+                          END IF;
+
+                          INSERT INTO dbops.seed_righe (schema_name, table_name, riga_id, segnata_da)
+                          VALUES (TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, 'INSERT')
+                          ON CONFLICT ON CONSTRAINT uq_seed_righe_tabella_riga DO NOTHING;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE e DELETE: la riga e' nata dal seed? ─────────
+                  v_old     := to_jsonb(OLD);
+                  v_riga_id := v_old ->> 'id';
+
+                  -- La voce del registro dal building block che leggono anche le superfici
+                  -- dei campi spenti: la domanda «nata dal seed» ha una sede sola.
+                  SELECT s.seed_riga_id, s.personalizzata_il
+                    INTO v_seed_id, v_pers
+                    FROM dbops.fn_seed_riga(TG_RELID::regclass, v_riga_id) s;
+
+                  -- ── DELETE ─────────────────────────────────────────────
+                  IF TG_OP = 'DELETE' THEN
+                      IF v_seed_id IS NULL THEN
+                          RETURN OLD;   -- riga dell'installazione
+                      END IF;
+
+                      IF script.fn_porta_manutenzione_aperta(
+                             'zeroerp.allow_seed_primo_impianto_override', TG_RELID, TG_OP, v_riga_id) THEN
+                          DELETE FROM dbops.seed_righe WHERE id = v_seed_id;
+                          RETURN OLD;
+                      END IF;
+
+                      PERFORM script.fn_log_and_raise_error(
+                          TG_TABLE_SCHEMA::text, TG_NAME::text, 'E_SEED_RIGA_NON_CANCELLABILE',
+                          jsonb_build_object(
+                              'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                              'id',    v_riga_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                      RETURN OLD;
+                  END IF;
+
+                  -- ── UPDATE: quali colonne sono cambiate ────────────────
+                  v_new := to_jsonb(NEW);
+
+                  IF v_arg.forma = 'COLONNA' THEN
+                      v_inst := v_arg.colonne_installazione;
+                      v_sw   := v_arg.colonne_software;
+                  ELSE
+                      -- Per riga: dell'installazione tutte le colonne non libere.
+                      SELECT COALESCE(array_agg(a.attname::text ORDER BY a.attnum), ARRAY[]::text[])
+                        INTO v_inst
+                        FROM pg_catalog.pg_attribute a
+                       WHERE a.attrelid = TG_RELID
+                         AND a.attnum > 0
+                         AND NOT a.attisdropped
+                         AND a.attgenerated = ''
+                         AND NOT (a.attname::text = ANY (v_arg.colonne_libere));
+                      v_sw := ARRAY[]::text[];
+                  END IF;
+
+                  SELECT COALESCE(array_agg(k ORDER BY k), ARRAY[]::text[])
+                    INTO v_cambiate_inst
+                    FROM unnest(v_inst) AS k
+                   WHERE (v_new -> k) IS DISTINCT FROM (v_old -> k);
+
+                  SELECT COALESCE(array_agg(k ORDER BY k), ARRAY[]::text[])
+                    INTO v_cambiate_sw
+                    FROM unnest(v_sw) AS k
+                   WHERE (v_new -> k) IS DISTINCT FROM (v_old -> k);
+
+                  -- ── UPDATE dell'installazione ──────────────────────────
+                  IF NOT v_software THEN
+                      IF v_seed_id IS NULL THEN
+                          RETURN NEW;   -- riga dell'installazione
+                      END IF;
+
+                      IF cardinality(v_cambiate_sw) > 0 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              TG_TABLE_SCHEMA::text, TG_NAME::text, 'E_SEED_COLONNA_DEL_SOFTWARE',
+                              jsonb_build_object(
+                                  'campo', v_cambiate_sw[1],
+                                  'table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                  'id',    v_riga_id,
+                                  'colonne', to_jsonb(v_cambiate_sw)),
+                              NULL::uuid,
+                              VARIADIC ARRAY[]::text[]);
+                      END IF;
+
+                      IF cardinality(v_cambiate_inst) > 0 AND v_pers IS NULL THEN
+                          UPDATE dbops.seed_righe
+                             SET personalizzata_il = now(),
+                                 personalizzata_da = COALESCE(NULLIF(current_setting('app.jwt_user', true), ''),
+                                                              session_user::text)
+                           WHERE id = v_seed_id;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- ── UPDATE del software ────────────────────────────────
+                  IF v_seed_id IS NOT NULL AND v_riga_id IS DISTINCT FROM (v_new ->> 'id') THEN
+                      -- La chiave della riga cambia: il registro la segue.
+                      UPDATE dbops.seed_righe SET riga_id = v_new ->> 'id' WHERE id = v_seed_id;
+                  END IF;
+
+                  IF v_seed_id IS NOT NULL AND v_pers IS NULL AND v_arg.forma <> 'SOLO_INSERIMENTO' THEN
+                      RETURN NEW;   -- riga di seed intatta: segue il CSV
+                  END IF;
+
+                  -- Le colonne derivate le ha cambiate il database (un trigger della
+                  -- tabella figlia), non il CSV: non si riportano a OLD e non vanno
+                  -- negli scartati. Il quarto argomento l'ha validato la grammatica.
+                  IF v_arg.forma = 'COLONNA' AND TG_NARGS = 4 THEN
+                      v_derivate := array_remove(string_to_array(regexp_replace(TG_ARGV[3], '\s', '', 'g'), ','), '');
+                      v_cambiate_inst := ARRAY(SELECT k FROM unnest(v_cambiate_inst) AS k
+                                                WHERE NOT (k = ANY (v_derivate))
+                                                ORDER BY k);
+                  END IF;
+
+                  IF cardinality(v_cambiate_inst) = 0 THEN
+                      RETURN NEW;   -- niente dell'installazione da scartare
+                  END IF;
+
+                  IF script.fn_porta_manutenzione_aperta(
+                         'zeroerp.allow_seed_primo_impianto_override', TG_RELID, TG_OP, v_riga_id) THEN
+                      RETURN NEW;   -- bonifica voluta: la riga resta personalizzata (D6)
+                  END IF;
+
+                  SELECT jsonb_object_agg(k, v_old -> k), jsonb_object_agg(k, v_new -> k)
+                    INTO v_patch, v_scartati
+                    FROM unnest(v_cambiate_inst) AS k;
+
+                  NEW := jsonb_populate_record(NEW, v_patch);
+
+                  IF v_seed_id IS NOT NULL AND v_arg.forma = 'SOLO_INSERIMENTO' THEN
+                      -- Il salto atteso, ma non muto (Q22): chi scrive a mano con
+                      -- l'utente del migratore deve sapere che la scrittura non e'
+                      -- entrata. Nel registro non va niente: la riga non e'
+                      -- personalizzata, e' dell'installazione per costruzione.
+                      RAISE WARNING '%.% id %: riga in solo inserimento, e'' dell''installazione: non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                      RETURN NEW;
+                  END IF;
+
+                  IF v_seed_id IS NOT NULL THEN
+                      UPDATE dbops.seed_righe
+                         SET scartati = v_scartati, scartati_il = now()
+                       WHERE id = v_seed_id;
+                      RAISE WARNING '%.% id %: riga personalizzata dall''installazione, non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                  ELSE
+                      RAISE WARNING '%.% id %: riga creata dall''installazione, non riscritte le colonne %',
+                          TG_TABLE_SCHEMA, TG_TABLE_NAME, v_riga_id, array_to_string(v_cambiate_inst, ', ');
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

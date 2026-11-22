@@ -1,6 +1,6 @@
 ## 📘 Documentazione Concettuale – Funzione `ui.fn_get_misure_pagina`
 
-> **Ultimo aggiornamento**: 18 novembre 2026
+> **Ultimo aggiornamento**: 22 novembre 2026
 >
 > 👀 **Vedi anche**
 >
@@ -10,14 +10,15 @@
 >
 > Approfondimento funzioni:
 >
-> * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — i due default, mai vuoti
+> * [ui.fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default) — il default di un uso, mai vuoto
+> * [ui.trgfn_misure_pagina_guard_default_per_uso](/dbzero/ui/funzioni/trgfn_misure_pagina_guard_default_per_uso) — il catalogo ha un default per ogni uso
 
 ---
 
 ### 🎯 Scopo Principale
 
 `ui.fn_get_misure_pagina` dà all'applicazione, in una lettura sola, le misure «righe per pagina» del
-catalogo in ordine crescente e i due default: quello compatto (drawer e dialog) e quello della
+catalogo in ordine crescente e il default di ogni uso: quello compatto (drawer e dialog) e quello della
 pagina intera.
 
 ---
@@ -30,34 +31,39 @@ opzioni del selettore e la misura con cui partono.
 
 ---
 
-### Mai un default vuoto
+### Che cosa risponde
 
-I due default vengono da [fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default):
-se il catalogo non ne dichiara uno, la lettura intera solleva invece di rispondere un default vuoto.
-Un catalogo senza misure risponde un elenco vuoto, ma senza misure non c'è nemmeno un default, e la
-lettura solleva comunque.
+* **misure** — le misure del catalogo, in ordine crescente;
+* **default_per_uso** — un oggetto con una chiave per ogni uso (`COMPATTA`, `PAGINA`) e il suo default.
+  Gli usi vengono dall'elenco degli usi del database, non sono scritti nella funzione: un uso nuovo
+  compare qui senza toccarla;
+* **default_compatta** e **default_pagina** — gli stessi due default, con i nomi di prima. Restano finché
+  il backend non legge `default_per_uso`, poi escono.
 
 ---
 
-### ⚠️ Che cosa oggi non copre
+### Mai un default vuoto
 
-* La funzione presuppone un catalogo con entrambi i default, ma il catalogo non lo garantisce: il
-  vincolo ne ammette al più uno per uso, non esattamente uno. Una scrittura che toglie un default fa
-  sollevare questa lettura, e con lei si ferma l'avvio di ogni pagina dell'applicazione.
+I default vengono da [fn_misura_pagina_default](/dbzero/ui/funzioni/fn_misura_pagina_default): se il
+catalogo non ne dichiara uno, la lettura intera solleva invece di rispondere un default vuoto. Il catalogo
+non si salva senza un default per ogni uso (lo rifiuta
+[il trigger differito del catalogo](/dbzero/ui/funzioni/trgfn_misure_pagina_guard_default_per_uso)):
+l'errore dice un catalogo rotto, non un caso da gestire.
 
 ---
 
 ### Codici errore
 
-* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — manca il default compatto o quello della pagina intera
-  (sollevato da `fn_misura_pagina_default`).
+* `E_UI_MISURA_PAGINA_DEFAULT_MANCANTE` — manca il default di un uso (sollevato da
+  `fn_misura_pagina_default`).
 
 ---
 
 ### Test
 
-* `db/pgtap/ui/test-misure-pagina-v1.sql` — le misure in ordine, e i due default fra le misure
-  offerte.
+* `db/pgtap/ui/test-misure-pagina-v1.sql` — le misure in ordine, le stesse del catalogo, e i due default
+  di prima uguali a quelli del building block; `default_per_uso` con una chiave per ogni uso, il default
+  del building block, e il corpo che legge l'elenco degli usi.
 
 ---
 
@@ -65,6 +71,8 @@ lettura solleva comunque.
 
 * 2026-09-30 — nasce col catalogo delle misure: prende il posto delle costanti di paginazione del
   frontend.
+* 2026-11-22 — i default per uso dall'elenco degli usi (`default_per_uso`); le due chiavi di prima
+  restano finché il backend non passa.
 
 ---
 
